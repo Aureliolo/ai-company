@@ -736,12 +736,8 @@ func writeInitFiles(state config.State) (string, error) {
 	}
 
 	composePath := filepath.Join(safeDir, "compose.yml")
-	if err := os.WriteFile(composePath, composeYAML, 0o600); err != nil {
-		return "", fmt.Errorf("writing compose file: %w", err)
-	}
-
-	if err := writeNATSConfigIfNeeded(state, safeDir); err != nil {
-		return "", err
+	if err := writeComposeWithNATS(composePath, composeYAML, state, safeDir); err != nil {
+		return "", fmt.Errorf("writing compose files: %w", err)
 	}
 
 	if err := config.Save(state); err != nil {
@@ -759,6 +755,14 @@ func writeInitFiles(state config.State) (string, error) {
 // When the bus is the in-process default, the file is not needed and
 // is removed if it exists from a prior distributed install.
 func writeNATSConfigIfNeeded(state config.State, safeDir string) error {
+	// Defense-in-depth: callers (init, start, config, update) pass
+	// safeDir that has already been normalised through config.SecurePath,
+	// so it is absolute + clean by construction. Re-check here so
+	// taint analysers (CodeQL) can see the sanitisation and do not flag
+	// the filepath.Join below as path injection.
+	if !filepath.IsAbs(safeDir) || filepath.Clean(safeDir) != safeDir {
+		return fmt.Errorf("nats config: refusing non-sanitised safeDir %q", safeDir)
+	}
 	confPath := filepath.Join(safeDir, compose.NATSConfigFilename)
 	if state.BusBackend != "nats" {
 		if err := os.Remove(confPath); err != nil && !errors.Is(err, os.ErrNotExist) {

@@ -564,10 +564,7 @@ func regenerateCompose(state config.State) error {
 	if err != nil {
 		return fmt.Errorf("regenerating compose: %w", err)
 	}
-	if err := atomicWriteFile(composePath, generated, safeDir); err != nil {
-		return err
-	}
-	return writeNATSConfigIfNeeded(state, safeDir)
+	return writeComposeWithNATS(composePath, generated, state, safeDir)
 }
 
 func runConfigUnset(cmd *cobra.Command, args []string) error {

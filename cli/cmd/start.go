@@ -633,10 +633,43 @@ func writeDigestPinnedCompose(state config.State, digestPins map[string]string, 
 		return fmt.Errorf("generating compose file: %w", err)
 	}
 
-	if err := atomicWriteFile(filepath.Join(safeDir, "compose.yml"), composeYAML, safeDir); err != nil {
+	return writeComposeWithNATS(filepath.Join(safeDir, "compose.yml"), composeYAML, state, safeDir)
+}
+
+// writeComposeWithNATS keeps compose.yml and its bind-mounted
+// nats.conf side-file consistent across every caller that regenerates
+// compose. Order matters and depends on the direction of the BusBackend
+// transition:
+//
+//   - BusBackend == "nats": the freshly written compose.yml references
+//     nats.conf via `configs.nats-config.file: ./nats.conf`. Write the
+//     side-file FIRST so if the compose write fails we still have a
+//     consistent on-disk pair (old compose either already references
+//     a nats.conf we just refreshed, or it does not reference it at
+//     all, which is still valid).
+//   - BusBackend != "nats": the freshly written compose.yml no longer
+//     references nats.conf. Remove the stale side-file AFTER the
+//     compose write so a compose write failure leaves the old compose
+//     (which may reference nats.conf) and the file still in place.
+//
+// Either way, a failure at any step leaves the disk in a consistent
+// state -- NATS will never start against a missing-or-mismatched
+// nats.conf because compose.yml and the file are always co-committed.
+func writeComposeWithNATS(composePath string, composeYAML []byte, state config.State, safeDir string) error {
+	if state.BusBackend == "nats" {
+		if err := writeNATSConfigIfNeeded(state, safeDir); err != nil {
+			return err
+		}
+	}
+	if err := atomicWriteFile(composePath, composeYAML, safeDir); err != nil {
 		return err
 	}
-	return writeNATSConfigIfNeeded(state, safeDir)
+	if state.BusBackend != "nats" {
+		if err := writeNATSConfigIfNeeded(state, safeDir); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // atomicWriteFile writes data to targetPath via a temp file + rename to prevent

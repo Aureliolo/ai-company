@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -22,6 +23,21 @@ import (
 	"github.com/Aureliolo/synthorg/cli/internal/ui"
 	"github.com/spf13/cobra"
 )
+
+// normalizePathForCompare returns a canonical form of p suitable for
+// filepath.Rel comparison. On Windows the filesystem is case-insensitive
+// by default, so two paths differing only in drive-letter case
+// (C:\Users vs c:\users) can make filepath.Rel emit a `..` prefix that
+// wrongly reports an in-tree binary as out-of-tree. Lowercasing both
+// sides before the compare fixes that without changing semantics on
+// case-sensitive Unix filesystems (where this helper is a no-op).
+func normalizePathForCompare(p string) string {
+	p = filepath.Clean(p)
+	if runtime.GOOS == "windows" {
+		return strings.ToLower(p)
+	}
+	return p
+}
 
 // errWipeCancelled is a sentinel error used to signal that the user cancelled
 // the wipe operation. Callers convert this to a clean (nil) exit.
@@ -214,7 +230,9 @@ func (wc *wipeContext) confirmAndWipe() error {
 
 // selfPathInside reports whether the running CLI binary lives under
 // dataDir. Used after wipe to decide between "everything gone" and
-// "everything except the binary" success messages.
+// "everything except the binary" success messages. Resolves symlinks
+// (macOS /var -> /private/var) and case-folds paths on Windows so the
+// comparison is stable on both platforms.
 func selfPathInside(dataDir string) bool {
 	selfPath, err := os.Executable()
 	if err != nil {
@@ -223,7 +241,11 @@ func selfPathInside(dataDir string) bool {
 	if resolved, rErr := filepath.EvalSymlinks(selfPath); rErr == nil {
 		selfPath = resolved
 	}
-	rel, relErr := filepath.Rel(filepath.Clean(dataDir), filepath.Clean(selfPath))
+	dataDirClean := filepath.Clean(dataDir)
+	if resolved, rErr := filepath.EvalSymlinks(dataDirClean); rErr == nil {
+		dataDirClean = resolved
+	}
+	rel, relErr := filepath.Rel(normalizePathForCompare(dataDirClean), normalizePathForCompare(selfPath))
 	if relErr != nil {
 		return false
 	}
@@ -256,14 +278,24 @@ func removeDataDirExceptSelf(dataDir string) error {
 // dirs). Split out so tests can exercise the inside-data-dir branch
 // without needing to forge os.Executable's return value.
 func removeDataDirExceptBinary(dataDir, selfPath string) error {
+	// Resolve symlinks on BOTH paths before comparing with filepath.Rel.
+	// macOS keeps /var as a symlink to /private/var, so resolving only
+	// one side makes the inside-data-dir test flip to the
+	// binary-outside-dataDir branch and wipe the kept binary.
+	// On Windows, the filesystem is case-insensitive by default so
+	// C:\Users vs c:\users would trip filepath.Rel into emitting a
+	// stray `..`; normalizePathForCompare lowercases on Windows only.
 	dataDirClean := filepath.Clean(dataDir)
+	if resolved, rErr := filepath.EvalSymlinks(dataDirClean); rErr == nil {
+		dataDirClean = resolved
+	}
 
 	if resolved, rErr := filepath.EvalSymlinks(selfPath); rErr == nil {
 		selfPath = resolved
 	}
 	selfPath = filepath.Clean(selfPath)
 
-	if rel, relErr := filepath.Rel(dataDirClean, selfPath); relErr != nil || strings.HasPrefix(rel, "..") {
+	if rel, relErr := filepath.Rel(normalizePathForCompare(dataDirClean), normalizePathForCompare(selfPath)); relErr != nil || strings.HasPrefix(rel, "..") {
 		// Binary lives outside dataDir; safe to nuke the whole tree.
 		return os.RemoveAll(dataDirClean)
 	}

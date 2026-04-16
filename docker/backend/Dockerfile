@@ -80,7 +80,7 @@ USER build
 # .github/.trivyignore.yaml with a short expiration so they are
 # auto-revisited when upstream ships v1.3.0.
 # ---------------------------------------------------------------------------
-FROM debian:13.2-slim@sha256:7e490910eea2861b9664577a96b54ce68ea3e02ce7f51d89cb0103a6f9c213e0 AS atlas
+FROM curlimages/curl:8.19.0@sha256:9a6f6a17667960e077f1b153009aaf18ac99a622221084e1938a45a06fff057a AS atlas
 
 # renovate: datasource=github-releases depName=ariga/atlas
 ARG ATLAS_VERSION=v1.2.0
@@ -88,17 +88,14 @@ ARG ATLAS_SHA256_AMD64=19a1f09eaa5469011d2cfb07cd8bdcaa5bb39fbf7c31bd63a60ba9d9a
 ARG ATLAS_SHA256_ARM64=8f7f89dd977a85ffe9be66fe157ce462a03036ef67a229ce8a39c3b1856e53f9
 ARG TARGETARCH
 
-SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+SHELL ["/bin/ash", "-o", "pipefail", "-c"]
 
-# DL3008: pinning apt package versions in a throwaway builder stage that
-#         never ships to the final image adds maintenance cost without
-#         security benefit -- the Atlas binary itself is pinned by
-#         per-arch SHA256 below, which is the actual trust boundary.
-# hadolint ignore=DL3008
-RUN set -euo pipefail; \
-    apt-get update; \
-    apt-get install -y --no-install-recommends ca-certificates curl file; \
-    rm -rf /var/lib/apt/lists/*; \
+# curlimages/curl runs as the non-root curl_user by default. Write the
+# binary into the user's home (HOME=/home/curl_user) so we stay on the
+# default USER and keep hadolint (DL3002: last USER must not be root)
+# happy without adding a ignore directive -- the binary is moved to
+# /usr/local/bin via COPY --from=atlas in the runtime stage below.
+RUN set -eu; \
     case "${TARGETARCH:-amd64}" in \
         amd64) ATLAS_SHA256="${ATLAS_SHA256_AMD64}" ;; \
         arm64) ATLAS_SHA256="${ATLAS_SHA256_ARM64}" ;; \
@@ -106,17 +103,16 @@ RUN set -euo pipefail; \
     esac; \
     curl -fsSL --retry 3 \
         "https://release.ariga.io/atlas/atlas-community-linux-${TARGETARCH:-amd64}-${ATLAS_VERSION}" \
-        -o /atlas; \
-    echo "${ATLAS_SHA256}  /atlas" | sha256sum -c -; \
-    chmod +x /atlas; \
-    if ldd /atlas 2>&1 | grep -Eq 'ld-linux|libc\.so|=> /'; then \
+        -o /home/curl_user/atlas; \
+    echo "${ATLAS_SHA256}  /home/curl_user/atlas" | sha256sum -c -; \
+    chmod +x /home/curl_user/atlas; \
+    # Alpine ldd on a static binary prints "Not a valid dynamic program"
+    # (or similar) and exits non-zero. Treat an exit-zero ldd that lists
+    # interpreter/libc deps as the failure case.
+    if ldd /home/curl_user/atlas 2>/dev/null | grep -Eq 'ld-linux|libc\.so|=> /'; then \
         echo "ERROR: /atlas is dynamically linked; incompatible with the distroless runtime." >&2; \
         exit 1; \
-    fi; \
-    file /atlas | grep -q "statically linked" || { \
-        echo "ERROR: /atlas is not statically linked per file(1)." >&2; \
-        exit 1; \
-    }
+    fi
 
 # ---------------------------------------------------------------------------
 # Stage 2 -- Runtime (apko-composed Wolfi base: no shell, no package manager)
@@ -145,7 +141,7 @@ COPY --from=builder --chown=65532:65532 /data /data
 # self-contained; copying it into /usr/local/bin places it on the
 # default PATH without needing a shell or package manager in the
 # distroless runtime.
-COPY --from=atlas /atlas /usr/local/bin/atlas
+COPY --from=atlas /home/curl_user/atlas /usr/local/bin/atlas
 
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \

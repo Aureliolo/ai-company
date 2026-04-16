@@ -58,11 +58,8 @@ func refreshCompose(cmd *cobra.Command, state config.State, force bool) (bool, e
 	// changed -- these are expected during an update and don't need
 	// user confirmation (template structure is unchanged).
 	if isUpdateBoilerplateOnly(existing, fresh) {
-		if err := atomicWriteFile(composePath, fresh, safeDir); err != nil {
+		if err := writeComposeWithNATS(composePath, fresh, state, safeDir); err != nil {
 			return false, fmt.Errorf("writing updated compose: %w", err)
-		}
-		if err := writeNATSConfigIfNeeded(state, safeDir); err != nil {
-			return false, err
 		}
 		_, _ = fmt.Fprintln(out, "Compose configuration is up to date.")
 		return true, nil

@@ -498,4 +498,35 @@ func TestWriteNATSConfigIfNeeded(t *testing.T) {
 		}
 	})
 
+	// Defense-in-depth: writeNATSConfigIfNeeded must refuse a safeDir
+	// that has not been through config.SecurePath, so CodeQL and a
+	// careful reader can see the sanitisation before filepath.Join.
+	// Regression guard: if a future caller is tempted to pass a raw
+	// user string the helper should reject it loudly rather than
+	// silently concatenate.
+	t.Run("rejects non-absolute safeDir", func(t *testing.T) {
+		state := config.State{BusBackend: "nats"}
+		err := writeNATSConfigIfNeeded(state, "relative/path")
+		if err == nil {
+			t.Fatalf("expected error for non-absolute safeDir, got nil")
+		}
+		if !strings.Contains(err.Error(), "non-sanitised") {
+			t.Errorf("expected non-sanitised error, got: %v", err)
+		}
+	})
+
+	t.Run("rejects unclean safeDir with trailing separator", func(t *testing.T) {
+		base := t.TempDir()
+		// filepath.Clean strips the trailing separator; the guard relies
+		// on that difference to fail-fast on a non-normalised input.
+		dirty := base + string(filepath.Separator) + "."
+		state := config.State{BusBackend: "nats"}
+		err := writeNATSConfigIfNeeded(state, dirty)
+		if err == nil {
+			t.Fatalf("expected error for unclean safeDir %q, got nil", dirty)
+		}
+		if !strings.Contains(err.Error(), "non-sanitised") {
+			t.Errorf("expected non-sanitised error, got: %v", err)
+		}
+	})
 }

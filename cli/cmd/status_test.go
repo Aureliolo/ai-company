@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/Aureliolo/synthorg/cli/internal/ui"
@@ -358,8 +359,9 @@ type simpleError struct{ msg string }
 func (e *simpleError) Error() string { return e.msg }
 
 func sliceContainsSubstring(items []string, sub string) bool {
+	needle := strings.ToLower(sub)
 	for _, item := range items {
-		if stringsContainsCI(item, sub) {
+		if strings.Contains(strings.ToLower(item), needle) {
 			return true
 		}
 	}
@@ -367,34 +369,7 @@ func sliceContainsSubstring(items []string, sub string) bool {
 }
 
 func stringsContainsCI(haystack, needle string) bool {
-	hL := []rune(haystack)
-	nL := []rune(needle)
-	if len(nL) == 0 {
-		return true
-	}
-	if len(nL) > len(hL) {
-		return false
-	}
-	for i := 0; i+len(nL) <= len(hL); i++ {
-		match := true
-		for j := range nL {
-			if toLowerRune(hL[i+j]) != toLowerRune(nL[j]) {
-				match = false
-				break
-			}
-		}
-		if match {
-			return true
-		}
-	}
-	return false
-}
-
-func toLowerRune(r rune) rune {
-	if r >= 'A' && r <= 'Z' {
-		return r + ('a' - 'A')
-	}
-	return r
+	return strings.Contains(strings.ToLower(haystack), strings.ToLower(needle))
 }
 
 func TestFormatUptime(t *testing.T) {

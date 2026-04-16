@@ -8,6 +8,9 @@ import (
 )
 
 // Box draws a bordered box with a title integrated into the top border.
+// Title, side and bottom borders are all rendered in the brandBold style
+// so the chrome reads as a single semantic unit (consistent with
+// BoxError/BoxWarn/BoxSuccess, which swap in err/warn/success styles).
 // Content lines are sanitized with stripControlStrict (all control chars
 // removed, including ESC) -- pass plain text, not ANSI-styled strings.
 //
@@ -104,8 +107,10 @@ func (u *UI) renderBoxTopStyled(title string, titleW, innerW int, titleStyle lip
 }
 
 // renderBoxContent prints the content lines with muted vertical borders.
-// Used by the default Box() variant where title + chrome share the brand
-// style and content borders stay subdued.
+// Not used by Box/BoxError/BoxWarn/BoxSuccess (those go through
+// renderBoxContentStyled with the title's own style so the whole frame
+// is one colour). Kept for any future callers that want muted sides
+// against a coloured top.
 func (u *UI) renderBoxContent(lines []string, innerW int) {
 	u.renderBoxContentStyled(lines, innerW, u.muted)
 }

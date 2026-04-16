@@ -241,15 +241,15 @@ func collectCurrentImageIDs(ctx context.Context, info docker.Info, state config.
 		ref := images.RefForService(svc, state.ImageTag, verifiedDigests)
 		id, err := images.InspectID(ctx, info.DockerPath, ref)
 		if err != nil {
-			if images.IsImageNotFoundErr(err) {
-				return nil, fmt.Errorf("resolving %s: %w", svc, errImageNotLocal)
-			}
 			return nil, fmt.Errorf("resolving image ID for %s: %w", svc, err)
 		}
 		if id == "" {
-			// Image not pulled yet (InspectID returns "" on "No such
-			// image"). Nothing to clean up -- skip silently.
-			continue
+			// InspectID returns ("", nil) when the image is not pulled
+			// yet. Surface this via the shared errImageNotLocal sentinel
+			// so callers (autoCleanupOldImages, findOldImages) handle
+			// "image missing locally" uniformly instead of silently
+			// skipping one service and wedging another.
+			return nil, fmt.Errorf("resolving %s: %w", svc, errImageNotLocal)
 		}
 		// Store both the full ID (sha256:...) and the short 12-char ID.
 		// docker images --format {{.ID}} returns short IDs, while

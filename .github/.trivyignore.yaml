@@ -66,13 +66,19 @@ vulnerabilities:
   # stdlib version (1.25.0) in the ELF. These CVEs are waived because
   # Atlas inside our image only processes our own SQL migrations against
   # our own Postgres -- never touches untrusted input.
+  #
+  # Scope is narrowed to the Atlas binary: each entry pins the versioned
+  # stdlib purl AND restricts by path so a Go stdlib CVE in any OTHER
+  # binary (e.g. a future Go-based service) still fails the scan.
   # Auto-cleared when upstream tags v1.3.0 (currently tracked by renovate
   # via customManagers -> ariga/atlas). Short expiration forces an
   # active revisit if the upstream release slips.
   # ---------------------------------------------------------------------
   - id: CVE-2025-68121
     purls:
-      - "pkg:golang/stdlib"
+      - "pkg:golang/stdlib@v1.25.0"
+    paths:
+      - "usr/local/bin/atlas"
     expired_at: "2026-07-17T00:00:00Z"
     statement: >-
       crypto/tls incorrect certificate validation in Go stdlib v1.25.0,
@@ -84,7 +90,9 @@ vulnerabilities:
 
   - id: CVE-2025-58183
     purls:
-      - "pkg:golang/stdlib"
+      - "pkg:golang/stdlib@v1.25.0"
+    paths:
+      - "usr/local/bin/atlas"
     expired_at: "2026-07-17T00:00:00Z"
     statement: >-
       archive/tar unbounded allocation when parsing GNU sparse files,
@@ -94,7 +102,9 @@ vulnerabilities:
 
   - id: CVE-2025-61726
     purls:
-      - "pkg:golang/stdlib"
+      - "pkg:golang/stdlib@v1.25.0"
+    paths:
+      - "usr/local/bin/atlas"
     expired_at: "2026-07-17T00:00:00Z"
     statement: >-
       net/url memory exhaustion in query parameter parsing, embedded in
@@ -104,7 +114,9 @@ vulnerabilities:
 
   - id: CVE-2025-61728
     purls:
-      - "pkg:golang/stdlib"
+      - "pkg:golang/stdlib@v1.25.0"
+    paths:
+      - "usr/local/bin/atlas"
     expired_at: "2026-07-17T00:00:00Z"
     statement: >-
       archive/zip excessive CPU consumption, embedded in the Atlas CLI
@@ -112,7 +124,9 @@ vulnerabilities:
 
   - id: CVE-2025-61729
     purls:
-      - "pkg:golang/stdlib"
+      - "pkg:golang/stdlib@v1.25.0"
+    paths:
+      - "usr/local/bin/atlas"
     expired_at: "2026-07-17T00:00:00Z"
     statement: >-
       crypto/x509 DoS from excessive resource consumption, embedded in
@@ -122,7 +136,9 @@ vulnerabilities:
 
   - id: CVE-2026-25679
     purls:
-      - "pkg:golang/stdlib"
+      - "pkg:golang/stdlib@v1.25.0"
+    paths:
+      - "usr/local/bin/atlas"
     expired_at: "2026-07-17T00:00:00Z"
     statement: >-
       net/url incorrect parsing of IPv6 host literals, embedded in the
@@ -130,7 +146,9 @@ vulnerabilities:
 
   - id: CVE-2026-32280
     purls:
-      - "pkg:golang/stdlib"
+      - "pkg:golang/stdlib@v1.25.0"
+    paths:
+      - "usr/local/bin/atlas"
     expired_at: "2026-07-17T00:00:00Z"
     statement: >-
       crypto/x509 unbounded chain-building work, embedded in the Atlas
@@ -139,7 +157,9 @@ vulnerabilities:
 
   - id: CVE-2026-32282
     purls:
-      - "pkg:golang/stdlib"
+      - "pkg:golang/stdlib@v1.25.0"
+    paths:
+      - "usr/local/bin/atlas"
     expired_at: "2026-07-17T00:00:00Z"
     statement: >-
       internal/syscall/unix Root.Chmod symlink follow, embedded in the
