@@ -189,7 +189,7 @@ func (wc *wipeContext) confirmAndWipe() error {
 		return fmt.Errorf("refusing to remove suspicious path: %s", wc.safeDir)
 	}
 	sp2 := wc.out.StartSpinner("Removing data directory...")
-	if err := os.RemoveAll(wc.safeDir); err != nil {
+	if err := removeDataDirExceptSelf(wc.safeDir); err != nil {
 		sp2.Warn(fmt.Sprintf("Could not remove data directory: %v", err))
 		wc.errOut.HintError(fmt.Sprintf("Manually delete %s to complete the wipe.", wc.safeDir))
 	} else {
@@ -201,6 +201,43 @@ func (wc *wipeContext) confirmAndWipe() error {
 	wc.out.HintNextStep("Run 'synthorg init' to set up again.")
 
 	return nil
+}
+
+// removeDataDirExceptSelf removes everything inside dataDir except for
+// the currently-running CLI binary if it lives under dataDir. Windows
+// holds an open handle on the running .exe so a flat
+// `os.RemoveAll(dataDir)` fails on the first encounter with the locked
+// file, leaving the rest of the directory half-cleaned. Reusing the
+// same skip-self primitive that uninstall already uses keeps the two
+// destructive flows consistent and lets the unlocked entries actually
+// go away.
+//
+// On Unix the OS allows deleting an open binary, so this code path
+// produces the same observable outcome as a plain RemoveAll while
+// keeping a single, platform-agnostic implementation.
+func removeDataDirExceptSelf(dataDir string) error {
+	dataDirClean := filepath.Clean(dataDir)
+
+	selfPath, err := os.Executable()
+	if err != nil {
+		return os.RemoveAll(dataDirClean)
+	}
+	if resolved, rErr := filepath.EvalSymlinks(selfPath); rErr == nil {
+		selfPath = resolved
+	}
+	selfPath = filepath.Clean(selfPath)
+
+	if rel, relErr := filepath.Rel(dataDirClean, selfPath); relErr != nil || strings.HasPrefix(rel, "..") {
+		// Binary lives outside dataDir; safe to nuke the whole tree.
+		return os.RemoveAll(dataDirClean)
+	}
+
+	// Binary is inside dataDir: clear everything else, leave the
+	// binary (and its ancestor dirs) in place. The user can manually
+	// delete those after running a fresh `synthorg update` swaps the
+	// exe out, or they can simply leave them -- they are otherwise
+	// inert.
+	return removeAllExcept(dataDirClean, selfPath)
 }
 
 // runForm configures a huh form with the wipe context's I/O streams and runs it.
