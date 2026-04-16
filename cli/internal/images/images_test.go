@@ -16,26 +16,36 @@ func TestRepoPrefix(t *testing.T) {
 func TestServiceNames(t *testing.T) {
 	t.Parallel()
 
-	t.Run("without sandbox", func(t *testing.T) {
-		t.Parallel()
-		names := ServiceNames(false)
-		if len(names) != 2 || names[0] != "backend" || names[1] != "web" {
-			t.Errorf("ServiceNames(false) = %v, want [backend web]", names)
-		}
-	})
-
-	t.Run("with sandbox", func(t *testing.T) {
-		t.Parallel()
-		names := ServiceNames(true)
-		if len(names) != 3 || names[0] != "backend" || names[1] != "web" || names[2] != "sandbox" {
-			t.Errorf("ServiceNames(true) = %v, want [backend web sandbox]", names)
-		}
-	})
+	tests := []struct {
+		name       string
+		sandbox    bool
+		fineTuning bool
+		want       []string
+	}{
+		{"minimal", false, false, []string{"backend", "web"}},
+		{"with sandbox", true, false, []string{"backend", "web", "sandbox", "sidecar"}},
+		{"with fine-tune", false, true, []string{"backend", "web", "fine-tune"}},
+		{"full", true, true, []string{"backend", "web", "sandbox", "sidecar", "fine-tune"}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := ServiceNames(tc.sandbox, tc.fineTuning)
+			if len(got) != len(tc.want) {
+				t.Fatalf("ServiceNames(%v, %v) = %v, want %v", tc.sandbox, tc.fineTuning, got, tc.want)
+			}
+			for i := range got {
+				if got[i] != tc.want[i] {
+					t.Errorf("ServiceNames(%v, %v)[%d] = %q, want %q", tc.sandbox, tc.fineTuning, i, got[i], tc.want[i])
+				}
+			}
+		})
+	}
 
 	t.Run("returns fresh slice", func(t *testing.T) {
 		t.Parallel()
-		a := ServiceNames(true)
-		b := ServiceNames(true)
+		a := ServiceNames(true, true)
+		b := ServiceNames(true, true)
 		a[0] = "mutated"
 		if b[0] == "mutated" {
 			t.Error("ServiceNames returns shared slice -- mutation visible")
