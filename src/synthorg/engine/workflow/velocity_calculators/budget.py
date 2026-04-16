@@ -1,7 +1,7 @@
 """Budget velocity calculator -- points per currency unit consumed.
 
 Measures cost efficiency as story points delivered per unit of budget
-consumed.  Primary unit: ``pts/EUR``.
+consumed.  Primary unit: ``pts/<DEFAULT_CURRENCY>`` (defaults to ``pts/EUR``).
 """
 
 from typing import TYPE_CHECKING
@@ -29,7 +29,7 @@ _UNIT: str = f"pts/{DEFAULT_CURRENCY}"
 class BudgetVelocityCalculator:
     """Velocity calculator measuring points per currency unit consumed.
 
-    Primary unit: ``pts/EUR`` (assumes the default display currency).
+    Primary unit: ``pts/<DEFAULT_CURRENCY>`` (defaults to ``pts/EUR``).
 
     When ``budget_consumed`` is ``None`` or zero, ``primary_value``
     is 0.0 and only ``pts_per_sprint`` appears in secondary metrics.
@@ -40,13 +40,13 @@ class BudgetVelocityCalculator:
     __slots__ = ()
 
     def compute(self, record: VelocityRecord) -> VelocityMetrics:
-        """Compute points-per-EUR from a single velocity record.
+        """Compute points-per-currency from a single velocity record.
 
         Args:
             record: A completed sprint's velocity record.
 
         Returns:
-            Velocity metrics with ``pts/EUR`` as primary unit.
+            Velocity metrics with ``pts/<DEFAULT_CURRENCY>`` as primary unit.
         """
         budget = record.budget_consumed
         if budget is None or budget <= 0.0:
@@ -78,7 +78,7 @@ class BudgetVelocityCalculator:
         records: Sequence[VelocityRecord],
         window: int,
     ) -> VelocityMetrics:
-        """Compute rolling average of points-per-EUR.
+        """Compute rolling average of points-per-currency.
 
         Uses the last *window* records.  Records where
         ``budget_consumed`` is ``None`` or ``<= 0.0`` are excluded
@@ -127,5 +127,5 @@ class BudgetVelocityCalculator:
 
     @property
     def primary_unit(self) -> str:
-        """Return ``pts/EUR``."""
+        """Return ``pts/<DEFAULT_CURRENCY>`` (defaults to ``pts/EUR``)."""
         return _UNIT
