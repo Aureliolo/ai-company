@@ -618,7 +618,8 @@ func TestGenerateDataInitOwnershipDistributed(t *testing.T) {
 }
 
 // extractServiceBlock returns the YAML block for a named top-level service,
-// bounded by the next service declaration or the end of the services section.
+// bounded by the next service declaration, a blank separator line, or the end
+// of the services section.
 func extractServiceBlock(t *testing.T, yaml, name string) string {
 	t.Helper()
 	header := "\n  " + name + ":\n"
@@ -628,13 +629,19 @@ func extractServiceBlock(t *testing.T, yaml, name string) string {
 	}
 	rest := yaml[start+1:]
 	// Next top-level block starts with "\n  <word>:" at the same 2-space indent.
-	// Scan line by line until we find one.
+	// Scan line by line until we find one, a blank separator line, or a
+	// top-level section header (networks:/volumes:).
 	lines := strings.Split(rest, "\n")
 	end := len(lines)
 	for i := 1; i < len(lines); i++ {
 		line := lines[i]
+		if line == "" {
+			// Blank line separates service blocks in the rendered template.
+			end = i
+			break
+		}
 		if len(line) >= 3 && line[0] == ' ' && line[1] == ' ' && line[2] != ' ' {
-			// sibling service or networks:/volumes: at top level
+			// sibling service at the same 2-space indent
 			end = i
 			break
 		}
@@ -644,4 +651,56 @@ func extractServiceBlock(t *testing.T, yaml, name string) string {
 		}
 	}
 	return strings.Join(lines[:end], "\n")
+}
+
+// TestGenerateDataInitOwnershipPostgresAndDistributed covers the TUI-default
+// combination (postgres persistence + nats bus). Neither of the single-backend
+// regression tests exercises the case where both conditional blocks fire in
+// the data-init command, and the CLI's interactive mode defaults to this
+// combination -- so it is the most-used path in production.
+func TestGenerateDataInitOwnershipPostgresAndDistributed(t *testing.T) {
+	t.Parallel()
+	p := Params{
+		CLIVersion:         "dev",
+		ImageTag:           "latest",
+		BackendPort:        3001,
+		WebPort:            3000,
+		NatsClientPort:     3003,
+		LogLevel:           "info",
+		PersistenceBackend: "postgres",
+		MemoryBackend:      "mem0",
+		BusBackend:         "nats",
+		PostgresPort:       3002,
+		PostgresPassword:   "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+	}
+	out, err := Generate(p)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	yaml := string(out)
+
+	// Both mounts present on data-init.
+	assertContains(t, yaml, "- synthorg-pgdata:/pgdata")
+	assertContains(t, yaml, "- synthorg-nats-data:/nats-data")
+
+	// Both chowns present in the single data-init command string. Order
+	// matters: pgdata UID 70, nats-data UID 65532. A bad template edit
+	// that swapped these would brick the stack.
+	assertContains(t, yaml, "chown -R 70:70 /pgdata")
+	assertContains(t, yaml, "chmod 0700 /pgdata")
+	assertContains(t, yaml, "chown -R 65532:65532 /nats-data")
+
+	// Both downstream services must gate on data-init completing.
+	for _, svc := range []string{"postgres", "nats"} {
+		block := extractServiceBlock(t, yaml, svc)
+		if !strings.Contains(block, "depends_on:") ||
+			!strings.Contains(block, "data-init:") ||
+			!strings.Contains(block, "service_completed_successfully") {
+			t.Errorf("%s service must depend_on data-init: service_completed_successfully\ngot:\n%s", svc, block)
+		}
+	}
+
+	// Both volumes must be declared at the top level when both backends are enabled.
+	assertContains(t, yaml, "synthorg-pgdata:")
+	assertContains(t, yaml, "synthorg-nats-data:")
 }
