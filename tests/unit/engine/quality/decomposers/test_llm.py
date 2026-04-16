@@ -11,7 +11,7 @@ from synthorg.engine.quality.decomposers.llm import (
 )
 from synthorg.providers.enums import FinishReason
 from synthorg.providers.models import CompletionResponse, TokenUsage
-from tests.unit.engine.quality.conftest import (
+from tests.unit.engine.quality.scripted_provider import (
     ScriptedProvider,
     build_tool_call_response,
 )
