@@ -252,6 +252,23 @@ def _postgres_config_from_url(db_url: str) -> PostgresConfig:
     ssl_override = (os.environ.get("SYNTHORG_POSTGRES_SSL_MODE") or "").strip()
     ssl_kwargs: dict[str, Any] = {}
     if ssl_override:
+        # Validate up front rather than letting Pydantic raise a less
+        # actionable error during PostgresConfig construction. The set
+        # mirrors PostgresSslMode in persistence/config.py.
+        valid_modes = {
+            "disable",
+            "allow",
+            "prefer",
+            "require",
+            "verify-ca",
+            "verify-full",
+        }
+        if ssl_override not in valid_modes:
+            msg = (
+                f"SYNTHORG_POSTGRES_SSL_MODE={ssl_override!r} is invalid; "
+                f"must be one of: {sorted(valid_modes)}"
+            )
+            raise ValueError(msg)
         ssl_kwargs["ssl_mode"] = ssl_override
 
     return PostgresConfig(

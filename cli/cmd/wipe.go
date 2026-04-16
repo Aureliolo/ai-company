@@ -189,10 +189,19 @@ func (wc *wipeContext) confirmAndWipe() error {
 		return fmt.Errorf("refusing to remove suspicious path: %s", wc.safeDir)
 	}
 	sp2 := wc.out.StartSpinner("Removing data directory...")
-	if err := removeDataDirExceptSelf(wc.safeDir); err != nil {
-		sp2.Warn(fmt.Sprintf("Could not remove data directory: %v", err))
+	rmErr := removeDataDirExceptSelf(wc.safeDir)
+	binaryRemains := selfPathInside(wc.safeDir)
+	switch {
+	case rmErr != nil:
+		sp2.Warn(fmt.Sprintf("Could not remove data directory: %v", rmErr))
 		wc.errOut.HintError(fmt.Sprintf("Manually delete %s to complete the wipe.", wc.safeDir))
-	} else {
+	case binaryRemains:
+		// Expected on Windows when the running CLI lives inside the
+		// data dir -- wipe is supposed to leave config and state gone,
+		// not nuke the tool the user just invoked.
+		sp2.Success("Data directory cleared (CLI binary kept in place)")
+		wc.out.HintNextStep("Run 'synthorg uninstall' to remove the binary too.")
+	default:
 		sp2.Success("Data directory removed")
 	}
 
@@ -201,6 +210,24 @@ func (wc *wipeContext) confirmAndWipe() error {
 	wc.out.HintNextStep("Run 'synthorg init' to set up again.")
 
 	return nil
+}
+
+// selfPathInside reports whether the running CLI binary lives under
+// dataDir. Used after wipe to decide between "everything gone" and
+// "everything except the binary" success messages.
+func selfPathInside(dataDir string) bool {
+	selfPath, err := os.Executable()
+	if err != nil {
+		return false
+	}
+	if resolved, rErr := filepath.EvalSymlinks(selfPath); rErr == nil {
+		selfPath = resolved
+	}
+	rel, relErr := filepath.Rel(filepath.Clean(dataDir), filepath.Clean(selfPath))
+	if relErr != nil {
+		return false
+	}
+	return !strings.HasPrefix(rel, "..")
 }
 
 // removeDataDirExceptSelf removes everything inside dataDir except for

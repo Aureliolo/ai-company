@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -451,4 +452,68 @@ func mustAbs(t *testing.T, p string) string {
 		t.Fatalf("filepath.Abs(%q): %v", p, err)
 	}
 	return abs
+}
+
+// TestWriteNATSConfigIfNeeded locks down the helper that keeps
+// nats.conf in sync with the compose template's `configs.nats-config`
+// reference. The compose file ALWAYS expects nats.conf next to it when
+// distributed bus mode is on; if a future caller forgets to invoke
+// the helper, NATS crash-loops on startup with `open nats.conf: no
+// such file or directory`. This test is the safety net.
+func TestWriteNATSConfigIfNeeded(t *testing.T) {
+	t.Run("writes file when bus is nats", func(t *testing.T) {
+		safeDir := t.TempDir()
+		state := config.State{BusBackend: "nats"}
+		if err := writeNATSConfigIfNeeded(state, safeDir); err != nil {
+			t.Fatalf("writeNATSConfigIfNeeded: %v", err)
+		}
+		got, err := os.ReadFile(filepath.Join(safeDir, compose.NATSConfigFilename))
+		if err != nil {
+			t.Fatalf("read written file: %v", err)
+		}
+		if string(got) != compose.NATSConfigContent {
+			t.Errorf("file content does not match canonical NATSConfigContent")
+		}
+	})
+
+	t.Run("removes stale file when bus is internal", func(t *testing.T) {
+		safeDir := t.TempDir()
+		stalePath := filepath.Join(safeDir, compose.NATSConfigFilename)
+		if err := os.WriteFile(stalePath, []byte("stale contents"), 0o600); err != nil {
+			t.Fatalf("seed stale: %v", err)
+		}
+		state := config.State{BusBackend: "internal"}
+		if err := writeNATSConfigIfNeeded(state, safeDir); err != nil {
+			t.Fatalf("writeNATSConfigIfNeeded: %v", err)
+		}
+		if _, err := os.Stat(stalePath); !os.IsNotExist(err) {
+			t.Errorf("stale nats.conf should have been removed; stat err=%v", err)
+		}
+	})
+
+	t.Run("noop when bus is internal and no file exists", func(t *testing.T) {
+		safeDir := t.TempDir()
+		state := config.State{BusBackend: "internal"}
+		if err := writeNATSConfigIfNeeded(state, safeDir); err != nil {
+			t.Errorf("writeNATSConfigIfNeeded should not error when nothing to remove: %v", err)
+		}
+	})
+
+	t.Run("nats.conf permissions are restrictive (unix)", func(t *testing.T) {
+		if runtime.GOOS == "windows" {
+			t.Skip("Windows does not honour Unix permission bits")
+		}
+		safeDir := t.TempDir()
+		state := config.State{BusBackend: "nats"}
+		if err := writeNATSConfigIfNeeded(state, safeDir); err != nil {
+			t.Fatalf("writeNATSConfigIfNeeded: %v", err)
+		}
+		info, err := os.Stat(filepath.Join(safeDir, compose.NATSConfigFilename))
+		if err != nil {
+			t.Fatalf("stat file: %v", err)
+		}
+		if info.Mode().Perm()&0o077 != 0 {
+			t.Errorf("nats.conf has group/other access (mode=%o), want 0o600", info.Mode().Perm())
+		}
+	})
 }

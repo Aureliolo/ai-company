@@ -84,6 +84,246 @@ func TestParseContainerJSON_Array(t *testing.T) {
 	}
 }
 
+// TestComputeVerdict locks down the status banner verdict logic. The
+// banner is the first thing the user sees on `synthorg status`; a
+// regression here either silently downgrades real failures (user
+// thinks everything is fine) or overstates problems (cry-wolf). Cases
+// cover each escalation lane: container-only, backend-only,
+// persistence-only, and combinations where the higher severity must
+// win.
+func TestComputeVerdict(t *testing.T) {
+	// Reset module-level filter so cases that don't override see the
+	// default (no filter -> all containers count).
+	oldServices := statusServices
+	t.Cleanup(func() { statusServices = oldServices })
+
+	okHealth := healthResponse{Status: "ok", Version: "0.0.1"}
+
+	tests := []struct {
+		name           string
+		snap           statusSnapshot
+		wantLevel      statusLevel
+		wantHasIssue   string // substring expected in issues, or "" for none
+		wantSummaryHas string
+	}{
+		{
+			name: "all green collapses to OK",
+			snap: statusSnapshot{
+				containers: []containerInfo{
+					{Service: "backend", State: "running", Health: "healthy"},
+					{Service: "web", State: "running"},
+				},
+				healthFetched:     true,
+				healthStatusCode:  200,
+				healthEnvelopeOK:  true,
+				healthData:        healthResponse{Status: "ok", Version: "0.0.1", Persistence: "postgres", MessageBus: "nats"},
+				persistenceWired:  true,
+				messageBusWired:   true,
+				expectsPersistent: true,
+			},
+			wantLevel:      statusLevelOK,
+			wantSummaryHas: "operational",
+		},
+		{
+			name: "unhealthy container -> critical",
+			snap: statusSnapshot{
+				containers: []containerInfo{
+					{Service: "backend", State: "running", Health: "unhealthy"},
+				},
+				healthFetched:     true,
+				healthStatusCode:  200,
+				healthEnvelopeOK:  true,
+				healthData:        okHealth,
+				persistenceWired:  true,
+				messageBusWired:   true,
+				expectsPersistent: true,
+			},
+			wantLevel:    statusLevelCritical,
+			wantHasIssue: "unhealthy",
+		},
+		{
+			name: "restarting only -> degraded",
+			snap: statusSnapshot{
+				containers: []containerInfo{
+					{Service: "nats", State: "restarting"},
+				},
+				healthFetched:     true,
+				healthStatusCode:  200,
+				healthEnvelopeOK:  true,
+				healthData:        okHealth,
+				persistenceWired:  true,
+				messageBusWired:   true,
+				expectsPersistent: true,
+			},
+			wantLevel:    statusLevelDegraded,
+			wantHasIssue: "restarting",
+		},
+		{
+			name: "backend unreachable -> critical even if containers ok",
+			snap: statusSnapshot{
+				containers: []containerInfo{
+					{Service: "backend", State: "running", Health: "healthy"},
+				},
+				healthFetched:     true,
+				healthErr:         errBackendUnreachable,
+				expectsPersistent: true,
+			},
+			wantLevel:    statusLevelCritical,
+			wantHasIssue: "unreachable",
+		},
+		{
+			name: "persistence not wired when expected -> critical",
+			snap: statusSnapshot{
+				containers: []containerInfo{
+					{Service: "backend", State: "running", Health: "healthy"},
+				},
+				healthFetched:     true,
+				healthStatusCode:  200,
+				healthEnvelopeOK:  true,
+				healthData:        okHealth,
+				persistenceWired:  false,
+				messageBusWired:   true,
+				expectsPersistent: true,
+			},
+			wantLevel:    statusLevelCritical,
+			wantHasIssue: "persistence",
+		},
+		{
+			name: "no containers running -> critical",
+			snap: statusSnapshot{
+				containers:        nil,
+				healthFetched:     true,
+				healthStatusCode:  200,
+				healthEnvelopeOK:  true,
+				healthData:        okHealth,
+				persistenceWired:  true,
+				messageBusWired:   true,
+				expectsPersistent: true,
+			},
+			wantLevel:    statusLevelCritical,
+			wantHasIssue: "no containers",
+		},
+		{
+			name: "unparseable health response -> critical",
+			snap: statusSnapshot{
+				containers: []containerInfo{
+					{Service: "backend", State: "running", Health: "healthy"},
+				},
+				healthFetched:    true,
+				healthEnvelopeOK: false,
+				healthStatusCode: 502,
+			},
+			wantLevel:    statusLevelCritical,
+			wantHasIssue: "unparseable",
+		},
+		{
+			name: "critical wins over degraded when both present",
+			snap: statusSnapshot{
+				containers: []containerInfo{
+					{Service: "backend", State: "running", Health: "unhealthy"},
+					{Service: "nats", State: "restarting"},
+				},
+				healthFetched:     true,
+				healthStatusCode:  200,
+				healthEnvelopeOK:  true,
+				healthData:        okHealth,
+				persistenceWired:  true,
+				messageBusWired:   false, // would be degraded on its own
+				expectsPersistent: true,
+			},
+			wantLevel: statusLevelCritical,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			statusServices = ""
+			got := computeVerdict(tc.snap)
+			if got.level != tc.wantLevel {
+				t.Errorf("level = %d, want %d (issues=%v)", got.level, tc.wantLevel, got.issues)
+			}
+			if tc.wantHasIssue != "" && !sliceContainsSubstring(got.issues, tc.wantHasIssue) {
+				t.Errorf("issues=%v, want one containing %q", got.issues, tc.wantHasIssue)
+			}
+			if tc.wantSummaryHas != "" && !stringsContainsCI(got.summary, tc.wantSummaryHas) {
+				t.Errorf("summary=%q, want substring %q", got.summary, tc.wantSummaryHas)
+			}
+		})
+	}
+}
+
+func TestFilterAllowsService(t *testing.T) {
+	old := statusServices
+	t.Cleanup(func() { statusServices = old })
+
+	cases := []struct {
+		filter, svc string
+		want        bool
+	}{
+		{"", "backend", true},                 // empty filter = allow all
+		{"backend", "backend", true},          // exact match
+		{"backend", "web", false},             // not in filter
+		{"backend,web", "web", true},          // multi-value
+		{"backend, web , nats", "nats", true}, // whitespace-tolerant
+		{"backend-extra", "backend", false},   // no prefix matching
+	}
+	for _, tc := range cases {
+		statusServices = tc.filter
+		if got := filterAllowsService(tc.svc); got != tc.want {
+			t.Errorf("filter=%q svc=%q -> %v, want %v", tc.filter, tc.svc, got, tc.want)
+		}
+	}
+}
+
+// errBackendUnreachable is a sentinel error used by TestComputeVerdict
+// to simulate a Phase-0 health.Fetch failure without touching the
+// network. Defined as a package var so other status tests can reuse it.
+var errBackendUnreachable = &simpleError{msg: "connection refused"}
+
+type simpleError struct{ msg string }
+
+func (e *simpleError) Error() string { return e.msg }
+
+func sliceContainsSubstring(items []string, sub string) bool {
+	for _, item := range items {
+		if stringsContainsCI(item, sub) {
+			return true
+		}
+	}
+	return false
+}
+
+func stringsContainsCI(haystack, needle string) bool {
+	hL := []rune(haystack)
+	nL := []rune(needle)
+	if len(nL) == 0 {
+		return true
+	}
+	if len(nL) > len(hL) {
+		return false
+	}
+	for i := 0; i+len(nL) <= len(hL); i++ {
+		match := true
+		for j := range nL {
+			if toLowerRune(hL[i+j]) != toLowerRune(nL[j]) {
+				match = false
+				break
+			}
+		}
+		if match {
+			return true
+		}
+	}
+	return false
+}
+
+func toLowerRune(r rune) rune {
+	if r >= 'A' && r <= 'Z' {
+		return r + ('a' - 'A')
+	}
+	return r
+}
+
 func TestFormatUptime(t *testing.T) {
 	tests := []struct {
 		seconds float64

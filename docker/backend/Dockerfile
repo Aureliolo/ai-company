@@ -65,13 +65,15 @@ RUN mkdir -p /data/logs /data/memory && chown -R 65532:65532 /data
 USER build
 
 # ---------------------------------------------------------------------------
-# Atlas CLI: required by the Postgres backend's migrate() path. Pulled
-# from the official upstream image; the binary is fully static and the
-# runtime image only needs the file itself, not arigaio/atlas as base.
-# Pin to a stable tag (renovate updates this).
+# Atlas CLI: required by the Postgres backend's migrate() path. The
+# upstream binary at /atlas is a fully static ELF (verified via
+# `ldd /atlas` -> "Not a valid dynamic program"), so it has no
+# interpreter or libc dependency and runs unmodified on the apko Wolfi
+# distroless runtime. Pinned by tag + digest; renovate keeps the digest
+# fresh on the same tag stream.
 # ---------------------------------------------------------------------------
 # renovate: datasource=docker depName=arigaio/atlas
-FROM arigaio/atlas:1.2.0-community-alpine AS atlas
+FROM arigaio/atlas:1.2.0-community-alpine@sha256:424b2f7ccd42f3b4addb30f6e37a188a4325d4829fc8961951d02d342c9c6abb AS atlas
 
 # ---------------------------------------------------------------------------
 # Stage 2 -- Runtime (apko-composed Wolfi base: no shell, no package manager)

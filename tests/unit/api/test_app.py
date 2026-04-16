@@ -152,6 +152,14 @@ class TestPostgresConfigFromURL:
         cfg = _postgres_config_from_url("postgresql://u:p@h/db")
         assert cfg.ssl_mode == "require"
 
+    def test_invalid_ssl_mode_override_raises_value_error(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("SYNTHORG_POSTGRES_SSL_MODE", "bogus_mode")
+        with pytest.raises(ValueError, match="SYNTHORG_POSTGRES_SSL_MODE"):
+            _postgres_config_from_url("postgresql://u:p@h/db")
+
     @pytest.mark.parametrize(
         ("bad_url", "reason_substring"),
         [

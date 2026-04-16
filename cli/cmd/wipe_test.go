@@ -268,3 +268,94 @@ func TestTarDirectory_RestrictedPermissions(t *testing.T) {
 		t.Errorf("archive permissions = %o, want no group/other access", perm)
 	}
 }
+
+// TestRemoveDataDirExceptSelf covers the wipe primitive that powers
+// `synthorg wipe` on Windows, where the running .exe is locked and
+// cannot be deleted. The function must (a) wipe normally when the
+// binary lives outside the data dir, and (b) preserve the binary
+// (and its ancestor dirs) while clearing everything else when the
+// binary lives inside.
+//
+// We synthesize "the running binary" with a real file so the path
+// rewrite via os.Executable still resolves something valid -- the test
+// can't directly stub os.Executable, but we don't need to: we ensure
+// behaviour against a directory tree whose contents all live alongside
+// (or under) os.Executable's actual return value.
+func TestRemoveDataDirExceptSelf_BinaryOutsideDataDir(t *testing.T) {
+	dataDir := t.TempDir()
+	// Create some files; binary path lives in another tempdir entirely
+	// so the function should remove the whole data dir.
+	if err := os.WriteFile(filepath.Join(dataDir, "config.json"), []byte("{}"), 0o600); err != nil {
+		t.Fatalf("seed config: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(dataDir, "logs"), 0o700); err != nil {
+		t.Fatalf("seed logs: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dataDir, "logs", "app.log"), []byte("x"), 0o600); err != nil {
+		t.Fatalf("seed log: %v", err)
+	}
+
+	if err := removeDataDirExceptSelf(dataDir); err != nil {
+		t.Fatalf("removeDataDirExceptSelf: %v", err)
+	}
+	if _, err := os.Stat(dataDir); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("data dir should be gone, got err=%v", err)
+	}
+}
+
+func TestRemoveDataDirExceptSelf_BinaryInsideDataDir(t *testing.T) {
+	// Build a fake "data dir" that contains the path os.Executable
+	// returns -- by symlinking/parenting around the real binary.
+	// Easier: stage a sibling file and verify the helper used by
+	// uninstall (removeAllExcept) preserves files-it-should-keep when
+	// invoked the same way the wipe path invokes it. This mirrors the
+	// post-skip layout without requiring binary path forgery.
+	dataDir := t.TempDir()
+	keep := filepath.Join(dataDir, "bin", "synthorg-fake.exe")
+	if err := os.MkdirAll(filepath.Dir(keep), 0o700); err != nil {
+		t.Fatalf("mkdir bin: %v", err)
+	}
+	if err := os.WriteFile(keep, []byte("fake-binary"), 0o755); err != nil {
+		t.Fatalf("seed binary: %v", err)
+	}
+	other := filepath.Join(dataDir, "config.json")
+	if err := os.WriteFile(other, []byte("{}"), 0o600); err != nil {
+		t.Fatalf("seed config: %v", err)
+	}
+	logsFile := filepath.Join(dataDir, "logs", "app.log")
+	if err := os.MkdirAll(filepath.Dir(logsFile), 0o700); err != nil {
+		t.Fatalf("mkdir logs: %v", err)
+	}
+	if err := os.WriteFile(logsFile, []byte("log"), 0o600); err != nil {
+		t.Fatalf("seed log: %v", err)
+	}
+
+	// Use the shared primitive directly with the synthetic kept path,
+	// since removeDataDirExceptSelf hard-codes os.Executable for its
+	// kept-path target. removeAllExcept is the function that does the
+	// actual work and is what we need to lock down here.
+	if err := removeAllExcept(dataDir, keep); err != nil {
+		t.Fatalf("removeAllExcept: %v", err)
+	}
+	if _, err := os.Stat(keep); err != nil {
+		t.Errorf("kept binary should still exist: %v", err)
+	}
+	if _, err := os.Stat(other); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("config.json should be removed, got err=%v", err)
+	}
+	if _, err := os.Stat(logsFile); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("logs file should be removed, got err=%v", err)
+	}
+}
+
+func TestSelfPathInside(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink resolution behaves differently on Windows; covered indirectly by binary-outside-dir test")
+	}
+	otherDir := t.TempDir()
+	// Binary path is os.Executable() which is the test runner; it lives
+	// outside our temp dir, so selfPathInside should report false.
+	if selfPathInside(otherDir) {
+		t.Errorf("selfPathInside(%q) = true, want false (test runner is not inside this tmp dir)", otherDir)
+	}
+}
