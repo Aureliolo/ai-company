@@ -646,10 +646,6 @@ func (wc *wipeContext) askContinueWithoutBackup(title string) error {
 	return nil
 }
 
-// promptStartAfterWipe asks whether to start containers after the wipe.
-// Ctrl-C is treated as "No" because the wipe has already completed.
-// Respects auto_start_after_wipe config key.
-
 // isEmptyPS returns true if docker compose ps output indicates no containers.
 // Handles both JSON array format (Compose v2.21+) and NDJSON (older versions).
 // Returns an error if the JSON output cannot be parsed.

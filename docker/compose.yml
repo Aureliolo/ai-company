@@ -176,6 +176,7 @@ services:
     read_only: true
     cap_drop:
       - ALL
+    restart: unless-stopped
     deploy:
       resources:
         limits:

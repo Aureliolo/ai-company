@@ -13,7 +13,7 @@ $InstallDir = if ($env:INSTALL_DIR) { $env:INSTALL_DIR } else { Join-Path $env:L
 
 # --- Colors (ANSI true-color, matches CLI palette) ---
 
-$NoColor = $env:NO_COLOR -or (-not [System.Console]::IsOutputRedirected -eq $false)
+$NoColor = $env:NO_COLOR -or [System.Console]::IsOutputRedirected
 if (-not $NoColor) {
     $C_Blue    = "`e[38;2;56;189;248m"
     $C_Green   = "`e[38;2;52;211;153m"
