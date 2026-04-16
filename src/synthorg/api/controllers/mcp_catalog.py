@@ -3,11 +3,12 @@
 Browse and install MCP servers from the bundled catalog.
 """
 
-from typing import Any
+from typing import Literal
 
 from litestar import Controller, delete, get, post
 from litestar.datastructures import State  # noqa: TC002
 from litestar.params import Parameter
+from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.api.dto import ApiResponse
 from synthorg.api.errors import (
@@ -15,6 +16,7 @@ from synthorg.api.errors import (
     NotFoundError,
 )
 from synthorg.api.guards import require_read_access, require_write_access
+from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.integrations.connections.models import CatalogEntry  # noqa: TC001
 from synthorg.integrations.errors import (
     CatalogEntryNotFoundError,
@@ -29,6 +31,37 @@ from synthorg.observability.events.integrations import (
 )
 
 logger = get_logger(__name__)
+
+
+class InstallEntryRequest(BaseModel):
+    """Request body for ``POST /catalog/install``."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
+
+    catalog_entry_id: NotBlankStr = Field(
+        description="Catalog entry identifier to install",
+    )
+    connection_name: NotBlankStr | None = Field(
+        default=None,
+        description=(
+            "Bound connection name; required when the entry declares a "
+            "``required_connection_type``"
+        ),
+    )
+
+
+class InstallEntryResponse(BaseModel):
+    """Response body for ``POST /catalog/install``."""
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    status: Literal["installed"] = Field(description="Installation status")
+    server_name: NotBlankStr = Field(description="Installed MCP server name")
+    catalog_entry_id: NotBlankStr = Field(description="Installed catalog entry id")
+    tool_count: int = Field(
+        ge=0,
+        description="Number of tools exposed by the installed server",
+    )
 
 
 class MCPCatalogController(Controller):
@@ -97,8 +130,8 @@ class MCPCatalogController(Controller):
     async def install_entry(
         self,
         state: State,
-        data: dict[str, Any],
-    ) -> ApiResponse[dict[str, Any]]:
+        data: InstallEntryRequest,
+    ) -> ApiResponse[InstallEntryResponse]:
         """Record an installation of a bundled MCP catalog entry.
 
         Validates the entry exists, that the bound connection (if
@@ -106,30 +139,8 @@ class MCPCatalogController(Controller):
         and persists the row so the MCP bridge picks it up on next
         reload. Re-installing an existing entry is idempotent.
         """
-        entry_id_raw = data.get("catalog_entry_id")
-        if not isinstance(entry_id_raw, str) or not entry_id_raw.strip():
-            msg = "Field 'catalog_entry_id' is required"
-            logger.warning(
-                MCP_SERVER_INSTALL_FAILED,
-                reason="missing_catalog_entry_id",
-            )
-            raise ApiValidationError(msg)
-        entry_id = entry_id_raw.strip()
-
-        connection_name_raw = data.get("connection_name")
-        connection_name: str | None
-        if connection_name_raw is None:
-            connection_name = None
-        elif isinstance(connection_name_raw, str):
-            connection_name = connection_name_raw.strip() or None
-        else:
-            msg = "Field 'connection_name' must be a string or null"
-            logger.warning(
-                MCP_SERVER_INSTALL_FAILED,
-                entry_id=entry_id,
-                reason="invalid_connection_name_type",
-            )
-            raise ApiValidationError(msg)
+        entry_id = data.catalog_entry_id
+        connection_name = data.connection_name
 
         app_state = state["app_state"]
         service = app_state.mcp_catalog_service
@@ -175,12 +186,12 @@ class MCPCatalogController(Controller):
         # here - the repository's ``save()`` is the canonical audit
         # point and logs the same event with a ``backend`` tag.
         return ApiResponse(
-            data={
-                "status": "installed",
-                "server_name": result.server_name,
-                "catalog_entry_id": result.catalog_entry_id,
-                "tool_count": result.tool_count,
-            },
+            data=InstallEntryResponse(
+                status="installed",
+                server_name=result.server_name,
+                catalog_entry_id=result.catalog_entry_id,
+                tool_count=result.tool_count,
+            ),
         )
 
     @delete(
