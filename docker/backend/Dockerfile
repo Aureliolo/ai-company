@@ -51,6 +51,13 @@ RUN find /app/.venv -type d -name 'wheels' -exec rm -rf {} + 2>/dev/null || true
 RUN rm -f /app/.venv/bin/python \
     && ln -s /usr/bin/python /app/.venv/bin/python
 
+# Pre-create the data directory tree in the builder so COPY --chown can
+# transfer it to the shell-less runtime stage with correct ownership.
+# Switch back to root for creating /data, then re-chown to the build user.
+USER root
+RUN mkdir -p /data/logs /data/memory && chown -R 65532:65532 /data
+USER build
+
 # ---------------------------------------------------------------------------
 # Stage 2 -- Runtime (apko-composed Wolfi base: no shell, no package manager)
 # ---------------------------------------------------------------------------
@@ -68,6 +75,11 @@ WORKDIR /app
 COPY --from=builder --chown=65532:65532 /app/.venv /app/.venv
 COPY --from=builder --chown=65532:65532 /app/src /app/src
 COPY --chown=65532:65532 pyproject.toml uv.lock /app/
+
+# Pre-create the data directory with correct ownership so Docker
+# initialises fresh volumes with uid/gid 65532 instead of root.
+# COPY from builder stage because the distroless runtime has no shell.
+COPY --from=builder --chown=65532:65532 /data /data
 
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \

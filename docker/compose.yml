@@ -5,40 +5,89 @@ x-logging: &logging
     max-file: "3"
 
 services:
+  postgres:
+    # renovate: datasource=docker depName=dhi.io/postgres
+    image: dhi.io/postgres:18-debian13@sha256:e2f2beada5e76f69453d5533153909f875b48fb021f092df73e182b8325ff2d3
+    ports:
+      - "${POSTGRES_PORT:-3002}:5432"
+    volumes:
+      - synthorg-pgdata:/var/lib/postgresql/data
+    environment:
+      PGDATA: /var/lib/postgresql/data
+      POSTGRES_DB: synthorg
+      POSTGRES_USER: synthorg
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}"
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,nodev,size=64m
+      - /run/postgresql:noexec,nosuid,nodev,size=8m
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "1.0"
+          pids: 128
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "synthorg", "-d", "synthorg"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 30s
+    logging: *logging
+
+  # Init container: ensure the data volume is owned by the app user (65532).
+  # Docker creates named volumes as root; this runs once on first start.
+  data-init:
+    # renovate: datasource=docker depName=busybox
+    image: busybox:1.37-musl@sha256:19b646668802469d968a05342a601e78da4322a414a7c09b1c9ee25165042138
+    volumes:
+      - synthorg-data:/data
+      - synthorg-pgdata:/pgdata
+    command: ["sh", "-c", "set -e; mkdir -p /data/logs /data/memory; chown -R 65532:65532 /data; chown -R 65532:65532 /pgdata"]
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+
   backend:
     build:
       context: ..
       dockerfile: docker/backend/Dockerfile
-    # Default port 3001 avoids collision with vLLM's default (8000).
-    # Override with BACKEND_PORT env var.  If co-hosting vLLM, expose
-    # it on a different host port (e.g. -p 5000:8000 for vLLM).
     ports:
       - "${BACKEND_PORT:-3001}:3001"
     volumes:
       - synthorg-data:/data
+    depends_on:
+      data-init:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
     env_file: .env
     environment:
       SYNTHORG_HOST: "${SYNTHORG_HOST:-0.0.0.0}"
       SYNTHORG_PORT: "${SYNTHORG_PORT:-3001}"
-      SYNTHORG_DB_PATH: "/data/synthorg.db"
+      SYNTHORG_DATABASE_URL: "postgresql://synthorg:${POSTGRES_PASSWORD}@postgres:5432/synthorg"
       SYNTHORG_MEMORY_DIR: "/data/memory"
+      SYNTHORG_PERSISTENCE_BACKEND: "postgres"
+      SYNTHORG_BUS_BACKEND: "${SYNTHORG_BUS_BACKEND:-nats}"
+      SYNTHORG_NATS_URL: "${SYNTHORG_NATS_URL:-nats://nats:4222}"
       SYNTHORG_LOG_DIR: "${SYNTHORG_LOG_DIR:-/data/logs}"
       SYNTHORG_LOG_LEVEL: "${SYNTHORG_LOG_LEVEL:-info}"
-      # Disable Mem0 telemetry by default. Override in .env to enable.
       MEM0_TELEMETRY: "${MEM0_TELEMETRY:-false}"
-      # Bridge SYNTHORG_* to uvicorn's native env vars (exec form CMD, no shell)
       UVICORN_HOST: "${SYNTHORG_HOST:-0.0.0.0}"
       UVICORN_PORT: "${SYNTHORG_PORT:-3001}"
-      # Message bus backend. Default is the in-process bus. To route
-      # through the NATS JetStream service also apply the overlay file
-      # docker/compose.distributed.yml, which sets
-      # `SYNTHORG_BUS_BACKEND=nats` and wires `depends_on` -- compose
-      # profiles alone only control which services start, not how
-      # already-defined services are configured.
-      SYNTHORG_BUS_BACKEND: "${SYNTHORG_BUS_BACKEND:-internal}"
-      SYNTHORG_NATS_URL: "${SYNTHORG_NATS_URL:-nats://nats:4222}"
     user: "65532:65532"
-    # CIS Docker Benchmark v1.6.0 hardening (5.3, 5.12, 5.25, 5.28)
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -53,54 +102,6 @@ services:
           memory: 4G
           cpus: "2.0"
           pids: 256
-    logging: *logging
-
-  # NATS JetStream service for the distributed message bus + task queue.
-  # Opt in with `docker compose --profile distributed up`. See
-  # docs/design/distributed-runtime.md for the migration path and config.
-  #
-  # Host port layout (kept contiguous with the other services):
-  #   3000  web
-  #   3001  backend
-  #   3002  reserved for the future database backend (parallel work)
-  #   3003  NATS client (this service) -> container 4222
-  #
-  # Monitoring (container 8222) is intentionally NOT mapped to a host
-  # port.  Use `docker compose exec nats wget -qO- localhost:8222/varz`
-  # or a compose override file if you need external access.
-  nats:
-    image: nats:2.12.7-alpine@sha256:eafac85ab07d22f58da852c2be738ffebf9a426771ae0f6bc3d77cc58818f398
-    profiles: ["distributed"]
-    # `--max_payload 4MB` aligns the server cap with
-    # `_MAX_BUS_PAYLOAD_BYTES` in `src/synthorg/communication/bus/nats.py`
-    # so client-side accepted sizes actually publish instead of being
-    # rejected by the default 1MB server limit.
-    command: ["-js", "-sd", "/data", "-m", "8222", "--max_payload", "4MB"]
-    ports:
-      - "${NATS_CLIENT_PORT:-3003}:4222"
-    volumes:
-      - synthorg-nats-data:/data
-    user: "1000:1000"
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    read_only: true
-    tmpfs:
-      - /tmp:noexec,nosuid,nodev,size=16m
-    restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          memory: 256M
-          cpus: "0.5"
-          pids: 64
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8222/healthz"]
-      interval: 10s
-      timeout: 3s
-      retries: 3
-      start_period: 5s
     logging: *logging
 
   web:
@@ -129,10 +130,88 @@ services:
           pids: 64
     logging: *logging
 
+  # DHI NATS JetStream (distributed message bus + task queue).
+  # DHI image is distroless (no shell/wget) -- healthcheck via sidecar.
+  nats:
+    # renovate: datasource=docker depName=dhi.io/nats
+    image: dhi.io/nats:2.12-debian13@sha256:89f40ed3ce7f69ad0af95c264368d3de41d72de604c97e7f1f8bd57d3a2b617f
+    command: ["-js", "-sd", "/data", "-m", "8222", "--max_payload", "4MB"]
+    ports:
+      - "${NATS_CLIENT_PORT:-3003}:4222"
+    volumes:
+      - synthorg-nats-data:/data
+    user: "65532:65532"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,nodev,size=16m
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"
+          pids: 64
+    logging: *logging
+
+  # Healthcheck sidecar for distroless NATS (no shell/wget inside).
+  # Probes NATS monitoring endpoint via Docker network DNS.
+  nats-healthcheck:
+    # renovate: datasource=docker depName=busybox
+    image: busybox:1.37-musl@sha256:19b646668802469d968a05342a601e78da4322a414a7c09b1c9ee25165042138
+    depends_on:
+      nats:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://nats:8222/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    entrypoint: ["sleep", "infinity"]
+    user: "65532:65532"
+    read_only: true
+    cap_drop:
+      - ALL
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 8M
+          cpus: "0.05"
+          pids: 4
+    logging: *logging
+
+  # Fine-tuning sidecar (~4 GB, PyTorch + sentence-transformers).
+  # Uncomment to enable embedding fine-tuning. Requires local GPU.
+  # fine-tune:
+  #   image: ghcr.io/aureliolo/synthorg-fine-tune:${SYNTHORG_IMAGE_TAG:-latest}
+  #   volumes:
+  #     - synthorg-data:/data:ro
+  #   depends_on:
+  #     backend:
+  #       condition: service_healthy
+  #   user: "10003:10003"
+  #   security_opt:
+  #     - no-new-privileges:true
+  #   cap_drop:
+  #     - ALL
+  #   read_only: true
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         memory: 8G
+  #         cpus: "4.0"
+  #   logging: *logging
+
 networks:
   default:
     name: synthorg-net
 
 volumes:
   synthorg-data:
+  synthorg-pgdata:
   synthorg-nats-data:

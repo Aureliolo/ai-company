@@ -12,9 +12,9 @@ func TestLogo(t *testing.T) {
 	u := NewUI(&buf)
 	u.Logo("v1.2.3")
 	out := buf.String()
-	// Box-drawing banner doesn't spell "SynthOrg" literally -- check structure.
-	if !strings.Contains(out, "╔") {
-		t.Error("Logo output missing expected box-drawing content")
+	// ANSI Shadow block-letter banner uses full-block characters.
+	if !strings.Contains(out, "\u2588") {
+		t.Error("Logo output missing expected block-letter content")
 	}
 	if !strings.Contains(out, "v1.2.3") {
 		t.Error("Logo output missing version string")
@@ -196,10 +196,10 @@ func TestBox(t *testing.T) {
 		t.Error("Box missing second line")
 	}
 	// Check box-drawing characters.
-	if !strings.Contains(out, "\u250c") { // top-left corner
+	if !strings.Contains(out, "\u256d") { // rounded top-left corner
 		t.Error("Box missing top-left corner")
 	}
-	if !strings.Contains(out, "\u2514") { // bottom-left corner
+	if !strings.Contains(out, "\u2570") { // rounded bottom-left corner
 		t.Error("Box missing bottom-left corner")
 	}
 	if !strings.Contains(out, "\u2502") { // vertical line

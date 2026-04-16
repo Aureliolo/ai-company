@@ -48,15 +48,16 @@ var (
 var wipeCmd = &cobra.Command{
 	Use:   "wipe",
 	Short: "Factory-reset: wipe all data with optional backup and restart",
-	Long: `Destroy all SynthOrg data (database, memory, settings) and start
-with a clean slate. You are prompted at each step:
+	Long: `Destroy all SynthOrg data (database, memory, settings) and return
+to a clean state. You are prompted at each step:
 
   1. Whether to create a backup (default: yes)
   2. Whether to start containers for the backup (if needed)
   3. Where to save the backup archive (if backing up)
   4. Whether to overwrite if the backup file already exists
   5. Final confirmation before wiping
-  6. Whether to start containers after the wipe (default: yes)
+
+After wiping, run 'synthorg init' to set up again.
 
 Requires an interactive terminal.`,
 	Example: `  synthorg wipe                # interactive factory reset with backup
@@ -178,41 +179,26 @@ func (wc *wipeContext) confirmAndWipe() error {
 		wc.out.HintNextStep("Backup skipped. Data cannot be recovered after wipe.")
 	}
 
-	startAfter, err := wc.promptStartAfterWipe()
-	if err != nil {
-		return err
+	// Remove the data directory (config, compose.yml, state.json).
+	// This returns the system to a clean state -- only the CLI binary
+	// remains. Users must run 'synthorg init' to set up again.
+	// Guard: safeDir was validated by safeStateDir -> config.SecurePath
+	// (absolute + clean). Reject anything that looks like a traversal
+	// or root path to prevent accidental destruction.
+	if strings.Contains(wc.safeDir, "..") || wc.safeDir == "/" || wc.safeDir == filepath.VolumeName(wc.safeDir)+string(filepath.Separator) {
+		return fmt.Errorf("refusing to remove suspicious path: %s", wc.safeDir)
 	}
-
-	manualStart := wc.shouldPrompt() && startAfter && !wc.state.AutoStartAfterWipe
-	if startAfter {
-		if err := wc.startContainers(); err != nil {
-			wc.errOut.Warn(fmt.Sprintf("Could not restart containers: %v", err))
-			startAfter = false // fall through to manual-start hint
-			manualStart = false
-		}
+	sp2 := wc.out.StartSpinner("Removing data directory...")
+	if err := os.RemoveAll(wc.safeDir); err != nil {
+		sp2.Warn(fmt.Sprintf("Could not remove data directory: %v", err))
+		wc.errOut.HintError(fmt.Sprintf("Manually delete %s to complete the wipe.", wc.safeDir))
+	} else {
+		sp2.Success("Data directory removed")
 	}
 
 	wc.out.Blank()
-	if startAfter {
-		wc.out.Success("Factory reset complete")
-	} else {
-		wc.out.Success("Factory reset complete (containers not restarted)")
-	}
-
-	if manualStart {
-		wc.out.HintTip("Run 'synthorg config set auto_start_after_wipe true' to auto-start after future wipes.")
-	}
-
-	if startAfter {
-		setupURL := fmt.Sprintf("http://localhost:%d/setup", wc.state.WebPort)
-		wc.out.HintNextStep(fmt.Sprintf("Opening %s", setupURL))
-		if err := openBrowser(wc.ctx, setupURL); err != nil {
-			wc.errOut.Warn(fmt.Sprintf("Could not open browser: %v", err))
-			wc.errOut.HintNextStep(fmt.Sprintf("Open %s manually in your browser.", setupURL))
-		}
-	} else {
-		wc.out.HintNextStep("Run 'synthorg start' when you're ready to set up again.")
-	}
+	wc.out.Success("Wipe complete -- back to clean state")
+	wc.out.HintNextStep("Run 'synthorg init' to set up again.")
 
 	return nil
 }
@@ -658,34 +644,6 @@ func (wc *wipeContext) askContinueWithoutBackup(title string) error {
 		return errWipeCancelled
 	}
 	return nil
-}
-
-// promptStartAfterWipe asks whether to start containers after the wipe.
-// Ctrl-C is treated as "No" because the wipe has already completed.
-// Respects auto_start_after_wipe config key.
-func (wc *wipeContext) promptStartAfterWipe() (bool, error) {
-	if !wc.shouldPrompt() {
-		return true, nil // --yes or non-interactive: default yes
-	}
-	if wc.state.AutoStartAfterWipe {
-		return true, nil // config auto-accept
-	}
-	startAfter := true
-	err := wc.runForm(huh.NewForm(huh.NewGroup(
-		huh.NewConfirm().
-			Title("Start containers now?").
-			Description("Opens the setup wizard for a fresh start.").
-			Affirmative("Yes").
-			Negative("No").
-			Value(&startAfter),
-	)))
-	if err != nil {
-		if isUserAbort(err) {
-			return false, nil // wipe already done, treat Ctrl-C as "No"
-		}
-		return false, fmt.Errorf("start-after-wipe prompt: %w", err)
-	}
-	return startAfter, nil
 }
 
 // isEmptyPS returns true if docker compose ps output indicates no containers.

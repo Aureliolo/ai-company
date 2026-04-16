@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -123,7 +124,9 @@ func printStartDryRun(out *ui.UI, state config.State, opts *GlobalOpts) error {
 }
 
 func startContainers(cmd *cobra.Command, ctx context.Context, state config.State, safeDir string, out, errOut *ui.UI, healthTimeout time.Duration) error {
-	out.Logo(version.Version)
+	if os.Getenv("SYNTHORG_NO_LOGO") == "" {
+		out.Logo(version.Version)
+	}
 
 	info, err := docker.Detect(ctx)
 	if err != nil {
@@ -140,9 +143,55 @@ func startContainers(cmd *cobra.Command, ctx context.Context, state config.State
 	}
 
 	if !startNoPull {
-		if err := verifyAndPinImages(ctx, cmd, state, safeDir, out, errOut); err != nil {
-			return err
+		skipVerify := GetGlobalOpts(ctx).SkipVerify
+
+		if !skipVerify {
+			// SynthOrg images: check cache independently.
+			if hasSynthOrgDigests(state) {
+				renderCachedSynthOrgBox(out, state)
+			} else {
+				if err := verifyAndPinImages(ctx, cmd, state, safeDir, out, errOut); err != nil {
+					return err
+				}
+				// Reload state since verifyAndPinImages saved it.
+				reloaded, reloadErr := config.Load(GetGlobalOpts(ctx).DataDir)
+				if reloadErr != nil {
+					return fmt.Errorf("reloading config after verification: %w", reloadErr)
+				}
+				state = reloaded
+			}
+
+			// DHI images: check cache independently.
+			if hasDHIDigests(state) {
+				renderCachedDHIBox(out, state)
+			} else {
+				results, err := verifyDHIImages(ctx, info, state, out, errOut)
+				if err != nil {
+					return fmt.Errorf("DHI image verification failed: %w", err)
+				}
+				if state.VerifiedDigests == nil {
+					state.VerifiedDigests = make(map[string]string)
+				}
+				for _, r := range results {
+					if indexDigest, ok := verify.DHIPinnedIndexDigest(r.Image); ok {
+						state.VerifiedDigests["dhi:"+r.Image] = indexDigest
+					}
+					if r.Digest != "" {
+						state.VerifiedDigests["dhi:"+r.Image+":platform"] = r.Digest
+					}
+					if r.AttDigest != "" {
+						state.VerifiedDigests["dhi:"+r.Image+":attestation"] = r.AttDigest
+					}
+					if r.SigDigest != "" {
+						state.VerifiedDigests["dhi:"+r.Image+":signature"] = r.SigDigest
+					}
+				}
+				if err := config.Save(state); err != nil {
+					errOut.Warn(fmt.Sprintf("Could not cache DHI verification results: %v", err))
+				}
+			}
 		}
+
 		out.Blank()
 		refreshed, err := pullAllImages(ctx, info, safeDir, state, out)
 		if err != nil {
@@ -189,10 +238,13 @@ func startDetached(ctx context.Context, info docker.Info, safeDir string, state 
 	}
 
 	out.Blank()
-	out.Box("Ready", []string{
-		fmt.Sprintf("  %-12s http://localhost:%d/api/v1/health", "API", state.BackendPort),
-		fmt.Sprintf("  %-12s http://localhost:%d", "Dashboard", state.WebPort),
-	})
+	readyLines := []string{
+		fmt.Sprintf("%-16s%s", "Dashboard", fmt.Sprintf("http://localhost:%d", state.WebPort)),
+		fmt.Sprintf("%-16s%s", "API", fmt.Sprintf("http://localhost:%d", state.BackendPort)),
+	}
+	out.Box("Ready", readyLines)
+	out.Blank()
+	out.Section(fmt.Sprintf("Open http://localhost:%d", state.WebPort))
 	out.HintTip("Run 'synthorg status --watch' to monitor container health.")
 	if startNoPull {
 		out.HintGuidance("Images not verified -- run 'synthorg update' to pull and verify latest images.")
@@ -200,27 +252,107 @@ func startDetached(ctx context.Context, info docker.Info, safeDir string, state 
 	return nil
 }
 
-// pullAllImages pulls the compose services and, when sandbox mode is
-// enabled, pre-pulls the sandbox image. State is reloaded from disk so the
-// caller picks up the VerifiedDigests written by a prior verify step (the
-// sandbox pre-pull needs the pinned reference, not the pre-verification
-// cached state). Returns the refreshed state so callers that still need
-// post-verify fields (e.g. VerifiedDigests) see them.
+// pullAllImages pulls all enabled images in a single unified LiveBox:
+// compose services (backend, web, postgres, nats) plus standalone images
+// (sandbox, sidecar, fine-tune) depending on configuration. Only enabled
+// services are pulled. State is reloaded from disk after verification to
+// pick up pinned digests.
 func pullAllImages(ctx context.Context, info docker.Info, safeDir string, state config.State, out *ui.UI) (config.State, error) {
-	if err := pullServicesLive(ctx, info, safeDir, state, out); err != nil {
-		return state, err
-	}
-	if !state.Sandbox {
-		return state, nil
-	}
+	// Reload state to pick up verified digests from the verify step.
 	refreshed, err := config.Load(GetGlobalOpts(ctx).DataDir)
 	if err != nil {
-		return state, fmt.Errorf("reloading state after verification: %w", err)
+		refreshed = state // fall back to pre-verify state
 	}
-	if err := pullSandboxImage(ctx, info, refreshed, out); err != nil {
-		return refreshed, err
+
+	// Build the full list of images to pull.
+	type pullItem struct {
+		name    string
+		compose bool   // true = docker compose pull, false = docker pull
+		ref     string // image ref for docker pull (only when compose=false)
 	}
-	return refreshed, nil
+
+	var items []pullItem
+	// Compose services
+	for _, svc := range composeServiceNames(refreshed) {
+		items = append(items, pullItem{name: svc, compose: true})
+	}
+	// Standalone images (only if enabled)
+	if refreshed.Sandbox {
+		items = append(items, pullItem{
+			name: "sandbox",
+			ref:  verify.FormatImageRef("sandbox", refreshed.ImageTag, refreshed.VerifiedDigests["sandbox"]),
+		})
+		items = append(items, pullItem{
+			name: "sidecar",
+			ref:  verify.FormatImageRef("sidecar", refreshed.ImageTag, refreshed.VerifiedDigests["sidecar"]),
+		})
+	}
+	if refreshed.FineTuning {
+		items = append(items, pullItem{
+			name: "fine-tune",
+			ref:  verify.FormatImageRef("fine-tune", refreshed.ImageTag, refreshed.VerifiedDigests["fine-tune"]),
+		})
+		out.Warn("Fine-tune image is large (~5 GB) -- first pull may take a few minutes")
+	}
+
+	// Show all pulls in one LiveBox.
+	labels := make([]string, len(items))
+	for i, item := range items {
+		labels[i] = item.name
+	}
+	lb := out.NewLiveBox("Pull Images", labels)
+	defer lb.Finish()
+
+	var (
+		mu      sync.Mutex
+		pullErr error
+	)
+	var wg sync.WaitGroup
+	for i, item := range items {
+		wg.Add(1)
+		go func(idx int, it pullItem) {
+			defer wg.Done()
+			var err error
+			if it.compose {
+				err = composeRunQuiet(ctx, info, safeDir, "pull", it.name)
+			} else {
+				err = dockerPullWithRetry(ctx, info, it.ref, sandboxPullAttempts)
+			}
+			if err != nil {
+				lb.UpdateLine(idx, ui.IconError)
+				mu.Lock()
+				pullErr = errors.Join(pullErr, fmt.Errorf("pulling %s: %w", it.name, err))
+				mu.Unlock()
+			} else {
+				lb.UpdateLine(idx, ui.IconSuccess)
+			}
+		}(i, item)
+	}
+	wg.Wait()
+
+	return refreshed, pullErr
+}
+
+// dockerPullWithRetry pulls an image with retries for transient failures.
+func dockerPullWithRetry(ctx context.Context, info docker.Info, imageRef string, attempts int) error {
+	var lastErr error
+	for attempt := 1; attempt <= attempts; attempt++ {
+		if err := dockerRunQuiet(ctx, info, "pull", imageRef); err == nil {
+			return nil
+		} else {
+			lastErr = err
+		}
+		if attempt == attempts || ctx.Err() != nil {
+			break
+		}
+		backoff := sandboxPullRetryDelay << (attempt - 1)
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(backoff):
+		}
+	}
+	return lastErr
 }
 
 // pullStartAndWait pulls images, starts containers, and waits for health.
@@ -250,61 +382,25 @@ func pullStartAndWait(ctx context.Context, info docker.Info, safeDir string, sta
 	return nil
 }
 
-// serviceNames returns the list of compose service names for the current config.
-// The sandbox image is intentionally not a compose service -- the backend
-// spawns ephemeral sandbox containers on demand via aiodocker. The image is
-// pre-pulled separately in pullSandboxImage.
-func serviceNames() []string {
-	return []string{"backend", "web"}
+// composeServiceNames returns the compose service names that need pulling
+// based on the current config. The sandbox and sidecar images are not
+// compose services -- they are pulled separately.
+func composeServiceNames(state config.State) []string {
+	services := []string{"backend", "web"}
+	if state.PersistenceBackend == "postgres" {
+		services = append(services, "postgres")
+	}
+	if state.BusBackend == "nats" {
+		services = append(services, "nats")
+	}
+	return services
 }
 
-// sandboxImageRef returns the digest-pinned sandbox image reference, falling
-// back to the tag-based reference when no verified digest is available.
-// Delegates to verify.FormatImageRef so the compose template and the start
-// flow render the same reference format.
-func sandboxImageRef(state config.State) string {
-	return verify.FormatImageRef("sandbox", state.ImageTag, state.VerifiedDigests["sandbox"])
-}
-
-// sandboxPullAttempts bounds retries for transient sandbox-image pulls.
-// docker pull handles HTTP retries internally but not DNS failures or
-// early socket resets, so a thin CLI-level retry catches those without
-// paying a lot of latency on permanent failures.
+// sandboxPullAttempts bounds retries for transient standalone image pulls.
 const sandboxPullAttempts = 3
 
-// sandboxPullRetryDelay is the base backoff between sandbox-pull retries.
-// Attempt N waits sandboxPullRetryDelay * 2^(N-1) before retrying.
+// sandboxPullRetryDelay is the base backoff between pull retries.
 var sandboxPullRetryDelay = 2 * time.Second
-
-// pullSandboxImage pre-pulls the sandbox image via `docker pull` so the first
-// agent code execution isn't blocked on an image pull. The sandbox is not a
-// compose service, so it cannot be pulled via `docker compose pull`.
-func pullSandboxImage(ctx context.Context, info docker.Info, state config.State, out *ui.UI) error {
-	imageRef := sandboxImageRef(state)
-	sp := out.StartSpinner(fmt.Sprintf("Pulling sandbox image %s", imageRef))
-
-	var lastErr error
-	for attempt := 1; attempt <= sandboxPullAttempts; attempt++ {
-		err := dockerRunQuiet(ctx, info, "pull", imageRef)
-		if err == nil {
-			sp.Success("Sandbox image pulled")
-			return nil
-		}
-		lastErr = err
-		if attempt == sandboxPullAttempts || ctx.Err() != nil {
-			break
-		}
-		backoff := sandboxPullRetryDelay << (attempt - 1)
-		select {
-		case <-ctx.Done():
-			sp.Error("Sandbox image pull cancelled")
-			return fmt.Errorf("pulling sandbox image %s: %w", imageRef, ctx.Err())
-		case <-time.After(backoff):
-		}
-	}
-	sp.Error("Failed to pull sandbox image")
-	return fmt.Errorf("pulling sandbox image %s: %w", imageRef, lastErr)
-}
 
 // dockerRunQuiet runs a docker command with output captured in a buffer.
 // Mirrors composeRunQuiet but shells out to `docker` directly via the
@@ -329,38 +425,6 @@ func dockerRunQuiet(ctx context.Context, info docker.Info, args ...string) error
 	return nil
 }
 
-// pullServicesLive pulls each compose service concurrently, showing
-// per-service progress in a live-updating box.
-func pullServicesLive(ctx context.Context, info docker.Info, safeDir string, _ config.State, out *ui.UI) error {
-	services := serviceNames()
-	lb := out.NewLiveBox("Pull Images", services)
-	defer lb.Finish()
-
-	var (
-		mu      sync.Mutex
-		pullErr error
-	)
-	var wg sync.WaitGroup
-	for i, svc := range services {
-		wg.Add(1)
-		go func(idx int, name string) {
-			defer wg.Done()
-			err := composeRunQuiet(ctx, info, safeDir, "pull", name)
-			if err != nil {
-				lb.UpdateLine(idx, ui.IconError)
-				mu.Lock()
-				pullErr = errors.Join(pullErr, fmt.Errorf("pulling %s: %w", name, err))
-				mu.Unlock()
-			} else {
-				lb.UpdateLine(idx, ui.IconSuccess)
-			}
-		}(i, svc)
-	}
-	wg.Wait()
-
-	return pullErr
-}
-
 // verifyAndPinImages verifies image signatures (unless --skip-verify) and
 // pins the verified digests in the compose file and config.
 func verifyAndPinImages(ctx context.Context, _ *cobra.Command, state config.State, safeDir string, out, errOut *ui.UI) error {
@@ -369,25 +433,34 @@ func verifyAndPinImages(ctx context.Context, _ *cobra.Command, state config.Stat
 		return nil
 	}
 
-	sp := out.StartSpinner("Verifying container image signatures...")
+	imageRefs := verify.BuildImageRefs(state.ImageTag, state.Sandbox, state.FineTuning)
+	labels := make([]string, len(imageRefs))
+	for i, ref := range imageRefs {
+		labels[i] = ref.Name()
+	}
+	lb := out.NewLiveBox("Verify SynthOrg Images", labels)
 
-	// Buffer verify output -- we'll render results in a box instead.
-	var buf bytes.Buffer
 	verifyCtx, cancel := context.WithTimeout(ctx, 120*time.Second)
 	defer cancel()
 	results, err := verify.VerifyImages(verifyCtx, verify.VerifyOptions{
-		Images: verify.BuildImageRefs(state.ImageTag, state.Sandbox, state.FineTuning),
-		Output: &buf,
+		Images: imageRefs,
+		Output: io.Discard,
+		OnResult: func(i int, r verify.VerifyResult) {
+			slsaIcon := ui.IconSuccess
+			if !r.ProvenanceVerified {
+				slsaIcon = ui.IconWarning
+			}
+			lb.UpdateLine(i, fmt.Sprintf("sig %s  slsa %s", ui.IconSuccess, slsaIcon))
+		},
 	})
+	lb.Finish()
+
 	if err != nil {
-		sp.Error("Image verification failed")
 		if isTransportError(err) {
 			errOut.HintError("Use --skip-verify for air-gapped environments")
 		}
 		return fmt.Errorf("image verification failed: %w", err)
 	}
-	sp.Stop()
-	renderVerifyBox(out, results)
 
 	pins, err := digestPinMap(results)
 	if err != nil {
@@ -403,6 +476,123 @@ func verifyAndPinImages(ctx context.Context, _ *cobra.Command, state config.Stat
 		errOut.Warn(fmt.Sprintf("Could not cache verified digests: %v", err))
 	}
 	return nil
+}
+
+// hasSynthOrgDigests returns true if all SynthOrg image digests are cached.
+func hasSynthOrgDigests(state config.State) bool {
+	if len(state.VerifiedDigests) == 0 {
+		return false
+	}
+	for _, ref := range verify.BuildImageRefs(state.ImageTag, state.Sandbox, state.FineTuning) {
+		if _, ok := state.VerifiedDigests[ref.Name()]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+// hasDHIDigests returns true if all DHI image digests are cached AND
+// match the current index pins baked into the binary. When Renovate
+// bumps a pin, the cache misses and re-verification triggers.
+func hasDHIDigests(state config.State) bool {
+	for _, tp := range thirdPartyImages(state) {
+		if !strings.HasPrefix(tp.Image, "dhi.io/") {
+			continue
+		}
+		cached, ok := state.VerifiedDigests["dhi:"+tp.Image]
+		if !ok {
+			return false
+		}
+		current, pinOK := verify.DHIPinnedIndexDigest(tp.Image)
+		if !pinOK || cached != current {
+			return false
+		}
+	}
+	return true
+}
+
+func renderCachedSynthOrgBox(out *ui.UI, state config.State) {
+	refs := verify.BuildImageRefs(state.ImageTag, state.Sandbox, state.FineTuning)
+	lines := make([]string, len(refs))
+	for i, ref := range refs {
+		lines[i] = fmt.Sprintf("  %-12s sig %s  slsa %s", ref.Name(), ui.IconSuccess, ui.IconSuccess)
+	}
+	out.Box("Verify SynthOrg Images (cached)", lines)
+}
+
+func renderCachedDHIBox(out *ui.UI, state config.State) {
+	var lines []string
+	for _, tp := range thirdPartyImages(state) {
+		if !strings.HasPrefix(tp.Image, "dhi.io/") {
+			continue
+		}
+		shortName := tp.Name
+		lines = append(lines, fmt.Sprintf("  %-12s sig %s  slsa %s", shortName, ui.IconSuccess, ui.IconSuccess))
+	}
+	if len(lines) > 0 {
+		out.Box("Verify DHI Images (cached)", lines)
+	}
+}
+
+// verifyDHIImages verifies cosign signatures and SLSA provenance on
+// third-party DHI images using Docker's embedded public key. Called
+// BEFORE pulling to prevent MITM.
+func verifyDHIImages(ctx context.Context, _ docker.Info, state config.State, out, _ *ui.UI) ([]verify.DHIVerifyResult, error) {
+	var dhiRefs []string
+	var labels []string
+	for _, tp := range thirdPartyImages(state) {
+		if strings.HasPrefix(tp.Image, "dhi.io/") {
+			dhiRefs = append(dhiRefs, tp.Image)
+			labels = append(labels, tp.Name)
+		}
+	}
+	if len(dhiRefs) == 0 {
+		return nil, nil
+	}
+
+	lb := out.NewLiveBox("Verify DHI Images", labels)
+	defer lb.Finish()
+
+	// Verify each image with a timeout to prevent hanging on network issues.
+	dhiCtx, dhiCancel := context.WithTimeout(ctx, 120*time.Second)
+	defer dhiCancel()
+	results, err := verify.VerifyDHIImages(dhiCtx, dhiRefs)
+
+	// Update LiveBox lines from results.
+	for i, r := range results {
+		if r.SigOK {
+			slsaIcon := ui.IconSuccess
+			if !r.SLSAOK {
+				slsaIcon = ui.IconWarning
+			}
+			lb.UpdateLine(i, fmt.Sprintf("sig %s  slsa %s", ui.IconSuccess, slsaIcon))
+		} else {
+			lb.UpdateLine(i, ui.IconError)
+		}
+	}
+
+	return results, err
+}
+
+// thirdPartyImage pairs a service name with its image reference.
+type thirdPartyImage struct {
+	Name  string
+	Image string
+}
+
+// thirdPartyImages returns the image references of third-party (non-SynthOrg)
+// containers that need digest pinning, based on config. Returns a slice for
+// deterministic iteration order in UI rendering and verification.
+func thirdPartyImages(state config.State) []thirdPartyImage {
+	var images []thirdPartyImage
+	if state.PersistenceBackend == "postgres" {
+		images = append(images, thirdPartyImage{"postgres", "dhi.io/postgres:18-debian13"})
+	}
+	if state.BusBackend == "nats" {
+		images = append(images, thirdPartyImage{"nats", "dhi.io/nats:2.12-debian13"})
+		images = append(images, thirdPartyImage{"nats-healthcheck", "busybox:1.37-musl"})
+	}
+	return images
 }
 
 // writeDigestPinnedCompose generates and writes a compose file with digest-pinned
@@ -498,7 +688,7 @@ func renderVerifyBox(out *ui.UI, results []verify.VerifyResult) {
 		boxLines = append(boxLines, fmt.Sprintf("  %-12s sig %s  slsa %s",
 			r.Ref.Name(), sigIcon, slsaIcon))
 	}
-	out.Box("Verify Images", boxLines)
+	out.Box("Verify SynthOrg Images", boxLines)
 }
 
 // composeRun runs a docker compose command with output forwarded to the

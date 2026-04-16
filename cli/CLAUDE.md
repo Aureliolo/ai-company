@@ -93,7 +93,7 @@ No corresponding flag -- settable via env var or `config set`:
 | `path` | Print the config file path |
 | `edit` | Open config file in $VISUAL/$EDITOR |
 
-Settable keys: `auto_apply_compose`, `auto_cleanup`, `auto_pull`, `auto_restart`, `auto_start_after_wipe`, `auto_update_cli`, `backend_port`, `channel`, `color`, `docker_sock`, `fine_tuning`, `hints`, `image_tag`, `log_level`, `output`, `sandbox`, `telemetry_opt_in`, `timestamps`, `web_port`. Keys that affect Docker compose (`backend_port`, `web_port`, `sandbox`, `docker_sock`, `fine_tuning`, `image_tag`, `log_level`, `telemetry_opt_in`) trigger automatic `compose.yml` regeneration.
+Settable keys: `auto_apply_compose`, `auto_cleanup`, `auto_pull`, `auto_restart`, `auto_update_cli`, `backend_port`, `channel`, `color`, `docker_sock`, `fine_tuning`, `hints`, `image_tag`, `log_level`, `output`, `sandbox`, `telemetry_opt_in`, `timestamps`, `web_port`. Keys that affect Docker compose (`backend_port`, `web_port`, `sandbox`, `docker_sock`, `fine_tuning`, `image_tag`, `log_level`, `telemetry_opt_in`) trigger automatic `compose.yml` regeneration.
 
 ## Per-Command Flags
 
@@ -127,11 +127,16 @@ The CLI orchestrates two persistence backends:
 
 When `--persistence-backend postgres` is selected, `synthorg init`:
 
-1. Adds a `postgres:18-alpine` service to the generated `compose.yml` (non-root user `70:70`, read-only rootfs, dropped capabilities, pg_isready healthcheck, named volume `synthorg-pgdata`).
-2. Generates a 32-byte URL-safe random password via `crypto/rand` and persists it to `config.json` (`postgres_password`). Re-init preserves the existing password to avoid breaking the running container.
-3. Wires `SYNTHORG_DATABASE_URL=postgresql://synthorg:<password>@postgres:5432/synthorg` into the backend container's environment. The SQLite-only `SYNTHORG_DB_PATH` variable is omitted.
-4. Declares `depends_on: postgres: condition: service_healthy` on the backend service so backend startup blocks until Postgres accepts connections.
+1. Adds a `dhi.io/postgres:18-debian13` DHI (Docker Hardened Image) service to the generated `compose.yml` (read-only rootfs, minimal capabilities via `cap_add`, `pg_isready` healthcheck, named volume `synthorg-pgdata`).
+2. Adds a `data-init` helper container (busybox) that ensures the `synthorg-data` volume is owned by the non-root backend user (`65532:65532`) on first start, preventing permission errors.
+3. Generates a 32-byte URL-safe random password via `crypto/rand` and persists it to `config.json` (`postgres_password`). Re-init preserves the existing password to avoid breaking the running container.
+4. Wires `SYNTHORG_DATABASE_URL=postgresql://synthorg:<password>@postgres:5432/synthorg` into the backend container's environment. The SQLite-only `SYNTHORG_DB_PATH` variable is omitted.
+5. Declares `depends_on: postgres: condition: service_healthy` on the backend service so backend startup blocks until Postgres accepts connections.
+
+**Interactive mode (TUI)** defaults to PostgreSQL + NATS; **non-interactive mode** defaults to SQLite + internal bus. Use `--persistence-backend sqlite` / `--bus-backend internal` in flags to override.
 
 `synthorg start` brings up Postgres first (via compose ordering), then the backend applies Atlas migrations on connection. `synthorg stop` preserves `synthorg-pgdata` unless `--volumes` is passed. `synthorg status --wide` reports Postgres container health plus the `synthorg-pgdata` volume size.
+
+DHI images are verified before pulling via cosign ECDSA signature + SLSA v1 provenance attestation + Rekor transparency log. Verification results are cached in `config.json` (`verified_digests`) and invalidated when Renovate bumps the pinned index digest.
 
 Port layout: `3000` web / `3001` backend / `3002` postgres / `3003` NATS client. `generate.go` validates port collisions: web vs backend always; postgres vs web/backend/NATS when postgres enabled; NATS vs web/backend when distributed bus mode is active.

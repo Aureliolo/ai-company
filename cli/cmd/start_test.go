@@ -3,22 +3,14 @@ package cmd
 import (
 	"context"
 	"errors"
-	"io"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/Aureliolo/synthorg/cli/internal/config"
 	"github.com/Aureliolo/synthorg/cli/internal/docker"
-	"github.com/Aureliolo/synthorg/cli/internal/ui"
+	"github.com/Aureliolo/synthorg/cli/internal/verify"
 )
-
-// discardUI builds a ui.UI that writes to io.Discard -- keeps tests quiet
-// and lets us exercise helpers that require a real *ui.UI argument.
-func discardUI(t *testing.T) *ui.UI {
-	t.Helper()
-	return ui.NewUI(io.Discard)
-}
 
 func TestSandboxImageRef(t *testing.T) {
 	t.Parallel()
@@ -70,7 +62,7 @@ func TestSandboxImageRef(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			got := sandboxImageRef(tc.state)
+			got := verify.FormatImageRef("sandbox", tc.state.ImageTag, tc.state.VerifiedDigests["sandbox"])
 			if got != tc.want {
 				t.Errorf("sandboxImageRef = %q, want %q", got, tc.want)
 			}
@@ -144,34 +136,25 @@ func TestDockerRunQuiet(t *testing.T) {
 	})
 }
 
-func TestPullSandboxImageRetryBackoff(t *testing.T) {
+func TestDockerPullWithRetryBackoff(t *testing.T) {
 	// Deliberately serial: this test mutates the package-level
 	// sandboxPullRetryDelay, which would race with any other parallel test
-	// in this package that exercises pullSandboxImage. Keeping the test
-	// non-parallel avoids the race without refactoring the retry knobs
-	// into injectable parameters.
+	// that exercises dockerPullWithRetry.
 	original := sandboxPullRetryDelay
 	sandboxPullRetryDelay = 5 * time.Millisecond
 	defer func() { sandboxPullRetryDelay = original }()
 
 	// Force failure by pointing DockerPath at a non-existent binary.
 	info := docker.Info{DockerPath: "/nonexistent/docker-binary-that-does-not-exist"}
-	state := config.State{ImageTag: "latest", Sandbox: true}
 
 	start := time.Now()
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	// UI is nil-sensitive -- construct a minimal one. pullSandboxImage
-	// uses StartSpinner -> Error/Success which requires a *ui.UI. Use a
-	// discard writer so the test doesn't spam stdout.
-	err := pullSandboxImage(ctx, info, state, discardUI(t))
+	err := dockerPullWithRetry(ctx, info, "fake-image:latest", sandboxPullAttempts)
 	elapsed := time.Since(start)
 
 	if err == nil {
 		t.Fatal("expected error when docker binary is missing")
-	}
-	if !strings.Contains(err.Error(), "pulling sandbox image") {
-		t.Errorf("error message missing context prefix: %v", err)
 	}
 	// With attempts=3 and base backoff 5ms, expected waits are ~5ms + ~10ms = ~15ms.
 	// Allow generous slack for scheduling.

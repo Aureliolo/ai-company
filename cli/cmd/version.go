@@ -23,8 +23,13 @@ var versionCmd = &cobra.Command{
 		opts := GetGlobalOpts(cmd.Context())
 		out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
 		out.Logo(version.Version)
-		out.KeyValue("Commit", version.Commit)
-		out.KeyValue("Built", version.Date)
+
+		lines := []string{
+			fmt.Sprintf("Commit    %s", shortCommit(version.Commit)),
+			fmt.Sprintf("Built     %s", version.Date),
+		}
+		out.Box("Build", lines)
+		out.Blank()
 		out.HintGuidance("Run 'synthorg update --check' to check for newer versions.")
 		return nil
 	},
@@ -34,4 +39,12 @@ func init() {
 	versionCmd.Flags().BoolVar(&versionShort, "short", false, "print version number only")
 	versionCmd.GroupID = "diagnostics"
 	rootCmd.AddCommand(versionCmd)
+}
+
+// shortCommit truncates a full commit hash to 7 characters for display.
+func shortCommit(hash string) string {
+	if len(hash) > 7 {
+		return hash[:7]
+	}
+	return hash
 }
