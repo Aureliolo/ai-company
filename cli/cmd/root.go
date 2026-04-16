@@ -112,7 +112,7 @@ func setupGlobalOpts(cmd *cobra.Command) error {
 		return fmt.Errorf("invalid hints mode %q: must be always, auto, or never", opts.Hints)
 	}
 
-	if err := applyTunables(opts); err != nil {
+	if err := applyTunables(cmd, opts); err != nil {
 		return err
 	}
 
@@ -124,7 +124,16 @@ func setupGlobalOpts(cmd *cobra.Command) error {
 // default) and seeds every consumer package that reads them from a
 // package-level variable. Consumers are Configure()d exactly once per
 // CLI invocation so later goroutines can read without locking.
-func applyTunables(opts *GlobalOpts) error {
+//
+// When the resolved tunables point at a custom registry or image tag
+// (CustomRegistry=true) this function also forces SkipVerify and emits
+// a loud one-shot warning. The pinned DHI digests and the sigstore SAN
+// regex are both bound to the default registry+tags, so image signature
+// and SLSA provenance verification cannot succeed against a user-chosen
+// deployment target. The operator explicitly opted into that deployment
+// by setting the override, so the CLI does not refuse to run; it simply
+// transfers trust to the operator and makes the trade-off visible.
+func applyTunables(cmd *cobra.Command, opts *GlobalOpts) error {
 	state, _ := config.Load(opts.DataDir)
 	tun, err := config.ResolveTunables(state)
 	if err != nil {
@@ -142,6 +151,19 @@ func applyTunables(opts *GlobalOpts) error {
 		tun.SelfUpdateHTTPTimeout, tun.SelfUpdateAPITimeout, tun.TUFFetchTimeout,
 	)
 	health.Configure(tun.HealthCheckTimeout)
+
+	if tun.CustomRegistry {
+		opts.SkipVerify = true
+		if !opts.Quiet {
+			warnOut := ui.NewUIWithOptions(cmd.ErrOrStderr(), opts.UIOptions())
+			warnOut.Warn(
+				"Custom registry detected (registry_host/image_repo_prefix/dhi_registry/" +
+					"postgres_image_tag/nats_image_tag differs from default). Image signature " +
+					"and SLSA provenance verification are DISABLED -- you are responsible for " +
+					"the trust of this deployment. Unset the override or run " +
+					"'synthorg config unset <key>' to restore verification.")
+		}
+	}
 	return nil
 }
 
