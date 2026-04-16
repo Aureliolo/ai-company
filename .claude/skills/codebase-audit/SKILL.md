@@ -871,8 +871,8 @@ Severity: medium for jarring inconsistencies, low for minor.
 **Agent 68 -- ux-responsiveness** (sonnet)
 File: `_audit/findings/68-ux-responsiveness.md`
 ```text
-Check dashboard for responsive design issues. The dashboard has a
-MobileUnsupportedOverlay at 768px, but check for:
+Check dashboard for responsive design issues. The dashboard shows a
+MobileUnsupportedOverlay below the 768px breakpoint, but check for:
 - Content overflow or horizontal scrolling on narrow screens (768-1024px)
 - Tables that don't adapt (no horizontal scroll wrapper)
 - Fixed-width layouts that don't flex
