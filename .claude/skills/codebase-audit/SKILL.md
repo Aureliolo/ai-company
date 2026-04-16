@@ -26,10 +26,10 @@ Launch 75 specialized agents to audit the entire codebase (or a targeted scope),
 | Argument | Directories | Agent Waves |
 |----------|-------------|-------------|
 | `full` (default) | All | All 13 waves (75 agents) |
-| `src/` | `src/synthorg/`, `tests/`, `web/src/types/`, `docs/design/` | 01-08, 11-16, 20-45, 51-54 |
-| `web/` | `web/src/`, `src/synthorg/api/controllers/` | 09-10, 15, 17-19, 33, 36, 46-50 |
-| `cli/` | `cli/` | 22, 33, 55-58 |
-| `docs/` | `docs/`, `site/`, `src/synthorg/` | 22, 25, 54 |
+| `src/` | `src/synthorg/`, `tests/`, `web/src/types/`, `docs/design/` | 01-08, 11-16, 20-45, 51-54, 60, 62-63 |
+| `web/` | `web/src/`, `src/synthorg/api/controllers/` | 09-10, 15, 17-19, 33, 36, 46-50, 59-61, 67-69, 72-74 |
+| `cli/` | `cli/` | 22, 33, 55-58, 71 |
+| `docs/` | `docs/`, `site/`, `src/synthorg/` | 22, 25, 54, 62-66, 70, 75 |
 
 Flags:
 - `--report-only` -- skip issue creation, findings files only
@@ -761,7 +761,7 @@ the backend but have no corresponding UI surface. Severity: medium.
 **Agent 60 -- dashboard-settings-completeness** (sonnet)
 File: `_audit/findings/60-dashboard-settings-completeness.md`
 ```text
-Cross-reference every setting definition in settings/definitions/ with the
+Cross-reference every setting definition in src/synthorg/settings/definitions/ with the
 Settings page in the dashboard (web/src/pages/settings/). For each setting,
 check whether it is editable/visible in the UI. Also check ConfigDict fields
 in src/synthorg/config/ that are user-facing but have no settings UI.
@@ -957,7 +957,7 @@ Check the setup wizard and first-run experience:
 - Missing progress indicators during setup operations
 - Post-setup state that leaves features half-configured
 - Missing guidance on what to do after setup completes
-Check web/src/pages/setup/ and api/controllers/setup.py.
+Check web/src/pages/setup/ and src/synthorg/api/controllers/setup.py.
 Severity: medium.
 ```
 
