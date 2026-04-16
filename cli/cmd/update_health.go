@@ -11,6 +11,7 @@ import (
 	"github.com/Aureliolo/synthorg/cli/internal/docker"
 	"github.com/Aureliolo/synthorg/cli/internal/images"
 	"github.com/Aureliolo/synthorg/cli/internal/ui"
+	"github.com/Aureliolo/synthorg/cli/internal/version"
 	"github.com/spf13/cobra"
 )
 
@@ -80,7 +81,11 @@ func detectInstallationIssues(ctx context.Context, state config.State) (corrupti
 		corruption = append(corruption, "compose.yml is missing")
 	}
 
-	if state.ImageTag != "" {
+	// Only check for missing images when we're re-verifying the same tag
+	// the user already has. During a version upgrade, missing old-version
+	// images are expected (they're about to be replaced) and the warning
+	// is noise -- the pull will fix the install regardless.
+	if state.ImageTag != "" && state.ImageTag == targetImageTag(version.Version) {
 		// Use a shorter timeout for health check Docker calls to avoid
 		// blocking the update flow if Docker is unresponsive.
 		healthCtx, cancel := context.WithTimeout(ctx, 15*time.Second)

@@ -468,6 +468,12 @@ func captureImageIDsForCleanup(ctx context.Context, cmd *cobra.Command, info doc
 	}
 	ids, err := collectCurrentImageIDs(ctx, info, state)
 	if err != nil {
+		if errors.Is(err, errImageNotLocal) {
+			// Previous-version images were never fully on disk (partial
+			// install, fresh machine, etc.) -- nothing to capture. This
+			// is the common case on a first real update; not a warning.
+			return nil
+		}
 		_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
 			"Warning: could not capture previous image IDs for auto-cleanup: %v\n", err)
 		return nil

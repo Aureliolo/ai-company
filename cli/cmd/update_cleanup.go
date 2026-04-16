@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -14,6 +15,11 @@ import (
 	"github.com/Aureliolo/synthorg/cli/internal/ui"
 	"github.com/spf13/cobra"
 )
+
+// errImageNotLocal signals that a service image is not present in the local
+// Docker daemon. This is expected during an upgrade whose previous version
+// was never fully pulled, and should not surface as a user-visible error.
+var errImageNotLocal = errors.New("image not present locally")
 
 // oldImage holds display info, Docker ID, and raw size for a non-current
 // SynthOrg image.
@@ -41,6 +47,11 @@ func autoCleanupOldImages(cmd *cobra.Command, info docker.Info, state config.Sta
 	// Build the keep set: current IDs (just pulled) + previous IDs.
 	currentIDs, err := collectCurrentImageIDs(ctx, info, state)
 	if err != nil {
+		if errors.Is(err, errImageNotLocal) {
+			// Current-version images not yet on disk means there is
+			// nothing to protect during cleanup; just skip silently.
+			return
+		}
 		_, _ = fmt.Fprintf(errOut, "Warning: could not determine current image IDs, skipping auto-cleanup: %v\n", err)
 		return
 	}
@@ -134,6 +145,10 @@ func hintOldImages(cmd *cobra.Command, info docker.Info, state config.State) {
 func findOldImages(ctx context.Context, errOut io.Writer, info docker.Info, state config.State) ([]oldImage, error) {
 	currentIDs, err := collectCurrentImageIDs(ctx, info, state)
 	if err != nil {
+		if errors.Is(err, errImageNotLocal) {
+			// Nothing to compare against; treat as "no old images" silently.
+			return nil, err
+		}
 		_, _ = fmt.Fprintf(errOut, "Note: could not determine current image IDs, skipping cleanup: %v\n", err)
 		return nil, err
 	}
@@ -226,6 +241,9 @@ func collectCurrentImageIDs(ctx context.Context, info docker.Info, state config.
 		ref := images.RefForService(svc, state.ImageTag, verifiedDigests)
 		id, err := images.InspectID(ctx, info.DockerPath, ref)
 		if err != nil {
+			if isNoSuchImageError(err) {
+				return nil, fmt.Errorf("resolving %s: %w", svc, errImageNotLocal)
+			}
 			return nil, fmt.Errorf("resolving image ID for %s: %w", svc, err)
 		}
 		if id == "" {
