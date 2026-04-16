@@ -6,36 +6,12 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { MetricCard } from '@/components/ui/metric-card'
 import { FlaskConical } from 'lucide-react'
 
-/** Metrics for a single A/B test group (control or treatment). */
-export interface ABTestGroupMetrics {
-  group: 'control' | 'treatment'
-  agentCount: number
-  observationCount: number
-  avgQualityScore: number
-  avgSuccessRate: number
-  totalSpendUsd: number
-}
+import type { ABTestSummary } from '@/api/endpoints/meta'
 
-/** A/B test verdict from the comparator. */
-export type ABTestVerdict =
-  | 'treatment_wins'
-  | 'control_wins'
-  | 'inconclusive'
-  | 'treatment_regressed'
-
-/** Summary of an active A/B test. */
-export interface ABTestSummary {
-  proposalId: string
-  proposalTitle: string
-  controlMetrics: ABTestGroupMetrics
-  treatmentMetrics: ABTestGroupMetrics
-  verdict: ABTestVerdict | null
-  observationHoursElapsed: number
-  observationHoursTotal: number
-}
+type ABTestVerdict = NonNullable<ABTestSummary['verdict']>
 
 interface MetaABTestViewProps {
-  tests: ABTestSummary[]
+  tests: readonly ABTestSummary[]
 }
 
 const verdictLabels: Record<ABTestVerdict, string> = {

@@ -1,22 +1,62 @@
-import { Brain, FlaskConical, RefreshCw, Settings2, Shield } from 'lucide-react'
+import {
+  Brain,
+  FlaskConical,
+  MessageCircle,
+  RefreshCw,
+  Settings2,
+  Shield,
+} from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { MetricCard } from '@/components/ui/metric-card'
 import { SectionCard } from '@/components/ui/section-card'
+import {
+  SkeletonCard,
+  SkeletonMetric,
+} from '@/components/ui/skeleton'
+import { useMetaData } from '@/hooks/useMetaData'
 
-import { MetaABTestView, type ABTestSummary } from './meta/MetaABTestView'
-import { MetaProposalList, type ProposalSummary } from './meta/MetaProposalList'
+import { MetaABTestView } from './meta/MetaABTestView'
+import { MetaChat } from './meta/MetaChat'
+import { MetaProposalList } from './meta/MetaProposalList'
 import { MetaRuleStatus } from './meta/MetaRuleStatus'
 import { MetaSignalOverview } from './meta/MetaSignalOverview'
 
 export default function MetaPage() {
-  // Placeholder: real implementation wires up useMetaData() hook.
-  const loading = false
-  const enabled = false
-  const proposals: ProposalSummary[] = []
-  const abTests: ABTestSummary[] = []
+  const { config, proposals, abTests, signals, loading, error } =
+    useMetaData()
+
+  if (loading && config === null) {
+    return (
+      <div className="mx-auto max-w-7xl space-y-section-gap p-card">
+        <div className="grid grid-cols-1 gap-grid-gap md:grid-cols-3">
+          <SkeletonMetric />
+          <SkeletonMetric />
+          <SkeletonMetric />
+        </div>
+        <div className="grid grid-cols-1 gap-grid-gap lg:grid-cols-2">
+          <SkeletonCard />
+          <SkeletonCard />
+        </div>
+      </div>
+    )
+  }
+
+  if (error && config === null) {
+    return (
+      <div className="mx-auto max-w-7xl p-card">
+        <EmptyState
+          icon={Brain}
+          title="Failed to Load"
+          description={`Could not load meta-loop data: ${error}`}
+        />
+      </div>
+    )
+  }
+
+  const enabled = config?.enabled ?? false
 
   if (!enabled) {
     return (
@@ -29,6 +69,13 @@ export default function MetaPage() {
       </div>
     )
   }
+
+  const pendingCount = proposals.filter(
+    (p) => p.status === 'pending',
+  ).length
+  const activeRollouts = proposals.filter(
+    (p) => p.status === 'applying',
+  ).length
 
   return (
     <ErrorBoundary level="page">
@@ -49,14 +96,20 @@ export default function MetaPage() {
         </header>
 
         <div className="grid grid-cols-1 gap-grid-gap md:grid-cols-3">
-          <MetricCard label="Pending Proposals" value={proposals.length} />
-          <MetricCard label="Active Rollouts" value={0} />
-          <MetricCard label="Rules Firing" value={0} />
+          <MetricCard label="Pending Proposals" value={pendingCount} />
+          <MetricCard
+            label="Active Rollouts"
+            value={activeRollouts}
+          />
+          <MetricCard
+            label="Signal Domains"
+            value={signals?.domains.length ?? 0}
+          />
         </div>
 
         <div className="grid grid-cols-1 gap-grid-gap lg:grid-cols-2">
           <SectionCard title="Signal Overview" icon={Settings2}>
-            <MetaSignalOverview />
+            <MetaSignalOverview signals={signals} />
           </SectionCard>
 
           <SectionCard title="Rule Status" icon={Shield}>
@@ -70,6 +123,10 @@ export default function MetaPage() {
 
         <SectionCard title="Improvement Proposals" icon={Brain}>
           <MetaProposalList proposals={proposals} />
+        </SectionCard>
+
+        <SectionCard title="Chief of Staff" icon={MessageCircle}>
+          <MetaChat />
         </SectionCard>
       </div>
     </ErrorBoundary>
