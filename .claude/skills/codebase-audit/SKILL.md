@@ -25,7 +25,7 @@ Launch 75 specialized agents to audit the entire codebase (or a targeted scope),
 
 | Argument | Directories | Agent Waves |
 |----------|-------------|-------------|
-| `full` (default) | All | All 10 waves (58 agents) |
+| `full` (default) | All | All 13 waves (75 agents) |
 | `src/` | `src/synthorg/`, `tests/`, `web/src/types/`, `docs/design/` | 01-08, 11-16, 20-45, 51-54 |
 | `web/` | `web/src/`, `src/synthorg/api/controllers/` | 09-10, 15, 17-19, 33, 36, 46-50 |
 | `cli/` | `cli/` | 22, 33, 55-58 |
@@ -142,7 +142,7 @@ Rules:
 
 ### Batch Execution
 
-Launch agents in 6 batches of ~10 each. All agents within a batch run in parallel (`run_in_background: true`). Wait for each batch to complete before launching the next.
+Launch agents in 8 batches of ~10 each. All agents within a batch run in parallel (`run_in_background: true`). Wait for each batch to complete before launching the next.
 
 | Batch | Agent #s | Count |
 |-------|----------|-------|
@@ -155,7 +155,7 @@ Launch agents in 6 batches of ~10 each. All agents within a batch run in paralle
 | G | 59-65 | 7 |
 | H | 66-75 | 10 |
 
-Report to user after each batch: "Batch X complete (N/58 agents done)."
+Report to user after each batch: "Batch X complete (N/75 agents done)."
 
 ---
 
@@ -979,7 +979,7 @@ Severity: low.
 
 **Required for standard runs.** For `--quick` runs or when fewer than 5 critical+high findings exist, validation may be skipped.
 
-After all launched audit agents complete, launch validation agents to verify findings. The number of agents depends on scope (58 for `full`, fewer for scoped runs).
+After all launched audit agents complete, launch validation agents to verify findings. The number of agents depends on scope (75 for `full`, fewer for scoped runs).
 
 ### Process
 
