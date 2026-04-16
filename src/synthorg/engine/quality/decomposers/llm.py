@@ -13,8 +13,10 @@ server-side (never taken from the model).
 """
 
 import json
-from typing import TYPE_CHECKING, Any, Final
+from typing import Any, Final
 
+from synthorg.core.task import AcceptanceCriterion  # noqa: TC001
+from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.quality.verification import AtomicProbe
 from synthorg.observability import get_logger
 from synthorg.observability.events.verification import (
@@ -29,11 +31,7 @@ from synthorg.providers.models import (
     CompletionConfig,
     ToolDefinition,
 )
-
-if TYPE_CHECKING:
-    from synthorg.core.task import AcceptanceCriterion
-    from synthorg.core.types import NotBlankStr
-    from synthorg.providers.protocol import CompletionProvider
+from synthorg.providers.protocol import CompletionProvider  # noqa: TC001
 
 logger = get_logger(__name__)
 

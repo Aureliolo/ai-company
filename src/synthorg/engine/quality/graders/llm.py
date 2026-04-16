@@ -17,12 +17,16 @@ import json
 import math
 from collections.abc import Mapping
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, Final
+from typing import Any, Final
 
+from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.quality.verification import (
+    AtomicProbe,
     VerificationResult,
+    VerificationRubric,
     VerificationVerdict,
 )
+from synthorg.engine.workflow.handoff import HandoffArtifact  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.verification import (
     VERIFICATION_GRADER_CONFIG_INVALID,
@@ -39,16 +43,8 @@ from synthorg.providers.models import (
     CompletionConfig,
     ToolDefinition,
 )
+from synthorg.providers.protocol import CompletionProvider  # noqa: TC001
 from synthorg.providers.resilience.errors import RetryExhaustedError
-
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
-    from synthorg.engine.quality.verification import (
-        AtomicProbe,
-        VerificationRubric,
-    )
-    from synthorg.engine.workflow.handoff import HandoffArtifact
-    from synthorg.providers.protocol import CompletionProvider
 
 logger = get_logger(__name__)
 
@@ -91,6 +87,68 @@ _GRADER_SYSTEM_PROMPT: Final[str] = (
 )
 _MAX_PAYLOAD_CHARS: Final[int] = 16_000
 _DEFAULT_MAX_TOKENS: Final[int] = 2048
+_GRADER_TOOL_REQUIRED_KEYS: Final[frozenset[str]] = frozenset(
+    _GRADER_TOOL_SCHEMA["required"],
+)
+
+
+def _render_rubric_block(rubric: VerificationRubric) -> dict[str, Any]:
+    """Serialize rubric criteria + calibration examples for the prompt."""
+    calibration = [
+        {
+            "artifact_summary": ex.artifact_summary,
+            "expected_verdict": ex.expected_verdict.value,
+            "rationale": ex.rationale,
+            "expected_grades": (
+                dict(ex.expected_grades) if ex.expected_grades is not None else None
+            ),
+        }
+        for ex in rubric.calibration_examples
+    ]
+    return {
+        "name": rubric.name,
+        "min_confidence": rubric.min_confidence,
+        "criteria": [
+            {
+                "name": c.name,
+                "description": c.description,
+                "weight": c.weight,
+                "grade_type": c.grade_type.value,
+            }
+            for c in rubric.criteria
+        ],
+        "calibration_examples": calibration,
+    }
+
+
+def _render_probes_block(
+    probes: tuple[AtomicProbe, ...],
+) -> list[dict[str, Any]]:
+    """Serialize probes for the prompt."""
+    return [
+        {
+            "id": p.id,
+            "probe_text": p.probe_text,
+            "source_criterion": p.source_criterion,
+        }
+        for p in probes
+    ]
+
+
+def _render_artifact_block(
+    artifact: HandoffArtifact,
+    *,
+    payload_text: str,
+) -> dict[str, Any]:
+    """Serialize the artifact metadata + (possibly truncated) payload."""
+    return {
+        "from_agent_id": artifact.from_agent_id,
+        "to_agent_id": artifact.to_agent_id,
+        "from_stage": artifact.from_stage,
+        "to_stage": artifact.to_stage,
+        "artifact_refs": list(artifact.artifact_refs),
+        "payload": payload_text,
+    }
 
 
 def _build_instructions(
@@ -182,9 +240,55 @@ class LLMRubricGrader:
             grader=self.name,
             probe_count=len(probes),
         )
+        messages = self._prepare_messages(
+            artifact=artifact,
+            rubric=rubric,
+            probes=probes,
+            generator_agent_id=generator_agent_id,
+            evaluator_agent_id=evaluator_agent_id,
+        )
+        response = await self._call_grader_tool(
+            messages=messages,
+            rubric=rubric,
+            probes=probes,
+            generator_agent_id=generator_agent_id,
+            evaluator_agent_id=evaluator_agent_id,
+        )
+        tool_call_or_reason = self._locate_tool_call(response)
+        if isinstance(tool_call_or_reason, str):
+            return self._refer(
+                rubric=rubric,
+                generator_agent_id=generator_agent_id,
+                evaluator_agent_id=evaluator_agent_id,
+                reason=tool_call_or_reason,
+            )
+        interpreted = self._interpret_tool_call(tool_call_or_reason, rubric)
+        if isinstance(interpreted, str):
+            return self._refer(
+                rubric=rubric,
+                generator_agent_id=generator_agent_id,
+                evaluator_agent_id=evaluator_agent_id,
+                reason=interpreted,
+            )
+        return self._assemble_result(
+            interpreted,
+            rubric=rubric,
+            generator_agent_id=generator_agent_id,
+            evaluator_agent_id=evaluator_agent_id,
+        )
 
+    def _prepare_messages(
+        self,
+        *,
+        artifact: HandoffArtifact,
+        rubric: VerificationRubric,
+        probes: tuple[AtomicProbe, ...],
+        generator_agent_id: NotBlankStr,
+        evaluator_agent_id: NotBlankStr,
+    ) -> list[ChatMessage]:
+        """Build grader messages; log + re-raise on envelope failure."""
         try:
-            messages = self._build_messages(
+            return self._build_messages(
                 artifact=artifact,
                 rubric=rubric,
                 probes=probes,
@@ -204,33 +308,22 @@ class LLMRubricGrader:
                 stage="build_messages",
             )
             raise
-        response = await self._call_grader_tool(
-            messages=messages,
-            rubric=rubric,
-            probes=probes,
-            generator_agent_id=generator_agent_id,
-            evaluator_agent_id=evaluator_agent_id,
-        )
 
-        tool_call_or_reason = self._locate_tool_call(response)
-        if isinstance(tool_call_or_reason, str):
-            return self._refer(
-                rubric=rubric,
-                generator_agent_id=generator_agent_id,
-                evaluator_agent_id=evaluator_agent_id,
-                reason=tool_call_or_reason,
-            )
-
-        interpreted = self._interpret_tool_call(tool_call_or_reason, rubric)
-        if isinstance(interpreted, str):
-            return self._refer(
-                rubric=rubric,
-                generator_agent_id=generator_agent_id,
-                evaluator_agent_id=evaluator_agent_id,
-                reason=interpreted,
-            )
+    def _assemble_result(
+        self,
+        interpreted: tuple[
+            Mapping[str, float],
+            VerificationVerdict,
+            float,
+            tuple[str, ...],
+        ],
+        *,
+        rubric: VerificationRubric,
+        generator_agent_id: NotBlankStr,
+        evaluator_agent_id: NotBlankStr,
+    ) -> VerificationResult:
+        """Build the ``VerificationResult`` + emit the completion event."""
         per_criterion_grades, verdict, confidence, findings = interpreted
-
         result = VerificationResult(
             verdict=verdict,
             confidence=confidence,
@@ -442,58 +535,15 @@ class LLMRubricGrader:
         rubric: VerificationRubric,
         probes: tuple[AtomicProbe, ...],
     ) -> dict[str, Any]:
-        """Render the prompt envelope (rubric / calibration / probes / artifact).
-
-        Handles oversize artifact payload truncation and emits the
-        ``VERIFICATION_GRADER_PAYLOAD_TRUNCATED`` warning so the LLM
-        can see (and ``refer`` on) truncated inputs.
-        """
+        """Render the prompt envelope (rubric / calibration / probes / artifact)."""
         payload_text, payload_truncated, original_len = self._prepare_payload_text(
             artifact=artifact,
             rubric=rubric,
         )
-        calibration = [
-            {
-                "artifact_summary": ex.artifact_summary,
-                "expected_verdict": ex.expected_verdict.value,
-                "rationale": ex.rationale,
-                "expected_grades": (
-                    dict(ex.expected_grades) if ex.expected_grades is not None else None
-                ),
-            }
-            for ex in rubric.calibration_examples
-        ]
         return {
-            "rubric": {
-                "name": rubric.name,
-                "min_confidence": rubric.min_confidence,
-                "criteria": [
-                    {
-                        "name": c.name,
-                        "description": c.description,
-                        "weight": c.weight,
-                        "grade_type": c.grade_type.value,
-                    }
-                    for c in rubric.criteria
-                ],
-                "calibration_examples": calibration,
-            },
-            "probes": [
-                {
-                    "id": p.id,
-                    "probe_text": p.probe_text,
-                    "source_criterion": p.source_criterion,
-                }
-                for p in probes
-            ],
-            "artifact": {
-                "from_agent_id": artifact.from_agent_id,
-                "to_agent_id": artifact.to_agent_id,
-                "from_stage": artifact.from_stage,
-                "to_stage": artifact.to_stage,
-                "artifact_refs": list(artifact.artifact_refs),
-                "payload": payload_text,
-            },
+            "rubric": _render_rubric_block(rubric),
+            "probes": _render_probes_block(probes),
+            "artifact": _render_artifact_block(artifact, payload_text=payload_text),
             "instructions": _build_instructions(
                 payload_truncated=payload_truncated,
                 original_len=original_len,
@@ -521,7 +571,7 @@ class LLMRubricGrader:
             payload_text = payload_text[:_MAX_PAYLOAD_CHARS]
         return payload_text, payload_truncated, original_len
 
-    def _parse_tool_arguments(
+    def _parse_tool_arguments(  # noqa: PLR0911
         self,
         arguments: Mapping[str, Any],
         *,
@@ -529,27 +579,41 @@ class LLMRubricGrader:
     ) -> tuple[dict[str, float], VerificationVerdict, float, tuple[str, ...]] | str:
         """Parse and validate the tool call arguments.
 
-        Returns the parsed tuple on success or a reason string on failure.
+        Enforces ``_GRADER_TOOL_SCHEMA`` at the system boundary:
+
+        * every ``required`` key must be present (no implicit defaults),
+        * ``additionalProperties=False`` is enforced (reject unknown keys),
+
+        before delegating to the per-field parsers.  Returns the parsed
+        tuple on success or a reason string on failure.
         """
+        actual = set(arguments.keys())
+        extra = actual - _GRADER_TOOL_REQUIRED_KEYS
+        if extra:
+            return f"unexpected keys in tool arguments: {sorted(extra)!r}"
+        missing = _GRADER_TOOL_REQUIRED_KEYS - actual
+        if missing:
+            return f"missing required keys in tool arguments: {sorted(missing)!r}"
+
         grades_or_reason = _parse_grades(
-            arguments.get("per_criterion_grades"),
+            arguments["per_criterion_grades"],
             rubric=rubric,
         )
         if not isinstance(grades_or_reason, dict):
             return grades_or_reason
         grades = grades_or_reason
 
-        verdict_or_reason = _parse_verdict(arguments.get("verdict"))
+        verdict_or_reason = _parse_verdict(arguments["verdict"])
         if not isinstance(verdict_or_reason, VerificationVerdict):
             return verdict_or_reason
         verdict = verdict_or_reason
 
-        confidence_or_reason = _parse_confidence(arguments.get("confidence"))
+        confidence_or_reason = _parse_confidence(arguments["confidence"])
         if isinstance(confidence_or_reason, str):
             return confidence_or_reason
         confidence = float(confidence_or_reason)
 
-        findings_or_reason = _parse_findings(arguments.get("findings", []))
+        findings_or_reason = _parse_findings(arguments["findings"])
         if not isinstance(findings_or_reason, tuple):
             return findings_or_reason
         findings = findings_or_reason

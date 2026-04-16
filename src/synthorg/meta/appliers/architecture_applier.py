@@ -214,11 +214,25 @@ class ArchitectureApplier:
     ) -> ApplyResult:
         """Apply architecture changes from the proposal.
 
+        .. warning::
+            Registry mutation is **not** implemented here.  This PR
+            (:github:issue:`1381`) ships the ``dry_run`` validator; the
+            mutating ``apply`` path still needs a mutation protocol on
+            ``ArchitectureApplierContext`` and a transactional registry
+            writer -- tracked separately.  For now ``apply()`` counts
+            the changes and logs ``META_APPLY_COMPLETED`` so the
+            meta-loop's bookkeeping stays consistent with the other
+            appliers (config / prompt) that follow the same pattern.
+            Callers that need real state changes must not rely on this
+            method yet.
+
         Args:
             proposal: The approved architecture proposal.
 
         Returns:
-            Result indicating success or failure.
+            Result indicating the count of changes "applied" and,
+            until real apply lands, ``success=True`` with no side
+            effects.  Raises only ``MemoryError`` / ``RecursionError``.
         """
         try:
             count = len(proposal.architecture_changes)
@@ -227,6 +241,7 @@ class ArchitectureApplier:
                 altitude="architecture",
                 changes=count,
                 proposal_id=str(proposal.id),
+                note="registry mutation not yet implemented",
             )
             return ApplyResult(success=True, changes_applied=count)
         except MemoryError, RecursionError:
