@@ -131,16 +131,11 @@ class TestHeuristicGraderBehavior:
 
 @pytest.mark.unit
 class TestLLMGraderBehavior:
-    async def test_grade_raises_not_implemented(self) -> None:
-        grader = LLMRubricGrader()
-        with pytest.raises(NotImplementedError, match="LLM-based"):
-            await grader.grade(
-                artifact=_artifact(),
-                rubric=_rubric(),
-                probes=(_probe(),),
-                generator_agent_id="gen-agent",
-                evaluator_agent_id="eval-agent",
-            )
-
     async def test_name_property(self) -> None:
-        assert LLMRubricGrader().name == "llm"
+        from tests.unit.providers.conftest import FakeProvider
+
+        grader = LLMRubricGrader(
+            provider=FakeProvider(),
+            model_id="test-medium-001",
+        )
+        assert grader.name == "llm"

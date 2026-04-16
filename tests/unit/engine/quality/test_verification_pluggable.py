@@ -26,8 +26,14 @@ from synthorg.engine.quality.verification_factory import (
     build_decomposer,
     build_grader,
 )
+from tests.unit.providers.conftest import FakeProvider
 
-# ── Protocol conformance ────────────────────────────────────────
+
+def _tier_resolver(tier: str) -> str:
+    return f"test-{tier}-001"
+
+
+# -- Protocol conformance ----------------------------------------
 
 
 @pytest.mark.unit
@@ -36,16 +42,24 @@ class TestProtocolConformance:
         assert isinstance(IdentityCriteriaDecomposer(), CriteriaDecomposer)
 
     def test_llm_decomposer_is_criteria_decomposer(self) -> None:
-        assert isinstance(LLMCriteriaDecomposer(), CriteriaDecomposer)
+        decomposer = LLMCriteriaDecomposer(
+            provider=FakeProvider(),
+            model_id="test-medium-001",
+        )
+        assert isinstance(decomposer, CriteriaDecomposer)
 
     def test_heuristic_grader_is_rubric_grader(self) -> None:
         assert isinstance(HeuristicRubricGrader(), RubricGrader)
 
     def test_llm_grader_is_rubric_grader(self) -> None:
-        assert isinstance(LLMRubricGrader(), RubricGrader)
+        grader = LLMRubricGrader(
+            provider=FakeProvider(),
+            model_id="test-medium-001",
+        )
+        assert isinstance(grader, RubricGrader)
 
 
-# ── Factory ─────────────────────────────────────────────────────
+# -- Factory -----------------------------------------------------
 
 
 @pytest.mark.unit
@@ -56,10 +70,28 @@ class TestFactory:
         assert isinstance(d, IdentityCriteriaDecomposer)
         assert d.name == "identity"
 
-    def test_build_llm_decomposer_rejected(self) -> None:
+    def test_build_llm_decomposer_requires_provider(self) -> None:
         cfg = VerificationConfig(decomposer=DecomposerVariant.LLM)
-        with pytest.raises(ValueError, match="Unknown decomposer"):
+        with pytest.raises(ValueError, match="LLM decomposer requires"):
             build_decomposer(cfg)
+
+    def test_build_llm_decomposer_requires_tier_resolver(self) -> None:
+        cfg = VerificationConfig(decomposer=DecomposerVariant.LLM)
+        with pytest.raises(ValueError, match="LLM decomposer requires"):
+            build_decomposer(cfg, provider=FakeProvider())
+
+    def test_build_llm_decomposer_with_dependencies(self) -> None:
+        cfg = VerificationConfig(
+            decomposer=DecomposerVariant.LLM,
+            max_probes_per_criterion=7,
+        )
+        d = build_decomposer(
+            cfg,
+            provider=FakeProvider(),
+            tier_resolver=_tier_resolver,
+        )
+        assert isinstance(d, LLMCriteriaDecomposer)
+        assert d.name == "llm"
 
     def test_build_heuristic_grader(self) -> None:
         cfg = VerificationConfig(grader=GraderVariant.HEURISTIC)
@@ -67,10 +99,28 @@ class TestFactory:
         assert isinstance(g, HeuristicRubricGrader)
         assert g.name == "heuristic"
 
-    def test_build_llm_grader_rejected(self) -> None:
+    def test_build_llm_grader_requires_provider(self) -> None:
         cfg = VerificationConfig(grader=GraderVariant.LLM)
-        with pytest.raises(ValueError, match="Unknown grader"):
+        with pytest.raises(ValueError, match="LLM grader requires"):
             build_grader(cfg)
+
+    def test_build_llm_grader_requires_tier_resolver(self) -> None:
+        cfg = VerificationConfig(grader=GraderVariant.LLM)
+        with pytest.raises(ValueError, match="LLM grader requires"):
+            build_grader(cfg, provider=FakeProvider())
+
+    def test_build_llm_grader_with_dependencies(self) -> None:
+        cfg = VerificationConfig(
+            grader=GraderVariant.LLM,
+            min_confidence_override=0.8,
+        )
+        g = build_grader(
+            cfg,
+            provider=FakeProvider(),
+            tier_resolver=_tier_resolver,
+        )
+        assert isinstance(g, LLMRubricGrader)
+        assert g.name == "llm"
 
     def test_each_build_produces_fresh_instance(self) -> None:
         cfg = VerificationConfig(decomposer=DecomposerVariant.IDENTITY)
@@ -79,7 +129,7 @@ class TestFactory:
         assert d1 is not d2
 
 
-# ── Config ──────────────────────────────────────────────────────
+# -- Config ------------------------------------------------------
 
 
 @pytest.mark.unit
@@ -106,7 +156,7 @@ class TestVerificationConfig:
         assert restored == cfg
 
 
-# ── Rubric catalog ──────────────────────────────────────────────
+# -- Rubric catalog ----------------------------------------------
 
 
 @pytest.mark.unit
