@@ -1,0 +1,124 @@
+"""Cross-deployment analytics API controller.
+
+Provides endpoints for event ingestion (collector role),
+pattern querying, and threshold recommendations.
+"""
+
+from typing import Any
+
+from litestar import Controller, get, post
+
+from synthorg.api.dto import ApiResponse
+from synthorg.api.errors import ServiceUnavailableError
+from synthorg.api.guards import require_read_access
+from synthorg.meta.telemetry.collector import InMemoryAnalyticsCollector  # noqa: TC001
+from synthorg.meta.telemetry.models import EventBatch  # noqa: TC001
+from synthorg.meta.telemetry.recommender import (
+    DefaultThresholdRecommender,  # noqa: TC001
+)
+from synthorg.observability import get_logger
+
+logger = get_logger(__name__)
+
+# Module-level singleton instances.
+# Created lazily by the app startup hook; None when collector is disabled.
+_collector: InMemoryAnalyticsCollector | None = None
+_recommender: DefaultThresholdRecommender | None = None
+
+
+def configure_analytics_controller(
+    collector: InMemoryAnalyticsCollector | None,
+    recommender: DefaultThresholdRecommender | None,
+) -> None:
+    """Configure the analytics controller with collector and recommender.
+
+    Called during app startup when the collector role is enabled.
+
+    Args:
+        collector: Collector instance, or None if disabled.
+        recommender: Recommender instance, or None if disabled.
+    """
+    global _collector, _recommender  # noqa: PLW0603
+    _collector = collector
+    _recommender = recommender
+
+
+def _require_collector() -> InMemoryAnalyticsCollector:
+    """Get the collector or raise ServiceUnavailableError."""
+    if _collector is None:
+        msg = "Cross-deployment analytics collector is not enabled"
+        raise ServiceUnavailableError(msg)
+    return _collector
+
+
+class MetaAnalyticsController(Controller):
+    """Cross-deployment analytics API endpoints.
+
+    Provides event ingestion for the collector role and
+    pattern/recommendation queries.
+    """
+
+    path = "/meta/analytics"
+    tags = ["meta-analytics"]  # noqa: RUF012
+    guards = [require_read_access]  # noqa: RUF012
+
+    @post("/events")
+    async def ingest_events(
+        self,
+        data: EventBatch,
+    ) -> ApiResponse[dict[str, int]]:
+        """Ingest a batch of anonymized outcome events.
+
+        Only available when ``collector_enabled=True``.
+
+        Args:
+            data: Batch of anonymized events.
+
+        Returns:
+            Number of events ingested.
+        """
+        collector = _require_collector()
+        count = await collector.ingest(data.events)
+        return ApiResponse[dict[str, int]](
+            data={"ingested": count},
+        )
+
+    @get("/patterns")
+    async def get_patterns(
+        self,
+        min_deployments: int = 3,
+    ) -> ApiResponse[list[dict[str, Any]]]:
+        """Query aggregated cross-deployment patterns.
+
+        Args:
+            min_deployments: Minimum unique deployments for pattern.
+
+        Returns:
+            Aggregated patterns.
+        """
+        collector = _require_collector()
+        patterns = await collector.query_patterns(
+            min_deployments=min_deployments,
+        )
+        return ApiResponse[list[dict[str, Any]]](
+            data=[p.model_dump() for p in patterns],
+        )
+
+    @get("/recommendations")
+    async def get_recommendations(
+        self,
+    ) -> ApiResponse[list[dict[str, Any]]]:
+        """Get threshold recommendations from aggregated data.
+
+        Returns:
+            Threshold recommendations sorted by confidence.
+        """
+        collector = _require_collector()
+        if _recommender is None:
+            return ApiResponse[list[dict[str, Any]]](data=[])
+        recs = await _recommender.get_recommendations(
+            collector=collector,
+        )
+        return ApiResponse[list[dict[str, Any]]](
+            data=[r.model_dump() for r in recs],
+        )

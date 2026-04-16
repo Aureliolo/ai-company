@@ -27,12 +27,17 @@ from synthorg.meta.models import (
     ProposalStatus,
     RolloutResult,
 )
+from synthorg.meta.rules.builtin import default_rules
+from synthorg.meta.telemetry.factory import build_analytics_emitter
 from synthorg.observability import get_logger
 from synthorg.observability.events.chief_of_staff import (
     COS_CONFIDENCE_ADJUSTMENT_FAILED,
     COS_LEARNING_ENABLED,
     COS_OUTCOME_RECORD_FAILED,
     COS_OUTCOME_SKIPPED,
+)
+from synthorg.observability.events.cross_deployment import (
+    XDEPLOY_EVENT_EMIT_FAILED,
 )
 from synthorg.observability.events.meta import (
     META_CYCLE_COMPLETED,
@@ -48,6 +53,7 @@ if TYPE_CHECKING:
     from synthorg.meta.config import SelfImprovementConfig
     from synthorg.meta.models import RuleMatch
     from synthorg.meta.protocol import ImprovementStrategy
+    from synthorg.meta.telemetry.emitter import HttpAnalyticsEmitter
     from synthorg.providers.base import BaseCompletionProvider
 
 logger = get_logger(__name__)
@@ -84,6 +90,12 @@ class SelfImprovementService:
         self._appliers = build_appliers(config)
         self._detector = build_regression_detector()
         self._rollout_strategies = build_rollout_strategies()
+
+        # Cross-deployment analytics emitter.
+        builtin_names = frozenset(r.name for r in default_rules())
+        self._analytics_emitter: HttpAnalyticsEmitter | None = build_analytics_emitter(
+            config, builtin_rule_names=builtin_names
+        )
 
         # Chief of Staff learning.
         self._outcome_store: MemoryBackendOutcomeStore | None = None
@@ -236,11 +248,26 @@ class SelfImprovementService:
             msg = f"No rollout strategy '{strategy_name}'"
             raise ValueError(msg)
 
-        return await rollout.execute(
+        result = await rollout.execute(
             proposal=proposal,
             applier=applier,
             detector=self._detector,
         )
+
+        # Emit anonymized rollout event for cross-deployment analytics.
+        if self._analytics_emitter is not None:
+            try:
+                await self._analytics_emitter.emit_rollout(
+                    result,
+                    proposal=proposal,
+                )
+            except Exception:
+                logger.exception(
+                    XDEPLOY_EVENT_EMIT_FAILED,
+                    proposal_id=str(proposal.id),
+                )
+
+        return result
 
     async def _dispatch_strategies(
         self,
@@ -332,3 +359,21 @@ class SelfImprovementService:
                 COS_OUTCOME_RECORD_FAILED,
                 proposal_id=str(proposal.id),
             )
+
+        # Emit anonymized event for cross-deployment analytics.
+        if self._analytics_emitter is not None:
+            try:
+                await self._analytics_emitter.emit_decision(
+                    outcome,
+                    proposal=proposal,
+                )
+            except Exception:
+                logger.exception(
+                    XDEPLOY_EVENT_EMIT_FAILED,
+                    proposal_id=str(proposal.id),
+                )
+
+    async def close(self) -> None:
+        """Flush analytics emitter and release resources."""
+        if self._analytics_emitter is not None:
+            await self._analytics_emitter.close()

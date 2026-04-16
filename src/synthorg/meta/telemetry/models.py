@@ -1,0 +1,134 @@
+"""Domain models for cross-deployment analytics.
+
+Defines anonymized event payloads, aggregated patterns, and
+threshold recommendations. All models are frozen with
+``allow_inf_nan=False``.
+"""
+
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from synthorg.core.types import NotBlankStr  # noqa: TC001
+
+
+class AnonymizedOutcomeEvent(BaseModel):
+    """Anonymized outcome event for cross-deployment analytics.
+
+    Single flat model covering both proposal decisions and rollout
+    results. Fields irrelevant to the event type are ``None``.
+
+    No PII survives: free text is dropped, UUIDs are salted-hashed,
+    timestamps are coarsened to day granularity.
+
+    Attributes:
+        schema_version: Wire format version for forward compat.
+        deployment_id: Salted SHA-256 hash of deployment UUID.
+        event_type: Whether this records a decision or rollout.
+        timestamp: ISO 8601 date (day granularity, no time).
+        altitude: Proposal altitude enum value.
+        source_rule: Built-in rule name or ``"custom"`` for
+            user-defined rules. None if no rule triggered.
+        decision: Human decision (proposal_decision events only).
+        confidence: Proposal confidence at decision time.
+        rollout_outcome: Rollout outcome enum value
+            (rollout_result events only).
+        regression_verdict: Regression detection result.
+        observation_hours: Observation window duration in hours.
+        enabled_altitudes: Which altitudes are enabled in the
+            deployment's config (categorical, not config values).
+        industry_tag: Optional user-provided industry category.
+        sdk_version: SynthOrg version string.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    schema_version: Literal["1"] = "1"
+    deployment_id: NotBlankStr
+    event_type: Literal["proposal_decision", "rollout_result"]
+    timestamp: NotBlankStr
+    altitude: NotBlankStr
+    source_rule: NotBlankStr | None = None
+    decision: Literal["approved", "rejected"] | None = None
+    confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    rollout_outcome: NotBlankStr | None = None
+    regression_verdict: NotBlankStr | None = None
+    observation_hours: float | None = Field(default=None, ge=0.0)
+    enabled_altitudes: tuple[NotBlankStr, ...] = ()
+    industry_tag: NotBlankStr | None = None
+    sdk_version: NotBlankStr
+
+
+class EventBatch(BaseModel):
+    """Batch of anonymized events for transport.
+
+    Attributes:
+        events: Tuple of anonymized outcome events.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    events: tuple[AnonymizedOutcomeEvent, ...]
+
+
+class AggregatedPattern(BaseModel):
+    """Cross-deployment pattern identified from aggregated events.
+
+    Represents a ``(source_rule, altitude)`` combination observed
+    across multiple deployments with computed statistics.
+
+    Attributes:
+        source_rule: Rule name (built-in or ``"custom"``).
+        altitude: Proposal altitude.
+        deployment_count: Unique deployments that observed this.
+        total_events: Total events in this pattern group.
+        approval_rate: Cross-deployment approval rate (0-1).
+        success_rate: Cross-deployment rollout success rate (0-1).
+        avg_confidence: Mean confidence at decision time.
+        avg_observation_hours: Mean observation window (rollout
+            events only, None if no rollout events).
+        industry_breakdown: Sorted (industry_tag, count) pairs.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    source_rule: NotBlankStr
+    altitude: NotBlankStr
+    deployment_count: int = Field(ge=1)
+    total_events: int = Field(ge=1)
+    approval_rate: float = Field(ge=0.0, le=1.0)
+    success_rate: float = Field(ge=0.0, le=1.0)
+    avg_confidence: float = Field(ge=0.0, le=1.0)
+    avg_observation_hours: float | None = Field(default=None, ge=0.0)
+    industry_breakdown: tuple[tuple[NotBlankStr, int], ...] = ()
+
+
+class ThresholdRecommendation(BaseModel):
+    """Recommended threshold adjustment from cross-deployment data.
+
+    Generated when a pattern shows consistent outcomes across
+    enough deployments to suggest the default threshold should
+    be adjusted.
+
+    Attributes:
+        rule_name: Built-in rule this recommendation targets.
+        metric_name: Config field path for the threshold
+            (e.g., ``"regression.quality_drop_threshold"``).
+        current_default: Current default threshold value.
+        recommended_value: Suggested new threshold value.
+        confidence: Confidence in this recommendation (0-1).
+        based_on_deployments: Unique deployments in the data.
+        based_on_observations: Total events in the data.
+        rationale: Human-readable explanation.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    rule_name: NotBlankStr
+    metric_name: NotBlankStr
+    current_default: float
+    recommended_value: float
+    confidence: float = Field(ge=0.0, le=1.0)
+    based_on_deployments: int = Field(ge=1)
+    based_on_observations: int = Field(ge=1)
+    rationale: NotBlankStr

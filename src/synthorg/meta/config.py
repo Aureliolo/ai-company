@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.meta.models import EvolutionMode, RolloutStrategyType
+from synthorg.meta.telemetry.config import CrossDeploymentAnalyticsConfig
 from synthorg.observability import get_logger
 
 logger = get_logger(__name__)
@@ -255,6 +256,8 @@ class SelfImprovementConfig(BaseModel):
         code_modification: Code modification strategy configuration.
         chief_of_staff: Chief of Staff advanced capabilities
             (learning, alerts, chat).
+        cross_deployment_analytics: Cross-deployment analytics
+            telemetry (opt-in, disabled by default).
         analysis_model: LLM model identifier for proposal analysis.
         analysis_temperature: Sampling temperature for analysis.
         analysis_max_tokens: Token budget for analysis responses.
@@ -284,6 +287,10 @@ class SelfImprovementConfig(BaseModel):
 
     chief_of_staff: ChiefOfStaffConfig = Field(
         default_factory=ChiefOfStaffConfig,
+    )
+
+    cross_deployment_analytics: CrossDeploymentAnalyticsConfig = Field(
+        default_factory=CrossDeploymentAnalyticsConfig,
     )
 
     analysis_model: NotBlankStr = Field(

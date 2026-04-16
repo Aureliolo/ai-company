@@ -128,6 +128,9 @@ src/synthorg/meta/
 | Signals consumed | All 7 domains | Performance, budget, coordination, scaling, errors, evolution, telemetry |
 | Evolution boundary | Org-wide default; override + advisory alternatives | Clear separation from per-agent #243 |
 | Safe defaults | Disabled, opt-in, mandatory approval | Never auto-applies without human review |
+| Cross-deployment analytics | Dedicated protocol in `meta/telemetry/` | Domain events, not log records; follows meta/ pluggable pattern |
+| Analytics anonymization | Strict allowlist (enums + numerics only) | Maximum privacy; free text dropped, UUIDs hashed, timestamps coarsened |
+| Analytics aggregation | In-process API endpoints | Zero extra infra; any deployment can be emitter and/or collector |
 
 ## Signal Domains
 
@@ -217,6 +220,6 @@ self_improvement:
 
 1. ~~Full API-as-MCP server~~ -- completed via #1353 (issue #1339; 204 tools, 15 domains, capability-based scoping)
 2. ~~Product-level improvement~~ -- completed via #1340 (CODE_MODIFICATION altitude, LLM code gen, CI validation, draft PR creation)
-3. Cross-deployment analytics (anonymized multi-org patterns)
+3. ~~Cross-deployment analytics~~ -- completed via #1341 (opt-in anonymized telemetry, pattern aggregation, threshold recommendations; see `docs/cross-deployment-privacy.md`)
 4. ~~Chief of Staff advanced capabilities~~ -- completed via #1342 (outcome learning, proactive alerts, NL chat)
 5. ~~Custom rule authoring UI (visual rule builder)~~ -- shipped in v0.6.5 (#1343 / PR #1355)
