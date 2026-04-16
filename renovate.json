@@ -58,11 +58,16 @@
     {
       "description": "Container dependencies (Docker images, Compose, apko)",
       "matchManagers": ["dockerfile", "docker-compose", "custom.regex"],
-      "matchDepPatterns": ["dhi\\.io/.*", "busybox", "postgres", "nats"],
       "groupName": "Container dependencies",
       "groupSlug": "container",
       "commitMessagePrefix": "chore:",
-      "labels": ["dependencies", "type:chore", "scope:docker"]
+      "labels": ["dependencies", "type:chore", "scope:docker"],
+      "matchDepNames": [
+        "/dhi\\.io/.*/",
+        "/busybox/",
+        "/postgres/",
+        "/nats/"
+      ]
     },
     {
       "description": "CI tool dependencies (Actions SHAs + binary tools)",
@@ -111,20 +116,6 @@
       "description": "Ignore test golden files -- not real compose configs",
       "matchFileNames": ["cli/testdata/**"],
       "enabled": false
-    },
-    {
-      "description": "Security updates bypass schedule and limits",
-      "matchCategories": ["security"],
-      "schedule": ["at any time"],
-      "dependencyDashboardApproval": false,
-      "minimumReleaseAge": null,
-      "prPriority": 10,
-      "labels": ["dependencies", "security"]
-    },
-    {
-      "description": "Wait 3 days before updating to avoid broken releases",
-      "matchDepPatterns": ["*"],
-      "minimumReleaseAge": "3 days"
     }
   ],
   "lockFileMaintenance": {
