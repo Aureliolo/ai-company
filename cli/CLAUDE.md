@@ -67,6 +67,23 @@ No corresponding flag -- settable via env var or `config set`:
 | `SYNTHORG_AUTO_RESTART` | Auto-restart containers after update |
 | `SYNTHORG_TELEMETRY` | Enable anonymous product telemetry (true/false) |
 | `SYNTHORG_FINE_TUNE_IMAGE` | Override fine-tune container image digest (set by CLI verification) |
+| `SYNTHORG_REGISTRY_HOST` | Override default container registry hostname (disables verification when set) |
+| `SYNTHORG_IMAGE_REPO_PREFIX` | Override default image repository prefix (disables verification when set) |
+| `SYNTHORG_DHI_REGISTRY` | Override Docker Hardened Images registry (disables verification when set) |
+| `SYNTHORG_POSTGRES_IMAGE_TAG` | Override pinned Postgres DHI tag (disables verification when set) |
+| `SYNTHORG_NATS_IMAGE_TAG` | Override pinned NATS DHI tag (disables verification when set) |
+| `SYNTHORG_DEFAULT_NATS_URL` | Override `synthorg worker start --nats-url` default |
+| `SYNTHORG_DEFAULT_NATS_STREAM_PREFIX` | Override `synthorg worker start --stream-prefix` default |
+| `SYNTHORG_BACKUP_CREATE_TIMEOUT` | Override `synthorg backup create --timeout` default (duration, e.g. `60s`) |
+| `SYNTHORG_BACKUP_RESTORE_TIMEOUT` | Override `synthorg backup restore --timeout` default |
+| `SYNTHORG_HEALTH_CHECK_TIMEOUT` | HTTP timeout for health endpoint probes (duration) |
+| `SYNTHORG_SELF_UPDATE_HTTP_TIMEOUT` | HTTP timeout for CLI binary download (duration) |
+| `SYNTHORG_SELF_UPDATE_API_TIMEOUT` | HTTP timeout for GitHub API metadata fetches (duration) |
+| `SYNTHORG_TUF_FETCH_TIMEOUT` | HTTP timeout for Sigstore TUF trusted root fetch (duration) |
+| `SYNTHORG_ATTESTATION_HTTP_TIMEOUT` | HTTP timeout for GitHub attestation API (duration) |
+| `SYNTHORG_MAX_API_RESPONSE_BYTES` | Maximum bytes for API/checksum downloads (accepts `1MiB`, `1048576`) |
+| `SYNTHORG_MAX_BINARY_BYTES` | Maximum bytes for CLI binary archive downloads (accepts `256MiB`) |
+| `SYNTHORG_MAX_ARCHIVE_ENTRY_BYTES` | Maximum bytes per archive entry during extraction (accepts `128MiB`) |
 
 ## Exit Codes
 
@@ -93,7 +110,9 @@ No corresponding flag -- settable via env var or `config set`:
 | `path` | Print the config file path |
 | `edit` | Open config file in $VISUAL/$EDITOR |
 
-Settable keys: `auto_apply_compose`, `auto_cleanup`, `auto_pull`, `auto_restart`, `auto_update_cli`, `backend_port`, `channel`, `color`, `docker_sock`, `fine_tuning`, `hints`, `image_tag`, `log_level`, `output`, `sandbox`, `telemetry_opt_in`, `timestamps`, `web_port`. Keys that affect Docker compose (`backend_port`, `web_port`, `sandbox`, `docker_sock`, `fine_tuning`, `image_tag`, `log_level`, `telemetry_opt_in`) trigger automatic `compose.yml` regeneration.
+Settable keys: `auto_apply_compose`, `auto_cleanup`, `auto_pull`, `auto_restart`, `auto_update_cli`, `backend_port`, `channel`, `color`, `docker_sock`, `fine_tuning`, `hints`, `image_tag`, `log_level`, `output`, `sandbox`, `telemetry_opt_in`, `timestamps`, `web_port`, plus the tunables: `registry_host`, `image_repo_prefix`, `dhi_registry`, `postgres_image_tag`, `nats_image_tag`, `default_nats_url`, `default_nats_stream_prefix`, `backup_create_timeout`, `backup_restore_timeout`, `health_check_timeout`, `self_update_http_timeout`, `self_update_api_timeout`, `tuf_fetch_timeout`, `attestation_http_timeout`, `max_api_response_bytes`, `max_binary_bytes`, `max_archive_entry_bytes`. Keys that affect Docker compose (`backend_port`, `web_port`, `sandbox`, `docker_sock`, `fine_tuning`, `image_tag`, `log_level`, `telemetry_opt_in`, `registry_host`, `image_repo_prefix`, `dhi_registry`, `postgres_image_tag`, `nats_image_tag`, `default_nats_url`, `default_nats_stream_prefix`) trigger automatic `compose.yml` regeneration.
+
+Overriding any of `registry_host`, `image_repo_prefix`, `dhi_registry`, `postgres_image_tag`, or `nats_image_tag` transfers trust to the operator: the CLI disables image signature and SLSA provenance verification on that invocation and writes a one-shot warning to stderr (suppressed under `--quiet`). The pinned SAN regex and DHI digest map are bound to the default values, so verification cannot succeed against a custom deployment target.
 
 ## Per-Command Flags
 

@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Aureliolo/synthorg/cli/internal/compose"
 	"github.com/Aureliolo/synthorg/cli/internal/config"
@@ -20,11 +21,22 @@ import (
 
 // supportedConfigKeys is the single source of truth for `config set` key names.
 var supportedConfigKeys = []string{
+	"attestation_http_timeout",
 	"auto_apply_compose", "auto_cleanup", "auto_pull", "auto_restart",
 	"auto_start_after_wipe", "auto_update_cli",
-	"backend_port", "channel", "color", "docker_sock",
-	"hints", "image_tag", "log_level", "output",
-	"sandbox", "telemetry_opt_in", "timestamps", "web_port",
+	"backend_port",
+	"backup_create_timeout", "backup_restore_timeout",
+	"channel", "color",
+	"default_nats_stream_prefix", "default_nats_url",
+	"dhi_registry", "docker_sock",
+	"health_check_timeout",
+	"hints", "image_repo_prefix", "image_tag", "log_level",
+	"max_api_response_bytes", "max_archive_entry_bytes", "max_binary_bytes",
+	"nats_image_tag", "output", "postgres_image_tag",
+	"registry_host", "sandbox",
+	"self_update_api_timeout", "self_update_http_timeout",
+	"telemetry_opt_in", "timestamps",
+	"tuf_fetch_timeout", "web_port",
 }
 
 var configCmd = &cobra.Command{
@@ -226,12 +238,23 @@ func displayOrDefault(value, fallback string) string {
 // gettableConfigKeys lists all keys supported by `config get`.
 // Keep in sync with the Long help text on configGetCmd.
 var gettableConfigKeys = []string{
+	"attestation_http_timeout",
 	"auto_apply_compose", "auto_cleanup", "auto_pull", "auto_restart",
 	"auto_start_after_wipe", "auto_update_cli",
-	"backend_port", "channel", "color", "docker_sock",
-	"hints", "image_tag", "log_level", "memory_backend",
-	"output", "persistence_backend", "sandbox", "telemetry_opt_in",
-	"timestamps", "web_port",
+	"backend_port",
+	"backup_create_timeout", "backup_restore_timeout",
+	"channel", "color",
+	"default_nats_stream_prefix", "default_nats_url",
+	"dhi_registry", "docker_sock",
+	"health_check_timeout",
+	"hints", "image_repo_prefix", "image_tag", "log_level",
+	"max_api_response_bytes", "max_archive_entry_bytes", "max_binary_bytes",
+	"memory_backend", "nats_image_tag", "output",
+	"persistence_backend", "postgres_image_tag",
+	"registry_host", "sandbox",
+	"self_update_api_timeout", "self_update_http_timeout",
+	"telemetry_opt_in", "timestamps",
+	"tuf_fetch_timeout", "web_port",
 }
 
 func completeConfigGetKeys(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
@@ -413,9 +436,123 @@ func applyConfigValue(state *config.State, key, value string) error {
 		return setEnum(value, key, config.IsValidTimestampMode, config.TimestampModeNames, &state.Timestamps)
 	case "web_port":
 		return setPort(value, "web_port", state.BackendPort, &state.WebPort)
+	case "registry_host":
+		return setRegistryHost(value, "registry_host", &state.RegistryHost)
+	case "image_repo_prefix":
+		return setImageRepoPrefix(value, &state.ImageRepoPrefix)
+	case "dhi_registry":
+		return setRegistryHost(value, "dhi_registry", &state.DHIRegistry)
+	case "postgres_image_tag":
+		return setTag(value, "postgres_image_tag", &state.PostgresImageTag)
+	case "nats_image_tag":
+		return setTag(value, "nats_image_tag", &state.NATSImageTag)
+	case "default_nats_url":
+		return setNATSURL(value, &state.DefaultNATSURL)
+	case "default_nats_stream_prefix":
+		return setStreamPrefix(value, &state.DefaultNATSStreamPrefix)
+	case "backup_create_timeout":
+		return setDuration(value, "backup_create_timeout", &state.BackupCreateTimeout)
+	case "backup_restore_timeout":
+		return setDuration(value, "backup_restore_timeout", &state.BackupRestoreTimeout)
+	case "health_check_timeout":
+		return setDuration(value, "health_check_timeout", &state.HealthCheckTimeout)
+	case "self_update_http_timeout":
+		return setDuration(value, "self_update_http_timeout", &state.SelfUpdateHTTPTimeout)
+	case "self_update_api_timeout":
+		return setDuration(value, "self_update_api_timeout", &state.SelfUpdateAPITimeout)
+	case "tuf_fetch_timeout":
+		return setDuration(value, "tuf_fetch_timeout", &state.TUFFetchTimeout)
+	case "attestation_http_timeout":
+		return setDuration(value, "attestation_http_timeout", &state.AttestationHTTPTimeout)
+	case "max_api_response_bytes":
+		return setByteSize(value, "max_api_response_bytes", &state.MaxAPIResponseBytes)
+	case "max_binary_bytes":
+		return setByteSize(value, "max_binary_bytes", &state.MaxBinaryBytes)
+	case "max_archive_entry_bytes":
+		return setByteSize(value, "max_archive_entry_bytes", &state.MaxArchiveEntryBytes)
 	default:
 		return fmt.Errorf("unknown config key %q (supported: %s)", key, strings.Join(supportedConfigKeys, ", "))
 	}
+	return nil
+}
+
+// setRegistryHost validates a DNS hostname (optionally with :port) and
+// writes it into target. Empty values are rejected; use `config unset`
+// to restore the default.
+func setRegistryHost(value, key string, target *string) error {
+	if !config.IsValidRegistryHost(value) {
+		return fmt.Errorf("invalid %s %q: must be a DNS hostname (optionally with :port)", key, value)
+	}
+	*target = value
+	return nil
+}
+
+// setImageRepoPrefix validates a repo path prefix and writes it into target.
+func setImageRepoPrefix(value string, target *string) error {
+	if !config.IsValidImageRepoPrefix(value) {
+		return fmt.Errorf("invalid image_repo_prefix %q: must match [a-z0-9][a-z0-9._/-]*", value)
+	}
+	*target = value
+	return nil
+}
+
+// setTag validates a Docker image tag and writes it into target.
+func setTag(value, key string, target *string) error {
+	if !config.IsValidImageTag(value) {
+		return fmt.Errorf("invalid %s %q: must match [a-zA-Z0-9][a-zA-Z0-9._-]*", key, value)
+	}
+	*target = value
+	return nil
+}
+
+// setNATSURL validates a NATS URL and writes it into target.
+func setNATSURL(value string, target *string) error {
+	if err := config.ValidateNATSURL(value); err != nil {
+		return fmt.Errorf("invalid default_nats_url %q: %w", value, err)
+	}
+	*target = value
+	return nil
+}
+
+// setStreamPrefix validates a NATS JetStream stream prefix.
+func setStreamPrefix(value string, target *string) error {
+	if !config.IsValidStreamPrefix(value) {
+		return fmt.Errorf("invalid default_nats_stream_prefix %q: must match [A-Z0-9][A-Z0-9_-]*", value)
+	}
+	*target = value
+	return nil
+}
+
+// setDuration validates a time.ParseDuration string and writes it into target.
+// The stored form is the normalized string (e.g. "30s") so config.json stays
+// human-readable.
+func setDuration(value, key string, target *string) error {
+	d, err := time.ParseDuration(value)
+	if err != nil {
+		return fmt.Errorf("invalid %s %q: %w", key, value, err)
+	}
+	if d <= 0 {
+		return fmt.Errorf("invalid %s %q: must be > 0", key, value)
+	}
+	*target = d.String()
+	return nil
+}
+
+// setByteSize parses a human-readable byte size (accepts IEC and SI
+// suffixes) and writes the int64 result into target. Rejects zero,
+// negative, and values exceeding the 1 GiB ceiling.
+func setByteSize(value, key string, target *int64) error {
+	n, err := config.ParseBytes(value)
+	if err != nil {
+		return fmt.Errorf("invalid %s %q: %w", key, value, err)
+	}
+	if n <= 0 {
+		return fmt.Errorf("invalid %s %q: must be > 0", key, value)
+	}
+	if n > config.MaxBytesCeiling {
+		return fmt.Errorf("invalid %s %q: exceeds 1 GiB ceiling", key, value)
+	}
+	*target = n
 	return nil
 }
 
@@ -462,10 +599,19 @@ func maskSecret(s string) string {
 }
 
 // composeAffectingKeys lists config keys that require compose.yml regeneration.
+// Registry and image tag tunables are included because they flow into the
+// generated compose.yml through ParamsFromState.
 var composeAffectingKeys = map[string]bool{
 	"backend_port": true, "web_port": true, "sandbox": true,
 	"docker_sock": true, "image_tag": true, "log_level": true,
-	"telemetry_opt_in": true,
+	"telemetry_opt_in":           true,
+	"registry_host":              true,
+	"image_repo_prefix":          true,
+	"dhi_registry":               true,
+	"postgres_image_tag":         true,
+	"nats_image_tag":             true,
+	"default_nats_url":           true,
+	"default_nats_stream_prefix": true,
 }
 
 // regenerateCompose regenerates compose.yml from the current state.
@@ -573,6 +719,40 @@ func resetConfigValue(state *config.State, key string) error {
 		state.Timestamps = ""
 	case "web_port":
 		state.WebPort = defaults.WebPort
+	case "registry_host":
+		state.RegistryHost = ""
+	case "image_repo_prefix":
+		state.ImageRepoPrefix = ""
+	case "dhi_registry":
+		state.DHIRegistry = ""
+	case "postgres_image_tag":
+		state.PostgresImageTag = ""
+	case "nats_image_tag":
+		state.NATSImageTag = ""
+	case "default_nats_url":
+		state.DefaultNATSURL = ""
+	case "default_nats_stream_prefix":
+		state.DefaultNATSStreamPrefix = ""
+	case "backup_create_timeout":
+		state.BackupCreateTimeout = ""
+	case "backup_restore_timeout":
+		state.BackupRestoreTimeout = ""
+	case "health_check_timeout":
+		state.HealthCheckTimeout = ""
+	case "self_update_http_timeout":
+		state.SelfUpdateHTTPTimeout = ""
+	case "self_update_api_timeout":
+		state.SelfUpdateAPITimeout = ""
+	case "tuf_fetch_timeout":
+		state.TUFFetchTimeout = ""
+	case "attestation_http_timeout":
+		state.AttestationHTTPTimeout = ""
+	case "max_api_response_bytes":
+		state.MaxAPIResponseBytes = 0
+	case "max_binary_bytes":
+		state.MaxBinaryBytes = 0
+	case "max_archive_entry_bytes":
+		state.MaxArchiveEntryBytes = 0
 	default:
 		return fmt.Errorf("unknown config key %q (supported: %s)", key, strings.Join(supportedConfigKeys, ", "))
 	}
@@ -607,6 +787,40 @@ func envVarForKey(key string) string {
 		return EnvAutoRestart
 	case "telemetry_opt_in":
 		return EnvTelemetry
+	case "registry_host":
+		return EnvRegistryHost
+	case "image_repo_prefix":
+		return EnvImageRepoPrefix
+	case "dhi_registry":
+		return EnvDHIRegistry
+	case "postgres_image_tag":
+		return EnvPostgresImageTag
+	case "nats_image_tag":
+		return EnvNATSImageTag
+	case "default_nats_url":
+		return EnvDefaultNATSURL
+	case "default_nats_stream_prefix":
+		return EnvDefaultNATSStreamPfx
+	case "backup_create_timeout":
+		return EnvBackupCreateTimeout
+	case "backup_restore_timeout":
+		return EnvBackupRestoreTimeout
+	case "health_check_timeout":
+		return EnvHealthCheckTimeout
+	case "self_update_http_timeout":
+		return EnvSelfUpdateHTTPTimeout
+	case "self_update_api_timeout":
+		return EnvSelfUpdateAPITimeout
+	case "tuf_fetch_timeout":
+		return EnvTUFFetchTimeout
+	case "attestation_http_timeout":
+		return EnvAttestationHTTPTimeout
+	case "max_api_response_bytes":
+		return EnvMaxAPIResponseBytes
+	case "max_binary_bytes":
+		return EnvMaxBinaryBytes
+	case "max_archive_entry_bytes":
+		return EnvMaxArchiveEntryBytes
 	default:
 		return ""
 	}
@@ -695,9 +909,62 @@ func configGetValue(state config.State, key string) string {
 		return state.Timestamps
 	case "web_port":
 		return strconv.Itoa(state.WebPort)
+	case "registry_host":
+		return displayOrFallback(state.RegistryHost, config.DefaultRegistryHost)
+	case "image_repo_prefix":
+		return displayOrFallback(state.ImageRepoPrefix, config.DefaultImageRepoPrefix)
+	case "dhi_registry":
+		return displayOrFallback(state.DHIRegistry, config.DefaultDHIRegistry)
+	case "postgres_image_tag":
+		return displayOrFallback(state.PostgresImageTag, config.DefaultPostgresImageTag)
+	case "nats_image_tag":
+		return displayOrFallback(state.NATSImageTag, config.DefaultNATSImageTag)
+	case "default_nats_url":
+		return displayOrFallback(state.DefaultNATSURL, config.DefaultNATSURLValue)
+	case "default_nats_stream_prefix":
+		return displayOrFallback(state.DefaultNATSStreamPrefix, config.DefaultNATSStreamPrefixValue)
+	case "backup_create_timeout":
+		return displayOrFallback(state.BackupCreateTimeout, config.DefaultBackupCreateTimeout.String())
+	case "backup_restore_timeout":
+		return displayOrFallback(state.BackupRestoreTimeout, config.DefaultBackupRestoreTimeout.String())
+	case "health_check_timeout":
+		return displayOrFallback(state.HealthCheckTimeout, config.DefaultHealthCheckTimeout.String())
+	case "self_update_http_timeout":
+		return displayOrFallback(state.SelfUpdateHTTPTimeout, config.DefaultSelfUpdateHTTPTimeout.String())
+	case "self_update_api_timeout":
+		return displayOrFallback(state.SelfUpdateAPITimeout, config.DefaultSelfUpdateAPITimeout.String())
+	case "tuf_fetch_timeout":
+		return displayOrFallback(state.TUFFetchTimeout, config.DefaultTUFFetchTimeout.String())
+	case "attestation_http_timeout":
+		return displayOrFallback(state.AttestationHTTPTimeout, config.DefaultAttestationHTTPTimeout.String())
+	case "max_api_response_bytes":
+		return int64OrDefault(state.MaxAPIResponseBytes, config.DefaultMaxAPIResponseBytes)
+	case "max_binary_bytes":
+		return int64OrDefault(state.MaxBinaryBytes, config.DefaultMaxBinaryBytes)
+	case "max_archive_entry_bytes":
+		return int64OrDefault(state.MaxArchiveEntryBytes, config.DefaultMaxArchiveEntryBytes)
 	default:
 		return ""
 	}
+}
+
+// displayOrFallback returns value when non-empty, otherwise the fallback.
+// Used by configGetValue to print compiled-in defaults for unset string
+// tunables so `config get` never prints an empty line.
+func displayOrFallback(value, fallback string) string {
+	if value == "" {
+		return fallback
+	}
+	return value
+}
+
+// int64OrDefault returns value when positive, otherwise the fallback as
+// a decimal string.
+func int64OrDefault(value, fallback int64) string {
+	if value <= 0 {
+		return strconv.FormatInt(fallback, 10)
+	}
+	return strconv.FormatInt(value, 10)
 }
 
 // resolveSource determines where a config value came from.
