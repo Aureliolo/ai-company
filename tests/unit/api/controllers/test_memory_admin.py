@@ -206,3 +206,37 @@ class TestRecommendBatchSize:
         thresholds = [gb for gb, _batch in _BATCH_SIZE_BY_VRAM_GB]
         assert thresholds == sorted(thresholds, reverse=True)
         assert len(thresholds) == len(set(thresholds))
+
+    def test_unexpected_exception_is_logged_and_returns_none(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Unexpected errors in torch probing log a WARNING and return None.
+
+        Guards the generic ``except Exception`` branch that reports via
+        :data:`MEMORY_FINE_TUNE_BATCH_SIZE_RECOMMENDATION_FAILED`.
+        """
+        from synthorg.api.controllers import memory as memory_module
+        from synthorg.observability.events.memory import (
+            MEMORY_FINE_TUNE_BATCH_SIZE_RECOMMENDATION_FAILED,
+        )
+
+        fake_torch = MagicMock()
+        fake_torch.cuda.is_available.return_value = True
+        fake_torch.cuda.get_device_properties.side_effect = RuntimeError(
+            "CUDA driver unavailable",
+        )
+        monkeypatch.setitem(__import__("sys").modules, "torch", fake_torch)
+
+        warning_mock = MagicMock()
+        monkeypatch.setattr(memory_module.logger, "warning", warning_mock)
+
+        result = _recommend_batch_size()
+
+        assert result is None
+        warning_mock.assert_called_once()
+        args, kwargs = warning_mock.call_args
+        assert args[0] == MEMORY_FINE_TUNE_BATCH_SIZE_RECOMMENDATION_FAILED
+        assert kwargs.get("error_type") == "RuntimeError"
+        assert "CUDA driver unavailable" in kwargs.get("error", "")
+        assert kwargs.get("exc_info") is True

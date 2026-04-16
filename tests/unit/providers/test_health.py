@@ -2,6 +2,7 @@
 
 import asyncio
 from datetime import UTC, datetime, timedelta
+from types import MappingProxyType
 
 import pytest
 from pydantic import ValidationError
@@ -348,6 +349,27 @@ class TestGetAllSummaries:
         tracker = ProviderHealthTracker()
         result = await tracker.get_all_summaries()
         assert result == {}
+        assert isinstance(result, MappingProxyType)
+
+    async def test_returned_mapping_is_immutable(self) -> None:
+        tracker = ProviderHealthTracker()
+        now = datetime.now(UTC)
+        await tracker.record(
+            _make_record(timestamp=now, response_time_ms=100.0),
+        )
+        result = await tracker.get_all_summaries(now=now)
+
+        assert isinstance(result, MappingProxyType)
+        with pytest.raises(TypeError):
+            result["injected"] = ProviderHealthSummary()  # type: ignore[index]
+        with pytest.raises(TypeError):
+            del result["test-provider"]  # type: ignore[attr-defined]
+        with pytest.raises(AttributeError):
+            result.pop("test-provider")  # type: ignore[attr-defined]
+        with pytest.raises(AttributeError):
+            result.clear()  # type: ignore[attr-defined]
+        with pytest.raises(AttributeError):
+            result.update({"injected": ProviderHealthSummary()})  # type: ignore[attr-defined]
 
     async def test_single_provider(self) -> None:
         tracker = ProviderHealthTracker()

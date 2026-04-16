@@ -80,11 +80,11 @@ class BatchedTrigger:
             )
             return True
 
-    async def record_run(self, agent_id: str) -> None:
+    async def record_run(self, agent_id: NotBlankStr) -> None:
         """Record that an evolution run completed for an agent.
 
         Acquires the internal lock so writes cannot race against a
         concurrent :meth:`should_trigger` read/write on the same key.
         """
         async with self._lock:
-            self._last_run[agent_id] = datetime.now(UTC)
+            self._last_run[str(agent_id)] = datetime.now(UTC)

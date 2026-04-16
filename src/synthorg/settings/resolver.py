@@ -8,6 +8,7 @@ config models from individually resolved settings.
 """
 
 import asyncio
+import copy
 import json
 from enum import StrEnum
 from types import MappingProxyType
@@ -460,11 +461,12 @@ class ConfigResolver:
         is ``None``, contains invalid JSON, or fails schema validation.
         An explicit empty dict ``{}`` is a valid override.
 
-        The returned mapping is wrapped in :class:`types.MappingProxyType`
-        to prevent callers from mutating the resolver's view of provider
-        state.  Build a fresh ``dict`` via comprehension or unpacking
-        (e.g. ``{**providers, name: config}``) if a mutable copy is
-        needed.
+        The returned mapping is deep-copied and wrapped in
+        :class:`types.MappingProxyType` so callers cannot mutate any
+        part of the resolver's view of provider state, including
+        nested containers on the ``ProviderConfig`` models.  Build a
+        fresh ``dict`` via comprehension or unpacking (e.g.
+        ``{**providers, name: config}``) if a mutable copy is needed.
 
         Raises:
             SettingNotFoundError: If the ``configs`` key is not
@@ -479,7 +481,7 @@ class ConfigResolver:
             ProviderConfig,
             dict(self._config.providers),
         )
-        return MappingProxyType(configs)
+        return MappingProxyType(copy.deepcopy(configs))
 
     async def get_budget_config(self) -> BudgetConfig:
         """Assemble a ``BudgetConfig`` from individually resolved settings.

@@ -1,5 +1,6 @@
 """Tests for BatchedTrigger."""
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock
 
@@ -52,6 +53,35 @@ class TestBatchedTrigger:
         trigger = BatchedTrigger()
         await trigger.record_run("agent-1")
         assert "agent-1" in trigger._last_run
+
+    @pytest.mark.unit
+    async def test_concurrent_record_and_should_trigger_is_race_free(self) -> None:
+        """Parallel record_run + should_trigger must not corrupt _last_run.
+
+        The internal ``asyncio.Lock`` serialises writes; without it the
+        interleaving would be undefined.  With it, every agent's entry
+        must be a valid ``datetime`` after the storm.
+        """
+        trigger = BatchedTrigger(interval_seconds=3600)
+        ctx = MagicMock()
+        agents = [f"agent-{i}" for i in range(50)]
+
+        async def _writer(agent_id: str) -> None:
+            await trigger.record_run(agent_id)
+
+        async def _reader(agent_id: str) -> None:
+            await trigger.should_trigger(agent_id=agent_id, context=ctx)
+
+        async with asyncio.TaskGroup() as tg:
+            for agent_id in agents:
+                tg.create_task(_writer(agent_id))
+                tg.create_task(_reader(agent_id))
+                tg.create_task(_writer(agent_id))
+
+        assert set(trigger._last_run) == set(agents)
+        for ts in trigger._last_run.values():
+            assert isinstance(ts, datetime)
+            assert ts.tzinfo is UTC
 
     @pytest.mark.unit
     def test_name(self) -> None:
