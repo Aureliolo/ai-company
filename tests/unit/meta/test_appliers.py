@@ -596,3 +596,69 @@ class TestArchitectureApplier:
         )
         result = await applier.dry_run(proposal)
         assert result.success, result.error_message
+
+    async def test_dry_run_description_length_cap(self) -> None:
+        """A description exceeding the 2000-char cap is rejected."""
+        applier = ArchitectureApplier(context=_FakeArchContext())
+        proposal = _proposal_architecture(
+            _arch(
+                "create_role",
+                "new-role",
+                payload={"description": "d" * 3_000},
+            ),
+        )
+        result = await applier.dry_run(proposal)
+        assert not result.success
+        assert "'description' exceeds" in (result.error_message or "")
+
+    async def test_dry_run_skill_name_length_cap(self) -> None:
+        """A skill name exceeding the 80-char cap is rejected."""
+        applier = ArchitectureApplier(context=_FakeArchContext())
+        proposal = _proposal_architecture(
+            _arch(
+                "create_role",
+                "new-role",
+                payload={
+                    "description": "d",
+                    "required_skills": ["x" * 200],
+                },
+            ),
+        )
+        result = await applier.dry_run(proposal)
+        assert not result.success
+        assert "required_skills[0]" in (result.error_message or "")
+
+    async def test_dry_run_skill_count_cap(self) -> None:
+        """More than 100 skills is rejected."""
+        applier = ArchitectureApplier(context=_FakeArchContext())
+        proposal = _proposal_architecture(
+            _arch(
+                "create_role",
+                "new-role",
+                payload={
+                    "description": "d",
+                    "required_skills": [f"s{i}" for i in range(150)],
+                },
+            ),
+        )
+        result = await applier.dry_run(proposal)
+        assert not result.success
+        assert "exceeds" in (result.error_message or "")
+
+    async def test_dry_run_non_string_skill_rejected(self) -> None:
+        """Non-string skill entries are rejected."""
+        applier = ArchitectureApplier(context=_FakeArchContext())
+        proposal = _proposal_architecture(
+            _arch(
+                "create_role",
+                "new-role",
+                payload={
+                    "description": "d",
+                    "required_skills": ["python", 42, "go"],
+                },
+            ),
+        )
+        result = await applier.dry_run(proposal)
+        assert not result.success
+        assert "required_skills[1]" in (result.error_message or "")
+        assert "must be a string" in (result.error_message or "")

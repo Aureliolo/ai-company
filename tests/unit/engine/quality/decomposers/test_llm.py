@@ -1,6 +1,5 @@
 """Tests for the LLM-based criteria decomposer."""
 
-from collections.abc import AsyncIterator
 from typing import Any
 
 import pytest
@@ -10,97 +9,20 @@ from synthorg.engine.quality.decomposers.llm import (
     LLMCriteriaDecomposer,
     LLMDecompositionError,
 )
-from synthorg.providers.capabilities import ModelCapabilities
-from synthorg.providers.enums import FinishReason, StreamEventType
-from synthorg.providers.models import (
-    ChatMessage,
-    CompletionConfig,
-    CompletionResponse,
-    StreamChunk,
-    TokenUsage,
-    ToolCall,
-    ToolDefinition,
-)
-
-_CAPABILITIES = ModelCapabilities(
-    model_id="test-medium-001",
-    provider="test-provider",
-    max_context_tokens=200_000,
-    max_output_tokens=8_192,
-    supports_tools=True,
-    supports_vision=False,
-    supports_streaming=True,
-    supports_streaming_tool_calls=True,
-    supports_system_messages=True,
-    cost_per_1k_input=0.001,
-    cost_per_1k_output=0.002,
+from synthorg.providers.enums import FinishReason
+from synthorg.providers.models import CompletionResponse, TokenUsage
+from tests.unit.engine.quality.conftest import (
+    ScriptedProvider,
+    build_tool_call_response,
 )
 
 
 def _build_response(tool_arguments: dict[str, Any]) -> CompletionResponse:
-    return CompletionResponse(
-        tool_calls=(
-            ToolCall(
-                id="call-decompose-001",
-                name="emit_atomic_probes",
-                arguments=tool_arguments,
-            ),
-        ),
-        finish_reason=FinishReason.TOOL_USE,
-        usage=TokenUsage(input_tokens=100, output_tokens=30, cost_usd=0.0001),
-        model="test-medium-001",
+    return build_tool_call_response(
+        "emit_atomic_probes",
+        tool_arguments,
+        call_id="call-decompose-001",
     )
-
-
-class ScriptedProvider:
-    """Structural ``CompletionProvider`` that returns scripted responses."""
-
-    def __init__(
-        self,
-        *,
-        response: CompletionResponse | None = None,
-        error: Exception | None = None,
-    ) -> None:
-        self._response = response
-        self._error = error
-        self.complete_calls: list[
-            tuple[
-                list[ChatMessage],
-                str,
-                list[ToolDefinition] | None,
-                CompletionConfig | None,
-            ]
-        ] = []
-
-    async def complete(
-        self,
-        messages: list[ChatMessage],
-        model: str,
-        *,
-        tools: list[ToolDefinition] | None = None,
-        config: CompletionConfig | None = None,
-    ) -> CompletionResponse:
-        self.complete_calls.append((messages, model, tools, config))
-        if self._error is not None:
-            raise self._error
-        assert self._response is not None
-        return self._response
-
-    async def stream(
-        self,
-        messages: list[ChatMessage],
-        model: str,
-        *,
-        tools: list[ToolDefinition] | None = None,
-        config: CompletionConfig | None = None,
-    ) -> AsyncIterator[StreamChunk]:
-        async def _empty() -> AsyncIterator[StreamChunk]:
-            yield StreamChunk(event_type=StreamEventType.DONE)
-
-        return _empty()
-
-    async def get_model_capabilities(self, model: str) -> ModelCapabilities:
-        return _CAPABILITIES
 
 
 @pytest.mark.unit

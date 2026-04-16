@@ -7,7 +7,7 @@ read-only view of those registries, so operators can preview whether
 ``apply()`` would succeed without mutating state.
 """
 
-from typing import Final, Protocol, runtime_checkable
+from typing import Any, Final, Protocol, runtime_checkable
 
 from synthorg.meta.appliers._validation import validate_payload_keys
 from synthorg.meta.models import (
@@ -55,6 +55,14 @@ _CREATE_ROLE_ALLOWED: Final[frozenset[str]] = frozenset(
 )
 _CREATE_DEPT_REQUIRED: Final[frozenset[str]] = frozenset()
 _CREATE_DEPT_ALLOWED: Final[frozenset[str]] = frozenset({"head", "policies"})
+
+# Value-level length caps applied to free-text payload fields to bound
+# memory usage and mitigate stored-XSS risk if a downstream UI renders
+# these values.  The limits are deliberately generous -- they only catch
+# obvious abuse, not legitimate edge cases.
+_MAX_DESCRIPTION_CHARS: Final[int] = 2_000
+_MAX_SKILL_NAME_CHARS: Final[int] = 80
+_MAX_SKILLS_PER_ROLE: Final[int] = 100
 
 
 @runtime_checkable
@@ -284,19 +292,77 @@ def _validate_create_role(
             allowed=_CREATE_ROLE_ALLOWED,
         )
     )
-    dept = change.payload.get("department")
-    if isinstance(dept, str) and dept:
-        known_dept = context.has_department(dept) or dept in pending.new_departments
-        removed = dept in pending.removed_departments
-        if not known_dept or removed:
-            errors.append(f"create_role: department {dept!r} does not exist")
-    elif dept is not None and not isinstance(dept, str):
-        errors.append("create_role: 'department' must be a string")
+    errors.extend(_validate_role_description(change.payload.get("description")))
+    errors.extend(
+        _validate_role_department(
+            change.payload.get("department"),
+            context=context,
+            pending=pending,
+        )
+    )
     skills = change.payload.get("required_skills")
-    if skills is not None and not isinstance(skills, list | tuple):
-        errors.append("create_role: 'required_skills' must be a list or tuple")
+    if skills is not None:
+        if not isinstance(skills, list | tuple):
+            errors.append("create_role: 'required_skills' must be a list or tuple")
+        else:
+            errors.extend(_validate_skill_list(skills))
     if not errors:
         pending.new_roles.add(name)
+    return errors
+
+
+def _validate_role_description(description: Any) -> list[str]:
+    """Validate the ``description`` field for a new role."""
+    if description is None:
+        return []
+    if not isinstance(description, str):
+        return ["create_role: 'description' must be a string"]
+    if len(description) > _MAX_DESCRIPTION_CHARS:
+        return [
+            f"create_role: 'description' exceeds {_MAX_DESCRIPTION_CHARS} "
+            f"chars (got {len(description)})"
+        ]
+    return []
+
+
+def _validate_role_department(
+    dept: Any,
+    *,
+    context: ArchitectureApplierContext,
+    pending: _PendingChanges,
+) -> list[str]:
+    """Validate the ``department`` reference for a new role."""
+    if dept is None:
+        return []
+    if not isinstance(dept, str):
+        return ["create_role: 'department' must be a string"]
+    if not dept:
+        return []
+    known_dept = context.has_department(dept) or dept in pending.new_departments
+    removed = dept in pending.removed_departments
+    if not known_dept or removed:
+        return [f"create_role: department {dept!r} does not exist"]
+    return []
+
+
+def _validate_skill_list(skills: list[Any] | tuple[Any, ...]) -> list[str]:
+    """Validate each entry in ``required_skills`` (type, length, count)."""
+    errors: list[str] = []
+    if len(skills) > _MAX_SKILLS_PER_ROLE:
+        errors.append(
+            f"create_role: 'required_skills' exceeds "
+            f"{_MAX_SKILLS_PER_ROLE} entries (got {len(skills)})"
+        )
+    for index, skill in enumerate(skills):
+        if not isinstance(skill, str):
+            errors.append(f"create_role: 'required_skills[{index}]' must be a string")
+        elif not skill.strip():
+            errors.append(f"create_role: 'required_skills[{index}]' must not be blank")
+        elif len(skill) > _MAX_SKILL_NAME_CHARS:
+            errors.append(
+                f"create_role: 'required_skills[{index}]' exceeds "
+                f"{_MAX_SKILL_NAME_CHARS} chars"
+            )
     return errors
 
 

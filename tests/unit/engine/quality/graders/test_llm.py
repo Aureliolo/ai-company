@@ -1,6 +1,5 @@
 """Tests for the LLM-based rubric grader."""
 
-from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from typing import Any
 
@@ -15,30 +14,11 @@ from synthorg.engine.quality.verification import (
     VerificationVerdict,
 )
 from synthorg.engine.workflow.handoff import HandoffArtifact
-from synthorg.providers.capabilities import ModelCapabilities
-from synthorg.providers.enums import FinishReason, StreamEventType
-from synthorg.providers.models import (
-    ChatMessage,
-    CompletionConfig,
-    CompletionResponse,
-    StreamChunk,
-    TokenUsage,
-    ToolCall,
-    ToolDefinition,
-)
-
-_CAPABILITIES = ModelCapabilities(
-    model_id="test-medium-001",
-    provider="test-provider",
-    max_context_tokens=200_000,
-    max_output_tokens=8_192,
-    supports_tools=True,
-    supports_vision=False,
-    supports_streaming=True,
-    supports_streaming_tool_calls=True,
-    supports_system_messages=True,
-    cost_per_1k_input=0.001,
-    cost_per_1k_output=0.002,
+from synthorg.providers.enums import FinishReason
+from synthorg.providers.models import CompletionResponse, TokenUsage
+from tests.unit.engine.quality.conftest import (
+    ScriptedProvider,
+    build_tool_call_response,
 )
 
 
@@ -91,60 +71,14 @@ def _probes() -> tuple[AtomicProbe, ...]:
 
 
 def _response(tool_arguments: dict[str, Any]) -> CompletionResponse:
-    return CompletionResponse(
-        tool_calls=(
-            ToolCall(
-                id="call-grade-001",
-                name="emit_rubric_verdict",
-                arguments=tool_arguments,
-            ),
-        ),
-        finish_reason=FinishReason.TOOL_USE,
-        usage=TokenUsage(input_tokens=200, output_tokens=60, cost_usd=0.0003),
-        model="test-medium-001",
+    return build_tool_call_response(
+        "emit_rubric_verdict",
+        tool_arguments,
+        call_id="call-grade-001",
+        input_tokens=200,
+        output_tokens=60,
+        cost_usd=0.0003,
     )
-
-
-class ScriptedProvider:
-    """Structural ``CompletionProvider`` returning scripted responses."""
-
-    def __init__(self, *, response: CompletionResponse) -> None:
-        self._response = response
-        self.complete_calls: list[
-            tuple[
-                list[ChatMessage],
-                str,
-                list[ToolDefinition] | None,
-                CompletionConfig | None,
-            ]
-        ] = []
-
-    async def complete(
-        self,
-        messages: list[ChatMessage],
-        model: str,
-        *,
-        tools: list[ToolDefinition] | None = None,
-        config: CompletionConfig | None = None,
-    ) -> CompletionResponse:
-        self.complete_calls.append((messages, model, tools, config))
-        return self._response
-
-    async def stream(
-        self,
-        messages: list[ChatMessage],
-        model: str,
-        *,
-        tools: list[ToolDefinition] | None = None,
-        config: CompletionConfig | None = None,
-    ) -> AsyncIterator[StreamChunk]:
-        async def _empty() -> AsyncIterator[StreamChunk]:
-            yield StreamChunk(event_type=StreamEventType.DONE)
-
-        return _empty()
-
-    async def get_model_capabilities(self, model: str) -> ModelCapabilities:
-        return _CAPABILITIES
 
 
 @pytest.mark.unit
@@ -449,3 +383,51 @@ class TestLLMRubricGraderBehavior:
         assert "correctness" in content
         assert "completeness" in content
         assert "Is the output correct?" in content
+
+    async def test_large_payload_is_truncated(
+        self,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Oversized artifact payloads are truncated and the prompt
+        carries only the truncated payload (the rest is not sent)."""
+        large_payload = {"data": "x" * 30_000}
+        artifact = HandoffArtifact(
+            created_at=datetime.now(UTC),
+            from_agent_id="agent-generator",
+            to_agent_id="agent-evaluator",
+            from_stage="generator",
+            to_stage="evaluator",
+            payload=large_payload,
+            artifact_refs=("artifact-001",),
+        )
+        response = _response(
+            {
+                "per_criterion_grades": {
+                    "correctness": 0.9,
+                    "completeness": 0.9,
+                },
+                "verdict": "pass",
+                "confidence": 0.9,
+                "findings": [],
+            }
+        )
+        provider = ScriptedProvider(response=response)
+        grader = LLMRubricGrader(
+            provider=provider,
+            model_id="test-medium-001",
+        )
+        result = await grader.grade(
+            artifact=artifact,
+            rubric=_rubric(),
+            probes=_probes(),
+            generator_agent_id="agent-generator",
+            evaluator_agent_id="agent-evaluator",
+        )
+        assert result.verdict == VerificationVerdict.PASS
+        # Prompt payload was capped at 16K chars, not the full 30K.
+        messages, _, _, _ = provider.complete_calls[0]
+        user_content = messages[-1].content or ""
+        assert len(user_content) < 20_000
+        # Structlog emits warnings to stderr by default in tests.
+        captured = capsys.readouterr()
+        assert "grader.payload_truncated" in (captured.err + captured.out)

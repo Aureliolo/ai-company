@@ -922,7 +922,11 @@ Every bullet is a strategy behind a ``@runtime_checkable Protocol``:
   version store), ``StrategySelectionAdapter`` (preference memory), ``PromptTemplateAdapter``
   (prompt injection)
 - **Guards** (``engine/evolution/guards/``): ``RateLimitGuard``, ``ReviewGateGuard``,
-  ``RollbackGuard``, ``ShadowEvaluationGuard`` (stub), ``CompositeGuard`` (chains ALL)
+  ``RollbackGuard``, ``ShadowEvaluationGuard`` (runs adapted agent on a probe
+  task suite via a pluggable ``ShadowTaskProvider`` + ``ShadowAgentRunner`` and
+  rejects when score or pass rate regresses beyond configured tolerances),
+  ``ApproveAllGuard`` (no-op fallback used when every real guard is disabled),
+  ``CompositeGuard`` (chains ALL)
 
 ### Identity Version Store
 

@@ -24,6 +24,7 @@ shadow eval cannot approve into the void.
 
 import asyncio
 import statistics
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from synthorg.engine.evolution.guards.shadow_protocol import ShadowTaskOutcome
@@ -42,6 +43,7 @@ from synthorg.observability.events.evolution import (
     EVOLUTION_SHADOW_STARTED,
     EVOLUTION_SHADOW_TASK_FAILED,
 )
+from synthorg.providers.resilience.errors import RetryExhaustedError
 
 if TYPE_CHECKING:
     from synthorg.core.agent import AgentIdentity
@@ -56,22 +58,35 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
+@dataclass(frozen=True, slots=True)
 class _ShadowAggregate:
-    """Aggregate stats from one side (baseline or adapted) of a run."""
+    """Immutable aggregate stats from one side (baseline or adapted)."""
 
-    __slots__ = ("errors", "pass_rate", "score_mean", "success_count", "total")
+    total: int
+    success_count: int
+    pass_rate: float
+    score_mean: float | None
+    errors: tuple[str, ...]
 
-    def __init__(
-        self,
-        *,
+    @classmethod
+    def from_outcomes(
+        cls,
         outcomes: tuple[ShadowTaskOutcome, ...],
-    ) -> None:
-        self.total = len(outcomes)
-        self.success_count = sum(1 for o in outcomes if o.success)
-        self.pass_rate = self.success_count / self.total if self.total else 0.0
+    ) -> _ShadowAggregate:
+        """Build an aggregate from a tuple of outcomes."""
+        total = len(outcomes)
+        success_count = sum(1 for o in outcomes if o.success)
+        pass_rate = success_count / total if total else 0.0
         scores = [o.quality_score for o in outcomes if o.quality_score is not None]
-        self.score_mean = statistics.fmean(scores) if scores else None
-        self.errors = tuple(o.error for o in outcomes if o.error is not None)
+        score_mean = statistics.fmean(scores) if scores else None
+        errors = tuple(o.error for o in outcomes if o.error is not None)
+        return cls(
+            total=total,
+            success_count=success_count,
+            pass_rate=pass_rate,
+            score_mean=score_mean,
+            errors=errors,
+        )
 
 
 class ShadowEvaluationGuard:
@@ -157,8 +172,8 @@ class ShadowEvaluationGuard:
             tasks=tasks,
         )
 
-        baseline_stats = _ShadowAggregate(outcomes=baseline)
-        adapted_stats = _ShadowAggregate(outcomes=adapted)
+        baseline_stats = _ShadowAggregate.from_outcomes(baseline)
+        adapted_stats = _ShadowAggregate.from_outcomes(adapted)
 
         if baseline_stats.success_count == 0:
             return self._reject(
@@ -247,37 +262,63 @@ class ShadowEvaluationGuard:
         """Execute every task in a pass, converting errors to failed outcomes.
 
         Each task is wrapped in a safe-default helper so one task's
-        failure never cancels the group.  ``MemoryError`` and
-        ``RecursionError`` still propagate.
+        failure never cancels the group.  Infrastructure errors
+        (``MemoryError``, ``RecursionError``, and ``RetryExhaustedError``
+        from the provider layer) propagate so shadow eval never
+        misattributes transient provider outages as a proposal
+        regression.  The guard enforces ``timeout_per_task_seconds``
+        with ``asyncio.timeout`` independently of the runner so a
+        misbehaving runner cannot hang the evaluation indefinitely.
         """
+        timeout_seconds = self._config.timeout_per_task_seconds
 
         async def _one(task: Task) -> ShadowTaskOutcome:
             try:
-                return await self._runner.run(
-                    identity=identity,
-                    proposal=proposal,
-                    task=task,
-                    timeout_seconds=self._config.timeout_per_task_seconds,
-                )
-            except MemoryError, RecursionError:
+                async with asyncio.timeout(timeout_seconds):
+                    return await self._runner.run(
+                        identity=identity,
+                        proposal=proposal,
+                        task=task,
+                        timeout_seconds=timeout_seconds,
+                    )
+            except MemoryError, RecursionError, RetryExhaustedError:
                 raise
-            except Exception as exc:
+            except TimeoutError:
+                timeout_msg = f"timeout after {timeout_seconds:.1f}s"
                 logger.warning(
                     EVOLUTION_SHADOW_TASK_FAILED,
                     proposal_id=proposal_id,
                     pass_label=label,
                     task_id=task.id,
-                    error=str(exc)[:200],
+                    error=timeout_msg,
+                    error_type="timeout",
                 )
                 return ShadowTaskOutcome(
                     success=False,
                     quality_score=None,
-                    error=str(exc)[:200] or "unknown runner error",
+                    error=timeout_msg,
+                )
+            except Exception as exc:
+                error_msg = str(exc)[:200] or "unknown runner error"
+                logger.warning(
+                    EVOLUTION_SHADOW_TASK_FAILED,
+                    proposal_id=proposal_id,
+                    pass_label=label,
+                    task_id=task.id,
+                    error=error_msg,
+                )
+                return ShadowTaskOutcome(
+                    success=False,
+                    quality_score=None,
+                    error=error_msg,
                 )
 
         outcomes: list[ShadowTaskOutcome] = []
         async with asyncio.TaskGroup() as tg:
             coros = [tg.create_task(_one(t)) for t in tasks]
+            # Collect inside the TaskGroup context so ordering with the
+            # group's internal join is explicit and robust against
+            # future refactors.
         outcomes.extend(c.result() for c in coros)
         return tuple(outcomes)
 
@@ -327,16 +368,15 @@ class ShadowEvaluationGuard:
         adapted: _ShadowAggregate,
     ) -> AdaptationDecision:
         """Build an approval decision with a summary reason."""
-        score_adapted = (
-            f"{adapted.score_mean:.2f}" if adapted.score_mean is not None else "n/a"
-        )
-        score_baseline = (
-            f"{baseline.score_mean:.2f}" if baseline.score_mean is not None else "n/a"
-        )
+
+        def _format_score(score: float | None) -> str:
+            return f"{score:.2f}" if score is not None else "n/a"
+
         reason = (
             "Shadow eval passed: "
             f"pass rate {baseline.pass_rate:.2%} -> {adapted.pass_rate:.2%}, "
-            f"mean score {score_baseline} -> {score_adapted} "
+            f"mean score {_format_score(baseline.score_mean)} -> "
+            f"{_format_score(adapted.score_mean)} "
             f"across {baseline.total} probe tasks"
         )
         logger.info(

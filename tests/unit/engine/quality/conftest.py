@@ -1,0 +1,146 @@
+"""Shared fixtures for engine/quality tests.
+
+Defines the ``ScriptedProvider`` fake used by both LLM decomposer and
+LLM grader tests.  Keeping a single shared implementation prevents
+silent drift between the two suites.
+"""
+
+from collections.abc import AsyncIterator
+from typing import Any
+
+from synthorg.providers.capabilities import ModelCapabilities
+from synthorg.providers.enums import FinishReason, StreamEventType
+from synthorg.providers.models import (
+    ChatMessage,
+    CompletionConfig,
+    CompletionResponse,
+    StreamChunk,
+    TokenUsage,
+    ToolCall,
+    ToolDefinition,
+)
+
+TEST_CAPABILITIES = ModelCapabilities(
+    model_id="test-medium-001",
+    provider="test-provider",
+    max_context_tokens=200_000,
+    max_output_tokens=8_192,
+    supports_tools=True,
+    supports_vision=False,
+    supports_streaming=True,
+    supports_streaming_tool_calls=True,
+    supports_system_messages=True,
+    cost_per_1k_input=0.001,
+    cost_per_1k_output=0.002,
+)
+"""Shared capabilities fixture for LLM quality tests."""
+
+
+def build_tool_call_response(  # noqa: PLR0913
+    tool_name: str,
+    tool_arguments: dict[str, Any],
+    *,
+    call_id: str = "call-001",
+    input_tokens: int = 100,
+    output_tokens: int = 30,
+    cost_usd: float = 0.0001,
+    model: str = "test-medium-001",
+) -> CompletionResponse:
+    """Build a ``CompletionResponse`` wrapping a single scripted tool call."""
+    return CompletionResponse(
+        tool_calls=(
+            ToolCall(
+                id=call_id,
+                name=tool_name,
+                arguments=tool_arguments,
+            ),
+        ),
+        finish_reason=FinishReason.TOOL_USE,
+        usage=TokenUsage(
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cost_usd=cost_usd,
+        ),
+        model=model,
+    )
+
+
+class ScriptedProvider:
+    """Structural ``CompletionProvider`` returning scripted responses.
+
+    Satisfies the ``CompletionProvider`` Protocol (``complete``,
+    ``stream``, ``get_model_capabilities``).  ``complete()`` returns the
+    configured ``response`` unless ``error`` is set, in which case it
+    raises.  All calls are recorded on ``complete_calls`` for assertion.
+    """
+
+    def __init__(
+        self,
+        *,
+        response: CompletionResponse | None = None,
+        error: Exception | None = None,
+        capabilities: ModelCapabilities | None = None,
+    ) -> None:
+        """Configure the scripted response / error.
+
+        Args:
+            response: The response to return from ``complete``.  If
+                omitted ``complete`` still records the call but raises
+                an ``AssertionError`` -- most tests should supply one.
+            error: If set, ``complete`` raises this exception instead
+                of returning a response.
+            capabilities: Optional override for ``get_model_capabilities``;
+                defaults to ``TEST_CAPABILITIES``.
+        """
+        self._response = response
+        self._error = error
+        self._capabilities = capabilities or TEST_CAPABILITIES
+        self.complete_calls: list[
+            tuple[
+                list[ChatMessage],
+                str,
+                list[ToolDefinition] | None,
+                CompletionConfig | None,
+            ]
+        ] = []
+
+    async def complete(
+        self,
+        messages: list[ChatMessage],
+        model: str,
+        *,
+        tools: list[ToolDefinition] | None = None,
+        config: CompletionConfig | None = None,
+    ) -> CompletionResponse:
+        """Record the call and return the configured response or raise."""
+        self.complete_calls.append((messages, model, tools, config))
+        if self._error is not None:
+            raise self._error
+        if self._response is None:
+            msg = (
+                "ScriptedProvider.complete() called without a configured "
+                "response or error"
+            )
+            raise AssertionError(msg)
+        return self._response
+
+    async def stream(
+        self,
+        messages: list[ChatMessage],
+        model: str,
+        *,
+        tools: list[ToolDefinition] | None = None,
+        config: CompletionConfig | None = None,
+    ) -> AsyncIterator[StreamChunk]:
+        """Return a trivial two-chunk stream (used only for protocol conformance)."""
+        del messages, model, tools, config
+
+        async def _empty() -> AsyncIterator[StreamChunk]:
+            yield StreamChunk(event_type=StreamEventType.DONE)
+
+        return _empty()
+
+    async def get_model_capabilities(self, model: str) -> ModelCapabilities:
+        """Return the configured capabilities regardless of ``model``."""
+        del model
+        return self._capabilities

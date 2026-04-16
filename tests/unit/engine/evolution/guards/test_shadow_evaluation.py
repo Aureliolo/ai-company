@@ -469,3 +469,99 @@ class TestShadowEvaluationGuardAxes:
             _make_proposal(axis=AdaptationAxis.PROMPT_TEMPLATE)
         )
         assert decision.approved is True
+
+
+@pytest.mark.unit
+class TestShadowEvaluationGuardResilience:
+    async def test_runner_timeout_counts_as_adapted_failure(self) -> None:
+        """A runner that exceeds ``timeout_per_task_seconds`` is treated
+        as a failed adapted task -- the guard enforces its own timeout
+        via ``asyncio.timeout`` so a misbehaving runner cannot hang."""
+        import asyncio as _asyncio
+
+        async def _slow_runner_run(
+            *,
+            identity: AgentIdentity,
+            proposal: AdaptationProposal | None,
+            task: Task,
+            timeout_seconds: float,
+        ) -> ShadowTaskOutcome:
+            if proposal is not None:
+                # Adapted side "hangs" deliberately -- guard timeout must fire.
+                await _asyncio.sleep(10.0)
+            return ShadowTaskOutcome(success=True, quality_score=0.9)
+
+        class _SlowRunner:
+            async def run(
+                self,
+                *,
+                identity: AgentIdentity,
+                proposal: AdaptationProposal | None,
+                task: Task,
+                timeout_seconds: float,
+            ) -> ShadowTaskOutcome:
+                return await _slow_runner_run(
+                    identity=identity,
+                    proposal=proposal,
+                    task=task,
+                    timeout_seconds=timeout_seconds,
+                )
+
+        config = ShadowEvaluationConfig(
+            probe_tasks=(_make_task("probe-1"),),
+            sample_size=5,
+            timeout_per_task_seconds=0.05,
+            score_regression_tolerance=0.0,
+            pass_rate_regression_tolerance=0.0,
+        )
+        provider = ConfiguredShadowTaskProvider(config=config)
+        guard = ShadowEvaluationGuard(
+            config=config,
+            task_provider=provider,
+            runner=_SlowRunner(),
+            identity_store=_FakeIdentityStore(identity=_make_identity()),
+        )
+        decision = await guard.evaluate(_make_proposal())
+        assert decision.approved is False
+        assert "pass rate dropped" in decision.reason
+
+    async def test_retry_exhausted_error_propagates(self) -> None:
+        """Provider-level ``RetryExhaustedError`` must propagate so
+        infrastructure outages are not misattributed as regressions."""
+        from synthorg.providers.errors import ProviderTimeoutError
+        from synthorg.providers.resilience.errors import RetryExhaustedError
+
+        def _fn(
+            adapted: bool,
+            proposal: AdaptationProposal | None,
+            task: Task,
+        ) -> ShadowTaskOutcome:
+            if adapted:
+                raise RetryExhaustedError(
+                    ProviderTimeoutError("upstream timeout"),
+                )
+            return ShadowTaskOutcome(success=True, quality_score=0.9)
+
+        runner = _ScriptedRunner(_fn)
+        guard = _build_guard(
+            config=_config(),
+            runner=runner,
+            identity=_make_identity(),
+        )
+        with pytest.raises(ExceptionGroup) as exc_info:
+            await guard.evaluate(_make_proposal())
+        # TaskGroup wraps the RetryExhaustedError in an ExceptionGroup.
+        assert any(
+            isinstance(e, RetryExhaustedError)
+            for e in _flatten_exceptions(exc_info.value)
+        )
+
+
+def _flatten_exceptions(exc: BaseException) -> list[BaseException]:
+    """Recursively flatten ``ExceptionGroup`` into a list of leaves."""
+    if isinstance(exc, BaseExceptionGroup):
+        out: list[BaseException] = []
+        for inner in exc.exceptions:
+            out.extend(_flatten_exceptions(inner))
+        return out
+    return [exc]

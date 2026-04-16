@@ -16,7 +16,7 @@ full ``AgentEngine`` graph.  Production wiring adapts the runner to
 ``AgentEngine.run``; unit tests supply a deterministic fake.
 """
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -66,7 +66,6 @@ class ShadowTaskOutcome(BaseModel):
         return self
 
 
-@runtime_checkable
 class ShadowTaskProvider(Protocol):
     """Sources the sample task suite for a shadow evaluation run."""
 
@@ -98,7 +97,6 @@ class ShadowTaskProvider(Protocol):
         ...
 
 
-@runtime_checkable
 class ShadowAgentRunner(Protocol):
     """Executes one task against a given identity with optional proposal."""
 

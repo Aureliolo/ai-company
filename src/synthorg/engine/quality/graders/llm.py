@@ -25,6 +25,7 @@ from synthorg.engine.quality.verification import (
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.verification import (
+    VERIFICATION_GRADER_PAYLOAD_TRUNCATED,
     VERIFICATION_GRADER_RESPONSE_INVALID,
     VERIFICATION_GRADING_COMPLETED,
     VERIFICATION_GRADING_STARTED,
@@ -247,7 +248,15 @@ class LLMRubricGrader:
     ) -> str:
         """Render rubric, calibration, probes, and payload as a JSON envelope."""
         payload_text = json.dumps(dict(artifact.payload), ensure_ascii=False)
-        if len(payload_text) > _MAX_PAYLOAD_CHARS:
+        original_len = len(payload_text)
+        if original_len > _MAX_PAYLOAD_CHARS:
+            logger.warning(
+                VERIFICATION_GRADER_PAYLOAD_TRUNCATED,
+                rubric_name=rubric.name,
+                grader=self.name,
+                original_chars=original_len,
+                truncated_chars=_MAX_PAYLOAD_CHARS,
+            )
             payload_text = payload_text[:_MAX_PAYLOAD_CHARS]
 
         calibration = [
