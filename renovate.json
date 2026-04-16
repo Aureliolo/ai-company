@@ -6,6 +6,9 @@
     "helpers:pinGitHubActionDigests",
     "docker:pinDigests"
   ],
+  "registryAliases": {
+    "dhi.io": "dhi.io"
+  },
   "pre-commit": {
     "enabled": true
   },
@@ -147,7 +150,7 @@
     {
       "customType": "regex",
       "description": "DHI images in compose template (image: dhi.io/name:tag@sha256:...)",
-      "managerFilePatterns": ["/compose\\.yml\\.tmpl$/", "/docker/compose\\.yml$/"],
+      "managerFilePatterns": ["/compose\\.yml\\.tmpl$/"],
       "matchStrings": [
         "image:\\s+(?<depName>dhi\\.io/[^:]+):(?<currentValue>[^@]+)@(?<currentDigest>sha256:[a-f0-9]+)"
       ],
@@ -157,7 +160,7 @@
     {
       "customType": "regex",
       "description": "Busybox sidecar in compose files",
-      "managerFilePatterns": ["/compose\\.yml\\.tmpl$/", "/docker/compose\\.yml$/"],
+      "managerFilePatterns": ["/compose\\.yml\\.tmpl$/"],
       "matchStrings": [
         "image:\\s+(?<depName>busybox):(?<currentValue>[^@]+)@(?<currentDigest>sha256:[a-f0-9]+)"
       ],
