@@ -182,7 +182,7 @@ services:
   # because there is no shell or HTTP client inside the distroless image.
   nats:
     # renovate: datasource=docker depName=dhi.io/nats
-    image: dhi.io/nats:2.12-debian13@sha256:89f40ed3ce7f69ad0af95c264368d3de41d72de604c97e7f1f8bd57d3a2b617f
+    image: dhi.io/nats:2.12-debian13@sha256:4aa385a11a8d89266a726403dacd2f7d5000f66bdb5e91411571fc2688da1e2a
     command: ["-js", "-sd", "/data", "-m", "8222", "--max_payload", "4MB"]
     ports:
       - "{{.NatsClientPort}}:4222"
