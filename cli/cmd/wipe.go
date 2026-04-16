@@ -182,6 +182,12 @@ func (wc *wipeContext) confirmAndWipe() error {
 	// Remove the data directory (config, compose.yml, state.json).
 	// This returns the system to a clean state -- only the CLI binary
 	// remains. Users must run 'synthorg init' to set up again.
+	// Guard: safeDir was validated by safeStateDir -> config.SecurePath
+	// (absolute + clean). Reject anything that looks like a traversal
+	// or root path to prevent accidental destruction.
+	if strings.Contains(wc.safeDir, "..") || wc.safeDir == "/" || wc.safeDir == filepath.VolumeName(wc.safeDir)+string(filepath.Separator) {
+		return fmt.Errorf("refusing to remove suspicious path: %s", wc.safeDir)
+	}
 	sp2 := wc.out.StartSpinner("Removing data directory...")
 	if err := os.RemoveAll(wc.safeDir); err != nil {
 		sp2.Warn(fmt.Sprintf("Could not remove data directory: %v", err))
