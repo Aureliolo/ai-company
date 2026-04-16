@@ -227,6 +227,17 @@ Directory suffix is auto-derived from the branch name:
    - Follow TDD: write tests first, then implement
    - Follow all conventions in CLAUDE.md (immutability, PEP 758, no __future__ imports, structlog logging, etc.)
    - After implementation: create commits on this branch, push with -u, then use /pre-pr-review
+
+   ## Decision Protocol (MANDATORY)
+   - For ANY major decision (architecture choice, library inclusion, scope change, feature toggle, data model design, API shape, whether to include/exclude something), use the AskUserQuestion tool to ask the user. NEVER make big decisions autonomously.
+   - Present options with pros AND cons. Let the user decide.
+   - Examples of what requires AskUserQuestion: "Should we use X or Y approach?", "Should this feature include Z?", "The spec says X but Y might be better -- which do you prefer?", "This touches N files -- should we split into separate PRs?"
+
+   ## Quality Standards (MANDATORY)
+   - Build BEST IN CLASS. No shortcuts, no "good enough", no "we can improve later".
+   - NEVER defer anything. If a finding says "fix X", fix X completely. No TODOs, no stubs, no "phase 2" thinking.
+   - NEVER add backward compatibility shims -- break things properly (pre-alpha).
+   - Every piece of work must meet the highest standard of security, UX, maintainability, and correctness.
    ~~~
 
    If there are multiple issues in one worktree that have a natural ordering (from dependency parsing or logical sequence), add an `## Implementation order` section.

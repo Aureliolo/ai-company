@@ -1,12 +1,12 @@
 ---
-description: "Full codebase audit: launches 58 specialized agents to find issues across Python/React/Go, writes findings to _audit/findings/, then triages with user"
+description: "Full codebase audit: launches 75 specialized agents to find issues across Python/React/Go/docs/website, writes findings to _audit/findings/, then triages with user"
 argument-hint: "<scope: full | src/ | web/ | cli/ | docs/> [--report-only] [--quick]"
 allowed-tools: ["Agent", "Bash", "Read", "Write", "Edit", "Glob", "Grep", "AskUserQuestion", "mcp__github__issue_write", "mcp__github__issue_read", "mcp__github__list_issues", "mcp__github__search_issues"]
 ---
 
 # /codebase-audit -- Full Codebase Audit
 
-Launch 58 specialized agents to audit the entire codebase (or a targeted scope), write findings to `_audit/findings/`, build an index, and triage with the user.
+Launch 75 specialized agents to audit the entire codebase (or a targeted scope), write findings to `_audit/findings/`, build an index, and triage with the user.
 
 ## Key Principles
 
@@ -152,6 +152,8 @@ Launch agents in 6 batches of ~10 each. All agents within a batch run in paralle
 | D | 31-40 | 10 |
 | E | 41-50 | 10 |
 | F | 51-58 | 8 |
+| G | 59-65 | 7 |
+| H | 66-75 | 10 |
 
 Report to user after each batch: "Batch X complete (N/58 agents done)."
 
@@ -742,6 +744,233 @@ File: `_audit/findings/58-go-cli-wiring.md`
 Check cobra command registration in cli/cmd/. Find commands registered but
 non-functional, flags defined but never read, subcommands with no RunE.
 Severity: medium.
+```
+
+### Wave 11: Dashboard Completeness (3 agents)
+
+**Agent 59 -- dashboard-api-coverage** (sonnet)
+File: `_audit/findings/59-dashboard-api-coverage.md`
+```text
+Cross-reference every backend API endpoint (from all controllers in
+api/controllers/) with the web dashboard. For each endpoint, check whether
+the dashboard exposes the functionality to the user in SOME way -- a page,
+a button, a settings panel, a dialog, etc. Report endpoints that exist in
+the backend but have no corresponding UI surface. Severity: medium.
+```
+
+**Agent 60 -- dashboard-settings-completeness** (sonnet)
+File: `_audit/findings/60-dashboard-settings-completeness.md`
+```text
+Cross-reference every setting definition in settings/definitions/ with the
+Settings page in the dashboard (web/src/pages/settings/). For each setting,
+check whether it is editable/visible in the UI. Also check ConfigDict fields
+in src/synthorg/config/ that are user-facing but have no settings UI.
+Report settings that exist but are not exposed. Severity: medium.
+```
+
+**Agent 61 -- dashboard-ux-improvements** (sonnet)
+File: `_audit/findings/61-dashboard-ux-improvements.md`
+```text
+Review the web dashboard pages for UX improvement opportunities. Look for:
+- Pages with no sorting/filtering when data lists can grow large
+- Missing pagination on list views
+- Missing search/filter on pages with many items
+- Missing breadcrumb navigation on detail pages
+- Missing confirmation dialogs on destructive actions
+- Missing keyboard shortcuts for common actions
+- Missing bulk selection/actions on list views
+- Inconsistent page layouts (some pages have sidebars, some don't)
+- Missing contextual help or tooltips on complex features
+- Missing progress indicators on long-running operations
+Focus on the most impactful improvements. Severity: medium for missing
+core UX patterns, low for polish.
+```
+
+### Wave 12: Documentation Quality (5 agents)
+
+**Agent 62 -- docs-accuracy** (sonnet)
+File: `_audit/findings/62-docs-accuracy.md`
+```text
+Check docs/ pages for factual accuracy. Read key documentation pages
+(architecture, tech-stack, decisions, design pages) and verify claims
+against actual code. Look for:
+- Outdated technology versions or library references
+- Features described as "implemented" that are actually stubs
+- Code examples that don't match actual API signatures
+- Removed features still documented
+- Incorrect file paths or module references
+Severity: medium for misleading docs, low for minor inaccuracies.
+```
+
+**Agent 63 -- docs-completeness** (sonnet)
+File: `_audit/findings/63-docs-completeness.md`
+```text
+Check for documentation gaps. Look for:
+- Major features with no documentation page
+- API endpoints with no usage examples in docs
+- Configuration options with no documentation
+- Architecture decisions made but not recorded in decisions.md
+- Missing "getting started" or onboarding content
+- Design pages referenced in DESIGN_SPEC.md that don't exist
+Cross-reference docs/design/ index with actual pages.
+Severity: medium for missing feature docs, low for missing examples.
+```
+
+**Agent 64 -- docs-links-refs** (haiku)
+File: `_audit/findings/64-docs-links-refs.md`
+```text
+Check all markdown files in docs/ for broken internal links. Verify that
+every [text](path) reference points to an existing file. Also check for
+anchor references (#section) that don't match actual headings. Check
+mkdocs.yml nav structure matches actual file layout. Severity: medium.
+```
+
+**Agent 65 -- readme-website-accuracy** (sonnet)
+File: `_audit/findings/65-readme-website-accuracy.md`
+```text
+Check README.md and any public-facing content (landing page content in
+docs/, comparison page, etc.) for:
+- Outdated version numbers or release dates
+- Feature claims that don't match current implementation status
+- Broken badges or status indicators
+- Competitor comparisons with outdated information
+- Missing or incorrect installation instructions
+- Outdated screenshots or diagrams
+Severity: medium for public-facing inaccuracies.
+```
+
+**Agent 66 -- docs-diagram-quality** (sonnet)
+File: `_audit/findings/66-docs-diagram-quality.md`
+```text
+Check all D2 and Mermaid diagrams in docs/ for:
+- Diagrams that reference modules/classes that no longer exist
+- Diagrams that are missing recently added major components
+- Inconsistent naming between diagram labels and actual code names
+- Diagrams using ASCII/Unicode box-drawing (forbidden by convention)
+- Missing diagrams for complex subsystems that would benefit from visuals
+Cross-reference diagram content with actual source structure.
+Severity: low.
+```
+
+### Wave 13: UX & Content Quality (9 agents)
+
+**Agent 67 -- ux-consistency** (sonnet)
+File: `_audit/findings/67-ux-consistency.md`
+```text
+Check dashboard pages for visual and interaction consistency:
+- Pages using different card layouts for similar data
+- Inconsistent button placement (some pages put actions top-right,
+  others bottom)
+- Inconsistent status indicator styles across pages
+- Pages with different table/list component choices for similar data
+- Inconsistent empty state messaging tone/style
+- Inconsistent date/time display formats across pages
+Severity: medium for jarring inconsistencies, low for minor.
+```
+
+**Agent 68 -- ux-responsiveness** (sonnet)
+File: `_audit/findings/68-ux-responsiveness.md`
+```text
+Check dashboard for responsive design issues. The dashboard has a
+MobileUnsupportedOverlay at 768px, but check for:
+- Content overflow or horizontal scrolling on narrow screens (768-1024px)
+- Tables that don't adapt (no horizontal scroll wrapper)
+- Fixed-width layouts that don't flex
+- Charts/graphs that don't resize properly
+- Modals/drawers that overflow on smaller screens
+Severity: medium.
+```
+
+**Agent 69 -- ux-performance-patterns** (sonnet)
+File: `_audit/findings/69-ux-performance-patterns.md`
+```text
+Check dashboard for performance antipatterns:
+- Large component re-renders (components that subscribe to entire store
+  instead of selectors)
+- Missing React.memo on list item components
+- Missing useMemo/useCallback on expensive computations passed as props
+- Unnecessary re-fetching (polling without stale-time checks)
+- Large bundle imports that should be lazy-loaded
+- Images without width/height (causing layout shift)
+Severity: medium.
+```
+
+**Agent 70 -- api-docs-openapi** (sonnet)
+File: `_audit/findings/70-api-docs-openapi.md`
+```text
+Check the OpenAPI/Scalar API documentation for completeness:
+- Endpoints missing descriptions or summaries
+- Request/response schemas missing field descriptions
+- Missing example values in schemas
+- Endpoints with undocumented error responses
+- Missing authentication requirements in endpoint docs
+Check by reading controller decorators and Pydantic model docstrings.
+Severity: low.
+```
+
+**Agent 71 -- cli-docs-help** (haiku)
+File: `_audit/findings/71-cli-docs-help.md`
+```text
+Check Go CLI commands for documentation completeness:
+- Commands missing Long descriptions
+- Flags missing usage text
+- Missing examples in command help
+- Inconsistent flag naming conventions
+- Commands without --help output verification
+Check cli/cmd/*.go for cobra.Command fields. Severity: low.
+```
+
+**Agent 72 -- storybook-coverage** (sonnet)
+File: `_audit/findings/72-storybook-coverage.md`
+```text
+Check web/src/components/ui/ for Storybook story coverage. Every shared
+component should have a .stories.tsx file. For existing stories, check:
+- Missing story variants (default, loading, error, empty states)
+- Stories that don't cover all major props/variants
+- Components in ui/ without any story file
+Severity: low for missing stories, medium for shared components with
+zero coverage.
+```
+
+**Agent 73 -- error-messages-ux** (sonnet)
+File: `_audit/findings/73-error-messages-ux.md`
+```text
+Check error messages shown to users (toast notifications, error states,
+API error responses, form validation messages) for quality:
+- Generic "Something went wrong" without actionable guidance
+- Technical jargon exposed to end users (stack traces, error codes
+  without explanation)
+- Missing retry suggestions on transient errors
+- Inconsistent error message tone across the app
+- Error messages that don't tell the user what to do next
+Check both frontend toast calls and backend API error messages.
+Severity: medium for unhelpful errors, low for tone inconsistencies.
+```
+
+**Agent 74 -- onboarding-flow** (sonnet)
+File: `_audit/findings/74-onboarding-flow.md`
+```text
+Check the setup wizard and first-run experience:
+- Setup steps that can fail silently
+- Missing validation on setup inputs
+- Unclear or missing help text during setup
+- Missing progress indicators during setup operations
+- Post-setup state that leaves features half-configured
+- Missing guidance on what to do after setup completes
+Check web/src/pages/setup/ and api/controllers/setup.py.
+Severity: medium.
+```
+
+**Agent 75 -- changelog-release-notes** (haiku)
+File: `_audit/findings/75-changelog-release-notes.md`
+```text
+Check for changelog/release notes completeness:
+- CHANGELOG.md missing or outdated
+- GitHub releases with missing or generic descriptions
+- Version bumps without corresponding release notes
+- Breaking changes not documented
+Check CHANGELOG.md, GitHub releases via gh, and pyproject.toml version.
+Severity: low.
 ```
 
 ---
