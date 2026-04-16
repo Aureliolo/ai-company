@@ -11,6 +11,7 @@ from typing import Final
 EVOLUTION_TRIGGER_REQUESTED: Final[str] = "evolution.trigger.requested"
 EVOLUTION_TRIGGER_SKIPPED: Final[str] = "evolution.trigger.skipped"
 EVOLUTION_TRIGGER_FAILED: Final[str] = "evolution.trigger.failed"
+EVOLUTION_TRIGGER_RUN_RECORDED: Final[str] = "evolution.trigger.run_recorded"
 
 # ── Proposal events ─────────────────────────────────────────────
 

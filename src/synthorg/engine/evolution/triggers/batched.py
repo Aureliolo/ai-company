@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Final
 from synthorg.observability import get_logger
 from synthorg.observability.events.evolution import (
     EVOLUTION_TRIGGER_REQUESTED,
+    EVOLUTION_TRIGGER_RUN_RECORDED,
     EVOLUTION_TRIGGER_SKIPPED,
 )
 
@@ -73,10 +74,12 @@ class BatchedTrigger:
                     return False
 
             self._last_run[key] = now
-            logger.debug(
+            logger.info(
                 EVOLUTION_TRIGGER_REQUESTED,
                 agent_id=key,
                 trigger="batched",
+                recorded_at=now.isoformat(),
+                previous_run_at=last.isoformat() if last is not None else None,
             )
             return True
 
@@ -86,5 +89,15 @@ class BatchedTrigger:
         Acquires the internal lock so writes cannot race against a
         concurrent :meth:`should_trigger` read/write on the same key.
         """
+        key = str(agent_id)
         async with self._lock:
-            self._last_run[str(agent_id)] = datetime.now(UTC)
+            previous = self._last_run.get(key)
+            now = datetime.now(UTC)
+            self._last_run[key] = now
+        logger.info(
+            EVOLUTION_TRIGGER_RUN_RECORDED,
+            agent_id=key,
+            trigger="batched",
+            recorded_at=now.isoformat(),
+            previous_run_at=previous.isoformat() if previous is not None else None,
+        )
