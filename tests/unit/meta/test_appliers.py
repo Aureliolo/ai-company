@@ -209,6 +209,28 @@ class TestConfigApplier:
         assert not result.success
         assert "CONFIG_TUNING" in (result.error_message or "")
 
+    async def test_dry_run_provider_failure_is_surfaced(self) -> None:
+        """If the config_provider raises, dry_run must surface a safe
+        error message rather than letting the exception propagate."""
+
+        def _boom() -> RootConfig:
+            msg = "provider offline"
+            raise RuntimeError(msg)
+
+        applier = ConfigApplier(config_provider=_boom)
+        proposal = _proposal_config(
+            ConfigChange(
+                path="company_name",
+                new_value="X",
+                description="rename",
+            ),
+        )
+        result = await applier.dry_run(proposal)
+        assert not result.success
+        message = result.error_message or ""
+        assert "RuntimeError" in message
+        assert "provider offline" in message
+
 
 # -- PromptApplier ----------------------------------------------
 
@@ -723,3 +745,151 @@ class TestArchitectureApplier:
         message = result.error_message or ""
         assert "already exists" in message
         assert "exceeds" in message
+
+    async def test_dry_run_authority_level_validation(self) -> None:
+        """Non-string, blank, and oversized authority_level are rejected."""
+        applier = ArchitectureApplier(context=_FakeArchContext())
+
+        async def _assert_rejected(value: Any, match: str) -> None:
+            proposal = _proposal_architecture(
+                _arch(
+                    "create_role",
+                    "r1",
+                    payload={
+                        "description": "d",
+                        "authority_level": value,
+                    },
+                ),
+            )
+            result = await applier.dry_run(proposal)
+            assert not result.success
+            assert match in (result.error_message or "")
+
+        await _assert_rejected(123, "must be a string")
+        await _assert_rejected("  ", "must not be blank")
+        await _assert_rejected("x" * 200, "exceeds")
+
+    async def test_dry_run_authority_level_valid_string_passes(self) -> None:
+        applier = ArchitectureApplier(context=_FakeArchContext())
+        proposal = _proposal_architecture(
+            _arch(
+                "create_role",
+                "r1",
+                payload={"description": "d", "authority_level": "senior"},
+            ),
+        )
+        result = await applier.dry_run(proposal)
+        assert result.success, result.error_message
+
+    async def test_dry_run_tool_access_validation(self) -> None:
+        """tool_access must be a list of non-blank bounded strings."""
+        applier = ArchitectureApplier(context=_FakeArchContext())
+
+        async def _assert_rejected(value: Any, match: str) -> None:
+            proposal = _proposal_architecture(
+                _arch(
+                    "create_role",
+                    "r1",
+                    payload={
+                        "description": "d",
+                        "tool_access": value,
+                    },
+                ),
+            )
+            result = await applier.dry_run(proposal)
+            assert not result.success
+            assert match in (result.error_message or "")
+
+        await _assert_rejected("not-a-list", "must be a list or tuple")
+        await _assert_rejected(["ok", 7], "must be a string")
+        await _assert_rejected(["ok", "  "], "must not be blank")
+        await _assert_rejected(["x" * 200], "exceeds")
+        await _assert_rejected(["ok"] * 200, "exceeds")
+
+    async def test_dry_run_tool_access_valid_passes(self) -> None:
+        applier = ArchitectureApplier(context=_FakeArchContext())
+        proposal = _proposal_architecture(
+            _arch(
+                "create_role",
+                "r1",
+                payload={
+                    "description": "d",
+                    "tool_access": ("git", "shell"),
+                },
+            ),
+        )
+        result = await applier.dry_run(proposal)
+        assert result.success, result.error_message
+
+    async def test_dry_run_policies_validation(self) -> None:
+        """policies must be a list of non-blank bounded strings."""
+        applier = ArchitectureApplier(context=_FakeArchContext())
+
+        async def _assert_rejected(value: Any, match: str) -> None:
+            proposal = _proposal_architecture(
+                _arch(
+                    "create_department",
+                    "d1",
+                    payload={"policies": value},
+                ),
+            )
+            result = await applier.dry_run(proposal)
+            assert not result.success
+            assert match in (result.error_message or "")
+
+        await _assert_rejected("not-a-list", "must be a list or tuple")
+        await _assert_rejected(["ok", 7], "must be a string")
+        await _assert_rejected(["ok", "  "], "must not be blank")
+        await _assert_rejected(["x" * 1_000], "exceeds")
+        await _assert_rejected(["ok"] * 200, "exceeds")
+
+    async def test_dry_run_dept_head_type_validation(self) -> None:
+        """head must be a non-blank bounded string if provided."""
+        applier = ArchitectureApplier(context=_FakeArchContext())
+
+        async def _assert_rejected(value: Any, match: str) -> None:
+            proposal = _proposal_architecture(
+                _arch(
+                    "create_department",
+                    "d1",
+                    payload={"head": value},
+                ),
+            )
+            result = await applier.dry_run(proposal)
+            assert not result.success
+            assert match in (result.error_message or "")
+
+        await _assert_rejected(123, "must be a string")
+        await _assert_rejected("  ", "must not be blank")
+        await _assert_rejected("x" * 200, "exceeds")
+
+    async def test_dry_run_pending_department_blocks_removal(self) -> None:
+        """A same-proposal ``create_role`` that references a department
+        marks that department as in-use for downstream
+        ``remove_department`` changes in the same proposal."""
+        applier = ArchitectureApplier(
+            context=_FakeArchContext(departments=frozenset({"dept-a"})),
+        )
+        proposal = _proposal_architecture(
+            _arch(
+                "create_role",
+                "r1",
+                payload={"description": "d", "department": "dept-a"},
+            ),
+            _arch("remove_department", "dept-a"),
+        )
+        result = await applier.dry_run(proposal)
+        assert not result.success
+        assert "still referenced" in (result.error_message or "")
+
+    async def test_dry_run_remove_then_create_department_is_fine(self) -> None:
+        """Removing a department that only existed in the context (no
+        pending refs, not in use) still passes."""
+        applier = ArchitectureApplier(
+            context=_FakeArchContext(departments=frozenset({"dept-a"})),
+        )
+        proposal = _proposal_architecture(
+            _arch("remove_department", "dept-a"),
+        )
+        result = await applier.dry_run(proposal)
+        assert result.success, result.error_message
