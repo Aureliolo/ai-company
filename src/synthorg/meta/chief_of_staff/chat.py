@@ -7,6 +7,7 @@ LLM calls (retry + rate limiting handled by the provider).
 
 from typing import TYPE_CHECKING
 
+from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.meta.chief_of_staff.models import (
     Alert,
     ChatQuery,
@@ -236,7 +237,7 @@ def _format_snapshot(snapshot: OrgSignalSnapshot) -> str:
         f"Success Rate: {perf.avg_success_rate:.0%}",
         f"Collaboration: {perf.avg_collaboration_score:.1f}/10",
         f"Active Agents: {perf.agent_count}",
-        f"Total Spend: {budget.total_spend:.2f}",
+        f"Total Spend: {budget.total_spend:.2f} {DEFAULT_CURRENCY}",
         f"Orchestration Overhead: {budget.orchestration_overhead:.2f}",
         f"Error Findings: {snapshot.errors.total_findings}",
     ]

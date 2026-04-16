@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
+from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.meta.models import (
     CodeChange,
     CodeOperation,
@@ -340,7 +341,7 @@ class CodeModificationStrategy:
             f"- Quality: {perf.avg_quality_score}/10\n"
             f"- Success rate: {perf.avg_success_rate:.1%}\n"
             f"- Agent count: {perf.agent_count}\n"
-            f"- Budget spend: {budget.total_spend:.2f}\n"
+            f"- Budget spend: {budget.total_spend:.2f} {DEFAULT_CURRENCY}\n"
             f"- Coordination ratio: {budget.coordination_ratio:.1%}\n"
             f"\n"
             f"Allowed modification paths: "
