@@ -29,7 +29,7 @@ dependencies = [
     "mem0ai==1.0.11",
     "mmh3==5.2.1",
     "packaging==26.1",
-    "pydantic==2.13.0",
+    "pydantic==2.13.1",
     "pyjwt[crypto]==2.12.1",
     "pyyaml==6.0.3",
     "structlog==25.5.0",
@@ -41,7 +41,7 @@ build-backend = "hatchling.build"
 
 [project.optional-dependencies]
 fine-tune = ["torch==2.11.0", "sentence-transformers==5.4.1"]
-telemetry = ["logfire==4.32.0"]
+telemetry = ["logfire==4.32.1"]
 # Distributed runtime: first distributed MessageBus backend + task queue workers.
 # Opt in with `pip install synthorg[distributed]`. See docs/design/distributed-runtime.md.
 distributed = ["nats-py==2.14.0"]
@@ -75,7 +75,7 @@ test = [
 ]
 docs = [
     "zensical==0.0.33",
-    "mkdocstrings[python]==1.0.3",
+    "mkdocstrings[python]==1.0.4",
     "griffe-pydantic==1.3.1",
     "mkdocs-d2-plugin==1.7.0",
     # Used by scripts/patch_sitemap.py to safely parse the built sitemap.
