@@ -66,7 +66,7 @@ function CommunicationEdgeComponent(props: EdgeProps<CommunicationEdgeType>) {
       stroke: 'var(--color-accent)',
       strokeWidth,
       strokeOpacity: opacity,
-      strokeDasharray: '8 4',
+      strokeDasharray: 'var(--so-dash-wide)',
       ...(reduced ? {} : { animation: `${KEYFRAME_NAME} ${dashDuration}s linear infinite` }),
     }),
     [strokeWidth, opacity, dashDuration, reduced],

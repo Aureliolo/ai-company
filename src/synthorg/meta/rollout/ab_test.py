@@ -275,7 +275,7 @@ def _stub_group_metrics(
         observation_count=0,
         avg_quality_score=7.5,
         avg_success_rate=0.85,
-        total_spend_usd=100.0,
+        total_spend=100.0,
     )
 
 

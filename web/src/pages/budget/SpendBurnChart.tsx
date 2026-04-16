@@ -142,7 +142,7 @@ export function SpendBurnChart({
           <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 1, height: 1 }}>
             <AreaChart data={chartData} margin={CHART_MARGIN}>
               <CartesianGrid
-                strokeDasharray="3 3"
+                strokeDasharray="var(--so-dash-compact)"
                 stroke="var(--so-border)"
                 vertical={false}
               />
@@ -165,7 +165,7 @@ export function SpendBurnChart({
                 <ReferenceLine
                   y={budgetTotal}
                   stroke="var(--so-danger)"
-                  strokeDasharray="4 4"
+                  strokeDasharray="var(--so-dash-medium)"
                   strokeWidth="var(--so-stroke-hairline)"
                   label={{
                     value: 'Budget',
@@ -180,7 +180,7 @@ export function SpendBurnChart({
                 <ReferenceLine
                   y={(budgetTotal * alerts.warn_at) / 100}
                   stroke="var(--so-warning)"
-                  strokeDasharray="4 4"
+                  strokeDasharray="var(--so-dash-medium)"
                   strokeWidth="var(--so-stroke-hairline)"
                   label={{
                     value: `Warn (${alerts.warn_at}%)`,
@@ -195,7 +195,7 @@ export function SpendBurnChart({
                 <ReferenceLine
                   y={(budgetTotal * alerts.critical_at) / 100}
                   stroke="var(--so-danger)"
-                  strokeDasharray="2 2"
+                  strokeDasharray="var(--so-dash-tight)"
                   strokeWidth="var(--so-stroke-hairline)"
                   label={{
                     value: `Critical (${alerts.critical_at}%)`,
@@ -209,7 +209,7 @@ export function SpendBurnChart({
               <ReferenceLine
                 x={todayLabel}
                 stroke="var(--so-text-muted)"
-                strokeDasharray="3 3"
+                strokeDasharray="var(--so-dash-compact)"
                 strokeWidth="var(--so-stroke-hairline)"
                 label={{
                   value: 'Today',
@@ -246,7 +246,7 @@ export function SpendBurnChart({
                   stroke="var(--so-warning)"
                   fill="url(#spendForecastFill)"
                   strokeWidth="var(--so-stroke-thin)"
-                  strokeDasharray="4 4"
+                  strokeDasharray="var(--so-dash-medium)"
                   dot={false}
                   connectNulls={false}
                 />

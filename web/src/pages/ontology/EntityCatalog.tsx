@@ -27,6 +27,8 @@ export function EntityCatalog({ entities }: EntityCatalogProps) {
   const setSearchQuery = useOntologyStore((s) => s.setSearchQuery)
   const setSelectedEntity = useOntologyStore((s) => s.setSelectedEntity)
 
+  const hasActiveFilters = searchQuery.trim().length > 0 || tierFilter !== 'all'
+
   return (
     <SectionCard title="Entity Catalog" icon={Shapes}>
       {/* Filters */}
@@ -58,12 +60,12 @@ export function EntityCatalog({ entities }: EntityCatalogProps) {
           icon={Shapes}
           title="No entities found"
           description={
-            searchQuery || tierFilter !== 'all'
+            hasActiveFilters
               ? 'Try adjusting your search or filter criteria.'
               : 'Entity definitions will appear here once registered.'
           }
           action={
-            searchQuery || tierFilter !== 'all'
+            hasActiveFilters
               ? {
                   label: 'Clear filters',
                   onClick: () => {

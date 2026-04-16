@@ -420,7 +420,7 @@ export interface AgentPerformanceSummary {
   tasks_completed_30d: number
   avg_completion_time_seconds: number | null
   success_rate_percent: number | null
-  cost_per_task_usd: number | null
+  cost_per_task: number | null
   quality_score: number | null
   collaboration_score: number | null
   trend_direction: TrendDirection

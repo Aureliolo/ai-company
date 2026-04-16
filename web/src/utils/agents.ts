@@ -26,6 +26,7 @@ import type {
 } from '@/api/types'
 import type { MetricCardProps } from '@/components/ui/metric-card'
 import type { AgentRuntimeStatus, SemanticColor } from '@/lib/utils'
+import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { formatCurrency } from '@/utils/format'
 
 // ── Filter / Sort types ────────────────────────────────────
@@ -135,10 +136,10 @@ export function formatCompletionTime(seconds: number | null): string {
   return `${mins}m`
 }
 
-/** Format a cost value for display in the project default currency (EUR). */
+/** Format a cost value for display in the configured currency. */
 export function formatCostPerTask(cost: number | null): string {
   if (cost == null) return '--'
-  return formatCurrency(cost, 'EUR')
+  return formatCurrency(cost, DEFAULT_CURRENCY)
 }
 
 // ── Performance cards ──────────────────────────────────────
@@ -187,7 +188,7 @@ export function computePerformanceCards(
     },
     {
       label: 'COST PER TASK',
-      value: formatCostPerTask(perf.cost_per_task_usd),
+      value: formatCostPerTask(perf.cost_per_task),
       sparklineData: costSparkline,
     },
   ]

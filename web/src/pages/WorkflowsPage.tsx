@@ -31,6 +31,9 @@ export default function WorkflowsPage() {
   } = useWorkflowsData()
 
   const handleDelete = useCallback(async (id: string) => {
+    // Store owns success/error UX (toast + surgical rollback on failure).
+    // Caller does not need to act on the boolean sentinel; WS updates drive
+    // the authoritative list state.
     await useWorkflowsStore.getState().deleteWorkflow(id)
   }, [])
 

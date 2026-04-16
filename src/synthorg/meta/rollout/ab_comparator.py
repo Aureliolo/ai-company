@@ -220,13 +220,11 @@ def _check_regressions(
             regressed.append("success_rate")
 
     # Cost increase (higher is worse).
-    if control.total_spend_usd == 0.0:
-        if treatment.total_spend_usd > 0.0:
+    if control.total_spend == 0.0:
+        if treatment.total_spend > 0.0:
             regressed.append("cost")
     else:
-        increase = (
-            treatment.total_spend_usd - control.total_spend_usd
-        ) / control.total_spend_usd
+        increase = (treatment.total_spend - control.total_spend) / control.total_spend
         if increase > thresholds.cost_increase:
             regressed.append("cost")
 

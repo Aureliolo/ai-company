@@ -41,7 +41,9 @@ describe('deleteSubworkflow', () => {
 
     expect(result).toBe(true)
     expect(api.listSubworkflows).toHaveBeenCalledTimes(1)
-    expect(useToastStore.getState().toasts[0]!.variant).toBe('success')
+    const toasts = useToastStore.getState().toasts
+    expect(toasts[0]!.variant).toBe('success')
+    expect(toasts[0]!.title).toBe('Subworkflow deleted')
   })
 
   it('returns false and emits an error toast on API failure', async () => {
@@ -52,6 +54,47 @@ describe('deleteSubworkflow', () => {
 
     expect(result).toBe(false)
     expect(api.listSubworkflows).not.toHaveBeenCalled()
-    expect(useToastStore.getState().toasts[0]!.variant).toBe('error')
+    const toasts = useToastStore.getState().toasts
+    expect(toasts[0]!.variant).toBe('error')
+    expect(toasts[0]!.title).toBe('Failed to delete subworkflow')
+    expect(toasts[0]!.description).toBe('boom')
+  })
+})
+
+describe('fetchSubworkflows', () => {
+  it('populates subworkflows and clears error on success', async () => {
+    const api = await importApi()
+    vi.mocked(api.listSubworkflows).mockResolvedValue([])
+
+    useSubworkflowsStore.setState({ listError: 'stale' })
+    await useSubworkflowsStore.getState().fetchSubworkflows()
+
+    const state = useSubworkflowsStore.getState()
+    expect(state.listLoading).toBe(false)
+    expect(state.listError).toBeNull()
+    expect(useToastStore.getState().toasts).toHaveLength(0)
+  })
+
+  it('uses searchSubworkflows when a search query is set', async () => {
+    const api = await importApi()
+    vi.mocked(api.searchSubworkflows).mockResolvedValue([])
+
+    useSubworkflowsStore.setState({ searchQuery: 'needle' })
+    await useSubworkflowsStore.getState().fetchSubworkflows()
+
+    expect(api.searchSubworkflows).toHaveBeenCalledWith('needle')
+    expect(api.listSubworkflows).not.toHaveBeenCalled()
+  })
+
+  it('sets listError on failure without toasting (list-read pattern)', async () => {
+    const api = await importApi()
+    vi.mocked(api.listSubworkflows).mockRejectedValue(new Error('network down'))
+
+    await useSubworkflowsStore.getState().fetchSubworkflows()
+
+    const state = useSubworkflowsStore.getState()
+    expect(state.listLoading).toBe(false)
+    expect(state.listError).toBe('network down')
+    expect(useToastStore.getState().toasts).toHaveLength(0)
   })
 })

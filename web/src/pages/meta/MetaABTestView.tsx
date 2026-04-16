@@ -7,6 +7,8 @@ import { MetricCard } from '@/components/ui/metric-card'
 import { FlaskConical } from 'lucide-react'
 
 import type { ABTestSummary } from '@/api/endpoints/meta'
+import { DEFAULT_CURRENCY } from '@/utils/currencies'
+import { formatCurrency } from '@/utils/format'
 
 type ABTestVerdict = NonNullable<ABTestSummary['verdict']>
 
@@ -112,7 +114,7 @@ function ABTestCard({ test }: { test: ABTestSummary }) {
             />
             <MetricCard
               label="Spend"
-              value={`$${test.control_metrics.total_spend_usd.toFixed(2)}`}
+              value={formatCurrency(test.control_metrics.total_spend, DEFAULT_CURRENCY)}
             />
           </div>
         </div>
@@ -132,7 +134,7 @@ function ABTestCard({ test }: { test: ABTestSummary }) {
             />
             <MetricCard
               label="Spend"
-              value={`$${test.treatment_metrics.total_spend_usd.toFixed(2)}`}
+              value={formatCurrency(test.treatment_metrics.total_spend, DEFAULT_CURRENCY)}
             />
           </div>
         </div>

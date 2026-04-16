@@ -157,10 +157,7 @@ export const useWorkflowsStore = create<WorkflowsState>()((set) => ({
   },
 
   deleteWorkflow: async (id: string) => {
-    const previous = {
-      workflows: useWorkflowsStore.getState().workflows,
-      totalWorkflows: useWorkflowsStore.getState().totalWorkflows,
-    }
+    const removed = useWorkflowsStore.getState().workflows.find((w) => w.id === id)
     set((state) => {
       const filtered = state.workflows.filter((w) => w.id !== id)
       return {
@@ -179,7 +176,17 @@ export const useWorkflowsStore = create<WorkflowsState>()((set) => ({
       return true
     } catch (err) {
       log.error('Delete workflow failed', sanitizeForLog(err))
-      set(previous)
+      // Surgical rollback: re-insert just the removed workflow if it's still
+      // missing.  Avoids clobbering concurrent WS-triggered state updates.
+      if (removed) {
+        set((state) => {
+          if (state.workflows.some((w) => w.id === id)) return state
+          return {
+            workflows: [removed, ...state.workflows],
+            totalWorkflows: state.totalWorkflows + 1,
+          }
+        })
+      }
       useToastStore.getState().add({
         variant: 'error',
         title: 'Failed to delete workflow',

@@ -118,12 +118,15 @@ export function MetaChat() {
         },
       ])
     } else {
+      const errMsg = useMetaStore.getState().error
       setMessages((prev) => [
         ...prev,
         {
           id: nextMsgId(),
           role: 'assistant',
-          content: 'Failed to get a response. Please try again.',
+          content: errMsg
+            ? `Chat request failed: ${errMsg}`
+            : 'Failed to get a response. Please try again.',
         },
       ])
     }

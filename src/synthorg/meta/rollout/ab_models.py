@@ -72,7 +72,7 @@ class GroupMetrics(BaseModel):
         observation_count: Number of metric samples collected.
         avg_quality_score: Average quality score (0-10).
         avg_success_rate: Average task success rate (0-1).
-        total_spend_usd: Total spend for this group.
+        total_spend: Total spend for this group (configured display currency).
         collected_at: When these metrics were collected.
     """
 
@@ -83,7 +83,7 @@ class GroupMetrics(BaseModel):
     observation_count: int = Field(ge=0)
     avg_quality_score: float = Field(ge=0.0, le=10.0)
     avg_success_rate: float = Field(ge=0.0, le=1.0)
-    total_spend_usd: float = Field(ge=0.0)
+    total_spend: float = Field(ge=0.0)
     collected_at: AwareDatetime = Field(
         default_factory=lambda: datetime.now(UTC),
     )

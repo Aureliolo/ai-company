@@ -60,6 +60,21 @@ describe('fetchProposals', () => {
 })
 
 describe('fetchSignals', () => {
+  it('stores signals and clears error on success', async () => {
+    const api = await importApi()
+    const response = { signals: [], collected_at: '2026-04-10T00:00:00Z' }
+    useMetaStore.setState({ error: 'stale' })
+    vi.mocked(api.getSignals).mockResolvedValue(
+      response as unknown as Awaited<ReturnType<typeof api.getSignals>>,
+    )
+
+    await useMetaStore.getState().fetchSignals()
+
+    expect(useMetaStore.getState().error).toBeNull()
+    expect(useMetaStore.getState().signals).toEqual(response)
+    expect(useToastStore.getState().toasts).toHaveLength(0)
+  })
+
   it('sets error state on API failure without toasting (list-read pattern)', async () => {
     const api = await importApi()
     vi.mocked(api.getSignals).mockRejectedValue(new Error('boom'))
@@ -83,17 +98,21 @@ describe('sendChat', () => {
     expect(useMetaStore.getState().chatLoading).toBe(false)
   })
 
-  it('returns null and emits an error toast on API failure', async () => {
+  it('returns null, sets error state, and emits an error toast on API failure', async () => {
     const api = await importApi()
     vi.mocked(api.postChat).mockRejectedValue(new Error('boom'))
 
     const result = await useMetaStore.getState().sendChat('hello')
 
     expect(result).toBeNull()
-    expect(useMetaStore.getState().chatLoading).toBe(false)
+    const state = useMetaStore.getState()
+    expect(state.chatLoading).toBe(false)
+    expect(state.error).toBe('boom')
     const toasts = useToastStore.getState().toasts
     expect(toasts).toHaveLength(1)
     expect(toasts[0]!.variant).toBe('error')
+    expect(toasts[0]!.title).toBe('Chat request failed')
+    expect(toasts[0]!.description).toBe('boom')
   })
 
   it('clears chatLoading after success and failure', async () => {

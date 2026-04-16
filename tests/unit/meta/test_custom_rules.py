@@ -69,7 +69,7 @@ def _full_snapshot(  # noqa: PLR0913
             agent_count=agents,
         ),
         budget=OrgBudgetSummary(
-            total_spend_usd=spend,
+            total_spend=spend,
             productive_ratio=0.6,
             coordination_ratio=coord_ratio,
             system_ratio=0.1,
@@ -182,7 +182,7 @@ class TestMetricDescriptor:
 
     def test_frozen(self) -> None:
         md = MetricDescriptor(
-            path="budget.total_spend_usd",
+            path="budget.total_spend",
             label="Total Spend",
             domain="budget",
             value_type="float",

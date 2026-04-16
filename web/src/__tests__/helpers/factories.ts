@@ -260,7 +260,7 @@ export function makePerformanceSummary(
     tasks_completed_30d: 8,
     avg_completion_time_seconds: 3600,
     success_rate_percent: 90,
-    cost_per_task_usd: 0.5,
+    cost_per_task: 0.5,
     quality_score: 8.5,
     collaboration_score: 7.0,
     trend_direction: 'stable',

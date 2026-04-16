@@ -14,6 +14,10 @@ import {
   type ApprovalPageFilters,
 } from '@/utils/approvals'
 import { getErrorMessage } from '@/utils/errors'
+import { sanitizeForLog } from '@/utils/logging'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('approvals-page')
 import { ApprovalFilterBar } from './approvals/ApprovalFilterBar'
 import { ApprovalRiskGroupSection } from './approvals/ApprovalRiskGroupSection'
 import { ApprovalDetailDrawer } from './approvals/ApprovalDetailDrawer'
@@ -158,6 +162,7 @@ export default function ApprovalsPage() {
         })
       }
     } catch (err) {
+      log.error('Batch approve failed', sanitizeForLog(err))
       useToastStore.getState().add({ variant: 'error', title: 'Batch approve failed', description: getErrorMessage(err) })
     } finally {
       setBatchLoading(false)
@@ -185,6 +190,7 @@ export default function ApprovalsPage() {
         })
       }
     } catch (err) {
+      log.error('Batch reject failed', sanitizeForLog(err))
       useToastStore.getState().add({ variant: 'error', title: 'Batch reject failed', description: getErrorMessage(err) })
     } finally {
       setBatchLoading(false)
@@ -299,8 +305,14 @@ export default function ApprovalsPage() {
             approval={selectedApproval}
             open={!!selectedId}
             onClose={handleCloseDrawer}
-            onApprove={async (id, data) => { await approveOne(id, data) }}
-            onReject={async (id, data) => { await rejectOne(id, data) }}
+            onApprove={async (id, data) => {
+              const result = await approveOne(id, data)
+              if (result) handleCloseDrawer()
+            }}
+            onReject={async (id, data) => {
+              const result = await rejectOne(id, data)
+              if (result) handleCloseDrawer()
+            }}
             loading={loadingDetail}
             error={detailError}
           />

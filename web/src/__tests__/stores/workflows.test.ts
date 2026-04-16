@@ -72,6 +72,7 @@ describe('createWorkflow', () => {
     const toasts = useToastStore.getState().toasts
     expect(toasts).toHaveLength(1)
     expect(toasts[0]!.variant).toBe('success')
+    expect(toasts[0]!.title).toContain('Alpha')
   })
 
   it('returns null and emits an error toast on API failure', async () => {
@@ -89,6 +90,8 @@ describe('createWorkflow', () => {
     const toasts = useToastStore.getState().toasts
     expect(toasts).toHaveLength(1)
     expect(toasts[0]!.variant).toBe('error')
+    expect(toasts[0]!.title).toBe('Failed to create workflow')
+    expect(toasts[0]!.description).toBe('boom')
   })
 })
 
@@ -104,7 +107,9 @@ describe('createFromBlueprint', () => {
     })
 
     expect(result).toEqual(created)
-    expect(useToastStore.getState().toasts[0]!.variant).toBe('success')
+    const toasts = useToastStore.getState().toasts
+    expect(toasts[0]!.variant).toBe('success')
+    expect(toasts[0]!.title).toContain('Beta')
   })
 
   it('returns null on API failure', async () => {
@@ -117,7 +122,10 @@ describe('createFromBlueprint', () => {
     })
 
     expect(result).toBeNull()
-    expect(useToastStore.getState().toasts[0]!.variant).toBe('error')
+    const toasts = useToastStore.getState().toasts
+    expect(toasts[0]!.variant).toBe('error')
+    expect(toasts[0]!.title).toBe('Failed to create workflow from blueprint')
+    expect(toasts[0]!.description).toBe('boom')
   })
 })
 
@@ -133,7 +141,9 @@ describe('deleteWorkflow', () => {
     expect(result).toBe(true)
     expect(useWorkflowsStore.getState().workflows).toHaveLength(0)
     expect(useWorkflowsStore.getState().totalWorkflows).toBe(0)
-    expect(useToastStore.getState().toasts[0]!.variant).toBe('success')
+    const toasts = useToastStore.getState().toasts
+    expect(toasts[0]!.variant).toBe('success')
+    expect(toasts[0]!.title).toBe('Workflow deleted')
   })
 
   it('rolls back state and returns false on API failure', async () => {
@@ -147,6 +157,62 @@ describe('deleteWorkflow', () => {
     expect(result).toBe(false)
     expect(useWorkflowsStore.getState().workflows).toEqual([wf])
     expect(useWorkflowsStore.getState().totalWorkflows).toBe(1)
-    expect(useToastStore.getState().toasts[0]!.variant).toBe('error')
+    const toasts = useToastStore.getState().toasts
+    expect(toasts[0]!.variant).toBe('error')
+    expect(toasts[0]!.title).toBe('Failed to delete workflow')
+    expect(toasts[0]!.description).toBe('boom')
+  })
+
+  it('rollback preserves concurrent WS-triggered state updates', async () => {
+    const api = await importApi()
+    const wf1 = makeWorkflow('1')
+    useWorkflowsStore.setState({ workflows: [wf1], totalWorkflows: 1 })
+
+    // Simulate a WS-triggered upsert arriving during the in-flight delete:
+    // the API rejection happens AFTER a concurrent workflow has been added.
+    vi.mocked(api.deleteWorkflow).mockImplementation(async () => {
+      useWorkflowsStore.setState((s) => ({
+        workflows: [makeWorkflow('2'), ...s.workflows],
+        totalWorkflows: s.totalWorkflows + 1,
+      }))
+      throw new Error('boom')
+    })
+
+    const result = await useWorkflowsStore.getState().deleteWorkflow('1')
+
+    expect(result).toBe(false)
+    const state = useWorkflowsStore.getState()
+    // The concurrent WS-added wf '2' must survive the rollback
+    expect(state.workflows.map((w) => w.id).sort()).toEqual(['1', '2'])
+  })
+})
+
+describe('fetchWorkflows', () => {
+  it('populates list and clears error on success', async () => {
+    const api = await importApi()
+    const items = [makeWorkflow('1'), makeWorkflow('2')]
+    vi.mocked(api.listWorkflows).mockResolvedValue({ data: items, total: 2, offset: 0, limit: 200 })
+
+    useWorkflowsStore.setState({ listError: 'stale' })
+    await useWorkflowsStore.getState().fetchWorkflows()
+
+    const state = useWorkflowsStore.getState()
+    expect(state.workflows).toHaveLength(2)
+    expect(state.totalWorkflows).toBe(2)
+    expect(state.listLoading).toBe(false)
+    expect(state.listError).toBeNull()
+    expect(useToastStore.getState().toasts).toHaveLength(0)
+  })
+
+  it('sets listError on failure without toasting (list-read pattern)', async () => {
+    const api = await importApi()
+    vi.mocked(api.listWorkflows).mockRejectedValue(new Error('network down'))
+
+    await useWorkflowsStore.getState().fetchWorkflows()
+
+    const state = useWorkflowsStore.getState()
+    expect(state.listLoading).toBe(false)
+    expect(state.listError).toBe('network down')
+    expect(useToastStore.getState().toasts).toHaveLength(0)
   })
 })

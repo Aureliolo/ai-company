@@ -142,7 +142,7 @@ export function BudgetBurnChart({ trendData, forecast, budgetTotal, budgetRemain
           <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 1, height: 1 }}>
             <AreaChart data={chartData} margin={CHART_MARGIN}>
               <CartesianGrid
-                strokeDasharray="3 3"
+                strokeDasharray="var(--so-dash-compact)"
                 stroke="var(--so-border)"
                 vertical={false}
               />
@@ -165,7 +165,7 @@ export function BudgetBurnChart({ trendData, forecast, budgetTotal, budgetRemain
                 <ReferenceLine
                   y={budgetTotal}
                   stroke="var(--so-danger)"
-                  strokeDasharray="4 4"
+                  strokeDasharray="var(--so-dash-medium)"
                   strokeWidth="var(--so-stroke-hairline)"
                   label={{
                     value: 'Budget',
@@ -179,7 +179,7 @@ export function BudgetBurnChart({ trendData, forecast, budgetTotal, budgetRemain
               <ReferenceLine
                 x={todayLabel}
                 stroke="var(--so-text-muted)"
-                strokeDasharray="3 3"
+                strokeDasharray="var(--so-dash-compact)"
                 strokeWidth="var(--so-stroke-hairline)"
                 label={{
                   value: 'Today',
@@ -216,7 +216,7 @@ export function BudgetBurnChart({ trendData, forecast, budgetTotal, budgetRemain
                   stroke="var(--so-warning)"
                   fill="url(#forecastFill)"
                   strokeWidth="var(--so-stroke-thin)"
-                  strokeDasharray="4 4"
+                  strokeDasharray="var(--so-dash-medium)"
                   dot={false}
                   connectNulls={false}
                 />

@@ -111,7 +111,7 @@ const arbPerformance: fc.Arbitrary<AgentPerformanceSummary> = fc.nat({ max: 1000
       tasks_completed_30d: fc.constant(completed30d),
     avg_completion_time_seconds: fc.option(fc.float({ min: 0, max: 86400, noNaN: true }), { nil: null }),
     success_rate_percent: fc.option(fc.float({ min: 0, max: 100, noNaN: true }), { nil: null }),
-    cost_per_task_usd: fc.option(fc.float({ min: 0, max: 100, noNaN: true }), { nil: null }),
+    cost_per_task: fc.option(fc.float({ min: 0, max: 100, noNaN: true }), { nil: null }),
     quality_score: fc.option(fc.float({ min: 0, max: 10, noNaN: true }), { nil: null }),
     collaboration_score: fc.option(fc.float({ min: 0, max: 10, noNaN: true }), { nil: null }),
     trend_direction: fc.constantFrom('improving' as const, 'stable' as const, 'declining' as const, 'insufficient_data' as const),

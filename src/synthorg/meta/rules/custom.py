@@ -155,7 +155,7 @@ METRIC_REGISTRY: tuple[MetricDescriptor, ...] = (
     ),
     # ── Budget ────────────────────────────────────────────────
     MetricDescriptor(
-        path="budget.total_spend_usd",
+        path="budget.total_spend",
         label="Total Spend",
         domain="budget",
         value_type="float",

@@ -108,7 +108,7 @@ def _make_performance_summary(**kwargs: object) -> OrgPerformanceSummary:
 
 def _make_budget_summary(**kwargs: object) -> OrgBudgetSummary:
     defaults: dict[str, object] = {
-        "total_spend_usd": 150.0,
+        "total_spend": 150.0,
         "productive_ratio": 0.6,
         "coordination_ratio": 0.3,
         "system_ratio": 0.1,
@@ -518,7 +518,7 @@ class TestOrgBudgetSummary:
 
     def test_valid(self) -> None:
         s = _make_budget_summary()
-        assert s.total_spend_usd == 150.0
+        assert s.total_spend == 150.0
         assert s.days_until_exhausted is None
 
     def test_with_exhaustion_forecast(self) -> None:
@@ -549,7 +549,7 @@ class TestOrgSignalSnapshot:
     def test_valid_snapshot(self) -> None:
         snap = _make_snapshot()
         assert snap.performance.avg_quality_score == 7.5
-        assert snap.budget.total_spend_usd == 150.0
+        assert snap.budget.total_spend == 150.0
         assert snap.coordination.sample_count == 0
 
     def test_frozen(self) -> None:

@@ -36,7 +36,7 @@ class AgentPerformanceSummary(BaseModel):
             (30d window, falling back to 7d).
         success_rate_percent: Task success rate as percentage
             (30d window, falling back to 7d).
-        cost_per_task_usd: Average cost per task in USD (base currency)
+        cost_per_task: Average cost per task in the configured display currency
             (30d window, falling back to 7d).
         quality_score: Overall quality score (0.0-10.0).
         collaboration_score: Overall collaboration score (0.0-10.0).
@@ -71,11 +71,11 @@ class AgentPerformanceSummary(BaseModel):
         le=100.0,
         description="Task success rate as percentage (30d window, falling back to 7d)",
     )
-    cost_per_task_usd: float | None = Field(
+    cost_per_task: float | None = Field(
         default=None,
         ge=0.0,
         description=(
-            "Average cost per task in USD (base currency)"
+            "Average cost per task in the configured display currency"
             " (30d window, falling back to 7d)"
         ),
     )
@@ -165,7 +165,7 @@ def extract_performance_summary(
         success_rate_percent=_success_rate_to_percent(
             primary.success_rate if primary else None,
         ),
-        cost_per_task_usd=primary.avg_cost_per_task if primary else None,
+        cost_per_task=primary.avg_cost_per_task if primary else None,
         quality_score=snapshot.overall_quality_score,
         collaboration_score=snapshot.overall_collaboration_score,
         trend_direction=_primary_trend_direction(snapshot),

@@ -88,7 +88,7 @@ def _group_metrics(  # noqa: PLR0913
         observation_count=observations,
         avg_quality_score=quality,
         avg_success_rate=success,
-        total_spend_usd=spend,
+        total_spend=spend,
     )
 
 

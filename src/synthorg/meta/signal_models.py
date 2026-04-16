@@ -74,7 +74,7 @@ class OrgBudgetSummary(BaseModel):
     """Org-wide budget signal summary.
 
     Attributes:
-        total_spend_usd: Total spend in current period.
+        total_spend: Total spend in current period (configured display currency).
         productive_ratio: Fraction of spend on productive work.
         coordination_ratio: Fraction of spend on coordination.
         system_ratio: Fraction of spend on system overhead.
@@ -85,7 +85,7 @@ class OrgBudgetSummary(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    total_spend_usd: float = Field(ge=0.0)
+    total_spend: float = Field(ge=0.0)
     productive_ratio: float = Field(ge=0.0, le=1.0)
     coordination_ratio: float = Field(ge=0.0, le=1.0)
     system_ratio: float = Field(ge=0.0, le=1.0)

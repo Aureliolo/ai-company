@@ -55,7 +55,7 @@ def _snap(
             agent_count=10,
         ),
         budget=OrgBudgetSummary(
-            total_spend_usd=spend,
+            total_spend=spend,
             productive_ratio=0.6,
             coordination_ratio=0.3,
             system_ratio=0.1,

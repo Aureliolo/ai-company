@@ -106,6 +106,7 @@ export const useApprovalsStore = create<ApprovalsState>()((set, get) => ({
       set({ approvals: merged, total: result.total, loading: false, selectedIds: prunedSelected, selectedApproval: freshSelected })
     } catch (err) {
       if (seq !== listRequestSeq) return
+      log.warn('Failed to fetch approvals', sanitizeForLog(err))
       set({ loading: false, error: getErrorMessage(err) })
     }
   },
@@ -119,6 +120,7 @@ export const useApprovalsStore = create<ApprovalsState>()((set, get) => ({
       set({ selectedApproval: approval, loadingDetail: false, detailError: null })
     } catch (err) {
       if (seq !== detailRequestSeq) return // stale error
+      log.warn('Failed to fetch approval detail', sanitizeForLog(err))
       set({ loadingDetail: false, detailError: getErrorMessage(err) })
     }
   },
@@ -331,7 +333,7 @@ export const useApprovalsStore = create<ApprovalsState>()((set, get) => ({
       } else {
         const rollback = rollbacks.get(id)
         if (rollback) rollback()
-        failedReasons.push(result.reason instanceof Error ? result.reason.message : String(result.reason))
+        failedReasons.push(getErrorMessage(result.reason))
         failed++
       }
     }
@@ -371,7 +373,7 @@ export const useApprovalsStore = create<ApprovalsState>()((set, get) => ({
       } else {
         const rollback = rollbacks.get(id)
         if (rollback) rollback()
-        failedReasons.push(result.reason instanceof Error ? result.reason.message : String(result.reason))
+        failedReasons.push(getErrorMessage(result.reason))
         failed++
       }
     }

@@ -113,7 +113,10 @@ export function WorkflowCreateDrawer({ open, onClose }: WorkflowCreateDrawerProp
         <SegmentedControl
           label="Creation mode"
           value={mode}
-          onChange={setMode}
+          onChange={(next) => {
+            setMode(next)
+            if (next !== 'blueprint') setBlueprintError(null)
+          }}
           options={MODE_OPTIONS}
           size="sm"
         />
@@ -150,7 +153,7 @@ export function WorkflowCreateDrawer({ open, onClose }: WorkflowCreateDrawerProp
           />
         )}
 
-        {blueprintError && (
+        {mode === 'blueprint' && blueprintError && (
           <div role="alert" aria-live="assertive" className="rounded-md border border-danger/30 bg-danger/5 p-card text-sm text-danger">
             {blueprintError}
           </div>

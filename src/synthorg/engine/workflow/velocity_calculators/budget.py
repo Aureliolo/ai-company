@@ -1,7 +1,8 @@
 """Budget velocity calculator -- points per currency unit consumed.
 
 Measures cost efficiency as story points delivered per unit of budget
-consumed.  Primary unit: ``pts/<DEFAULT_CURRENCY>`` (defaults to ``pts/EUR``).
+consumed.  Primary unit: ``pts/<DEFAULT_CURRENCY>`` where
+``DEFAULT_CURRENCY`` is the configured display currency.
 """
 
 from typing import TYPE_CHECKING
@@ -29,7 +30,8 @@ _UNIT: str = f"pts/{DEFAULT_CURRENCY}"
 class BudgetVelocityCalculator:
     """Velocity calculator measuring points per currency unit consumed.
 
-    Primary unit: ``pts/<DEFAULT_CURRENCY>`` (defaults to ``pts/EUR``).
+    Primary unit: ``pts/<DEFAULT_CURRENCY>`` where ``DEFAULT_CURRENCY``
+    is the configured display currency.
 
     When ``budget_consumed`` is ``None`` or zero, ``primary_value``
     is 0.0 and only ``pts_per_sprint`` appears in secondary metrics.
@@ -62,9 +64,9 @@ class BudgetVelocityCalculator:
                     "pts_per_sprint": record.story_points_completed,
                 },
             )
-        pts_per_eur = record.story_points_completed / budget
+        pts_per_currency = record.story_points_completed / budget
         return VelocityMetrics(
-            primary_value=pts_per_eur,
+            primary_value=pts_per_currency,
             primary_unit=_UNIT,
             secondary={
                 "pts_per_sprint": record.story_points_completed,
@@ -127,5 +129,5 @@ class BudgetVelocityCalculator:
 
     @property
     def primary_unit(self) -> str:
-        """Return ``pts/<DEFAULT_CURRENCY>`` (defaults to ``pts/EUR``)."""
+        """Return ``pts/<DEFAULT_CURRENCY>`` using the configured currency."""
         return _UNIT

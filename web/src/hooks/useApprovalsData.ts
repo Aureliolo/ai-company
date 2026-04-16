@@ -2,12 +2,16 @@ import { useCallback, useEffect, useMemo } from 'react'
 import { useApprovalsStore } from '@/stores/approvals'
 import { useWebSocket, type ChannelBinding } from '@/hooks/useWebSocket'
 import { usePolling } from '@/hooks/usePolling'
+import { createLogger } from '@/lib/logger'
+import { sanitizeForLog } from '@/utils/logging'
 import type {
   ApprovalResponse,
   ApproveRequest,
   RejectRequest,
   WsChannel,
 } from '@/api/types'
+
+const log = createLogger('useApprovalsData')
 
 const APPROVAL_FETCH_LIMIT = 200
 const APPROVAL_POLL_INTERVAL = 30_000
@@ -61,12 +65,21 @@ export function useApprovalsData(): UseApprovalsDataReturn {
 
   // Initial data fetch
   useEffect(() => {
-    useApprovalsStore.getState().fetchApprovals({ limit: APPROVAL_FETCH_LIMIT })
+    useApprovalsStore
+      .getState()
+      .fetchApprovals({ limit: APPROVAL_FETCH_LIMIT })
+      .catch((err: unknown) => {
+        log.error('Initial approvals fetch failed', sanitizeForLog(err))
+      })
   }, [])
 
   // Lightweight polling for approval refresh
   const pollFn = useCallback(async () => {
-    await useApprovalsStore.getState().fetchApprovals({ limit: APPROVAL_FETCH_LIMIT })
+    try {
+      await useApprovalsStore.getState().fetchApprovals({ limit: APPROVAL_FETCH_LIMIT })
+    } catch (err) {
+      log.warn('Approvals poll iteration failed', sanitizeForLog(err))
+    }
   }, [])
 
   const polling = usePolling(pollFn, APPROVAL_POLL_INTERVAL)

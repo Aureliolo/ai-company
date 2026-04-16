@@ -28,6 +28,8 @@ import { WorkflowNodeDrawer } from './workflow-editor/WorkflowNodeDrawer'
 import { WorkflowYamlPreview } from './workflow-editor/WorkflowYamlPreview'
 import { WorkflowEditorSkeleton } from './workflow-editor/WorkflowEditorSkeleton'
 import { WorkflowYamlEditor } from './workflow-editor/WorkflowYamlEditor'
+import { getErrorMessage } from '@/utils/errors'
+import { sanitizeForLog } from '@/utils/logging'
 
 const log = createLogger('WorkflowEditor')
 
@@ -185,8 +187,8 @@ function WorkflowEditorInner() {
       URL.revokeObjectURL(url)
       addToast({ variant: 'success', title: 'YAML exported' })
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Export failed'
-      addToast({ variant: 'error', title: 'Export failed', description: message })
+      log.error('YAML export failed', sanitizeForLog(err))
+      addToast({ variant: 'error', title: 'Export failed', description: getErrorMessage(err) })
     }
   }, [exportYaml, addToast])
 
