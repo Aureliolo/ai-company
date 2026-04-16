@@ -314,10 +314,13 @@ func checkImages(ctx context.Context, dockerPath, imageTag string, sandbox bool,
 		if image == "" {
 			image = images.RefForService(name, imageTag, verifiedDigests)
 		}
-		_, err := images.InspectID(ctx, dockerPath, image)
-		if err != nil {
+		id, err := images.InspectID(ctx, dockerPath, image)
+		switch {
+		case err != nil:
 			status = append(status, fmt.Sprintf("%s: inspect failed: %v", image, err))
-		} else {
+		case id == "":
+			status = append(status, fmt.Sprintf("%s: not pulled", image))
+		default:
 			status = append(status, fmt.Sprintf("%s: available", image))
 		}
 	}

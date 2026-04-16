@@ -198,8 +198,12 @@ func buildImageDisplay(repo, tag, digest, size, id string) string {
 // collectCurrentImageIDs resolves Docker image IDs for the services at the
 // current version. Uses docker image inspect which works with both
 // digest-pinned (@sha256:...) and tag-based (:tag) references.
-// Returns an error if any service ID cannot be resolved (to avoid
-// accidentally deleting current images).
+//
+// Services whose image is not present locally (first pull, or a service
+// newly added to the install such as sandbox being enabled after init)
+// are silently skipped: auto-cleanup has nothing to delete for them.
+// Genuine inspect failures (daemon errors, permission issues) are still
+// surfaced so callers do not proceed to delete the wrong images.
 func collectCurrentImageIDs(ctx context.Context, info docker.Info, state config.State) (map[string]bool, error) {
 	services := images.ServiceNames(state.Sandbox)
 
@@ -211,7 +215,9 @@ func collectCurrentImageIDs(ctx context.Context, info docker.Info, state config.
 			return nil, fmt.Errorf("resolving image ID for %s: %w", svc, err)
 		}
 		if id == "" {
-			return nil, fmt.Errorf("no image ID found for %s (image may not be pulled)", svc)
+			// Image not pulled yet (InspectID returns "" on "No such
+			// image"). Nothing to clean up -- skip silently.
+			continue
 		}
 		// Store both the full ID (sha256:...) and the short 12-char ID.
 		// docker images --format {{.ID}} returns short IDs, while

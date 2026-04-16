@@ -101,10 +101,30 @@ func parseImageList(raw string) []LocalImage {
 
 // InspectID returns the Docker image ID for the given image reference.
 // Works with both digest-pinned (@sha256:...) and tag-based (:tag) references.
+//
+// Returns ("", nil) when the image simply does not exist locally (docker
+// reports "No such image"). This lets callers distinguish the expected
+// "not pulled yet" state from genuine failures like a dead daemon; any
+// other inspect error is returned with context preserved via %w.
 func InspectID(ctx context.Context, dockerPath, ref string) (string, error) {
 	out, err := docker.RunCmd(ctx, dockerPath, "image", "inspect", ref, "--format", "{{.ID}}")
 	if err != nil {
+		if isImageNotFoundErr(err) {
+			return "", nil
+		}
 		return "", err
 	}
 	return strings.TrimSpace(out), nil
+}
+
+// isImageNotFoundErr reports whether err is docker's "No such image"
+// response. Matched via the stderr string because docker CLI does not
+// surface a structured error code for this case.
+func isImageNotFoundErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "No such image") ||
+		strings.Contains(msg, "no such image")
 }
