@@ -6,6 +6,7 @@ consumed.  Primary unit: ``pts/EUR``.
 
 from typing import TYPE_CHECKING
 
+from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.engine.workflow.velocity_types import (
     VelocityCalcType,
     VelocityMetrics,
@@ -22,7 +23,7 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_UNIT: str = "pts/EUR"
+_UNIT: str = f"pts/{DEFAULT_CURRENCY}"
 
 
 class BudgetVelocityCalculator:

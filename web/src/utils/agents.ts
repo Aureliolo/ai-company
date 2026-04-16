@@ -135,10 +135,10 @@ export function formatCompletionTime(seconds: number | null): string {
   return `${mins}m`
 }
 
-/** Format a USD cost value for display. The field is denominated in USD per the API contract. */
+/** Format a cost value for display in the project default currency (EUR). */
 export function formatCostPerTask(cost: number | null): string {
   if (cost == null) return '--'
-  return formatCurrency(cost, 'USD')
+  return formatCurrency(cost, 'EUR')
 }
 
 // ── Performance cards ──────────────────────────────────────

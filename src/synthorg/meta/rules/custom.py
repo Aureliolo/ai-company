@@ -28,6 +28,7 @@ from pydantic import (
     field_validator,
 )
 
+from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.meta.models import (
     OrgSignalSnapshot,
@@ -159,7 +160,7 @@ METRIC_REGISTRY: tuple[MetricDescriptor, ...] = (
         domain="budget",
         value_type="float",
         min_value=0.0,
-        unit="USD",
+        unit=DEFAULT_CURRENCY,
     ),
     MetricDescriptor(
         path="budget.productive_ratio",
