@@ -1,5 +1,6 @@
 """Unit tests for SQLite approval repository."""
 
+from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
 
 import aiosqlite
@@ -59,13 +60,13 @@ def _item(
 
 
 @pytest.fixture
-async def repo() -> SQLiteApprovalRepository:
+async def repo() -> AsyncGenerator[SQLiteApprovalRepository]:
     """In-memory SQLite repo for testing."""
     db = await aiosqlite.connect(":memory:")
     await db.execute(_CREATE_TABLE)
     await db.commit()
     repo = SQLiteApprovalRepository(db)
-    yield repo  # type: ignore[misc]
+    yield repo
     await db.close()
 
 

@@ -278,8 +278,8 @@ class TestGuardNameReturnsNotBlankStr:
         ],
         ids=["approval_gate", "rate_limit", "rollback_plan", "scope_check"],
     )
-    def test_name_is_not_blank_str(self, guard: object) -> None:
-        name = guard.name  # type: ignore[attr-defined]
+    def test_name_is_not_blank_str(self, guard: ProposalGuard) -> None:
+        name = guard.name
         assert isinstance(name, str)
         assert len(name) > 0
         assert name.strip() == name
@@ -297,7 +297,7 @@ class TestRolloutStrategyNameReturnsNotBlankStr:
         ],
         ids=["before_after", "canary", "ab_test"],
     )
-    def test_name_is_not_blank_str(self, strategy: object) -> None:
+    def test_name_is_not_blank_str(self, strategy: RolloutStrategy) -> None:
         name = strategy.name
         assert isinstance(name, str)
         assert len(name) > 0
@@ -316,7 +316,7 @@ class TestRegressionDetectorNameReturnsNotBlankStr:
         ],
         ids=["tiered", "threshold", "statistical"],
     )
-    def test_name_is_not_blank_str(self, detector: object) -> None:
+    def test_name_is_not_blank_str(self, detector: RegressionDetector) -> None:
         name = detector.name
         assert isinstance(name, str)
         assert len(name) > 0

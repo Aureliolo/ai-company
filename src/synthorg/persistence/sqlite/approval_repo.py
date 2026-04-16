@@ -117,7 +117,10 @@ class SQLiteApprovalRepository:
             await self._db.rollback()
             msg = f"Constraint violation saving approval {item.id!r}: {exc}"
             logger.exception(API_APPROVAL_REPO_FAILED, approval_id=item.id, error=msg)
-            raise ConstraintViolationError(msg) from exc
+            raise ConstraintViolationError(
+                msg,
+                constraint=str(exc),
+            ) from exc
         except Exception as exc:
             await self._db.rollback()
             msg = f"Failed to save approval {item.id!r}: {exc}"
