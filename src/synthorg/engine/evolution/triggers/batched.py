@@ -59,29 +59,30 @@ class BatchedTrigger:
         now = datetime.now(UTC)
         async with self._lock:
             last = self._last_run.get(key)
+            elapsed = (now - last).total_seconds() if last is not None else None
+            fire = elapsed is None or elapsed >= self._interval
+            if fire:
+                self._last_run[key] = now
 
-            if last is not None:
-                elapsed = (now - last).total_seconds()
-                if elapsed < self._interval:
-                    logger.debug(
-                        EVOLUTION_TRIGGER_SKIPPED,
-                        agent_id=key,
-                        trigger="batched",
-                        reason="interval_not_elapsed",
-                        elapsed_seconds=int(elapsed),
-                        interval_seconds=self._interval,
-                    )
-                    return False
-
-            self._last_run[key] = now
-            logger.info(
-                EVOLUTION_TRIGGER_REQUESTED,
+        if not fire:
+            logger.debug(
+                EVOLUTION_TRIGGER_SKIPPED,
                 agent_id=key,
                 trigger="batched",
-                recorded_at=now.isoformat(),
-                previous_run_at=last.isoformat() if last is not None else None,
+                reason="interval_not_elapsed",
+                elapsed_seconds=int(elapsed) if elapsed is not None else None,
+                interval_seconds=self._interval,
             )
-            return True
+            return False
+
+        logger.info(
+            EVOLUTION_TRIGGER_REQUESTED,
+            agent_id=key,
+            trigger="batched",
+            recorded_at=now.isoformat(),
+            previous_run_at=last.isoformat() if last is not None else None,
+        )
+        return True
 
     async def record_run(self, agent_id: NotBlankStr) -> None:
         """Record that an evolution run completed for an agent.
