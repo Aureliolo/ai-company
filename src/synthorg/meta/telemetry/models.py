@@ -5,12 +5,16 @@ threshold recommendations. All models are frozen with
 ``allow_inf_nan=False``.
 """
 
+import datetime
 import re
-from typing import Literal, Self
+from typing import Annotated, Literal, Self
 
+from annotated_types import Ge
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+
+NonNegativeInt = Annotated[int, Ge(0)]
 
 _ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
@@ -55,10 +59,15 @@ class AnonymizedOutcomeEvent(BaseModel):
     @field_validator("timestamp")
     @classmethod
     def _validate_timestamp_format(cls, v: str) -> str:
-        """Enforce ISO 8601 date format (YYYY-MM-DD)."""
+        """Enforce valid ISO 8601 date (YYYY-MM-DD) with calendar check."""
         if not _ISO_DATE_RE.match(v):
             msg = f"timestamp must be ISO date (YYYY-MM-DD), got '{v}'"
             raise ValueError(msg)
+        try:
+            datetime.date.fromisoformat(v)
+        except ValueError as exc:
+            msg = f"timestamp is not a valid calendar date: '{v}'"
+            raise ValueError(msg) from exc
         return v
 
     source_rule: NotBlankStr | None = None
@@ -141,7 +150,7 @@ class AggregatedPattern(BaseModel):
     success_rate: float = Field(ge=0.0, le=1.0)
     avg_confidence: float = Field(ge=0.0, le=1.0)
     avg_observation_hours: float | None = Field(default=None, ge=0.0)
-    industry_breakdown: tuple[tuple[NotBlankStr, int], ...] = ()
+    industry_breakdown: tuple[tuple[NotBlankStr, NonNegativeInt], ...] = ()
 
 
 class ThresholdRecommendation(BaseModel):

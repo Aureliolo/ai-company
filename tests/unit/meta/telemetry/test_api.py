@@ -4,6 +4,7 @@ from collections.abc import Generator
 
 import pytest
 
+from synthorg.api.controllers import meta_analytics
 from synthorg.api.controllers.meta_analytics import (
     _require_collector,
     configure_analytics_controller,
@@ -58,8 +59,25 @@ class TestRequireCollector:
         assert result is collector
 
 
-class TestCollectorIngestion:
-    """Tests for direct collector ingestion through the controller path."""
+class TestConfigureAnalyticsController:
+    """Tests for configure_analytics_controller()."""
+
+    def test_sets_min_deployments_floor(self) -> None:
+        collector = InMemoryAnalyticsCollector()
+        configure_analytics_controller(
+            collector,
+            DefaultThresholdRecommender(),
+            min_deployments_floor=7,
+        )
+        assert meta_analytics._min_deployments_floor == 7
+
+    def test_default_floor_is_three(self) -> None:
+        configure_analytics_controller(None, None)
+        assert meta_analytics._min_deployments_floor == 3
+
+
+class TestControllerDataFlow:
+    """Tests for the wired collector/recommender data flow."""
 
     async def test_ingest_and_query_patterns(self) -> None:
         collector = InMemoryAnalyticsCollector()
@@ -75,12 +93,28 @@ class TestCollectorIngestion:
         assert len(patterns) == 1
         assert patterns[0].deployment_count == 5
 
+    async def test_min_deployments_floor_clamps_queries(self) -> None:
+        """Config floor prevents callers from lowering min_deployments."""
+        collector = InMemoryAnalyticsCollector()
+        configure_analytics_controller(
+            collector,
+            DefaultThresholdRecommender(),
+            min_deployments_floor=5,
+        )
+
+        events = tuple(_make_event(deployment_id=f"d-{i}") for i in range(3))
+        await collector.ingest(events)
+
+        # Even requesting min_deployments=1, floor clamps to 5.
+        effective = max(1, meta_analytics._min_deployments_floor)
+        patterns = await collector.query_patterns(min_deployments=effective)
+        assert len(patterns) == 0  # 3 unique deployments < floor of 5
+
     async def test_ingest_and_get_recommendations(self) -> None:
         collector = InMemoryAnalyticsCollector()
         recommender = DefaultThresholdRecommender()
         configure_analytics_controller(collector, recommender)
 
-        # Build enough data for recommendations.
         events: list[AnonymizedOutcomeEvent] = []
         for i in range(5):
             events.append(

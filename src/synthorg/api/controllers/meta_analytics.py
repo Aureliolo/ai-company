@@ -27,11 +27,14 @@ logger = get_logger(__name__)
 # Created lazily by the app startup hook; None when collector is disabled.
 _collector: InMemoryAnalyticsCollector | None = None
 _recommender: DefaultThresholdRecommender | None = None
+_min_deployments_floor: int = 3
 
 
 def configure_analytics_controller(
     collector: InMemoryAnalyticsCollector | None,
     recommender: DefaultThresholdRecommender | None,
+    *,
+    min_deployments_floor: int = 3,
 ) -> None:
     """Configure the analytics controller with collector and recommender.
 
@@ -40,10 +43,13 @@ def configure_analytics_controller(
     Args:
         collector: Collector instance, or None if disabled.
         recommender: Recommender instance, or None if disabled.
+        min_deployments_floor: Minimum deployments for pattern queries
+            (from ``CrossDeploymentAnalyticsConfig.min_deployments_for_pattern``).
     """
-    global _collector, _recommender  # noqa: PLW0603
+    global _collector, _recommender, _min_deployments_floor  # noqa: PLW0603
     _collector = collector
     _recommender = recommender
+    _min_deployments_floor = min_deployments_floor
 
 
 def _require_collector() -> InMemoryAnalyticsCollector:
@@ -101,8 +107,11 @@ class MetaAnalyticsController(Controller):
             Aggregated patterns.
         """
         collector = _require_collector()
+        # Clamp to configured privacy floor so callers cannot
+        # request patterns below the deployment-count minimum.
+        effective = max(min_deployments, _min_deployments_floor)
         patterns = await collector.query_patterns(
-            min_deployments=min_deployments,
+            min_deployments=effective,
         )
         return ApiResponse[list[AggregatedPattern]](
             data=list(patterns),

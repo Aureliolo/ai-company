@@ -8,6 +8,7 @@ When enabled, the following anonymized fields are sent to the configured collect
 
 | Field | Type | Description |
 |-------|------|-------------|
+| `schema_version` | String | Wire format version (currently `"1"`) for forward compatibility |
 | `deployment_id` | Salted SHA-256 hash | Non-reversible identifier for deployment correlation |
 | `event_type` | Enum | `proposal_decision` or `rollout_result` |
 | `timestamp` | Date (day only) | ISO 8601 date, no time component |
@@ -64,7 +65,7 @@ Required fields when `enabled: true`:
 
 ## How to Inspect Events
 
-All anonymized events are logged at DEBUG level before sending. Enable debug logging for the `synthorg.meta.telemetry` logger to inspect exactly what is being sent:
+Enabling DEBUG logging for the `synthorg.meta.telemetry` logger emits queue/flush operational metadata (event type, queue depth, batch size, HTTP status). The full serialized event payload is **not logged** -- only diagnostics metadata is emitted:
 
 ```yaml
 logging:

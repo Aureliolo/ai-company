@@ -33,6 +33,9 @@ def aggregate_patterns(
         Aggregated patterns sorted by deployment count (descending),
         then by total events (descending).
     """
+    if min_deployments < 1:
+        msg = f"min_deployments must be >= 1, got {min_deployments}"
+        raise ValueError(msg)
     if not events:
         return ()
 

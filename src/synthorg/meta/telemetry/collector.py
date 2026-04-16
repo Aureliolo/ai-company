@@ -41,6 +41,9 @@ class InMemoryAnalyticsCollector:
         *,
         max_events: int = _DEFAULT_MAX_EVENTS,
     ) -> None:
+        if max_events <= 0:
+            msg = f"max_events must be > 0, got {max_events}"
+            raise ValueError(msg)
         self._events: list[AnonymizedOutcomeEvent] = []
         self._lock = asyncio.Lock()
         self._max_events = max_events
