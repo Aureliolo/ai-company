@@ -429,11 +429,20 @@ def _validate_create_role(
 
 
 def _validate_role_description(description: Any) -> list[str]:
-    """Validate the ``description`` field for a new role."""
+    """Validate the ``description`` field for a new role.
+
+    ``description`` is the only required key in the create_role
+    payload (see ``_CREATE_ROLE_REQUIRED``), so we reject ``None`` and
+    blank strings here instead of treating them as "not provided".
+    ``validate_payload_keys`` checks that the key is present; this
+    helper ensures the value is a usable non-blank bounded string.
+    """
     if description is None:
-        return []
+        return ["create_role: 'description' must not be None"]
     if not isinstance(description, str):
         return ["create_role: 'description' must be a string"]
+    if not description.strip():
+        return ["create_role: 'description' must not be blank"]
     if len(description) > _MAX_DESCRIPTION_CHARS:
         return [
             f"create_role: 'description' exceeds {_MAX_DESCRIPTION_CHARS} "

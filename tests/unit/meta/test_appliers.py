@@ -976,6 +976,26 @@ class TestArchitectureApplier:
         assert not result.success
         assert "must be a non-blank string" in (result.error_message or "")
 
+    @pytest.mark.parametrize(
+        "value",
+        [None, "", "   "],
+        ids=["None", "empty", "whitespace"],
+    )
+    async def test_dry_run_create_role_rejects_missing_description(
+        self,
+        value: Any,
+    ) -> None:
+        """create_role must reject None / blank description payloads."""
+        applier = ArchitectureApplier(context=_FakeArchContext())
+        proposal = _proposal_architecture(
+            _arch("create_role", "r1", payload={"description": value}),
+        )
+        result = await applier.dry_run(proposal)
+        assert not result.success
+        msg = result.error_message or ""
+        assert "description" in msg
+        assert ("not be blank" in msg) or ("not be None" in msg)
+
     async def test_dry_run_cancelled_create_role_releases_department_ref(
         self,
     ) -> None:

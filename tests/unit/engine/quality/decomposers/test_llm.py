@@ -111,7 +111,7 @@ class TestLLMCriteriaDecomposerBehavior:
             provider=ScriptedProvider(response=response),
             model_id="test-medium-001",
         )
-        with pytest.raises(LLMDecompositionError, match="emit_atomic_probes"):
+        with pytest.raises(LLMDecompositionError, match="no tool call"):
             await decomposer.decompose(
                 (AcceptanceCriterion(description="foo"),),
                 task_id="task-001",
@@ -297,3 +297,57 @@ class TestLLMCriteriaDecomposerEdgeCases:
         payload = _json.loads(user_content)
         assert "instructions" in payload
         assert payload["criteria"][0]["index"] == 0
+
+    async def test_criterion_without_probes_raises(self) -> None:
+        """If any criterion has zero surviving probes the decomposer
+        must raise rather than silently return a partial coverage
+        tuple."""
+        response = _build_response(
+            {
+                "probes": [
+                    # Only criterion 0 gets a probe; criterion 1 is left
+                    # uncovered.
+                    {"source_criterion_index": 0, "probe_text": "q1?"},
+                ]
+            }
+        )
+        provider = ScriptedProvider(response=response)
+        decomposer = LLMCriteriaDecomposer(
+            provider=provider,
+            model_id="test-medium-001",
+        )
+        with pytest.raises(
+            LLMDecompositionError,
+            match="criterion missing probes",
+        ):
+            await decomposer.decompose(
+                (
+                    AcceptanceCriterion(description="first"),
+                    AcceptanceCriterion(description="second"),
+                ),
+                task_id="task-001",
+                agent_id="agent-001",
+            )
+
+    async def test_extra_keys_in_arguments_rejected(self) -> None:
+        """Tool call arguments with unexpected keys must raise."""
+        response = _build_response(
+            {
+                "probes": [{"source_criterion_index": 0, "probe_text": "q"}],
+                "extra": "boom",
+            }
+        )
+        provider = ScriptedProvider(response=response)
+        decomposer = LLMCriteriaDecomposer(
+            provider=provider,
+            model_id="test-medium-001",
+        )
+        with pytest.raises(
+            LLMDecompositionError,
+            match="extra keys in arguments",
+        ):
+            await decomposer.decompose(
+                (AcceptanceCriterion(description="c"),),
+                task_id="task-001",
+                agent_id="agent-001",
+            )
