@@ -85,26 +85,18 @@ export function SubworkflowDetailDrawer({
   const handleDelete = useCallback(async () => {
     if (!subworkflow || loading || parents.length > 0 || loadedKey !== detailsKey) return
     setDeleting(true)
-    try {
-      await useSubworkflowsStore
-        .getState()
-        .deleteSubworkflow(
-          subworkflow.subworkflow_id,
-          subworkflow.latest_version,
-        )
-      addToast({ variant: 'success', title: 'Subworkflow deleted' })
+    const ok = await useSubworkflowsStore
+      .getState()
+      .deleteSubworkflow(
+        subworkflow.subworkflow_id,
+        subworkflow.latest_version,
+      )
+    setDeleting(false)
+    if (ok) {
       setDeleteConfirmOpen(false)
       onClose()
-    } catch (err: unknown) {
-      addToast({
-        variant: 'error',
-        title: 'Delete failed',
-        description: getErrorMessage(err),
-      })
-    } finally {
-      setDeleting(false)
     }
-  }, [subworkflow, loading, parents, loadedKey, detailsKey, addToast, onClose])
+  }, [subworkflow, loading, parents, loadedKey, detailsKey, onClose])
 
   if (!subworkflow) return null
 

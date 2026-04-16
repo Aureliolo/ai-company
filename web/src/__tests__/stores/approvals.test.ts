@@ -136,16 +136,18 @@ describe('approveOne', () => {
 
     const result = await useApprovalsStore.getState().approveOne('1', { comment: 'LGTM' })
 
-    expect(result.status).toBe('approved')
+    expect(result).not.toBeNull()
+    expect(result!.status).toBe('approved')
     expect(useApprovalsStore.getState().approvals[0]!.status).toBe('approved')
     expect(api.approveApproval).toHaveBeenCalledWith('1', { comment: 'LGTM' })
   })
 
-  it('propagates error when API fails', async () => {
+  it('returns null when API fails', async () => {
     const api = await importApi()
     vi.mocked(api.approveApproval).mockRejectedValue(new Error('Server error'))
 
-    await expect(useApprovalsStore.getState().approveOne('1')).rejects.toThrow('Server error')
+    const result = await useApprovalsStore.getState().approveOne('1')
+    expect(result).toBeNull()
   })
 })
 
@@ -161,15 +163,17 @@ describe('rejectOne', () => {
 
     const result = await useApprovalsStore.getState().rejectOne('1', { reason: 'Too risky' })
 
-    expect(result.status).toBe('rejected')
+    expect(result).not.toBeNull()
+    expect(result!.status).toBe('rejected')
     expect(api.rejectApproval).toHaveBeenCalledWith('1', { reason: 'Too risky' })
   })
 
-  it('propagates error when API fails', async () => {
+  it('returns null when API fails', async () => {
     const api = await importApi()
     vi.mocked(api.rejectApproval).mockRejectedValue(new Error('Server error'))
 
-    await expect(useApprovalsStore.getState().rejectOne('1', { reason: 'x' })).rejects.toThrow('Server error')
+    const result = await useApprovalsStore.getState().rejectOne('1', { reason: 'x' })
+    expect(result).toBeNull()
   })
 })
 

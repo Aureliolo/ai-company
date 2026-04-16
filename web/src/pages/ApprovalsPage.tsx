@@ -120,13 +120,8 @@ export default function ApprovalsPage() {
   // Single item approve -- optimistic update with rollback on failure
   const handleApproveOne = useCallback(async (id: string) => {
     const rollback = optimisticApprove(id)
-    try {
-      await approveOne(id)
-      useToastStore.getState().add({ variant: 'success', title: 'Approval granted' })
-    } catch (err) {
-      rollback()
-      useToastStore.getState().add({ variant: 'error', title: 'Failed to approve', description: getErrorMessage(err) })
-    }
+    const result = await approveOne(id)
+    if (!result) rollback()
   }, [approveOne, optimisticApprove])
 
   // Single item reject -- opens drawer for the user to provide a reason

@@ -24,8 +24,8 @@ export interface UseApprovalsDataReturn {
   wsConnected: boolean
   wsSetupError: string | null
   fetchApproval: (id: string) => Promise<void>
-  approveOne: (id: string, data?: ApproveRequest) => Promise<ApprovalResponse>
-  rejectOne: (id: string, data: RejectRequest) => Promise<ApprovalResponse>
+  approveOne: (id: string, data?: ApproveRequest) => Promise<ApprovalResponse | null>
+  rejectOne: (id: string, data: RejectRequest) => Promise<ApprovalResponse | null>
   optimisticApprove: (id: string) => () => void
   /** Optimistic reject with rollback -- available for consumers that collect reason inline. */
   optimisticReject: (id: string) => () => void

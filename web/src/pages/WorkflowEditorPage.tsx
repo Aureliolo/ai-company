@@ -6,7 +6,6 @@ import { Workflow } from 'lucide-react'
 import { useNavigate, useSearchParams } from 'react-router'
 import { useWorkflowsStore } from '@/stores/workflows'
 import { ROUTES } from '@/router/routes'
-import { getErrorMessage } from '@/utils/errors'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { EmptyState } from '@/components/ui/empty-state'
 import { useToastStore } from '@/stores/toast'
@@ -231,38 +230,34 @@ function WorkflowEditorInner() {
   )
 
   const handleSaveAsNew = useCallback(async () => {
-    try {
-      const state = useWorkflowEditorStore.getState()
-      if (!state.definition) return
-      // Use current editor nodes/edges, not the last persisted definition
-      const nodeData = state.nodes.map((n) => ({
-        id: n.id,
-        type: (n.data as Record<string, unknown>)?.nodeType as string ?? n.type ?? 'task',
-        label: (n.data as Record<string, unknown>)?.label as string ?? n.id,
-        position_x: n.position.x,
-        position_y: n.position.y,
-        config: (n.data as Record<string, unknown>)?.config as Record<string, unknown> ?? {},
-      }))
-      const edgeData = state.edges.map((e) => ({
-        id: e.id,
-        source_node_id: e.source,
-        target_node_id: e.target,
-        type: ((e.data as Record<string, unknown>)?.edgeType as string) ?? 'sequential',
-        label: ((e.data as Record<string, unknown>)?.label as string) ?? null,
-      }))
-      const created = await useWorkflowsStore.getState().createWorkflow({
-        name: `${state.definition.name} (Copy)`,
-        description: state.definition.description || undefined,
-        workflow_type: state.definition.workflow_type,
-        nodes: nodeData,
-        edges: edgeData,
-      })
-      addToast({ variant: 'success', title: 'Saved as new workflow' })
-      navigate(`${ROUTES.WORKFLOW_EDITOR}?id=${encodeURIComponent(created.id)}`)
-    } catch (err) {
-      addToast({ variant: 'error', title: 'Save as new failed', description: getErrorMessage(err) })
-    }
-  }, [addToast, navigate])
+    const state = useWorkflowEditorStore.getState()
+    if (!state.definition) return
+    // Use current editor nodes/edges, not the last persisted definition
+    const nodeData = state.nodes.map((n) => ({
+      id: n.id,
+      type: (n.data as Record<string, unknown>)?.nodeType as string ?? n.type ?? 'task',
+      label: (n.data as Record<string, unknown>)?.label as string ?? n.id,
+      position_x: n.position.x,
+      position_y: n.position.y,
+      config: (n.data as Record<string, unknown>)?.config as Record<string, unknown> ?? {},
+    }))
+    const edgeData = state.edges.map((e) => ({
+      id: e.id,
+      source_node_id: e.source,
+      target_node_id: e.target,
+      type: ((e.data as Record<string, unknown>)?.edgeType as string) ?? 'sequential',
+      label: ((e.data as Record<string, unknown>)?.label as string) ?? null,
+    }))
+    const created = await useWorkflowsStore.getState().createWorkflow({
+      name: `${state.definition.name} (Copy)`,
+      description: state.definition.description || undefined,
+      workflow_type: state.definition.workflow_type,
+      nodes: nodeData,
+      edges: edgeData,
+    })
+    if (!created) return
+    navigate(`${ROUTES.WORKFLOW_EDITOR}?id=${encodeURIComponent(created.id)}`)
+  }, [navigate])
 
   const handleMoveEnd = useCallback((_event: unknown, viewport: { x: number; y: number; zoom: number }) => {
     saveViewport(viewport)

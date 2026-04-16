@@ -6,11 +6,9 @@ import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { InputField } from '@/components/ui/input-field'
 import { LiveRegion } from '@/components/ui/live-region'
-import { createLogger } from '@/lib/logger'
 import { cn } from '@/lib/utils'
 import { useMetaStore } from '@/stores/meta'
 
-const log = createLogger('meta-chat')
 
 interface ChatMessage {
   id: number
@@ -107,8 +105,8 @@ export function MetaChat() {
       { id: nextMsgId(), role: 'user', content: question },
     ])
 
-    try {
-      const response = await sendChat(question)
+    const response = await sendChat(question)
+    if (response) {
       setMessages((prev) => [
         ...prev,
         {
@@ -119,11 +117,7 @@ export function MetaChat() {
           confidence: response.confidence,
         },
       ])
-    } catch (err) {
-      log.error(
-        'Chat send failed',
-        err instanceof Error ? err.message : String(err),
-      )
+    } else {
       setMessages((prev) => [
         ...prev,
         {
