@@ -55,11 +55,24 @@ export function EntityCatalog({ entities }: EntityCatalogProps) {
       {/* Card grid */}
       {entities.length === 0 ? (
         <EmptyState
+          icon={Shapes}
           title="No entities found"
           description={
             searchQuery || tierFilter !== 'all'
               ? 'Try adjusting your search or filter criteria.'
               : 'Entity definitions will appear here once registered.'
+          }
+          action={
+            searchQuery || tierFilter !== 'all'
+              ? {
+                  label: 'Clear filters',
+                  onClick: () => {
+                    setSearchQuery('')
+                    setTierFilter('all')
+                  },
+                  variant: 'outline',
+                }
+              : undefined
           }
         />
       ) : (
