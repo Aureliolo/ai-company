@@ -63,6 +63,15 @@ _CREATE_DEPT_ALLOWED: Final[frozenset[str]] = frozenset({"head", "policies"})
 _MAX_DESCRIPTION_CHARS: Final[int] = 2_000
 _MAX_SKILL_NAME_CHARS: Final[int] = 80
 _MAX_SKILLS_PER_ROLE: Final[int] = 100
+_MAX_TOOL_NAME_CHARS: Final[int] = 80
+_MAX_TOOLS_PER_ROLE: Final[int] = 100
+_MAX_POLICIES_PER_DEPT: Final[int] = 100
+_MAX_POLICY_CHARS: Final[int] = 500
+
+# Authority levels are free text for now (operators pick their own
+# taxonomy).  Cap length + require non-blank so the field at least
+# rejects obvious junk.
+_MAX_AUTHORITY_LEVEL_CHARS: Final[int] = 60
 
 
 @runtime_checkable
@@ -91,11 +100,17 @@ class ArchitectureApplierContext(Protocol):
 
 
 class _PendingChanges:
-    """In-proposal mutable accumulator for scheduled creates / removes."""
+    """In-proposal mutable accumulator for scheduled creates / removes.
+
+    Tracks in-flight references so a ``remove_department`` inside the
+    same proposal can recognize that an earlier ``create_role`` would
+    dangle if the department were removed.
+    """
 
     __slots__ = (
         "new_departments",
         "new_roles",
+        "pending_department_refs",
         "removed_departments",
         "removed_roles",
     )
@@ -105,6 +120,8 @@ class _PendingChanges:
         self.removed_roles: set[str] = set()
         self.new_departments: set[str] = set()
         self.removed_departments: set[str] = set()
+        # Departments referenced by in-proposal create_role payloads.
+        self.pending_department_refs: set[str] = set()
 
 
 class ArchitectureApplier:
@@ -306,8 +323,13 @@ def _validate_create_role(
             errors.append("create_role: 'required_skills' must be a list or tuple")
         else:
             errors.extend(_validate_skill_list(skills))
+    errors.extend(_validate_authority_level(change.payload.get("authority_level")))
+    errors.extend(_validate_tool_access(change.payload.get("tool_access")))
     if not errors:
         pending.new_roles.add(name)
+        dept = change.payload.get("department")
+        if isinstance(dept, str) and dept:
+            pending.pending_department_refs.add(dept)
     return errors
 
 
@@ -366,6 +388,85 @@ def _validate_skill_list(skills: list[Any] | tuple[Any, ...]) -> list[str]:
     return errors
 
 
+def _validate_authority_level(value: Any) -> list[str]:
+    """Validate the optional ``authority_level`` free-text field."""
+    if value is None:
+        return []
+    if not isinstance(value, str):
+        return ["create_role: 'authority_level' must be a string"]
+    if not value.strip():
+        return ["create_role: 'authority_level' must not be blank"]
+    if len(value) > _MAX_AUTHORITY_LEVEL_CHARS:
+        return [
+            f"create_role: 'authority_level' exceeds "
+            f"{_MAX_AUTHORITY_LEVEL_CHARS} chars (got {len(value)})"
+        ]
+    return []
+
+
+def _validate_tool_access(value: Any) -> list[str]:
+    """Validate the optional ``tool_access`` list of tool identifiers."""
+    if value is None:
+        return []
+    if not isinstance(value, list | tuple):
+        return ["create_role: 'tool_access' must be a list or tuple"]
+    errors: list[str] = []
+    if len(value) > _MAX_TOOLS_PER_ROLE:
+        errors.append(
+            f"create_role: 'tool_access' exceeds "
+            f"{_MAX_TOOLS_PER_ROLE} entries (got {len(value)})"
+        )
+    for index, entry in enumerate(value):
+        if not isinstance(entry, str):
+            errors.append(f"create_role: 'tool_access[{index}]' must be a string")
+        elif not entry.strip():
+            errors.append(f"create_role: 'tool_access[{index}]' must not be blank")
+        elif len(entry) > _MAX_TOOL_NAME_CHARS:
+            errors.append(
+                f"create_role: 'tool_access[{index}]' exceeds "
+                f"{_MAX_TOOL_NAME_CHARS} chars"
+            )
+    return errors
+
+
+def _validate_dept_policies(value: Any) -> list[str]:
+    """Validate the optional ``policies`` list for a new department."""
+    if value is None:
+        return []
+    if not isinstance(value, list | tuple):
+        return ["create_department: 'policies' must be a list or tuple"]
+    errors: list[str] = []
+    if len(value) > _MAX_POLICIES_PER_DEPT:
+        errors.append(
+            f"create_department: 'policies' exceeds "
+            f"{_MAX_POLICIES_PER_DEPT} entries (got {len(value)})"
+        )
+    for index, entry in enumerate(value):
+        if not isinstance(entry, str):
+            errors.append(f"create_department: 'policies[{index}]' must be a string")
+        elif not entry.strip():
+            errors.append(f"create_department: 'policies[{index}]' must not be blank")
+        elif len(entry) > _MAX_POLICY_CHARS:
+            errors.append(
+                f"create_department: 'policies[{index}]' exceeds "
+                f"{_MAX_POLICY_CHARS} chars"
+            )
+    return errors
+
+
+def _validate_dept_head(value: Any) -> list[str]:
+    """Validate the optional ``head`` reference on a new department."""
+    if value is None:
+        return []
+    if not isinstance(value, str):
+        return ["create_department: 'head' must be a string"]
+    if not value.strip():
+        return ["create_department: 'head' must not be blank"]
+    if len(value) > _MAX_SKILL_NAME_CHARS:
+        return [f"create_department: 'head' exceeds {_MAX_SKILL_NAME_CHARS} chars"]
+    return []
+
+
 def _validate_create_department(
     change: ArchitectureChange,
     *,
@@ -386,11 +487,15 @@ def _validate_create_department(
         )
     )
     head = change.payload.get("head")
-    if isinstance(head, str) and head:
-        if not (context.has_role(head) or head in pending.new_roles):
-            errors.append(f"create_department: head role {head!r} does not exist")
-    elif head is not None and not isinstance(head, str):
-        errors.append("create_department: 'head' must be a string")
+    errors.extend(_validate_dept_head(head))
+    if (
+        isinstance(head, str)
+        and head
+        and head not in pending.new_roles
+        and not context.has_role(head)
+    ):
+        errors.append(f"create_department: head role {head!r} does not exist")
+    errors.extend(_validate_dept_policies(change.payload.get("policies")))
     if not errors:
         pending.new_departments.add(name)
     return errors
@@ -453,9 +558,9 @@ def _validate_remove_department(
         )
     if name in pending.removed_departments:
         errors.append(f"remove_department: duplicate target_name {name!r} in proposal")
-    elif not context.has_department(name):
+    elif not (context.has_department(name) or name in pending.new_departments):
         errors.append(f"remove_department: department {name!r} does not exist")
-    elif context.department_in_use(name):
+    elif context.department_in_use(name) or name in pending.pending_department_refs:
         errors.append(f"remove_department: department {name!r} still referenced")
     if not errors:
         pending.removed_departments.add(name)

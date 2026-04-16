@@ -138,6 +138,14 @@ class TestBuildShadowGuard:
     def test_shadow_wired_with_runner_and_sampler(self) -> None:
         from unittest.mock import AsyncMock as _AsyncMock
 
+        from synthorg.engine.evolution.guards.composite import CompositeGuard
+        from synthorg.engine.evolution.guards.shadow_evaluation import (
+            ShadowEvaluationGuard,
+        )
+        from synthorg.engine.evolution.guards.shadow_providers import (
+            RecentTaskHistoryProvider,
+        )
+
         config = self._shadow_config(task_provider="recent_history")
         runner = _AsyncMock()
         sampler = _AsyncMock(return_value=())
@@ -151,3 +159,20 @@ class TestBuildShadowGuard:
             shadow_task_sampler=sampler,
         )
         assert isinstance(service, EvolutionService)
+
+        # Dig into the guard chain to confirm the shadow guard is
+        # actually wired with the supplied runner and a
+        # ``RecentTaskHistoryProvider`` that references the sampler.
+        guard = service._guard
+        shadow_guards = (
+            tuple(g for g in guard._guards if isinstance(g, ShadowEvaluationGuard))
+            if isinstance(guard, CompositeGuard)
+            else (guard,)
+            if isinstance(guard, ShadowEvaluationGuard)
+            else ()
+        )
+        assert len(shadow_guards) == 1
+        shadow = shadow_guards[0]
+        assert shadow._runner is runner
+        assert isinstance(shadow._task_provider, RecentTaskHistoryProvider)
+        assert shadow._task_provider._sampler is sampler

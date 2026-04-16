@@ -1,13 +1,14 @@
 """Config applier.
 
 Applies approved config tuning proposals by reconstructing the
-``RootConfig`` with the proposed changes.  ``dry_run()`` validates
-changes by walking the current ``RootConfig`` tree by dotted path
-and checking each leaf assignment against the field's declared type
-via ``TypeAdapter``.  This catches unknown paths and type /
-constraint violations without requiring a full ``model_dump`` round
-trip (which fails on models that mix ``extra='forbid'`` with
-``@computed_field`` declarations).
+``RootConfig`` with the proposed changes.  ``dry_run()`` walks the
+current ``RootConfig`` tree by dotted path and checks each leaf
+assignment against its declared type / ``Annotated`` metadata via
+``TypeAdapter``.  Cross-field ``@model_validator`` rules on
+``RootConfig`` are deliberately not re-run: a full ``model_dump`` →
+``model_validate`` round-trip is incompatible with several of our
+frozen sub-models (``MappingProxyType`` wrappers, custom field
+serializers), so their violations surface at ``apply()`` instead.
 """
 
 from collections.abc import Callable
@@ -117,15 +118,23 @@ class ConfigApplier:
         For each ``ConfigChange.path`` this parses the dotted segments,
         walks ``RootConfig`` down to the target leaf field, and runs
         ``TypeAdapter`` validation on the proposed value (preserving the
-        field's ``Annotated`` metadata so ``NotBlankStr`` /
-        ``ge`` / ``le`` / Literal constraints all fire).  Unknown paths,
-        type mismatches, and per-field constraint violations are all
-        surfaced in a single pass without mutating any config state.
+        field's ``Annotated`` metadata so ``NotBlankStr`` / ``ge`` /
+        ``le`` / Literal constraints all fire).  Unknown paths, type
+        mismatches, and per-field constraint violations are surfaced
+        with a precise path prefix in a single pass.
 
-        Cross-field (``@model_validator``) rules on ``RootConfig`` are
-        NOT re-run; those can only be validated by a full round-trip
-        which is currently incompatible with ``extra='forbid'`` on the
-        root model -- follow-up work if we need that guarantee.
+        Note: cross-field ``@model_validator`` rules on ``RootConfig``
+        are intentionally NOT re-run here.  A full
+        ``model_dump`` → ``model_validate`` round-trip would catch them
+        but is incompatible with several of our frozen sub-models
+        (e.g. ``MappingProxyType`` wrappers, custom field serializers)
+        which round-trip into shapes the parsers reject.  Cross-field
+        violations therefore surface at ``apply()`` time instead --
+        follow-up work if we need preview-time guarantees for those
+        rules too.
+
+        No state is ever mutated -- ``apply()`` remains the only path
+        that touches real config.
 
         Args:
             proposal: The proposal to validate.

@@ -213,14 +213,18 @@ def _validate_prompt_change(
     errors: list[str] = []
 
     scope = change.target_scope
-    if scope != _SCOPE_ALL and not (
+    scope_is_valid = scope == _SCOPE_ALL or (
         scope in context.known_roles() or scope in context.known_departments()
-    ):
+    )
+    if not scope_is_valid:
         errors.append(
             f"Unknown target_scope {scope!r}; "
             "expected 'all', a registered role name, "
             "or a registered department name"
         )
+        # Skip downstream context lookups that would otherwise be
+        # evaluated against an unknown scope and can legitimately raise.
+        return errors
 
     text = change.principle_text
     normalized = " ".join(text.strip().lower().split())

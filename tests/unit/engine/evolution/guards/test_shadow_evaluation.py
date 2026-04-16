@@ -510,8 +510,11 @@ class TestShadowEvaluationGuardResilience:
             timeout_seconds: float,
         ) -> ShadowTaskOutcome:
             if proposal is not None:
-                # Adapted side "hangs" deliberately -- guard timeout must fire.
-                await asyncio.sleep(10.0)
+                # Adapted side blocks indefinitely on a never-set Event
+                # so the guard's ``asyncio.timeout`` is the only thing
+                # that can unblock the task -- cancel-safe and
+                # deterministic (no wall-clock flakiness).
+                await asyncio.Event().wait()
             return ShadowTaskOutcome(success=True, quality_score=0.9)
 
         class _SlowRunner:

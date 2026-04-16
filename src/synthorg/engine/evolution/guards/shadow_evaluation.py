@@ -23,6 +23,7 @@ shadow eval cannot approve into the void.
 """
 
 import asyncio
+import copy
 import statistics
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final
@@ -245,12 +246,19 @@ class ShadowEvaluationGuard:
         baseline_outcomes: tuple[ShadowTaskOutcome, ...] = ()
         adapted_outcomes: tuple[ShadowTaskOutcome, ...] = ()
 
+        # Deep-copy the task tuple per pass so runner-side mutations in
+        # one pass cannot bleed into the other pass's view of the same
+        # probe tasks.  Providers already deep-copy at their boundary;
+        # this is defense in depth.
+        baseline_tasks = tuple(copy.deepcopy(t) for t in tasks)
+        adapted_tasks = tuple(copy.deepcopy(t) for t in tasks)
+
         async def _baseline() -> None:
             nonlocal baseline_outcomes
             baseline_outcomes = await self._run_pass(
                 identity=identity,
                 proposal=None,
-                tasks=tasks,
+                tasks=baseline_tasks,
                 label="baseline",
                 proposal_id=str(proposal.id),
             )
@@ -260,7 +268,7 @@ class ShadowEvaluationGuard:
             adapted_outcomes = await self._run_pass(
                 identity=identity,
                 proposal=proposal,
-                tasks=tasks,
+                tasks=adapted_tasks,
                 label="adapted",
                 proposal_id=str(proposal.id),
             )

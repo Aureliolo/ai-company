@@ -142,7 +142,13 @@ class ScriptedProvider:
         tools: list[ToolDefinition] | None = None,
         config: CompletionConfig | None = None,
     ) -> AsyncIterator[StreamChunk]:
-        """Return a trivial two-chunk stream (used only for protocol conformance)."""
+        """Return a trivial single-chunk stream (protocol conformance only).
+
+        The generator yields exactly one ``StreamChunk`` with
+        ``event_type=DONE`` so callers can iterate without raising, but
+        no content is ever delivered -- tests that care about streaming
+        semantics should use a different fake.
+        """
         del messages, model, tools, config
 
         async def _empty() -> AsyncIterator[StreamChunk]:
