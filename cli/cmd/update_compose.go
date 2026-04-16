@@ -43,6 +43,13 @@ func refreshCompose(cmd *cobra.Command, state config.State, force bool) (bool, e
 	}
 
 	if bytes.Equal(existing, fresh) {
+		// Even when compose itself is unchanged, the NATS config file
+		// it references may be missing or stale (older CLI versions
+		// did not write it). Re-emit so the file always exists when
+		// distributed bus mode is on.
+		if err := writeNATSConfigIfNeeded(state, safeDir); err != nil {
+			return false, err
+		}
 		_, _ = fmt.Fprintln(out, "Compose configuration is up to date.")
 		return true, nil
 	}
@@ -54,11 +61,23 @@ func refreshCompose(cmd *cobra.Command, state config.State, force bool) (bool, e
 		if err := atomicWriteFile(composePath, fresh, safeDir); err != nil {
 			return false, fmt.Errorf("writing updated compose: %w", err)
 		}
+		if err := writeNATSConfigIfNeeded(state, safeDir); err != nil {
+			return false, err
+		}
 		_, _ = fmt.Fprintln(out, "Compose configuration is up to date.")
 		return true, nil
 	}
 
-	return applyComposeDiff(cmd, composePath, existing, fresh, safeDir, state.AutoApplyCompose)
+	applied, err := applyComposeDiff(cmd, composePath, existing, fresh, safeDir, state.AutoApplyCompose)
+	if err != nil {
+		return false, err
+	}
+	if applied {
+		if err := writeNATSConfigIfNeeded(state, safeDir); err != nil {
+			return false, err
+		}
+	}
+	return applied, nil
 }
 
 // recoverMissingCompose generates compose.yml from the template during
@@ -77,6 +96,9 @@ func recoverMissingCompose(out io.Writer, composePath string, state config.State
 	}
 	if wErr := atomicWriteFile(composePath, generated, safeDir); wErr != nil {
 		return false, fmt.Errorf("writing compose.yml during recovery: %w", wErr)
+	}
+	if cErr := writeNATSConfigIfNeeded(state, safeDir); cErr != nil {
+		return false, cErr
 	}
 	_, _ = fmt.Fprintln(out, "Generated compose.yml from template.")
 	return true, nil

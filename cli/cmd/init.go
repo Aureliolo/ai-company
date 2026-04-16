@@ -3,6 +3,7 @@ package cmd
 import (
 	"crypto/rand"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -739,10 +740,36 @@ func writeInitFiles(state config.State) (string, error) {
 		return "", fmt.Errorf("writing compose file: %w", err)
 	}
 
+	if err := writeNATSConfigIfNeeded(state, safeDir); err != nil {
+		return "", err
+	}
+
 	if err := config.Save(state); err != nil {
 		return "", fmt.Errorf("saving config: %w", err)
 	}
 	return safeDir, nil
+}
+
+// writeNATSConfigIfNeeded writes the NATS server config file alongside
+// compose.yml when the distributed bus mode is active. The compose
+// template references this via `configs.nats-config.file: ./nats.conf`,
+// so any caller that writes compose.yml must also keep the conf in
+// sync (init, update's compose refresh, start's digest pin rewrite).
+//
+// When the bus is the in-process default, the file is not needed and
+// is removed if it exists from a prior distributed install.
+func writeNATSConfigIfNeeded(state config.State, safeDir string) error {
+	confPath := filepath.Join(safeDir, compose.NATSConfigFilename)
+	if state.BusBackend != "nats" {
+		if err := os.Remove(confPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("removing stale nats.conf: %w", err)
+		}
+		return nil
+	}
+	if err := os.WriteFile(confPath, []byte(compose.NATSConfigContent), 0o600); err != nil {
+		return fmt.Errorf("writing nats.conf: %w", err)
+	}
+	return nil
 }
 
 // resolveImageTag returns the image tag to use: the override if set,

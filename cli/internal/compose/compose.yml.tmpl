@@ -97,6 +97,12 @@ services:
       SYNTHORG_PORT: "3001"
 {{- if postgresEnabled}}
       SYNTHORG_DATABASE_URL: {{yamlStr pgDSN}}
+      # The local Postgres DHI image runs without TLS on the internal
+      # docker network; default `require` mode would refuse the
+      # connection. Override here so the backend can talk to it. For
+      # production deployments, set this to `verify-full` and provide
+      # certificate material.
+      SYNTHORG_POSTGRES_SSL_MODE: "disable"
 {{- else}}
       SYNTHORG_DB_PATH: "/data/synthorg.db"
 {{- end}}
@@ -187,14 +193,18 @@ services:
 
   # DHI NATS: distroless, runs as nonroot (65532). Healthcheck via sidecar
   # because there is no shell or HTTP client inside the distroless image.
+  # Configuration comes from a bind-mounted nats.conf written next to
+  # compose.yml by the CLI -- NATS 2.12 has no `--max_payload` CLI flag,
+  # so settings that diverge from defaults must come from a config file.
   nats:
     # renovate: datasource=docker depName=dhi.io/nats
     image: {{.DHIRegistry}}/nats:{{.NATSImageTag}}{{if .NATSDigest}}@{{.NATSDigest}}{{end}}
-    command: ["-js", "-sd", "/data", "-m", "8222", "--max_payload", "4MB"]
+    command: ["-c", "/etc/nats/nats.conf"]
     ports:
       - "{{.NatsClientPort}}:4222"
     volumes:
       - synthorg-nats-data:/data
+      - ./nats.conf:/etc/nats/nats.conf:ro
     depends_on:
       data-init:
         condition: service_completed_successfully

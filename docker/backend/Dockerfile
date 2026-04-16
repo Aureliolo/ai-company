@@ -31,13 +31,19 @@ WORKDIR /app
 
 COPY --chown=65532:65532 pyproject.toml uv.lock ./
 USER build
+# Install the `postgres` and `distributed` extras unconditionally: both
+# are runtime-selectable via `synthorg init --persistence-backend` and
+# `--bus-backend`, so the image must carry psycopg and nats-py whether
+# or not the user has chosen them yet. `fine-tune` lives in the
+# dedicated synthorg-fine-tune image (5GB pytorch); `telemetry` stays
+# opt-in to avoid pulling logfire on default installs.
 RUN --mount=type=cache,target=/home/build/.cache/uv,uid=65532,gid=65532 \
-    uv sync --frozen --no-dev --no-install-project
+    uv sync --frozen --no-dev --no-install-project --extra postgres --extra distributed
 
 RUN touch README.md
 COPY --chown=65532:65532 src/ src/
 RUN --mount=type=cache,target=/home/build/.cache/uv,uid=65532,gid=65532 \
-    uv sync --frozen --no-dev
+    uv sync --frozen --no-dev --extra postgres --extra distributed
 
 RUN find /app/src -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 
@@ -57,6 +63,15 @@ RUN rm -f /app/.venv/bin/python \
 USER root
 RUN mkdir -p /data/logs /data/memory && chown -R 65532:65532 /data
 USER build
+
+# ---------------------------------------------------------------------------
+# Atlas CLI: required by the Postgres backend's migrate() path. Pulled
+# from the official upstream image; the binary is fully static and the
+# runtime image only needs the file itself, not arigaio/atlas as base.
+# Pin to a stable tag (renovate updates this).
+# ---------------------------------------------------------------------------
+# renovate: datasource=docker depName=arigaio/atlas
+FROM arigaio/atlas:1.2.0-community-alpine AS atlas
 
 # ---------------------------------------------------------------------------
 # Stage 2 -- Runtime (apko-composed Wolfi base: no shell, no package manager)
@@ -80,6 +95,12 @@ COPY --chown=65532:65532 pyproject.toml uv.lock /app/
 # initialises fresh volumes with uid/gid 65532 instead of root.
 # COPY from builder stage because the distroless runtime has no shell.
 COPY --from=builder --chown=65532:65532 /data /data
+
+# Atlas CLI for postgres migration apply on startup. The binary is
+# self-contained; copying it into /usr/local/bin places it on the
+# default PATH without needing a shell or package manager in the
+# distroless runtime.
+COPY --from=atlas /atlas /usr/local/bin/atlas
 
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \

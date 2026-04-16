@@ -633,7 +633,10 @@ func writeDigestPinnedCompose(state config.State, digestPins map[string]string, 
 		return fmt.Errorf("generating compose file: %w", err)
 	}
 
-	return atomicWriteFile(filepath.Join(safeDir, "compose.yml"), composeYAML, safeDir)
+	if err := atomicWriteFile(filepath.Join(safeDir, "compose.yml"), composeYAML, safeDir); err != nil {
+		return err
+	}
+	return writeNATSConfigIfNeeded(state, safeDir)
 }
 
 // atomicWriteFile writes data to targetPath via a temp file + rename to prevent
