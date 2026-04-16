@@ -99,7 +99,7 @@ function ABTestCard({ test }: { test: ABTestSummary }) {
       <div className="grid grid-cols-2 gap-grid-gap">
         <div>
           <p className="mb-2 text-xs font-medium text-muted-foreground">
-            Control ({test.control_metrics.agent_count} agents)
+            Control ({test.control_metrics.agent_count} {test.control_metrics.agent_count === 1 ? 'agent' : 'agents'})
           </p>
           <div className="space-y-2">
             <MetricCard
@@ -119,7 +119,7 @@ function ABTestCard({ test }: { test: ABTestSummary }) {
 
         <div>
           <p className="mb-2 text-xs font-medium text-muted-foreground">
-            Treatment ({test.treatment_metrics.agent_count} agents)
+            Treatment ({test.treatment_metrics.agent_count} {test.treatment_metrics.agent_count === 1 ? 'agent' : 'agents'})
           </p>
           <div className="space-y-2">
             <MetricCard

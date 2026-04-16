@@ -9,6 +9,7 @@ from aiosqlite import Row
 
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
+from synthorg.core.evidence import EvidencePackage
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
@@ -21,6 +22,29 @@ from synthorg.observability.events.api import (
 from synthorg.persistence.errors import ConstraintViolationError, QueryError
 
 logger = get_logger(__name__)
+
+_APPROVALS_UPSERT_SQL = """
+    INSERT INTO approvals (
+        id, action_type, title, description, requested_by,
+        risk_level, status, created_at, expires_at,
+        decided_at, decided_by, decision_reason,
+        task_id, evidence_package, metadata
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+        action_type = excluded.action_type,
+        title = excluded.title,
+        description = excluded.description,
+        requested_by = excluded.requested_by,
+        risk_level = excluded.risk_level,
+        status = excluded.status,
+        expires_at = excluded.expires_at,
+        decided_at = excluded.decided_at,
+        decided_by = excluded.decided_by,
+        decision_reason = excluded.decision_reason,
+        task_id = excluded.task_id,
+        evidence_package = excluded.evidence_package,
+        metadata = excluded.metadata
+"""
 
 
 def _row_to_item(row: Row) -> ApprovalItem:
@@ -62,6 +86,11 @@ def _row_to_item(row: Row) -> ApprovalItem:
                 else None
             ),
             task_id=(str(row["task_id"]) if row["task_id"] is not None else None),
+            evidence_package=(
+                EvidencePackage.model_validate_json(str(row["evidence_package"]))
+                if row["evidence_package"] is not None
+                else None
+            ),
             metadata=metadata_raw,
         )
     except (json.JSONDecodeError, ValueError, TypeError, KeyError) as exc:
@@ -98,27 +127,11 @@ class SQLiteApprovalRepository:
             ConstraintViolationError: On constraint violations.
             QueryError: On other database errors.
         """
-        sql = """
-            INSERT INTO approvals (
-                id, action_type, title, description, requested_by,
-                risk_level, status, created_at, expires_at,
-                decided_at, decided_by, decision_reason,
-                task_id, metadata
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(id) DO UPDATE SET
-                action_type = excluded.action_type,
-                title = excluded.title,
-                description = excluded.description,
-                requested_by = excluded.requested_by,
-                risk_level = excluded.risk_level,
-                status = excluded.status,
-                expires_at = excluded.expires_at,
-                decided_at = excluded.decided_at,
-                decided_by = excluded.decided_by,
-                decision_reason = excluded.decision_reason,
-                task_id = excluded.task_id,
-                metadata = excluded.metadata
-        """
+        evidence_json = (
+            item.evidence_package.model_dump_json()
+            if item.evidence_package is not None
+            else None
+        )
         params = (
             item.id,
             item.action_type,
@@ -133,10 +146,11 @@ class SQLiteApprovalRepository:
             item.decided_by,
             item.decision_reason,
             item.task_id,
+            evidence_json,
             json.dumps(item.metadata),
         )
         try:
-            await self._db.execute(sql, params)
+            await self._db.execute(_APPROVALS_UPSERT_SQL, params)
             await self._db.commit()
         except sqlite3.IntegrityError as exc:
             await self._db.rollback()
@@ -157,7 +171,7 @@ class SQLiteApprovalRepository:
             status=item.status.value,
         )
 
-    async def get(self, approval_id: NotBlankStr | str) -> ApprovalItem | None:
+    async def get(self, approval_id: NotBlankStr) -> ApprovalItem | None:
         """Get an approval item by ID.
 
         Args:
@@ -173,7 +187,7 @@ class SQLiteApprovalRepository:
             SELECT id, action_type, title, description, requested_by,
                    risk_level, status, created_at, expires_at,
                    decided_at, decided_by, decision_reason,
-                   task_id, metadata
+                   task_id, evidence_package, metadata
             FROM approvals WHERE id = ?
         """
         try:
@@ -198,7 +212,7 @@ class SQLiteApprovalRepository:
         *,
         status: ApprovalStatus | None = None,
         risk_level: ApprovalRiskLevel | None = None,
-        action_type: NotBlankStr | str | None = None,
+        action_type: NotBlankStr | None = None,
     ) -> tuple[ApprovalItem, ...]:
         """List approval items with optional filters.
 
@@ -226,7 +240,7 @@ class SQLiteApprovalRepository:
             SELECT id, action_type, title, description, requested_by,
                    risk_level, status, created_at, expires_at,
                    decided_at, decided_by, decision_reason,
-                   task_id, metadata
+                   task_id, evidence_package, metadata
             FROM approvals WHERE {where}
             ORDER BY created_at DESC
         """  # noqa: S608
@@ -243,7 +257,7 @@ class SQLiteApprovalRepository:
         logger.debug(API_APPROVAL_REPO_LISTED, count=len(items))
         return items
 
-    async def delete(self, approval_id: NotBlankStr | str) -> bool:
+    async def delete(self, approval_id: NotBlankStr) -> bool:
         """Delete an approval item by ID.
 
         Args:

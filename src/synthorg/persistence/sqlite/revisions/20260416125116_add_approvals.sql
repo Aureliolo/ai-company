@@ -13,6 +13,7 @@ CREATE TABLE `approvals` (
   `decided_by` text NULL,
   `decision_reason` text NULL,
   `task_id` text NULL,
+  `evidence_package` text NULL,
   `metadata` text NOT NULL DEFAULT '{}',
   PRIMARY KEY (`id`),
   CONSTRAINT `fk_approvals_task_id` FOREIGN KEY (`task_id`) REFERENCES `tasks` (`id`) ON UPDATE NO ACTION ON DELETE NO ACTION,

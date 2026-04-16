@@ -27,6 +27,7 @@ _CREATE_TABLE = """
         decided_by TEXT,
         decision_reason TEXT,
         task_id TEXT,
+        evidence_package TEXT,
         metadata TEXT NOT NULL DEFAULT '{}'
     )
 """

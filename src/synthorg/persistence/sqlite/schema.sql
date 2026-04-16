@@ -981,6 +981,7 @@ CREATE TABLE approvals (
     decided_by TEXT,
     decision_reason TEXT,
     task_id TEXT CONSTRAINT fk_approvals_task_id REFERENCES tasks(id),
+    evidence_package TEXT,
     metadata TEXT NOT NULL DEFAULT '{}',
     CHECK(
         (decided_at IS NULL AND decided_by IS NULL)

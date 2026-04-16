@@ -23,6 +23,7 @@ from synthorg.observability.events.api import (
     API_APPROVAL_STORE_CLEARED,
     API_RESOURCE_NOT_FOUND,
 )
+from synthorg.persistence.errors import ConstraintViolationError
 
 if TYPE_CHECKING:
     from synthorg.persistence.sqlite.approval_repo import (
@@ -94,7 +95,16 @@ class ApprovalStore:
                     approval_id=item.id,
                 )
                 raise ConflictError(msg)
-            await self._repo.save(item)
+            try:
+                await self._repo.save(item)
+            except ConstraintViolationError:
+                msg = f"Approval {item.id!r} already exists"
+                logger.warning(
+                    API_APPROVAL_CONFLICT,
+                    error="constraint_violation",
+                    approval_id=item.id,
+                )
+                raise ConflictError(msg) from None
         self._items[item.id] = item
 
     async def get(self, approval_id: str) -> ApprovalItem | None:
