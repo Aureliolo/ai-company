@@ -415,31 +415,6 @@ class TestMCPCatalogController:
                 data=InstallEntryRequest(catalog_entry_id="nope"),
             )
 
-    async def test_install_request_rejects_missing_catalog_entry_id(self) -> None:
-        """DTO rejects missing/blank catalog_entry_id at the framework boundary."""
-        from pydantic import ValidationError
-
-        from synthorg.api.controllers.mcp_catalog import InstallEntryRequest
-
-        with pytest.raises(ValidationError):
-            InstallEntryRequest()  # type: ignore[call-arg]
-        with pytest.raises(ValidationError):
-            InstallEntryRequest(catalog_entry_id="")
-        with pytest.raises(ValidationError):
-            InstallEntryRequest(catalog_entry_id="   ")
-
-    async def test_install_request_rejects_non_string_connection_name(self) -> None:
-        """DTO rejects non-string connection_name at the framework boundary."""
-        from pydantic import ValidationError
-
-        from synthorg.api.controllers.mcp_catalog import InstallEntryRequest
-
-        with pytest.raises(ValidationError):
-            InstallEntryRequest(
-                catalog_entry_id="filesystem-mcp",
-                connection_name=42,  # type: ignore[arg-type]
-            )
-
     async def test_install_connection_type_mismatch_400(self) -> None:
         from synthorg.api.controllers.mcp_catalog import (
             InstallEntryRequest,

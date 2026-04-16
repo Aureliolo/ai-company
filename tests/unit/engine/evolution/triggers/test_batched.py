@@ -48,9 +48,9 @@ class TestBatchedTrigger:
         assert not await trigger.should_trigger(agent_id="agent-1", context=ctx)
 
     @pytest.mark.unit
-    def test_record_run(self) -> None:
+    async def test_record_run(self) -> None:
         trigger = BatchedTrigger()
-        trigger.record_run("agent-1")
+        await trigger.record_run("agent-1")
         assert "agent-1" in trigger._last_run
 
     @pytest.mark.unit

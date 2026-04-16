@@ -53,7 +53,7 @@ class InstallEntryRequest(BaseModel):
 class InstallEntryResponse(BaseModel):
     """Response body for ``POST /catalog/install``."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     status: Literal["installed"] = Field(description="Installation status")
     server_name: NotBlankStr = Field(description="Installed MCP server name")

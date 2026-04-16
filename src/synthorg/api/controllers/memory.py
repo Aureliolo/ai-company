@@ -32,6 +32,7 @@ from synthorg.memory.errors import FineTuneDependencyError
 from synthorg.observability import get_logger
 from synthorg.observability.events.memory import (
     MEMORY_EMBEDDER_SETTINGS_READ_FAILED,
+    MEMORY_FINE_TUNE_BATCH_SIZE_RECOMMENDATION_FAILED,
     MEMORY_FINE_TUNE_PREFLIGHT_COMPLETED,
     MEMORY_FINE_TUNE_REQUESTED,
 )
@@ -592,11 +593,15 @@ def _recommend_batch_size() -> int | None:
         return _DEFAULT_BATCH_SIZE  # noqa: TRY300
     except MemoryError, RecursionError:
         raise
+    except ImportError:
+        # torch is optional -- absence is expected on CPU-only installs.
+        return None
     except Exception as exc:
-        logger.debug(
-            MEMORY_FINE_TUNE_PREFLIGHT_COMPLETED,
-            note="batch size recommendation failed",
+        logger.warning(
+            MEMORY_FINE_TUNE_BATCH_SIZE_RECOMMENDATION_FAILED,
             error=str(exc),
+            error_type=type(exc).__name__,
+            exc_info=True,
         )
         return None
 

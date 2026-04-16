@@ -100,6 +100,9 @@ MEMORY_FINE_TUNE_CHECKPOINT_DELETED: Final[str] = "memory.fine_tune.checkpoint_d
 MEMORY_FINE_TUNE_PREFLIGHT_COMPLETED: Final[str] = (
     "memory.fine_tune.preflight_completed"
 )
+MEMORY_FINE_TUNE_BATCH_SIZE_RECOMMENDATION_FAILED: Final[str] = (
+    "memory.fine_tune.batch_size_recommendation_failed"
+)
 MEMORY_FINE_TUNE_EVAL_COMPLETED: Final[str] = "memory.fine_tune.eval_completed"
 MEMORY_FINE_TUNE_BACKUP_READ_SKIPPED: Final[str] = (
     "memory.fine_tune.backup_read_skipped"

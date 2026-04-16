@@ -50,12 +50,12 @@ class ScalingSignalResponse(BaseModel):
 
     name: NotBlankStr = Field(description="Signal name")
     value: float = Field(description="Current value")
-    source: str = Field(description="Signal source")
+    source: NotBlankStr = Field(description="Signal source")
     threshold: float | None = Field(
         default=None,
         description="Configured threshold for this signal",
     )
-    timestamp: str = Field(description="ISO timestamp when collected")
+    timestamp: NotBlankStr = Field(description="ISO timestamp when collected")
 
 
 class ScalingDecisionResponse(BaseModel):
@@ -64,21 +64,21 @@ class ScalingDecisionResponse(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     id: NotBlankStr = Field(description="Decision identifier")
-    action_type: str = Field(description="Action type")
-    source_strategy: str = Field(description="Strategy that proposed this")
-    target_agent_id: str | None = Field(
+    action_type: NotBlankStr = Field(description="Action type")
+    source_strategy: NotBlankStr = Field(description="Strategy that proposed this")
+    target_agent_id: NotBlankStr | None = Field(
         default=None,
         description="Agent targeted for pruning",
     )
-    target_role: str | None = Field(
+    target_role: NotBlankStr | None = Field(
         default=None,
         description="Role to hire for",
     )
-    target_skills: tuple[str, ...] = Field(
+    target_skills: tuple[NotBlankStr, ...] = Field(
         default=(),
         description="Skills required for the hire target",
     )
-    target_department: str | None = Field(
+    target_department: NotBlankStr | None = Field(
         default=None,
         description="Department for the hire target",
     )
@@ -88,7 +88,7 @@ class ScalingDecisionResponse(BaseModel):
         default=(),
         description="Signals that informed the decision",
     )
-    created_at: str = Field(description="ISO timestamp")
+    created_at: NotBlankStr = Field(description="ISO timestamp")
 
 
 class StrategyUpdateRequest(BaseModel):

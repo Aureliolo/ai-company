@@ -95,6 +95,26 @@ class TestTemplateAgentConfig:
         with pytest.raises(ValidationError):
             TemplateAgentConfig(role="")
 
+    @pytest.mark.parametrize("bad", ["", "   ", "\t\n"])
+    def test_blank_name_rejected(self, bad: str) -> None:
+        """Empty / whitespace-only names must be rejected -- use None instead."""
+        with pytest.raises(ValidationError):
+            TemplateAgentConfig(role="Dev", name=bad)
+
+    @pytest.mark.parametrize("bad", ["", "   ", "\t\n"])
+    def test_blank_merge_id_rejected(self, bad: str) -> None:
+        """Empty / whitespace-only merge_id must be rejected -- use None instead."""
+        with pytest.raises(ValidationError):
+            TemplateAgentConfig(role="Dev", merge_id=bad)
+
+    def test_non_blank_name_accepted(self) -> None:
+        a = TemplateAgentConfig(role="Dev", name="Alice")
+        assert a.name == "Alice"
+
+    def test_non_blank_merge_id_accepted(self) -> None:
+        a = TemplateAgentConfig(role="Dev", merge_id="backend-senior")
+        assert a.merge_id == "backend-senior"
+
     def test_inline_personality(self) -> None:
         a = TemplateAgentConfig(
             role="Dev",
