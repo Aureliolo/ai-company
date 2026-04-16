@@ -53,7 +53,10 @@ RUN rm -f /app/.venv/bin/python \
 
 # Pre-create the data directory tree in the builder so COPY --chown can
 # transfer it to the shell-less runtime stage with correct ownership.
-RUN mkdir -p /data/logs /data/memory
+# Switch back to root for creating /data, then re-chown to the build user.
+USER root
+RUN mkdir -p /data/logs /data/memory && chown -R 65532:65532 /data
+USER build
 
 # ---------------------------------------------------------------------------
 # Stage 2 -- Runtime (apko-composed Wolfi base: no shell, no package manager)
