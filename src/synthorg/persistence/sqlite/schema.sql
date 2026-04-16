@@ -972,12 +972,20 @@ CREATE TABLE approvals (
     created_at TEXT NOT NULL CHECK(
         created_at LIKE '%+00:00' OR created_at LIKE '%Z'
     ),
-    expires_at TEXT,
-    decided_at TEXT,
+    expires_at TEXT CHECK(
+        expires_at IS NULL OR expires_at LIKE '%+00:00' OR expires_at LIKE '%Z'
+    ),
+    decided_at TEXT CHECK(
+        decided_at IS NULL OR decided_at LIKE '%+00:00' OR decided_at LIKE '%Z'
+    ),
     decided_by TEXT,
     decision_reason TEXT,
-    task_id TEXT,
-    metadata TEXT NOT NULL DEFAULT '{}'
+    task_id TEXT REFERENCES tasks(id),
+    metadata TEXT NOT NULL DEFAULT '{}',
+    CHECK(
+        (decided_at IS NULL AND decided_by IS NULL)
+        OR (decided_at IS NOT NULL AND decided_by IS NOT NULL)
+    )
 );
 CREATE INDEX idx_approvals_status ON approvals(status);
 CREATE INDEX idx_approvals_action_type ON approvals(action_type);

@@ -5,7 +5,7 @@ from typing import Any
 from litestar import Controller, get, post
 from litestar.datastructures import State  # noqa: TC002
 from litestar.exceptions import NotFoundException
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.api.controllers.custom_rules import rule_to_dict
 from synthorg.api.dto import ApiResponse
@@ -24,7 +24,7 @@ class ChatRequest(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    question: NotBlankStr
+    question: NotBlankStr = Field(max_length=2000)
 
 
 logger = get_logger(__name__)

@@ -4,8 +4,8 @@ import json
 import sqlite3
 from datetime import datetime
 
-import aiosqlite  # noqa: TC002
-from aiosqlite import Row  # noqa: TC002
+import aiosqlite
+from aiosqlite import Row
 
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
@@ -25,33 +25,46 @@ logger = get_logger(__name__)
 def _row_to_item(row: Row) -> ApprovalItem:
     """Convert a database row to an ApprovalItem.
 
+    Args:
+        row: A row from aiosqlite with ``row_factory = aiosqlite.Row``.
+
     Raises:
         QueryError: If the row contains corrupt or unparseable data.
     """
     try:
-        metadata_raw: dict[str, str] = json.loads(str(row[13]))
+        metadata_raw: dict[str, str] = json.loads(str(row["metadata"]))
         return ApprovalItem(
-            id=str(row[0]),
-            action_type=str(row[1]),
-            title=str(row[2]),
-            description=str(row[3]),
-            requested_by=str(row[4]),
-            risk_level=ApprovalRiskLevel(str(row[5])),
-            status=ApprovalStatus(str(row[6])),
-            created_at=datetime.fromisoformat(str(row[7])),
+            id=str(row["id"]),
+            action_type=str(row["action_type"]),
+            title=str(row["title"]),
+            description=str(row["description"]),
+            requested_by=str(row["requested_by"]),
+            risk_level=ApprovalRiskLevel(str(row["risk_level"])),
+            status=ApprovalStatus(str(row["status"])),
+            created_at=datetime.fromisoformat(str(row["created_at"])),
             expires_at=(
-                datetime.fromisoformat(str(row[8])) if row[8] is not None else None
+                datetime.fromisoformat(str(row["expires_at"]))
+                if row["expires_at"] is not None
+                else None
             ),
             decided_at=(
-                datetime.fromisoformat(str(row[9])) if row[9] is not None else None
+                datetime.fromisoformat(str(row["decided_at"]))
+                if row["decided_at"] is not None
+                else None
             ),
-            decided_by=str(row[10]) if row[10] is not None else None,
-            decision_reason=str(row[11]) if row[11] is not None else None,
-            task_id=str(row[12]) if row[12] is not None else None,
+            decided_by=(
+                str(row["decided_by"]) if row["decided_by"] is not None else None
+            ),
+            decision_reason=(
+                str(row["decision_reason"])
+                if row["decision_reason"] is not None
+                else None
+            ),
+            task_id=(str(row["task_id"]) if row["task_id"] is not None else None),
             metadata=metadata_raw,
         )
     except (json.JSONDecodeError, ValueError, TypeError, KeyError) as exc:
-        row_id = str(row[0]) if row else "<unknown>"
+        row_id = str(row["id"]) if row else "<unknown>"
         msg = f"Failed to parse approval row {row_id!r}: {exc}"
         logger.exception(API_APPROVAL_REPO_FAILED, row_id=row_id, error=msg)
         raise QueryError(msg) from exc
@@ -69,6 +82,7 @@ class SQLiteApprovalRepository:
 
     def __init__(self, db: aiosqlite.Connection) -> None:
         self._db = db
+        self._db.row_factory = aiosqlite.Row
 
     async def save(self, item: ApprovalItem) -> None:
         """Upsert an approval item.
@@ -88,10 +102,17 @@ class SQLiteApprovalRepository:
                 task_id, metadata
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
+                action_type = excluded.action_type,
+                title = excluded.title,
+                description = excluded.description,
+                requested_by = excluded.requested_by,
+                risk_level = excluded.risk_level,
                 status = excluded.status,
+                expires_at = excluded.expires_at,
                 decided_at = excluded.decided_at,
                 decided_by = excluded.decided_by,
                 decision_reason = excluded.decision_reason,
+                task_id = excluded.task_id,
                 metadata = excluded.metadata
         """
         params = (
@@ -121,7 +142,7 @@ class SQLiteApprovalRepository:
                 msg,
                 constraint=str(exc),
             ) from exc
-        except Exception as exc:
+        except (sqlite3.Error, aiosqlite.Error) as exc:
             await self._db.rollback()
             msg = f"Failed to save approval {item.id!r}: {exc}"
             logger.exception(API_APPROVAL_REPO_FAILED, approval_id=item.id, error=msg)
@@ -151,7 +172,7 @@ class SQLiteApprovalRepository:
         try:
             cursor = await self._db.execute(sql, (approval_id,))
             row = await cursor.fetchone()
-        except Exception as exc:
+        except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to fetch approval {approval_id!r}: {exc}"
             logger.exception(
                 API_APPROVAL_REPO_FAILED,
@@ -208,7 +229,7 @@ class SQLiteApprovalRepository:
             items = tuple(_row_to_item(r) for r in rows)
         except QueryError:
             raise
-        except Exception as exc:
+        except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to list approvals: {exc}"
             logger.exception(API_APPROVAL_REPO_FAILED, error=msg)
             raise QueryError(msg) from exc
@@ -228,7 +249,7 @@ class SQLiteApprovalRepository:
         try:
             cursor = await self._db.execute(sql, (approval_id,))
             await self._db.commit()
-        except Exception as exc:
+        except (sqlite3.Error, aiosqlite.Error) as exc:
             await self._db.rollback()
             msg = f"Failed to delete approval {approval_id!r}: {exc}"
             logger.exception(

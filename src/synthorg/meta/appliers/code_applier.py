@@ -68,6 +68,21 @@ class CodeApplier:
         """This applier handles code modification proposals."""
         return ProposalAltitude.CODE_MODIFICATION
 
+    async def verify_github_token(self) -> None:
+        """Verify that the configured GitHub token is valid.
+
+        Raises:
+            GitHubAuthError: On 401/403.
+            GitHubAPIError: On other failures.
+        """
+        await self._github.verify_token()
+
+    async def aclose(self) -> None:
+        """Close the underlying GitHub client if it supports it."""
+        close = getattr(self._github, "aclose", None)
+        if close is not None:
+            await close()
+
     async def apply(
         self,
         proposal: ImprovementProposal,

@@ -86,6 +86,9 @@ class ApprovalStore:
     async def get(self, approval_id: str) -> ApprovalItem | None:
         """Get an approval item by ID, applying lazy expiration.
 
+        Falls through to the repository on cache miss when a repo is
+        configured, ensuring persisted items survive restarts.
+
         Args:
             approval_id: The approval identifier.
 
@@ -93,6 +96,10 @@ class ApprovalStore:
             The approval item, or ``None`` if not found.
         """
         item = self._items.get(approval_id)
+        if item is None and self._repo is not None:
+            item = await self._repo.get(approval_id)
+            if item is not None:
+                self._items[item.id] = item
         if item is None:
             return None
         return self._check_expiration(item)
@@ -106,6 +113,10 @@ class ApprovalStore:
     ) -> tuple[ApprovalItem, ...]:
         """List approval items with optional filters.
 
+        When a repository is configured, queries the repo (source of
+        truth) and refreshes the in-memory cache.  Otherwise falls
+        back to the cache alone.
+
         Applies lazy expiration to all items before filtering.
 
         Args:
@@ -116,7 +127,16 @@ class ApprovalStore:
         Returns:
             Tuple of matching approval items.
         """
-        result: list[ApprovalItem] = []
+        if self._repo is not None:
+            repo_items = await self._repo.list_items(
+                status=status,
+                risk_level=risk_level,
+                action_type=action_type,
+            )
+            for item in repo_items:
+                self._items[item.id] = item
+            return tuple(self._check_expiration(item) for item in repo_items)
+        result = []
         for stored in list(self._items.values()):
             checked = self._check_expiration(stored)
             if status is not None and checked.status != status:
@@ -156,6 +176,9 @@ class ApprovalStore:
         """Conditionally update an approval item if it is still pending.
 
         A lazy expiration check is applied before comparing status.
+
+        Args:
+            item: The updated approval item (must have an existing ID).
 
         Returns:
             The saved item on success, or ``None`` if:

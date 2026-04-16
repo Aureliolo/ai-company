@@ -1,9 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react'
 
-import {
-  MetaABTestView,
-  type ABTestSummary,
-} from './MetaABTestView'
+import type { ABTestSummary } from '@/api/endpoints/meta'
+import { MetaABTestView } from './MetaABTestView'
 
 const meta = {
   title: 'Pages/Meta/ABTestView',

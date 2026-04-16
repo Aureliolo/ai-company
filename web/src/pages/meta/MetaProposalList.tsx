@@ -3,18 +3,19 @@ import { Brain } from 'lucide-react'
 import type { ProposalSummary } from '@/api/endpoints/meta'
 import { EmptyState } from '@/components/ui/empty-state'
 import { StatusBadge } from '@/components/ui/status-badge'
+import type { AgentRuntimeStatus } from '@/lib/utils'
 
 interface MetaProposalListProps {
   proposals: readonly ProposalSummary[]
 }
 
-const STATUS_MAP: Record<string, string> = {
+const STATUS_MAP: Record<string, AgentRuntimeStatus> = {
   pending: 'idle',
   approved: 'active',
   rejected: 'error',
-  applying: 'busy',
+  applying: 'active',
   applied: 'active',
-  rolled_back: 'warning',
+  rolled_back: 'offline',
   regressed: 'error',
 }
 
@@ -34,7 +35,7 @@ export function MetaProposalList({ proposals }: MetaProposalListProps) {
       {proposals.map((p) => (
         <div
           key={p.id}
-          className="flex items-center justify-between rounded-md border border-border p-3"
+          className="flex items-center justify-between rounded-md border border-border p-card"
         >
           <div className="flex items-center gap-3">
             <StatusBadge status={STATUS_MAP[p.status] ?? 'idle'} />

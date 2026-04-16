@@ -36,10 +36,16 @@ export function useMetaData(): UseMetaDataReturn {
     void fetchRef.current()
   }, [])
 
-  // Polling.
+  // Polling -- skip tick while a request is in-flight to avoid
+  // overlapping fetches when the tab resumes from background.
+  const loadingRef = useRef(loading)
+  loadingRef.current = loading
+
   useEffect(() => {
     const id = setInterval(() => {
-      void fetchRef.current()
+      if (!loadingRef.current) {
+        void fetchRef.current()
+      }
     }, POLL_INTERVAL)
     return () => clearInterval(id)
   }, [])

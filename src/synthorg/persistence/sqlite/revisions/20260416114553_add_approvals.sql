@@ -15,6 +15,7 @@ CREATE TABLE `approvals` (
   `task_id` text NULL,
   `metadata` text NOT NULL DEFAULT '{}',
   PRIMARY KEY (`id`),
+  CONSTRAINT `0` FOREIGN KEY (`task_id`) REFERENCES `tasks` (`id`) ON UPDATE NO ACTION ON DELETE NO ACTION,
   CHECK (length(id) > 0),
   CHECK (length(trim(action_type)) > 0),
   CHECK (length(trim(title)) > 0),
@@ -27,6 +28,16 @@ CREATE TABLE `approvals` (
     ),
   CHECK (
         created_at LIKE '%+00:00' OR created_at LIKE '%Z'
+    ),
+  CHECK (
+        expires_at IS NULL OR expires_at LIKE '%+00:00' OR expires_at LIKE '%Z'
+    ),
+  CHECK (
+        decided_at IS NULL OR decided_at LIKE '%+00:00' OR decided_at LIKE '%Z'
+    ),
+  CHECK (
+        (decided_at IS NULL AND decided_by IS NULL)
+        OR (decided_at IS NOT NULL AND decided_by IS NOT NULL)
     )
 );
 -- Create index "idx_approvals_status" to table: "approvals"

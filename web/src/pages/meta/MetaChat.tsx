@@ -41,7 +41,7 @@ function ChatInputArea({
     <div className={cn('flex gap-2', className)}>
       <div className="flex-1">
         <InputField
-          label=""
+          label="Chat message"
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder="Ask about signals, proposals..."
@@ -57,6 +57,7 @@ function ChatInputArea({
         size="sm"
         onClick={onSend}
         disabled={!value.trim() || disabled}
+        aria-label="Send message"
       >
         <Send className="h-4 w-4" />
       </Button>
@@ -129,7 +130,7 @@ export function MetaChat() {
 
   if (messages.length === 0 && !chatLoading) {
     return (
-      <div className="space-y-4">
+      <div className="space-y-section-gap">
         <EmptyState
           icon={MessageCircle}
           title="Ask the Chief of Staff"
@@ -149,14 +150,14 @@ export function MetaChat() {
     <div className="flex flex-col gap-4">
       <div
         ref={scrollRef}
-        className="max-h-80 space-y-3 overflow-y-auto rounded-md border border-border p-3"
+        className="max-h-80 space-y-3 overflow-y-auto rounded-md border border-border p-card"
       >
         <LiveRegion politeness="polite">
           {messages.map((msg) => (
             <div
               key={msg.id}
               className={cn(
-                'rounded-md p-3 text-sm text-foreground',
+                'rounded-md p-card text-sm text-foreground',
                 msg.role === 'user'
                   ? 'ml-8 bg-accent/10'
                   : 'mr-8 bg-card',
@@ -171,7 +172,7 @@ export function MetaChat() {
             </div>
           ))}
           {chatLoading && (
-            <div className="mr-8 animate-pulse rounded-md bg-card p-3 text-sm text-muted-foreground">
+            <div className="mr-8 animate-pulse rounded-md bg-card p-card text-sm text-muted-foreground">
               Thinking...
             </div>
           )}

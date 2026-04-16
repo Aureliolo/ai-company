@@ -112,6 +112,8 @@ def _mock_github_client() -> AsyncMock:
         return_value="https://github.com/test/repo/pull/99",
     )
     gh.delete_branch = AsyncMock()
+    gh.verify_token = AsyncMock()
+    gh.aclose = AsyncMock()
     return gh
 
 
@@ -146,9 +148,12 @@ class TestCodeApplier:
 
         assert result.success
         assert result.changes_applied == 1
-        # GitHub API was called.
+        assert result.error_message is None
+        # GitHub API was called with proposal data.
         gh.create_branch.assert_awaited_once()
         gh.push_change.assert_awaited_once()
+        push_args = gh.push_change.call_args
+        assert push_args is not None
         gh.create_draft_pr.assert_awaited_once()
         # Local file was reverted after push.
         written = strategies_dir / "new.py"

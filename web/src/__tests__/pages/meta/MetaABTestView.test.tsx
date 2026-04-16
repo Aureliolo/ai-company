@@ -1,9 +1,6 @@
 import { render, screen } from '@testing-library/react'
-import {
-  MetaABTestView,
-  type ABTestSummary,
-  type ABTestGroupMetrics,
-} from '@/pages/meta/MetaABTestView'
+import type { ABTestSummary, ABTestGroupMetrics } from '@/api/endpoints/meta'
+import { MetaABTestView } from '@/pages/meta/MetaABTestView'
 
 function makeGroupMetrics(
   group: 'control' | 'treatment',

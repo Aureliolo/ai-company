@@ -72,7 +72,9 @@ class StatisticalDetector:
                     breached_metric="quality",
                     baseline_value=base_q,
                     current_value=curr_q,
-                    p_value=drop_ratio,  # Heuristic proxy; TODO: Welch's t-test
+                    # Heuristic proxy, not a true p-value.
+                    # TODO: replace with Welch's t-test.
+                    p_value=drop_ratio,
                 )
 
         return RegressionResult(

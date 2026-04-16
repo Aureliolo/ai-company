@@ -5,7 +5,7 @@
  * A/B tests, configuration, and Chief of Staff chat.
  */
 
-import type { ApiResponse } from '../client'
+import type { ApiResponse } from '../types'
 import { apiClient, unwrap } from '../client'
 
 // -- Types -------------------------------------------------------------------
@@ -101,9 +101,13 @@ export async function listABTests(): Promise<ABTestSummary[]> {
 }
 
 export async function postChat(question: string): Promise<ChatResponse> {
+  const trimmed = question.trim()
+  if (!trimmed) {
+    throw new Error('Question must not be blank')
+  }
   const response = await apiClient.post<ApiResponse<ChatResponse>>(
     `${BASE}/chat`,
-    { question },
+    { question: trimmed },
   )
   return unwrap(response)
 }

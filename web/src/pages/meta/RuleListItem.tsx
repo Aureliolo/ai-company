@@ -52,21 +52,21 @@ export function RuleListItem({
       </div>
 
       <div className="flex shrink-0 items-center gap-1">
-        {isCustom && onEdit && rule.id && (
+        {isCustom && onEdit && rule.id != null && (
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => onEdit(rule.id!)}
+            onClick={() => onEdit(rule.id as string)}
             aria-label={`Edit ${rule.name}`}
           >
             <Pencil className="size-3.5" />
           </Button>
         )}
-        {isCustom && onDelete && rule.id && (
+        {isCustom && onDelete && rule.id != null && (
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => onDelete(rule.id!)}
+            onClick={() => onDelete(rule.id as string)}
             aria-label={`Delete ${rule.name}`}
           >
             <Trash2 className="size-3.5 text-danger" />

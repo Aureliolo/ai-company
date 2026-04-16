@@ -52,6 +52,7 @@ from synthorg.observability.events.meta import (
     META_PROPOSAL_GUARD_REJECTED,
     META_ROLLOUT_PRECONDITION_FAILED,
     META_ROLLOUT_REGRESSION_DETECTED,
+    META_SERVICE_CLOSE_FAILED,
 )
 
 if TYPE_CHECKING:
@@ -149,7 +150,7 @@ class SelfImprovementService:
         )
 
         try:
-            await applier._github.verify_token()  # noqa: SLF001
+            await applier.verify_github_token()
         except GitHubAPIError:
             logger.exception(
                 META_CODE_GITHUB_CREDS_INVALID,
@@ -453,7 +454,18 @@ class SelfImprovementService:
             )
 
     async def close(self) -> None:
-        """Flush analytics emitter and release resources."""
+        """Flush analytics emitter, close appliers, and release resources."""
+        for applier in self._appliers.values():
+            close = getattr(applier, "aclose", None)
+            if close is not None:
+                try:
+                    await close()
+                except Exception:
+                    logger.exception(
+                        META_SERVICE_CLOSE_FAILED,
+                        reason="applier_close_failed",
+                        altitude=str(applier.altitude),
+                    )
         if self._analytics_emitter is not None:
             try:
                 await self._analytics_emitter.close()

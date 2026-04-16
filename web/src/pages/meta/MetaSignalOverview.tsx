@@ -24,7 +24,7 @@ export function MetaSignalOverview({ signals }: MetaSignalOverviewProps) {
       {signals.domains.map((domain) => (
         <div
           key={domain.name}
-          className="flex items-center gap-2 rounded-md border border-border p-3"
+          className="flex items-center gap-2 rounded-md border border-border p-card"
         >
           <StatusBadge
             status={domain.status === 'available' ? 'active' : 'idle'}
