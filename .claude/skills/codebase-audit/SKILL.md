@@ -26,10 +26,10 @@ Launch 58 specialized agents to audit the entire codebase (or a targeted scope),
 | Argument | Directories | Agent Waves |
 |----------|-------------|-------------|
 | `full` (default) | All | All 10 waves (58 agents) |
-| `src/` | `src/synthorg/`, `tests/` | 01-08, 11-16, 20-45, 51-54 |
-| `web/` | `web/src/` | 09-10, 15, 17-19, 33, 36, 46-50 |
+| `src/` | `src/synthorg/`, `tests/`, `web/src/types/`, `docs/design/` | 01-08, 11-16, 20-45, 51-54 |
+| `web/` | `web/src/`, `src/synthorg/api/controllers/` | 09-10, 15, 17-19, 33, 36, 46-50 |
 | `cli/` | `cli/` | 22, 33, 55-58 |
-| `docs/` | `docs/`, `site/` | 22, 25, 54 |
+| `docs/` | `docs/`, `site/`, `src/synthorg/` | 22, 25, 54 |
 
 Flags:
 - `--report-only` -- skip issue creation, findings files only
@@ -111,7 +111,7 @@ If zero findings, still create the file with `**Findings**: 0` and a brief note 
 
 Every agent gets this structure (fill in the blanks per agent):
 
-```
+```text
 You are auditing the SynthOrg codebase for ONE specific concern: {FOCUS}.
 
 ## Architecture Context
@@ -163,7 +163,7 @@ Report to user after each batch: "Batch X complete (N/58 agents done)."
 
 **Agent 01 -- missing-logger** (haiku)
 File: `_audit/findings/01-missing-logger.md`
-```
+```text
 Search every .py file in src/synthorg/ for modules that contain business logic
 but do NOT have `logger = get_logger(__name__)`.
 
@@ -179,7 +179,7 @@ handlers) but no logger, that's a finding.
 
 **Agent 02 -- wrong-logger-pattern** (haiku)
 File: `_audit/findings/02-wrong-logger-pattern.md`
-```
+```text
 Search ALL .py files in src/synthorg/ and tests/ for forbidden logging patterns:
 
 1. `import logging` (except in observability/setup.py, observability/sinks.py,
@@ -196,7 +196,7 @@ Severity: medium for app code, low for test code.
 
 **Agent 03 -- missing-event-constants** (sonnet)
 File: `_audit/findings/03-missing-event-constants.md`
-```
+```text
 The project requires all logger calls to use event constants from
 src/synthorg/observability/events/ modules (e.g. API_REQUEST_STARTED from
 events.api, TOOL_INVOKE_START from events.tool).
@@ -217,7 +217,7 @@ Severity: low.
 
 **Agent 04 -- unstructured-logging** (haiku)
 File: `_audit/findings/04-unstructured-logging.md`
-```
+```text
 Search ALL logger calls in src/synthorg/ for unstructured formatting:
 
 WRONG: logger.info("Processing user %s", user_id)
@@ -233,7 +233,7 @@ Severity: low.
 
 **Agent 05 -- missing-error-logging** (sonnet)
 File: `_audit/findings/05-missing-error-logging.md`
-```
+```text
 Project convention: "All error paths must log at WARNING or ERROR with context
 before raising."
 
@@ -254,7 +254,7 @@ Severity: medium for service/engine code, low for model validation.
 
 **Agent 06 -- missing-state-transition-log** (sonnet)
 File: `_audit/findings/06-missing-state-transition-log.md`
-```
+```text
 Project convention: "All state transitions must log at INFO."
 
 Focus on these domains where state machines matter:
@@ -276,7 +276,7 @@ there's an INFO-level log call nearby. Missing transitions are severity=medium.
 
 **Agent 07 -- observability-completeness** (sonnet)
 File: `_audit/findings/07-observability-completeness.md`
-```
+```text
 Check whether key operations have full observability coverage:
 
 1. Prometheus metrics (src/synthorg/observability/prometheus_collector.py):
@@ -300,7 +300,7 @@ low for nice-to-have.
 
 **Agent 08 -- unwired-api-controllers** (sonnet)
 File: `_audit/findings/08-unwired-api-controllers.md`
-```
+```text
 Check api/controllers/ for controller classes not registered in auto_wire.py
 or app.py. Also check for route handler methods that exist but are not mapped
 to any HTTP route. Do NOT check frontend-to-backend connectivity (Agent 15
@@ -309,7 +309,7 @@ owns that). Severity: high (unreachable code).
 
 **Agent 09 -- unwired-web-stores** (sonnet)
 File: `_audit/findings/09-unwired-web-stores.md`
-```
+```text
 Check every Zustand store file in web/src/stores/. For each store, grep the
 entire web/src/ directory for imports of that store. If a store is imported by
 zero pages or components, it's dead. Severity: medium.
@@ -317,7 +317,7 @@ zero pages or components, it's dead. Severity: medium.
 
 **Agent 10 -- unwired-web-pages** (sonnet)
 File: `_audit/findings/10-unwired-web-pages.md`
-```
+```text
 Find all .tsx files in web/src/pages/ that are NOT imported by any other file
 (not by routes.ts, not by another page as a nested layout). Pages with no
 route AND no parent import are unreachable. Severity: medium.
@@ -325,7 +325,7 @@ route AND no parent import are unreachable. Severity: medium.
 
 **Agent 11 -- unwired-settings** (sonnet)
 File: `_audit/findings/11-unwired-settings.md`
-```
+```text
 Check settings/definitions/ for setting definitions. For each, check if it is:
 (a) subscribed to via settings/subscribers/, AND
 (b) exposed via an API endpoint in api/controllers/settings.py.
@@ -334,7 +334,7 @@ Settings defined but never consumed are dead config. Severity: medium.
 
 **Agent 12 -- unwired-tools** (sonnet)
 File: `_audit/findings/12-unwired-tools.md`
-```
+```text
 Check tool classes in tools/ subdirectories. For each tool class that extends
 BaseTool, verify it is registered in tools/factory.py or tools/registry.py.
 Unregistered tools are dead code. Severity: medium.
@@ -342,7 +342,7 @@ Unregistered tools are dead code. Severity: medium.
 
 **Agent 13 -- unwired-protocols** (sonnet)
 File: `_audit/findings/13-unwired-protocols.md`
-```
+```text
 Find all Protocol classes in src/synthorg/. For each, find concrete
 implementations (classes that implement the protocol). Then check if those
 implementations are registered in their factory. Report:
@@ -352,7 +352,7 @@ implementations are registered in their factory. Report:
 
 **Agent 14 -- unwired-notifications** (sonnet)
 File: `_audit/findings/14-unwired-notifications.md`
-```
+```text
 Check notifications/adapters/ for adapter classes. Verify each is registered
 in notifications/factory.py. Also check if notification events are dispatched
 from business logic. Report adapters with no factory registration and
@@ -361,7 +361,7 @@ notification types never dispatched. Severity: medium.
 
 **Agent 15 -- frontend-backend-mismatch** (sonnet)
 File: `_audit/findings/15-frontend-backend-mismatch.md`
-```
+```text
 Cross-reference web/src/api/ and web/src/services/ API calls with backend
 api/controllers/ endpoints. Report:
 - Frontend calls targeting endpoints that don't exist in backend (high)
@@ -372,7 +372,7 @@ api/controllers/ endpoints. Report:
 
 **Agent 16 -- unused-python-exports** (sonnet)
 File: `_audit/findings/16-unused-python-exports.md`
-```
+```text
 Find public functions and classes in src/synthorg/ that are not imported by
 any other module, not re-exported in __init__.py, and not referenced in tests/.
 Exclude: __init__ methods, property descriptors, __repr__/__str__, metaclass
@@ -381,7 +381,7 @@ methods, enum members, Pydantic field definitions. Severity: medium.
 
 **Agent 17 -- unused-web-components** (sonnet)
 File: `_audit/findings/17-unused-web-components.md`
-```
+```text
 Check every component file in web/src/components/ (excluding .stories.tsx).
 Grep web/src/ for imports of each component. Components imported by zero
 consumers are dead code. Severity: medium.
@@ -389,21 +389,21 @@ consumers are dead code. Severity: medium.
 
 **Agent 18 -- unused-web-hooks** (haiku)
 File: `_audit/findings/18-unused-web-hooks.md`
-```
+```text
 Check every hook file in web/src/hooks/. Grep web/src/ for imports of each
 hook. Hooks imported by zero files are dead code. Severity: medium.
 ```
 
 **Agent 19 -- unused-web-utils** (haiku)
 File: `_audit/findings/19-unused-web-utils.md`
-```
+```text
 Check exported functions in web/src/utils/ and web/src/lib/. Grep web/src/
 for imports. Unused exports are dead code. Severity: low.
 ```
 
 **Agent 20 -- unused-dto-fields** (sonnet)
 File: `_audit/findings/20-unused-dto-fields.md`
-```
+```text
 Compare DTO classes in api/dto*.py with frontend TypeScript types in
 web/src/types/. Flag fields present in backend DTOs but absent from frontend
 types (or vice versa). This suggests unused serialization. Severity: low.
@@ -412,7 +412,7 @@ Only runs for `full` or `src/` scope (requires both backend and frontend).
 
 **Agent 21 -- orphan-test-helpers** (sonnet)
 File: `_audit/findings/21-orphan-test-helpers.md`
-```
+```text
 Check all conftest.py files in tests/ for fixtures and helper functions.
 Grep tests/ for usage of each. Unused fixtures/helpers are dead test code.
 Severity: low.
@@ -422,15 +422,15 @@ Severity: low.
 
 **Agent 22 -- todo-comments** (haiku)
 File: `_audit/findings/22-todo-comments.md`
-```
-Grep ALL source files (src/, tests/, web/src/, cli/) for TODO, FIXME, HACK,
+```text
+Grep source files in the provided scope for TODO, FIXME, HACK,
 XXX, TEMPORARY, WORKAROUND comments. List each with file:line and the full
 comment text. Severity: info.
 ```
 
 **Agent 23 -- not-implemented** (haiku)
 File: `_audit/findings/23-not-implemented.md`
-```
+```text
 Grep src/synthorg/ and cli/ for: NotImplementedError, pass-only function
 bodies (def/async def with only pass), and Ellipsis (...) as sole function
 body. Severity: info for abstract methods, medium for concrete stubs.
@@ -438,7 +438,7 @@ body. Severity: info for abstract methods, medium for concrete stubs.
 
 **Agent 24 -- placeholder-stubs** (sonnet)
 File: `_audit/findings/24-placeholder-stubs.md`
-```
+```text
 Find functions that return hardcoded dummy values, empty lists/dicts, or have
 "placeholder", "stub", "temporary", "mock" in their comments/docstrings.
 These suggest incomplete implementations. Severity: medium.
@@ -446,7 +446,7 @@ These suggest incomplete implementations. Severity: medium.
 
 **Agent 25 -- deferred-features** (sonnet)
 File: `_audit/findings/25-deferred-features.md`
-```
+```text
 Read docs/design/ pages and cross-reference with src/synthorg/. Find features
 described in the design spec that have no corresponding implementation.
 Focus on major features (not minor details). Severity: info.
@@ -456,7 +456,7 @@ Focus on major features (not minor details). Severity: info.
 
 **Agent 26 -- silent-exception-swallow** (sonnet)
 File: `_audit/findings/26-silent-exception-swallow.md`
-```
+```text
 Find except blocks that swallow exceptions silently: bare `except:`,
 `except Exception: pass`, `except Exception as e:` with only DEBUG logging
 (should be WARNING+), catching too broadly. Skip intentional patterns like
@@ -465,7 +465,7 @@ graceful shutdown cleanup. Severity: high for business logic, medium for cleanup
 
 **Agent 27 -- input-validation-gaps** (sonnet)
 File: `_audit/findings/27-input-validation-gaps.md`
-```
+```text
 Check API controller methods for user input that bypasses validation. Look for
 path/query parameters used directly without Pydantic validation, raw request
 body access, and missing type coercion. Severity: high.
@@ -473,14 +473,14 @@ body access, and missing type coercion. Severity: high.
 
 **Agent 28 -- sql-injection-risk** (sonnet)
 File: `_audit/findings/28-sql-injection-risk.md`
-```
+```text
 Search persistence/ and any file using SQL for string concatenation or f-strings
 in SQL queries instead of parameterized queries. Severity: critical.
 ```
 
 **Agent 29 -- missing-auth-checks** (sonnet)
 File: `_audit/findings/29-missing-auth-checks.md`
-```
+```text
 Check API controllers for endpoints missing auth guards. Compare with auth
 middleware/dependency injection. Public endpoints should be explicitly marked.
 Severity: high for data-mutating endpoints, medium for read-only.
@@ -488,7 +488,7 @@ Severity: high for data-mutating endpoints, medium for read-only.
 
 **Agent 30 -- unsafe-deserialization** (haiku)
 File: `_audit/findings/30-unsafe-deserialization.md`
-```
+```text
 Flag ANY use of yaml.load (even with Loader parameter -- verify SafeLoader),
 pickle.loads, eval(), exec(). Flag compile() ONLY if the argument contains a
 variable or function parameter (not a string literal). Severity: critical.
@@ -496,7 +496,7 @@ variable or function parameter (not a string literal). Severity: critical.
 
 **Agent 31 -- hardcoded-secrets** (haiku)
 File: `_audit/findings/31-hardcoded-secrets.md`
-```
+```text
 Grep for patterns suggesting hardcoded secrets: password=", api_key=",
 token=", secret=", followed by string literals. Skip test files and .env
 examples. Severity: critical.
@@ -504,7 +504,7 @@ examples. Severity: critical.
 
 **Agent 32 -- missing-rate-limiting** (sonnet)
 File: `_audit/findings/32-missing-rate-limiting.md`
-```
+```text
 Check public-facing API endpoints for rate limiting. Check expensive operations
 (LLM calls, bulk DB writes, file uploads) for throttling. Severity: medium.
 ```
@@ -513,15 +513,15 @@ Check public-facing API endpoints for rate limiting. Check expensive operations
 
 **Agent 33 -- hardcoded-urls-ports** (haiku)
 File: `_audit/findings/33-hardcoded-urls-ports.md`
-```
-Grep src/, web/src/, cli/ for hardcoded URLs, ports, hostnames, IP addresses
-that should come from config or env vars. Skip test files and documentation.
-Severity: medium.
+```text
+Grep files in the provided scope for hardcoded URLs, ports, hostnames, IP
+addresses that should come from config or env vars. Skip test files and
+documentation. Severity: medium.
 ```
 
 **Agent 34 -- hardcoded-timeouts-limits** (haiku)
 File: `_audit/findings/34-hardcoded-timeouts-limits.md`
-```
+```text
 Grep src/synthorg/ for hardcoded timeout values (seconds/ms), retry counts,
 batch sizes, max limits that should be configurable. Look for bare numeric
 literals in asyncio.wait_for, sleep, timeout parameters. Severity: low.
@@ -529,7 +529,7 @@ literals in asyncio.wait_for, sleep, timeout parameters. Severity: low.
 
 **Agent 35 -- hardcoded-magic-numbers** (haiku)
 File: `_audit/findings/35-hardcoded-magic-numbers.md`
-```
+```text
 Find magic numbers in business logic: bare numeric literals (not 0, 1, -1)
 without named constants. Focus on src/synthorg/ business logic, skip tests
 and config defaults. Severity: low.
@@ -537,9 +537,10 @@ and config defaults. Severity: low.
 
 **Agent 36 -- vendor-name-leaks** (haiku)
 File: `_audit/findings/36-vendor-name-leaks.md`
-```
-Grep for real vendor names: Anthropic, OpenAI, Claude, GPT, Gemini, Mistral
-in project-owned code. ALLOWED exceptions (do NOT flag):
+```text
+Grep files in the provided scope for real vendor names: Anthropic, OpenAI,
+Claude, GPT, Gemini, Mistral in project-owned code. ALLOWED exceptions (do
+NOT flag):
 - providers/presets.py (user-facing runtime data)
 - .claude/ directory files
 - Third-party import paths (litellm.types.llms.openai etc)
@@ -549,7 +550,7 @@ Everything else is a violation. Severity: low.
 
 **Agent 37 -- hardcoded-display-values** (sonnet)
 File: `_audit/findings/37-hardcoded-display-values.md`
-```
+```text
 Find hardcoded currencies (should default EUR not USD), date formats, number
 formats, locale-specific strings in both src/synthorg/ and web/src/.
 Severity: medium for USD defaults, low for format strings.
@@ -557,7 +558,7 @@ Severity: medium for USD defaults, low for format strings.
 
 **Agent 38 -- missing-settings-bridge** (sonnet)
 File: `_audit/findings/38-missing-settings-bridge.md`
-```
+```text
 Cross-reference hardcoded values in src/synthorg/ with settings definitions in
 settings/definitions/. Find values that SHOULD be configurable but are hardcoded,
 and settings defined but never consumed by any code. Severity: medium.
@@ -567,7 +568,7 @@ and settings defined but never consumed by any code. Severity: medium.
 
 **Agent 39 -- long-functions** (haiku)
 File: `_audit/findings/39-long-functions.md`
-```
+```text
 Find functions exceeding line limits: Python over 50 lines, Go over 80 lines,
 TypeScript over 60 lines. Report file:line of function def and line count.
 Severity: low.
@@ -575,14 +576,14 @@ Severity: low.
 
 **Agent 40 -- long-files** (haiku)
 File: `_audit/findings/40-long-files.md`
-```
+```text
 Find files exceeding size limits: Python over 800 lines, TypeScript over 600
 lines, Go over 1000 lines. Report file path and line count. Severity: low.
 ```
 
 **Agent 41 -- model-convention-violations** (sonnet)
 File: `_audit/findings/41-model-convention-violations.md`
-```
+```text
 Check Pydantic models in src/synthorg/ for convention violations:
 - Missing frozen=True in ConfigDict (config/identity models must be frozen)
 - Missing allow_inf_nan=False in ConfigDict
@@ -593,7 +594,7 @@ Severity: medium.
 
 **Agent 42 -- missing-immutability** (sonnet)
 File: `_audit/findings/42-missing-immutability.md`
-```
+```text
 Find violations of immutability conventions:
 - dict/list exposed without MappingProxyType wrapping (non-Pydantic)
 - Mutable default arguments (def f(x=[]))
@@ -604,7 +605,7 @@ Severity: medium.
 
 **Agent 43 -- async-antipatterns** (sonnet)
 File: `_audit/findings/43-async-antipatterns.md`
-```
+```text
 Find async antipatterns in src/synthorg/:
 - Bare asyncio.create_task without TaskGroup
 - Missing await on coroutine calls
@@ -616,7 +617,7 @@ Severity: high for missing await, medium for others.
 
 **Agent 44 -- error-handling-consistency** (sonnet)
 File: `_audit/findings/44-error-handling-consistency.md`
-```
+```text
 Check error handling conventions:
 - Custom exceptions not inheriting from project error hierarchy
 - API error responses not using RFC 9457 structured format
@@ -627,7 +628,7 @@ Severity: medium.
 
 **Agent 45 -- future-annotations-leak** (haiku)
 File: `_audit/findings/45-future-annotations-leak.md`
-```
+```text
 Grep for "from __future__ import annotations" in ALL Python files. This is
 forbidden on Python 3.14 (PEP 649 native). Severity: low.
 ```
@@ -636,7 +637,7 @@ forbidden on Python 3.14 (PEP 649 native). Severity: low.
 
 **Agent 46 -- missing-accessibility** (sonnet)
 File: `_audit/findings/46-missing-accessibility.md`
-```
+```text
 Check web/src/components/ and web/src/pages/ for accessibility issues:
 missing aria-label on interactive elements, missing role attributes, missing
 keyboard navigation (onKeyDown handlers), missing focus management after
@@ -645,7 +646,7 @@ navigation, images without alt text. Severity: medium.
 
 **Agent 47 -- missing-loading-states** (sonnet)
 File: `_audit/findings/47-missing-loading-states.md`
-```
+```text
 Check pages/components that fetch data (useQuery, useEffect with fetch) for
 missing loading skeletons/spinners, missing empty states when data is [],
 and missing error boundaries around async content. Severity: medium.
@@ -653,7 +654,7 @@ and missing error boundaries around async content. Severity: medium.
 
 **Agent 48 -- hardcoded-frontend-strings** (haiku)
 File: `_audit/findings/48-hardcoded-frontend-strings.md`
-```
+```text
 Find user-facing strings hardcoded directly in TSX files. Look for text
 content in JSX elements that should be centralized for i18n readiness.
 Skip component prop names and technical strings. Severity: info.
@@ -661,7 +662,7 @@ Skip component prop names and technical strings. Severity: info.
 
 **Agent 49 -- design-token-violations** (sonnet)
 File: `_audit/findings/49-design-token-violations.md`
-```
+```text
 Check web/src/ for design system violations: hardcoded hex colors (#xxx),
 hardcoded px values for spacing/padding/margins, raw font-family declarations,
 raw CSS transition/animation values instead of @/lib/motion presets.
@@ -670,7 +671,7 @@ Severity: medium.
 
 **Agent 50 -- missing-error-handling-fe** (sonnet)
 File: `_audit/findings/50-missing-error-handling-fe.md`
-```
+```text
 Check web/src/ for API calls without error handling: missing .catch() or
 try/catch, missing toast/notification on failure, optimistic updates without
 rollback on error, console.error without user feedback. Severity: medium.
@@ -680,7 +681,7 @@ rollback on error, console.error without user feedback. Severity: medium.
 
 **Agent 51 -- race-conditions** (sonnet)
 File: `_audit/findings/51-race-conditions.md`
-```
+```text
 Find potential race conditions: shared mutable state without locks/mutexes,
 TOCTOU patterns (check-then-act without atomicity), concurrent dict/list
 modification, DB read-modify-write without transactions. Severity: high.
@@ -688,7 +689,7 @@ modification, DB read-modify-write without transactions. Severity: high.
 
 **Agent 52 -- resource-leaks** (sonnet)
 File: `_audit/findings/52-resource-leaks.md`
-```
+```text
 Find unclosed resources: HTTP clients/sessions not using async with,
 file handles not in with blocks, DB connections not properly returned to pool,
 aiohttp sessions created but not closed. Severity: high.
@@ -696,7 +697,7 @@ aiohttp sessions created but not closed. Severity: high.
 
 **Agent 53 -- circular-dependencies** (sonnet)
 File: `_audit/findings/53-circular-dependencies.md`
-```
+```text
 Find import cycles between src/synthorg/ packages. Check for circular
 references that could cause runtime ImportError or require deferred imports.
 Also check for TYPE_CHECKING guards that hide real circular deps. Severity: medium.
@@ -704,7 +705,7 @@ Also check for TYPE_CHECKING guards that hide real circular deps. Severity: medi
 
 **Agent 54 -- design-spec-drift** (sonnet)
 File: `_audit/findings/54-design-spec-drift.md`
-```
+```text
 Compare implementation in src/synthorg/ with docs/design/ specs. Find
 behaviors, models, or flows that diverge from what the spec describes without
 documented rationale. Focus on major architectural decisions. Severity: medium.
@@ -714,7 +715,7 @@ documented rationale. Focus on major architectural decisions. Severity: medium.
 
 **Agent 55 -- go-error-handling** (sonnet)
 File: `_audit/findings/55-go-error-handling.md`
-```
+```text
 Check cli/ Go code for: ignored error returns (assigned to _), missing error
 wrapping (fmt.Errorf with %w), bare log.Fatal instead of returning errors,
 os.Exit in non-main functions. Severity: medium.
@@ -722,7 +723,7 @@ os.Exit in non-main functions. Severity: medium.
 
 **Agent 56 -- go-resource-leaks** (sonnet)
 File: `_audit/findings/56-go-resource-leaks.md`
-```
+```text
 Check cli/ for unclosed resources: Docker clients without defer Close(),
 HTTP response bodies not closed, file handles without defer Close(),
 context cancellation not propagated. Severity: high.
@@ -730,14 +731,14 @@ context cancellation not propagated. Severity: high.
 
 **Agent 57 -- go-hardcoded-values** (haiku)
 File: `_audit/findings/57-go-hardcoded-values.md`
-```
+```text
 Grep cli/ for hardcoded Docker image tags, ports, paths, timeouts that should
 be configurable via flags or config. Severity: low.
 ```
 
 **Agent 58 -- go-cli-wiring** (sonnet)
 File: `_audit/findings/58-go-cli-wiring.md`
-```
+```text
 Check cobra command registration in cli/cmd/. Find commands registered but
 non-functional, flags defined but never read, subcommands with no RunE.
 Severity: medium.
@@ -747,21 +748,21 @@ Severity: medium.
 
 ## Phase 3: Validate Findings (sonnet agents)
 
-**MANDATORY. Never skip this phase.**
+**Required for standard runs.** For `--quick` runs or when fewer than 5 critical+high findings exist, validation may be skipped.
 
-After all 58 audit agents complete, launch validation agents to verify findings.
+After all launched audit agents complete, launch validation agents to verify findings. The number of agents depends on scope (58 for `full`, fewer for scoped runs).
 
 ### Process
 
-1. Read all 58 finding files from `_audit/findings/`
+1. Read all finding files present in `_audit/findings/`
 2. Collect all critical + high severity findings into a validation queue
 3. If queue exceeds 50 findings, prioritize by clustering related findings (same file/module)
 4. Split the queue into batches of ~12 findings each
-4. Launch one **sonnet** validation agent per batch (in parallel, `run_in_background: true`)
+5. Launch one **sonnet** validation agent per batch (in parallel, `run_in_background: true`)
 
 ### Validation Agent Prompt
 
-```
+```text
 You are validating audit findings by reading the ACTUAL SOURCE CODE.
 
 For each finding below, do:
@@ -791,7 +792,7 @@ Findings to validate:
 3. Mark INTENTIONAL findings as excluded (keep in file but prefix with `[INTENTIONAL]`)
 4. Report: "Validated N findings. Removed M false positives (X%)."
 
-Skip validation for `--quick` runs or if total critical+high findings are under 5.
+Validation may be skipped when `--quick` is set or when fewer than 5 critical+high findings exist.
 
 ---
 
@@ -804,7 +805,7 @@ After validation, read all finding files and build `_audit/INDEX.md`:
 
 **Date**: {date}
 **Scope**: {scope}
-**Agents**: 58
+**Agents**: {agents_launched}
 **Total findings**: {count}
 **False positives removed**: {count} ({percent}%)
 
@@ -870,7 +871,7 @@ If `--report-only`, skip this phase entirely.
 
 1. **Every agent writes to `_audit/findings/`** using the Write tool, not Bash
 2. **Architecture brief in every prompt** -- no blind agents
-3. **Validation is mandatory** for critical+high findings
+3. **Validation is required** for critical+high findings on standard runs (may be skipped with `--quick` or fewer than 5 findings)
 4. **Batch execution** -- ~10 agents per batch, wait between batches
 5. **Sonnet for analysis, Haiku for pattern matching** -- never Opus for audit agents
 6. **Do NOT fix anything** -- audit only, findings only
