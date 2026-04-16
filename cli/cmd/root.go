@@ -113,11 +113,39 @@ func setupGlobalOpts(cmd *cobra.Command) error {
 	}
 
 	if err := applyTunables(cmd, opts); err != nil {
-		return err
+		// Recovery commands must stay callable even when config.json is
+		// unreadable or fails validation -- otherwise the user has no
+		// way to repair a broken config without hand-editing the file
+		// they would normally fix via the CLI.
+		if isRecoveryCommand(cmd) {
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
+				"Warning: tunable resolution failed (%v); continuing with defaults for recovery command.\n", err)
+			opts.Tunables = config.DefaultTunables()
+		} else {
+			return err
+		}
 	}
 
 	cmd.SetContext(SetGlobalOpts(cmd.Context(), opts))
 	return nil
+}
+
+// isRecoveryCommand reports whether cmd is one of the commands that must
+// stay usable when config.json is broken. These commands exist precisely
+// to repair or inspect the config, so refusing to run them because the
+// file they are meant to fix is invalid would leave the user stranded.
+func isRecoveryCommand(cmd *cobra.Command) bool {
+	switch cmd.CommandPath() {
+	case "synthorg config edit",
+		"synthorg config path",
+		"synthorg config show",
+		"synthorg config",
+		"synthorg doctor",
+		"synthorg version",
+		"synthorg help":
+		return true
+	}
+	return false
 }
 
 // applyTunables resolves the effective tunable values (env > state >

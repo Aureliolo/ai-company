@@ -172,11 +172,14 @@ func ResolveTunables(s State) (Tunables, error) {
 	return t, nil
 }
 
-// firstNonEmpty returns the first non-empty string from the arguments.
+// firstNonEmpty returns the first whitespace-trimmed non-empty string
+// from the arguments. Trims consistently: if the caller's string was
+// accepted as non-empty, the surrounding whitespace is stripped before
+// returning so downstream consumers see canonical values.
 func firstNonEmpty(vs ...string) string {
 	for _, v := range vs {
-		if strings.TrimSpace(v) != "" {
-			return v
+		if trimmed := strings.TrimSpace(v); trimmed != "" {
+			return trimmed
 		}
 	}
 	return ""

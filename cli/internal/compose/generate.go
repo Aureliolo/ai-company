@@ -6,7 +6,6 @@ import (
 	_ "embed"
 	"fmt"
 	"net/url"
-	"regexp"
 	"strings"
 	"text/template"
 
@@ -18,10 +17,10 @@ import (
 //go:embed compose.yml.tmpl
 var composeTmpl string
 
-// imageTagPattern validates image tags to prevent YAML injection.
-var imageTagPattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]*$`)
-
-// Digest validation uses verify.IsValidDigest to avoid duplicating the pattern.
+// Image tag and digest validation delegate to config.IsValidImageTag
+// and verify.IsValidDigest so the rules (including the 128-char Docker
+// limit) stay in a single place and cannot drift between the config
+// load path and the compose render path.
 
 // allowedLogLevels restricts log level values to a known safe set.
 var allowedLogLevels = map[string]bool{
@@ -68,6 +67,15 @@ type Params struct {
 	PostgresDigest   string
 	NATSDigest       string
 	NATSURL          string
+
+	// DisableDefaultDHIPins, when true, tells applyComposeDefaults not
+	// to autofill PostgresDigest / NATSDigest from the pinned-digest map
+	// even if the DHI registry and tags still match the compiled-in
+	// defaults. Required for the trust-transfer contract: any custom
+	// registry/repo override invalidates the pin set, since the
+	// verification path (SAN regex + DHI digest map) is bound to the
+	// default targets. ParamsFromState sets this to tun.CustomRegistry.
+	DisableDefaultDHIPins bool
 }
 
 // ParamsFromState creates Params from a persisted State. Tunable
@@ -109,32 +117,33 @@ func ParamsFromState(s config.State) (Params, error) {
 	}
 
 	return Params{
-		CLIVersion:         version.Version,
-		ImageTag:           s.ImageTag,
-		BackendPort:        s.BackendPort,
-		WebPort:            s.WebPort,
-		NatsClientPort:     natsPort,
-		LogLevel:           s.LogLevel,
-		JWTSecret:          s.JWTSecret,
-		SettingsKey:        s.SettingsKey,
-		Sandbox:            s.Sandbox,
-		DockerSock:         s.DockerSock,
-		DockerSockGID:      s.DockerSockGID,
-		PersistenceBackend: s.PersistenceBackend,
-		MemoryBackend:      s.MemoryBackend,
-		BusBackend:         busBackend,
-		TelemetryOptIn:     s.TelemetryOptIn,
-		PostgresPort:       s.PostgresPort,
-		PostgresPassword:   s.PostgresPassword,
-		FineTuning:         s.FineTuning,
-		RegistryHost:       tun.RegistryHost,
-		ImageRepoPrefix:    tun.ImageRepoPrefix,
-		DHIRegistry:        tun.DHIRegistry,
-		PostgresImageTag:   tun.PostgresImageTag,
-		NATSImageTag:       tun.NATSImageTag,
-		PostgresDigest:     pgDigest,
-		NATSDigest:         natsDigest,
-		NATSURL:            tun.DefaultNATSURL,
+		CLIVersion:            version.Version,
+		ImageTag:              s.ImageTag,
+		BackendPort:           s.BackendPort,
+		WebPort:               s.WebPort,
+		NatsClientPort:        natsPort,
+		LogLevel:              s.LogLevel,
+		JWTSecret:             s.JWTSecret,
+		SettingsKey:           s.SettingsKey,
+		Sandbox:               s.Sandbox,
+		DockerSock:            s.DockerSock,
+		DockerSockGID:         s.DockerSockGID,
+		PersistenceBackend:    s.PersistenceBackend,
+		MemoryBackend:         s.MemoryBackend,
+		BusBackend:            busBackend,
+		TelemetryOptIn:        s.TelemetryOptIn,
+		PostgresPort:          s.PostgresPort,
+		PostgresPassword:      s.PostgresPassword,
+		FineTuning:            s.FineTuning,
+		RegistryHost:          tun.RegistryHost,
+		ImageRepoPrefix:       tun.ImageRepoPrefix,
+		DHIRegistry:           tun.DHIRegistry,
+		PostgresImageTag:      tun.PostgresImageTag,
+		NATSImageTag:          tun.NATSImageTag,
+		PostgresDigest:        pgDigest,
+		NATSDigest:            natsDigest,
+		NATSURL:               tun.DefaultNATSURL,
+		DisableDefaultDHIPins: tun.CustomRegistry,
 	}, nil
 }
 
@@ -211,13 +220,17 @@ func applyComposeDefaults(p *Params) {
 	}
 
 	// Autofill pinned digests when the caller is on the default
-	// registry and tags. A call site that passes a custom registry
-	// must explicitly supply the digest (or leave it empty for an
-	// unpinned reference + SkipVerify). This mirrors ParamsFromState.
+	// registry and tags AND has not explicitly disabled autofill via
+	// DisableDefaultDHIPins. A custom registry/repo invocation sets
+	// DisableDefaultDHIPins=true even when the DHI bits still look
+	// default, because the trust path (SAN regex + pinned digest map)
+	// is bound to the ENTIRE default deployment -- not just DHI. Without
+	// this gate, customizing only registry_host would still produce
+	// digest-pinned DHI refs and break the trust-transfer contract.
 	onDefaultRegistry := p.DHIRegistry == config.DefaultDHIRegistry &&
 		p.PostgresImageTag == config.DefaultPostgresImageTag &&
 		p.NATSImageTag == config.DefaultNATSImageTag
-	if onDefaultRegistry {
+	if onDefaultRegistry && !p.DisableDefaultDHIPins {
 		if p.PostgresDigest == "" {
 			pgKey := p.DHIRegistry + "/postgres:" + p.PostgresImageTag
 			if d, ok := verify.DHIPinnedIndexDigest(pgKey); ok {
@@ -235,8 +248,8 @@ func applyComposeDefaults(p *Params) {
 
 // validateParams checks all template parameters for safe values.
 func validateParams(p Params) error {
-	if !imageTagPattern.MatchString(p.ImageTag) {
-		return fmt.Errorf("invalid image tag %q: must match %s", p.ImageTag, imageTagPattern.String())
+	if !config.IsValidImageTag(p.ImageTag) {
+		return fmt.Errorf("invalid image tag %q", p.ImageTag)
 	}
 	// Third-party tags flow from Tunables (env/state) straight into the
 	// Postgres/NATS image references in compose.yml. ResolveTunables
@@ -244,12 +257,23 @@ func validateParams(p Params) error {
 	// last gate before string interpolation so we re-check here for
 	// defense-in-depth -- a caller who bypassed ResolveTunables (e.g. a
 	// test that builds Params by hand) must not be able to inject
-	// colons or semicolons into the generated YAML.
-	if !imageTagPattern.MatchString(p.PostgresImageTag) {
-		return fmt.Errorf("invalid postgres image tag %q: must match %s", p.PostgresImageTag, imageTagPattern.String())
+	// colons or semicolons into the generated YAML. Use the shared
+	// config.IsValidImageTag which enforces the 128-char Docker tag
+	// limit as well as the character class.
+	if !config.IsValidImageTag(p.PostgresImageTag) {
+		return fmt.Errorf("invalid postgres image tag %q", p.PostgresImageTag)
 	}
-	if !imageTagPattern.MatchString(p.NATSImageTag) {
-		return fmt.Errorf("invalid nats image tag %q: must match %s", p.NATSImageTag, imageTagPattern.String())
+	if !config.IsValidImageTag(p.NATSImageTag) {
+		return fmt.Errorf("invalid nats image tag %q", p.NATSImageTag)
+	}
+	// Digest pins flow straight into @sha256:... in the rendered YAML.
+	// Only validate when present -- a blank digest is the legitimate
+	// unpinned mode (custom registry / trust transfer).
+	if p.PostgresDigest != "" && !verify.IsValidDigest(p.PostgresDigest) {
+		return fmt.Errorf("invalid postgres digest %q: must be a sha256 digest", p.PostgresDigest)
+	}
+	if p.NATSDigest != "" && !verify.IsValidDigest(p.NATSDigest) {
+		return fmt.Errorf("invalid nats digest %q: must be a sha256 digest", p.NATSDigest)
 	}
 	// Registry hosts flow into the generated image reference prefix. A
 	// malformed host (spaces, shell metacharacters) would produce a YAML
