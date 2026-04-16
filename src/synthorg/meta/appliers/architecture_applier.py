@@ -103,15 +103,18 @@ class ArchitectureApplierContext(Protocol):
 class _PendingChanges:
     """In-proposal mutable accumulator for scheduled creates / removes.
 
-    Tracks in-flight references so a ``remove_department`` inside the
-    same proposal can recognize that an earlier ``create_role`` would
-    dangle if the department were removed.
+    Tracks in-flight references so the validator catches dangling-ref
+    pairs *within* the same proposal: a ``remove_department`` that
+    leaves behind a ``create_role`` pointing at it, or a
+    ``remove_role`` that leaves behind a ``create_department`` with
+    that role as its head.
     """
 
     __slots__ = (
         "new_departments",
         "new_roles",
         "pending_department_refs",
+        "pending_role_refs",
         "removed_departments",
         "removed_roles",
     )
@@ -123,6 +126,9 @@ class _PendingChanges:
         self.removed_departments: set[str] = set()
         # Departments referenced by in-proposal create_role payloads.
         self.pending_department_refs: set[str] = set()
+        # Roles referenced as a ``head`` by in-proposal
+        # create_department payloads.
+        self.pending_role_refs: set[str] = set()
 
 
 class ArchitectureApplier:
@@ -225,7 +231,25 @@ class ArchitectureApplier:
         pending = _PendingChanges()
         errors: list[str] = []
         for change in proposal.architecture_changes:
-            errors.extend(_validate_change(change, context=context, pending=pending))
+            try:
+                errors.extend(
+                    _validate_change(change, context=context, pending=pending)
+                )
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
+                logger.warning(
+                    META_DRY_RUN_FAILED,
+                    altitude="architecture",
+                    proposal_id=str(proposal.id),
+                    change_operation=change.operation,
+                    change_target=change.target_name,
+                    reason=(f"context raised {type(exc).__name__}: {str(exc)[:200]}"),
+                )
+                errors.append(
+                    f"{change.operation}({change.target_name!r}): "
+                    f"context raised {type(exc).__name__}: {str(exc)[:200]}"
+                )
 
         if errors:
             return self._fail(proposal, error_message="; ".join(errors))
@@ -489,16 +513,19 @@ def _validate_create_department(
     )
     head = change.payload.get("head")
     errors.extend(_validate_dept_head(head))
-    if (
-        isinstance(head, str)
-        and head
-        and head not in pending.new_roles
-        and not context.has_role(head)
-    ):
-        errors.append(f"create_department: head role {head!r} does not exist")
+    if isinstance(head, str) and head:
+        if head in pending.removed_roles:
+            errors.append(
+                f"create_department: head role {head!r} is scheduled for "
+                "removal earlier in this proposal"
+            )
+        elif head not in pending.new_roles and not context.has_role(head):
+            errors.append(f"create_department: head role {head!r} does not exist")
     errors.extend(_validate_dept_policies(change.payload.get("policies")))
     if not errors:
         pending.new_departments.add(name)
+        if isinstance(head, str) and head:
+            pending.pending_role_refs.add(head)
     return errors
 
 
@@ -533,9 +560,9 @@ def _validate_remove_role(
         )
     if name in pending.removed_roles:
         errors.append(f"remove_role: duplicate target_name {name!r} in proposal")
-    elif not context.has_role(name):
+    elif not (context.has_role(name) or name in pending.new_roles):
         errors.append(f"remove_role: role {name!r} does not exist")
-    elif context.role_in_use(name):
+    elif context.role_in_use(name) or name in pending.pending_role_refs:
         errors.append(
             f"remove_role: role {name!r} still referenced by agents or departments"
         )

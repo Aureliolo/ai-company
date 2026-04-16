@@ -26,6 +26,7 @@ from synthorg.engine.quality.verification import (
 from synthorg.observability import get_logger
 from synthorg.observability.events.verification import (
     VERIFICATION_GRADER_CONFIG_INVALID,
+    VERIFICATION_GRADER_FAILED,
     VERIFICATION_GRADER_PAYLOAD_TRUNCATED,
     VERIFICATION_GRADER_RESPONSE_INVALID,
     VERIFICATION_GRADING_COMPLETED,
@@ -37,6 +38,7 @@ from synthorg.providers.models import (
     CompletionConfig,
     ToolDefinition,
 )
+from synthorg.providers.resilience.errors import RetryExhaustedError
 
 if TYPE_CHECKING:
     from synthorg.core.types import NotBlankStr
@@ -163,28 +165,45 @@ class LLMRubricGrader:
             description=_GRADER_TOOL_DESCRIPTION,
             parameters_schema=_GRADER_TOOL_SCHEMA,
         )
-        user_prompt = self._build_user_prompt(
-            artifact=artifact,
-            rubric=rubric,
-            probes=probes,
-        )
-        messages = [
-            ChatMessage(
-                role=MessageRole.SYSTEM,
-                content=_GRADER_SYSTEM_PROMPT,
-            ),
-            ChatMessage(role=MessageRole.USER, content=user_prompt),
-        ]
-
-        response = await self._provider.complete(
-            messages=messages,
-            model=self._model_id,
-            tools=[tool],
-            config=CompletionConfig(
-                temperature=0.0,
-                max_tokens=_DEFAULT_MAX_TOKENS,
-            ),
-        )
+        try:
+            user_prompt = self._build_user_prompt(
+                artifact=artifact,
+                rubric=rubric,
+                probes=probes,
+            )
+            messages = [
+                ChatMessage(
+                    role=MessageRole.SYSTEM,
+                    content=_GRADER_SYSTEM_PROMPT,
+                ),
+                ChatMessage(role=MessageRole.USER, content=user_prompt),
+            ]
+            response = await self._provider.complete(
+                messages=messages,
+                model=self._model_id,
+                tools=[tool],
+                config=CompletionConfig(
+                    temperature=0.0,
+                    max_tokens=_DEFAULT_MAX_TOKENS,
+                ),
+            )
+        except MemoryError, RecursionError, RetryExhaustedError:
+            # Infrastructure errors propagate; callers route them to
+            # fallback chains rather than misinterpreting them as a
+            # grading verdict.
+            raise
+        except Exception:
+            logger.exception(
+                VERIFICATION_GRADER_FAILED,
+                rubric_name=rubric.name,
+                grader=self.name,
+                model_id=self._model_id,
+                tool_name=_GRADER_TOOL_NAME,
+                probe_count=len(probes),
+                generator_agent_id=generator_agent_id,
+                evaluator_agent_id=evaluator_agent_id,
+            )
+            raise
 
         tool_call = next(
             (tc for tc in response.tool_calls if tc.name == _GRADER_TOOL_NAME),
@@ -438,13 +457,21 @@ def _parse_confidence(raw: Any) -> float | str:
 
 
 def _parse_findings(raw: Any) -> tuple[str, ...] | str:
-    """Validate findings is a list of strings, trimming blanks."""
+    """Validate findings is a list of non-blank strings.
+
+    Fails closed -- any non-string entry or blank string surfaces a
+    descriptive error so callers route the whole response to ``REFER``
+    rather than silently discarding malformed items and acting on the
+    residual.
+    """
     if not isinstance(raw, list):
         return "findings is not a list"
     findings: list[str] = []
-    for item in raw:
-        if not isinstance(item, str) or not item.strip():
-            continue
+    for index, item in enumerate(raw):
+        if not isinstance(item, str):
+            return f"findings[{index}] is not a string"
+        if not item.strip():
+            return f"findings[{index}] is blank"
         findings.append(item.strip())
     return tuple(findings)
 

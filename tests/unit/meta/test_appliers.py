@@ -893,3 +893,77 @@ class TestArchitectureApplier:
         )
         result = await applier.dry_run(proposal)
         assert result.success, result.error_message
+
+    async def test_dry_run_remove_role_blocked_by_pending_dept_head(
+        self,
+    ) -> None:
+        """A same-proposal ``create_department(head='R1')`` followed by
+        ``remove_role('R1')`` must be rejected: the department would
+        dangle on an un-created role."""
+        applier = ArchitectureApplier(
+            context=_FakeArchContext(roles=frozenset({"r1"})),
+        )
+        proposal = _proposal_architecture(
+            _arch(
+                "create_department",
+                "dept-a",
+                payload={"head": "r1"},
+            ),
+            _arch("remove_role", "r1"),
+        )
+        result = await applier.dry_run(proposal)
+        assert not result.success
+        assert "still referenced" in (result.error_message or "")
+
+    async def test_dry_run_create_department_rejects_head_scheduled_for_removal(
+        self,
+    ) -> None:
+        """A same-proposal ``remove_role('R1')`` followed by
+        ``create_department(head='R1')`` must be rejected."""
+        applier = ArchitectureApplier(
+            context=_FakeArchContext(roles=frozenset({"r1"})),
+        )
+        proposal = _proposal_architecture(
+            _arch("remove_role", "r1"),
+            _arch(
+                "create_department",
+                "dept-a",
+                payload={"head": "r1"},
+            ),
+        )
+        result = await applier.dry_run(proposal)
+        assert not result.success
+        assert "scheduled for removal" in (result.error_message or "")
+
+    async def test_dry_run_context_exception_surfaces_as_validation_error(
+        self,
+    ) -> None:
+        """A context helper that raises is funnelled into the normal
+        validation error path instead of escaping ``dry_run``."""
+
+        class _BoomContext:
+            def has_role(self, name: str) -> bool:
+                msg = "registry offline"
+                raise RuntimeError(msg)
+
+            def has_department(self, name: str) -> bool:
+                return False
+
+            def has_workflow(self, name: str) -> bool:
+                return False
+
+            def role_in_use(self, name: str) -> bool:
+                return False
+
+            def department_in_use(self, name: str) -> bool:
+                return False
+
+        applier = ArchitectureApplier(context=_BoomContext())
+        proposal = _proposal_architecture(
+            _arch("create_role", "r1", payload={"description": "d"}),
+        )
+        result = await applier.dry_run(proposal)
+        assert not result.success
+        message = result.error_message or ""
+        assert "context raised RuntimeError" in message
+        assert "registry offline" in message

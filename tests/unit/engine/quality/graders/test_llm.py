@@ -436,6 +436,65 @@ class TestLLMRubricGraderInvalidGrades:
     """Malformed per-criterion grade values must downgrade to REFER."""
 
     @pytest.mark.parametrize(
+        "findings_value",
+        [
+            [42, "real finding"],
+            ["", "ok"],
+            "not a list",
+        ],
+        ids=["non_string_entry", "blank_entry", "not_a_list"],
+    )
+    async def test_malformed_findings_returns_refer(
+        self,
+        findings_value: object,
+    ) -> None:
+        """Any malformed entry in ``findings`` fails closed to REFER."""
+        response = _response(
+            {
+                "per_criterion_grades": {
+                    "correctness": 0.9,
+                    "completeness": 0.9,
+                },
+                "verdict": "pass",
+                "confidence": 0.9,
+                "findings": findings_value,
+            }
+        )
+        provider = ScriptedProvider(response=response)
+        grader = LLMRubricGrader(
+            provider=provider,
+            model_id="test-medium-001",
+        )
+        result = await grader.grade(
+            artifact=_artifact(),
+            rubric=_rubric(),
+            probes=_probes(),
+            generator_agent_id="agent-generator",
+            evaluator_agent_id="agent-evaluator",
+        )
+        assert result.verdict == VerificationVerdict.REFER
+
+    async def test_provider_exception_is_logged_and_reraised(self) -> None:
+        """An arbitrary provider failure is logged at ERROR then re-raised."""
+
+        class _BoomError(Exception):
+            pass
+
+        provider = ScriptedProvider(error=_BoomError("upstream exploded"))
+        grader = LLMRubricGrader(
+            provider=provider,
+            model_id="test-medium-001",
+        )
+        with pytest.raises(_BoomError):
+            await grader.grade(
+                artifact=_artifact(),
+                rubric=_rubric(),
+                probes=_probes(),
+                generator_agent_id="agent-generator",
+                evaluator_agent_id="agent-evaluator",
+            )
+
+    @pytest.mark.parametrize(
         "non_finite_grade",
         [float("nan"), float("inf"), float("-inf")],
         ids=["nan", "+inf", "-inf"],
