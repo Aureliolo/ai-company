@@ -57,6 +57,11 @@ from synthorg.observability.events.meta import (
 
 if TYPE_CHECKING:
     from synthorg.memory.protocol import MemoryBackend
+    from synthorg.meta.appliers.architecture_applier import (
+        ArchitectureApplierContext,
+    )
+    from synthorg.meta.appliers.config_applier import ConfigProvider
+    from synthorg.meta.appliers.prompt_applier import PromptApplierContext
     from synthorg.meta.chief_of_staff.protocol import ConfidenceAdjuster
     from synthorg.meta.config import SelfImprovementConfig
     from synthorg.meta.models import RuleMatch
@@ -86,20 +91,41 @@ class SelfImprovementService:
         provider: Completion provider for LLM-based strategies.
             When code_modification_enabled is True but provider is
             None, the code modification strategy is silently skipped.
+        config_provider: Zero-arg callable returning the current
+            ``RootConfig`` snapshot.  Required for
+            ``ConfigApplier.dry_run``; callers that omit it get an
+            applier whose ``dry_run`` rejects with an explicit error.
+        prompt_context: Read-only view of prompt-scope targets wired
+            into ``PromptApplier.dry_run``.  Callers that omit it get
+            an applier whose ``dry_run`` rejects with an explicit
+            error.
+        architecture_context: Read-only view of role / department /
+            workflow registries wired into
+            ``ArchitectureApplier.dry_run``.  Callers that omit it
+            get an applier whose ``dry_run`` rejects with an explicit
+            error.
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         *,
         config: SelfImprovementConfig,
         memory_backend: MemoryBackend | None = None,
         provider: BaseCompletionProvider | None = None,
+        config_provider: ConfigProvider | None = None,
+        prompt_context: PromptApplierContext | None = None,
+        architecture_context: ArchitectureApplierContext | None = None,
     ) -> None:
         self._config = config
         self._rule_engine = build_rule_engine(config)
         self._strategies = build_strategies(config, provider=provider)
         self._guards = build_guards(config)
-        self._appliers = build_appliers(config)
+        self._appliers = build_appliers(
+            config,
+            config_provider=config_provider,
+            prompt_context=prompt_context,
+            architecture_context=architecture_context,
+        )
         self._detector = build_regression_detector()
         self._rollout_strategies = build_rollout_strategies(config)
 

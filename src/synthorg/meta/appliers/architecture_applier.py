@@ -512,20 +512,27 @@ def _validate_create_department(
         )
     )
     head = change.payload.get("head")
-    errors.extend(_validate_dept_head(head))
-    if isinstance(head, str) and head:
-        if head in pending.removed_roles:
+    head_errors = _validate_dept_head(head)
+    errors.extend(head_errors)
+    # Only run existence / pending / context checks when basic
+    # validation accepted the head.  Skipping prevents misleading
+    # "does not exist" errors on malformed input and keeps context
+    # calls out of the ``head=None`` / blank path.
+    head_name: str | None = None
+    if not head_errors and isinstance(head, str) and head:
+        head_name = head
+        if head_name in pending.removed_roles:
             errors.append(
-                f"create_department: head role {head!r} is scheduled for "
+                f"create_department: head role {head_name!r} is scheduled for "
                 "removal earlier in this proposal"
             )
-        elif head not in pending.new_roles and not context.has_role(head):
-            errors.append(f"create_department: head role {head!r} does not exist")
+        elif head_name not in pending.new_roles and not context.has_role(head_name):
+            errors.append(f"create_department: head role {head_name!r} does not exist")
     errors.extend(_validate_dept_policies(change.payload.get("policies")))
     if not errors:
         pending.new_departments.add(name)
-        if isinstance(head, str) and head:
-            pending.pending_role_refs.add(head)
+        if head_name is not None:
+            pending.pending_role_refs.add(head_name)
     return errors
 
 

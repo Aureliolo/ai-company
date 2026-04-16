@@ -182,11 +182,27 @@ class LLMRubricGrader:
             probe_count=len(probes),
         )
 
-        messages = self._build_messages(
-            artifact=artifact,
-            rubric=rubric,
-            probes=probes,
-        )
+        try:
+            messages = self._build_messages(
+                artifact=artifact,
+                rubric=rubric,
+                probes=probes,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.exception(
+                VERIFICATION_GRADER_FAILED,
+                rubric_name=rubric.name,
+                grader=self.name,
+                model_id=self._model_id,
+                tool_name=_GRADER_TOOL_NAME,
+                probe_count=len(probes),
+                generator_agent_id=generator_agent_id,
+                evaluator_agent_id=evaluator_agent_id,
+                stage="build_messages",
+            )
+            raise
         response = await self._call_grader_tool(
             messages=messages,
             rubric=rubric,
