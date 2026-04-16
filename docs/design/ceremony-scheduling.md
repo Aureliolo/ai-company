@@ -239,7 +239,7 @@ sprint:
 **Auto-transition**: when sprint budget is exhausted (100% consumed) or
 when a configured budget threshold is crossed.
 
-**Default velocity unit**: points per currency unit (`pts/<DEFAULT_CURRENCY>`, where `DEFAULT_CURRENCY` is the code constant defined in `src/synthorg/budget/currency.py`; override the display currency per-deployment by changing that constant).
+**Default velocity unit**: points per currency unit (`pts/<DEFAULT_CURRENCY>`, where `DEFAULT_CURRENCY` is defined in `src/synthorg/budget/currency.py` and can be overridden at runtime by the `budget.currency` setting).
 
 **Best for**: cost-conscious organizations where every agent action has a
 real dollar cost. Ensures ceremonies happen proportionally to spend.
