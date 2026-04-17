@@ -584,7 +584,7 @@ class TestBuildAsyncTaskTools:
         )
         for tool in tools:
             if tool.name in _ASYNC_TASK_TOOL_NAMES:
-                assert tool._service is service
+                assert getattr(tool, "_service") is service  # noqa: B009
 
 
 @pytest.mark.unit

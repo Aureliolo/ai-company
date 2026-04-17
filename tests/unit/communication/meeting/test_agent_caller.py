@@ -16,9 +16,8 @@ from synthorg.core.agent import (
     AgentIdentity,
     ModelConfig,
     PersonalityConfig,
-    SeniorityLevel,
 )
-from synthorg.core.enums import AgentStatus
+from synthorg.core.enums import AgentStatus, SeniorityLevel
 from synthorg.core.types import NotBlankStr
 from synthorg.observability.events.meeting import (
     MEETING_AGENT_CALLED,
