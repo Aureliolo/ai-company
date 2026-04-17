@@ -112,3 +112,12 @@ META_CODE_GITHUB_CREDS_INVALID: Final[str] = "meta.code.github_creds_invalid"
 # -- Service lifecycle events -----------------------------------------------
 
 META_SERVICE_CLOSE_FAILED: Final[str] = "meta.service.close_failed"
+
+# -- Code applier precondition / path-safety failures ----------------------
+
+META_APPLY_PATH_ESCAPE: Final[str] = "meta.apply.path_escape"
+META_APPLY_CREATE_TARGET_EXISTS: Final[str] = "meta.apply.create_target_exists"
+META_APPLY_MODIFY_TARGET_MISSING: Final[str] = "meta.apply.modify_target_missing"
+META_APPLY_MODIFY_CONTENT_DRIFT: Final[str] = "meta.apply.modify_content_drift"
+META_APPLY_DELETE_TARGET_MISSING: Final[str] = "meta.apply.delete_target_missing"
+META_APPLY_DELETE_CONTENT_DRIFT: Final[str] = "meta.apply.delete_content_drift"

@@ -15,6 +15,10 @@ from synthorg.memory.procedural.success_proposer import (
     SuccessMemoryProposer,  # noqa: TC001
 )
 from synthorg.observability import get_logger
+from synthorg.observability.events.capture import (
+    CAPTURE_STRATEGY_BUILT,
+    CAPTURE_STRATEGY_UNKNOWN_TYPE,
+)
 
 logger = get_logger(__name__)
 
@@ -46,14 +50,14 @@ def build_capture_strategy(
     strategy_type = config.type.lower()
 
     if strategy_type == "failure":
-        logger.debug("capture_strategy.build", type="failure")
+        logger.debug(CAPTURE_STRATEGY_BUILT, strategy_type="failure")
         return FailureCaptureStrategy(
             proposer=failure_proposer,
             config=procedural_config,
         )
 
     if strategy_type == "success":
-        logger.debug("capture_strategy.build", type="success")
+        logger.debug(CAPTURE_STRATEGY_BUILT, strategy_type="success")
         return SuccessCaptureStrategy(
             proposer=success_proposer,
             config=procedural_config,
@@ -61,7 +65,7 @@ def build_capture_strategy(
         )
 
     if strategy_type == "hybrid":
-        logger.debug("capture_strategy.build", type="hybrid")
+        logger.debug(CAPTURE_STRATEGY_BUILT, strategy_type="hybrid")
         failure_strategy = FailureCaptureStrategy(
             proposer=failure_proposer,
             config=procedural_config,
@@ -80,5 +84,5 @@ def build_capture_strategy(
         f"Unknown capture strategy type: {strategy_type}. "
         'Must be "failure", "success", or "hybrid".'
     )
-    logger.warning("capture_strategy.unknown_type", type=strategy_type)
+    logger.warning(CAPTURE_STRATEGY_UNKNOWN_TYPE, strategy_type=strategy_type)
     raise ValueError(msg)

@@ -572,7 +572,10 @@ class TestReactLoopCompletionConfig:
 
         assert result.termination_reason == TerminationReason.COMPLETED
         assert len(provider.recorded_configs) == 1
-        assert provider.recorded_configs[0] is custom_config
+        # Provider receives a defensive deep copy at the engine
+        # boundary: equal by value, distinct by identity.
+        assert provider.recorded_configs[0] == custom_config
+        assert provider.recorded_configs[0] is not custom_config
 
 
 @pytest.mark.unit

@@ -6,7 +6,6 @@ checks, in-flight budget checking, and task-boundary auto-downgrade
 as described in the Cost Controls section of the Operations design page.
 """
 
-import asyncio
 import copy
 from datetime import UTC, datetime
 from functools import partial
@@ -40,6 +39,7 @@ from synthorg.budget.risk_check import RiskCheckResult
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
 from synthorg.notifications.dispatcher import NotificationDispatcher  # noqa: TC001
 from synthorg.observability import get_logger
+from synthorg.observability.background_tasks import BackgroundTaskRegistry
 from synthorg.observability.events.budget import (
     BUDGET_BASELINE_ERROR,
     BUDGET_DAILY_LIMIT_EXCEEDED,
@@ -53,6 +53,9 @@ from synthorg.observability.events.budget import (
     BUDGET_RESOLVE_MODEL_ERROR,
     BUDGET_UTILIZATION_ERROR,
     BUDGET_UTILIZATION_QUERIED,
+)
+from synthorg.observability.events.notification import (
+    NOTIFICATION_BUDGET_EXHAUSTED_SEND,
 )
 from synthorg.observability.events.quota import (
     QUOTA_CHECK_ALLOWED,
@@ -136,6 +139,7 @@ class BudgetEnforcer:
         )
         self._risk_tracker = risk_tracker
         self._risk_scorer = risk_scorer
+        self._background_tasks = BackgroundTaskRegistry(owner="budget.enforcer")
 
         if budget_config.risk_budget.enabled and (
             risk_tracker is None or risk_scorer is None
@@ -146,6 +150,18 @@ class BudgetEnforcer:
                 has_tracker=risk_tracker is not None,
                 has_scorer=risk_scorer is not None,
             )
+
+    async def stop(self, *, timeout_sec: float = 5.0) -> None:
+        """Drain pending budget-notification tasks.
+
+        Mirrors :meth:`ApprovalTimeoutScheduler.stop` so the
+        application shutdown path can await outstanding
+        fire-and-forget notifications (monthly / daily exhaustion
+        alerts) rather than dropping them. ``timeout_sec`` bounds
+        the wait; on expiry the registry cancels stragglers and
+        logs ``BACKGROUND_TASKS_DRAIN_TIMEOUT``.
+        """
+        await self._background_tasks.drain(timeout_sec=timeout_sec)
 
     @property
     def cost_tracker(self) -> CostTracker:
@@ -462,12 +478,16 @@ class BudgetEnforcer:
                 f"({cfg.alerts.hard_stop_at}% of "
                 f"{_fmt(cfg.total_monthly, _cur)})"
             )
-            asyncio.create_task(  # noqa: RUF006
+            self._background_tasks.spawn(
                 self._notify_budget_event(
                     "Monthly budget exhausted",
                     msg,
                     "critical",
                 ),
+                event=NOTIFICATION_BUDGET_EXHAUSTED_SEND,
+                agent_id=agent_id,
+                severity="critical",
+                trigger="monthly_hard_stop",
             )
             raise BudgetExhaustedError(msg)
 
@@ -497,12 +517,16 @@ class BudgetEnforcer:
                 f"{format_cost(daily_cost, cfg.currency)} >= "
                 f"{format_cost(cfg.per_agent_daily_limit, cfg.currency)}"
             )
-            asyncio.create_task(  # noqa: RUF006
+            self._background_tasks.spawn(
                 self._notify_budget_event(
                     "Daily agent limit exceeded",
                     msg,
                     "warning",
                 ),
+                event=NOTIFICATION_BUDGET_EXHAUSTED_SEND,
+                agent_id=agent_id,
+                severity="warning",
+                trigger="daily_agent_limit",
             )
             raise DailyLimitExceededError(msg)
 
@@ -512,7 +536,26 @@ class BudgetEnforcer:
         body: str,
         severity: str,
     ) -> None:
-        """Best-effort notification for a budget event."""
+        """Best-effort notification for a budget event.
+
+        Dual error-handling semantics (both layers are intentional):
+
+        * **Expected dispatcher failures** --
+          :meth:`NotificationDispatcher.dispatch` may raise for
+          transient transport problems (SMTP timeout, webhook 5xx,
+          etc.). Those are caught here and logged at WARNING via
+          :data:`BUDGET_NOTIFICATION_FAILED` so a flaky notification
+          channel can't break budget enforcement.
+        * **Unexpected internal bugs** -- if the method itself
+          raises (e.g. a :class:`NotificationSeverity` coercion
+          failure or a programming error importing the notification
+          models), the exception escapes this try/except and
+          bubbles up to :class:`BackgroundTaskRegistry`'s
+          done-callback which logs it at ERROR via
+          :data:`NOTIFICATION_SEND_FAILED`. That way silent bugs
+          remain visible at a higher severity than routine
+          dispatch flakes.
+        """
         if self._notification_dispatcher is None:
             return
         from synthorg.notifications.models import (  # noqa: PLC0415

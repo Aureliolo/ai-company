@@ -20,3 +20,9 @@ NOTIFICATION_NO_SINKS: Final[str] = "notification.no_sinks"
 NOTIFICATION_EMAIL_PARTIAL_CREDENTIALS: Final[str] = (
     "notification.email.partial_credentials"
 )
+
+# -- Background notification tasks (fire-and-forget tracked sends) ----------
+
+NOTIFICATION_BUDGET_EXHAUSTED_SEND: Final[str] = "notification.budget_exhausted.send"
+NOTIFICATION_ESCALATION_SEND: Final[str] = "notification.escalation.send"
+NOTIFICATION_SEND_FAILED: Final[str] = "notification.send.failed"

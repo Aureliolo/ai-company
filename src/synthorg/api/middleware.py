@@ -32,6 +32,9 @@ from synthorg.observability.events.api import (
     API_REQUEST_COMPLETED,
     API_REQUEST_STARTED,
 )
+from synthorg.observability.events.metrics import METRICS_RECORD_FAILED
+
+_UNMATCHED_ROUTE: Final[str] = "__unmatched__"
 
 logger = get_logger(__name__)
 
@@ -163,6 +166,83 @@ def _log_request_completion(
         )
 
 
+def _resolve_route_template(scope: Scope) -> str:
+    """Resolve the route template from a post-routing ASGI scope.
+
+    Prefers ``scope["path_template"]`` which Litestar populates with
+    the exact template that matched this request; falls back to
+    ``sorted(handler.paths)[0]`` for older router versions. Returns
+    :data:`_UNMATCHED_ROUTE` when no handler was reached (404,
+    method-not-allowed, exceptions raised pre-routing).
+    """
+    template_hint = scope.get("path_template")
+    if isinstance(template_hint, str) and template_hint:
+        return template_hint
+    handler: Any = scope.get("route_handler")
+    if handler is None:
+        return _UNMATCHED_ROUTE
+    paths: Any = getattr(handler, "paths", None)
+    if not paths:
+        return _UNMATCHED_ROUTE
+    # ``paths`` is a frozenset of route templates for the handler.
+    # Sort for determinism when a handler registers multiple paths.
+    template: str = sorted(paths)[0]
+    return template
+
+
+def _record_request_metric(
+    scope: Scope,
+    method: str,
+    status_code: int | None,
+    duration_sec: float,
+) -> None:
+    """Push api_request_duration to the collector stored in AppState.
+
+    Silent no-op when AppState or its collector is unavailable; any
+    recording failure logs at WARNING but does not propagate.
+    """
+    state: Any = scope.get("state")
+    if state is None:
+        return
+    app_state: Any = state.get("app_state") if isinstance(state, dict) else None
+    if app_state is None or not getattr(app_state, "has_prometheus_collector", False):
+        return
+    # Skip pre-response disconnects entirely rather than synthesising
+    # a 5xx: those weren't errors the handler produced, and folding
+    # them into ``status_class="5xx"`` would inflate SLO alarms.
+    if status_code is None:
+        return
+    try:
+        collector = app_state.prometheus_collector
+    except MemoryError, RecursionError:
+        raise
+    except Exception:
+        # Log the lookup failure so operators notice a metrics-
+        # pipeline regression rather than seeing silent drop-offs.
+        logger.warning(
+            METRICS_RECORD_FAILED,
+            component="api_request_duration",
+            reason="collector_access_failed",
+            exc_info=True,
+        )
+        return
+    try:
+        collector.record_api_request(
+            method=method,
+            route=_resolve_route_template(scope),
+            status_code=status_code,
+            duration_sec=duration_sec,
+        )
+    except MemoryError, RecursionError:
+        raise
+    except Exception:
+        logger.warning(
+            METRICS_RECORD_FAILED,
+            component="api_request_duration",
+            exc_info=True,
+        )
+
+
 class RequestLoggingMiddleware:
     """ASGI middleware that logs request start and completion.
 
@@ -216,6 +296,8 @@ class RequestLoggingMiddleware:
         try:
             await self.app(scope, receive, capture_send)
         finally:
-            duration_ms = round((time.perf_counter() - start) * 1000, 2)
+            elapsed_sec = time.perf_counter() - start
+            duration_ms = round(elapsed_sec * 1000, 2)
             _log_request_completion(method, path, status_code, duration_ms)
+            _record_request_metric(scope, method, status_code, elapsed_sec)
             clear_correlation_ids()

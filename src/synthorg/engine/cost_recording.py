@@ -16,6 +16,7 @@ from synthorg.observability.events.execution import (
     EXECUTION_ENGINE_COST_RECORDED,
     EXECUTION_ENGINE_COST_SKIPPED,
 )
+from synthorg.observability.metrics_hub import record_provider_usage
 
 if TYPE_CHECKING:
     from synthorg.budget.tracker import CostTracker
@@ -85,13 +86,51 @@ async def record_execution_costs(  # noqa: PLR0913
             finish_reason=turn.finish_reason,
             success=turn.success,
         )
-        await _submit_cost_record(
+        persisted = await _submit_cost_record(
             record,
             turn,
             agent_id,
             task_id,
             tracker=tracker,
         )
+        if not persisted:
+            # Tracker failed to store the record; skipping the
+            # metrics mirror keeps Prometheus counters consistent
+            # with the authoritative CostTracker state instead of
+            # double-counting costs that never landed.
+            continue
+        # Mirror the persisted cost record to the Prometheus
+        # collector so ``synthorg_provider_tokens_total`` /
+        # ``synthorg_provider_cost_usd_total`` reflect every paid
+        # completion. No-op when no collector is wired. Metrics
+        # failures are caught locally so a prometheus label / push
+        # regression cannot turn a successful persisted cost into a
+        # visible caller failure -- ``metrics_hub`` already swallows
+        # collector exceptions, but the extra guard documents intent
+        # and keeps defence-in-depth if that contract changes.
+        try:
+            record_provider_usage(
+                provider=identity.model.provider,
+                model=identity.model.model_id,
+                input_tokens=turn.input_tokens,
+                output_tokens=turn.output_tokens,
+                cost_usd=turn.cost_usd,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.warning(
+                EXECUTION_ENGINE_COST_FAILED,
+                agent_id=agent_id,
+                task_id=task_id,
+                provider=identity.model.provider,
+                model=identity.model.model_id,
+                input_tokens=turn.input_tokens,
+                output_tokens=turn.output_tokens,
+                cost_usd=turn.cost_usd,
+                reason="metrics_mirror_failed",
+                exc_info=True,
+            )
 
 
 async def _submit_cost_record(
@@ -101,8 +140,15 @@ async def _submit_cost_record(
     task_id: str,
     *,
     tracker: CostTracker,
-) -> None:
-    """Submit a cost record to the tracker, logging failures."""
+) -> bool:
+    """Submit a cost record to the tracker, logging failures.
+
+    Returns:
+        ``True`` when the tracker accepted the record, ``False``
+        when recording failed. Callers gate downstream mirrors
+        (e.g. Prometheus metrics) on the return value so they do
+        not double-count costs that never actually landed.
+    """
     try:
         await tracker.record(record)
     except MemoryError, RecursionError:
@@ -124,7 +170,7 @@ async def _submit_cost_record(
             input_tokens=turn.input_tokens,
             output_tokens=turn.output_tokens,
         )
-        return
+        return False
 
     logger.info(
         EXECUTION_ENGINE_COST_RECORDED,
@@ -133,3 +179,4 @@ async def _submit_cost_record(
         cost_usd=turn.cost_usd,
         project_id=record.project_id,
     )
+    return True

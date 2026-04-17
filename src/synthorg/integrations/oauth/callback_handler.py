@@ -57,11 +57,11 @@ async def handle_oauth_callback(
             exchange credentials (token_url / client_id /
             client_secret) are missing from the connection.
     """
-    logger.info(OAUTH_CALLBACK_RECEIVED, state=state_param[:8] + "...")
+    logger.info(OAUTH_CALLBACK_RECEIVED, state_prefix=state_param[:8])
 
     oauth_state = await state_repo.get(state_param)
     if oauth_state is None:
-        logger.warning(OAUTH_STATE_INVALID, state=state_param[:8] + "...")
+        logger.warning(OAUTH_STATE_INVALID, state_prefix=state_param[:8])
         msg = "Invalid or expired OAuth state token"
         raise InvalidStateError(msg)
 
@@ -71,7 +71,7 @@ async def handle_oauth_callback(
         await state_repo.delete(state_param)
         logger.warning(
             OAUTH_STATE_INVALID,
-            state=state_param[:8] + "...",
+            state_prefix=state_param[:8],
             reason="expired",
         )
         msg = "OAuth state token expired"

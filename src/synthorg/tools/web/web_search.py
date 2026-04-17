@@ -168,8 +168,10 @@ class WebSearchTool(BaseWebTool):
                     if isinstance(item, SearchResult)
                     else SearchResult.model_validate(item, from_attributes=True)
                 )
+            except MemoryError, RecursionError:
+                raise
             except Exception:
-                logger.debug(
+                logger.warning(
                     WEB_SEARCH_FAILED,
                     query=query,
                     error="malformed_provider_result",

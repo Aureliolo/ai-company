@@ -15,6 +15,8 @@ from typing import TYPE_CHECKING
 from synthorg.core.enums import ApprovalStatus, TimeoutActionType
 from synthorg.notifications.dispatcher import NotificationDispatcher  # noqa: TC001
 from synthorg.observability import get_logger
+from synthorg.observability.background_tasks import BackgroundTaskRegistry
+from synthorg.observability.events.notification import NOTIFICATION_ESCALATION_SEND
 from synthorg.observability.events.timeout import (
     TIMEOUT_SCHEDULER_ERROR,
     TIMEOUT_SCHEDULER_RESCHEDULED,
@@ -71,6 +73,9 @@ class ApprovalTimeoutScheduler:
         self._notification_dispatcher = notification_dispatcher
         self._task: asyncio.Task[None] | None = None
         self._wake_event = asyncio.Event()
+        self._background_tasks = BackgroundTaskRegistry(
+            owner="security.timeout.scheduler",
+        )
 
     @property
     def is_running(self) -> bool:
@@ -98,11 +103,13 @@ class ApprovalTimeoutScheduler:
     async def stop(self) -> None:
         """Cancel the background scheduler and wait for it to finish."""
         if self._task is None:
+            await self._background_tasks.drain()
             return
         self._task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await self._task
         self._task = None
+        await self._background_tasks.drain()
         logger.info(TIMEOUT_SCHEDULER_STOPPED)
 
     def reschedule(self, interval_seconds: float) -> None:
@@ -199,7 +206,12 @@ class ApprovalTimeoutScheduler:
                 escalate_to=action.escalate_to,
                 reason=action.reason,
             )
-            asyncio.create_task(self._notify_escalation(item, action))  # noqa: RUF006
+            self._background_tasks.spawn(
+                self._notify_escalation(item, action),
+                event=NOTIFICATION_ESCALATION_SEND,
+                approval_id=item.id,
+                escalate_to=action.escalate_to,
+            )
 
     async def _resolve_item(
         self,
@@ -249,7 +261,17 @@ class ApprovalTimeoutScheduler:
         item: ApprovalItem,
         action: TimeoutAction,
     ) -> None:
-        """Best-effort notification for an approval escalation."""
+        """Dispatch an escalation notification.
+
+        Runs inside :class:`BackgroundTaskRegistry` so any exception
+        is captured by the registry's done-callback and logged as
+        ``NOTIFICATION_SEND_FAILED``. The previous version wrapped
+        the dispatch call in a broad ``try/except`` that swallowed
+        exceptions; that defeated the registry's failure-visibility
+        guarantee (issue #1404) and was the whole reason
+        notifications were moved behind the registry in the first
+        place.
+        """
         if self._notification_dispatcher is None:
             return
         from synthorg.notifications.models import (  # noqa: PLC0415
@@ -258,26 +280,16 @@ class ApprovalTimeoutScheduler:
             NotificationSeverity,
         )
 
-        try:
-            await self._notification_dispatcher.dispatch(
-                Notification(
-                    category=NotificationCategory.SECURITY,
-                    severity=NotificationSeverity.WARNING,
-                    title=f"Approval escalated: {item.id}",
-                    body=action.reason or "",
-                    source="security.timeout.scheduler",
-                    metadata={
-                        "approval_id": item.id,
-                        "escalate_to": action.escalate_to,
-                    },
-                ),
-            )
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
-            logger.warning(
-                TIMEOUT_SCHEDULER_ERROR,
-                approval_id=item.id,
-                error="notification dispatch failed",
-                exc_info=True,
-            )
+        await self._notification_dispatcher.dispatch(
+            Notification(
+                category=NotificationCategory.SECURITY,
+                severity=NotificationSeverity.WARNING,
+                title=f"Approval escalated: {item.id}",
+                body=action.reason or "",
+                source="security.timeout.scheduler",
+                metadata={
+                    "approval_id": item.id,
+                    "escalate_to": action.escalate_to,
+                },
+            ),
+        )

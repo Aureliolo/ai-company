@@ -1,7 +1,9 @@
 """In-memory stores for client simulation runtime state."""
 
 import asyncio
+from collections.abc import Mapping  # noqa: TC003 - used at module-level runtime
 from datetime import UTC, datetime
+from types import MappingProxyType
 from typing import Literal
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
@@ -13,6 +15,18 @@ from synthorg.client.models import (
     SimulationMetrics,
 )
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.observability import get_logger
+from synthorg.observability.events.client import (
+    CLIENT_FEEDBACK_RECORDED,
+    CLIENT_REQUEST_SUBMITTED,
+    SIMULATION_RUN_CANCELLED,
+    SIMULATION_RUN_COMPLETED,
+    SIMULATION_RUN_FAILED,
+    SIMULATION_RUN_STARTED,
+    SIMULATION_RUN_UPDATE_REJECTED,
+)
+
+logger = get_logger(__name__)
 
 SimulationRunStatus = Literal[
     "pending",
@@ -23,6 +37,14 @@ SimulationRunStatus = Literal[
 ]
 _TERMINAL_STATUSES: frozenset[SimulationRunStatus] = frozenset(
     {"completed", "cancelled", "failed"},
+)
+_STATUS_EVENTS: Mapping[SimulationRunStatus, str] = MappingProxyType(
+    {
+        "running": SIMULATION_RUN_STARTED,
+        "completed": SIMULATION_RUN_COMPLETED,
+        "cancelled": SIMULATION_RUN_CANCELLED,
+        "failed": SIMULATION_RUN_FAILED,
+    },
 )
 
 
@@ -44,6 +66,14 @@ class FeedbackStore:
         async with self._lock:
             bucket = self._by_client.setdefault(feedback.client_id, [])
             bucket.append(feedback)
+            # Capture the count inside the lock so a concurrent
+            # ``record`` cannot skew the value we log.
+            feedback_count = len(bucket)
+        logger.info(
+            CLIENT_FEEDBACK_RECORDED,
+            client_id=feedback.client_id,
+            feedback_count=feedback_count,
+        )
 
     async def list_for_client(
         self,
@@ -73,9 +103,22 @@ class RequestStore:
         self._requests: dict[str, ClientRequest] = {}
 
     async def save(self, request: ClientRequest) -> None:
-        """Insert or replace a request by id."""
+        """Insert or replace a request by id.
+
+        Only emits :data:`CLIENT_REQUEST_SUBMITTED` when a genuinely
+        new request arrives. Replacing an existing id (e.g. a
+        retry that updates state) would otherwise inflate the
+        request-submitted counter in dashboards.
+        """
         async with self._lock:
+            is_new = request.request_id not in self._requests
             self._requests[request.request_id] = request
+        if is_new:
+            logger.info(
+                CLIENT_REQUEST_SUBMITTED,
+                request_id=request.request_id,
+                client_id=request.client_id,
+            )
 
     async def get(self, request_id: str) -> ClientRequest:
         """Return the request by id or raise ``KeyError``."""
@@ -161,6 +204,13 @@ class SimulationStore:
         """
         async with self._lock:
             if simulation_id not in self._runs:
+                logger.warning(
+                    SIMULATION_RUN_UPDATE_REJECTED,
+                    reason="not_found",
+                    simulation_id=simulation_id,
+                    requested_status=status,
+                    current_status="missing",
+                )
                 msg = f"Simulation {simulation_id!r} not found"
                 raise KeyError(msg)
             existing = self._runs[simulation_id]
@@ -171,7 +221,19 @@ class SimulationStore:
                 updates["progress"] = progress
             if error is not None:
                 updates["error"] = error
-            if existing.status in _TERMINAL_STATUSES:
+            # Reject only real *transitions* out of a terminal status.
+            # Idempotent same-status writes (``completed -> completed``
+            # with a late metrics / error payload) stay harmless and
+            # fall through to the no-op event guard below.
+            if existing.status in _TERMINAL_STATUSES and status != existing.status:
+                logger.warning(
+                    SIMULATION_RUN_UPDATE_REJECTED,
+                    reason="terminal_state_transition_rejected",
+                    simulation_id=simulation_id,
+                    requested_status=status,
+                    current_status=existing.status,
+                    progress=existing.progress,
+                )
                 msg = (
                     f"Simulation {simulation_id!r} already in "
                     f"terminal status {existing.status!r}"
@@ -183,4 +245,17 @@ class SimulationStore:
                 updates["completed_at"] = datetime.now(UTC)
             updated = existing.model_copy(update=updates)
             self._runs[simulation_id] = updated
-            return updated
+        event = _STATUS_EVENTS.get(status)
+        # Only emit a transition event when the status actually
+        # changed; logging on every no-op update (e.g. repeated
+        # ``running -> running`` progress writes) would inflate
+        # ``simulation_run_started`` counts.
+        if event is not None and existing.status != status:
+            logger.info(
+                event,
+                simulation_id=simulation_id,
+                previous_status=existing.status,
+                new_status=status,
+                progress=updated.progress,
+            )
+        return updated

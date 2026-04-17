@@ -21,7 +21,13 @@ from synthorg.meta.models import (
 from synthorg.observability import get_logger
 from synthorg.observability.events.meta import (
     META_APPLY_COMPLETED,
+    META_APPLY_CREATE_TARGET_EXISTS,
+    META_APPLY_DELETE_CONTENT_DRIFT,
+    META_APPLY_DELETE_TARGET_MISSING,
     META_APPLY_FAILED,
+    META_APPLY_MODIFY_CONTENT_DRIFT,
+    META_APPLY_MODIFY_TARGET_MISSING,
+    META_APPLY_PATH_ESCAPE,
     META_CI_VALIDATION_FAILED,
     META_CODE_FILE_WRITTEN,
 )
@@ -337,6 +343,11 @@ class CodeApplier:
         for change in changes:
             file_path = project_root / change.file_path
             if not _is_within(file_path, resolved_root):
+                logger.error(
+                    META_APPLY_PATH_ESCAPE,
+                    file_path=change.file_path,
+                    project_root=str(resolved_root),
+                )
                 msg = f"Path escapes project root: {change.file_path}"
                 raise RuntimeError(msg)
             try:
@@ -412,25 +423,45 @@ def _apply_single_change(change: CodeChange, file_path: Path) -> None:
     """
     if change.operation == CodeOperation.CREATE:
         if file_path.exists():
+            logger.error(
+                META_APPLY_CREATE_TARGET_EXISTS,
+                file_path=change.file_path,
+            )
             msg = f"CREATE target already exists: {change.file_path}"
             raise RuntimeError(msg)
         file_path.parent.mkdir(parents=True, exist_ok=True)
         file_path.write_text(change.new_content, encoding="utf-8")
     elif change.operation == CodeOperation.MODIFY:
         if not file_path.exists():
+            logger.error(
+                META_APPLY_MODIFY_TARGET_MISSING,
+                file_path=change.file_path,
+            )
             msg = f"MODIFY target does not exist: {change.file_path}"
             raise RuntimeError(msg)
         current = file_path.read_text(encoding="utf-8")
         if current != change.old_content:
+            logger.error(
+                META_APPLY_MODIFY_CONTENT_DRIFT,
+                file_path=change.file_path,
+            )
             msg = f"MODIFY target changed since proposal generation: {change.file_path}"
             raise RuntimeError(msg)
         file_path.write_text(change.new_content, encoding="utf-8")
     elif change.operation == CodeOperation.DELETE:
         if not file_path.exists():
+            logger.error(
+                META_APPLY_DELETE_TARGET_MISSING,
+                file_path=change.file_path,
+            )
             msg = f"DELETE target does not exist: {change.file_path}"
             raise RuntimeError(msg)
         current = file_path.read_text(encoding="utf-8")
         if current != change.old_content:
+            logger.error(
+                META_APPLY_DELETE_CONTENT_DRIFT,
+                file_path=change.file_path,
+            )
             msg = f"DELETE target changed since proposal generation: {change.file_path}"
             raise RuntimeError(msg)
         file_path.unlink()

@@ -18,3 +18,14 @@ METRICS_OTLP_EXPORT_COMPLETED: Final[str] = "metrics.otlp.export_completed"
 METRICS_OTLP_EXPORT_FAILED: Final[str] = "metrics.otlp.export_failed"
 METRICS_OTLP_FLUSHER_STARTED: Final[str] = "metrics.otlp.flusher_started"
 METRICS_OTLP_FLUSHER_STOPPED: Final[str] = "metrics.otlp.flusher_stopped"
+METRICS_OTLP_FLUSHER_ERROR: Final[str] = "metrics.otlp.flusher_error"
+METRICS_OTLP_CALLBACK_ERROR: Final[str] = "metrics.otlp.callback_error"
+METRICS_OTLP_INVALID_CALLBACK: Final[str] = "metrics.otlp.invalid_callback"
+
+# Prometheus collector lifecycle
+METRICS_COLLECTOR_ACTIVATED: Final[str] = "metrics.collector.activated"
+METRICS_COLLECTOR_DEACTIVATED: Final[str] = "metrics.collector.deactivated"
+
+# Prometheus recording / validation failures (distinct from scrape failures)
+METRICS_RECORD_FAILED: Final[str] = "metrics.record.failed"
+API_REQUEST_VALIDATION_FAILED: Final[str] = "metrics.api_request.validation_failed"

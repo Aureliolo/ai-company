@@ -12,6 +12,9 @@ from synthorg.memory.procedural.propagation.role_scoped import (
     RoleScopedPropagation,
 )
 from synthorg.observability import get_logger
+from synthorg.observability.events.propagation import (
+    PROPAGATION_STRATEGY_UNKNOWN_TYPE,
+)
 
 if TYPE_CHECKING:
     from synthorg.memory.procedural.propagation.config import PropagationConfig
@@ -43,5 +46,5 @@ def build_propagation_strategy(
             max_targets=config.max_propagation_targets,
         )
     msg = f"Unknown propagation strategy type: {config.type}"  # type: ignore[unreachable]
-    logger.warning("propagation_strategy.unknown_type", type=config.type)
+    logger.warning(PROPAGATION_STRATEGY_UNKNOWN_TYPE, strategy_type=config.type)
     raise ValueError(msg)

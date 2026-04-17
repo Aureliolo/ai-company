@@ -21,11 +21,29 @@ from synthorg import __version__
 from synthorg.budget.billing import billing_period_start
 from synthorg.observability import get_logger
 from synthorg.observability.events.metrics import (
+    API_REQUEST_VALIDATION_FAILED,
     METRICS_COLLECTOR_INITIALIZED,
     METRICS_COORDINATION_RECORDED,
     METRICS_SCRAPE_COMPLETED,
     METRICS_SCRAPE_FAILED,
 )
+from synthorg.observability.prometheus_labels import (
+    VALID_AUDIT_APPEND_STATUSES,
+    VALID_OTLP_KINDS,
+    VALID_OTLP_OUTCOMES,
+    VALID_STATUS_CLASSES,
+    VALID_TASK_OUTCOMES,
+    VALID_TOOL_OUTCOMES,
+    VALID_VERDICTS,
+    require_finite,
+    require_label,
+    require_non_negative,
+    status_class,
+)
+from synthorg.observability.prometheus_push_metrics import PushMetrics
+
+# Backwards-compatible alias for tests that imported the previous helper.
+_status_class = status_class
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
@@ -133,10 +151,30 @@ class PrometheusCollector:
             registry=self.registry,
         )
 
+        # Push-updated metric families live in their own helper so
+        # this module stays under the 800-line ceiling. The
+        # attributes below alias into ``_push`` to preserve the
+        # original public access pattern.
+        self._push = PushMetrics(registry=self.registry, prefix=prefix)
+        self._provider_tokens = self._push.provider_tokens
+        self._provider_cost_usd = self._push.provider_cost_usd
+        self._api_request_duration = self._push.api_request_duration
+        self._task_runs = self._push.task_runs
+        self._task_duration = self._push.task_duration
+        self._tool_invocations = self._push.tool_invocations
+        self._tool_duration = self._push.tool_duration
+        self._audit_chain_appends = self._push.audit_chain_appends
+        self._audit_chain_depth = self._push.audit_chain_depth
+        self._audit_chain_last_append_ts = self._push.audit_chain_last_append_ts
+        self._otlp_export_batches = self._push.otlp_export_batches
+        self._otlp_export_dropped = self._push.otlp_export_dropped
+
         logger.debug(METRICS_COLLECTOR_INITIALIZED, prefix=prefix)
 
-    # Bounded set of valid verdicts to prevent label cardinality explosion.
-    _VALID_VERDICTS = frozenset({"allow", "deny", "escalate", "output_scan"})
+    # Backwards-compatible aliases for the bounded label-value sets.
+    # The canonical definitions live in ``prometheus_labels`` so the
+    # collector module stays below the 800-line limit.
+    _VALID_VERDICTS = VALID_VERDICTS
 
     def record_security_verdict(self, verdict: str) -> None:
         """Increment the security verdict counter.
@@ -164,6 +202,190 @@ class PrometheusCollector:
             )
             raise ValueError(msg)
         self._security_evaluations.labels(verdict=verdict).inc()
+
+    def record_provider_usage(
+        self,
+        *,
+        provider: str,
+        model: str,
+        input_tokens: int,
+        output_tokens: int,
+        cost_usd: float,
+    ) -> None:
+        """Record an LLM provider call's token and cost usage.
+
+        Called from ``integration/provider_caller.py`` after a
+        completion resolves (after retry/rate-limit). Tokens and cost
+        are monotonically increasing counters -- never reset at
+        runtime.
+
+        Args:
+            provider: Provider id (e.g. ``"example-provider"``).
+            model: Model name (e.g. ``"large"``).
+            input_tokens: Tokens in the request prompt.
+            output_tokens: Tokens in the response completion.
+            cost_usd: Computed cost in USD for this call.
+        """
+        require_non_negative("record_provider_usage: input_tokens", input_tokens)
+        require_non_negative("record_provider_usage: output_tokens", output_tokens)
+        require_non_negative("record_provider_usage: cost_usd", cost_usd)
+        self._provider_tokens.labels(
+            provider=provider,
+            model=model,
+            direction="input",
+        ).inc(input_tokens)
+        self._provider_tokens.labels(
+            provider=provider,
+            model=model,
+            direction="output",
+        ).inc(output_tokens)
+        self._provider_cost_usd.labels(
+            provider=provider,
+            model=model,
+        ).inc(cost_usd)
+
+    def record_api_request(
+        self,
+        *,
+        method: str,
+        route: str,
+        status_code: int,
+        duration_sec: float,
+    ) -> None:
+        """Record an HTTP request handler's duration.
+
+        Called from ``RequestLoggingMiddleware`` (``api/middleware.py``)
+        once the response is fully constructed. ``route`` is a route
+        template (e.g. ``"/agents/{agent_id}"``), never a raw path --
+        the middleware resolves this via ``scope["route_handler"]``.
+
+        Args:
+            method: HTTP method (uppercase, e.g. ``"GET"``).
+            route: Route template string; ``"__unmatched__"`` for 404s.
+            status_code: Response status code (100-599).
+            duration_sec: Wall-clock duration in seconds.
+        """
+        status_class = _status_class(status_code)
+        if status_class not in VALID_STATUS_CLASSES:
+            logger.warning(
+                API_REQUEST_VALIDATION_FAILED,
+                component="api_request",
+                reason="invalid_status_code",
+                method=method,
+                route=route,
+                status_code=status_code,
+            )
+            msg = f"record_api_request: invalid status_code {status_code!r}"
+            raise ValueError(msg)
+        require_non_negative("record_api_request: duration_sec", duration_sec)
+        self._api_request_duration.labels(
+            method=method,
+            route=route,
+            status_class=status_class,
+        ).observe(duration_sec)
+
+    def record_task_run(
+        self,
+        *,
+        outcome: str,
+        duration_sec: float,
+    ) -> None:
+        """Record a task's final outcome and runtime.
+
+        Args:
+            outcome: One of ``"succeeded"``, ``"failed"``,
+                ``"cancelled"``.
+            duration_sec: Wall-clock duration in seconds.
+
+        Raises:
+            ValueError: If *outcome* is not a valid value or
+                ``duration_sec`` is negative.
+        """
+        require_label("task outcome", outcome, VALID_TASK_OUTCOMES)
+        require_non_negative("record_task_run: duration_sec", duration_sec)
+        self._task_runs.labels(outcome=outcome).inc()
+        self._task_duration.labels(outcome=outcome).observe(duration_sec)
+
+    def record_tool_invocation(
+        self,
+        *,
+        tool_name: str,
+        outcome: str,
+        duration_sec: float,
+    ) -> None:
+        """Record a tool invocation's outcome and runtime.
+
+        Args:
+            tool_name: Registered tool name (e.g. ``"web_search"``).
+            outcome: One of ``"success"``, ``"error"``, ``"timeout"``.
+            duration_sec: Wall-clock duration in seconds.
+
+        Raises:
+            ValueError: If *outcome* is not a valid value or
+                ``duration_sec`` is negative.
+        """
+        require_label("tool outcome", outcome, VALID_TOOL_OUTCOMES)
+        require_non_negative("record_tool_invocation: duration_sec", duration_sec)
+        self._tool_invocations.labels(
+            tool_name=tool_name,
+            outcome=outcome,
+        ).inc()
+        self._tool_duration.labels(
+            tool_name=tool_name,
+            outcome=outcome,
+        ).observe(duration_sec)
+
+    def record_audit_append(
+        self,
+        *,
+        status: str,
+        chain_depth: int,
+        timestamp_unix: float,
+    ) -> None:
+        """Record an audit chain append event.
+
+        Args:
+            status: One of ``"signed"`` (TSA granted), ``"fallback"``
+                (local clock), or ``"error"``.
+            chain_depth: Hash chain length after the append.
+            timestamp_unix: Unix epoch seconds of the append.
+
+        Raises:
+            ValueError: If *status* is not a valid value or
+                *chain_depth* is negative.
+        """
+        require_label("audit append status", status, VALID_AUDIT_APPEND_STATUSES)
+        require_non_negative("record_audit_append: chain_depth", chain_depth)
+        require_finite("record_audit_append: timestamp_unix", timestamp_unix)
+        self._audit_chain_appends.labels(status=status).inc()
+        self._audit_chain_depth.set(chain_depth)
+        self._audit_chain_last_append_ts.set(timestamp_unix)
+
+    def record_otlp_export(
+        self,
+        *,
+        kind: str,
+        outcome: str,
+        dropped_records: int = 0,
+    ) -> None:
+        """Record an OTLP export batch outcome.
+
+        Args:
+            kind: ``"logs"`` or ``"traces"``.
+            outcome: ``"success"`` or ``"failure"``.
+            dropped_records: Count of records dropped (queue full or
+                retry budget exhausted). Defaults to 0.
+
+        Raises:
+            ValueError: If *kind* or *outcome* are invalid or
+                *dropped_records* is negative.
+        """
+        require_label("OTLP kind", kind, VALID_OTLP_KINDS)
+        require_label("OTLP outcome", outcome, VALID_OTLP_OUTCOMES)
+        require_non_negative("record_otlp_export: dropped_records", dropped_records)
+        self._otlp_export_batches.labels(kind=kind, outcome=outcome).inc()
+        if dropped_records > 0:
+            self._otlp_export_dropped.labels(kind=kind).inc(dropped_records)
 
     def record_coordination_metrics(
         self,

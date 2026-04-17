@@ -12,6 +12,7 @@ from synthorg.observability.events.security import (
     SECURITY_POLICY_ENGINE_ERROR,
     SECURITY_POLICY_EVALUATE_START,
 )
+from synthorg.observability.metrics_hub import record_security_verdict
 from synthorg.security.policy_engine.models import (
     PolicyActionRequest,
     PolicyDecision,
@@ -78,6 +79,7 @@ class CedarPolicyEngine:
         }
 
         start = time.perf_counter()
+        decision: PolicyDecision | None = None
         try:
             result = cedarpy.is_authorized(
                 cedar_request,
@@ -106,14 +108,12 @@ class CedarPolicyEngine:
                 allowed=allowed,
                 latency_ms=latency_ms,
             )
-
-            return PolicyDecision(
+            decision = PolicyDecision(
                 allow=allowed,
                 reason=reason,
                 matched_policy="cedar_policy_set",
                 latency_ms=latency_ms,
             )
-
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
@@ -129,13 +129,36 @@ class CedarPolicyEngine:
             )
 
             if self._fail_closed:
-                return PolicyDecision(
+                decision = PolicyDecision(
                     allow=False,
                     reason=f"Policy evaluation error (fail-closed): {exc}",
                     latency_ms=latency_ms,
                 )
-            return PolicyDecision(
-                allow=True,
-                reason=f"Policy evaluation error (fail-open): {exc}",
-                latency_ms=latency_ms,
+            else:
+                decision = PolicyDecision(
+                    allow=True,
+                    reason=f"Policy evaluation error (fail-open): {exc}",
+                    latency_ms=latency_ms,
+                )
+
+        # Record the verdict in Prometheus *after* the authoritative
+        # decision is built. Pulling the metrics hook out of the
+        # Cedar-evaluation try/except prevents a hook exception from
+        # being misinterpreted as a policy-engine failure (which
+        # would flip ``allowed`` in fail-open mode). The try/except
+        # here is defence-in-depth: ``metrics_hub`` already swallows
+        # collector exceptions, but a bug in that layer must never
+        # block a ready policy decision from being returned.
+        try:
+            record_security_verdict("allow" if decision.allow else "deny")
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.warning(
+                SECURITY_POLICY_ENGINE_ERROR,
+                reason="metrics_mirror_failed",
+                decision_allow=decision.allow,
+                action_type=request.action_type,
+                exc_info=True,
             )
+        return decision

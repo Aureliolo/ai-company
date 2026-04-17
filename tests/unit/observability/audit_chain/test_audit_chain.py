@@ -159,8 +159,9 @@ class TestLocalClockProvider:
 
     async def test_returns_utc_datetime(self) -> None:
         provider = LocalClockProvider()
-        ts = await provider.get_timestamp()
-        assert ts.tzinfo is not None
+        result = await provider.get_timestamp()
+        assert result.timestamp.tzinfo is not None
+        assert result.source == "local_clock"
 
 
 @pytest.mark.unit
@@ -169,11 +170,51 @@ class TestResilientTimestampProvider:
 
     async def test_fallback_to_local_on_tsa_error(self) -> None:
         """TSA failure falls back to local clock."""
-        provider = ResilientTimestampProvider(tsa_url="https://tsa.example.com")
-        # TSA is not implemented, so it will raise NotImplementedError
-        # and fall back to local clock.
-        ts = await provider.get_timestamp()
-        assert ts.tzinfo is not None
+        from synthorg.observability.audit_chain.tsa_client import (
+            TsaClient,
+            TsaTransportError,
+        )
+
+        client = TsaClient("https://tsa.example.invalid")
+
+        async def _boom(_data: bytes) -> None:
+            error_msg = "simulated"
+            raise TsaTransportError(error_msg)
+
+        client.request_timestamp = _boom  # type: ignore[assignment,method-assign]
+        provider = ResilientTimestampProvider(client)
+        result = await provider.get_timestamp()
+        assert result.timestamp.tzinfo is not None
+        assert result.source == "fallback"
+
+    @pytest.mark.parametrize(
+        "incident_cls_name",
+        ["TsaHashMismatchError", "TsaNonceMismatchError", "TsaSignatureError"],
+    )
+    async def test_security_incidents_propagate(
+        self,
+        incident_cls_name: str,
+    ) -> None:
+        """Hash / nonce / signature failures must NOT silently fall back.
+
+        Parametrised so a regression in one incident class fails that
+        case on its own -- the previous loop hid all three cases
+        behind a single test ID and masked failures in the first
+        incident class.
+        """
+        from synthorg.observability.audit_chain import tsa_client as _tsa
+
+        incident_cls: type[BaseException] = getattr(_tsa, incident_cls_name)
+        client = _tsa.TsaClient("https://tsa.example.invalid")
+
+        async def _incident(_data: bytes) -> None:
+            error_msg = f"simulated {incident_cls.__name__}"
+            raise incident_cls(error_msg)
+
+        client.request_timestamp = _incident  # type: ignore[assignment,method-assign]
+        provider = ResilientTimestampProvider(client)
+        with pytest.raises(incident_cls):
+            await provider.get_timestamp()
 
 
 # ── Sink Tests ─────────────────────────────────────────────────────

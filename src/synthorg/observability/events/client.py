@@ -15,6 +15,10 @@ SIMULATION_RUN_STARTED: Final[str] = "simulation.run.started"
 SIMULATION_RUN_COMPLETED: Final[str] = "simulation.run.completed"
 SIMULATION_RUN_FAILED: Final[str] = "simulation.run.failed"
 SIMULATION_RUN_CANCELLED: Final[str] = "simulation.run.cancelled"
+# Invalid update attempts (pre-transition) -- kept distinct from the
+# terminal SIMULATION_RUN_FAILED so sinks and dashboards can filter
+# "actual run failures" vs "rejected/invalid writes".
+SIMULATION_RUN_UPDATE_REJECTED: Final[str] = "simulation.run.update_rejected"
 SIMULATION_ROUND_COMPLETED: Final[str] = "simulation.round.completed"
 CONTINUOUS_MODE_DISABLED: Final[str] = "continuous.mode.disabled"
 CONTINUOUS_MODE_STARTED: Final[str] = "continuous.mode.started"

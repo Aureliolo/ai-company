@@ -39,6 +39,7 @@ from synthorg.observability.events.tool import (
     TOOL_SECURITY_DENIED,
     TOOL_SECURITY_ESCALATED,
 )
+from synthorg.observability.tracing import tool_span
 from synthorg.providers.models import ToolCall, ToolResult
 from synthorg.security.models import SecurityContext, SecurityVerdictType
 
@@ -643,18 +644,49 @@ class ToolInvoker:
         self._pending_escalations.clear()
         return await self._invoke_single(tool_call)
 
-    async def _invoke_single(self, tool_call: ToolCall) -> ToolResult:  # noqa: PLR0911
+    async def _invoke_single(self, tool_call: ToolCall) -> ToolResult:
         """Core invoke logic without clearing escalations.
 
         Used by both ``invoke`` (after clearing) and ``invoke_all``
-        (which clears once at the batch level).
+        (which clears once at the batch level). Wraps the full
+        invocation in a ``tool {name}`` OTel span so latency and
+        outcome are queryable in the tracing UI.
         """
         logger.info(
             TOOL_INVOKE_START,
             tool_call_id=tool_call.id,
             tool_name=tool_call.name,
         )
+        async with tool_span(
+            tool_name=tool_call.name,
+            tool_call_id=tool_call.id,
+        ) as span:
+            try:
+                result = await self._invoke_single_inner(tool_call)
+            except asyncio.CancelledError:
+                # Map cancellation into the documented tool_span
+                # taxonomy (success / error / timeout); cancellations
+                # are nearly always driven by the execution-engine
+                # deadline, which callers reason about as "timeout".
+                span.set_attribute("tool.outcome", "timeout")
+                raise
+            except MemoryError, RecursionError:
+                span.set_attribute("tool.outcome", "error")
+                raise
+            except Exception:
+                span.set_attribute("tool.outcome", "error")
+                raise
+            span.set_attribute(
+                "tool.outcome",
+                "error" if result.is_error else "success",
+            )
+            return result
 
+    async def _invoke_single_inner(  # noqa: PLR0911
+        self,
+        tool_call: ToolCall,
+    ) -> ToolResult:
+        """Inner body of ``_invoke_single`` -- guarded by the span."""
         tool_or_error = self._lookup_tool(tool_call)
         if isinstance(tool_or_error, ToolResult):
             return tool_or_error

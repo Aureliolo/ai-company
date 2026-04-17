@@ -67,11 +67,27 @@ describe('LoginPage', () => {
     mockLockout.recordFailure.mockReturnValue(null)
   })
 
-  it('shows loading state on mount', () => {
-    // Never resolves -- stays in loading mode.
-    mockGetSetupStatus.mockReturnValue(new Promise(() => {}))
+  it('shows loading state on mount', async () => {
+    // Deferred promise rather than ``new Promise(() => {})`` so the
+    // ``--detect-async-leaks`` guard doesn't flag the intentionally-
+    // pending state as a leak: the assertion runs while the promise
+    // is still pending, then we resolve + await it in teardown so
+    // no promise outlives the test.
+    let resolveSetup: (value: ReturnType<typeof setupStatusResponse>) => void
+    const deferred = new Promise<ReturnType<typeof setupStatusResponse>>(
+      (resolve) => {
+        resolveSetup = resolve
+      },
+    )
+    mockGetSetupStatus.mockReturnValue(deferred)
     renderLogin()
     expect(screen.getByText('Checking setup status...')).toBeInTheDocument()
+    resolveSetup!(setupStatusResponse({ needs_admin: false }))
+    await waitFor(() => {
+      expect(
+        screen.queryByText('Checking setup status...'),
+      ).not.toBeInTheDocument()
+    })
   })
 
   it('shows login form when needs_admin is false', async () => {
