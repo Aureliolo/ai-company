@@ -2,32 +2,56 @@
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from synthorg.core.enums import (
-    DepartmentName,
-    ProficiencyLevel,
-    SeniorityLevel,
-    SkillCategory,
-)
+from synthorg.core.enums import DepartmentName, SeniorityLevel
 from synthorg.core.types import ModelTier, NotBlankStr  # noqa: TC001
 from synthorg.ontology.decorator import ontology_entity
 
 
 class Skill(BaseModel):
-    """A capability an agent possesses.
+    """Structured capability description, A2A AgentSkill-aligned.
+
+    Mirrors the A2A protocol ``AgentSkill`` shape so projection to
+    ``A2AAgentSkill`` is lossless.  ``proficiency`` is the SynthOrg-specific
+    addition used for quality-aware routing ("route to the agent with the
+    highest Python proficiency").
 
     Attributes:
-        name: Skill name (e.g. ``"python"``, ``"system-design"``).
-        category: Broad skill category.
-        proficiency: Agent's proficiency in this skill.
+        id: Unique skill identifier (e.g. ``"code-review"``).
+        name: Human-readable display name (e.g. ``"Code Review"``).
+        description: Capability description for semantic matching.
+        tags: Searchable tags for multi-faceted routing.
+        input_modes: MIME types the agent accepts for this skill.
+        output_modes: MIME types the agent produces for this skill.
+        proficiency: Proficiency level in ``[0.0, 1.0]``.  Default ``1.0``
+            preserves legacy boolean-match scoring when proficiency is
+            unspecified.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    name: NotBlankStr = Field(description="Skill name")
-    category: SkillCategory = Field(description="Skill category")
-    proficiency: ProficiencyLevel = Field(
-        default=ProficiencyLevel.INTERMEDIATE,
-        description="Proficiency level",
+    id: NotBlankStr = Field(description="Unique skill identifier")
+    name: NotBlankStr = Field(description="Human-readable display name")
+    description: str = Field(
+        default="",
+        description="Capability description for semantic matching",
+    )
+    tags: tuple[NotBlankStr, ...] = Field(
+        default=(),
+        description="Searchable tags for multi-faceted routing",
+    )
+    input_modes: tuple[NotBlankStr, ...] = Field(
+        default=("text/plain",),
+        description="MIME types the agent accepts for this skill",
+    )
+    output_modes: tuple[NotBlankStr, ...] = Field(
+        default=("text/plain",),
+        description="MIME types the agent produces for this skill",
+    )
+    proficiency: float = Field(
+        default=1.0,
+        ge=0.0,
+        le=1.0,
+        description="Proficiency level in [0.0, 1.0]",
     )
 
 

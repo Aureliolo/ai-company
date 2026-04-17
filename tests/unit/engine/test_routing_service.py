@@ -13,6 +13,7 @@ from synthorg.core.enums import (
     SeniorityLevel,
     TaskType,
 )
+from synthorg.core.role import Skill
 from synthorg.core.task import Task
 from synthorg.engine.decomposition.models import (
     DecompositionPlan,
@@ -40,7 +41,10 @@ def _make_agent(  # noqa: PLR0913
         role=role,
         department="Engineering",
         level=level,
-        skills=SkillSet(primary=primary, secondary=secondary),
+        skills=SkillSet(
+            primary=tuple(Skill(id=s, name=s) for s in primary),
+            secondary=tuple(Skill(id=s, name=s) for s in secondary),
+        ),
         model=ModelConfig(provider="test-provider", model_id="test-model-001"),
         hiring_date=date(2026, 1, 1),
         status=status,

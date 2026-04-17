@@ -22,7 +22,7 @@ from synthorg.core.enums import (
     StrategicOutputMode,
     ToolAccessLevel,
 )
-from synthorg.core.role import Authority
+from synthorg.core.role import Authority, Skill
 from synthorg.core.types import ModelTier, NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.config import CONFIG_VALIDATION_FAILED
@@ -136,17 +136,17 @@ class SkillSet(BaseModel):
     """Primary and secondary skills for an agent.
 
     Attributes:
-        primary: Core competency skill names.
-        secondary: Supporting skill names.
+        primary: Core competency skills.
+        secondary: Supporting skills.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    primary: tuple[NotBlankStr, ...] = Field(
+    primary: tuple[Skill, ...] = Field(
         default=(),
         description="Primary skills",
     )
-    secondary: tuple[NotBlankStr, ...] = Field(
+    secondary: tuple[Skill, ...] = Field(
         default=(),
         description="Secondary skills",
     )

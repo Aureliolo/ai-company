@@ -3,12 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from synthorg.core.enums import (
-    DepartmentName,
-    ProficiencyLevel,
-    SeniorityLevel,
-    SkillCategory,
-)
+from synthorg.core.enums import DepartmentName, SeniorityLevel
 from synthorg.core.role import Authority, CustomRole, Role, SeniorityInfo, Skill
 
 from .conftest import (
@@ -25,25 +20,59 @@ from .conftest import (
 @pytest.mark.unit
 class TestSkill:
     def test_valid_skill(self, sample_skill: Skill) -> None:
-        assert sample_skill.name == "python"
-        assert sample_skill.category is SkillCategory.ENGINEERING
-        assert sample_skill.proficiency is ProficiencyLevel.ADVANCED
+        assert sample_skill.id == "python"
+        assert sample_skill.name == "Python"
+        assert sample_skill.description.startswith("Backend development")
+        assert sample_skill.tags == ("backend", "scripting")
+        assert sample_skill.proficiency == pytest.approx(0.9)
 
-    def test_default_proficiency(self) -> None:
-        skill = Skill(name="testing", category=SkillCategory.QA)
-        assert skill.proficiency is ProficiencyLevel.INTERMEDIATE
+    def test_defaults(self) -> None:
+        skill = Skill(id="testing", name="Testing")
+        assert skill.description == ""
+        assert skill.tags == ()
+        assert skill.input_modes == ("text/plain",)
+        assert skill.output_modes == ("text/plain",)
+        assert skill.proficiency == pytest.approx(1.0)
+
+    def test_empty_id_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            Skill(id="", name="Python")
 
     def test_empty_name_rejected(self) -> None:
         with pytest.raises(ValidationError):
-            Skill(name="", category=SkillCategory.ENGINEERING)
+            Skill(id="python", name="")
+
+    def test_whitespace_id_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="whitespace-only"):
+            Skill(id="   ", name="Python")
 
     def test_whitespace_name_rejected(self) -> None:
         with pytest.raises(ValidationError, match="whitespace-only"):
-            Skill(name="   ", category=SkillCategory.ENGINEERING)
+            Skill(id="python", name="   ")
+
+    def test_empty_tag_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="at least 1 character"):
+            Skill(id="python", name="Python", tags=("backend", ""))
+
+    def test_proficiency_above_range_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            Skill(id="python", name="Python", proficiency=1.5)
+
+    def test_proficiency_below_range_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            Skill(id="python", name="Python", proficiency=-0.1)
+
+    def test_proficiency_nan_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            Skill(id="python", name="Python", proficiency=float("nan"))
+
+    def test_proficiency_inf_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            Skill(id="python", name="Python", proficiency=float("inf"))
 
     def test_frozen(self, sample_skill: Skill) -> None:
         with pytest.raises(ValidationError):
-            sample_skill.name = "rust"  # type: ignore[misc]
+            sample_skill.name = "Rust"  # type: ignore[misc]
 
     def test_json_roundtrip(self, sample_skill: Skill) -> None:
         json_str = sample_skill.model_dump_json()
@@ -53,6 +82,7 @@ class TestSkill:
     def test_factory_creates_valid_skill(self) -> None:
         skill = SkillFactory.build()
         assert isinstance(skill, Skill)
+        assert len(skill.id) >= 1
         assert len(skill.name) >= 1
 
 

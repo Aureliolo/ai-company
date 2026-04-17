@@ -12,6 +12,7 @@ from synthorg.core.enums import (
     TaskStatus,
     TaskType,
 )
+from synthorg.core.role import Skill
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.enums import FiringReason, HiringRequestStatus
@@ -73,7 +74,7 @@ def make_candidate_card(  # noqa: PLR0913
         "role": role,
         "department": department,
         "level": level,
-        "skills": tuple(NotBlankStr(s) for s in skills),
+        "skills": tuple(Skill(id=s, name=s) for s in skills),
         "rationale": rationale,
         "estimated_monthly_cost": estimated_monthly_cost,
         "template_source": template_source,

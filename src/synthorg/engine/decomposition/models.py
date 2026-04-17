@@ -28,7 +28,11 @@ class SubtaskDefinition(BaseModel):
         description: Detailed subtask description.
         dependencies: IDs of other subtasks this one depends on.
         estimated_complexity: Complexity estimate for routing.
-        required_skills: Skill names needed for routing.
+        required_skills: Skill IDs needed for routing.
+        required_tags: Tags needed for multi-faceted routing match.  When
+            set, the routing scorer awards a small bonus to agents whose
+            matched-skill tags cover every required tag.  Empty tuple
+            disables the tag-match tier.
         required_role: Optional role name for routing.
     """
 
@@ -47,7 +51,11 @@ class SubtaskDefinition(BaseModel):
     )
     required_skills: tuple[NotBlankStr, ...] = Field(
         default=(),
-        description="Skill names needed for routing",
+        description="Skill IDs needed for routing",
+    )
+    required_tags: tuple[NotBlankStr, ...] = Field(
+        default=(),
+        description="Tags needed for multi-faceted routing match",
     )
     required_role: NotBlankStr | None = Field(
         default=None,

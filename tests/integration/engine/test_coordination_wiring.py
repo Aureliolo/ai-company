@@ -27,7 +27,7 @@ from synthorg.core.enums import (
     CoordinationTopology,
     SeniorityLevel,
 )
-from synthorg.core.role import Authority
+from synthorg.core.role import Authority, Skill
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_engine_config import TaskEngineConfig
 from synthorg.hr.registry import AgentRegistryService
@@ -112,7 +112,7 @@ def _make_test_agent(
         role="developer",
         department="engineering",
         level=SeniorityLevel.MID,
-        skills=SkillSet(primary=skills),
+        skills=SkillSet(primary=tuple(Skill(id=s, name=s) for s in skills)),
         authority=Authority(budget_limit=10.0),
         model=ModelConfig(provider="test-provider", model_id="test-model-001"),
         hiring_date=date(2026, 1, 1),

@@ -43,7 +43,7 @@ class TestCandidateCard:
     def test_construction_with_skills(self) -> None:
         card = make_candidate_card(skills=("python", "rust"))
         assert len(card.skills) == 2
-        assert card.skills[0] == "python"
+        assert card.skills[0].id == "python"
 
     def test_frozen(self) -> None:
         card = make_candidate_card()

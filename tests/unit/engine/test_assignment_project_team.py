@@ -6,6 +6,7 @@ import pytest
 
 from synthorg.core.agent import AgentIdentity, ModelConfig, SkillSet
 from synthorg.core.enums import SeniorityLevel, TaskType
+from synthorg.core.role import Skill
 from synthorg.core.task import Task
 from synthorg.engine.assignment.models import AssignmentRequest
 from synthorg.engine.assignment.service import TaskAssignmentService
@@ -31,7 +32,7 @@ def _make_agent(
         level=level,
         model=_model_config(),
         hiring_date=date(2026, 1, 1),
-        skills=SkillSet(primary=("python",)),
+        skills=SkillSet(primary=(Skill(id="python", name="python"),)),
     )
 
 

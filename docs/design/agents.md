@@ -62,14 +62,7 @@ Personality is split into two tiers:
 
 ### Skill Model
 
-!!! info "Proposed Specification"
-
-    The enriched Skill model below is a **design specification** -- not yet implemented.
-    The current codebase uses a simpler `Skill(name, category, proficiency)` model and
-    string-based `SkillSet(primary: tuple[str], secondary: tuple[str])`. Implementation
-    will be tracked in a separate issue.
-
-Agent skills will be represented as structured capability descriptions aligned with the
+Agent skills are represented as structured capability descriptions aligned with the
 [A2A AgentSkill specification](communication.md#agent-card-projection), enabling lossless
 bidirectional mapping between internal skills and external Agent Card capabilities.
 
@@ -118,11 +111,13 @@ class SkillSet(BaseModel):
 - Existing string-based YAML configs will auto-migrate: a bare string `"python"` will be
   interpreted as `Skill(id="python", name="python")` with all other fields at defaults
 
-**Routing impact (planned):** The `AgentTaskScorer` will use structured skills for richer
-matching: primary skill overlap (40% weight), secondary skill overlap (20% weight),
-tag-based multi-faceted matching, and proficiency-weighted scoring. Proficiency will
-enable quality-aware routing: "route to the agent with the highest Python proficiency."
-Currently, the scorer uses string-based skill overlap only.
+**Routing impact:** `AgentTaskScorer` uses the structured skill data directly.  Primary
+skill overlap is weighted at 40% and secondary at 20%, each contribution scaled by the
+agent's `proficiency` for every matched skill (default `1.0`, which reproduces
+boolean-match scoring).  When a subtask declares `required_tags`, matched skills whose
+tags cover every required tag earn an additional 10% bonus.  Proficiency thus drives
+quality-aware routing -- "route to the agent with the highest Python proficiency" -- and
+tags drive multi-faceted matching when callers opt in.
 
 **Maintenance:** Skills will be template-seeded at hire time (company templates provide
 default skill sets per role) and human-editable via the REST API. Auto-derivation from

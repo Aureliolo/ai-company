@@ -17,6 +17,7 @@ from pydantic import (
 )
 
 from synthorg.core.enums import SeniorityLevel  # noqa: TC001
+from synthorg.core.role import Skill  # noqa: TC001
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.enums import (
     FiringReason,
@@ -51,7 +52,7 @@ class CandidateCard(BaseModel):
     role: NotBlankStr = Field(description="Proposed role")
     department: NotBlankStr = Field(description="Target department")
     level: SeniorityLevel = Field(description="Proposed seniority level")
-    skills: tuple[NotBlankStr, ...] = Field(
+    skills: tuple[Skill, ...] = Field(
         default=(),
         description="Agent skills",
     )

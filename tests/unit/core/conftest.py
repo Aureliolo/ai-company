@@ -34,9 +34,7 @@ from synthorg.core.enums import (
     DepartmentName,
     MemoryLevel,
     Priority,
-    ProficiencyLevel,
     SeniorityLevel,
-    SkillCategory,
     TaskStatus,
     TaskType,
 )
@@ -196,9 +194,11 @@ class ProjectFactory(ModelFactory[Project]):
 @pytest.fixture
 def sample_skill() -> Skill:
     return Skill(
-        name="python",
-        category=SkillCategory.ENGINEERING,
-        proficiency=ProficiencyLevel.ADVANCED,
+        id="python",
+        name="Python",
+        description="Backend development with Python 3.14+",
+        tags=("backend", "scripting"),
+        proficiency=0.9,
     )
 
 

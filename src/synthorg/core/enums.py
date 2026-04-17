@@ -180,20 +180,6 @@ class CompanyType(StrEnum):
     CUSTOM = "custom"
 
 
-class SkillCategory(StrEnum):
-    """Categories for agent skills."""
-
-    ENGINEERING = "engineering"
-    PRODUCT = "product"
-    DESIGN = "design"
-    DATA = "data"
-    QA = "qa"
-    OPERATIONS = "operations"
-    SECURITY = "security"
-    CREATIVE = "creative"
-    MANAGEMENT = "management"
-
-
 class SkillPattern(StrEnum):
     """Skill interaction patterns for company templates.
 
@@ -218,15 +204,6 @@ class SkillPattern(StrEnum):
     REVIEWER = "reviewer"
     INVERSION = "inversion"
     PIPELINE = "pipeline"
-
-
-class ProficiencyLevel(StrEnum):
-    """Proficiency level for a skill."""
-
-    BEGINNER = "beginner"
-    INTERMEDIATE = "intermediate"
-    ADVANCED = "advanced"
-    EXPERT = "expert"
 
 
 class DepartmentName(StrEnum):

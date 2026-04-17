@@ -28,9 +28,11 @@ logger = get_logger(__name__)
 def _identity_to_skills(identity: AgentIdentity) -> tuple[A2AAgentSkill, ...]:
     """Map an agent's SkillSet to A2A AgentSkill descriptors.
 
-    Primary skills are mapped first, then secondary skills.
-    Each skill gets a unique ID derived from the agent ID and
-    skill name.
+    Passes ``id``, ``name``, ``description``, ``input_modes``, and
+    ``output_modes`` through verbatim; augments each skill's ``tags``
+    tuple with a ``"primary"`` or ``"secondary"`` marker so external
+    discovery can distinguish tiers.  Primary skills are emitted
+    first, then secondary skills.
 
     Args:
         identity: Agent identity to extract skills from.
@@ -38,25 +40,29 @@ def _identity_to_skills(identity: AgentIdentity) -> tuple[A2AAgentSkill, ...]:
     Returns:
         Tuple of A2A agent skill descriptors.
     """
-    skills = [
+    primary = tuple(
         A2AAgentSkill(
-            id=f"skill-{skill_name.lower().replace(' ', '-')}",
-            name=skill_name,
-            description=f"Primary skill: {skill_name}",
-            tags=("primary",),
+            id=s.id,
+            name=s.name,
+            description=s.description,
+            tags=(*s.tags, "primary"),
+            input_modes=s.input_modes,
+            output_modes=s.output_modes,
         )
-        for skill_name in identity.skills.primary
-    ]
-    skills.extend(
-        A2AAgentSkill(
-            id=f"skill-{skill_name.lower().replace(' ', '-')}",
-            name=skill_name,
-            description=f"Secondary skill: {skill_name}",
-            tags=("secondary",),
-        )
-        for skill_name in identity.skills.secondary
+        for s in identity.skills.primary
     )
-    return tuple(skills)
+    secondary = tuple(
+        A2AAgentSkill(
+            id=s.id,
+            name=s.name,
+            description=s.description,
+            tags=(*s.tags, "secondary"),
+            input_modes=s.input_modes,
+            output_modes=s.output_modes,
+        )
+        for s in identity.skills.secondary
+    )
+    return primary + secondary
 
 
 class AgentCardBuilder:

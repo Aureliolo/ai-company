@@ -11,6 +11,7 @@ from synthorg.core.enums import (
     TaskStatus,
     TaskType,
 )
+from synthorg.core.role import Skill
 from synthorg.core.task import Task
 from synthorg.engine.assignment.models import (
     AssignmentRequest,
@@ -43,7 +44,9 @@ def _make_agent(
         level=level,
         model=_model_config(),
         hiring_date=date(2026, 1, 1),
-        skills=SkillSet(primary=primary_skills),
+        skills=SkillSet(
+            primary=tuple(Skill(id=s, name=s) for s in primary_skills),
+        ),
     )
 
 
