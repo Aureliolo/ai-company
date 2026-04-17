@@ -599,6 +599,23 @@ from synthorg.api.dto_workflow import (  # noqa: E402
     WorkflowIODeclarationRequest,
 )
 
+
+class RollbackAgentIdentityRequest(BaseModel):
+    """Request body for rolling back an agent identity to a previous version.
+
+    Attributes:
+        target_version: Snapshot version number to restore content from
+            (monotonic counter in the agent_identity_versions table).
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    target_version: int = Field(
+        ge=1,
+        description="Snapshot version to rollback to",
+    )
+
+
 __all__ = [
     "ActivateWorkflowRequest",
     "ApiResponse",
@@ -625,6 +642,7 @@ __all__ = [
     "ProblemDetail",
     "ProviderResponse",
     "RejectRequest",
+    "RollbackAgentIdentityRequest",
     "RollbackWorkflowRequest",
     "TestConnectionRequest",
     "TestConnectionResponse",

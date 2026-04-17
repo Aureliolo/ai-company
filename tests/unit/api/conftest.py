@@ -300,8 +300,12 @@ def performance_tracker() -> PerformanceTracker:
 
 
 @pytest.fixture(scope="session")
-def agent_registry() -> AgentRegistryService:
-    return AgentRegistryService()
+def agent_registry(fake_persistence: FakePersistenceBackend) -> AgentRegistryService:
+    from synthorg.versioning import VersioningService
+
+    return AgentRegistryService(
+        versioning=VersioningService(fake_persistence.identity_versions),
+    )
 
 
 @pytest.fixture(scope="session")

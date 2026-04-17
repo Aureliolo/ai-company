@@ -4,6 +4,9 @@ from litestar import Controller
 
 from synthorg.api.auth.controller import AuthController
 from synthorg.api.controllers.activities import ActivityController
+from synthorg.api.controllers.agent_identity_versions import (
+    AgentIdentityVersionController,
+)
 from synthorg.api.controllers.agents import AgentController
 from synthorg.api.controllers.analytics import AnalyticsController
 from synthorg.api.controllers.approvals import ApprovalsController
@@ -91,6 +94,7 @@ BASE_CONTROLLERS: tuple[type[Controller], ...] = (
     MetricsController,
     CompanyController,
     AgentController,
+    AgentIdentityVersionController,
     ActivityController,
     DepartmentController,
     ProjectController,
@@ -166,6 +170,7 @@ __all__ = [
     "INTEGRATION_CONTROLLERS",
     "ActivityController",
     "AgentController",
+    "AgentIdentityVersionController",
     "AnalyticsController",
     "ApprovalsController",
     "ArtifactController",

@@ -181,6 +181,7 @@ class TestEventConstants:
         """Every expected domain module is found by pkgutil discovery."""
         expected = {
             "a2a",
+            "agent_identity_version",
             "analytics",
             "api",
             "approval_gate",

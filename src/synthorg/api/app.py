@@ -79,6 +79,7 @@ from synthorg.communication.meeting.orchestrator import (
 from synthorg.communication.meeting.scheduler import MeetingScheduler  # noqa: TC001
 from synthorg.config import bootstrap_logging
 from synthorg.config.schema import RootConfig
+from synthorg.core.agent import AgentIdentity  # noqa: TC001
 from synthorg.core.approval import ApprovalItem  # noqa: TC001
 from synthorg.engine.agent_engine import (  # noqa: TC001
     PersonalityTrimNotifier,
@@ -92,7 +93,7 @@ from synthorg.hr.performance.quality_protocol import (
     QualityScoringStrategy,  # noqa: TC001
 )
 from synthorg.hr.performance.tracker import PerformanceTracker
-from synthorg.hr.registry import AgentRegistryService  # noqa: TC001
+from synthorg.hr.registry import AgentRegistryService
 from synthorg.hr.training.service import TrainingService  # noqa: TC001
 from synthorg.notifications.factory import build_notification_dispatcher
 from synthorg.observability import get_logger
@@ -145,6 +146,7 @@ from synthorg.settings.subscribers import (
     ProviderSettingsSubscriber,
 )
 from synthorg.tools.invocation_tracker import ToolInvocationTracker  # noqa: TC001
+from synthorg.versioning import VersioningService
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Sequence
@@ -1402,6 +1404,24 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
             provider_registry=provider_registry,
             perf_config=effective_config.performance,
         )
+
+    # Auto-wire agent registry with identity-versioning service so that
+    # every register/update/evolve call produces an audited VersionSnapshot.
+    if agent_registry is None:
+        identity_versioning: VersioningService[AgentIdentity] | None = None
+        if persistence is not None:
+            try:
+                identity_versioning = VersioningService(persistence.identity_versions)
+            except MemoryError, RecursionError:
+                raise
+            except Exception:
+                logger.warning(
+                    API_APP_STARTUP,
+                    error="identity_versioning auto-wire failed (non-fatal)",
+                    exc_info=True,
+                )
+        agent_registry = AgentRegistryService(versioning=identity_versioning)
+        logger.info(API_SERVICE_AUTO_WIRED, service="agent_registry")
 
     notification_dispatcher = build_notification_dispatcher(
         effective_config.notifications,

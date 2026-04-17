@@ -230,6 +230,10 @@ class FakeVersionRepository:
             del self._store[k]
         return len(to_delete)
 
+    def clear(self) -> None:
+        """Reset all stored snapshots for test isolation."""
+        self._store.clear()
+
 
 class FakeTrainingPlanRepository:
     """In-memory fake for ``TrainingPlanRepository``."""
