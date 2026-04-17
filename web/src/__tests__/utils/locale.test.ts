@@ -13,6 +13,13 @@ describe('APP_LOCALE', () => {
   it('is a valid Intl locale', () => {
     expect(() => new Intl.Locale(APP_LOCALE)).not.toThrow()
   })
+
+  it.each(['en_US', 'en-us', 'EN-US', 'en', ''])(
+    'rejects the malformed candidate %j against the BCP 47 shape regex',
+    (candidate) => {
+      expect(candidate).not.toMatch(/^[a-z]{2}-[A-Z]{2}$/)
+    },
+  )
 })
 
 describe('getLocale', () => {

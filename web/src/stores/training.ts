@@ -1,8 +1,10 @@
 import { create } from 'zustand'
+import { useShallow } from 'zustand/react/shallow'
 
 import {
   createTrainingPlan,
   executeTrainingPlan,
+  getLatestTrainingPlan,
   getTrainingResult,
   previewTrainingPlan,
   updateTrainingOverrides,
@@ -29,7 +31,9 @@ interface TrainingState {
   loading: LoadingMap
   error: ErrorMap
 
+  fetchPlan: (agentName: string) => Promise<void>
   fetchResult: (agentName: string) => Promise<void>
+  hydrateForAgent: (agentName: string) => Promise<void>
   createPlan: (
     agentName: string,
     overrides: TrainingPlanRequest,
@@ -51,11 +55,46 @@ function setMap<V>(
   return { ...map, [key]: value }
 }
 
-export const useTrainingStore = create<TrainingState>()((set) => ({
+/**
+ * 404 is the expected signal that nothing has been persisted yet for
+ * the agent; we clear the cache entry and suppress the toast/error.
+ */
+function isExpectedNotFound(err: unknown): boolean {
+  return (
+    typeof err === 'object' &&
+    err !== null &&
+    'response' in err &&
+    typeof (err as { response?: { status?: unknown } }).response === 'object' &&
+    (err as { response: { status?: unknown } }).response.status === 404
+  )
+}
+
+export const useTrainingStore = create<TrainingState>()((set, get) => ({
   plansByAgent: {},
   resultsByAgent: {},
   loading: {},
   error: {},
+
+  fetchPlan: async (agentName) => {
+    try {
+      const plan = await getLatestTrainingPlan(agentName)
+      set((state) => ({
+        plansByAgent: setMap(state.plansByAgent, agentName, plan),
+      }))
+    } catch (err) {
+      if (isExpectedNotFound(err)) {
+        set((state) => ({
+          plansByAgent: setMap(state.plansByAgent, agentName, null),
+          error: setMap(state.error, agentName, null),
+        }))
+        return
+      }
+      log.error('fetchPlan failed:', sanitizeForLog(agentName), err)
+      set((state) => ({
+        error: setMap(state.error, agentName, getErrorMessage(err)),
+      }))
+    }
+  },
 
   fetchResult: async (agentName) => {
     set((state) => ({
@@ -69,6 +108,13 @@ export const useTrainingStore = create<TrainingState>()((set) => ({
         loading: setMap(state.loading, agentName, false),
       }))
     } catch (err) {
+      if (isExpectedNotFound(err)) {
+        set((state) => ({
+          resultsByAgent: setMap(state.resultsByAgent, agentName, null),
+          loading: setMap(state.loading, agentName, false),
+        }))
+        return
+      }
       const message = getErrorMessage(err)
       log.error('fetchResult failed:', sanitizeForLog(agentName), err)
       set((state) => ({
@@ -76,6 +122,10 @@ export const useTrainingStore = create<TrainingState>()((set) => ({
         error: setMap(state.error, agentName, message),
       }))
     }
+  },
+
+  hydrateForAgent: async (agentName) => {
+    await Promise.all([get().fetchPlan(agentName), get().fetchResult(agentName)])
   },
 
   createPlan: async (agentName, overrides) => {
@@ -103,9 +153,23 @@ export const useTrainingStore = create<TrainingState>()((set) => ({
   executePlan: async (agentName) => {
     try {
       const result = await executeTrainingPlan(agentName)
-      set((state) => ({
-        resultsByAgent: setMap(state.resultsByAgent, agentName, result),
-      }))
+      set((state) => {
+        const next: Partial<TrainingState> = {
+          resultsByAgent: setMap(state.resultsByAgent, agentName, result),
+        }
+        // Mirror the server-side plan transition to EXECUTED so the UI
+        // (status badge, disabled "Execute" button) stays consistent
+        // without a separate re-fetch.
+        const cached = state.plansByAgent[agentName]
+        if (cached) {
+          next.plansByAgent = setMap(state.plansByAgent, agentName, {
+            ...cached,
+            status: 'executed',
+            executed_at: result.completed_at,
+          })
+        }
+        return next
+      })
       useToastStore.getState().add({
         variant: 'success',
         title: 'Training executed',
@@ -160,11 +224,25 @@ export const useTrainingStore = create<TrainingState>()((set) => ({
   },
 }))
 
-export function useTrainingForAgent(agentName: string) {
-  return useTrainingStore((state) => ({
-    plan: state.plansByAgent[agentName] ?? null,
-    result: state.resultsByAgent[agentName] ?? null,
-    loading: state.loading[agentName] ?? false,
-    error: state.error[agentName] ?? null,
-  }))
+export interface TrainingForAgent {
+  plan: TrainingPlanResponse | null
+  result: TrainingResultResponse | null
+  loading: boolean
+  error: string | null
+}
+
+/**
+ * Subscribe to the training state for a single agent. Uses
+ * ``useShallow`` so re-renders only fire when one of the underlying
+ * fields changes, not on every store update.
+ */
+export function useTrainingForAgent(agentName: string): TrainingForAgent {
+  return useTrainingStore(
+    useShallow((state): TrainingForAgent => ({
+      plan: state.plansByAgent[agentName] ?? null,
+      result: state.resultsByAgent[agentName] ?? null,
+      loading: state.loading[agentName] ?? false,
+      error: state.error[agentName] ?? null,
+    })),
+  )
 }

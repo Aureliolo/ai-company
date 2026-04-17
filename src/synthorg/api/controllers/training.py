@@ -339,6 +339,47 @@ class TrainingController(Controller):
 
         return ApiResponse(data=_result_to_response(result))
 
+    @get(
+        "/plan",
+        guards=[require_read_access],
+        status_code=HTTP_200_OK,
+    )
+    async def get_latest_plan(
+        self,
+        app_state: AppState,
+        agent_name: PathName,
+    ) -> ApiResponse[TrainingPlanResponse]:
+        """Get the most recently created training plan for an agent.
+
+        Unlike ``/execute``, this returns the latest plan regardless of
+        status so the dashboard can rehydrate its view after a reload
+        (the "Create Plan" form should not reappear once a plan has
+        been executed).
+
+        Args:
+            app_state: Litestar application state.
+            agent_name: Agent identifier from the URL path.
+
+        Raises:
+            NotFoundError: If no plan has been created for the agent.
+        """
+        identity = await _resolve_agent(app_state, agent_name)
+        agent_id = str(identity.id)
+
+        plans = await app_state.persistence.training_plans.list_by_agent(
+            NotBlankStr(agent_id),
+        )
+        if not plans:
+            logger.warning(
+                API_RESOURCE_NOT_FOUND,
+                resource="training_plan",
+                agent_id=agent_id,
+            )
+            msg = "No training plan found"
+            raise NotFoundError(msg)
+
+        return ApiResponse(data=_plan_to_response(plans[0]))
+
     @post(
         "/preview",
         guards=[require_read_access],

@@ -319,7 +319,16 @@ export interface RecommendedAction {
 export interface EvidencePackageSignature {
   approver_id: string
   algorithm: 'ml-dsa-65' | 'ed25519'
-  /** Raw signature bytes, base64-encoded in transit. */
+  /**
+   * Signature bytes serialized as a base64 string.
+   *
+   * The backend model stores raw ``bytes`` and the Pydantic JSON
+   * encoder emits standard RFC 4648 base64 (no URL-safe alphabet,
+   * padding preserved). Callers that need the raw bytes should run
+   * ``atob(signature_bytes)`` then convert the result to a
+   * ``Uint8Array``. This contract is verified by the DTO parity
+   * tests in ``tests/unit/api/test_dto_parity.py``.
+   */
   signature_bytes: string
   signed_at: string
   chain_position: number
@@ -780,21 +789,30 @@ export interface CreateAgentOrgRequest {
 }
 
 /**
+ * Optional pair of (provider, model id) used by agent mutation DTOs.
+ * Either both fields are present as non-empty strings, or both are
+ * omitted -- the backend validator rejects partial pairs with 422.
+ * Expressed as a discriminated union so the TypeScript compiler flags
+ * half-filled requests at the call site.
+ */
+export type AgentModelSelector =
+  | { model_provider: string; model_id: string }
+  | { model_provider?: undefined; model_id?: undefined }
+
+/**
  * Partial update for an agent. Mirrors
  * `synthorg.api.dto_org.UpdateAgentOrgRequest`.
  *
  * Backend validator requires `model_provider` and `model_id` to be
- * either both set or both omitted (partial pairs rejected with 422).
+ * either both set or both omitted. See {@link AgentModelSelector}.
  */
-export interface UpdateAgentOrgRequest {
+export type UpdateAgentOrgRequest = {
   name?: string
   role?: string
   department?: DepartmentName
   level?: SeniorityLevel
   autonomy_level?: AutonomyLevel | null
-  model_provider?: string
-  model_id?: string
-}
+} & AgentModelSelector
 
 export interface ReorderAgentsRequest {
   readonly agent_names: readonly string[]

@@ -6,6 +6,7 @@ import type {
   ProviderHealthSummary,
 } from '@/api/types'
 import type { SemanticColor } from '@/lib/utils'
+import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { formatCurrency, formatTokenCount as formatTokenCountBase } from '@/utils/format'
 
 // ── Types ─────────────────────────────────────────────────────
@@ -137,14 +138,17 @@ export function formatErrorRate(rate: number): string {
 }
 
 /** Format a token count with K/M suffixes (locale-aware). */
-export function formatTokenCount(n: number): string {
-  return formatTokenCountBase(n)
+export function formatTokenCount(n: number, locale?: string): string {
+  return formatTokenCountBase(n, locale)
 }
 
-/** Format a cost value using the project currency (defaults to EUR). */
+/**
+ * Format a cost value using the project currency (defaults to
+ * {@link DEFAULT_CURRENCY}).
+ */
 export function formatCost(
   cost: number,
-  currencyCode: string = 'EUR',
+  currencyCode: string = DEFAULT_CURRENCY,
 ): string {
   if (cost === 0) return formatCurrency(0, currencyCode)
   if (cost > 0 && cost < 0.01) {

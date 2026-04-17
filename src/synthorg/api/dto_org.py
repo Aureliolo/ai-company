@@ -44,6 +44,9 @@ class UpdateDepartmentRequest(BaseModel):
     budget_percent: float | None = Field(default=None, ge=0.0, le=100.0)
     autonomy_level: AutonomyLevel | None = None
     teams: tuple[Team, ...] | None = Field(default=None, max_length=64)
+    # Stored as a raw dict at the domain level for YAML-level flexibility
+    # (see ``Department.ceremony_policy``); validated against
+    # ``CeremonyPolicyConfig`` but not coerced to the typed model.
     ceremony_policy: dict[str, object] | None = None
 
     @field_validator("ceremony_policy", mode="before")

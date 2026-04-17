@@ -116,6 +116,14 @@ BARE_TOLOCALE_RE = re.compile(
     r"\.toLocale(?:Date|Time)?String\(\s*\)",
 )
 
+# Any use of Intl.* or .toLocale*String(...) anywhere in the file.
+# If present, every hardcoded BCP 47 literal in the file is suspicious
+# even when not adjacent to the call site (e.g. `const locale = 'en-US'`
+# later passed to `new Intl.NumberFormat(locale)`).
+LOCALE_USAGE_RE = re.compile(
+    r"\bIntl\.|\.toLocale(?:Date|Time)?String\(",
+)
+
 # Allowlist files where `'en-US'` is the legitimate default constant or
 # the centralized helper itself.
 _LOCALE_SKIP_PATHS: set[str] = {
@@ -308,50 +316,26 @@ def check_hardcoded_motion_transitions(
     return warnings
 
 
-def check_hardcoded_locale(
-    content: str,
-    file_path: Path,
-    project_root: Path,
+def _locate(stripped: str, lines: list[str], start: int) -> tuple[int, int, str, str]:
+    """Resolve a match offset to (line_num, col, original_line, line_text)."""
+    line_num = stripped[:start].count("\n") + 1
+    col = start - stripped.rfind("\n", 0, start) - 1
+    original_line = lines[line_num - 1]
+    return line_num, col, original_line, original_line.strip()
+
+
+def _collect_hardcoded_locale_literals(
+    stripped: str,
+    lines: list[str],
+    rel_path: Path,
 ) -> list[str]:
-    """Find hardcoded BCP 47 locale literals and bare ``.toLocale*String`` calls.
-
-    Formatters live in ``@/utils/format`` and accept an optional
-    ``locale?: string`` parameter that defaults to ``getLocale()``.
-    Hardcoded ``'en-US'`` literals and locale-less ``.toLocaleString()``
-    calls bypass the i18n-ready pipeline.
-    """
-    rel_str = file_path.relative_to(project_root).as_posix()
-    if rel_str in _LOCALE_SKIP_PATHS:
-        return []
-    if file_path.suffix not in {".tsx", ".ts"}:
-        return []
-
+    """Flag BCP 47 literals (matches already come from Intl-using files)."""
     warnings: list[str] = []
-    rel_path = file_path.relative_to(project_root)
-    lines = content.splitlines()
-
-    # Mask block comments so the regex does not match inside /* ... */.
-    stripped = _BLOCK_COMMENT_RE.sub(
-        lambda cm: "".join(" " if c != "\n" else "\n" for c in cm.group()),
-        content,
-    )
-
     for m in HARDCODED_LOCALE_RE.finditer(stripped):
-        line_num = stripped[: m.start()].count("\n") + 1
-        col = m.start() - stripped.rfind("\n", 0, m.start()) - 1
-        original_line = lines[line_num - 1]
-        line_text = original_line.strip()
+        line_num, col, original_line, line_text = _locate(stripped, lines, m.start())
         if line_text.startswith(_COMMENT_PREFIXES):
             continue
         if _is_in_comment_context(original_line, col):
-            continue
-        # Only flag locales used as Intl / toLocale arguments. Skipping
-        # narrative mentions inside longer prose strings.
-        context = stripped[max(0, m.start() - 64) : m.end() + 4]
-        if not re.search(
-            r"(?:Intl\.|toLocale(?:Date|Time)?String)",
-            context,
-        ):
             continue
         warnings.append(
             f"  {rel_path}:{line_num}: Hardcoded locale `{m.group('locale')}` "
@@ -359,12 +343,18 @@ def check_hardcoded_locale(
             f"or pass the locale explicitly via the helper parameter.\n"
             f"    {line_text}"
         )
+    return warnings
 
+
+def _collect_bare_tolocale_calls(
+    stripped: str,
+    lines: list[str],
+    rel_path: Path,
+) -> list[str]:
+    """Flag ``.toLocale*String()`` calls that omit an explicit locale."""
+    warnings: list[str] = []
     for m in BARE_TOLOCALE_RE.finditer(stripped):
-        line_num = stripped[: m.start()].count("\n") + 1
-        col = m.start() - stripped.rfind("\n", 0, m.start()) - 1
-        original_line = lines[line_num - 1]
-        line_text = original_line.strip()
+        line_num, col, original_line, line_text = _locate(stripped, lines, m.start())
         if line_text.startswith(_COMMENT_PREFIXES):
             continue
         if _is_in_comment_context(original_line, col):
@@ -376,7 +366,41 @@ def check_hardcoded_locale(
             f"`@/utils/format` so output is deterministic and locale-aware.\n"
             f"    {line_text}"
         )
+    return warnings
 
+
+def check_hardcoded_locale(
+    content: str,
+    file_path: Path,
+    project_root: Path,
+) -> list[str]:
+    """Find hardcoded BCP 47 locale literals and bare ``.toLocale*String`` calls.
+
+    Formatters live in ``@/utils/format`` and accept an optional
+    ``locale?: string`` parameter that defaults to ``getLocale()``.
+    Hardcoded ``'en-US'`` literals and locale-less ``.toLocaleString()``
+    calls bypass the i18n-ready pipeline. Any BCP 47 literal in a file
+    that uses ``Intl.*`` or ``.toLocale*String(...)`` anywhere is treated
+    as suspicious (catches ``const locale = 'en-US'; Intl.X(locale)``
+    patterns the previous heuristic missed).
+    """
+    rel_str = file_path.relative_to(project_root).as_posix()
+    if rel_str in _LOCALE_SKIP_PATHS:
+        return []
+    if file_path.suffix not in {".tsx", ".ts"}:
+        return []
+    if not LOCALE_USAGE_RE.search(content):
+        return []
+
+    rel_path = file_path.relative_to(project_root)
+    lines = content.splitlines()
+    stripped = _BLOCK_COMMENT_RE.sub(
+        lambda cm: "".join(" " if c != "\n" else "\n" for c in cm.group()),
+        content,
+    )
+
+    warnings = _collect_hardcoded_locale_literals(stripped, lines, rel_path)
+    warnings.extend(_collect_bare_tolocale_calls(stripped, lines, rel_path))
     return warnings
 
 

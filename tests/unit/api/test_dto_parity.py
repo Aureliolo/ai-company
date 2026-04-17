@@ -19,6 +19,8 @@ from synthorg.api.dto_providers import PullModelRequest, UpdateModelConfigReques
 from synthorg.config.schema import LocalModelParams
 from synthorg.core.company import Team
 
+pytestmark = pytest.mark.unit
+
 
 class TestUpdateDepartmentRequestTeams:
     """`teams` is now a tuple of typed Team models, not raw dicts."""

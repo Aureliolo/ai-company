@@ -8,62 +8,71 @@ import type {
 import { useTrainingStore } from '@/stores/training'
 import { useToastStore } from '@/stores/toast'
 
-function mockPlan(overrides: Partial<TrainingPlanResponse> = {}): TrainingPlanResponse {
-  return {
-    id: 'plan-1',
-    new_agent_id: 'agent-1',
-    new_agent_role: 'engineer',
-    source_selector_type: 'seniority',
-    enabled_content_types: ['procedural', 'semantic', 'tool_patterns'],
-    curation_strategy_type: 'default',
-    volume_caps: [],
-    override_sources: [],
-    skip_training: false,
-    require_review: true,
-    status: 'pending',
-    created_at: '2026-04-01T00:00:00Z',
-    executed_at: null,
-    ...overrides,
-  }
-}
-
-function mockResult(overrides: Partial<TrainingResultResponse> = {}): TrainingResultResponse {
-  return {
-    id: 'res-1',
-    plan_id: 'plan-1',
-    new_agent_id: 'agent-1',
-    source_agents_used: ['source-1'],
-    items_extracted: [['procedural', 3]],
-    items_after_curation: [['procedural', 3]],
-    items_after_guards: [['procedural', 3]],
-    items_stored: [['procedural', 3]],
-    approval_item_id: null,
-    review_pending: false,
-    errors: [],
-    started_at: '2026-04-01T00:00:00Z',
-    completed_at: '2026-04-01T00:05:00Z',
-    ...overrides,
-  }
-}
-
 describe('useTrainingStore', () => {
+  function mockPlan(
+    overrides: Partial<TrainingPlanResponse> = {},
+  ): TrainingPlanResponse {
+    return {
+      id: 'plan-1',
+      new_agent_id: 'agent-1',
+      new_agent_role: 'engineer',
+      source_selector_type: 'seniority',
+      enabled_content_types: ['procedural', 'semantic', 'tool_patterns'],
+      curation_strategy_type: 'default',
+      volume_caps: [],
+      override_sources: [],
+      skip_training: false,
+      require_review: true,
+      status: 'pending',
+      created_at: '2026-04-01T00:00:00Z',
+      executed_at: null,
+      ...overrides,
+    }
+  }
+
+  function mockResult(
+    overrides: Partial<TrainingResultResponse> = {},
+  ): TrainingResultResponse {
+    return {
+      id: 'res-1',
+      plan_id: 'plan-1',
+      new_agent_id: 'agent-1',
+      source_agents_used: ['source-1'],
+      items_extracted: [['procedural', 3]],
+      items_after_curation: [['procedural', 3]],
+      items_after_guards: [['procedural', 3]],
+      items_stored: [['procedural', 3]],
+      approval_item_id: null,
+      review_pending: false,
+      errors: [],
+      started_at: '2026-04-01T00:00:00Z',
+      completed_at: '2026-04-01T00:05:00Z',
+      ...overrides,
+    }
+  }
+
+  /**
+   * Snapshot of the initial store state. Used by ``beforeEach`` to
+   * restore every caches + flag key (not just the subset the test
+   * cares about) so leftover mutations from a prior test cannot leak.
+   */
+  const initialStoreState = useTrainingStore.getState()
+
   beforeEach(() => {
-    useTrainingStore.setState({
-      plansByAgent: {},
-      resultsByAgent: {},
-      loading: {},
-      error: {},
-    })
+    useTrainingStore.setState(initialStoreState, true)
     useToastStore.setState({ toasts: [] })
     vi.restoreAllMocks()
   })
 
   it('fetchResult stores the result and clears loading', async () => {
     const result = mockResult()
-    vi.spyOn(trainingApi, 'getTrainingResult').mockResolvedValueOnce(result)
+    const spy = vi
+      .spyOn(trainingApi, 'getTrainingResult')
+      .mockResolvedValueOnce(result)
 
     await useTrainingStore.getState().fetchResult('agent-1')
 
+    expect(spy).toHaveBeenCalledWith('agent-1')
     const state = useTrainingStore.getState()
     expect(state.resultsByAgent['agent-1']).toEqual(result)
     expect(state.loading['agent-1']).toBe(false)
@@ -78,21 +87,86 @@ describe('useTrainingStore', () => {
     await useTrainingStore.getState().fetchResult('agent-1')
 
     const state = useTrainingStore.getState()
-    expect(state.resultsByAgent['agent-1']).toBeUndefined()
+    expect(state.resultsByAgent).not.toHaveProperty('agent-1')
     expect(state.loading['agent-1']).toBe(false)
     expect(state.error['agent-1']).toContain('offline')
   })
 
+  it('fetchResult treats a 404 as an empty cache (no error banner)', async () => {
+    const notFound = Object.assign(new Error('Not Found'), {
+      response: { status: 404 },
+    })
+    vi.spyOn(trainingApi, 'getTrainingResult').mockRejectedValueOnce(notFound)
+
+    await useTrainingStore.getState().fetchResult('agent-1')
+
+    const state = useTrainingStore.getState()
+    expect(state.resultsByAgent['agent-1']).toBeNull()
+    expect(state.error['agent-1']).toBeNull()
+    expect(state.loading['agent-1']).toBe(false)
+  })
+
+  it('fetchPlan stores the plan on success', async () => {
+    const plan = mockPlan()
+    const spy = vi
+      .spyOn(trainingApi, 'getLatestTrainingPlan')
+      .mockResolvedValueOnce(plan)
+
+    await useTrainingStore.getState().fetchPlan('agent-1')
+
+    expect(spy).toHaveBeenCalledWith('agent-1')
+    expect(useTrainingStore.getState().plansByAgent['agent-1']).toEqual(plan)
+  })
+
+  it('fetchPlan treats a 404 as an empty cache', async () => {
+    const notFound = Object.assign(new Error('Not Found'), {
+      response: { status: 404 },
+    })
+    vi.spyOn(trainingApi, 'getLatestTrainingPlan').mockRejectedValueOnce(
+      notFound,
+    )
+
+    await useTrainingStore.getState().fetchPlan('agent-1')
+
+    expect(useTrainingStore.getState().plansByAgent['agent-1']).toBeNull()
+    expect(useTrainingStore.getState().error['agent-1']).toBeNull()
+  })
+
+  it('hydrateForAgent fetches plan and result in parallel', async () => {
+    const plan = mockPlan({ status: 'executed' })
+    const result = mockResult()
+    const planSpy = vi
+      .spyOn(trainingApi, 'getLatestTrainingPlan')
+      .mockResolvedValueOnce(plan)
+    const resultSpy = vi
+      .spyOn(trainingApi, 'getTrainingResult')
+      .mockResolvedValueOnce(result)
+
+    await useTrainingStore.getState().hydrateForAgent('agent-1')
+
+    expect(planSpy).toHaveBeenCalledWith('agent-1')
+    expect(resultSpy).toHaveBeenCalledWith('agent-1')
+    const state = useTrainingStore.getState()
+    expect(state.plansByAgent['agent-1']).toEqual(plan)
+    expect(state.resultsByAgent['agent-1']).toEqual(result)
+  })
+
   it('createPlan updates the store and emits a success toast', async () => {
     const plan = mockPlan()
-    vi.spyOn(trainingApi, 'createTrainingPlan').mockResolvedValueOnce(plan)
-
-    const returned = await useTrainingStore.getState().createPlan('agent-1', {
+    const request = {
       override_sources: [],
       skip_training: false,
       require_review: true,
-    })
+    }
+    const spy = vi
+      .spyOn(trainingApi, 'createTrainingPlan')
+      .mockResolvedValueOnce(plan)
 
+    const returned = await useTrainingStore
+      .getState()
+      .createPlan('agent-1', request)
+
+    expect(spy).toHaveBeenCalledWith('agent-1', request)
     expect(returned).toEqual(plan)
     expect(useTrainingStore.getState().plansByAgent['agent-1']).toEqual(plan)
     const toasts = useToastStore.getState().toasts
@@ -117,26 +191,52 @@ describe('useTrainingStore', () => {
     expect(toasts[0]?.description).toContain('server exploded')
   })
 
-  it('executePlan stores the result on success', async () => {
-    const result = mockResult()
-    vi.spyOn(trainingApi, 'executeTrainingPlan').mockResolvedValueOnce(result)
+  it('executePlan stores the result and marks the cached plan as executed', async () => {
+    const plan = mockPlan({ status: 'pending' })
+    const result = mockResult({ completed_at: '2026-04-01T01:00:00Z' })
+    useTrainingStore.setState((state) => ({
+      plansByAgent: { ...state.plansByAgent, 'agent-1': plan },
+    }))
+    const spy = vi
+      .spyOn(trainingApi, 'executeTrainingPlan')
+      .mockResolvedValueOnce(result)
 
     const returned = await useTrainingStore.getState().executePlan('agent-1')
 
+    expect(spy).toHaveBeenCalledWith('agent-1')
     expect(returned).toEqual(result)
-    expect(useTrainingStore.getState().resultsByAgent['agent-1']).toEqual(result)
+    const state = useTrainingStore.getState()
+    expect(state.resultsByAgent['agent-1']).toEqual(result)
+    expect(state.plansByAgent['agent-1']?.status).toBe('executed')
+    expect(state.plansByAgent['agent-1']?.executed_at).toBe(
+      '2026-04-01T01:00:00Z',
+    )
+  })
+
+  it('executePlan without a cached plan still stores the result', async () => {
+    const result = mockResult()
+    vi.spyOn(trainingApi, 'executeTrainingPlan').mockResolvedValueOnce(result)
+
+    await useTrainingStore.getState().executePlan('agent-1')
+
+    const state = useTrainingStore.getState()
+    expect(state.resultsByAgent['agent-1']).toEqual(result)
+    expect(state.plansByAgent).not.toHaveProperty('agent-1')
   })
 
   it('updateOverrides replaces the cached plan on success', async () => {
     const updated = mockPlan({ status: 'executed' })
-    vi.spyOn(trainingApi, 'updateTrainingOverrides').mockResolvedValueOnce(
-      updated,
-    )
+    const spy = vi
+      .spyOn(trainingApi, 'updateTrainingOverrides')
+      .mockResolvedValueOnce(updated)
 
     const returned = await useTrainingStore
       .getState()
       .updateOverrides('agent-1', 'plan-1', { override_sources: ['s2'] })
 
+    expect(spy).toHaveBeenCalledWith('agent-1', 'plan-1', {
+      override_sources: ['s2'],
+    })
     expect(returned).toEqual(updated)
     expect(useTrainingStore.getState().plansByAgent['agent-1']).toEqual(updated)
   })

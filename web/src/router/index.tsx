@@ -125,7 +125,7 @@ export const router = createBrowserRouter([
               { path: ROUTES.META.slice(1), element: <MetaPage /> },
               { path: 'agents', element: <AgentsPage /> },
               { path: 'agents/:agentId', element: <AgentDetailPage /> },
-              { path: 'training', element: <TrainingPage /> },
+              { path: ROUTES.TRAINING.slice(1), element: <TrainingPage /> },
               { path: 'messages', element: <MessagesPage /> },
               { path: 'meetings', element: <MeetingsPage /> },
               { path: 'meetings/:meetingId', element: <MeetingDetailPage /> },

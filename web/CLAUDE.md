@@ -30,9 +30,9 @@ web/src/
   hooks/          # React hooks (auth, login lockout, WebSocket, polling, optimistic updates, command palette, flash effects, status transitions, page data composition, count animation, auto-scroll, roving tabindex, breakpoint detection, update tracking, animation presets, settings dirty state, settings keyboard shortcuts, communication edges, artifact/project data composition, useWorkflowsData)
   lib/            # Utilities (cn() class merging, semantic color mappers), Motion presets, CSP nonce reader, structured logger factory
   mocks/          # MSW request handlers for Storybook API mocking (handlers/)
-  pages/          # Lazy-loaded page components (one per route); page-scoped sub-components in pages/<page-name>/ subdirs (e.g. tasks/, org-edit/, settings/, workflows/, fine-tuning/)
+  pages/          # Lazy-loaded page components (one per route); page-scoped sub-components in pages/<page-name>/ subdirs (e.g. tasks/, org-edit/, settings/, workflows/, fine-tuning/, training/)
   router/         # React Router config, route constants (incl. DOCUMENTATION -- external, not SPA-routed), auth/setup guards
-  stores/         # Zustand stores (auth, WebSocket, toast, analytics, setup wizard, company, agents, approvals, budget, meetings, messages, tasks, settings, sinks, providers (split into providers/ sub-modules), artifacts, projects, theme, workflow-editor, workflows, fine-tuning, ceremony-policy, setup, and per-domain stores for each page)
+  stores/         # Zustand stores (auth, WebSocket, toast, analytics, setup wizard, company, agents, approvals, budget, meetings, messages, tasks, settings, sinks, providers (split into providers/ sub-modules), artifacts, projects, theme, workflow-editor, workflows, fine-tuning, ceremony-policy, setup, training, and per-domain stores for each page)
   styles/         # Design tokens (--so-* CSS custom properties, single source of truth) and Tailwind theme bridge
   utils/          # Constants, error handling, formatting, logging
   __tests__/      # Vitest unit + property tests (mirrors src/ structure)
@@ -68,7 +68,7 @@ All Zustand store **mutation** actions (create/update/delete) MUST follow the `s
 
 | Component | Import | Use for |
 |-----------|--------|---------|
-| `StatusBadge` | `@/components/ui/status-badge` | Agent/task/system status indicators (colored dot + optional built-in label toggle) |
+| `StatusBadge` | `@/components/ui/status-badge` | Agent/task/system status indicators (colored dot + optional built-in `label`). Default emits `role="img"` with an aria-label. Pass `decorative` when the badge is visually labeled by adjacent text (emits `aria-hidden`); pass `announce` for live WS updates (emits `role="status"` + `aria-live="polite"`). |
 | `MetricCard` | `@/components/ui/metric-card` | Numeric KPIs with sparkline, change badge, progress bar |
 | `Sparkline` | `@/components/ui/sparkline` | Inline SVG trend lines with `color?` and `animated?` props (used inside MetricCard or standalone) |
 | `SectionCard` | `@/components/ui/section-card` | Titled card wrapper with icon and action slot |
@@ -118,6 +118,7 @@ All Zustand store **mutation** actions (create/update/delete) MUST follow the `s
 - **Shadows/Borders**: use token variables (`var(--so-shadow-card-hover)`, `border-border`, `border-bright`).
 - **Chart SVG attributes** (Recharts, xyflow, `<svg>`): use `var(--so-stroke-hairline)` (1) or `var(--so-stroke-thin)` (1.5) for `strokeWidth`; `var(--so-chart-fill-opacity-strong)` (0.3) or `var(--so-chart-fill-opacity-subtle)` (0.15) for `stopOpacity`; `var(--so-dash-tight)` / `--so-dash-compact` / `--so-dash-medium` / `--so-dash-loose` / `--so-dash-wide` for `strokeDasharray`. Modern browsers resolve CSS variables inside SVG presentation attributes. **Exception**: xyflow's `MiniMap` props (`maskStrokeWidth`, `nodeStrokeWidth`, `nodeBorderRadius`) and Recharts' `margin` prop are typed as `number` and reject CSS vars -- use numeric constants and a comment pointing to the token.
 - **Currency**: NEVER hardcode currency codes (`'EUR'`, `'USD'`) or symbols (`€`, `$`) in formatter calls. Import `DEFAULT_CURRENCY` from `@/utils/currencies` and pass it to `formatCurrency(value, DEFAULT_CURRENCY)` or read the runtime currency from the company/settings store where available.
+- **Locale / i18n**: NEVER hardcode BCP 47 locale strings (`'en-US'`, `'fr-FR'`) or call bare `.toLocaleString()` / `.toLocaleDateString()` / `.toLocaleTimeString()`. Use the helpers in `@/utils/format` -- `formatDateTime`, `formatDateOnly`, `formatTime`, `formatDayLabel`, `formatTodayLabel`, `formatRelativeTime`, `formatNumber`, `formatCurrency`, `formatCurrencyCompact`, `formatTokenCount` -- all of which accept an optional `locale?: string` that defaults to `getLocale()` from `@/utils/locale`. The locale source of truth is `APP_LOCALE` in `@/utils/locale`; swap in a settings-store read there when we add a user-facing locale toggle.
 
 ### Creating New Components
 
@@ -150,6 +151,8 @@ A PostToolUse hook (`scripts/check_web_design_system.py`) runs automatically on 
 - Hardcoded hex colors and rgba values
 - Hardcoded font-family declarations
 - Hardcoded Motion transition durations (should use `@/lib/motion` presets)
+- Hardcoded BCP 47 locale literals (`'en-US'`, `'de-DE'`, etc.) in files that use `Intl.*` or `.toLocale*String(...)` -- use helpers from `@/utils/format` instead
+- Bare `.toLocaleString()` / `.toLocaleDateString()` / `.toLocaleTimeString()` calls without an explicit locale
 - New components without Storybook stories
 - Duplicate patterns that should use existing shared components
 - Complex `.map()` blocks that should be extracted

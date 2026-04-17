@@ -19,7 +19,7 @@ export interface TrainingSectionProps {
  */
 export function TrainingSection({ agentName }: TrainingSectionProps) {
   const { plan, result } = useTrainingForAgent(agentName)
-  const fetchResult = useTrainingStore((s) => s.fetchResult)
+  const hydrateForAgent = useTrainingStore((s) => s.hydrateForAgent)
   const createPlan = useTrainingStore((s) => s.createPlan)
   const executePlan = useTrainingStore((s) => s.executePlan)
   const updateOverrides = useTrainingStore((s) => s.updateOverrides)
@@ -34,8 +34,10 @@ export function TrainingSection({ agentName }: TrainingSectionProps) {
 
   useEffect(() => {
     if (!agentName) return
-    void fetchResult(agentName)
-  }, [agentName, fetchResult])
+    // Hydrate both plan + result so a page refresh after executing
+    // does not drop back to the "Create Plan" form (issue #1394).
+    void hydrateForAgent(agentName)
+  }, [agentName, hydrateForAgent])
 
   const handleOpenChange = useCallback(
     (open: boolean) => {
@@ -62,8 +64,12 @@ export function TrainingSection({ agentName }: TrainingSectionProps) {
     // Approve the current overrides unchanged (human review gate, no
     // edits). Overrides that are partial or edited are a future
     // enhancement -- this hook is the point where they would flow in.
-    await updateOverrides(agentName, plan.id, {})
-    setDismissedPlanId(plan.id)
+    const updated = await updateOverrides(agentName, plan.id, {})
+    // Keep the review modal open on failure so the user can retry;
+    // only dismiss when the API confirms the save.
+    if (updated !== null) {
+      setDismissedPlanId(plan.id)
+    }
   }, [agentName, plan, updateOverrides])
 
   // Map TrainingResultResponse.items_after_guards (tuple pairs) into the

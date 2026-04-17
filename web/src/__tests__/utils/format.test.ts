@@ -112,24 +112,31 @@ describe('formatRelativeTime', () => {
     expect(formatRelativeTime('not-a-date')).toBe('--')
   })
 
-  it('returns "just now" for recent timestamps', () => {
+  it('renders "now" for immediate timestamps under en-US', () => {
     const now = new Date().toISOString()
-    expect(formatRelativeTime(now)).toBe('just now')
+    expect(formatRelativeTime(now, 'en-US')).toBe('now')
   })
 
-  it('returns minutes ago for recent timestamps', () => {
+  it('renders minutes ago under en-US', () => {
     const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString()
-    expect(formatRelativeTime(fiveMinAgo)).toBe('5m ago')
+    expect(formatRelativeTime(fiveMinAgo, 'en-US')).toBe('5 minutes ago')
   })
 
-  it('returns hours ago', () => {
+  it('renders hours ago under en-US', () => {
     const threeHoursAgo = new Date(Date.now() - 3 * 3600 * 1000).toISOString()
-    expect(formatRelativeTime(threeHoursAgo)).toBe('3h ago')
+    expect(formatRelativeTime(threeHoursAgo, 'en-US')).toBe('3 hours ago')
   })
 
-  it('returns days ago', () => {
+  it('renders days ago under en-US', () => {
     const twoDaysAgo = new Date(Date.now() - 2 * 86400 * 1000).toISOString()
-    expect(formatRelativeTime(twoDaysAgo)).toBe('2d ago')
+    expect(formatRelativeTime(twoDaysAgo, 'en-US')).toBe('2 days ago')
+  })
+
+  it('respects an explicit locale override', () => {
+    const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString()
+    const en = formatRelativeTime(fiveMinAgo, 'en-US')
+    const de = formatRelativeTime(fiveMinAgo, 'de-DE')
+    expect(en).not.toBe(de)
   })
 
   it('falls back to formatDateTime for old dates', () => {
@@ -329,16 +336,14 @@ describe('formatCurrencyCompact', () => {
     expect(formatCurrencyCompact(-Infinity)).toBe('--')
   })
 
-  it('normalizes invalid currency code to EUR', () => {
+  it('falls back to "CODE N" when currency is invalid', () => {
     const result = formatCurrencyCompact(100, 'INVALID')
-    const expected = formatCurrencyCompact(100, 'EUR')
-    expect(result).toBe(expected)
+    expect(result).toBe('INVALID 100')
   })
 
-  it('trims whitespace and uppercases currency code', () => {
-    const result = formatCurrencyCompact(100, ' usd ')
-    const expected = formatCurrencyCompact(100, 'USD')
-    expect(result).toBe(expected)
+  it('accepts a lowercase currency code (Intl normalizes it)', () => {
+    const result = formatCurrencyCompact(100, 'usd')
+    expect(result).toMatch(/\$/)
   })
 
   it('formats zero correctly', () => {

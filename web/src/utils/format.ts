@@ -1,6 +1,7 @@
 /** Formatting utilities for dates, currency, and numbers. */
 
 import { createLogger } from '@/lib/logger'
+import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { getLocale } from '@/utils/locale'
 
 const log = createLogger('format')
@@ -13,16 +14,25 @@ const SEC_PER_WEEK = 604800
 const BYTES_PER_KB = 1024
 const COMPACT_K_THRESHOLD = 1000
 
+type DateInput = string | number | Date | null | undefined
+
+function toDate(value: DateInput): Date | null {
+  if (value == null) return null
+  const date = value instanceof Date ? value : new Date(value)
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
 /**
- * Format an ISO 8601 date string as date + time (e.g. "Jan 15, 2025, 10:30 AM").
+ * Format a date as date + time (e.g. "Jan 15, 2025, 10:30 AM").
+ *
+ * Accepts an ISO string, a `Date`, or a millisecond timestamp.
  */
 export function formatDateTime(
-  iso: string | null | undefined,
+  value: DateInput,
   locale: string = getLocale(),
 ): string {
-  if (!iso) return '--'
-  const date = new Date(iso)
-  if (Number.isNaN(date.getTime())) return '--'
+  const date = toDate(value)
+  if (!date) return '--'
   return date.toLocaleString(locale, {
     month: 'short',
     day: 'numeric',
@@ -40,15 +50,16 @@ export function formatDateTime(
 export const formatDate = formatDateTime
 
 /**
- * Format an ISO 8601 date as a date-only string (e.g. "Jan 15, 2025").
+ * Format a date as a date-only string (e.g. "Jan 15, 2025").
+ *
+ * Accepts an ISO string, a `Date`, or a millisecond timestamp.
  */
 export function formatDateOnly(
-  iso: string | null | undefined,
+  value: DateInput,
   locale: string = getLocale(),
 ): string {
-  if (!iso) return '--'
-  const date = new Date(iso)
-  if (Number.isNaN(date.getTime())) return '--'
+  const date = toDate(value)
+  if (!date) return '--'
   return date.toLocaleDateString(locale, {
     month: 'short',
     day: 'numeric',
@@ -57,15 +68,16 @@ export function formatDateOnly(
 }
 
 /**
- * Format an ISO 8601 date as a time-only string (e.g. "10:30 AM").
+ * Format a date as a time-only string (e.g. "10:30 AM").
+ *
+ * Accepts an ISO string, a `Date`, or a millisecond timestamp.
  */
 export function formatTime(
-  iso: string | null | undefined,
+  value: DateInput,
   locale: string = getLocale(),
 ): string {
-  if (!iso) return '--'
-  const date = new Date(iso)
-  if (Number.isNaN(date.getTime())) return '--'
+  const date = toDate(value)
+  if (!date) return '--'
   return date.toLocaleTimeString(locale, {
     hour: '2-digit',
     minute: '2-digit',
@@ -95,7 +107,13 @@ export function formatTodayLabel(locale: string = getLocale()): string {
 }
 
 /**
- * Format a date as relative time (e.g., "2 hours ago").
+ * Format a date as locale-aware relative time (e.g. "5 minutes ago",
+ * "il y a 5 minutes", "hace 5 minutos"). Uses `Intl.RelativeTimeFormat`
+ * with `numeric: 'auto'` so near boundaries render as "yesterday" /
+ * "tomorrow" rather than "1 day ago" / "in 1 day".
+ *
+ * Falls back to {@link formatDateTime} for dates older than a week, for
+ * future dates, and for invalid/missing input.
  */
 export function formatRelativeTime(
   iso: string | null | undefined,
@@ -108,12 +126,17 @@ export function formatRelativeTime(
   const diffMs = now.getTime() - date.getTime()
   if (diffMs < 0) return formatDateTime(iso, locale)
   const diffSec = Math.floor(diffMs / MS_PER_SECOND)
+  if (diffSec >= SEC_PER_WEEK) return formatDateTime(iso, locale)
 
-  if (diffSec < SEC_PER_MIN) return 'just now'
-  if (diffSec < SEC_PER_HOUR) return `${Math.floor(diffSec / SEC_PER_MIN)}m ago`
-  if (diffSec < SEC_PER_DAY) return `${Math.floor(diffSec / SEC_PER_HOUR)}h ago`
-  if (diffSec < SEC_PER_WEEK) return `${Math.floor(diffSec / SEC_PER_DAY)}d ago`
-  return formatDateTime(iso, locale)
+  const rtf = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' })
+  if (diffSec < SEC_PER_MIN) return rtf.format(-diffSec, 'second')
+  if (diffSec < SEC_PER_HOUR) {
+    return rtf.format(-Math.floor(diffSec / SEC_PER_MIN), 'minute')
+  }
+  if (diffSec < SEC_PER_DAY) {
+    return rtf.format(-Math.floor(diffSec / SEC_PER_HOUR), 'hour')
+  }
+  return rtf.format(-Math.floor(diffSec / SEC_PER_DAY), 'day')
 }
 
 /** ISO 4217 currencies that use zero decimal places. */
@@ -124,10 +147,11 @@ const THREE_DECIMAL_CURRENCIES = new Set(['BHD','IQD','JOD','KWD','LYD','OMR','T
 
 /**
  * Format a currency value using the given ISO 4217 currency code.
+ * Defaults to {@link DEFAULT_CURRENCY} when no code is provided.
  */
 export function formatCurrency(
   value: number,
-  currencyCode: string = 'EUR',
+  currencyCode: string = DEFAULT_CURRENCY,
   locale: string = getLocale(),
 ): string {
   if (!Number.isFinite(value)) return '--'
@@ -137,7 +161,7 @@ export function formatCurrency(
       currency: currencyCode,
     }).format(value)
   } catch (error) {
-    log.error('Intl.NumberFormat failed for currency:', currencyCode, error)
+    log.error('Intl.NumberFormat failed for currency', { currencyCode }, error)
     const digits = ZERO_DECIMAL_CURRENCIES.has(currencyCode) ? 0 : THREE_DECIMAL_CURRENCIES.has(currencyCode) ? 3 : 2
     return `${currencyCode} ${value.toFixed(digits)}`
   }
@@ -145,27 +169,25 @@ export function formatCurrency(
 
 /**
  * Format a currency value compactly for chart axes (e.g. "$5", "$10K").
- * Exact format depends on locale and currency. Falls back to "CODE N" on error.
+ * Exact format depends on locale and currency. Falls back to "CODE N" on
+ * error without silently swapping the currency.
  */
 export function formatCurrencyCompact(
   value: number,
-  currencyCode: string = 'EUR',
+  currencyCode: string = DEFAULT_CURRENCY,
   locale: string = getLocale(),
 ): string {
   if (!Number.isFinite(value)) return '--'
-  // Normalize to 3-letter uppercase ISO 4217 code; fall back to EUR
-  const trimmed = currencyCode.trim()
-  const code = /^[A-Za-z]{3}$/.test(trimmed) ? trimmed.toUpperCase() : 'EUR'
   try {
     return new Intl.NumberFormat(locale, {
       style: 'currency',
-      currency: code,
+      currency: currencyCode,
       maximumFractionDigits: 0,
       notation: 'compact',
     }).format(value)
   } catch (error) {
-    log.error(`Intl.NumberFormat compact failed for currency "${code}":`, error)
-    return `${code} ${Math.round(value)}`
+    log.error('Intl.NumberFormat compact failed for currency', { currencyCode }, error)
+    return `${currencyCode} ${Math.round(value)}`
   }
 }
 

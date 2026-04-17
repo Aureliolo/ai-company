@@ -35,7 +35,7 @@ export function TaskCard({ task, onSelect, isDragging, isOverlay, className, ref
       tabIndex={0}
       aria-label={`Task: ${task.title}`}
       aria-roledescription="draggable task"
-      aria-pressed={isDragging}
+      data-dragging={isDragging ? 'true' : undefined}
       onClick={() => onSelect(task.id)}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
@@ -46,7 +46,7 @@ export function TaskCard({ task, onSelect, isDragging, isOverlay, className, ref
       style={flashStyle}
       className={cn(
         'cursor-pointer rounded-lg border border-border bg-card p-card transition-colors',
-        'hover:border-border-bright hover:bg-card-hover hover:-translate-y-px hover:shadow-[0_4px_24px_var(--so-accent-8)]',
+        'hover:border-border-bright hover:bg-card-hover hover:-translate-y-px hover:shadow-[var(--so-shadow-card-hover)]',
         FOCUS_RING,
         isDragging && 'scale-[1.02] opacity-50 shadow-lg',
         isOverlay && 'scale-[1.02] shadow-lg border-accent/50',

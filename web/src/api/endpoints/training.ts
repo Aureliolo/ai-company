@@ -83,6 +83,15 @@ export async function getTrainingResult(
   return unwrap(response)
 }
 
+export async function getLatestTrainingPlan(
+  agentName: string,
+): Promise<TrainingPlanResponse> {
+  const response = await apiClient.get<ApiResponse<TrainingPlanResponse>>(
+    `/agents/${encodeURIComponent(agentName)}/training/plan`,
+  )
+  return unwrap(response)
+}
+
 export async function previewTrainingPlan(
   agentName: string,
 ): Promise<TrainingResultResponse> {

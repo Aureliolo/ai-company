@@ -24,15 +24,17 @@ export default function TrainingPage() {
 
   const plansByAgent = useTrainingStore((s) => s.plansByAgent)
   const resultsByAgent = useTrainingStore((s) => s.resultsByAgent)
-  const fetchResult = useTrainingStore((s) => s.fetchResult)
+  const hydrateForAgent = useTrainingStore((s) => s.hydrateForAgent)
   const executePlan = useTrainingStore((s) => s.executePlan)
 
   useEffect(() => {
     let cancelled = false
     // Kick off the fetch in a microtask so the initial render completes
     // first (avoids the synchronous set-state-in-effect lint rule).
+    // Ask for the full roster up-front so the table does not silently
+    // truncate to the default 50-agent page.
     void Promise.resolve()
-      .then(() => listAgents())
+      .then(() => listAgents({ limit: 200 }))
       .then((paginated) => {
         if (!cancelled) {
           setAgents(paginated.data)
@@ -52,12 +54,12 @@ export default function TrainingPage() {
   }, [])
 
   useEffect(() => {
-    // Hydrate training results for each agent (best-effort; missing results
-    // surface as "no plan" rows instead of errors).
+    // Hydrate plan + result for each agent (best-effort; missing rows
+    // surface as "no plan" instead of errors -- the store swallows 404).
     for (const agent of agents) {
-      void fetchResult(agent.name)
+      void hydrateForAgent(agent.name)
     }
-  }, [agents, fetchResult])
+  }, [agents, hydrateForAgent])
 
   const rows: readonly TrainingPlanRow[] = useMemo(
     () =>
