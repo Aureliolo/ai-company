@@ -421,6 +421,11 @@ func validateInitFlags(dataDir string) error {
 		// (3) otherwise the State default (sqlite).
 		effectiveBackend := initPersistenceBackend
 		if effectiveBackend == "" && dataDir != "" {
+			// Best-effort preload: if the config doesn't exist yet or
+			// can't be parsed, fall through to the State default and
+			// let the real error surface during writeInitFiles. A
+			// corrupted config is not a reason to reject a valid
+			// --postgres-port flag here.
 			if oldState, err := config.Load(dataDir); err == nil {
 				effectiveBackend = oldState.PersistenceBackend
 			}

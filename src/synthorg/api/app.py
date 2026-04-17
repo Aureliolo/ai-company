@@ -1546,13 +1546,23 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
                     env_db_path = (os.environ.get("SYNTHORG_DB_PATH") or "").strip()
                     secret_db_path = env_db_path or None
 
-            # Resolve the Postgres pool for the encrypted_postgres backend.
+            # Resolve the Postgres pool for the encrypted_postgres
+            # backend. Only catch ``PersistenceConnectionError`` here
+            # -- that's the documented failure mode when the pool
+            # isn't connected yet. Unexpected exceptions (attribute
+            # errors, programming bugs, driver panics) propagate so
+            # they surface as startup failures instead of silently
+            # downgrading secret storage to env_var.
             pg_pool = None
             if postgres_mode:
+                from synthorg.persistence.errors import (  # noqa: PLC0415
+                    PersistenceConnectionError,
+                )
+
                 try:
                     pg_pool = persistence.get_db()
-                except Exception:
-                    logger.warning(
+                except PersistenceConnectionError:
+                    logger.error(
                         API_APP_STARTUP,
                         note=(
                             "Postgres pool unavailable for secret backend; "
@@ -1563,73 +1573,29 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
                     pg_pool = None
 
             # Auto-select the correct Fernet-backed adapter for the
-            # active persistence backend. Operators configure one knob
-            # ("encrypt secrets at rest yes/no") and the app matches
-            # the backend to the store so sqlite/postgres stay in sync.
-            #
-            # Selection rules:
-            #   1. Explicit non-default backend_type in config -> honour.
-            #   2. Default ``encrypted_sqlite`` + postgres mode with a
-            #      live pool -> promote to ``encrypted_postgres``.
-            #   3. Missing master key env (no SYNTHORG_MASTER_KEY) or
-            #      no usable store -> downgrade to ``env_var`` with
-            #      a WARN log so the integrations subsystem still
-            #      boots in a degraded-but-functional state.
-            secret_backend_config = effective_config.integrations.secret_backend
-            resolved_backend_type = secret_backend_config.backend_type
-            if resolved_backend_type == "encrypted_sqlite" and postgres_mode:
-                if pg_pool is not None:
-                    resolved_backend_type = "encrypted_postgres"
-                else:
-                    resolved_backend_type = "env_var"
-                    logger.warning(
-                        API_APP_STARTUP,
-                        note=(
-                            "encrypted secret backend requested in "
-                            "postgres mode but no pool is available; "
-                            "falling back to env_var"
-                        ),
-                    )
-            elif resolved_backend_type == "encrypted_sqlite" and secret_db_path is None:
-                resolved_backend_type = "env_var"
-                logger.warning(
-                    API_APP_STARTUP,
-                    note=(
-                        "encrypted_sqlite secret backend has no db_path; "
-                        "falling back to env_var"
-                    ),
-                )
-            elif resolved_backend_type == "encrypted_postgres" and pg_pool is None:
-                resolved_backend_type = "env_var"
-                logger.warning(
-                    API_APP_STARTUP,
-                    note=(
-                        "encrypted_postgres secret backend has no pg_pool; "
-                        "falling back to env_var"
-                    ),
-                )
+            # active persistence backend. See
+            # ``resolve_secret_backend_config`` in factory.py for the
+            # full rule table -- this call honours explicit config,
+            # promotes the default to match postgres persistence, and
+            # downgrades to env_var with an ERROR log when the master
+            # key is unset or the underlying store is unavailable.
+            from synthorg.integrations.connections.secret_backends.factory import (  # noqa: PLC0415
+                resolve_secret_backend_config,
+            )
 
-            if (
-                resolved_backend_type in ("encrypted_sqlite", "encrypted_postgres")
-                and not os.environ.get("SYNTHORG_MASTER_KEY", "").strip()
-            ):
-                logger.warning(
+            selection = resolve_secret_backend_config(
+                effective_config.integrations.secret_backend,
+                postgres_mode=postgres_mode,
+                pg_pool_available=pg_pool is not None,
+                sqlite_db_path=secret_db_path,
+            )
+            if selection.reason:
+                getattr(logger, selection.level)(
                     API_APP_STARTUP,
-                    note=(
-                        "SYNTHORG_MASTER_KEY is not set; encrypted secret "
-                        "backend requires a Fernet key. Falling back to "
-                        "env_var. Set SYNTHORG_MASTER_KEY (URL-safe base64 "
-                        "of 32 bytes) to enable encrypted secret storage."
-                    ),
-                )
-                resolved_backend_type = "env_var"
-
-            if resolved_backend_type != secret_backend_config.backend_type:
-                secret_backend_config = secret_backend_config.model_copy(
-                    update={"backend_type": resolved_backend_type},
+                    note=selection.reason,
                 )
             secret_backend = create_secret_backend(
-                secret_backend_config,
+                selection.config,
                 db_path=secret_db_path,
                 pg_pool=pg_pool,
             )

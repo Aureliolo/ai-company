@@ -8,6 +8,7 @@ are managed externally (e.g. Docker secrets, systemd credentials).
 
 import os
 
+from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.integrations.config import EnvVarConfig
 from synthorg.integrations.errors import SecretStorageError
 from synthorg.observability import get_logger
@@ -36,13 +37,13 @@ class EnvVarSecretBackend:
         self._prefix = (config or EnvVarConfig()).prefix
 
     @property
-    def backend_name(self) -> str:
+    def backend_name(self) -> NotBlankStr:
         """Human-readable backend identifier."""
         return "env_var"
 
     async def store(
         self,
-        secret_id: str,
+        secret_id: NotBlankStr,
         value: bytes,  # noqa: ARG002
     ) -> None:
         """Not supported -- environment is read-only."""
@@ -55,7 +56,7 @@ class EnvVarSecretBackend:
         msg = "EnvVarSecretBackend is read-only; cannot store secrets"
         raise SecretStorageError(msg)
 
-    async def retrieve(self, secret_id: str) -> bytes | None:
+    async def retrieve(self, secret_id: NotBlankStr) -> bytes | None:
         """Read a secret from the environment."""
         env_key = f"{self._prefix}{secret_id}"
         raw = os.environ.get(env_key)
@@ -71,7 +72,7 @@ class EnvVarSecretBackend:
 
     async def delete(
         self,
-        secret_id: str,
+        secret_id: NotBlankStr,
     ) -> bool:
         """Not supported -- environment is read-only."""
         logger.warning(
@@ -85,9 +86,9 @@ class EnvVarSecretBackend:
 
     async def rotate(
         self,
-        old_id: str,
+        old_id: NotBlankStr,
         new_value: bytes,  # noqa: ARG002
-    ) -> str:
+    ) -> NotBlankStr:
         """Not supported -- environment is read-only."""
         logger.warning(
             SECRET_BACKEND_UNAVAILABLE,

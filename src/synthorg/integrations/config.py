@@ -8,6 +8,8 @@ from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from synthorg.core.types import NotBlankStr  # noqa: TC001
+
 
 class ConnectionsConfig(BaseModel):
     """Connection catalog configuration.
@@ -32,7 +34,7 @@ class EncryptedSqliteConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    master_key_env: str = "SYNTHORG_MASTER_KEY"
+    master_key_env: NotBlankStr = "SYNTHORG_MASTER_KEY"
 
 
 class EncryptedPostgresConfig(BaseModel):
@@ -49,7 +51,7 @@ class EncryptedPostgresConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    master_key_env: str = "SYNTHORG_MASTER_KEY"
+    master_key_env: NotBlankStr = "SYNTHORG_MASTER_KEY"
 
 
 class EnvVarConfig(BaseModel):
@@ -61,7 +63,7 @@ class EnvVarConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    prefix: str = "SYNTHORG_SECRET_"
+    prefix: NotBlankStr = "SYNTHORG_SECRET_"
 
 
 class SecretBackendConfig(BaseModel):
@@ -192,7 +194,7 @@ class TunnelConfig(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     enabled: bool = False
-    auth_token_env: str = "NGROK_AUTHTOKEN"  # noqa: S105
+    auth_token_env: NotBlankStr = "NGROK_AUTHTOKEN"  # noqa: S105
 
 
 class McpCatalogConfig(BaseModel):

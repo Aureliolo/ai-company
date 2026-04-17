@@ -24,6 +24,7 @@ from synthorg.integrations.connections.secret_backends.env_var import (
 )
 from synthorg.integrations.connections.secret_backends.factory import (
     create_secret_backend,
+    resolve_secret_backend_config,
 )
 
 
@@ -114,3 +115,153 @@ class TestEncryptedPostgresKeyLoading:
         pool = MagicMock()
         with pytest.raises(MasterKeyError, match="Invalid Fernet key"):
             EncryptedPostgresSecretBackend(pool=pool)
+
+
+@pytest.mark.unit
+class TestResolveSecretBackendConfig:
+    """Exercise each branch of the auto-selection ladder in isolation."""
+
+    @pytest.fixture
+    def with_master_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from cryptography.fernet import Fernet
+
+        monkeypatch.setenv("SYNTHORG_MASTER_KEY", Fernet.generate_key().decode())
+
+    @pytest.fixture
+    def without_master_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("SYNTHORG_MASTER_KEY", raising=False)
+
+    def test_default_sqlite_with_db_path_and_key_honoured(
+        self,
+        with_master_key: None,
+    ) -> None:
+        selection = resolve_secret_backend_config(
+            SecretBackendConfig(),
+            postgres_mode=False,
+            pg_pool_available=False,
+            sqlite_db_path="/tmp/secrets.db",  # noqa: S108
+        )
+        assert selection.config.backend_type == "encrypted_sqlite"
+        assert selection.reason == ""
+        assert selection.level == "info"
+
+    def test_default_sqlite_in_postgres_mode_promotes_to_postgres(
+        self,
+        with_master_key: None,
+    ) -> None:
+        selection = resolve_secret_backend_config(
+            SecretBackendConfig(),
+            postgres_mode=True,
+            pg_pool_available=True,
+            sqlite_db_path=None,
+        )
+        assert selection.config.backend_type == "encrypted_postgres"
+        assert "promoted" in selection.reason
+        assert selection.level == "warning"
+
+    def test_default_sqlite_in_postgres_mode_no_pool_downgrades(
+        self,
+        with_master_key: None,
+    ) -> None:
+        selection = resolve_secret_backend_config(
+            SecretBackendConfig(),
+            postgres_mode=True,
+            pg_pool_available=False,
+            sqlite_db_path=None,
+        )
+        assert selection.config.backend_type == "env_var"
+        assert "no pool is available" in selection.reason
+        assert selection.level == "error"
+
+    def test_sqlite_without_db_path_downgrades(
+        self,
+        with_master_key: None,
+    ) -> None:
+        selection = resolve_secret_backend_config(
+            SecretBackendConfig(),
+            postgres_mode=False,
+            pg_pool_available=False,
+            sqlite_db_path=None,
+        )
+        assert selection.config.backend_type == "env_var"
+        assert "no db_path" in selection.reason
+        assert selection.level == "error"
+
+    def test_explicit_encrypted_postgres_without_pool_downgrades(
+        self,
+        with_master_key: None,
+    ) -> None:
+        selection = resolve_secret_backend_config(
+            SecretBackendConfig(backend_type="encrypted_postgres"),
+            postgres_mode=True,
+            pg_pool_available=False,
+            sqlite_db_path=None,
+        )
+        assert selection.config.backend_type == "env_var"
+        assert "no pg_pool" in selection.reason
+        assert selection.level == "error"
+
+    def test_missing_master_key_downgrades_sqlite(
+        self,
+        without_master_key: None,
+    ) -> None:
+        selection = resolve_secret_backend_config(
+            SecretBackendConfig(),
+            postgres_mode=False,
+            pg_pool_available=False,
+            sqlite_db_path="/tmp/secrets.db",  # noqa: S108
+        )
+        assert selection.config.backend_type == "env_var"
+        assert "SYNTHORG_MASTER_KEY is not set" in selection.reason
+        assert selection.level == "error"
+
+    def test_missing_master_key_downgrades_postgres(
+        self,
+        without_master_key: None,
+    ) -> None:
+        selection = resolve_secret_backend_config(
+            SecretBackendConfig(backend_type="encrypted_postgres"),
+            postgres_mode=True,
+            pg_pool_available=True,
+            sqlite_db_path=None,
+        )
+        assert selection.config.backend_type == "env_var"
+        assert "SYNTHORG_MASTER_KEY is not set" in selection.reason
+        assert selection.level == "error"
+
+    def test_explicit_env_var_honoured_without_master_key(
+        self,
+        without_master_key: None,
+    ) -> None:
+        selection = resolve_secret_backend_config(
+            SecretBackendConfig(backend_type="env_var"),
+            postgres_mode=True,
+            pg_pool_available=True,
+            sqlite_db_path=None,
+        )
+        assert selection.config.backend_type == "env_var"
+        assert selection.reason == ""
+        assert selection.level == "info"
+
+    def test_custom_master_key_env_respected(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from cryptography.fernet import Fernet
+
+        monkeypatch.delenv("SYNTHORG_MASTER_KEY", raising=False)
+        monkeypatch.setenv("MY_CUSTOM_KEY", Fernet.generate_key().decode())
+        config = SecretBackendConfig.model_validate(
+            {
+                "backend_type": "encrypted_sqlite",
+                "encrypted_sqlite": {"master_key_env": "MY_CUSTOM_KEY"},
+            }
+        )
+        selection = resolve_secret_backend_config(
+            config,
+            postgres_mode=False,
+            pg_pool_available=False,
+            sqlite_db_path="/tmp/secrets.db",  # noqa: S108
+        )
+        assert selection.config.backend_type == "encrypted_sqlite"
+        assert selection.reason == ""

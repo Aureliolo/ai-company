@@ -1,6 +1,7 @@
 package compose
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -407,7 +408,7 @@ func TestGenerateMasterKeyGatedByEncryptSecrets(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Generate: %v", err)
 		}
-		if bytesContain(out, "SYNTHORG_MASTER_KEY") {
+		if bytes.Contains(out, []byte("SYNTHORG_MASTER_KEY")) {
 			t.Errorf("SYNTHORG_MASTER_KEY must not appear when EncryptSecrets=false")
 		}
 	})
@@ -420,19 +421,10 @@ func TestGenerateMasterKeyGatedByEncryptSecrets(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Generate: %v", err)
 		}
-		if bytesContain(out, "SYNTHORG_MASTER_KEY") {
+		if bytes.Contains(out, []byte("SYNTHORG_MASTER_KEY")) {
 			t.Errorf("SYNTHORG_MASTER_KEY must not appear without a key")
 		}
 	})
-}
-
-func bytesContain(haystack []byte, needle string) bool {
-	for i := 0; i+len(needle) <= len(haystack); i++ {
-		if string(haystack[i:i+len(needle)]) == needle {
-			return true
-		}
-	}
-	return false
 }
 
 func TestGenerateWithSandboxAndEmptyDigestPins(t *testing.T) {

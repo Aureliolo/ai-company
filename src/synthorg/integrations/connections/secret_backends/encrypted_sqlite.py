@@ -11,6 +11,7 @@ from uuid import uuid4
 import aiosqlite
 from cryptography.fernet import Fernet, InvalidToken
 
+from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.integrations.config import EncryptedSqliteConfig
 from synthorg.integrations.errors import (
     MasterKeyError,
@@ -57,7 +58,7 @@ class EncryptedSqliteSecretBackend:
         self._fernet = self._init_fernet(cfg.master_key_env)
 
     @property
-    def backend_name(self) -> str:
+    def backend_name(self) -> NotBlankStr:
         """Human-readable backend identifier."""
         return "encrypted_sqlite"
 
@@ -74,16 +75,22 @@ class EncryptedSqliteSecretBackend:
             raise MasterKeyError(msg)
         try:
             return Fernet(raw.encode("ascii"))
-        except (ValueError, TypeError) as exc:
+        except (ValueError, TypeError, UnicodeEncodeError) as exc:
             msg = f"Invalid Fernet key in {env_var}"
             raise MasterKeyError(msg) from exc
 
     async def store(
         self,
-        secret_id: str,
+        secret_id: NotBlankStr,
         value: bytes,
     ) -> None:
-        """Encrypt and store a secret."""
+        """Encrypt and store a secret.
+
+        ``store`` is idempotent via ``INSERT OR REPLACE``: if a row
+        with the same ``secret_id`` already exists, its ciphertext is
+        overwritten. Callers that need to detect overwrites must read
+        first.
+        """
         try:
             encrypted = self._fernet.encrypt(value)
             async with aiosqlite.connect(self._db_path) as db:
@@ -107,7 +114,7 @@ class EncryptedSqliteSecretBackend:
             msg = f"Failed to store secret {secret_id}"
             raise SecretStorageError(msg) from exc
 
-    async def retrieve(self, secret_id: str) -> bytes | None:
+    async def retrieve(self, secret_id: NotBlankStr) -> bytes | None:
         """Retrieve and decrypt a secret."""
         try:
             async with aiosqlite.connect(self._db_path) as db:
@@ -151,7 +158,7 @@ class EncryptedSqliteSecretBackend:
             msg = f"Failed to decrypt secret {secret_id}"
             raise SecretRetrievalError(msg) from exc
 
-    async def delete(self, secret_id: str) -> bool:
+    async def delete(self, secret_id: NotBlankStr) -> bool:
         """Delete a secret."""
         try:
             async with aiosqlite.connect(self._db_path) as db:
@@ -176,9 +183,9 @@ class EncryptedSqliteSecretBackend:
 
     async def rotate(
         self,
-        old_id: str,
+        old_id: NotBlankStr,
         new_value: bytes,
-    ) -> str:
+    ) -> NotBlankStr:
         """Rotate: store new value under new ID, delete old.
 
         If deletion of ``old_id`` fails after ``new_id`` has been
@@ -233,7 +240,7 @@ class EncryptedSqliteSecretBackend:
         )
         return new_id
 
-    async def _rollback_new(self, new_id: str) -> str:
+    async def _rollback_new(self, new_id: NotBlankStr) -> str:
         """Attempt to delete *new_id* after a failed rotation."""
         try:
             await self.delete(new_id)

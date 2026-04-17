@@ -144,8 +144,9 @@ COPY --from=builder --chown=65532:65532 /data /data
 
 # Atlas CLI for postgres migration apply on startup. The binary is
 # self-contained; copying it into /usr/local/bin places it on the
-# default PATH without needing a shell or package manager in the
-# distroless runtime.
+# PATH set below (the Wolfi base image does not include
+# /usr/local/bin by default, so the ENV PATH line prepends it
+# explicitly).
 COPY --from=atlas /home/curl_user/atlas /usr/local/bin/atlas
 
 ENV PATH="/app/.venv/bin:/usr/local/bin:$PATH" \
