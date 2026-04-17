@@ -131,6 +131,19 @@ META_ROLLOUT_OBSERVATION_COMPLETED: Final[str] = "meta.rollout.observation_compl
 
 META_ROLLBACK_OPERATION_APPLIED: Final[str] = "meta.rollback.operation_applied"
 META_ROLLBACK_OPERATION_FAILED: Final[str] = "meta.rollback.operation_failed"
+META_ROLLBACK_CONFIG_REVERTED: Final[str] = "meta.rollback.config_reverted"
+META_ROLLBACK_PROMPT_REVERTED: Final[str] = "meta.rollback.prompt_reverted"
+META_ROLLBACK_ARCHITECTURE_REVERTED: Final[str] = "meta.rollback.architecture_reverted"
+META_ROLLBACK_CODE_REVERTED: Final[str] = "meta.rollback.code_reverted"
+
+# -- Group aggregator diagnostics ------------------------------------------
+
+META_ABTEST_GROUP_AGGREGATOR_AGENT_SKIPPED: Final[str] = (
+    "meta.abtest.group_aggregator.agent_skipped"
+)
+META_ABTEST_GROUP_AGGREGATOR_SNAPSHOT_FAILED: Final[str] = (
+    "meta.abtest.group_aggregator.snapshot_failed"
+)
 
 # -- Statistical regression diagnostics ------------------------------------
 

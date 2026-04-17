@@ -102,6 +102,7 @@ See `web/CLAUDE.md` for the full component inventory, design token rules, and po
   - `engine/quality/decomposer_protocol.py` (`CriteriaDecomposer`) + `engine/quality/grader_protocol.py` (`RubricGrader`) + `engine/quality/verification_factory.py` + `engine/quality/verification_config.py`
   - `meta/chief_of_staff/protocol.py` (`OutcomeStore`, `ConfidenceAdjuster`, `OrgInflectionSink`, `AlertSink`) + `meta/chief_of_staff/config.py` discriminator + `meta/factory.py::build_confidence_adjuster()`
   - `meta/telemetry/protocol.py` (`AnalyticsEmitter`, `AnalyticsCollector`, `RecommendationProvider`) + `meta/telemetry/config.py` discriminator + `meta/telemetry/factory.py::build_analytics_emitter()`
+  - `meta/rollout/clock.py` (`Clock`) + `meta/rollout/roster.py` (`OrgRoster`) + `meta/rollout/group_aggregator.py` (`GroupSignalAggregator`) + `meta/rollout/inverse_dispatch.py` (`RollbackHandler` + 4 mutator protocols) + `meta/factory.py::build_rollout_strategies()` + `build_rollback_executor()` -- all plumbed through frozen `SelfImprovementConfig`, with safe defaults (`RealClock`, `NoOpOrgRoster`, null aggregator) so the behaviour is opt-in
 - **Line length**: 88 characters (ruff)
 - **Functions**: < 50 lines, files < 800 lines
 - **Errors**: handle explicitly, never silently swallow

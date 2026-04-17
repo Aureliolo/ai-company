@@ -17,8 +17,12 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg.observability import get_logger
+
 if TYPE_CHECKING:
     from collections.abc import Sequence
+
+logger = get_logger(__name__)
 
 _MIN_SAMPLES_PER_ARM = 2
 

@@ -120,21 +120,23 @@ class TestWelchPValue:
 class TestErrorCases:
     """Edge cases that must raise, not return garbage."""
 
-    def test_fewer_than_two_samples_on_left_raises(self) -> None:
-        with pytest.raises(InsufficientDataError):
-            welch_t_test((1.0,), (1.0, 2.0, 3.0))
-
-    def test_fewer_than_two_samples_on_right_raises(self) -> None:
-        with pytest.raises(InsufficientDataError):
-            welch_t_test((1.0, 2.0, 3.0), ())
-
-    def test_zero_variance_left_raises(self) -> None:
-        with pytest.raises(ZeroVarianceError):
-            welch_t_test((5.0, 5.0, 5.0), (1.0, 2.0, 3.0))
-
-    def test_zero_variance_right_raises(self) -> None:
-        with pytest.raises(ZeroVarianceError):
-            welch_t_test((1.0, 2.0, 3.0), (7.0, 7.0, 7.0))
+    @pytest.mark.parametrize(
+        ("left", "right", "expected_exc"),
+        [
+            ((1.0,), (1.0, 2.0, 3.0), InsufficientDataError),
+            ((1.0, 2.0, 3.0), (), InsufficientDataError),
+            ((5.0, 5.0, 5.0), (1.0, 2.0, 3.0), ZeroVarianceError),
+            ((1.0, 2.0, 3.0), (7.0, 7.0, 7.0), ZeroVarianceError),
+        ],
+    )
+    def test_degenerate_inputs_raise(
+        self,
+        left: tuple[float, ...],
+        right: tuple[float, ...],
+        expected_exc: type[Exception],
+    ) -> None:
+        with pytest.raises(expected_exc):
+            welch_t_test(left, right)
 
 
 class TestWelchResultModel:

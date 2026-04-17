@@ -321,7 +321,7 @@ class ABTestRollout:
             digest = hashlib.sha256(
                 f"{agent_id}:{pid_str}".encode(),
             ).hexdigest()
-            bucket = int(digest[:8], 16) / 0xFFFFFFFF
+            bucket = int(digest[:8], 16) / 0x100000000
             if bucket < control_fraction:
                 control.append(agent_id)
             else:

@@ -11,11 +11,20 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from synthorg.core.types import NotBlankStr
+from synthorg.observability import get_logger
+from synthorg.observability.events.meta import (
+    META_ROLLBACK_ARCHITECTURE_REVERTED,
+    META_ROLLBACK_CODE_REVERTED,
+    META_ROLLBACK_CONFIG_REVERTED,
+    META_ROLLBACK_PROMPT_REVERTED,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from synthorg.meta.models import RollbackOperation
+
+logger = get_logger(__name__)
 
 
 class UnknownRollbackOperationError(ValueError):
@@ -90,6 +99,10 @@ class RevertConfigHandler:
             path=str(operation.target),
             value=operation.previous_value,
         )
+        logger.info(
+            META_ROLLBACK_CONFIG_REVERTED,
+            target=str(operation.target),
+        )
         return 1
 
 
@@ -112,6 +125,10 @@ class RestorePromptHandler:
             scope=str(operation.target),
             text=text,
         )
+        logger.info(
+            META_ROLLBACK_PROMPT_REVERTED,
+            target=str(operation.target),
+        )
         return 1
 
 
@@ -126,6 +143,10 @@ class RevertArchitectureHandler:
         await self._mutator.restore(
             target=str(operation.target),
             previous_value=operation.previous_value,
+        )
+        logger.info(
+            META_ROLLBACK_ARCHITECTURE_REVERTED,
+            target=str(operation.target),
         )
         return 1
 
@@ -148,6 +169,10 @@ class RevertCodeHandler:
         await self._mutator.revert_file(
             path=str(operation.target),
             content=content,
+        )
+        logger.info(
+            META_ROLLBACK_CODE_REVERTED,
+            target=str(operation.target),
         )
         return 1
 

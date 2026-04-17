@@ -14,10 +14,10 @@ from synthorg.meta.models import (
     ImprovementProposal,
     OrgSignalSnapshot,
     RegressionThresholds,
-    RegressionVerdict,
     RolloutOutcome,
     RolloutResult,
 )
+from synthorg.meta.rollout._observation import observe_until_verdict
 from synthorg.meta.rollout.before_after import (
     SnapshotBuilder,
     _default_snapshot_builder,
@@ -26,11 +26,7 @@ from synthorg.meta.rollout.clock import Clock, RealClock
 from synthorg.meta.rollout.roster import NoOpOrgRoster, OrgRoster
 from synthorg.observability import get_logger
 from synthorg.observability.events.meta import (
-    META_ROLLOUT_COMPLETED,
     META_ROLLOUT_FAILED,
-    META_ROLLOUT_OBSERVATION_COMPLETED,
-    META_ROLLOUT_OBSERVATION_TICK,
-    META_ROLLOUT_REGRESSION_DETECTED,
     META_ROLLOUT_STARTED,
 )
 
@@ -136,65 +132,15 @@ class CanarySubsetRollout:
         detector: RegressionDetector,
     ) -> RolloutResult:
         """Poll the detector until the canary observation window closes."""
-        observation_hours = float(proposal.observation_window_hours)
-        elapsed = 0.0
-        while elapsed < observation_hours:
-            remaining = observation_hours - elapsed
-            step_hours = min(self._check_interval_hours, remaining)
-            await self._clock.sleep(step_hours * 3600.0)
-            elapsed += step_hours
-            current = await self._snapshot_builder()
-            result = await detector.check(
-                baseline=baseline,
-                current=current,
-                thresholds=self._thresholds,
-            )
-            logger.info(
-                META_ROLLOUT_OBSERVATION_TICK,
-                strategy="canary",
-                proposal_id=str(proposal.id),
-                elapsed_hours=elapsed,
-                verdict=result.verdict.value,
-            )
-            if result.verdict == RegressionVerdict.THRESHOLD_BREACH or (
-                elapsed >= observation_hours
-                and result.verdict == RegressionVerdict.STATISTICAL_REGRESSION
-            ):
-                logger.warning(
-                    META_ROLLOUT_REGRESSION_DETECTED,
-                    strategy="canary",
-                    proposal_id=str(proposal.id),
-                    verdict=result.verdict.value,
-                    elapsed_hours=elapsed,
-                )
-                return RolloutResult(
-                    proposal_id=proposal.id,
-                    outcome=RolloutOutcome.REGRESSED,
-                    regression_verdict=result.verdict,
-                    observation_hours_elapsed=elapsed,
-                    details=(
-                        str(result.breached_metric)
-                        if result.breached_metric is not None
-                        else None
-                    ),
-                )
-        logger.info(
-            META_ROLLOUT_OBSERVATION_COMPLETED,
-            strategy="canary",
-            proposal_id=str(proposal.id),
-            observation_hours_elapsed=elapsed,
-        )
-        logger.info(
-            META_ROLLOUT_COMPLETED,
-            strategy="canary",
-            proposal_id=str(proposal.id),
-            outcome="success",
-        )
-        return RolloutResult(
-            proposal_id=proposal.id,
-            outcome=RolloutOutcome.SUCCESS,
-            regression_verdict=RegressionVerdict.NO_REGRESSION,
-            observation_hours_elapsed=elapsed,
+        return await observe_until_verdict(
+            proposal=proposal,
+            baseline=baseline,
+            detector=detector,
+            clock=self._clock,
+            snapshot_builder=self._snapshot_builder,
+            check_interval_hours=self._check_interval_hours,
+            thresholds=self._thresholds,
+            strategy_name="canary",
         )
 
 
@@ -215,7 +161,7 @@ def _select_canary(
         digest = hashlib.sha256(
             f"{agent_id}:{proposal_id}".encode(),
         ).hexdigest()
-        bucket = int(digest[:8], 16) / 0xFFFFFFFF
+        bucket = int(digest[:8], 16) / 0x100000000
         if bucket < fraction:
             canary.append(agent_id)
     return tuple(canary)

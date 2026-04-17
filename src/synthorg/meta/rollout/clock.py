@@ -11,6 +11,10 @@ from typing import Protocol, runtime_checkable
 
 from pydantic import AwareDatetime  # noqa: TC002 -- used in protocol return type
 
+from synthorg.observability import get_logger
+
+logger = get_logger(__name__)
+
 
 @runtime_checkable
 class Clock(Protocol):

@@ -1,5 +1,7 @@
 """Early-exit tests for BeforeAfter, Canary, and A/B rollout observation loops."""
 
+from uuid import UUID
+
 import pytest
 
 from synthorg.core.types import NotBlankStr
@@ -29,6 +31,7 @@ from synthorg.meta.rollout.ab_test import ABTestRollout
 from synthorg.meta.rollout.before_after import BeforeAfterRollout
 from synthorg.meta.rollout.group_aggregator import GroupSamples
 from tests.unit.meta.rollout._fake_clock import FakeClock
+from tests.unit.meta.rollout._ramp import ramp as _ramp
 
 pytestmark = pytest.mark.unit
 
@@ -61,8 +64,17 @@ async def _snapshot_builder() -> OrgSignalSnapshot:
     return _snapshot()
 
 
+# Fixed proposal id keeps the SHA-256 based control/treatment split
+# deterministic across runs. The split drives sample tuple lengths,
+# which drive Welch's t-statistic; randomizing the id makes mid-window
+# regression exit timing flake when the split lands in a pathological
+# range.
+_FIXED_PROPOSAL_ID = UUID("00000000-0000-4000-8000-000000000001")
+
+
 def _proposal(window_hours: int = 48) -> ImprovementProposal:
     return ImprovementProposal(
+        id=_FIXED_PROPOSAL_ID,
         altitude=ProposalAltitude.CONFIG_TUNING,
         title="test",
         description="test",
@@ -168,18 +180,6 @@ class TestBeforeAfterEarlyExit:
         )
         assert result.outcome == RolloutOutcome.REGRESSED
         assert result.observation_hours_elapsed == 4.0
-
-
-def _ramp(center: float, observations: int, spread: float) -> tuple[float, ...]:
-    if observations == 0:
-        return ()
-    if observations == 1:
-        return (center,)
-    safe_spread = min(spread, center) if center >= 0.0 else 0.0
-    if safe_spread <= 0.0:
-        return tuple(center for _ in range(observations))
-    step = 2 * safe_spread / (observations - 1)
-    return tuple(center - safe_spread + step * i for i in range(observations))
 
 
 class _StaticRoster:

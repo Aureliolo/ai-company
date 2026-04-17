@@ -78,29 +78,22 @@ class TestFeedbackFactory:
 
 
 class TestReportFactory:
-    def test_summary(self) -> None:
-        assert isinstance(
-            build_report_strategy(ReportConfig(strategy="summary")),
-            SummaryReport,
-        )
-
-    def test_detailed(self) -> None:
-        assert isinstance(
-            build_report_strategy(ReportConfig(strategy="detailed")),
-            DetailedReport,
-        )
-
-    def test_json_export(self) -> None:
-        assert isinstance(
-            build_report_strategy(ReportConfig(strategy="json_export")),
-            JsonExportReport,
-        )
-
-    def test_metrics_only(self) -> None:
-        assert isinstance(
-            build_report_strategy(ReportConfig(strategy="metrics_only")),
-            MetricsOnlyReport,
-        )
+    @pytest.mark.parametrize(
+        ("strategy", "expected_type"),
+        [
+            ("summary", SummaryReport),
+            ("detailed", DetailedReport),
+            ("json_export", JsonExportReport),
+            ("metrics_only", MetricsOnlyReport),
+        ],
+    )
+    def test_dispatch_by_strategy(
+        self,
+        strategy: str,
+        expected_type: type,
+    ) -> None:
+        impl = build_report_strategy(ReportConfig(strategy=strategy))
+        assert isinstance(impl, expected_type)
 
     def test_unknown_raises(self) -> None:
         with pytest.raises(UnknownStrategyError, match="unknown report"):

@@ -32,6 +32,9 @@ from synthorg.client.report.detailed import DetailedReport
 from synthorg.client.report.json_export import JsonExportReport
 from synthorg.client.report.metrics_only import MetricsOnlyReport
 from synthorg.client.report.summary import SummaryReport
+from synthorg.observability import get_logger
+
+logger = get_logger(__name__)
 
 if TYPE_CHECKING:
     from synthorg.client.config import (

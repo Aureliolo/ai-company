@@ -126,3 +126,30 @@ class TestRollbackExecutor:
         executor = RollbackExecutor()
         with pytest.raises(UnknownRollbackOperationError):
             await executor.execute(_proposal(_operation("revert_config")))
+
+    @pytest.mark.parametrize(
+        "catastrophic",
+        [MemoryError("oom"), RecursionError("stack")],
+    )
+    async def test_catastrophic_errors_are_reraised_never_swallowed(
+        self,
+        catastrophic: BaseException,
+    ) -> None:
+        """MemoryError/RecursionError must propagate past the executor.
+
+        The executor's generic ``except Exception`` must not catch
+        catastrophic system errors. Otherwise rollback would paper
+        over out-of-memory / unbounded recursion instead of letting
+        the process fail fast.
+        """
+
+        class _CatastrophicHandler:
+            async def revert(self, operation: RollbackOperation) -> int:
+                _ = operation
+                raise catastrophic
+
+        executor = RollbackExecutor(
+            handlers={NotBlankStr("revert_config"): _CatastrophicHandler()},
+        )
+        with pytest.raises(type(catastrophic)):
+            await executor.execute(_proposal(_operation("revert_config")))

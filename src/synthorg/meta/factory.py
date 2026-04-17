@@ -352,6 +352,12 @@ def build_rollout_strategies(
             check_interval_hours=check_interval,
         ),
     }
+    # Intentionally no deepcopy: injected Clock/OrgRoster/
+    # GroupSignalAggregator carry shared runtime state (e.g.
+    # FakeClock's sleep_calls list) that callers and tests need to
+    # observe via identity. MappingProxyType keeps the dispatch
+    # mapping read-only; the strategy instances themselves are
+    # immutable-by-design (no setters).
     return MappingProxyType(strategies)
 
 

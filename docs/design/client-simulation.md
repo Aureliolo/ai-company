@@ -235,9 +235,33 @@ class ClientSimulationConfig(BaseModel):
     pool: ClientPoolConfig           # Pool size, AI/human/hybrid ratios
     generators: RequirementGeneratorConfig  # Strategy + settings
     feedback: FeedbackConfig         # Strategy + scoring rubric
+    report: ReportConfig             # Report style discriminator
     runner: SimulationRunnerConfig   # Concurrency, timeouts
     continuous: ContinuousModeConfig # Interval, max concurrent
 ```
+
+---
+
+## Configuration & Factories
+
+Each client strategy family has a config discriminator that a factory
+function in `synthorg.client.factory` dispatches to the concrete
+implementation. Misconfiguration fails loud -- every factory raises
+`UnknownStrategyError` (a `ValueError` subclass) on an unknown
+discriminator rather than silently falling back to a default.
+
+| Config discriminator | Factory function | Strategies |
+|---|---|---|
+| `RequirementGeneratorConfig.strategy` | `build_requirement_generator()` | `template` → `TemplateGenerator`, `llm` → `LLMGenerator`, `dataset` → `DatasetGenerator`, `procedural` → `ProceduralGenerator` |
+| `FeedbackConfig.strategy` | `build_feedback_strategy(config, *, client_id)` | `binary` → `BinaryFeedback`, `scored` → `ScoredFeedback`, `criteria_check` → `CriteriaCheckFeedback`, `adversarial` → `AdversarialFeedback` |
+| `ReportConfig.strategy` | `build_report_strategy()` | `summary` → `SummaryReport`, `detailed` → `DetailedReport`, `json_export` → `JsonExportReport`, `metrics_only` → `MetricsOnlyReport` |
+| `ClientPoolConfig.selection_strategy` | `build_client_pool_strategy()` | `round_robin` → `RoundRobinStrategy`, `weighted_random` → `WeightedRandomStrategy`, `domain_matched` → `DomainMatchedStrategy` |
+| `adapter` arg (intake entry point) | `build_entry_point_strategy(adapter, *, project_id=None)` | `direct` → `DirectAdapter`, `project` → `ProjectAdapter`, `intake` → `IntakeAdapter` |
+
+The factories follow the project-wide pluggable-subsystems pattern
+(protocol + strategy + factory + config discriminator). No silent
+defaults: a misspelled discriminator is a hard error at construction
+time, not a runtime surprise during a simulation.
 
 ---
 

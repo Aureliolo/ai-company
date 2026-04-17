@@ -108,6 +108,21 @@ class SelfImprovementService:
             ``ArchitectureApplier.dry_run``.  Callers that omit it
             get an applier whose ``dry_run`` rejects with an explicit
             error.
+        clock: Time source for rollout observation loops. Defaults to
+            ``RealClock`` when omitted; tests inject ``FakeClock`` for
+            deterministic sleep behavior.
+        roster: Live agent enumeration used to assign control/treatment
+            groups and canary subsets. Defaults to ``NoOpOrgRoster``
+            (empty roster); the engine layer should inject a real
+            roster bound to the live agent registry.
+        snapshot_builder: Async factory producing the current
+            ``OrgSignalSnapshot`` during observation windows. Defaults
+            to an empty snapshot; callers should wire this to the
+            signal aggregator they use for rule evaluation.
+        group_aggregator: Per-group metric sampler for A/B tests.
+            Defaults to a null aggregator that emits no samples; the
+            service layer wires ``TrackerGroupAggregator`` when the
+            performance tracker is available.
     """
 
     def __init__(  # noqa: PLR0913

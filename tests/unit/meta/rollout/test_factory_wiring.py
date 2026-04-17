@@ -62,8 +62,9 @@ class TestBuildRolloutStrategies:
             clock=clock,
             roster=_Roster(),
         )
-        # Access private to verify dep was wired.
+        # Access private to verify dep was wired into every strategy.
         assert strategies["before_after"]._clock is clock
+        assert strategies["canary"]._clock is clock
         assert strategies["ab_test"]._clock is clock
 
 

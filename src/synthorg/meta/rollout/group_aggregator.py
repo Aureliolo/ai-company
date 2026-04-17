@@ -14,10 +14,17 @@ from typing import TYPE_CHECKING, Protocol, Self, runtime_checkable
 from pydantic import BaseModel, ConfigDict, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.observability import get_logger
+from synthorg.observability.events.meta import (
+    META_ABTEST_GROUP_AGGREGATOR_AGENT_SKIPPED,
+    META_ABTEST_GROUP_AGGREGATOR_SNAPSHOT_FAILED,
+)
 
 if TYPE_CHECKING:
     from synthorg.hr.performance.models import AgentPerformanceSnapshot
     from synthorg.hr.performance.tracker import PerformanceTracker
+
+logger = get_logger(__name__)
 
 
 class GroupSamples(BaseModel):
@@ -109,7 +116,13 @@ class TrackerGroupAggregator:
         since: datetime,
         until: datetime,
     ) -> GroupSamples:
-        """Pull samples for each agent from the tracker in parallel."""
+        """Pull samples for each agent from the tracker in parallel.
+
+        Per-agent snapshot fetches are isolated: a failure on one agent
+        is logged and that agent is dropped from the returned tuples,
+        but siblings continue. Only ``MemoryError`` and ``RecursionError``
+        are re-raised so catastrophic states still propagate.
+        """
         # Tracker returns a point-in-time snapshot keyed by `now`; the
         # observation window bounds are enforced by the caller, so we
         # only need the upper bound here.
@@ -118,9 +131,7 @@ class TrackerGroupAggregator:
             return GroupSamples()
         async with asyncio.TaskGroup() as tg:
             snapshot_tasks = [
-                tg.create_task(
-                    self._tracker.get_snapshot(str(agent_id), now=until),
-                )
+                tg.create_task(self._fetch_snapshot(agent_id, until))
                 for agent_id in agent_ids
             ]
         kept_ids: list[NotBlankStr] = []
@@ -128,8 +139,16 @@ class TrackerGroupAggregator:
         successes: list[float] = []
         spends: list[float] = []
         for agent_id, task in zip(agent_ids, snapshot_tasks, strict=True):
-            triple = _extract_triple(task.result())
+            snapshot = task.result()
+            if snapshot is None:
+                continue
+            triple = _extract_triple(snapshot)
             if triple is None:
+                logger.debug(
+                    META_ABTEST_GROUP_AGGREGATOR_AGENT_SKIPPED,
+                    agent_id=str(agent_id),
+                    reason="missing_metrics",
+                )
                 continue
             q, s, spend = triple
             kept_ids.append(agent_id)
@@ -142,6 +161,29 @@ class TrackerGroupAggregator:
             success_samples=tuple(successes),
             spend_samples=tuple(spends),
         )
+
+    async def _fetch_snapshot(
+        self,
+        agent_id: NotBlankStr,
+        until: datetime,
+    ) -> AgentPerformanceSnapshot | None:
+        """Fetch one agent snapshot, isolating failures from siblings.
+
+        Returns ``None`` when the tracker raises a recoverable
+        ``Exception``; re-raises ``MemoryError`` and ``RecursionError``
+        so catastrophic system errors are never swallowed.
+        """
+        try:
+            return await self._tracker.get_snapshot(str(agent_id), now=until)
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                META_ABTEST_GROUP_AGGREGATOR_SNAPSHOT_FAILED,
+                agent_id=str(agent_id),
+                error=type(exc).__name__,
+            )
+            return None
 
 
 def _extract_triple(

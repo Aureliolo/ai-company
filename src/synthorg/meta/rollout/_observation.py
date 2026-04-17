@@ -1,0 +1,122 @@
+"""Shared observation-loop helper for before/after and canary rollouts.
+
+Both strategies poll a detector at ``check_interval_hours`` over the
+proposal's ``observation_window_hours`` and exit early on
+``THRESHOLD_BREACH``. This module factors the identical polling body
+into a single coroutine so each strategy only owns its strategy-name
+log tag and baseline-capture semantics.
+"""
+
+from typing import TYPE_CHECKING
+
+from synthorg.meta.models import (
+    ImprovementProposal,
+    OrgSignalSnapshot,
+    RegressionThresholds,
+    RegressionVerdict,
+    RolloutOutcome,
+    RolloutResult,
+)
+from synthorg.observability import get_logger
+from synthorg.observability.events.meta import (
+    META_ROLLOUT_COMPLETED,
+    META_ROLLOUT_OBSERVATION_COMPLETED,
+    META_ROLLOUT_OBSERVATION_TICK,
+    META_ROLLOUT_REGRESSION_DETECTED,
+)
+
+if TYPE_CHECKING:
+    from synthorg.meta.protocol import RegressionDetector
+    from synthorg.meta.rollout.before_after import SnapshotBuilder
+    from synthorg.meta.rollout.clock import Clock
+
+logger = get_logger(__name__)
+
+
+async def observe_until_verdict(  # noqa: PLR0913
+    *,
+    proposal: ImprovementProposal,
+    baseline: OrgSignalSnapshot,
+    detector: RegressionDetector,
+    clock: Clock,
+    snapshot_builder: SnapshotBuilder,
+    check_interval_hours: float,
+    thresholds: RegressionThresholds,
+    strategy_name: str,
+) -> RolloutResult:
+    """Poll ``detector`` until the observation window closes or regresses.
+
+    Exits early on ``THRESHOLD_BREACH`` or at the end of the window on
+    ``STATISTICAL_REGRESSION``. A clean window yields SUCCESS.
+
+    Args:
+        proposal: The proposal under observation.
+        baseline: Pre-apply signal snapshot for comparison.
+        detector: Regression detector to query each tick.
+        clock: Time source (sleep + now).
+        snapshot_builder: Produces the current snapshot each tick.
+        check_interval_hours: Interval between detector polls.
+        thresholds: Regression thresholds forwarded to the detector.
+        strategy_name: Identifies the caller in structured logs.
+    """
+    observation_hours = float(proposal.observation_window_hours)
+    elapsed = 0.0
+    while elapsed < observation_hours:
+        remaining = observation_hours - elapsed
+        step_hours = min(check_interval_hours, remaining)
+        await clock.sleep(step_hours * 3600.0)
+        elapsed += step_hours
+        current = await snapshot_builder()
+        result = await detector.check(
+            baseline=baseline,
+            current=current,
+            thresholds=thresholds,
+        )
+        logger.info(
+            META_ROLLOUT_OBSERVATION_TICK,
+            strategy=strategy_name,
+            proposal_id=str(proposal.id),
+            elapsed_hours=elapsed,
+            verdict=result.verdict.value,
+        )
+        if result.verdict == RegressionVerdict.THRESHOLD_BREACH or (
+            elapsed >= observation_hours
+            and result.verdict == RegressionVerdict.STATISTICAL_REGRESSION
+        ):
+            logger.warning(
+                META_ROLLOUT_REGRESSION_DETECTED,
+                strategy=strategy_name,
+                proposal_id=str(proposal.id),
+                verdict=result.verdict.value,
+                elapsed_hours=elapsed,
+            )
+            return RolloutResult(
+                proposal_id=proposal.id,
+                outcome=RolloutOutcome.REGRESSED,
+                regression_verdict=result.verdict,
+                observation_hours_elapsed=elapsed,
+                details=(
+                    str(result.breached_metric)
+                    if result.breached_metric is not None
+                    else None
+                ),
+            )
+
+    logger.info(
+        META_ROLLOUT_OBSERVATION_COMPLETED,
+        strategy=strategy_name,
+        proposal_id=str(proposal.id),
+        observation_hours_elapsed=elapsed,
+    )
+    logger.info(
+        META_ROLLOUT_COMPLETED,
+        strategy=strategy_name,
+        proposal_id=str(proposal.id),
+        outcome="success",
+    )
+    return RolloutResult(
+        proposal_id=proposal.id,
+        outcome=RolloutOutcome.SUCCESS,
+        regression_verdict=RegressionVerdict.NO_REGRESSION,
+        observation_hours_elapsed=elapsed,
+    )

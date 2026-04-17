@@ -68,15 +68,20 @@ src/synthorg/meta/
     approval_gate.py   -- Mandatory human approval routing
 
   rollout/             -- Staged deployment
-    before_after.py    -- Whole-org with observation window
-    canary.py          -- Canary subset with expansion
-    ab_test.py         -- A/B test group assignment and observation
-    ab_comparator.py   -- Control vs treatment comparison logic
-    ab_models.py       -- GroupAssignment, ABTestVerdict, metrics models
-    rollback.py        -- Rollback plan executor
+    before_after.py    -- Whole-org with Clock-backed observation window
+    canary.py          -- Canary subset with Clock-backed observation window
+    ab_test.py         -- A/B test group assignment and observation loop
+    ab_comparator.py   -- Control vs treatment comparison (Welch-backed)
+    ab_models.py       -- GroupAssignment, ABTestVerdict, GroupMetrics (sample-backed)
+    clock.py           -- Clock protocol + RealClock (wall-time abstraction for tests)
+    roster.py          -- OrgRoster protocol + CallableOrgRoster / NoOpOrgRoster
+    group_aggregator.py -- GroupSignalAggregator protocol + TrackerGroupAggregator
+    inverse_dispatch.py -- RollbackHandler protocol + 4 mutator protocols + default handlers
+    rollback.py        -- RollbackExecutor (dispatches by operation_type)
     regression/        -- Tiered detection
       threshold.py     -- Layer 1: instant circuit-breaker
-      statistical.py   -- Layer 2: Welch's t-test
+      statistical.py   -- Layer 2: StatisticalDetector (Welch-backed)
+      welch.py         -- Hand-rolled Welch's t-test (no numpy/scipy dep)
       composite.py     -- Combines both layers
 
   appliers/            -- Change execution

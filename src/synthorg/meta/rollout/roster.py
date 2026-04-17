@@ -9,6 +9,9 @@ from collections.abc import Awaitable, Callable
 from typing import Protocol, runtime_checkable
 
 from synthorg.core.types import NotBlankStr
+from synthorg.observability import get_logger
+
+logger = get_logger(__name__)
 
 AgentListSource = Callable[[], Awaitable[tuple[NotBlankStr, ...]]]
 """Zero-arg coroutine returning the current agent ids."""
