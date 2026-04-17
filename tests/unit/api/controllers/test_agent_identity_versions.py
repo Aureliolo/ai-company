@@ -301,75 +301,117 @@ class TestRollback:
         assert resp.status_code == 200
 
     @pytest.mark.unit
-    async def test_rollback_rejects_cross_entity_snapshot(
+    async def test_rollback_evolve_value_error_returns_400(
         self,
         test_client: TestClient[Any],
         fake_persistence: FakePersistenceBackend,
         agent_registry: AgentRegistryService,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """If a version's snapshot id differs from the URL agent_id, 400."""
+        """``evolve_identity`` raising ``ValueError`` maps to a clean 400."""
         fake_persistence.identity_versions.clear()
         agent_registry.clear()
-        # Register two agents, each with one version.
-        alice = await _seed_versions(agent_registry)
-        bob = await _seed_versions(agent_registry)
-        # Forge a cross-wired snapshot: store Alice's identity under Bob's id.
-        from synthorg.versioning import VersionSnapshot
+        identity = await _seed_versions(agent_registry)
 
-        alice_latest = await fake_persistence.identity_versions.get_latest_version(
-            str(alice.id)
-        )
-        assert alice_latest is not None
-        forged = VersionSnapshot(
-            entity_id=str(bob.id),
-            version=99,
-            content_hash="f" * 64,
-            snapshot=alice_latest.snapshot,  # still has alice.id inside
-            saved_by="test-forger",
-            saved_at=alice_latest.saved_at,
-        )
-        await fake_persistence.identity_versions.save_version(forged)
+        msg = "immutable field mismatch"
+
+        async def _raise_value_error(*_args: Any, **_kwargs: Any) -> None:
+            raise ValueError(msg)
+
+        monkeypatch.setattr(agent_registry, "evolve_identity", _raise_value_error)
         resp = test_client.post(
-            f"/api/v1/agents/{bob.id}/versions/rollback",
-            json={"target_version": 99},
+            f"/api/v1/agents/{identity.id}/versions/rollback",
+            json={"target_version": 1},
             headers=make_auth_headers("ceo"),
         )
         assert resp.status_code == 400
-        assert "different agent" in resp.json()["error"].lower()
+        body = resp.json()
+        assert "cannot rollback" in body["error"].lower()
+        assert "immutable field mismatch" in body["error"].lower()
+
+
+async def _forge_cross_wired_snapshot(
+    fake_persistence: FakePersistenceBackend,
+    source_agent_id: str,
+    target_agent_id: str,
+    version: int,
+    content_hash: str,
+) -> None:
+    """Write a ``VersionSnapshot`` whose inner payload and outer ``entity_id`` disagree.
+
+    Simulates a corrupted row where the repository thinks the snapshot
+    belongs to ``target_agent_id`` but the embedded ``AgentIdentity``
+    carries ``source_agent_id``.  Used by the parametrized cross-entity
+    ownership tests.
+    """
+    from synthorg.versioning import VersionSnapshot
+
+    latest = await fake_persistence.identity_versions.get_latest_version(
+        source_agent_id,
+    )
+    assert latest is not None
+    forged = VersionSnapshot(
+        entity_id=target_agent_id,
+        version=version,
+        content_hash=content_hash,
+        snapshot=latest.snapshot,
+        saved_by="test-forger",
+        saved_at=latest.saved_at,
+    )
+    await fake_persistence.identity_versions.save_version(forged)
 
 
 class TestReadEndpointsOwnership:
-    """Read endpoints (list/get/diff) reject cross-entity snapshots."""
+    """All endpoints reject/drop cross-entity snapshots consistently."""
 
     @pytest.mark.unit
-    async def test_get_version_rejects_cross_entity(
+    @pytest.mark.parametrize(
+        ("method", "path_suffix", "json_body", "params"),
+        [
+            pytest.param("get", "/versions/42", None, None, id="get_version"),
+            pytest.param(
+                "get",
+                "/versions/diff",
+                None,
+                {"from_version": 1, "to_version": 42},
+                id="diff",
+            ),
+            pytest.param(
+                "post",
+                "/versions/rollback",
+                {"target_version": 42},
+                None,
+                id="rollback",
+            ),
+        ],
+    )
+    async def test_cross_entity_snapshot_rejected(  # noqa: PLR0913
         self,
         test_client: TestClient[Any],
         fake_persistence: FakePersistenceBackend,
         agent_registry: AgentRegistryService,
+        method: str,
+        path_suffix: str,
+        json_body: dict[str, Any] | None,
+        params: dict[str, int] | None,
     ) -> None:
         fake_persistence.identity_versions.clear()
         agent_registry.clear()
-        alice = await _seed_versions(agent_registry)
+        alice = await _seed_versions(agent_registry, updates=1)
         bob = await _seed_versions(agent_registry)
-        from synthorg.versioning import VersionSnapshot
-
-        alice_latest = await fake_persistence.identity_versions.get_latest_version(
-            str(alice.id)
-        )
-        assert alice_latest is not None
-        forged = VersionSnapshot(
-            entity_id=str(bob.id),
+        await _forge_cross_wired_snapshot(
+            fake_persistence,
+            source_agent_id=str(alice.id),
+            target_agent_id=str(bob.id),
             version=42,
             content_hash="e" * 64,
-            snapshot=alice_latest.snapshot,
-            saved_by="test-forger",
-            saved_at=alice_latest.saved_at,
         )
-        await fake_persistence.identity_versions.save_version(forged)
-        resp = test_client.get(
-            f"/api/v1/agents/{bob.id}/versions/42",
-            headers=make_auth_headers("ceo"),
+        url = f"/api/v1/agents/{bob.id}{path_suffix}"
+        headers = make_auth_headers("ceo")
+        resp = (
+            test_client.get(url, params=params, headers=headers)
+            if method == "get"
+            else test_client.post(url, json=json_body, headers=headers)
         )
         assert resp.status_code == 400
         assert "different agent" in resp.json()["error"].lower()
@@ -381,25 +423,18 @@ class TestReadEndpointsOwnership:
         fake_persistence: FakePersistenceBackend,
         agent_registry: AgentRegistryService,
     ) -> None:
+        """``list_versions`` filters forged rows and adjusts ``total`` accordingly."""
         fake_persistence.identity_versions.clear()
         agent_registry.clear()
         alice = await _seed_versions(agent_registry)
         bob = await _seed_versions(agent_registry)
-        from synthorg.versioning import VersionSnapshot
-
-        alice_latest = await fake_persistence.identity_versions.get_latest_version(
-            str(alice.id)
-        )
-        assert alice_latest is not None
-        forged = VersionSnapshot(
-            entity_id=str(bob.id),
+        await _forge_cross_wired_snapshot(
+            fake_persistence,
+            source_agent_id=str(alice.id),
+            target_agent_id=str(bob.id),
             version=42,
             content_hash="d" * 64,
-            snapshot=alice_latest.snapshot,
-            saved_by="test-forger",
-            saved_at=alice_latest.saved_at,
         )
-        await fake_persistence.identity_versions.save_version(forged)
         resp = test_client.get(
             f"/api/v1/agents/{bob.id}/versions",
             headers=make_auth_headers("ceo"),
@@ -412,40 +447,6 @@ class TestReadEndpointsOwnership:
         versions = body["data"]
         assert all(v["version"] != 42 for v in versions)
         assert body["pagination"]["total"] == len(versions)
-
-    @pytest.mark.unit
-    async def test_diff_rejects_cross_entity_version(
-        self,
-        test_client: TestClient[Any],
-        fake_persistence: FakePersistenceBackend,
-        agent_registry: AgentRegistryService,
-    ) -> None:
-        fake_persistence.identity_versions.clear()
-        agent_registry.clear()
-        alice = await _seed_versions(agent_registry, updates=1)
-        bob = await _seed_versions(agent_registry)
-        from synthorg.versioning import VersionSnapshot
-
-        alice_latest = await fake_persistence.identity_versions.get_latest_version(
-            str(alice.id)
-        )
-        assert alice_latest is not None
-        forged = VersionSnapshot(
-            entity_id=str(bob.id),
-            version=42,
-            content_hash="c" * 64,
-            snapshot=alice_latest.snapshot,
-            saved_by="test-forger",
-            saved_at=alice_latest.saved_at,
-        )
-        await fake_persistence.identity_versions.save_version(forged)
-        resp = test_client.get(
-            f"/api/v1/agents/{bob.id}/versions/diff",
-            params={"from_version": 1, "to_version": 42},
-            headers=make_auth_headers("ceo"),
-        )
-        assert resp.status_code == 400
-        assert "different agent" in resp.json()["error"].lower()
 
 
 class TestAuthGuards:
