@@ -164,7 +164,7 @@ func collectInfra(ctx context.Context, r *Report, info docker.Info, state config
 		r.PortConflicts = checkPorts(ctx, state.BackendPort, state.WebPort)
 	}
 	if info.DockerPath != "" {
-		r.ImageStatus = checkImages(ctx, info.DockerPath, state.ImageTag, state.Sandbox, state.FineTuning, composePath, state.VerifiedDigests)
+		r.ImageStatus = checkImages(ctx, info.DockerPath, state.ImageTag, state.Sandbox, state.FineTuning, state.FineTuneVariantOrDefault(), composePath, state.VerifiedDigests)
 	}
 }
 
@@ -303,12 +303,12 @@ func checkPorts(ctx context.Context, backendPort, webPort int) []string {
 // It reads the actual compose file to get the image references (which
 // may be digest-pinned), falling back to verified digests from state,
 // then to tag-based lookup if neither is available.
-func checkImages(ctx context.Context, dockerPath, imageTag string, sandbox, fineTuning bool, composePath string, verifiedDigests map[string]string) []string {
+func checkImages(ctx context.Context, dockerPath, imageTag string, sandbox, fineTuning bool, fineTuneVariant, composePath string, verifiedDigests map[string]string) []string {
 	// Build a map of service name -> image ref from the compose file.
 	composeRefs := parseComposeImageRefs(composePath)
 
 	var status []string
-	for _, name := range images.ServiceNames(sandbox, fineTuning) {
+	for _, name := range images.ServiceNames(sandbox, fineTuning, fineTuneVariant) {
 		// Priority: compose file ref > verified digest > tag-based fallback.
 		image := composeRefs[name]
 		if image == "" {

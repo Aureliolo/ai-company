@@ -52,6 +52,7 @@ const (
 	fTelYes
 	fTelNo
 	fFineTuning
+	fFineTuneVariant
 	fPostgresPort
 	fNatsPort
 	fEncryptSecrets
@@ -64,17 +65,18 @@ const (
 // ── Model ───────────────────────────────────────────────────────────
 
 type setupTUI struct {
-	dataDir        textinput.Model
-	backendPort    textinput.Model
-	webPort        textinput.Model
-	postgresPort   textinput.Model
-	natsPort       textinput.Model
-	sandbox        bool
-	busBackend     int  // 0=internal, 1=nats
-	persistence    int  // 0=sqlite, 1=postgres
-	fineTuning     bool // embedding fine-tuning sidecar (~4 GB)
-	encryptSecrets bool // Fernet-encrypt connection secrets at rest
-	telemetry      bool
+	dataDir         textinput.Model
+	backendPort     textinput.Model
+	webPort         textinput.Model
+	postgresPort    textinput.Model
+	natsPort        textinput.Model
+	sandbox         bool
+	busBackend      int  // 0=internal, 1=nats
+	persistence     int  // 0=sqlite, 1=postgres
+	fineTuning      bool // embedding fine-tuning sidecar (GPU ~4 GB / CPU ~1.7 GB)
+	fineTuneVariant int  // 0=gpu (default), 1=cpu -- only meaningful when fineTuning=true
+	encryptSecrets  bool // Fernet-encrypt connection secrets at rest
+	telemetry       bool
 
 	focus       int
 	advExpanded bool
@@ -149,7 +151,11 @@ func (m *setupTUI) fields() []int {
 	case phaseSummary:
 		return []int{fStartYes, fStartNo}
 	default:
-		f := []int{fDataDir, fPersistence, fBusBackend, fFineTuning, fAdvToggle}
+		f := []int{fDataDir, fPersistence, fBusBackend, fFineTuning}
+		if m.fineTuning {
+			f = append(f, fFineTuneVariant)
+		}
+		f = append(f, fAdvToggle)
 		if m.advExpanded {
 			f = append(f, fSandbox, fEncryptSecrets, fBackendPort, fWebPort)
 			if m.persistence == 1 {
@@ -301,6 +307,9 @@ func (m setupTUI) updateSetup(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case fFineTuning:
 			m.fineTuning = !m.fineTuning
+			return m, nil
+		case fFineTuneVariant:
+			m.fineTuneVariant = 1 - m.fineTuneVariant
 			return m, nil
 		case fEncryptSecrets:
 			m.encryptSecrets = !m.encryptSecrets

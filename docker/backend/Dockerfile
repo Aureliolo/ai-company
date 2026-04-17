@@ -35,8 +35,8 @@ USER build
 # are runtime-selectable via `synthorg init --persistence-backend` and
 # `--bus-backend`, so the image must carry psycopg and nats-py whether
 # or not the user has chosen them yet. `fine-tune` lives in the
-# dedicated synthorg-fine-tune image (5GB pytorch); `telemetry` stays
-# opt-in to avoid pulling logfire on default installs.
+# dedicated synthorg-fine-tune-gpu / -cpu images (large, torch inside);
+# `telemetry` stays opt-in to avoid pulling logfire on default installs.
 RUN --mount=type=cache,target=/home/build/.cache/uv,uid=65532,gid=65532 \
     uv sync --frozen --no-dev --no-install-project --extra postgres --extra distributed
 

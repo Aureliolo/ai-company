@@ -64,7 +64,17 @@ type State struct {
 	TelemetryOptIn bool `json:"telemetry_opt_in"`
 
 	// Fine-tuning (requires sandbox/Docker for container execution).
-	FineTuning bool `json:"fine_tuning"`
+	//
+	// When FineTuning is true, FineTuningVariant selects which image to pull:
+	//   - "gpu" (default): bundled CUDA torch, ~4 GB, runs on NVIDIA hosts
+	//   - "cpu": CPU-only torch, ~1.7 GB, runs anywhere
+	// An empty value is treated as "gpu" at read time for backward
+	// compatibility with pre-split configs, but the init flow always writes
+	// an explicit variant. The backend reads
+	// ``ghcr.io/aureliolo/synthorg-fine-tune-{variant}`` via
+	// SYNTHORG_FINE_TUNE_IMAGE.
+	FineTuning        bool   `json:"fine_tuning"`
+	FineTuningVariant string `json:"fine_tuning_variant,omitempty"`
 
 	// Registry + image tag overrides. Overriding any of these disables
 	// signature and provenance verification because the pinned identity
@@ -376,6 +386,15 @@ func (s State) validate() error {
 	if s.FineTuning && runtime.GOARCH != "amd64" {
 		return fmt.Errorf("fine_tuning requires x86_64 (amd64) architecture; the fine-tune image is not available for %s", runtime.GOARCH)
 	}
+	if s.FineTuning {
+		switch s.FineTuningVariant {
+		case "", "gpu", "cpu":
+			// Empty permitted for forward compat with pre-split configs;
+			// resolved to "gpu" at read time via FineTuneVariantOrDefault.
+		default:
+			return fmt.Errorf("fine_tuning_variant must be \"gpu\" or \"cpu\", got %q", s.FineTuningVariant)
+		}
+	}
 	for name, digest := range s.VerifiedDigests {
 		if !isValidDigestFormat(digest) {
 			return fmt.Errorf("invalid verified_digests[%q]: %q is not a valid sha256 digest", name, digest)
@@ -385,6 +404,17 @@ func (s State) validate() error {
 		return err
 	}
 	return nil
+}
+
+// FineTuneVariantOrDefault returns the configured fine-tune variant,
+// falling back to "gpu" when unset. Callers that need to build image
+// refs or service names should always route through this accessor so
+// the default is consistent across start / update / diagnostics paths.
+func (s State) FineTuneVariantOrDefault() string {
+	if s.FineTuningVariant == "cpu" {
+		return "cpu"
+	}
+	return "gpu"
 }
 
 // validateTunables checks that the optional registry/tunable fields parse

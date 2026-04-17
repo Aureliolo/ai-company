@@ -86,8 +86,9 @@ func NewImageRef(name, tag string) ImageRef {
 
 // BuildImageRefs creates ImageRef values for the standard SynthOrg images.
 // If sandbox is false, the sandbox and sidecar images are excluded.
-// If fineTuning is true, the fine-tune image is included.
-func BuildImageRefs(tag string, sandbox bool, fineTuning bool) []ImageRef {
+// If fineTuning is true, the fine-tune image for the requested variant
+// ("gpu" or "cpu") is included; empty variant defaults to "gpu".
+func BuildImageRefs(tag string, sandbox bool, fineTuning bool, fineTuneVariant string) []ImageRef {
 	refs := []ImageRef{
 		NewImageRef("backend", tag),
 		NewImageRef("web", tag),
@@ -95,10 +96,20 @@ func BuildImageRefs(tag string, sandbox bool, fineTuning bool) []ImageRef {
 	if sandbox {
 		refs = append(refs, NewImageRef("sandbox", tag), NewImageRef("sidecar", tag))
 		if fineTuning {
-			refs = append(refs, NewImageRef("fine-tune", tag))
+			refs = append(refs, NewImageRef(FineTuneServiceName(fineTuneVariant), tag))
 		}
 	}
 	return refs
+}
+
+// FineTuneServiceName returns the service/image suffix for the requested
+// fine-tune variant. Accepts "gpu" or "cpu"; any other value (including the
+// empty string) falls back to "gpu", matching the CLI default.
+func FineTuneServiceName(variant string) string {
+	if variant == "cpu" {
+		return "fine-tune-cpu"
+	}
+	return "fine-tune-gpu"
 }
 
 // FormatImageRef returns the fully-qualified reference for a SynthOrg image.

@@ -66,7 +66,7 @@ No corresponding flag -- settable via env var or `config set`:
 | `SYNTHORG_AUTO_PULL` | Auto-accept container image pulls |
 | `SYNTHORG_AUTO_RESTART` | Auto-restart containers after update |
 | `SYNTHORG_TELEMETRY` | Enable anonymous product telemetry (true/false) |
-| `SYNTHORG_FINE_TUNE_IMAGE` | Override fine-tune container image digest (set by CLI verification) |
+| `SYNTHORG_FINE_TUNE_IMAGE` | Override fine-tune container image digest for the selected variant (`synthorg-fine-tune-gpu` or `synthorg-fine-tune-cpu`; set by CLI verification). The variant is chosen during `synthorg init` and persisted as `fine_tuning_variant` in config.json. |
 | `SYNTHORG_REGISTRY_HOST` | Override default container registry hostname (disables verification when set) |
 | `SYNTHORG_IMAGE_REPO_PREFIX` | Override default image repository prefix (disables verification when set) |
 | `SYNTHORG_DHI_REGISTRY` | Override Docker Hardened Images registry (disables verification when set) |

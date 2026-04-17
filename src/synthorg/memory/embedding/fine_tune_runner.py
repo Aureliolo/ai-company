@@ -5,7 +5,9 @@ the requested pipeline stage, and emits structured progress markers on
 stdout for the orchestrator to parse.
 
 Designed to run as ``python -m synthorg.memory.embedding.fine_tune_runner``
-inside the ``synthorg-fine-tune`` container.
+inside the ``synthorg-fine-tune-gpu`` (default) or ``synthorg-fine-tune-cpu``
+container. Both ship the same Python entry point; they differ only in the
+bundled torch build (CUDA vs CPU).
 
 Uses ``print()`` for structured stdout/stderr markers that the
 orchestrator parses from Docker container logs -- this is an entrypoint

@@ -76,7 +76,7 @@ func TestNewImageRef(t *testing.T) {
 }
 
 func TestBuildImageRefsWithSandbox(t *testing.T) {
-	refs := BuildImageRefs("0.3.0", true, false)
+	refs := BuildImageRefs("0.3.0", true, false, "")
 	if len(refs) != 4 {
 		t.Fatalf("got %d refs, want 4", len(refs))
 	}
@@ -93,7 +93,7 @@ func TestBuildImageRefsWithSandbox(t *testing.T) {
 }
 
 func TestBuildImageRefsWithoutSandbox(t *testing.T) {
-	refs := BuildImageRefs("0.3.0", false, false)
+	refs := BuildImageRefs("0.3.0", false, false, "")
 	if len(refs) != 2 {
 		t.Fatalf("got %d refs, want 2", len(refs))
 	}
@@ -107,8 +107,8 @@ func TestBuildImageRefsWithoutSandbox(t *testing.T) {
 	}
 }
 
-func TestBuildImageRefsWithFineTuning(t *testing.T) {
-	refs := BuildImageRefs("0.3.0", true, true)
+func TestBuildImageRefsWithFineTuningGPU(t *testing.T) {
+	refs := BuildImageRefs("0.3.0", true, true, "gpu")
 	if len(refs) != 5 {
 		t.Fatalf("got %d refs, want 5", len(refs))
 	}
@@ -116,7 +116,7 @@ func TestBuildImageRefsWithFineTuning(t *testing.T) {
 	for i, r := range refs {
 		names[i] = r.Name()
 	}
-	want := []string{"backend", "web", "sandbox", "sidecar", "fine-tune"}
+	want := []string{"backend", "web", "sandbox", "sidecar", "fine-tune-gpu"}
 	for i, w := range want {
 		if names[i] != w {
 			t.Errorf("refs[%d].Name() = %q, want %q", i, names[i], w)
@@ -124,13 +124,50 @@ func TestBuildImageRefsWithFineTuning(t *testing.T) {
 	}
 }
 
+func TestBuildImageRefsWithFineTuningCPU(t *testing.T) {
+	refs := BuildImageRefs("0.3.0", true, true, "cpu")
+	if len(refs) != 5 {
+		t.Fatalf("got %d refs, want 5", len(refs))
+	}
+	if refs[4].Name() != "fine-tune-cpu" {
+		t.Errorf("refs[4].Name() = %q, want %q", refs[4].Name(), "fine-tune-cpu")
+	}
+}
+
+func TestBuildImageRefsFineTuningDefaultsToGPU(t *testing.T) {
+	refs := BuildImageRefs("0.3.0", true, true, "")
+	if len(refs) != 5 {
+		t.Fatalf("got %d refs, want 5", len(refs))
+	}
+	if refs[4].Name() != "fine-tune-gpu" {
+		t.Errorf("empty variant should default to gpu, got %q", refs[4].Name())
+	}
+}
+
 func TestBuildImageRefsFineTuningWithoutSandbox(t *testing.T) {
-	refs := BuildImageRefs("0.3.0", false, true)
+	refs := BuildImageRefs("0.3.0", false, true, "gpu")
 	if len(refs) != 2 {
 		t.Fatalf("got %d refs, want 2 (fine-tune requires sandbox)", len(refs))
 	}
 	if refs[0].Name() != "backend" || refs[1].Name() != "web" {
 		t.Errorf("expected [backend, web], got [%s, %s]", refs[0].Name(), refs[1].Name())
+	}
+}
+
+func TestFineTuneServiceName(t *testing.T) {
+	cases := []struct {
+		variant string
+		want    string
+	}{
+		{"gpu", "fine-tune-gpu"},
+		{"cpu", "fine-tune-cpu"},
+		{"", "fine-tune-gpu"},
+		{"bogus", "fine-tune-gpu"},
+	}
+	for _, tc := range cases {
+		if got := FineTuneServiceName(tc.variant); got != tc.want {
+			t.Errorf("FineTuneServiceName(%q) = %q, want %q", tc.variant, got, tc.want)
+		}
 	}
 }
 

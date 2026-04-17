@@ -1863,9 +1863,9 @@ Backup settings live in the `backup` namespace with runtime editability via `Bac
 
 ## Container Runtime
 
-SynthOrg ships as five container images to `ghcr.io/aureliolo/synthorg-{backend,web,sandbox,sidecar,fine-tune}`.
+SynthOrg ships as six container images to `ghcr.io/aureliolo/synthorg-{backend,web,sandbox,sidecar,fine-tune-gpu,fine-tune-cpu}`.
 The **backend** and **web** images are managed as Docker Compose services by the CLI.
-The **sandbox**, **sidecar**, and **fine-tune** images are not Compose services -- the
+The **sandbox**, **sidecar**, and **fine-tune-{gpu,cpu}** images are not Compose services -- the
 CLI pre-pulls sandbox when requested, and the backend spawns sandbox/sidecar/fine-tune
 containers on demand via the Docker API. The CLI verifies cosign signatures for all
 enabled images (both Compose-managed and on-demand) before starting.
@@ -1878,7 +1878,8 @@ enabled images (both Compose-managed and on-demand) before starting.
 | `web` | React SPA and built docs, served by **Caddy** | Pure apko (no Dockerfile); composes `caddy` + `ca-certificates-bundle` + melange-built `synthorg-web-assets` apk + `/etc/synthorg/Caddyfile` |
 | `sandbox` | Ephemeral agent code execution image spawned on demand by the backend | apko-composed Wolfi base (`docker/sandbox/apko.yaml`) with `busybox` and `git`; fully rootless (UID 10001, cap_drop: ALL). Network enforcement handled by a separate sidecar proxy container |
 | `sidecar` | Transparent network proxy sidecar for sandbox containers | apko-composed Wolfi base (`docker/sidecar/apko.yaml`) with `iptables` and `busybox`; Go binary providing dual-layer DNS + DNAT enforcement of `allowed_hosts` |
-| `fine-tune` | Ephemeral embedding fine-tuning container spawned on demand by the backend for offline pipeline stages (**amd64 only** -- GPU workloads require x86_64; the CLI init wizard hides the option on non-amd64) | apko-composed Wolfi base (`docker/fine-tune/apko.yaml`) with Python 3.14 + openblas; thin `docker/fine-tune/Dockerfile` layers torch, sentence-transformers, and the pipeline runner on top |
+| `fine-tune-gpu` | Ephemeral embedding fine-tuning container (GPU variant, ~4 GB: torch with bundled CUDA runtime). Default when fine-tuning is enabled. **amd64 only**; requires an NVIDIA GPU + compatible host driver for practical training speed. | apko-composed Wolfi base (`docker/fine-tune/apko.yaml`) with Python 3.14 + openblas; thin `docker/fine-tune/Dockerfile` layers torch + sentence-transformers on top with `FINE_TUNE_EXTRA=fine-tune` |
+| `fine-tune-cpu` | Ephemeral embedding fine-tuning container (CPU variant, ~1.7 GB: torch without CUDA). Safer default for hosts without an NVIDIA GPU; training is slower. **amd64 only** | Same base + Dockerfile as `fine-tune-gpu`; torch comes from `download.pytorch.org/whl/cpu` via `[tool.uv.sources]` when built with `FINE_TUNE_EXTRA=fine-tune-cpu` |
 
 Each published image is signed with **cosign keyless** via GitHub OIDC in
 `.github/workflows/docker.yml` and attested with **SLSA Level 3 provenance**.
@@ -1907,7 +1908,7 @@ Reconciliation mechanisms:
 | Mechanism | Target | Cadence |
 |-----------|--------|---------|
 | Renovate (Docker ecosystem + digest pinning) | Thin Dockerfile `FROM` lines (apko-base digest) | Daily |
-| `apko lock --update` cron (`.github/workflows/apko-lock.yml`) | `docker/*/apko.lock.json` (backend, sandbox, sidecar, fine-tune, web) | Weekly (Mon 06:00 UTC) |
+| `apko lock --update` cron (`.github/workflows/apko-lock.yml`) | `docker/*/apko.lock.json` (backend, sandbox, sidecar, fine-tune, web) | Weekly (Mon 06:00 UTC) -- the single `fine-tune` apko base is shared by both `-gpu` and `-cpu` runtime images |
 
 ### Image verification at launch
 

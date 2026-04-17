@@ -104,6 +104,11 @@ func (m setupTUI) viewSetup() []string {
 
 	// Fine-tuning toggle
 	main = append(main, brow(m.fineTuningToggle(w), w))
+	if m.fineTuning {
+		// Variant row appears only when fine-tuning is enabled; slight
+		// left indent signals the dependent relationship.
+		main = append(main, brow("  "+m.fineTuneVariantToggle(w-2), w))
+	}
 	main = append(main, brow("", w))
 
 	// Advanced toggle
@@ -147,7 +152,7 @@ func (m setupTUI) viewSetup() []string {
 	main = append(main, boxBottom(w))
 
 	help := "\u2191\u2193 navigate  enter select  esc quit"
-	isToggle := m.focus == fSandbox || m.focus == fBusBackend || m.focus == fPersistence || m.focus == fFineTuning || m.focus == fEncryptSecrets
+	isToggle := m.focus == fSandbox || m.focus == fBusBackend || m.focus == fPersistence || m.focus == fFineTuning || m.focus == fFineTuneVariant || m.focus == fEncryptSecrets
 	if isToggle {
 		help = "\u2191\u2193 navigate  \u2190\u2192/space toggle  esc quit"
 	}
@@ -214,15 +219,15 @@ func (m setupTUI) helpForFocus() []string {
 	case fFineTuning:
 		if m.fineTuning {
 			return []string{
-				"~4 GB sidecar (PyTorch +",
-				"sentence-transformers).",
-				"Trains embedding models on",
-				"your agents' memory for",
-				"better retrieval quality.",
+				"Sidecar that trains",
+				"embedding models on your",
+				"agents' memory for better",
+				"retrieval quality.",
 				"",
-				"Needs local GPU (CUDA/ROCm)",
-				"for practical speed. CPU-",
-				"only training is very slow.",
+				"Pick GPU or CPU below:",
+				"GPU ~4 GB, fast training.",
+				"CPU ~1.7 GB, slow but",
+				"works anywhere.",
 			}
 		}
 		return []string{
@@ -232,8 +237,27 @@ func (m setupTUI) helpForFocus() []string {
 			"",
 			"Not required -- standard",
 			"embeddings work well out of",
-			"the box. ~4 GB container,",
-			"needs local GPU to train.",
+			"the box. Choose GPU or CPU",
+			"image when enabled.",
+		}
+	case fFineTuneVariant:
+		if m.fineTuneVariant == 1 {
+			return []string{
+				"CPU torch (~1.7 GB image).",
+				"Runs on any amd64 host, no",
+				"GPU driver required. Slower",
+				"training but safer default",
+				"for laptops / no-GPU",
+				"deployments.",
+			}
+		}
+		return []string{
+			"GPU torch with bundled CUDA",
+			"runtime (~4 GB image).",
+			"Requires an NVIDIA GPU with",
+			"a compatible host driver.",
+			"Much faster training -- the",
+			"default for proper rigs.",
 		}
 	case fSandbox:
 		if m.sandbox {
@@ -447,7 +471,7 @@ type summaryData struct {
 // Used by both TUI and post-TUI output.
 func summaryEntries(d summaryData) []summaryEntry {
 	boolKind := func(v string) entryKind {
-		if v == "enabled" {
+		if strings.HasPrefix(v, "enabled") {
 			return entryOK
 		}
 		return entryBad
@@ -501,7 +525,11 @@ func (m setupTUI) buildSummary() summaryData {
 		d.busMode = "internal"
 	}
 	if m.fineTuning {
-		d.fineTuning = "enabled"
+		if m.fineTuneVariant == 1 {
+			d.fineTuning = "enabled (cpu)"
+		} else {
+			d.fineTuning = "enabled (gpu)"
+		}
 	} else {
 		d.fineTuning = "disabled"
 	}
@@ -642,6 +670,14 @@ func (m setupTUI) sandboxToggle(w int) string {
 
 func (m setupTUI) fineTuningToggle(w int) string {
 	return toggle2("Fine-tuning", m.focus == fFineTuning, m.fineTuning, "Yes", "No", false, w)
+}
+
+// fineTuneVariantToggle renders the GPU/CPU choice for the fine-tune
+// sidecar. Position 0 = GPU (default, ~4 GB, requires NVIDIA host + driver);
+// position 1 = CPU (~1.7 GB, runs anywhere). Default-first rendering so
+// GPU appears on the left as "the normal choice".
+func (m setupTUI) fineTuneVariantToggle(w int) string {
+	return toggle2("  Variant", m.focus == fFineTuneVariant, m.fineTuneVariant == 0, "gpu", "cpu", false, w)
 }
 
 func (m setupTUI) busToggle(w int) string {

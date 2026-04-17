@@ -20,23 +20,27 @@ func TestServiceNames(t *testing.T) {
 		name       string
 		sandbox    bool
 		fineTuning bool
+		variant    string
 		want       []string
 	}{
-		{"minimal", false, false, []string{"backend", "web"}},
-		{"with sandbox", true, false, []string{"backend", "web", "sandbox", "sidecar"}},
-		{"with fine-tune", false, true, []string{"backend", "web", "fine-tune"}},
-		{"full", true, true, []string{"backend", "web", "sandbox", "sidecar", "fine-tune"}},
+		{"minimal", false, false, "", []string{"backend", "web"}},
+		{"with sandbox", true, false, "", []string{"backend", "web", "sandbox", "sidecar"}},
+		{"fine-tune gpu", false, true, "gpu", []string{"backend", "web", "fine-tune-gpu"}},
+		{"fine-tune cpu", false, true, "cpu", []string{"backend", "web", "fine-tune-cpu"}},
+		{"fine-tune default variant", false, true, "", []string{"backend", "web", "fine-tune-gpu"}},
+		{"full gpu", true, true, "gpu", []string{"backend", "web", "sandbox", "sidecar", "fine-tune-gpu"}},
+		{"full cpu", true, true, "cpu", []string{"backend", "web", "sandbox", "sidecar", "fine-tune-cpu"}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			got := ServiceNames(tc.sandbox, tc.fineTuning)
+			got := ServiceNames(tc.sandbox, tc.fineTuning, tc.variant)
 			if len(got) != len(tc.want) {
-				t.Fatalf("ServiceNames(%v, %v) = %v, want %v", tc.sandbox, tc.fineTuning, got, tc.want)
+				t.Fatalf("ServiceNames(%v, %v, %q) = %v, want %v", tc.sandbox, tc.fineTuning, tc.variant, got, tc.want)
 			}
 			for i := range got {
 				if got[i] != tc.want[i] {
-					t.Errorf("ServiceNames(%v, %v)[%d] = %q, want %q", tc.sandbox, tc.fineTuning, i, got[i], tc.want[i])
+					t.Errorf("ServiceNames(%v, %v, %q)[%d] = %q, want %q", tc.sandbox, tc.fineTuning, tc.variant, i, got[i], tc.want[i])
 				}
 			}
 		})
@@ -44,8 +48,8 @@ func TestServiceNames(t *testing.T) {
 
 	t.Run("returns fresh slice", func(t *testing.T) {
 		t.Parallel()
-		a := ServiceNames(true, true)
-		b := ServiceNames(true, true)
+		a := ServiceNames(true, true, "gpu")
+		b := ServiceNames(true, true, "gpu")
 		a[0] = "mutated"
 		if b[0] == "mutated" {
 			t.Error("ServiceNames returns shared slice -- mutation visible")

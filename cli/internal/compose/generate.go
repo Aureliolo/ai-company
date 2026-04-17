@@ -53,6 +53,7 @@ type Params struct {
 	PostgresPassword   string
 	DigestPins         map[string]string // image name suffix → digest (e.g. "backend" → "sha256:abc...")
 	FineTuning         bool
+	FineTuningVariant  string // "gpu" (default) or "cpu"; selects which fine-tune image the compose file references
 
 	// Registry and image tag tunables resolved at generation time.
 	// RegistryHost + ImageRepoPrefix form the prefix for the backend/web
@@ -151,6 +152,7 @@ func ParamsFromState(s config.State) (Params, error) {
 		PostgresPort:          s.PostgresPort,
 		PostgresPassword:      s.PostgresPassword,
 		FineTuning:            s.FineTuning,
+		FineTuningVariant:     s.FineTuneVariantOrDefault(),
 		RegistryHost:          tun.RegistryHost,
 		ImageRepoPrefix:       tun.ImageRepoPrefix,
 		DHIRegistry:           tun.DHIRegistry,
@@ -194,7 +196,7 @@ func Generate(p Params) ([]byte, error) {
 		"digestPin":          digestPin(p.DigestPins),
 		"sandboxImageRef":    sandboxImageRef(p.DigestPins),
 		"sidecarImageRef":    sidecarImageRef(p.DigestPins),
-		"fineTuneImageRef":   fineTuneImageRef(p.DigestPins),
+		"fineTuneImageRef":   fineTuneImageRef(p.DigestPins, p.FineTuningVariant),
 		"distributedEnabled": p.DistributedEnabled,
 		"postgresEnabled":    p.PostgresEnabled,
 		"pgDSN":              func() string { return pgDSN(p) },
@@ -434,12 +436,16 @@ func sidecarImageRef(pins map[string]string) func(tag string) string {
 }
 
 // fineTuneImageRef returns a template function that resolves the fine-tune
-// image to its digest-pinned or tag-based reference. Wired into the backend's
-// SYNTHORG_FINE_TUNE_IMAGE env var so the backend spawns version-locked
-// fine-tuning pipeline containers.
-func fineTuneImageRef(pins map[string]string) func(tag string) string {
+// image for the requested variant to its digest-pinned or tag-based
+// reference. Wired into the backend's SYNTHORG_FINE_TUNE_IMAGE env var so
+// the backend spawns version-locked fine-tuning pipeline containers.
+//
+// variant is "gpu" or "cpu"; empty falls back to "gpu" via
+// verify.FineTuneServiceName, matching the CLI default.
+func fineTuneImageRef(pins map[string]string, variant string) func(tag string) string {
+	service := verify.FineTuneServiceName(variant)
 	return func(tag string) string {
-		return verify.FormatImageRef("fine-tune", tag, pins["fine-tune"])
+		return verify.FormatImageRef(service, tag, pins[service])
 	}
 }
 

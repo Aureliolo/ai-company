@@ -232,7 +232,7 @@ func buildImageDisplay(repo, tag, digest, size, id string) string {
 // means the caller has malformed state/env -- treat it as a custom
 // deployment (no pins) rather than crashing auto-cleanup outright.
 func collectCurrentImageIDs(ctx context.Context, info docker.Info, state config.State) (map[string]bool, error) {
-	services := images.ServiceNames(state.Sandbox, state.FineTuning)
+	services := images.ServiceNames(state.Sandbox, state.FineTuning, state.FineTuneVariantOrDefault())
 
 	var verifiedDigests map[string]string
 	if tun, err := config.ResolveTunables(state); err == nil && !tun.CustomRegistry {

@@ -47,7 +47,13 @@ var (
 
 // ImageNames returns the canonical set of SynthOrg service image suffixes.
 // Returns a new slice each call to prevent callers from mutating the list.
-func ImageNames() []string { return []string{"backend", "web", "sandbox", "sidecar", "fine-tune"} }
+//
+// Fine-tune ships in two mutually exclusive variants (gpu, cpu); both are
+// listed because the signer signs both and local-image discovery must
+// recognize either suffix.
+func ImageNames() []string {
+	return []string{"backend", "web", "sandbox", "sidecar", "fine-tune-gpu", "fine-tune-cpu"}
+}
 
 // BuildVerifier creates a Sigstore verifier using the public good trusted
 // root. The verifier requires SCTs, transparency log entries, and integrated

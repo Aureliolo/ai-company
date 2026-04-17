@@ -6,12 +6,16 @@
 #   fine-tune modules into a venv.
 # Stage 2 (runtime): apko-composed Wolfi base with BLAS/math libs.
 #
-# This image is large (~4GB) due to PyTorch. It is only built when
-# docker/fine-tune/** or src/synthorg/memory/embedding/fine_tune*.py
-# changes, or on release tags.
+# Two variants controlled by FINE_TUNE_EXTRA build-arg:
+#   - fine-tune       (GPU, default): torch with bundled CUDA runtime, ~4 GB
+#   - fine-tune-cpu   (CPU-only, pinned via [tool.uv.sources]):     ~1.7 GB
+#
+# Only rebuilt when docker/fine-tune/** or
+# src/synthorg/memory/embedding/fine_tune*.py changes, or on release tags.
 # =============================================================================
 
 ARG BASE_IMAGE
+ARG FINE_TUNE_EXTRA=fine-tune
 
 # ---------------------------------------------------------------------------
 # Stage 1 -- Builder (installs ML deps + synthorg fine-tune code)
@@ -31,13 +35,16 @@ WORKDIR /app
 
 COPY --chown=10003:10003 pyproject.toml uv.lock ./
 USER fine-tune
+# FINE_TUNE_EXTRA is either "fine-tune" (GPU, bundled CUDA torch) or
+# "fine-tune-cpu" (CPU-only torch routed via [tool.uv.sources]).
+ARG FINE_TUNE_EXTRA
 RUN --mount=type=cache,target=/home/fine-tune/.cache/uv,uid=10003,gid=10003 \
-    uv sync --frozen --no-dev --no-install-project --group fine-tune
+    uv sync --frozen --no-dev --no-install-project --group "${FINE_TUNE_EXTRA}"
 
 RUN touch README.md
 COPY --chown=10003:10003 src/ src/
 RUN --mount=type=cache,target=/home/fine-tune/.cache/uv,uid=10003,gid=10003 \
-    uv sync --frozen --no-dev --group fine-tune
+    uv sync --frozen --no-dev --group "${FINE_TUNE_EXTRA}"
 
 RUN find /app/src -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 RUN find /app/.venv -type d -name 'wheels' -exec rm -rf {} + 2>/dev/null || true
@@ -51,12 +58,14 @@ RUN rm -f /app/.venv/bin/python \
 # ---------------------------------------------------------------------------
 FROM ${BASE_IMAGE}
 
-LABEL org.opencontainers.image.title="synthorg-fine-tune" \
-      org.opencontainers.image.description="SynthOrg embedding fine-tuning pipeline" \
+ARG FINE_TUNE_EXTRA
+LABEL org.opencontainers.image.title="synthorg-${FINE_TUNE_EXTRA}" \
+      org.opencontainers.image.description="SynthOrg embedding fine-tuning pipeline (${FINE_TUNE_EXTRA})" \
       org.opencontainers.image.url="https://github.com/Aureliolo/synthorg" \
       org.opencontainers.image.source="https://github.com/Aureliolo/synthorg" \
       org.opencontainers.image.licenses="BUSL-1.1" \
-      org.opencontainers.image.vendor="Aureliolo"
+      org.opencontainers.image.vendor="Aureliolo" \
+      io.synthorg.fine-tune.variant="${FINE_TUNE_EXTRA}"
 
 WORKDIR /app
 

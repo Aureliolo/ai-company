@@ -211,7 +211,7 @@ func buildSummaryFromState(state config.State) summaryData {
 		d.busMode = "internal"
 	}
 	if state.FineTuning {
-		d.fineTuning = "enabled"
+		d.fineTuning = "enabled (" + state.FineTuneVariantOrDefault() + ")"
 	} else {
 		d.fineTuning = "disabled"
 	}
@@ -376,9 +376,10 @@ type setupAnswers struct {
 	channel            string // optional override (empty = default "stable")
 	imageTag           string // optional override (empty = use CLI version)
 	telemetryOptIn     bool
-	fineTuning         bool // enable fine-tuning pipeline (requires sandbox/Docker)
-	encryptSecrets     bool // encrypt connection secrets at rest (default true)
-	reinitConfirmed    bool // TUI reinit phase was shown and user confirmed
+	fineTuning         bool   // enable fine-tuning pipeline (requires sandbox/Docker)
+	fineTuneVariant    string // "gpu" (default) or "cpu"; ignored unless fineTuning is true
+	encryptSecrets     bool   // encrypt connection secrets at rest (default true)
+	reinitConfirmed    bool   // TUI reinit phase was shown and user confirmed
 }
 
 // validateInitFlags checks that provided CLI flag values are valid before
@@ -637,6 +638,7 @@ func runInteractiveInit(_ *cobra.Command, opts *GlobalOpts) (*interactiveResult,
 			postgresPort:       pgPort,
 			telemetryOptIn:     final.telemetry,
 			fineTuning:         final.fineTuning,
+			fineTuneVariant:    fineTuneVariantString(final.fineTuneVariant),
 			encryptSecrets:     final.encryptSecrets,
 			reinitConfirmed:    final.needReinit && !final.cancelled,
 		},
@@ -749,7 +751,19 @@ func buildState(a setupAnswers) (config.State, error) {
 		PostgresPassword:   postgresPassword,
 		TelemetryOptIn:     a.telemetryOptIn,
 		FineTuning:         a.fineTuning,
+		FineTuningVariant:  a.fineTuneVariant,
 	}, nil
+}
+
+// fineTuneVariantString maps the TUI's integer variant index to the string
+// persisted in config.State. 0 -> "gpu" (default), 1 -> "cpu". A nonzero
+// index that is not 1 is unreachable today but falls back to "gpu" rather
+// than writing an invalid value.
+func fineTuneVariantString(idx int) string {
+	if idx == 1 {
+		return "cpu"
+	}
+	return "gpu"
 }
 
 // writeInitFiles creates the data directory, generates compose.yml, and saves

@@ -144,7 +144,7 @@ func promptHealthRecover(cmd *cobra.Command) (bool, error) {
 // "image not present locally" signal) counts as missing.
 func detectMissingImages(ctx context.Context, info docker.Info, state config.State) []string {
 	var missing []string
-	for _, svc := range images.ServiceNames(state.Sandbox, state.FineTuning) {
+	for _, svc := range images.ServiceNames(state.Sandbox, state.FineTuning, state.FineTuneVariantOrDefault()) {
 		ref := images.RefForService(svc, state.ImageTag, state.VerifiedDigests)
 		id, err := images.InspectID(ctx, info.DockerPath, ref)
 		if err != nil {

@@ -44,7 +44,12 @@ requires = ["hatchling==1.29.0"]
 build-backend = "hatchling.build"
 
 [project.optional-dependencies]
+# Fine-tune variants. Both install the same package set; torch is routed to
+# PyPI (CUDA bundled, ~2.5 GB) or the PyTorch CPU index (~200 MB) via
+# [tool.uv.sources] below. The two extras are declared mutually exclusive in
+# [tool.uv.conflicts] so uv locks them independently.
 fine-tune = ["torch==2.11.0", "sentence-transformers==5.4.1"]
+fine-tune-cpu = ["torch==2.11.0", "sentence-transformers==5.4.1"]
 telemetry = ["logfire==4.32.1"]
 # Distributed runtime: first distributed MessageBus backend + task queue workers.
 # Opt in with `pip install synthorg[distributed]`. See docs/design/distributed-runtime.md.
@@ -91,6 +96,10 @@ fine-tune = [
     "torch==2.11.0",
     "sentence-transformers==5.4.1",
 ]
+fine-tune-cpu = [
+    "torch==2.11.0",
+    "sentence-transformers==5.4.1",
+]
 dev = [
     "commitizen==4.13.10",
     "mypy==1.20.1",
@@ -103,6 +112,43 @@ dev = [
     "pytest-randomly==4.0.1",
     {include-group = "test"},
     {include-group = "docs"},
+]
+
+# ---------------------------------------------------------------------------
+# uv -- package resolution (torch CPU vs GPU split)
+# ---------------------------------------------------------------------------
+# The fine-tune container ships in two flavors:
+#   - fine-tune       (GPU, default): torch 2.11.0 with bundled CUDA runtime
+#                      (~2.5 GB of nvidia-* wheels). Needed for CUDA-accelerated
+#                      fine-tuning on hosts with an NVIDIA GPU + driver.
+#   - fine-tune-cpu   (CPU-only, ~200 MB torch): pulled from the PyTorch CPU
+#                      index so no CUDA runtime is bundled. ~2.3 GB smaller.
+#
+# The two extras are declared mutually exclusive so uv can lock them
+# independently -- one resolution pins CUDA torch, the other pins CPU torch.
+# Build-time: the Dockerfile picks the extra via the FINE_TUNE_EXTRA build-arg.
+# Runtime: the CLI init flow prompts GPU vs CPU when fine-tuning is enabled.
+[tool.uv]
+conflicts = [
+    [
+        { extra = "fine-tune" },
+        { extra = "fine-tune-cpu" },
+    ],
+    [
+        { group = "fine-tune" },
+        { group = "fine-tune-cpu" },
+    ],
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cpu", extra = "fine-tune-cpu" },
+    { index = "pytorch-cpu", group = "fine-tune-cpu" },
 ]
 
 # ---------------------------------------------------------------------------

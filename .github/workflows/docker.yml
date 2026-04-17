@@ -1175,8 +1175,13 @@ jobs:
           path: sbom-sidecar.cdx.json
           retention-days: 30
 
+  # Fine-tune ships in two flavors. The matrix builds them in parallel:
+  #   - gpu  -> ghcr.io/aureliolo/synthorg-fine-tune-gpu  (bundled CUDA, ~4 GB)
+  #   - cpu  -> ghcr.io/aureliolo/synthorg-fine-tune-cpu  (CPU torch, ~1.7 GB)
+  # The variant is driven by the FINE_TUNE_EXTRA build-arg; uv routes torch to
+  # PyPI (CUDA) or pytorch.org/whl/cpu via [tool.uv.sources] in pyproject.toml.
   build-fine-tune:
-    name: Build Fine-Tune
+    name: Build Fine-Tune (${{ matrix.variant }})
     needs: [version, build-fine-tune-base]
     if: >-
       !cancelled() &&
@@ -1184,18 +1189,39 @@ jobs:
       needs.build-fine-tune-base.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: gpu
+            extra: fine-tune
+          - variant: cpu
+            extra: fine-tune-cpu
     permissions:
       contents: read
       packages: write
       id-token: write
       attestations: write
       security-events: write
-    outputs:
-      digest: ${{ steps.push.outputs.digest }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           persist-credentials: false
+
+      # Fine-tune GPU image is ~4 GB (torch + CUDA wheels). The GHA
+      # ubuntu-latest runner ships with ~14 GB free on /, which is not enough
+      # headroom for buildx to assemble the layer tar + load it into the
+      # daemon + run Trivy. Remove pre-installed toolchains we do not use to
+      # reclaim ~25 GB. Applies to the CPU variant too -- cheap insurance.
+      - name: Free disk space
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL /opt/hostedtoolcache/Python
+          sudo rm -rf /usr/local/share/powershell /usr/local/share/chromium
+          sudo rm -rf /usr/local/lib/node_modules
+          sudo docker image prune --all --force
+          df -h /
 
       # QEMU ARM64 not needed -- fine-tune is amd64-only (GPU workloads).
 
@@ -1232,7 +1258,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf # v6.0.0
         with:
-          images: ghcr.io/aureliolo/synthorg-fine-tune
+          images: ghcr.io/aureliolo/synthorg-fine-tune-${{ matrix.variant }}
           tags: |
             type=raw,value=${{ needs.version.outputs.app_version }},enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-dev.') }}
             type=semver,pattern={{version}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
@@ -1251,36 +1277,37 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             BASE_IMAGE=${{ needs.build-fine-tune-base.outputs.digest != '' && format('ghcr.io/aureliolo/synthorg-fine-tune-base@{0}', needs.build-fine-tune-base.outputs.digest) || format('ghcr.io/aureliolo/synthorg-fine-tune-base:{0}', needs.build-fine-tune-base.outputs.tag) }}
-          cache-from: ${{ github.event_name != 'pull_request' && 'type=gha' || '' }}
-          cache-to: ${{ github.event_name != 'pull_request' && 'type=gha,mode=max' || '' }}
+            FINE_TUNE_EXTRA=${{ matrix.extra }}
+          cache-from: ${{ github.event_name != 'pull_request' && format('type=gha,scope=fine-tune-{0}', matrix.variant) || '' }}
+          cache-to: ${{ github.event_name != 'pull_request' && format('type=gha,mode=max,scope=fine-tune-{0}', matrix.variant) || '' }}
           platforms: linux/amd64
 
       - name: Compute scan image ref
         id: scan-ref
-        run: echo "ref=ghcr.io/aureliolo/synthorg-fine-tune:sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+        run: echo "ref=ghcr.io/aureliolo/synthorg-fine-tune-${{ matrix.variant }}:sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
 
       - name: Report image size
-        run: scripts/report-image-size.sh "${{ steps.scan-ref.outputs.ref }}" "Fine-Tune"
+        run: scripts/report-image-size.sh "${{ steps.scan-ref.outputs.ref }}" "Fine-Tune (${{ matrix.variant }})"
 
       - name: Trivy scan
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
         with:
           image-ref: ${{ steps.scan-ref.outputs.ref }}
           format: json
-          output: trivy-fine-tune.json
+          output: trivy-fine-tune-${{ matrix.variant }}.json
           exit-code: "0"
           severity: CRITICAL,HIGH
           trivyignores: .github/.trivyignore.yaml
 
       - name: Evaluate Trivy results
-        run: scripts/evaluate-scan.sh --verbose trivy-fine-tune.json "Fine-Tune"
+        run: scripts/evaluate-scan.sh --verbose "trivy-fine-tune-${{ matrix.variant }}.json" "Fine-Tune (${{ matrix.variant }})"
 
       - name: Upload Trivy report (fine-tune)
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: trivy-fine-tune-report
-          path: trivy-fine-tune.json
+          name: trivy-fine-tune-${{ matrix.variant }}-report
+          path: trivy-fine-tune-${{ matrix.variant }}.json
           retention-days: 30
 
       - name: Trivy SARIF scan (fine-tune)
@@ -1289,7 +1316,7 @@ jobs:
         with:
           image-ref: ${{ steps.scan-ref.outputs.ref }}
           format: sarif
-          output: trivy-fine-tune.sarif
+          output: trivy-fine-tune-${{ matrix.variant }}.sarif
           exit-code: "0"
           severity: CRITICAL,HIGH
           trivyignores: .github/.trivyignore.yaml
@@ -1298,8 +1325,8 @@ jobs:
         if: always()
         uses: github/codeql-action/upload-sarif@95e58e9a2cdfd71adc6e0353d5c52f41a045d225 # v4.35.2
         with:
-          sarif_file: trivy-fine-tune.sarif
-          category: trivy-fine-tune
+          sarif_file: trivy-fine-tune-${{ matrix.variant }}.sarif
+          category: trivy-fine-tune-${{ matrix.variant }}
 
       - name: CIS Docker Benchmark (fine-tune)
         uses: ./.github/actions/cis-scan
@@ -1318,7 +1345,8 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             BASE_IMAGE=${{ needs.build-fine-tune-base.outputs.digest != '' && format('ghcr.io/aureliolo/synthorg-fine-tune-base@{0}', needs.build-fine-tune-base.outputs.digest) || format('ghcr.io/aureliolo/synthorg-fine-tune-base:{0}', needs.build-fine-tune-base.outputs.tag) }}
-          cache-from: type=gha
+            FINE_TUNE_EXTRA=${{ matrix.extra }}
+          cache-from: ${{ format('type=gha,scope=fine-tune-{0}', matrix.variant) }}
           platforms: linux/amd64
           sbom: true
           provenance: true
@@ -1331,13 +1359,14 @@ jobs:
         if: github.event_name != 'pull_request'
         env:
           DIGEST: ${{ steps.push.outputs.digest }}
+          IMAGE: ghcr.io/aureliolo/synthorg-fine-tune-${{ matrix.variant }}
         run: |
           if [ -z "$DIGEST" ]; then
             echo "::error::Push step did not produce a digest -- cannot sign image"
             exit 1
           fi
           set -o pipefail
-          if ! cosign sign --yes ghcr.io/aureliolo/synthorg-fine-tune@${DIGEST} 2>&1 | tee /tmp/cosign-out; then
+          if ! cosign sign --yes "${IMAGE}@${DIGEST}" 2>&1 | tee /tmp/cosign-out; then
             if grep -q 'createLogEntryConflict' /tmp/cosign-out; then
               echo "::notice::Image already signed in transparency log -- skipping"
             else
@@ -1350,7 +1379,7 @@ jobs:
         if: github.event_name != 'pull_request'
         uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
         with:
-          subject-name: ghcr.io/aureliolo/synthorg-fine-tune
+          subject-name: ghcr.io/aureliolo/synthorg-fine-tune-${{ matrix.variant }}
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
 
@@ -1358,17 +1387,34 @@ jobs:
         if: github.event_name != 'pull_request'
         uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
         with:
-          image: ghcr.io/aureliolo/synthorg-fine-tune@${{ steps.push.outputs.digest }}
+          image: ghcr.io/aureliolo/synthorg-fine-tune-${{ matrix.variant }}@${{ steps.push.outputs.digest }}
           format: cyclonedx-json
-          output-file: sbom-fine-tune.cdx.json
+          output-file: sbom-fine-tune-${{ matrix.variant }}.cdx.json
 
       - name: Upload SBOM artifact
         if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: sbom-fine-tune
-          path: sbom-fine-tune.cdx.json
+          name: sbom-fine-tune-${{ matrix.variant }}
+          path: sbom-fine-tune-${{ matrix.variant }}.cdx.json
           retention-days: 30
+
+      # Matrix jobs can't expose per-variant outputs to `update-release` via
+      # `needs.build-fine-tune.outputs.digest` (only the last matrix run wins).
+      # Write the digest to a file and upload it; update-release reads both.
+      - name: Write digest to file
+        if: github.event_name != 'pull_request' && steps.push.outputs.digest != ''
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: printf '%s' "$DIGEST" > "fine-tune-${{ matrix.variant }}.digest"
+
+      - name: Upload digest artifact
+        if: github.event_name != 'pull_request' && steps.push.outputs.digest != ''
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: fine-tune-${{ matrix.variant }}-digest
+          path: fine-tune-${{ matrix.variant }}.digest
+          retention-days: 1
 
   # Append container image references to the GitHub Release (version tags only)
   update-release:
@@ -1394,6 +1440,22 @@ jobs:
           merge-multiple: true
           path: sboms
 
+      - name: Download fine-tune digest artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: fine-tune-*-digest
+          merge-multiple: true
+          path: fine-tune-digests
+
+      - name: Read fine-tune digests
+        id: ft-digests
+        run: |
+          set -euo pipefail
+          gpu=$(cat fine-tune-digests/fine-tune-gpu.digest 2>/dev/null || echo "")
+          cpu=$(cat fine-tune-digests/fine-tune-cpu.digest 2>/dev/null || echo "")
+          echo "gpu=${gpu}" >> "$GITHUB_OUTPUT"
+          echo "cpu=${cpu}" >> "$GITHUB_OUTPUT"
+
       - name: Append container images to release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -1403,7 +1465,8 @@ jobs:
           WEB_DIGEST: ${{ needs.build-web.outputs.digest }}
           SANDBOX_DIGEST: ${{ needs.build-sandbox.outputs.digest }}
           SIDECAR_DIGEST: ${{ needs.build-sidecar.outputs.digest }}
-          FINE_TUNE_DIGEST: ${{ needs.build-fine-tune.outputs.digest }}
+          FINE_TUNE_GPU_DIGEST: ${{ steps.ft-digests.outputs.gpu }}
+          FINE_TUNE_CPU_DIGEST: ${{ steps.ft-digests.outputs.cpu }}
         run: |
           set -euo pipefail
 
@@ -1443,7 +1506,8 @@ jobs:
           | Web | `docker pull ghcr.io/aureliolo/synthorg-web:VERSION_PH` |
           | Sandbox | `docker pull ghcr.io/aureliolo/synthorg-sandbox:VERSION_PH` |
           | Sidecar | `docker pull ghcr.io/aureliolo/synthorg-sidecar:VERSION_PH` |
-          | Fine-Tune | `docker pull ghcr.io/aureliolo/synthorg-fine-tune:VERSION_PH` |
+          | Fine-Tune (GPU) | `docker pull ghcr.io/aureliolo/synthorg-fine-tune-gpu:VERSION_PH` |
+          | Fine-Tune (CPU) | `docker pull ghcr.io/aureliolo/synthorg-fine-tune-cpu:VERSION_PH` |
 
           ### Digest Pins
 
@@ -1455,7 +1519,8 @@ jobs:
           | Web | `WEB_DIGEST_PH` |
           | Sandbox | `SANDBOX_DIGEST_PH` |
           | Sidecar | `SIDECAR_DIGEST_PH` |
-          | Fine-Tune | `FINE_TUNE_DIGEST_PH` |
+          | Fine-Tune (GPU) | `FINE_TUNE_GPU_DIGEST_PH` |
+          | Fine-Tune (CPU) | `FINE_TUNE_CPU_DIGEST_PH` |
 
           ### Supply Chain
 
@@ -1478,7 +1543,8 @@ jobs:
           gh attestation verify oci://ghcr.io/aureliolo/synthorg-web@WEB_DIGEST_PH -R Aureliolo/synthorg
           gh attestation verify oci://ghcr.io/aureliolo/synthorg-sandbox@SANDBOX_DIGEST_PH -R Aureliolo/synthorg
           gh attestation verify oci://ghcr.io/aureliolo/synthorg-sidecar@SIDECAR_DIGEST_PH -R Aureliolo/synthorg
-          gh attestation verify oci://ghcr.io/aureliolo/synthorg-fine-tune@FINE_TUNE_DIGEST_PH -R Aureliolo/synthorg
+          gh attestation verify oci://ghcr.io/aureliolo/synthorg-fine-tune-gpu@FINE_TUNE_GPU_DIGEST_PH -R Aureliolo/synthorg
+          gh attestation verify oci://ghcr.io/aureliolo/synthorg-fine-tune-cpu@FINE_TUNE_CPU_DIGEST_PH -R Aureliolo/synthorg
           ```
           </details>
 
@@ -1486,7 +1552,7 @@ jobs:
           <summary>SBOMs (CycloneDX JSON)</summary>
 
           Attached to this release as artifacts:
-          \`sbom-backend.cdx.json\` | \`sbom-web.cdx.json\` | \`sbom-sandbox.cdx.json\` | \`sbom-sidecar.cdx.json\` | \`sbom-fine-tune.cdx.json\`
+          \`sbom-backend.cdx.json\` | \`sbom-web.cdx.json\` | \`sbom-sandbox.cdx.json\` | \`sbom-sidecar.cdx.json\` | \`sbom-fine-tune-gpu.cdx.json\` | \`sbom-fine-tune-cpu.cdx.json\`
           </details>
           BLOCK
           )
@@ -1496,7 +1562,8 @@ jobs:
           IMAGES=${IMAGES//WEB_DIGEST_PH/$WEB_DIGEST}
           IMAGES=${IMAGES//SANDBOX_DIGEST_PH/$SANDBOX_DIGEST}
           IMAGES=${IMAGES//SIDECAR_DIGEST_PH/$SIDECAR_DIGEST}
-          IMAGES=${IMAGES//FINE_TUNE_DIGEST_PH/${FINE_TUNE_DIGEST:-unavailable}}
+          IMAGES=${IMAGES//FINE_TUNE_GPU_DIGEST_PH/${FINE_TUNE_GPU_DIGEST:-unavailable}}
+          IMAGES=${IMAGES//FINE_TUNE_CPU_DIGEST_PH/${FINE_TUNE_CPU_DIGEST:-unavailable}}
 
           # Upload container SBOMs to the draft release
           if ls sboms/sbom-*.cdx.json 1>/dev/null 2>&1; then

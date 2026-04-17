@@ -26,19 +26,20 @@ func RepoPrefix() string {
 //   - backend and web are always included.
 //   - sandbox and sidecar are included when sandbox is true (sidecar runs
 //     alongside sandbox and is pulled by the same code path).
-//   - fine-tune is included when fineTuning is true.
+//   - fine-tune-<variant> is included when fineTuning is true, where
+//     variant is "gpu" (default) or "cpu" per FineTuningVariant.
 //
 // Callers that need the "has this install pulled image X?" answer MUST
 // use this single source of truth: the health check, auto-cleanup keep-set,
 // and diagnostics all depend on it, and omissions here cause the cleanup
 // path to treat freshly-pulled images as garbage.
-func ServiceNames(sandbox, fineTuning bool) []string {
+func ServiceNames(sandbox, fineTuning bool, fineTuneVariant string) []string {
 	names := []string{"backend", "web"}
 	if sandbox {
 		names = append(names, "sandbox", "sidecar")
 	}
 	if fineTuning {
-		names = append(names, "fine-tune")
+		names = append(names, verify.FineTuneServiceName(fineTuneVariant))
 	}
 	return names
 }
