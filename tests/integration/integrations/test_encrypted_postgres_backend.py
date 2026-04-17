@@ -103,37 +103,6 @@ class TestEncryptedPostgresRoundTrip:
         with pytest.raises(SecretRotationError, match="Failed to store rotated secret"):
             await encrypted_postgres.rotate("irrelevant", b"new-value")
 
-    async def test_store_idempotent_preserves_rotated_at(
-        self,
-        encrypted_postgres: EncryptedPostgresSecretBackend,
-        postgres_backend: PostgresPersistenceBackend,
-    ) -> None:
-        """Repeated store with the same ciphertext must not bump rotated_at."""
-        await encrypted_postgres.store("secret-idem", b"same-value")
-        # First store seeds rotated_at=NULL; trigger a real rotation to
-        # seed a real timestamp, then ensure a no-op store leaves it alone.
-        await encrypted_postgres.store("secret-idem", b"first-change")
-        pool = postgres_backend.get_db()
-        async with pool.connection() as conn, conn.cursor() as cur:
-            await cur.execute(
-                "SELECT rotated_at FROM connection_secrets WHERE secret_id = %s",
-                ("secret-idem",),
-            )
-            before_row = await cur.fetchone()
-        assert before_row is not None
-        before = before_row[0]
-        # Storing the same ciphertext again must be a no-op for rotated_at.
-        await encrypted_postgres.store("secret-idem", b"first-change")
-        async with pool.connection() as conn, conn.cursor() as cur:
-            await cur.execute(
-                "SELECT rotated_at FROM connection_secrets WHERE secret_id = %s",
-                ("secret-idem",),
-            )
-            after_row = await cur.fetchone()
-        assert after_row is not None
-        after = after_row[0]
-        assert before == after
-
 
 @pytest.mark.integration
 class TestEncryptedPostgresKeyMismatch:

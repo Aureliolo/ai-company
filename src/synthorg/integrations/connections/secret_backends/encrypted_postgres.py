@@ -126,11 +126,15 @@ class EncryptedPostgresSecretBackend:
             encrypted = self._fernet.encrypt(value)
             pool = self._get_pool()
             async with pool.connection() as conn, conn.cursor() as cur:
-                # ``rotated_at`` is only bumped when the ciphertext
-                # actually changes, so repeated ``store`` calls with
-                # the same value leave the existing rotation timestamp
-                # intact -- operators can trust ``rotated_at`` as a
-                # real rotation signal rather than a write marker.
+                # Fernet uses a fresh IV on every call, so the raw
+                # ciphertext differs between back-to-back ``store``
+                # calls with the same plaintext. Detecting a "true"
+                # rotation (plaintext changed) at the SQL layer would
+                # require a read-decrypt-compare cycle, which doesn't
+                # fit a single UPSERT. We therefore bump ``rotated_at``
+                # on every write and treat it as a last-write timestamp
+                # -- see the per-secret rotate() path for real rotation
+                # semantics that produce a new ``secret_id``.
                 await cur.execute(
                     "INSERT INTO connection_secrets "
                     "(secret_id, encrypted_value, key_version, "
@@ -139,10 +143,7 @@ class EncryptedPostgresSecretBackend:
                     "ON CONFLICT (secret_id) DO UPDATE SET "
                     "encrypted_value = EXCLUDED.encrypted_value, "
                     "key_version = EXCLUDED.key_version, "
-                    "rotated_at = CASE "
-                    "WHEN connection_secrets.encrypted_value IS DISTINCT FROM "
-                    "EXCLUDED.encrypted_value THEN NOW() "
-                    "ELSE connection_secrets.rotated_at END",
+                    "rotated_at = NOW()",
                     (secret_id, encrypted),
                 )
             logger.debug(SECRET_STORED, secret_id=secret_id)
