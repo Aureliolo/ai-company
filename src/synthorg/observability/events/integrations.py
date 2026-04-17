@@ -27,6 +27,7 @@ SECRET_DELETED: Final[str] = "integrations.secret.deleted"  # noqa: S105
 SECRET_ROTATED: Final[str] = "integrations.secret.rotated"  # noqa: S105
 SECRET_RETRIEVAL_FAILED: Final[str] = "integrations.secret.retrieval_failed"  # noqa: S105
 SECRET_STORAGE_FAILED: Final[str] = "integrations.secret.storage_failed"  # noqa: S105
+SECRET_DELETE_FAILED: Final[str] = "integrations.secret.delete_failed"  # noqa: S105
 SECRET_BACKEND_UNAVAILABLE: Final[str] = "integrations.secret.backend_unavailable"  # noqa: S105
 
 # -- OAuth flow ----------------------------------------------------------

@@ -50,6 +50,8 @@ func TestDefaultState(t *testing.T) {
 
 func TestSaveAndLoad(t *testing.T) {
 	tmp := t.TempDir()
+	// 44-char URL-safe base64 that decodes to 32 bytes (valid Fernet key).
+	validFernetKey := "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
 	s := State{
 		DataDir:            tmp,
 		ImageTag:           "v0.1.5",
@@ -58,6 +60,8 @@ func TestSaveAndLoad(t *testing.T) {
 		LogLevel:           "debug",
 		JWTSecret:          "test-secret",
 		SettingsKey:        "test-settings-key",
+		MasterKey:          validFernetKey,
+		EncryptSecrets:     true,
 		PersistenceBackend: "sqlite",
 		MemoryBackend:      "mem0",
 	}
@@ -83,6 +87,12 @@ func TestSaveAndLoad(t *testing.T) {
 	if loaded.SettingsKey != s.SettingsKey {
 		t.Errorf("SettingsKey = %q, want %q", loaded.SettingsKey, s.SettingsKey)
 	}
+	if loaded.MasterKey != s.MasterKey {
+		t.Errorf("MasterKey = %q, want %q", loaded.MasterKey, s.MasterKey)
+	}
+	if loaded.EncryptSecrets != s.EncryptSecrets {
+		t.Errorf("EncryptSecrets = %v, want %v", loaded.EncryptSecrets, s.EncryptSecrets)
+	}
 	if loaded.WebPort != s.WebPort {
 		t.Errorf("WebPort = %d, want %d", loaded.WebPort, s.WebPort)
 	}
@@ -94,6 +104,70 @@ func TestSaveAndLoad(t *testing.T) {
 	}
 	if loaded.MemoryBackend != s.MemoryBackend {
 		t.Errorf("MemoryBackend = %q, want %q", loaded.MemoryBackend, s.MemoryBackend)
+	}
+}
+
+// TestValidateFernetKey covers the MasterKey format check that gates
+// invalid keys before they can be injected as SYNTHORG_MASTER_KEY at
+// container start time.
+func TestValidateFernetKey(t *testing.T) {
+	tests := []struct {
+		name    string
+		key     string
+		wantErr bool
+	}{
+		{
+			name:    "valid 44-char Fernet key",
+			key:     "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+			wantErr: false,
+		},
+		{
+			name:    "too short",
+			key:     "short",
+			wantErr: true,
+		},
+		{
+			name:    "44 chars but not base64",
+			key:     "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!=",
+			wantErr: true,
+		},
+		{
+			name:    "43 chars (missing padding)",
+			key:     "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+			wantErr: true,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateFernetKey(tc.key)
+			if (err != nil) != tc.wantErr {
+				t.Errorf("validateFernetKey(%q) err = %v, wantErr %v", tc.key, err, tc.wantErr)
+			}
+		})
+	}
+}
+
+// TestLoadRejectsInvalidMasterKey ensures a malformed key under
+// EncryptSecrets=true surfaces as a load error instead of silently
+// reaching the backend container.
+func TestLoadRejectsInvalidMasterKey(t *testing.T) {
+	tmp := t.TempDir()
+	s := State{
+		DataDir:            tmp,
+		ImageTag:           "latest",
+		BackendPort:        3001,
+		WebPort:            3000,
+		LogLevel:           "info",
+		PersistenceBackend: "sqlite",
+		MemoryBackend:      "mem0",
+		MasterKey:          "not-a-valid-fernet-key",
+		EncryptSecrets:     true,
+	}
+	if err := Save(s); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	if _, err := Load(tmp); err == nil {
+		t.Fatal("Load succeeded; expected error for malformed master_key")
 	}
 }
 

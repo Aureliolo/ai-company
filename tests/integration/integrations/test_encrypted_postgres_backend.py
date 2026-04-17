@@ -12,7 +12,11 @@ from cryptography.fernet import Fernet
 from synthorg.integrations.connections.secret_backends.encrypted_postgres import (
     EncryptedPostgresSecretBackend,
 )
-from synthorg.integrations.errors import SecretRetrievalError
+from synthorg.integrations.errors import (
+    SecretRetrievalError,
+    SecretRotationError,
+    SecretStorageError,
+)
 from synthorg.persistence.postgres.backend import PostgresPersistenceBackend
 
 
@@ -75,6 +79,60 @@ class TestEncryptedPostgresRoundTrip:
         assert new_id != "secret-d"
         assert await encrypted_postgres.retrieve("secret-d") is None
         assert await encrypted_postgres.retrieve(new_id) == b"new-value"
+
+    async def test_rotate_missing_old_id_rolls_back(
+        self,
+        encrypted_postgres: EncryptedPostgresSecretBackend,
+    ) -> None:
+        """If old_id doesn't exist, the newly written secret is rolled back."""
+        with pytest.raises(SecretRotationError, match="not found during rotation"):
+            await encrypted_postgres.rotate("no-such-old-id", b"new-value")
+
+    async def test_rotate_store_failure_wraps_error(
+        self,
+        encrypted_postgres: EncryptedPostgresSecretBackend,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """If storing the new secret fails, rotation raises SecretRotationError."""
+
+        async def _fail_store(*_args: object, **_kwargs: object) -> None:
+            msg = "simulated store failure"
+            raise SecretStorageError(msg)
+
+        monkeypatch.setattr(encrypted_postgres, "store", _fail_store)
+        with pytest.raises(SecretRotationError, match="Failed to store rotated secret"):
+            await encrypted_postgres.rotate("irrelevant", b"new-value")
+
+    async def test_store_idempotent_preserves_rotated_at(
+        self,
+        encrypted_postgres: EncryptedPostgresSecretBackend,
+        postgres_backend: PostgresPersistenceBackend,
+    ) -> None:
+        """Repeated store with the same ciphertext must not bump rotated_at."""
+        await encrypted_postgres.store("secret-idem", b"same-value")
+        # First store seeds rotated_at=NULL; trigger a real rotation to
+        # seed a real timestamp, then ensure a no-op store leaves it alone.
+        await encrypted_postgres.store("secret-idem", b"first-change")
+        pool = postgres_backend.get_db()
+        async with pool.connection() as conn, conn.cursor() as cur:
+            await cur.execute(
+                "SELECT rotated_at FROM connection_secrets WHERE secret_id = %s",
+                ("secret-idem",),
+            )
+            before_row = await cur.fetchone()
+        assert before_row is not None
+        before = before_row[0]
+        # Storing the same ciphertext again must be a no-op for rotated_at.
+        await encrypted_postgres.store("secret-idem", b"first-change")
+        async with pool.connection() as conn, conn.cursor() as cur:
+            await cur.execute(
+                "SELECT rotated_at FROM connection_secrets WHERE secret_id = %s",
+                ("secret-idem",),
+            )
+            after_row = await cur.fetchone()
+        assert after_row is not None
+        after = after_row[0]
+        assert before == after
 
 
 @pytest.mark.integration

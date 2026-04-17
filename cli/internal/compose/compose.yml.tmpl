@@ -137,9 +137,10 @@ services:
       # and preserved across re-init so existing ciphertext stays
       # decryptable. When EncryptSecrets is disabled the env var is
       # omitted and the backend falls back to env_var (no at-rest
-      # encryption). To rotate the key: regenerate via init + restart
-      # (existing secrets encrypted with the old key become
-      # unreadable -- rotation today is a redeploy operation).
+      # encryption). Master-key rotation is NOT currently supported:
+      # changing SYNTHORG_MASTER_KEY makes every previously stored
+      # connection secret unreadable. Treat this key as permanent for
+      # the life of the install.
       SYNTHORG_MASTER_KEY: {{yamlStr .MasterKey}}
 {{- end}}
     user: "65532:65532"

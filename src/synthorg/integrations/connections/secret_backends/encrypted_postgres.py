@@ -31,6 +31,7 @@ from synthorg.integrations.errors import (
 from synthorg.observability import get_logger
 from synthorg.observability.events.integrations import (
     SECRET_BACKEND_UNAVAILABLE,
+    SECRET_DELETE_FAILED,
     SECRET_DELETED,
     SECRET_RETRIEVAL_FAILED,
     SECRET_ROTATED,
@@ -39,6 +40,8 @@ from synthorg.observability.events.integrations import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from psycopg_pool import AsyncConnectionPool
 
 logger = get_logger(__name__)
@@ -52,20 +55,34 @@ class EncryptedPostgresSecretBackend:
     environment variable specified in ``config.master_key_env``
     (default ``SYNTHORG_MASTER_KEY``).
 
+    The ``pool`` argument accepts either a concrete
+    ``AsyncConnectionPool`` (convenient for tests that already own a
+    connected pool) or a zero-arg callable that returns one (used by
+    ``create_app`` so the pool is acquired lazily on the first
+    operation, after ``persistence.connect()`` has succeeded in the
+    startup lifecycle).
+
     Args:
-        pool: Async Postgres connection pool shared with the main
-            persistence backend.
+        pool: Async Postgres connection pool, or a callable that
+            returns one on demand.
         config: Encrypted Postgres backend configuration.
     """
 
     def __init__(
         self,
-        pool: "AsyncConnectionPool",  # noqa: UP037
+        pool: "AsyncConnectionPool | Callable[[], AsyncConnectionPool]",  # noqa: UP037
         config: EncryptedPostgresConfig | None = None,
     ) -> None:
         cfg = config or EncryptedPostgresConfig()
-        self._pool = pool
+        self._pool_or_getter = pool
         self._fernet = self._init_fernet(cfg.master_key_env)
+
+    def _get_pool(self) -> "AsyncConnectionPool":  # noqa: UP037
+        """Resolve the pool, whether passed concretely or via callable."""
+        target = self._pool_or_getter
+        if callable(target):
+            return target()
+        return target
 
     @property
     def backend_name(self) -> NotBlankStr:
@@ -76,11 +93,11 @@ class EncryptedPostgresSecretBackend:
     def _init_fernet(env_var: str) -> Fernet:
         raw = os.environ.get(env_var, "").strip()
         if not raw:
-            generated = Fernet.generate_key().decode("ascii")
             msg = (
                 f"{env_var} is not set. Set it to a valid Fernet key "
-                f"(URL-safe base64 of 32 bytes). Generated example: "
-                f"{generated}"
+                f"(URL-safe base64 of 32 bytes). Generate one with: "
+                f'python -c "from cryptography.fernet import Fernet; '
+                f'print(Fernet.generate_key().decode())"'
             )
             raise MasterKeyError(msg)
         try:
@@ -107,7 +124,13 @@ class EncryptedPostgresSecretBackend:
         """
         try:
             encrypted = self._fernet.encrypt(value)
-            async with self._pool.connection() as conn, conn.cursor() as cur:
+            pool = self._get_pool()
+            async with pool.connection() as conn, conn.cursor() as cur:
+                # ``rotated_at`` is only bumped when the ciphertext
+                # actually changes, so repeated ``store`` calls with
+                # the same value leave the existing rotation timestamp
+                # intact -- operators can trust ``rotated_at`` as a
+                # real rotation signal rather than a write marker.
                 await cur.execute(
                     "INSERT INTO connection_secrets "
                     "(secret_id, encrypted_value, key_version, "
@@ -116,7 +139,10 @@ class EncryptedPostgresSecretBackend:
                     "ON CONFLICT (secret_id) DO UPDATE SET "
                     "encrypted_value = EXCLUDED.encrypted_value, "
                     "key_version = EXCLUDED.key_version, "
-                    "rotated_at = NOW()",
+                    "rotated_at = CASE "
+                    "WHEN connection_secrets.encrypted_value IS DISTINCT FROM "
+                    "EXCLUDED.encrypted_value THEN NOW() "
+                    "ELSE connection_secrets.rotated_at END",
                     (secret_id, encrypted),
                 )
             logger.debug(SECRET_STORED, secret_id=secret_id)
@@ -133,8 +159,9 @@ class EncryptedPostgresSecretBackend:
 
     async def retrieve(self, secret_id: NotBlankStr) -> bytes | None:
         """Retrieve and decrypt a secret."""
+        pool = self._get_pool()
         try:
-            async with self._pool.connection() as conn, conn.cursor() as cur:
+            async with pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(
                     "SELECT encrypted_value FROM connection_secrets "
                     "WHERE secret_id = %s",
@@ -179,8 +206,9 @@ class EncryptedPostgresSecretBackend:
 
     async def delete(self, secret_id: NotBlankStr) -> bool:
         """Delete a secret."""
+        pool = self._get_pool()
         try:
-            async with self._pool.connection() as conn, conn.cursor() as cur:
+            async with pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(
                     "DELETE FROM connection_secrets WHERE secret_id = %s",
                     (secret_id,),
@@ -188,7 +216,7 @@ class EncryptedPostgresSecretBackend:
                 deleted = cur.rowcount > 0
         except psycopg.Error as exc:
             logger.exception(
-                SECRET_STORAGE_FAILED,
+                SECRET_DELETE_FAILED,
                 secret_id=secret_id,
                 error=str(exc),
             )
@@ -213,6 +241,18 @@ class EncryptedPostgresSecretBackend:
         ``SecretRotationError`` for manual cleanup.
         """
         new_id = str(uuid4())
+        await self._rotate_store_new(old_id, new_id, new_value)
+        await self._rotate_delete_old(old_id, new_id)
+        logger.info(SECRET_ROTATED, old_id=old_id, new_id=new_id)
+        return new_id
+
+    async def _rotate_store_new(
+        self,
+        old_id: NotBlankStr,
+        new_id: NotBlankStr,
+        new_value: bytes,
+    ) -> None:
+        """Write the new secret during rotation, wrapping failures."""
         try:
             await self.store(new_id, new_value)
         except (SecretStorageError, MasterKeyError) as exc:
@@ -224,6 +264,12 @@ class EncryptedPostgresSecretBackend:
             msg = f"Failed to store rotated secret (old_id={old_id})"
             raise SecretRotationError(msg) from exc
 
+    async def _rotate_delete_old(
+        self,
+        old_id: NotBlankStr,
+        new_id: NotBlankStr,
+    ) -> None:
+        """Delete the old secret during rotation, rolling back new on failure."""
         try:
             deleted = await self.delete(old_id)
         except SecretStorageError as exc:
@@ -253,13 +299,6 @@ class EncryptedPostgresSecretBackend:
             )
             msg = f"Old secret {old_id} not found during rotation; {rollback_note}"
             raise SecretRotationError(msg)
-
-        logger.info(
-            SECRET_ROTATED,
-            old_id=old_id,
-            new_id=new_id,
-        )
-        return new_id
 
     async def _rollback_new(self, new_id: NotBlankStr) -> str:
         """Attempt to delete *new_id* after a failed rotation."""

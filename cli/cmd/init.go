@@ -551,6 +551,12 @@ func runInteractiveInit(_ *cobra.Command, opts *GlobalOpts) (*interactiveResult,
 	if initPostgresPort > 0 {
 		model.postgresPort.SetValue(fmt.Sprintf("%d", initPostgresPort))
 	}
+	// Honour --encrypt-secrets in the TUI path. Without this the
+	// toggle renders the default and the user's flag is silently
+	// dropped on confirmation.
+	if initEncryptSecrets != "" {
+		model.encryptSecrets = initEncryptSecrets == "true"
+	}
 
 	// Check if re-init is needed.
 	if existing := config.StatePath(dir); fileExists(existing) {

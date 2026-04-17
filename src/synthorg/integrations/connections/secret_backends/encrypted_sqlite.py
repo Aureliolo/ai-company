@@ -66,11 +66,15 @@ class EncryptedSqliteSecretBackend:
     def _init_fernet(env_var: str) -> Fernet:
         raw = os.environ.get(env_var, "").strip()
         if not raw:
-            generated = Fernet.generate_key().decode("ascii")
+            # Never include a generated key in the error text: the
+            # message may be captured by log aggregators or error
+            # trackers, and any Fernet key in that payload becomes
+            # a valid decryption key for everything stored later.
             msg = (
                 f"{env_var} is not set. Set it to a valid Fernet key "
-                f"(URL-safe base64 of 32 bytes). Generated example: "
-                f"{generated}"
+                f"(URL-safe base64 of 32 bytes). Generate one with: "
+                f'python -c "from cryptography.fernet import Fernet; '
+                f'print(Fernet.generate_key().decode())"'
             )
             raise MasterKeyError(msg)
         try:

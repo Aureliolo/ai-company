@@ -1546,31 +1546,18 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
                     env_db_path = (os.environ.get("SYNTHORG_DB_PATH") or "").strip()
                     secret_db_path = env_db_path or None
 
-            # Resolve the Postgres pool for the encrypted_postgres
-            # backend. Only catch ``PersistenceConnectionError`` here
-            # -- that's the documented failure mode when the pool
-            # isn't connected yet. Unexpected exceptions (attribute
-            # errors, programming bugs, driver panics) propagate so
-            # they surface as startup failures instead of silently
-            # downgrading secret storage to env_var.
-            pg_pool = None
-            if postgres_mode:
-                from synthorg.persistence.errors import (  # noqa: PLC0415
-                    PersistenceConnectionError,
-                )
-
-                try:
-                    pg_pool = persistence.get_db()
-                except PersistenceConnectionError:
-                    logger.error(
-                        API_APP_STARTUP,
-                        note=(
-                            "Postgres pool unavailable for secret backend; "
-                            "falling back to env_var"
-                        ),
-                        exc_info=True,
-                    )
-                    pg_pool = None
+            # Wire a lazy pool getter for the encrypted_postgres
+            # backend. ``persistence.connect()`` runs later in the
+            # startup lifecycle (_safe_startup), so we cannot acquire
+            # a pool during create_app itself -- ``get_db()`` would
+            # raise ``PersistenceConnectionError`` and permanently
+            # lock the secret backend into env_var for the life of
+            # the process. Passing ``persistence.get_db`` as a
+            # callable defers the lookup to the first store/retrieve,
+            # which always runs after startup has succeeded. A
+            # broken pool at first use surfaces as a normal
+            # ``SecretStorageError`` with full context.
+            pg_pool_getter = persistence.get_db if postgres_mode else None
 
             # Auto-select the correct Fernet-backed adapter for the
             # active persistence backend. See
@@ -1586,18 +1573,20 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
             selection = resolve_secret_backend_config(
                 effective_config.integrations.secret_backend,
                 postgres_mode=postgres_mode,
-                pg_pool_available=pg_pool is not None,
+                pg_pool_available=pg_pool_getter is not None,
                 sqlite_db_path=secret_db_path,
             )
             if selection.reason:
-                getattr(logger, selection.level)(
-                    API_APP_STARTUP,
-                    note=selection.reason,
-                )
+                log_fn = {
+                    "info": logger.info,
+                    "warning": logger.warning,
+                    "error": logger.error,
+                }.get(selection.level, logger.info)
+                log_fn(API_APP_STARTUP, note=selection.reason)
             secret_backend = create_secret_backend(
                 selection.config,
                 db_path=secret_db_path,
-                pg_pool=pg_pool,
+                pg_pool=pg_pool_getter,
             )
             connection_catalog = ConnectionCatalog(
                 repository=persistence.connections,

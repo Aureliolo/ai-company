@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -364,6 +365,11 @@ func (s State) validate() error {
 			return fmt.Errorf("postgres_password must not contain control characters (NUL, CR, LF, TAB)")
 		}
 	}
+	if s.EncryptSecrets && strings.TrimSpace(s.MasterKey) != "" {
+		if err := validateFernetKey(s.MasterKey); err != nil {
+			return fmt.Errorf("invalid master_key: %w", err)
+		}
+	}
 	if s.FineTuning && !s.Sandbox {
 		return fmt.Errorf("fine_tuning requires sandbox to be enabled")
 	}
@@ -556,6 +562,27 @@ func IsValidImageTag(tag string) bool {
 
 func isAlphaNum(c byte) bool {
 	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
+}
+
+// validateFernetKey verifies that key is a 44-character URL-safe base64
+// string that decodes to exactly 32 bytes. Fernet keys that pass this
+// check will round-trip through cryptography.fernet.Fernet without
+// raising ValueError; a non-empty invalid key would otherwise sail
+// through init, be injected as SYNTHORG_MASTER_KEY, and only fail
+// when the backend constructs Fernet -- after the container has been
+// restarted enough times to trip the restart-loop detector.
+func validateFernetKey(key string) error {
+	if len(key) != 44 {
+		return fmt.Errorf("must be 44 characters (URL-safe base64 of 32 bytes), got %d", len(key))
+	}
+	raw, err := base64.URLEncoding.DecodeString(key)
+	if err != nil {
+		return fmt.Errorf("not valid URL-safe base64: %w", err)
+	}
+	if len(raw) != 32 {
+		return fmt.Errorf("must decode to 32 bytes, got %d", len(raw))
+	}
+	return nil
 }
 
 // isValidDigestFormat checks if d matches sha256:<64-hex-chars>.

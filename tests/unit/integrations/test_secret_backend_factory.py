@@ -265,3 +265,35 @@ class TestResolveSecretBackendConfig:
         )
         assert selection.config.backend_type == "encrypted_sqlite"
         assert selection.reason == ""
+        assert selection.level == "info"
+
+    def test_promotion_preserves_custom_master_key_env(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Promotion sqlite->postgres must carry the custom master_key_env.
+
+        Without propagation, the promoted encrypted_postgres backend would
+        default its master_key_env to "SYNTHORG_MASTER_KEY" and silently
+        downgrade to env_var because the operator's key is under a
+        different name.
+        """
+        from cryptography.fernet import Fernet
+
+        monkeypatch.delenv("SYNTHORG_MASTER_KEY", raising=False)
+        monkeypatch.setenv("MY_CUSTOM_KEY", Fernet.generate_key().decode())
+        config = SecretBackendConfig.model_validate(
+            {
+                "backend_type": "encrypted_sqlite",
+                "encrypted_sqlite": {"master_key_env": "MY_CUSTOM_KEY"},
+            }
+        )
+        selection = resolve_secret_backend_config(
+            config,
+            postgres_mode=True,
+            pg_pool_available=True,
+            sqlite_db_path=None,
+        )
+        assert selection.config.backend_type == "encrypted_postgres"
+        assert selection.config.encrypted_postgres.master_key_env == "MY_CUSTOM_KEY"
+        assert selection.level == "warning"

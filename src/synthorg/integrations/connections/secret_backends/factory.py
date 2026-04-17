@@ -26,7 +26,10 @@ from synthorg.observability.events.integrations import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from psycopg_pool import AsyncConnectionPool
+
 
 logger = get_logger(__name__)
 
@@ -51,6 +54,103 @@ class SecretBackendSelection:
     config: SecretBackendConfig
     reason: str
     level: str
+
+
+def _resolve_backend_type(
+    config: SecretBackendConfig,
+    *,
+    postgres_mode: bool,
+    pg_pool_available: bool,
+    sqlite_db_path: str | None,
+) -> tuple[str, str, str]:
+    """Pick the backend type, reason, and log level for this environment."""
+    resolved = config.backend_type
+    if resolved == "encrypted_sqlite" and postgres_mode:
+        if pg_pool_available:
+            return (
+                "encrypted_postgres",
+                (
+                    "default encrypted_sqlite promoted to encrypted_postgres "
+                    "to match Postgres persistence"
+                ),
+                "warning",
+            )
+        return (
+            "env_var",
+            (
+                "encrypted secret backend requested in postgres mode but "
+                "no pool is available; falling back to env_var"
+            ),
+            "error",
+        )
+    if resolved == "encrypted_sqlite" and sqlite_db_path is None:
+        return (
+            "env_var",
+            "encrypted_sqlite secret backend has no db_path; falling back to env_var",
+            "error",
+        )
+    if resolved == "encrypted_postgres" and not pg_pool_available:
+        return (
+            "env_var",
+            (
+                "encrypted_postgres secret backend has no pg_pool; "
+                "falling back to env_var"
+            ),
+            "error",
+        )
+    return resolved, "", "info"
+
+
+def _check_master_key(
+    resolved: str,
+    config: SecretBackendConfig,
+) -> tuple[str, str, str] | None:
+    """Verify the master-key env var is set for encrypted backends.
+
+    Returns a ``(resolved, reason, level)`` override if the key is
+    missing (forcing a downgrade to ``env_var``); returns ``None`` when
+    the backend is not encrypted or the key is present.
+    """
+    if resolved not in ("encrypted_sqlite", "encrypted_postgres"):
+        return None
+    master_key_env = (
+        config.encrypted_sqlite.master_key_env
+        if resolved == "encrypted_sqlite"
+        else config.encrypted_postgres.master_key_env
+    )
+    if os.environ.get(master_key_env, "").strip():
+        return None
+    return (
+        "env_var",
+        (
+            f"{master_key_env} is not set; encrypted secret backend "
+            "requires a Fernet key. Falling back to env_var (no "
+            f"at-rest encryption). Set {master_key_env} (URL-safe "
+            "base64 of 32 bytes) to enable encrypted secret storage."
+        ),
+        "error",
+    )
+
+
+def _promote_to_postgres(config: SecretBackendConfig) -> SecretBackendConfig:
+    """Rewrite ``config`` for the sqlite-to-postgres auto-promotion.
+
+    Carries the operator-specified ``encrypted_sqlite.master_key_env`` into
+    ``encrypted_postgres.master_key_env`` so a customised env var isn't lost
+    during the auto-promotion. Without this the promoted backend would look
+    up a different env var (the postgres default) and silently fall back to
+    ``env_var`` even though the operator's key is set.
+    """
+    sqlite_env = config.encrypted_sqlite.master_key_env
+    postgres_cfg = config.encrypted_postgres.model_copy(
+        update={"master_key_env": sqlite_env}
+    )
+    return config.model_copy(
+        update={
+            "backend_type": "encrypted_postgres",
+            "encrypted_postgres": postgres_cfg,
+        }
+    )
 
 
 def resolve_secret_backend_config(
@@ -80,76 +180,48 @@ def resolve_secret_backend_config(
         config: Configured secret backend.
         postgres_mode: Whether the active persistence backend is
             Postgres (vs SQLite).
-        pg_pool_available: Whether ``persistence.get_db()`` yielded a
-            usable pool. Set to ``False`` when the persistence layer
-            failed to connect.
+        pg_pool_available: Whether the Postgres pool can be produced on
+            demand. Callers may pass ``True`` when they hold a lazy
+            getter that resolves at first use (the pool is then
+            acquired after ``persistence.connect()`` completes).
         sqlite_db_path: SQLite DB path if available, else ``None``.
 
     Returns:
         A :class:`SecretBackendSelection` describing the resolved
         config plus a human-readable reason (empty if unchanged).
     """
-    resolved = config.backend_type
+    resolved, reason, level = _resolve_backend_type(
+        config,
+        postgres_mode=postgres_mode,
+        pg_pool_available=pg_pool_available,
+        sqlite_db_path=sqlite_db_path,
+    )
 
-    if resolved == "encrypted_sqlite" and postgres_mode:
-        if pg_pool_available:
-            resolved = "encrypted_postgres"
-            reason = (
-                "default encrypted_sqlite promoted to encrypted_postgres "
-                "to match Postgres persistence"
-            )
-            level = "warning"
-        else:
-            resolved = "env_var"
-            reason = (
-                "encrypted secret backend requested in postgres mode but "
-                "no pool is available; falling back to env_var"
-            )
-            level = "error"
-    elif resolved == "encrypted_sqlite" and sqlite_db_path is None:
-        resolved = "env_var"
-        reason = (
-            "encrypted_sqlite secret backend has no db_path; falling back to env_var"
-        )
-        level = "error"
-    elif resolved == "encrypted_postgres" and not pg_pool_available:
-        resolved = "env_var"
-        reason = (
-            "encrypted_postgres secret backend has no pg_pool; falling back to env_var"
-        )
-        level = "error"
+    # Apply the sqlite-to-postgres promotion before the master-key
+    # check so the check uses the already-propagated master_key_env
+    # (see _promote_to_postgres). Without this ordering a custom
+    # encrypted_sqlite.master_key_env would be lost during the
+    # env-var lookup and the backend would spuriously downgrade.
+    if resolved == "encrypted_postgres" and config.backend_type == "encrypted_sqlite":
+        resolved_config = _promote_to_postgres(config)
+    elif resolved == config.backend_type:
+        resolved_config = config
     else:
-        reason = ""
-        level = "info"
+        resolved_config = config.model_copy(update={"backend_type": resolved})
 
-    # Master key check applies after the first pass; even an
-    # explicitly-configured encrypted backend still needs the key.
-    if resolved in ("encrypted_sqlite", "encrypted_postgres"):
-        master_key_env = (
-            config.encrypted_sqlite.master_key_env
-            if resolved == "encrypted_sqlite"
-            else config.encrypted_postgres.master_key_env
-        )
-        if not os.environ.get(master_key_env, "").strip():
-            resolved = "env_var"
-            reason = (
-                f"{master_key_env} is not set; encrypted secret backend "
-                "requires a Fernet key. Falling back to env_var (no "
-                f"at-rest encryption). Set {master_key_env} (URL-safe "
-                "base64 of 32 bytes) to enable encrypted secret storage."
-            )
-            level = "error"
+    key_override = _check_master_key(resolved, resolved_config)
+    if key_override is not None:
+        resolved, reason, level = key_override
+        resolved_config = resolved_config.model_copy(update={"backend_type": resolved})
 
-    if resolved != config.backend_type:
-        config = config.model_copy(update={"backend_type": resolved})
-    return SecretBackendSelection(config=config, reason=reason, level=level)
+    return SecretBackendSelection(config=resolved_config, reason=reason, level=level)
 
 
 def create_secret_backend(
     config: SecretBackendConfig,
     *,
     db_path: str | None = None,
-    pg_pool: "AsyncConnectionPool | None" = None,  # noqa: UP037
+    pg_pool: "AsyncConnectionPool | Callable[[], AsyncConnectionPool] | None" = None,  # noqa: UP037
 ) -> SecretBackend:
     """Create a secret backend from configuration.
 
@@ -157,8 +229,11 @@ def create_secret_backend(
         config: Secret backend configuration.
         db_path: SQLite database path (required for
             ``encrypted_sqlite``).
-        pg_pool: Async Postgres connection pool (required for
-            ``encrypted_postgres``).
+        pg_pool: Async Postgres connection pool or a zero-arg callable
+            that returns one. A callable defers pool acquisition to
+            the first operation, which lets ``create_app`` wire the
+            backend before ``persistence.connect()`` has run. Required
+            for ``encrypted_postgres``.
 
     Returns:
         A configured ``SecretBackend`` instance.

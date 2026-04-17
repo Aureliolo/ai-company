@@ -27,9 +27,14 @@ class EncryptedSqliteConfig(BaseModel):
     """Config for the encrypted SQLite secret backend.
 
     Attributes:
-        master_key_env: Environment variable holding the base64-encoded
-            32-byte master key.  When unset, a random key is generated
-            at first startup and written to ``$SYNTHORG_DATA_DIR/.master_key``.
+        master_key_env: Environment variable holding the URL-safe
+            base64-encoded 32-byte Fernet key. The operator must set
+            this before the backend is used; when unset the backend
+            raises :class:`MasterKeyError` at construction time and
+            the app auto-downgrades to ``env_var`` with an ERROR log
+            (see ``resolve_secret_backend_config``). There is no
+            auto-generation of key material on disk -- losing the
+            key orphans all previously stored ciphertext.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
