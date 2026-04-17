@@ -47,7 +47,7 @@ func refreshCompose(cmd *cobra.Command, state config.State, force bool) (bool, e
 		// it references may be missing or stale (older CLI versions
 		// did not write it). Re-emit so the file always exists when
 		// distributed bus mode is on.
-		if err := writeNATSConfigIfNeeded(state.BusBackend, safeDir); err != nil {
+		if err := compose.WriteNATSConfig(state.BusBackend, safeDir); err != nil {
 			return false, err
 		}
 		_, _ = fmt.Fprintln(out, "Compose configuration is up to date.")
@@ -58,7 +58,7 @@ func refreshCompose(cmd *cobra.Command, state config.State, force bool) (bool, e
 	// changed -- these are expected during an update and don't need
 	// user confirmation (template structure is unchanged).
 	if isUpdateBoilerplateOnly(existing, fresh) {
-		if err := writeComposeWithNATS(composePath, fresh, state, safeDir); err != nil {
+		if err := compose.WriteComposeAndNATS(composePath, fresh, state.BusBackend, safeDir); err != nil {
 			return false, fmt.Errorf("writing updated compose: %w", err)
 		}
 		_, _ = fmt.Fprintln(out, "Compose configuration is up to date.")
@@ -86,7 +86,7 @@ func recoverMissingCompose(out io.Writer, composePath string, state config.State
 	if genErr != nil {
 		return false, fmt.Errorf("generating compose.yml during recovery: %w", genErr)
 	}
-	if wErr := writeComposeWithNATS(composePath, generated, state, safeDir); wErr != nil {
+	if wErr := compose.WriteComposeAndNATS(composePath, generated, state.BusBackend, safeDir); wErr != nil {
 		return false, fmt.Errorf("writing compose files during recovery: %w", wErr)
 	}
 	_, _ = fmt.Fprintln(out, "Generated compose.yml from template.")
@@ -169,7 +169,7 @@ func applyComposeDiff(cmd *cobra.Command, composePath string, existing, fresh []
 		return false, nil
 	}
 
-	if err := writeComposeWithNATS(composePath, fresh, state, safeDir); err != nil {
+	if err := compose.WriteComposeAndNATS(composePath, fresh, state.BusBackend, safeDir); err != nil {
 		return false, fmt.Errorf("writing updated compose: %w", err)
 	}
 	_, _ = fmt.Fprintln(out, "Compose configuration updated.")
@@ -318,5 +318,5 @@ func patchComposeImageRefs(tag string, digestPins map[string]string, sandboxEnab
 		}
 	}
 
-	return atomicWriteFile(composePath, []byte(patched), safeDir)
+	return compose.AtomicWriteFile(composePath, []byte(patched), safeDir)
 }

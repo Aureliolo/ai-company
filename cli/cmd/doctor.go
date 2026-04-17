@@ -278,7 +278,7 @@ func doctorFixCompose(state config.State, safeDir string) error {
 		return fmt.Errorf("generating compose: %w", err)
 	}
 	composePath := filepath.Join(safeDir, "compose.yml")
-	return atomicWriteFile(composePath, generated, safeDir)
+	return compose.AtomicWriteFile(composePath, generated, safeDir)
 }
 
 // doctorStatus classifies the overall health of the system from a diagnostic report.

@@ -14,7 +14,7 @@ import time
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path, PurePath
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, get_args
 from urllib.parse import unquote, urlparse
 
 from litestar import Controller, Litestar, Request, Router
@@ -120,6 +120,7 @@ from synthorg.persistence.artifact_storage import (
 from synthorg.persistence.config import (
     PersistenceConfig,
     PostgresConfig,
+    PostgresSslMode,
     SQLiteConfig,
 )
 from synthorg.persistence.factory import create_backend
@@ -253,16 +254,11 @@ def _postgres_config_from_url(db_url: str) -> PostgresConfig:
     ssl_kwargs: dict[str, Any] = {}
     if ssl_override:
         # Validate up front rather than letting Pydantic raise a less
-        # actionable error during PostgresConfig construction. The set
-        # mirrors PostgresSslMode in persistence/config.py.
-        valid_modes = {
-            "disable",
-            "allow",
-            "prefer",
-            "require",
-            "verify-ca",
-            "verify-full",
-        }
+        # actionable error during PostgresConfig construction. Derive
+        # the allow-list from PostgresSslMode itself so adding or
+        # removing a mode in persistence/config.py automatically keeps
+        # this check in sync (no duplicate literal sets to drift).
+        valid_modes = set(get_args(PostgresSslMode))
         if ssl_override not in valid_modes:
             msg = (
                 f"SYNTHORG_POSTGRES_SSL_MODE={ssl_override!r} is invalid; "

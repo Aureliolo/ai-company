@@ -9,6 +9,7 @@ from litestar.testing import TestClient
 from synthorg.api.app import (
     _bootstrap_app_logging,
     _postgres_config_from_url,
+    _resolve_artifact_dir_env,
     create_app,
 )
 from synthorg.api.middleware import _SECURITY_HEADERS
@@ -118,8 +119,6 @@ class TestResolveArtifactDirEnv:
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        from synthorg.api.app import _resolve_artifact_dir_env
-
         monkeypatch.delenv("SYNTHORG_ARTIFACT_DIR", raising=False)
         assert _resolve_artifact_dir_env() == "/data"
 
@@ -140,8 +139,6 @@ class TestResolveArtifactDirEnv:
         monkeypatch: pytest.MonkeyPatch,
         env_value: str,
     ) -> None:
-        from synthorg.api.app import _resolve_artifact_dir_env
-
         monkeypatch.setenv("SYNTHORG_ARTIFACT_DIR", env_value)
         assert _resolve_artifact_dir_env() == "/data"
 
@@ -149,8 +146,6 @@ class TestResolveArtifactDirEnv:
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        from synthorg.api.app import _resolve_artifact_dir_env
-
         monkeypatch.setenv("SYNTHORG_ARTIFACT_DIR", "/mnt/custom-artifacts")
         assert _resolve_artifact_dir_env() == "/mnt/custom-artifacts"
 
@@ -158,8 +153,6 @@ class TestResolveArtifactDirEnv:
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        from synthorg.api.app import _resolve_artifact_dir_env
-
         monkeypatch.setenv("SYNTHORG_ARTIFACT_DIR", "  /mnt/artifacts  ")
         assert _resolve_artifact_dir_env() == "/mnt/artifacts"
 

@@ -1,28 +1,23 @@
 # Codecov configuration
 # https://docs.codecov.com/docs/codecov-yaml
+#
+# Project policy: 80% minimum coverage floor for both overall project
+# and per-patch diffs, matching the project-level CLAUDE.md rule
+# ("Coverage minimum is 80%, enforced in CI."). The 0.5% threshold
+# absorbs measurement noise (xdist ordering, coverage rounding, tiny
+# refactors that move a branch by one test run) without weakening
+# the hard floor -- any drop that actually pushes coverage below 79.5%
+# still trips the gate.
 
 coverage:
   status:
     project:
       default:
-        # Require overall coverage to stay near the current baseline.
-        # The 0.5% threshold absorbs measurement noise (xdist ordering,
-        # coverage rounding, tiny refactors that move a branch by one
-        # test run) without materially weakening the gate -- any real
-        # regression of more than half a percent still trips the check.
-        target: auto
+        target: 80%
         threshold: 0.5%
         if_ci_failed: error
     patch:
       default:
-        # Patch coverage target: every diff must hit at least 70% of
-        # its own added lines. This is deliberately lower than the
-        # project baseline (~85%) because diffs routinely include
-        # defense-in-depth error paths (OS permission failures,
-        # mock-only docker responses, rare exception handlers) whose
-        # behaviour is easy to reason about by inspection and
-        # expensive to exercise with real tests. The 70% floor still
-        # keeps most patches well-tested while not forcing mocks of
-        # every syscall boundary.
-        target: 70%
+        target: 80%
+        threshold: 0.5%
         if_ci_failed: error

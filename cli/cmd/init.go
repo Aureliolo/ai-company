@@ -3,7 +3,6 @@ package cmd
 import (
 	"crypto/rand"
 	"encoding/base64"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -736,7 +735,7 @@ func writeInitFiles(state config.State) (string, error) {
 	}
 
 	composePath := filepath.Join(safeDir, "compose.yml")
-	if err := writeComposeWithNATS(composePath, composeYAML, state, safeDir); err != nil {
+	if err := compose.WriteComposeAndNATS(composePath, composeYAML, state.BusBackend, safeDir); err != nil {
 		return "", fmt.Errorf("writing compose files: %w", err)
 	}
 
@@ -744,59 +743,6 @@ func writeInitFiles(state config.State) (string, error) {
 		return "", fmt.Errorf("saving config: %w", err)
 	}
 	return safeDir, nil
-}
-
-// writeNATSConfigIfNeeded writes the NATS server config file alongside
-// compose.yml when the distributed bus mode is active. The compose
-// template references this via `configs.nats-config.file: ./nats.conf`,
-// so any caller that writes compose.yml must also keep the conf in
-// sync (init, update's compose refresh, start's digest pin rewrite).
-//
-// When the bus is the in-process default, the file is not needed and
-// is removed if it exists from a prior distributed install.
-//
-// Implementation note: the file I/O goes through os.Root so operations
-// are statically contained to safeDir and CodeQL's go/path-injection
-// analyser sees a rooted filesystem sink instead of a raw filepath.Join
-// reaching a potentially-tainted directory. The function takes
-// busBackend string directly (not the full config.State) so the
-// state.DataDir taint source does not re-flow across the function
-// boundary.
-func writeNATSConfigIfNeeded(busBackend, safeDir string) error {
-	sanitised, err := config.SecurePath(safeDir)
-	if err != nil {
-		return fmt.Errorf("nats config: %w", err)
-	}
-	if sanitised != safeDir {
-		return fmt.Errorf("nats config: safeDir %q is not canonical (expected %q)", safeDir, sanitised)
-	}
-	root, err := os.OpenRoot(sanitised)
-	if err != nil {
-		return fmt.Errorf("opening nats config root %q: %w", sanitised, err)
-	}
-	defer func() { _ = root.Close() }()
-	if busBackend != "nats" {
-		if err := root.Remove(compose.NATSConfigFilename); err != nil && !errors.Is(err, os.ErrNotExist) {
-			return fmt.Errorf("removing stale nats.conf: %w", err)
-		}
-		return nil
-	}
-	f, err := root.OpenFile(compose.NATSConfigFilename, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
-	if err != nil {
-		return fmt.Errorf("opening nats.conf for write: %w", err)
-	}
-	if _, err := f.Write([]byte(compose.NATSConfigContent)); err != nil {
-		_ = f.Close()
-		return fmt.Errorf("writing nats.conf: %w", err)
-	}
-	if err := f.Sync(); err != nil {
-		_ = f.Close()
-		return fmt.Errorf("syncing nats.conf: %w", err)
-	}
-	if err := f.Close(); err != nil {
-		return fmt.Errorf("closing nats.conf: %w", err)
-	}
-	return nil
 }
 
 // resolveImageTag returns the image tag to use: the override if set,
