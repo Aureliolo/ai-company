@@ -401,16 +401,41 @@ def handle_domain_error(
     leaking internal detail; 4xx responses pass through the exception
     message which is controller-authored and user-safe.
     """
-    status_code = int(getattr(exc, "status_code", 500))
-    error_code_val = getattr(exc, "error_code", ErrorCode.INTERNAL_ERROR)
-    error_category_val = getattr(exc, "error_category", ErrorCategory.INTERNAL)
-    # Prefer the instance ``is_retryable`` when set (individual
-    # transient subclasses toggle this true on an otherwise non-retryable
-    # base like ``IntegrationError``), falling back to the ClassVar
-    # ``retryable`` flag used by the API-layer ``ApiError`` hierarchy.
-    retryable = bool(
-        getattr(exc, "is_retryable", False) or getattr(exc, "retryable", False),
+    # Defensive: an exception class with a malformed ClassVar (e.g. a
+    # non-int ``status_code`` injected by accident) must never crash
+    # the handler -- fall back to 500.  The status is also clamped to
+    # the valid HTTP range so a subclass that sets ``status_code=0``
+    # or ``999`` does not yield an unparseable response.
+    raw_status = getattr(exc, "status_code", 500)
+    try:
+        status_code = int(raw_status)
+    except TypeError, ValueError:
+        status_code = 500
+    if not (100 <= status_code <= 599):  # noqa: PLR2004
+        status_code = 500
+    # Validate ``error_code`` / ``error_category`` against their enum
+    # membership; unknown values get normalized to the generic
+    # INTERNAL fallback so ``_build_response`` never sees junk that
+    # would serialize oddly.
+    raw_code = getattr(exc, "error_code", ErrorCode.INTERNAL_ERROR)
+    error_code_val = (
+        raw_code if isinstance(raw_code, ErrorCode) else ErrorCode.INTERNAL_ERROR
     )
+    raw_category = getattr(exc, "error_category", ErrorCategory.INTERNAL)
+    error_category_val = (
+        raw_category
+        if isinstance(raw_category, ErrorCategory)
+        else ErrorCategory.INTERNAL
+    )
+    # Honour an explicit instance ``is_retryable`` (False included)
+    # when the attribute is present -- subclasses that know they are
+    # non-retryable must not be overridden by a stale ClassVar
+    # ``retryable`` elsewhere in the MRO.  Only fall back to
+    # ``retryable`` when ``is_retryable`` is not set at all.
+    if hasattr(exc, "is_retryable"):
+        retryable = bool(exc.is_retryable)
+    else:
+        retryable = bool(getattr(exc, "retryable", False))
     _log_error(request, exc, status=status_code)
     if status_code >= _SERVER_ERROR_THRESHOLD:
         msg = str(getattr(exc, "default_message", "Internal server error"))

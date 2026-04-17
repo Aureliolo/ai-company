@@ -135,9 +135,14 @@ apiClient.interceptors.response.use(
       for (const [k, v] of Object.entries(rawHeaders)) {
         if (typeof v === 'string') normalizedHeaders[k.toLowerCase()] = v
       }
+      // An idempotency key only enables retry when it's a non-empty,
+      // non-whitespace value -- an empty or blank header is a client
+      // bug, not an opt-in, and must not license replaying an
+      // accepted mutation.
+      const idempotencyKey = normalizedHeaders[IDEMPOTENCY_KEY_HEADER]
       const isIdempotent =
         IDEMPOTENT_METHODS.has(method) ||
-        normalizedHeaders[IDEMPOTENCY_KEY_HEADER] !== undefined
+        (typeof idempotencyKey === 'string' && idempotencyKey.trim().length > 0)
       const retries = config._rateLimitRetries ?? 0
       if (isIdempotent && retries < MAX_RATE_LIMIT_RETRIES) {
         const waitMs = parseRetryAfterMs(

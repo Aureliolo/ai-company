@@ -988,10 +988,16 @@ CREATE TABLE conflict_escalations (
         status != 'pending'
         OR (decision_json IS NULL AND decided_at IS NULL AND decided_by IS NULL)
     ),
-    -- EXPIRED / CANCELLED rows drop any decision payload.
+    -- EXPIRED / CANCELLED rows drop any decision payload but MUST
+    -- carry audit-trail columns (transition timestamp + actor) so
+    -- auditors can always answer "who transitioned this, and when".
     CHECK(
         status NOT IN ('expired', 'cancelled')
-        OR decision_json IS NULL
+        OR (
+            decision_json IS NULL
+            AND decided_at IS NOT NULL
+            AND decided_by IS NOT NULL
+        )
     )
 );
 CREATE INDEX idx_conflict_escalations_status_created

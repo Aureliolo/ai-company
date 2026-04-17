@@ -55,7 +55,7 @@ class PendingFuturesRegistry:
             loop = asyncio.get_running_loop()
             future: asyncio.Future[EscalationDecision] = loop.create_future()
             self._futures[escalation_id] = future
-        logger.debug(
+        logger.info(
             CONFLICT_ESCALATION_QUEUED,
             escalation_id=escalation_id,
             note="future_registered",

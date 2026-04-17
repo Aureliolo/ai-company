@@ -25,10 +25,10 @@ from synthorg.persistence.sqlite.escalation_repo import SQLiteEscalationReposito
 pytestmark = pytest.mark.unit
 
 
-def _make_conflict() -> Conflict:
+def _make_conflict(conflict_id: str = "conflict-sql-0001") -> Conflict:
     """Build a two-agent conflict fixture."""
     return Conflict(
-        id="conflict-sql-0001",
+        id=conflict_id,
         type=ConflictType.ARCHITECTURE,
         subject="Pick a storage engine",
         positions=(
@@ -57,11 +57,18 @@ def _make_escalation(
     *,
     escalation_id: str,
     expires_at: AwareDatetime | None = None,
+    conflict_id: str | None = None,
 ) -> Escalation:
-    """Build a pending escalation."""
+    """Build a pending escalation.
+
+    ``conflict_id`` defaults to a value derived from ``escalation_id``
+    so tests creating multiple escalations mirror production's
+    "one PENDING escalation per conflict" invariant by default.
+    """
+    resolved_conflict_id = conflict_id or f"conflict-for-{escalation_id}"
     return Escalation(
         id=escalation_id,
-        conflict=_make_conflict(),
+        conflict=_make_conflict(resolved_conflict_id),
         created_at=datetime.now(UTC),
         expires_at=expires_at,
     )

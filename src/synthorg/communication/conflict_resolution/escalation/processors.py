@@ -14,6 +14,12 @@ from synthorg.communication.conflict_resolution.models import (
     DissentRecord,
 )
 from synthorg.communication.enums import ConflictResolutionStrategy
+from synthorg.observability import get_logger
+from synthorg.observability.events.conflict import (
+    CONFLICT_ESCALATION_RESOLVED,
+)
+
+logger = get_logger(__name__)
 
 _NO_WINNER_OUTCOMES = frozenset(
     {
@@ -85,6 +91,14 @@ class WinnerSelectProcessor:
                 "Configure decision_strategy='hybrid' to allow "
                 "'reject' decisions."
             )
+            logger.warning(
+                CONFLICT_ESCALATION_RESOLVED,
+                conflict_id=conflict.id,
+                decided_by=decided_by,
+                decision_type=getattr(decision, "type", type(decision).__name__),
+                strategy=ConflictResolutionStrategy.HUMAN.value,
+                note="winner_select_rejected_non_winner",
+            )
             raise ValueError(msg)  # noqa: TRY004
         winning_position = next(
             (
@@ -99,8 +113,16 @@ class WinnerSelectProcessor:
                 f"winning_agent_id {decision.winning_agent_id!r} "
                 "does not match any position in the conflict"
             )
+            logger.warning(
+                CONFLICT_ESCALATION_RESOLVED,
+                conflict_id=conflict.id,
+                decided_by=decided_by,
+                winning_agent_id=decision.winning_agent_id,
+                strategy=ConflictResolutionStrategy.HUMAN.value,
+                note="winner_agent_not_in_conflict",
+            )
             raise ValueError(msg)
-        return ConflictResolution(
+        resolution = ConflictResolution(
             conflict_id=conflict.id,
             outcome=ConflictResolutionOutcome.RESOLVED_BY_HUMAN,
             winning_agent_id=decision.winning_agent_id,
@@ -109,6 +131,15 @@ class WinnerSelectProcessor:
             reasoning=decision.reasoning,
             resolved_at=datetime.now(UTC),
         )
+        logger.info(
+            CONFLICT_ESCALATION_RESOLVED,
+            conflict_id=conflict.id,
+            decided_by=decided_by,
+            strategy=ConflictResolutionStrategy.HUMAN.value,
+            outcome=resolution.outcome.value,
+            winning_agent_id=resolution.winning_agent_id,
+        )
+        return resolution
 
     def build_dissent_records(
         self,
@@ -147,7 +178,7 @@ class HybridDecisionProcessor:
         # Union is exhaustive (``winner`` | ``reject``) per
         # :data:`EscalationDecision`.  mypy confirms no other member
         # can reach this branch.
-        return ConflictResolution(
+        resolution = ConflictResolution(
             conflict_id=conflict.id,
             outcome=ConflictResolutionOutcome.REJECTED_BY_HUMAN,
             winning_agent_id=None,
@@ -156,6 +187,15 @@ class HybridDecisionProcessor:
             reasoning=decision.reasoning,
             resolved_at=datetime.now(UTC),
         )
+        logger.info(
+            CONFLICT_ESCALATION_RESOLVED,
+            conflict_id=conflict.id,
+            decided_by=decided_by,
+            strategy=ConflictResolutionStrategy.HUMAN.value,
+            outcome=resolution.outcome.value,
+            note="hybrid_processor_rejected",
+        )
+        return resolution
 
     def build_dissent_records(
         self,

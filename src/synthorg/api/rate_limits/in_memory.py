@@ -73,9 +73,27 @@ class InMemorySlidingWindowStore(SlidingWindowStore):
         """Record one hit on ``key`` against the ``max_requests`` budget."""
         if max_requests <= 0:
             msg = "max_requests must be positive"
+            logger.warning(
+                API_REQUEST_ERROR,
+                error_type="rate_limit_invalid_config",
+                limiter="InMemorySlidingWindowStore",
+                key=key,
+                max_requests=max_requests,
+                window_seconds=window_seconds,
+                error=msg,
+            )
             raise ValueError(msg)
         if window_seconds <= 0:
             msg = "window_seconds must be positive"
+            logger.warning(
+                API_REQUEST_ERROR,
+                error_type="rate_limit_invalid_config",
+                limiter="InMemorySlidingWindowStore",
+                key=key,
+                max_requests=max_requests,
+                window_seconds=window_seconds,
+                error=msg,
+            )
             raise ValueError(msg)
 
         outcome: RateLimitOutcome

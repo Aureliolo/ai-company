@@ -109,14 +109,23 @@ async def test_duplicate_id_raises(repo: PostgresEscalationRepository) -> None:
 async def test_list_items_filters_by_status(
     repo: PostgresEscalationRepository,
 ) -> None:
+    # Seed two PENDING rows + one CANCELLED row; the CANCELLED row
+    # must be excluded from a ``status=PENDING`` filter so the
+    # dashboard queue never surfaces terminal rows by accident.
     await repo.create(_make_escalation(escalation_id="escalation-pg-list-a"))
     await repo.create(_make_escalation(escalation_id="escalation-pg-list-b"))
+    await repo.create(_make_escalation(escalation_id="escalation-pg-list-c"))
+    await repo.cancel("escalation-pg-list-c", cancelled_by="human:op-list-test")
     pending, total_pending = await repo.list_items(
         status=EscalationStatus.PENDING,
     )
     assert total_pending >= 2
     ids = {e.id for e in pending}
     assert {"escalation-pg-list-a", "escalation-pg-list-b"}.issubset(ids)
+    assert "escalation-pg-list-c" not in ids
+    # The CANCELLED row is still visible under its own status filter.
+    cancelled, _ = await repo.list_items(status=EscalationStatus.CANCELLED)
+    assert "escalation-pg-list-c" in {e.id for e in cancelled}
 
 
 async def test_apply_winner_decision_round_trips(

@@ -108,17 +108,30 @@ class Escalation(BaseModel):
 
     @model_validator(mode="after")
     def _validate_status_consistency(self) -> Self:
-        """Enforce invariants between ``status`` and decision fields.
+        """Enforce status/decision invariants + ``decided_by`` format.
 
-        Also enforces the ``decided_by`` format (``"human:<operator_id>"``
-        or ``"system:<reason>"``) so audit consumers can rely on the
-        prefix to distinguish operator vs system transitions.
+        Delegates per-status checks to narrow helpers so the validator
+        stays readable and ruff's complexity budget is not exceeded.
         """
+        self._check_status_shape()
+        self._check_winner_in_conflict()
+        self._check_decided_by_format()
+        return self
+
+    def _check_status_shape(self) -> None:
         if self.status == EscalationStatus.PENDING:
-            if self.decision is not None or self.decided_at is not None:
-                msg = "PENDING escalations must have decision=None and decided_at=None"
+            if (
+                self.decision is not None
+                or self.decided_at is not None
+                or self.decided_by is not None
+            ):
+                msg = (
+                    "PENDING escalations must have decision=None, "
+                    "decided_at=None, and decided_by=None"
+                )
                 raise ValueError(msg)
-        elif self.status == EscalationStatus.DECIDED:
+            return
+        if self.status == EscalationStatus.DECIDED:
             if self.decision is None:
                 msg = "DECIDED escalations require a decision"
                 raise ValueError(msg)
@@ -128,26 +141,32 @@ class Escalation(BaseModel):
             if self.decided_by is None:
                 msg = "DECIDED escalations require decided_by"
                 raise ValueError(msg)
-        # EXPIRED / CANCELLED have no decision payload but may carry a
-        # decided_at to record the terminal transition timestamp; both
-        # are permissive in this validator.
-        if self.status == EscalationStatus.DECIDED and isinstance(
-            self.decision,
-            WinnerDecision,
-        ):
-            agent_ids = {p.agent_id for p in self.conflict.positions}
-            if self.decision.winning_agent_id not in agent_ids:
-                msg = (
-                    f"winning_agent_id {self.decision.winning_agent_id!r} "
-                    "must reference a position in the escalated conflict"
-                )
-                raise ValueError(msg)
-        if self.decided_by is not None and not self.decided_by.startswith(
-            ("human:", "system:"),
-        ):
+            return
+        # Terminal non-DECIDED states (EXPIRED / CANCELLED) carry no
+        # decision payload; decided_at/decided_by remain set for audit.
+        if self.decision is not None:
+            msg = f"{self.status.value.upper()} escalations must have decision=None"
+            raise ValueError(msg)
+
+    def _check_winner_in_conflict(self) -> None:
+        if self.status != EscalationStatus.DECIDED:
+            return
+        if not isinstance(self.decision, WinnerDecision):
+            return
+        agent_ids = {p.agent_id for p in self.conflict.positions}
+        if self.decision.winning_agent_id not in agent_ids:
+            msg = (
+                f"winning_agent_id {self.decision.winning_agent_id!r} "
+                "must reference a position in the escalated conflict"
+            )
+            raise ValueError(msg)
+
+    def _check_decided_by_format(self) -> None:
+        if self.decided_by is None:
+            return
+        if not self.decided_by.startswith(("human:", "system:")):
             msg = (
                 f"decided_by={self.decided_by!r} must start with 'human:' "
                 "or 'system:' so audit consumers can distinguish transitions"
             )
             raise ValueError(msg)
-        return self

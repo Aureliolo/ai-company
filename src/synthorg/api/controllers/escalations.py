@@ -99,6 +99,12 @@ def _operator_id(request: Request[Any, Any, Any]) -> str:
     user = request.scope.get("user")
     if not isinstance(user, AuthenticatedUser):
         msg = "Authentication required to decide on escalations"
+        logger.warning(
+            CONFLICT_ESCALATION_RESOLVED,
+            note="operator_id_missing_auth",
+            user_type=type(user).__name__ if user is not None else "None",
+            path=request.scope.get("path"),
+        )
         raise UnauthorizedError(msg)
     return f"human:{user.user_id}"
 
@@ -135,6 +141,10 @@ class EscalationsController(Controller):
         store = app_state.escalation_store
         if store is None:
             msg = "Escalation queue is not configured"
+            logger.warning(
+                CONFLICT_ESCALATION_RESOLVED,
+                note="escalation_store_not_configured",
+            )
             raise NotFoundError(msg)
         page, total = await store.list_items(
             status=status,
@@ -168,6 +178,10 @@ class EscalationsController(Controller):
         store = app_state.escalation_store
         if store is None:
             msg = "Escalation queue is not configured"
+            logger.warning(
+                CONFLICT_ESCALATION_RESOLVED,
+                note="escalation_store_not_configured",
+            )
             raise NotFoundError(msg)
         row = await store.get(escalation_id)
         if row is None:
@@ -214,6 +228,13 @@ class EscalationsController(Controller):
         processor = app_state.escalation_processor
         if store is None or registry is None or processor is None:
             msg = "Escalation queue is not configured"
+            logger.warning(
+                CONFLICT_ESCALATION_RESOLVED,
+                note="escalation_subsystem_not_configured",
+                missing_store=store is None,
+                missing_registry=registry is None,
+                missing_processor=processor is None,
+            )
             raise NotFoundError(msg)
 
         operator = _operator_id(request)
@@ -252,8 +273,25 @@ class EscalationsController(Controller):
             )
         except KeyError as exc:
             msg = f"Escalation {escalation_id!r} not found"
+            logger.warning(
+                CONFLICT_ESCALATION_RESOLVED,
+                escalation_id=escalation_id,
+                operator=operator,
+                decision_type=data.decision.type,
+                error_type="apply_decision_not_found",
+                error=str(exc),
+                note="race_escalation_deleted_between_get_and_apply",
+            )
             raise NotFoundError(msg) from exc
         except ValueError as exc:
+            logger.warning(
+                CONFLICT_ESCALATION_RESOLVED,
+                escalation_id=escalation_id,
+                operator=operator,
+                decision_type=data.decision.type,
+                error_type="apply_decision_invalid_transition",
+                error=str(exc),
+            )
             raise ConflictError(str(exc)) from exc
         woke_resolver = await registry.resolve(escalation_id, data.decision)
         logger.info(
@@ -300,14 +338,34 @@ class EscalationsController(Controller):
         registry = app_state.escalation_registry
         if store is None or registry is None:
             msg = "Escalation queue is not configured"
+            logger.warning(
+                CONFLICT_ESCALATION_CANCELLED,
+                note="escalation_subsystem_not_configured",
+                missing_store=store is None,
+                missing_registry=registry is None,
+            )
             raise NotFoundError(msg)
         operator = _operator_id(request)
         try:
             updated = await store.cancel(escalation_id, cancelled_by=operator)
         except KeyError as exc:
             msg = f"Escalation {escalation_id!r} not found"
+            logger.warning(
+                CONFLICT_ESCALATION_CANCELLED,
+                escalation_id=escalation_id,
+                operator=operator,
+                error_type="cancel_not_found",
+                error=str(exc),
+            )
             raise NotFoundError(msg) from exc
         except ValueError as exc:
+            logger.warning(
+                CONFLICT_ESCALATION_CANCELLED,
+                escalation_id=escalation_id,
+                operator=operator,
+                error_type="cancel_invalid_transition",
+                error=str(exc),
+            )
             raise ConflictError(str(exc)) from exc
         await registry.cancel(escalation_id)
         logger.info(

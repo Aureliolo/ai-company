@@ -34,7 +34,11 @@ CREATE TABLE `conflict_escalations` (
     ),
   CHECK (
         (status NOT IN ('expired', 'cancelled'))
-        OR decision_json IS NULL
+        OR (
+            decision_json IS NULL
+            AND decided_at IS NOT NULL
+            AND decided_by IS NOT NULL
+        )
     )
 );
 -- Create index "idx_conflict_escalations_status_created" to table: "conflict_escalations"

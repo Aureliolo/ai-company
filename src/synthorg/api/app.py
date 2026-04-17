@@ -2294,6 +2294,13 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
                 "app_state": app_state,
                 "per_op_rate_limit_store": per_op_rate_limit_store,
                 "per_op_rate_limit_config": api_config.per_op_rate_limit,
+                # Mirrors the global limiter's trusted-proxy set so the
+                # per-op guard extracts the same "real" client IP behind
+                # reverse proxies instead of bucketing all traffic by
+                # the proxy's IP.
+                "per_op_trusted_proxies": frozenset(
+                    api_config.server.trusted_proxies,
+                ),
             },
         ),
         cors_config=CORSConfig(

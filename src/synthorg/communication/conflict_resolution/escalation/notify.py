@@ -150,7 +150,7 @@ class PostgresEscalationNotifySubscriber:
         except asyncio.CancelledError:
             pass
         except Exception as exc:
-            logger.debug(
+            logger.warning(
                 CONFLICT_ESCALATION_SUBSCRIBER_FAILED,
                 error_type=type(exc).__name__,
                 error=str(exc),
@@ -238,6 +238,15 @@ class PostgresEscalationNotifySubscriber:
                 await self._registry.resolve(escalation_id, row.decision)
             elif status in {"expired", "cancelled"}:
                 await self._registry.cancel(escalation_id)
+            else:
+                # Unknown status -- surface so operators catch schema
+                # drift (trigger/repo publishing an unrecognised code).
+                logger.warning(
+                    CONFLICT_ESCALATION_SUBSCRIBER_FAILED,
+                    escalation_id=escalation_id,
+                    status=status,
+                    note="unknown_notify_status",
+                )
         except MemoryError, RecursionError:
             raise
         except Exception as exc:

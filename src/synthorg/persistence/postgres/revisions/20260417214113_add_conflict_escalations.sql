@@ -12,7 +12,7 @@ CREATE TABLE "conflict_escalations" (
   PRIMARY KEY ("id"),
   CONSTRAINT "conflict_escalations_check" CHECK ((status <> 'decided'::text) OR ((decision_json IS NOT NULL) AND (decided_at IS NOT NULL) AND (decided_by IS NOT NULL))),
   CONSTRAINT "conflict_escalations_check1" CHECK ((status <> 'pending'::text) OR ((decision_json IS NULL) AND (decided_at IS NULL) AND (decided_by IS NULL))),
-  CONSTRAINT "conflict_escalations_check2" CHECK ((status <> ALL (ARRAY['expired'::text, 'cancelled'::text])) OR (decision_json IS NULL)),
+  CONSTRAINT "conflict_escalations_check2" CHECK ((status <> ALL (ARRAY['expired'::text, 'cancelled'::text])) OR ((decision_json IS NULL) AND (decided_at IS NOT NULL) AND (decided_by IS NOT NULL))),
   CONSTRAINT "conflict_escalations_conflict_id_check" CHECK (length(TRIM(BOTH FROM conflict_id)) > 0),
   CONSTRAINT "conflict_escalations_id_check" CHECK (length(TRIM(BOTH FROM id)) > 0),
   CONSTRAINT "conflict_escalations_status_check" CHECK (status = ANY (ARRAY['pending'::text, 'decided'::text, 'expired'::text, 'cancelled'::text]))

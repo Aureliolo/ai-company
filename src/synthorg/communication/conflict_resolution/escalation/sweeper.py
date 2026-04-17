@@ -43,7 +43,13 @@ class EscalationExpirationSweeper:
             interval_seconds: How often to run; must be >= 1 second.
         """
         if interval_seconds < 1.0:
-            msg = "interval_seconds must be >= 1.0"
+            msg = f"interval_seconds must be >= 1.0 (got {interval_seconds})"
+            logger.warning(
+                CONFLICT_ESCALATION_SWEEPER_FAILED,
+                interval_seconds=interval_seconds,
+                error=msg,
+                note="invalid_config",
+            )
             raise ValueError(msg)
         self._store = store
         self._interval = interval_seconds
@@ -94,8 +100,10 @@ class EscalationExpirationSweeper:
             # Expected -- we just cancelled the task.
             pass
         except Exception as exc:
-            # Best-effort shutdown; never propagate.
-            logger.debug(
+            # Best-effort shutdown: never propagate, but elevate to
+            # WARNING so real failures surface in production logs
+            # instead of being lost at DEBUG.
+            logger.warning(
                 CONFLICT_ESCALATION_SWEEPER_FAILED,
                 error_type=type(exc).__name__,
                 error=str(exc),

@@ -365,7 +365,9 @@ class HumanEscalationResolver:
         if self._timeout_seconds is not None:
             expires_at = now + timedelta(seconds=self._timeout_seconds)
         return Escalation(
-            id=f"escalation-{uuid4().hex[:12]}",
+            # Full UUID (32 hex chars, 122 bits entropy) so persisted
+            # escalation IDs cannot collide across long-lived queues.
+            id=f"escalation-{uuid4().hex}",
             conflict=conflict,
             status=EscalationStatus.PENDING,
             created_at=now,

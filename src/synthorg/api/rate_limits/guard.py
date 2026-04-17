@@ -18,7 +18,11 @@ from synthorg.api.errors import PerOperationRateLimitError
 from synthorg.api.rate_limits.config import PerOpRateLimitConfig  # noqa: TC001
 from synthorg.api.rate_limits.protocol import SlidingWindowStore  # noqa: TC001
 from synthorg.observability import get_logger
-from synthorg.observability.events.api import API_APP_STARTUP, API_GUARD_DENIED
+from synthorg.observability.events.api import (
+    API_APP_STARTUP,
+    API_GUARD_DEGRADED_AUTH,
+    API_GUARD_DENIED,
+)
 
 logger = get_logger(__name__)
 
@@ -27,10 +31,15 @@ KeyPolicy = Literal["user", "ip", "user_or_ip"]
 # AppState keys -- wired in ``api/app.py`` startup.
 STATE_KEY_STORE: Final[str] = "per_op_rate_limit_store"
 STATE_KEY_CONFIG: Final[str] = "per_op_rate_limit_config"
-# Trusted-proxy-normalised client IP key populated by the global rate
-# limiter / forwarded-headers extractor on the ASGI scope.  The guard
-# ONLY trusts this value -- never the raw ``X-Forwarded-For`` header --
-# because the header is fully client-controlled.
+# Trusted-proxy set (frozenset[str]) used to decide whether to read
+# X-Forwarded-For; mirrors the global limiter's behaviour so the per-op
+# guard picks the same "real client IP" and cannot be bypassed by
+# untrusted callers spoofing the forwarded header.
+STATE_KEY_TRUSTED_PROXIES: Final[str] = "per_op_trusted_proxies"
+# Trusted-proxy-normalised client IP key -- stashed on the ASGI scope
+# by any middleware that has already resolved the forwarded IP.  The
+# guard reads this first and only walks X-Forwarded-For itself when
+# the immediate peer is in ``per_op_trusted_proxies``.
 SCOPE_KEY_TRUSTED_IP: Final[str] = "trusted_client_ip"
 
 
@@ -59,7 +68,7 @@ def _extract_subject_key(
             # operators notice when auth middleware silently strips
             # the user claim.
             logger.warning(
-                API_GUARD_DENIED,
+                API_GUARD_DEGRADED_AUTH,
                 guard="per_op_rate_limit",
                 note="user_key_missing_user_id_falling_back_to_ip",
             )
@@ -72,25 +81,54 @@ def _extract_subject_key(
     return f"ip:{_client_ip(connection)}"
 
 
-def _client_ip(connection: ASGIConnection[Any, Any, Any, Any]) -> str:
-    """Extract a best-effort client IP from the connection.
+def _peer_ip(connection: ASGIConnection[Any, Any, Any, Any]) -> str | None:
+    """Return the immediate peer IP from the ASGI scope."""
+    client = connection.scope.get("client")
+    if isinstance(client, (tuple, list)) and client:
+        return str(client[0])
+    return None
 
-    Reads the proxy-normalised ``trusted_client_ip`` from the ASGI
-    scope (populated by the trusted forwarded-headers middleware) and
-    falls back to the raw ``scope["client"]`` tuple.  The raw
-    ``X-Forwarded-For`` header is **never** read directly here: it is
-    fully client-controlled and would let callers rotate through
-    arbitrary IPs to bypass ip / user_or_ip throttles.  Returning
-    ``"unknown"`` keeps the guard from blowing up when the connection
-    has no client metadata (rare, typically test fixtures).
+
+def _client_ip(connection: ASGIConnection[Any, Any, Any, Any]) -> str:
+    """Extract a proxy-aware best-effort client IP from the connection.
+
+    Resolution order:
+
+    1. ``scope["trusted_client_ip"]`` if a middleware already resolved it.
+    2. If the immediate peer is in ``per_op_trusted_proxies`` (state),
+       walk ``X-Forwarded-For`` right-to-left and return the first hop
+       outside the trusted set.  This matches the global limiter's
+       ``_build_unauth_identifier`` semantics so both tiers pick the
+       same "real" client identifier.
+    3. Otherwise return the immediate peer IP -- the raw
+       ``X-Forwarded-For`` header is **never** trusted from untrusted
+       peers (would let any caller spoof identities to bypass
+       ip/user_or_ip throttles).
+
+    ``"unknown"`` is returned when the connection has no client
+    metadata at all (rare, typically test fixtures).
     """
     trusted = connection.scope.get(SCOPE_KEY_TRUSTED_IP)
     if isinstance(trusted, str) and trusted:
         return trusted
-    client = connection.scope.get("client")
-    if isinstance(client, (tuple, list)) and client:
-        return str(client[0])
-    return "unknown"
+    peer = _peer_ip(connection)
+    trusted_proxies: frozenset[str] = getattr(
+        connection.app.state,
+        STATE_KEY_TRUSTED_PROXIES,
+        frozenset(),
+    )
+    if (
+        peer is not None
+        and isinstance(trusted_proxies, frozenset)
+        and peer in trusted_proxies
+    ):
+        forwarded = connection.headers.get("x-forwarded-for", "")
+        if forwarded:
+            hops = [h.strip() for h in forwarded.split(",") if h.strip()]
+            for hop in reversed(hops):
+                if hop not in trusted_proxies:
+                    return hop
+    return peer or "unknown"
 
 
 def per_op_rate_limit(
