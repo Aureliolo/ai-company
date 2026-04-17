@@ -45,6 +45,7 @@ from synthorg.observability.events.communication import (
     COMM_BUS_STARTED,
     COMM_BUS_STREAM_SCAN_FAILED,
 )
+from synthorg.settings.enums import SettingNamespace
 
 if TYPE_CHECKING:
     from synthorg.settings.resolver import ConfigResolver
@@ -247,15 +248,22 @@ class JetStreamMessageBus:
     async def _resolve_history_params(self) -> tuple[int, float]:
         """Resolve history scan batch size and fetch timeout.
 
-        Returns the module defaults (100, 0.5) when no resolver is
-        wired or the lookup fails -- a settings outage must not break
-        history queries.
+        Reads only the two NATS history settings directly via the
+        scalar accessors instead of hydrating the full
+        ``CommunicationBridgeConfig`` (which would validate 9 fields
+        on every history query). Returns the module defaults
+        (100, 0.5) when no resolver is wired or the lookup fails --
+        a settings outage must not break history queries.
         """
         if self._config_resolver is None:
             return 100, 0.5
+        namespace = SettingNamespace.COMMUNICATION.value
         try:
-            bridge_config = (
-                await self._config_resolver.get_communication_bridge_config()
+            batch_size = await self._config_resolver.get_int(
+                namespace, "nats_history_batch_size"
+            )
+            fetch_timeout = await self._config_resolver.get_float(
+                namespace, "nats_history_fetch_timeout_seconds"
             )
         except MemoryError, RecursionError:
             raise
@@ -263,14 +271,8 @@ class JetStreamMessageBus:
             logger.warning(
                 COMM_BUS_STREAM_SCAN_FAILED,
                 phase="resolve_history_params",
-                error=(
-                    "failed to resolve communication bridge config;"
-                    " using history scan defaults"
-                ),
+                error=("failed to resolve NATS history settings; using scan defaults"),
                 exc_info=True,
             )
             return 100, 0.5
-        return (
-            bridge_config.nats_history_batch_size,
-            bridge_config.nats_history_fetch_timeout_seconds,
-        )
+        return batch_size, fetch_timeout

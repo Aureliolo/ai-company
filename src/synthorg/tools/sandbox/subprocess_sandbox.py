@@ -80,15 +80,26 @@ class SubprocessSandbox:
         *,
         config: SubprocessSandboxConfig | None = None,
         workspace: Path,
+        kill_grace_seconds: float = _DEFAULT_KILL_GRACE_SECONDS,
     ) -> None:
         """Initialize the subprocess sandbox.
 
         Args:
             config: Sandbox configuration (defaults to standard config).
             workspace: Absolute path to the workspace root. Must exist.
+            kill_grace_seconds: Seconds to wait after ``proc.kill()``
+                for the subprocess to flush pipes and terminate before
+                giving up. Mirrors the
+                ``tools.subprocess_kill_grace_timeout_seconds`` setting.
+                Defaults to :data:`_DEFAULT_KILL_GRACE_SECONDS` so the
+                sandbox still works standalone when the settings layer
+                is not wired; the API startup hook resolves the setting
+                and passes it in when constructing the sandbox. Must be
+                positive.
 
         Raises:
-            ValueError: If *workspace* is not absolute or does not exist.
+            ValueError: If *workspace* is not absolute or does not
+                exist, or if *kill_grace_seconds* is not positive.
         """
         if not workspace.is_absolute():
             logger.warning(
@@ -107,8 +118,12 @@ class SubprocessSandbox:
             )
             msg = f"workspace directory does not exist: {resolved}"
             raise ValueError(msg)
+        if kill_grace_seconds <= 0:
+            msg = f"kill_grace_seconds must be > 0, got {kill_grace_seconds}"
+            raise ValueError(msg)
         self._config = config or _DEFAULT_CONFIG
         self._workspace = resolved
+        self._kill_grace_seconds = kill_grace_seconds
 
     @property
     def config(self) -> SubprocessSandboxConfig:
@@ -474,15 +489,18 @@ class SubprocessSandbox:
     ) -> tuple[bytes, bytes]:
         """Drain remaining output after killing a process.
 
-        Waits up to ``_DEFAULT_KILL_GRACE_SECONDS`` for the process to
-        terminate. If it does not, logs an error and returns empty
-        stdout with a diagnostic stderr message that reports the
-        actual grace period used.
+        Waits up to ``self._kill_grace_seconds`` (the operator-tuned
+        ``tools.subprocess_kill_grace_timeout_seconds`` setting, with
+        :data:`_DEFAULT_KILL_GRACE_SECONDS` as the fallback) for the
+        process to terminate. If it does not, logs an error and
+        returns empty stdout with a diagnostic stderr message that
+        reports the actual grace period used.
         """
+        grace = self._kill_grace_seconds
         try:
             return await asyncio.wait_for(
                 proc.communicate(),
-                timeout=_DEFAULT_KILL_GRACE_SECONDS,
+                timeout=grace,
             )
         except TimeoutError:
             logger.exception(
@@ -490,14 +508,10 @@ class SubprocessSandbox:
                 command=command,
                 args=_redact_args(args),
                 pid=proc.pid,
-                error=(
-                    f"process did not terminate {_DEFAULT_KILL_GRACE_SECONDS}s"
-                    " after kill"
-                ),
+                error=f"process did not terminate {grace}s after kill",
             )
             return b"", (
-                f"[sandbox] process did not terminate after"
-                f" {_DEFAULT_KILL_GRACE_SECONDS}s kill grace"
+                f"[sandbox] process did not terminate after {grace}s kill grace"
             ).encode()
 
     async def execute(  # noqa: PLR0913

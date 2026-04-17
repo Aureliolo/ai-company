@@ -61,6 +61,12 @@ class WebhookEventBridge:
         self._config_resolver = config_resolver
         self._task: asyncio.Task[None] | None = None
         self._lifecycle_lock = asyncio.Lock()
+        # Resolver-failure warnings are log-once per run of failures
+        # to keep the polling loop from flooding logs during a
+        # prolonged settings outage. Flags reset on the first
+        # successful resolution so a later failure is visible again.
+        self._poll_timeout_fallback_logged: bool = False
+        self._max_errors_fallback_logged: bool = False
 
     def set_config_resolver(self, resolver: ConfigResolver) -> None:
         """Inject the ConfigResolver after construction.
@@ -79,13 +85,13 @@ class WebhookEventBridge:
         """Resolve the current poll timeout, falling back to the constant.
 
         A transient settings outage or malformed value must not crash
-        the polling loop. Any resolver failure is logged once and the
-        module-level fallback is returned.
+        the polling loop. Warnings are log-once per run of failures
+        (cleared on recovery) so a prolonged outage cannot flood logs.
         """
         if self._config_resolver is None:
             return _POLL_TIMEOUT
         try:
-            return await self._config_resolver.get_float(
+            value = await self._config_resolver.get_float(
                 SettingNamespace.COMMUNICATION.value,
                 "webhook_bridge_poll_timeout_seconds",
             )
@@ -94,27 +100,31 @@ class WebhookEventBridge:
         except MemoryError, RecursionError:
             raise
         except Exception:
-            logger.warning(
-                WEBHOOK_BRIDGE_POLL_ERROR,
-                error=(
-                    "failed to resolve webhook_bridge_poll_timeout_seconds;"
-                    " using fallback"
-                ),
-                poll_timeout=_POLL_TIMEOUT,
-                exc_info=True,
-            )
+            if not self._poll_timeout_fallback_logged:
+                logger.warning(
+                    WEBHOOK_BRIDGE_POLL_ERROR,
+                    error=(
+                        "failed to resolve webhook_bridge_poll_timeout_seconds;"
+                        " using fallback (logging suppressed until recovery)"
+                    ),
+                    poll_timeout=_POLL_TIMEOUT,
+                    exc_info=True,
+                )
+                self._poll_timeout_fallback_logged = True
             return _POLL_TIMEOUT
+        self._poll_timeout_fallback_logged = False
+        return value
 
     async def _get_max_consecutive_errors(self) -> int:
         """Resolve the current error budget, falling back to the constant.
 
-        Same guard as :meth:`_get_poll_timeout` -- a settings outage
-        cannot kill the bridge task.
+        Same guard and log-once-per-failure-run semantics as
+        :meth:`_get_poll_timeout`.
         """
         if self._config_resolver is None:
             return _MAX_CONSECUTIVE_ERRORS
         try:
-            return await self._config_resolver.get_int(
+            value = await self._config_resolver.get_int(
                 SettingNamespace.COMMUNICATION.value,
                 "webhook_bridge_max_consecutive_errors",
             )
@@ -123,16 +133,20 @@ class WebhookEventBridge:
         except MemoryError, RecursionError:
             raise
         except Exception:
-            logger.warning(
-                WEBHOOK_BRIDGE_POLL_ERROR,
-                error=(
-                    "failed to resolve webhook_bridge_max_consecutive_errors;"
-                    " using fallback"
-                ),
-                max_errors=_MAX_CONSECUTIVE_ERRORS,
-                exc_info=True,
-            )
+            if not self._max_errors_fallback_logged:
+                logger.warning(
+                    WEBHOOK_BRIDGE_POLL_ERROR,
+                    error=(
+                        "failed to resolve webhook_bridge_max_consecutive_errors;"
+                        " using fallback (logging suppressed until recovery)"
+                    ),
+                    max_errors=_MAX_CONSECUTIVE_ERRORS,
+                    exc_info=True,
+                )
+                self._max_errors_fallback_logged = True
             return _MAX_CONSECUTIVE_ERRORS
+        self._max_errors_fallback_logged = False
+        return value
 
     async def start(self) -> None:
         """Subscribe and start the polling task."""

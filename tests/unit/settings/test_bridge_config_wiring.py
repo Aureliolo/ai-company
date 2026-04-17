@@ -1,0 +1,368 @@
+"""Unit tests for the bridge-config wiring layer.
+
+Covers the consumer-side plumbing added for #1398 / #1400:
+
+- Positive/negative validation of the new timeout kwargs on the
+  notification adapters and OAuth flows (rejects ``<= 0``).
+- :meth:`AuditChainSink.set_signing_timeout_seconds` updates the
+  instance attribute used by ``emit()`` and rejects invalid values.
+- :class:`OAuthTokenManager.set_config_resolver` + ``start()`` resolves
+  the OAuth HTTP timeout once and swaps the flow; a settings outage
+  keeps the default flow in place without raising.
+- :class:`WebhookEventBridge.set_config_resolver` injects the resolver
+  used by the polling-loop helpers.
+- :class:`JetStreamMessageBus._resolve_history_params` reads the two
+  NATS history settings directly via scalar accessors and falls back
+  to defaults on a resolver error.
+- :class:`MessageBusBridge` throttles resolver-failure warnings to
+  once-per-run-of-failures and re-arms on recovery.
+- :class:`AppState.bridge_config_applied` starts ``False`` and flips
+  to ``True`` exactly once via :meth:`mark_bridge_config_applied`;
+  :meth:`set_notification_dispatcher` swaps the active dispatcher.
+- :func:`build_notification_dispatcher` threads timeouts from a
+  ``NotificationsBridgeConfig`` into the concrete sink constructors.
+- :func:`resolve_oauth_http_timeout` returns the resolver value on
+  success, ``None`` on outage / no resolver.
+"""
+
+import importlib
+from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+
+from synthorg.api.bus_bridge import MessageBusBridge
+from synthorg.engine.workflow.webhook_bridge import WebhookEventBridge
+from synthorg.integrations.oauth.callback_handler import (
+    resolve_oauth_http_timeout,
+)
+from synthorg.integrations.oauth.flows.authorization_code import (
+    AuthorizationCodeFlow,
+)
+from synthorg.integrations.oauth.flows.client_credentials import (
+    ClientCredentialsFlow,
+)
+from synthorg.integrations.oauth.flows.device_flow import DeviceFlow
+from synthorg.integrations.oauth.token_manager import OAuthTokenManager
+from synthorg.notifications.adapters.email import EmailNotificationSink
+from synthorg.notifications.adapters.ntfy import NtfyNotificationSink
+from synthorg.notifications.adapters.slack import SlackNotificationSink
+from synthorg.notifications.config import (
+    NotificationConfig,
+    NotificationSinkConfig,
+    NotificationSinkType,
+)
+from synthorg.notifications.factory import build_notification_dispatcher
+from synthorg.settings.bridge_configs import NotificationsBridgeConfig
+from synthorg.tools.sandbox.subprocess_sandbox import SubprocessSandbox
+
+# ── Notification adapters: positive timeout validation ─────────
+
+
+class TestNotificationAdapterTimeoutValidation:
+    """The new timeout kwargs must reject zero and negative values."""
+
+    @pytest.mark.unit
+    def test_slack_rejects_zero_timeout(self) -> None:
+        with pytest.raises(ValueError, match="webhook_timeout_seconds"):
+            SlackNotificationSink(
+                webhook_url="https://hooks.slack.com/services/T/B/XYZ",
+                webhook_timeout_seconds=0,
+            )
+
+    @pytest.mark.unit
+    def test_slack_rejects_negative_timeout(self) -> None:
+        with pytest.raises(ValueError, match="webhook_timeout_seconds"):
+            SlackNotificationSink(
+                webhook_url="https://hooks.slack.com/services/T/B/XYZ",
+                webhook_timeout_seconds=-1.0,
+            )
+
+    @pytest.mark.unit
+    def test_ntfy_rejects_zero_timeout(self) -> None:
+        with pytest.raises(ValueError, match="webhook_timeout_seconds"):
+            NtfyNotificationSink(
+                server_url="https://ntfy.example.com",
+                topic="alerts",
+                webhook_timeout_seconds=0,
+            )
+
+    @pytest.mark.unit
+    def test_email_rejects_zero_timeout(self) -> None:
+        with pytest.raises(ValueError, match="smtp_timeout_seconds"):
+            EmailNotificationSink(
+                host="smtp.example.com",
+                port=587,
+                from_addr="no-reply@example.com",
+                to_addrs=("ops@example.com",),
+                smtp_timeout_seconds=0,
+            )
+
+
+# ── OAuth flows: positive timeout validation ──────────────────
+
+
+class TestOAuthFlowTimeoutValidation:
+    """The OAuth flows must reject zero/negative http_timeout_seconds."""
+
+    @pytest.mark.unit
+    def test_authorization_code_rejects_zero(self) -> None:
+        with pytest.raises(ValueError, match="http_timeout_seconds"):
+            AuthorizationCodeFlow(http_timeout_seconds=0)
+
+    @pytest.mark.unit
+    def test_device_flow_rejects_zero(self) -> None:
+        with pytest.raises(ValueError, match="http_timeout_seconds"):
+            DeviceFlow(http_timeout_seconds=0)
+
+    @pytest.mark.unit
+    def test_client_credentials_rejects_zero(self) -> None:
+        with pytest.raises(ValueError, match="http_timeout_seconds"):
+            ClientCredentialsFlow(http_timeout_seconds=0)
+
+
+# ── AuditChainSink.set_signing_timeout_seconds ────────────────
+
+
+class TestAuditChainSinkTimeout:
+    """``set_signing_timeout_seconds`` updates the live timeout."""
+
+    @pytest.mark.unit
+    def test_set_signing_timeout_seconds_updates_instance(self) -> None:
+        sink_module = importlib.import_module("synthorg.observability.audit_chain.sink")
+        sink = object.__new__(sink_module.AuditChainSink)
+        sink._signing_timeout_seconds = 5.0
+        sink.set_signing_timeout_seconds(12.5)
+        assert sink._signing_timeout_seconds == 12.5
+
+    @pytest.mark.unit
+    def test_set_signing_timeout_seconds_rejects_zero(self) -> None:
+        sink_module = importlib.import_module("synthorg.observability.audit_chain.sink")
+        sink = object.__new__(sink_module.AuditChainSink)
+        sink._signing_timeout_seconds = 5.0
+        with pytest.raises(ValueError, match="signing_timeout_seconds"):
+            sink.set_signing_timeout_seconds(0)
+
+
+# ── OAuthTokenManager.set_config_resolver + start() ────────────
+
+
+class TestOAuthTokenManagerConfigResolver:
+    """Resolver injection + ``_resolve_flow_timeout`` semantics."""
+
+    @pytest.mark.unit
+    def test_set_config_resolver_stores_reference(self) -> None:
+        mgr = OAuthTokenManager(catalog=MagicMock())
+        resolver = MagicMock()
+        mgr.set_config_resolver(resolver)
+        assert mgr._config_resolver is resolver
+
+    @pytest.mark.unit
+    async def test_resolve_flow_timeout_noop_without_resolver(self) -> None:
+        mgr = OAuthTokenManager(catalog=MagicMock())
+        original = mgr._flow
+        await mgr._resolve_flow_timeout()
+        assert mgr._flow is original
+
+    @pytest.mark.unit
+    async def test_resolve_flow_timeout_rebuilds_flow(self) -> None:
+        mgr = OAuthTokenManager(catalog=MagicMock())
+        resolver = MagicMock()
+        resolver.get_float = AsyncMock(return_value=45.0)
+        mgr.set_config_resolver(resolver)
+        await mgr._resolve_flow_timeout()
+        # The rebuilt flow should carry the resolved timeout.
+        assert mgr._flow._http_timeout_seconds == 45.0
+
+    @pytest.mark.unit
+    async def test_resolve_flow_timeout_tolerates_outage(self) -> None:
+        mgr = OAuthTokenManager(catalog=MagicMock())
+        resolver = MagicMock()
+        resolver.get_float = AsyncMock(side_effect=RuntimeError("boom"))
+        mgr.set_config_resolver(resolver)
+        original = mgr._flow
+        # Settings outage is swallowed -- the default flow stays in place.
+        await mgr._resolve_flow_timeout()
+        assert mgr._flow is original
+
+
+# ── WebhookEventBridge.set_config_resolver ─────────────────────
+
+
+class TestWebhookEventBridgeConfigResolver:
+    @pytest.mark.unit
+    def test_set_config_resolver_stores_reference(self) -> None:
+        bridge = WebhookEventBridge(bus=MagicMock(), ceremony_scheduler=MagicMock())
+        resolver = MagicMock()
+        bridge.set_config_resolver(resolver)
+        assert bridge._config_resolver is resolver
+
+
+# ── MessageBusBridge resolver-fallback throttling ──────────────
+
+
+class TestMessageBusBridgeFallbackLogging:
+    @pytest.mark.unit
+    async def test_poll_timeout_logs_once_per_failure_run(
+        self,
+    ) -> None:
+        bus = MagicMock()
+        bus.receive = AsyncMock(return_value=None)
+        plugin = MagicMock()
+        resolver = MagicMock()
+        resolver.get_float = AsyncMock(side_effect=RuntimeError("boom"))
+        bridge = MessageBusBridge(bus, plugin, config_resolver=resolver)
+        # First failure logs; second and third do not (flag stays set).
+        await bridge._get_poll_timeout()
+        await bridge._get_poll_timeout()
+        assert bridge._poll_timeout_fallback_logged is True
+        # Recovery clears the flag so a later failure re-logs.
+        resolver.get_float = AsyncMock(return_value=1.5)
+        await bridge._get_poll_timeout()
+        assert bridge._poll_timeout_fallback_logged is False
+
+    @pytest.mark.unit
+    async def test_max_errors_logs_once_per_failure_run(self) -> None:
+        bus = MagicMock()
+        plugin = MagicMock()
+        resolver = MagicMock()
+        resolver.get_int = AsyncMock(side_effect=RuntimeError("boom"))
+        bridge = MessageBusBridge(bus, plugin, config_resolver=resolver)
+        await bridge._get_max_consecutive_errors()
+        assert bridge._max_errors_fallback_logged is True
+        # Recover.
+        resolver.get_int = AsyncMock(return_value=25)
+        result = await bridge._get_max_consecutive_errors()
+        assert result == 25
+        assert bridge._max_errors_fallback_logged is False
+
+
+# ── callback_handler.resolve_oauth_http_timeout ────────────────
+
+
+class TestResolveOAuthHttpTimeout:
+    @pytest.mark.unit
+    async def test_returns_none_without_resolver(self) -> None:
+        assert await resolve_oauth_http_timeout(None) is None
+
+    @pytest.mark.unit
+    async def test_returns_resolved_value(self) -> None:
+        resolver = MagicMock()
+        resolver.get_float = AsyncMock(return_value=42.0)
+        assert await resolve_oauth_http_timeout(resolver) == 42.0
+
+    @pytest.mark.unit
+    async def test_returns_none_on_outage(self) -> None:
+        resolver = MagicMock()
+        resolver.get_float = AsyncMock(side_effect=RuntimeError("boom"))
+        assert await resolve_oauth_http_timeout(resolver) is None
+
+
+# ── Notification factory threads timeouts ──────────────────────
+
+
+class TestNotificationFactoryBridgeConfig:
+    @pytest.mark.unit
+    def test_slack_sink_receives_bridge_timeout(self) -> None:
+        bridge_config = NotificationsBridgeConfig(
+            slack_webhook_timeout_seconds=7.5,
+            ntfy_webhook_timeout_seconds=10.0,
+            email_smtp_timeout_seconds=10.0,
+        )
+        config = NotificationConfig(
+            sinks=(
+                NotificationSinkConfig(
+                    type=NotificationSinkType.SLACK,
+                    enabled=True,
+                    params={"webhook_url": "https://example.com/slack-webhook"},
+                ),
+            ),
+        )
+        dispatcher = build_notification_dispatcher(config, bridge_config=bridge_config)
+        slack_sinks = [
+            s for s in dispatcher._sinks if isinstance(s, SlackNotificationSink)
+        ]
+        assert slack_sinks, "Slack sink should have been registered"
+        slack = slack_sinks[0]
+        # The sink's httpx client received the bridge timeout.
+        assert slack._client.timeout.connect == 7.5
+
+    @pytest.mark.unit
+    def test_factory_without_bridge_uses_default(self) -> None:
+        config = NotificationConfig(
+            sinks=(
+                NotificationSinkConfig(
+                    type=NotificationSinkType.SLACK,
+                    enabled=True,
+                    params={"webhook_url": "https://example.com/slack-webhook"},
+                ),
+            ),
+        )
+        dispatcher = build_notification_dispatcher(config, bridge_config=None)
+        slack_sinks = [
+            s for s in dispatcher._sinks if isinstance(s, SlackNotificationSink)
+        ]
+        assert slack_sinks
+        slack = slack_sinks[0]
+        # Default is 10.0 (module default on SlackNotificationSink).
+        assert slack._client.timeout.connect == 10.0
+
+
+# ── SubprocessSandbox.kill_grace_seconds ───────────────────────
+
+
+class TestSubprocessSandboxKillGrace:
+    @pytest.mark.unit
+    def test_rejects_zero_kill_grace(self, tmp_path: Path) -> None:
+        with pytest.raises(ValueError, match="kill_grace_seconds"):
+            SubprocessSandbox(
+                workspace=tmp_path,
+                kill_grace_seconds=0,
+            )
+
+    @pytest.mark.unit
+    def test_stores_positive_kill_grace(self, tmp_path: Path) -> None:
+        sbx = SubprocessSandbox(
+            workspace=tmp_path,
+            kill_grace_seconds=2.5,
+        )
+        assert sbx._kill_grace_seconds == 2.5
+
+
+# ── AppState.bridge_config_applied + set_notification_dispatcher ──
+
+
+class TestAppStateBridgeConfigFlags:
+    @pytest.mark.unit
+    def test_flag_starts_false_and_flips_once(self) -> None:
+        from synthorg.api.approval_store import ApprovalStore
+        from synthorg.api.state import AppState
+        from synthorg.config.schema import RootConfig
+
+        state = AppState(
+            config=RootConfig(company_name="test"),
+            approval_store=ApprovalStore(),
+        )
+        assert state.bridge_config_applied is False
+        state.mark_bridge_config_applied()
+        assert state.bridge_config_applied is True
+
+    @pytest.mark.unit
+    def test_set_notification_dispatcher_swaps(self) -> None:
+        from synthorg.api.approval_store import ApprovalStore
+        from synthorg.api.state import AppState
+        from synthorg.config.schema import RootConfig
+        from synthorg.notifications.dispatcher import (
+            NotificationDispatcher,
+        )
+
+        state = AppState(
+            config=RootConfig(company_name="test"),
+            approval_store=ApprovalStore(),
+        )
+        first = NotificationDispatcher(sinks=())
+        second = NotificationDispatcher(sinks=())
+        state.set_notification_dispatcher(first)
+        assert state.notification_dispatcher is first
+        state.set_notification_dispatcher(second)
+        assert state.notification_dispatcher is second

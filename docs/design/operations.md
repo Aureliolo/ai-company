@@ -1709,7 +1709,7 @@ API -> CLI
 | `/api/v1/approvals` | Pending human approvals queue |
 | `/api/v1/analytics` | `GET /overview` (metrics summary with budget status, 7d spend sparkline, agent counts), `GET /trends?period=7d\|30d\|90d&metric=spend\|tasks_completed\|active_agents\|success_rate` (time-series bucketed metrics; hourly buckets for 7d, daily for 30d/90d; defaults: `period=7d`, `metric=spend`), `GET /forecast?horizon_days=1..90` (budget spend projection with daily projections and exhaustion estimate; default 14; 400 on out-of-range) |
 | `POST /api/v1/reports/generate`, `GET /api/v1/reports/periods` | On-demand report generation (comprehensive periodic reports: spending, performance, task completion, risk trends), available report period listing |
-| `/api/v1/settings` | Runtime-editable configuration (9 namespaces), schema discovery |
+| `/api/v1/settings` | Runtime-editable configuration (17 namespaces: api, company, providers, memory, budget, security, coordination, observability, backup, engine, communication, a2a, integrations, meta, notifications, tools, settings), schema discovery |
 | `GET /api/v1/settings/security/export`, `POST /api/v1/settings/security/import` | Security policy export/import (persists registered settings; code-defined policies require matching Python code) |
 | `GET /api/v1/security/audit` | Audit log query with agent_id, tool_name, verdict, action_type, and time-range filters |
 | `GET /api/v1/coordination/metrics` | Coordination metrics query (9 Kim et al. metrics with task/agent/time filtering) |
