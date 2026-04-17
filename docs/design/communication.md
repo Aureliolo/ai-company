@@ -661,10 +661,17 @@ These fields are applied to all meeting endpoints (list, detail, trigger).
 
 The `MeetingOrchestrator` and `MeetingScheduler` are auto-wired at startup
 alongside Phase 1 services (no persistence dependency). All three meeting
-protocols are registered with default configs. A stub `agent_caller` returns
-empty `AgentResponse` instances, making the meeting endpoints structurally
-available (no 503 on listing) while actual agent invocation requires a
-coordinator to be explicitly provided.
+protocols are registered with default configs.
+
+When both `agent_registry` and `provider_registry` are available at wire
+time, the `agent_caller` dispatches a real LLM call per turn (one
+`provider.complete()` per agent per turn, with automatic retry + rate
+limiting via `BaseCompletionProvider`). When either dependency is
+missing, the orchestrator is still constructed so REST endpoints remain
+available, but any attempt to invoke an agent raises
+`MeetingAgentCallerNotConfiguredError` at call time -- no silent empty
+responses. This forces operators to surface wiring gaps instead of
+producing meaningless participation.
 
 ---
 

@@ -12,6 +12,7 @@ from synthorg.communication.meeting.agent_caller import (
     build_meeting_agent_caller,
 )
 from synthorg.communication.meeting.models import AgentResponse
+from synthorg.communication.meeting.protocol import AgentCaller
 from synthorg.core.agent import (
     AgentIdentity,
     ModelConfig,
@@ -85,7 +86,7 @@ def _build_caller(
     identity: AgentIdentity | None = None,
     response: CompletionResponse | None = None,
     provider_error: Exception | None = None,
-) -> tuple[object, MagicMock, MagicMock]:
+) -> tuple[AgentCaller, MagicMock, MagicMock]:
     """Produce ``(caller, agent_registry, provider_registry)``."""
     agent_registry = MagicMock()
     agent_registry.get = AsyncMock(return_value=identity)
@@ -122,8 +123,7 @@ class TestBuildMeetingAgentCaller:
             response=response,
         )
 
-        result = await caller(_AGENT_ID, "Agenda: queueing", 500)  # type: ignore[operator]
-
+        result = await caller(_AGENT_ID, "Agenda: queueing", 500)
         assert isinstance(result, AgentResponse)
         assert result.agent_id == _AGENT_ID
         assert result.content == "I propose adding a queue."
@@ -133,8 +133,14 @@ class TestBuildMeetingAgentCaller:
 
     async def test_unknown_agent_raises(self) -> None:
         caller, _reg, _providers = _build_caller(identity=None)
-        with pytest.raises(UnknownMeetingAgentError):
-            await caller(_AGENT_ID, "prompt", 100)  # type: ignore[operator]
+        with pytest.raises(UnknownMeetingAgentError) as exc_info:
+            await caller(_AGENT_ID, "prompt", 100)
+        # LookupError-compatible so callers can catch with existing
+        # lookup-failure handlers.
+        assert isinstance(exc_info.value, LookupError)
+        # agent_id must be available as a typed attribute for
+        # programmatic handling (logging, retries, metric tagging).
+        assert exc_info.value.agent_id == _AGENT_ID
 
     async def test_empty_content_maps_to_empty_string(self) -> None:
         identity = _identity()
@@ -142,7 +148,7 @@ class TestBuildMeetingAgentCaller:
             identity=identity,
             response=_completion(content=""),
         )
-        result = await caller(_AGENT_ID, "prompt", 100)  # type: ignore[operator]
+        result = await caller(_AGENT_ID, "prompt", 100)
         assert result.content == ""
 
     async def test_provider_error_propagates(self) -> None:
@@ -152,15 +158,14 @@ class TestBuildMeetingAgentCaller:
             provider_error=RuntimeError("provider boom"),
         )
         with pytest.raises(RuntimeError, match="provider boom"):
-            await caller(_AGENT_ID, "prompt", 100)  # type: ignore[operator]
+            await caller(_AGENT_ID, "prompt", 100)
 
     async def test_logs_called_and_responded_events(self) -> None:
         identity = _identity()
         caller, _reg, _providers = _build_caller(identity=identity)
 
         with structlog.testing.capture_logs() as cap:
-            await caller(_AGENT_ID, "prompt", 100)  # type: ignore[operator]
-
+            await caller(_AGENT_ID, "prompt", 100)
         events = [e.get("event") for e in cap]
         assert MEETING_AGENT_CALLED in events
         assert MEETING_AGENT_RESPONDED in events
@@ -168,13 +173,13 @@ class TestBuildMeetingAgentCaller:
     async def test_dispatches_to_agent_provider(self) -> None:
         identity = _identity(provider="example-provider")
         caller, _reg, provider_registry = _build_caller(identity=identity)
-        await caller(_AGENT_ID, "prompt", 256)  # type: ignore[operator]
+        await caller(_AGENT_ID, "prompt", 256)
         provider_registry.get.assert_called_once_with("example-provider")
 
     async def test_passes_max_tokens_into_completion_config(self) -> None:
         identity = _identity()
         caller, _reg, provider_registry = _build_caller(identity=identity)
-        await caller(_AGENT_ID, "agenda", 777)  # type: ignore[operator]
+        await caller(_AGENT_ID, "agenda", 777)
         provider = provider_registry.get.return_value
         provider.complete.assert_awaited_once()
         call = provider.complete.await_args

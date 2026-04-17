@@ -292,7 +292,15 @@ class TestEvictionWarningConcurrency:
         assert _count_eviction_warnings(cap) == 2
 
     def test_interleaved_clear_and_record_never_drops_warning(self) -> None:
-        """Each fill cycle must emit at least one warning, even under races."""
+        """Each fill cycle that overflows emits its warning exactly once.
+
+        With the ``threading.Lock`` around the check-then-set, the naive
+        race (where ``clear()`` resets the flag between another thread's
+        check and set, dropping the warning for that cycle) is gone.
+        Every cycle whose ``fills_per_cycle >= max_records + 1`` must
+        fire one and only one ``DELEGATION_RECORD_EVICTED`` warning
+        before the closing ``clear()``.
+        """
         store = DelegationRecordStore(max_records=3)
         cycles = 30
         fills_per_cycle = 12
@@ -310,9 +318,10 @@ class TestEvictionWarningConcurrency:
             for future in futures:
                 future.result()
 
-        # At least one warning per overflow cycle is the invariant we
-        # protect: the naive implementation drops warnings when clear()
-        # resets the flag between another thread's check and set, so pre-fix
-        # counts can easily skip cycles. With the lock, every cycle that
-        # fills past maxlen while the flag is False emits its warning.
-        assert _count_eviction_warnings(cap) >= 1
+        warnings = _count_eviction_warnings(cap)
+        # With the lock, each cycle emits exactly one warning. Parallel
+        # cycles can observe each other's clears, so one cycle may produce
+        # up to two warnings if a concurrent clear resets the flag between
+        # its own fills. The lower bound is the number of cycles; the
+        # upper bound is 2x the cycles as a generous safety net.
+        assert cycles <= warnings <= 2 * cycles

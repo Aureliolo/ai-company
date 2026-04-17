@@ -1,6 +1,6 @@
 """Tests for meeting service auto-wiring."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import structlog.testing
@@ -146,8 +146,17 @@ class TestAutoWireMeetings:
 
         assert isinstance(result.meeting_orchestrator, MeetingOrchestrator)
         caller = result.meeting_orchestrator._agent_caller
-        with pytest.raises(MeetingAgentCallerNotConfiguredError):
+        with pytest.raises(MeetingAgentCallerNotConfiguredError) as exc_info:
             await caller("agent-1", "prompt", 100)
+        # Error carries agent_id and names both missing dependencies so
+        # operators can act without parsing the message string.
+        assert exc_info.value.agent_id == "agent-1"
+        assert set(exc_info.value.missing_dependencies) == {
+            "agent_registry",
+            "provider_registry",
+        }
+        assert "agent_registry" in str(exc_info.value)
+        assert "provider_registry" in str(exc_info.value)
 
     def test_preserves_explicit_orchestrator(self) -> None:
         from synthorg.api.auto_wire import auto_wire_meetings
@@ -224,6 +233,84 @@ class TestAutoWireMeetings:
         services = [e.get("service") for e in captured]
         assert "meeting_orchestrator" in services
         assert "meeting_scheduler" in services
+
+    async def test_real_caller_end_to_end_with_both_registries(self) -> None:
+        """Wiring both registries produces a caller that dispatches real LLM calls.
+
+        Integration test: construct auto_wire_meetings with fake (but
+        shape-correct) agent registry + provider registry, invoke the
+        wired ``agent_caller`` directly, and assert it reaches the
+        provider and returns an ``AgentResponse`` with provider-sourced
+        tokens/cost.  Catches wiring regressions that pure unit tests
+        of each layer miss.
+        """
+        from datetime import date
+        from uuid import uuid4
+
+        from synthorg.api.auto_wire import auto_wire_meetings
+        from synthorg.communication.meeting.models import AgentResponse
+        from synthorg.core.agent import (
+            AgentIdentity,
+            ModelConfig,
+            PersonalityConfig,
+        )
+        from synthorg.core.enums import AgentStatus, SeniorityLevel
+        from synthorg.core.types import NotBlankStr
+        from synthorg.providers.enums import FinishReason
+        from synthorg.providers.models import CompletionResponse, TokenUsage
+
+        identity = AgentIdentity(
+            id=uuid4(),
+            name=NotBlankStr("Sarah Chen"),
+            role=NotBlankStr("engineer"),
+            department=NotBlankStr("engineering"),
+            level=SeniorityLevel.MID,
+            personality=PersonalityConfig(
+                communication_style=NotBlankStr("concise"),
+            ),
+            model=ModelConfig(
+                provider=NotBlankStr("test-provider"),
+                model_id=NotBlankStr("test-medium-001"),
+            ),
+            hiring_date=date(2026, 1, 1),
+            status=AgentStatus.ACTIVE,
+        )
+        agent_registry = MagicMock()
+        agent_registry.get = AsyncMock(return_value=identity)
+
+        provider = MagicMock()
+        provider.complete = AsyncMock(
+            return_value=CompletionResponse(
+                content="I recommend a task queue.",
+                finish_reason=FinishReason.STOP,
+                usage=TokenUsage(
+                    input_tokens=12,
+                    output_tokens=7,
+                    cost_usd=0.0005,
+                ),
+                model=NotBlankStr("test-medium-001"),
+            )
+        )
+        provider_registry = MagicMock()
+        provider_registry.get = MagicMock(return_value=provider)
+
+        result = auto_wire_meetings(
+            effective_config=_default_config(),
+            meeting_orchestrator=None,
+            meeting_scheduler=None,
+            agent_registry=agent_registry,
+            provider_registry=provider_registry,
+        )
+
+        caller = result.meeting_orchestrator._agent_caller
+        response = await caller(str(identity.id), "What is next?", 256)
+
+        assert isinstance(response, AgentResponse)
+        assert response.content == "I recommend a task queue."
+        assert response.input_tokens == 12
+        assert response.output_tokens == 7
+        provider_registry.get.assert_called_once_with("test-provider")
+        provider.complete.assert_awaited_once()
 
     def test_with_agent_registry(self) -> None:
         from synthorg.api.auto_wire import auto_wire_meetings

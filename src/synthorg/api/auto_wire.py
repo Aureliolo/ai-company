@@ -380,17 +380,15 @@ def auto_wire_meetings(
             May be ``None`` when *meeting_orchestrator* is supplied
             explicitly; in that case a passthrough participant resolver
             is used for scheduling.
-        provider_registry: Provider registry.  Required when
-            auto-wiring the orchestrator so meeting turns can dispatch
-            LLM calls.  May be ``None`` when *meeting_orchestrator* is
-            supplied explicitly.
+        provider_registry: Provider registry.  Used for real LLM
+            dispatch per meeting turn when auto-wiring.  When ``None``,
+            an unconfigured caller is wired that raises
+            :class:`MeetingAgentCallerNotConfiguredError` at first
+            invocation -- the REST surface stays available but agent
+            calls fail loudly with actionable error context.
 
     Returns:
         A ``MeetingWireResult`` with both services.
-
-    Raises:
-        RuntimeError: When auto-wiring the orchestrator without both
-            *agent_registry* and *provider_registry*.
     """
     if meeting_orchestrator is None:
         meeting_orchestrator = _wire_meeting_orchestrator(

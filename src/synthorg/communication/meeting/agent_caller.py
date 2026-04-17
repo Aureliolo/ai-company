@@ -1,10 +1,18 @@
-"""Real :data:`AgentCaller` factory for meeting orchestration.
+""":data:`AgentCaller` factories for meeting orchestration.
 
 The meeting orchestrator invokes agents through an :data:`AgentCaller`
 callable with the signature ``(agent_id, prompt, max_tokens) ->
-AgentResponse``.  This module produces that callable by composing an
-:class:`AgentRegistryService` (for agent identity lookup) with a
-:class:`ProviderRegistry` (for LLM dispatch).
+AgentResponse``.  This module provides two factories:
+
+- :func:`build_meeting_agent_caller` -- the real caller used in
+  production.  Composes an :class:`AgentRegistryService` (for agent
+  identity lookup) with a :class:`ProviderRegistry` (for LLM dispatch)
+  and runs one ``provider.complete()`` call per invocation.
+- :func:`build_unconfigured_meeting_agent_caller` -- a fallback caller
+  used when registries are not yet available at wire time.  It raises
+  :class:`MeetingAgentCallerNotConfiguredError` at call time, replacing
+  the old silent empty-response stub.  Operators see a loud failure
+  instead of meaningless meeting contributions.
 
 One turn = one LLM call.  Meeting protocols (round robin, position
 papers, structured phases) are responsible for sequencing turns; this
@@ -33,7 +41,18 @@ logger = get_logger(__name__)
 
 
 class UnknownMeetingAgentError(LookupError):
-    """Raised when the meeting orchestrator invokes an unregistered agent."""
+    """Raised when the meeting orchestrator invokes an unregistered agent.
+
+    Attributes:
+        agent_id: The agent identifier that was not found in the registry.
+    """
+
+    def __init__(self, agent_id: str) -> None:
+        super().__init__(
+            f"Meeting agent {agent_id!r} is not registered in the "
+            f"agent registry; cannot dispatch LLM call"
+        )
+        self.agent_id = agent_id
 
 
 def build_meeting_agent_caller(
@@ -64,11 +83,7 @@ def build_meeting_agent_caller(
         )
         identity = await agent_registry.get(NotBlankStr(agent_id))
         if identity is None:
-            msg = (
-                f"Meeting agent {agent_id!r} is not registered in the "
-                f"agent registry; cannot dispatch LLM call"
-            )
-            raise UnknownMeetingAgentError(msg)
+            raise UnknownMeetingAgentError(agent_id)
 
         provider = provider_registry.get(str(identity.model.provider))
         messages = _build_messages(identity, prompt)
@@ -144,7 +159,29 @@ class MeetingAgentCallerNotConfiguredError(RuntimeError):
     (for LLM dispatch).  When either is absent at wire time, meetings
     that try to invoke an agent receive this error instead of the
     previous silent empty-response stub.
+
+    Attributes:
+        agent_id: The agent identifier that the meeting tried to invoke.
+        missing_dependencies: Names of the dependencies that were
+            absent at wire time (e.g. ``("agent_registry",
+            "provider_registry")``).
     """
+
+    def __init__(
+        self,
+        *,
+        agent_id: str,
+        missing_dependencies: tuple[str, ...],
+    ) -> None:
+        missing = ", ".join(missing_dependencies)
+        super().__init__(
+            f"Meeting agent caller invoked for {agent_id!r} but the "
+            f"following dependencies were missing at wire time: "
+            f"{missing}.  Provide them via create_app(...) so meeting "
+            f"turns can dispatch real LLM calls."
+        )
+        self.agent_id = agent_id
+        self.missing_dependencies = missing_dependencies
 
 
 def build_unconfigured_meeting_agent_caller(
@@ -158,15 +195,15 @@ def build_unconfigured_meeting_agent_caller(
     at first use rather than silently succeeding with empty content.
     """
 
-    async def _caller(agent_id: str, _prompt: str, _max_tokens: int) -> AgentResponse:
-        missing = ", ".join(missing_dependencies)
-        msg = (
-            f"Meeting agent caller invoked for {agent_id!r} but the "
-            f"following dependencies were missing at wire time: "
-            f"{missing}.  Provide them via create_app(...) so meeting "
-            f"turns can dispatch real LLM calls."
+    async def _caller(
+        agent_id: str,
+        _prompt: str,
+        _max_tokens: int,
+    ) -> AgentResponse:
+        raise MeetingAgentCallerNotConfiguredError(
+            agent_id=agent_id,
+            missing_dependencies=missing_dependencies,
         )
-        raise MeetingAgentCallerNotConfiguredError(msg)
 
     return _caller
 

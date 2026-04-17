@@ -155,6 +155,30 @@ class TestAggregate:
         assert summary.total_decisions == 1
         assert summary.recent_decisions[0].outcome == "executed"
 
+    async def test_window_is_half_open_inclusive_start_exclusive_end(
+        self,
+    ) -> None:
+        """Boundaries: decision at ``since`` included, at ``until`` excluded."""
+        since = _NOW
+        until = _NOW + timedelta(hours=1)
+        decisions = (
+            _decision(
+                decision_id="d-at-since",
+                created_at=since,
+            ),
+            _decision(
+                decision_id="d-just-before-until",
+                created_at=until - timedelta(microseconds=1),
+            ),
+            _decision(
+                decision_id="d-at-until",
+                created_at=until,
+            ),
+        )
+        agg = ScalingSignalAggregator(service=_service(decisions=decisions))
+        summary = await agg.aggregate(since=since, until=until)
+        assert summary.total_decisions == 2
+
     async def test_most_common_signal_picks_top_strategy(self) -> None:
         workload_decisions = tuple(
             _decision(

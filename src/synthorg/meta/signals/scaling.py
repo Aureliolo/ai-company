@@ -69,7 +69,14 @@ class ScalingSignalAggregator:
 
         Returns:
             Org-wide scaling summary.  Returns an empty summary when
-            the service raises or no decisions fall in the window.
+            no decisions fall in the window, or when the service
+            raises a non-fatal exception (the error is logged via
+            ``META_SIGNAL_AGGREGATION_FAILED``).
+
+        Raises:
+            MemoryError: Re-raised without logging -- fatal.
+            RecursionError: Re-raised without logging -- fatal.
+            asyncio.CancelledError: Re-raised without logging -- honoured.
         """
         try:
             decisions = self._service.get_recent_decisions()
