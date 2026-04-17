@@ -1016,10 +1016,17 @@ CREATE TABLE conflict_escalations (
     ),
     decided_by TEXT,
     decision_json TEXT,
-    -- DECIDED rows carry the full decision triple.
+    -- DECIDED rows carry the full decision triple; decided_by must
+    -- be a nonblank actor identifier so audit consumers can always
+    -- attribute the transition.
     CHECK(
         (status != 'decided')
-        OR (decision_json IS NOT NULL AND decided_at IS NOT NULL AND decided_by IS NOT NULL)
+        OR (
+            decision_json IS NOT NULL
+            AND decided_at IS NOT NULL
+            AND decided_by IS NOT NULL
+            AND length(trim(decided_by)) > 0
+        )
     ),
     -- PENDING rows carry no decision triple at all (decided_by must
     -- also be NULL so audit consumers can distinguish pending from
@@ -1030,14 +1037,15 @@ CREATE TABLE conflict_escalations (
     ),
     -- EXPIRED / CANCELLED rows drop any decision payload but MUST
     -- carry both audit-trail columns (transition timestamp +
-    -- attributable actor "system:..." or "human:...") so auditors
-    -- can always answer "who expired/cancelled this, and when".
+    -- attributable nonblank actor "system:..." or "human:...") so
+    -- auditors can always answer "who expired/cancelled this, and when".
     CHECK(
         (status NOT IN ('expired', 'cancelled'))
         OR (
             decision_json IS NULL
             AND decided_at IS NOT NULL
             AND decided_by IS NOT NULL
+            AND length(trim(decided_by)) > 0
         )
     )
 );

@@ -59,15 +59,25 @@ function parseRetryAfterMs(
   headerValue: string | undefined,
   errorDetail: ErrorDetail | null | undefined,
 ): number {
-  // Prefer the Retry-After header (seconds since RFC 9110), fall back
-  // to the ``retry_after`` field from the RFC 9457 envelope.
+  // Prefer the Retry-After header (RFC 9110: either delta-seconds or an
+  // HTTP-date), fall back to the ``retry_after`` field from the
+  // RFC 9457 envelope which is always delta-seconds.
   const raw = headerValue ?? (errorDetail?.retry_after != null
     ? String(errorDetail.retry_after)
     : undefined)
   if (!raw) return 0
-  const seconds = Number.parseInt(raw, 10)
-  if (!Number.isFinite(seconds) || seconds < 0) return 0
-  const ms = seconds * 1000
+  let ms: number
+  const trimmed = raw.trim()
+  const seconds = Number.parseInt(trimmed, 10)
+  // RFC 9110 delta-seconds must be a run of digits.  Anything else
+  // (e.g. ``Wed, 21 Oct 2015 07:28:00 GMT``) is treated as an HTTP-date.
+  if (/^\d+$/.test(trimmed) && Number.isFinite(seconds) && seconds >= 0) {
+    ms = seconds * 1000
+  } else {
+    const parsedDate = Date.parse(trimmed)
+    if (!Number.isFinite(parsedDate)) return 0
+    ms = Math.max(0, parsedDate - Date.now())
+  }
   // If the server wants us to wait longer than our bounded budget,
   // surface the error to the caller instead of silently truncating --
   // a truncated retry would hit the same 429 immediately and waste

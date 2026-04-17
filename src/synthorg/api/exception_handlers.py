@@ -403,15 +403,16 @@ def handle_domain_error(
     """
     # Defensive: an exception class with a malformed ClassVar (e.g. a
     # non-int ``status_code`` injected by accident) must never crash
-    # the handler -- fall back to 500.  The status is also clamped to
-    # the valid HTTP range so a subclass that sets ``status_code=0``
-    # or ``999`` does not yield an unparseable response.
+    # the handler -- fall back to 500.  Also clamp to the HTTP error
+    # range (400-599): a 2xx/3xx on an exception path is a
+    # mis-annotation, so we normalize to 500 instead of producing a
+    # surprising "successful" error envelope.
     raw_status = getattr(exc, "status_code", 500)
     try:
         status_code = int(raw_status)
     except TypeError, ValueError:
         status_code = 500
-    if not (100 <= status_code <= 599):  # noqa: PLR2004
+    if not (400 <= status_code <= 599):  # noqa: PLR2004
         status_code = 500
     # Validate ``error_code`` / ``error_category`` against their enum
     # membership; unknown values get normalized to the generic

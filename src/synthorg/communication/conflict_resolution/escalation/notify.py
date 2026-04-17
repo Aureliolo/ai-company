@@ -15,7 +15,9 @@ factory returns a :class:`NoopEscalationNotifySubscriber`.
 """
 
 import asyncio
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+import contextlib
+import re
+from typing import TYPE_CHECKING, Final, Protocol, runtime_checkable
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.conflict import (
@@ -34,6 +36,15 @@ if TYPE_CHECKING:
     )
 
 logger = get_logger(__name__)
+
+# Safe Postgres unquoted-identifier pattern.  Defence-in-depth: the
+# config layer validates this too, but the subscriber re-checks so a
+# hand-constructed subscriber cannot inject unsafe SQL via
+# ``LISTEN "<channel>"``.
+_SAFE_IDENTIFIER_PATTERN: Final[re.Pattern[str]] = re.compile(
+    r"^[A-Za-z_][A-Za-z0-9_]*$",
+)
+_MAX_IDENTIFIER_LEN: Final[int] = 63
 
 
 @runtime_checkable
@@ -105,6 +116,19 @@ class PostgresEscalationNotifySubscriber:
         """
         if reconnect_delay_seconds <= 0:
             msg = "reconnect_delay_seconds must be > 0"
+            raise ValueError(msg)
+        # Defensive: config.py already validates the channel, but a
+        # hand-constructed subscriber must not be able to inject SQL
+        # via ``LISTEN "<channel>"``.
+        if (
+            not channel
+            or len(channel) > _MAX_IDENTIFIER_LEN
+            or _SAFE_IDENTIFIER_PATTERN.fullmatch(channel) is None
+        ):
+            msg = (
+                f"notify channel {channel!r} is not a safe Postgres identifier "
+                "(must match ^[A-Za-z_][A-Za-z0-9_]*$, max 63 chars)"
+            )
             raise ValueError(msg)
         self._repo = repo
         self._registry = registry
@@ -204,17 +228,28 @@ class PostgresEscalationNotifySubscriber:
         """
         pool = self._repo.pool
         async with pool.connection() as conn:
+            # Capture the pool's original autocommit state and restore
+            # it before the connection goes back, so long-lived LISTEN
+            # mode doesn't leak to future borrowers of the same
+            # connection.  (psycopg pools typically reset connections,
+            # but we don't rely on that implementation detail.)
+            original_autocommit = getattr(conn, "autocommit", False)
             await conn.set_autocommit(True)
-            await conn.execute(f'LISTEN "{self._channel}"')
-            # Yielding gen reads notifies without holding the GIL.
-            gen = conn.notifies()
             try:
-                async for notify in gen:
-                    if self._stop_event is None or self._stop_event.is_set():
-                        break
-                    await self._dispatch_payload(notify.payload)
+                await conn.execute(f'LISTEN "{self._channel}"')
+                gen = conn.notifies()
+                try:
+                    async for notify in gen:
+                        if self._stop_event is None or self._stop_event.is_set():
+                            break
+                        await self._dispatch_payload(notify.payload)
+                finally:
+                    await gen.aclose()
             finally:
-                await gen.aclose()
+                with contextlib.suppress(Exception):
+                    await conn.execute(f'UNLISTEN "{self._channel}"')
+                with contextlib.suppress(Exception):
+                    await conn.set_autocommit(bool(original_autocommit))
 
     async def _dispatch_payload(self, payload: str) -> None:
         """Interpret a NOTIFY payload and wake the local future."""

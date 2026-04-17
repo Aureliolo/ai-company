@@ -186,6 +186,11 @@ class EscalationsController(Controller):
         row = await store.get(escalation_id)
         if row is None:
             msg = f"Escalation {escalation_id!r} not found"
+            logger.warning(
+                CONFLICT_ESCALATION_RESOLVED,
+                escalation_id=escalation_id,
+                note="get_escalation_not_found",
+            )
             raise NotFoundError(msg)
         return ApiResponse[EscalationResponse](data=_to_response(row))
 
@@ -241,11 +246,24 @@ class EscalationsController(Controller):
         row = await store.get(escalation_id)
         if row is None:
             msg = f"Escalation {escalation_id!r} not found"
+            logger.warning(
+                CONFLICT_ESCALATION_RESOLVED,
+                escalation_id=escalation_id,
+                operator=operator,
+                note="submit_decision_not_found",
+            )
             raise NotFoundError(msg)
         if row.status != EscalationStatus.PENDING:
             msg = (
                 f"Escalation {escalation_id!r} is {row.status.value}, "
                 "cannot submit a decision"
+            )
+            logger.warning(
+                CONFLICT_ESCALATION_RESOLVED,
+                escalation_id=escalation_id,
+                operator=operator,
+                current_status=row.status.value,
+                note="submit_decision_not_pending",
             )
             raise ConflictError(msg)
 

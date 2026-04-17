@@ -62,6 +62,12 @@ from synthorg.observability.events.conflict import (
 
 logger = get_logger(__name__)
 
+# Upper bound on background notification dispatch so a slow / hung
+# notifier sink cannot leak tasks across thousands of escalations.
+# Deliberately short -- notification is best-effort; the REST list
+# endpoint + sweeper already cover eventual consistency.
+_NOTIFICATION_DISPATCH_TIMEOUT_SECONDS: float = 10.0
+
 
 class HumanEscalationResolver:
     """Escalate conflicts to a human and await the operator decision.
@@ -137,7 +143,18 @@ class HumanEscalationResolver:
         try:
             await self._store.create(escalation)
         except Exception:
-            # Reap the future so the registry does not leak.
+            # Reap the future so the registry does not leak, and log
+            # the failure so operators see the root cause (a failed
+            # ``create`` also surfaces to the caller, but the queue
+            # context -- escalation id, conflict id -- is only visible
+            # here).
+            logger.exception(
+                CONFLICT_ESCALATION_QUEUED,
+                escalation_id=escalation.id,
+                conflict_id=conflict.id,
+                subject=conflict.subject,
+                note="store_create_failed",
+            )
             await self._registry.cancel(escalation.id)
             raise
         logger.info(
@@ -209,16 +226,28 @@ class HumanEscalationResolver:
         Failures are logged (same context as the previous inline
         try/except) but never propagate -- the notifier is a side
         effect.  Cancellation must re-raise so shutdown can reap the
-        task cleanly.
+        task cleanly.  A hard timeout bounds pathological notifier
+        sinks so tasks cannot accumulate in ``self._notify_tasks``.
         """
         if self._notifier is None:
             return
         try:
-            await self._notifier.dispatch(
-                self._build_notification(escalation, conflict),
+            await asyncio.wait_for(
+                self._notifier.dispatch(
+                    self._build_notification(escalation, conflict),
+                ),
+                timeout=_NOTIFICATION_DISPATCH_TIMEOUT_SECONDS,
             )
         except asyncio.CancelledError:
             raise
+        except TimeoutError:
+            logger.warning(
+                CONFLICT_ESCALATION_QUEUED,
+                escalation_id=escalation.id,
+                conflict_id=conflict.id,
+                timeout_seconds=_NOTIFICATION_DISPATCH_TIMEOUT_SECONDS,
+                note="notification_dispatch_timeout",
+            )
         except MemoryError, RecursionError:
             raise
         except Exception as exc:

@@ -14,7 +14,7 @@ from typing import Any, Final, Literal
 from litestar.connection import ASGIConnection  # noqa: TC002
 from litestar.handlers.base import BaseRouteHandler  # noqa: TC002
 
-from synthorg.api.errors import PerOperationRateLimitError
+from synthorg.api.errors import PerOperationRateLimitError, ServiceUnavailableError
 from synthorg.api.rate_limits.config import PerOpRateLimitConfig  # noqa: TC001
 from synthorg.api.rate_limits.protocol import SlidingWindowStore  # noqa: TC001
 from synthorg.observability import get_logger
@@ -164,9 +164,25 @@ def per_op_rate_limit(
     """
     if max_requests <= 0:
         msg = "max_requests must be positive"
+        logger.warning(
+            API_APP_STARTUP,
+            guard="per_op_rate_limit",
+            operation=operation,
+            max_requests=max_requests,
+            window_seconds=window_seconds,
+            error=msg,
+        )
         raise ValueError(msg)
     if window_seconds <= 0:
         msg = "window_seconds must be positive"
+        logger.warning(
+            API_APP_STARTUP,
+            guard="per_op_rate_limit",
+            operation=operation,
+            max_requests=max_requests,
+            window_seconds=window_seconds,
+            error=msg,
+        )
         raise ValueError(msg)
     default_max = max_requests
     default_window = window_seconds
@@ -187,8 +203,11 @@ def per_op_rate_limit(
         if config is not None and not config.enabled:
             return
         # Missing store or missing config is a wiring error, NOT an
-        # "off" signal.  Fail loud and closed so misconfigured
-        # deployments do not ship without protection.
+        # "off" signal.  Fail loud and closed with a 503 so misconfigured
+        # deployments do not ship without protection.  A 429 would be
+        # semantically wrong here: the request is not rate-limited,
+        # the operator forgot to wire the limiter.  503 + no
+        # ``Retry-After`` tells clients this is a server-side issue.
         if store is None or config is None:
             logger.error(
                 API_APP_STARTUP,
@@ -205,7 +224,7 @@ def per_op_rate_limit(
                 f"Rate limit guard for operation {operation!r} is not wired. "
                 "This is a deployment error; see logs for context."
             )
-            raise PerOperationRateLimitError(msg, retry_after=1)
+            raise ServiceUnavailableError(msg)
         limit_max, limit_window = config.overrides.get(
             operation,
             (default_max, default_window),

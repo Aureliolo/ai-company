@@ -26,7 +26,12 @@ CREATE TABLE `conflict_escalations` (
     ),
   CHECK (
         (status != 'decided')
-        OR (decision_json IS NOT NULL AND decided_at IS NOT NULL AND decided_by IS NOT NULL)
+        OR (
+            decision_json IS NOT NULL
+            AND decided_at IS NOT NULL
+            AND decided_by IS NOT NULL
+            AND length(trim(decided_by)) > 0
+        )
     ),
   CHECK (
         (status != 'pending')
@@ -38,6 +43,7 @@ CREATE TABLE `conflict_escalations` (
             decision_json IS NULL
             AND decided_at IS NOT NULL
             AND decided_by IS NOT NULL
+            AND length(trim(decided_by)) > 0
         )
     )
 );

@@ -1159,6 +1159,15 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
                 API_APP_SHUTDOWN,
                 "Failed to stop escalation sweeper",
             )
+        # Cancel any unresolved pending futures so coroutines awaiting
+        # operator decisions get a clean CancelledError (instead of
+        # hanging past shutdown) and the registry map is emptied.
+        if app_state.escalation_registry is not None:
+            await _try_stop(
+                app_state.escalation_registry.close(),
+                API_APP_SHUTDOWN,
+                "Failed to close escalation pending-futures registry",
+            )
         if app_state.oauth_token_manager is not None:
             await _try_stop(
                 app_state.oauth_token_manager.stop(),
