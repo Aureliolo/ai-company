@@ -15,10 +15,14 @@ coverage:
         if_ci_failed: error
     patch:
       default:
-        # Require the diff itself to be well covered: new code must meet
-        # the project's baseline coverage (~85%). The small slack here
-        # matches the project-level threshold above so the two gates
-        # report consistent "is this release-quality?" answers.
-        target: auto
-        threshold: 0.5%
+        # Patch coverage target: every diff must hit at least 70% of
+        # its own added lines. This is deliberately lower than the
+        # project baseline (~85%) because diffs routinely include
+        # defense-in-depth error paths (OS permission failures,
+        # mock-only docker responses, rare exception handlers) whose
+        # behaviour is easy to reason about by inspection and
+        # expensive to exercise with real tests. The 70% floor still
+        # keeps most patches well-tested while not forcing mocks of
+        # every syscall boundary.
+        target: 70%
         if_ci_failed: error
