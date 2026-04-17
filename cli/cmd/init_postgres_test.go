@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -533,4 +534,81 @@ func TestWriteNATSConfigIfNeeded(t *testing.T) {
 			t.Errorf("expected not-canonical error, got: %v", err)
 		}
 	})
+}
+
+// TestWriteComposeWithNATS locks down the unified compose + nats.conf
+// writer. Every regeneration path (init, start digest-pin, config set,
+// update) funnels through this helper so the on-disk pair stays
+// consistent across the BusBackend transition. The test exercises both
+// orderings so a future refactor cannot accidentally break atomicity
+// on one branch.
+func TestWriteComposeWithNATS(t *testing.T) {
+	t.Run("nats branch writes compose and nats.conf together", func(t *testing.T) {
+		safeDir := mustAbs(t, t.TempDir())
+		composePath := filepath.Join(safeDir, "compose.yml")
+		state := config.State{BusBackend: "nats"}
+		if err := writeComposeWithNATS(composePath, []byte("services: {}\n"), state, safeDir); err != nil {
+			t.Fatalf("writeComposeWithNATS: %v", err)
+		}
+		if _, err := os.Stat(composePath); err != nil {
+			t.Errorf("compose.yml should exist: %v", err)
+		}
+		got, err := os.ReadFile(filepath.Join(safeDir, compose.NATSConfigFilename))
+		if err != nil {
+			t.Fatalf("nats.conf should exist: %v", err)
+		}
+		if string(got) != compose.NATSConfigContent {
+			t.Errorf("nats.conf content mismatch")
+		}
+	})
+
+	t.Run("internal branch writes compose and cleans stale nats.conf", func(t *testing.T) {
+		safeDir := mustAbs(t, t.TempDir())
+		stale := filepath.Join(safeDir, compose.NATSConfigFilename)
+		if err := os.WriteFile(stale, []byte("stale"), 0o600); err != nil {
+			t.Fatalf("seed stale nats.conf: %v", err)
+		}
+		composePath := filepath.Join(safeDir, "compose.yml")
+		state := config.State{BusBackend: "internal"}
+		if err := writeComposeWithNATS(composePath, []byte("services: {}\n"), state, safeDir); err != nil {
+			t.Fatalf("writeComposeWithNATS: %v", err)
+		}
+		if _, err := os.Stat(composePath); err != nil {
+			t.Errorf("compose.yml should exist: %v", err)
+		}
+		if _, err := os.Stat(stale); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("stale nats.conf should be gone; stat err=%v", err)
+		}
+	})
+}
+
+// TestWriteNATSConfigIfNeeded_RootedIO exercises the os.Root-based I/O
+// path added to keep CodeQL's go/path-injection analyser quiet. The
+// earlier TestWriteNATSConfigIfNeeded block uses broad success/no-op
+// assertions; this one verifies the new write-then-close-then-fsync
+// cycle actually produces a file with the canonical byte-for-byte
+// content and 0o600 mode.
+func TestWriteNATSConfigIfNeeded_RootedIO(t *testing.T) {
+	safeDir := mustAbs(t, t.TempDir())
+	if err := writeNATSConfigIfNeeded("nats", safeDir); err != nil {
+		t.Fatalf("writeNATSConfigIfNeeded: %v", err)
+	}
+	confPath := filepath.Join(safeDir, compose.NATSConfigFilename)
+	info, err := os.Stat(confPath)
+	if err != nil {
+		t.Fatalf("stat nats.conf: %v", err)
+	}
+	// Permission bits are platform-dependent; assert only on the
+	// owner-read/write bits that 0o600 sets, since Windows preserves
+	// a wider ACL.
+	if info.Mode().Perm()&0o600 != 0o600 {
+		t.Errorf("nats.conf permission mask = %v, want at least 0o600", info.Mode().Perm())
+	}
+	got, err := os.ReadFile(confPath)
+	if err != nil {
+		t.Fatalf("read nats.conf: %v", err)
+	}
+	if string(got) != compose.NATSConfigContent {
+		t.Errorf("nats.conf content mismatch")
+	}
 }
