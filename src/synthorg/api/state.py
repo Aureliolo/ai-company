@@ -117,6 +117,7 @@ class AppState:
         "_audit_log",
         "_auth_service",
         "_backup_service",
+        "_bridge_config_applied",
         "_ceremony_scheduler",
         "_client_simulation_state",
         "_config_resolver",
@@ -259,6 +260,13 @@ class AppState:
         self._trace_handler: TraceHandler | None = None
         self._fine_tune_orchestrator: FineTuneOrchestrator | None = None
         self._config_resolver: ConfigResolver | None = None
+        # One-shot flag: on_startup applies bridge-config settings
+        # exactly once per ``AppState`` lifetime, even when the
+        # Litestar lifespan re-enters (shared-app test fixtures or
+        # multiple lifespan cycles). Preserves the httpx/SMTP clients
+        # built into the notification-dispatcher sinks rather than
+        # rebuilding and closing them on every startup.
+        self._bridge_config_applied: bool = False
         self._provider_management: ProviderManagementService | None = None
         self._org_mutation_service: OrgMutationService | None = None
         self._init_derived_services(
@@ -882,6 +890,24 @@ class AppState:
         finish against the old references.
         """
         self._notification_dispatcher = dispatcher
+
+    @property
+    def bridge_config_applied(self) -> bool:
+        """Whether the API startup hook has applied bridge settings.
+
+        Set to ``True`` by the startup hook after it has resolved the
+        operator-tuned settings (OAuth HTTP timeout, audit-chain
+        signing timeout, notification adapter timeouts, etc.) and
+        wired them into their consumer services. Subsequent lifespan
+        re-entries (shared-app test fixtures, multi-lifespan runs)
+        use this flag to short-circuit the rebuild so sinks / flows
+        are not churned.
+        """
+        return self._bridge_config_applied
+
+    def mark_bridge_config_applied(self) -> None:
+        """Flip :attr:`bridge_config_applied` to ``True`` (one-way)."""
+        self._bridge_config_applied = True
 
     @property
     def ontology_service(self) -> OntologyService:

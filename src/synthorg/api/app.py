@@ -896,9 +896,13 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
             except Exception:  # noqa: S110 -- already logged via done-callback
                 pass
         # Apply operator-tuned API bridge settings to mutable stores
-        # that outlive this startup frame.  Failure is non-fatal so the
-        # app still boots with built-in defaults.
-        if app_state.has_config_resolver:
+        # that outlive this startup frame. Failure is non-fatal so the
+        # app still boots with built-in defaults. Guarded by
+        # ``bridge_config_applied`` so a re-entering Litestar lifespan
+        # (shared-app test fixtures, multi-lifespan runs) does not
+        # churn httpx/SMTP clients in the notification-dispatcher
+        # sinks or rebuild the OAuth flow on every startup.
+        if app_state.has_config_resolver and not app_state.bridge_config_applied:
             try:
                 app_state.ticket_store.set_max_pending_per_user(
                     await app_state.config_resolver.get_int(
@@ -1027,6 +1031,8 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
                             ),
                             exc_info=True,
                         )
+
+            app_state.mark_bridge_config_applied()
 
         _ticket_cleanup_task = asyncio.create_task(
             _ticket_cleanup_loop(app_state),
