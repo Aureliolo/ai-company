@@ -24,8 +24,15 @@ async def _raiser(exc: BaseException) -> None:
     raise exc
 
 
-async def _slow(sleep_sec: float) -> None:
-    await asyncio.sleep(sleep_sec)
+async def _block_until_set(blocker: asyncio.Event) -> None:
+    """Block until *blocker* is set, or the task is cancelled.
+
+    Used as a deterministic replacement for ``asyncio.sleep`` in
+    timing-sensitive tests: the caller controls exactly when the
+    coroutine completes or gets cancelled, eliminating real-time
+    dependencies and xdist flakiness.
+    """
+    await blocker.wait()
 
 
 async def test_spawn_tracks_task_and_discards_on_success() -> None:
@@ -68,7 +75,8 @@ async def test_cancelled_task_does_not_log_failure(
     captured_logs: list[MutableMapping[str, Any]],
 ) -> None:
     registry = BackgroundTaskRegistry(owner="test.owner")
-    task = registry.spawn(_slow(5.0), event="test.intent")
+    blocker = asyncio.Event()
+    task = registry.spawn(_block_until_set(blocker), event="test.intent")
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
         await task
@@ -82,9 +90,13 @@ async def test_cancelled_task_does_not_log_failure(
 
 async def test_drain_waits_for_pending_tasks() -> None:
     registry = BackgroundTaskRegistry(owner="test.owner")
-    registry.spawn(_slow(0.05), event="test.intent")
-    registry.spawn(_slow(0.05), event="test.intent")
+    blocker = asyncio.Event()
+    registry.spawn(_block_until_set(blocker), event="test.intent")
+    registry.spawn(_block_until_set(blocker), event="test.intent")
     assert registry.active_count == 2
+    # Release both blockers so drain has something to wait on
+    # (rather than a timing-dependent 50ms sleep).
+    blocker.set()
     await registry.drain(timeout_sec=1.0)
     assert registry.active_count == 0
 
@@ -93,7 +105,8 @@ async def test_drain_cancels_on_timeout(
     captured_logs: list[MutableMapping[str, Any]],
 ) -> None:
     registry = BackgroundTaskRegistry(owner="test.owner")
-    task = registry.spawn(_slow(5.0), event="test.intent")
+    blocker = asyncio.Event()  # Never set -- task is stuck forever.
+    task = registry.spawn(_block_until_set(blocker), event="test.intent")
     await registry.drain(timeout_sec=0.05)
     # Allow the cancellation to settle.
     await asyncio.sleep(0)

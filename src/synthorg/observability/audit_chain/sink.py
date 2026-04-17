@@ -5,7 +5,7 @@ import json
 import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from synthorg.observability import get_logger
 from synthorg.observability.audit_chain.chain import HashChain
@@ -99,7 +99,7 @@ class AuditChainSink(logging.Handler):
 
     def set_append_callback(
         self,
-        callback: AppendCallback | None | Any,
+        callback: AppendCallback | None,
     ) -> None:
         """Register a callback invoked after every append attempt.
 
@@ -118,9 +118,14 @@ class AuditChainSink(logging.Handler):
                 :meth:`OtlpHandler.set_export_callback` and catches
                 wiring bugs before they surface mid-emit.
         """
-        if callback is not None and not callable(callback):
+        # Callers satisfy this at type-check time; the runtime guard
+        # catches misuse from untyped wiring (tests, config loaders,
+        # dynamic callers). mypy flags the check as unreachable under
+        # the declared signature, which is exactly the point -- the
+        # ignore preserves the defensive assertion.
+        if callback is not None and not callable(callback):  # type: ignore[unreachable, unused-ignore]
             msg = "append callback must be callable or None"
-            raise TypeError(msg)
+            raise TypeError(msg)  # type: ignore[unreachable, unused-ignore]
         self._append_callback = callback
 
     @property

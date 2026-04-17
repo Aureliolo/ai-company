@@ -18,7 +18,7 @@ registered so call sites remain safe when metrics are disabled.
 """
 
 import weakref
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, ParamSpec, TypeVar
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.metrics import (
@@ -31,6 +31,9 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from synthorg.observability.prometheus_collector import PrometheusCollector
+
+_P = ParamSpec("_P")
+_R = TypeVar("_R")
 
 logger = get_logger(__name__)
 
@@ -73,11 +76,16 @@ def _active() -> PrometheusCollector | None:
 def _safe_record(
     event: str,
     method: str,
-) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
-    """Decorator that swallows and logs collector exceptions."""
+) -> Callable[[Callable[_P, _R]], Callable[_P, _R | None]]:
+    """Decorator that swallows and logs collector exceptions.
 
-    def _wrap(fn: Callable[..., Any]) -> Callable[..., Any]:
-        def inner(*args: Any, **kwargs: Any) -> Any:
+    Uses :data:`ParamSpec` so the decorated call signatures are
+    preserved under strict mypy -- each wrapper keeps its original
+    keyword-only arguments visible to callers and checkers.
+    """
+
+    def _wrap(fn: Callable[_P, _R]) -> Callable[_P, _R | None]:
+        def inner(*args: _P.args, **kwargs: _P.kwargs) -> _R | None:
             try:
                 return fn(*args, **kwargs)
             except MemoryError, RecursionError:

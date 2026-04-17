@@ -163,12 +163,28 @@ class TsaClient:
         http_client: httpx.AsyncClient | None = None,
     ) -> None:
         if hash_algorithm not in _HASH_ALGORITHMS:
+            logger.warning(
+                SECURITY_TIMESTAMP_PROTOCOL_ERROR,
+                reason="invalid_constructor_argument",
+                argument="hash_algorithm",
+                tsa_url=tsa_url,
+                rejected_value=hash_algorithm,
+                allowed=sorted(_HASH_ALGORITHMS),
+            )
             msg = (
                 f"Unsupported hash algorithm {hash_algorithm!r}; "
                 f"expected one of {sorted(_HASH_ALGORITHMS)}"
             )
             raise ValueError(msg)
         if timeout_sec <= 0:
+            logger.warning(
+                SECURITY_TIMESTAMP_PROTOCOL_ERROR,
+                reason="invalid_constructor_argument",
+                argument="timeout_sec",
+                tsa_url=tsa_url,
+                rejected_value=timeout_sec,
+                expected="positive float",
+            )
             msg = "timeout_sec must be positive"
             raise ValueError(msg)
         self._tsa_url = tsa_url
@@ -529,7 +545,11 @@ def _load_root_cert(pem_bytes: bytes) -> x509.Certificate:
 def _gen_time_to_datetime(gen_time: Any) -> datetime:
     """Coerce a TSTInfo ``gen_time`` into a UTC-aware datetime."""
     if isinstance(gen_time, datetime):
-        return gen_time if gen_time.tzinfo is not None else gen_time.replace(tzinfo=UTC)
+        if gen_time.tzinfo is None:
+            return gen_time.replace(tzinfo=UTC)
+        # Normalise aware non-UTC values so ``TimestampToken.timestamp``
+        # is always UTC per its contract.
+        return gen_time.astimezone(UTC)
     logger.warning(
         SECURITY_TIMESTAMP_PROTOCOL_ERROR,
         reason="invalid_gen_time",

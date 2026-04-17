@@ -25,7 +25,7 @@ from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler
 pytestmark = pytest.mark.unit
 
 
-_NOTIFY_ERROR_MSG = "pagerduty down"
+_NOTIFY_ERROR_MSG = "notification service down"
 
 
 async def _raising_notify(*_args: Any, **_kwargs: Any) -> None:

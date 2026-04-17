@@ -141,7 +141,7 @@ class OtlpHandler(logging.Handler):
 
     def set_export_callback(
         self,
-        callback: ExportCallback | None | Any,
+        callback: ExportCallback | None,
     ) -> None:
         """Register a callback invoked after every export batch.
 
@@ -163,9 +163,10 @@ class OtlpHandler(logging.Handler):
         """
         # Typed callers satisfy this at check time; the runtime
         # guard catches misuse from untyped code (tests, config
-        # loaders, dynamic wiring).
-        if callback is not None and not callable(callback):
-            _internal_logger.warning(
+        # loaders, dynamic wiring). mypy flags the branch as
+        # unreachable under the strict signature -- intentional.
+        if callback is not None and not callable(callback):  # type: ignore[unreachable, unused-ignore]
+            _internal_logger.warning(  # type: ignore[unreachable, unused-ignore]
                 METRICS_OTLP_INVALID_CALLBACK,
                 provided_type=type(callback).__name__,
             )
@@ -258,6 +259,7 @@ class OtlpHandler(logging.Handler):
     def _export_batch(self, records: list[logging.LogRecord]) -> None:
         """Export a batch of records as OTLP JSON log records."""
         log_records: list[dict[str, Any]] = []
+        format_drops = 0
         for record in records:
             try:
                 log_records.append(self._format_as_otlp_dict(record))
@@ -266,8 +268,14 @@ class OtlpHandler(logging.Handler):
             except Exception:
                 self.handleError(record)
                 self._increment_dropped(1)
+                format_drops += 1
 
         if not log_records:
+            # Pure-formatting failure: surface the drop count so
+            # the export-outcome callback reflects every lost
+            # record instead of silently zeroing the counter.
+            if format_drops:
+                self._invoke_export_callback("failure", format_drops)
             return
 
         # OTLP JSON format: wrap in resourceLogs envelope
@@ -317,9 +325,15 @@ class OtlpHandler(logging.Handler):
                 dropped_records=len(log_records),
                 total_dropped=total_dropped,
             )
-            self._invoke_export_callback("failure", len(log_records))
+            # Include records lost to formatting alongside the
+            # HTTP-export loss so the callback sees the full drop
+            # total (format_drops were already incremented above).
+            self._invoke_export_callback(
+                "failure",
+                format_drops + len(log_records),
+            )
             return
-        self._invoke_export_callback("success", 0)
+        self._invoke_export_callback("success", format_drops)
 
     def _invoke_export_callback(self, outcome: str, dropped: int) -> None:
         """Call the registered export callback, swallowing any errors.

@@ -106,7 +106,14 @@ def test_otlp_http_config_builds_otlp_handler() -> None:
     finally:
         import asyncio
 
+        from synthorg.observability.otlp_trace_handler import _reset_for_testing
+
         asyncio.run(handler.shutdown())
+        # shutdown() preserves the singleton guard so the global
+        # TracerProvider cannot be silently replaced in production;
+        # tests explicitly reset it so the next build_trace_handler
+        # call in another test doesn't hit the guard and RuntimeError.
+        _reset_for_testing()
 
 
 def test_otlp_http_config_rejects_header_with_newline() -> None:

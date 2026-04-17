@@ -91,6 +91,22 @@ class OtlpTraceHandler:
         )
         self._provider.add_span_processor(self._processor)
         _ot_trace.set_tracer_provider(self._provider)
+        # OTel's ``set_tracer_provider`` is one-shot: a default
+        # provider can auto-initialise before us (env var or a lazy
+        # library call that read ``get_tracer_provider``), and the
+        # install silently fails. Fail loudly here so we don't run
+        # with a split brain where ``self._provider`` is live but
+        # the rest of the process uses a different global.
+        installed = _ot_trace.get_tracer_provider()
+        if installed is not self._provider:
+            msg = (
+                "OpenTelemetry global TracerProvider was already "
+                "set before OtlpTraceHandler installed its own. "
+                "Call build_trace_handler earlier in startup or "
+                "unset OTEL_PYTHON_TRACER_PROVIDER / any library "
+                "that auto-initialises the global provider."
+            )
+            raise RuntimeError(msg)
         _HANDLER_INSTANCE = self
         logger.info(
             METRICS_OTLP_FLUSHER_STARTED,

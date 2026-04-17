@@ -15,6 +15,8 @@ never see. Reference: issue #1404.
 """
 
 import asyncio
+import copy
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
 from synthorg.observability import get_logger
@@ -24,7 +26,7 @@ from synthorg.observability.events.async_task import (
 from synthorg.observability.events.notification import NOTIFICATION_SEND_FAILED
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Coroutine
+    from collections.abc import Callable, Coroutine, Mapping
 
 logger = get_logger(__name__)
 
@@ -81,16 +83,22 @@ class BackgroundTaskRegistry:
         """
         task = asyncio.create_task(coro)
         self._tasks.add(task)
-        # Snapshot the context dict up-front so mutations to the
-        # caller's ``**kwargs`` source after ``spawn`` returns cannot
-        # race the done-callback's log line.
-        task.add_done_callback(self._make_done_callback(event, dict(context)))
+        # Deep-freeze the context up-front so neither the caller's
+        # ``**kwargs`` source nor any nested mutable value can race
+        # the done-callback's log line. ``dict(context)`` alone was
+        # only shallow -- this matches the repo's convention of
+        # ``copy.deepcopy`` + ``MappingProxyType`` for internal
+        # non-Pydantic collections.
+        frozen_context = MappingProxyType(copy.deepcopy(context))
+        task.add_done_callback(
+            self._make_done_callback(event, frozen_context),
+        )
         return task
 
     def _make_done_callback(
         self,
         event: str,
-        context: dict[str, Any],
+        context: Mapping[str, Any],
     ) -> Callable[[asyncio.Task[Any]], None]:
         """Build a done-callback that discards the task and logs failures."""
         owner = self._owner
@@ -166,8 +174,12 @@ class BackgroundTaskRegistry:
         for task in still_pending:
             task.cancel()
         # Give cancelled tasks a final loop tick to run their
-        # done-callbacks so ``active_count`` drops to zero.
-        await asyncio.gather(*still_pending, return_exceptions=True)
+        # done-callbacks so ``active_count`` drops to zero. Bound
+        # this second wait so a task that catches ``CancelledError``
+        # without re-raising, or is stuck in non-cancellable I/O,
+        # can't extend shutdown past ``timeout_sec`` -- the whole
+        # point of ``drain`` is a bounded deadline.
+        await asyncio.wait(still_pending, timeout=timeout_sec)
 
     @property
     def active_count(self) -> int:

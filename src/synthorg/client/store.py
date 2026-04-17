@@ -25,6 +25,7 @@ from synthorg.observability.events.client import (
     SIMULATION_RUN_COMPLETED,
     SIMULATION_RUN_FAILED,
     SIMULATION_RUN_STARTED,
+    SIMULATION_RUN_UPDATE_REJECTED,
 )
 
 logger = get_logger(__name__)
@@ -206,7 +207,7 @@ class SimulationStore:
         async with self._lock:
             if simulation_id not in self._runs:
                 logger.warning(
-                    SIMULATION_RUN_FAILED,
+                    SIMULATION_RUN_UPDATE_REJECTED,
                     reason="not_found",
                     simulation_id=simulation_id,
                     requested_status=status,
@@ -224,7 +225,7 @@ class SimulationStore:
                 updates["error"] = error
             if existing.status in _TERMINAL_STATUSES:
                 logger.warning(
-                    SIMULATION_RUN_FAILED,
+                    SIMULATION_RUN_UPDATE_REJECTED,
                     reason="terminal_state_transition_rejected",
                     simulation_id=simulation_id,
                     requested_status=status,

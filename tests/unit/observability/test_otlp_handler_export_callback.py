@@ -117,4 +117,4 @@ def test_set_export_callback_rejects_non_callable() -> None:
         _start_flusher=False,
     )
     with pytest.raises(TypeError, match="callable or None"):
-        handler.set_export_callback("not-a-callable")
+        handler.set_export_callback("not-a-callable")  # type: ignore[arg-type]
