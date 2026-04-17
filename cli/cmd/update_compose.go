@@ -58,7 +58,7 @@ func refreshCompose(cmd *cobra.Command, state config.State, force bool) (bool, e
 	// changed -- these are expected during an update and don't need
 	// user confirmation (template structure is unchanged).
 	if isUpdateBoilerplateOnly(existing, fresh) {
-		if err := compose.WriteComposeAndNATS(composePath, fresh, state.BusBackend, safeDir); err != nil {
+		if err := compose.WriteComposeAndNATS("compose.yml", fresh, state.BusBackend, safeDir); err != nil {
 			return false, fmt.Errorf("writing updated compose: %w", err)
 		}
 		_, _ = fmt.Fprintln(out, "Compose configuration is up to date.")
@@ -74,7 +74,7 @@ func refreshCompose(cmd *cobra.Command, state config.State, force bool) (bool, e
 
 // recoverMissingCompose generates compose.yml from the template during
 // recovery mode when the file is absent.
-func recoverMissingCompose(out io.Writer, composePath string, state config.State, safeDir string) (bool, error) {
+func recoverMissingCompose(out io.Writer, _ string, state config.State, safeDir string) (bool, error) {
 	params, err := compose.ParamsFromState(state)
 	if err != nil {
 		return false, fmt.Errorf("building compose params during recovery: %w", err)
@@ -86,7 +86,7 @@ func recoverMissingCompose(out io.Writer, composePath string, state config.State
 	if genErr != nil {
 		return false, fmt.Errorf("generating compose.yml during recovery: %w", genErr)
 	}
-	if wErr := compose.WriteComposeAndNATS(composePath, generated, state.BusBackend, safeDir); wErr != nil {
+	if wErr := compose.WriteComposeAndNATS("compose.yml", generated, state.BusBackend, safeDir); wErr != nil {
 		return false, fmt.Errorf("writing compose files during recovery: %w", wErr)
 	}
 	_, _ = fmt.Fprintln(out, "Generated compose.yml from template.")
@@ -153,7 +153,7 @@ func loadAndGenerate(composePath string, state config.State) ([]byte, []byte, er
 // asks the user to approve, and writes the fresh compose (plus any
 // required nats.conf side-file) atomically if approved.
 // Returns true if applied, false if declined.
-func applyComposeDiff(cmd *cobra.Command, composePath string, existing, fresh []byte, safeDir string, state config.State, autoApply bool) (bool, error) {
+func applyComposeDiff(cmd *cobra.Command, _ string, existing, fresh []byte, safeDir string, state config.State, autoApply bool) (bool, error) {
 	out := cmd.OutOrStdout()
 
 	diff := lineDiff(string(existing), string(fresh))
@@ -169,7 +169,7 @@ func applyComposeDiff(cmd *cobra.Command, composePath string, existing, fresh []
 		return false, nil
 	}
 
-	if err := compose.WriteComposeAndNATS(composePath, fresh, state.BusBackend, safeDir); err != nil {
+	if err := compose.WriteComposeAndNATS("compose.yml", fresh, state.BusBackend, safeDir); err != nil {
 		return false, fmt.Errorf("writing updated compose: %w", err)
 	}
 	_, _ = fmt.Fprintln(out, "Compose configuration updated.")
@@ -318,5 +318,5 @@ func patchComposeImageRefs(tag string, digestPins map[string]string, sandboxEnab
 		}
 	}
 
-	return compose.AtomicWriteFile(composePath, []byte(patched), safeDir)
+	return compose.AtomicWriteFile(safeDir, "compose.yml", []byte(patched))
 }

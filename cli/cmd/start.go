@@ -633,7 +633,7 @@ func writeDigestPinnedCompose(state config.State, digestPins map[string]string, 
 		return fmt.Errorf("generating compose file: %w", err)
 	}
 
-	return compose.WriteComposeAndNATS(filepath.Join(safeDir, "compose.yml"), composeYAML, state.BusBackend, safeDir)
+	return compose.WriteComposeAndNATS("compose.yml", composeYAML, state.BusBackend, safeDir)
 }
 
 // digestPinMap converts verification results to a map of image name -> digest

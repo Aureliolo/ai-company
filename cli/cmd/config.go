@@ -564,7 +564,7 @@ func regenerateCompose(state config.State) error {
 	if err != nil {
 		return fmt.Errorf("regenerating compose: %w", err)
 	}
-	return compose.WriteComposeAndNATS(composePath, generated, state.BusBackend, safeDir)
+	return compose.WriteComposeAndNATS("compose.yml", generated, state.BusBackend, safeDir)
 }
 
 func runConfigUnset(cmd *cobra.Command, args []string) error {

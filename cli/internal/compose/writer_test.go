@@ -130,11 +130,10 @@ func TestWriteNATSConfig_AtomicRewrite(t *testing.T) {
 func TestWriteComposeAndNATS(t *testing.T) {
 	t.Run("nats branch writes compose and nats.conf together", func(t *testing.T) {
 		safeDir := mustAbsDir(t, t.TempDir())
-		composePath := filepath.Join(safeDir, "compose.yml")
-		if err := WriteComposeAndNATS(composePath, []byte("services: {}\n"), "nats", safeDir); err != nil {
+		if err := WriteComposeAndNATS("compose.yml", []byte("services: {}\n"), "nats", safeDir); err != nil {
 			t.Fatalf("WriteComposeAndNATS: %v", err)
 		}
-		if _, err := os.Stat(composePath); err != nil {
+		if _, err := os.Stat(filepath.Join(safeDir, "compose.yml")); err != nil {
 			t.Errorf("compose.yml should exist: %v", err)
 		}
 		got, err := os.ReadFile(filepath.Join(safeDir, NATSConfigFilename))
@@ -152,11 +151,10 @@ func TestWriteComposeAndNATS(t *testing.T) {
 		if err := os.WriteFile(stale, []byte("stale"), 0o600); err != nil {
 			t.Fatalf("seed stale nats.conf: %v", err)
 		}
-		composePath := filepath.Join(safeDir, "compose.yml")
-		if err := WriteComposeAndNATS(composePath, []byte("services: {}\n"), "internal", safeDir); err != nil {
+		if err := WriteComposeAndNATS("compose.yml", []byte("services: {}\n"), "internal", safeDir); err != nil {
 			t.Fatalf("WriteComposeAndNATS: %v", err)
 		}
-		if _, err := os.Stat(composePath); err != nil {
+		if _, err := os.Stat(filepath.Join(safeDir, "compose.yml")); err != nil {
 			t.Errorf("compose.yml should exist: %v", err)
 		}
 		if _, err := os.Stat(stale); !errors.Is(err, os.ErrNotExist) {
@@ -169,10 +167,10 @@ func TestWriteComposeAndNATS(t *testing.T) {
 // sets 0o600, and cleans up the temp sibling on success.
 func TestAtomicWriteFile(t *testing.T) {
 	dir := mustAbsDir(t, t.TempDir())
-	target := filepath.Join(dir, "compose.yml")
-	if err := AtomicWriteFile(target, []byte("services: {}\n"), dir); err != nil {
+	if err := AtomicWriteFile(dir, "compose.yml", []byte("services: {}\n")); err != nil {
 		t.Fatalf("AtomicWriteFile: %v", err)
 	}
+	target := filepath.Join(dir, "compose.yml")
 	got, err := os.ReadFile(target)
 	if err != nil {
 		t.Fatalf("read target: %v", err)

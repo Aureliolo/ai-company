@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"github.com/Aureliolo/synthorg/cli/internal/config"
 )
@@ -28,13 +27,13 @@ import (
 // Either way, a failure at any step leaves the disk in a consistent
 // state -- NATS will never start against a missing-or-mismatched
 // nats.conf because compose.yml and the file are always co-committed.
-func WriteComposeAndNATS(composePath string, composeYAML []byte, busBackend, safeDir string) error {
+func WriteComposeAndNATS(composeFilename string, composeYAML []byte, busBackend, safeDir string) error {
 	if busBackend == "nats" {
 		if err := WriteNATSConfig(busBackend, safeDir); err != nil {
 			return err
 		}
 	}
-	if err := AtomicWriteFile(composePath, composeYAML, safeDir); err != nil {
+	if err := AtomicWriteFile(safeDir, composeFilename, composeYAML); err != nil {
 		return err
 	}
 	if busBackend != "nats" {
@@ -119,48 +118,27 @@ func atomicWriteRooted(root *os.Root, dst string, data []byte) (err error) {
 	return nil
 }
 
-// AtomicWriteFile writes data to targetPath via a temp file + rename
-// so a crash mid-write cannot leave a partial file. tmpDir must be on
-// the same filesystem as targetPath (rename only works within one
-// filesystem). Exposed publicly so cli/cmd callers that generate
-// compose.yml outside this package can reuse the same pattern.
-func AtomicWriteFile(targetPath string, data []byte, tmpDir string) error {
-	tmp, err := os.CreateTemp(tmpDir, ".compose-*.yml.tmp")
+// AtomicWriteFile writes `data` to `filename` inside `safeDir`, using
+// a temp sibling + rename so a crash mid-write cannot leave a partial
+// file. All I/O goes through os.Root, which constrains operations to
+// safeDir at the OS level and -- as a bonus -- is the pattern CodeQL's
+// go/path-injection analyser recognises as sanitised.
+//
+// safeDir must be an absolute, clean path (callers typically run it
+// through config.SecurePath). filename is a plain filename relative
+// to safeDir ("compose.yml", not a nested path).
+func AtomicWriteFile(safeDir, filename string, data []byte) error {
+	sanitised, err := config.SecurePath(safeDir)
 	if err != nil {
-		return fmt.Errorf("creating temp file: %w", err)
+		return fmt.Errorf("atomic write: %w", err)
 	}
-	tmpPath := tmp.Name()
-
-	defer func() {
-		if tmpPath != "" {
-			_ = os.Remove(tmpPath)
-		}
-	}()
-
-	if _, err := tmp.Write(data); err != nil {
-		_ = tmp.Close()
-		return fmt.Errorf("writing compose file: %w", err)
+	if sanitised != safeDir {
+		return fmt.Errorf("atomic write: safeDir %q is not canonical (expected %q)", safeDir, sanitised)
 	}
-	if err := tmp.Sync(); err != nil {
-		_ = tmp.Close()
-		return fmt.Errorf("syncing compose file: %w", err)
+	root, err := os.OpenRoot(sanitised)
+	if err != nil {
+		return fmt.Errorf("opening atomic-write root %q: %w", sanitised, err)
 	}
-	if err := tmp.Close(); err != nil {
-		return fmt.Errorf("closing compose file: %w", err)
-	}
-
-	if err := os.Chmod(tmpPath, 0o600); err != nil {
-		return fmt.Errorf("setting compose file permissions: %w", err)
-	}
-
-	if err := os.Rename(tmpPath, targetPath); err != nil {
-		return fmt.Errorf("replacing compose file: %w", err)
-	}
-	tmpPath = ""
-
-	if dir, err := os.Open(filepath.Dir(targetPath)); err == nil {
-		_ = dir.Sync()
-		_ = dir.Close()
-	}
-	return nil
+	defer func() { _ = root.Close() }()
+	return atomicWriteRooted(root, filename, data)
 }
