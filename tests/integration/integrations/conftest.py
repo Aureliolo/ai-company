@@ -7,6 +7,13 @@ import pytest
 from synthorg.communication.bus.memory import InMemoryMessageBus
 from synthorg.communication.config import MessageBusConfig
 
+# Re-export Postgres integration fixtures so tests in this directory can
+# mount a real Postgres testcontainer via ``postgres_backend``. pytest
+# only inherits fixtures from conftest files on the path to the test
+# file, so without ``pytest_plugins`` the encrypted_postgres tests
+# would fail at collection with ``fixture 'postgres_backend' not found``.
+pytest_plugins = ["tests.integration.persistence.conftest"]
+
 # Fixed valid Fernet key so PKCE verifier encrypt/decrypt works in
 # every integration test that exercises the authorization code flow.
 _TEST_MASTER_KEY = "lKzZcMznksIF8A_2HFFUnKxhxhz9_bxTvVJoZ6mvZrk="
