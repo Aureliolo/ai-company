@@ -265,7 +265,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
         with:
-          node-version: 24.14.1
+          node-version: 24.15.0
           cache: npm
           cache-dependency-path: web/package-lock.json
       - run: npm ci
@@ -288,7 +288,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
         with:
-          node-version: 24.14.1
+          node-version: 24.15.0
           cache: npm
           cache-dependency-path: web/package-lock.json
       - run: npm ci
@@ -311,7 +311,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
         with:
-          node-version: 24.14.1
+          node-version: 24.15.0
           cache: npm
           cache-dependency-path: web/package-lock.json
       - run: npm ci
@@ -334,7 +334,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
         with:
-          node-version: 24.14.1
+          node-version: 24.15.0
           cache: npm
           cache-dependency-path: web/package-lock.json
       - run: npm ci
@@ -358,7 +358,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
         with:
-          node-version: 24.14.1
+          node-version: 24.15.0
           cache: npm
           cache-dependency-path: web/package-lock.json
       - run: npm ci
@@ -382,7 +382,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
         with:
-          node-version: 24.14.1
+          node-version: 24.15.0
           cache: npm
           cache-dependency-path: web/package-lock.json
       - run: npm ci

@@ -32,7 +32,7 @@ concurrency:
 
 env:
   # renovate: datasource=github-releases depName=aquasecurity/trivy
-  TRIVY_VERSION: "0.69.3"
+  TRIVY_VERSION: "0.70.0"
 
 jobs:
   # Detect which domains changed so docs-only PRs skip backend/sandbox builds
@@ -521,7 +521,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
         with:
-          node-version: "24.14.1"
+          node-version: "24.15.0"
           package-manager-cache: false
 
       - name: Install frontend deps and build SPA
