@@ -657,7 +657,7 @@ func writeDigestPinnedCompose(state config.State, digestPins map[string]string, 
 // nats.conf because compose.yml and the file are always co-committed.
 func writeComposeWithNATS(composePath string, composeYAML []byte, state config.State, safeDir string) error {
 	if state.BusBackend == "nats" {
-		if err := writeNATSConfigIfNeeded(state, safeDir); err != nil {
+		if err := writeNATSConfigIfNeeded(state.BusBackend, safeDir); err != nil {
 			return err
 		}
 	}
@@ -665,7 +665,7 @@ func writeComposeWithNATS(composePath string, composeYAML []byte, state config.S
 		return err
 	}
 	if state.BusBackend != "nats" {
-		if err := writeNATSConfigIfNeeded(state, safeDir); err != nil {
+		if err := writeNATSConfigIfNeeded(state.BusBackend, safeDir); err != nil {
 			return err
 		}
 	}

@@ -47,7 +47,7 @@ func refreshCompose(cmd *cobra.Command, state config.State, force bool) (bool, e
 		// it references may be missing or stale (older CLI versions
 		// did not write it). Re-emit so the file always exists when
 		// distributed bus mode is on.
-		if err := writeNATSConfigIfNeeded(state, safeDir); err != nil {
+		if err := writeNATSConfigIfNeeded(state.BusBackend, safeDir); err != nil {
 			return false, err
 		}
 		_, _ = fmt.Fprintln(out, "Compose configuration is up to date.")
@@ -65,14 +65,9 @@ func refreshCompose(cmd *cobra.Command, state config.State, force bool) (bool, e
 		return true, nil
 	}
 
-	applied, err := applyComposeDiff(cmd, composePath, existing, fresh, safeDir, state.AutoApplyCompose)
+	applied, err := applyComposeDiff(cmd, composePath, existing, fresh, safeDir, state, state.AutoApplyCompose)
 	if err != nil {
 		return false, err
-	}
-	if applied {
-		if err := writeNATSConfigIfNeeded(state, safeDir); err != nil {
-			return false, err
-		}
 	}
 	return applied, nil
 }
@@ -155,9 +150,10 @@ func loadAndGenerate(composePath string, state config.State) ([]byte, []byte, er
 }
 
 // applyComposeDiff shows the diff between existing and fresh compose,
-// asks the user to approve, and writes the fresh compose if approved.
+// asks the user to approve, and writes the fresh compose (plus any
+// required nats.conf side-file) atomically if approved.
 // Returns true if applied, false if declined.
-func applyComposeDiff(cmd *cobra.Command, composePath string, existing, fresh []byte, safeDir string, autoApply bool) (bool, error) {
+func applyComposeDiff(cmd *cobra.Command, composePath string, existing, fresh []byte, safeDir string, state config.State, autoApply bool) (bool, error) {
 	out := cmd.OutOrStdout()
 
 	diff := lineDiff(string(existing), string(fresh))
@@ -173,7 +169,7 @@ func applyComposeDiff(cmd *cobra.Command, composePath string, existing, fresh []
 		return false, nil
 	}
 
-	if err := atomicWriteFile(composePath, fresh, safeDir); err != nil {
+	if err := writeComposeWithNATS(composePath, fresh, state, safeDir); err != nil {
 		return false, fmt.Errorf("writing updated compose: %w", err)
 	}
 	_, _ = fmt.Fprintln(out, "Compose configuration updated.")

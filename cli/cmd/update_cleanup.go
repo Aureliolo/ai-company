@@ -240,6 +240,7 @@ func collectCurrentImageIDs(ctx context.Context, info docker.Info, state config.
 	}
 
 	currentIDs := make(map[string]bool, len(services))
+	missing := 0
 	for _, svc := range services {
 		ref := images.RefForService(svc, state.ImageTag, verifiedDigests)
 		id, err := images.InspectID(ctx, info.DockerPath, ref)
@@ -248,11 +249,14 @@ func collectCurrentImageIDs(ctx context.Context, info docker.Info, state config.
 		}
 		if id == "" {
 			// InspectID returns ("", nil) when the image is not pulled
-			// yet. Surface this via the shared errImageNotLocal sentinel
-			// so callers (autoCleanupOldImages, findOldImages) handle
-			// "image missing locally" uniformly instead of silently
-			// skipping one service and wedging another.
-			return nil, fmt.Errorf("resolving %s: %w", svc, errImageNotLocal)
+			// yet. Record it as missing but keep collecting IDs for
+			// the other services: captureImageIDsForCleanup needs the
+			// partial snapshot so present-service rollback images stay
+			// protected, while findOldImages / autoCleanupOldImages
+			// bail on ANY miss (they cannot safely distinguish "old"
+			// from "current-but-not-yet-pulled" without the full set).
+			missing++
+			continue
 		}
 		// Store both the full ID (sha256:...) and the short 12-char ID.
 		// docker images --format {{.ID}} returns short IDs, while
@@ -262,6 +266,14 @@ func collectCurrentImageIDs(ctx context.Context, info docker.Info, state config.
 		if len(short) >= 12 {
 			currentIDs[short[:12]] = true
 		}
+	}
+	if missing > 0 {
+		// Surface the sentinel so findOldImages / autoCleanupOldImages
+		// bail instead of mistakenly classifying not-yet-pulled services
+		// as deletable, but return the partial map too so callers like
+		// captureImageIDsForCleanup can still protect the services that
+		// ARE present on disk.
+		return currentIDs, fmt.Errorf("%d service image(s) not pulled locally: %w", missing, errImageNotLocal)
 	}
 	return currentIDs, nil
 }

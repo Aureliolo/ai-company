@@ -463,7 +463,7 @@ func TestWriteNATSConfigIfNeeded(t *testing.T) {
 	t.Run("writes file when bus is nats", func(t *testing.T) {
 		safeDir := t.TempDir()
 		state := config.State{BusBackend: "nats"}
-		if err := writeNATSConfigIfNeeded(state, safeDir); err != nil {
+		if err := writeNATSConfigIfNeeded(state.BusBackend, safeDir); err != nil {
 			t.Fatalf("writeNATSConfigIfNeeded: %v", err)
 		}
 		got, err := os.ReadFile(filepath.Join(safeDir, compose.NATSConfigFilename))
@@ -482,7 +482,7 @@ func TestWriteNATSConfigIfNeeded(t *testing.T) {
 			t.Fatalf("seed stale: %v", err)
 		}
 		state := config.State{BusBackend: "internal"}
-		if err := writeNATSConfigIfNeeded(state, safeDir); err != nil {
+		if err := writeNATSConfigIfNeeded(state.BusBackend, safeDir); err != nil {
 			t.Fatalf("writeNATSConfigIfNeeded: %v", err)
 		}
 		if _, err := os.Stat(stalePath); !os.IsNotExist(err) {
@@ -493,7 +493,7 @@ func TestWriteNATSConfigIfNeeded(t *testing.T) {
 	t.Run("noop when bus is internal and no file exists", func(t *testing.T) {
 		safeDir := t.TempDir()
 		state := config.State{BusBackend: "internal"}
-		if err := writeNATSConfigIfNeeded(state, safeDir); err != nil {
+		if err := writeNATSConfigIfNeeded(state.BusBackend, safeDir); err != nil {
 			t.Errorf("writeNATSConfigIfNeeded should not error when nothing to remove: %v", err)
 		}
 	})
@@ -506,7 +506,7 @@ func TestWriteNATSConfigIfNeeded(t *testing.T) {
 	// silently concatenate.
 	t.Run("rejects non-absolute safeDir", func(t *testing.T) {
 		state := config.State{BusBackend: "nats"}
-		err := writeNATSConfigIfNeeded(state, "relative/path")
+		err := writeNATSConfigIfNeeded(state.BusBackend, "relative/path")
 		if err == nil {
 			t.Fatalf("expected error for non-absolute safeDir, got nil")
 		}
@@ -525,7 +525,7 @@ func TestWriteNATSConfigIfNeeded(t *testing.T) {
 		// fail-fast on a non-normalised input.
 		dirty := base + string(filepath.Separator) + "."
 		state := config.State{BusBackend: "nats"}
-		err := writeNATSConfigIfNeeded(state, dirty)
+		err := writeNATSConfigIfNeeded(state.BusBackend, dirty)
 		if err == nil {
 			t.Fatalf("expected error for unclean safeDir %q, got nil", dirty)
 		}

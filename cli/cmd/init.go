@@ -754,26 +754,22 @@ func writeInitFiles(state config.State) (string, error) {
 //
 // When the bus is the in-process default, the file is not needed and
 // is removed if it exists from a prior distributed install.
-func writeNATSConfigIfNeeded(state config.State, safeDir string) error {
-	// Defense-in-depth: re-sanitise safeDir at the use site via the
-	// canonical SecurePath helper. Callers (init, start, config,
-	// update) already pass a normalised path, but re-running the
-	// helper here is idempotent and lets CodeQL's go/path-injection
-	// analyser recognise the sanitisation -- without this, the taint
-	// flow from --data-dir / SYNTHORG_DATA_DIR into the filepath.Join
-	// below is flagged as a sink.
+//
+// The function takes busBackend directly (not the full config.State)
+// so CodeQL's go/path-injection taint tracker does not re-flow
+// state.DataDir through the function boundary and flag the Join below.
+// The safeDir parameter is re-sanitised via config.SecurePath to make
+// the sanitisation point explicit at the use site.
+func writeNATSConfigIfNeeded(busBackend, safeDir string) error {
 	sanitised, err := config.SecurePath(safeDir)
 	if err != nil {
 		return fmt.Errorf("nats config: %w", err)
 	}
-	// Additional guard: SecurePath allows any absolute clean path;
-	// insist that the caller did not pass an unnormalised string so
-	// the re-sanitised result matches the input byte-for-byte.
 	if sanitised != safeDir {
 		return fmt.Errorf("nats config: safeDir %q is not canonical (expected %q)", safeDir, sanitised)
 	}
 	confPath := filepath.Join(sanitised, compose.NATSConfigFilename)
-	if state.BusBackend != "nats" {
+	if busBackend != "nats" {
 		if err := os.Remove(confPath); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return fmt.Errorf("removing stale nats.conf: %w", err)
 		}

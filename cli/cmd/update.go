@@ -461,7 +461,10 @@ func updateContainerImages(cmd *cobra.Command, state config.State, preserveCompo
 }
 
 // captureImageIDsForCleanup records current image IDs before a pull so
-// auto-cleanup can remove them afterwards. Best-effort: returns nil on error.
+// auto-cleanup can remove them afterwards. Best-effort: returns nil on
+// genuine errors, but keeps the partial snapshot when some services are
+// simply not pulled yet (e.g. fine-tune) so the services that ARE
+// present on disk still get rollback-image protection after the update.
 func captureImageIDsForCleanup(ctx context.Context, cmd *cobra.Command, info docker.Info, state config.State) map[string]bool {
 	if !state.AutoCleanup {
 		return nil
@@ -469,10 +472,12 @@ func captureImageIDsForCleanup(ctx context.Context, cmd *cobra.Command, info doc
 	ids, err := collectCurrentImageIDs(ctx, info, state)
 	if err != nil {
 		if errors.Is(err, errImageNotLocal) {
-			// Previous-version images were never fully on disk (partial
-			// install, fresh machine, etc.) -- nothing to capture. This
-			// is the common case on a first real update; not a warning.
-			return nil
+			// Some services were never pulled (partial install, fresh
+			// machine, fine-tune skipped). Use whatever partial snapshot
+			// collectCurrentImageIDs managed to build -- present services
+			// still get rollback protection; missing services have
+			// nothing to protect.
+			return ids
 		}
 		_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
 			"Warning: could not capture previous image IDs for auto-cleanup: %v\n", err)

@@ -206,18 +206,23 @@ func (wc *wipeContext) confirmAndWipe() error {
 	}
 	sp2 := wc.out.StartSpinner("Removing data directory...")
 	rmErr := removeDataDirExceptSelf(wc.safeDir)
-	binaryRemains := selfPathInside(wc.safeDir)
-	switch {
-	case rmErr != nil:
+	if rmErr != nil {
+		// A partial wipe is not success. Surface the error so the
+		// CLI exits with a non-zero status (exit code 1 per
+		// cli/CLAUDE.md's Exit Codes table) and the user sees a
+		// loud failure instead of "Wipe complete" printed over a
+		// half-cleaned data dir.
 		sp2.Warn(fmt.Sprintf("Could not remove data directory: %v", rmErr))
 		wc.errOut.HintError(fmt.Sprintf("Manually delete %s to complete the wipe.", wc.safeDir))
-	case binaryRemains:
+		return fmt.Errorf("removing data directory: %w", rmErr)
+	}
+	if selfPathInside(wc.safeDir) {
 		// Expected on Windows when the running CLI lives inside the
 		// data dir -- wipe is supposed to leave config and state gone,
 		// not nuke the tool the user just invoked.
 		sp2.Success("Data directory cleared (CLI binary kept in place)")
 		wc.out.HintNextStep("Run 'synthorg uninstall' to remove the binary too.")
-	default:
+	} else {
 		sp2.Success("Data directory removed")
 	}
 
