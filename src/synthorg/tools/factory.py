@@ -42,6 +42,7 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
     from pathlib import Path
 
+    from synthorg.communication.async_tasks.service import AsyncTaskService
     from synthorg.config.schema import RootConfig
     from synthorg.tools.analytics.config import AnalyticsToolsConfig
     from synthorg.tools.analytics.data_aggregator import AnalyticsProvider
@@ -213,6 +214,64 @@ def _build_communication_tools(
     return tuple(tools)
 
 
+def _build_async_task_tools(
+    *,
+    service: AsyncTaskService | None,
+    supervisor_id: str,
+    supervisor_task_id: str,
+) -> tuple[BaseTool, ...]:
+    """Instantiate the five async task steering tools.
+
+    Returns an empty tuple when *service* is ``None``.
+    """
+    if service is None:
+        return ()
+    from synthorg.tools.communication import (  # noqa: PLC0415
+        CancelAsyncTaskTool,
+        CheckAsyncTaskTool,
+        ListAsyncTasksTool,
+        StartAsyncTaskTool,
+        UpdateAsyncTaskTool,
+    )
+
+    return (
+        StartAsyncTaskTool(
+            service=service,
+            supervisor_id=supervisor_id,
+            supervisor_task_id=supervisor_task_id,
+        ),
+        CheckAsyncTaskTool(service=service),
+        UpdateAsyncTaskTool(service=service),
+        CancelAsyncTaskTool(service=service, supervisor_id=supervisor_id),
+        ListAsyncTasksTool(
+            service=service,
+            supervisor_task_id=supervisor_task_id,
+        ),
+    )
+
+
+def _build_code_execution_tools(
+    *,
+    sandbox: SandboxBackend | None,
+) -> tuple[BaseTool, ...]:
+    """Instantiate the built-in code execution tools.
+
+    Returns an empty tuple when *sandbox* is ``None``.
+    """
+    if sandbox is None:
+        return ()
+    from synthorg.tools.code_runner import CodeRunnerTool  # noqa: PLC0415
+
+    return (CodeRunnerTool(sandbox=sandbox),)
+
+
+def _build_other_tools() -> tuple[BaseTool, ...]:
+    """Instantiate reference tools that have no dependencies."""
+    from synthorg.tools.examples.echo import EchoTool  # noqa: PLC0415
+
+    return (EchoTool(),)
+
+
 def _build_analytics_tools(
     *,
     config: AnalyticsToolsConfig | None = None,
@@ -257,6 +316,10 @@ def build_default_tools(  # noqa: PLR0913
     analytics_config: AnalyticsToolsConfig | None = None,
     analytics_provider: AnalyticsProvider | None = None,
     metric_sink: MetricSink | None = None,
+    async_task_service: AsyncTaskService | None = None,
+    async_task_supervisor_id: str = "supervisor",
+    async_task_supervisor_task_id: str = "default",
+    code_execution_sandbox: SandboxBackend | None = None,
 ) -> tuple[BaseTool, ...]:
     """Instantiate all built-in workspace tools.
 
@@ -284,6 +347,15 @@ def build_default_tools(  # noqa: PLR0913
             skips analytics tool creation.
         analytics_provider: Analytics data provider.
         metric_sink: Metric recording sink.
+        async_task_service: Service backing the 5 async task steering
+            tools.  When ``None``, no async task tools are registered.
+        async_task_supervisor_id: Supervisor agent ID bound to the
+            ``start_async_task`` and ``cancel_async_task`` tools.
+        async_task_supervisor_task_id: Supervisor task ID bound to the
+            ``start_async_task`` and ``list_async_tasks`` tools.
+        code_execution_sandbox: Sandbox backend for the
+            ``code_runner`` tool.  When ``None``, ``code_runner`` is
+            not registered.
 
     Returns:
         Sorted tuple of ``BaseTool`` instances.
@@ -345,6 +417,17 @@ def build_default_tools(  # noqa: PLR0913
             metric_sink=metric_sink,
         ),
     )
+    all_tools.extend(
+        _build_async_task_tools(
+            service=async_task_service,
+            supervisor_id=async_task_supervisor_id,
+            supervisor_task_id=async_task_supervisor_task_id,
+        ),
+    )
+    all_tools.extend(
+        _build_code_execution_tools(sandbox=code_execution_sandbox),
+    )
+    all_tools.extend(_build_other_tools())
 
     result = tuple(sorted(all_tools, key=lambda t: t.name))
 
@@ -371,6 +454,7 @@ def build_default_tools_from_config(  # noqa: PLR0913
     communication_dispatcher: NotificationDispatcherProtocol | None = None,
     analytics_provider: AnalyticsProvider | None = None,
     metric_sink: MetricSink | None = None,
+    async_task_service: AsyncTaskService | None = None,
 ) -> tuple[BaseTool, ...]:
     """Build default tools using parameters from a ``RootConfig``.
 
@@ -396,6 +480,9 @@ def build_default_tools_from_config(  # noqa: PLR0913
             the notification sender tool.
         analytics_provider: Optional analytics data provider.
         metric_sink: Optional metric recording sink.
+        async_task_service: Optional ``AsyncTaskService`` backing the
+            async task steering tools.  When ``None``, those tools are
+            skipped.
 
     Returns:
         Sorted tuple of ``BaseTool`` instances.
@@ -444,6 +531,23 @@ def build_default_tools_from_config(  # noqa: PLR0913
                 ),
             )
 
+    # Resolve code execution sandbox if configured.
+    code_execution_sandbox: SandboxBackend | None = None
+    try:
+        code_execution_sandbox = resolve_sandbox_for_category(
+            config=config.sandboxing,
+            backends=resolved_backends,
+            category=ToolCategory.CODE_EXECUTION,
+        )
+    except KeyError:
+        logger.warning(
+            TOOL_FACTORY_ERROR,
+            error=(
+                "No sandbox backend for CODE_EXECUTION category; "
+                "code_runner tool will not be registered"
+            ),
+        )
+
     # Extract web config
     web_policy: NetworkPolicy | None = None
     if config.web is not None:
@@ -465,4 +569,6 @@ def build_default_tools_from_config(  # noqa: PLR0913
         analytics_config=config.analytics_tools,
         analytics_provider=analytics_provider,
         metric_sink=metric_sink,
+        async_task_service=async_task_service,
+        code_execution_sandbox=code_execution_sandbox,
     )

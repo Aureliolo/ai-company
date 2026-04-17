@@ -205,7 +205,10 @@ class TestScalingSignalAggregator:
     """Scaling aggregator tests."""
 
     async def test_returns_scaling_summary(self) -> None:
-        agg = ScalingSignalAggregator()
+        service = MagicMock()
+        service.get_recent_decisions = MagicMock(return_value=())
+        service.get_recent_actions = MagicMock(return_value=())
+        agg = ScalingSignalAggregator(service=service)
         result = await agg.aggregate(since=_week_ago(), until=_now())
         assert isinstance(result, OrgScalingSummary)
 
@@ -246,6 +249,9 @@ class TestSnapshotBuilder:
     def _make_builder(self) -> SnapshotBuilder:
         """Create a builder with default aggregators."""
         tracker = _make_mock_tracker()
+        scaling_service = MagicMock()
+        scaling_service.get_recent_decisions = MagicMock(return_value=())
+        scaling_service.get_recent_actions = MagicMock(return_value=())
         return SnapshotBuilder(
             performance=PerformanceSignalAggregator(
                 tracker=tracker,
@@ -253,7 +259,7 @@ class TestSnapshotBuilder:
             ),
             budget=BudgetSignalAggregator(cost_record_provider=list),
             coordination=CoordinationSignalAggregator(),
-            scaling=ScalingSignalAggregator(),
+            scaling=ScalingSignalAggregator(service=scaling_service),
             errors=ErrorSignalAggregator(),
             evolution=EvolutionSignalAggregator(),
             telemetry=TelemetrySignalAggregator(),

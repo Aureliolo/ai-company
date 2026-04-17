@@ -134,10 +134,9 @@ class TestFactoryToolCount:
 
     @pytest.mark.unit
     def test_default_tool_count(self, workspace: Path) -> None:
-        """Default: 5 fs + 6 git + 2 web + 1 terminal + 1 context = 15 tools."""
-
+        """Default: 5 fs + 6 git + 2 web + 1 terminal + 1 context + 1 echo."""
         tools = build_default_tools(workspace=workspace)
-        assert len(tools) == 15
+        assert len(tools) == 16
 
     @pytest.mark.unit
     def test_tools_sorted_by_name(self, workspace: Path) -> None:

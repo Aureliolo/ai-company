@@ -43,6 +43,8 @@ _EXPECTED_TOOL_COUNT: int = (
     + len(_WEB_TOOL_NAMES)
     + len(_TERMINAL_TOOL_NAMES)
     + 1  # compact_context (context management)
+    + 1  # echo (reference tool)
+    + 1  # code_runner (conditional on CODE_EXECUTION sandbox)
 )
 
 

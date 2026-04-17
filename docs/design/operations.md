@@ -1403,7 +1403,7 @@ Policies are loaded from files at company boot. No external process needed.
 
 | Field | Default | Description |
 |-------|---------|-------------|
-| `engine` | `"none"` | Backend: `"cedar"` or `"none"` (Rego adapter planned; not yet implemented) |
+| `engine` | `"none"` | Backend: `"cedar"` or `"none"` |
 | `policy_files` | `()` | Paths to Cedar policy files |
 | `evaluation_mode` | `"log_only"` | `"enforce"` blocks; `"log_only"` logs only |
 | `fail_closed` | `False` | Deny on evaluation errors if `True` |

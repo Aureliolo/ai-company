@@ -1,5 +1,12 @@
 """Built-in communication tools for email, notifications, and messaging."""
 
+from synthorg.tools.communication.async_task_tools import (
+    CancelAsyncTaskTool,
+    CheckAsyncTaskTool,
+    ListAsyncTasksTool,
+    StartAsyncTaskTool,
+    UpdateAsyncTaskTool,
+)
 from synthorg.tools.communication.base_communication_tool import (
     BaseCommunicationTool,
 )
@@ -18,10 +25,15 @@ from synthorg.tools.communication.template_formatter import (
 
 __all__ = [
     "BaseCommunicationTool",
+    "CancelAsyncTaskTool",
+    "CheckAsyncTaskTool",
     "CommunicationToolsConfig",
     "EmailConfig",
     "EmailSenderTool",
+    "ListAsyncTasksTool",
     "NotificationDispatcherProtocol",
     "NotificationSenderTool",
+    "StartAsyncTaskTool",
     "TemplateFormatterTool",
+    "UpdateAsyncTaskTool",
 ]

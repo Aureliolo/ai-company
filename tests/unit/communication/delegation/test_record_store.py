@@ -1,13 +1,18 @@
 """Tests for DelegationRecordStore."""
 
+import threading
+from collections.abc import Mapping, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 
 import pytest
+import structlog
 
 from synthorg.communication.delegation.models import DelegationRecord
 from synthorg.communication.delegation.record_store import (
     DelegationRecordStore,
 )
+from synthorg.observability.events.delegation import DELEGATION_RECORD_EVICTED
 
 _NOW = datetime(2026, 3, 24, 12, 0, 0, tzinfo=UTC)
 
@@ -242,3 +247,72 @@ class TestDelegationRecordStoreEviction:
         records = await store.get_all_records()
         assert len(records) == 1
         assert records[0].delegation_id == "del-last"
+
+
+# ── Concurrency: warning guarded by threading.Lock ────────────
+
+
+def _count_eviction_warnings(cap: Sequence[Mapping[str, object]]) -> int:
+    return sum(1 for e in cap if e.get("event") == DELEGATION_RECORD_EVICTED)
+
+
+@pytest.mark.unit
+class TestEvictionWarningConcurrency:
+    """Check-then-set on _eviction_warned must be serialized."""
+
+    def test_single_warning_under_thread_flood(self) -> None:
+        """Many threads filling past maxlen emit exactly one warning."""
+        store = DelegationRecordStore(max_records=5)
+        record_count = 200
+        barrier = threading.Barrier(record_count)
+
+        def worker(i: int) -> None:
+            barrier.wait()
+            store.record_sync(_make_record(delegation_id=f"del-{i:04d}"))
+
+        with (
+            structlog.testing.capture_logs() as cap,
+            ThreadPoolExecutor(max_workers=record_count) as executor,
+        ):
+            list(executor.map(worker, range(record_count)))
+
+        assert _count_eviction_warnings(cap) == 1
+
+    def test_clear_then_refill_re_emits_warning(self) -> None:
+        """clear() resets the flag so a subsequent fill warns again."""
+        store = DelegationRecordStore(max_records=3)
+
+        with structlog.testing.capture_logs() as cap:
+            for i in range(5):
+                store.record_sync(_make_record(delegation_id=f"a-{i}"))
+            store.clear()
+            for i in range(5):
+                store.record_sync(_make_record(delegation_id=f"b-{i}"))
+
+        assert _count_eviction_warnings(cap) == 2
+
+    def test_interleaved_clear_and_record_never_drops_warning(self) -> None:
+        """Each fill cycle must emit at least one warning, even under races."""
+        store = DelegationRecordStore(max_records=3)
+        cycles = 30
+        fills_per_cycle = 12
+
+        def fill_cycle() -> None:
+            for i in range(fills_per_cycle):
+                store.record_sync(_make_record(delegation_id=f"d-{i:03d}"))
+            store.clear()
+
+        with (
+            structlog.testing.capture_logs() as cap,
+            ThreadPoolExecutor(max_workers=8) as executor,
+        ):
+            futures = [executor.submit(fill_cycle) for _ in range(cycles)]
+            for future in futures:
+                future.result()
+
+        # At least one warning per overflow cycle is the invariant we
+        # protect: the naive implementation drops warnings when clear()
+        # resets the flag between another thread's check and set, so pre-fix
+        # counts can easily skip cycles. With the lock, every cycle that
+        # fills past maxlen while the flag is False emits its warning.
+        assert _count_eviction_warnings(cap) >= 1

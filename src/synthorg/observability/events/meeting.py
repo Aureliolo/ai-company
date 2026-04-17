@@ -58,9 +58,6 @@ MEETING_EVENT_COOLDOWN_SKIPPED: Final[str] = "meeting.scheduler.event_cooldown_s
 # Task capping
 MEETING_TASKS_CAPPED: Final[str] = "meeting.task.capped"
 
-# Auto-wiring
-MEETING_STUB_AGENT_CALLER: Final[str] = "meeting.auto_wire.stub_agent_caller"
-
 # Strategy integration
 MEETING_LENS_ASSIGNMENT_FAILED: Final[str] = "meeting.strategy.lens_assignment_failed"
 

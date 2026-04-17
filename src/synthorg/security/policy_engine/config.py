@@ -29,9 +29,9 @@ class SecurityPolicyConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    engine: Literal["cedar", "rego", "none"] = Field(
+    engine: Literal["cedar", "none"] = Field(
         default="none",
-        description="Policy engine backend (Rego adapter planned, not yet implemented)",
+        description="Policy engine backend",
     )
     policy_files: tuple[Path, ...] = Field(
         default=(),
@@ -100,10 +100,6 @@ def build_policy_engine(
             policy_texts=tuple(policy_texts),
             fail_closed=config.fail_closed,
         )
-
-    if config.engine == "rego":
-        msg = "Rego policy engine adapter is planned but not yet implemented"
-        raise NotImplementedError(msg)
 
     msg = f"Unknown policy engine: {config.engine!r}"  # type: ignore[unreachable]
     raise ValueError(msg)

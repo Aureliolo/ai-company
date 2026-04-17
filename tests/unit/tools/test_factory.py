@@ -19,6 +19,7 @@ from synthorg.tools.git_url_validator import GitCloneNetworkPolicy
 _EXPECTED_TOOL_NAMES: tuple[str, ...] = (
     "compact_context",
     "delete_file",
+    "echo",
     "edit_file",
     "git_branch",
     "git_clone",
@@ -43,7 +44,7 @@ class TestBuildDefaultTools:
         self,
         tmp_path: Path,
     ) -> None:
-        """Factory returns all 15 built-in tools sorted by name."""
+        """Factory returns all default built-in tools sorted by name."""
         tools = build_default_tools(workspace=tmp_path)
         names = tuple(t.name for t in tools)
         assert names == _EXPECTED_TOOL_NAMES
@@ -524,3 +525,123 @@ class TestBuildDefaultToolsFromConfig:
         clone = next(t for t in tools if t.name == "git_clone")
         assert isinstance(clone, _BaseGitTool)
         assert clone._sandbox is mock_instance
+
+
+_ASYNC_TASK_TOOL_NAMES: frozenset[str] = frozenset(
+    {
+        "start_async_task",
+        "check_async_task",
+        "update_async_task",
+        "cancel_async_task",
+        "list_async_tasks",
+    }
+)
+
+
+@pytest.mark.unit
+class TestBuildAsyncTaskTools:
+    """Tests for async task tool registration via build_default_tools."""
+
+    def test_async_task_tools_skipped_when_service_none(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        tools = build_default_tools(
+            workspace=tmp_path,
+            async_task_service=None,
+        )
+        names = {t.name for t in tools}
+        assert names.isdisjoint(_ASYNC_TASK_TOOL_NAMES)
+
+    def test_async_task_tools_registered_when_service_provided(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        from synthorg.communication.async_tasks.service import (
+            AsyncTaskService,
+        )
+
+        service = MagicMock(spec=AsyncTaskService)
+        tools = build_default_tools(
+            workspace=tmp_path,
+            async_task_service=service,
+        )
+        names = {t.name for t in tools}
+        assert names >= _ASYNC_TASK_TOOL_NAMES
+
+    def test_async_task_tools_receive_service(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        from synthorg.communication.async_tasks.service import (
+            AsyncTaskService,
+        )
+
+        service = MagicMock(spec=AsyncTaskService)
+        tools = build_default_tools(
+            workspace=tmp_path,
+            async_task_service=service,
+        )
+        for tool in tools:
+            if tool.name in _ASYNC_TASK_TOOL_NAMES:
+                assert tool._service is service
+
+
+@pytest.mark.unit
+class TestBuildCodeExecutionTools:
+    """Tests for CodeRunnerTool registration via build_default_tools."""
+
+    def test_code_runner_skipped_when_sandbox_none(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        tools = build_default_tools(
+            workspace=tmp_path,
+            code_execution_sandbox=None,
+        )
+        names = {t.name for t in tools}
+        assert "code_runner" not in names
+
+    def test_code_runner_registered_with_sandbox(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        mock_sandbox = MagicMock()
+        tools = build_default_tools(
+            workspace=tmp_path,
+            code_execution_sandbox=mock_sandbox,
+        )
+        names = {t.name for t in tools}
+        assert "code_runner" in names
+
+    def test_code_runner_receives_sandbox(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        from synthorg.tools.code_runner import CodeRunnerTool
+
+        mock_sandbox = MagicMock()
+        tools = build_default_tools(
+            workspace=tmp_path,
+            code_execution_sandbox=mock_sandbox,
+        )
+        runner = next(t for t in tools if t.name == "code_runner")
+        assert isinstance(runner, CodeRunnerTool)
+        assert runner._sandbox is mock_sandbox
+
+
+@pytest.mark.unit
+class TestEchoTool:
+    """EchoTool is registered unconditionally as a reference tool."""
+
+    def test_echo_always_present(self, tmp_path: Path) -> None:
+        tools = build_default_tools(workspace=tmp_path)
+        names = {t.name for t in tools}
+        assert "echo" in names
+
+    async def test_echo_executes(self, tmp_path: Path) -> None:
+        tools = build_default_tools(workspace=tmp_path)
+        echo = next(t for t in tools if t.name == "echo")
+        result = await echo.execute(arguments={"message": "hi"})
+        assert result.content == "hi"
+        assert not result.is_error

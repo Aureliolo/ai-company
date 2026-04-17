@@ -6,7 +6,6 @@ import pytest
 import structlog.testing
 
 from synthorg.communication.meeting.enums import MeetingProtocolType
-from synthorg.communication.meeting.models import AgentResponse
 from synthorg.communication.meeting.orchestrator import MeetingOrchestrator
 from synthorg.communication.meeting.participant import (
     PassthroughParticipantResolver,
@@ -18,6 +17,11 @@ from synthorg.config.schema import RootConfig
 
 def _default_config() -> RootConfig:
     return RootConfig(company_name="test-company")
+
+
+def _fake_registries() -> tuple[MagicMock, MagicMock]:
+    """Return (agent_registry, provider_registry) fakes for wiring tests."""
+    return MagicMock(), MagicMock()
 
 
 @pytest.mark.unit
@@ -44,31 +48,17 @@ class TestBuildProtocolRegistry:
 
 
 @pytest.mark.unit
-class TestStubAgentCaller:
-    """Tests for _build_stub_agent_caller helper."""
-
-    async def test_returns_valid_agent_response(self) -> None:
-        from synthorg.api.auto_wire import _build_stub_agent_caller
-
-        caller = _build_stub_agent_caller()
-        response = await caller("agent-1", "test prompt", 100)
-
-        assert isinstance(response, AgentResponse)
-        assert response.agent_id == "agent-1"
-        assert response.input_tokens == 0
-        assert response.output_tokens == 0
-        assert response.cost_usd == 0.0
-        assert response.content == ""
-
-
-@pytest.mark.unit
 class TestWireMeetingOrchestrator:
     """Tests for _wire_meeting_orchestrator helper."""
 
     def test_creates_valid_orchestrator(self) -> None:
         from synthorg.api.auto_wire import _wire_meeting_orchestrator
 
-        orchestrator = _wire_meeting_orchestrator()
+        agent_registry, provider_registry = _fake_registries()
+        orchestrator = _wire_meeting_orchestrator(
+            agent_registry=agent_registry,
+            provider_registry=provider_registry,
+        )
 
         assert isinstance(orchestrator, MeetingOrchestrator)
         assert orchestrator.get_records() == ()
@@ -85,7 +75,11 @@ class TestWireMeetingScheduler:
         )
 
         config = _default_config()
-        orchestrator = _wire_meeting_orchestrator()
+        agent_registry, provider_registry = _fake_registries()
+        orchestrator = _wire_meeting_orchestrator(
+            agent_registry=agent_registry,
+            provider_registry=provider_registry,
+        )
         registry = MagicMock()
 
         scheduler = _wire_meeting_scheduler(config, orchestrator, registry)
@@ -100,7 +94,11 @@ class TestWireMeetingScheduler:
         )
 
         config = _default_config()
-        orchestrator = _wire_meeting_orchestrator()
+        agent_registry, provider_registry = _fake_registries()
+        orchestrator = _wire_meeting_orchestrator(
+            agent_registry=agent_registry,
+            provider_registry=provider_registry,
+        )
 
         scheduler = _wire_meeting_scheduler(config, orchestrator, None)
 
@@ -116,15 +114,40 @@ class TestAutoWireMeetings:
         from synthorg.api.auto_wire import auto_wire_meetings
 
         config = _default_config()
+        agent_registry, provider_registry = _fake_registries()
+        result = auto_wire_meetings(
+            effective_config=config,
+            meeting_orchestrator=None,
+            meeting_scheduler=None,
+            agent_registry=agent_registry,
+            provider_registry=provider_registry,
+        )
+
+        assert isinstance(result.meeting_orchestrator, MeetingOrchestrator)
+        assert isinstance(result.meeting_scheduler, MeetingScheduler)
+
+    async def test_wires_unconfigured_caller_when_registries_missing(
+        self,
+    ) -> None:
+        """Orchestrator still wires without registries; call raises loudly."""
+        from synthorg.api.auto_wire import auto_wire_meetings
+        from synthorg.communication.meeting.agent_caller import (
+            MeetingAgentCallerNotConfiguredError,
+        )
+
+        config = _default_config()
         result = auto_wire_meetings(
             effective_config=config,
             meeting_orchestrator=None,
             meeting_scheduler=None,
             agent_registry=None,
+            provider_registry=None,
         )
 
         assert isinstance(result.meeting_orchestrator, MeetingOrchestrator)
-        assert isinstance(result.meeting_scheduler, MeetingScheduler)
+        caller = result.meeting_orchestrator._agent_caller
+        with pytest.raises(MeetingAgentCallerNotConfiguredError):
+            await caller("agent-1", "prompt", 100)
 
     def test_preserves_explicit_orchestrator(self) -> None:
         from synthorg.api.auto_wire import auto_wire_meetings
@@ -137,6 +160,7 @@ class TestAutoWireMeetings:
             meeting_orchestrator=explicit_orch,
             meeting_scheduler=None,
             agent_registry=None,
+            provider_registry=None,
         )
 
         assert result.meeting_orchestrator is explicit_orch
@@ -149,12 +173,14 @@ class TestAutoWireMeetings:
         # Cannot use spec=MeetingScheduler: PEP 649 deferred
         # annotation for MeetingsConfig causes NameError in inspect.
         explicit_sched = MagicMock()
+        agent_registry, provider_registry = _fake_registries()
 
         result = auto_wire_meetings(
             effective_config=config,
             meeting_orchestrator=None,
             meeting_scheduler=explicit_sched,
-            agent_registry=None,
+            agent_registry=agent_registry,
+            provider_registry=provider_registry,
         )
 
         assert isinstance(result.meeting_orchestrator, MeetingOrchestrator)
@@ -174,6 +200,7 @@ class TestAutoWireMeetings:
             meeting_orchestrator=explicit_orch,
             meeting_scheduler=explicit_sched,
             agent_registry=None,
+            provider_registry=None,
         )
 
         assert result.meeting_orchestrator is explicit_orch
@@ -183,13 +210,15 @@ class TestAutoWireMeetings:
         from synthorg.api.auto_wire import auto_wire_meetings
 
         config = _default_config()
+        agent_registry, provider_registry = _fake_registries()
 
         with structlog.testing.capture_logs() as captured:
             auto_wire_meetings(
                 effective_config=config,
                 meeting_orchestrator=None,
                 meeting_scheduler=None,
-                agent_registry=None,
+                agent_registry=agent_registry,
+                provider_registry=provider_registry,
             )
 
         services = [e.get("service") for e in captured]
@@ -201,12 +230,14 @@ class TestAutoWireMeetings:
 
         config = _default_config()
         registry = MagicMock()
+        provider_registry = MagicMock()
 
         result = auto_wire_meetings(
             effective_config=config,
             meeting_orchestrator=None,
             meeting_scheduler=None,
             agent_registry=registry,
+            provider_registry=provider_registry,
         )
 
         assert isinstance(result.meeting_orchestrator, MeetingOrchestrator)
@@ -224,6 +255,7 @@ class TestWireMeetingOrchestratorError:
     def test_orchestrator_creation_failure_propagates(self) -> None:
         from synthorg.api.auto_wire import _wire_meeting_orchestrator
 
+        agent_registry, provider_registry = _fake_registries()
         with (
             patch(
                 "synthorg.api.auto_wire._build_protocol_registry",
@@ -231,7 +263,10 @@ class TestWireMeetingOrchestratorError:
             ),
             pytest.raises(RuntimeError, match="boom"),
         ):
-            _wire_meeting_orchestrator()
+            _wire_meeting_orchestrator(
+                agent_registry=agent_registry,
+                provider_registry=provider_registry,
+            )
 
     def test_scheduler_creation_failure_propagates(self) -> None:
         from synthorg.api.auto_wire import (
@@ -240,7 +275,11 @@ class TestWireMeetingOrchestratorError:
         )
 
         config = _default_config()
-        orchestrator = _wire_meeting_orchestrator()
+        agent_registry, provider_registry = _fake_registries()
+        orchestrator = _wire_meeting_orchestrator(
+            agent_registry=agent_registry,
+            provider_registry=provider_registry,
+        )
 
         with (
             patch(
