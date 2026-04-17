@@ -209,7 +209,12 @@ class InMemoryEscalationStore(EscalationQueueStore):
         return updated
 
     async def mark_expired(self, now_iso: str) -> tuple[str, ...]:
-        """Expire PENDING rows past their deadline."""
+        """Expire PENDING rows past their deadline.
+
+        Tags ``decided_by`` with ``"system:expiry"`` so audit consumers
+        can distinguish sweeper-driven expiry from operator actions
+        (mirrors the SQLite/Postgres backends).
+        """
         now_dt = datetime.fromisoformat(now_iso)
         expired_ids: list[str] = []
         async with self._lock:
@@ -223,6 +228,7 @@ class InMemoryEscalationStore(EscalationQueueStore):
                         update={
                             "status": EscalationStatus.EXPIRED,
                             "decided_at": now_dt,
+                            "decided_by": "system:expiry",
                         },
                     )
                     expired_ids.append(key)

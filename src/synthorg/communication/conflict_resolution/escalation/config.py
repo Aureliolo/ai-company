@@ -1,10 +1,27 @@
 """Escalation queue configuration (#1418)."""
 
-from typing import Literal
+import re
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+# Safe PostgreSQL unquoted-identifier pattern.  The notify subscriber
+# embeds the channel name in a ``LISTEN "<channel>"`` statement, so the
+# identifier must contain no double quotes or control characters that
+# could break out of the quoting.  Keeping the charset strict (ASCII
+# letter/digit/underscore, starting with a letter or underscore) is
+# also friendly to every driver we care about.
+_NOTIFY_CHANNEL_PATTERN = r"^[A-Za-z_][A-Za-z0-9_]*$"
+_NOTIFY_CHANNEL_MAX_LEN = 63  # PostgreSQL's NAMEDATALEN-1
+
+NotifyChannel = Annotated[
+    str,
+    StringConstraints(
+        pattern=re.compile(_NOTIFY_CHANNEL_PATTERN),
+        min_length=1,
+        max_length=_NOTIFY_CHANNEL_MAX_LEN,
+    ),
+]
 
 
 class EscalationQueueConfig(BaseModel):
@@ -44,4 +61,4 @@ class EscalationQueueConfig(BaseModel):
     default_timeout_seconds: int | None = Field(default=None, ge=1)
     sweeper_interval_seconds: float = Field(default=30.0, ge=5.0)
     cross_instance_notify: Literal["auto", "on", "off"] = "auto"
-    notify_channel: NotBlankStr = Field(default="conflict_escalation_events")
+    notify_channel: NotifyChannel = Field(default="conflict_escalation_events")

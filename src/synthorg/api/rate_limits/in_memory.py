@@ -78,6 +78,7 @@ class InMemorySlidingWindowStore(SlidingWindowStore):
             msg = "window_seconds must be positive"
             raise ValueError(msg)
 
+        outcome: RateLimitOutcome
         lock = await self._get_lock(key)
         async with lock:
             now = time.monotonic()
@@ -94,17 +95,24 @@ class InMemorySlidingWindowStore(SlidingWindowStore):
                 # Minimum 0.001s so a client seeing retry_after=0 never hot-loops
                 # on sub-millisecond clock jitter while a window is still active.
                 retry_after = max(oldest + float(window_seconds) - now, 0.001)
-                return RateLimitOutcome(
+                outcome = RateLimitOutcome(
                     allowed=False,
                     retry_after_seconds=retry_after,
                     remaining=0,
                 )
-            bucket.timestamps.append(now)
-            remaining = max(max_requests - len(bucket.timestamps), 0)
+            else:
+                bucket.timestamps.append(now)
+                remaining = max(max_requests - len(bucket.timestamps), 0)
+                outcome = RateLimitOutcome(
+                    allowed=True,
+                    retry_after_seconds=None,
+                    remaining=remaining,
+                )
 
-        # GC counter is shared across keys so its increment + threshold check
-        # must happen under the meta-lock to avoid redundant sweeps triggered
-        # by concurrent acquires on different keys.
+        # GC counter increments on every acquire -- allowed AND denied --
+        # so a key under sustained deny pressure still triggers periodic
+        # cold-bucket sweeps.  Counter + threshold check run under the
+        # meta-lock to avoid redundant concurrent sweeps.
         should_gc = False
         async with self._meta_lock:
             self._acquires_since_gc += 1
@@ -114,11 +122,7 @@ class InMemorySlidingWindowStore(SlidingWindowStore):
         if should_gc:
             await self._gc_cold_buckets()
 
-        return RateLimitOutcome(
-            allowed=True,
-            retry_after_seconds=None,
-            remaining=remaining,
-        )
+        return outcome
 
     async def close(self) -> None:
         """Clear all buckets and locks."""

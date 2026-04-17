@@ -1749,7 +1749,7 @@ from `synthorg/api/rate_limits/guard.py`.
 - **Throttled endpoints** (initial set):
   - `POST /api/v1/auth/ws-ticket` (20/60s by user)
   - `PUT /api/v1/artifacts/{id}/content` (10/60s by user)
-  - `POST /api/v1/admin/backups/{id}/restore` (3/3600s by user)
+  - `POST /api/v1/admin/backups/restore` (3/3600s by user)
   - `POST /api/v1/setup/complete` (5/3600s by user_or_ip)
   - `POST /api/v1/training/{agent}/execute` (20/3600s by user)
   - `POST /api/v1/simulations` (30/3600s by user)

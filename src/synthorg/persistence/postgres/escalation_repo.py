@@ -278,7 +278,13 @@ INSERT INTO conflict_escalations (
         )
 
     async def mark_expired(self, now_iso: str) -> tuple[str, ...]:
-        """Expire PENDING rows past their deadline."""
+        """Expire PENDING rows past their deadline.
+
+        Sets ``decided_by = 'system:expiry'`` so audit consumers can
+        distinguish sweeper-driven expiry from operator-driven
+        cancellation (``system:resolver_cancelled``) or human
+        decisions (``human:<operator_id>``).
+        """
         now_dt = datetime.fromisoformat(now_iso)
         try:
             async with (
@@ -287,7 +293,8 @@ INSERT INTO conflict_escalations (
             ):
                 await cur.execute(
                     "UPDATE conflict_escalations SET "
-                    "status = 'expired', decided_at = %s "
+                    "status = 'expired', decided_at = %s, "
+                    "decided_by = 'system:expiry' "
                     "WHERE status = 'pending' "
                     "AND expires_at IS NOT NULL AND expires_at <= %s "
                     "RETURNING id",

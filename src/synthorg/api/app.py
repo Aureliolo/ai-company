@@ -2273,7 +2273,11 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
         per_op_rate_limit_store = build_sliding_window_store(
             api_config.per_op_rate_limit,
         )
-        shutdown = [*shutdown, per_op_rate_limit_store.close]
+        # Honour ``_skip_lifecycle_shutdown`` so tests that share an
+        # app across multiple lifespans do not tear down the store
+        # (and its background GC) on the first teardown.
+        if not _skip_lifecycle_shutdown:
+            shutdown = [*shutdown, per_op_rate_limit_store.close]
 
     return Litestar(
         route_handlers=[api_router, *a2a_root_controllers],

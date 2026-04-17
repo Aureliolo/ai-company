@@ -28,10 +28,12 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.persistence import (
     PERSISTENCE_ARTIFACT_CONTENT_MISSING,
     PERSISTENCE_ARTIFACT_DELETED,
+    PERSISTENCE_ARTIFACT_FETCH_FAILED,
     PERSISTENCE_ARTIFACT_SAVE_FAILED,
     PERSISTENCE_ARTIFACT_SAVED,
     PERSISTENCE_ARTIFACT_STORAGE_DELETE_FAILED,
     PERSISTENCE_ARTIFACT_STORAGE_ROLLBACK_FAILED,
+    PERSISTENCE_ARTIFACT_STORE_FAILED,
     PERSISTENCE_ARTIFACT_STORED,
 )
 from synthorg.persistence.errors import (
@@ -357,7 +359,7 @@ class ArtifactController(Controller):
         if artifact is None:
             msg = f"Artifact {artifact_id!r} not found"
             logger.warning(
-                PERSISTENCE_ARTIFACT_STORED,
+                PERSISTENCE_ARTIFACT_FETCH_FAILED,
                 artifact_id=artifact_id,
                 error_type="artifact_not_found",
                 note="upload_content_target_missing",
@@ -369,7 +371,7 @@ class ArtifactController(Controller):
             size = await storage.store(artifact_id, data)
         except ArtifactTooLargeError as exc:
             logger.warning(
-                PERSISTENCE_ARTIFACT_STORED,
+                PERSISTENCE_ARTIFACT_STORE_FAILED,
                 artifact_id=artifact_id,
                 error_type=type(exc).__name__,
                 error=str(exc),
@@ -378,7 +380,7 @@ class ArtifactController(Controller):
             raise ArtifactTooLargeApiError from exc
         except ArtifactStorageFullError as exc:
             logger.warning(
-                PERSISTENCE_ARTIFACT_STORED,
+                PERSISTENCE_ARTIFACT_STORE_FAILED,
                 artifact_id=artifact_id,
                 error_type=type(exc).__name__,
                 error=str(exc),

@@ -117,6 +117,10 @@ class HumanEscalationResolver:
         self._registry: PendingFuturesRegistry = registry or PendingFuturesRegistry()
         self._notifier: NotificationDispatcher | None = notifier
         self._timeout_seconds = timeout_seconds
+        # Strong refs to in-flight notification tasks so they aren't
+        # garbage-collected mid-dispatch (RUF006).  Entries are removed
+        # via ``add_done_callback`` once the task completes.
+        self._notify_tasks: set[asyncio.Task[None]] = set()
 
     async def resolve(self, conflict: Conflict) -> ConflictResolution:
         """Create an escalation, notify operators, and await a decision.
@@ -149,26 +153,19 @@ class HumanEscalationResolver:
             agent_count=len(conflict.positions),
         )
         if self._notifier is not None:
-            # Notification delivery is a side effect: failures must not
-            # abort the workflow and leak the queued row + registered
-            # future.  Log and continue -- operators already have the
-            # row visible via the REST list endpoint, and the sweeper
-            # will eventually expire it if nothing arrives.
-            try:
-                await self._notifier.dispatch(
-                    self._build_notification(escalation, conflict),
-                )
-            except MemoryError, RecursionError:
-                raise
-            except Exception as exc:
-                logger.warning(
-                    CONFLICT_ESCALATION_QUEUED,
-                    escalation_id=escalation.id,
-                    conflict_id=conflict.id,
-                    error_type=type(exc).__name__,
-                    error=str(exc),
-                    note="notification_dispatch_failed",
-                )
+            # Notification delivery is a side effect: we must not let a
+            # slow notifier sink consume the caller's ``timeout_seconds``
+            # budget (or block the resolver from awaiting the future at
+            # all).  Fire-and-forget on a named background task instead,
+            # with the same exception logging as before so failures stay
+            # visible.  The sweeper + per-resolver timeout bound the
+            # queue row's lifecycle even if no notification is delivered.
+            notify_task = asyncio.create_task(
+                self._dispatch_notification(escalation, conflict),
+                name=f"escalation-notify[{escalation.id}]",
+            )
+            self._notify_tasks.add(notify_task)
+            notify_task.add_done_callback(self._notify_tasks.discard)
 
         try:
             if self._timeout_seconds is None:
@@ -201,6 +198,38 @@ class HumanEscalationResolver:
             outcome=resolution.outcome.value,
         )
         return resolution
+
+    async def _dispatch_notification(
+        self,
+        escalation: Escalation,
+        conflict: Conflict,
+    ) -> None:
+        """Deliver the escalation notification in the background.
+
+        Failures are logged (same context as the previous inline
+        try/except) but never propagate -- the notifier is a side
+        effect.  Cancellation must re-raise so shutdown can reap the
+        task cleanly.
+        """
+        if self._notifier is None:
+            return
+        try:
+            await self._notifier.dispatch(
+                self._build_notification(escalation, conflict),
+            )
+        except asyncio.CancelledError:
+            raise
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                CONFLICT_ESCALATION_QUEUED,
+                escalation_id=escalation.id,
+                conflict_id=conflict.id,
+                error_type=type(exc).__name__,
+                error=str(exc),
+                note="notification_dispatch_failed",
+            )
 
     async def _handle_timeout_cleanup(
         self,

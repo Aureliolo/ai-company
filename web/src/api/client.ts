@@ -52,6 +52,9 @@ export const apiClient = axios.create({
   withCredentials: true,
 })
 
+/** Sentinel returned by {@link parseRetryAfterMs} when we must NOT auto-retry. */
+const DO_NOT_RETRY = -1
+
 function parseRetryAfterMs(
   headerValue: string | undefined,
   errorDetail: ErrorDetail | null | undefined,
@@ -64,7 +67,13 @@ function parseRetryAfterMs(
   if (!raw) return 0
   const seconds = Number.parseInt(raw, 10)
   if (!Number.isFinite(seconds) || seconds < 0) return 0
-  return Math.min(seconds * 1000, MAX_RETRY_AFTER_MS)
+  const ms = seconds * 1000
+  // If the server wants us to wait longer than our bounded budget,
+  // surface the error to the caller instead of silently truncating --
+  // a truncated retry would hit the same 429 immediately and waste
+  // the backend's budget.
+  if (ms > MAX_RETRY_AFTER_MS) return DO_NOT_RETRY
+  return ms
 }
 
 async function sleep(ms: number): Promise<void> {
@@ -135,7 +144,11 @@ apiClient.interceptors.response.use(
           error.response?.headers?.['retry-after'] as string | undefined,
           error.response?.data?.error_detail ?? null,
         )
-        if (waitMs > 0) {
+        // ``waitMs === DO_NOT_RETRY`` means the server wants us to wait
+        // longer than our bounded budget -- propagate the 429 to the
+        // caller instead of hammering the backend with a shortened retry
+        // that would just 429 again.
+        if (waitMs > 0 && waitMs !== DO_NOT_RETRY) {
           config._rateLimitRetries = retries + 1
           const nextHeaders = { ...(config.headers ?? {}) } as Record<string, string>
           nextHeaders[RETRY_COUNT_HEADER] = String(retries + 1)

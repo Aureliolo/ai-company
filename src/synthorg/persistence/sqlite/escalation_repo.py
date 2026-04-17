@@ -248,10 +248,15 @@ class SQLiteEscalationRepository(EscalationQueueStore):
         Returns the IDs of rows that were actually UPDATEd -- using
         ``UPDATE ... RETURNING`` (SQLite 3.35+) so a row that raced
         with a concurrent decide/cancel and is no longer PENDING is
-        not falsely reported as expired.
+        not falsely reported as expired.  ``decided_by`` is set to
+        the ``"system:expiry"`` sentinel so audit consumers can
+        distinguish sweeper-driven expiry from operator-driven
+        cancellation (``"system:resolver_cancelled"``) or human
+        decisions (``"human:<operator_id>"``).
         """
         update_sql = (
-            "UPDATE conflict_escalations SET status='expired', decided_at=? "
+            "UPDATE conflict_escalations "
+            "SET status='expired', decided_at=?, decided_by='system:expiry' "
             "WHERE status='pending' AND expires_at IS NOT NULL "
             "AND expires_at <= ? "
             "RETURNING id"
