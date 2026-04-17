@@ -27,7 +27,7 @@ template:
       description: "Name of your company"
       default: "Acme Corp"
     - name: "budget"
-      description: "Monthly budget in USD"
+      description: "Monthly budget in the company's configured currency"
       var_type: "float"
       default: 200.0
     - name: "num_backend_devs"

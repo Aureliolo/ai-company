@@ -26,7 +26,7 @@ template:
       description: "Name of your company"
       default: "Product Co"
     - name: "budget"
-      description: "Monthly budget in USD"
+      description: "Monthly budget in the company's configured currency"
       var_type: "float"
       default: 80.0
     - name: "sprint_length"

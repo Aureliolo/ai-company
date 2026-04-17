@@ -25,7 +25,7 @@ template:
       description: "Name of your agency"
       default: "Creative Agency"
     - name: "budget"
-      description: "Monthly budget in USD"
+      description: "Monthly budget in the company's configured currency"
       var_type: "float"
       default: 100.0
     - name: "wip_limit"
