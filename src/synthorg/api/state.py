@@ -891,9 +891,20 @@ class AppState:
         makes the handoff race-free: the new dispatcher is already
         installed by the time the caller starts closing httpx
         clients on the old sinks.
+
+        Emits ``SETTINGS_SERVICE_SWAPPED`` with the same field shape
+        as :meth:`swap_provider_registry` / :meth:`swap_model_router`
+        so the operator-facing audit trail records every swap in one
+        place.
         """
         previous = self._notification_dispatcher
         self._notification_dispatcher = dispatcher
+        logger.info(
+            SETTINGS_SERVICE_SWAPPED,
+            service="notification_dispatcher",
+            old_id=id(previous) if previous is not None else None,
+            new_id=id(dispatcher),
+        )
         return previous
 
     @property

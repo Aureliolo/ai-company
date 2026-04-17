@@ -27,7 +27,9 @@ Covers the consumer-side plumbing added for #1398 / #1400:
 """
 
 import importlib
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -110,13 +112,13 @@ def _email_factory(timeout: float) -> object:
     ],
 )
 def test_notification_adapter_rejects_invalid_timeout(
-    factory: object,
+    factory: Callable[[float], Any],
     match: str,
     bad_value: float,
 ) -> None:
     """Every notification adapter rejects non-finite / non-positive timeouts."""
     with pytest.raises(ValueError, match=match):
-        factory(bad_value)  # type: ignore[operator]
+        factory(bad_value)
 
 
 # ── OAuth flows: positive timeout validation ──────────────────

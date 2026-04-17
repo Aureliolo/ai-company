@@ -189,7 +189,7 @@ _EXPECTED: tuple[
         "10000",
         100,
         1_000_000,
-        False,
+        True,
     ),
     _spec(
         SettingNamespace.COMMUNICATION,
