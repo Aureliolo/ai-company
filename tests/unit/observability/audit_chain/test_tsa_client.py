@@ -11,6 +11,8 @@ Covers:
   unparseable trusted-root PEM.
 """
 
+from typing import Any
+
 import httpx
 import pytest
 import respx
@@ -48,50 +50,51 @@ def test_unparseable_trusted_root_raises() -> None:
 # -- Transport failures ------------------------------------------------------
 
 
-async def test_request_timeout_maps_to_tsa_timeout_error() -> None:
+@pytest.mark.parametrize(
+    ("mock_kwargs", "expected_error"),
+    [
+        pytest.param(
+            {"side_effect": httpx.TimeoutException("slow")},
+            TsaTimeoutError,
+            id="timeout",
+        ),
+        pytest.param(
+            {
+                "return_value": httpx.Response(
+                    400,
+                    content=b"bad request",
+                    headers={"Content-Type": "application/timestamp-reply"},
+                ),
+            },
+            TsaTransportError,
+            id="http_4xx",
+        ),
+        pytest.param(
+            {
+                "return_value": httpx.Response(
+                    503,
+                    content=b"down",
+                    headers={"Content-Type": "application/timestamp-reply"},
+                ),
+            },
+            TsaTransportError,
+            id="http_5xx",
+        ),
+        pytest.param(
+            {"side_effect": httpx.ConnectError("dns fail")},
+            TsaTransportError,
+            id="connect_error",
+        ),
+    ],
+)
+async def test_transport_failures_map_to_typed_errors(
+    mock_kwargs: dict[str, Any],
+    expected_error: type[Exception],
+) -> None:
     async with respx.mock(base_url=_TSA_URL) as router:
-        router.post("").mock(side_effect=httpx.TimeoutException("slow"))
-        client = TsaClient(_TSA_URL, timeout_sec=0.1)
-        with pytest.raises(TsaTimeoutError):
-            await client.request_timestamp(b"payload")
-        await client.aclose()
-
-
-async def test_transport_4xx_maps_to_tsa_transport_error() -> None:
-    async with respx.mock(base_url=_TSA_URL) as router:
-        router.post("").mock(
-            return_value=httpx.Response(
-                400,
-                content=b"bad request",
-                headers={"Content-Type": "application/timestamp-reply"},
-            )
-        )
+        router.post("").mock(**mock_kwargs)
         client = TsaClient(_TSA_URL, timeout_sec=0.5)
-        with pytest.raises(TsaTransportError):
-            await client.request_timestamp(b"payload")
-        await client.aclose()
-
-
-async def test_transport_5xx_maps_to_tsa_transport_error() -> None:
-    async with respx.mock(base_url=_TSA_URL) as router:
-        router.post("").mock(
-            return_value=httpx.Response(
-                503,
-                content=b"down",
-                headers={"Content-Type": "application/timestamp-reply"},
-            )
-        )
-        client = TsaClient(_TSA_URL, timeout_sec=0.5)
-        with pytest.raises(TsaTransportError):
-            await client.request_timestamp(b"payload")
-        await client.aclose()
-
-
-async def test_connect_error_maps_to_tsa_transport_error() -> None:
-    async with respx.mock(base_url=_TSA_URL) as router:
-        router.post("").mock(side_effect=httpx.ConnectError("dns fail"))
-        client = TsaClient(_TSA_URL, timeout_sec=0.5)
-        with pytest.raises(TsaTransportError):
+        with pytest.raises(expected_error):
             await client.request_timestamp(b"payload")
         await client.aclose()
 

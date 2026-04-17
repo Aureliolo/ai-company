@@ -21,7 +21,11 @@ import weakref
 from typing import TYPE_CHECKING, Any
 
 from synthorg.observability import get_logger
-from synthorg.observability.events.metrics import METRICS_SCRAPE_FAILED
+from synthorg.observability.events.metrics import (
+    METRICS_COLLECTOR_ACTIVATED,
+    METRICS_COLLECTOR_DEACTIVATED,
+    METRICS_SCRAPE_FAILED,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -40,13 +44,24 @@ def set_active_collector(collector: PrometheusCollector) -> None:
     a different instance is expected between tests.
     """
     global _collector_ref  # noqa: PLW0603
+    previous = _active()
     _collector_ref = weakref.ref(collector)
+    logger.info(
+        METRICS_COLLECTOR_ACTIVATED,
+        collector=repr(collector),
+        previous_collector=repr(previous) if previous is not None else None,
+    )
 
 
 def clear_active_collector() -> None:
     """Drop the process-active collector reference."""
     global _collector_ref  # noqa: PLW0603
+    previous = _active()
     _collector_ref = None
+    logger.info(
+        METRICS_COLLECTOR_DEACTIVATED,
+        previous_collector=repr(previous) if previous is not None else None,
+    )
 
 
 def _active() -> PrometheusCollector | None:

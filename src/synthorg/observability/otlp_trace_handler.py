@@ -73,7 +73,11 @@ class OtlpTraceHandler:
         exporter = OTLPSpanExporter(
             endpoint=endpoint,
             headers=dict(config.headers),
-            timeout=int(config.batch_export_timeout_sec),
+            # Pass the float directly: OTLPSpanExporter's ``timeout``
+            # is Optional[float], and casting to ``int`` would silently
+            # truncate sub-second deadlines (e.g. 0.5 -> 0 disables
+            # the timeout entirely).
+            timeout=config.batch_export_timeout_sec,
         )
         resource = Resource.create({"service.name": config.service_name})
         sampler = TraceIdRatioBased(config.sampling_ratio)
@@ -121,12 +125,16 @@ class OtlpTraceHandler:
         spans that are still in its queue when ``shutdown`` hands
         the exporter its final signal. The handler is unusable
         after this call returns.
+
+        Does **not** clear :data:`_HANDLER_INSTANCE`: the global
+        TracerProvider OTel installed in ``__init__`` stays wired
+        for the lifetime of the process, so letting a new handler
+        be constructed here would silently bypass the singleton
+        guard. Tests that need to rebuild a handler call
+        :func:`_reset_for_testing` explicitly.
         """
-        global _HANDLER_INSTANCE  # noqa: PLW0603
         await self.force_flush()
         await asyncio.to_thread(self._provider.shutdown)
-        if _HANDLER_INSTANCE is self:
-            _HANDLER_INSTANCE = None
         logger.info(METRICS_OTLP_FLUSHER_STOPPED, component="trace")
 
 

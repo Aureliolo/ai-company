@@ -37,7 +37,8 @@ class OtlpHttpTraceConfig(BaseModel):
         endpoint: Collector URL (e.g. ``"http://otel-collector:4318"``).
             The exporter appends ``/v1/traces`` automatically.
         headers: Extra HTTP headers as ``(name, value)`` pairs. Use
-            for auth tokens (e.g. Honeycomb's ``x-honeycomb-team``).
+            for auth tokens (e.g. ``"x-api-key"`` or a vendor-specific
+            ``"x-custom-auth"`` header).
         sampling_ratio: Fraction of traces to record (0.0-1.0).
             1.0 records every trace; 0.0 records none. Use sampling
             to bound cost at high trace volumes.
@@ -66,11 +67,10 @@ class OtlpHttpTraceConfig(BaseModel):
     def _reject_header_injection(self) -> OtlpHttpTraceConfig:
         r"""Reject header names/values containing CR/LF.
 
-        Operator-supplied headers commonly carry auth tokens
-        (e.g. ``x-honeycomb-team``) read from config files or env
-        vars. A stray ``\n`` would let a malicious value inject
-        additional headers or split the request -- cheap to prevent
-        at config-load time.
+        Operator-supplied headers commonly carry auth tokens read
+        from config files or env vars. A stray ``\n`` would let a
+        malicious value inject additional headers or split the
+        request -- cheap to prevent at config-load time.
         """
         for name, value in self.headers:
             for field_name, field_value in (("name", name), ("value", value)):
@@ -80,6 +80,24 @@ class OtlpHttpTraceConfig(BaseModel):
                         "(forbidden; prevents HTTP header injection)"
                     )
                     raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _check_batch_sizes(self) -> OtlpHttpTraceConfig:
+        """Reject batch sizes that the BatchSpanProcessor would reject.
+
+        OpenTelemetry's ``BatchSpanProcessor`` requires
+        ``max_export_batch_size <= max_queue_size``. Catching this
+        at config-load time gives a clear error instead of an
+        opaque SDK exception at trace-handler build time.
+        """
+        if self.batch_max_export_batch_size > self.batch_max_queue_size:
+            msg = (
+                "batch_max_export_batch_size "
+                f"({self.batch_max_export_batch_size}) must not exceed "
+                f"batch_max_queue_size ({self.batch_max_queue_size})"
+            )
+            raise ValueError(msg)
         return self
 
 

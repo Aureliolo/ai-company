@@ -12,3 +12,6 @@ from typing import Final
 
 AUDIT_CHAIN_EMIT_ERROR: Final[str] = "audit_chain.emit_error"
 AUDIT_CHAIN_CALLBACK_ERROR: Final[str] = "audit_chain.callback_error"
+
+# Config validation
+AUDIT_CHAIN_CONFIG_INVALID_PRESET: Final[str] = "audit_chain.config.invalid_preset"

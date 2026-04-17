@@ -118,6 +118,13 @@ def test_timeout_range_enforced() -> None:
         AuditChainConfig(tsa_timeout_sec=60.0)
 
 
+@pytest.mark.parametrize("value", [0.1, 2.5, 5.0])
+def test_timeout_accepts_boundary_values(value: float) -> None:
+    """The validator permits values in the allowed ``(0, 5.0]`` range."""
+    cfg = AuditChainConfig(tsa_timeout_sec=value)
+    assert cfg.tsa_timeout_sec == value
+
+
 def test_resolve_tsa_url_helper() -> None:
     assert resolve_tsa_url(TsaPreset.NONE, None) is None
     assert resolve_tsa_url(TsaPreset.NONE, "override") is None

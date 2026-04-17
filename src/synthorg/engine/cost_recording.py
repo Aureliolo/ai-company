@@ -102,14 +102,35 @@ async def record_execution_costs(  # noqa: PLR0913
         # Mirror the persisted cost record to the Prometheus
         # collector so ``synthorg_provider_tokens_total`` /
         # ``synthorg_provider_cost_usd_total`` reflect every paid
-        # completion. No-op when no collector is wired.
-        record_provider_usage(
-            provider=identity.model.provider,
-            model=identity.model.model_id,
-            input_tokens=turn.input_tokens,
-            output_tokens=turn.output_tokens,
-            cost_usd=turn.cost_usd,
-        )
+        # completion. No-op when no collector is wired. Metrics
+        # failures are caught locally so a prometheus label / push
+        # regression cannot turn a successful persisted cost into a
+        # visible caller failure -- ``metrics_hub`` already swallows
+        # collector exceptions, but the extra guard documents intent
+        # and keeps defence-in-depth if that contract changes.
+        try:
+            record_provider_usage(
+                provider=identity.model.provider,
+                model=identity.model.model_id,
+                input_tokens=turn.input_tokens,
+                output_tokens=turn.output_tokens,
+                cost_usd=turn.cost_usd,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.warning(
+                EXECUTION_ENGINE_COST_FAILED,
+                agent_id=agent_id,
+                task_id=task_id,
+                provider=identity.model.provider,
+                model=identity.model.model_id,
+                input_tokens=turn.input_tokens,
+                output_tokens=turn.output_tokens,
+                cost_usd=turn.cost_usd,
+                reason="metrics_mirror_failed",
+                exc_info=True,
+            )
 
 
 async def _submit_cost_record(

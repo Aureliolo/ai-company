@@ -104,14 +104,22 @@ class RequestStore:
         self._requests: dict[str, ClientRequest] = {}
 
     async def save(self, request: ClientRequest) -> None:
-        """Insert or replace a request by id."""
+        """Insert or replace a request by id.
+
+        Only emits :data:`CLIENT_REQUEST_SUBMITTED` when a genuinely
+        new request arrives. Replacing an existing id (e.g. a
+        retry that updates state) would otherwise inflate the
+        request-submitted counter in dashboards.
+        """
         async with self._lock:
+            is_new = request.request_id not in self._requests
             self._requests[request.request_id] = request
-        logger.info(
-            CLIENT_REQUEST_SUBMITTED,
-            request_id=request.request_id,
-            client_id=request.client_id,
-        )
+        if is_new:
+            logger.info(
+                CLIENT_REQUEST_SUBMITTED,
+                request_id=request.request_id,
+                client_id=request.client_id,
+            )
 
     async def get(self, request_id: str) -> ClientRequest:
         """Return the request by id or raise ``KeyError``."""
@@ -197,6 +205,13 @@ class SimulationStore:
         """
         async with self._lock:
             if simulation_id not in self._runs:
+                logger.warning(
+                    SIMULATION_RUN_FAILED,
+                    reason="not_found",
+                    simulation_id=simulation_id,
+                    requested_status=status,
+                    current_status="missing",
+                )
                 msg = f"Simulation {simulation_id!r} not found"
                 raise KeyError(msg)
             existing = self._runs[simulation_id]
@@ -208,6 +223,14 @@ class SimulationStore:
             if error is not None:
                 updates["error"] = error
             if existing.status in _TERMINAL_STATUSES:
+                logger.warning(
+                    SIMULATION_RUN_FAILED,
+                    reason="terminal_state_transition_rejected",
+                    simulation_id=simulation_id,
+                    requested_status=status,
+                    current_status=existing.status,
+                    progress=existing.progress,
+                )
                 msg = (
                     f"Simulation {simulation_id!r} already in "
                     f"terminal status {existing.status!r}"

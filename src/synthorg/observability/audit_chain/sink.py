@@ -5,7 +5,7 @@ import json
 import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from synthorg.observability import get_logger
 from synthorg.observability.audit_chain.chain import HashChain
@@ -97,7 +97,10 @@ class AuditChainSink(logging.Handler):
         self._lock = threading.Lock()
         self._append_callback: AppendCallback | None = None
 
-    def set_append_callback(self, callback: AppendCallback | None) -> None:
+    def set_append_callback(
+        self,
+        callback: AppendCallback | None | Any,
+    ) -> None:
         """Register a callback invoked after every append attempt.
 
         Passed ``(status, chain_depth, timestamp_unix)`` where status
@@ -108,7 +111,16 @@ class AuditChainSink(logging.Handler):
 
         Thread safety: invoked under the sink's lock inside
         :meth:`emit`; the callback must be fast and non-blocking.
+
+        Raises:
+            TypeError: When ``callback`` is not callable (and not
+                ``None``). Failing fast at registration mirrors
+                :meth:`OtlpHandler.set_export_callback` and catches
+                wiring bugs before they surface mid-emit.
         """
+        if callback is not None and not callable(callback):
+            msg = "append callback must be callable or None"
+            raise TypeError(msg)
         self._append_callback = callback
 
     @property

@@ -144,6 +144,20 @@ class CedarPolicyEngine:
         # decision is built. Pulling the metrics hook out of the
         # Cedar-evaluation try/except prevents a hook exception from
         # being misinterpreted as a policy-engine failure (which
-        # would flip ``allowed`` in fail-open mode).
-        record_security_verdict("allow" if decision.allow else "deny")
+        # would flip ``allowed`` in fail-open mode). The try/except
+        # here is defence-in-depth: ``metrics_hub`` already swallows
+        # collector exceptions, but a bug in that layer must never
+        # block a ready policy decision from being returned.
+        try:
+            record_security_verdict("allow" if decision.allow else "deny")
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.warning(
+                SECURITY_POLICY_ENGINE_ERROR,
+                reason="metrics_mirror_failed",
+                decision_allow=decision.allow,
+                action_type=request.action_type,
+                exc_info=True,
+            )
         return decision

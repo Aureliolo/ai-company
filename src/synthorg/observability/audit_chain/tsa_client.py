@@ -530,5 +530,11 @@ def _gen_time_to_datetime(gen_time: Any) -> datetime:
     """Coerce a TSTInfo ``gen_time`` into a UTC-aware datetime."""
     if isinstance(gen_time, datetime):
         return gen_time if gen_time.tzinfo is not None else gen_time.replace(tzinfo=UTC)
+    logger.warning(
+        SECURITY_TIMESTAMP_PROTOCOL_ERROR,
+        reason="invalid_gen_time",
+        gen_time_type=type(gen_time).__name__,
+        gen_time_repr=repr(gen_time)[:200],
+    )
     msg = f"Unexpected gen_time type: {type(gen_time).__name__}"
     raise TsaProtocolError(msg)

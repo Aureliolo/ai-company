@@ -288,6 +288,8 @@ class TestEventConstants:
             # Added in #1436 to keep sink internal errors out of
             # the audited "security.*" namespace.
             "audit_chain",
+            # Trace handler lifecycle + config validation events.
+            "tracing",
         }
         discovered = {info.name for info in pkgutil.iter_modules(events.__path__)}
         assert discovered == expected

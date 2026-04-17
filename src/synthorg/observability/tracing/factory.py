@@ -6,9 +6,9 @@ never sees the concrete handler class.
 """
 
 from synthorg.observability import get_logger
-from synthorg.observability.events.metrics import (
-    METRICS_COLLECTOR_INITIALIZED,
+from synthorg.observability.events.tracing import (
     TRACE_CONFIG_UNSUPPORTED_VARIANT,
+    TRACE_HANDLER_INITIALIZED,
 )
 from synthorg.observability.tracing.config import (
     DisabledTraceConfig,
@@ -43,7 +43,7 @@ def build_trace_handler(config: TraceConfig) -> TraceHandler:
     """
     if isinstance(config, DisabledTraceConfig):
         logger.debug(
-            METRICS_COLLECTOR_INITIALIZED,
+            TRACE_HANDLER_INITIALIZED,
             component="trace",
             kind="disabled",
         )
@@ -56,7 +56,7 @@ def build_trace_handler(config: TraceConfig) -> TraceHandler:
         )
 
         logger.info(
-            METRICS_COLLECTOR_INITIALIZED,
+            TRACE_HANDLER_INITIALIZED,
             component="trace",
             kind=config.kind,
             endpoint=config.endpoint,

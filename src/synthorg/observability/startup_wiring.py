@@ -21,9 +21,9 @@ from typing import TYPE_CHECKING
 
 from synthorg.observability import get_logger
 from synthorg.observability.audit_chain.sink import AuditChainSink
-from synthorg.observability.events.metrics import (
-    METRICS_COLLECTOR_INITIALIZED,
+from synthorg.observability.events.tracing import (
     TRACE_CONFIG_INVALID_SAMPLING_RATIO,
+    TRACE_HANDLER_INITIALIZED,
 )
 from synthorg.observability.metrics_hub import set_active_collector
 from synthorg.observability.otlp_handler import OtlpHandler
@@ -139,8 +139,7 @@ def wire_observability_callbacks(app_state: AppState) -> None:
         handler = build_trace_handler(_load_trace_config())
         app_state.set_trace_handler(handler)
         logger.info(
-            METRICS_COLLECTOR_INITIALIZED,
-            component="trace_handler",
+            TRACE_HANDLER_INITIALIZED,
             kind=handler.__class__.__name__,
         )
     if app_state.has_prometheus_collector:

@@ -151,6 +151,18 @@ class BudgetEnforcer:
                 has_scorer=risk_scorer is not None,
             )
 
+    async def stop(self, *, timeout_sec: float = 5.0) -> None:
+        """Drain pending budget-notification tasks.
+
+        Mirrors :meth:`ApprovalTimeoutScheduler.stop` so the
+        application shutdown path can await outstanding
+        fire-and-forget notifications (monthly / daily exhaustion
+        alerts) rather than dropping them. ``timeout_sec`` bounds
+        the wait; on expiry the registry cancels stragglers and
+        logs ``BACKGROUND_TASKS_DRAIN_TIMEOUT``.
+        """
+        await self._background_tasks.drain(timeout_sec=timeout_sec)
+
     @property
     def cost_tracker(self) -> CostTracker:
         """The underlying cost tracker."""
@@ -524,7 +536,26 @@ class BudgetEnforcer:
         body: str,
         severity: str,
     ) -> None:
-        """Best-effort notification for a budget event."""
+        """Best-effort notification for a budget event.
+
+        Dual error-handling semantics (both layers are intentional):
+
+        * **Expected dispatcher failures** --
+          :meth:`NotificationDispatcher.dispatch` may raise for
+          transient transport problems (SMTP timeout, webhook 5xx,
+          etc.). Those are caught here and logged at WARNING via
+          :data:`BUDGET_NOTIFICATION_FAILED` so a flaky notification
+          channel can't break budget enforcement.
+        * **Unexpected internal bugs** -- if the method itself
+          raises (e.g. a :class:`NotificationSeverity` coercion
+          failure or a programming error importing the notification
+          models), the exception escapes this try/except and
+          bubbles up to :class:`BackgroundTaskRegistry`'s
+          done-callback which logs it at ERROR via
+          :data:`NOTIFICATION_SEND_FAILED`. That way silent bugs
+          remain visible at a higher severity than routine
+          dispatch flakes.
+        """
         if self._notification_dispatcher is None:
             return
         from synthorg.notifications.models import (  # noqa: PLC0415

@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validat
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
+from synthorg.observability.events.audit_chain import AUDIT_CHAIN_CONFIG_INVALID_PRESET
 
 logger = get_logger(__name__)
 
@@ -147,7 +148,7 @@ class AuditChainConfig(BaseModel):
         if self.tsa_preset == TsaPreset.CUSTOM and self.tsa_url is None:
             msg = "tsa_preset=CUSTOM requires tsa_url to be set"
             logger.error(
-                "audit_chain.config.invalid_preset",
+                AUDIT_CHAIN_CONFIG_INVALID_PRESET,
                 reason="custom_without_url",
                 tsa_preset=self.tsa_preset.value,
             )
@@ -166,7 +167,7 @@ class AuditChainConfig(BaseModel):
                 "tsa_verify_signature=False (not recommended)."
             )
             logger.error(
-                "audit_chain.config.invalid_preset",
+                AUDIT_CHAIN_CONFIG_INVALID_PRESET,
                 reason="verify_without_trusted_roots",
                 tsa_preset=self.tsa_preset.value,
                 tsa_verify_signature=self.tsa_verify_signature,

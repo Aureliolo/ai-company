@@ -242,10 +242,11 @@ class SQLiteSsrfViolationRepository:
         if status == SsrfViolationStatus.PENDING:
             msg = "Cannot transition a violation back to PENDING"
             logger.warning(
-                PERSISTENCE_SSRF_VIOLATION_SAVE_FAILED,
+                PERSISTENCE_SSRF_VIOLATION_STATUS_UPDATED,
                 violation_id=violation_id,
                 reason="invalid_status_transition",
                 attempted_status=status.value,
+                outcome="rejected",
             )
             raise ValueError(msg)
 

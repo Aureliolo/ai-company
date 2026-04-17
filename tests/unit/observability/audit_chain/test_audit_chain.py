@@ -187,38 +187,34 @@ class TestResilientTimestampProvider:
         assert result.timestamp.tzinfo is not None
         assert result.source == "fallback"
 
-    async def test_security_incidents_propagate(self) -> None:
+    @pytest.mark.parametrize(
+        "incident_cls_name",
+        ["TsaHashMismatchError", "TsaNonceMismatchError", "TsaSignatureError"],
+    )
+    async def test_security_incidents_propagate(
+        self,
+        incident_cls_name: str,
+    ) -> None:
         """Hash / nonce / signature failures must NOT silently fall back.
 
-        Security-incident exceptions propagate so operators learn the
-        audit chain may be under attack rather than seeing a silent
-        switch to local clock.
+        Parametrised so a regression in one incident class fails that
+        case on its own -- the previous loop hid all three cases
+        behind a single test ID and masked failures in the first
+        incident class.
         """
-        from synthorg.observability.audit_chain.tsa_client import (
-            TsaClient,
-            TsaHashMismatchError,
-            TsaNonceMismatchError,
-            TsaSignatureError,
-        )
+        from synthorg.observability.audit_chain import tsa_client as _tsa
 
-        for incident_cls in (
-            TsaHashMismatchError,
-            TsaNonceMismatchError,
-            TsaSignatureError,
-        ):
-            client = TsaClient("https://tsa.example.invalid")
+        incident_cls: type[BaseException] = getattr(_tsa, incident_cls_name)
+        client = _tsa.TsaClient("https://tsa.example.invalid")
 
-            async def _incident(
-                _data: bytes,
-                cls: type[BaseException] = incident_cls,
-            ) -> None:
-                error_msg = f"simulated {cls.__name__}"
-                raise cls(error_msg)
+        async def _incident(_data: bytes) -> None:
+            error_msg = f"simulated {incident_cls.__name__}"
+            raise incident_cls(error_msg)
 
-            client.request_timestamp = _incident  # type: ignore[assignment,method-assign]
-            provider = ResilientTimestampProvider(client)
-            with pytest.raises(incident_cls):
-                await provider.get_timestamp()
+        client.request_timestamp = _incident  # type: ignore[assignment,method-assign]
+        provider = ResilientTimestampProvider(client)
+        with pytest.raises(incident_cls):
+            await provider.get_timestamp()
 
 
 # ── Sink Tests ─────────────────────────────────────────────────────
