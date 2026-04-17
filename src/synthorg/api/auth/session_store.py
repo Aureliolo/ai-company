@@ -65,7 +65,14 @@ class SessionStore(Protocol):
     in-memory set and must not block the event loop (auth middleware
     hot path). Method docstrings on this protocol describe the
     contract; concrete implementations reuse the same semantics.
+
+    Attributes:
+        _revoked: In-memory cache of revoked session IDs. Part of
+            the protocol so test fixtures can clear it between tests
+            without casting to a concrete implementation.
     """
+
+    _revoked: set[str]
 
     async def load_revoked(self) -> None:
         """Load revoked session IDs from durable storage into memory."""
