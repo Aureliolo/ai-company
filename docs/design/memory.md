@@ -381,15 +381,20 @@ checkpoint path as the model identifier passed to the Mem0 SDK. The embedding
 provider must serve the fine-tuned model under this identifier.
 
 **Container execution:** when `FineTuneExecutionConfig.backend` is `"docker"`, each
-pipeline stage runs inside an ephemeral `synthorg-fine-tune` container spawned by the
-backend via the Docker API. The container reads stage configuration from
-`/etc/fine-tune/config.json`, executes the pipeline function, and emits structured
-progress markers (`STAGE_START:`, `STAGE_COMPLETE:`) on stdout. The orchestrator will
-parse these markers from container logs for progress reporting (orchestrator integration
-is planned -- the runner and markers are implemented). Source data is mounted at `/data`
-(read-only), checkpoints written to `/checkpoints` (read-write). GPU passthrough is
-available via `gpu_enabled=True`. The in-process fallback (`backend="in-process"`) is
-preserved for non-Docker deployments where torch is installed directly.
+pipeline stage runs inside an ephemeral `synthorg-fine-tune-gpu` (default) or
+`synthorg-fine-tune-cpu` container spawned by the backend via the Docker API. Both
+variants ship the same Python runner and accept the same stage-config contract; they
+differ only in the bundled torch build (CUDA ~4 GB vs CPU ~1.7 GB) and whether GPU
+passthrough is usable. The variant is selected at `synthorg init` time and persisted
+as `fine_tuning_variant` in `config.json`. The container reads stage configuration
+from `/etc/fine-tune/config.json`, executes the pipeline function, and emits
+structured progress markers (`STAGE_START:`, `STAGE_COMPLETE:`) on stdout. The
+orchestrator will parse these markers from container logs for progress reporting
+(orchestrator integration is planned -- the runner and markers are implemented).
+Source data is mounted at `/data` (read-only), checkpoints written to `/checkpoints`
+(read-write). GPU passthrough is available via `gpu_enabled=True` (only meaningful
+for the GPU variant). The in-process fallback (`backend="in-process"`) is preserved
+for non-Docker deployments where torch is installed directly.
 
 ```python
 class EmbeddingFineTuneConfig(BaseModel):

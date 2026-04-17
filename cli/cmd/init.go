@@ -756,9 +756,13 @@ func buildState(a setupAnswers) (config.State, error) {
 }
 
 // fineTuneVariantString maps the TUI's integer variant index to the string
-// persisted in config.State. 0 -> "gpu" (default), 1 -> "cpu". A nonzero
-// index that is not 1 is unreachable today but falls back to "gpu" rather
-// than writing an invalid value.
+// persisted in config.State. 0 -> "gpu" (default), 1 -> "cpu". The TUI only
+// ever sets 0 or 1 (toggled via `m.fineTuneVariant = 1 - m.fineTuneVariant`
+// in init_tui.go), so any other value is unreachable in practice. The
+// explicit fallback to "gpu" for unexpected indices protects against
+// future TUI changes that might introduce a third state and forget to
+// update this mapping -- the worst case becomes "defaults to gpu" rather
+// than "writes an invalid variant string that fails config validation".
 func fineTuneVariantString(idx int) string {
 	if idx == 1 {
 		return "cpu"
