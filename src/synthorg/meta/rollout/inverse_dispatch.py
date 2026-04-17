@@ -1,0 +1,175 @@
+"""Inverse-action dispatch for rollback plans.
+
+Each ``RollbackOperation`` carries an ``operation_type`` discriminator.
+The rollback executor looks up the matching ``RollbackHandler`` and
+delegates. Handlers are thin adapters over mutator protocols so that
+the rollout subsystem stays decoupled from the concrete config,
+prompt, architecture, and code services.
+"""
+
+from types import MappingProxyType
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+
+from synthorg.core.types import NotBlankStr
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+    from synthorg.meta.models import RollbackOperation
+
+
+class UnknownRollbackOperationError(ValueError):
+    """Raised when a ``RollbackOperation`` has no registered handler."""
+
+
+@runtime_checkable
+class RollbackHandler(Protocol):
+    """Applies the inverse action for a single ``RollbackOperation``."""
+
+    async def revert(self, operation: RollbackOperation) -> int:
+        """Apply the inverse action.
+
+        Returns:
+            Number of underlying changes applied (1 per operation
+            unless the handler batches).
+        """
+        ...
+
+
+# -- Mutator protocols ----------------------------------------------------
+
+
+@runtime_checkable
+class ConfigMutator(Protocol):
+    """Writes a value at a dotted config path."""
+
+    async def set(self, *, path: str, value: Any) -> None:
+        """Restore the config leaf at ``path`` to ``value``."""
+        ...
+
+
+@runtime_checkable
+class PromptMutator(Protocol):
+    """Restores an org-wide prompt principle."""
+
+    async def restore_principle(self, *, scope: str, text: str) -> None:
+        """Install ``text`` as the principle for ``scope``."""
+        ...
+
+
+@runtime_checkable
+class ArchitectureMutator(Protocol):
+    """Restores an org-structure entity (role, department, workflow)."""
+
+    async def restore(self, *, target: str, previous_value: Any) -> None:
+        """Restore entity ``target`` to ``previous_value``."""
+        ...
+
+
+@runtime_checkable
+class CodeMutator(Protocol):
+    """Reverts a source file to previous contents."""
+
+    async def revert_file(self, *, path: str, content: str) -> None:
+        """Write ``content`` to ``path``."""
+        ...
+
+
+# -- Concrete handlers ----------------------------------------------------
+
+
+class RevertConfigHandler:
+    """Rollback handler for ``revert_config`` operations."""
+
+    def __init__(self, *, mutator: ConfigMutator) -> None:
+        self._mutator = mutator
+
+    async def revert(self, operation: RollbackOperation) -> int:
+        """Restore config path ``operation.target`` to ``previous_value``."""
+        await self._mutator.set(
+            path=str(operation.target),
+            value=operation.previous_value,
+        )
+        return 1
+
+
+class RestorePromptHandler:
+    """Rollback handler for ``restore_prompt`` operations."""
+
+    def __init__(self, *, mutator: PromptMutator) -> None:
+        self._mutator = mutator
+
+    async def revert(self, operation: RollbackOperation) -> int:
+        """Reinstall the previous prompt principle."""
+        text = operation.previous_value
+        if not isinstance(text, str):
+            msg = (
+                f"restore_prompt requires a string previous_value; "
+                f"got {type(text).__name__}"
+            )
+            raise ValueError(msg)  # noqa: TRY004 -- semantic validation, not a type error
+        await self._mutator.restore_principle(
+            scope=str(operation.target),
+            text=text,
+        )
+        return 1
+
+
+class RevertArchitectureHandler:
+    """Rollback handler for ``revert_architecture`` operations."""
+
+    def __init__(self, *, mutator: ArchitectureMutator) -> None:
+        self._mutator = mutator
+
+    async def revert(self, operation: RollbackOperation) -> int:
+        """Restore the structural entity to its previous value."""
+        await self._mutator.restore(
+            target=str(operation.target),
+            previous_value=operation.previous_value,
+        )
+        return 1
+
+
+class RevertCodeHandler:
+    """Rollback handler for ``revert_code`` operations."""
+
+    def __init__(self, *, mutator: CodeMutator) -> None:
+        self._mutator = mutator
+
+    async def revert(self, operation: RollbackOperation) -> int:
+        """Write ``previous_value`` back to the file at ``target``."""
+        content = operation.previous_value
+        if not isinstance(content, str):
+            msg = (
+                f"revert_code requires a string previous_value (file "
+                f"contents); got {type(content).__name__}"
+            )
+            raise ValueError(msg)  # noqa: TRY004 -- semantic validation, not a type error
+        await self._mutator.revert_file(
+            path=str(operation.target),
+            content=content,
+        )
+        return 1
+
+
+# -- Factory --------------------------------------------------------------
+
+
+def default_rollback_handlers(
+    *,
+    config: ConfigMutator,
+    prompt: PromptMutator,
+    architecture: ArchitectureMutator,
+    code: CodeMutator,
+) -> Mapping[NotBlankStr, RollbackHandler]:
+    """Build the default handler mapping keyed by ``operation_type``."""
+    return MappingProxyType(
+        {
+            NotBlankStr("revert_config"): RevertConfigHandler(mutator=config),
+            NotBlankStr("restore_prompt"): RestorePromptHandler(mutator=prompt),
+            NotBlankStr("revert_architecture"): RevertArchitectureHandler(
+                mutator=architecture,
+            ),
+            NotBlankStr("revert_code"): RevertCodeHandler(mutator=code),
+        }
+    )

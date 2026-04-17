@@ -70,6 +70,10 @@ if TYPE_CHECKING:
         ProposalApplier,
         RolloutStrategy,
     )
+    from synthorg.meta.rollout.before_after import SnapshotBuilder
+    from synthorg.meta.rollout.clock import Clock
+    from synthorg.meta.rollout.group_aggregator import GroupSignalAggregator
+    from synthorg.meta.rollout.roster import OrgRoster
     from synthorg.meta.telemetry.protocol import AnalyticsEmitter
     from synthorg.providers.base import BaseCompletionProvider
 
@@ -115,6 +119,10 @@ class SelfImprovementService:
         config_provider: ConfigProvider | None = None,
         prompt_context: PromptApplierContext | None = None,
         architecture_context: ArchitectureApplierContext | None = None,
+        clock: Clock | None = None,
+        roster: OrgRoster | None = None,
+        snapshot_builder: SnapshotBuilder | None = None,
+        group_aggregator: GroupSignalAggregator | None = None,
     ) -> None:
         self._config = config
         self._rule_engine = build_rule_engine(config)
@@ -127,7 +135,13 @@ class SelfImprovementService:
             architecture_context=architecture_context,
         )
         self._detector = build_regression_detector()
-        self._rollout_strategies = build_rollout_strategies(config)
+        self._rollout_strategies = build_rollout_strategies(
+            config,
+            clock=clock,
+            roster=roster,
+            snapshot_builder=snapshot_builder,
+            group_aggregator=group_aggregator,
+        )
 
         # Cross-deployment analytics emitter.
         builtin_names = frozenset(r.name for r in default_rules())

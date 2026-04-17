@@ -4,12 +4,20 @@ Defines group assignment, per-group metrics, and comparison
 result models used by ``ABTestRollout`` and ``ABTestComparator``.
 """
 
+import math
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Self
 from uuid import UUID  # noqa: TC003 -- Pydantic needs at runtime
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    computed_field,
+    model_validator,
+)
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic needs at runtime
 
@@ -63,16 +71,22 @@ class GroupAssignment(BaseModel):
         return self
 
 
+_MAX_QUALITY = 10.0
+
+
 class GroupMetrics(BaseModel):
-    """Aggregated metrics for a single A/B test group.
+    """Sample-backed aggregated metrics for a single A/B test group.
+
+    Raw per-agent observation tuples drive the comparator. The
+    ``avg_*`` and ``total_spend`` accessors are derived from the
+    samples so downstream callers keep their existing API.
 
     Attributes:
         group: Which group (control or treatment).
         agent_count: Number of agents in this group.
-        observation_count: Number of metric samples collected.
-        avg_quality_score: Average quality score (0-10).
-        avg_success_rate: Average task success rate (0-1).
-        total_spend: Total spend for this group (configured display currency).
+        quality_samples: Per-agent quality scores (0-10).
+        success_samples: Per-agent success rates (0-1).
+        spend_samples: Per-agent spend values (display currency).
         collected_at: When these metrics were collected.
     """
 
@@ -80,13 +94,53 @@ class GroupMetrics(BaseModel):
 
     group: ABTestGroup
     agent_count: int = Field(ge=0)
-    observation_count: int = Field(ge=0)
-    avg_quality_score: float = Field(ge=0.0, le=10.0)
-    avg_success_rate: float = Field(ge=0.0, le=1.0)
-    total_spend: float = Field(ge=0.0)
+    quality_samples: tuple[float, ...] = ()
+    success_samples: tuple[float, ...] = ()
+    spend_samples: tuple[float, ...] = ()
     collected_at: AwareDatetime = Field(
         default_factory=lambda: datetime.now(UTC),
     )
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def observation_count(self) -> int:
+        """Number of metric samples collected (tuples are aligned)."""
+        return len(self.quality_samples)
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def avg_quality_score(self) -> float:
+        """Mean of ``quality_samples``; ``0.0`` when empty."""
+        if not self.quality_samples:
+            return 0.0
+        return math.fsum(self.quality_samples) / len(self.quality_samples)
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def avg_success_rate(self) -> float:
+        """Mean of ``success_samples``; ``0.0`` when empty."""
+        if not self.success_samples:
+            return 0.0
+        return math.fsum(self.success_samples) / len(self.success_samples)
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def total_spend(self) -> float:
+        """Sum of ``spend_samples``; ``0.0`` when empty."""
+        return math.fsum(self.spend_samples)
+
+    @model_validator(mode="after")
+    def _validate_sample_alignment(self) -> Self:
+        """Sample tuples must be the same length."""
+        n = len(self.quality_samples)
+        if not (len(self.success_samples) == n and len(self.spend_samples) == n):
+            msg = (
+                "quality_samples, success_samples, and spend_samples "
+                f"must be aligned; got lengths {n}, "
+                f"{len(self.success_samples)}, {len(self.spend_samples)}"
+            )
+            raise ValueError(msg)
+        return self
 
     @model_validator(mode="after")
     def _validate_observations_require_agents(self) -> Self:
@@ -94,6 +148,23 @@ class GroupMetrics(BaseModel):
         if self.observation_count > 0 and self.agent_count == 0:
             msg = "observation_count > 0 requires agent_count > 0"
             raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_sample_bounds(self) -> Self:
+        """Quality and success samples must live in their valid ranges."""
+        for q in self.quality_samples:
+            if not 0.0 <= q <= _MAX_QUALITY:
+                msg = f"quality_samples must be in [0, 10]; got {q}"
+                raise ValueError(msg)
+        for s in self.success_samples:
+            if not 0.0 <= s <= 1.0:
+                msg = f"success_samples must be in [0, 1]; got {s}"
+                raise ValueError(msg)
+        for spend in self.spend_samples:
+            if spend < 0.0:
+                msg = f"spend_samples must be non-negative; got {spend}"
+                raise ValueError(msg)
         return self
 
 

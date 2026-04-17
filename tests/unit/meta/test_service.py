@@ -18,6 +18,7 @@ from synthorg.meta.models import (
     RolloutOutcome,
 )
 from synthorg.meta.service import SelfImprovementService
+from tests.unit.meta.rollout._fake_clock import FakeClock
 
 pytestmark = pytest.mark.unit
 
@@ -69,7 +70,7 @@ class TestSelfImprovementService:
             architecture_proposals_enabled=architecture,
             prompt_tuning_enabled=prompt_tuning,
         )
-        return SelfImprovementService(config=cfg)
+        return SelfImprovementService(config=cfg, clock=FakeClock())
 
     async def test_no_triggers_returns_empty(self) -> None:
         svc = self._svc()

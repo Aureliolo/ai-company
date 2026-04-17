@@ -1,22 +1,39 @@
-"""Before/after rollout strategy.
+"""Before/after rollout strategy with periodic regression checks.
 
-Applies the change to the whole org, snapshots metrics before
-and after, and uses the tiered regression detector to check
-for degradation during the observation window.
+Applies the proposal to the whole org, captures a baseline snapshot,
+then samples the current signal snapshot at ``check_interval_hours``
+over the proposal's ``observation_window_hours``. Regression verdicts
+terminate the loop immediately. A clean window yields SUCCESS with
+the observed elapsed time.
 """
 
+from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.models import (
     ImprovementProposal,
+    OrgBudgetSummary,
+    OrgCoordinationSummary,
+    OrgErrorSummary,
+    OrgEvolutionSummary,
+    OrgPerformanceSummary,
+    OrgScalingSummary,
+    OrgSignalSnapshot,
+    OrgTelemetrySummary,
+    RegressionThresholds,
     RegressionVerdict,
     RolloutOutcome,
     RolloutResult,
 )
+from synthorg.meta.rollout.clock import Clock, RealClock
 from synthorg.observability import get_logger
 from synthorg.observability.events.meta import (
     META_ROLLOUT_COMPLETED,
+    META_ROLLOUT_FAILED,
+    META_ROLLOUT_OBSERVATION_COMPLETED,
+    META_ROLLOUT_OBSERVATION_TICK,
+    META_ROLLOUT_REGRESSION_DETECTED,
     META_ROLLOUT_STARTED,
 )
 
@@ -25,18 +42,62 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+SnapshotBuilder = Callable[[], Awaitable[OrgSignalSnapshot]]
+"""Coroutine producing the current org-wide signal snapshot."""
+
+
+async def _default_snapshot_builder() -> OrgSignalSnapshot:
+    """Empty snapshot used when no real builder is wired."""
+    return OrgSignalSnapshot(
+        performance=OrgPerformanceSummary(
+            avg_quality_score=0.0,
+            avg_success_rate=0.0,
+            avg_collaboration_score=0.0,
+            agent_count=0,
+        ),
+        budget=OrgBudgetSummary(
+            total_spend=0.0,
+            productive_ratio=0.0,
+            coordination_ratio=0.0,
+            system_ratio=0.0,
+            forecast_confidence=0.0,
+            orchestration_overhead=0.0,
+        ),
+        coordination=OrgCoordinationSummary(),
+        scaling=OrgScalingSummary(),
+        errors=OrgErrorSummary(),
+        evolution=OrgEvolutionSummary(),
+        telemetry=OrgTelemetrySummary(),
+    )
+
 
 class BeforeAfterRollout:
-    """Applies a proposal to the whole org with observation window.
+    """Applies a proposal to the whole org with periodic regression checks.
 
-    1. Applies the proposal via the applier.
-    2. Checks for regression using the detector.
-    3. Returns SUCCESS if no regression, REGRESSED otherwise.
-
-    In the real implementation, step 2 would involve waiting
-    for the observation window and checking periodically.
-    For now, it does a single check.
+    Args:
+        clock: Clock for sleeping and timestamping (defaults to wall clock).
+        snapshot_builder: Async callable returning the current snapshot.
+        check_interval_hours: How often to poll the detector mid-window.
+        thresholds: Regression thresholds forwarded to the detector.
     """
+
+    def __init__(
+        self,
+        *,
+        clock: Clock | None = None,
+        snapshot_builder: SnapshotBuilder | None = None,
+        check_interval_hours: float = 4.0,
+        thresholds: RegressionThresholds | None = None,
+    ) -> None:
+        if check_interval_hours <= 0.0:
+            msg = "check_interval_hours must be positive"
+            raise ValueError(msg)
+        self._clock: Clock = clock or RealClock()
+        self._snapshot_builder: SnapshotBuilder = (
+            snapshot_builder or _default_snapshot_builder
+        )
+        self._check_interval_hours = check_interval_hours
+        self._thresholds = thresholds or RegressionThresholds()
 
     @property
     def name(self) -> NotBlankStr:
@@ -50,26 +111,24 @@ class BeforeAfterRollout:
         applier: ProposalApplier,
         detector: RegressionDetector,
     ) -> RolloutResult:
-        """Execute the before/after rollout.
-
-        Args:
-            proposal: The approved proposal.
-            applier: Applier for the proposal's altitude.
-            detector: Regression detector.
-
-        Returns:
-            Rollout result.
-        """
-        _ = detector  # Will use for periodic regression checks.
+        """Execute the before/after rollout with a real observation loop."""
         logger.info(
             META_ROLLOUT_STARTED,
             strategy="before_after",
             proposal_id=str(proposal.id),
+            observation_hours=proposal.observation_window_hours,
+            check_interval_hours=self._check_interval_hours,
         )
 
-        # Apply the proposal.
+        baseline = await self._snapshot_builder()
         apply_result = await applier.apply(proposal)
         if not apply_result.success:
+            logger.warning(
+                META_ROLLOUT_FAILED,
+                strategy="before_after",
+                proposal_id=str(proposal.id),
+                error=apply_result.error_message,
+            )
             return RolloutResult(
                 proposal_id=proposal.id,
                 outcome=RolloutOutcome.FAILED,
@@ -77,10 +136,69 @@ class BeforeAfterRollout:
                 details=apply_result.error_message,
             )
 
-        # Placeholder: In real impl, this would snapshot metrics,
-        # wait for observation window, and check periodically.
-        # For now, return success (regression detection is tested
-        # independently via the detector tests).
+        return await self._observe_window(
+            proposal=proposal,
+            baseline=baseline,
+            detector=detector,
+        )
+
+    async def _observe_window(
+        self,
+        *,
+        proposal: ImprovementProposal,
+        baseline: OrgSignalSnapshot,
+        detector: RegressionDetector,
+    ) -> RolloutResult:
+        """Poll the detector until the observation window closes."""
+        observation_hours = float(proposal.observation_window_hours)
+        elapsed = 0.0
+        while elapsed < observation_hours:
+            remaining = observation_hours - elapsed
+            step_hours = min(self._check_interval_hours, remaining)
+            await self._clock.sleep(step_hours * 3600.0)
+            elapsed += step_hours
+            current = await self._snapshot_builder()
+            result = await detector.check(
+                baseline=baseline,
+                current=current,
+                thresholds=self._thresholds,
+            )
+            logger.info(
+                META_ROLLOUT_OBSERVATION_TICK,
+                strategy="before_after",
+                proposal_id=str(proposal.id),
+                elapsed_hours=elapsed,
+                verdict=result.verdict.value,
+            )
+            if result.verdict == RegressionVerdict.THRESHOLD_BREACH or (
+                elapsed >= observation_hours
+                and result.verdict == RegressionVerdict.STATISTICAL_REGRESSION
+            ):
+                logger.warning(
+                    META_ROLLOUT_REGRESSION_DETECTED,
+                    strategy="before_after",
+                    proposal_id=str(proposal.id),
+                    verdict=result.verdict.value,
+                    elapsed_hours=elapsed,
+                )
+                return RolloutResult(
+                    proposal_id=proposal.id,
+                    outcome=RolloutOutcome.REGRESSED,
+                    regression_verdict=result.verdict,
+                    observation_hours_elapsed=elapsed,
+                    details=(
+                        str(result.breached_metric)
+                        if result.breached_metric is not None
+                        else None
+                    ),
+                )
+
+        logger.info(
+            META_ROLLOUT_OBSERVATION_COMPLETED,
+            strategy="before_after",
+            proposal_id=str(proposal.id),
+            observation_hours_elapsed=elapsed,
+        )
         logger.info(
             META_ROLLOUT_COMPLETED,
             strategy="before_after",
@@ -91,7 +209,5 @@ class BeforeAfterRollout:
             proposal_id=proposal.id,
             outcome=RolloutOutcome.SUCCESS,
             regression_verdict=RegressionVerdict.NO_REGRESSION,
-            observation_hours_elapsed=float(
-                proposal.observation_window_hours,
-            ),
+            observation_hours_elapsed=elapsed,
         )

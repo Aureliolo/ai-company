@@ -30,11 +30,14 @@ from synthorg.meta.rollout.regression.composite import (
 )
 from synthorg.meta.rollout.regression.statistical import (
     StatisticalDetector,
+    StatisticalSampleSource,
+    WindowSamples,
 )
 from synthorg.meta.rollout.regression.threshold import (
     ThresholdDetector,
 )
 from synthorg.meta.rollout.rollback import RollbackExecutor
+from tests.unit.meta.rollout._fake_clock import FakeClock
 
 pytestmark = pytest.mark.unit
 
@@ -92,7 +95,7 @@ def _proposal() -> ImprovementProposal:
         rollback_plan=RollbackPlan(
             operations=(
                 RollbackOperation(
-                    operation_type="revert",
+                    operation_type="revert_config",
                     target="a.b",
                     previous_value=1,
                     description="revert a.b",
@@ -177,27 +180,130 @@ class TestThresholdDetector:
 # ── StatisticalDetector ────────────────────────────────────────────
 
 
-class TestStatisticalDetector:
-    """Statistical detector tests."""
+class _FakeSampleSource:
+    """StatisticalSampleSource that routes by window_end timestamp."""
 
-    async def test_no_regression(self) -> None:
+    def __init__(
+        self,
+        *,
+        baseline: WindowSamples,
+        current: WindowSamples,
+        baseline_end,
+        current_end,
+    ) -> None:
+        self._baseline = baseline
+        self._current = current
+        self._baseline_end = baseline_end
+        self._current_end = current_end
+
+    async def fetch_for_window(self, *, window_end) -> WindowSamples:
+        if window_end == self._baseline_end:
+            return self._baseline
+        if window_end == self._current_end:
+            return self._current
+        return WindowSamples()
+
+
+def _samples(values: tuple[float, ...]) -> WindowSamples:
+    return WindowSamples(quality_samples=values)
+
+
+class TestStatisticalDetector:
+    """Statistical detector tests over Welch's t-test."""
+
+    async def test_no_source_returns_insufficient_data(self) -> None:
         detector = StatisticalDetector()
+        baseline = _snap(quality=8.0)
+        current = _snap(quality=5.0)
         result = await detector.check(
-            baseline=_snap(quality=7.5),
-            current=_snap(quality=7.3),
+            baseline=baseline,
+            current=current,
+            thresholds=_thresholds(),
+        )
+        assert result.verdict == RegressionVerdict.INSUFFICIENT_DATA
+
+    async def test_no_regression_when_means_close(self) -> None:
+        baseline = _snap(quality=7.5)
+        current = _snap(quality=7.45)
+        samples = tuple(7.5 + 0.05 * (i % 3 - 1) for i in range(20))
+        detector = StatisticalDetector(
+            min_data_points=10,
+            significance_level=0.05,
+            sample_source=_FakeSampleSource(
+                baseline=_samples(samples),
+                current=_samples(samples),
+                baseline_end=baseline.collected_at,
+                current_end=current.collected_at,
+            ),
+        )
+        result = await detector.check(
+            baseline=baseline,
+            current=current,
             thresholds=_thresholds(),
         )
         assert result.verdict == RegressionVerdict.NO_REGRESSION
 
     async def test_significant_regression(self) -> None:
-        detector = StatisticalDetector()
+        baseline = _snap(quality=8.0)
+        current = _snap(quality=5.0)
+        baseline_samples = tuple(8.0 + 0.1 * (i % 3 - 1) for i in range(20))
+        current_samples = tuple(5.0 + 0.1 * (i % 3 - 1) for i in range(20))
+        detector = StatisticalDetector(
+            min_data_points=10,
+            significance_level=0.05,
+            sample_source=_FakeSampleSource(
+                baseline=_samples(baseline_samples),
+                current=_samples(current_samples),
+                baseline_end=baseline.collected_at,
+                current_end=current.collected_at,
+            ),
+        )
         result = await detector.check(
-            baseline=_snap(quality=8.0),
-            current=_snap(quality=5.0),
+            baseline=baseline,
+            current=current,
             thresholds=_thresholds(),
         )
         assert result.verdict == RegressionVerdict.STATISTICAL_REGRESSION
         assert result.p_value is not None
+        assert result.p_value < 0.05
+        assert result.breached_metric == "quality"
+
+    async def test_insufficient_samples_returns_insufficient_data(self) -> None:
+        baseline = _snap(quality=8.0)
+        current = _snap(quality=5.0)
+        detector = StatisticalDetector(
+            min_data_points=10,
+            significance_level=0.05,
+            sample_source=_FakeSampleSource(
+                baseline=_samples((8.0, 8.1)),
+                current=_samples((5.0, 5.1)),
+                baseline_end=baseline.collected_at,
+                current_end=current.collected_at,
+            ),
+        )
+        result = await detector.check(
+            baseline=baseline,
+            current=current,
+            thresholds=_thresholds(),
+        )
+        assert result.verdict == RegressionVerdict.INSUFFICIENT_DATA
+
+    def test_invalid_min_data_points(self) -> None:
+        with pytest.raises(ValueError, match="min_data_points"):
+            StatisticalDetector(min_data_points=1)
+
+    def test_invalid_significance_level(self) -> None:
+        with pytest.raises(ValueError, match="significance_level"):
+            StatisticalDetector(significance_level=1.5)
+
+    def test_satisfies_source_protocol(self) -> None:
+        source = _FakeSampleSource(
+            baseline=WindowSamples(),
+            current=WindowSamples(),
+            baseline_end=None,
+            current_end=None,
+        )
+        assert isinstance(source, StatisticalSampleSource)
 
 
 # ── TieredRegressionDetector ──────────────────────────────────────
@@ -216,10 +322,25 @@ class TestTieredRegressionDetector:
         assert result.verdict == RegressionVerdict.THRESHOLD_BREACH
 
     async def test_statistical_fires_when_threshold_ok(self) -> None:
-        detector = TieredRegressionDetector()
+        baseline = _snap(quality=8.0)
+        current = _snap(quality=6.5)
+        baseline_samples = tuple(8.0 + 0.1 * (i % 3 - 1) for i in range(20))
+        current_samples = tuple(6.5 + 0.1 * (i % 3 - 1) for i in range(20))
+        detector = TieredRegressionDetector(
+            statistical_detector=StatisticalDetector(
+                min_data_points=10,
+                significance_level=0.05,
+                sample_source=_FakeSampleSource(
+                    baseline=_samples(baseline_samples),
+                    current=_samples(current_samples),
+                    baseline_end=baseline.collected_at,
+                    current_end=current.collected_at,
+                ),
+            ),
+        )
         result = await detector.check(
-            baseline=_snap(quality=8.0),
-            current=_snap(quality=6.5),
+            baseline=baseline,
+            current=current,
             thresholds=RegressionThresholds(quality_drop=0.50),
         )
         assert result.verdict == RegressionVerdict.STATISTICAL_REGRESSION
@@ -241,7 +362,21 @@ class TestRollbackExecutor:
     """Rollback executor tests."""
 
     async def test_executes_plan(self) -> None:
-        executor = RollbackExecutor()
+        from synthorg.core.types import NotBlankStr
+        from synthorg.meta.rollout.inverse_dispatch import RollbackHandler
+
+        class _SpyHandler:
+            def __init__(self) -> None:
+                self.calls: list[RollbackOperation] = []
+
+            async def revert(self, operation: RollbackOperation) -> int:
+                self.calls.append(operation)
+                return 1
+
+        handler: RollbackHandler = _SpyHandler()
+        executor = RollbackExecutor(
+            handlers={NotBlankStr("revert_config"): handler},
+        )
         result = await executor.execute(_proposal())
         assert result.success
         assert result.changes_applied == 1
@@ -306,16 +441,23 @@ class TestBeforeAfterRollout:
     """Before/after rollout tests."""
 
     async def test_successful_rollout(self) -> None:
-        rollout = BeforeAfterRollout()
+        rollout = BeforeAfterRollout(
+            clock=FakeClock(),
+            check_interval_hours=4.0,
+        )
         result = await rollout.execute(
             proposal=_proposal(),
             applier=_StubApplier(),
             detector=_StubDetector(),
         )
         assert result.outcome == RolloutOutcome.SUCCESS
+        assert result.observation_hours_elapsed == 48.0
 
     async def test_failed_apply(self) -> None:
-        rollout = BeforeAfterRollout()
+        rollout = BeforeAfterRollout(
+            clock=FakeClock(),
+            check_interval_hours=4.0,
+        )
         result = await rollout.execute(
             proposal=_proposal(),
             applier=_FailApplier(),
@@ -331,7 +473,11 @@ class TestCanarySubsetRollout:
     """Canary rollout tests."""
 
     async def test_successful_canary(self) -> None:
-        rollout = CanarySubsetRollout(canary_fraction=0.2)
+        rollout = CanarySubsetRollout(
+            canary_fraction=0.2,
+            clock=FakeClock(),
+            check_interval_hours=4.0,
+        )
         result = await rollout.execute(
             proposal=_proposal(),
             applier=_StubApplier(),
@@ -340,7 +486,10 @@ class TestCanarySubsetRollout:
         assert result.outcome == RolloutOutcome.SUCCESS
 
     async def test_failed_canary_apply(self) -> None:
-        rollout = CanarySubsetRollout()
+        rollout = CanarySubsetRollout(
+            clock=FakeClock(),
+            check_interval_hours=4.0,
+        )
         result = await rollout.execute(
             proposal=_proposal(),
             applier=_FailApplier(),

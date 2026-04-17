@@ -1,16 +1,23 @@
 """A/B test group metrics comparator.
 
 Compares control vs treatment group metrics using a two-layer
-approach: threshold check for catastrophic regression, then
-statistical heuristic for subtle improvement detection.
+approach: threshold short-circuit for catastrophic regression, then
+Welch's unequal-variance t-test over the per-agent ``quality_samples``
+for real statistical significance.
 """
 
+import math
 from typing import TYPE_CHECKING
 
 from synthorg.meta.rollout.ab_models import (
     ABTestComparison,
     ABTestVerdict,
     GroupMetrics,
+)
+from synthorg.meta.rollout.regression.welch import (
+    InsufficientDataError,
+    ZeroVarianceError,
+    welch_t_test,
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.meta import (
@@ -24,6 +31,8 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+_MIN_SAMPLES_FOR_VARIANCE = 2
+
 
 class ABTestComparator:
     """Compares control vs treatment group metrics.
@@ -31,16 +40,20 @@ class ABTestComparator:
     Layer 1: Threshold check -- treatment catastrophically worse
     on any primary metric triggers immediate TREATMENT_REGRESSED.
 
-    Layer 2: Statistical heuristic -- if treatment shows meaningful
-    improvement (effect > threshold), declares TREATMENT_WINS.
-
-    Otherwise returns INCONCLUSIVE.
+    Layer 2: Statistical + practical significance -- declares
+    TREATMENT_WINS only when Welch's t-test on ``quality_samples``
+    rejects the null (``p < significance_level``) AND the mean
+    quality improvement exceeds ``improvement_threshold``. Both
+    gates are required: a stat-sig difference of 0.1 on a 10-point
+    scale is probably not worth the rollout.
 
     Args:
         min_observations: Minimum metric samples per group
             before comparison is meaningful.
-        improvement_threshold: Minimum improvement ratio to
-            declare treatment as winner.
+        improvement_threshold: Minimum practical improvement
+            ratio (treatment vs control mean) to declare
+            treatment as winner.
+        significance_level: Welch's t-test alpha (default 0.05).
     """
 
     def __init__(
@@ -48,9 +61,14 @@ class ABTestComparator:
         *,
         min_observations: int = 10,
         improvement_threshold: float = 0.15,
+        significance_level: float = 0.05,
     ) -> None:
+        if not 0.0 < significance_level < 1.0:
+            msg = "significance_level must be in (0, 1)"
+            raise ValueError(msg)
         self._min_observations = min_observations
         self._improvement_threshold = improvement_threshold
+        self._significance_level = significance_level
 
     async def compare(
         self,
@@ -89,7 +107,11 @@ class ABTestComparator:
             )
 
         effect, p_value = _compute_effect(control, treatment)
-        if effect > self._improvement_threshold:
+        practical = _practical_improvement(control, treatment)
+        if (
+            p_value < self._significance_level
+            and practical > self._improvement_threshold
+        ):
             return _build_winner_result(
                 control,
                 treatment,
@@ -110,8 +132,11 @@ def _insufficient_observations(
     treatment: GroupMetrics,
     min_obs: int,
 ) -> bool:
-    """Check if either group has fewer observations than required."""
-    return control.observation_count < min_obs or treatment.observation_count < min_obs
+    """Check if either group has fewer samples than required."""
+    return (
+        len(control.quality_samples) < min_obs
+        or len(treatment.quality_samples) < min_obs
+    )
 
 
 def _build_insufficient_result(
@@ -235,23 +260,68 @@ def _compute_effect(
     control: GroupMetrics,
     treatment: GroupMetrics,
 ) -> tuple[float, float]:
-    """Compute heuristic effect size and p-value proxy.
+    """Compute Welch's effect size (Cohen's d) and two-sided p-value.
+
+    Uses the per-agent ``quality_samples`` from each group. When the
+    test cannot be run (insufficient data, zero variance) the effect
+    collapses to ``0.0`` and the p-value to ``1.0`` so downstream
+    callers treat the comparison as inconclusive.
 
     Returns:
-        Tuple of (effect_size, p_value_proxy). Real implementation
-        would use scipy.stats.ttest_ind with Welch's correction.
+        Tuple of ``(cohen_d, p_two_sided)``. ``cohen_d`` is clamped
+        to non-negative values because downstream only cares about
+        improvement magnitude.
     """
-    # Heuristic: use quality improvement ratio as effect proxy.
-    if control.avg_quality_score > 0.0:
-        improvement = (
-            treatment.avg_quality_score - control.avg_quality_score
-        ) / control.avg_quality_score
-    else:
-        improvement = 0.0
+    try:
+        welch = welch_t_test(
+            treatment.quality_samples,
+            control.quality_samples,
+        )
+    except InsufficientDataError, ZeroVarianceError:
+        return 0.0, 1.0
 
-    # P-value proxy: inverse of improvement magnitude.
-    # Real implementation would compute actual Welch's t-test.
-    effect = max(improvement, 0.0)
-    p_value = max(0.01, 1.0 - effect * 5.0) if effect > 0.0 else 1.0
+    pooled_sd = _pooled_sd(
+        control.quality_samples,
+        treatment.quality_samples,
+    )
+    if pooled_sd == 0.0:
+        return 0.0, welch.p_two_sided
+    cohen_d = (
+        sum(treatment.quality_samples) / len(treatment.quality_samples)
+        - sum(control.quality_samples) / len(control.quality_samples)
+    ) / pooled_sd
+    return max(cohen_d, 0.0), welch.p_two_sided
 
-    return effect, p_value
+
+def _pooled_sd(
+    control: tuple[float, ...],
+    treatment: tuple[float, ...],
+) -> float:
+    """Simple pooled standard deviation for Cohen's d."""
+    n_a = len(control)
+    n_b = len(treatment)
+    if n_a < _MIN_SAMPLES_FOR_VARIANCE or n_b < _MIN_SAMPLES_FOR_VARIANCE:
+        return 0.0
+    mean_a = sum(control) / n_a
+    mean_b = sum(treatment) / n_b
+    ss_a = math.fsum((x - mean_a) ** 2 for x in control)
+    ss_b = math.fsum((x - mean_b) ** 2 for x in treatment)
+    pooled_var = (ss_a + ss_b) / (n_a + n_b - 2)
+    return math.sqrt(pooled_var) if pooled_var > 0.0 else 0.0
+
+
+def _practical_improvement(
+    control: GroupMetrics,
+    treatment: GroupMetrics,
+) -> float:
+    """Treatment mean quality as a fraction above control mean.
+
+    Returns ``0.0`` if control has zero mean (treat as no reference).
+    Negative values (treatment worse) also return ``0.0`` -- the
+    caller uses this to gate winner declarations.
+    """
+    c = control.avg_quality_score
+    t = treatment.avg_quality_score
+    if c <= 0.0:
+        return 0.0
+    return max((t - c) / c, 0.0)

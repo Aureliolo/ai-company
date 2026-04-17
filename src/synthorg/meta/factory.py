@@ -9,6 +9,7 @@ from copy import deepcopy
 from types import MappingProxyType
 from typing import TYPE_CHECKING, assert_never
 
+from synthorg.core.types import NotBlankStr
 from synthorg.meta.appliers.architecture_applier import (
     ArchitectureApplier,
     ArchitectureApplierContext,
@@ -33,9 +34,11 @@ from synthorg.meta.models import ProposalAltitude
 from synthorg.meta.rollout.ab_test import ABTestRollout
 from synthorg.meta.rollout.before_after import BeforeAfterRollout
 from synthorg.meta.rollout.canary import CanarySubsetRollout
+from synthorg.meta.rollout.inverse_dispatch import default_rollback_handlers
 from synthorg.meta.rollout.regression.composite import (
     TieredRegressionDetector,
 )
+from synthorg.meta.rollout.rollback import RollbackExecutor
 from synthorg.meta.rules.builtin import default_rules
 from synthorg.meta.rules.engine import RuleEngine
 from synthorg.meta.strategies.architecture import (
@@ -60,6 +63,17 @@ if TYPE_CHECKING:
         ProposalApplier,
         ProposalGuard,
     )
+    from synthorg.meta.rollout.before_after import SnapshotBuilder
+    from synthorg.meta.rollout.clock import Clock
+    from synthorg.meta.rollout.group_aggregator import GroupSignalAggregator
+    from synthorg.meta.rollout.inverse_dispatch import (
+        ArchitectureMutator,
+        CodeMutator,
+        ConfigMutator,
+        PromptMutator,
+        RollbackHandler,
+    )
+    from synthorg.meta.rollout.roster import OrgRoster
     from synthorg.providers.base import BaseCompletionProvider
 
 logger = get_logger(__name__)
@@ -286,32 +300,92 @@ def build_confidence_adjuster(
 
 def build_rollout_strategies(
     config: SelfImprovementConfig | None = None,
+    *,
+    clock: Clock | None = None,
+    roster: OrgRoster | None = None,
+    snapshot_builder: SnapshotBuilder | None = None,
+    group_aggregator: GroupSignalAggregator | None = None,
 ) -> Mapping[str, BeforeAfterRollout | CanarySubsetRollout | ABTestRollout]:
-    """Build available rollout strategies.
+    """Build available rollout strategies wired with injected dependencies.
 
     Args:
-        config: Self-improvement configuration. When provided,
-            A/B test strategy uses its rollout.ab_test settings.
+        config: Self-improvement configuration. When provided, supplies
+            A/B test config, observation window, and check interval.
+        clock: Clock for sleeping and timestamping. Defaults to
+            ``RealClock`` when omitted.
+        roster: Live agent roster. Defaults to ``NoOpOrgRoster``; the
+            service layer should inject a real roster.
+        snapshot_builder: Async factory producing the current signal
+            snapshot. Defaults to an empty snapshot.
+        group_aggregator: Per-group sample aggregator. Defaults to a
+            null aggregator that emits no samples.
 
     Returns:
         Read-only mapping of strategy name to rollout strategy.
     """
     ab_cfg = config.rollout.ab_test if config else None
-    return MappingProxyType(
-        deepcopy(
-            {
-                "before_after": BeforeAfterRollout(),
-                "canary": CanarySubsetRollout(),
-                "ab_test": ABTestRollout(
-                    control_fraction=(ab_cfg.control_fraction if ab_cfg else 0.5),
-                    min_agents_per_group=(ab_cfg.min_agents_per_group if ab_cfg else 5),
-                    min_observations_per_group=(
-                        ab_cfg.min_observations_per_group if ab_cfg else 10
-                    ),
-                    improvement_threshold=(
-                        ab_cfg.improvement_threshold if ab_cfg else 0.15
-                    ),
-                ),
-            }
+    check_interval = (
+        float(config.rollout.regression_check_interval_hours) if config else 4.0
+    )
+    strategies: dict[str, BeforeAfterRollout | CanarySubsetRollout | ABTestRollout] = {
+        "before_after": BeforeAfterRollout(
+            clock=clock,
+            snapshot_builder=snapshot_builder,
+            check_interval_hours=check_interval,
+        ),
+        "canary": CanarySubsetRollout(
+            clock=clock,
+            roster=roster,
+            snapshot_builder=snapshot_builder,
+            check_interval_hours=check_interval,
+        ),
+        "ab_test": ABTestRollout(
+            control_fraction=(ab_cfg.control_fraction if ab_cfg else 0.5),
+            min_agents_per_group=(ab_cfg.min_agents_per_group if ab_cfg else 5),
+            min_observations_per_group=(
+                ab_cfg.min_observations_per_group if ab_cfg else 10
+            ),
+            improvement_threshold=(ab_cfg.improvement_threshold if ab_cfg else 0.15),
+            clock=clock,
+            roster=roster,
+            group_aggregator=group_aggregator,
+            check_interval_hours=check_interval,
+        ),
+    }
+    return MappingProxyType(strategies)
+
+
+def build_rollback_executor(
+    *,
+    config_mutator: ConfigMutator,
+    prompt_mutator: PromptMutator,
+    architecture_mutator: ArchitectureMutator,
+    code_mutator: CodeMutator,
+    extra_handlers: Mapping[str, RollbackHandler] | None = None,
+) -> RollbackExecutor:
+    """Assemble a RollbackExecutor with the default handler mapping.
+
+    Args:
+        config_mutator: Writes config leaves at dotted paths.
+        prompt_mutator: Restores org-wide prompt principles.
+        architecture_mutator: Restores structural entities.
+        code_mutator: Reverts source files to previous contents.
+        extra_handlers: Additional handlers keyed by operation type,
+            merged on top of the defaults (later keys win).
+
+    Returns:
+        A RollbackExecutor ready to dispatch the four built-in
+        operation types plus any extras.
+    """
+    handlers: dict = dict(
+        default_rollback_handlers(
+            config=config_mutator,
+            prompt=prompt_mutator,
+            architecture=architecture_mutator,
+            code=code_mutator,
         )
     )
+    if extra_handlers:
+        for key, handler in extra_handlers.items():
+            handlers[NotBlankStr(key)] = handler
+    return RollbackExecutor(handlers=handlers)

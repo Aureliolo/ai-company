@@ -73,6 +73,25 @@ def _proposal(
     )
 
 
+def _ramp(center: float, observations: int, spread: float) -> tuple[float, ...]:
+    """Build a deterministic symmetric ramp around ``center``.
+
+    Preserves the requested mean exactly when ``observations`` is
+    even, and introduces non-zero variance so Welch's t-test can run.
+    Spread is clamped automatically when ``center`` is near zero so
+    samples stay non-negative (quality/success/spend fields require it).
+    """
+    if observations == 0:
+        return ()
+    if observations == 1:
+        return (center,)
+    safe_spread = min(spread, center) if center >= 0.0 else 0.0
+    if safe_spread <= 0.0:
+        return tuple(center for _ in range(observations))
+    step = 2 * safe_spread / (observations - 1)
+    return tuple(center - safe_spread + step * i for i in range(observations))
+
+
 def _group_metrics(  # noqa: PLR0913
     group: ABTestGroup,
     *,
@@ -82,18 +101,61 @@ def _group_metrics(  # noqa: PLR0913
     observations: int = 20,
     agents: int = 10,
 ) -> GroupMetrics:
+    """Build sample-backed GroupMetrics matching the legacy aggregates.
+
+    Expands scalar ``quality``/``success``/``spend`` into deterministic
+    aligned sample tuples. The sample mean equals the requested
+    ``quality``/``success`` and the sum of ``spend_samples`` equals
+    the requested ``spend`` (both exactly when ``observations`` is
+    even). Samples ramp symmetrically so Welch's t-test sees non-zero
+    variance.
+    """
+    per_agent_spend = spend / observations if observations > 0 else 0.0
     return GroupMetrics(
         group=group,
         agent_count=agents,
-        observation_count=observations,
-        avg_quality_score=quality,
-        avg_success_rate=success,
-        total_spend=spend,
+        quality_samples=_ramp(quality, observations, 0.2),
+        success_samples=_ramp(success, observations, 0.02),
+        spend_samples=_ramp(per_agent_spend, observations, 0.0),
     )
 
 
 def _thresholds() -> RegressionThresholds:
     return RegressionThresholds()
+
+
+class _StaticRoster:
+    """OrgRoster yielding a fixed agent tuple."""
+
+    def __init__(self, count: int = 10) -> None:
+        from synthorg.core.types import NotBlankStr
+
+        self._agents = tuple(NotBlankStr(f"agent-{i}") for i in range(count))
+
+    async def list_agent_ids(self):
+        return self._agents
+
+
+def _ab_rollout(
+    *,
+    control_fraction: float = 0.5,
+    min_agents_per_group: int = 1,
+    min_observations_per_group: int = 10,
+    improvement_threshold: float = 0.15,
+    roster_size: int = 10,
+):
+    """Construct an ABTestRollout wired with FakeClock + static roster."""
+    from tests.unit.meta.rollout._fake_clock import FakeClock
+
+    return ABTestRollout(
+        control_fraction=control_fraction,
+        min_agents_per_group=min_agents_per_group,
+        min_observations_per_group=min_observations_per_group,
+        improvement_threshold=improvement_threshold,
+        clock=FakeClock(),
+        roster=_StaticRoster(roster_size),
+        check_interval_hours=4.0,
+    )
 
 
 class _StubApplier:
@@ -240,15 +302,15 @@ class TestGroupMetrics:
         assert m.observation_count == 20
 
     def test_quality_bounds(self) -> None:
-        with pytest.raises(ValueError, match="greater than or equal"):
+        with pytest.raises(ValueError, match=r"quality_samples must be in"):
             _group_metrics(ABTestGroup.CONTROL, quality=-1.0)
-        with pytest.raises(ValueError, match="less than or equal"):
+        with pytest.raises(ValueError, match=r"quality_samples must be in"):
             _group_metrics(ABTestGroup.CONTROL, quality=11.0)
 
     def test_success_rate_bounds(self) -> None:
-        with pytest.raises(ValueError, match="greater than or equal"):
+        with pytest.raises(ValueError, match=r"success_samples must be in"):
             _group_metrics(ABTestGroup.CONTROL, success=-0.1)
-        with pytest.raises(ValueError, match="less than or equal"):
+        with pytest.raises(ValueError, match=r"success_samples must be in"):
             _group_metrics(ABTestGroup.CONTROL, success=1.1)
 
     def test_observations_without_agents_rejected(self) -> None:
@@ -619,10 +681,7 @@ class TestABTestRollout:
             ABTestRollout(min_agents_per_group=0)
 
     async def test_successful_execute(self) -> None:
-        rollout = ABTestRollout(
-            control_fraction=0.5,
-            min_agents_per_group=1,
-        )
+        rollout = _ab_rollout()
         result = await rollout.execute(
             proposal=_proposal(),
             applier=_StubApplier(),
@@ -634,10 +693,7 @@ class TestABTestRollout:
         )
 
     async def test_failed_apply(self) -> None:
-        rollout = ABTestRollout(
-            control_fraction=0.5,
-            min_agents_per_group=1,
-        )
+        rollout = _ab_rollout()
         result = await rollout.execute(
             proposal=_proposal(),
             applier=_FailApplier(),
@@ -646,10 +702,7 @@ class TestABTestRollout:
         assert result.outcome == RolloutOutcome.FAILED
 
     async def test_too_few_agents_inconclusive(self) -> None:
-        rollout = ABTestRollout(
-            control_fraction=0.5,
-            min_agents_per_group=100,
-        )
+        rollout = _ab_rollout(min_agents_per_group=100)
         result = await rollout.execute(
             proposal=_proposal(),
             applier=_StubApplier(),

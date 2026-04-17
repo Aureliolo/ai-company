@@ -1,8 +1,20 @@
 """Statistical regression detector (Layer 2).
 
-Uses Welch's t-test after the observation window to detect
-statistically significant degradation.
+Runs Welch's unequal-variance t-test over per-agent / per-task samples
+captured during the observation window. A regression fires when the
+current window's quality or success samples are significantly worse
+than the baseline, or when cost samples are significantly higher.
+
+The detector queries samples through an injected
+``StatisticalSampleSource`` keyed by the snapshot timestamps. When no
+source is wired the detector yields ``INSUFFICIENT_DATA``: the
+detector refuses to fire without data rather than guessing.
 """
+
+from datetime import datetime  # noqa: TC003 -- Pydantic needs at runtime
+from typing import Protocol, runtime_checkable
+
+from pydantic import BaseModel, ConfigDict
 
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.models import (
@@ -11,26 +23,94 @@ from synthorg.meta.models import (
     RegressionThresholds,
     RegressionVerdict,
 )
+from synthorg.meta.rollout.regression.welch import (
+    InsufficientDataError,
+    WelchResult,
+    ZeroVarianceError,
+    welch_t_test,
+)
 from synthorg.observability import get_logger
+from synthorg.observability.events.meta import (
+    META_REGRESSION_STATISTICAL,
+    META_REGRESSION_STATISTICAL_INSUFFICIENT_DATA,
+)
 
 logger = get_logger(__name__)
 
 
-class StatisticalDetector:
-    """Detects regression via statistical significance testing.
+class WindowSamples(BaseModel):
+    """Raw per-sample values for the statistical detector.
 
-    After the observation window, compares baseline and current
-    metrics using Welch's t-test. Only fires if enough data points
-    accumulated and the difference is statistically significant.
-
-    Args:
-        min_data_points: Minimum data points per metric for the test.
+    Each tuple is one observation per data point (per-agent or
+    per-task, depending on the source). ``quality_samples`` and
+    ``success_samples`` are compared in the direction "baseline
+    better than current"; ``cost_samples`` in the direction
+    "current higher than baseline".
     """
 
-    _HEURISTIC_DROP_THRESHOLD = 0.15
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    def __init__(self, *, min_data_points: int = 10) -> None:
+    quality_samples: tuple[float, ...] = ()
+    success_samples: tuple[float, ...] = ()
+    cost_samples: tuple[float, ...] = ()
+
+
+@runtime_checkable
+class StatisticalSampleSource(Protocol):
+    """Returns the raw samples backing a snapshot window."""
+
+    async def fetch_for_window(
+        self,
+        *,
+        window_end: datetime,
+    ) -> WindowSamples:
+        """Return per-observation samples for the window ending at ``window_end``."""
+        ...
+
+
+class NoSampleSource:
+    """Default source that never returns samples.
+
+    Forces the detector to yield ``INSUFFICIENT_DATA`` until a real
+    source is wired in. Keeps the detector honest by not inventing
+    samples out of thin air.
+    """
+
+    async def fetch_for_window(
+        self,
+        *,
+        window_end: datetime,
+    ) -> WindowSamples:
+        """Return empty samples regardless of the window."""
+        _ = window_end
+        return WindowSamples()
+
+
+class StatisticalDetector:
+    """Layer 2 regression detector using Welch's t-test.
+
+    Args:
+        min_data_points: Minimum samples per arm before Welch runs.
+        significance_level: Alpha for the two-sided hypothesis test.
+        sample_source: Fetches raw samples keyed by snapshot time.
+    """
+
+    def __init__(
+        self,
+        *,
+        min_data_points: int = 10,
+        significance_level: float = 0.05,
+        sample_source: StatisticalSampleSource | None = None,
+    ) -> None:
+        if min_data_points < 2:  # noqa: PLR2004 -- Welch requires n>=2
+            msg = "min_data_points must be >= 2 for Welch's t-test"
+            raise ValueError(msg)
+        if not 0.0 < significance_level < 1.0:
+            msg = "significance_level must be in (0, 1)"
+            raise ValueError(msg)
         self._min_data_points = min_data_points
+        self._alpha = significance_level
+        self._source = sample_source or NoSampleSource()
 
     @property
     def name(self) -> NotBlankStr:
@@ -44,39 +124,112 @@ class StatisticalDetector:
         current: OrgSignalSnapshot,
         thresholds: RegressionThresholds,
     ) -> RegressionResult:
-        """Check for statistically significant regression.
-
-        Args:
-            baseline: Signal snapshot from before the change.
-            current: Signal snapshot from after the change.
-            thresholds: Configurable thresholds (p-value).
-
-        Returns:
-            Regression result.
-        """
-        # Placeholder: real implementation uses scipy.stats.ttest_ind
-        # with Welch's correction on accumulated per-task metrics.
-        # For now, check if the aggregate values show degradation
-        # beyond the significance level threshold.
-        _ = thresholds
-
-        base_q = baseline.performance.avg_quality_score
-        curr_q = current.performance.avg_quality_score
-
-        if base_q > 0.0 and curr_q < base_q:
-            drop_ratio = (base_q - curr_q) / base_q
-            # Rough heuristic: large drops are "significant".
-            if drop_ratio > self._HEURISTIC_DROP_THRESHOLD:
-                return RegressionResult(
-                    verdict=RegressionVerdict.STATISTICAL_REGRESSION,
-                    breached_metric="quality",
-                    baseline_value=base_q,
-                    current_value=curr_q,
-                    # Heuristic proxy, not a true p-value.
-                    # TODO: replace with Welch's t-test.
-                    p_value=drop_ratio,
-                )
-
-        return RegressionResult(
-            verdict=RegressionVerdict.NO_REGRESSION,
+        """Check for a statistically significant regression."""
+        _ = thresholds  # alpha lives on the detector; keep signature stable
+        baseline_samples = await self._source.fetch_for_window(
+            window_end=baseline.collected_at,
         )
+        current_samples = await self._source.fetch_for_window(
+            window_end=current.collected_at,
+        )
+
+        verdict = self._check_metric(
+            metric="quality",
+            baseline=baseline_samples.quality_samples,
+            current=current_samples.quality_samples,
+            lower_is_worse=True,
+            base_value=baseline.performance.avg_quality_score,
+            curr_value=current.performance.avg_quality_score,
+        )
+        if verdict is not None:
+            return verdict
+        verdict = self._check_metric(
+            metric="success_rate",
+            baseline=baseline_samples.success_samples,
+            current=current_samples.success_samples,
+            lower_is_worse=True,
+            base_value=baseline.performance.avg_success_rate,
+            curr_value=current.performance.avg_success_rate,
+        )
+        if verdict is not None:
+            return verdict
+        verdict = self._check_metric(
+            metric="cost",
+            baseline=baseline_samples.cost_samples,
+            current=current_samples.cost_samples,
+            lower_is_worse=False,
+            base_value=baseline.budget.total_spend,
+            curr_value=current.budget.total_spend,
+        )
+        if verdict is not None:
+            return verdict
+
+        if self._all_insufficient(baseline_samples, current_samples):
+            logger.info(
+                META_REGRESSION_STATISTICAL_INSUFFICIENT_DATA,
+                min_required=self._min_data_points,
+            )
+            return RegressionResult(
+                verdict=RegressionVerdict.INSUFFICIENT_DATA,
+            )
+        return RegressionResult(verdict=RegressionVerdict.NO_REGRESSION)
+
+    def _check_metric(  # noqa: PLR0913
+        self,
+        *,
+        metric: str,
+        baseline: tuple[float, ...],
+        current: tuple[float, ...],
+        lower_is_worse: bool,
+        base_value: float,
+        curr_value: float,
+    ) -> RegressionResult | None:
+        """Run Welch on a single metric. Returns a verdict on regression."""
+        if (
+            len(baseline) < self._min_data_points
+            or len(current) < self._min_data_points
+        ):
+            return None
+        try:
+            welch: WelchResult = welch_t_test(baseline, current)
+        except InsufficientDataError, ZeroVarianceError:
+            return None
+        if welch.p_two_sided >= self._alpha:
+            return None
+        if lower_is_worse:
+            if curr_value >= base_value:
+                return None
+        elif curr_value <= base_value:
+            return None
+        logger.warning(
+            META_REGRESSION_STATISTICAL,
+            metric=metric,
+            p_value=welch.p_two_sided,
+            t=welch.t,
+            df=welch.df,
+        )
+        return RegressionResult(
+            verdict=RegressionVerdict.STATISTICAL_REGRESSION,
+            breached_metric=NotBlankStr(metric),
+            baseline_value=base_value,
+            current_value=curr_value,
+            p_value=welch.p_two_sided,
+        )
+
+    def _all_insufficient(
+        self,
+        baseline: WindowSamples,
+        current: WindowSamples,
+    ) -> bool:
+        """True when every metric has fewer than ``min_data_points`` in one arm."""
+        for base_tuple, curr_tuple in (
+            (baseline.quality_samples, current.quality_samples),
+            (baseline.success_samples, current.success_samples),
+            (baseline.cost_samples, current.cost_samples),
+        ):
+            if (
+                len(base_tuple) >= self._min_data_points
+                and len(curr_tuple) >= self._min_data_points
+            ):
+                return False
+        return True

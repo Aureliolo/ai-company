@@ -1,11 +1,14 @@
 """A/B test rollout strategy.
 
-Splits the org into control and treatment groups, applies
-the proposal to the treatment group only, and compares
-group metrics statistically to declare a winner.
+Splits the live roster into control and treatment groups, applies the
+proposal to the treatment group, then samples per-agent metrics over
+the observation window. The comparator declares a winner when Welch's
+t-test finds statistical significance and the mean quality improvement
+exceeds the configured threshold.
 """
 
 import hashlib
+from datetime import timedelta
 from typing import TYPE_CHECKING
 
 from synthorg.core.types import NotBlankStr
@@ -23,12 +26,20 @@ from synthorg.meta.rollout.ab_models import (
     GroupAssignment,
     GroupMetrics,
 )
+from synthorg.meta.rollout.clock import Clock, RealClock
+from synthorg.meta.rollout.group_aggregator import (
+    GroupSamples,
+    GroupSignalAggregator,
+)
+from synthorg.meta.rollout.roster import NoOpOrgRoster, OrgRoster
 from synthorg.observability import get_logger
 from synthorg.observability.events.meta import (
     META_ABTEST_GROUPS_ASSIGNED,
     META_ABTEST_OBSERVATION_STARTED,
     META_ROLLOUT_COMPLETED,
     META_ROLLOUT_FAILED,
+    META_ROLLOUT_OBSERVATION_COMPLETED,
+    META_ROLLOUT_OBSERVATION_TICK,
     META_ROLLOUT_STARTED,
 )
 
@@ -40,27 +51,57 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
+class _NullGroupAggregator:
+    """Aggregator returning no samples. Used as a safe default."""
+
+    async def aggregate_for_agents(
+        self,
+        *,
+        agent_ids: tuple[NotBlankStr, ...],
+        since,
+        until,
+    ) -> GroupSamples:
+        _ = agent_ids, since, until
+        return GroupSamples()
+
+
 class ABTestRollout:
     """A/B test rollout: split org, apply to treatment, compare.
 
     Splits agents into control (unchanged) and treatment (proposal
     applied) groups using deterministic hash-based assignment.
-    After observation, compares group metrics to declare a winner.
+    During the observation window the strategy samples per-agent
+    metrics on each tick; mid-window regressions exit early, and the
+    final tick's comparison produces the verdict.
 
     Args:
         control_fraction: Fraction of agents for control (default 0.5).
         min_agents_per_group: Minimum agents required per group.
-        comparator: ABTestComparator instance (injectable for testing).
+        min_observations_per_group: Minimum sample size before Welch runs.
+        improvement_threshold: Minimum practical improvement ratio.
+        significance_level: Welch's t-test alpha.
+        comparator: Comparator instance (injectable for testing).
+        clock: Clock for sleeping and timestamping.
+        roster: Source of the live agent list.
+        group_aggregator: Collects per-group samples during observation.
+        check_interval_hours: Polling cadence inside the window.
+        thresholds: Regression thresholds for catastrophic short-circuit.
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         *,
         control_fraction: float = 0.5,
         min_agents_per_group: int = 5,
         min_observations_per_group: int = 10,
         improvement_threshold: float = 0.15,
+        significance_level: float = 0.05,
         comparator: ABTestComparator | None = None,
+        clock: Clock | None = None,
+        roster: OrgRoster | None = None,
+        group_aggregator: GroupSignalAggregator | None = None,
+        check_interval_hours: float = 4.0,
+        thresholds: RegressionThresholds | None = None,
     ) -> None:
         if control_fraction <= 0.0 or control_fraction >= 1.0:
             msg = "control_fraction must be in the range (0, 1) exclusive."
@@ -68,12 +109,23 @@ class ABTestRollout:
         if min_agents_per_group < 1:
             msg = "min_agents_per_group must be >= 1."
             raise ValueError(msg)
+        if check_interval_hours <= 0.0:
+            msg = "check_interval_hours must be positive"
+            raise ValueError(msg)
         self._control_fraction = control_fraction
         self._min_agents_per_group = min_agents_per_group
         self._comparator = comparator or ABTestComparator(
             min_observations=min_observations_per_group,
             improvement_threshold=improvement_threshold,
+            significance_level=significance_level,
         )
+        self._clock: Clock = clock or RealClock()
+        self._roster: OrgRoster = roster or NoOpOrgRoster()
+        self._group_aggregator: GroupSignalAggregator = (
+            group_aggregator or _NullGroupAggregator()
+        )
+        self._check_interval_hours = check_interval_hours
+        self._thresholds = thresholds or RegressionThresholds()
 
     @property
     def name(self) -> NotBlankStr:
@@ -87,30 +139,33 @@ class ABTestRollout:
         applier: ProposalApplier,
         detector: RegressionDetector,
     ) -> RolloutResult:
-        """Execute A/B test rollout.
-
-        Args:
-            proposal: The approved proposal.
-            applier: Applier for the proposal's altitude.
-            detector: Regression detector (unused; A/B uses comparator).
-
-        Returns:
-            Rollout result.
-        """
-        _ = detector  # A/B uses comparator for group comparison.
+        """Execute A/B test rollout."""
+        _ = detector  # A/B uses comparator rather than RegressionDetector.
         logger.info(
             META_ROLLOUT_STARTED,
             strategy="ab_test",
             proposal_id=str(proposal.id),
             control_fraction=self._control_fraction,
+            observation_hours=proposal.observation_window_hours,
         )
 
-        assignment = _assign_and_validate(
-            proposal,
-            self._control_fraction,
-            self._min_agents_per_group,
+        agent_ids = await self._roster.list_agent_ids()
+        assignment = ABTestRollout.assign_groups(
+            agent_ids=agent_ids,
+            proposal_id=proposal.id,
+            control_fraction=self._control_fraction,
         )
-        if assignment is None:
+        logger.info(
+            META_ABTEST_GROUPS_ASSIGNED,
+            proposal_id=str(proposal.id),
+            total_agents=len(agent_ids),
+            control_count=len(assignment.control_agent_ids),
+            treatment_count=len(assignment.treatment_agent_ids),
+        )
+        if (
+            len(assignment.control_agent_ids) < self._min_agents_per_group
+            or len(assignment.treatment_agent_ids) < self._min_agents_per_group
+        ):
             return RolloutResult(
                 proposal_id=proposal.id,
                 outcome=RolloutOutcome.INCONCLUSIVE,
@@ -118,55 +173,130 @@ class ABTestRollout:
                 details="insufficient agents for A/B test groups",
             )
 
-        result = await _apply_to_treatment(proposal, applier)
-        if result is not None:
-            return result
+        apply_result = await applier.apply(proposal)
+        if not apply_result.success:
+            logger.warning(
+                META_ROLLOUT_FAILED,
+                strategy="ab_test",
+                proposal_id=str(proposal.id),
+                error=apply_result.error_message,
+            )
+            return RolloutResult(
+                proposal_id=proposal.id,
+                outcome=RolloutOutcome.FAILED,
+                observation_hours_elapsed=0.0,
+                details=apply_result.error_message,
+            )
 
-        return await self._compare_and_conclude(proposal, assignment)
+        return await self._observe_and_compare(
+            proposal=proposal,
+            assignment=assignment,
+        )
 
-    async def _compare_and_conclude(
+    async def _observe_and_compare(
         self,
+        *,
         proposal: ImprovementProposal,
         assignment: GroupAssignment,
     ) -> RolloutResult:
-        """Collect metrics and compare groups."""
+        """Run the observation loop and return the verdict."""
         logger.info(
             META_ABTEST_OBSERVATION_STARTED,
             proposal_id=str(proposal.id),
             observation_hours=proposal.observation_window_hours,
+            check_interval_hours=self._check_interval_hours,
         )
-
-        # Placeholder: real impl observes over observation_window_hours.
-        comparison = await self._comparator.compare(
-            control=_stub_group_metrics(
+        observation_hours = float(proposal.observation_window_hours)
+        elapsed = 0.0
+        last_comparison = None
+        while elapsed < observation_hours:
+            remaining = observation_hours - elapsed
+            step_hours = min(self._check_interval_hours, remaining)
+            await self._clock.sleep(step_hours * 3600.0)
+            elapsed += step_hours
+            window_end = self._clock.now()
+            window_start = window_end - timedelta(hours=elapsed)
+            control_samples = await self._group_aggregator.aggregate_for_agents(
+                agent_ids=assignment.control_agent_ids,
+                since=window_start,
+                until=window_end,
+            )
+            treatment_samples = await self._group_aggregator.aggregate_for_agents(
+                agent_ids=assignment.treatment_agent_ids,
+                since=window_start,
+                until=window_end,
+            )
+            control_metrics = _samples_to_metrics(
+                assignment.control_agent_ids,
+                control_samples,
                 ABTestGroup.CONTROL,
-                len(assignment.control_agent_ids),
-            ),
-            treatment=_stub_group_metrics(
+            )
+            treatment_metrics = _samples_to_metrics(
+                assignment.treatment_agent_ids,
+                treatment_samples,
                 ABTestGroup.TREATMENT,
-                len(assignment.treatment_agent_ids),
-            ),
-            thresholds=RegressionThresholds(),
-        )
+            )
+            comparison = await self._comparator.compare(
+                control=control_metrics,
+                treatment=treatment_metrics,
+                thresholds=self._thresholds,
+            )
+            last_comparison = comparison
+            logger.info(
+                META_ROLLOUT_OBSERVATION_TICK,
+                strategy="ab_test",
+                proposal_id=str(proposal.id),
+                elapsed_hours=elapsed,
+                verdict=comparison.verdict.value,
+            )
+            if comparison.verdict == ABTestVerdict.TREATMENT_REGRESSED:
+                outcome, verdict = _map_verdict(comparison.verdict)
+                logger.warning(
+                    META_ROLLOUT_FAILED,
+                    strategy="ab_test",
+                    proposal_id=str(proposal.id),
+                    reason="treatment_regressed_mid_window",
+                    elapsed_hours=elapsed,
+                )
+                return RolloutResult(
+                    proposal_id=proposal.id,
+                    outcome=outcome,
+                    regression_verdict=verdict,
+                    observation_hours_elapsed=elapsed,
+                )
 
-        outcome, verdict = _map_verdict(comparison.verdict)
+        logger.info(
+            META_ROLLOUT_OBSERVATION_COMPLETED,
+            strategy="ab_test",
+            proposal_id=str(proposal.id),
+            observation_hours_elapsed=elapsed,
+        )
+        final = last_comparison
+        if final is None:
+            return RolloutResult(
+                proposal_id=proposal.id,
+                outcome=RolloutOutcome.INCONCLUSIVE,
+                observation_hours_elapsed=elapsed,
+                details="observation window produced no comparisons",
+            )
+        outcome, verdict = _map_verdict(final.verdict)
         logger.info(
             META_ROLLOUT_COMPLETED,
             strategy="ab_test",
             proposal_id=str(proposal.id),
             outcome=outcome.value,
-            ab_verdict=comparison.verdict.value,
+            ab_verdict=final.verdict.value,
         )
         return RolloutResult(
             proposal_id=proposal.id,
             outcome=outcome,
             regression_verdict=verdict,
-            observation_hours_elapsed=0.0,
+            observation_hours_elapsed=elapsed,
         )
 
     @staticmethod
     def assign_groups(
-        agent_ids: tuple[str, ...],
+        agent_ids: tuple[NotBlankStr, ...],
         proposal_id: UUID,
         control_fraction: float,
     ) -> GroupAssignment:
@@ -175,30 +305,19 @@ class ABTestRollout:
         Uses SHA-256 hash of ``agent_id:proposal_id`` to assign
         each agent. The hash is stable across runs for the same
         inputs, producing reproducible group splits.
-
-        Args:
-            agent_ids: All agent IDs to split.
-            proposal_id: Proposal ID used as hash salt.
-            control_fraction: Target fraction for control group.
-
-        Returns:
-            Group assignment with control and treatment agent IDs.
         """
-        control: list[str] = []
-        treatment: list[str] = []
+        control: list[NotBlankStr] = []
+        treatment: list[NotBlankStr] = []
         pid_str = str(proposal_id)
-
         for agent_id in agent_ids:
             digest = hashlib.sha256(
                 f"{agent_id}:{pid_str}".encode(),
             ).hexdigest()
-            # Use first 8 hex chars (32 bits) for bucket.
             bucket = int(digest[:8], 16) / 0xFFFFFFFF
             if bucket < control_fraction:
                 control.append(agent_id)
             else:
                 treatment.append(agent_id)
-
         return GroupAssignment(
             proposal_id=proposal_id,
             control_agent_ids=tuple(control),
@@ -207,75 +326,18 @@ class ABTestRollout:
         )
 
 
-def _assign_and_validate(
-    proposal: ImprovementProposal,
-    control_fraction: float,
-    min_agents: int,
-) -> GroupAssignment | None:
-    """Assign groups and validate minimum sizes.
-
-    Returns None if either group is too small.
-    """
-    # Placeholder agent list; real impl gets from org.
-    agent_ids = tuple(f"agent-{i}" for i in range(10))
-    assignment = ABTestRollout.assign_groups(
-        agent_ids,
-        proposal.id,
-        control_fraction,
-    )
-    logger.info(
-        META_ABTEST_GROUPS_ASSIGNED,
-        proposal_id=str(proposal.id),
-        control_count=len(assignment.control_agent_ids),
-        treatment_count=len(assignment.treatment_agent_ids),
-    )
-
-    if (
-        len(assignment.control_agent_ids) < min_agents
-        or len(assignment.treatment_agent_ids) < min_agents
-    ):
-        return None
-    return assignment
-
-
-async def _apply_to_treatment(
-    proposal: ImprovementProposal,
-    applier: ProposalApplier,
-) -> RolloutResult | None:
-    """Apply proposal to treatment group. Returns result on failure."""
-    apply_result = await applier.apply(proposal)
-    if not apply_result.success:
-        logger.warning(
-            META_ROLLOUT_FAILED,
-            strategy="ab_test",
-            proposal_id=str(proposal.id),
-            error=apply_result.error_message,
-        )
-        return RolloutResult(
-            proposal_id=proposal.id,
-            outcome=RolloutOutcome.FAILED,
-            observation_hours_elapsed=0.0,
-            details=apply_result.error_message,
-        )
-    return None
-
-
-def _stub_group_metrics(
+def _samples_to_metrics(
+    agent_ids: tuple[NotBlankStr, ...],
+    samples: GroupSamples,
     group: ABTestGroup,
-    agent_count: int,
 ) -> GroupMetrics:
-    """Generate stub metrics for a group (placeholder).
-
-    Real implementation collects actual metrics from each group's
-    agents during the observation window.
-    """
+    """Wrap aligned sample tuples in a ``GroupMetrics``."""
     return GroupMetrics(
         group=group,
-        agent_count=agent_count,
-        observation_count=0,
-        avg_quality_score=7.5,
-        avg_success_rate=0.85,
-        total_spend=100.0,
+        agent_count=len(agent_ids),
+        quality_samples=samples.quality_samples,
+        success_samples=samples.success_samples,
+        spend_samples=samples.spend_samples,
     )
 
 
@@ -293,5 +355,4 @@ def _map_verdict(
             RolloutOutcome.REGRESSED,
             RegressionVerdict.STATISTICAL_REGRESSION,
         )
-    # INCONCLUSIVE
     return RolloutOutcome.INCONCLUSIVE, None
