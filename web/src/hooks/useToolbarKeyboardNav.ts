@@ -4,10 +4,12 @@ import { useCallback, useRef, type KeyboardEvent, type RefObject } from 'react'
  * ARIA toolbar keyboard navigation.
  *
  * Returns a ref to attach to the container with ``role="toolbar"`` and
- * an ``onKeyDown`` handler that routes arrow keys, ``Home``, and
- * ``End`` to the focusable children of the container so tab does not
- * need to step through every control. Tab continues to move focus to
- * the next focusable element outside the toolbar.
+ * an ``onKeyDown`` handler that moves focus among the container's
+ * focusable children on Arrow (up/down/left/right), ``Home``, and
+ * ``End``. The hook only owns those keys -- it does not implement
+ * roving tabindex, so ``Tab``/``Shift+Tab`` still step through every
+ * control in normal DOM order, which is what consumers of this
+ * toolbar have historically relied on.
  */
 export interface ToolbarKeyboardNav<T extends HTMLElement> {
   ref: RefObject<T | null>

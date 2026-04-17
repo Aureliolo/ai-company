@@ -254,10 +254,13 @@ LIMIT 1""",
         """Return the most recently created plan for an agent (any status)."""
         try:
             cursor = await self._db.execute(
+                # ``id DESC`` breaks ties deterministically when two
+                # plans share ``created_at`` -- plan IDs are UUIDs so
+                # the ordering is arbitrary but stable.
                 """\
 SELECT * FROM training_plans
 WHERE new_agent_id = ?
-ORDER BY created_at DESC
+ORDER BY created_at DESC, id DESC
 LIMIT 1""",
                 (str(agent_id),),
             )

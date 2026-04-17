@@ -238,10 +238,13 @@ LIMIT 1""",
                 conn.cursor(row_factory=dict_row) as cur,
             ):
                 await cur.execute(
+                    # ``id DESC`` breaks ties deterministically when two
+                    # plans share ``created_at`` -- plan IDs are UUIDs
+                    # so the ordering is arbitrary but stable.
                     """\
 SELECT * FROM training_plans
 WHERE new_agent_id = %s
-ORDER BY created_at DESC
+ORDER BY created_at DESC, id DESC
 LIMIT 1""",
                     (str(agent_id),),
                 )

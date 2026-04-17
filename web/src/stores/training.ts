@@ -186,6 +186,20 @@ export const useTrainingStore = create<TrainingState>()((set, get) => ({
         resultsByAgent: setMap(state.resultsByAgent, agentName, null),
         planError: setMap(state.planError, agentName, null),
         resultError: setMap(state.resultError, agentName, null),
+        // Bump both request tokens so any in-flight plan/result fetch
+        // that started before this mutation will see a mismatch on
+        // completion and skip its write-back -- otherwise a slow
+        // pre-mutation fetch could overwrite the authoritative plan.
+        planRequestTokens: setMap(
+          state.planRequestTokens,
+          agentName,
+          (state.planRequestTokens[agentName] ?? 0) + 1,
+        ),
+        resultRequestTokens: setMap(
+          state.resultRequestTokens,
+          agentName,
+          (state.resultRequestTokens[agentName] ?? 0) + 1,
+        ),
       }))
       useToastStore.getState().add({
         variant: 'success',
@@ -217,6 +231,19 @@ export const useTrainingStore = create<TrainingState>()((set, get) => ({
           // the plan status below is also updated.
           resultError: setMap(state.resultError, agentName, null),
           planError: setMap(state.planError, agentName, null),
+          // Bump both tokens: an earlier ``fetchResult``/``fetchPlan``
+          // completing after ``executePlan`` would otherwise overwrite
+          // the authoritative execution state.
+          planRequestTokens: setMap(
+            state.planRequestTokens,
+            agentName,
+            (state.planRequestTokens[agentName] ?? 0) + 1,
+          ),
+          resultRequestTokens: setMap(
+            state.resultRequestTokens,
+            agentName,
+            (state.resultRequestTokens[agentName] ?? 0) + 1,
+          ),
         }
         // Mirror the server-side plan transition to EXECUTED so the UI
         // (status badge, disabled "Execute" button) stays consistent
@@ -275,6 +302,13 @@ export const useTrainingStore = create<TrainingState>()((set, get) => ({
         plansByAgent: setMap(state.plansByAgent, agentName, plan),
         // Fresh write supersedes any stale plan-read error banner.
         planError: setMap(state.planError, agentName, null),
+        // Bump the plan token so an in-flight ``fetchPlan`` finishing
+        // after this write cannot overwrite the authoritative plan.
+        planRequestTokens: setMap(
+          state.planRequestTokens,
+          agentName,
+          (state.planRequestTokens[agentName] ?? 0) + 1,
+        ),
       }))
       useToastStore.getState().add({
         variant: 'success',
