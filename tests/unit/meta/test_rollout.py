@@ -188,15 +188,15 @@ class _FakeSampleSource:
         *,
         baseline: WindowSamples,
         current: WindowSamples,
-        baseline_end,
-        current_end,
+        baseline_end: object,
+        current_end: object,
     ) -> None:
         self._baseline = baseline
         self._current = current
         self._baseline_end = baseline_end
         self._current_end = current_end
 
-    async def fetch_for_window(self, *, window_end) -> WindowSamples:
+    async def fetch_for_window(self, *, window_end: object) -> WindowSamples:
         if window_end == self._baseline_end:
             return self._baseline
         if window_end == self._current_end:

@@ -132,7 +132,7 @@ class _StaticRoster:
 
         self._agents = tuple(NotBlankStr(f"agent-{i}") for i in range(count))
 
-    async def list_agent_ids(self):
+    async def list_agent_ids(self) -> tuple[str, ...]:
         return self._agents
 
 
@@ -143,7 +143,7 @@ def _ab_rollout(
     min_observations_per_group: int = 10,
     improvement_threshold: float = 0.15,
     roster_size: int = 10,
-):
+) -> ABTestRollout:
     """Construct an ABTestRollout wired with FakeClock + static roster."""
     from tests.unit.meta.rollout._fake_clock import FakeClock
 

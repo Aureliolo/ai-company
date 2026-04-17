@@ -101,7 +101,7 @@ class TestGroupSamplesModel:
 class TestTrackerGroupAggregator:
     async def test_empty_agent_list_returns_empty_samples(self) -> None:
         tracker = _FakeTracker({})
-        agg: Any = TrackerGroupAggregator(tracker=tracker)
+        agg: Any = TrackerGroupAggregator(tracker=tracker)  # type: ignore[arg-type]
         until = datetime(2026, 4, 17, tzinfo=UTC)
         since = datetime(2026, 4, 10, tzinfo=UTC)
         samples = await agg.aggregate_for_agents(
@@ -132,7 +132,7 @@ class TestTrackerGroupAggregator:
             ),
         }
         tracker = _FakeTracker(snapshots)
-        agg: Any = TrackerGroupAggregator(tracker=tracker)
+        agg: Any = TrackerGroupAggregator(tracker=tracker)  # type: ignore[arg-type]
         until = datetime(2026, 4, 17, tzinfo=UTC)
         since = datetime(2026, 4, 10, tzinfo=UTC)
         samples = await agg.aggregate_for_agents(
@@ -162,7 +162,7 @@ class TestTrackerGroupAggregator:
             ),
         }
         tracker = _FakeTracker(snapshots)
-        agg: Any = TrackerGroupAggregator(tracker=tracker)
+        agg: Any = TrackerGroupAggregator(tracker=tracker)  # type: ignore[arg-type]
         samples = await agg.aggregate_for_agents(
             agent_ids=(NotBlankStr("a1"), NotBlankStr("a2")),
             since=datetime(2026, 4, 10, tzinfo=UTC),
@@ -176,5 +176,5 @@ class TestTrackerGroupAggregator:
 
     async def test_satisfies_protocol(self) -> None:
         tracker = _FakeTracker({})
-        agg = TrackerGroupAggregator(tracker=tracker)
+        agg = TrackerGroupAggregator(tracker=tracker)  # type: ignore[arg-type]
         assert isinstance(agg, GroupSignalAggregator)

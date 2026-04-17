@@ -63,8 +63,8 @@ class TestBuildRolloutStrategies:
             roster=_Roster(),
         )
         # Access private to verify dep was wired.
-        assert strategies["before_after"]._clock is clock  # type: ignore[attr-defined]
-        assert strategies["ab_test"]._clock is clock  # type: ignore[attr-defined]
+        assert strategies["before_after"]._clock is clock
+        assert strategies["ab_test"]._clock is clock
 
 
 class TestBuildRollbackExecutor:
@@ -76,7 +76,7 @@ class TestBuildRollbackExecutor:
             code_mutator=_CodeMutator(),
         )
         assert isinstance(executor, RollbackExecutor)
-        handlers = executor._handlers  # type: ignore[attr-defined]
+        handlers = executor._handlers
         assert set(handlers.keys()) == {
             NotBlankStr("revert_config"),
             NotBlankStr("restore_prompt"),
@@ -85,8 +85,11 @@ class TestBuildRollbackExecutor:
         }
 
     def test_extra_handlers_merge(self) -> None:
+        from synthorg.meta.models import RollbackOperation
+
         class _MyHandler:
-            async def revert(self, operation) -> int:
+            async def revert(self, operation: RollbackOperation) -> int:
+                _ = operation
                 return 1
 
         extra: RollbackHandler = _MyHandler()
@@ -97,5 +100,5 @@ class TestBuildRollbackExecutor:
             code_mutator=_CodeMutator(),
             extra_handlers={"custom": extra},
         )
-        handlers = executor._handlers  # type: ignore[attr-defined]
+        handlers = executor._handlers
         assert NotBlankStr("custom") in handlers

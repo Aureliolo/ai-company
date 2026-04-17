@@ -19,8 +19,9 @@ class TestRealClock:
         clock = RealClock()
         moment = clock.now()
         assert moment.tzinfo is not None
-        assert moment.utcoffset() is not None
-        assert moment.utcoffset().total_seconds() == 0.0
+        offset = moment.utcoffset()
+        assert offset is not None
+        assert offset.total_seconds() == 0.0
 
     async def test_sleep_actually_waits(self) -> None:
         clock = RealClock()
