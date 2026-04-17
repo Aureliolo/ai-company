@@ -8,7 +8,7 @@ exceeds the configured threshold.
 """
 
 import hashlib
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
 from synthorg.core.types import NotBlankStr
@@ -58,8 +58,8 @@ class _NullGroupAggregator:
         self,
         *,
         agent_ids: tuple[NotBlankStr, ...],
-        since,
-        until,
+        since: datetime,
+        until: datetime,
     ) -> GroupSamples:
         _ = agent_ids, since, until
         return GroupSamples()

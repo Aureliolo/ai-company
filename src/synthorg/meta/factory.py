@@ -377,7 +377,7 @@ def build_rollback_executor(
         A RollbackExecutor ready to dispatch the four built-in
         operation types plus any extras.
     """
-    handlers: dict = dict(
+    handlers: dict[NotBlankStr, RollbackHandler] = dict(
         default_rollback_handlers(
             config=config_mutator,
             prompt=prompt_mutator,
