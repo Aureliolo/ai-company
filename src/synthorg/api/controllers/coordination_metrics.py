@@ -34,13 +34,19 @@ logger = get_logger(__name__)
 _MAX_METRICS_QUERY = 10_000
 """Fallback cap applied when no settings resolver is wired in."""
 
+# Module-level log-once guard for the settings-resolution fallback;
+# see ``activities._resolve_lifecycle_cap`` for the rationale.
+_metrics_cap_fallback_logged: bool = False
+
 
 async def _resolve_metrics_cap(state: State) -> int:
     """Resolve the active metrics-query cap, falling back to the constant.
 
     A settings outage or malformed value must not fail the endpoint;
-    the fallback constant keeps the DB-side ``LIMIT`` bounded.
+    the fallback constant keeps the DB-side ``LIMIT`` bounded. Warnings
+    are log-once per run of failures (cleared on recovery).
     """
+    global _metrics_cap_fallback_logged  # noqa: PLW0603
     app_state = state.app_state
     if not app_state.has_config_resolver:
         return _MAX_METRICS_QUERY
@@ -52,14 +58,19 @@ async def _resolve_metrics_cap(state: State) -> int:
         raise
     except MemoryError, RecursionError:
         raise
-    except Exception:
-        logger.warning(
-            API_VALIDATION_FAILED,
-            error=("failed to resolve max_metrics_per_query; using fallback"),
-            cap=_MAX_METRICS_QUERY,
-            exc_info=True,
-        )
+    except Exception as exc:
+        if not _metrics_cap_fallback_logged:
+            logger.warning(
+                API_VALIDATION_FAILED,
+                error=(
+                    "failed to resolve max_metrics_per_query;"
+                    f" using fallback ({type(exc).__name__})"
+                ),
+                cap=_MAX_METRICS_QUERY,
+            )
+            _metrics_cap_fallback_logged = True
         return _MAX_METRICS_QUERY
+    _metrics_cap_fallback_logged = False
     return result
 
 

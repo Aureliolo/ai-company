@@ -3,6 +3,7 @@
 import hashlib
 import json
 import logging
+import math
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from typing import TYPE_CHECKING, Any
@@ -104,8 +105,11 @@ class AuditChainSink(logging.Handler):
         signing_timeout_seconds: float = _DEFAULT_SIGNING_TIMEOUT_SECONDS,
     ) -> None:
         super().__init__()
-        if signing_timeout_seconds <= 0:
-            msg = f"signing_timeout_seconds must be > 0, got {signing_timeout_seconds}"
+        if not math.isfinite(signing_timeout_seconds) or signing_timeout_seconds <= 0:
+            msg = (
+                "signing_timeout_seconds must be finite and > 0, got "
+                f"{signing_timeout_seconds}"
+            )
             raise ValueError(msg)
         self._signer = signer
         self._timestamp_provider = timestamp_provider
@@ -126,10 +130,10 @@ class AuditChainSink(logging.Handler):
         CPython.
 
         Raises:
-            ValueError: If *value* is not positive.
+            ValueError: If *value* is not a finite positive number.
         """
-        if value <= 0:
-            msg = f"signing_timeout_seconds must be > 0, got {value}"
+        if not math.isfinite(value) or value <= 0:
+            msg = f"signing_timeout_seconds must be finite and > 0, got {value}"
             raise ValueError(msg)
         self._signing_timeout_seconds = value
 

@@ -25,6 +25,7 @@ from synthorg.observability.events.integrations import (
     OAUTH_TOKEN_REFRESH_FAILED,
     OAUTH_TOKEN_REFRESHED,
 )
+from synthorg.observability.events.settings import SETTINGS_FETCH_FAILED
 from synthorg.settings.enums import SettingNamespace
 
 if TYPE_CHECKING:
@@ -97,13 +98,20 @@ class OAuthTokenManager:
             )
         except MemoryError, RecursionError:
             raise
-        except Exception:
-            logger.warning(
-                OAUTH_TOKEN_REFRESH_FAILED,
+        except Exception as exc:
+            # Logging this as OAUTH_TOKEN_REFRESH_FAILED would
+            # falsely mark an OAuth refresh as failed and trip any
+            # alerting on that event. Emit on the settings-fetch
+            # channel at INFO instead, since the manager will keep
+            # using the flow's built-in timeout default.
+            logger.info(
+                SETTINGS_FETCH_FAILED,
+                namespace=SettingNamespace.INTEGRATIONS.value,
+                key="oauth_http_timeout_seconds",
                 error=(
-                    "failed to resolve oauth_http_timeout_seconds; keeping flow default"
+                    "failed to resolve oauth_http_timeout_seconds;"
+                    f" keeping flow default ({type(exc).__name__})"
                 ),
-                exc_info=True,
             )
             return
         self._flow = AuthorizationCodeFlow(http_timeout_seconds=timeout)

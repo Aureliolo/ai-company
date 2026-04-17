@@ -43,32 +43,50 @@ logger = get_logger(__name__)
 # Fallback cap applied when no settings resolver is wired in.
 _MAX_LIFECYCLE_EVENTS = 10_000
 
+# Module-level log-once guard: during a prolonged settings outage
+# this endpoint is queried once per request and would otherwise
+# flood the logs with identical fallback warnings (plus traceback).
+# The flag is set when we first emit the fallback warning and is
+# cleared on the next successful resolution, so a later outage is
+# visible again.
+_lifecycle_cap_fallback_logged: bool = False
+
 
 async def _resolve_lifecycle_cap(app_state: AppState) -> int:
     """Resolve the active lifecycle-query cap, falling back to the constant.
 
     A settings outage or malformed value must not fail the endpoint;
     the fallback constant keeps the DB-side ``LIMIT`` bounded even
-    when the resolver is unavailable.
+    when the resolver is unavailable. Warnings are log-once per run
+    of failures (cleared on recovery) to avoid flooding logs during
+    a prolonged outage; traceback logging is suppressed for the same
+    reason.
     """
+    global _lifecycle_cap_fallback_logged  # noqa: PLW0603
     if not app_state.has_config_resolver:
         return _MAX_LIFECYCLE_EVENTS
     try:
-        return await app_state.config_resolver.get_int(
+        value = await app_state.config_resolver.get_int(
             SettingNamespace.API.value, "max_lifecycle_events_per_query"
         )
     except asyncio.CancelledError:
         raise
     except MemoryError, RecursionError:
         raise
-    except Exception:
-        logger.warning(
-            API_REQUEST_ERROR,
-            error=("failed to resolve max_lifecycle_events_per_query; using fallback"),
-            cap=_MAX_LIFECYCLE_EVENTS,
-            exc_info=True,
-        )
+    except Exception as exc:
+        if not _lifecycle_cap_fallback_logged:
+            logger.warning(
+                API_REQUEST_ERROR,
+                error=(
+                    "failed to resolve max_lifecycle_events_per_query;"
+                    f" using fallback ({type(exc).__name__})"
+                ),
+                cap=_MAX_LIFECYCLE_EVENTS,
+            )
+            _lifecycle_cap_fallback_logged = True
         return _MAX_LIFECYCLE_EVENTS
+    _lifecycle_cap_fallback_logged = False
+    return value
 
 
 # Degraded source names -- used in responses and tests.

@@ -564,6 +564,122 @@ def test_docker_sidecar_memory_limit_pattern() -> None:
     assert defn.restart_required is True
 
 
+# Exact group + yaml_path expectations per-setting so typos/drift in
+# user-facing text cannot slip through. Group and yaml-path are the
+# strings that appear in the Settings UI and YAML config files, so we
+# assert equality rather than relying on the non-empty spot-check in
+# ``test_config_bridge_setting_is_registered``.
+_METADATA_EXPECTED: tuple[tuple[SettingNamespace, str, str, str], ...] = (
+    # api
+    (
+        SettingNamespace.API,
+        "ticket_cleanup_interval_seconds",
+        "WebSocket",
+        "api.ticket_cleanup_interval_seconds",
+    ),
+    (
+        SettingNamespace.API,
+        "ws_ticket_max_pending_per_user",
+        "WebSocket",
+        "api.ws_ticket_max_pending_per_user",
+    ),
+    (
+        SettingNamespace.API,
+        "max_rpm_default",
+        "Rate Limiting",
+        "api.rate_limit.max_rpm_default",
+    ),
+    (
+        SettingNamespace.API,
+        "compression_minimum_size_bytes",
+        "Server",
+        "api.server.compression_minimum_size_bytes",
+    ),
+    (
+        SettingNamespace.API,
+        "request_max_body_size_bytes",
+        "Server",
+        "api.server.request_max_body_size_bytes",
+    ),
+    # communication
+    (
+        SettingNamespace.COMMUNICATION,
+        "bus_bridge_poll_timeout_seconds",
+        "Bus Bridge",
+        "communication.bus_bridge.poll_timeout_seconds",
+    ),
+    (
+        SettingNamespace.COMMUNICATION,
+        "webhook_bridge_poll_timeout_seconds",
+        "Bus Bridge",
+        "communication.webhook_bridge.poll_timeout_seconds",
+    ),
+    # tools
+    (
+        SettingNamespace.TOOLS,
+        "git_kill_grace_timeout_seconds",
+        "Git",
+        "tools.git.kill_grace_timeout_seconds",
+    ),
+    (
+        SettingNamespace.TOOLS,
+        "atlas_kill_grace_timeout_seconds",
+        "Atlas",
+        "tools.atlas.kill_grace_timeout_seconds",
+    ),
+    (
+        SettingNamespace.TOOLS,
+        "docker_sidecar_memory_limit",
+        "Docker Sandbox",
+        "tools.docker.sidecar_memory_limit",
+    ),
+    # observability
+    (
+        SettingNamespace.OBSERVABILITY,
+        "audit_chain_signing_timeout_seconds",
+        "Audit Chain",
+        "logging.audit_chain.signing_timeout_seconds",
+    ),
+    # notifications
+    (
+        SettingNamespace.NOTIFICATIONS,
+        "slack_webhook_timeout_seconds",
+        "Slack",
+        "notifications.slack.webhook_timeout_seconds",
+    ),
+)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("namespace", "key", "expected_group", "expected_yaml_path"),
+    _METADATA_EXPECTED,
+    ids=[f"{row[0].value}.{row[1]}" for row in _METADATA_EXPECTED],
+)
+def test_config_bridge_setting_metadata_exact(
+    namespace: SettingNamespace,
+    key: str,
+    expected_group: str,
+    expected_yaml_path: str,
+) -> None:
+    """Spot-check exact group + yaml_path values for representative settings.
+
+    Catches typos and drift that the non-empty check in
+    ``test_config_bridge_setting_is_registered`` would miss. One row
+    per representative setting per namespace -- we do not need to
+    duplicate the exact strings for every setting; a single typo in
+    any user-facing metadata column would fail here.
+    """
+    registry = get_registry()
+    defn = registry.get(namespace.value, key)
+    assert defn is not None, f"{namespace.value}/{key} not registered"
+    assert defn.group == expected_group, f"{namespace.value}/{key}: group mismatch"
+    assert defn.yaml_path == expected_yaml_path, (
+        f"{namespace.value}/{key}: yaml_path mismatch"
+    )
+    assert defn.description.strip(), f"{namespace.value}/{key} has blank description"
+
+
 @pytest.mark.unit
 def test_all_config_bridge_settings_have_advanced_level() -> None:
     """Every config-bridge setting should default to the ADVANCED UI group.

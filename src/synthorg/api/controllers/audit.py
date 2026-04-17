@@ -39,13 +39,19 @@ logger = get_logger(__name__)
 _MAX_AUDIT_QUERY = 10_000
 """Fallback cap applied when no settings resolver is wired in."""
 
+# Module-level log-once guard for the settings-resolution fallback;
+# see ``activities._resolve_lifecycle_cap`` for the rationale.
+_audit_cap_fallback_logged: bool = False
+
 
 async def _resolve_audit_cap(state: State) -> int:
     """Resolve the active audit-query cap, falling back to the constant.
 
     A settings outage or malformed value must not fail the endpoint;
-    the fallback constant keeps the DB-side ``LIMIT`` bounded.
+    the fallback constant keeps the DB-side ``LIMIT`` bounded. Warnings
+    are log-once per run of failures (cleared on recovery).
     """
+    global _audit_cap_fallback_logged  # noqa: PLW0603
     app_state = state.app_state
     if not app_state.has_config_resolver:
         return _MAX_AUDIT_QUERY
@@ -57,14 +63,19 @@ async def _resolve_audit_cap(state: State) -> int:
         raise
     except MemoryError, RecursionError:
         raise
-    except Exception:
-        logger.warning(
-            API_VALIDATION_FAILED,
-            error=("failed to resolve max_audit_records_per_query; using fallback"),
-            cap=_MAX_AUDIT_QUERY,
-            exc_info=True,
-        )
+    except Exception as exc:
+        if not _audit_cap_fallback_logged:
+            logger.warning(
+                API_VALIDATION_FAILED,
+                error=(
+                    "failed to resolve max_audit_records_per_query;"
+                    f" using fallback ({type(exc).__name__})"
+                ),
+                cap=_MAX_AUDIT_QUERY,
+            )
+            _audit_cap_fallback_logged = True
         return _MAX_AUDIT_QUERY
+    _audit_cap_fallback_logged = False
     return result
 
 

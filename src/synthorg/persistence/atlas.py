@@ -39,9 +39,15 @@ BackendName = Literal["sqlite", "postgres"]
 # ``Popen.wait(timeout=...)`` in ``_run_atlas``.
 _ATLAS_SUBPROCESS_TIMEOUT_SECONDS = 120.0
 _ATLAS_KILL_GRACE_SECONDS = 5.0
-"""Grace period for the Atlas subprocess to flush after kill.
+"""Hardcoded fallback grace period for the Atlas subprocess after kill.
 
-Mirrors the ``tools.atlas_kill_grace_timeout_seconds`` setting.
+The value matches the default of the
+``tools.atlas_kill_grace_timeout_seconds`` setting, but the runtime
+wiring from ``ConfigResolver`` -> ``_run_atlas`` is not in place yet
+-- this constant is the only source of truth used by ``_run_atlas``
+today. Threading the setting through ``_run_atlas`` / the Atlas call
+sites is tracked as follow-up work on #1398/#1400; until then a
+change to the setting has no effect on Atlas subprocess teardown.
 """
 
 

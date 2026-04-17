@@ -21,6 +21,7 @@ from synthorg.observability.events.integrations import (
     OAUTH_FLOW_FAILED,
     OAUTH_STATE_INVALID,
 )
+from synthorg.observability.events.settings import SETTINGS_FETCH_FAILED
 from synthorg.persistence.repositories_integrations import (
     OAuthStateRepository,  # noqa: TC001
 )
@@ -53,11 +54,19 @@ async def resolve_oauth_http_timeout(
         )
     except MemoryError, RecursionError:
         raise
-    except Exception:
-        logger.warning(
-            OAUTH_FLOW_FAILED,
-            error=("failed to resolve oauth_http_timeout_seconds; using flow default"),
-            exc_info=True,
+    except Exception as exc:
+        # This is a setting-resolution fallback, not an OAuth flow
+        # failure -- logging as OAUTH_FLOW_FAILED would inflate
+        # failure metrics and page oncall for a benign condition.
+        # Emit on the settings-fetch channel at INFO instead.
+        logger.info(
+            SETTINGS_FETCH_FAILED,
+            namespace=SettingNamespace.INTEGRATIONS.value,
+            key="oauth_http_timeout_seconds",
+            error=(
+                "failed to resolve oauth_http_timeout_seconds;"
+                f" using flow default ({type(exc).__name__})"
+            ),
         )
         return None
 
@@ -154,11 +163,10 @@ async def handle_oauth_callback(  # noqa: PLR0913
         auth_flow = flow
     else:
         timeout = await resolve_oauth_http_timeout(config_resolver)
-        auth_flow = (
-            AuthorizationCodeFlow(http_timeout_seconds=timeout)
-            if timeout is not None
-            else AuthorizationCodeFlow()
+        flow_kwargs: dict[str, float] = (
+            {"http_timeout_seconds": timeout} if timeout is not None else {}
         )
+        auth_flow = AuthorizationCodeFlow(**flow_kwargs)
     try:
         token = await auth_flow.exchange_code(
             token_url=token_url,
