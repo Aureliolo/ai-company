@@ -31,6 +31,7 @@ from synthorg.observability.events.tool import (
     TOOL_L2_LOADED,
     TOOL_L3_FETCHED,
 )
+from synthorg.observability.tracing import llm_span
 from synthorg.providers.enums import FinishReason, MessageRole
 from synthorg.providers.models import (
     ChatMessage,
@@ -194,13 +195,28 @@ async def call_provider(  # noqa: PLR0913
         message_count=len(ctx.conversation),
         char_count_estimate=char_count,
     )
+    provider_name = type(provider).__name__
     try:
-        return await provider.complete(
-            messages=list(ctx.conversation),
+        async with llm_span(
+            provider=provider_name,
             model=model_id,
-            tools=tool_defs,
-            config=config,
-        )
+        ) as span:
+            response = await provider.complete(
+                messages=list(ctx.conversation),
+                model=model_id,
+                tools=tool_defs,
+                config=config,
+            )
+            usage = response.usage
+            if usage is not None:
+                span.set_attribute("gen_ai.usage.input_tokens", usage.input_tokens)
+                span.set_attribute("gen_ai.usage.output_tokens", usage.output_tokens)
+            if response.finish_reason is not None:
+                span.set_attribute(
+                    "gen_ai.response.finish_reasons",
+                    (response.finish_reason.value,),
+                )
+            return response
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
