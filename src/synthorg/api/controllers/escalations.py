@@ -1,0 +1,305 @@
+"""Human escalation queue REST endpoints (#1418).
+
+Operator-facing surface for listing pending conflict escalations and
+submitting decisions back to the awaiting
+:class:`HumanEscalationResolver`.
+
+All endpoints carry per-operation rate limits so a runaway dashboard
+client cannot flood the queue.  Error responses use the shared RFC
+9457 handlers registered by :mod:`synthorg.api.exception_handlers`.
+"""
+
+from typing import Any
+
+from litestar import Controller, Request, get, post
+from litestar.datastructures import State  # noqa: TC002
+from pydantic import BaseModel, ConfigDict, Field
+
+from synthorg.api.auth.models import AuthenticatedUser
+from synthorg.api.dto import ApiResponse, PaginatedResponse, PaginationMeta
+from synthorg.api.errors import (
+    ApiValidationError,
+    ConflictError,
+    NotFoundError,
+    UnauthorizedError,
+)
+from synthorg.api.guards import require_approval_roles, require_read_access
+from synthorg.api.pagination import PaginationLimit, PaginationOffset  # noqa: TC001
+from synthorg.api.path_params import PathId  # noqa: TC001
+from synthorg.api.rate_limits.guard import per_op_rate_limit
+from synthorg.api.state import AppState  # noqa: TC001
+from synthorg.communication.conflict_resolution.escalation.models import (
+    Escalation,
+    EscalationDecision,
+    EscalationStatus,
+)
+from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.observability import get_logger
+from synthorg.observability.events.conflict import (
+    CONFLICT_ESCALATION_CANCELLED,
+    CONFLICT_ESCALATION_RESOLVED,
+)
+
+logger = get_logger(__name__)
+
+
+# ── Request / response DTOs ─────────────────────────────────────
+
+
+class EscalationResponse(BaseModel):
+    """Escalation row enriched for the dashboard."""
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    escalation: Escalation
+    conflict_id: NotBlankStr
+    status: EscalationStatus
+
+
+class SubmitDecisionRequest(BaseModel):
+    """Body for ``POST /escalations/{id}/decision``.
+
+    Attributes:
+        decision: Tagged-union payload.  ``winner`` carries the
+            selected agent ID and reasoning; ``reject`` carries only
+            a reasoning string.  The :class:`DecisionProcessor`
+            strategy on the server decides which shapes are accepted.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    decision: EscalationDecision = Field(description="Operator decision payload")
+
+
+class CancelEscalationRequest(BaseModel):
+    """Body for ``POST /escalations/{id}/cancel``."""
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    reason: NotBlankStr = Field(
+        max_length=4096,
+        description="Why the operator is abandoning this escalation",
+    )
+
+
+# ── Helpers ─────────────────────────────────────────────────────
+
+
+def _to_response(escalation: Escalation) -> EscalationResponse:
+    """Wrap an :class:`Escalation` in the API response envelope."""
+    return EscalationResponse(
+        escalation=escalation,
+        conflict_id=escalation.conflict.id,
+        status=escalation.status,
+    )
+
+
+def _operator_id(request: Request[Any, Any, Any]) -> str:
+    """Extract the authenticated operator ID prefixed with ``human:``."""
+    user = request.scope.get("user")
+    if not isinstance(user, AuthenticatedUser):
+        msg = "Authentication required to decide on escalations"
+        raise UnauthorizedError(msg)
+    return f"human:{user.user_id}"
+
+
+# ── Controller ──────────────────────────────────────────────────
+
+
+class EscalationsController(Controller):
+    """``/conflicts/escalations`` endpoints."""
+
+    path = "/conflicts/escalations"
+    tags = ("conflict-escalations",)
+
+    @get(
+        guards=[
+            require_read_access,
+            per_op_rate_limit(
+                "escalations.list",
+                max_requests=120,
+                window_seconds=60,
+                key="user",
+            ),
+        ],
+    )
+    async def list_escalations(
+        self,
+        state: State,
+        offset: PaginationOffset = 0,
+        limit: PaginationLimit = 50,
+        status: EscalationStatus = EscalationStatus.PENDING,
+    ) -> PaginatedResponse[EscalationResponse]:
+        """Page over escalations filtered by ``status`` (default PENDING)."""
+        app_state: AppState = state.app_state
+        store = app_state.escalation_store
+        if store is None:
+            msg = "Escalation queue is not configured"
+            raise NotFoundError(msg)
+        page, total = await store.list_items(
+            status=status,
+            limit=limit,
+            offset=offset,
+        )
+        return PaginatedResponse[EscalationResponse](
+            data=tuple(_to_response(row) for row in page),
+            pagination=PaginationMeta(total=total, offset=offset, limit=limit),
+        )
+
+    @get(
+        "/{escalation_id:str}",
+        guards=[
+            require_read_access,
+            per_op_rate_limit(
+                "escalations.get",
+                max_requests=120,
+                window_seconds=60,
+                key="user",
+            ),
+        ],
+    )
+    async def get_escalation(
+        self,
+        state: State,
+        escalation_id: PathId,
+    ) -> ApiResponse[EscalationResponse]:
+        """Return a single escalation by ID."""
+        app_state: AppState = state.app_state
+        store = app_state.escalation_store
+        if store is None:
+            msg = "Escalation queue is not configured"
+            raise NotFoundError(msg)
+        row = await store.get(escalation_id)
+        if row is None:
+            msg = f"Escalation {escalation_id!r} not found"
+            raise NotFoundError(msg)
+        return ApiResponse[EscalationResponse](data=_to_response(row))
+
+    @post(
+        "/{escalation_id:str}/decision",
+        guards=[
+            require_approval_roles,
+            per_op_rate_limit(
+                "escalations.decide",
+                max_requests=30,
+                window_seconds=60,
+                key="user",
+            ),
+        ],
+    )
+    async def submit_decision(
+        self,
+        request: Request[Any, Any, Any],
+        state: State,
+        escalation_id: PathId,
+        data: SubmitDecisionRequest,
+    ) -> ApiResponse[EscalationResponse]:
+        """Apply an operator decision to a PENDING escalation.
+
+        The store transition to DECIDED is atomic.  After the row is
+        persisted, the in-process :class:`PendingFuturesRegistry` is
+        notified so the awaiting :class:`HumanEscalationResolver`
+        coroutine wakes with the decision.
+
+        Raises:
+            NotFoundError: ``escalation_id`` does not exist.
+            ConflictError: the escalation is already decided, expired,
+                or cancelled.
+            ApiValidationError: the decision shape is not accepted by
+                the server's configured decision strategy.
+        """
+        app_state: AppState = state.app_state
+        store = app_state.escalation_store
+        registry = app_state.escalation_registry
+        processor = app_state.escalation_processor
+        if store is None or registry is None or processor is None:
+            msg = "Escalation queue is not configured"
+            raise NotFoundError(msg)
+
+        operator = _operator_id(request)
+        row = await store.get(escalation_id)
+        if row is None:
+            msg = f"Escalation {escalation_id!r} not found"
+            raise NotFoundError(msg)
+        if row.status != EscalationStatus.PENDING:
+            msg = (
+                f"Escalation {escalation_id!r} is {row.status.value}, "
+                "cannot submit a decision"
+            )
+            raise ConflictError(msg)
+
+        # Run the processor eagerly so an unacceptable decision shape
+        # (e.g. 'reject' when decision_strategy='winner') surfaces as
+        # 422 before the store transition.
+        try:
+            processor.process(row.conflict, data.decision, decided_by=operator)
+        except ValueError as exc:
+            raise ApiValidationError(str(exc)) from exc
+
+        try:
+            updated = await store.apply_decision(
+                escalation_id,
+                decision=data.decision,
+                decided_by=operator,
+            )
+        except KeyError as exc:
+            msg = f"Escalation {escalation_id!r} not found"
+            raise NotFoundError(msg) from exc
+        except ValueError as exc:
+            raise ConflictError(str(exc)) from exc
+        await registry.resolve(escalation_id, data.decision)
+        logger.info(
+            CONFLICT_ESCALATION_RESOLVED,
+            escalation_id=escalation_id,
+            operator=operator,
+            decision_type=data.decision.type,
+        )
+        return ApiResponse[EscalationResponse](data=_to_response(updated))
+
+    @post(
+        "/{escalation_id:str}/cancel",
+        guards=[
+            require_approval_roles,
+            per_op_rate_limit(
+                "escalations.cancel",
+                max_requests=30,
+                window_seconds=60,
+                key="user",
+            ),
+        ],
+    )
+    async def cancel_escalation(
+        self,
+        request: Request[Any, Any, Any],
+        state: State,
+        escalation_id: PathId,
+        data: CancelEscalationRequest,
+    ) -> ApiResponse[EscalationResponse]:
+        """Abandon a PENDING escalation.
+
+        The awaiting resolver coroutine wakes with a ``CancelledError``
+        and returns an ``ESCALATED_TO_HUMAN`` resolution marked as
+        cancelled.
+        """
+        del data  # currently captured only for audit; consumed via logs later
+        app_state: AppState = state.app_state
+        store = app_state.escalation_store
+        registry = app_state.escalation_registry
+        if store is None or registry is None:
+            msg = "Escalation queue is not configured"
+            raise NotFoundError(msg)
+        operator = _operator_id(request)
+        try:
+            updated = await store.cancel(escalation_id, cancelled_by=operator)
+        except KeyError as exc:
+            msg = f"Escalation {escalation_id!r} not found"
+            raise NotFoundError(msg) from exc
+        except ValueError as exc:
+            raise ConflictError(str(exc)) from exc
+        await registry.cancel(escalation_id)
+        logger.info(
+            CONFLICT_ESCALATION_CANCELLED,
+            escalation_id=escalation_id,
+            operator=operator,
+        )
+        return ApiResponse[EscalationResponse](data=_to_response(updated))

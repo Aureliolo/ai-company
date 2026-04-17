@@ -1,0 +1,104 @@
+"""In-process registry of awaited escalation Futures (#1418).
+
+When :class:`HumanEscalationResolver` awaits a decision, it registers
+an ``asyncio.Future`` under the escalation ID.  The decision REST
+endpoint resolves the Future so the awaiting coroutine wakes with the
+operator's payload.
+
+The registry is process-local by design: coroutines awaiting a Future
+live in the same event loop that will resolve them.  Decisions arriving
+on a different process (e.g. a future Kubernetes deployment) have to
+go through the persistent store, which is the durable source of truth.
+"""
+
+import asyncio
+
+from synthorg.communication.conflict_resolution.escalation.models import (
+    EscalationDecision,  # noqa: TC001
+)
+from synthorg.observability import get_logger
+from synthorg.observability.events.conflict import (
+    CONFLICT_ESCALATION_RESOLVED,
+)
+
+logger = get_logger(__name__)
+
+
+class PendingFuturesRegistry:
+    """Process-local map of escalation ID -> ``asyncio.Future``."""
+
+    def __init__(self) -> None:
+        """Initialise an empty registry."""
+        self._futures: dict[str, asyncio.Future[EscalationDecision]] = {}
+        self._lock = asyncio.Lock()
+
+    async def register(
+        self,
+        escalation_id: str,
+    ) -> asyncio.Future[EscalationDecision]:
+        """Return a fresh Future for ``escalation_id``.
+
+        Raises:
+            ValueError: A Future is already registered for this ID.
+        """
+        async with self._lock:
+            if escalation_id in self._futures:
+                msg = f"Future already registered for escalation {escalation_id!r}"
+                raise ValueError(msg)
+            loop = asyncio.get_running_loop()
+            future: asyncio.Future[EscalationDecision] = loop.create_future()
+            self._futures[escalation_id] = future
+            return future
+
+    async def resolve(
+        self,
+        escalation_id: str,
+        decision: EscalationDecision,
+    ) -> bool:
+        """Wake the Future associated with ``escalation_id``.
+
+        Returns:
+            ``True`` if a Future was resolved.  ``False`` when no
+            Future is registered -- decisions arriving after a restart
+            have no awaiting coroutine; the persistent row is still
+            updated by the caller.
+        """
+        async with self._lock:
+            future = self._futures.pop(escalation_id, None)
+        if future is None:
+            logger.warning(
+                CONFLICT_ESCALATION_RESOLVED,
+                escalation_id=escalation_id,
+                note="no_future_registered",
+            )
+            return False
+        if not future.done():
+            future.set_result(decision)
+        return True
+
+    async def cancel(self, escalation_id: str) -> bool:
+        """Cancel the Future associated with ``escalation_id``.
+
+        Returns:
+            ``True`` if a Future was cancelled, ``False`` when nothing
+            was registered.
+        """
+        async with self._lock:
+            future = self._futures.pop(escalation_id, None)
+        if future is None:
+            return False
+        if not future.done():
+            future.cancel()
+        return True
+
+    def is_registered(self, escalation_id: str) -> bool:
+        """Return ``True`` if a Future exists for ``escalation_id``."""
+        return escalation_id in self._futures
+
+    async def close(self) -> None:
+        """Cancel every outstanding Future."""
+        async with self._lock:
+            for future in self._futures.values():
+                if not future.done():
+                    future.cancel()
+            self._futures.clear()

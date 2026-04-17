@@ -69,6 +69,12 @@ from synthorg.budget.coordination_store import (
 )
 from synthorg.budget.tracker import CostTracker  # noqa: TC001
 from synthorg.communication.bus_protocol import MessageBus  # noqa: TC001
+from synthorg.communication.conflict_resolution.escalation import (
+    EscalationExpirationSweeper,
+    PendingFuturesRegistry,
+    build_decision_processor,
+    build_escalation_queue_store,
+)
 from synthorg.communication.delegation.record_store import (
     DelegationRecordStore,  # noqa: TC001
 )
@@ -1955,6 +1961,22 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
     )
     if distributed_task_queue is not None:
         app_state.set_distributed_task_queue(distributed_task_queue)
+
+    # Human escalation approval queue (#1418).  Builds the pluggable
+    # store + processor + Future registry and attaches them to
+    # ``AppState`` so the escalations controller and the
+    # ``HumanEscalationResolver`` share a single instance.
+    escalation_config = effective_config.communication.conflict_resolution.escalation
+    app_state.escalation_store = build_escalation_queue_store(
+        escalation_config,
+        persistence,
+    )
+    app_state.escalation_processor = build_decision_processor(escalation_config)
+    app_state.escalation_registry = PendingFuturesRegistry()
+    app_state.escalation_sweeper = EscalationExpirationSweeper(
+        app_state.escalation_store,
+        interval_seconds=escalation_config.sweeper_interval_seconds,
+    )
 
     bridge = (
         MessageBusBridge(

@@ -33,12 +33,19 @@ class ConflictResolutionOutcome(StrEnum):
         RESOLVED_BY_AUTHORITY: Decided by seniority/hierarchy.
         RESOLVED_BY_DEBATE: Decided by structured debate + judge.
         RESOLVED_BY_HYBRID: Decided by hybrid review process.
-        ESCALATED_TO_HUMAN: Escalated to human for resolution.
+        RESOLVED_BY_HUMAN: Human operator picked a winning position via the
+            escalation queue.
+        REJECTED_BY_HUMAN: Human operator rejected all positions via the
+            escalation queue.
+        ESCALATED_TO_HUMAN: Escalation pending or timed out with no human
+            decision collected.
     """
 
     RESOLVED_BY_AUTHORITY = "resolved_by_authority"
     RESOLVED_BY_DEBATE = "resolved_by_debate"
     RESOLVED_BY_HYBRID = "resolved_by_hybrid"
+    RESOLVED_BY_HUMAN = "resolved_by_human"
+    REJECTED_BY_HUMAN = "rejected_by_human"
     ESCALATED_TO_HUMAN = "escalated_to_human"
 
 
@@ -142,26 +149,29 @@ class ConflictResolution(BaseModel):
 
     @model_validator(mode="after")
     def _validate_outcome_consistency(self) -> Self:
-        """Enforce consistency between outcome and winner fields."""
-        if self.outcome == ConflictResolutionOutcome.ESCALATED_TO_HUMAN:
+        """Enforce consistency between outcome and winner fields.
+
+        ``ESCALATED_TO_HUMAN`` and ``REJECTED_BY_HUMAN`` are no-winner
+        outcomes: both winning fields must be ``None``.  Every other
+        outcome must carry both a winning agent and a winning position.
+        """
+        no_winner_outcomes = {
+            ConflictResolutionOutcome.ESCALATED_TO_HUMAN,
+            ConflictResolutionOutcome.REJECTED_BY_HUMAN,
+        }
+        if self.outcome in no_winner_outcomes:
             if self.winning_agent_id is not None:
-                msg = "winning_agent_id must be None when outcome is ESCALATED_TO_HUMAN"
+                msg = f"winning_agent_id must be None when outcome is {self.outcome}"
                 raise ValueError(msg)
             if self.winning_position is not None:
-                msg = "winning_position must be None when outcome is ESCALATED_TO_HUMAN"
+                msg = f"winning_position must be None when outcome is {self.outcome}"
                 raise ValueError(msg)
         else:
             if self.winning_agent_id is None:
-                msg = (
-                    "winning_agent_id is required when "
-                    "outcome is not ESCALATED_TO_HUMAN"
-                )
+                msg = f"winning_agent_id is required when outcome is {self.outcome}"
                 raise ValueError(msg)
             if self.winning_position is None:
-                msg = (
-                    "winning_position is required when "
-                    "outcome is not ESCALATED_TO_HUMAN"
-                )
+                msg = f"winning_position is required when outcome is {self.outcome}"
                 raise ValueError(msg)
         return self
 
@@ -224,13 +234,17 @@ class DissentRecord(BaseModel):
                 f"does not match conflict.id {self.conflict.id!r}"
             )
             raise ValueError(msg)
+        no_winner_outcomes = {
+            ConflictResolutionOutcome.ESCALATED_TO_HUMAN,
+            ConflictResolutionOutcome.REJECTED_BY_HUMAN,
+        }
         if (
-            self.resolution.outcome != ConflictResolutionOutcome.ESCALATED_TO_HUMAN
+            self.resolution.outcome not in no_winner_outcomes
             and self.dissenting_agent_id == self.resolution.winning_agent_id
         ):
             msg = (
                 "dissenting_agent_id must differ from winning_agent_id "
-                "for non-escalated resolutions"
+                "for outcomes that have a winner"
             )
             raise ValueError(msg)
         return self

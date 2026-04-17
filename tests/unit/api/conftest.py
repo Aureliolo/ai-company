@@ -445,7 +445,7 @@ def _restore_instance_patches(obj: object) -> None:
 
 
 @pytest.fixture
-def test_client(  # noqa: C901, PLR0913, PLR0915
+def test_client(  # noqa: C901, PLR0912, PLR0913, PLR0915
     _shared_app: Litestar,  # noqa: PT019
     fake_persistence: FakePersistenceBackend,
     fake_message_bus: FakeMessageBus,
@@ -543,6 +543,12 @@ def test_client(  # noqa: C901, PLR0913, PLR0915
         app_state._event_stream_hub._subscribers.clear()
     if app_state._settings_service is not None:
         app_state._settings_service._cache.clear()
+    # Clear the escalation queue + pending-future registry so a prior
+    # test's in-flight escalations cannot bleed into the next one.
+    if app_state.escalation_store is not None:
+        app_state.escalation_store._rows.clear()  # type: ignore[attr-defined]
+    if app_state.escalation_registry is not None:
+        app_state.escalation_registry._futures.clear()
 
     # 4. Re-seed test users
     _seed_test_users(fake_persistence, auth_service)

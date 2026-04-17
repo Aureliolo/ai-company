@@ -2,6 +2,9 @@
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg.communication.conflict_resolution.escalation.config import (
+    EscalationQueueConfig,
+)
 from synthorg.communication.enums import ConflictResolutionStrategy
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 
@@ -50,6 +53,7 @@ class ConflictResolutionConfig(BaseModel):
         strategy: Default resolution strategy.
         debate: Configuration for the debate strategy.
         hybrid: Configuration for the hybrid strategy.
+        escalation: Configuration for the human escalation queue.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -65,4 +69,8 @@ class ConflictResolutionConfig(BaseModel):
     hybrid: HybridConfig = Field(
         default_factory=HybridConfig,
         description="Hybrid strategy configuration",
+    )
+    escalation: EscalationQueueConfig = Field(
+        default_factory=EscalationQueueConfig,
+        description="Human escalation queue configuration",
     )
