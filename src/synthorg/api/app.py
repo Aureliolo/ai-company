@@ -282,19 +282,30 @@ def _resolve_artifact_dir_env() -> str:
 
     Reads ``SYNTHORG_ARTIFACT_DIR`` and falls back to ``/data`` (the
     compose template's mount point) when the variable is unset or
-    consists only of whitespace. A previous implementation used
-    ``os.environ.get(...) or "/data"`` which treated a whitespace-only
-    value as truthy and collapsed to ``Path("")`` (the process working
-    directory), writing artifacts somewhere unexpected; this helper
-    strips first and only then applies the default.
+    consists only of whitespace. Rejects relative or traversal paths
+    at the env boundary so artifacts cannot end up in the process
+    working directory or outside the mounted volume.
 
     Returns:
         The absolute directory string to hand to
         :class:`FileSystemArtifactStorage`.
+
+    Raises:
+        ValueError: If the env var is set to a non-absolute path. A
+            previous implementation used ``os.environ.get(...) or
+            "/data"`` which treated whitespace as truthy and
+            collapsed to ``Path("")``; this helper strips first and
+            then validates.
     """
     artifact_dir_str = os.environ.get("SYNTHORG_ARTIFACT_DIR", "").strip()
     if not artifact_dir_str:
         return "/data"
+    if not Path(artifact_dir_str).is_absolute():
+        msg = (
+            f"SYNTHORG_ARTIFACT_DIR={artifact_dir_str!r} must be an absolute "
+            f"path to avoid writing artifacts to the process working directory"
+        )
+        raise ValueError(msg)
     return artifact_dir_str
 
 
@@ -1235,6 +1246,13 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
         Path(resolved_config_path_str) if resolved_config_path_str else None
     )
 
+    # Read persistence env vars unconditionally so downstream code
+    # (e.g. the secret-backend gate below) can still observe which
+    # environment choice won, even when ``persistence`` was injected
+    # by the caller rather than auto-wired here.
+    db_url = (os.environ.get("SYNTHORG_DATABASE_URL") or "").strip()
+    db_path = (os.environ.get("SYNTHORG_DB_PATH") or "").strip()
+
     # Auto-wire persistence from CLI-provided env vars. The CLI compose
     # template sets ONE of these per init choice:
     #   * SYNTHORG_DATABASE_URL=postgresql://user:pass@host:port/db   (postgres)
@@ -1243,14 +1261,14 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
     # vars present) does not silently fall back to SQLite. The startup
     # lifecycle handles connect() + migrate() + auth service creation.
     if persistence is None:
-        db_url = (os.environ.get("SYNTHORG_DATABASE_URL") or "").strip()
-        db_path = (os.environ.get("SYNTHORG_DB_PATH") or "").strip()
         if db_url:
             try:
                 pg_config = _postgres_config_from_url(db_url)
                 persistence = create_backend(
                     PersistenceConfig(backend="postgres", postgres=pg_config),
                 )
+            except MemoryError, RecursionError:
+                raise
             except Exception:
                 logger.exception(
                     API_APP_STARTUP,
@@ -1282,6 +1300,8 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
                 persistence = create_backend(
                     PersistenceConfig(sqlite=SQLiteConfig(path=db_path)),
                 )
+            except MemoryError, RecursionError:
+                raise
             except Exception:
                 logger.exception(
                     API_APP_STARTUP,
@@ -1470,9 +1490,20 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
             #      picked up when ``create_app()`` was handed an
             #      already-built ``SQLitePersistenceBackend``.
             #   3. ``SYNTHORG_DB_PATH`` env var as a last resort.
+            #
+            # When the main persistence was auto-wired from Postgres
+            # (``SYNTHORG_DATABASE_URL`` won the if/elif above), do NOT
+            # fall through to SYNTHORG_DB_PATH: that would silently
+            # route secrets into a stale orphan SQLite file even
+            # though the rest of the app talks to Postgres. In that
+            # dual-env case secret_db_path is left None and operators
+            # must configure a non-encrypted_sqlite secret backend.
             secret_db_path: str | None
+            postgres_mode = bool(db_url)
             if resolved_db_path is not None:
                 secret_db_path = str(resolved_db_path)
+            elif postgres_mode:
+                secret_db_path = None
             else:
                 secret_db_path = None
                 injected_cfg = getattr(persistence, "_config", None)

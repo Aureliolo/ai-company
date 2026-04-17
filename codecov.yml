@@ -1,10 +1,10 @@
 # Codecov configuration
 # https://docs.codecov.com/docs/codecov-yaml
 #
-# Project policy keeps the overall 80% coverage floor mandated by
-# CLAUDE.md ("Coverage minimum is 80%, enforced in CI."). That rule
-# governs the aggregate project coverage, which is exactly what
-# coverage.status.project.default enforces below.
+# Project policy keeps the overall 80% coverage floor mandated by the
+# repo's contributor policy document ("Coverage minimum is 80%,
+# enforced in CI."). That rule governs the aggregate project coverage,
+# which is exactly what coverage.status.project.default enforces below.
 #
 # Per-patch coverage is held to 70% rather than the full 80% because
 # it is computed over the diff's new-code lines only, where the usual

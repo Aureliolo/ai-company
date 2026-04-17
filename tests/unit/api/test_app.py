@@ -1,5 +1,6 @@
 """Tests for application factory."""
 
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -145,16 +146,34 @@ class TestResolveArtifactDirEnv:
     def test_explicit_path_is_returned_as_is(
         self,
         monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
     ) -> None:
-        monkeypatch.setenv("SYNTHORG_ARTIFACT_DIR", "/mnt/custom-artifacts")
-        assert _resolve_artifact_dir_env() == "/mnt/custom-artifacts"
+        absolute = str(tmp_path / "custom-artifacts")
+        monkeypatch.setenv("SYNTHORG_ARTIFACT_DIR", absolute)
+        assert _resolve_artifact_dir_env() == absolute
 
     def test_surrounding_whitespace_is_stripped(
         self,
         monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
     ) -> None:
-        monkeypatch.setenv("SYNTHORG_ARTIFACT_DIR", "  /mnt/artifacts  ")
-        assert _resolve_artifact_dir_env() == "/mnt/artifacts"
+        absolute = str(tmp_path / "artifacts")
+        monkeypatch.setenv("SYNTHORG_ARTIFACT_DIR", f"  {absolute}  ")
+        assert _resolve_artifact_dir_env() == absolute
+
+    @pytest.mark.parametrize(
+        "relative_path",
+        ["artifacts", "../artifacts", "./local"],
+        ids=["bare", "traversal", "dot_prefix"],
+    )
+    def test_non_absolute_path_raises_value_error(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        relative_path: str,
+    ) -> None:
+        monkeypatch.setenv("SYNTHORG_ARTIFACT_DIR", relative_path)
+        with pytest.raises(ValueError, match="absolute"):
+            _resolve_artifact_dir_env()
 
 
 @pytest.mark.unit

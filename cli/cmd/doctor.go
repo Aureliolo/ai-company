@@ -277,7 +277,7 @@ func doctorFixCompose(state config.State, safeDir string) error {
 	if err != nil {
 		return fmt.Errorf("generating compose: %w", err)
 	}
-	return compose.AtomicWriteFile(safeDir, "compose.yml", generated)
+	return compose.WriteComposeAndNATS("compose.yml", generated, state.BusBackend, safeDir)
 }
 
 // doctorStatus classifies the overall health of the system from a diagnostic report.
