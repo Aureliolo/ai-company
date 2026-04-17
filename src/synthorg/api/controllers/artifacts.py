@@ -15,6 +15,7 @@ from synthorg.api.errors import ArtifactTooLargeApiError, NotFoundError
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import PaginationLimit, PaginationOffset, paginate
 from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
+from synthorg.api.rate_limits.guard import per_op_rate_limit
 from synthorg.api.ws_models import WsEventType
 from synthorg.core.artifact import Artifact
 from synthorg.core.enums import ArtifactType
@@ -313,7 +314,15 @@ class ArtifactController(Controller):
 
     @put(
         "/{artifact_id:str}/content",
-        guards=[require_write_access],
+        guards=[
+            require_write_access,
+            per_op_rate_limit(
+                "artifacts.upload",
+                max_requests=10,
+                window_seconds=60,
+                key="user",
+            ),
+        ],
         media_type="application/json",
     )
     async def upload_content(

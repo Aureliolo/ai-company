@@ -16,6 +16,7 @@ from litestar.status_codes import HTTP_204_NO_CONTENT
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import HumanRole, require_roles
 from synthorg.api.path_params import PathId  # noqa: TC001
+from synthorg.api.rate_limits.guard import per_op_rate_limit
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.backup.errors import (
     BackupError,
@@ -163,7 +164,17 @@ class BackupController(Controller):
             )
             raise NotFoundException(str(exc)) from exc
 
-    @post("/restore")
+    @post(
+        "/restore",
+        guards=[
+            per_op_rate_limit(
+                "admin.backup_restore",
+                max_requests=3,
+                window_seconds=3600,
+                key="user",
+            ),
+        ],
+    )
     async def restore_backup(
         self,
         state: State,

@@ -92,6 +92,7 @@ from synthorg.api.controllers.setup_models import (
 from synthorg.api.dto import ApiResponse
 from synthorg.api.errors import ApiValidationError
 from synthorg.api.guards import require_ceo, require_read_access
+from synthorg.api.rate_limits.guard import per_op_rate_limit
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.setup import (
@@ -706,7 +707,15 @@ class SetupController(Controller):
 
     @post(
         "/complete",
-        guards=[require_ceo],
+        guards=[
+            require_ceo,
+            per_op_rate_limit(
+                "setup.complete",
+                max_requests=5,
+                window_seconds=3600,
+                key="user_or_ip",
+            ),
+        ],
     )
     async def complete_setup(
         self,

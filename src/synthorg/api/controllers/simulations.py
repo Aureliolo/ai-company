@@ -14,6 +14,7 @@ from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.errors import ConflictError, NotFoundError
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import PaginationLimit, PaginationOffset, paginate
+from synthorg.api.rate_limits.guard import per_op_rate_limit
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.api.ws_models import WsEventType
 from synthorg.client.config import SimulationRunnerConfig
@@ -211,7 +212,19 @@ class SimulationController(Controller):
             raise NotFoundError(msg) from exc
         return ApiResponse(data=_to_response(record))
 
-    @post("/", guards=[require_write_access], status_code=201)
+    @post(
+        "/",
+        guards=[
+            require_write_access,
+            per_op_rate_limit(
+                "simulations.create",
+                max_requests=30,
+                window_seconds=3600,
+                key="user",
+            ),
+        ],
+        status_code=201,
+    )
     async def start_simulation(
         self,
         request: Request[Any, Any, Any],

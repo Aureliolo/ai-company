@@ -23,6 +23,7 @@ from synthorg.api.errors import (
 )
 from synthorg.api.guards import require_org_mutation, require_read_access
 from synthorg.api.path_params import PathName  # noqa: TC001
+from synthorg.api.rate_limits.guard import per_op_rate_limit
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.agent import AgentIdentity  # noqa: TC001
 from synthorg.core.types import NotBlankStr
@@ -218,7 +219,15 @@ class TrainingController(Controller):
 
     @post(
         "/execute",
-        guards=[require_org_mutation()],
+        guards=[
+            require_org_mutation(),
+            per_op_rate_limit(
+                "training.execute",
+                max_requests=20,
+                window_seconds=3600,
+                key="user",
+            ),
+        ],
         status_code=HTTP_200_OK,
     )
     async def execute_plan(

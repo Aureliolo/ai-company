@@ -59,6 +59,7 @@ from synthorg.api.lifecycle import (
     _try_stop,
 )
 from synthorg.api.middleware import RequestLoggingMiddleware, security_headers_hook
+from synthorg.api.rate_limits import build_sliding_window_store
 from synthorg.api.state import AppState
 from synthorg.api.ws_models import WsEvent, WsEventType
 from synthorg.backup.factory import build_backup_service
@@ -2186,6 +2187,14 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
     if _skip_lifecycle_shutdown:
         shutdown = []
 
+    # Per-operation rate limiter (#1391).  Layered on top of the global
+    # two-tier limiter; read from app state by ``per_op_rate_limit``
+    # guards.
+    per_op_rate_limit_store = build_sliding_window_store(
+        api_config.per_op_rate_limit,
+    )
+    shutdown = [*shutdown, per_op_rate_limit_store.close]
+
     return Litestar(
         route_handlers=[api_router, *a2a_root_controllers],
         # Disable Litestar's built-in logging config to preserve the
@@ -2196,7 +2205,13 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
         # queue_listener, causing all runtime logs to go only to Docker
         # stdout.
         logging_config=None,
-        state=State({"app_state": app_state}),
+        state=State(
+            {
+                "app_state": app_state,
+                "per_op_rate_limit_store": per_op_rate_limit_store,
+                "per_op_rate_limit_config": api_config.per_op_rate_limit,
+            },
+        ),
         cors_config=CORSConfig(
             allow_origins=list(api_config.cors.allowed_origins),
             allow_methods=list(api_config.cors.allow_methods),  # type: ignore[arg-type]

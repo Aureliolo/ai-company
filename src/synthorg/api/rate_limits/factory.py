@@ -1,0 +1,32 @@
+"""Factory for sliding-window store strategies (#1391)."""
+
+from synthorg.api.rate_limits.config import PerOpRateLimitConfig  # noqa: TC001
+from synthorg.api.rate_limits.in_memory import InMemorySlidingWindowStore
+from synthorg.api.rate_limits.protocol import SlidingWindowStore  # noqa: TC001
+
+
+def build_sliding_window_store(
+    config: PerOpRateLimitConfig,
+) -> SlidingWindowStore:
+    """Construct the configured :class:`SlidingWindowStore`.
+
+    Args:
+        config: Per-op rate limit configuration.
+
+    Returns:
+        A concrete :class:`SlidingWindowStore` implementation.
+
+    Raises:
+        NotImplementedError: ``config.backend`` selects a backend that
+            has not been implemented yet (currently ``redis``).
+    """
+    if config.backend == "memory":
+        return InMemorySlidingWindowStore()
+    if config.backend == "redis":
+        msg = (
+            "Redis-backed per-op rate limiter is not implemented. "
+            "Use backend='memory' or contribute a Redis adapter."
+        )
+        raise NotImplementedError(msg)
+    msg = f"Unknown per-op rate limit backend: {config.backend!r}"
+    raise ValueError(msg)
