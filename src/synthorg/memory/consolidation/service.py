@@ -64,11 +64,16 @@ class MemoryConsolidationService:
         config: ConsolidationConfig,
         strategy: ConsolidationStrategy | None = None,
         archival_store: ArchivalStore | None = None,
+        max_enforce_batch: int = _MAX_ENFORCE_BATCH,
     ) -> None:
+        if max_enforce_batch < 1:
+            msg = f"max_enforce_batch must be >= 1, got {max_enforce_batch}"
+            raise ValueError(msg)
         self._backend = backend
         self._config = config
         self._strategy = strategy
         self._archival_store = archival_store
+        self._max_enforce_batch = max_enforce_batch
         self._retention = RetentionEnforcer(
             config=config.retention,
             backend=backend,
@@ -165,7 +170,7 @@ class MemoryConsolidationService:
             deleted = 0
             remaining = excess
             while remaining > 0:
-                batch_size = min(remaining, _MAX_ENFORCE_BATCH)
+                batch_size = min(remaining, self._max_enforce_batch)
                 query = MemoryQuery(limit=batch_size)
                 entries = await self._backend.retrieve(agent_id, query)
                 if not entries:

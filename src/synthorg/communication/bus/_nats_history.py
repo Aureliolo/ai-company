@@ -69,14 +69,25 @@ async def collect_history_batches(
     psub: Any,
     subject: str,
     stream_name: str,
+    *,
+    batch_size: int = 100,
+    fetch_timeout_seconds: float = 0.5,
 ) -> list[Message]:
-    """Drain the history consumer into a list, stopping on idle timeout."""
+    """Drain the history consumer into a list, stopping on idle timeout.
+
+    Args:
+        psub: Pull-subscription returned by the history consumer bootstrap.
+        subject: Subject being scanned.
+        stream_name: Stream being scanned.
+        batch_size: Messages fetched per JetStream pull.
+        fetch_timeout_seconds: Per-batch fetch timeout.
+    """
     from nats.errors import TimeoutError as NatsTimeoutError  # noqa: PLC0415
 
     parsed_messages: list[Message] = []
     while True:
         try:
-            batch = await psub.fetch(batch=100, timeout=0.5)
+            batch = await psub.fetch(batch=batch_size, timeout=fetch_timeout_seconds)
         except NatsTimeoutError:
             return parsed_messages
         except Exception as exc:

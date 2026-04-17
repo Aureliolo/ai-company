@@ -7,7 +7,7 @@ sprints.
 
 import asyncio
 import contextlib
-from typing import Final
+from typing import TYPE_CHECKING, Final
 
 from synthorg.communication.bus_protocol import MessageBus  # noqa: TC001
 from synthorg.communication.message import DataPart
@@ -23,12 +23,18 @@ from synthorg.observability.events.integrations import (
     WEBHOOK_BRIDGE_STARTED,
     WEBHOOK_BRIDGE_STOPPED,
 )
+from synthorg.settings.enums import SettingNamespace
+
+if TYPE_CHECKING:
+    from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
 
 _SUBSCRIBER_ID: Final[str] = "__webhook_bridge__"
 _POLL_TIMEOUT: Final[float] = 1.0
+"""Fallback poll timeout used when no resolver is wired in."""
 _MAX_CONSECUTIVE_ERRORS: Final[int] = 30
+"""Fallback error budget used when no resolver is wired in."""
 
 
 class WebhookEventBridge:
@@ -47,11 +53,32 @@ class WebhookEventBridge:
         self,
         bus: MessageBus,
         ceremony_scheduler: CeremonyScheduler,
+        *,
+        config_resolver: ConfigResolver | None = None,
     ) -> None:
         self._bus = bus
         self._scheduler = ceremony_scheduler
+        self._config_resolver = config_resolver
         self._task: asyncio.Task[None] | None = None
         self._lifecycle_lock = asyncio.Lock()
+
+    async def _get_poll_timeout(self) -> float:
+        """Resolve the current poll timeout, falling back to the constant."""
+        if self._config_resolver is None:
+            return _POLL_TIMEOUT
+        return await self._config_resolver.get_float(
+            SettingNamespace.COMMUNICATION.value,
+            "webhook_bridge_poll_timeout_seconds",
+        )
+
+    async def _get_max_consecutive_errors(self) -> int:
+        """Resolve the current error budget, falling back to the constant."""
+        if self._config_resolver is None:
+            return _MAX_CONSECUTIVE_ERRORS
+        return await self._config_resolver.get_int(
+            SettingNamespace.COMMUNICATION.value,
+            "webhook_bridge_max_consecutive_errors",
+        )
 
     async def start(self) -> None:
         """Subscribe and start the polling task."""
@@ -113,7 +140,7 @@ class WebhookEventBridge:
                 envelope = await self._bus.receive(
                     WEBHOOK_CHANNEL.name,
                     _SUBSCRIBER_ID,
-                    timeout=_POLL_TIMEOUT,
+                    timeout=await self._get_poll_timeout(),
                 )
                 if envelope is None:
                     continue
@@ -123,7 +150,7 @@ class WebhookEventBridge:
                 raise
             except Exception:
                 consecutive_errors += 1
-                if consecutive_errors >= _MAX_CONSECUTIVE_ERRORS:
+                if consecutive_errors >= await self._get_max_consecutive_errors():
                     logger.exception(
                         WEBHOOK_BRIDGE_POLL_ERROR,
                         error="too many consecutive errors, stopping",
