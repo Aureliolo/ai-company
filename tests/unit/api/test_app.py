@@ -104,6 +104,67 @@ class TestCreateAppEnvAutoWire:
 
 
 @pytest.mark.unit
+class TestResolveArtifactDirEnv:
+    """Lock down the SYNTHORG_ARTIFACT_DIR resolution helper.
+
+    Postgres-mode auto-wire falls back to /data when the env var is
+    unset or whitespace-only. A previous implementation used
+    ``os.environ.get(...) or "/data"`` which treated a whitespace-only
+    value as truthy and silently wrote artifacts into the process
+    working directory instead; these tests are the guardrail.
+    """
+
+    def test_unset_env_falls_back_to_data(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from synthorg.api.app import _resolve_artifact_dir_env
+
+        monkeypatch.delenv("SYNTHORG_ARTIFACT_DIR", raising=False)
+        assert _resolve_artifact_dir_env() == "/data"
+
+    @pytest.mark.parametrize(
+        "env_value",
+        ["", " ", "   ", "\t", "\n", " \t \n "],
+        ids=[
+            "empty",
+            "single_space",
+            "multi_space",
+            "tab",
+            "newline",
+            "mixed_whitespace",
+        ],
+    )
+    def test_whitespace_only_env_falls_back_to_data(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        env_value: str,
+    ) -> None:
+        from synthorg.api.app import _resolve_artifact_dir_env
+
+        monkeypatch.setenv("SYNTHORG_ARTIFACT_DIR", env_value)
+        assert _resolve_artifact_dir_env() == "/data"
+
+    def test_explicit_path_is_returned_as_is(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from synthorg.api.app import _resolve_artifact_dir_env
+
+        monkeypatch.setenv("SYNTHORG_ARTIFACT_DIR", "/mnt/custom-artifacts")
+        assert _resolve_artifact_dir_env() == "/mnt/custom-artifacts"
+
+    def test_surrounding_whitespace_is_stripped(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from synthorg.api.app import _resolve_artifact_dir_env
+
+        monkeypatch.setenv("SYNTHORG_ARTIFACT_DIR", "  /mnt/artifacts  ")
+        assert _resolve_artifact_dir_env() == "/mnt/artifacts"
+
+
+@pytest.mark.unit
 class TestPostgresConfigFromURL:
     """Verify the Postgres URL parser used by SYNTHORG_DATABASE_URL auto-wire.
 

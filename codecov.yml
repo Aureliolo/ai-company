@@ -1,0 +1,24 @@
+# Codecov configuration
+# https://docs.codecov.com/docs/codecov-yaml
+
+coverage:
+  status:
+    project:
+      default:
+        # Require overall coverage to stay near the current baseline.
+        # The 0.5% threshold absorbs measurement noise (xdist ordering,
+        # coverage rounding, tiny refactors that move a branch by one
+        # test run) without materially weakening the gate -- any real
+        # regression of more than half a percent still trips the check.
+        target: auto
+        threshold: 0.5%
+        if_ci_failed: error
+    patch:
+      default:
+        # Require the diff itself to be well covered: new code must meet
+        # the project's baseline coverage (~85%). The small slack here
+        # matches the project-level threshold above so the two gates
+        # report consistent "is this release-quality?" answers.
+        target: auto
+        threshold: 0.5%
+        if_ci_failed: error

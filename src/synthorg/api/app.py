@@ -281,6 +281,27 @@ def _postgres_config_from_url(db_url: str) -> PostgresConfig:
     )
 
 
+def _resolve_artifact_dir_env() -> str:
+    """Resolve the postgres-mode artifact directory from the environment.
+
+    Reads ``SYNTHORG_ARTIFACT_DIR`` and falls back to ``/data`` (the
+    compose template's mount point) when the variable is unset or
+    consists only of whitespace. A previous implementation used
+    ``os.environ.get(...) or "/data"`` which treated a whitespace-only
+    value as truthy and collapsed to ``Path("")`` (the process working
+    directory), writing artifacts somewhere unexpected; this helper
+    strips first and only then applies the default.
+
+    Returns:
+        The absolute directory string to hand to
+        :class:`FileSystemArtifactStorage`.
+    """
+    artifact_dir_str = os.environ.get("SYNTHORG_ARTIFACT_DIR", "").strip()
+    if not artifact_dir_str:
+        return "/data"
+    return artifact_dir_str
+
+
 def _make_meeting_publisher(
     channels_plugin: ChannelsPlugin,
 ) -> Callable[[str, dict[str, Any]], None]:
@@ -1250,9 +1271,7 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
             # path, so default artifact storage to /data (the standard
             # data volume in the CLI compose template) when not set.
             if artifact_storage is None:
-                artifact_dir_str = os.environ.get("SYNTHORG_ARTIFACT_DIR", "").strip()
-                if not artifact_dir_str:
-                    artifact_dir_str = "/data"
+                artifact_dir_str = _resolve_artifact_dir_env()
                 artifact_storage = FileSystemArtifactStorage(
                     data_dir=Path(artifact_dir_str),
                 )
