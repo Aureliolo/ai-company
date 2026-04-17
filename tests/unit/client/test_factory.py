@@ -98,23 +98,23 @@ class TestReportFactory:
 
 
 class TestPoolStrategyFactory:
-    def test_round_robin(self) -> None:
+    @pytest.mark.parametrize(
+        ("selection_strategy", "expected_type"),
+        [
+            ("round_robin", RoundRobinStrategy),
+            ("weighted_random", WeightedRandomStrategy),
+            ("domain_matched", DomainMatchedStrategy),
+        ],
+    )
+    def test_dispatch_by_strategy(
+        self,
+        selection_strategy: str,
+        expected_type: type,
+    ) -> None:
         impl = build_client_pool_strategy(
-            ClientPoolConfig(selection_strategy="round_robin"),
+            ClientPoolConfig(selection_strategy=selection_strategy),
         )
-        assert isinstance(impl, RoundRobinStrategy)
-
-    def test_weighted_random(self) -> None:
-        impl = build_client_pool_strategy(
-            ClientPoolConfig(selection_strategy="weighted_random"),
-        )
-        assert isinstance(impl, WeightedRandomStrategy)
-
-    def test_domain_matched(self) -> None:
-        impl = build_client_pool_strategy(
-            ClientPoolConfig(selection_strategy="domain_matched"),
-        )
-        assert isinstance(impl, DomainMatchedStrategy)
+        assert isinstance(impl, expected_type)
 
     def test_default_is_round_robin(self) -> None:
         impl = build_client_pool_strategy(ClientPoolConfig())
@@ -128,26 +128,33 @@ class TestPoolStrategyFactory:
 
 
 class TestEntryPointFactory:
-    def test_direct(self) -> None:
-        assert isinstance(build_entry_point_strategy("direct"), DirectAdapter)
+    @pytest.mark.parametrize(
+        ("adapter", "expected_type", "project_id"),
+        [
+            ("direct", DirectAdapter, None),
+            ("project", ProjectAdapter, NotBlankStr("proj-123")),
+            ("intake", IntakeAdapter, None),
+        ],
+    )
+    def test_dispatch_by_adapter(
+        self,
+        adapter: str,
+        expected_type: type,
+        project_id: NotBlankStr | None,
+    ) -> None:
+        impl = build_entry_point_strategy(
+            NotBlankStr(adapter),
+            project_id=project_id,
+        )
+        assert isinstance(impl, expected_type)
 
     def test_project_requires_id(self) -> None:
         with pytest.raises(UnknownStrategyError, match="project_id"):
-            build_entry_point_strategy("project")
-
-    def test_project_with_id(self) -> None:
-        impl = build_entry_point_strategy(
-            "project",
-            project_id=NotBlankStr("proj-123"),
-        )
-        assert isinstance(impl, ProjectAdapter)
-
-    def test_intake(self) -> None:
-        assert isinstance(build_entry_point_strategy("intake"), IntakeAdapter)
+            build_entry_point_strategy(NotBlankStr("project"))
 
     def test_unknown_raises(self) -> None:
         with pytest.raises(UnknownStrategyError, match="entry-point"):
-            build_entry_point_strategy("unknown")
+            build_entry_point_strategy(NotBlankStr("unknown"))
 
 
 class _StubProvider:

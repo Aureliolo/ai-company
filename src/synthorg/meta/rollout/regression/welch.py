@@ -109,7 +109,15 @@ def welch_t_test(
     df = df_num / df_den
 
     x = df / (df + t * t)
-    p_two_sided = _regularized_incomplete_beta(df / 2.0, 0.5, x)
+    try:
+        p_two_sided = _regularized_incomplete_beta(df / 2.0, 0.5, x)
+    except RuntimeError as exc:
+        # The continued-fraction routine can fail to converge on
+        # pathological inputs. Translate to the public Welch failure
+        # type so callers treat it like any other Welch precondition
+        # miss instead of leaking a raw RuntimeError.
+        msg = f"Welch p-value computation failed to converge: {exc}"
+        raise InsufficientDataError(msg) from exc
     p_two_sided = min(1.0, max(0.0, p_two_sided))
     return WelchResult(t=t, df=df, p_two_sided=p_two_sided)
 

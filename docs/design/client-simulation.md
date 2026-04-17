@@ -263,6 +263,15 @@ The factories follow the project-wide pluggable-subsystems pattern
 defaults: a misspelled discriminator is a hard error at construction
 time, not a runtime surprise during a simulation.
 
+!!! note "Hybrid requirement generator is intentionally excluded from factory dispatch"
+    `RequirementGeneratorConfig.strategy="hybrid"` does **not** resolve
+    through `build_requirement_generator()`. `HybridGenerator` composes
+    multiple underlying generators with weights, so it has no
+    single-argument factory; callers must construct it manually with a
+    tuple of `(generator, weight)` pairs. Passing `"hybrid"` to the
+    factory raises `UnknownStrategyError` -- this is a deliberate
+    deviation from the other strategies, not an oversight.
+
 ---
 
 ## Observability

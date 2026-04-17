@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 from synthorg.meta.models import (
     ImprovementProposal,
     OrgSignalSnapshot,
+    RegressionResult,
     RegressionThresholds,
     RegressionVerdict,
     RolloutOutcome,
@@ -70,6 +71,7 @@ async def observe_until_verdict(  # noqa: PLR0913
         )
         raise ValueError(msg)
     elapsed = 0.0
+    last_result: RegressionResult | None = None
     while elapsed < observation_hours:
         remaining = observation_hours - elapsed
         step_hours = min(check_interval_hours, remaining)
@@ -81,6 +83,7 @@ async def observe_until_verdict(  # noqa: PLR0913
             current=current,
             thresholds=thresholds,
         )
+        last_result = result
         logger.info(
             META_ROLLOUT_OBSERVATION_TICK,
             strategy=strategy_name,
@@ -117,15 +120,30 @@ async def observe_until_verdict(  # noqa: PLR0913
         proposal_id=str(proposal.id),
         observation_hours_elapsed=elapsed,
     )
+    # Preserve the final verdict so INSUFFICIENT_DATA / other non-regression
+    # non-clean outcomes are not collapsed into SUCCESS.
+    final_verdict = (
+        last_result.verdict
+        if last_result is not None
+        else RegressionVerdict.NO_REGRESSION
+    )
+    final_breached = last_result.breached_metric if last_result is not None else None
+    outcome = (
+        RolloutOutcome.SUCCESS
+        if final_verdict == RegressionVerdict.NO_REGRESSION
+        else RolloutOutcome.REGRESSED
+    )
     logger.info(
         META_ROLLOUT_COMPLETED,
         strategy=strategy_name,
         proposal_id=str(proposal.id),
-        outcome="success",
+        outcome=outcome.value,
+        verdict=final_verdict.value,
     )
     return RolloutResult(
         proposal_id=proposal.id,
-        outcome=RolloutOutcome.SUCCESS,
-        regression_verdict=RegressionVerdict.NO_REGRESSION,
+        outcome=outcome,
+        regression_verdict=final_verdict,
         observation_hours_elapsed=elapsed,
+        details=str(final_breached) if final_breached is not None else None,
     )

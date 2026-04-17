@@ -13,6 +13,7 @@ detector refuses to fire without data rather than guessing.
 
 import math
 from datetime import datetime  # noqa: TC003 -- Pydantic needs at runtime
+from enum import Enum
 from typing import Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict
@@ -87,6 +88,21 @@ class NoSampleSource:
         return WindowSamples()
 
 
+class _MetricCheckOutcome(Enum):
+    """Sentinel distinguishing 'Welch ran cleanly' from 'could not run'.
+
+    A metric that returns ``OK`` definitely did not regress (Welch
+    accepted the sample and found either p >= alpha or the wrong
+    direction). ``UNTESTABLE`` means the sample was too small / had
+    zero combined variance / raised inside Welch; no conclusion at all.
+    Preserving this distinction prevents the detector from collapsing
+    "don't know yet" into "everything is fine".
+    """
+
+    OK = "ok"
+    UNTESTABLE = "untestable"
+
+
 class StatisticalDetector:
     """Layer 2 regression detector using Welch's t-test.
 
@@ -134,36 +150,52 @@ class StatisticalDetector:
             window_end=current.collected_at,
         )
 
-        verdict = self._check_metric(
-            metric="quality",
-            baseline=baseline_samples.quality_samples,
-            current=current_samples.quality_samples,
-            lower_is_worse=True,
-        )
-        if verdict is not None:
-            return verdict
-        verdict = self._check_metric(
-            metric="success_rate",
-            baseline=baseline_samples.success_samples,
-            current=current_samples.success_samples,
-            lower_is_worse=True,
-        )
-        if verdict is not None:
-            return verdict
-        verdict = self._check_metric(
-            metric="cost",
-            baseline=baseline_samples.cost_samples,
-            current=current_samples.cost_samples,
-            lower_is_worse=False,
-        )
-        if verdict is not None:
-            return verdict
+        saw_ok = False
+        for metric, base_tuple, curr_tuple, lower_is_worse in (
+            (
+                "quality",
+                baseline_samples.quality_samples,
+                current_samples.quality_samples,
+                True,
+            ),
+            (
+                "success_rate",
+                baseline_samples.success_samples,
+                current_samples.success_samples,
+                True,
+            ),
+            (
+                "cost",
+                baseline_samples.cost_samples,
+                current_samples.cost_samples,
+                False,
+            ),
+        ):
+            verdict = self._check_metric(
+                metric=metric,
+                baseline=base_tuple,
+                current=curr_tuple,
+                lower_is_worse=lower_is_worse,
+            )
+            if isinstance(verdict, RegressionResult):
+                return verdict
+            if verdict is _MetricCheckOutcome.OK:
+                saw_ok = True
 
         if self._all_insufficient(baseline_samples, current_samples):
             logger.info(
                 META_REGRESSION_STATISTICAL_INSUFFICIENT_DATA,
                 min_required=self._min_data_points,
             )
+            return RegressionResult(
+                verdict=RegressionVerdict.INSUFFICIENT_DATA,
+            )
+        if not saw_ok:
+            # Every metric was UNTESTABLE -- Welch could not run on
+            # any of them (zero variance, too few samples, or
+            # non-convergence). Surface that as INSUFFICIENT_DATA
+            # instead of collapsing "don't know yet" into a clean
+            # NO_REGRESSION that callers would treat as a pass.
             return RegressionResult(
                 verdict=RegressionVerdict.INSUFFICIENT_DATA,
             )
@@ -176,19 +208,20 @@ class StatisticalDetector:
         baseline: tuple[float, ...],
         current: tuple[float, ...],
         lower_is_worse: bool,
-    ) -> RegressionResult | None:
-        """Run Welch on a single metric. Returns a verdict on regression.
+    ) -> RegressionResult | _MetricCheckOutcome:
+        """Run Welch on a single metric and return a verdict or sentinel.
 
-        ``base_value`` and ``curr_value`` are derived from the sample
-        tuples themselves (sample means) so the direction check stays
-        consistent with what Welch actually saw, rather than drifting
-        from snapshot aggregates produced by a different aggregator.
+        Returns a ``RegressionResult`` when the metric has regressed,
+        ``_MetricCheckOutcome.OK`` when Welch ran and said no regression,
+        or ``_MetricCheckOutcome.UNTESTABLE`` when Welch could not run
+        (insufficient samples or zero variance). The caller uses the
+        sentinel to distinguish "clean" from "not testable yet".
         """
         if (
             len(baseline) < self._min_data_points
             or len(current) < self._min_data_points
         ):
-            return None
+            return _MetricCheckOutcome.UNTESTABLE
         try:
             welch: WelchResult = welch_t_test(baseline, current)
         except (InsufficientDataError, ZeroVarianceError) as exc:
@@ -199,16 +232,16 @@ class StatisticalDetector:
                 baseline_samples=len(baseline),
                 current_samples=len(current),
             )
-            return None
+            return _MetricCheckOutcome.UNTESTABLE
         base_value = math.fsum(baseline) / len(baseline)
         curr_value = math.fsum(current) / len(current)
         if welch.p_two_sided >= self._alpha:
-            return None
+            return _MetricCheckOutcome.OK
         if lower_is_worse:
             if curr_value >= base_value:
-                return None
+                return _MetricCheckOutcome.OK
         elif curr_value <= base_value:
-            return None
+            return _MetricCheckOutcome.OK
         logger.warning(
             META_REGRESSION_STATISTICAL,
             metric=metric,

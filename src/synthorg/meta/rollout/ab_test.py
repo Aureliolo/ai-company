@@ -239,6 +239,63 @@ class ABTestRollout:
             thresholds=self._thresholds,
         )
 
+    def _early_exit_regressed(
+        self,
+        proposal: ImprovementProposal,
+        elapsed: float,
+        comparison: ABTestComparison,
+    ) -> RolloutResult:
+        """Return the REGRESSED result for a mid-window treatment drop."""
+        outcome, verdict = _map_verdict(comparison.verdict)
+        logger.warning(
+            META_ROLLOUT_FAILED,
+            strategy="ab_test",
+            proposal_id=str(proposal.id),
+            reason="treatment_regressed_mid_window",
+            elapsed_hours=elapsed,
+        )
+        return RolloutResult(
+            proposal_id=proposal.id,
+            outcome=outcome,
+            regression_verdict=verdict,
+            observation_hours_elapsed=elapsed,
+        )
+
+    def _finalize_observation(
+        self,
+        proposal: ImprovementProposal,
+        elapsed: float,
+        last_comparison: ABTestComparison | None,
+    ) -> RolloutResult:
+        """Map the terminal comparison into a ``RolloutResult``."""
+        logger.info(
+            META_ROLLOUT_OBSERVATION_COMPLETED,
+            strategy="ab_test",
+            proposal_id=str(proposal.id),
+            observation_hours_elapsed=elapsed,
+        )
+        if last_comparison is None:
+            return RolloutResult(
+                proposal_id=proposal.id,
+                outcome=RolloutOutcome.INCONCLUSIVE,
+                observation_hours_elapsed=elapsed,
+                details="observation window produced no comparisons",
+            )
+        outcome, verdict = _map_verdict(last_comparison.verdict)
+        logger.info(
+            META_ROLLOUT_COMPLETED,
+            strategy="ab_test",
+            proposal_id=str(proposal.id),
+            outcome=outcome.value,
+            ab_verdict=last_comparison.verdict.value,
+        )
+        return RolloutResult(
+            proposal_id=proposal.id,
+            outcome=outcome,
+            regression_verdict=verdict,
+            observation_hours_elapsed=elapsed,
+        )
+
     async def _observe_and_compare(
         self,
         *,
@@ -254,7 +311,7 @@ class ABTestRollout:
         )
         observation_hours = float(proposal.observation_window_hours)
         elapsed = 0.0
-        last_comparison = None
+        last_comparison: ABTestComparison | None = None
         while elapsed < observation_hours:
             remaining = observation_hours - elapsed
             step_hours = min(self._check_interval_hours, remaining)
@@ -276,49 +333,13 @@ class ABTestRollout:
                 verdict=comparison.verdict.value,
             )
             if comparison.verdict == ABTestVerdict.TREATMENT_REGRESSED:
-                outcome, verdict = _map_verdict(comparison.verdict)
-                logger.warning(
-                    META_ROLLOUT_FAILED,
-                    strategy="ab_test",
-                    proposal_id=str(proposal.id),
-                    reason="treatment_regressed_mid_window",
-                    elapsed_hours=elapsed,
-                )
-                return RolloutResult(
-                    proposal_id=proposal.id,
-                    outcome=outcome,
-                    regression_verdict=verdict,
-                    observation_hours_elapsed=elapsed,
+                return self._early_exit_regressed(
+                    proposal,
+                    elapsed,
+                    comparison,
                 )
 
-        logger.info(
-            META_ROLLOUT_OBSERVATION_COMPLETED,
-            strategy="ab_test",
-            proposal_id=str(proposal.id),
-            observation_hours_elapsed=elapsed,
-        )
-        final = last_comparison
-        if final is None:
-            return RolloutResult(
-                proposal_id=proposal.id,
-                outcome=RolloutOutcome.INCONCLUSIVE,
-                observation_hours_elapsed=elapsed,
-                details="observation window produced no comparisons",
-            )
-        outcome, verdict = _map_verdict(final.verdict)
-        logger.info(
-            META_ROLLOUT_COMPLETED,
-            strategy="ab_test",
-            proposal_id=str(proposal.id),
-            outcome=outcome.value,
-            ab_verdict=final.verdict.value,
-        )
-        return RolloutResult(
-            proposal_id=proposal.id,
-            outcome=outcome,
-            regression_verdict=verdict,
-            observation_hours_elapsed=elapsed,
-        )
+        return self._finalize_observation(proposal, elapsed, last_comparison)
 
     @staticmethod
     def assign_groups(

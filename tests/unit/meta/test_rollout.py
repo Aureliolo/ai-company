@@ -186,25 +186,31 @@ class TestThresholdDetector:
 
 
 class _FakeSampleSource:
-    """StatisticalSampleSource that routes by window_end timestamp."""
+    """StatisticalSampleSource that routes by call order.
+
+    The first ``fetch_for_window`` call returns ``baseline``, the
+    second returns ``current``, and subsequent calls return an empty
+    ``WindowSamples``. Call-order driven so tests don't have to
+    produce distinct ``window_end`` timestamps when two ``_snap()``
+    helpers happen to share ``collected_at``.
+    """
 
     def __init__(
         self,
         *,
         baseline: WindowSamples,
         current: WindowSamples,
-        baseline_end: object,
-        current_end: object,
     ) -> None:
         self._baseline = baseline
         self._current = current
-        self._baseline_end = baseline_end
-        self._current_end = current_end
+        self._call_count = 0
 
     async def fetch_for_window(self, *, window_end: object) -> WindowSamples:
-        if window_end == self._baseline_end:
+        _ = window_end
+        self._call_count += 1
+        if self._call_count == 1:
             return self._baseline
-        if window_end == self._current_end:
+        if self._call_count == 2:
             return self._current
         return WindowSamples()
 
@@ -237,8 +243,6 @@ class TestStatisticalDetector:
             sample_source=_FakeSampleSource(
                 baseline=_samples(samples),
                 current=_samples(samples),
-                baseline_end=baseline.collected_at,
-                current_end=current.collected_at,
             ),
         )
         result = await detector.check(
@@ -259,8 +263,6 @@ class TestStatisticalDetector:
             sample_source=_FakeSampleSource(
                 baseline=_samples(baseline_samples),
                 current=_samples(current_samples),
-                baseline_end=baseline.collected_at,
-                current_end=current.collected_at,
             ),
         )
         result = await detector.check(
@@ -282,8 +284,6 @@ class TestStatisticalDetector:
             sample_source=_FakeSampleSource(
                 baseline=_samples((8.0, 8.1)),
                 current=_samples((5.0, 5.1)),
-                baseline_end=baseline.collected_at,
-                current_end=current.collected_at,
             ),
         )
         result = await detector.check(
@@ -305,8 +305,6 @@ class TestStatisticalDetector:
         source = _FakeSampleSource(
             baseline=WindowSamples(),
             current=WindowSamples(),
-            baseline_end=None,
-            current_end=None,
         )
         assert isinstance(source, StatisticalSampleSource)
 
@@ -338,8 +336,6 @@ class TestTieredRegressionDetector:
                 sample_source=_FakeSampleSource(
                     baseline=_samples(baseline_samples),
                     current=_samples(current_samples),
-                    baseline_end=baseline.collected_at,
-                    current_end=current.collected_at,
                 ),
             ),
         )

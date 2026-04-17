@@ -23,16 +23,13 @@ class FakeClock:
     """
 
     def __init__(self, *, start: AwareDatetime | None = None) -> None:
-        self._now: datetime = (
-            start
-            if start is not None
-            else datetime(
-                2026,
-                1,
-                1,
-                tzinfo=UTC,
-            )
-        )
+        if start is None:
+            self._now: datetime = datetime(2026, 1, 1, tzinfo=UTC)
+        else:
+            if start.tzinfo is None or start.utcoffset() is None:
+                msg = f"start must be timezone-aware; got naive datetime {start!r}"
+                raise ValueError(msg)
+            self._now = start.astimezone(UTC)
         self._sleep_calls: list[float] = []
 
     async def sleep(self, seconds: float) -> None:

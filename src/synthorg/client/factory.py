@@ -103,6 +103,77 @@ def _require_non_blank(
     return str(value)
 
 
+_REQ_GEN_FACTORY = "requirement_generator"
+
+
+def _build_template_generator(
+    config: RequirementGeneratorConfig,
+    strategy: str,
+) -> RequirementGenerator:
+    template_path = _require_non_blank(
+        config.template_path,
+        factory=_REQ_GEN_FACTORY,
+        strategy=strategy,
+        field="config.template_path",
+    )
+    return TemplateGenerator(template_path=Path(template_path))
+
+
+def _build_llm_generator(
+    config: RequirementGeneratorConfig,
+    strategy: str,
+    *,
+    provider: CompletionProvider | None,
+    model: NotBlankStr | None,
+) -> RequirementGenerator:
+    if provider is None:
+        logger.warning(
+            CLIENT_FACTORY_UNKNOWN_STRATEGY,
+            factory=_REQ_GEN_FACTORY,
+            strategy=strategy,
+            missing="provider",
+        )
+        msg = "llm strategy requires a provider"
+        raise UnknownStrategyError(msg)
+    effective_model = _require_non_blank(
+        model or config.llm_model,
+        factory=_REQ_GEN_FACTORY,
+        strategy=strategy,
+        field="model (argument or config.llm_model)",
+    )
+    return LLMGenerator(provider=provider, model=NotBlankStr(effective_model))
+
+
+def _build_dataset_generator(
+    config: RequirementGeneratorConfig,
+    strategy: str,
+) -> RequirementGenerator:
+    dataset_path = _require_non_blank(
+        config.dataset_path,
+        factory=_REQ_GEN_FACTORY,
+        strategy=strategy,
+        field="config.dataset_path",
+    )
+    return DatasetGenerator(dataset_path=Path(dataset_path))
+
+
+def _reject_hybrid_generator(
+    _config: RequirementGeneratorConfig,
+    strategy: str,
+) -> RequirementGenerator:
+    logger.warning(
+        CLIENT_FACTORY_UNKNOWN_STRATEGY,
+        factory=_REQ_GEN_FACTORY,
+        strategy=strategy,
+        reason="no_single_argument_factory",
+    )
+    msg = (
+        "hybrid strategy has no single-argument factory; compose "
+        "HybridGenerator directly with a tuple of (generator, weight) pairs"
+    )
+    raise UnknownStrategyError(msg)
+
+
 def build_requirement_generator(
     config: RequirementGeneratorConfig,
     *,
@@ -117,64 +188,31 @@ def build_requirement_generator(
     * ``llm`` -> ``LLMGenerator`` (requires ``provider`` + ``model``)
     * ``dataset`` -> ``DatasetGenerator`` (requires ``dataset_path``)
     * ``procedural`` -> ``ProceduralGenerator``
-    * ``hybrid`` -> ``HybridGenerator`` -- callers compose manually.
+    * ``hybrid`` is **intentionally excluded** from factory dispatch:
+      ``HybridGenerator`` composes multiple generators with weights
+      and has no single-argument factory, so it must be constructed
+      manually. Passing ``strategy="hybrid"`` here raises
+      ``UnknownStrategyError``.
     """
     strategy = str(config.strategy)
-    factory = "requirement_generator"
     if strategy == "template":
-        template_path = _require_non_blank(
-            config.template_path,
-            factory=factory,
-            strategy=strategy,
-            field="config.template_path",
-        )
-        return TemplateGenerator(template_path=Path(template_path))
+        return _build_template_generator(config, strategy)
     if strategy == "llm":
-        if provider is None:
-            logger.warning(
-                CLIENT_FACTORY_UNKNOWN_STRATEGY,
-                factory=factory,
-                strategy=strategy,
-                missing="provider",
-            )
-            msg = "llm strategy requires a provider"
-            raise UnknownStrategyError(msg)
-        effective_model = _require_non_blank(
-            model or config.llm_model,
-            factory=factory,
-            strategy=strategy,
-            field="model (argument or config.llm_model)",
-        )
-        return LLMGenerator(
+        return _build_llm_generator(
+            config,
+            strategy,
             provider=provider,
-            model=NotBlankStr(effective_model),
+            model=model,
         )
     if strategy == "dataset":
-        dataset_path = _require_non_blank(
-            config.dataset_path,
-            factory=factory,
-            strategy=strategy,
-            field="config.dataset_path",
-        )
-        return DatasetGenerator(dataset_path=Path(dataset_path))
+        return _build_dataset_generator(config, strategy)
     if strategy == "procedural":
         return ProceduralGenerator()
     if strategy == "hybrid":
-        logger.warning(
-            CLIENT_FACTORY_UNKNOWN_STRATEGY,
-            factory=factory,
-            strategy=strategy,
-            reason="no_single_argument_factory",
-        )
-        msg = (
-            "hybrid strategy has no single-argument factory; compose "
-            "HybridGenerator directly with a tuple of "
-            "(generator, weight) pairs"
-        )
-        raise UnknownStrategyError(msg)
+        return _reject_hybrid_generator(config, strategy)
     logger.warning(
         CLIENT_FACTORY_UNKNOWN_STRATEGY,
-        factory=factory,
+        factory=_REQ_GEN_FACTORY,
         strategy=strategy,
         expected=sorted(_GENERATOR_STRATEGIES),
     )
