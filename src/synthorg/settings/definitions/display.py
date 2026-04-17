@@ -44,7 +44,7 @@ _r.register(
         default=None,
         description=(
             "BCP 47 locale tag (language + optional script + optional "
-            "region + up to 3 variants) overriding the browser default "
+            "region + up to 2 variants) overriding the browser default "
             "for dates, numbers, and currency rendering (e.g. 'en', "
             "'en-GB', 'de-CH', 'zh-Hant-HK'). Extension and private-use "
             "subtags are not accepted. Unset means 'follow browser'."

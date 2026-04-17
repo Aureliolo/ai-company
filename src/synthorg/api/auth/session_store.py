@@ -204,6 +204,11 @@ class SqliteSessionStore:
             ),
         )
         await self._db.commit()
+        if session.revoked:
+            # Keep the in-memory revocation cache consistent with the
+            # persisted row so ``is_revoked()`` reports the correct
+            # state without waiting for the next ``load_revoked()``.
+            self._revoked.add(session.session_id)
         logger.debug(
             API_SESSION_CREATED,
             session_id=session.session_id,
@@ -388,6 +393,11 @@ class PostgresSessionStore:
                     session.revoked,
                 ),
             )
+        if session.revoked:
+            # Mirror the persisted revoked flag into the in-memory cache;
+            # otherwise ``is_revoked()`` reports False until the next
+            # ``load_revoked()`` pass.
+            self._revoked.add(session.session_id)
         logger.debug(
             API_SESSION_CREATED,
             session_id=session.session_id,

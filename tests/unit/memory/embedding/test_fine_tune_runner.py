@@ -133,6 +133,29 @@ class TestLoadConfig:
 class TestRun:
     """Entrypoint _run() error handling."""
 
+    def test_invalid_env_port_fails_fast_at_entrypoint(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Malformed ``SYNTHORG_FINE_TUNE_HEALTH_PORT`` aborts ``_run()``.
+
+        The other tests stub ``_start_health_server`` via the
+        ``_mock_health_server`` autouse fixture. Here we route that
+        stub through a lambda that re-invokes ``_resolve_health_port``
+        so the port validation still runs -- locking in the fast-fail
+        container contract: a bad port must crash startup, not
+        silently bind the wrong port.
+        """
+        monkeypatch.setenv("SYNTHORG_FINE_TUNE_HEALTH_PORT", "not-a-port")
+        with (
+            patch(
+                "synthorg.memory.embedding.fine_tune_runner._start_health_server",
+                side_effect=_resolve_health_port,
+            ),
+            pytest.raises(ValueError, match="not a valid integer"),
+        ):
+            _run()
+
     def test_missing_config_returns_1(self, tmp_path: Path) -> None:
         with patch(
             "synthorg.memory.embedding.fine_tune_runner._CONFIG_PATH",

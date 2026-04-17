@@ -227,6 +227,17 @@ def _create_email_sink(  # noqa: PLR0911 - each return is a distinct validation 
             error="to_addrs is required",
         )
         return None
+    if any("\r" in a or "\n" in a for a in to_addrs):
+        # Same CR/LF header-injection guard we apply to ``from_addr``:
+        # ``msg["To"] = ...`` would otherwise let an operator with
+        # config-edit access inject arbitrary extra headers by splitting
+        # across a newline.
+        logger.warning(
+            NOTIFICATION_SINK_CONFIG_INVALID,
+            sink_type="email",
+            error="to_addrs must not contain CR/LF",
+        )
+        return None
     try:
         port = int(params.get("port", "587"))
     except ValueError:

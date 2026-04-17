@@ -107,24 +107,25 @@ def test_postgres_session_store_implements_protocol() -> None:
 
 def test_build_session_store_routes_async_pool_to_postgres() -> None:
     """``_build_session_store`` selects Postgres for AsyncConnectionPool."""
-    pool = MagicMock()
-    type(pool).__name__ = "AsyncConnectionPool"
+    # Construct a minimal class whose name matches what psycopg_pool
+    # exports. ``_build_session_store`` dispatches on ``type(db).__name__``
+    # so an explicit empty class is clearer and more honest than mutating
+    # ``MagicMock.__name__``.
+    pool = type("AsyncConnectionPool", (), {})()
     store = _build_session_store(pool)
     assert isinstance(store, PostgresSessionStore)
 
 
 def test_build_session_store_routes_connection_to_sqlite() -> None:
     """``_build_session_store`` selects SQLite for aiosqlite.Connection."""
-    conn = MagicMock()
-    type(conn).__name__ = "Connection"
+    conn = type("Connection", (), {})()
     store = _build_session_store(conn)
     assert isinstance(store, SqliteSessionStore)
 
 
 def test_build_session_store_rejects_unknown_handle() -> None:
     """Unknown DB handle types fail fast with TypeError."""
-    handle = MagicMock()
-    type(handle).__name__ = "SomeOtherDB"
+    handle = type("SomeOtherDB", (), {})()
     with pytest.raises(TypeError, match="Unsupported session-store DB handle"):
         _build_session_store(handle)
 

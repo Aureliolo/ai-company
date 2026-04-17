@@ -364,7 +364,7 @@ FROM cost_records"""
         logger.debug(
             PERSISTENCE_COST_RECORD_AGGREGATED,
             agent_id=agent_id,
-            total_usd=total,
+            total_cost=total,
         )
         return total
 

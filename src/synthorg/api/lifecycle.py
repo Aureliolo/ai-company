@@ -60,6 +60,12 @@ def _build_session_store(db: object) -> SessionStore:
         f"Unsupported session-store DB handle: {type(db)!r}. "
         f"Expected aiosqlite.Connection or psycopg_pool.AsyncConnectionPool."
     )
+    logger.error(
+        API_APP_STARTUP,
+        reason="unsupported_session_store_handle",
+        handle_type=type(db).__name__,
+        error=msg,
+    )
     raise TypeError(msg)
 
 

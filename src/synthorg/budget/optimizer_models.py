@@ -357,10 +357,13 @@ class CostOptimizerConfig(BaseModel):
             cost_per_1k to flag as inefficient.
         approval_auto_deny_alert_level: Alert level at or above which
             operations are automatically denied.
-        approval_warn_threshold: Cost threshold for adding a
-            warning condition to approval.  When set to ``0.0``, every
-            approved operation receives a "High-cost operation" condition
-            (effectively "always warn").
+        approval_warn_threshold: Absolute cost threshold (in the
+            configured ``budget.currency``) for adding a warning
+            condition to approval.  Operators running with a different
+            currency than the default should tune this to a value
+            meaningful in their currency.  When set to ``0.0``, every
+            approved operation receives a "High-cost operation"
+            condition (effectively "always warn").
         min_anomaly_windows: Minimum number of historical windows
             required before anomaly detection activates.
     """
@@ -389,7 +392,10 @@ class CostOptimizerConfig(BaseModel):
     approval_warn_threshold: float = Field(
         default=1.0,
         ge=0.0,
-        description="Cost threshold for warning condition",
+        description=(
+            "Absolute cost threshold (in configured currency) for "
+            "warning condition; tune per operator currency"
+        ),
     )
     min_anomaly_windows: int = Field(
         default=3,

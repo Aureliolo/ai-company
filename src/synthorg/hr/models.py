@@ -78,7 +78,8 @@ class HiringRequest(BaseModel):
         level: Desired seniority level.
         required_skills: Skills the candidate must have.
         reason: Business justification.
-        budget_limit_monthly: Maximum monthly cost, if constrained.
+        budget_limit_monthly: Maximum monthly cost in the configured
+            currency, if constrained.
         template_name: Template to use for candidate generation.
         status: Current request status.
         created_at: When the request was created.
@@ -105,7 +106,7 @@ class HiringRequest(BaseModel):
     budget_limit_monthly: float | None = Field(
         default=None,
         ge=0.0,
-        description="Maximum monthly cost",
+        description="Maximum monthly cost in the configured currency",
     )
     template_name: NotBlankStr | None = Field(
         default=None,

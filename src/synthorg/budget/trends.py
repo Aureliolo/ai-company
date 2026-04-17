@@ -408,7 +408,7 @@ def project_daily_spend(
     *,
     horizon_days: int,
     budget_total_monthly: float = 0.0,
-    budget_remaining: float = 0.0,
+    budget_remaining: float | None = None,
     now: datetime | None = None,
 ) -> BudgetForecast:
     """Project future budget spend using average daily spend.
@@ -422,7 +422,11 @@ def project_daily_spend(
         records: Historical cost records for the lookback period.
         horizon_days: Number of days to project forward.
         budget_total_monthly: Monthly budget total (0.0 if unset).
-        budget_remaining: Remaining budget (0.0 if unset).
+        budget_remaining: Remaining budget in the configured currency,
+            or ``None`` if unknown. ``None`` means ``days_until_exhausted``
+            cannot be computed; it is distinct from ``0.0`` (actually
+            exhausted) so callers who omit the kwarg do not accidentally
+            advertise zero-day runway.
         now: Reference time (defaults to current UTC time).
 
     Returns:
@@ -447,7 +451,7 @@ def project_daily_spend(
     )
 
     days_until: int | None = None
-    if budget_total_monthly > 0 and avg_daily > 0:
+    if budget_total_monthly > 0 and budget_remaining is not None and avg_daily > 0:
         days_until = max(math.ceil(budget_remaining / avg_daily), 0)
 
     return BudgetForecast(

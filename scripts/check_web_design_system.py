@@ -92,19 +92,32 @@ else:
     )
 
 
+def _marker_in_comment(line: str) -> bool:
+    """Return True when the regional-suppression marker is inside a comment.
+
+    The marker may appear in string literals (test fixtures, docs about
+    the lint rule, etc.), and those must NOT silently disable the check.
+    We require the marker to be preceded by a ``//``/``/*``/``*`` comment
+    opener on the same line, using :func:`_is_in_comment_context` which
+    already tracks string boundaries.
+    """
+    pos = line.find(_REGIONAL_SUPPRESSION_MARKER)
+    return pos >= 0 and _is_in_comment_context(line, pos)
+
+
 def _is_regional_suppressed(lines: list[str], line_num: int) -> bool:
     """Return True when line ``line_num`` opts out of regional checks.
 
     Checks the same line and the immediately preceding line for the
-    ``_REGIONAL_SUPPRESSION_MARKER`` string inside any comment.
+    ``_REGIONAL_SUPPRESSION_MARKER`` string inside any comment.  A
+    marker embedded in a string literal does not suppress the check.
     """
     if line_num < 1 or line_num > len(lines):
         return False
-    if _REGIONAL_SUPPRESSION_MARKER in lines[line_num - 1]:
+    if _marker_in_comment(lines[line_num - 1]):
         return True
-    return (
-        line_num >= _MIN_LINE_NUM_FOR_PRECEDING
-        and _REGIONAL_SUPPRESSION_MARKER in lines[line_num - 2]
+    return line_num >= _MIN_LINE_NUM_FOR_PRECEDING and _marker_in_comment(
+        lines[line_num - 2]
     )
 
 

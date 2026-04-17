@@ -95,7 +95,7 @@ class TestClassificationBudgetTracker:
         capped at the configured budget regardless of concurrency.
         """
         tracker = ClassificationBudgetTracker(budget=1.0)
-        # Each reservation asks for 0.07 USD; the budget admits
+        # Each reservation asks for 0.07 units; the budget admits
         # exactly 14 of them (14 * 0.07 = 0.98, 15 * 0.07 > 1.00).
         reserve_cost = 0.07
         total_attempts = 200
