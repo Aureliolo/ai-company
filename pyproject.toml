@@ -93,7 +93,7 @@ dev = [
     "pre-commit==4.5.1",
     "pip-audit==2.10.0",
     "pre-commit-uv==4.2.1",
-    "ruff==0.15.10",
+    "ruff==0.15.11",
     "types-pyyaml==6.0.12.20260408",
     "bandit==1.9.4",
     "pytest-randomly==4.0.1",
