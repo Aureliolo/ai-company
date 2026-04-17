@@ -30,10 +30,10 @@ from synthorg.persistence.postgres.escalation_repo import (
 pytestmark = [pytest.mark.integration, pytest.mark.slow]
 
 
-def _make_conflict() -> Conflict:
+def _make_conflict(conflict_id: str = "conflict-pg-0001") -> Conflict:
     """Two-agent architectural conflict fixture."""
     return Conflict(
-        id="conflict-pg-0001",
+        id=conflict_id,
         type=ConflictType.ARCHITECTURE,
         subject="Pick a storage engine",
         positions=(
@@ -62,11 +62,19 @@ def _make_escalation(
     *,
     escalation_id: str,
     expires_at: datetime | None = None,
+    conflict_id: str | None = None,
 ) -> Escalation:
-    """Build a pending escalation."""
+    """Build a pending escalation.
+
+    ``conflict_id`` defaults to a value derived from ``escalation_id`` so
+    tests that create several escalations in the same Postgres session
+    do not trip the schema's partial-unique "one PENDING per conflict"
+    index.
+    """
+    resolved_conflict_id = conflict_id or f"conflict-for-{escalation_id}"
     return Escalation(
         id=escalation_id,
-        conflict=_make_conflict(),
+        conflict=_make_conflict(resolved_conflict_id),
         created_at=datetime.now(UTC),
         expires_at=expires_at,
     )
