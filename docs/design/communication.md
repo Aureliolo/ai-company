@@ -738,19 +738,31 @@ All four conflict resolution strategies terminate with bounded resource use:
     process-local by design.  When the API runs across multiple workers
     or pods sharing a Postgres backend, a decision submitted through
     worker B must still wake a resolver blocked on worker A.  The queue
-    wires this via Postgres ``LISTEN`` / ``NOTIFY``: the repository
-    publishes ``<id>:<status>`` on the ``conflict_escalation_events``
-    channel on every terminal transition (via an ``AFTER UPDATE``
-    trigger installed in the schema), and an
+    wires this via Postgres ``LISTEN`` / ``NOTIFY``: the Postgres
+    repository publishes ``<id>:<status>`` on the
+    ``conflict_escalation_events`` channel from the *application* side
+    after every terminal transition (``mark_decided``, ``mark_expired``,
+    ``cancel``) -- no database trigger is installed, so operators need
+    no elevated privileges to ship the schema.  An
     ``EscalationNotifySubscriber`` running in each worker listens on
     that channel and forwards the signal to its local registry.  The
-    subscriber is controlled by ``EscalationQueueConfig.cross_instance_notify``
-    (``auto`` -- default, enables it automatically for the Postgres
-    backend; ``on`` -- force it, fail startup if the backend cannot
-    support it; ``off`` -- scope to a single worker).  The sweeper
-    and per-resolver timeout still bound stale rows if a notify is
-    missed, so the signal is an optimization, not a correctness
-    requirement.
+    subscriber is controlled by
+    ``EscalationQueueConfig.cross_instance_notify`` (``auto`` -- default,
+    enables it automatically for the Postgres backend; ``on`` -- force
+    it, fail startup if the backend cannot support it; ``off`` -- scope
+    to a single worker).
+
+    **Timeout re-read fallback.** Because the NOTIFY publish is
+    app-side and best-effort, a subscriber restart, network blip, or
+    deployment rollover can drop the wake-up for an in-flight
+    resolver.  To keep the decision path correct under those windows,
+    ``HumanEscalationResolver`` re-reads the escalation row on
+    ``TimeoutError`` and, if it finds a persisted ``DECIDED`` payload,
+    hands the operator's decision to the processor instead of
+    returning the generic ``ESCALATED_TO_HUMAN`` fallback.  The
+    sweeper and per-resolver timeout still bound stale rows; the
+    re-read guarantees that an operator's choice is never masked by a
+    missed notification.
 
     **Schema-level invariants.** The ``conflict_escalations`` table
     enforces three CHECK constraints that together make impossible

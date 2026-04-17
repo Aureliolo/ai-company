@@ -148,15 +148,33 @@ INSERT INTO conflict_escalations (
                 )
                 await conn.commit()
         except psycopg.errors.UniqueViolation as exc:
-            msg = f"Escalation {escalation.id!r} already exists"
+            # Distinguish the two possible unique violations so callers
+            # and logs see an accurate reason:
+            #   * ``idx_conflict_escalations_unique_pending_conflict``
+            #     -> a PENDING row for the same conflict already exists
+            #   * otherwise (primary key on ``id``) -> duplicate escalation id.
+            constraint_name = getattr(exc.diag, "constraint_name", None) or ""
+            if constraint_name == "idx_conflict_escalations_unique_pending_conflict":
+                msg = (
+                    f"Pending escalation for conflict "
+                    f"{escalation.conflict.id!r} already exists"
+                )
+                error_type = "escalation_create_duplicate_pending_conflict"
+            else:
+                msg = f"Escalation {escalation.id!r} already exists"
+                error_type = "escalation_create_duplicate_id"
             logger.warning(
                 API_REQUEST_ERROR,
-                error_type="escalation_create_duplicate",
+                error_type=error_type,
                 escalation_id=escalation.id,
                 conflict_id=escalation.conflict.id,
+                constraint=constraint_name or None,
                 error=str(exc),
             )
-            raise ConstraintViolationError(msg, constraint=str(exc)) from exc
+            raise ConstraintViolationError(
+                msg,
+                constraint=constraint_name or str(exc),
+            ) from exc
         except psycopg.Error as exc:
             msg = f"Failed to create escalation {escalation.id!r}: {exc}"
             logger.warning(

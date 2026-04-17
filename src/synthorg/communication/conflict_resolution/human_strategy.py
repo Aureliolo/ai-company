@@ -201,6 +201,14 @@ class HumanEscalationResolver:
                     timeout=float(self._timeout_seconds),
                 )
         except TimeoutError:
+            # Multi-worker correctness: a decision may have been persisted
+            # by a peer worker whose NOTIFY wake-up we missed (subscriber
+            # restart, network blip, deployment rollout).  Re-read the row
+            # before declaring timeout so we honour the operator's choice
+            # instead of masking it with an ESCALATED_TO_HUMAN fallback.
+            late_decision = await self._read_late_decision(escalation, conflict)
+            if late_decision is not None:
+                return late_decision
             await self._handle_timeout_cleanup(escalation, conflict)
             return self._timeout_resolution(conflict)
         except asyncio.CancelledError:
@@ -360,6 +368,71 @@ class HumanEscalationResolver:
             escalation_id=escalation.id,
             conflict_id=conflict.id,
         )
+
+    async def _read_late_decision(
+        self,
+        escalation: Escalation,
+        conflict: Conflict,
+    ) -> ConflictResolution | None:
+        """Re-read the row on ``TimeoutError`` and honour a persisted decision.
+
+        Covers the missed-NOTIFY window for multi-worker Postgres
+        deployments: if a peer worker persisted a DECIDED row while our
+        wait timed out (subscriber restart, dropped notification,
+        deployment rollover), the authoritative decision is already
+        durable and must override the generic timeout fallback.
+
+        Returns ``None`` when the row is missing, still PENDING, or the
+        lookup fails -- the caller then follows the normal timeout
+        cleanup + ``ESCALATED_TO_HUMAN`` contract.
+        """
+        try:
+            row = await self._store.get(escalation.id)
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                CONFLICT_ESCALATION_TIMEOUT,
+                escalation_id=escalation.id,
+                conflict_id=conflict.id,
+                error_type=type(exc).__name__,
+                error=str(exc),
+                note="late_decision_lookup_failed",
+            )
+            return None
+        if row is None:
+            return None
+        if row.status != EscalationStatus.DECIDED or row.decision is None:
+            return None
+        # Drain the future so the registry does not leak; no-op if the
+        # future completed concurrently.
+        try:
+            await asyncio.shield(self._registry.cancel(escalation.id))
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                CONFLICT_ESCALATION_RESOLVED,
+                escalation_id=escalation.id,
+                conflict_id=conflict.id,
+                error_type=type(exc).__name__,
+                error=str(exc),
+                note="late_decision_registry_cancel_failed",
+            )
+        decided_by = row.decided_by or "human"
+        resolution = self._processor.process(
+            conflict,
+            row.decision,
+            decided_by=decided_by,
+        )
+        logger.info(
+            CONFLICT_ESCALATION_RESOLVED,
+            escalation_id=escalation.id,
+            conflict_id=conflict.id,
+            outcome=resolution.outcome.value,
+            note="late_decision_observed_after_timeout",
+        )
+        return resolution
 
     async def _resolve_decided_by(self, escalation_id: str) -> str:
         """Look up the persisted ``decided_by`` or fall back to ``"human"``.

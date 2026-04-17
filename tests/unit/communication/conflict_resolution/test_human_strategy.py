@@ -201,6 +201,50 @@ class TestHumanEscalationFullLoop:
         rows, _ = await store.list_items(status=EscalationStatus.EXPIRED)
         assert len(rows) == 1
 
+    async def test_timeout_reads_late_decision(self) -> None:
+        # Missed-NOTIFY window: peer worker persisted a DECIDED row
+        # before our local wait timed out.  The resolver must honour
+        # the operator's decision instead of the timeout fallback.
+        store = InMemoryEscalationStore()
+        registry = PendingFuturesRegistry()
+        resolver = HumanEscalationResolver(
+            store=store,
+            registry=registry,
+            processor=WinnerSelectProcessor(),
+            timeout_seconds=0,
+        )
+        conflict = make_conflict()
+        winning_agent_id = conflict.positions[0].agent_id
+
+        # Monkey-patch the store.get called from _read_late_decision so
+        # it returns a DECIDED row even though timeout_seconds=0 beat
+        # the decision endpoint.  The real missed-NOTIFY scenario maps
+        # onto this: the row is durable; the wake-up never arrived.
+        original_get = store.get
+
+        async def late_get(escalation_id: str):
+            row = await original_get(escalation_id)
+            if row is None:
+                return None
+            return row.model_copy(
+                update={
+                    "status": EscalationStatus.DECIDED,
+                    "decided_at": datetime.now(UTC),
+                    "decided_by": "human:op-late",
+                    "decision": WinnerDecision(
+                        winning_agent_id=winning_agent_id,
+                        reasoning="late decision observed after timeout",
+                    ),
+                },
+            )
+
+        store.get = late_get  # type: ignore[method-assign]
+
+        resolution = await resolver.resolve(conflict)
+        assert resolution.outcome == ConflictResolutionOutcome.RESOLVED_BY_HUMAN
+        assert resolution.winning_agent_id == winning_agent_id
+        assert resolution.decided_by == "human:op-late"
+
     async def test_sweeper_expires_stale_rows(self) -> None:
         store = InMemoryEscalationStore()
         conflict = make_conflict()

@@ -978,12 +978,19 @@ CREATE TABLE conflict_escalations (
     decision_json JSONB,
     CHECK(length(trim(id)) > 0),
     CHECK(length(trim(conflict_id)) > 0),
+    -- Payload columns must be JSON objects (not scalars, arrays,
+    -- nulls, or strings), matching the SQLite sibling's
+    -- ``json_type = 'object'`` invariant so both backends refuse
+    -- malformed payloads at the schema layer.
+    CHECK(jsonb_typeof(conflict_json) = 'object'),
+    CHECK(decision_json IS NULL OR jsonb_typeof(decision_json) = 'object'),
     -- DECIDED rows carry the full decision triple; decided_by must
     -- be a nonblank actor identifier.
     CHECK(
         status != 'decided'
         OR (
             decision_json IS NOT NULL
+            AND jsonb_typeof(decision_json) = 'object'
             AND decided_at IS NOT NULL
             AND decided_by IS NOT NULL
             AND length(trim(decided_by)) > 0
