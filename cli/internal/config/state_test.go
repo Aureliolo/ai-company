@@ -753,10 +753,11 @@ func TestFineTuneVariantOrDefault(t *testing.T) {
 // must not survive silently until someone flips fine_tuning on), while the
 // empty string passes as a forward-compat shim for pre-split configs and the
 // two canonical values ("gpu", "cpu") are always accepted.
+//
+// Split into arch-independent and amd64-only groups because cross-field
+// rules like `fine_tuning=true requires amd64` would trip every enabled
+// case on ARM CI runners.
 func TestValidate_FineTuningVariant(t *testing.T) {
-	if runtime.GOARCH != "amd64" {
-		t.Skip("fine_tuning validation requires amd64 architecture")
-	}
 	t.Parallel()
 
 	base := DefaultState()
@@ -766,21 +767,52 @@ func TestValidate_FineTuningVariant(t *testing.T) {
 	base.EncryptSecrets = false
 	base.Sandbox = true
 
-	cases := []struct {
+	// Arch-independent: variant enum validation runs regardless of
+	// FineTuning or GOARCH, so exercise these on every runner.
+	archAgnostic := []struct {
 		name       string
 		fineTuning bool
 		variant    string
 		wantErr    bool
 	}{
 		{"disabled+empty", false, "", false},
+		{"disabled+gpu-accepted", false, FineTuneVariantGPU, false},
+		{"disabled+cpu-accepted", false, FineTuneVariantCPU, false},
 		{"disabled+invalid-rejected", false, "invalid", true},
+		{"disabled+typo-rejected", false, "GPU", true},
+	}
+	for _, tc := range archAgnostic {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			s := base
+			s.FineTuning = tc.fineTuning
+			s.FineTuningVariant = tc.variant
+			err := s.Validate()
+			if tc.wantErr && err == nil {
+				t.Errorf("Validate() returned nil, want error for variant=%q", tc.variant)
+			}
+			if !tc.wantErr && err != nil {
+				t.Errorf("Validate() = %v, want nil for variant=%q", err, tc.variant)
+			}
+		})
+	}
+
+	if runtime.GOARCH != "amd64" {
+		t.Skip("fine_tuning=true cases require amd64 architecture")
+	}
+	amd64Only := []struct {
+		name       string
+		fineTuning bool
+		variant    string
+		wantErr    bool
+	}{
 		{"enabled+empty-accepted", true, "", false},
 		{"enabled+gpu", true, FineTuneVariantGPU, false},
 		{"enabled+cpu", true, FineTuneVariantCPU, false},
 		{"enabled+invalid-rejected", true, "tpu", true},
 		{"enabled+typo-rejected", true, "GPU", true},
 	}
-	for _, tc := range cases {
+	for _, tc := range amd64Only {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			s := base

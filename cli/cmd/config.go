@@ -222,7 +222,11 @@ func printConfigFields(out *ui.UI, state config.State) {
 		out.KeyValue("Docker socket", state.DockerSock)
 	}
 	out.KeyValue("Fine-tuning", strconv.FormatBool(state.FineTuning))
-	if state.FineTuning {
+	// Show the persisted variant whenever the user has set it, even if
+	// fine-tuning is currently off -- otherwise `config set
+	// fine_tuning_variant cpu` on an off-by-default install looks like
+	// it was silently discarded.
+	if state.FineTuning || state.FineTuningVariant != "" {
 		out.KeyValue("Fine-tuning variant", state.FineTuneVariantOrDefault())
 	}
 	out.KeyValue("Persistence backend", state.PersistenceBackend)
@@ -811,7 +815,11 @@ func configGetValue(state config.State, key string) string {
 	case "fine_tuning":
 		return strconv.FormatBool(state.FineTuning)
 	case "fine_tuning_variant":
-		return state.FineTuneVariantOrDefault()
+		// Return the raw persisted value so runConfigList's source
+		// comparison ("config" vs "default") can distinguish an
+		// explicit `gpu` from an unset field. Callers that need the
+		// effective variant call FineTuneVariantOrDefault() themselves.
+		return state.FineTuningVariant
 	case "telemetry_opt_in":
 		return strconv.FormatBool(state.TelemetryOptIn)
 	case "timestamps":
