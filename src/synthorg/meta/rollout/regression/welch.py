@@ -103,6 +103,9 @@ def _regularized_incomplete_beta(a: float, b: float, x: float) -> float:
     """Regularized incomplete beta ``I_x(a, b)`` via log-gamma + CF.
 
     Implements Numerical Recipes' ``betai`` / ``betacf`` algorithm.
+    Returns ``0.0`` at ``x <= 0`` and ``1.0`` at ``x >= 1``. The
+    log-gamma normalisation keeps the computation numerically stable
+    for the degrees-of-freedom values encountered by Welch's t-test.
     """
     if x <= 0.0:
         return 0.0
@@ -122,7 +125,15 @@ def _regularized_incomplete_beta(a: float, b: float, x: float) -> float:
 
 
 def _betacf(a: float, b: float, x: float) -> float:
-    """Continued-fraction evaluation of the incomplete beta function."""
+    """Continued-fraction evaluation of the incomplete beta function.
+
+    Converges when ``x < (a + 1) / (a + b + 2)``; callers must swap
+    arguments (``a <-> b``, ``x -> 1 - x``) when ``x`` is larger.
+    Iterates up to ``_BETACF_MAX_ITER`` with a convergence tolerance
+    of ``_BETACF_EPS``; raises ``RuntimeError`` if the fraction fails
+    to converge (indicates pathological input, not a normal failure
+    mode).
+    """
     qab = a + b
     qap = a + 1.0
     qam = a - 1.0

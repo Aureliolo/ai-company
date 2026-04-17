@@ -615,6 +615,49 @@ class TestABTestComparator:
         assert result.effect_size is not None
         assert result.p_value is not None
 
+    async def test_zero_control_equals_zero_treatment(self) -> None:
+        comparator = ABTestComparator(min_observations=5)
+        result = await comparator.compare(
+            control=_group_metrics(
+                ABTestGroup.CONTROL,
+                quality=0.0,
+                success=0.0,
+                observations=20,
+            ),
+            treatment=_group_metrics(
+                ABTestGroup.TREATMENT,
+                quality=0.0,
+                success=0.0,
+                observations=20,
+            ),
+            thresholds=_thresholds(),
+        )
+        # Zero variance in both arms -> Welch unavailable -> inconclusive.
+        assert result.verdict == ABTestVerdict.INCONCLUSIVE
+
+    async def test_near_zero_baseline_small_treatment_difference(self) -> None:
+        comparator = ABTestComparator(
+            min_observations=5,
+            improvement_threshold=0.15,
+        )
+        result = await comparator.compare(
+            control=_group_metrics(
+                ABTestGroup.CONTROL,
+                quality=0.5,
+                success=0.5,
+                observations=20,
+            ),
+            treatment=_group_metrics(
+                ABTestGroup.TREATMENT,
+                quality=0.52,
+                success=0.51,
+                observations=20,
+            ),
+            thresholds=_thresholds(),
+        )
+        # 0.02/0.5 = 4% improvement, below 15% threshold -> inconclusive.
+        assert result.verdict == ABTestVerdict.INCONCLUSIVE
+
     async def test_no_significant_difference(self) -> None:
         comparator = ABTestComparator(min_observations=5)
         result = await comparator.compare(

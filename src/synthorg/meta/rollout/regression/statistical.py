@@ -192,7 +192,14 @@ class StatisticalDetector:
             return None
         try:
             welch: WelchResult = welch_t_test(baseline, current)
-        except InsufficientDataError, ZeroVarianceError:
+        except (InsufficientDataError, ZeroVarianceError) as exc:
+            logger.debug(
+                META_REGRESSION_STATISTICAL_INSUFFICIENT_DATA,
+                metric=metric,
+                error=type(exc).__name__,
+                baseline_samples=len(baseline),
+                current_samples=len(current),
+            )
             return None
         if welch.p_two_sided >= self._alpha:
             return None

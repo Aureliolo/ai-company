@@ -102,3 +102,22 @@ class TestBuildRollbackExecutor:
         )
         handlers = executor._handlers
         assert NotBlankStr("custom") in handlers
+
+    def test_extra_handlers_override_default(self) -> None:
+        from synthorg.meta.models import RollbackOperation
+
+        class _CustomConfigHandler:
+            async def revert(self, operation: RollbackOperation) -> int:
+                _ = operation
+                return 42
+
+        override: RollbackHandler = _CustomConfigHandler()
+        executor = build_rollback_executor(
+            config_mutator=_ConfigMutator(),
+            prompt_mutator=_PromptMutator(),
+            architecture_mutator=_ArchMutator(),
+            code_mutator=_CodeMutator(),
+            extra_handlers={"revert_config": override},
+        )
+        handlers = executor._handlers
+        assert handlers[NotBlankStr("revert_config")] is override

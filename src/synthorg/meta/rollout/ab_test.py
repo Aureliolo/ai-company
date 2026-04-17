@@ -7,6 +7,7 @@ t-test finds statistical significance and the mean quality improvement
 exceeds the configured threshold.
 """
 
+import asyncio
 import hashlib
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
@@ -216,16 +217,23 @@ class ABTestRollout:
             elapsed += step_hours
             window_end = self._clock.now()
             window_start = window_end - timedelta(hours=elapsed)
-            control_samples = await self._group_aggregator.aggregate_for_agents(
-                agent_ids=assignment.control_agent_ids,
-                since=window_start,
-                until=window_end,
-            )
-            treatment_samples = await self._group_aggregator.aggregate_for_agents(
-                agent_ids=assignment.treatment_agent_ids,
-                since=window_start,
-                until=window_end,
-            )
+            async with asyncio.TaskGroup() as tg:
+                control_task = tg.create_task(
+                    self._group_aggregator.aggregate_for_agents(
+                        agent_ids=assignment.control_agent_ids,
+                        since=window_start,
+                        until=window_end,
+                    ),
+                )
+                treatment_task = tg.create_task(
+                    self._group_aggregator.aggregate_for_agents(
+                        agent_ids=assignment.treatment_agent_ids,
+                        since=window_start,
+                        until=window_end,
+                    ),
+                )
+            control_samples = control_task.result()
+            treatment_samples = treatment_task.result()
             control_metrics = _samples_to_metrics(
                 assignment.control_agent_ids,
                 control_samples,

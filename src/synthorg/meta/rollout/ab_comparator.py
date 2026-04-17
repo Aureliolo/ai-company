@@ -277,7 +277,14 @@ def _compute_effect(
             treatment.quality_samples,
             control.quality_samples,
         )
-    except InsufficientDataError, ZeroVarianceError:
+    except (InsufficientDataError, ZeroVarianceError) as exc:
+        logger.warning(
+            META_ABTEST_INCONCLUSIVE,
+            reason="welch_test_unavailable",
+            error=type(exc).__name__,
+            control_samples=len(control.quality_samples),
+            treatment_samples=len(treatment.quality_samples),
+        )
         return 0.0, 1.0
 
     pooled_sd = _pooled_sd(

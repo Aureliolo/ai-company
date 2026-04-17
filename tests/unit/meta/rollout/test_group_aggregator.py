@@ -146,6 +146,57 @@ class TestTrackerGroupAggregator:
         # spend = avg_cost_per_task * tasks_completed
         assert samples.spend_samples == (10.0, 10.0)
 
+    async def test_skips_agents_with_missing_cost_per_task(self) -> None:
+        snapshots = {
+            "a1": _snapshot(
+                agent_id="a1",
+                quality=7.0,
+                success=0.9,
+                cost_per_task=None,
+            ),
+            "a2": _snapshot(
+                agent_id="a2",
+                quality=8.0,
+                success=0.85,
+                cost_per_task=1.5,
+            ),
+        }
+        tracker = _FakeTracker(snapshots)
+        agg: Any = TrackerGroupAggregator(tracker=tracker)  # type: ignore[arg-type]
+        samples = await agg.aggregate_for_agents(
+            agent_ids=(NotBlankStr("a1"), NotBlankStr("a2")),
+            since=datetime(2026, 4, 10, tzinfo=UTC),
+            until=datetime(2026, 4, 17, tzinfo=UTC),
+        )
+        # a1 has no cost_per_task -> excluded entirely (alignment preserved).
+        assert samples.agent_ids == (NotBlankStr("a2"),)
+        assert samples.quality_samples == (8.0,)
+
+    async def test_skips_agents_with_missing_success_rate(self) -> None:
+        snapshots = {
+            "a1": _snapshot(
+                agent_id="a1",
+                quality=7.0,
+                success=None,
+                cost_per_task=1.0,
+            ),
+            "a2": _snapshot(
+                agent_id="a2",
+                quality=8.0,
+                success=0.85,
+                cost_per_task=1.5,
+            ),
+        }
+        tracker = _FakeTracker(snapshots)
+        agg: Any = TrackerGroupAggregator(tracker=tracker)  # type: ignore[arg-type]
+        samples = await agg.aggregate_for_agents(
+            agent_ids=(NotBlankStr("a1"), NotBlankStr("a2")),
+            since=datetime(2026, 4, 10, tzinfo=UTC),
+            until=datetime(2026, 4, 17, tzinfo=UTC),
+        )
+        assert samples.agent_ids == (NotBlankStr("a2"),)
+        assert samples.success_samples == (0.85,)
+
     async def test_skips_agents_with_missing_quality(self) -> None:
         snapshots = {
             "a1": _snapshot(

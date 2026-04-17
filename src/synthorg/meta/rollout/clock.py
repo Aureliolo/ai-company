@@ -23,8 +23,15 @@ class Clock(Protocol):
     async def sleep(self, seconds: float) -> None:
         """Suspend the caller for approximately ``seconds``.
 
+        Implementations MUST reject negative ``seconds`` with a
+        ``ValueError`` so bugs that compute negative durations surface
+        at the boundary instead of silently sleeping zero.
+
         Args:
-            seconds: Non-negative duration.
+            seconds: Non-negative duration in seconds.
+
+        Raises:
+            ValueError: If ``seconds`` is negative.
         """
         ...
 

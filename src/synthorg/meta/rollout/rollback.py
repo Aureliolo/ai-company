@@ -81,6 +81,8 @@ class RollbackExecutor:
                 raise UnknownRollbackOperationError(msg)
             try:
                 changes = await handler.revert(operation)
+            except MemoryError, RecursionError:
+                raise
             except Exception as exc:
                 logger.exception(
                     META_ROLLBACK_OPERATION_FAILED,

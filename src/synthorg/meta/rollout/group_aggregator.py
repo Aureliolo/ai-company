@@ -7,6 +7,7 @@ source. The default implementation wraps ``PerformanceTracker`` and
 extracts one sample per agent from its latest snapshot.
 """
 
+import asyncio
 from datetime import datetime  # noqa: TC003 -- Pydantic needs at runtime
 from typing import TYPE_CHECKING, Protocol, Self, runtime_checkable
 
@@ -108,18 +109,26 @@ class TrackerGroupAggregator:
         since: datetime,
         until: datetime,
     ) -> GroupSamples:
-        """Pull samples for each agent from the tracker."""
-        _ = since  # tracker snapshots are taken at ``until``
+        """Pull samples for each agent from the tracker in parallel."""
+        # Tracker returns a point-in-time snapshot keyed by `now`; the
+        # observation window bounds are enforced by the caller, so we
+        # only need the upper bound here.
+        _ = since
+        if not agent_ids:
+            return GroupSamples()
+        async with asyncio.TaskGroup() as tg:
+            snapshot_tasks = [
+                tg.create_task(
+                    self._tracker.get_snapshot(str(agent_id), now=until),
+                )
+                for agent_id in agent_ids
+            ]
         kept_ids: list[NotBlankStr] = []
         qualities: list[float] = []
         successes: list[float] = []
         spends: list[float] = []
-        for agent_id in agent_ids:
-            snapshot = await self._tracker.get_snapshot(
-                str(agent_id),
-                now=until,
-            )
-            triple = _extract_triple(snapshot)
+        for agent_id, task in zip(agent_ids, snapshot_tasks, strict=True):
+            triple = _extract_triple(task.result())
             if triple is None:
                 continue
             q, s, spend = triple
