@@ -1,6 +1,7 @@
 """Unit tests for AuditChainConfig TSA preset coherence (#1412)."""
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 from pydantic import ValidationError
@@ -44,15 +45,24 @@ def test_freetsa_preset_resolves_to_canonical_url() -> None:
 
 
 @pytest.mark.parametrize(
-    "tsa_preset",
-    [TsaPreset.FREETSA, TsaPreset.DIGICERT, TsaPreset.SECTIGO],
+    ("tsa_preset", "extra_kwargs"),
+    [
+        (TsaPreset.FREETSA, {}),
+        (TsaPreset.DIGICERT, {}),
+        (TsaPreset.SECTIGO, {}),
+        (TsaPreset.CUSTOM, {"tsa_url": "https://tsa.example.com/tsr"}),
+    ],
 )
-def test_tsa_missing_roots_rejected_when_verifying(tsa_preset: TsaPreset) -> None:
+def test_tsa_missing_roots_rejected_when_verifying(
+    tsa_preset: TsaPreset,
+    extra_kwargs: dict[str, Any],
+) -> None:
     """Verifying presets reject configs without ``tsa_trusted_roots_path``."""
     with pytest.raises(ValidationError, match="tsa_trusted_roots_path"):
         AuditChainConfig(
             tsa_preset=tsa_preset,
             tsa_verify_signature=True,
+            **extra_kwargs,
         )
 
 
@@ -88,15 +98,6 @@ def test_sectigo_preset_resolves_default() -> None:
         tsa_trusted_roots_path=Path("tests/data/sectigo_roots.pem"),
     )
     assert config.effective_tsa_url == "http://timestamp.sectigo.com"
-
-
-def test_custom_without_roots_rejected_when_verifying() -> None:
-    with pytest.raises(ValidationError, match="tsa_trusted_roots_path"):
-        AuditChainConfig(
-            tsa_preset=TsaPreset.CUSTOM,
-            tsa_url="https://tsa.example.com/tsr",
-            tsa_verify_signature=True,
-        )
 
 
 @pytest.mark.parametrize("tsa_timeout_sec", [0.0, 5.01, 60.0])
