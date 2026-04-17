@@ -139,6 +139,7 @@ from synthorg.security.trust.config import TrustConfig
 from synthorg.security.trust.disabled_strategy import DisabledTrustStrategy
 from synthorg.security.trust.service import TrustService
 from synthorg.settings.dispatcher import SettingsChangeDispatcher
+from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.subscribers import (
     BackupSettingsSubscriber,
     MemorySettingsSubscriber,
@@ -444,10 +445,19 @@ def make_personality_trim_notifier(
     return _on_personality_trimmed
 
 
+async def _resolve_ticket_cleanup_interval(app_state: AppState) -> float:
+    """Resolve the ticket cleanup interval, falling back to 60 seconds."""
+    if not app_state.has_config_resolver:
+        return 60.0
+    return await app_state.config_resolver.get_float(
+        SettingNamespace.API.value, "ticket_cleanup_interval_seconds"
+    )
+
+
 async def _ticket_cleanup_loop(app_state: AppState) -> None:
     """Periodically prune expired WS tickets and sessions."""
     while True:
-        await asyncio.sleep(60)
+        await asyncio.sleep(await _resolve_ticket_cleanup_interval(app_state))
         try:
             app_state.ticket_store.cleanup_expired()
         except MemoryError, RecursionError:
@@ -864,6 +874,29 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
                 raise
             except Exception:  # noqa: S110 -- already logged via done-callback
                 pass
+        # Apply operator-tuned API bridge settings to mutable stores
+        # that outlive this startup frame.  Failure is non-fatal so the
+        # app still boots with built-in defaults.
+        if app_state.has_config_resolver:
+            try:
+                app_state.ticket_store.set_max_pending_per_user(
+                    await app_state.config_resolver.get_int(
+                        SettingNamespace.API.value,
+                        "ws_ticket_max_pending_per_user",
+                    )
+                )
+            except MemoryError, RecursionError:
+                raise
+            except Exception:
+                logger.warning(
+                    API_APP_STARTUP,
+                    error=(
+                        "Failed to apply ws_ticket_max_pending_per_user;"
+                        " using built-in default"
+                    ),
+                    exc_info=True,
+                )
+
         _ticket_cleanup_task = asyncio.create_task(
             _ticket_cleanup_loop(app_state),
             name="ws-ticket-cleanup",
@@ -1681,16 +1714,18 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
                 _bus = message_bus
                 _catalog = connection_catalog
 
+                # Fallback RPM when the catalog does not carry a
+                # per-connection limiter. Resolved once at wiring time
+                # from api.max_rpm_default (restart_required=True).
+                _default_rpm = api_config.rate_limit.max_rpm_default
+
                 def _make_coordinator(
                     name: str,
                 ) -> SharedRateLimitCoordinator:
                     # Honour the connection's configured rate
                     # limiter so each coordinator enforces the
-                    # correct per-connection global budget. Previously
-                    # the default 60 RPM was hard-coded, which
-                    # silently ignored any higher/lower setting on
-                    # the connection row.
-                    max_rpm = 60
+                    # correct per-connection global budget.
+                    max_rpm = _default_rpm
                     try:
                         conn = _catalog._cache.get(name)  # noqa: SLF001
                         if (
@@ -1924,7 +1959,9 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
                 )
 
                 peer_registry = PeerRegistry()
-                a2a_http_client = httpx.AsyncClient(timeout=30.0)
+                a2a_http_client = httpx.AsyncClient(
+                    timeout=effective_config.a2a.client_timeout_seconds
+                )
                 from synthorg.tools.network_validator import (  # noqa: PLC0415
                     NetworkPolicy,
                 )
@@ -1934,6 +1971,7 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
                     connection_catalog,
                     network_validator=a2a_network_policy,
                     http_client=a2a_http_client,
+                    timeout_seconds=effective_config.a2a.client_timeout_seconds,
                 )
 
                 app_state.set_a2a_peer_registry(peer_registry)
@@ -2024,11 +2062,11 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
         ),
         compression_config=CompressionConfig(
             backend="brotli",
-            minimum_size=1000,
+            minimum_size=api_config.server.compression_minimum_size_bytes,
         ),
         # Must be >= artifact API max payload (50 MB) so endpoint-level
         # validation can enforce exact storage limits.
-        request_max_body_size=52_428_800,  # 50 MB
+        request_max_body_size=api_config.server.request_max_body_size_bytes,
         before_send=[security_headers_hook],
         middleware=middleware,
         plugins=plugins,

@@ -69,17 +69,42 @@ class WsTicketStore:
         ValueError: If *ttl_seconds* is not positive.
     """
 
-    def __init__(self, ttl_seconds: float = 30.0) -> None:
+    def __init__(
+        self,
+        ttl_seconds: float = 30.0,
+        *,
+        max_pending_per_user: int = _MAX_PENDING_PER_USER,
+    ) -> None:
         if not math.isfinite(ttl_seconds) or ttl_seconds <= 0:
             msg = f"ttl_seconds must be a finite positive number, got {ttl_seconds}"
             raise ValueError(msg)
+        if max_pending_per_user < 1:
+            msg = f"max_pending_per_user must be at least 1, got {max_pending_per_user}"
+            raise ValueError(msg)
         self._ttl = ttl_seconds
+        self._max_pending = max_pending_per_user
         self._tickets: dict[str, _TicketEntry] = {}
 
     @property
     def ttl_seconds(self) -> float:
         """Configured ticket lifetime."""
         return self._ttl
+
+    @property
+    def max_pending_per_user(self) -> int:
+        """Current per-user pending-ticket cap."""
+        return self._max_pending
+
+    def set_max_pending_per_user(self, value: int) -> None:
+        """Update the per-user pending-ticket cap in place.
+
+        Called from the API startup hook after the settings resolver
+        produces the current value for ``api.ws_ticket_max_pending_per_user``.
+        """
+        if value < 1:
+            msg = f"max_pending_per_user must be at least 1, got {value}"
+            raise ValueError(msg)
+        self._max_pending = value
 
     def create(self, user: AuthenticatedUser) -> str:
         """Issue a new single-use ticket for *user*.
@@ -96,7 +121,7 @@ class WsTicketStore:
             for e in self._tickets.values()
             if e.user.user_id == user.user_id and now <= e.expires_at
         )
-        if user_pending >= _MAX_PENDING_PER_USER:
+        if user_pending >= self._max_pending:
             msg = f"Ticket limit exceeded for user {user.user_id}"
             raise TicketLimitExceededError(msg)
 

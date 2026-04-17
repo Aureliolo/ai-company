@@ -117,6 +117,16 @@ class RateLimitConfig(BaseModel):
         default=("/api/v1/health",),
         description="Paths excluded from rate limiting",
     )
+    max_rpm_default: int = Field(
+        default=60,
+        ge=1,
+        le=100_000,
+        description=(
+            "Fallback requests-per-minute applied to per-connection"
+            " coordinators when the catalog does not provide a limiter"
+            " (mirrors the api.max_rpm_default setting; restart required)"
+        ),
+    )
 
     @model_validator(mode="before")
     @classmethod
@@ -200,6 +210,26 @@ class ServerConfig(BaseModel):
         description=(
             "IP addresses/CIDRs trusted as reverse proxies "
             "for X-Forwarded-For/Proto header processing"
+        ),
+    )
+    compression_minimum_size_bytes: int = Field(
+        default=1000,
+        ge=100,
+        le=10_000,
+        description=(
+            "Minimum response body size in bytes before brotli compression"
+            " is applied (mirrors the api.compression_minimum_size_bytes"
+            " setting; restart required)"
+        ),
+    )
+    request_max_body_size_bytes: int = Field(
+        default=52_428_800,
+        ge=1_000_000,
+        le=536_870_912,
+        description=(
+            "Maximum accepted HTTP request body size in bytes (mirrors"
+            " the api.request_max_body_size_bytes setting; restart"
+            " required)"
         ),
     )
 
