@@ -163,10 +163,12 @@ class OtlpHandler(logging.Handler):
         """
         # Typed callers satisfy this at check time; the runtime
         # guard catches misuse from untyped code (tests, config
-        # loaders, dynamic wiring). mypy flags the branch as
-        # unreachable under the strict signature -- intentional.
-        if callback is not None and not callable(callback):  # type: ignore[unreachable, unused-ignore]
-            _internal_logger.warning(  # type: ignore[unreachable, unused-ignore]
+        # loaders, dynamic wiring). Casting to ``object`` keeps
+        # mypy from flagging the ``callable`` check as dead under
+        # the strict signature.
+        candidate: object = callback
+        if candidate is not None and not callable(candidate):
+            _internal_logger.warning(
                 METRICS_OTLP_INVALID_CALLBACK,
                 provided_type=type(callback).__name__,
             )

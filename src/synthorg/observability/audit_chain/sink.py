@@ -120,12 +120,13 @@ class AuditChainSink(logging.Handler):
         """
         # Callers satisfy this at type-check time; the runtime guard
         # catches misuse from untyped wiring (tests, config loaders,
-        # dynamic callers). mypy flags the check as unreachable under
-        # the declared signature, which is exactly the point -- the
-        # ignore preserves the defensive assertion.
-        if callback is not None and not callable(callback):  # type: ignore[unreachable, unused-ignore]
+        # dynamic callers). Cast to ``object`` so mypy sees the
+        # ``callable`` check as meaningful rather than flagging it
+        # as dead code under the strict signature.
+        candidate: object = callback
+        if candidate is not None and not callable(candidate):
             msg = "append callback must be callable or None"
-            raise TypeError(msg)  # type: ignore[unreachable, unused-ignore]
+            raise TypeError(msg)
         self._append_callback = callback
 
     @property
