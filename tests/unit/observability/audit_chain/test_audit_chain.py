@@ -185,6 +185,39 @@ class TestResilientTimestampProvider:
         ts = await provider.get_timestamp()
         assert ts.tzinfo is not None
 
+    async def test_security_incidents_propagate(self) -> None:
+        """Hash / nonce / signature failures must NOT silently fall back.
+
+        Security-incident exceptions propagate so operators learn the
+        audit chain may be under attack rather than seeing a silent
+        switch to local clock.
+        """
+        from synthorg.observability.audit_chain.tsa_client import (
+            TsaClient,
+            TsaHashMismatchError,
+            TsaNonceMismatchError,
+            TsaSignatureError,
+        )
+
+        for incident_cls in (
+            TsaHashMismatchError,
+            TsaNonceMismatchError,
+            TsaSignatureError,
+        ):
+            client = TsaClient("https://tsa.example.invalid")
+
+            async def _incident(
+                _data: bytes,
+                cls: type[BaseException] = incident_cls,
+            ) -> None:
+                error_msg = f"simulated {cls.__name__}"
+                raise cls(error_msg)
+
+            client.request_timestamp = _incident  # type: ignore[assignment,method-assign]
+            provider = ResilientTimestampProvider(client)
+            with pytest.raises(incident_cls):
+                await provider.get_timestamp()
+
 
 # ── Sink Tests ─────────────────────────────────────────────────────
 

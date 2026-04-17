@@ -127,19 +127,31 @@ class AuditChainConfig(BaseModel):
 
     @model_validator(mode="after")
     def _check_preset_coherence(self) -> AuditChainConfig:
-        """Ensure preset + URL combinations are self-consistent."""
+        """Ensure preset + URL combinations are self-consistent.
+
+        Signature verification (``tsa_verify_signature=True``) requires
+        an explicit :attr:`tsa_trusted_roots_path` for every non-``NONE``
+        preset. The TSA client does not fall back to system trust
+        stores -- :meth:`TsaClient._verify_signature` skips verification
+        entirely when no roots are supplied, which would silently
+        downgrade a configuration that asked for verification. Forcing
+        operators to supply roots per preset prevents that foot-gun.
+        """
         if self.tsa_preset == TsaPreset.CUSTOM and self.tsa_url is None:
             msg = "tsa_preset=CUSTOM requires tsa_url to be set"
             raise ValueError(msg)
         if (
-            self.tsa_preset == TsaPreset.FREETSA
+            self.tsa_preset != TsaPreset.NONE
             and self.tsa_verify_signature
             and self.tsa_trusted_roots_path is None
         ):
             msg = (
-                "tsa_preset=FREETSA with tsa_verify_signature=True "
-                "requires tsa_trusted_roots_path (FreeTSA uses a "
-                "self-signed CA that must be supplied explicitly)"
+                f"tsa_preset={self.tsa_preset.value} with "
+                "tsa_verify_signature=True requires "
+                "tsa_trusted_roots_path; the TSA client does not "
+                "fall back to system trust anchors. Either supply "
+                "the preset's root certificate bundle or set "
+                "tsa_verify_signature=False (not recommended)."
             )
             raise ValueError(msg)
         return self

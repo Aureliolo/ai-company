@@ -30,6 +30,7 @@ def test_custom_preset_with_url_resolves() -> None:
     config = AuditChainConfig(
         tsa_preset=TsaPreset.CUSTOM,
         tsa_url="https://tsa.example.com/tsr",
+        tsa_trusted_roots_path=Path("tests/data/custom_roots.pem"),
     )
     assert config.effective_tsa_url == "https://tsa.example.com/tsr"
 
@@ -63,18 +64,51 @@ def test_custom_tsa_url_overrides_preset() -> None:
     config = AuditChainConfig(
         tsa_preset=TsaPreset.DIGICERT,
         tsa_url="https://staging-tsa.example.com/tsr",
+        tsa_trusted_roots_path=Path("tests/data/digicert_roots.pem"),
     )
     assert config.effective_tsa_url == "https://staging-tsa.example.com/tsr"
 
 
 def test_digicert_preset_resolves_default() -> None:
-    config = AuditChainConfig(tsa_preset=TsaPreset.DIGICERT)
+    config = AuditChainConfig(
+        tsa_preset=TsaPreset.DIGICERT,
+        tsa_trusted_roots_path=Path("tests/data/digicert_roots.pem"),
+    )
     assert config.effective_tsa_url == "http://timestamp.digicert.com"
 
 
 def test_sectigo_preset_resolves_default() -> None:
-    config = AuditChainConfig(tsa_preset=TsaPreset.SECTIGO)
+    config = AuditChainConfig(
+        tsa_preset=TsaPreset.SECTIGO,
+        tsa_trusted_roots_path=Path("tests/data/sectigo_roots.pem"),
+    )
     assert config.effective_tsa_url == "http://timestamp.sectigo.com"
+
+
+def test_digicert_without_roots_rejected_when_verifying() -> None:
+    """The tightened validator rejects DIGICERT without roots (#1412 review)."""
+    with pytest.raises(ValidationError, match="tsa_trusted_roots_path"):
+        AuditChainConfig(
+            tsa_preset=TsaPreset.DIGICERT,
+            tsa_verify_signature=True,
+        )
+
+
+def test_sectigo_without_roots_rejected_when_verifying() -> None:
+    with pytest.raises(ValidationError, match="tsa_trusted_roots_path"):
+        AuditChainConfig(
+            tsa_preset=TsaPreset.SECTIGO,
+            tsa_verify_signature=True,
+        )
+
+
+def test_custom_without_roots_rejected_when_verifying() -> None:
+    with pytest.raises(ValidationError, match="tsa_trusted_roots_path"):
+        AuditChainConfig(
+            tsa_preset=TsaPreset.CUSTOM,
+            tsa_url="https://tsa.example.com/tsr",
+            tsa_verify_signature=True,
+        )
 
 
 def test_timeout_range_enforced() -> None:

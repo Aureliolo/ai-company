@@ -10,14 +10,31 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Protocol
 
 from synthorg.observability import get_logger
+from synthorg.observability.audit_chain.tsa_client import (
+    TsaError,
+    TsaHashMismatchError,
+    TsaNonceMismatchError,
+    TsaSignatureError,
+)
 from synthorg.observability.events.security import (
     SECURITY_TIMESTAMP_FALLBACK,
+    SECURITY_TIMESTAMP_INCIDENT,
 )
 
 if TYPE_CHECKING:
     from synthorg.observability.audit_chain.tsa_client import TsaClient
 
 logger = get_logger(__name__)
+
+# Exception classes that indicate an active security attack or
+# cryptographic failure -- these must NEVER silently fall back to the
+# local clock. Operators need to know immediately that the audit
+# chain may be compromised.
+_SECURITY_INCIDENT_EXCEPTIONS: tuple[type[TsaError], ...] = (
+    TsaHashMismatchError,
+    TsaNonceMismatchError,
+    TsaSignatureError,
+)
 
 
 class TimestampProvider(Protocol):
@@ -76,11 +93,32 @@ class ResilientTimestampProvider:
     async def get_timestamp(self) -> datetime:
         """Get timestamp from TSA, falling back to local clock.
 
+        Security-incident exceptions -- hash mismatch, nonce
+        mismatch, signature invalid -- propagate unchanged; they
+        signal active tampering and must not be silently masked by
+        the local-clock fallback. Transient failures (timeouts,
+        transport errors, malformed responses) emit
+        :data:`SECURITY_TIMESTAMP_FALLBACK` at WARNING and return the
+        local clock so the audit chain keeps moving.
+
         Returns:
-            UTC datetime from TSA or local clock on failure.
+            UTC datetime from TSA or local clock on transient
+            failure.
+
+        Raises:
+            TsaHashMismatchError: MessageImprint didn't match request.
+            TsaNonceMismatchError: Response nonce didn't match request.
+            TsaSignatureError: CMS signature didn't verify.
         """
         try:
             token = await self._client.request_timestamp(self._binding_payload)
+        except _SECURITY_INCIDENT_EXCEPTIONS as exc:
+            logger.exception(
+                SECURITY_TIMESTAMP_INCIDENT,
+                tsa_url=self._client.tsa_url,
+                incident=type(exc).__name__,
+            )
+            raise
         except MemoryError, RecursionError:
             raise
         except Exception as exc:

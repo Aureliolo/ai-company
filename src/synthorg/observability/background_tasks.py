@@ -100,8 +100,29 @@ class BackgroundTaskRegistry:
             exc = task.exception()
             if exc is None:
                 return
+            # Resource-exhaustion errors are logged at CRITICAL and
+            # routed to the event loop's exception handler rather
+            # than re-raised: done-callbacks run inside the loop,
+            # and a raise here is swallowed by asyncio's callback
+            # machinery -- it does not propagate to the caller.
             if isinstance(exc, MemoryError | RecursionError):
-                raise exc
+                logger.critical(
+                    NOTIFICATION_SEND_FAILED,
+                    owner=owner,
+                    intent_event=event,
+                    error_type=type(exc).__name__,
+                    exc_info=(type(exc), exc, exc.__traceback__),
+                    **context,
+                )
+                loop = asyncio.get_running_loop()
+                loop.call_exception_handler(
+                    {
+                        "message": "fatal exception in tracked background task",
+                        "exception": exc,
+                        "task": task,
+                    }
+                )
+                return
             logger.error(
                 NOTIFICATION_SEND_FAILED,
                 owner=owner,

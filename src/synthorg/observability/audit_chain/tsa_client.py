@@ -21,6 +21,7 @@ the CMS SignedData structure against those PEM-encoded roots.
 Reference: RFC 3161, RFC 5816.
 """
 
+import asyncio
 import hashlib
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -40,6 +41,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.security import (
     SECURITY_TIMESTAMP_GRANTED,
     SECURITY_TIMESTAMP_HASH_MISMATCH,
+    SECURITY_TIMESTAMP_NONCE_MISMATCH,
     SECURITY_TIMESTAMP_REJECTED,
     SECURITY_TIMESTAMP_REQUESTED,
     SECURITY_TIMESTAMP_SIGNATURE_INVALID,
@@ -174,6 +176,10 @@ class TsaClient:
         )
         self._http_client = http_client
         self._owns_http_client = http_client is None
+        # Serialize lazy http-client initialisation so concurrent first
+        # calls don't each construct their own client and race on
+        # ``self._http_client``.
+        self._http_client_lock = asyncio.Lock()
 
     @property
     def tsa_url(self) -> str:
@@ -262,16 +268,13 @@ class TsaClient:
     async def _post(self, body: bytes) -> bytes:
         """POST a DER-encoded request to the TSA, return DER response.
 
-        Creates a per-call client when no shared one was injected, so
-        lazy initialisation does not require an event loop at
-        construction time.
+        The client is lazily constructed on first call under a lock so
+        concurrent callers don't each build their own instance and
+        race on ``self._http_client``. Once created, the client is
+        reused for every subsequent call and closed by
+        :meth:`aclose`.
         """
-        client = self._http_client
-        created_for_call = False
-        if client is None:
-            client = httpx.AsyncClient(timeout=self._timeout_sec)
-            self._http_client = client
-            created_for_call = True
+        client = await self._ensure_http_client()
         try:
             response = await client.post(
                 self._tsa_url,
@@ -290,9 +293,6 @@ class TsaClient:
         except httpx.HTTPError as exc:
             msg = f"TSA transport failure: {type(exc).__name__}"
             raise TsaTransportError(msg) from exc
-        finally:
-            if created_for_call and not self._owns_http_client:
-                await client.aclose()
         if response.status_code >= 400:  # noqa: PLR2004
             msg = f"TSA returned HTTP {response.status_code}: {response.reason_phrase}"
             raise TsaTransportError(msg)
@@ -304,6 +304,19 @@ class TsaClient:
             )
             raise TsaProtocolError(msg)
         return response.content
+
+    async def _ensure_http_client(self) -> httpx.AsyncClient:
+        """Return the httpx client, creating it on first call.
+
+        Serialized under ``_http_client_lock`` so concurrent first
+        calls do not each construct their own client and leak it.
+        """
+        if self._http_client is not None:
+            return self._http_client
+        async with self._http_client_lock:
+            if self._http_client is None:
+                self._http_client = httpx.AsyncClient(timeout=self._timeout_sec)
+        return self._http_client
 
 
 def _decode_response(raw: bytes) -> Any:
@@ -361,9 +374,8 @@ def _check_nonce(tst_info: Any, expected_nonce: int, tsa_url: str) -> None:
     actual = int(tst_info.nonce) if tst_info.nonce is not None else None
     if actual != expected_nonce:
         logger.error(
-            SECURITY_TIMESTAMP_HASH_MISMATCH,
+            SECURITY_TIMESTAMP_NONCE_MISMATCH,
             tsa_url=tsa_url,
-            reason="nonce_mismatch",
             expected_nonce=expected_nonce,
             actual_nonce=actual,
         )

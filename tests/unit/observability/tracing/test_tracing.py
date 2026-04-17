@@ -100,6 +100,27 @@ def test_otlp_http_config_builds_otlp_handler() -> None:
         asyncio.run(handler.shutdown())
 
 
+def test_otlp_http_config_rejects_header_with_newline() -> None:
+    """Header values containing CR/LF are rejected (injection guard)."""
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError, match="CR/LF"):
+        OtlpHttpTraceConfig(
+            endpoint="http://collector:4318",
+            headers=(("x-api-token", "secret\r\nInjected: bad"),),
+        )
+
+
+def test_otlp_http_config_rejects_header_name_with_newline() -> None:
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError, match="CR/LF"):
+        OtlpHttpTraceConfig(
+            endpoint="http://collector:4318",
+            headers=(("x-evil\nInjected", "value"),),
+        )
+
+
 # -- llm_span ---------------------------------------------------------------
 
 

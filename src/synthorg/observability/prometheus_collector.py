@@ -26,23 +26,26 @@ from synthorg.observability.events.metrics import (
     METRICS_SCRAPE_COMPLETED,
     METRICS_SCRAPE_FAILED,
 )
+from synthorg.observability.prometheus_labels import (
+    VALID_AUDIT_APPEND_STATUSES,
+    VALID_OTLP_KINDS,
+    VALID_OTLP_OUTCOMES,
+    VALID_STATUS_CLASSES,
+    VALID_TASK_OUTCOMES,
+    VALID_TOOL_OUTCOMES,
+    VALID_VERDICTS,
+    require_label,
+    require_non_negative,
+    status_class,
+)
+
+# Backwards-compatible alias for tests that imported the previous helper.
+_status_class = status_class
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
 
 logger = get_logger(__name__)
-
-
-def _status_class(status_code: int) -> str:
-    """Map an HTTP status code to its Nxx class label.
-
-    Returns a string outside ``_VALID_STATUS_CLASSES`` on
-    out-of-range input so the caller's guard raises clearly rather
-    than silently bucketing garbage into ``"5xx"``.
-    """
-    if 100 <= status_code < 600:  # noqa: PLR2004
-        return f"{status_code // 100}xx"
-    return "invalid"
 
 
 class PrometheusCollector:
@@ -244,17 +247,10 @@ class PrometheusCollector:
 
         logger.debug(METRICS_COLLECTOR_INITIALIZED, prefix=prefix)
 
-    # Bounded set of valid verdicts to prevent label cardinality explosion.
-    _VALID_VERDICTS = frozenset({"allow", "deny", "escalate", "output_scan"})
-
-    # Bounded label sets for outcome/direction/status_class labels.
-    _VALID_TOKEN_DIRECTIONS = frozenset({"input", "output"})
-    _VALID_TASK_OUTCOMES = frozenset({"succeeded", "failed", "cancelled"})
-    _VALID_TOOL_OUTCOMES = frozenset({"success", "error", "timeout"})
-    _VALID_STATUS_CLASSES = frozenset({"1xx", "2xx", "3xx", "4xx", "5xx"})
-    _VALID_AUDIT_APPEND_STATUSES = frozenset({"signed", "fallback", "error"})
-    _VALID_OTLP_KINDS = frozenset({"logs", "traces"})
-    _VALID_OTLP_OUTCOMES = frozenset({"success", "failure"})
+    # Backwards-compatible aliases for the bounded label-value sets.
+    # The canonical definitions live in ``prometheus_labels`` so the
+    # collector module stays below the 800-line limit.
+    _VALID_VERDICTS = VALID_VERDICTS
 
     def record_security_verdict(self, verdict: str) -> None:
         """Increment the security verdict counter.
@@ -346,12 +342,10 @@ class PrometheusCollector:
             duration_sec: Wall-clock duration in seconds.
         """
         status_class = _status_class(status_code)
-        if status_class not in self._VALID_STATUS_CLASSES:
+        if status_class not in VALID_STATUS_CLASSES:
             msg = f"record_api_request: invalid status_code {status_code!r}"
             raise ValueError(msg)
-        if duration_sec < 0:
-            msg = "record_api_request: duration_sec must be non-negative"
-            raise ValueError(msg)
+        require_non_negative("record_api_request: duration_sec", duration_sec)
         self._api_request_duration.labels(
             method=method,
             route=route,
@@ -375,15 +369,8 @@ class PrometheusCollector:
             ValueError: If *outcome* is not a valid value or
                 ``duration_sec`` is negative.
         """
-        if outcome not in self._VALID_TASK_OUTCOMES:
-            msg = (
-                f"Unknown task outcome {outcome!r}; expected one of "
-                f"{sorted(self._VALID_TASK_OUTCOMES)}"
-            )
-            raise ValueError(msg)
-        if duration_sec < 0:
-            msg = "record_task_run: duration_sec must be non-negative"
-            raise ValueError(msg)
+        require_label("task outcome", outcome, VALID_TASK_OUTCOMES)
+        require_non_negative("record_task_run: duration_sec", duration_sec)
         self._task_runs.labels(outcome=outcome).inc()
         self._task_duration.labels(outcome=outcome).observe(duration_sec)
 
@@ -405,15 +392,8 @@ class PrometheusCollector:
             ValueError: If *outcome* is not a valid value or
                 ``duration_sec`` is negative.
         """
-        if outcome not in self._VALID_TOOL_OUTCOMES:
-            msg = (
-                f"Unknown tool outcome {outcome!r}; expected one of "
-                f"{sorted(self._VALID_TOOL_OUTCOMES)}"
-            )
-            raise ValueError(msg)
-        if duration_sec < 0:
-            msg = "record_tool_invocation: duration_sec must be non-negative"
-            raise ValueError(msg)
+        require_label("tool outcome", outcome, VALID_TOOL_OUTCOMES)
+        require_non_negative("record_tool_invocation: duration_sec", duration_sec)
         self._tool_invocations.labels(
             tool_name=tool_name,
             outcome=outcome,
@@ -442,15 +422,8 @@ class PrometheusCollector:
             ValueError: If *status* is not a valid value or
                 *chain_depth* is negative.
         """
-        if status not in self._VALID_AUDIT_APPEND_STATUSES:
-            msg = (
-                f"Unknown audit append status {status!r}; expected "
-                f"one of {sorted(self._VALID_AUDIT_APPEND_STATUSES)}"
-            )
-            raise ValueError(msg)
-        if chain_depth < 0:
-            msg = "record_audit_append: chain_depth must be non-negative"
-            raise ValueError(msg)
+        require_label("audit append status", status, VALID_AUDIT_APPEND_STATUSES)
+        require_non_negative("record_audit_append: chain_depth", chain_depth)
         self._audit_chain_appends.labels(status=status).inc()
         self._audit_chain_depth.set(chain_depth)
         self._audit_chain_last_append_ts.set(timestamp_unix)
@@ -474,21 +447,9 @@ class PrometheusCollector:
             ValueError: If *kind* or *outcome* are invalid or
                 *dropped_records* is negative.
         """
-        if kind not in self._VALID_OTLP_KINDS:
-            msg = (
-                f"Unknown OTLP kind {kind!r}; expected one of "
-                f"{sorted(self._VALID_OTLP_KINDS)}"
-            )
-            raise ValueError(msg)
-        if outcome not in self._VALID_OTLP_OUTCOMES:
-            msg = (
-                f"Unknown OTLP outcome {outcome!r}; expected one of "
-                f"{sorted(self._VALID_OTLP_OUTCOMES)}"
-            )
-            raise ValueError(msg)
-        if dropped_records < 0:
-            msg = "record_otlp_export: dropped_records must be non-negative"
-            raise ValueError(msg)
+        require_label("OTLP kind", kind, VALID_OTLP_KINDS)
+        require_label("OTLP outcome", outcome, VALID_OTLP_OUTCOMES)
+        require_non_negative("record_otlp_export: dropped_records", dropped_records)
         self._otlp_export_batches.labels(kind=kind, outcome=outcome).inc()
         if dropped_records > 0:
             self._otlp_export_dropped.labels(kind=kind).inc(dropped_records)

@@ -13,9 +13,13 @@ can be added as new ``kind`` variants without touching call sites.
 
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+
+# HTTP header values must not contain CR/LF (prevents header injection
+# via operator-supplied headers like auth tokens).
+_FORBIDDEN_HEADER_CHARS = ("\r", "\n")
 
 
 class DisabledTraceConfig(BaseModel):
@@ -57,6 +61,26 @@ class OtlpHttpTraceConfig(BaseModel):
     batch_export_timeout_sec: float = Field(default=30.0, gt=0)
     schedule_delay_sec: float = Field(default=5.0, gt=0)
     service_name: NotBlankStr = "synthorg"
+
+    @model_validator(mode="after")
+    def _reject_header_injection(self) -> OtlpHttpTraceConfig:
+        r"""Reject header names/values containing CR/LF.
+
+        Operator-supplied headers commonly carry auth tokens
+        (e.g. ``x-honeycomb-team``) read from config files or env
+        vars. A stray ``\n`` would let a malicious value inject
+        additional headers or split the request -- cheap to prevent
+        at config-load time.
+        """
+        for name, value in self.headers:
+            for field_name, field_value in (("name", name), ("value", value)):
+                if any(ch in field_value for ch in _FORBIDDEN_HEADER_CHARS):
+                    msg = (
+                        f"OTLP header {field_name} contains CR/LF "
+                        "(forbidden; prevents HTTP header injection)"
+                    )
+                    raise ValueError(msg)
+        return self
 
 
 TraceConfig = Annotated[

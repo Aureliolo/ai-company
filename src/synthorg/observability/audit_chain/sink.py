@@ -8,6 +8,10 @@ from typing import TYPE_CHECKING
 
 from synthorg.observability import get_logger
 from synthorg.observability.audit_chain.chain import HashChain
+from synthorg.observability.events.security import (
+    SECURITY_AUDIT_CHAIN_CALLBACK_ERROR,
+    SECURITY_AUDIT_CHAIN_EMIT_ERROR,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -171,7 +175,7 @@ class AuditChainSink(logging.Handler):
             # Use a non-security event to avoid re-entering this
             # handler (all "security." events would loop back).
             logger.error(
-                "audit_chain.emit_error",
+                SECURITY_AUDIT_CHAIN_EMIT_ERROR,
                 exc_info=True,
             )
             self._invoke_append_callback("error", 0, 0.0)
@@ -196,6 +200,6 @@ class AuditChainSink(logging.Handler):
             raise
         except Exception:
             logger.warning(
-                "audit_chain.append_callback_error",
+                SECURITY_AUDIT_CHAIN_CALLBACK_ERROR,
                 exc_info=True,
             )
