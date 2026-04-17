@@ -117,7 +117,7 @@ export function getDateGroupLabel(dateKey: string): string {
   if (target.getTime() === today.getTime()) return 'Today'
   if (target.getTime() === yesterday.getTime()) return 'Yesterday'
 
-  return formatDateOnly(target.toISOString())
+  return formatDateOnly(target)
 }
 
 // ── Thread grouping ────────────────────────────────────────

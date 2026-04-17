@@ -108,6 +108,14 @@ describe('AgentDetailPage', () => {
     expect(screen.getByTestId('identity-header')).toBeInTheDocument()
   })
 
+  it('composes the mocked TrainingSection for an agent', () => {
+    renderDetail()
+    // Guards against regressions where AgentDetailPage removes or
+    // re-routes the per-agent training panel. The mock is declared
+    // above; this assertion checks the composition still happens.
+    expect(screen.getByTestId('training-section')).toBeInTheDocument()
+  })
+
   it('shows WebSocket disconnect warning when not connected', () => {
     hookReturn = { ...defaultHookReturn, wsConnected: false }
     renderDetail()

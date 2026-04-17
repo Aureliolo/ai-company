@@ -117,7 +117,7 @@ export function TrainingPlanTable({ rows, onExecute }: TrainingPlanTableProps) {
 
   return (
     <div className="overflow-x-auto rounded-lg border border-border">
-      <table className="w-full text-sm" role="table">
+      <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-border bg-muted/50">
             <th className="p-card text-left font-medium text-muted-foreground">Agent</th>
