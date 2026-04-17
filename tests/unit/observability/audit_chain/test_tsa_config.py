@@ -36,12 +36,37 @@ def test_custom_preset_with_url_resolves() -> None:
     assert config.effective_tsa_url == "https://tsa.example.com/tsr"
 
 
-def test_freetsa_preset_resolves_to_canonical_url() -> None:
+@pytest.mark.parametrize(
+    ("preset", "roots_path", "expected_url"),
+    [
+        (
+            TsaPreset.FREETSA,
+            Path("tests/data/freetsa_roots.pem"),
+            "https://freetsa.org/tsr",
+        ),
+        (
+            TsaPreset.DIGICERT,
+            Path("tests/data/digicert_roots.pem"),
+            "http://timestamp.digicert.com",
+        ),
+        (
+            TsaPreset.SECTIGO,
+            Path("tests/data/sectigo_roots.pem"),
+            "http://timestamp.sectigo.com",
+        ),
+    ],
+)
+def test_preset_resolves_to_canonical_url(
+    preset: TsaPreset,
+    roots_path: Path,
+    expected_url: str,
+) -> None:
+    """Each non-CUSTOM preset maps to the documented default endpoint."""
     config = AuditChainConfig(
-        tsa_preset=TsaPreset.FREETSA,
-        tsa_trusted_roots_path=Path("tests/data/freetsa_roots.pem"),
+        tsa_preset=preset,
+        tsa_trusted_roots_path=roots_path,
     )
-    assert config.effective_tsa_url == "https://freetsa.org/tsr"
+    assert config.effective_tsa_url == expected_url
 
 
 @pytest.mark.parametrize(
@@ -82,22 +107,6 @@ def test_custom_tsa_url_overrides_preset() -> None:
         tsa_trusted_roots_path=Path("tests/data/digicert_roots.pem"),
     )
     assert config.effective_tsa_url == "https://staging-tsa.example.com/tsr"
-
-
-def test_digicert_preset_resolves_default() -> None:
-    config = AuditChainConfig(
-        tsa_preset=TsaPreset.DIGICERT,
-        tsa_trusted_roots_path=Path("tests/data/digicert_roots.pem"),
-    )
-    assert config.effective_tsa_url == "http://timestamp.digicert.com"
-
-
-def test_sectigo_preset_resolves_default() -> None:
-    config = AuditChainConfig(
-        tsa_preset=TsaPreset.SECTIGO,
-        tsa_trusted_roots_path=Path("tests/data/sectigo_roots.pem"),
-    )
-    assert config.effective_tsa_url == "http://timestamp.sectigo.com"
 
 
 @pytest.mark.parametrize("tsa_timeout_sec", [0.0, 5.01, 60.0])
