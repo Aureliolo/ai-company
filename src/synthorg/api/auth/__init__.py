@@ -4,7 +4,11 @@ from synthorg.api.auth.config import AuthConfig
 from synthorg.api.auth.models import ApiKey, AuthenticatedUser, AuthMethod, User
 from synthorg.api.auth.service import AuthService
 from synthorg.api.auth.session import Session
-from synthorg.api.auth.session_store import SessionStore
+from synthorg.api.auth.session_store import (
+    PostgresSessionStore,
+    SessionStore,
+    SqliteSessionStore,
+)
 from synthorg.api.auth.ticket_store import TicketLimitExceededError, WsTicketStore
 
 __all__ = [
@@ -13,8 +17,10 @@ __all__ = [
     "AuthMethod",
     "AuthService",
     "AuthenticatedUser",
+    "PostgresSessionStore",
     "Session",
     "SessionStore",
+    "SqliteSessionStore",
     "TicketLimitExceededError",
     "User",
     "WsTicketStore",
