@@ -13,6 +13,8 @@ import type {
   ProbePresetResponse,
   ProviderConfig,
   ProviderHealthSummary,
+  PullModelRequest,
+  UpdateModelConfigRequest,
   ProviderModelResponse,
   ProviderPreset,
   PullProgressEvent,
@@ -180,7 +182,7 @@ export async function pullModel(
       'Content-Type': 'application/json',
       ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}),
     },
-    body: JSON.stringify({ model_name: modelName }),
+    body: JSON.stringify({ model_name: modelName } satisfies PullModelRequest),
     signal,
   })
 
@@ -246,9 +248,10 @@ export async function updateModelConfig(
   modelId: string,
   params: LocalModelParams,
 ): Promise<ProviderModelResponse> {
+  const payload: UpdateModelConfigRequest = { local_params: params }
   const response = await apiClient.put<ApiResponse<ProviderModelResponse>>(
     `/providers/${encodeURIComponent(name)}/models/${encodeModelIdPath(modelId)}/config`,
-    { local_params: params },
+    payload,
   )
   return unwrap(response)
 }

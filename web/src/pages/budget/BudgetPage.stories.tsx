@@ -54,13 +54,27 @@ const mockForecast: ForecastResponse = {
   currency: 'EUR',
 }
 
+function makeCostRecord(fields: Partial<CostRecord> & Pick<CostRecord, 'agent_id' | 'task_id' | 'provider' | 'model' | 'input_tokens' | 'output_tokens' | 'cost_usd' | 'timestamp' | 'call_category'>): CostRecord {
+  return {
+    project_id: null,
+    accuracy_effort_ratio: null,
+    latency_ms: null,
+    cache_hit: null,
+    retry_count: null,
+    retry_reason: null,
+    finish_reason: null,
+    success: null,
+    ...fields,
+  }
+}
+
 const mockCostRecords: CostRecord[] = [
-  { agent_id: 'a1', task_id: 't1', provider: 'prov-a', model: 'm1', input_tokens: 500, output_tokens: 200, cost_usd: 15, timestamp: '2026-03-25T10:00:00Z', call_category: 'productive' },
-  { agent_id: 'a1', task_id: 't2', provider: 'prov-a', model: 'm1', input_tokens: 300, output_tokens: 100, cost_usd: 8, timestamp: '2026-03-25T11:00:00Z', call_category: 'coordination' },
-  { agent_id: 'a2', task_id: 't3', provider: 'prov-b', model: 'm2', input_tokens: 800, output_tokens: 400, cost_usd: 12, timestamp: '2026-03-25T12:00:00Z', call_category: 'productive' },
-  { agent_id: 'a3', task_id: 't4', provider: 'prov-a', model: 'm1', input_tokens: 200, output_tokens: 100, cost_usd: 5, timestamp: '2026-03-25T13:00:00Z', call_category: 'system' },
-  { agent_id: 'a1', task_id: 't5', provider: 'prov-a', model: 'm1', input_tokens: 400, output_tokens: 0, cost_usd: 3.5, timestamp: '2026-03-25T14:00:00Z', call_category: 'embedding' },
-  { agent_id: 'a2', task_id: 't6', provider: 'prov-b', model: 'm2', input_tokens: 100, output_tokens: 50, cost_usd: 2.17, timestamp: '2026-03-25T15:00:00Z', call_category: null },
+  makeCostRecord({ agent_id: 'a1', task_id: 't1', provider: 'prov-a', model: 'm1', input_tokens: 500, output_tokens: 200, cost_usd: 15, timestamp: '2026-03-25T10:00:00Z', call_category: 'productive' }),
+  makeCostRecord({ agent_id: 'a1', task_id: 't2', provider: 'prov-a', model: 'm1', input_tokens: 300, output_tokens: 100, cost_usd: 8, timestamp: '2026-03-25T11:00:00Z', call_category: 'coordination' }),
+  makeCostRecord({ agent_id: 'a2', task_id: 't3', provider: 'prov-b', model: 'm2', input_tokens: 800, output_tokens: 400, cost_usd: 12, timestamp: '2026-03-25T12:00:00Z', call_category: 'productive' }),
+  makeCostRecord({ agent_id: 'a3', task_id: 't4', provider: 'prov-a', model: 'm1', input_tokens: 200, output_tokens: 100, cost_usd: 5, timestamp: '2026-03-25T13:00:00Z', call_category: 'system' }),
+  makeCostRecord({ agent_id: 'a1', task_id: 't5', provider: 'prov-a', model: 'm1', input_tokens: 400, output_tokens: 0, cost_usd: 3.5, timestamp: '2026-03-25T14:00:00Z', call_category: 'embedding' }),
+  makeCostRecord({ agent_id: 'a2', task_id: 't6', provider: 'prov-b', model: 'm2', input_tokens: 100, output_tokens: 50, cost_usd: 2.17, timestamp: '2026-03-25T15:00:00Z', call_category: null }),
 ]
 
 function setStoreState(overrides: Record<string, unknown> = {}) {

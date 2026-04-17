@@ -2,6 +2,7 @@
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from synthorg.core.company import Team  # noqa: TC001
 from synthorg.core.enums import AutonomyLevel, SeniorityLevel
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.workflow.ceremony_policy import CeremonyPolicyConfig
@@ -42,7 +43,7 @@ class UpdateDepartmentRequest(BaseModel):
     head: NotBlankStr | None = None
     budget_percent: float | None = Field(default=None, ge=0.0, le=100.0)
     autonomy_level: AutonomyLevel | None = None
-    teams: tuple[dict[str, object], ...] | None = None
+    teams: tuple[Team, ...] | None = None
     ceremony_policy: dict[str, object] | None = None
 
     @field_validator("ceremony_policy", mode="before")

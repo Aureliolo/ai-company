@@ -18,9 +18,19 @@ const callCategoryArb = fc.oneof(
   fc.constant(null),
 )
 
+const finishReasonArb = fc.oneof(
+  fc.constant('stop' as const),
+  fc.constant('max_tokens' as const),
+  fc.constant('tool_use' as const),
+  fc.constant('content_filter' as const),
+  fc.constant('error' as const),
+  fc.constant(null),
+)
+
 const costRecordArb: fc.Arbitrary<CostRecord> = fc.record({
   agent_id: fc.stringMatching(/^agent-[0-9]{1,3}$/),
   task_id: fc.stringMatching(/^task-[0-9]{1,3}$/),
+  project_id: fc.oneof(fc.stringMatching(/^proj-[0-9]{1,3}$/), fc.constant(null)),
   provider: fc.stringMatching(/^prov-[a-z]{1,3}$/),
   model: fc.constant('test-model-001'),
   input_tokens: fc.nat({ max: 10000 }),
@@ -28,6 +38,13 @@ const costRecordArb: fc.Arbitrary<CostRecord> = fc.record({
   cost_usd: fc.double({ min: 0, max: 100, noNaN: true }),
   timestamp: fc.constant('2026-03-20T10:00:00Z'),
   call_category: callCategoryArb,
+  accuracy_effort_ratio: fc.oneof(fc.double({ min: 0, max: 1, noNaN: true }), fc.constant(null)),
+  latency_ms: fc.oneof(fc.double({ min: 0, max: 10000, noNaN: true }), fc.constant(null)),
+  cache_hit: fc.oneof(fc.boolean(), fc.constant(null)),
+  retry_count: fc.oneof(fc.nat({ max: 5 }), fc.constant(null)),
+  retry_reason: fc.oneof(fc.stringMatching(/^[a-z_]{3,20}$/), fc.constant(null)),
+  finish_reason: finishReasonArb,
+  success: fc.oneof(fc.boolean(), fc.constant(null)),
 })
 
 const alertsArb: fc.Arbitrary<BudgetAlertConfig> = fc

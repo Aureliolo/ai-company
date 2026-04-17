@@ -64,6 +64,7 @@ const mockTrends: TrendsResponse = {
 const mockCostRecord: CostRecord = {
   agent_id: 'a1',
   task_id: 't1',
+  project_id: null,
   provider: 'test-provider',
   model: 'test-model-001',
   input_tokens: 100,
@@ -71,6 +72,13 @@ const mockCostRecord: CostRecord = {
   cost_usd: 1.0,
   timestamp: '2026-03-20T10:00:00Z',
   call_category: 'productive',
+  accuracy_effort_ratio: null,
+  latency_ms: null,
+  cache_hit: null,
+  retry_count: null,
+  retry_reason: null,
+  finish_reason: null,
+  success: null,
 }
 
 // ── Helpers ────────────────────────────────────────────────

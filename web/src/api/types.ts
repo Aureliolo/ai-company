@@ -307,6 +307,48 @@ export interface TaskFilters {
 
 // ── Approvals ────────────────────────────────────────────────
 
+/** Mirrors `synthorg.core.evidence.RecommendedAction`. */
+export interface RecommendedAction {
+  action_type: string
+  label: string
+  description: string
+  confirmation_required: boolean
+}
+
+/** Mirrors `synthorg.core.evidence.EvidencePackageSignature`. */
+export interface EvidencePackageSignature {
+  approver_id: string
+  algorithm: 'ml-dsa-65' | 'ed25519'
+  /** Raw signature bytes, base64-encoded in transit. */
+  signature_bytes: string
+  signed_at: string
+  chain_position: number
+}
+
+/**
+ * Mirrors `synthorg.core.evidence.EvidencePackage` (extends
+ * ``StructuredArtifact``). Structured payload for HITL approval
+ * decisions: narrative, reasoning trace, recommended actions, and
+ * audit-chain signatures.
+ */
+export interface EvidencePackage {
+  id: string
+  title: string
+  narrative: string
+  reasoning_trace: readonly string[]
+  recommended_actions: readonly RecommendedAction[]
+  source_agent_id: string
+  task_id: string | null
+  risk_level: ApprovalRiskLevel
+  metadata: Record<string, unknown>
+  signature_threshold: number
+  signatures: readonly EvidencePackageSignature[]
+  /** Computed field -- whether the signature threshold has been met. */
+  is_fully_signed: boolean
+  /** Inherited from StructuredArtifact. */
+  created_at: string
+}
+
 export interface ApprovalItem {
   id: string
   action_type: string
@@ -322,6 +364,8 @@ export interface ApprovalItem {
   created_at: string
   decided_at: string | null
   expires_at: string | null
+  /** Structured HITL evidence for rich approval UIs. */
+  evidence_package: EvidencePackage | null
 }
 
 export interface ApprovalResponse extends ApprovalItem {
@@ -470,9 +514,18 @@ export interface CareerEvent {
 
 // ── Budget ───────────────────────────────────────────────────
 
+/** Mirrors `synthorg.core.enums.FinishReason`. */
+export type FinishReason =
+  | 'stop'
+  | 'max_tokens'
+  | 'tool_use'
+  | 'content_filter'
+  | 'error'
+
 export interface CostRecord {
   agent_id: string
   task_id: string
+  project_id: string | null
   provider: string
   model: string
   input_tokens: number
@@ -480,6 +533,23 @@ export interface CostRecord {
   cost_usd: number
   timestamp: string
   call_category: 'productive' | 'coordination' | 'system' | 'embedding' | null
+  /** Quality-vs-cost ratio for the call, when measurable. */
+  accuracy_effort_ratio: number | null
+  /** Observed provider latency in milliseconds. */
+  latency_ms: number | null
+  /** Whether the response was served from a cache layer. */
+  cache_hit: boolean | null
+  /**
+   * Number of automatic retries performed before success / failure.
+   * Implies `retry_reason` is populated when > 0.
+   */
+  retry_count: number | null
+  /** Retry trigger (e.g. `rate_limit`, `timeout`). */
+  retry_reason: string | null
+  /** Provider finish reason (mirrors backend `FinishReason` enum). */
+  finish_reason: FinishReason | null
+  /** Whether the call completed without error. */
+  success: boolean | null
 }
 
 export interface DailySummary {
@@ -709,12 +779,21 @@ export interface CreateAgentOrgRequest {
   model_id?: string
 }
 
+/**
+ * Partial update for an agent. Mirrors
+ * `synthorg.api.dto_org.UpdateAgentOrgRequest`.
+ *
+ * Backend validator requires `model_provider` and `model_id` to be
+ * either both set or both omitted (partial pairs rejected with 422).
+ */
 export interface UpdateAgentOrgRequest {
   name?: string
   role?: string
   department?: DepartmentName
   level?: SeniorityLevel
   autonomy_level?: AutonomyLevel | null
+  model_provider?: string
+  model_id?: string
 }
 
 export interface ReorderAgentsRequest {
@@ -743,6 +822,26 @@ export interface LocalModelParams {
   num_threads: number | null
   num_batch: number | null
   repeat_penalty: number | null
+}
+
+/**
+ * Payload for pulling a model on a local provider. Mirrors
+ * `synthorg.api.dto_providers.PullModelRequest`.
+ */
+export interface PullModelRequest {
+  /**
+   * Model name/tag to pull (e.g. ``"test-local-001:latest"``). Must
+   * match ``^[a-zA-Z0-9._:/@-]+$`` and be at most 256 characters.
+   */
+  model_name: string
+}
+
+/**
+ * Payload for updating per-model launch parameters. Mirrors
+ * `synthorg.api.dto_providers.UpdateModelConfigRequest`.
+ */
+export interface UpdateModelConfigRequest {
+  local_params: LocalModelParams
 }
 
 export interface PullProgressEvent {
