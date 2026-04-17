@@ -1,15 +1,21 @@
 """Timestamp providers for the audit chain.
 
-Supports RFC 3161 TSA with local-clock fallback.
+Supports RFC 3161 TSA with local-clock fallback. The TSA client is
+injected -- :class:`ResilientTimestampProvider` never constructs its
+own HTTP client, so tests and factories can swap the transport
+freely.
 """
 
 from datetime import UTC, datetime
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.security import (
     SECURITY_TIMESTAMP_FALLBACK,
 )
+
+if TYPE_CHECKING:
+    from synthorg.observability.audit_chain.tsa_client import TsaClient
 
 logger = get_logger(__name__)
 
@@ -37,15 +43,35 @@ class LocalClockProvider:
 class ResilientTimestampProvider:
     """Timestamp provider with RFC 3161 primary and local fallback.
 
-    Tries the TSA first.  On any failure, falls back to the local
-    clock and emits a ``SECURITY_TIMESTAMP_FALLBACK`` event.
+    Tries the TSA first. On any :class:`TsaError` (or any other
+    unexpected exception short of ``MemoryError`` / ``RecursionError``),
+    falls back to the local clock and emits a
+    :data:`SECURITY_TIMESTAMP_FALLBACK` warning that includes the
+    precise failure class in ``reason``.
 
     Args:
-        tsa_url: RFC 3161 TSA endpoint URL.
+        tsa_client: The TSA client. The provider does not own the
+            client; shutdown is the caller's responsibility.
+        binding_payload: Bytes that the TSA should timestamp. Pass a
+            value tied to the audit chain's current head hash so the
+            returned timestamp is cryptographically bound to the
+            chain state at request time. Defaults to a fixed marker
+            when callers only need a coarse-grained time anchor.
     """
 
-    def __init__(self, tsa_url: str) -> None:
-        self._tsa_url = tsa_url
+    def __init__(
+        self,
+        tsa_client: TsaClient,
+        *,
+        binding_payload: bytes = b"synthorg.audit_chain.timestamp",
+    ) -> None:
+        self._client = tsa_client
+        self._binding_payload = binding_payload
+
+    @property
+    def tsa_url(self) -> str:
+        """Return the injected client's TSA endpoint."""
+        return self._client.tsa_url
 
     async def get_timestamp(self) -> datetime:
         """Get timestamp from TSA, falling back to local clock.
@@ -54,26 +80,15 @@ class ResilientTimestampProvider:
             UTC datetime from TSA or local clock on failure.
         """
         try:
-            return await self._fetch_tsa_timestamp()
+            token = await self._client.request_timestamp(self._binding_payload)
         except MemoryError, RecursionError:
             raise
-        except Exception:
+        except Exception as exc:
             logger.warning(
                 SECURITY_TIMESTAMP_FALLBACK,
-                tsa_url=self._tsa_url,
-                reason="TSA request failed, using local clock",
-                exc_info=True,
+                tsa_url=self._client.tsa_url,
+                reason=type(exc).__name__,
+                error=str(exc),
             )
             return datetime.now(UTC)
-
-    async def _fetch_tsa_timestamp(self) -> datetime:
-        """Fetch timestamp from RFC 3161 TSA.
-
-        This is a stub -- real implementation would use httpx
-        to POST to the TSA endpoint and parse the response.
-
-        Raises:
-            NotImplementedError: TSA client not yet implemented.
-        """
-        msg = "RFC 3161 TSA client not yet implemented"
-        raise NotImplementedError(msg)
+        return token.timestamp

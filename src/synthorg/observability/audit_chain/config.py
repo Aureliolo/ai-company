@@ -1,11 +1,57 @@
 """AuditChainConfig -- opt-in configuration for the audit chain sink."""
 
+from enum import StrEnum
 from pathlib import Path  # noqa: TC003
+from types import MappingProxyType
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+
+
+class TsaPreset(StrEnum):
+    """Well-known RFC 3161 TSA presets.
+
+    ``NONE`` disables TSA timestamping (audit chain falls back to
+    local clock and emits ``SECURITY_TIMESTAMP_FALLBACK``). ``CUSTOM``
+    requires :attr:`AuditChainConfig.tsa_url` to be set. The other
+    values resolve to fixed endpoints; operators selecting these
+    accept the associated trust anchor.
+    """
+
+    NONE = "none"
+    FREETSA = "freetsa"
+    DIGICERT = "digicert"
+    SECTIGO = "sectigo"
+    CUSTOM = "custom"
+
+
+_PRESET_URLS: MappingProxyType[TsaPreset, str] = MappingProxyType(
+    {
+        TsaPreset.FREETSA: "https://freetsa.org/tsr",
+        TsaPreset.DIGICERT: "http://timestamp.digicert.com",
+        TsaPreset.SECTIGO: "http://timestamp.sectigo.com",
+    }
+)
+
+
+def resolve_tsa_url(preset: TsaPreset, tsa_url: str | None) -> str | None:
+    """Return the effective TSA URL for a preset + override.
+
+    ``CUSTOM`` uses :attr:`AuditChainConfig.tsa_url`. Any other
+    non-``NONE`` preset resolves to its canonical endpoint, but
+    :attr:`AuditChainConfig.tsa_url` (when set) overrides the
+    preset's default so operators can point at a staging TSA for
+    testing.
+    """
+    if preset == TsaPreset.NONE:
+        return None
+    if preset == TsaPreset.CUSTOM:
+        return tsa_url
+    if tsa_url is not None:
+        return tsa_url
+    return _PRESET_URLS[preset]
 
 
 class AuditChainConfig(BaseModel):
@@ -14,10 +60,24 @@ class AuditChainConfig(BaseModel):
     Attributes:
         enabled: Whether the audit chain sink is active.
         backend: Signing backend (``"asqav"`` only for now).
-        tsa_url: RFC 3161 TSA endpoint for timestamping.
-            ``None`` uses local clock only.
-        signing_key_path: Path to signing key file.
-        chain_storage_path: Path for chain persistence.
+        tsa_preset: Well-known TSA preset or ``CUSTOM`` for a
+            user-supplied :attr:`tsa_url`.
+        tsa_url: Custom RFC 3161 TSA endpoint. Required when
+            ``tsa_preset == CUSTOM``; overrides the preset's default
+            URL otherwise.
+        tsa_timeout_sec: HTTP request timeout for TSA calls. Upper-
+            bounded by the audit sink's 5.0s executor deadline.
+        tsa_hash_algorithm: Hash algorithm for the TSA MessageImprint.
+        tsa_verify_signature: When ``True``, verify the TSA response's
+            CMS SignedData signature against :attr:`tsa_trusted_roots_path`.
+            When no roots are supplied, signature verification is
+            skipped.
+        tsa_trusted_roots_path: PEM bundle of root certificates. Each
+            PEM cert in the bundle is loaded independently. Required
+            when verifying signatures from :attr:`TsaPreset.FREETSA`
+            (self-signed CA).
+        signing_key_path: Path to the audit chain signing key file.
+        chain_storage_path: Path for audit chain persistence.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
@@ -30,9 +90,31 @@ class AuditChainConfig(BaseModel):
         default="asqav",
         description="Signing backend",
     )
+    tsa_preset: TsaPreset = Field(
+        default=TsaPreset.NONE,
+        description="Well-known TSA preset or CUSTOM for tsa_url",
+    )
     tsa_url: NotBlankStr | None = Field(
         default=None,
-        description="RFC 3161 TSA endpoint (None = local clock only)",
+        description="Custom TSA endpoint; required when preset=CUSTOM",
+    )
+    tsa_timeout_sec: float = Field(
+        default=5.0,
+        gt=0,
+        le=30.0,
+        description="HTTP timeout in seconds for TSA requests",
+    )
+    tsa_hash_algorithm: Literal["sha256", "sha512"] = Field(
+        default="sha256",
+        description="Hash algorithm for the TSA MessageImprint",
+    )
+    tsa_verify_signature: bool = Field(
+        default=True,
+        description="Verify the TSA response's CMS SignedData signature",
+    )
+    tsa_trusted_roots_path: Path | None = Field(
+        default=None,
+        description="PEM bundle of trusted TSA root certificates",
     )
     signing_key_path: Path | None = Field(
         default=None,
@@ -42,3 +124,31 @@ class AuditChainConfig(BaseModel):
         default=None,
         description="Path for chain persistence",
     )
+
+    @model_validator(mode="after")
+    def _check_preset_coherence(self) -> AuditChainConfig:
+        """Ensure preset + URL combinations are self-consistent."""
+        if self.tsa_preset == TsaPreset.CUSTOM and self.tsa_url is None:
+            msg = "tsa_preset=CUSTOM requires tsa_url to be set"
+            raise ValueError(msg)
+        if (
+            self.tsa_preset == TsaPreset.FREETSA
+            and self.tsa_verify_signature
+            and self.tsa_trusted_roots_path is None
+        ):
+            msg = (
+                "tsa_preset=FREETSA with tsa_verify_signature=True "
+                "requires tsa_trusted_roots_path (FreeTSA uses a "
+                "self-signed CA that must be supplied explicitly)"
+            )
+            raise ValueError(msg)
+        return self
+
+    @property
+    def effective_tsa_url(self) -> str | None:
+        """Return the concrete TSA URL for this config, or ``None``.
+
+        ``None`` means audit events always use the local clock
+        (preset=NONE or unresolved CUSTOM preset).
+        """
+        return resolve_tsa_url(self.tsa_preset, self.tsa_url)

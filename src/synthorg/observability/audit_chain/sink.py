@@ -10,11 +10,17 @@ from synthorg.observability import get_logger
 from synthorg.observability.audit_chain.chain import HashChain
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from synthorg.observability.audit_chain.config import AuditChainConfig
     from synthorg.observability.audit_chain.protocol import AuditChainSigner
     from synthorg.observability.audit_chain.timestamping import (
         TimestampProvider,
     )
+
+    # Signature: (status, chain_depth, timestamp_unix) -> None
+    # where status is one of: "signed", "fallback", "error".
+    AppendCallback = Callable[[str, int, float], None]
 
 logger = get_logger(__name__)
 
@@ -55,6 +61,21 @@ class AuditChainSink(logging.Handler):
         self._chain = chain or HashChain()
         self._config = config
         self._lock = threading.Lock()
+        self._append_callback: AppendCallback | None = None
+
+    def set_append_callback(self, callback: AppendCallback | None) -> None:
+        """Register a callback invoked after every append attempt.
+
+        Passed ``(status, chain_depth, timestamp_unix)`` where status
+        is ``"signed"`` (successful TSA) / ``"fallback"`` (local
+        clock) / ``"error"`` (append failed entirely). Used by
+        startup wiring to push :meth:`PrometheusCollector.record_audit_append`
+        without coupling the sink to AppState.
+
+        Thread safety: invoked under the sink's lock inside
+        :meth:`emit`; the callback must be fast and non-blocking.
+        """
+        self._append_callback = callback
 
     @property
     def chain(self) -> HashChain:
@@ -132,6 +153,17 @@ class AuditChainSink(logging.Handler):
                     signature=signed.signature,
                     timestamp=timestamp,
                 )
+                depth = len(self._chain.entries)
+            # Determine signed vs fallback by inspecting the provider.
+            # ResilientTimestampProvider can yield either; infer by
+            # whether the provider has a tsa_url attribute (set only
+            # on ResilientTimestampProvider).
+            status = (
+                "signed"
+                if getattr(self._timestamp_provider, "tsa_url", None) is not None
+                else "fallback"
+            )
+            self._invoke_append_callback(status, depth, timestamp.timestamp())
 
         except MemoryError, RecursionError:
             raise
@@ -140,5 +172,30 @@ class AuditChainSink(logging.Handler):
             # handler (all "security." events would loop back).
             logger.error(
                 "audit_chain.emit_error",
+                exc_info=True,
+            )
+            self._invoke_append_callback("error", 0, 0.0)
+
+    def _invoke_append_callback(
+        self,
+        status: str,
+        chain_depth: int,
+        timestamp_unix: float,
+    ) -> None:
+        """Call the registered append callback, swallowing errors.
+
+        A callback failure must never break the audit chain; we log
+        to the module logger instead of re-raising.
+        """
+        callback = self._append_callback
+        if callback is None:
+            return
+        try:
+            callback(status, chain_depth, timestamp_unix)
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.warning(
+                "audit_chain.append_callback_error",
                 exc_info=True,
             )

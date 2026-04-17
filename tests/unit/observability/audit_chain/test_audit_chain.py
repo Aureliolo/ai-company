@@ -169,9 +169,19 @@ class TestResilientTimestampProvider:
 
     async def test_fallback_to_local_on_tsa_error(self) -> None:
         """TSA failure falls back to local clock."""
-        provider = ResilientTimestampProvider(tsa_url="https://tsa.example.com")
-        # TSA is not implemented, so it will raise NotImplementedError
-        # and fall back to local clock.
+        from synthorg.observability.audit_chain.tsa_client import (
+            TsaClient,
+            TsaTransportError,
+        )
+
+        client = TsaClient("https://tsa.example.invalid")
+
+        async def _boom(_data: bytes) -> None:
+            error_msg = "simulated"
+            raise TsaTransportError(error_msg)
+
+        client.request_timestamp = _boom  # type: ignore[assignment,method-assign]
+        provider = ResilientTimestampProvider(client)
         ts = await provider.get_timestamp()
         assert ts.tzinfo is not None
 
