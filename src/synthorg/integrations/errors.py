@@ -65,6 +65,7 @@ class ConnectionHealthError(IntegrationError):
     """A health check operation failed."""
 
     is_retryable = True
+    retryable: ClassVar[bool] = True
 
 
 # -- Secret errors -------------------------------------------------------
@@ -74,18 +75,21 @@ class SecretRetrievalError(IntegrationError):
     """A secret could not be retrieved from the backend."""
 
     is_retryable = True
+    retryable: ClassVar[bool] = True
 
 
 class SecretStorageError(IntegrationError):
     """A secret could not be stored in the backend."""
 
     is_retryable = True
+    retryable: ClassVar[bool] = True
 
 
 class SecretRotationError(IntegrationError):
     """A secret rotation operation failed."""
 
     is_retryable = True
+    retryable: ClassVar[bool] = True
 
 
 class MasterKeyError(IntegrationError):
@@ -115,6 +119,7 @@ class TokenExchangeFailedError(OAuthError):
     """
 
     is_retryable = True
+    retryable: ClassVar[bool] = True
 
 
 class TokenRefreshFailedError(OAuthError):
@@ -125,6 +130,7 @@ class TokenRefreshFailedError(OAuthError):
     """
 
     is_retryable = True
+    retryable: ClassVar[bool] = True
 
 
 class InvalidStateError(OAuthError):
@@ -173,6 +179,7 @@ class ConnectionRateLimitError(IntegrationError):
     """The connection's rate limit has been exceeded."""
 
     is_retryable = True
+    retryable: ClassVar[bool] = True
 
 
 # -- Tunnel errors -------------------------------------------------------
@@ -182,6 +189,7 @@ class TunnelError(IntegrationError):
     """An error occurred starting or operating the tunnel."""
 
     is_retryable = True
+    retryable: ClassVar[bool] = True
 
 
 # -- MCP catalog errors --------------------------------------------------
