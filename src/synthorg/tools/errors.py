@@ -5,6 +5,7 @@ metadata.  Unlike provider errors, tool errors have no ``is_retryable``
 flag -- retry decisions are made at higher layers.
 """
 
+import copy
 from types import MappingProxyType
 from typing import Any, ClassVar
 
@@ -46,8 +47,12 @@ class ToolError(Exception):
                 immutable mapping; defaults to empty if not provided.
         """
         self.message = message
+        # Deep-copy so nested mutable values in ``context`` are not
+        # shared with the caller after the exception is raised; the
+        # ``MappingProxyType`` wrapper also prevents top-level mutation
+        # of the attribute itself (CLAUDE.md immutability rule).
         self.context: MappingProxyType[str, Any] = MappingProxyType(
-            dict(context) if context else {},
+            copy.deepcopy(context) if context else {},
         )
         super().__init__(message)
 

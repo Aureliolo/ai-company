@@ -60,11 +60,15 @@ class PendingFuturesRegistry:
         Returns:
             ``True`` if a Future was resolved.  ``False`` when no
             Future is registered -- decisions arriving after a restart
-            have no awaiting coroutine; the persistent row is still
-            updated by the caller.
+            (or on a different worker, before the cross-instance
+            subscriber forwards them) have no awaiting coroutine; the
+            persistent row is still updated by the caller.
         """
         async with self._lock:
             future = self._futures.pop(escalation_id, None)
+            already_done = future is not None and future.done()
+            if future is not None and not already_done:
+                future.set_result(decision)
         if future is None:
             logger.warning(
                 CONFLICT_ESCALATION_RESOLVED,
@@ -72,8 +76,12 @@ class PendingFuturesRegistry:
                 note="no_future_registered",
             )
             return False
-        if not future.done():
-            future.set_result(decision)
+        if already_done:
+            logger.debug(
+                CONFLICT_ESCALATION_RESOLVED,
+                escalation_id=escalation_id,
+                note="future_already_done",
+            )
         return True
 
     async def cancel(self, escalation_id: str) -> bool:
@@ -85,15 +93,14 @@ class PendingFuturesRegistry:
         """
         async with self._lock:
             future = self._futures.pop(escalation_id, None)
-        if future is None:
-            return False
-        if not future.done():
-            future.cancel()
-        return True
+            if future is not None and not future.done():
+                future.cancel()
+        return future is not None
 
-    def is_registered(self, escalation_id: str) -> bool:
+    async def is_registered(self, escalation_id: str) -> bool:
         """Return ``True`` if a Future exists for ``escalation_id``."""
-        return escalation_id in self._futures
+        async with self._lock:
+            return escalation_id in self._futures
 
     async def close(self) -> None:
         """Cancel every outstanding Future."""

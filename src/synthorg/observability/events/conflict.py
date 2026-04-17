@@ -32,6 +32,15 @@ CONFLICT_ESCALATION_TIMEOUT: Final[str] = "conflict.escalation.timeout"
 CONFLICT_ESCALATION_SWEEPER_STARTED: Final[str] = "conflict.escalation.sweeper_started"
 CONFLICT_ESCALATION_SWEEPER_STOPPED: Final[str] = "conflict.escalation.sweeper_stopped"
 CONFLICT_ESCALATION_SWEEPER_FAILED: Final[str] = "conflict.escalation.sweeper_failed"
+CONFLICT_ESCALATION_SUBSCRIBER_STARTED: Final[str] = (
+    "conflict.escalation.subscriber_started"
+)
+CONFLICT_ESCALATION_SUBSCRIBER_STOPPED: Final[str] = (
+    "conflict.escalation.subscriber_stopped"
+)
+CONFLICT_ESCALATION_SUBSCRIBER_FAILED: Final[str] = (
+    "conflict.escalation.subscriber_failed"
+)
 
 # Validation
 CONFLICT_VALIDATION_ERROR: Final[str] = "conflict.validation.error"

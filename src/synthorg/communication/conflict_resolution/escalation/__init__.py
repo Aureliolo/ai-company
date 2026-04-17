@@ -13,6 +13,7 @@ from synthorg.communication.conflict_resolution.escalation.config import (
 )
 from synthorg.communication.conflict_resolution.escalation.factory import (
     build_decision_processor,
+    build_escalation_notify_subscriber,
     build_escalation_queue_store,
 )
 from synthorg.communication.conflict_resolution.escalation.in_memory_store import (
@@ -24,6 +25,10 @@ from synthorg.communication.conflict_resolution.escalation.models import (
     EscalationStatus,
     RejectDecision,
     WinnerDecision,
+)
+from synthorg.communication.conflict_resolution.escalation.notify import (
+    EscalationNotifySubscriber,
+    NoopEscalationNotifySubscriber,
 )
 from synthorg.communication.conflict_resolution.escalation.processors import (
     HybridDecisionProcessor,
@@ -45,15 +50,18 @@ __all__ = [
     "Escalation",
     "EscalationDecision",
     "EscalationExpirationSweeper",
+    "EscalationNotifySubscriber",
     "EscalationQueueConfig",
     "EscalationQueueStore",
     "EscalationStatus",
     "HybridDecisionProcessor",
     "InMemoryEscalationStore",
+    "NoopEscalationNotifySubscriber",
     "PendingFuturesRegistry",
     "RejectDecision",
     "WinnerDecision",
     "WinnerSelectProcessor",
     "build_decision_processor",
+    "build_escalation_notify_subscriber",
     "build_escalation_queue_store",
 ]

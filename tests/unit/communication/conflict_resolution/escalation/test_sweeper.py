@@ -99,8 +99,11 @@ class TestSweeperLifecycle:
 
 
 class TestSweeperRunLoop:
-    async def test_sweep_expires_stale_rows_on_loop_tick(self) -> None:
-        """One full `start -> wait -> stop` cycle expires overdue rows."""
+    async def test_sweep_expires_stale_rows_on_loop_tick(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """One loop tick expires overdue rows without fixed sleeps."""
         store = InMemoryEscalationStore()
         past = datetime.now(UTC) - timedelta(seconds=10)
         stale = _make_escalation(escalation_id="esc-stale", expires_at=past)
@@ -109,11 +112,22 @@ class TestSweeperRunLoop:
         await store.create(stale)
         await store.create(live)
 
+        first_sweep_done = asyncio.Event()
+        original = store.mark_expired
+
+        async def tracked(now_iso: str) -> tuple[str, ...]:
+            try:
+                return await original(now_iso)
+            finally:
+                first_sweep_done.set()
+
+        monkeypatch.setattr(store, "mark_expired", tracked)
         sweeper = EscalationExpirationSweeper(store, interval_seconds=1.0)
         await sweeper.start()
         try:
-            # Give the loop one full iteration to run.
-            await asyncio.sleep(0.5)
+            # Wait for the condition, not a fixed duration, so the test
+            # does not flake under scheduler jitter.
+            await asyncio.wait_for(first_sweep_done.wait(), timeout=5.0)
         finally:
             await sweeper.stop()
 
@@ -131,6 +145,7 @@ class TestSweeperRunLoop:
         """When the store raises, the loop logs + continues to the next tick."""
         store = InMemoryEscalationStore()
         calls = {"n": 0}
+        second_tick_done = asyncio.Event()
         original = store.mark_expired
 
         async def flaky(now_iso: str) -> tuple[str, ...]:
@@ -138,20 +153,25 @@ class TestSweeperRunLoop:
             if calls["n"] == 1:
                 msg = "simulated transient failure"
                 raise RuntimeError(msg)
-            return await original(now_iso)
+            result = await original(now_iso)
+            second_tick_done.set()
+            return result
 
         monkeypatch.setattr(store, "mark_expired", flaky)
         sweeper = EscalationExpirationSweeper(store, interval_seconds=1.0)
         await sweeper.start()
         try:
-            # Wait long enough for at least two ticks.
-            await asyncio.sleep(1.5)
+            # Condition-based wait: loop survived the first exception
+            # and ran at least once more.
+            await asyncio.wait_for(second_tick_done.wait(), timeout=5.0)
         finally:
             await sweeper.stop()
-        # Loop survived the first exception and ran at least once more.
         assert calls["n"] >= 2
 
-    async def test_restart_recovery_orphan_pending_gets_expired(self) -> None:
+    async def test_restart_recovery_orphan_pending_gets_expired(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
         """PENDING rows without a live awaiting coroutine get expired.
 
         Simulates the restart path: a resolver registered a Future, the
@@ -168,10 +188,20 @@ class TestSweeperRunLoop:
         await store.create(orphan)
         # No registry, no Future -- only the row in the store.
 
+        first_sweep_done = asyncio.Event()
+        original = store.mark_expired
+
+        async def tracked(now_iso: str) -> tuple[str, ...]:
+            try:
+                return await original(now_iso)
+            finally:
+                first_sweep_done.set()
+
+        monkeypatch.setattr(store, "mark_expired", tracked)
         sweeper = EscalationExpirationSweeper(store, interval_seconds=1.0)
         await sweeper.start()
         try:
-            await asyncio.sleep(0.5)
+            await asyncio.wait_for(first_sweep_done.wait(), timeout=5.0)
         finally:
             await sweeper.stop()
         row = await store.get("esc-orphan")

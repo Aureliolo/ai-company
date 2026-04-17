@@ -234,6 +234,8 @@ def _flatten_nullable(
       ``{type: [T, "null"], ...extras}``.
     * ``$ref`` to enum: delegates to :func:`_flatten_nullable_ref`.
     * Other ``$ref``: swaps ``oneOf`` to ``anyOf``.
+    * Discriminated-union nullable (multiple ``$ref`` branches + null):
+      swaps ``oneOf`` to ``anyOf`` so the null branch is tolerated.
     """
     null_entries = [i for i in items if isinstance(i, dict) and i.get("type") == "null"]
     if len(null_entries) != 1:
@@ -254,6 +256,14 @@ def _flatten_nullable(
         return
 
     if len(non_null) != 1:
+        # Discriminated-union nullable:
+        # ``Annotated[A | B, Field(discriminator=...)] | None`` emits oneOf
+        # with multiple $ref branches plus ``{"type": "null"}``. Converting
+        # to anyOf keeps the discriminator structure while tolerating null.
+        if keyword == "oneOf" and all(
+            isinstance(b, dict) and "$ref" in b for b in non_null
+        ):
+            result["anyOf"] = result.pop("oneOf")
         return
 
     branch = non_null[0]

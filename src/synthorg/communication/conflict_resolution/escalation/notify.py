@@ -1,0 +1,228 @@
+"""Cross-instance wake-up for the human escalation queue (#1418 / #1444).
+
+When the escalation queue runs on a shared database (currently Postgres)
+and the API is deployed across multiple workers/pods, a resolver
+awaiting a Future on worker A must be woken when an operator submits a
+decision through worker B.  The Future itself is process-local
+(:class:`PendingFuturesRegistry`), so the wake signal has to travel
+through the shared database.
+
+This module provides the :class:`EscalationNotifySubscriber` abstract
+contract and a Postgres implementation that subscribes to a LISTEN
+channel populated by triggers on the ``conflict_escalations`` table.
+SQLite/in-memory backends have no cross-instance concern, so the
+factory returns a :class:`NoopEscalationNotifySubscriber`.
+"""
+
+import asyncio
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
+
+from synthorg.observability import get_logger
+from synthorg.observability.events.conflict import (
+    CONFLICT_ESCALATION_RESOLVED,
+    CONFLICT_ESCALATION_SUBSCRIBER_FAILED,
+    CONFLICT_ESCALATION_SUBSCRIBER_STARTED,
+    CONFLICT_ESCALATION_SUBSCRIBER_STOPPED,
+)
+
+if TYPE_CHECKING:
+    from synthorg.communication.conflict_resolution.escalation.registry import (
+        PendingFuturesRegistry,
+    )
+    from synthorg.persistence.postgres.escalation_repo import (
+        PostgresEscalationRepository,
+    )
+
+logger = get_logger(__name__)
+
+
+@runtime_checkable
+class EscalationNotifySubscriber(Protocol):
+    """Contract for cross-instance escalation wake-up subscribers.
+
+    Implementations listen on a backend-specific signal (Postgres
+    LISTEN/NOTIFY, Redis pub/sub, etc.) and forward state transitions
+    to an in-process :class:`PendingFuturesRegistry` so any local
+    resolver awaiting the escalation wakes with the correct payload.
+    """
+
+    async def start(self) -> None:
+        """Begin subscribing.  Must be idempotent."""
+        ...
+
+    async def stop(self) -> None:
+        """Stop subscribing and release resources.  Must be idempotent."""
+        ...
+
+
+class NoopEscalationNotifySubscriber:
+    """No-op subscriber for single-worker / in-memory deployments."""
+
+    async def start(self) -> None:
+        """Noop."""
+        return
+
+    async def stop(self) -> None:
+        """Noop."""
+        return
+
+
+class PostgresEscalationNotifySubscriber:
+    """Subscribes to a Postgres LISTEN channel and wakes local futures.
+
+    The Postgres ``conflict_escalations`` schema installs triggers that
+    ``NOTIFY`` on the configured channel whenever a row transitions out
+    of PENDING.  This subscriber fans those notifications out to the
+    local :class:`PendingFuturesRegistry`: DECIDED rows cause
+    ``registry.resolve`` (with the decision payload read from the row);
+    EXPIRED/CANCELLED rows cause ``registry.cancel`` so any local
+    resolver awaiting the Future is promptly unblocked.
+
+    The subscriber is best-effort: connection failures are logged and
+    the loop reconnects with a short back-off, never propagating to the
+    application.  Missing a signal is not catastrophic because each
+    resolver has its own ``timeout_seconds`` deadline and the
+    :class:`EscalationExpirationSweeper` eventually reaps stale rows.
+    """
+
+    def __init__(
+        self,
+        repo: PostgresEscalationRepository,
+        registry: PendingFuturesRegistry,
+        *,
+        channel: str,
+        reconnect_delay_seconds: float = 1.0,
+    ) -> None:
+        """Initialise the subscriber.
+
+        Args:
+            repo: Postgres escalation repository; used to fetch the
+                decision payload when a ``DECIDED`` signal arrives.
+            registry: Process-local registry whose futures should wake.
+            channel: LISTEN/NOTIFY channel name.
+            reconnect_delay_seconds: Seconds to wait before reconnecting
+                after a connection failure.  Must be positive.
+        """
+        if reconnect_delay_seconds <= 0:
+            msg = "reconnect_delay_seconds must be > 0"
+            raise ValueError(msg)
+        self._repo = repo
+        self._registry = registry
+        self._channel = channel
+        self._reconnect_delay = reconnect_delay_seconds
+        self._task: asyncio.Task[None] | None = None
+        self._stop_event = asyncio.Event()
+        self._start_lock = asyncio.Lock()
+
+    async def start(self) -> None:
+        """Schedule the background subscriber loop."""
+        async with self._start_lock:
+            if self._task is not None and not self._task.done():
+                return
+            self._stop_event.clear()
+            self._task = asyncio.create_task(
+                self._run(),
+                name="escalation-notify-subscriber",
+            )
+        logger.info(
+            CONFLICT_ESCALATION_SUBSCRIBER_STARTED,
+            channel=self._channel,
+        )
+
+    async def stop(self) -> None:
+        """Signal the loop to exit and await its completion."""
+        self._stop_event.set()
+        task = self._task
+        if task is None:
+            return
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        except Exception as exc:
+            logger.debug(
+                CONFLICT_ESCALATION_SUBSCRIBER_FAILED,
+                error_type=type(exc).__name__,
+                error=str(exc),
+                note="shutdown",
+            )
+        finally:
+            self._task = None
+        logger.info(CONFLICT_ESCALATION_SUBSCRIBER_STOPPED)
+
+    async def _run(self) -> None:
+        """Main loop: (re)open a listen connection and dispatch notifies."""
+        while not self._stop_event.is_set():
+            try:
+                await self._listen_once()
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                logger.warning(
+                    CONFLICT_ESCALATION_SUBSCRIBER_FAILED,
+                    channel=self._channel,
+                    error_type=type(exc).__name__,
+                    error=str(exc),
+                )
+            try:
+                await asyncio.wait_for(
+                    self._stop_event.wait(),
+                    timeout=self._reconnect_delay,
+                )
+            except TimeoutError:
+                continue
+            except asyncio.CancelledError:
+                raise
+
+    async def _listen_once(self) -> None:
+        """Open a dedicated connection, LISTEN, and dispatch notifies."""
+        pool = self._repo.pool
+        async with pool.connection() as conn:
+            await conn.set_autocommit(True)
+            await conn.execute(f'LISTEN "{self._channel}"')
+            # Yielding gen reads notifies without holding the GIL.
+            gen = conn.notifies()
+            try:
+                async for notify in gen:
+                    if self._stop_event.is_set():
+                        break
+                    await self._dispatch_payload(notify.payload)
+            finally:
+                await gen.aclose()
+
+    async def _dispatch_payload(self, payload: str) -> None:
+        """Interpret a NOTIFY payload and wake the local future."""
+        # Payload format: "<escalation_id>:<new_status>" where status
+        # is one of decided/expired/cancelled.
+        try:
+            escalation_id, _, status = payload.partition(":")
+        except Exception as exc:
+            logger.warning(
+                CONFLICT_ESCALATION_SUBSCRIBER_FAILED,
+                error_type=type(exc).__name__,
+                error=str(exc),
+                note="bad_payload",
+                payload=payload,
+            )
+            return
+        if not escalation_id or not status:
+            return
+        try:
+            if status == "decided":
+                row = await self._repo.get(escalation_id)
+                if row is None or row.decision is None:
+                    return
+                await self._registry.resolve(escalation_id, row.decision)
+            elif status in {"expired", "cancelled"}:
+                await self._registry.cancel(escalation_id)
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                CONFLICT_ESCALATION_RESOLVED,
+                escalation_id=escalation_id,
+                error_type=type(exc).__name__,
+                error=str(exc),
+                note="notify_dispatch_failed",
+            )

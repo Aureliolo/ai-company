@@ -733,6 +733,34 @@ All four conflict resolution strategies terminate with bounded resource use:
   ``ESCALATED_TO_HUMAN`` outcome so downstream callers always receive a
   terminal ``ConflictResolution``. Operators collect and decide via the
   ``/conflicts/escalations`` REST surface (#1418).
+
+    **Multi-worker wake-up (#1444):** ``PendingFuturesRegistry`` is
+    process-local by design.  When the API runs across multiple workers
+    or pods sharing a Postgres backend, a decision submitted through
+    worker B must still wake a resolver blocked on worker A.  The queue
+    wires this via Postgres ``LISTEN`` / ``NOTIFY``: the repository
+    publishes ``<id>:<status>`` on the ``conflict_escalation_events``
+    channel on every terminal transition (via an ``AFTER UPDATE``
+    trigger installed in the schema), and an
+    ``EscalationNotifySubscriber`` running in each worker listens on
+    that channel and forwards the signal to its local registry.  The
+    subscriber is controlled by ``EscalationQueueConfig.cross_instance_notify``
+    (``auto`` -- default, enables it automatically for the Postgres
+    backend; ``on`` -- force it, fail startup if the backend cannot
+    support it; ``off`` -- scope to a single worker).  The sweeper
+    and per-resolver timeout still bound stale rows if a notify is
+    missed, so the signal is an optimization, not a correctness
+    requirement.
+
+    **Schema-level invariants.** The ``conflict_escalations`` table
+    enforces three CHECK constraints that together make impossible
+    row shapes unrepresentable: (1) ``DECIDED`` requires the full
+    ``decision_json`` / ``decided_at`` / ``decided_by`` triple, (2)
+    ``PENDING`` forbids all three, (3) ``EXPIRED`` / ``CANCELLED``
+    forbid ``decision_json``.  A partial unique index on ``conflict_id
+    WHERE status = 'pending'`` enforces "at most one active escalation
+    per conflict", and a ``(status, expires_at)`` index backs the
+    sweeper's hot ``mark_expired`` query.
 - **HybridResolver**: Single LLM review call; deterministic fallback to Authority on ambiguity.
 
 ### Delegation Guard

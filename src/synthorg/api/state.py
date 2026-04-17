@@ -22,6 +22,9 @@ from synthorg.budget.coordination_store import (
 from synthorg.budget.tracker import CostTracker  # noqa: TC001
 from synthorg.client.simulation_state import ClientSimulationState  # noqa: TC001
 from synthorg.communication.bus_protocol import MessageBus  # noqa: TC001
+from synthorg.communication.conflict_resolution.escalation.notify import (
+    EscalationNotifySubscriber,  # noqa: TC001
+)
 from synthorg.communication.conflict_resolution.escalation.protocol import (
     DecisionProcessor,  # noqa: TC001
     EscalationQueueStore,  # noqa: TC001
@@ -177,6 +180,7 @@ class AppState:
         "_webhook_replay_protector",
         "approval_store",
         "config",
+        "escalation_notify_subscriber",
         "escalation_processor",
         "escalation_registry",
         "escalation_store",
@@ -231,6 +235,7 @@ class AppState:
         self.escalation_registry: PendingFuturesRegistry | None = None
         self.escalation_processor: DecisionProcessor | None = None
         self.escalation_sweeper: EscalationExpirationSweeper | None = None
+        self.escalation_notify_subscriber: EscalationNotifySubscriber | None = None
         self._approval_gate = approval_gate
         self._artifact_storage = artifact_storage
         self._audit_log = audit_log

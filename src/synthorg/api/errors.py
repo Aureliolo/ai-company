@@ -338,6 +338,17 @@ class ArtifactTooLargeApiError(ApiError):
         super().__init__(message, status_code=413)
 
 
+class ArtifactStorageFullApiError(ApiError):
+    """Raised when the artifact storage backend is full (507)."""
+
+    default_message: ClassVar[str] = "Artifact storage is full"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.INTERNAL
+    error_code: ClassVar[ErrorCode] = ErrorCode.ARTIFACT_STORAGE_FULL
+
+    def __init__(self, message: str | None = None) -> None:
+        super().__init__(message, status_code=507)
+
+
 class PerOperationRateLimitError(ApiError):
     """Raised when a per-operation rate limit is exceeded (429).
 

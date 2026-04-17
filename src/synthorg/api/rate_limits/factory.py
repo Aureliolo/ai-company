@@ -3,6 +3,10 @@
 from synthorg.api.rate_limits.config import PerOpRateLimitConfig  # noqa: TC001
 from synthorg.api.rate_limits.in_memory import InMemorySlidingWindowStore
 from synthorg.api.rate_limits.protocol import SlidingWindowStore  # noqa: TC001
+from synthorg.observability import get_logger
+from synthorg.observability.events.api import API_APP_STARTUP
+
+logger = get_logger(__name__)
 
 
 def build_sliding_window_store(
@@ -27,8 +31,14 @@ def build_sliding_window_store(
             "Redis-backed per-op rate limiter is not implemented. "
             "Use backend='memory' or contribute a Redis adapter."
         )
+        logger.warning(
+            API_APP_STARTUP,
+            backend=config.backend,
+            error="redis_backend_not_implemented",
+        )
         raise NotImplementedError(msg)
     # Defensive: the Literal union is exhaustive today, but any future
     # backend value must be explicitly handled here before landing.
     msg = f"Unknown per-op rate limit backend: {config.backend!r}"  # type: ignore[unreachable]
+    logger.error(API_APP_STARTUP, backend=config.backend, error="unknown_backend")
     raise ValueError(msg)

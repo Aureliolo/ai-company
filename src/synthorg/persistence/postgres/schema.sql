@@ -978,16 +978,53 @@ CREATE TABLE conflict_escalations (
     decision_json JSONB,
     CHECK(length(trim(id)) > 0),
     CHECK(length(trim(conflict_id)) > 0),
+    -- DECIDED rows carry the full decision triple.
     CHECK(
         status != 'decided'
         OR (decision_json IS NOT NULL AND decided_at IS NOT NULL AND decided_by IS NOT NULL)
     ),
+    -- PENDING rows carry no decision triple at all.
     CHECK(
         status != 'pending'
-        OR (decision_json IS NULL AND decided_at IS NULL)
+        OR (decision_json IS NULL AND decided_at IS NULL AND decided_by IS NULL)
+    ),
+    -- EXPIRED / CANCELLED rows drop any decision payload.
+    CHECK(
+        status NOT IN ('expired', 'cancelled')
+        OR decision_json IS NULL
     )
 );
 CREATE INDEX idx_conflict_escalations_status_created
     ON conflict_escalations(status, created_at);
 CREATE INDEX idx_conflict_escalations_conflict_id
     ON conflict_escalations(conflict_id);
+CREATE INDEX idx_conflict_escalations_status_expires_at
+    ON conflict_escalations(status, expires_at);
+-- Enforce "at most one PENDING escalation per conflict" so two
+-- concurrent resolvers cannot enqueue competing queue rows for the
+-- same conflict.
+CREATE UNIQUE INDEX idx_conflict_escalations_unique_pending_conflict
+    ON conflict_escalations(conflict_id) WHERE status = 'pending';
+
+-- LISTEN/NOTIFY wiring for cross-instance resolver wake-up (#1418).
+-- When a row transitions out of PENDING the trigger publishes
+-- "<id>:<new_status>" on the ``conflict_escalation_events`` channel so
+-- subscribers on other workers can forward the signal to their local
+-- PendingFuturesRegistry.  The channel name matches
+-- ``EscalationQueueConfig.notify_channel`` (default).
+CREATE OR REPLACE FUNCTION notify_conflict_escalation_event()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF (TG_OP = 'UPDATE' AND OLD.status = 'pending' AND NEW.status <> 'pending') THEN
+        PERFORM pg_notify(
+            'conflict_escalation_events',
+            NEW.id || ':' || NEW.status
+        );
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER conflict_escalations_notify_after_update
+AFTER UPDATE ON conflict_escalations
+FOR EACH ROW EXECUTE FUNCTION notify_conflict_escalation_event();

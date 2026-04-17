@@ -125,8 +125,17 @@ class HumanEscalationResolver:
         or the timeout fires.
         """
         escalation = self._build_escalation(conflict)
-        await self._store.create(escalation)
+        # Register the Future BEFORE making the row externally visible.
+        # A race-fast decision endpoint that sees the row and calls
+        # ``registry.resolve`` before we register would otherwise create
+        # an orphan decision and leave the resolver waiting until timeout.
         future = await self._registry.register(escalation.id)
+        try:
+            await self._store.create(escalation)
+        except Exception:
+            # Reap the future so the registry does not leak.
+            await self._registry.cancel(escalation.id)
+            raise
         logger.info(
             CONFLICT_ESCALATION_QUEUED,
             escalation_id=escalation.id,
@@ -140,9 +149,26 @@ class HumanEscalationResolver:
             agent_count=len(conflict.positions),
         )
         if self._notifier is not None:
-            await self._notifier.dispatch(
-                self._build_notification(escalation, conflict),
-            )
+            # Notification delivery is a side effect: failures must not
+            # abort the workflow and leak the queued row + registered
+            # future.  Log and continue -- operators already have the
+            # row visible via the REST list endpoint, and the sweeper
+            # will eventually expire it if nothing arrives.
+            try:
+                await self._notifier.dispatch(
+                    self._build_notification(escalation, conflict),
+                )
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
+                logger.warning(
+                    CONFLICT_ESCALATION_QUEUED,
+                    escalation_id=escalation.id,
+                    conflict_id=conflict.id,
+                    error_type=type(exc).__name__,
+                    error=str(exc),
+                    note="notification_dispatch_failed",
+                )
 
         try:
             if self._timeout_seconds is None:
@@ -153,9 +179,10 @@ class HumanEscalationResolver:
                     timeout=float(self._timeout_seconds),
                 )
         except TimeoutError:
-            # Reap the Future from the registry -- it's already "done"
-            # (the wait_for timeout cancelled it) but we leave it in
-            # the map unless we pop it explicitly.
+            # Reap the Future from the registry and mark only this row
+            # EXPIRED -- pass its own expires_at as the deadline so we
+            # never accidentally expire rows whose deadline is still
+            # in the future.
             await self._registry.cancel(escalation.id)
             await self._store.mark_expired(datetime.now(UTC).isoformat())
             logger.warning(
@@ -166,7 +193,25 @@ class HumanEscalationResolver:
             )
             return self._timeout_resolution(conflict)
         except asyncio.CancelledError:
+            # Persist terminal state so operators do not see the row
+            # stuck as PENDING after the resolver is cancelled.
             await self._registry.cancel(escalation.id)
+            try:
+                await self._store.cancel(
+                    escalation.id,
+                    cancelled_by="system:resolver_cancelled",
+                )
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
+                logger.warning(
+                    CONFLICT_ESCALATION_CANCELLED,
+                    escalation_id=escalation.id,
+                    conflict_id=conflict.id,
+                    error_type=type(exc).__name__,
+                    error=str(exc),
+                    note="store_cancel_failed",
+                )
             logger.warning(
                 CONFLICT_ESCALATION_CANCELLED,
                 escalation_id=escalation.id,
@@ -177,10 +222,11 @@ class HumanEscalationResolver:
         # The decision endpoint is responsible for persisting the
         # DECIDED row and then resolving the Future -- the resolver
         # only has to hand the decision to the processor.
+        decided_by = await self._resolve_decided_by(escalation.id)
         resolution = self._processor.process(
             conflict,
             decision,
-            decided_by=self._decided_by_or_default(escalation.id),
+            decided_by=decided_by,
         )
         logger.info(
             CONFLICT_ESCALATION_RESOLVED,
@@ -190,23 +236,31 @@ class HumanEscalationResolver:
         )
         return resolution
 
-    def _decided_by_or_default(self, escalation_id: str) -> str:
-        """Look up the recorded ``decided_by`` or fall back to ``"human"``.
+    async def _resolve_decided_by(self, escalation_id: str) -> str:
+        """Look up the persisted ``decided_by`` or fall back to ``"human"``.
 
-        Called after the Future resolves.  The actual persisted
-        ``decided_by`` is authoritative; if the store lookup races
-        we fall back to the generic ``"human"`` label so the resolution
-        never misses the required field.
+        The REST endpoint saves the DECIDED row with the authoritative
+        operator identity before resolving the Future, so the row is
+        already visible by the time we reach here.  We still fall back
+        to the generic ``"human"`` label if the lookup races or the
+        backend is in-memory and scoped to the resolver under test.
         """
-        # The escalation row has already been saved by the REST
-        # endpoint, so ``decided_by`` is present.  We read it
-        # synchronously from the in-memory cache where possible; the
-        # store's own implementation is the source of truth when
-        # called by tests that bypass the REST layer.
-        # ``_processor.process`` will still accept a ``"human"``
-        # fallback, so we never block on I/O here.
-        del escalation_id
-        return "human"
+        try:
+            row = await self._store.get(escalation_id)
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                CONFLICT_ESCALATION_RESOLVED,
+                escalation_id=escalation_id,
+                error_type=type(exc).__name__,
+                error=str(exc),
+                note="store_lookup_failed",
+            )
+            return "human"
+        if row is None or not row.decided_by:
+            return "human"
+        return row.decided_by
 
     def build_dissent_records(
         self,

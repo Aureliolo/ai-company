@@ -20,6 +20,10 @@ export type NotificationCategory =
   | 'approvals.pending'
   | 'approvals.expiring'
   | 'approvals.decided'
+  | 'escalations.pending'
+  | 'escalations.decided'
+  | 'escalations.expired'
+  | 'escalations.cancelled'
   | 'budget.threshold'
   | 'budget.exhausted'
   | 'system.error'
@@ -40,6 +44,7 @@ export type NotificationRoute = 'toast' | 'drawer' | 'browser'
 export type NotificationFilterGroup =
   | 'all'
   | 'approvals'
+  | 'escalations'
   | 'budget'
   | 'system'
   | 'tasks'
@@ -89,6 +94,30 @@ export const CATEGORY_CONFIGS: Record<NotificationCategory, CategoryConfig> = {
     defaultRoutes: ['drawer'],
     label: 'Approval decided',
     group: 'approvals',
+  },
+  'escalations.pending': {
+    severity: 'warning',
+    defaultRoutes: ['drawer', 'toast', 'browser'],
+    label: 'Escalation pending',
+    group: 'escalations',
+  },
+  'escalations.decided': {
+    severity: 'info',
+    defaultRoutes: ['drawer'],
+    label: 'Escalation decided',
+    group: 'escalations',
+  },
+  'escalations.expired': {
+    severity: 'warning',
+    defaultRoutes: ['drawer', 'browser'],
+    label: 'Escalation expired',
+    group: 'escalations',
+  },
+  'escalations.cancelled': {
+    severity: 'info',
+    defaultRoutes: ['drawer'],
+    label: 'Escalation cancelled',
+    group: 'escalations',
   },
   'budget.threshold': {
     severity: 'warning',
@@ -214,6 +243,7 @@ export const DEFAULT_PREFERENCES: NotificationPreferences = {
 export const FILTER_GROUP_LABELS: Record<NotificationFilterGroup, string> = {
   all: 'All',
   approvals: 'Approvals',
+  escalations: 'Escalations',
   budget: 'Budget',
   system: 'System',
   tasks: 'Tasks',

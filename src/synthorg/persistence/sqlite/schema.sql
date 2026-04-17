@@ -1016,16 +1016,34 @@ CREATE TABLE conflict_escalations (
     ),
     decided_by TEXT,
     decision_json TEXT,
+    -- DECIDED rows carry the full decision triple.
     CHECK(
         (status != 'decided')
         OR (decision_json IS NOT NULL AND decided_at IS NOT NULL AND decided_by IS NOT NULL)
     ),
+    -- PENDING rows carry no decision triple at all (decided_by must
+    -- also be NULL so audit consumers can distinguish pending from
+    -- terminal states by column nullability alone).
     CHECK(
         (status != 'pending')
-        OR (decision_json IS NULL AND decided_at IS NULL)
+        OR (decision_json IS NULL AND decided_at IS NULL AND decided_by IS NULL)
+    ),
+    -- EXPIRED / CANCELLED rows drop any decision payload; only
+    -- decided_at (transition timestamp) and decided_by
+    -- ("system:..." or "human:...") remain.
+    CHECK(
+        (status NOT IN ('expired', 'cancelled'))
+        OR decision_json IS NULL
     )
 );
 CREATE INDEX idx_conflict_escalations_status_created ON
     conflict_escalations(status, created_at);
 CREATE INDEX idx_conflict_escalations_conflict_id ON
     conflict_escalations(conflict_id);
+CREATE INDEX idx_conflict_escalations_status_expires_at ON
+    conflict_escalations(status, expires_at);
+-- Enforce "at most one PENDING escalation per conflict" so two
+-- concurrent resolvers cannot enqueue competing queue rows for the
+-- same conflict.
+CREATE UNIQUE INDEX idx_conflict_escalations_unique_pending_conflict ON
+    conflict_escalations(conflict_id) WHERE status = 'pending';

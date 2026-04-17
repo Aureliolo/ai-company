@@ -85,9 +85,36 @@ class PostgresEscalationRepository(EscalationQueueStore):
             :class:`PostgresPersistenceBackend`.
     """
 
-    def __init__(self, pool: AsyncConnectionPool) -> None:
-        """Initialise the repository with a shared connection pool."""
+    def __init__(
+        self,
+        pool: AsyncConnectionPool,
+        *,
+        notify_channel: str | None = None,
+    ) -> None:
+        """Initialise the repository with a shared connection pool.
+
+        Args:
+            pool: Open ``psycopg_pool.AsyncConnectionPool`` owned by the
+                :class:`PostgresPersistenceBackend`.
+            notify_channel: Optional LISTEN/NOTIFY channel name.  When
+                set, the repository publishes ``<id>:<status>`` payloads
+                on every terminal transition so a cross-instance
+                :class:`EscalationNotifySubscriber` can wake resolvers
+                on other workers.  ``None`` disables publication, which
+                matches the single-worker default.
+        """
         self._pool = pool
+        self._notify_channel = notify_channel
+
+    @property
+    def pool(self) -> AsyncConnectionPool:
+        """Return the underlying connection pool.
+
+        Exposed for the cross-instance notify subscriber, which must
+        reuse the repository's pool to share credentials and pool
+        sizing with the rest of the persistence layer.
+        """
+        return self._pool
 
     async def create(self, escalation: Escalation) -> None:
         """Insert a PENDING escalation row."""
@@ -122,9 +149,23 @@ INSERT INTO conflict_escalations (
                 await conn.commit()
         except psycopg.errors.UniqueViolation as exc:
             msg = f"Escalation {escalation.id!r} already exists"
+            logger.warning(
+                API_REQUEST_ERROR,
+                error_type="escalation_create_duplicate",
+                escalation_id=escalation.id,
+                conflict_id=escalation.conflict.id,
+                error=str(exc),
+            )
             raise ConstraintViolationError(msg, constraint=str(exc)) from exc
         except psycopg.Error as exc:
             msg = f"Failed to create escalation {escalation.id!r}: {exc}"
+            logger.warning(
+                API_REQUEST_ERROR,
+                error_type="escalation_create_failed",
+                escalation_id=escalation.id,
+                conflict_id=escalation.conflict.id,
+                error=str(exc),
+            )
             raise QueryError(msg) from exc
 
     async def get(self, escalation_id: str) -> Escalation | None:
@@ -142,6 +183,12 @@ INSERT INTO conflict_escalations (
                 row = await cur.fetchone()
         except psycopg.Error as exc:
             msg = f"Failed to fetch escalation {escalation_id!r}: {exc}"
+            logger.warning(
+                API_REQUEST_ERROR,
+                error_type="escalation_get_failed",
+                escalation_id=escalation_id,
+                error=str(exc),
+            )
             raise QueryError(msg) from exc
         if row is None:
             return None
@@ -187,6 +234,11 @@ INSERT INTO conflict_escalations (
                 rows = await cur.fetchall()
         except psycopg.Error as exc:
             msg = f"Failed to list escalations: {exc}"
+            logger.warning(
+                API_REQUEST_ERROR,
+                error_type="escalation_list_failed",
+                error=str(exc),
+            )
             raise QueryError(msg) from exc
         # Corrupt-row resilience: skip + log instead of failing the whole page.
         page_items: list[Escalation] = []
@@ -245,8 +297,16 @@ INSERT INTO conflict_escalations (
                 await conn.commit()
         except psycopg.Error as exc:
             msg = f"Failed to mark escalations expired: {exc}"
+            logger.warning(
+                API_REQUEST_ERROR,
+                error_type="escalation_mark_expired_failed",
+                error=str(exc),
+            )
             raise QueryError(msg) from exc
-        return tuple(str(r[0]) for r in rows)
+        ids = tuple(str(r[0]) for r in rows)
+        for escalation_id in ids:
+            await self._publish_notify(escalation_id, "expired")
+        return ids
 
     async def close(self) -> None:
         """No-op: the pool is owned by the persistence backend."""
@@ -305,5 +365,42 @@ INSERT INTO conflict_escalations (
                     raise ValueError(msg)
         except psycopg.Error as exc:
             msg = f"Failed to update escalation {escalation_id!r}: {exc}"
+            logger.warning(
+                API_REQUEST_ERROR,
+                error_type="escalation_update_failed",
+                escalation_id=escalation_id,
+                target_status=new_status.value,
+                error=str(exc),
+            )
             raise QueryError(msg) from exc
+        await self._publish_notify(escalation_id, new_status.value)
         return _row_to_escalation(updated_row)
+
+    async def _publish_notify(self, escalation_id: str, status: str) -> None:
+        """Publish ``<id>:<status>`` on the configured NOTIFY channel.
+
+        Best-effort: failure is logged and swallowed because the
+        persistent state has already been committed and the sweeper
+        can still reap stale rows even if the signal is missed.
+        """
+        channel = self._notify_channel
+        if channel is None or not escalation_id or not status:
+            return
+        try:
+            async with self._pool.connection() as conn, conn.cursor() as cur:
+                payload = f"{escalation_id}:{status}"
+                # Channel name and payload are quoted server-side; we
+                # send them as query parameters to avoid SQL injection.
+                await cur.execute(
+                    "SELECT pg_notify(%s, %s)",
+                    (channel, payload),
+                )
+                await conn.commit()
+        except psycopg.Error as exc:
+            logger.warning(
+                API_REQUEST_ERROR,
+                error_type="escalation_notify_failed",
+                escalation_id=escalation_id,
+                channel=channel,
+                error=str(exc),
+            )

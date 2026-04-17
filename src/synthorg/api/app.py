@@ -73,6 +73,7 @@ from synthorg.communication.conflict_resolution.escalation import (
     EscalationExpirationSweeper,
     PendingFuturesRegistry,
     build_decision_processor,
+    build_escalation_notify_subscriber,
     build_escalation_queue_store,
 )
 from synthorg.communication.delegation.record_store import (
@@ -1095,6 +1096,28 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
                     error="OAuth token manager startup failed (non-fatal)",
                     exc_info=True,
                 )
+        if app_state.escalation_sweeper is not None:
+            try:
+                await app_state.escalation_sweeper.start()
+            except MemoryError, RecursionError:
+                raise
+            except Exception:
+                logger.warning(
+                    API_APP_STARTUP,
+                    error="Escalation sweeper startup failed (non-fatal)",
+                    exc_info=True,
+                )
+        if app_state.escalation_notify_subscriber is not None:
+            try:
+                await app_state.escalation_notify_subscriber.start()
+            except MemoryError, RecursionError:
+                raise
+            except Exception:
+                logger.warning(
+                    API_APP_STARTUP,
+                    error="Escalation notify subscriber startup failed (non-fatal)",
+                    exc_info=True,
+                )
 
     async def on_shutdown() -> None:  # noqa: C901, PLR0912
         nonlocal _ticket_cleanup_task, _auto_wired_dispatcher
@@ -1123,6 +1146,18 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
             )
             _health_prober = None
         # Stop integration background services (reverse start order).
+        if app_state.escalation_notify_subscriber is not None:
+            await _try_stop(
+                app_state.escalation_notify_subscriber.stop(),
+                API_APP_SHUTDOWN,
+                "Failed to stop escalation notify subscriber",
+            )
+        if app_state.escalation_sweeper is not None:
+            await _try_stop(
+                app_state.escalation_sweeper.stop(),
+                API_APP_SHUTDOWN,
+                "Failed to stop escalation sweeper",
+            )
         if app_state.oauth_token_manager is not None:
             await _try_stop(
                 app_state.oauth_token_manager.stop(),
@@ -1976,6 +2011,15 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
     app_state.escalation_sweeper = EscalationExpirationSweeper(
         app_state.escalation_store,
         interval_seconds=escalation_config.sweeper_interval_seconds,
+    )
+    # Cross-instance wake-up subscriber (#1418).  No-op unless the
+    # queue backend is Postgres and ``cross_instance_notify`` is
+    # enabled; otherwise the sweeper and per-resolver timeout cover
+    # eventual consistency on their own.
+    app_state.escalation_notify_subscriber = build_escalation_notify_subscriber(
+        escalation_config,
+        app_state.escalation_store,
+        app_state.escalation_registry,
     )
 
     bridge = (

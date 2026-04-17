@@ -49,12 +49,12 @@ class TestRegistryBasics:
 
     async def test_is_registered_reflects_state(self) -> None:
         reg = PendingFuturesRegistry()
-        assert reg.is_registered("esc-1") is False
+        assert await reg.is_registered("esc-1") is False
         await reg.register("esc-1")
-        assert reg.is_registered("esc-1") is True
+        assert await reg.is_registered("esc-1") is True
         await reg.resolve("esc-1", _decision())
         # Resolving pops the entry out of the map.
-        assert reg.is_registered("esc-1") is False
+        assert await reg.is_registered("esc-1") is False
 
     async def test_close_cancels_all_pending_futures(self) -> None:
         reg = PendingFuturesRegistry()

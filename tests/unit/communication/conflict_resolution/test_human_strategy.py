@@ -9,6 +9,7 @@ from synthorg.communication.conflict_resolution.escalation.in_memory_store impor
     InMemoryEscalationStore,
 )
 from synthorg.communication.conflict_resolution.escalation.models import (
+    EscalationDecision,
     EscalationStatus,
     RejectDecision,
     WinnerDecision,
@@ -29,6 +30,25 @@ from synthorg.communication.conflict_resolution.models import (
 from synthorg.communication.enums import ConflictResolutionStrategy
 
 from .conftest import make_conflict
+
+
+def _tracking_registry() -> tuple[PendingFuturesRegistry, asyncio.Queue[str]]:
+    """Return a registry that posts registered IDs onto a queue.
+
+    Tests use the queue as an event signal instead of real-time polling
+    over ``store.list_items``.
+    """
+    registry = PendingFuturesRegistry()
+    enqueued: asyncio.Queue[str] = asyncio.Queue()
+    original = registry.register
+
+    async def tracked(escalation_id: str) -> asyncio.Future[EscalationDecision]:
+        future = await original(escalation_id)
+        await enqueued.put(escalation_id)
+        return future
+
+    registry.register = tracked  # type: ignore[method-assign]
+    return registry, enqueued
 
 
 @pytest.mark.unit
@@ -72,7 +92,7 @@ class TestHumanEscalationFullLoop:
 
     async def test_winner_decision_resolves_awaiting_resolver(self) -> None:
         store = InMemoryEscalationStore()
-        registry = PendingFuturesRegistry()
+        registry, enqueued = _tracking_registry()
         resolver = HumanEscalationResolver(
             store=store,
             processor=WinnerSelectProcessor(),
@@ -82,13 +102,9 @@ class TestHumanEscalationFullLoop:
         conflict = make_conflict()
 
         async def _decide_after_enqueue() -> None:
-            # Wait for the resolver to register its future.
-            while True:
-                rows, _ = await store.list_items(status=EscalationStatus.PENDING)
-                if rows:
-                    escalation_id = rows[0].id
-                    break
-                await asyncio.sleep(0.01)
+            # Event-driven sync with the resolver's register() call;
+            # no real-time polling.
+            escalation_id = await asyncio.wait_for(enqueued.get(), timeout=5.0)
             decision = WinnerDecision(
                 winning_agent_id="agent-a",
                 reasoning="Tie-breaking call by operator",
@@ -106,6 +122,7 @@ class TestHumanEscalationFullLoop:
 
         assert resolution.outcome == ConflictResolutionOutcome.RESOLVED_BY_HUMAN
         assert resolution.winning_agent_id == "agent-a"
+        assert resolution.decided_by == "human:op-1"
         # Decided rows are preserved in the store for audit.
         rows, total = await store.list_items(status=EscalationStatus.DECIDED)
         assert total == 1
@@ -116,7 +133,7 @@ class TestHumanEscalationFullLoop:
 
     async def test_reject_decision_with_hybrid_processor(self) -> None:
         store = InMemoryEscalationStore()
-        registry = PendingFuturesRegistry()
+        registry, enqueued = _tracking_registry()
         resolver = HumanEscalationResolver(
             store=store,
             processor=HybridDecisionProcessor(),
@@ -126,12 +143,7 @@ class TestHumanEscalationFullLoop:
         conflict = make_conflict()
 
         async def _reject() -> None:
-            while True:
-                rows, _ = await store.list_items(status=EscalationStatus.PENDING)
-                if rows:
-                    escalation_id = rows[0].id
-                    break
-                await asyncio.sleep(0.01)
+            escalation_id = await asyncio.wait_for(enqueued.get(), timeout=5.0)
             decision = RejectDecision(reasoning="Both proposals off-strategy")
             await store.apply_decision(
                 escalation_id,
@@ -145,6 +157,7 @@ class TestHumanEscalationFullLoop:
         resolution = resolve_task.result()
         assert resolution.outcome == ConflictResolutionOutcome.REJECTED_BY_HUMAN
         assert resolution.winning_agent_id is None
+        assert resolution.decided_by == "human:op-2"
 
     async def test_winner_select_rejects_reject_decision(self) -> None:
         processor = WinnerSelectProcessor()

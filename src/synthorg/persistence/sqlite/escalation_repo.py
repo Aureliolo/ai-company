@@ -218,36 +218,33 @@ class SQLiteEscalationRepository(EscalationQueueStore):
         )
 
     async def mark_expired(self, now_iso: str) -> tuple[str, ...]:
-        """Expire PENDING rows past their deadline."""
-        select_sql = (
-            "SELECT id FROM conflict_escalations "
-            "WHERE status = 'pending' AND expires_at IS NOT NULL "
-            "AND expires_at <= ?"
-        )
-        try:
-            cursor = await self._db.execute(select_sql, (now_iso,))
-            rows = await cursor.fetchall()
-        except (sqlite3.Error, aiosqlite.Error) as exc:
-            msg = f"Failed to query expiring escalations: {exc}"
-            raise QueryError(msg) from exc
-        ids = tuple(str(r["id"]) for r in rows)
-        if not ids:
-            return ()
-        placeholders = ",".join("?" * len(ids))
-        # Placeholders are always generated from the `ids` list we just
-        # fetched -- no user input -- so the f-string is safe.
+        """Expire PENDING rows past their deadline.
+
+        Returns the IDs of rows that were actually UPDATEd -- using
+        ``UPDATE ... RETURNING`` (SQLite 3.35+) so a row that raced
+        with a concurrent decide/cancel and is no longer PENDING is
+        not falsely reported as expired.
+        """
         update_sql = (
-            "UPDATE conflict_escalations SET status='expired', decided_at=? "  # noqa: S608
-            f"WHERE id IN ({placeholders}) AND status='pending'"
+            "UPDATE conflict_escalations SET status='expired', decided_at=? "
+            "WHERE status='pending' AND expires_at IS NOT NULL "
+            "AND expires_at <= ? "
+            "RETURNING id"
         )
         try:
-            await self._db.execute(update_sql, (now_iso, *ids))
+            cursor = await self._db.execute(update_sql, (now_iso, now_iso))
+            rows = await cursor.fetchall()
             await self._db.commit()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             await self._db.rollback()
             msg = f"Failed to mark escalations expired: {exc}"
+            logger.warning(
+                API_REQUEST_ERROR,
+                error_type="escalation_mark_expired_failed",
+                error=str(exc),
+            )
             raise QueryError(msg) from exc
-        return ids
+        return tuple(str(r["id"]) for r in rows)
 
     async def close(self) -> None:
         """No-op: the connection is owned by the persistence backend."""

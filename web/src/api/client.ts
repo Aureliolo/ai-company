@@ -2,7 +2,12 @@
  * Axios client with cookie-based auth and ApiResponse envelope unwrapping.
  */
 
-import axios, { type AxiosError, type AxiosResponse } from 'axios'
+import axios, {
+  type AxiosError,
+  type AxiosRequestConfig,
+  type AxiosResponse,
+  type InternalAxiosRequestConfig,
+} from 'axios'
 import { createLogger } from '@/lib/logger'
 import { IS_DEV_AUTH_BYPASS } from '@/utils/dev'
 import { getCsrfToken } from '@/utils/csrf'
@@ -17,12 +22,44 @@ const BASE_URL = RAW_BASE.replace(/\/+$/, '').replace(/\/api\/v1\/?$/, '')
 /** CSRF-protected HTTP methods that require the X-CSRF-Token header. */
 const CSRF_METHODS = new Set(['post', 'put', 'patch', 'delete'])
 
+/** Maximum transparent retries on 429 responses. */
+const MAX_RATE_LIMIT_RETRIES = 2
+/** Upper bound on Retry-After wait per retry so a hostile backend can't hang the UI. */
+const MAX_RETRY_AFTER_MS = 5_000
+/** Extra header we attach to retry requests so the interceptor can count. */
+const RETRY_COUNT_HEADER = 'X-SynthOrg-Retry-Count'
+
+interface RetriableConfig extends InternalAxiosRequestConfig {
+  _rateLimitRetries?: number
+}
+
 export const apiClient = axios.create({
   baseURL: `${BASE_URL}/api/v1`,
   headers: { 'Content-Type': 'application/json' },
   timeout: 30_000,
   withCredentials: true,
 })
+
+function parseRetryAfterMs(
+  headerValue: string | undefined,
+  errorDetail: ErrorDetail | null | undefined,
+): number {
+  // Prefer the Retry-After header (seconds since RFC 9110), fall back
+  // to the ``retry_after`` field from the RFC 9457 envelope.
+  const raw = headerValue ?? (errorDetail?.retry_after != null
+    ? String(errorDetail.retry_after)
+    : undefined)
+  if (!raw) return 0
+  const seconds = Number.parseInt(raw, 10)
+  if (!Number.isFinite(seconds) || seconds < 0) return 0
+  return Math.min(seconds * 1000, MAX_RETRY_AFTER_MS)
+}
+
+async function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms)
+  })
+}
 
 // ── Request interceptor: attach CSRF token ─────────────────
 // SECURITY NOTE: Authentication uses HttpOnly session cookies set by the
@@ -47,7 +84,9 @@ apiClient.interceptors.request.use((config) => {
 
 apiClient.interceptors.response.use(
   (response: AxiosResponse) => response,
-  (error: AxiosError<{ error?: string; success?: boolean }>) => {
+  async (
+    error: AxiosError<{ error?: string; success?: boolean; error_detail?: ErrorDetail | null }>,
+  ) => {
     if (error.response?.status === 401 && !IS_DEV_AUTH_BYPASS) {
       // The server clears the session cookie via Set-Cookie: Max-Age=0.
       // We only need to sync the Zustand auth state.
@@ -60,6 +99,33 @@ apiClient.interceptors.response.use(
           window.location.href = '/login'
         }
       })
+    }
+    // Transparent retry for 429 responses when the backend surfaces
+    // a Retry-After.  Bounded so a hostile or mis-tuned server can't
+    // hang the UI; surfaces the error to the caller after retries
+    // exhaust so per-endpoint UX (toasts, disabled buttons) can take
+    // over from there.
+    const status = error.response?.status
+    const config = error.config as RetriableConfig | undefined
+    if (status === 429 && config) {
+      const retries = config._rateLimitRetries ?? 0
+      if (retries < MAX_RATE_LIMIT_RETRIES) {
+        const waitMs = parseRetryAfterMs(
+          error.response?.headers?.['retry-after'] as string | undefined,
+          error.response?.data?.error_detail ?? null,
+        )
+        if (waitMs > 0) {
+          config._rateLimitRetries = retries + 1
+          const nextHeaders = { ...(config.headers ?? {}) } as Record<string, string>
+          nextHeaders[RETRY_COUNT_HEADER] = String(retries + 1)
+          const retryConfig: AxiosRequestConfig = {
+            ...config,
+            headers: nextHeaders,
+          }
+          await sleep(waitMs)
+          return apiClient.request(retryConfig)
+        }
+      }
     }
     return Promise.reject(error)
   },

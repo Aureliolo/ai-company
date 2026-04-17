@@ -30,10 +30,18 @@ CREATE TABLE `conflict_escalations` (
     ),
   CHECK (
         (status != 'pending')
-        OR (decision_json IS NULL AND decided_at IS NULL)
+        OR (decision_json IS NULL AND decided_at IS NULL AND decided_by IS NULL)
+    ),
+  CHECK (
+        (status NOT IN ('expired', 'cancelled'))
+        OR decision_json IS NULL
     )
 );
 -- Create index "idx_conflict_escalations_status_created" to table: "conflict_escalations"
 CREATE INDEX `idx_conflict_escalations_status_created` ON `conflict_escalations` (`status`, `created_at`);
 -- Create index "idx_conflict_escalations_conflict_id" to table: "conflict_escalations"
 CREATE INDEX `idx_conflict_escalations_conflict_id` ON `conflict_escalations` (`conflict_id`);
+-- Create index "idx_conflict_escalations_status_expires_at" to table: "conflict_escalations"
+CREATE INDEX `idx_conflict_escalations_status_expires_at` ON `conflict_escalations` (`status`, `expires_at`);
+-- Create index "idx_conflict_escalations_unique_pending_conflict" to table: "conflict_escalations"
+CREATE UNIQUE INDEX `idx_conflict_escalations_unique_pending_conflict` ON `conflict_escalations` (`conflict_id`) WHERE status = 'pending';

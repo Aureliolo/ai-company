@@ -404,7 +404,13 @@ def handle_domain_error(
     status_code = int(getattr(exc, "status_code", 500))
     error_code_val = getattr(exc, "error_code", ErrorCode.INTERNAL_ERROR)
     error_category_val = getattr(exc, "error_category", ErrorCategory.INTERNAL)
-    retryable = bool(getattr(exc, "retryable", getattr(exc, "is_retryable", False)))
+    # Prefer the instance ``is_retryable`` when set (individual
+    # transient subclasses toggle this true on an otherwise non-retryable
+    # base like ``IntegrationError``), falling back to the ClassVar
+    # ``retryable`` flag used by the API-layer ``ApiError`` hierarchy.
+    retryable = bool(
+        getattr(exc, "is_retryable", False) or getattr(exc, "retryable", False),
+    )
     _log_error(request, exc, status=status_code)
     if status_code >= _SERVER_ERROR_THRESHOLD:
         msg = str(getattr(exc, "default_message", "Internal server error"))
@@ -413,7 +419,9 @@ def handle_domain_error(
     retry_after_raw = getattr(exc, "retry_after", None)
     retry_after_val: int | None = None
     # Accept only finite non-negative numerics -- ``inf``/``nan`` would
-    # crash header serialization and leak the original error.
+    # crash header serialization and leak the original error.  Round up
+    # rather than truncate so a fractional 0.5s delay is surfaced as at
+    # least 1s and clients never hot-loop.
     if (
         retry_after_raw is not None
         and not isinstance(retry_after_raw, bool)
@@ -421,9 +429,13 @@ def handle_domain_error(
         and math.isfinite(float(retry_after_raw))
         and retry_after_raw >= 0
     ):
-        retry_after_val = int(retry_after_raw)
+        retry_after_val = math.ceil(float(retry_after_raw))
+    # Retry-After header and body field must agree: only emit the header
+    # when the error is actually retryable, so 429/503-style envelopes
+    # can never claim ``retryable: false`` while handing clients a
+    # Retry-After to wait on.
     headers: dict[str, str] | None = None
-    if retry_after_val is not None:
+    if retry_after_val is not None and retryable:
         headers = {"Retry-After": str(retry_after_val)}
     return _build_response(
         request,

@@ -1,4 +1,4 @@
-"""Integration tests for the human escalation approval queue (#1418)."""
+"""Unit tests for the human escalation approval queue (#1418)."""
 
 from datetime import UTC, datetime
 from typing import Any
@@ -25,10 +25,20 @@ _WRITE_HEADERS = make_auth_headers("ceo")
 _READ_HEADERS = make_auth_headers("observer")
 
 
-def _make_escalation(*, escalation_id: str = "escalation-test-0001") -> Escalation:
-    """Build a valid escalation for store-seeded tests."""
+def _make_escalation(
+    *,
+    escalation_id: str = "escalation-test-0001",
+    conflict_id: str | None = None,
+) -> Escalation:
+    """Build a valid escalation for store-seeded tests.
+
+    ``conflict_id`` defaults to a value derived from ``escalation_id`` so
+    callers that create several escalations in the same test do not trip
+    the queue's "one pending row per conflict" invariant by accident.
+    """
+    resolved_conflict_id = conflict_id or f"conflict-for-{escalation_id}"
     conflict = Conflict(
-        id="conflict-test-0001",
+        id=resolved_conflict_id,
         type=ConflictType.ARCHITECTURE,
         subject="Choose backend framework",
         positions=(

@@ -25,6 +25,14 @@ class EscalationQueueConfig(BaseModel):
         sweeper_interval_seconds: How often the
             :class:`EscalationExpirationSweeper` runs.  Values below
             ``5`` are rejected to keep the background loop inexpensive.
+        cross_instance_notify: Whether the escalation queue should
+            publish/subscribe state-change signals across workers.
+            ``auto`` enables LISTEN/NOTIFY when ``backend == "postgres"``
+            and is a no-op for ``memory``/``sqlite`` (which are
+            single-process by definition).  ``on`` forces subscription
+            and fails startup if the backend cannot support it.
+            ``off`` scopes the feature to a single worker.
+        notify_channel: Postgres LISTEN/NOTIFY channel name.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -33,3 +41,5 @@ class EscalationQueueConfig(BaseModel):
     decision_strategy: Literal["winner", "hybrid"] = "winner"
     default_timeout_seconds: int | None = Field(default=None, ge=1)
     sweeper_interval_seconds: float = Field(default=30.0, ge=5.0)
+    cross_instance_notify: Literal["auto", "on", "off"] = "auto"
+    notify_channel: str = Field(default="conflict_escalation_events", min_length=1)

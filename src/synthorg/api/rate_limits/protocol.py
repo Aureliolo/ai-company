@@ -23,7 +23,8 @@ class RateLimitOutcome(BaseModel):
         retry_after_seconds: Suggested wait before retrying.  ``None``
             when ``allowed`` is ``True``.
         remaining: Approximate remaining slots in the current window.
-            Zero or negative values are clamped to zero.
+            Callers must supply a non-negative value; negative values
+            are rejected by the ``ge=0`` validator at construction time.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
