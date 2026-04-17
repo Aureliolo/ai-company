@@ -43,10 +43,15 @@ def test_freetsa_preset_resolves_to_canonical_url() -> None:
     assert config.effective_tsa_url == "https://freetsa.org/tsr"
 
 
-def test_freetsa_without_roots_rejected_when_verifying() -> None:
+@pytest.mark.parametrize(
+    "tsa_preset",
+    [TsaPreset.FREETSA, TsaPreset.DIGICERT, TsaPreset.SECTIGO],
+)
+def test_tsa_missing_roots_rejected_when_verifying(tsa_preset: TsaPreset) -> None:
+    """Verifying presets reject configs without ``tsa_trusted_roots_path``."""
     with pytest.raises(ValidationError, match="tsa_trusted_roots_path"):
         AuditChainConfig(
-            tsa_preset=TsaPreset.FREETSA,
+            tsa_preset=tsa_preset,
             tsa_verify_signature=True,
         )
 
@@ -83,23 +88,6 @@ def test_sectigo_preset_resolves_default() -> None:
         tsa_trusted_roots_path=Path("tests/data/sectigo_roots.pem"),
     )
     assert config.effective_tsa_url == "http://timestamp.sectigo.com"
-
-
-def test_digicert_without_roots_rejected_when_verifying() -> None:
-    """The tightened validator rejects DIGICERT without roots (#1412 review)."""
-    with pytest.raises(ValidationError, match="tsa_trusted_roots_path"):
-        AuditChainConfig(
-            tsa_preset=TsaPreset.DIGICERT,
-            tsa_verify_signature=True,
-        )
-
-
-def test_sectigo_without_roots_rejected_when_verifying() -> None:
-    with pytest.raises(ValidationError, match="tsa_trusted_roots_path"):
-        AuditChainConfig(
-            tsa_preset=TsaPreset.SECTIGO,
-            tsa_verify_signature=True,
-        )
 
 
 def test_custom_without_roots_rejected_when_verifying() -> None:

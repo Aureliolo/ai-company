@@ -35,12 +35,15 @@ def _redact_endpoint(endpoint: str) -> str:
     """
     try:
         parts = urlsplit(endpoint)
+        host = parts.hostname or ""
+        # ``parts.port`` can raise ``ValueError`` on a malformed port
+        # (e.g. ``http://host:bad``) -- resolve it inside the guard so
+        # an unparseable port doesn't surface through the caller.
+        if parts.port is not None:
+            host = f"{host}:{parts.port}"
+        return urlunsplit((parts.scheme, host, parts.path, "", ""))
     except ValueError:
         return "<unparseable>"
-    host = parts.hostname or ""
-    if parts.port is not None:
-        host = f"{host}:{parts.port}"
-    return urlunsplit((parts.scheme, host, parts.path, "", ""))
 
 
 def build_trace_handler(config: TraceConfig) -> TraceHandler:

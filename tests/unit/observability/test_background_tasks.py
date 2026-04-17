@@ -151,14 +151,15 @@ async def test_drain_is_noop_when_no_tasks() -> None:
     await asyncio.wait_for(registry.drain(timeout_sec=0.01), timeout=0.2)
 
 
-async def test_no_task_was_destroyed_warning_on_failed_task(
+async def test_no_task_exception_warning_on_failed_task(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """asyncio must not emit 'Task was destroyed but it is pending!'.
+    """asyncio must not emit 'Task exception was never retrieved'.
 
-    A bare ``asyncio.create_task`` + discarded reference would trigger
-    that warning when the task raises. Our registry holds the task
-    ref until the done-callback discards it, so no warning fires.
+    A bare ``asyncio.create_task`` whose exception is never observed
+    triggers that warning. Our registry's done-callback calls
+    ``task.exception()`` before discarding the reference, so asyncio
+    considers the exception retrieved and keeps quiet.
     """
     registry = BackgroundTaskRegistry(owner="test.owner")
     caplog.set_level(logging.WARNING)
@@ -166,6 +167,6 @@ async def test_no_task_was_destroyed_warning_on_failed_task(
     await asyncio.sleep(0)
     await asyncio.sleep(0)
     assert not any(
-        "Task was destroyed but it is pending" in (r.getMessage() or "")
+        "Task exception was never retrieved" in (r.getMessage() or "")
         for r in caplog.records
     )

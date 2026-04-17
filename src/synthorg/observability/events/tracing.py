@@ -14,3 +14,6 @@ TRACE_HANDLER_INITIALIZED: Final[str] = "trace.handler.initialized"
 # Trace configuration validation events
 TRACE_CONFIG_INVALID_SAMPLING_RATIO: Final[str] = "trace.config.invalid_sampling_ratio"
 TRACE_CONFIG_UNSUPPORTED_VARIANT: Final[str] = "trace.config.unsupported_variant"
+
+# Span attribute mutation failures (non-fatal tracing degradation)
+SPAN_ATTRIBUTE_WRITE_FAILED: Final[str] = "trace.span.attribute_write_failed"

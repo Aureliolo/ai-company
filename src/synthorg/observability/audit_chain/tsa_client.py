@@ -22,7 +22,6 @@ against those roots on every :meth:`TsaClient.request_timestamp` call.
 Reference: RFC 3161, RFC 5816.
 """
 
-import asyncio
 import hashlib
 import hmac
 from dataclasses import dataclass
@@ -194,12 +193,15 @@ class TsaClient:
         self._trusted_roots: tuple[x509.Certificate, ...] = tuple(
             _load_root_cert(pem) for pem in trusted_roots
         )
+        # When a caller-injected client is supplied we reuse it across
+        # calls; otherwise each ``_post`` constructs (and closes) its
+        # own short-lived client. Per-call construction avoids binding
+        # an ``httpx.AsyncClient`` + internal ``asyncio`` primitives
+        # to the first event loop that touched the instance, which
+        # would break any subsequent ``asyncio.run(...)`` that reuses
+        # the same ``TsaClient``.
         self._http_client = http_client
         self._owns_http_client = http_client is None
-        # Serialize lazy http-client initialisation so concurrent first
-        # calls don't each construct their own client and race on
-        # ``self._http_client``.
-        self._http_client_lock = asyncio.Lock()
 
     @property
     def tsa_url(self) -> str:
@@ -280,27 +282,46 @@ class TsaClient:
         )
 
     async def aclose(self) -> None:
-        """Close the internal httpx client (no-op if caller-injected)."""
-        if self._owns_http_client and self._http_client is not None:
-            await self._http_client.aclose()
-            self._http_client = None
+        """Close the caller-supplied httpx client, if any.
+
+        When the client was caller-injected this is a no-op: ownership
+        stays with the caller. When the client was owned by this
+        instance we don't keep one around to close -- ``_post`` creates
+        and closes per call to stay event-loop-agnostic.
+        """
 
     async def _post(self, body: bytes) -> bytes:
         """POST a DER-encoded request to the TSA, return DER response.
 
-        The client is lazily constructed on first call under a lock so
-        concurrent callers don't each build their own instance and
-        race on ``self._http_client``. Once created, the client is
-        reused for every subsequent call and closed by
-        :meth:`aclose`.
+        When no ``http_client`` was supplied at construction time a
+        short-lived :class:`httpx.AsyncClient` is created (and closed)
+        here, so the TSA client can be safely reused across
+        ``asyncio.run`` invocations / different event loops. Callers
+        that want connection pooling supply their own client and
+        manage its lifetime.
         """
-        client = await self._ensure_http_client()
+        if self._http_client is not None:
+            return await self._do_post(self._http_client, body)
+        async with httpx.AsyncClient(
+            timeout=self._timeout_sec,
+            verify=True,
+            follow_redirects=False,
+            limits=httpx.Limits(
+                max_connections=10,
+                max_keepalive_connections=5,
+            ),
+        ) as client:
+            return await self._do_post(client, body)
+
+    async def _do_post(self, client: httpx.AsyncClient, body: bytes) -> bytes:
+        """Issue the POST against ``client`` and validate the response."""
         try:
             response = await client.post(
                 self._tsa_url,
                 content=body,
                 headers={"Content-Type": _REQ_CONTENT_TYPE},
                 timeout=self._timeout_sec,
+                follow_redirects=False,
             )
         except httpx.TimeoutException as exc:
             logger.warning(
@@ -357,28 +378,6 @@ class TsaClient:
             )
             raise TsaProtocolError(msg)
         return response.content
-
-    async def _ensure_http_client(self) -> httpx.AsyncClient:
-        """Return the httpx client, creating it on first call.
-
-        Serialized under ``_http_client_lock`` so concurrent first
-        calls do not each construct their own client and leak it.
-        The default client is configured with explicit TLS
-        verification, bounded connection pool, and redirects
-        disabled (RFC 3161 TSAs are direct endpoints).
-        """
-        async with self._http_client_lock:
-            if self._http_client is None:
-                self._http_client = httpx.AsyncClient(
-                    timeout=self._timeout_sec,
-                    verify=True,
-                    follow_redirects=False,
-                    limits=httpx.Limits(
-                        max_connections=10,
-                        max_keepalive_connections=5,
-                    ),
-                )
-            return self._http_client
 
 
 def _decode_response(raw: bytes) -> Any:

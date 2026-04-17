@@ -5,6 +5,7 @@ loop implementations (ReAct, Plan-and-Execute, etc.) thin and focused
 on their control-flow logic.
 """
 
+import copy
 import hashlib
 import json
 from typing import TYPE_CHECKING
@@ -31,6 +32,7 @@ from synthorg.observability.events.tool import (
     TOOL_L2_LOADED,
     TOOL_L3_FETCHED,
 )
+from synthorg.observability.events.tracing import SPAN_ATTRIBUTE_WRITE_FAILED
 from synthorg.observability.tracing import llm_span
 from synthorg.providers.enums import FinishReason, MessageRole
 from synthorg.providers.models import (
@@ -201,11 +203,14 @@ async def call_provider(  # noqa: PLR0913
             provider=provider_name,
             model=model_id,
         ) as span:
+            # Deep-copy the provider payload at the system boundary so
+            # a driver that normalizes messages/tools/config in place
+            # cannot leak those mutations back into engine state.
             response = await provider.complete(
-                messages=list(ctx.conversation),
+                messages=copy.deepcopy(list(ctx.conversation)),
                 model=model_id,
-                tools=tool_defs,
-                config=config,
+                tools=copy.deepcopy(tool_defs),
+                config=copy.deepcopy(config),
             )
             # Span attribute writes must never mask a successful
             # provider response: if OTel throws here the outer
@@ -223,11 +228,13 @@ async def call_provider(  # noqa: PLR0913
                         "gen_ai.response.finish_reasons",
                         (response.finish_reason.value,),
                     )
+                if response.model:
+                    span.set_attribute("gen_ai.response.model", response.model)
             except MemoryError, RecursionError:
                 raise
             except Exception:
                 logger.warning(
-                    EXECUTION_LOOP_ERROR,
+                    SPAN_ATTRIBUTE_WRITE_FAILED,
                     execution_id=ctx.execution_id,
                     turn=turn_number,
                     reason="span_attribute_write_failed",

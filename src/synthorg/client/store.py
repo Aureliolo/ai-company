@@ -221,7 +221,11 @@ class SimulationStore:
                 updates["progress"] = progress
             if error is not None:
                 updates["error"] = error
-            if existing.status in _TERMINAL_STATUSES:
+            # Reject only real *transitions* out of a terminal status.
+            # Idempotent same-status writes (``completed -> completed``
+            # with a late metrics / error payload) stay harmless and
+            # fall through to the no-op event guard below.
+            if existing.status in _TERMINAL_STATUSES and status != existing.status:
                 logger.warning(
                     SIMULATION_RUN_UPDATE_REJECTED,
                     reason="terminal_state_transition_rejected",
