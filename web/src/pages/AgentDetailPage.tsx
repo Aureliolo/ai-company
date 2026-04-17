@@ -12,6 +12,7 @@ import { CareerTimeline } from './agents/CareerTimeline'
 import { TaskHistory } from './agents/TaskHistory'
 import { ActivityLog } from './agents/ActivityLog'
 import { QualityScoreOverride } from './agents/QualityScoreOverride'
+import { TrainingSection } from './agents/TrainingSection'
 
 export default function AgentDetailPage() {
   // URLs use the agent's stable ID (or name as a fallback when an
@@ -96,6 +97,10 @@ export default function AgentDetailPage() {
 
       <ErrorBoundary level="section">
         {agent.id && <QualityScoreOverride agentId={agent.id} />}
+      </ErrorBoundary>
+
+      <ErrorBoundary level="section">
+        <TrainingSection agentName={agent.name} />
       </ErrorBoundary>
 
       <div className="grid grid-cols-2 gap-grid-gap max-[1023px]:grid-cols-1">

@@ -20,6 +20,7 @@ export const ROUTES = {
   META: '/meta',
   AGENTS: '/agents',
   AGENT_DETAIL: '/agents/:agentId',
+  TRAINING: '/training',
   MESSAGES: '/messages',
   MEETINGS: '/meetings',
   MEETING_DETAIL: '/meetings/:meetingId',

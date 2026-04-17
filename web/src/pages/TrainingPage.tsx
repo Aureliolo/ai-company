@@ -1,0 +1,135 @@
+import { AlertTriangle, GraduationCap } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+
+import { listAgents } from '@/api/endpoints/agents'
+import { MetricCard } from '@/components/ui/metric-card'
+import { SectionCard } from '@/components/ui/section-card'
+import { SkeletonTable } from '@/components/ui/skeleton'
+import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
+import { createLogger } from '@/lib/logger'
+import { useTrainingStore } from '@/stores/training'
+import type { AgentConfig } from '@/api/types'
+import { getErrorMessage } from '@/utils/errors'
+import {
+  TrainingPlanTable,
+  type TrainingPlanRow,
+} from './training/TrainingPlanTable'
+
+const log = createLogger('training-page')
+
+export default function TrainingPage() {
+  const [agents, setAgents] = useState<readonly AgentConfig[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  const plansByAgent = useTrainingStore((s) => s.plansByAgent)
+  const resultsByAgent = useTrainingStore((s) => s.resultsByAgent)
+  const fetchResult = useTrainingStore((s) => s.fetchResult)
+  const executePlan = useTrainingStore((s) => s.executePlan)
+
+  useEffect(() => {
+    let cancelled = false
+    // Kick off the fetch in a microtask so the initial render completes
+    // first (avoids the synchronous set-state-in-effect lint rule).
+    void Promise.resolve()
+      .then(() => listAgents())
+      .then((paginated) => {
+        if (!cancelled) {
+          setAgents(paginated.data)
+          setLoading(false)
+        }
+      })
+      .catch((err: unknown) => {
+        log.error('Failed to load agents:', err)
+        if (!cancelled) {
+          setError(getErrorMessage(err))
+          setLoading(false)
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    // Hydrate training results for each agent (best-effort; missing results
+    // surface as "no plan" rows instead of errors).
+    for (const agent of agents) {
+      void fetchResult(agent.name)
+    }
+  }, [agents, fetchResult])
+
+  const rows: readonly TrainingPlanRow[] = useMemo(
+    () =>
+      agents.map((agent) => ({
+        agentName: agent.name,
+        plan: plansByAgent[agent.name] ?? null,
+        result: resultsByAgent[agent.name] ?? null,
+      })),
+    [agents, plansByAgent, resultsByAgent],
+  )
+
+  const handleExecute = useCallback(
+    (agentName: string) => {
+      void executePlan(agentName)
+    },
+    [executePlan],
+  )
+
+  const metrics = useMemo(() => {
+    const totalPlans = rows.filter((r) => r.plan !== null).length
+    const pending = rows.filter((r) => r.plan?.status === 'pending').length
+    const executed = rows.filter((r) => r.plan?.status === 'executed').length
+    const totalItems = rows.reduce(
+      (sum, r) =>
+        sum + (r.result?.items_stored.reduce((s, [, c]) => s + c, 0) ?? 0),
+      0,
+    )
+    return { totalPlans, pending, executed, totalItems }
+  }, [rows])
+
+  return (
+    <div className="space-y-section-gap">
+      <div className="flex items-center justify-between">
+        <h1 className="text-lg font-semibold text-foreground">Training</h1>
+        <span className="text-sm text-muted-foreground">
+          {rows.length} agents
+        </span>
+      </div>
+
+      {error && (
+        <div
+          role="alert"
+          aria-live="assertive"
+          className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/5 p-card text-sm text-danger"
+        >
+          <AlertTriangle className="size-4 shrink-0" aria-hidden="true" />
+          {error}
+        </div>
+      )}
+
+      <StaggerGroup className="grid grid-cols-2 gap-grid-gap lg:grid-cols-4">
+        <StaggerItem>
+          <MetricCard label="TOTAL PLANS" value={metrics.totalPlans} />
+        </StaggerItem>
+        <StaggerItem>
+          <MetricCard label="PENDING" value={metrics.pending} />
+        </StaggerItem>
+        <StaggerItem>
+          <MetricCard label="EXECUTED" value={metrics.executed} />
+        </StaggerItem>
+        <StaggerItem>
+          <MetricCard label="ITEMS STORED" value={metrics.totalItems} />
+        </StaggerItem>
+      </StaggerGroup>
+
+      <SectionCard title="Agent training plans" icon={GraduationCap}>
+        {loading ? (
+          <SkeletonTable rows={6} />
+        ) : (
+          <TrainingPlanTable rows={rows} onExecute={handleExecute} />
+        )}
+      </SectionCard>
+    </div>
+  )
+}

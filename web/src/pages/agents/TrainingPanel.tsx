@@ -27,6 +27,7 @@ import { cn } from '@/lib/utils'
 import { createLogger } from '@/lib/logger'
 import { sanitizeForLog } from '@/utils/logging'
 import type {
+  TrainingPlanRequest,
   TrainingPlanResponse,
   TrainingResultResponse,
 } from '@/api/endpoints/training'
@@ -49,19 +50,11 @@ interface CustomCap {
   cap: number
 }
 
-interface CreatePlanOverrides {
-  override_sources: string[]
-  content_types?: string[]
-  custom_caps?: Record<string, number>
-  skip_training: boolean
-  require_review: boolean
-}
-
 interface TrainingPanelProps {
   agentName: string
   plan?: TrainingPlanResponse | null
   result?: TrainingResultResponse | null
-  onCreatePlan?: (overrides: CreatePlanOverrides) => void
+  onCreatePlan?: (overrides: TrainingPlanRequest) => void
   onExecute?: () => void
   className?: string
 }

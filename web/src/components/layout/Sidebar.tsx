@@ -7,6 +7,7 @@ import {
   Command,
   Cpu,
   DollarSign,
+  GraduationCap,
   FolderKanban,
   GitBranch,
   Inbox,
@@ -238,6 +239,7 @@ function SidebarNav({ collapsed }: { collapsed: boolean }) {
         )}
         <div className="flex flex-col gap-1">
           <SidebarNavItem to={ROUTES.AGENTS} icon={Users} label="Agents" collapsed={collapsed} />
+          <SidebarNavItem to={ROUTES.TRAINING} icon={GraduationCap} label="Training" collapsed={collapsed} />
           <SidebarNavItem to={ROUTES.PROJECTS} icon={FolderKanban} label="Projects" collapsed={collapsed} />
           <SidebarNavItem to={ROUTES.WORKFLOWS} icon={Workflow} label="Workflows" collapsed={collapsed} />
           <SidebarNavItem to={ROUTES.SUBWORKFLOWS} icon={Layers} label="Subworkflows" collapsed={collapsed} />

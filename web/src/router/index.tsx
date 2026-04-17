@@ -18,6 +18,7 @@ const ScalingPage = lazy(() => import('@/pages/ScalingPage'))
 const MetaPage = lazy(() => import('@/pages/MetaPage'))
 const AgentsPage = lazy(() => import('@/pages/AgentsPage'))
 const AgentDetailPage = lazy(() => import('@/pages/AgentDetailPage'))
+const TrainingPage = lazy(() => import('@/pages/TrainingPage'))
 const MessagesPage = lazy(() => import('@/pages/MessagesPage'))
 const MeetingsPage = lazy(() => import('@/pages/MeetingsPage'))
 const MeetingDetailPage = lazy(() => import('@/pages/MeetingDetailPage'))
@@ -124,6 +125,7 @@ export const router = createBrowserRouter([
               { path: ROUTES.META.slice(1), element: <MetaPage /> },
               { path: 'agents', element: <AgentsPage /> },
               { path: 'agents/:agentId', element: <AgentDetailPage /> },
+              { path: 'training', element: <TrainingPage /> },
               { path: 'messages', element: <MessagesPage /> },
               { path: 'meetings', element: <MeetingsPage /> },
               { path: 'meetings/:meetingId', element: <MeetingDetailPage /> },
