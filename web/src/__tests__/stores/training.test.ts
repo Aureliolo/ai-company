@@ -64,7 +64,7 @@ describe('useTrainingStore', () => {
     vi.restoreAllMocks()
   })
 
-  it('fetchResult stores the result and clears loading', async () => {
+  it('fetchResult stores the result and clears resultLoading/resultError', async () => {
     const result = mockResult()
     const spy = vi
       .spyOn(trainingApi, 'getTrainingResult')
@@ -75,11 +75,11 @@ describe('useTrainingStore', () => {
     expect(spy).toHaveBeenCalledWith('agent-1')
     const state = useTrainingStore.getState()
     expect(state.resultsByAgent['agent-1']).toEqual(result)
-    expect(state.loading['agent-1']).toBe(false)
-    expect(state.error['agent-1']).toBeNull()
+    expect(state.resultLoading['agent-1']).toBe(false)
+    expect(state.resultError['agent-1']).toBeNull()
   })
 
-  it('fetchResult sets error when the API rejects', async () => {
+  it('fetchResult sets resultError when the API rejects (plan slot untouched)', async () => {
     vi.spyOn(trainingApi, 'getTrainingResult').mockRejectedValueOnce(
       new Error('offline'),
     )
@@ -88,8 +88,11 @@ describe('useTrainingStore', () => {
 
     const state = useTrainingStore.getState()
     expect(state.resultsByAgent).not.toHaveProperty('agent-1')
-    expect(state.loading['agent-1']).toBe(false)
-    expect(state.error['agent-1']).toContain('offline')
+    expect(state.resultLoading['agent-1']).toBe(false)
+    expect(state.resultError['agent-1']).toContain('offline')
+    // Plan-side state must not be mutated by a result-side failure.
+    expect(state.planError).not.toHaveProperty('agent-1')
+    expect(state.planLoading).not.toHaveProperty('agent-1')
   })
 
   it('fetchResult treats a 404 as an empty cache (no error banner)', async () => {
@@ -106,8 +109,8 @@ describe('useTrainingStore', () => {
 
     const state = useTrainingStore.getState()
     expect(state.resultsByAgent['agent-1']).toBeNull()
-    expect(state.error['agent-1']).toBeNull()
-    expect(state.loading['agent-1']).toBe(false)
+    expect(state.resultError['agent-1']).toBeNull()
+    expect(state.resultLoading['agent-1']).toBe(false)
   })
 
   it('fetchPlan stores the plan on success', async () => {
@@ -119,7 +122,10 @@ describe('useTrainingStore', () => {
     await useTrainingStore.getState().fetchPlan('agent-1')
 
     expect(spy).toHaveBeenCalledWith('agent-1')
-    expect(useTrainingStore.getState().plansByAgent['agent-1']).toEqual(plan)
+    const state = useTrainingStore.getState()
+    expect(state.plansByAgent['agent-1']).toEqual(plan)
+    expect(state.planLoading['agent-1']).toBe(false)
+    expect(state.planError['agent-1']).toBeNull()
   })
 
   it('fetchPlan treats a 404 as an empty cache', async () => {
@@ -136,8 +142,32 @@ describe('useTrainingStore', () => {
 
     await useTrainingStore.getState().fetchPlan('agent-1')
 
-    expect(useTrainingStore.getState().plansByAgent['agent-1']).toBeNull()
-    expect(useTrainingStore.getState().error['agent-1']).toBeNull()
+    const state = useTrainingStore.getState()
+    expect(state.plansByAgent['agent-1']).toBeNull()
+    expect(state.planError['agent-1']).toBeNull()
+    expect(state.planLoading['agent-1']).toBe(false)
+  })
+
+  it('fetchPlan failure does not clobber an in-flight fetchResult', async () => {
+    // Race guard: simulate a slow plan fetch that fails AFTER a
+    // separate result fetch has already completed successfully. With
+    // shared maps this would have wiped ``resultLoading`` back to
+    // ``false`` (already false) and -- worse -- left a stale plan
+    // error banner on the result side. With split maps the two
+    // slots stay independent.
+    const result = mockResult()
+    vi.spyOn(trainingApi, 'getTrainingResult').mockResolvedValueOnce(result)
+    vi.spyOn(trainingApi, 'getLatestTrainingPlan').mockRejectedValueOnce(
+      new Error('plan outage'),
+    )
+
+    await useTrainingStore.getState().fetchResult('agent-1')
+    await useTrainingStore.getState().fetchPlan('agent-1')
+
+    const state = useTrainingStore.getState()
+    expect(state.resultsByAgent['agent-1']).toEqual(result)
+    expect(state.resultError['agent-1']).toBeNull()
+    expect(state.planError['agent-1']).toContain('plan outage')
   })
 
   it('hydrateForAgent fetches plan and result in parallel', async () => {

@@ -26,11 +26,19 @@ type PerAgent<T> = Readonly<Record<string, T | null>>
 type LoadingMap = Readonly<Record<string, boolean>>
 type ErrorMap = Readonly<Record<string, string | null>>
 
+/**
+ * Plan and result fetches run in parallel (see ``hydrateForAgent``)
+ * so they each need their own loading/error slot; sharing the same
+ * keys races -- whichever request finishes last stomps the other's
+ * state. The UI reads a merged view via ``useTrainingForAgent``.
+ */
 interface TrainingState {
   plansByAgent: PerAgent<TrainingPlanResponse>
   resultsByAgent: PerAgent<TrainingResultResponse>
-  loading: LoadingMap
-  error: ErrorMap
+  planLoading: LoadingMap
+  resultLoading: LoadingMap
+  planError: ErrorMap
+  resultError: ErrorMap
 
   fetchPlan: (agentName: string) => Promise<void>
   fetchResult: (agentName: string) => Promise<void>
@@ -67,22 +75,29 @@ function isExpectedNotFound(err: unknown): boolean {
 export const useTrainingStore = create<TrainingState>()((set, get) => ({
   plansByAgent: {},
   resultsByAgent: {},
-  loading: {},
-  error: {},
+  planLoading: {},
+  resultLoading: {},
+  planError: {},
+  resultError: {},
 
   fetchPlan: async (agentName) => {
+    set((state) => ({
+      planLoading: setMap(state.planLoading, agentName, true),
+      planError: setMap(state.planError, agentName, null),
+    }))
     try {
       const plan = await getLatestTrainingPlan(agentName)
       set((state) => ({
         plansByAgent: setMap(state.plansByAgent, agentName, plan),
-        // A successful read clears any stale per-agent error banner.
-        error: setMap(state.error, agentName, null),
+        planLoading: setMap(state.planLoading, agentName, false),
+        planError: setMap(state.planError, agentName, null),
       }))
     } catch (err) {
       if (isExpectedNotFound(err)) {
         set((state) => ({
           plansByAgent: setMap(state.plansByAgent, agentName, null),
-          error: setMap(state.error, agentName, null),
+          planLoading: setMap(state.planLoading, agentName, false),
+          planError: setMap(state.planError, agentName, null),
         }))
         return
       }
@@ -91,31 +106,30 @@ export const useTrainingStore = create<TrainingState>()((set, get) => ({
         sanitizeForLog({ agentName, err, message: getErrorMessage(err) }),
       )
       set((state) => ({
-        error: setMap(state.error, agentName, getErrorMessage(err)),
+        planLoading: setMap(state.planLoading, agentName, false),
+        planError: setMap(state.planError, agentName, getErrorMessage(err)),
       }))
     }
   },
 
   fetchResult: async (agentName) => {
     set((state) => ({
-      loading: setMap(state.loading, agentName, true),
-      error: setMap(state.error, agentName, null),
+      resultLoading: setMap(state.resultLoading, agentName, true),
+      resultError: setMap(state.resultError, agentName, null),
     }))
     try {
       const result = await getTrainingResult(agentName)
       set((state) => ({
         resultsByAgent: setMap(state.resultsByAgent, agentName, result),
-        loading: setMap(state.loading, agentName, false),
-        // Successful read supersedes any older per-agent error banner
-        // so overlapping requests cannot leave stale state behind.
-        error: setMap(state.error, agentName, null),
+        resultLoading: setMap(state.resultLoading, agentName, false),
+        resultError: setMap(state.resultError, agentName, null),
       }))
     } catch (err) {
       if (isExpectedNotFound(err)) {
         set((state) => ({
           resultsByAgent: setMap(state.resultsByAgent, agentName, null),
-          loading: setMap(state.loading, agentName, false),
-          error: setMap(state.error, agentName, null),
+          resultLoading: setMap(state.resultLoading, agentName, false),
+          resultError: setMap(state.resultError, agentName, null),
         }))
         return
       }
@@ -125,8 +139,8 @@ export const useTrainingStore = create<TrainingState>()((set, get) => ({
         sanitizeForLog({ agentName, err, message }),
       )
       set((state) => ({
-        loading: setMap(state.loading, agentName, false),
-        error: setMap(state.error, agentName, message),
+        resultLoading: setMap(state.resultLoading, agentName, false),
+        resultError: setMap(state.resultError, agentName, message),
       }))
     }
   },
@@ -251,8 +265,21 @@ export const useTrainingStore = create<TrainingState>()((set, get) => ({
 export interface TrainingForAgent {
   plan: TrainingPlanResponse | null
   result: TrainingResultResponse | null
+  /** True while either plan or result is in-flight for this agent. */
   loading: boolean
+  /** Plan fetch in-flight. */
+  planLoading: boolean
+  /** Result fetch in-flight. */
+  resultLoading: boolean
+  /**
+   * First non-null error across plan/result (plan wins if both set)
+   * -- keeps the single-banner UI consumers working without forcing
+   * them to reconcile two sources. Granular callers should read
+   * ``planError`` / ``resultError`` directly.
+   */
   error: string | null
+  planError: string | null
+  resultError: string | null
 }
 
 /**
@@ -262,11 +289,21 @@ export interface TrainingForAgent {
  */
 export function useTrainingForAgent(agentName: string): TrainingForAgent {
   return useTrainingStore(
-    useShallow((state): TrainingForAgent => ({
-      plan: state.plansByAgent[agentName] ?? null,
-      result: state.resultsByAgent[agentName] ?? null,
-      loading: state.loading[agentName] ?? false,
-      error: state.error[agentName] ?? null,
-    })),
+    useShallow((state): TrainingForAgent => {
+      const planError = state.planError[agentName] ?? null
+      const resultError = state.resultError[agentName] ?? null
+      const planLoading = state.planLoading[agentName] ?? false
+      const resultLoading = state.resultLoading[agentName] ?? false
+      return {
+        plan: state.plansByAgent[agentName] ?? null,
+        result: state.resultsByAgent[agentName] ?? null,
+        loading: planLoading || resultLoading,
+        planLoading,
+        resultLoading,
+        error: planError ?? resultError,
+        planError,
+        resultError,
+      }
+    }),
   )
 }
