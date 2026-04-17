@@ -262,6 +262,23 @@ describe('useTrainingStore', () => {
     expect(state.plansByAgent).not.toHaveProperty('agent-1')
   })
 
+  it('mutation success clears stale read-error banners', async () => {
+    // Arrange: seed both error slots as if an earlier read had failed.
+    useTrainingStore.setState((state) => ({
+      planError: { ...state.planError, 'agent-1': 'stale plan boom' },
+      resultError: { ...state.resultError, 'agent-1': 'stale result boom' },
+    }))
+
+    const result = mockResult({ completed_at: '2026-04-01T02:00:00Z' })
+    vi.spyOn(trainingApi, 'executeTrainingPlan').mockResolvedValueOnce(result)
+
+    await useTrainingStore.getState().executePlan('agent-1')
+
+    const state = useTrainingStore.getState()
+    expect(state.resultError['agent-1']).toBeNull()
+    expect(state.planError['agent-1']).toBeNull()
+  })
+
   it('updateOverrides replaces the cached plan on success', async () => {
     const updated = mockPlan({ status: 'executed' })
     const spy = vi

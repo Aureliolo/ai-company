@@ -154,6 +154,8 @@ export const useTrainingStore = create<TrainingState>()((set, get) => ({
       const plan = await createTrainingPlan(agentName, overrides)
       set((state) => ({
         plansByAgent: setMap(state.plansByAgent, agentName, plan),
+        // Fresh write supersedes any stale plan-read error banner.
+        planError: setMap(state.planError, agentName, null),
       }))
       useToastStore.getState().add({
         variant: 'success',
@@ -180,6 +182,11 @@ export const useTrainingStore = create<TrainingState>()((set, get) => ({
       set((state) => {
         const next: Partial<TrainingState> = {
           resultsByAgent: setMap(state.resultsByAgent, agentName, result),
+          // Fresh result supersedes any stale read-error banner for
+          // this agent; plan-side error is cleared alongside because
+          // the plan status below is also updated.
+          resultError: setMap(state.resultError, agentName, null),
+          planError: setMap(state.planError, agentName, null),
         }
         // Mirror the server-side plan transition to EXECUTED so the UI
         // (status badge, disabled "Execute" button) stays consistent
@@ -236,6 +243,8 @@ export const useTrainingStore = create<TrainingState>()((set, get) => ({
       const plan = await updateTrainingOverrides(agentName, planId, data)
       set((state) => ({
         plansByAgent: setMap(state.plansByAgent, agentName, plan),
+        // Fresh write supersedes any stale plan-read error banner.
+        planError: setMap(state.planError, agentName, null),
       }))
       useToastStore.getState().add({
         variant: 'success',
