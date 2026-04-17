@@ -5,6 +5,7 @@ import { Avatar } from '@/components/ui/avatar'
 import { TaskStatusIndicator } from '@/components/ui/task-status-indicator'
 import { PriorityBadge } from '@/components/ui/task-status-indicator'
 import { useFlash } from '@/hooks/useFlash'
+import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { formatRelativeTime, formatCurrency } from '@/utils/format'
 import type { Task } from '@/api/types'
 
@@ -87,7 +88,7 @@ export function TaskCard({ task, onSelect, isDragging, isOverlay, className, ref
 
           {task.cost_usd != null && task.cost_usd > 0 && (
             <span className="text-[10px] font-mono">
-              {formatCurrency(task.cost_usd, 'USD')}
+              {formatCurrency(task.cost_usd, DEFAULT_CURRENCY)}
             </span>
           )}
 

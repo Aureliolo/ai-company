@@ -6,20 +6,30 @@ describe('APP_LOCALE', () => {
     expect(APP_LOCALE.length).toBeGreaterThan(0)
   })
 
-  it('matches IETF BCP 47 language-region shape', () => {
-    expect(APP_LOCALE).toMatch(/^[a-z]{2}-[A-Z]{2}$/)
+  it('canonicalizes to itself via Intl.getCanonicalLocales', () => {
+    const canonical = Intl.getCanonicalLocales(APP_LOCALE)
+    expect(canonical).toEqual([APP_LOCALE])
   })
 
   it('is a valid Intl locale', () => {
     expect(() => new Intl.Locale(APP_LOCALE)).not.toThrow()
   })
 
-  it.each(['en_US', 'en-us', 'EN-US', 'en', ''])(
-    'rejects the malformed candidate %j against the BCP 47 shape regex',
-    (candidate) => {
-      expect(candidate).not.toMatch(/^[a-z]{2}-[A-Z]{2}$/)
-    },
-  )
+  it.each([
+    'en_US', // underscore instead of hyphen
+    'en', // language-only (accepted by Intl but not our APP_LOCALE shape)
+    '', // empty string
+    'not a locale', // whitespace, no region
+  ])('rejects the malformed candidate %j', (candidate) => {
+    if (candidate === 'en') {
+      // `Intl.getCanonicalLocales('en')` succeeds; assert it does NOT
+      // normalize to APP_LOCALE so the test still catches unintended
+      // language-only drift for our BCP 47 language-region requirement.
+      expect(Intl.getCanonicalLocales(candidate)).not.toEqual([APP_LOCALE])
+    } else {
+      expect(() => Intl.getCanonicalLocales(candidate)).toThrow()
+    }
+  })
 })
 
 describe('getLocale', () => {

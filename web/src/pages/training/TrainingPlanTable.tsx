@@ -37,6 +37,10 @@ function statusDot(plan: TrainingPlanResponse | null): AgentRuntimeStatus {
       return 'error'
     case 'pending':
       return 'idle'
+    // Defensive fallback: a future `TrainingPlanStatus` variant should
+    // map to a neutral dot rather than render `undefined`.
+    default:
+      return 'offline'
   }
 }
 

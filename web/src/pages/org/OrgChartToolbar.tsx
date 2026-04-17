@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { SegmentedControl, type SegmentedControlOption } from '@/components/ui/segmented-control'
+import { useToolbarKeyboardNav } from '@/hooks/useToolbarKeyboardNav'
 import { cn } from '@/lib/utils'
 import {
   useOrgChartPrefs,
@@ -94,9 +95,13 @@ export function OrgChartToolbar({
   const setShowStatusDots = useOrgChartPrefs((s) => s.setShowStatusDots)
   const showMinimap = useOrgChartPrefs((s) => s.showMinimap)
   const setShowMinimap = useOrgChartPrefs((s) => s.setShowMinimap)
+  const { ref: toolbarRef, onKeyDown } =
+    useToolbarKeyboardNav<HTMLDivElement>()
 
   return (
     <div
+      ref={toolbarRef}
+      onKeyDown={onKeyDown}
       role="toolbar"
       aria-label="Org chart controls"
       aria-orientation="horizontal"

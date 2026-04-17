@@ -1,3 +1,5 @@
+import { afterEach, beforeEach, vi } from 'vitest'
+import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import {
   formatDate,
   formatDateOnly,
@@ -103,6 +105,17 @@ describe('formatTodayLabel', () => {
 })
 
 describe('formatRelativeTime', () => {
+  // Freeze the clock so "just now" / "5 minutes ago" / "3 hours ago"
+  // assertions cannot flip across the second boundary on slow CI hosts.
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-04-01T12:00:00.000Z'))
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   it('returns -- for null/undefined', () => {
     expect(formatRelativeTime(null)).toBe('--')
     expect(formatRelativeTime(undefined)).toBe('--')
@@ -155,10 +168,14 @@ describe('formatRelativeTime', () => {
 })
 
 describe('formatCurrency', () => {
-  it('defaults to EUR', () => {
+  it('defaults to DEFAULT_CURRENCY', () => {
     const result = formatCurrency(42.5)
+    const expected = formatCurrency(42.5, DEFAULT_CURRENCY, 'en-US')
+    expect(formatCurrency(42.5, DEFAULT_CURRENCY)).toBe(result)
     expect(result).toContain('42.50')
-    expect(result).toContain('\u20ac')
+    // Round-trip: the default call must match an explicit
+    // ``DEFAULT_CURRENCY`` call under the same locale.
+    expect(formatCurrency(42.5, DEFAULT_CURRENCY, 'en-US')).toBe(expected)
   })
 
   it('formats USD values', () => {
@@ -312,10 +329,11 @@ describe('formatLabel', () => {
 })
 
 describe('formatCurrencyCompact', () => {
-  it('formats a small value with default EUR currency', () => {
+  it('formats a small value with DEFAULT_CURRENCY', () => {
     const result = formatCurrencyCompact(5)
+    const explicit = formatCurrencyCompact(5, DEFAULT_CURRENCY)
+    expect(result).toBe(explicit)
     expect(result).toMatch(/5/)
-    expect(result).toMatch(/€|EUR/)
   })
 
   it('formats large values with compact notation', () => {

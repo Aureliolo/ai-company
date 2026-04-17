@@ -14,10 +14,6 @@ interface WorkflowTableViewProps {
   onDuplicate: (id: string) => void
 }
 
-function formatDate(iso: string): string {
-  return formatDateTime(iso)
-}
-
 export function WorkflowTableView({ workflows, onDelete, onDuplicate }: WorkflowTableViewProps) {
   const navigate = useNavigate()
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
@@ -72,7 +68,7 @@ export function WorkflowTableView({ workflows, onDelete, onDuplicate }: Workflow
                   <td className="px-4 py-2.5 text-right text-muted-foreground">{w.nodes.length}</td>
                   <td className="px-4 py-2.5 text-right text-muted-foreground">{w.edges.length}</td>
                   <td className="px-4 py-2.5 text-right text-muted-foreground">v{w.version}</td>
-                  <td className="px-4 py-2.5 text-muted-foreground">{formatDate(w.updated_at)}</td>
+                  <td className="px-4 py-2.5 text-muted-foreground">{formatDateTime(w.updated_at)}</td>
                   <td className="px-2 py-2.5">
                     <Menu.Root>
                       <Menu.Trigger

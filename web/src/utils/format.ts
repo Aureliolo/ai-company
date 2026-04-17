@@ -16,9 +16,30 @@ const COMPACT_K_THRESHOLD = 1000
 
 type DateInput = string | number | Date | null | undefined
 
+const DATE_ONLY_RE = /^(\d{4})-(\d{2})-(\d{2})$/
+
+/**
+ * Parse {@link DateInput} to a ``Date`` (or ``null`` on invalid input).
+ *
+ * Date-only ISO strings (``YYYY-MM-DD``) are parsed into the local
+ * midnight of that calendar day rather than the UTC midnight
+ * ``new Date(string)`` would produce -- the latter can shift the
+ * displayed day backward for viewers in negative-UTC timezones.
+ */
 function toDate(value: DateInput): Date | null {
   if (value == null) return null
-  const date = value instanceof Date ? value : new Date(value)
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value
+  }
+  if (typeof value === 'string') {
+    const match = DATE_ONLY_RE.exec(value)
+    if (match) {
+      const [, y, m, d] = match
+      const local = new Date(Number(y), Number(m) - 1, Number(d))
+      return Number.isNaN(local.getTime()) ? null : local
+    }
+  }
+  const date = new Date(value)
   return Number.isNaN(date.getTime()) ? null : date
 }
 
@@ -93,8 +114,8 @@ export function formatDayLabel(
   value: string | number | Date,
   locale: string = getLocale(),
 ): string {
-  const date = value instanceof Date ? value : new Date(value)
-  if (Number.isNaN(date.getTime())) return '--'
+  const date = toDate(value)
+  if (!date) return '--'
   return date.toLocaleDateString(locale, { month: 'short', day: 'numeric' })
 }
 

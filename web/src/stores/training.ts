@@ -1,3 +1,4 @@
+import axios from 'axios'
 import { create } from 'zustand'
 import { useShallow } from 'zustand/react/shallow'
 
@@ -60,13 +61,7 @@ function setMap<V>(
  * the agent; we clear the cache entry and suppress the toast/error.
  */
 function isExpectedNotFound(err: unknown): boolean {
-  return (
-    typeof err === 'object' &&
-    err !== null &&
-    'response' in err &&
-    typeof (err as { response?: { status?: unknown } }).response === 'object' &&
-    (err as { response: { status?: unknown } }).response.status === 404
-  )
+  return axios.isAxiosError(err) && err.response?.status === 404
 }
 
 export const useTrainingStore = create<TrainingState>()((set, get) => ({

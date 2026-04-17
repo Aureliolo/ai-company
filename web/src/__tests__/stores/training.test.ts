@@ -93,7 +93,11 @@ describe('useTrainingStore', () => {
   })
 
   it('fetchResult treats a 404 as an empty cache (no error banner)', async () => {
+    // Shape mirrors `axios.isAxiosError`: the helper checks the
+    // `isAxiosError` flag, not just `response`. Without the flag, the
+    // store treats the rejection as a generic error and shows a toast.
     const notFound = Object.assign(new Error('Not Found'), {
+      isAxiosError: true,
       response: { status: 404 },
     })
     vi.spyOn(trainingApi, 'getTrainingResult').mockRejectedValueOnce(notFound)
@@ -119,7 +123,11 @@ describe('useTrainingStore', () => {
   })
 
   it('fetchPlan treats a 404 as an empty cache', async () => {
+    // Shape mirrors `axios.isAxiosError`: the helper checks the
+    // `isAxiosError` flag, not just `response`. Without the flag, the
+    // store treats the rejection as a generic error and shows a toast.
     const notFound = Object.assign(new Error('Not Found'), {
+      isAxiosError: true,
       response: { status: 404 },
     })
     vi.spyOn(trainingApi, 'getLatestTrainingPlan').mockRejectedValueOnce(

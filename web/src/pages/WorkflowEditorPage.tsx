@@ -319,18 +319,45 @@ function WorkflowEditorInner() {
              * the canvas is the full-fidelity keyboard-accessible
              * alternative for editing.
              */}
-            <ul id="workflow-editor-node-summary" className="sr-only">
-              {nodes.map((node) => (
-                <li key={node.id}>
-                  {`Node ${node.id}: ${node.type ?? 'unknown'}`}
-                </li>
-              ))}
-              {edges.map((edge) => (
-                <li key={edge.id}>
-                  {`Edge: ${edge.source} → ${edge.target}`}
-                </li>
-              ))}
-            </ul>
+            <section
+              id="workflow-editor-node-summary"
+              aria-labelledby="workflow-editor-node-summary-heading"
+              className="sr-only"
+            >
+              <h2 id="workflow-editor-node-summary-heading">
+                Workflow graph summary
+              </h2>
+              <h3 id="workflow-editor-node-summary-nodes">
+                Nodes ({nodes.length})
+              </h3>
+              <ul aria-labelledby="workflow-editor-node-summary-nodes">
+                {nodes.map((node) => {
+                  const label =
+                    (node.data && typeof node.data === 'object' && 'label' in node.data
+                      ? String((node.data as { label?: unknown }).label ?? '')
+                      : '') ||
+                    node.type ||
+                    node.id
+                  return (
+                    <li key={node.id}>
+                      {`Node ${node.id} (${node.type ?? 'unknown'}): ${label}`}
+                    </li>
+                  )
+                })}
+              </ul>
+              <h3 id="workflow-editor-node-summary-edges">
+                Edges ({edges.length})
+              </h3>
+              <ul aria-labelledby="workflow-editor-node-summary-edges">
+                {edges.map((edge) => {
+                  const label =
+                    typeof edge.label === 'string' && edge.label
+                      ? edge.label
+                      : `${edge.source} → ${edge.target}`
+                  return <li key={edge.id}>{`Edge: ${label}`}</li>
+                })}
+              </ul>
+            </section>
             <ReactFlow
               aria-label="Workflow editor canvas"
               aria-describedby="workflow-editor-node-summary"

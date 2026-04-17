@@ -749,11 +749,34 @@ export interface CreateDepartmentRequest {
   autonomy_level?: AutonomyLevel | null
 }
 
+/**
+ * Request-specific team payload nested inside
+ * {@link UpdateDepartmentRequest}.
+ *
+ * Distinct from the response-side {@link TeamConfig} so form/store
+ * callers cannot accidentally send response-only fields. The backend
+ * caps ``teams`` at {@link UPDATE_DEPARTMENT_MAX_TEAMS} entries --
+ * validate length at the form/store boundary before issuing the
+ * request rather than surfacing a server 422.
+ */
+export interface UpdateDepartmentTeam {
+  name: string
+  lead: string
+  readonly members?: readonly string[]
+}
+
+/**
+ * Matches ``UpdateDepartmentRequest.teams`` ``max_length=64`` bound on
+ * ``synthorg.api.dto_org``. Exported so forms/stores validate before
+ * sending rather than surfacing a server 422.
+ */
+export const UPDATE_DEPARTMENT_MAX_TEAMS = 64
+
 export interface UpdateDepartmentRequest {
   head?: string | null
   budget_percent?: number
   autonomy_level?: AutonomyLevel | null
-  teams?: readonly TeamConfig[]
+  teams?: readonly UpdateDepartmentTeam[]
   ceremony_policy?: CeremonyPolicyConfig | null
 }
 

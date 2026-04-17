@@ -54,10 +54,21 @@ export default function TrainingPage() {
   }, [])
 
   useEffect(() => {
-    // Hydrate plan + result for each agent (best-effort; missing rows
-    // surface as "no plan" instead of errors -- the store swallows 404).
-    for (const agent of agents) {
-      void hydrateForAgent(agent.name)
+    // Hydrate plan + result for each agent in bounded batches so a
+    // large roster does not fan out 200 concurrent requests at once.
+    // Best-effort: missing rows surface as "no plan" instead of errors
+    // (the store swallows 404).
+    const BATCH_SIZE = 10
+    let cancelled = false
+    void (async () => {
+      for (let i = 0; i < agents.length; i += BATCH_SIZE) {
+        if (cancelled) return
+        const batch = agents.slice(i, i + BATCH_SIZE)
+        await Promise.all(batch.map((agent) => hydrateForAgent(agent.name)))
+      }
+    })()
+    return () => {
+      cancelled = true
     }
   }, [agents, hydrateForAgent])
 
