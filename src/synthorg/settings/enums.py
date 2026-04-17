@@ -27,6 +27,7 @@ class SettingNamespace(StrEnum):
     NOTIFICATIONS = "notifications"
     TOOLS = "tools"
     SETTINGS = "settings"
+    DISPLAY = "display"
 
 
 class SettingType(StrEnum):

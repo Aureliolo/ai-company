@@ -1666,6 +1666,7 @@ export type SettingNamespace =
   | 'observability'
   | 'backup'
   | 'engine'
+  | 'display'
 
 export type SettingType = 'str' | 'int' | 'float' | 'bool' | 'enum' | 'json'
 
