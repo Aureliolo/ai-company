@@ -288,14 +288,30 @@ func pullAllImages(ctx context.Context, info docker.Info, safeDir string, state 
 			ref:  verify.FormatImageRef("sidecar", refreshed.ImageTag, refreshed.VerifiedDigests["sidecar"]),
 		})
 	}
-	fineTuneIdx := -1
+	fineTuneVariant := ""
 	if refreshed.FineTuning {
-		fineTuneSvc := verify.FineTuneServiceName(refreshed.FineTuneVariantOrDefault())
-		fineTuneIdx = len(items)
+		fineTuneVariant = refreshed.FineTuneVariantOrDefault()
+		fineTuneSvc := verify.FineTuneServiceName(fineTuneVariant)
 		items = append(items, pullItem{
 			name: fineTuneSvc,
 			ref:  verify.FormatImageRef(fineTuneSvc, refreshed.ImageTag, refreshed.VerifiedDigests[fineTuneSvc]),
 		})
+	}
+
+	// Emit the fine-tune size hint BEFORE the pull box renders, so the
+	// user understands why their terminal is about to pause. Emitting it
+	// after the pull (the old behaviour) was a logic error: by the time
+	// the warning appeared, the wait had already completed. The per-
+	// variant size matches the post-split image layout (see PR #1442).
+	if fineTuneVariant != "" {
+		sizeHint := "up to ~4 GB"
+		if fineTuneVariant == config.FineTuneVariantCPU {
+			sizeHint = "~1.7 GB"
+		}
+		out.HintTip(fmt.Sprintf(
+			"Fine-tune image is %s -- first pull can take a few minutes on typical connections.",
+			sizeHint,
+		))
 	}
 
 	// Show all pulls in one LiveBox.
@@ -307,26 +323,19 @@ func pullAllImages(ctx context.Context, info docker.Info, safeDir string, state 
 	defer lb.Finish()
 
 	var (
-		mu           sync.Mutex
-		pullErr      error
-		fineTuneSlow bool
+		mu      sync.Mutex
+		pullErr error
 	)
 	var wg sync.WaitGroup
 	for i, item := range items {
 		wg.Add(1)
 		go func(idx int, it pullItem) {
 			defer wg.Done()
-			start := time.Now()
 			var err error
 			if it.compose {
 				err = composeRunQuiet(ctx, info, safeDir, "pull", it.name)
 			} else {
 				err = dockerPullWithRetry(ctx, info, it.ref, sandboxPullAttempts)
-			}
-			if idx == fineTuneIdx && time.Since(start) >= fineTuneSlowThreshold {
-				mu.Lock()
-				fineTuneSlow = true
-				mu.Unlock()
 			}
 			if err != nil {
 				lb.UpdateLine(idx, ui.IconError)
@@ -340,20 +349,8 @@ func pullAllImages(ctx context.Context, info docker.Info, safeDir string, state 
 	}
 	wg.Wait()
 
-	// Emit the fine-tune size hint below the box only when the pull actually
-	// took a while. Short pulls (cached layers, fast links) skip the warning.
-	if fineTuneSlow && pullErr == nil {
-		lb.Finish()
-		out.HintTip("Fine-tune image is ~9 GB -- first pull takes a few minutes on typical connections.")
-	}
-
 	return refreshed, pullErr
 }
-
-// fineTuneSlowThreshold is the minimum fine-tune pull duration before the
-// CLI emits a "large image, takes a while" hint below the pull box. Short
-// pulls (cached layers, fast links, resumed pulls) skip the hint entirely.
-const fineTuneSlowThreshold = 30 * time.Second
 
 // dockerPullWithRetry pulls an image with retries for transient failures.
 func dockerPullWithRetry(ctx context.Context, info docker.Info, imageRef string, attempts int) error {
