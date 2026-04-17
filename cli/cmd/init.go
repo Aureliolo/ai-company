@@ -755,11 +755,13 @@ func writeInitFiles(state config.State) (string, error) {
 // When the bus is the in-process default, the file is not needed and
 // is removed if it exists from a prior distributed install.
 //
-// The function takes busBackend directly (not the full config.State)
-// so CodeQL's go/path-injection taint tracker does not re-flow
-// state.DataDir through the function boundary and flag the Join below.
-// The safeDir parameter is re-sanitised via config.SecurePath to make
-// the sanitisation point explicit at the use site.
+// Implementation note: the file I/O goes through os.Root so operations
+// are statically contained to safeDir and CodeQL's go/path-injection
+// analyser sees a rooted filesystem sink instead of a raw filepath.Join
+// reaching a potentially-tainted directory. The function takes
+// busBackend string directly (not the full config.State) so the
+// state.DataDir taint source does not re-flow across the function
+// boundary.
 func writeNATSConfigIfNeeded(busBackend, safeDir string) error {
 	sanitised, err := config.SecurePath(safeDir)
 	if err != nil {
@@ -768,15 +770,31 @@ func writeNATSConfigIfNeeded(busBackend, safeDir string) error {
 	if sanitised != safeDir {
 		return fmt.Errorf("nats config: safeDir %q is not canonical (expected %q)", safeDir, sanitised)
 	}
-	confPath := filepath.Join(sanitised, compose.NATSConfigFilename)
+	root, err := os.OpenRoot(sanitised)
+	if err != nil {
+		return fmt.Errorf("opening nats config root %q: %w", sanitised, err)
+	}
+	defer func() { _ = root.Close() }()
 	if busBackend != "nats" {
-		if err := os.Remove(confPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+		if err := root.Remove(compose.NATSConfigFilename); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return fmt.Errorf("removing stale nats.conf: %w", err)
 		}
 		return nil
 	}
-	if err := atomicWriteFile(confPath, []byte(compose.NATSConfigContent), sanitised); err != nil {
+	f, err := root.OpenFile(compose.NATSConfigFilename, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+	if err != nil {
+		return fmt.Errorf("opening nats.conf for write: %w", err)
+	}
+	if _, err := f.Write([]byte(compose.NATSConfigContent)); err != nil {
+		_ = f.Close()
 		return fmt.Errorf("writing nats.conf: %w", err)
+	}
+	if err := f.Sync(); err != nil {
+		_ = f.Close()
+		return fmt.Errorf("syncing nats.conf: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("closing nats.conf: %w", err)
 	}
 	return nil
 }
