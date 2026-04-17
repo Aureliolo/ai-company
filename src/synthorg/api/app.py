@@ -315,6 +315,7 @@ def _resolve_artifact_dir_env() -> str:
             f"SYNTHORG_ARTIFACT_DIR={artifact_dir_str!r} must be an absolute "
             f"path to avoid writing artifacts to the process working directory"
         )
+        logger.warning(API_APP_STARTUP, error=msg, reason="non_absolute_artifact_dir")
         raise ValueError(msg)
     return artifact_dir_str
 
