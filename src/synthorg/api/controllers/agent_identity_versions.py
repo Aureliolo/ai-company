@@ -132,7 +132,11 @@ class AgentIdentityVersionController(Controller):
             agent_id=agent_id,
             count=len(safe_versions),
         )
-        meta = PaginationMeta(total=total, offset=offset, limit=limit)
+        # Subtract forged-row drops from the reported total so clients
+        # paginating by ``pagination.total`` don't see a count that
+        # disagrees with the returned ``data`` slice.
+        safe_total = max(total - dropped, len(safe_versions))
+        meta = PaginationMeta(total=safe_total, offset=offset, limit=limit)
         return Response(
             content=PaginatedResponse[SnapshotT](
                 data=safe_versions,

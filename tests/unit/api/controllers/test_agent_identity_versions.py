@@ -400,9 +400,13 @@ class TestReadEndpointsOwnership:
             headers=make_auth_headers("ceo"),
         )
         assert resp.status_code == 200
-        # Forged row must be silently dropped from the response.
-        versions = resp.json()["data"]
+        # Forged row must be silently dropped from the response and
+        # ``pagination.total`` must reflect only the surviving rows so
+        # clients paginating by the reported total stay in sync.
+        body = resp.json()
+        versions = body["data"]
         assert all(v["version"] != 42 for v in versions)
+        assert body["pagination"]["total"] == len(versions)
 
     @pytest.mark.unit
     async def test_diff_rejects_cross_entity_version(
