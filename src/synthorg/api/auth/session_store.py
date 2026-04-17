@@ -377,6 +377,9 @@ class PostgresSessionStore:
 
     async def create(self, session: Session) -> None:
         """Persist a new session."""
+        # Pass ``datetime`` objects directly so psycopg adapts them to
+        # ``TIMESTAMPTZ`` natively, matching the column type and keeping
+        # binds consistent with the other methods on this class.
         async with self._pool.connection() as conn, conn.cursor() as cur:
             await cur.execute(
                 "INSERT INTO sessions "
@@ -391,9 +394,9 @@ class PostgresSessionStore:
                     session.role.value,
                     session.ip_address,
                     session.user_agent,
-                    session.created_at.isoformat(),
-                    session.last_active_at.isoformat(),
-                    session.expires_at.isoformat(),
+                    session.created_at,
+                    session.last_active_at,
+                    session.expires_at,
                     session.revoked,
                 ),
             )
@@ -427,7 +430,7 @@ class PostgresSessionStore:
         """List active (non-expired, non-revoked) sessions for a user."""
         dict_row = self._dict_row
 
-        now = datetime.now(UTC).isoformat()
+        now = datetime.now(UTC)
         async with (
             self._pool.connection() as conn,
             conn.cursor(row_factory=dict_row) as cur,
@@ -446,7 +449,7 @@ class PostgresSessionStore:
         """List all active (non-expired, non-revoked) sessions."""
         dict_row = self._dict_row
 
-        now = datetime.now(UTC).isoformat()
+        now = datetime.now(UTC)
         async with (
             self._pool.connection() as conn,
             conn.cursor(row_factory=dict_row) as cur,
@@ -479,7 +482,7 @@ class PostgresSessionStore:
         """Revoke all active sessions for a user."""
         dict_row = self._dict_row
 
-        now = datetime.now(UTC).isoformat()
+        now = datetime.now(UTC)
         async with self._pool.connection() as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
@@ -537,7 +540,7 @@ class PostgresSessionStore:
         """Remove expired sessions from the database."""
         dict_row = self._dict_row
 
-        now = datetime.now(UTC).isoformat()
+        now = datetime.now(UTC)
         async with self._pool.connection() as conn:
             async with conn.cursor(row_factory=dict_row) as cur:
                 await cur.execute(

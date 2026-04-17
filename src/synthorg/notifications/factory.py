@@ -209,8 +209,10 @@ def _create_email_sink(  # noqa: PLR0911 - each return is a distinct validation 
         EmailNotificationSink,
     )
 
-    host = params.get("host", "")
+    host = (params.get("host") or "").strip()
     if not host:
+        # Treat whitespace-only ("   ") the same as missing; otherwise
+        # the adapter only fails at connect time with a cryptic error.
         logger.warning(
             NOTIFICATION_SINK_CONFIG_INVALID,
             sink_type="email",
@@ -282,7 +284,19 @@ def _create_email_sink(  # noqa: PLR0911 - each return is a distinct validation 
         return None
     username = params.get("username")
     password = params.get("password")
-    use_tls = params.get("use_tls", "true").lower() == "true"
+    # Strict ``use_tls`` parsing: the previous ``.lower() == "true"`` form
+    # silently coerced typos ("yse", "on", "1") to ``False``, which flipped
+    # the intended transport without warning. Accept only the literal
+    # ``true``/``false`` strings (case-insensitive, trimmed).
+    use_tls_raw = (params.get("use_tls") or "true").strip().lower()
+    if use_tls_raw not in {"true", "false"}:
+        logger.warning(
+            NOTIFICATION_SINK_CONFIG_INVALID,
+            sink_type="email",
+            error=f"use_tls must be 'true' or 'false'; got {params.get('use_tls')!r}",
+        )
+        return None
+    use_tls = use_tls_raw == "true"
     if bridge_config is None:
         return EmailNotificationSink(
             host=host,

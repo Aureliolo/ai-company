@@ -89,6 +89,6 @@ USER 10003
 # probe reads the same env var so an operator override stays in sync
 # with the actual listener.
 HEALTHCHECK --interval=10s --timeout=3s --retries=3 --start-period=30s \
-    CMD ["/app/.venv/bin/python", "-c", "import os,urllib.request,sys\ntry:\n  p=int(os.environ.get('SYNTHORG_FINE_TUNE_HEALTH_PORT','15002'))\n  if not 1<=p<=65535: raise ValueError\nexcept (ValueError,TypeError):\n  p=15002\nr=urllib.request.urlopen(f'http://127.0.0.1:{p}/healthz',timeout=2)\nsys.exit(0 if r.status==200 else 1)"]
+    CMD ["/app/.venv/bin/python", "-c", "import os,urllib.request,sys\np=int(os.environ.get('SYNTHORG_FINE_TUNE_HEALTH_PORT','15002'))\nif not 1<=p<=65535: raise ValueError('SYNTHORG_FINE_TUNE_HEALTH_PORT out of range [1, 65535]')\nr=urllib.request.urlopen(f'http://127.0.0.1:{p}/healthz',timeout=2)\nsys.exit(0 if r.status==200 else 1)"]
 
 ENTRYPOINT ["/app/.venv/bin/python", "-m", "synthorg.memory.embedding.fine_tune_runner"]
