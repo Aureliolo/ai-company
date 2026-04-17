@@ -243,6 +243,9 @@ services:
       nats:
         condition: service_started
     healthcheck:
+      # ``nats`` is the docker-compose service DNS name; 8222 is the
+      # NATS HTTP monitoring port (not exposed to the host). Both are
+      # container-internal and intentionally not operator-tunable.
       test: ["CMD", "wget", "-qO-", "http://nats:8222/healthz"]
       interval: 10s
       timeout: 3s

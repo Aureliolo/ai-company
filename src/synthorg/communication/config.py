@@ -87,6 +87,11 @@ class NatsConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
+    # Default points at a local-loopback NATS dev server. In-container
+    # deployments override via ``SYNTHORG_NATS_URL`` (read by
+    # ``workers/__main__.py``), or via the Go CLI's
+    # ``SYNTHORG_DEFAULT_NATS_URL`` which targets the docker-compose
+    # internal DNS name ``nats`` on port 4222.
     url: NotBlankStr = Field(
         default="nats://localhost:4222",
         description="NATS server URL",

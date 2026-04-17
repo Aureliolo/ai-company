@@ -118,6 +118,12 @@ class PostgresConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
+    # Defaults target a local-loopback Postgres for development. The
+    # Go CLI overrides both host and port by injecting a complete
+    # ``SYNTHORG_DATABASE_URL`` (e.g.
+    # ``postgresql://synthorg:<pw>@postgres:5432/synthorg``) into the
+    # backend container's environment, where ``postgres`` resolves via
+    # docker-compose internal DNS.
     host: NotBlankStr = Field(
         default="localhost",
         description="Database host",

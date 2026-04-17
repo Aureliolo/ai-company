@@ -401,6 +401,11 @@ func validateParams(p Params) error {
 
 // pgDSN builds a properly percent-encoded PostgreSQL connection string.
 // Uses url.UserPassword for userinfo encoding per RFC 3986 section 3.2.1.
+//
+// “postgres:5432“ is the docker-compose service DNS name plus the
+// container-internal Postgres port -- both container-to-container,
+// never exposed to the operator's host. The host-side port is a
+// separate “Params.PostgresPort“ tunable (rendered in compose.yml.tmpl).
 func pgDSN(p Params) string {
 	if !p.PostgresEnabled() || p.PostgresPassword == "" {
 		return ""
