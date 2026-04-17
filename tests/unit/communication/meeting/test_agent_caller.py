@@ -142,7 +142,10 @@ class TestBuildMeetingAgentCaller:
 
     async def test_unknown_agent_raises(self) -> None:
         caller, _reg, _providers = _build_caller(identity=None)
-        with pytest.raises(UnknownMeetingAgentError) as exc_info:
+        with (
+            structlog.testing.capture_logs() as cap,
+            pytest.raises(UnknownMeetingAgentError) as exc_info,
+        ):
             await caller(_AGENT_ID, "prompt", 100)
         # LookupError-compatible so callers can catch with existing
         # lookup-failure handlers.
@@ -150,6 +153,12 @@ class TestBuildMeetingAgentCaller:
         # agent_id must be available as a typed attribute for
         # programmatic handling (logging, retries, metric tagging).
         assert exc_info.value.agent_id == _AGENT_ID
+        # Error path must log before raising so operators see agent_id
+        # in structured logs even when the error is caught upstream.
+        failures = [e for e in cap if e.get("event") == MEETING_AGENT_CALL_FAILED]
+        assert len(failures) == 1
+        assert failures[0]["agent_id"] == _AGENT_ID
+        assert failures[0]["error_type"] == "UnknownMeetingAgentError"
 
     async def test_empty_content_maps_to_empty_string(self) -> None:
         identity = _identity()
@@ -268,10 +277,24 @@ class TestBuildUnconfiguredMeetingAgentCaller:
         caller = build_unconfigured_meeting_agent_caller(
             missing_dependencies=("agent_registry", "provider_registry"),
         )
-        with pytest.raises(MeetingAgentCallerNotConfiguredError) as exc_info:
+        with (
+            structlog.testing.capture_logs() as cap,
+            pytest.raises(MeetingAgentCallerNotConfiguredError) as exc_info,
+        ):
             await caller("agent-1", "prompt", 100)
         assert exc_info.value.agent_id == "agent-1"
         assert exc_info.value.missing_dependencies == (
+            "agent_registry",
+            "provider_registry",
+        )
+        # Error path must log before raising so the structured context
+        # (agent_id + missing_dependencies) reaches observability even
+        # when upstream callers swallow or rewrap the exception.
+        failures = [e for e in cap if e.get("event") == MEETING_AGENT_CALL_FAILED]
+        assert len(failures) == 1
+        assert failures[0]["agent_id"] == "agent-1"
+        assert failures[0]["error_type"] == "MeetingAgentCallerNotConfiguredError"
+        assert failures[0]["missing_dependencies"] == (
             "agent_registry",
             "provider_registry",
         )

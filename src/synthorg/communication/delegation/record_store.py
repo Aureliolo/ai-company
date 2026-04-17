@@ -196,9 +196,16 @@ class DelegationRecordStore:
         return _filter(snapshot, start=start, end=end)
 
     async def _snapshot(self) -> tuple[DelegationRecord, ...]:
-        """Return an immutable snapshot of all current records."""
+        """Return an immutable snapshot of all current records.
+
+        The async ``_lock`` serialises overlapping async readers, and
+        the sync ``_warning_lock`` is also taken briefly while copying
+        the deque so the snapshot cannot race with writes done under
+        the same sync lock (``record_sync`` / ``clear``).
+        """
         async with self._lock:
-            return tuple(self._records)
+            with self._warning_lock:
+                return tuple(self._records)
 
 
 # ── Module-level pure helpers ────────────────────────────────────

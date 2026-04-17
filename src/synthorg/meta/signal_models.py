@@ -122,6 +122,10 @@ class ScalingDecisionSummary(BaseModel):
     """Summary of a recent scaling decision and its outcome.
 
     Attributes:
+        decision_id: Stable identifier from the underlying scaling
+            decision.  Exposed so consumers and tests can join outcomes
+            back to specific decisions without relying on positional
+            ordering or other fields that may not be unique.
         action_type: What was proposed (hire/prune/hold).
         outcome: What happened (executed/failed/deferred/rejected).
         source_strategy: Which strategy proposed it.
@@ -131,6 +135,7 @@ class ScalingDecisionSummary(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
+    decision_id: NotBlankStr
     action_type: NotBlankStr
     outcome: NotBlankStr
     source_strategy: NotBlankStr

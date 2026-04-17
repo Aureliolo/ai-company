@@ -146,6 +146,7 @@ def _build_summary(
         NotBlankStr(outcome.value) if outcome is not None else _PENDING_OUTCOME
     )
     return ScalingDecisionSummary(
+        decision_id=decision.id,
         action_type=NotBlankStr(decision.action_type.value),
         outcome=outcome_str,
         source_strategy=NotBlankStr(decision.source_strategy.value),

@@ -568,6 +568,7 @@ class TestScalingDecisionSummary:
 
     def test_valid(self) -> None:
         s = ScalingDecisionSummary(
+            decision_id="scaling-d-001",
             action_type="hire",
             outcome="executed",
             source_strategy="workload",
@@ -575,6 +576,7 @@ class TestScalingDecisionSummary:
             created_at=datetime.now(UTC),
         )
         assert s.action_type == "hire"
+        assert s.decision_id == "scaling-d-001"
 
 
 class TestErrorCategorySummary:

@@ -121,16 +121,14 @@ class TestAggregate:
 
         assert summary.total_decisions == 2
         assert summary.success_rate == 0.5
-        # Assert the join by decision_id explicitly -- a positional
-        # match would pass even if the implementation accidentally
-        # paired by order instead of decision_id.
+        # Assert the join by decision_id explicitly so a positional
+        # bug (pairing by index instead of by id) would fail loudly.
         outcome_by_decision = {
-            s.action_type + "/" + s.source_strategy: s.outcome
-            for s in summary.recent_decisions
+            s.decision_id: s.outcome for s in summary.recent_decisions
         }
         assert outcome_by_decision == {
-            "hire/workload": "executed",
-            "prune/performance_pruning": "failed",
+            "d-hire": "executed",
+            "d-prune": "failed",
         }
         # Counter.most_common preserves insertion order for ties, so
         # the first-inserted strategy (workload) wins deterministically.
@@ -144,6 +142,7 @@ class TestAggregate:
 
         assert summary.total_decisions == 1
         assert summary.success_rate == 0.0
+        assert summary.recent_decisions[0].decision_id == "d-orphan"
         assert summary.recent_decisions[0].outcome == "pending"
 
     async def test_filters_outside_window(self) -> None:

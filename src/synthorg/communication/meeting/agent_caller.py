@@ -85,6 +85,11 @@ def build_meeting_agent_caller(
         )
         identity = await agent_registry.get(typed_agent_id)
         if identity is None:
+            logger.warning(
+                MEETING_AGENT_CALL_FAILED,
+                agent_id=agent_id,
+                error_type="UnknownMeetingAgentError",
+            )
             raise UnknownMeetingAgentError(typed_agent_id)
 
         provider_name = str(identity.model.provider)
@@ -239,6 +244,12 @@ def build_unconfigured_meeting_agent_caller(
         _prompt: str,
         _max_tokens: int,
     ) -> AgentResponse:
+        logger.warning(
+            MEETING_AGENT_CALL_FAILED,
+            agent_id=agent_id,
+            error_type="MeetingAgentCallerNotConfiguredError",
+            missing_dependencies=missing_dependencies,
+        )
         raise MeetingAgentCallerNotConfiguredError(
             agent_id=NotBlankStr(agent_id),
             missing_dependencies=missing_dependencies,

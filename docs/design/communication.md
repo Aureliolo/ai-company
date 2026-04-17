@@ -659,19 +659,34 @@ These fields are applied to all meeting endpoints (list, detail, trigger).
 
 ### Auto-Wiring
 
-The `MeetingOrchestrator` and `MeetingScheduler` are auto-wired at startup
-alongside Phase 1 services (no persistence dependency). All three meeting
-protocols are registered with default configs.
+The `MeetingOrchestrator` is auto-wired at startup alongside Phase 1
+services (no persistence dependency). All three meeting protocols are
+registered with default configs.
 
-When both `agent_registry` and `provider_registry` are available at wire
-time, the `agent_caller` dispatches a real LLM call per turn (one
-`provider.complete()` per agent per turn, with automatic retry + rate
-limiting via `BaseCompletionProvider`). When either dependency is
-missing, the orchestrator is still constructed so REST endpoints remain
-available, but any attempt to invoke an agent raises
-`MeetingAgentCallerNotConfiguredError` at call time -- no silent empty
-responses. This forces operators to surface wiring gaps instead of
-producing meaningless participation.
+**Fully-wired mode.** When both `agent_registry` and `provider_registry`
+are available, the `agent_caller` dispatches a real LLM call per turn
+(one `provider.complete()` per agent per turn, with automatic retry +
+rate limiting via `BaseCompletionProvider`). The `MeetingScheduler` and
+`CeremonyScheduler` are auto-wired alongside the orchestrator so
+periodic and event-triggered meetings run on schedule.
+
+**Degraded (unconfigured) mode.** When either `agent_registry` or
+`provider_registry` is missing, the orchestrator is still constructed
+so REST endpoints stay available, but:
+
+- The `agent_caller` returned by `build_unconfigured_meeting_agent_caller`
+  raises `MeetingAgentCallerNotConfiguredError` at call time -- no
+  silent empty responses.
+- `MeetingScheduler` and `CeremonyScheduler` are **not** auto-wired
+  (`meeting_wire.meeting_scheduler is None`,
+  `meeting_wire.ceremony_scheduler is None`).  Running scheduled
+  meetings against a known-failing caller would only produce background
+  noise, so periodic and ceremony-triggered meetings are skipped
+  entirely until the missing dependencies are provided.
+
+This forces operators to surface wiring gaps instead of producing
+meaningless participation, and prevents the schedulers from spamming
+logs with avoidable failures during degraded startup.
 
 ---
 

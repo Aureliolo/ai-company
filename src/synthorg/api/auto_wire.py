@@ -463,9 +463,16 @@ def auto_wire_meetings(
             agent_registry,
         )
 
-    ceremony_scheduler = CeremonyScheduler(
-        meeting_scheduler=meeting_scheduler,
-    )
+    try:
+        ceremony_scheduler = CeremonyScheduler(
+            meeting_scheduler=meeting_scheduler,
+        )
+    except Exception:
+        logger.exception(
+            API_APP_STARTUP,
+            error="Failed to auto-wire ceremony scheduler",
+        )
+        raise
     logger.info(API_SERVICE_AUTO_WIRED, service="ceremony_scheduler")
 
     return MeetingWireResult(
