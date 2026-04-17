@@ -39,15 +39,36 @@ logger = get_logger(__name__)
 
 _TRACES_ENDPOINT_SUFFIX = "/v1/traces"
 
+# Process singleton: OpenTelemetry's global TracerProvider is set
+# exactly once per process. A second :class:`OtlpTraceHandler`
+# instance would install a fresh provider, leaving the first
+# instance returning tracers from a stale handle while the rest of
+# the process uses the newer provider -- spans split across the two
+# and correlation breaks. ``build_trace_handler`` runs from startup
+# wiring and must not be called twice.
+_HANDLER_INSTANCE: OtlpTraceHandler | None = None
+
 
 class OtlpTraceHandler:
     """Process-singleton OTLP trace exporter.
 
     Args:
         config: OTLP HTTP trace configuration.
+
+    Raises:
+        RuntimeError: A second handler cannot be constructed within
+            the same process; the first instance would be orphaned.
     """
 
     def __init__(self, config: OtlpHttpTraceConfig) -> None:
+        global _HANDLER_INSTANCE  # noqa: PLW0603
+        if _HANDLER_INSTANCE is not None:
+            msg = (
+                "OtlpTraceHandler is a process singleton; an instance "
+                "already owns the global TracerProvider. Call "
+                "shutdown() and _reset_for_testing() to rebuild."
+            )
+            raise RuntimeError(msg)
         endpoint = _resolve_traces_endpoint(config.endpoint)
         exporter = OTLPSpanExporter(
             endpoint=endpoint,
@@ -66,6 +87,7 @@ class OtlpTraceHandler:
         )
         self._provider.add_span_processor(self._processor)
         _ot_trace.set_tracer_provider(self._provider)
+        _HANDLER_INSTANCE = self
         logger.info(
             METRICS_OTLP_FLUSHER_STARTED,
             component="trace",
@@ -93,9 +115,31 @@ class OtlpTraceHandler:
             )
 
     async def shutdown(self) -> None:
-        """Stop the exporter. The handler is unusable afterwards."""
+        """Flush pending spans and stop the exporter.
+
+        Flushing first prevents the BatchSpanProcessor from dropping
+        spans that are still in its queue when ``shutdown`` hands
+        the exporter its final signal. The handler is unusable
+        after this call returns.
+        """
+        global _HANDLER_INSTANCE  # noqa: PLW0603
+        await self.force_flush()
         await asyncio.to_thread(self._provider.shutdown)
+        if _HANDLER_INSTANCE is self:
+            _HANDLER_INSTANCE = None
         logger.info(METRICS_OTLP_FLUSHER_STOPPED, component="trace")
+
+
+def _reset_for_testing() -> None:
+    """Clear the process-singleton guard.
+
+    Intended for tests that need to rebuild an :class:`OtlpTraceHandler`
+    within the same process. Production code must not call this --
+    it leaves the previous provider installed as the OTel global,
+    which is exactly the state the singleton guard exists to prevent.
+    """
+    global _HANDLER_INSTANCE  # noqa: PLW0603
+    _HANDLER_INSTANCE = None
 
 
 def _resolve_traces_endpoint(base_endpoint: str) -> str:

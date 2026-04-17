@@ -208,12 +208,20 @@ class SQLiteSsrfViolationRepository:
         for row in rows:
             try:
                 results.append(_row_to_violation(row))
-            except ValueError, ValidationError:
-                logger.warning(
+            except (ValueError, ValidationError) as exc:
+                # Surface corrupted audit rows as a hard failure.
+                # Silently skipping would hide security-relevant
+                # events from operators auditing SSRF block history
+                # and leave the Postgres sibling and SQLite repo
+                # with divergent contracts.
+                row_id = row[0] if row else "unknown"
+                msg = f"Failed to deserialize SSRF violation row {row_id!r}: {exc}"
+                logger.exception(
                     PERSISTENCE_SSRF_VIOLATION_QUERY_FAILED,
-                    error="failed to deserialize row",
-                    row_id=row[0] if row else "unknown",
+                    row_id=row_id,
+                    error=str(exc),
                 )
+                raise PersistenceError(msg) from exc
         return tuple(results)
 
     async def update_status(
@@ -233,6 +241,12 @@ class SQLiteSsrfViolationRepository:
         """
         if status == SsrfViolationStatus.PENDING:
             msg = "Cannot transition a violation back to PENDING"
+            logger.warning(
+                PERSISTENCE_SSRF_VIOLATION_SAVE_FAILED,
+                violation_id=violation_id,
+                reason="invalid_status_transition",
+                attempted_status=status.value,
+            )
             raise ValueError(msg)
 
         resolved_at_utc = resolved_at.astimezone(UTC).isoformat()

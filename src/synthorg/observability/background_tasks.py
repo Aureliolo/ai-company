@@ -81,7 +81,10 @@ class BackgroundTaskRegistry:
         """
         task = asyncio.create_task(coro)
         self._tasks.add(task)
-        task.add_done_callback(self._make_done_callback(event, context))
+        # Snapshot the context dict up-front so mutations to the
+        # caller's ``**kwargs`` source after ``spawn`` returns cannot
+        # race the done-callback's log line.
+        task.add_done_callback(self._make_done_callback(event, dict(context)))
         return task
 
     def _make_done_callback(

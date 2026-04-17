@@ -5,6 +5,8 @@ plug in with a single ``elif`` here -- the rest of the codebase
 never sees the concrete handler class.
 """
 
+from synthorg.observability import get_logger
+from synthorg.observability.events.metrics import METRICS_COLLECTOR_INITIALIZED
 from synthorg.observability.tracing.config import (
     DisabledTraceConfig,
     OtlpHttpTraceConfig,
@@ -14,6 +16,8 @@ from synthorg.observability.tracing.protocol import (
     NoopTraceHandler,
     TraceHandler,
 )
+
+logger = get_logger(__name__)
 
 
 def build_trace_handler(config: TraceConfig) -> TraceHandler:
@@ -35,6 +39,11 @@ def build_trace_handler(config: TraceConfig) -> TraceHandler:
             dynamic construction).
     """
     if isinstance(config, DisabledTraceConfig):
+        logger.debug(
+            METRICS_COLLECTOR_INITIALIZED,
+            component="trace",
+            kind="disabled",
+        )
         return NoopTraceHandler()
     if isinstance(config, OtlpHttpTraceConfig):
         # Lazy import -- OTel SDK only imported when actually
@@ -43,6 +52,16 @@ def build_trace_handler(config: TraceConfig) -> TraceHandler:
             OtlpTraceHandler,
         )
 
+        logger.info(
+            METRICS_COLLECTOR_INITIALIZED,
+            component="trace",
+            kind=config.kind,
+            endpoint=config.endpoint,
+        )
         return OtlpTraceHandler(config)
     msg = f"Unsupported TraceConfig variant: {type(config).__name__}"  # type: ignore[unreachable]
+    logger.error(
+        "trace.config.unsupported_variant",
+        variant=type(config).__name__,
+    )
     raise ValueError(msg)

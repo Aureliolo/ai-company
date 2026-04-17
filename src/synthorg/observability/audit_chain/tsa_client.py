@@ -23,6 +23,7 @@ Reference: RFC 3161, RFC 5816.
 
 import asyncio
 import hashlib
+import hmac
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
@@ -42,10 +43,12 @@ from synthorg.observability.events.security import (
     SECURITY_TIMESTAMP_GRANTED,
     SECURITY_TIMESTAMP_HASH_MISMATCH,
     SECURITY_TIMESTAMP_NONCE_MISMATCH,
+    SECURITY_TIMESTAMP_PROTOCOL_ERROR,
     SECURITY_TIMESTAMP_REJECTED,
     SECURITY_TIMESTAMP_REQUESTED,
     SECURITY_TIMESTAMP_SIGNATURE_INVALID,
     SECURITY_TIMESTAMP_TIMEOUT,
+    SECURITY_TIMESTAMP_TRANSPORT_ERROR,
 )
 
 logger = get_logger(__name__)
@@ -291,13 +294,32 @@ class TsaClient:
             msg = f"TSA request timed out after {self._timeout_sec}s"
             raise TsaTimeoutError(msg) from exc
         except httpx.HTTPError as exc:
+            logger.warning(
+                SECURITY_TIMESTAMP_TRANSPORT_ERROR,
+                tsa_url=self._tsa_url,
+                error_type=type(exc).__name__,
+                error=str(exc),
+            )
             msg = f"TSA transport failure: {type(exc).__name__}"
             raise TsaTransportError(msg) from exc
         if response.status_code >= 400:  # noqa: PLR2004
+            logger.warning(
+                SECURITY_TIMESTAMP_TRANSPORT_ERROR,
+                tsa_url=self._tsa_url,
+                status_code=response.status_code,
+                reason_phrase=response.reason_phrase,
+            )
             msg = f"TSA returned HTTP {response.status_code}: {response.reason_phrase}"
             raise TsaTransportError(msg)
         content_type = response.headers.get("Content-Type", "")
         if _RESP_CONTENT_TYPE not in content_type:
+            logger.warning(
+                SECURITY_TIMESTAMP_PROTOCOL_ERROR,
+                tsa_url=self._tsa_url,
+                reason="unexpected_content_type",
+                content_type=content_type,
+                expected=_RESP_CONTENT_TYPE,
+            )
             msg = (
                 f"TSA returned unexpected Content-Type {content_type!r}; "
                 f"expected {_RESP_CONTENT_TYPE!r}"
@@ -310,13 +332,22 @@ class TsaClient:
 
         Serialized under ``_http_client_lock`` so concurrent first
         calls do not each construct their own client and leak it.
+        The default client is configured with explicit TLS
+        verification, bounded connection pool, and redirects
+        disabled (RFC 3161 TSAs are direct endpoints).
         """
-        if self._http_client is not None:
-            return self._http_client
         async with self._http_client_lock:
             if self._http_client is None:
-                self._http_client = httpx.AsyncClient(timeout=self._timeout_sec)
-        return self._http_client
+                self._http_client = httpx.AsyncClient(
+                    timeout=self._timeout_sec,
+                    verify=True,
+                    follow_redirects=False,
+                    limits=httpx.Limits(
+                        max_connections=10,
+                        max_keepalive_connections=5,
+                    ),
+                )
+            return self._http_client
 
 
 def _decode_response(raw: bytes) -> Any:
@@ -325,6 +356,13 @@ def _decode_response(raw: bytes) -> Any:
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
+        logger.warning(
+            SECURITY_TIMESTAMP_PROTOCOL_ERROR,
+            reason="decode_failed",
+            response_bytes=len(raw),
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )
         msg = f"TSA response is not a valid ASN.1 TimeStampResp: {exc}"
         raise TsaProtocolError(msg) from exc
 
@@ -353,13 +391,48 @@ def _check_hash_binding(
     hash_algorithm: str,
     tsa_url: str,
 ) -> None:
+    """Verify the response's MessageImprint matches the request.
+
+    Both the digest bytes AND the hashAlgorithm must match. A
+    malicious or compromised TSA could otherwise return a response
+    with a different algorithm OID whose digest bytes happen to
+    match the caller's request, and the audit chain would accept
+    it. Digest comparison is done with
+    :func:`hmac.compare_digest` for constant-time semantics.
+    """
     message_imprint = tst_info.message_imprint
+    # Algorithm (hashAlgorithm field) match -- the rfc3161_client
+    # exposes the decoded ``HashAlgorithm`` enum value when it
+    # recognises the OID. Missing/unknown algorithm attribute is
+    # treated as a mismatch because we cannot confirm the response
+    # was stamped with the algorithm we asked for.
+    response_algorithm = getattr(message_imprint, "hash_algorithm", None)
+    expected_algorithm = _HASH_ALGORITHMS[hash_algorithm]
+    if response_algorithm != expected_algorithm:
+        logger.error(
+            SECURITY_TIMESTAMP_HASH_MISMATCH,
+            tsa_url=tsa_url,
+            reason="algorithm_mismatch",
+            expected_algorithm=hash_algorithm,
+            actual_algorithm=str(response_algorithm),
+        )
+        msg = (
+            "TSA response MessageImprint hashAlgorithm does not match "
+            f"request algorithm {hash_algorithm!r} "
+            "(possible on-path tampering or TSA misbehaviour)"
+        )
+        raise TsaHashMismatchError(msg)
     actual = bytes(message_imprint.message)
-    if actual != expected_digest:
+    # Constant-time comparison avoids leaking digest-comparison
+    # timing information to an on-path adversary. The digest itself
+    # is not secret, but a security-critical check should use
+    # :func:`hmac.compare_digest` by convention.
+    if not hmac.compare_digest(actual, expected_digest):
         logger.error(
             SECURITY_TIMESTAMP_HASH_MISMATCH,
             tsa_url=tsa_url,
             hash_algorithm=hash_algorithm,
+            reason="digest_mismatch",
             expected_length=len(expected_digest),
             actual_length=len(actual),
         )
@@ -371,6 +444,11 @@ def _check_hash_binding(
 
 
 def _check_nonce(tst_info: Any, expected_nonce: int, tsa_url: str) -> None:
+    """Verify the response's nonce matches the request (replay guard).
+
+    Nonces are public values echoed in the request and response;
+    plain ``!=`` is safe here (no timing-oracle concern).
+    """
     actual = int(tst_info.nonce) if tst_info.nonce is not None else None
     if actual != expected_nonce:
         logger.error(

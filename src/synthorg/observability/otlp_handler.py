@@ -19,6 +19,12 @@ import structlog
 from structlog.stdlib import ProcessorFormatter
 
 from synthorg.observability.enums import OtlpProtocol
+from synthorg.observability.events.metrics import (
+    METRICS_OTLP_CALLBACK_ERROR,
+    METRICS_OTLP_EXPORT_FAILED,
+    METRICS_OTLP_FLUSHER_ERROR,
+    METRICS_OTLP_INVALID_CALLBACK,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -27,6 +33,14 @@ if TYPE_CHECKING:
 
     ExportCallback = Callable[[str, int], None]
     # Signature: (outcome: "success"|"failure", dropped_records: int) -> None
+
+_FLUSHER_THREAD_NAME = "log-otlp-flusher"
+
+# Dedicated logger for this module. A module-level structlog logger
+# avoids recursion: even if the root logger routes through
+# :class:`OtlpHandler`, every record produced from the flusher thread
+# is suppressed by the thread-name guard in :meth:`OtlpHandler.emit`.
+_internal_logger = structlog.stdlib.get_logger(__name__)
 
 # Correlation ID field names injected by structlog contextvars
 _CORRELATION_FIELDS = ("request_id", "task_id", "agent_id")
@@ -96,14 +110,38 @@ class OtlpHandler(logging.Handler):
         self._flusher = threading.Thread(
             target=self._flush_loop,
             daemon=True,
-            name="log-otlp-flusher",
+            name=_FLUSHER_THREAD_NAME,
         )
         if _start_flusher:
             self._flusher.start()
 
+    def emit(self, record: logging.LogRecord) -> None:
+        """Queue a record for batched OTLP export.
+
+        Records produced from the handler's own flusher thread are
+        dropped to prevent infinite recursion: when the flusher logs
+        an export failure, routing that log through this handler
+        would requeue it for export, cycling forever.
+        """
+        if threading.current_thread().name == _FLUSHER_THREAD_NAME:
+            return
+        self._enqueue(record)
+
+    def _enqueue(self, record: logging.LogRecord) -> None:
+        try:
+            self._queue.put_nowait(record)
+            with self._pending_lock:
+                self._pending_count += 1
+                if self._pending_count >= self._batch_size:
+                    self._batch_ready.set()
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            self.handleError(record)
+
     def set_export_callback(
         self,
-        callback: ExportCallback | None,
+        callback: ExportCallback | None | Any,
     ) -> None:
         """Register a callback invoked after every export batch.
 
@@ -116,21 +154,24 @@ class OtlpHandler(logging.Handler):
 
         Thread safety: invoked from the flusher thread; the callback
         must be safe to call concurrently with ``emit``.
-        """
-        self._export_callback = callback
 
-    def emit(self, record: logging.LogRecord) -> None:
-        """Queue a record for batched OTLP export."""
-        try:
-            self._queue.put_nowait(record)
-            with self._pending_lock:
-                self._pending_count += 1
-                if self._pending_count >= self._batch_size:
-                    self._batch_ready.set()
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
-            self.handleError(record)
+        Raises:
+            TypeError: When ``callback`` is not callable (and not
+                ``None``). Failing fast avoids surfacing the
+                mistake only when the flusher thread eventually
+                calls it.
+        """
+        # Typed callers satisfy this at check time; the runtime
+        # guard catches misuse from untyped code (tests, config
+        # loaders, dynamic wiring).
+        if callback is not None and not callable(callback):
+            _internal_logger.warning(
+                METRICS_OTLP_INVALID_CALLBACK,
+                provided_type=type(callback).__name__,
+            )
+            msg = "export callback must be callable or None"
+            raise TypeError(msg)
+        self._export_callback = callback
 
     def _increment_dropped(self, count: int) -> None:
         """Atomically increment the dropped record counter.
@@ -191,11 +232,10 @@ class OtlpHandler(logging.Handler):
                 self._drain_and_flush()
             except MemoryError, RecursionError:
                 raise
-            except Exception as exc:
-                print(  # noqa: T201
-                    f"ERROR: log-otlp-flusher encountered unexpected error: {exc}",
-                    file=sys.stderr,
-                    flush=True,
+            except Exception:
+                _internal_logger.error(
+                    METRICS_OTLP_FLUSHER_ERROR,
+                    exc_info=True,
                 )
 
     def _drain_and_flush(self) -> None:
@@ -269,12 +309,13 @@ class OtlpHandler(logging.Handler):
             self._increment_dropped(len(log_records))
             with self._pending_lock:
                 total_dropped = self._dropped_count
-            print(  # noqa: T201
-                f"WARNING: OTLP log export failed to {url}: {exc} "
-                f"(dropped {len(log_records)} records, "
-                f"total dropped: {total_dropped})",
-                file=sys.stderr,
-                flush=True,
+            _internal_logger.warning(
+                METRICS_OTLP_EXPORT_FAILED,
+                url=url,
+                error_type=type(exc).__name__,
+                error=str(exc),
+                dropped_records=len(log_records),
+                total_dropped=total_dropped,
             )
             self._invoke_export_callback("failure", len(log_records))
             return
@@ -293,12 +334,14 @@ class OtlpHandler(logging.Handler):
             callback(outcome, dropped)
         except MemoryError, RecursionError:
             raise
-        except Exception as exc:
-            print(  # noqa: T201
-                f"WARNING: otlp export callback raised: {exc}",
-                file=sys.stderr,
-                flush=True,
+        except Exception:
+            _internal_logger.warning(
+                METRICS_OTLP_CALLBACK_ERROR,
+                outcome=outcome,
+                dropped_records=dropped,
+                exc_info=True,
             )
+            return
 
     def close(self) -> None:
         """Signal shutdown, flush remaining records, stop thread."""
@@ -308,6 +351,9 @@ class OtlpHandler(logging.Handler):
         if self._flusher.is_alive():
             self._flusher.join(timeout=join_timeout)
             if self._flusher.is_alive():
+                # close() may run before the logging system is fully
+                # re-configured (e.g. atexit), so prefer stderr to
+                # avoid ordering hazards during shutdown.
                 print(  # noqa: T201
                     "WARNING: log-otlp-flusher thread did not stop "
                     f"within {join_timeout:.1f}s timeout",

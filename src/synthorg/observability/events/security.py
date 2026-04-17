@@ -59,6 +59,8 @@ SECURITY_TIMESTAMP_REQUESTED: Final[str] = "security.timestamp.requested"
 SECURITY_TIMESTAMP_GRANTED: Final[str] = "security.timestamp.granted"
 SECURITY_TIMESTAMP_REJECTED: Final[str] = "security.timestamp.rejected"
 SECURITY_TIMESTAMP_TIMEOUT: Final[str] = "security.timestamp.timeout"
+SECURITY_TIMESTAMP_TRANSPORT_ERROR: Final[str] = "security.timestamp.transport_error"
+SECURITY_TIMESTAMP_PROTOCOL_ERROR: Final[str] = "security.timestamp.protocol_error"
 SECURITY_TIMESTAMP_HASH_MISMATCH: Final[str] = "security.timestamp.hash_mismatch"
 SECURITY_TIMESTAMP_NONCE_MISMATCH: Final[str] = "security.timestamp.nonce_mismatch"
 SECURITY_TIMESTAMP_SIGNATURE_INVALID: Final[str] = (
@@ -66,9 +68,9 @@ SECURITY_TIMESTAMP_SIGNATURE_INVALID: Final[str] = (
 )
 SECURITY_TIMESTAMP_INCIDENT: Final[str] = "security.timestamp.incident"
 
-# Audit chain sink lifecycle (emit errors bypass the sink itself to avoid loops)
-SECURITY_AUDIT_CHAIN_EMIT_ERROR: Final[str] = "security.audit_chain.emit_error"
-SECURITY_AUDIT_CHAIN_CALLBACK_ERROR: Final[str] = "security.audit_chain.callback_error"
+# Audit chain sink internal errors live in ``events.audit_chain``
+# with a non-"security." prefix so they can't recurse through
+# ``AuditChainSink.emit``. Policy-engine events below are unaffected.
 
 # ── Policy engine events ────────────────────────────────────────
 SECURITY_POLICY_EVALUATE_START: Final[str] = "security.policy.evaluate.start"

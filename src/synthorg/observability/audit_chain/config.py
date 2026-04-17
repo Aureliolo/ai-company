@@ -5,7 +5,7 @@ from pathlib import Path  # noqa: TC003
 from types import MappingProxyType
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 
@@ -101,8 +101,12 @@ class AuditChainConfig(BaseModel):
     tsa_timeout_sec: float = Field(
         default=5.0,
         gt=0,
-        le=30.0,
-        description="HTTP timeout in seconds for TSA requests",
+        le=5.0,
+        description=(
+            "HTTP timeout in seconds for TSA requests. Capped by the "
+            "audit sink's 5.0s _SIGNING_EXECUTOR deadline -- anything "
+            "longer guarantees fallback behaviour."
+        ),
     )
     tsa_hash_algorithm: Literal["sha256", "sha512"] = Field(
         default="sha256",
@@ -156,6 +160,7 @@ class AuditChainConfig(BaseModel):
             raise ValueError(msg)
         return self
 
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def effective_tsa_url(self) -> str | None:
         """Return the concrete TSA URL for this config, or ``None``.

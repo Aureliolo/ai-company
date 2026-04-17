@@ -16,6 +16,7 @@ from synthorg.observability.events.execution import (
     EXECUTION_ENGINE_COST_RECORDED,
     EXECUTION_ENGINE_COST_SKIPPED,
 )
+from synthorg.observability.metrics_hub import record_provider_usage
 
 if TYPE_CHECKING:
     from synthorg.budget.tracker import CostTracker
@@ -91,6 +92,17 @@ async def record_execution_costs(  # noqa: PLR0913
             agent_id,
             task_id,
             tracker=tracker,
+        )
+        # Mirror the cost record to the Prometheus collector so
+        # ``synthorg_provider_tokens_total`` /
+        # ``synthorg_provider_cost_usd_total`` reflect every paid
+        # completion. No-op when no collector is wired.
+        record_provider_usage(
+            provider=identity.model.provider,
+            model=identity.model.model_id,
+            input_tokens=turn.input_tokens,
+            output_tokens=turn.output_tokens,
+            cost_usd=turn.cost_usd,
         )
 
 

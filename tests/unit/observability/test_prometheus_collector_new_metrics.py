@@ -22,12 +22,22 @@ pytestmark = pytest.mark.unit
 def _parse(
     collector: PrometheusCollector,
 ) -> dict[str, list[tuple[dict[str, str], float]]]:
-    """Scrape and parse into {name: [(labels, value), ...]}."""
+    """Scrape and parse into ``{name: [(labels, value), ...]}``.
+
+    Filters out counter ``_created`` samples (prometheus_client emits
+    both ``_total`` and ``_created`` per labelset): without the filter,
+    callers using ``next(s for lbl, s in ...)`` could pick up the
+    timestamp sample instead of the counter, silently breaking
+    assertions. Histogram ``_bucket`` samples are also skipped; tests
+    that care about buckets inspect the raw scrape text directly.
+    """
     text = generate_latest(collector.registry).decode("utf-8")
     out: dict[str, list[tuple[dict[str, str], float]]] = {}
     for family in text_string_to_metric_families(text):
         out.setdefault(family.name, [])
         for sample in family.samples:
+            if sample.name.endswith(("_created", "_bucket")):
+                continue
             out[family.name].append((dict(sample.labels), sample.value))
     return out
 

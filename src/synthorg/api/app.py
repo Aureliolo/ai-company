@@ -682,6 +682,25 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
                     exc_info=True,
                 )
 
+        # Wire distributed trace handler and bridge OTLP log /
+        # audit-chain export outcomes to the Prometheus collector.
+        # ``wire_observability_callbacks`` is idempotent so it is
+        # safe to re-run across test-fixture startup cycles.
+        try:
+            from synthorg.observability.startup_wiring import (  # noqa: PLC0415
+                wire_observability_callbacks,
+            )
+
+            wire_observability_callbacks(app_state)
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.warning(
+                API_APP_STARTUP,
+                error="observability callback wiring failed (non-fatal)",
+                exc_info=True,
+            )
+
         # Wire workflow execution observer (needs connected persistence).
         # Idempotent: only register when no WorkflowExecutionObserver is
         # already present.  Startup may re-enter via the shared-app test

@@ -8,9 +8,9 @@ from typing import TYPE_CHECKING
 
 from synthorg.observability import get_logger
 from synthorg.observability.audit_chain.chain import HashChain
-from synthorg.observability.events.security import (
-    SECURITY_AUDIT_CHAIN_CALLBACK_ERROR,
-    SECURITY_AUDIT_CHAIN_EMIT_ERROR,
+from synthorg.observability.events.audit_chain import (
+    AUDIT_CHAIN_CALLBACK_ERROR,
+    AUDIT_CHAIN_EMIT_ERROR,
 )
 
 if TYPE_CHECKING:
@@ -30,7 +30,11 @@ logger = get_logger(__name__)
 
 # Dedicated thread pool for async-to-sync bridging.  A single worker
 # avoids contention and keeps chain appends sequential.
-_SIGNING_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="audit-sign")
+_SIGNING_EXECUTOR_PREFIX = "audit-sign"
+_SIGNING_EXECUTOR = ThreadPoolExecutor(
+    max_workers=1,
+    thread_name_prefix=_SIGNING_EXECUTOR_PREFIX,
+)
 
 
 class AuditChainSink(logging.Handler):
@@ -96,9 +100,21 @@ class AuditChainSink(logging.Handler):
 
         Non-security events are silently ignored.
 
+        Re-entry from the sink's own signing thread is suppressed:
+        the signer, TSA client, and any helper they call log events
+        of their own (including ``security.timestamp.*``) that would
+        otherwise loop back into this handler through the logging
+        hierarchy and eventually deadlock on the single-worker
+        ``_SIGNING_EXECUTOR``. Records originating from a thread
+        named ``audit-sign`` are dropped here and handled by the
+        sibling handlers on the same logger.
+
         Args:
             record: Log record from the logging framework.
         """
+        if threading.current_thread().name.startswith(_SIGNING_EXECUTOR_PREFIX):
+            return
+
         _AUDITED_PREFIXES = ("security.", "tool.registry.integrity.")  # noqa: N806
         msg = record.getMessage()
         if not any(msg.startswith(p) for p in _AUDITED_PREFIXES):
@@ -149,33 +165,36 @@ class AuditChainSink(logging.Handler):
                 asyncio.run,
                 self._timestamp_provider.get_timestamp(),
             )
-            timestamp = ts_future.result(timeout=5.0)
+            ts_result = ts_future.result(timeout=5.0)
 
             with self._lock:
                 self._chain.append(
                     event_data=data,
                     signature=signed.signature,
-                    timestamp=timestamp,
+                    timestamp=ts_result.timestamp,
                 )
                 depth = len(self._chain.entries)
-            # Determine signed vs fallback by inspecting the provider.
-            # ResilientTimestampProvider can yield either; infer by
-            # whether the provider has a tsa_url attribute (set only
-            # on ResilientTimestampProvider).
-            status = (
-                "signed"
-                if getattr(self._timestamp_provider, "tsa_url", None) is not None
-                else "fallback"
+            # The provider tells us its origin directly; we only
+            # record "signed" when a TSA actually signed the
+            # timestamp -- fallbacks from TSA failure and plain
+            # local-clock providers both report non-signed status
+            # so audit-chain append metrics accurately reflect how
+            # many events received a cryptographic timestamp.
+            status = "signed" if ts_result.source == "signed" else "fallback"
+            self._invoke_append_callback(
+                status,
+                depth,
+                ts_result.timestamp.timestamp(),
             )
-            self._invoke_append_callback(status, depth, timestamp.timestamp())
 
         except MemoryError, RecursionError:
             raise
         except Exception:
-            # Use a non-security event to avoid re-entering this
-            # handler (all "security." events would loop back).
+            # Use a non-audited event prefix (``audit_chain.*``) so
+            # this error log can't loop back through ``emit()`` and
+            # recurse on the single-worker signing executor.
             logger.error(
-                SECURITY_AUDIT_CHAIN_EMIT_ERROR,
+                AUDIT_CHAIN_EMIT_ERROR,
                 exc_info=True,
             )
             self._invoke_append_callback("error", 0, 0.0)
@@ -200,6 +219,6 @@ class AuditChainSink(logging.Handler):
             raise
         except Exception:
             logger.warning(
-                SECURITY_AUDIT_CHAIN_CALLBACK_ERROR,
+                AUDIT_CHAIN_CALLBACK_ERROR,
                 exc_info=True,
             )

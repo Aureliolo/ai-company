@@ -303,6 +303,16 @@ class PrometheusCollector:
             cost_usd: Computed cost in USD for this call.
         """
         if input_tokens < 0 or output_tokens < 0 or cost_usd < 0:
+            logger.warning(
+                METRICS_SCRAPE_FAILED,
+                component="provider_usage",
+                reason="negative_value",
+                provider=provider,
+                model=model,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                cost_usd=cost_usd,
+            )
             msg = "record_provider_usage: token counts and cost must be non-negative"
             raise ValueError(msg)
         self._provider_tokens.labels(
@@ -343,6 +353,14 @@ class PrometheusCollector:
         """
         status_class = _status_class(status_code)
         if status_class not in VALID_STATUS_CLASSES:
+            logger.warning(
+                METRICS_SCRAPE_FAILED,
+                component="api_request",
+                reason="invalid_status_code",
+                method=method,
+                route=route,
+                status_code=status_code,
+            )
             msg = f"record_api_request: invalid status_code {status_code!r}"
             raise ValueError(msg)
         require_non_negative("record_api_request: duration_sec", duration_sec)

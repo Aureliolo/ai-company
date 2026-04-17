@@ -13,6 +13,7 @@ Covers:
   exception.
 """
 
+import threading
 from collections.abc import Generator
 
 import pytest
@@ -38,6 +39,13 @@ from synthorg.observability.tracing.factory import build_trace_handler as _build
 pytestmark = pytest.mark.unit
 
 
+# OTel sets the global ``TracerProvider`` through a one-shot ``Once``
+# guard; two tests running concurrently under pytest-xdist would
+# otherwise race on the global slot. A module-level lock funnels the
+# install/uninstall through one test at a time per worker process.
+_tracer_provider_lock = threading.Lock()
+
+
 @pytest.fixture
 def in_memory_tracer() -> Generator[InMemorySpanExporter]:
     """Install a global ``TracerProvider`` backed by InMemorySpanExporter.
@@ -45,19 +53,20 @@ def in_memory_tracer() -> Generator[InMemorySpanExporter]:
     Cleans up after the test by resetting the global provider. Each
     test starts with a clean exporter.
     """
-    exporter = InMemorySpanExporter()
-    provider = TracerProvider(resource=Resource.create({"service.name": "test"}))
-    provider.add_span_processor(SimpleSpanProcessor(exporter))
-    original = _ot_trace.get_tracer_provider()
-    _ot_trace._TRACER_PROVIDER_SET_ONCE._done = False
-    _ot_trace._TRACER_PROVIDER = None
-    _ot_trace.set_tracer_provider(provider)
-    try:
-        yield exporter
-    finally:
-        provider.shutdown()
+    with _tracer_provider_lock:
+        exporter = InMemorySpanExporter()
+        provider = TracerProvider(resource=Resource.create({"service.name": "test"}))
+        provider.add_span_processor(SimpleSpanProcessor(exporter))
+        original = _ot_trace.get_tracer_provider()
         _ot_trace._TRACER_PROVIDER_SET_ONCE._done = False
-        _ot_trace._TRACER_PROVIDER = original
+        _ot_trace._TRACER_PROVIDER = None
+        _ot_trace.set_tracer_provider(provider)
+        try:
+            yield exporter
+        finally:
+            provider.shutdown()
+            _ot_trace._TRACER_PROVIDER_SET_ONCE._done = False
+            _ot_trace._TRACER_PROVIDER = original
 
 
 # -- Factory dispatch --------------------------------------------------------

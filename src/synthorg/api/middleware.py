@@ -203,7 +203,17 @@ def _record_request_metric(
         return
     try:
         collector = app_state.prometheus_collector
+    except MemoryError, RecursionError:
+        raise
     except Exception:
+        # Log the lookup failure so operators notice a metrics-
+        # pipeline regression rather than seeing silent drop-offs.
+        logger.warning(
+            METRICS_SCRAPE_FAILED,
+            component="api_request_duration",
+            reason="collector_access_failed",
+            exc_info=True,
+        )
         return
     try:
         collector.record_api_request(

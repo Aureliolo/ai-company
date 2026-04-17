@@ -18,6 +18,7 @@ import structlog
 
 from synthorg.observability.config import DEFAULT_SINKS, LogConfig, SinkConfig
 from synthorg.observability.enums import LogLevel, SinkType
+from synthorg.observability.log_trace_correlation import inject_trace_context
 from synthorg.observability.processors import sanitize_sensitive_fields
 from synthorg.observability.sinks import SINK_ROUTING, build_handler
 
@@ -69,6 +70,9 @@ _BASE_PROCESSORS: tuple[Any, ...] = (
     structlog.processors.TimeStamper(fmt="iso", utc=True),
     structlog.processors.StackInfoRenderer(),
     structlog.processors.UnicodeDecoder(),
+    # Log <-> trace correlation: no-op when OTel has no active
+    # span (including when tracing is disabled entirely).
+    inject_trace_context,
     sanitize_sensitive_fields,
 )
 

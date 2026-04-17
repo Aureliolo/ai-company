@@ -9,6 +9,9 @@ stays below the 800-line limit mandated by ``CLAUDE.md``.
 
 from typing import Final
 
+from synthorg.observability import get_logger
+from synthorg.observability.events.metrics import METRICS_SCRAPE_FAILED
+
 __all__ = [
     "VALID_AUDIT_APPEND_STATUSES",
     "VALID_OTLP_KINDS",
@@ -23,17 +26,43 @@ __all__ = [
     "status_class",
 ]
 
+logger = get_logger(__name__)
+
 
 def require_label(label: str, value: str, valid: frozenset[str]) -> None:
-    """Raise ``ValueError`` if *value* is not in the allowed set."""
+    """Raise ``ValueError`` if *value* is not in the allowed set.
+
+    Emits a ``WARNING`` log with the rejected value before raising
+    so a misbehaving call site is visible in monitoring -- a bare
+    ``ValueError`` at the raise site would be invisible unless
+    every caller logged it themselves.
+    """
     if value not in valid:
+        logger.warning(
+            METRICS_SCRAPE_FAILED,
+            reason="invalid_label",
+            label=label,
+            rejected_value=value,
+            allowed=sorted(valid),
+        )
         msg = f"Unknown {label} {value!r}; expected one of {sorted(valid)}"
         raise ValueError(msg)
 
 
 def require_non_negative(label: str, value: float | int) -> None:
-    """Raise ``ValueError`` if *value* is negative."""
+    """Raise ``ValueError`` if *value* is negative.
+
+    Emits a ``WARNING`` log with the rejected numeric input before
+    raising so cardinality / value regressions are discoverable in
+    metrics pipelines.
+    """
     if value < 0:
+        logger.warning(
+            METRICS_SCRAPE_FAILED,
+            reason="negative_value",
+            label=label,
+            rejected_value=value,
+        )
         msg = f"{label} must be non-negative, got {value!r}"
         raise ValueError(msg)
 

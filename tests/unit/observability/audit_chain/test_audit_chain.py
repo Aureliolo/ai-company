@@ -159,8 +159,9 @@ class TestLocalClockProvider:
 
     async def test_returns_utc_datetime(self) -> None:
         provider = LocalClockProvider()
-        ts = await provider.get_timestamp()
-        assert ts.tzinfo is not None
+        result = await provider.get_timestamp()
+        assert result.timestamp.tzinfo is not None
+        assert result.source == "local_clock"
 
 
 @pytest.mark.unit
@@ -182,8 +183,9 @@ class TestResilientTimestampProvider:
 
         client.request_timestamp = _boom  # type: ignore[assignment,method-assign]
         provider = ResilientTimestampProvider(client)
-        ts = await provider.get_timestamp()
-        assert ts.tzinfo is not None
+        result = await provider.get_timestamp()
+        assert result.timestamp.tzinfo is not None
+        assert result.source == "fallback"
 
     async def test_security_incidents_propagate(self) -> None:
         """Hash / nonce / signature failures must NOT silently fall back.

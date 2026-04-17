@@ -12,6 +12,7 @@ from synthorg.observability.events.security import (
     SECURITY_POLICY_ENGINE_ERROR,
     SECURITY_POLICY_EVALUATE_START,
 )
+from synthorg.observability.metrics_hub import record_security_verdict
 from synthorg.security.policy_engine.models import (
     PolicyActionRequest,
     PolicyDecision,
@@ -106,6 +107,11 @@ class CedarPolicyEngine:
                 allowed=allowed,
                 latency_ms=latency_ms,
             )
+            # Record the verdict in Prometheus so the dashboards
+            # expose allow/deny trends.  No-op when the collector is
+            # not wired, keeping the Cedar engine decoupled from
+            # ``AppState``.
+            record_security_verdict("allow" if allowed else "deny")
 
             return PolicyDecision(
                 allow=allowed,

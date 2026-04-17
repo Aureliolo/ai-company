@@ -261,7 +261,17 @@ class ApprovalTimeoutScheduler:
         item: ApprovalItem,
         action: TimeoutAction,
     ) -> None:
-        """Best-effort notification for an approval escalation."""
+        """Dispatch an escalation notification.
+
+        Runs inside :class:`BackgroundTaskRegistry` so any exception
+        is captured by the registry's done-callback and logged as
+        ``NOTIFICATION_SEND_FAILED``. The previous version wrapped
+        the dispatch call in a broad ``try/except`` that swallowed
+        exceptions; that defeated the registry's failure-visibility
+        guarantee (issue #1404) and was the whole reason
+        notifications were moved behind the registry in the first
+        place.
+        """
         if self._notification_dispatcher is None:
             return
         from synthorg.notifications.models import (  # noqa: PLC0415
@@ -270,26 +280,16 @@ class ApprovalTimeoutScheduler:
             NotificationSeverity,
         )
 
-        try:
-            await self._notification_dispatcher.dispatch(
-                Notification(
-                    category=NotificationCategory.SECURITY,
-                    severity=NotificationSeverity.WARNING,
-                    title=f"Approval escalated: {item.id}",
-                    body=action.reason or "",
-                    source="security.timeout.scheduler",
-                    metadata={
-                        "approval_id": item.id,
-                        "escalate_to": action.escalate_to,
-                    },
-                ),
-            )
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
-            logger.warning(
-                TIMEOUT_SCHEDULER_ERROR,
-                approval_id=item.id,
-                error="notification dispatch failed",
-                exc_info=True,
-            )
+        await self._notification_dispatcher.dispatch(
+            Notification(
+                category=NotificationCategory.SECURITY,
+                severity=NotificationSeverity.WARNING,
+                title=f"Approval escalated: {item.id}",
+                body=action.reason or "",
+                source="security.timeout.scheduler",
+                metadata={
+                    "approval_id": item.id,
+                    "escalate_to": action.escalate_to,
+                },
+            ),
+        )

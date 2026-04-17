@@ -661,7 +661,20 @@ class ToolInvoker:
             tool_name=tool_call.name,
             tool_call_id=tool_call.id,
         ) as span:
-            result = await self._invoke_single_inner(tool_call)
+            try:
+                result = await self._invoke_single_inner(tool_call)
+            except asyncio.CancelledError:
+                # Cancellation surfaces as its own outcome so
+                # downstream dashboards can distinguish intentional
+                # timeout/shutdown from actual errors.
+                span.set_attribute("tool.outcome", "cancelled")
+                raise
+            except MemoryError, RecursionError:
+                span.set_attribute("tool.outcome", "error")
+                raise
+            except Exception:
+                span.set_attribute("tool.outcome", "error")
+                raise
             span.set_attribute(
                 "tool.outcome",
                 "error" if result.is_error else "success",

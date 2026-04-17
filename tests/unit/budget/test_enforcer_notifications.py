@@ -127,7 +127,9 @@ async def test_daily_limit_notification_failure_logs_error(
     failures = [e for e in captured if e["event"] == NOTIFICATION_SEND_FAILED]
     assert len(failures) == 1
     entry: Any = failures[0]
+    assert entry["log_level"] == "error"
     assert entry["owner"] == "budget.enforcer"
     assert entry["severity"] == "warning"
     assert entry["trigger"] == "daily_agent_limit"
     assert entry["agent_id"] == "agent-2"
+    assert entry["error_type"] == "RuntimeError"

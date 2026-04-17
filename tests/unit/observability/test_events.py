@@ -285,6 +285,9 @@ class TestEventConstants:
             "capture",
             "fine_tune",
             "propagation",
+            # Added in #1436 to keep sink internal errors out of
+            # the audited "security.*" namespace.
+            "audit_chain",
         }
         discovered = {info.name for info in pkgutil.iter_modules(events.__path__)}
         assert discovered == expected

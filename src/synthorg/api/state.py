@@ -55,6 +55,7 @@ from synthorg.observability.events.settings import SETTINGS_SERVICE_SWAPPED
 from synthorg.observability.prometheus_collector import (
     PrometheusCollector,  # noqa: TC001
 )
+from synthorg.observability.tracing.protocol import TraceHandler  # noqa: TC001
 from synthorg.ontology.drift.service import DriftDetectionService  # noqa: TC001
 from synthorg.ontology.drift.store import DriftReportStore  # noqa: TC001
 from synthorg.ontology.service import OntologyService  # noqa: TC001
@@ -156,6 +157,7 @@ class AppState:
         "_task_engine",
         "_ticket_store",
         "_tool_invocation_tracker",
+        "_trace_handler",
         "_training_service",
         "_trust_service",
         "_tunnel_provider",
@@ -254,6 +256,7 @@ class AppState:
         self._mcp_catalog_service = mcp_catalog_service
         self._mcp_installations_repo = mcp_installations_repo
         self._prometheus_collector: PrometheusCollector | None = None
+        self._trace_handler: TraceHandler | None = None
         self._fine_tune_orchestrator: FineTuneOrchestrator | None = None
         self._config_resolver: ConfigResolver | None = None
         self._provider_management: ProviderManagementService | None = None
@@ -365,6 +368,26 @@ class AppState:
     ) -> None:
         """Attach the Prometheus collector (once-only)."""
         self._set_once("_prometheus_collector", collector, "Prometheus collector")
+
+    @property
+    def has_trace_handler(self) -> bool:
+        """Check whether the distributed trace handler is configured."""
+        return self._trace_handler is not None
+
+    @property
+    def trace_handler(self) -> TraceHandler:
+        """Return the distributed trace handler or raise 503."""
+        return self._require_service(self._trace_handler, "trace_handler")
+
+    def set_trace_handler(self, handler: TraceHandler) -> None:
+        """Attach the distributed trace handler (once-only).
+
+        Wired from ``on_startup`` via
+        :func:`synthorg.observability.tracing.build_trace_handler`.
+        When tracing is disabled, a :class:`NoopTraceHandler` is
+        installed so callers always see a valid handler.
+        """
+        self._set_once("_trace_handler", handler, "trace handler")
 
     @property
     def has_artifact_storage(self) -> bool:

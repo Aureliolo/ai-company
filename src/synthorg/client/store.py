@@ -2,9 +2,13 @@
 
 import asyncio
 from datetime import UTC, datetime
-from typing import Literal
+from types import MappingProxyType
+from typing import TYPE_CHECKING, Literal
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 from synthorg.client.models import (
     ClientFeedback,
@@ -35,12 +39,14 @@ SimulationRunStatus = Literal[
 _TERMINAL_STATUSES: frozenset[SimulationRunStatus] = frozenset(
     {"completed", "cancelled", "failed"},
 )
-_STATUS_EVENTS: dict[SimulationRunStatus, str] = {
-    "running": SIMULATION_RUN_STARTED,
-    "completed": SIMULATION_RUN_COMPLETED,
-    "cancelled": SIMULATION_RUN_CANCELLED,
-    "failed": SIMULATION_RUN_FAILED,
-}
+_STATUS_EVENTS: Mapping[SimulationRunStatus, str] = MappingProxyType(
+    {
+        "running": SIMULATION_RUN_STARTED,
+        "completed": SIMULATION_RUN_COMPLETED,
+        "cancelled": SIMULATION_RUN_CANCELLED,
+        "failed": SIMULATION_RUN_FAILED,
+    },
+)
 
 
 class FeedbackStore:
@@ -61,10 +67,13 @@ class FeedbackStore:
         async with self._lock:
             bucket = self._by_client.setdefault(feedback.client_id, [])
             bucket.append(feedback)
+            # Capture the count inside the lock so a concurrent
+            # ``record`` cannot skew the value we log.
+            feedback_count = len(bucket)
         logger.info(
             CLIENT_FEEDBACK_RECORDED,
             client_id=feedback.client_id,
-            feedback_count=len(bucket),
+            feedback_count=feedback_count,
         )
 
     async def list_for_client(
@@ -211,7 +220,11 @@ class SimulationStore:
             updated = existing.model_copy(update=updates)
             self._runs[simulation_id] = updated
         event = _STATUS_EVENTS.get(status)
-        if event is not None:
+        # Only emit a transition event when the status actually
+        # changed; logging on every no-op update (e.g. repeated
+        # ``running -> running`` progress writes) would inflate
+        # ``simulation_run_started`` counts.
+        if event is not None and existing.status != status:
             logger.info(
                 event,
                 simulation_id=simulation_id,
