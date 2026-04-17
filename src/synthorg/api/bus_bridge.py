@@ -156,12 +156,16 @@ class MessageBusBridge:
         budget is exhausted to avoid infinite log spam on broken
         channels.  Poll timeout and error budget are re-read each
         iteration so operator tuning via settings takes effect
-        without a restart.
+        without a restart.  Each iteration caches both values up
+        front so the receive/sleep pair and the error-budget check
+        observe the same values even if the operator edits the
+        setting mid-iteration.
         """
         consecutive_errors = 0
         while True:
+            poll_timeout = await self._get_poll_timeout()
+            max_errors = await self._get_max_consecutive_errors()
             try:
-                poll_timeout = await self._get_poll_timeout()
                 envelope = await self._bus.receive(
                     channel_name,
                     _SUBSCRIBER_ID,
@@ -179,7 +183,6 @@ class MessageBusBridge:
                 break
             except OSError, ConnectionError, TimeoutError:
                 consecutive_errors += 1
-                max_errors = await self._get_max_consecutive_errors()
                 if consecutive_errors >= max_errors:
                     logger.error(
                         API_BRIDGE_CHANNEL_DEAD,
@@ -194,7 +197,7 @@ class MessageBusBridge:
                     consecutive_errors=consecutive_errors,
                     exc_info=True,
                 )
-                await asyncio.sleep(await self._get_poll_timeout())
+                await asyncio.sleep(poll_timeout)
             except Exception:
                 logger.error(
                     API_BRIDGE_CHANNEL_DEAD,

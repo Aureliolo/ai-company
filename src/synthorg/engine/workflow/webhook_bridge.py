@@ -133,14 +133,21 @@ class WebhookEventBridge:
             logger.info(WEBHOOK_BRIDGE_STOPPED)
 
     async def _poll_loop(self) -> None:
-        """Poll ``#webhooks`` and forward events."""
+        """Poll ``#webhooks`` and forward events.
+
+        Poll timeout and max-error budget are cached per iteration so
+        the receive call and the error-budget check observe the same
+        values even if the operator edits the setting mid-iteration.
+        """
         consecutive_errors = 0
         while True:
+            poll_timeout = await self._get_poll_timeout()
+            max_errors = await self._get_max_consecutive_errors()
             try:
                 envelope = await self._bus.receive(
                     WEBHOOK_CHANNEL.name,
                     _SUBSCRIBER_ID,
-                    timeout=await self._get_poll_timeout(),
+                    timeout=poll_timeout,
                 )
                 if envelope is None:
                     continue
@@ -150,7 +157,7 @@ class WebhookEventBridge:
                 raise
             except Exception:
                 consecutive_errors += 1
-                if consecutive_errors >= await self._get_max_consecutive_errors():
+                if consecutive_errors >= max_errors:
                     logger.exception(
                         WEBHOOK_BRIDGE_POLL_ERROR,
                         error="too many consecutive errors, stopping",
