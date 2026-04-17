@@ -74,6 +74,11 @@ class PersonalityConfigFactory(ModelFactory[PersonalityConfig]):
 class SkillSetFactory(ModelFactory[SkillSet]):
     __model__ = SkillSet
 
+    # Always produce non-overlapping primary/secondary skill IDs so the
+    # SkillSet overlap validator cannot reject the generated instance.
+    primary = ()
+    secondary = ()
+
 
 class ModelConfigFactory(ModelFactory[ModelConfig]):
     __model__ = ModelConfig

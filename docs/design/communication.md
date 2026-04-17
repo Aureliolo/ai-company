@@ -168,11 +168,10 @@ of `AgentIdentity` -- only fields relevant to external capability discovery are 
 | `tools` | -- | No | Security-sensitive capability list |
 | `budget_limit` | -- | No | Internal financial data |
 
-The proposed [Skill model](agents.md#skill-model) is A2A AgentSkill-aligned and will
-enable lossless bidirectional mapping between internal skills and Agent Card capabilities.
-Once implemented, importing external Agent Cards will deserialize their `AgentSkill`
-objects directly into the internal `Skill` model with no field loss. Currently, skills are
-string-based and require manual mapping.
+The [Skill model](agents.md#skill-model) is A2A AgentSkill-aligned and enables
+lossless bidirectional mapping between internal skills and Agent Card capabilities.
+Importing external Agent Cards deserializes their `AgentSkill` objects directly into
+the internal `Skill` model with no field loss.
 
 ### Concept Mapping
 
@@ -206,7 +205,7 @@ a bidirectional reference for the gateway translation layer.
 | SynthOrg | A2A | Direction | Notes |
 |----------|-----|-----------|-------|
 | `AgentIdentity` | `AgentCard` | SynthOrg -> A2A | One-way projection (safe subset) |
-| `Skill` *(proposed)* | `AgentSkill` | Bidirectional | Lossless field correspondence (requires the enriched Skill model) |
+| `Skill` | `AgentSkill` | Bidirectional | Lossless field correspondence |
 | `SkillSet.primary` | `AgentCard.skills` (tagged `primary`) | SynthOrg -> A2A | Primary/secondary distinction preserved via tags |
 | `SkillSet.secondary` | `AgentCard.skills` (tagged `secondary`) | SynthOrg -> A2A | Primary/secondary distinction preserved via tags |
 

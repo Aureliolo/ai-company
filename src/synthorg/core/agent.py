@@ -151,6 +151,27 @@ class SkillSet(BaseModel):
         description="Secondary skills",
     )
 
+    @model_validator(mode="after")
+    def _validate_no_overlap(self) -> Self:
+        """Reject skills appearing in both primary and secondary tiers.
+
+        The routing scorer already excludes overlap during matching, but
+        an overlapping configuration is almost certainly a mistake (a
+        skill is either a core competency or supporting, not both).
+        Reject at construction so the problem surfaces as a config error
+        rather than a silent ranking artifact.
+        """
+        primary_ids = {s.id for s in self.primary}
+        secondary_ids = {s.id for s in self.secondary}
+        overlap = primary_ids & secondary_ids
+        if overlap:
+            msg = (
+                f"Skills cannot appear in both primary and secondary tiers: "
+                f"{sorted(overlap)}"
+            )
+            raise ValueError(msg)
+        return self
+
 
 class ModelConfig(BaseModel):
     """LLM model configuration for an agent.

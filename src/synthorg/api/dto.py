@@ -606,6 +606,8 @@ class RollbackAgentIdentityRequest(BaseModel):
     Attributes:
         target_version: Snapshot version number to restore content from
             (monotonic counter in the agent_identity_versions table).
+        reason: Optional human-readable justification recorded alongside
+            the evolution event for audit purposes.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -613,6 +615,10 @@ class RollbackAgentIdentityRequest(BaseModel):
     target_version: int = Field(
         ge=1,
         description="Snapshot version to rollback to",
+    )
+    reason: NotBlankStr | None = Field(
+        default=None,
+        description="Optional rollback justification for the audit trail",
     )
 
 

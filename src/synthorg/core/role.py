@@ -3,7 +3,11 @@
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from synthorg.core.enums import DepartmentName, SeniorityLevel
-from synthorg.core.types import ModelTier, NotBlankStr  # noqa: TC001
+from synthorg.core.types import (
+    ModelTier,
+    NotBlankStr,
+    validate_unique_strings,
+)
 from synthorg.ontology.decorator import ontology_entity
 
 
@@ -53,6 +57,24 @@ class Skill(BaseModel):
         le=1.0,
         description="Proficiency level in [0.0, 1.0]",
     )
+
+    @field_validator("tags", "input_modes", "output_modes")
+    @classmethod
+    def _reject_duplicate_entries(
+        cls,
+        value: tuple[str, ...],
+        info: object,
+    ) -> tuple[str, ...]:
+        """Reject duplicate entries within a tuple field.
+
+        Duplicates are silently nonsensical (e.g. the same tag listed twice)
+        and would confuse routing dedup logic downstream.  Reject at
+        construction so the issue surfaces in the API response rather than
+        as a subtle ranking bug.
+        """
+        field_name = getattr(info, "field_name", "value")
+        validate_unique_strings(value, field_name)
+        return value
 
 
 class Authority(BaseModel):

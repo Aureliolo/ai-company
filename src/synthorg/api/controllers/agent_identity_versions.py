@@ -251,12 +251,32 @@ class AgentIdentityVersionController(Controller):
                 status_code=404,
             )
 
+        # Defence in depth: the snapshot's entity id must match the URL path.
+        # A mismatch can only occur on corrupted/cross-entity rows -- refuse
+        # to mutate the wrong agent.
+        if str(target.snapshot.id) != agent_id:
+            logger.warning(
+                AGENT_IDENTITY_ROLLBACK_FAILED,
+                agent_id=agent_id,
+                error="target snapshot id does not match path agent_id",
+                snapshot_id=str(target.snapshot.id),
+            )
+            return Response(
+                content=ApiResponse[AgentIdentity](
+                    error="Target version belongs to a different agent",
+                ),
+                status_code=400,
+            )
+
         actor = get_auth_user_id(request)
+        rationale = f"rollback to v{data.target_version} by {actor}"
+        if data.reason is not None:
+            rationale = f"{rationale}: {data.reason}"
         try:
             rolled_back = await state.app_state.agent_registry.evolve_identity(
                 agent_id,
                 target.snapshot,
-                evolution_rationale=(f"rollback to v{data.target_version} by {actor}"),
+                evolution_rationale=rationale,
             )
         except AgentNotFoundError:
             logger.warning(
@@ -267,6 +287,21 @@ class AgentIdentityVersionController(Controller):
             return Response(
                 content=ApiResponse[AgentIdentity](error="Agent not found"),
                 status_code=404,
+            )
+        except ValueError as exc:
+            # evolve_identity raises ValueError when immutable fields
+            # (id/name/department) differ between the current registry entry
+            # and the restored snapshot.  Surface as 400, not 500.
+            logger.warning(
+                AGENT_IDENTITY_ROLLBACK_FAILED,
+                agent_id=agent_id,
+                error=f"immutable field mismatch: {exc}",
+            )
+            return Response(
+                content=ApiResponse[AgentIdentity](
+                    error=f"Cannot rollback: {exc}",
+                ),
+                status_code=400,
             )
 
         logger.info(

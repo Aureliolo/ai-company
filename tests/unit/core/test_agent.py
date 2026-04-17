@@ -261,6 +261,14 @@ class TestSkillSet:
         s = SkillSetFactory.build()
         assert isinstance(s, SkillSet)
 
+    def test_primary_secondary_overlap_rejected(self) -> None:
+        """A skill id cannot appear in both primary and secondary tiers."""
+        python = Skill(id="python", name="Python")
+        with pytest.raises(
+            ValidationError, match="Skills cannot appear in both primary and secondary"
+        ):
+            SkillSet(primary=(python,), secondary=(python,))
+
 
 # ── ModelConfig ────────────────────────────────────────────────────
 

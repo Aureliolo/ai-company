@@ -85,6 +85,26 @@ class TestSkill:
         assert len(skill.id) >= 1
         assert len(skill.name) >= 1
 
+    def test_duplicate_tags_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="Duplicate entries in tags"):
+            Skill(id="python", name="Python", tags=("backend", "backend"))
+
+    def test_duplicate_input_modes_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="Duplicate entries in input_modes"):
+            Skill(
+                id="python",
+                name="Python",
+                input_modes=("text/plain", "text/plain"),
+            )
+
+    def test_duplicate_output_modes_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="Duplicate entries in output_modes"):
+            Skill(
+                id="python",
+                name="Python",
+                output_modes=("text/plain", "text/plain"),
+            )
+
 
 # ── Authority ──────────────────────────────────────────────────────
 

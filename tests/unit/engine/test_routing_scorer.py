@@ -231,18 +231,10 @@ class TestAgentTaskScorer:
         candidate = scorer.score(agent, subtask)
         assert candidate.score >= 0.2
 
-    @pytest.mark.unit
-    def test_skill_in_both_primary_and_secondary(self) -> None:
-        """Skill in both primary and secondary is not double-counted."""
-        scorer = AgentTaskScorer()
-        agent = _make_agent(primary=("python",), secondary=("python",))
-        subtask = _make_subtask(required_skills=("python",))
-
-        candidate = scorer.score(agent, subtask)
-        # Primary match gives 0.4, secondary should not add 0.2
-        # plus seniority alignment (MID + MEDIUM = 0.2) = 0.6
-        assert candidate.score == pytest.approx(0.6)
-        assert candidate.matched_skills.count("python") == 1
+    # NOTE: "skill in both primary and secondary" is now rejected by the
+    # SkillSet model validator at construction time; the scorer's exclusion
+    # logic (`secondary_matched = ... - primary_matched`) is retained as
+    # defence in depth but is no longer reachable via the public API.
 
     @pytest.mark.unit
     def test_min_score_negative_rejected(self) -> None:
@@ -374,3 +366,37 @@ class TestAgentTaskScorer:
         candidate = scorer.score(agent, subtask)
         # No primary match (different id), so no tags to consider.
         assert candidate.score == 0.0
+
+    @pytest.mark.unit
+    def test_tag_match_fires_on_secondary_skill_tags(self) -> None:
+        """Tag bonus considers tags on matched SECONDARY skills, not only primary."""
+        scorer = AgentTaskScorer()
+        agent = _make_agent(
+            secondary=(Skill(id="sql", name="SQL", tags=("database",)),),
+            level=SeniorityLevel.JUNIOR,
+        )
+        subtask = _make_subtask(
+            required_skills=("sql",),
+            required_tags=("database",),
+        )
+        candidate = scorer.score(agent, subtask)
+        # Secondary contrib (1.0/1 * 0.2) + tag bonus (0.1) = 0.3
+        assert candidate.score == pytest.approx(0.3)
+
+    @pytest.mark.unit
+    def test_tag_match_unions_across_primary_and_secondary(self) -> None:
+        """Required tags may be covered by the union of tags on matched tiers."""
+        scorer = AgentTaskScorer()
+        agent = _make_agent(
+            primary=(Skill(id="python", name="Python", tags=("backend",)),),
+            secondary=(Skill(id="pytest", name="pytest", tags=("qa",)),),
+            level=SeniorityLevel.JUNIOR,
+        )
+        subtask = _make_subtask(
+            required_skills=("python", "pytest"),
+            required_tags=("backend", "qa"),
+        )
+        candidate = scorer.score(agent, subtask)
+        # primary (1.0/2 * 0.4 = 0.2) + secondary (1.0/2 * 0.2 = 0.1)
+        # + tag bonus (0.1) = 0.4
+        assert candidate.score == pytest.approx(0.4)

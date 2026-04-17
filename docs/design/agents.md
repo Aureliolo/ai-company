@@ -296,12 +296,26 @@ Identity versions are persisted in the `agent_identity_versions` table (see
 pre-configured `SQLiteVersionRepository[AgentIdentity]`.
 
 `AgentRegistryService` accepts an optional `VersioningService[AgentIdentity]`
-dependency (constructor injection). When wired:
+dependency (constructor injection). The app factory (`api.app:create_app`) auto-wires
+this dependency during startup so identity versioning is enabled out of the box --
+no manual configuration required. When wired:
 
 - `register()` snapshots the initial identity immediately after storing it.
 - `update_identity()` snapshots the updated identity after applying the change.
-- Both calls are best-effort: versioning failures are logged at WARNING and do not
+- `evolve_identity()` snapshots the restored identity on rollback.
+- All calls are best-effort: versioning failures are logged at WARNING and do not
   interrupt the registry mutation.
+
+### REST API
+
+Identity version history is exposed under `/api/v1/agents/{agent_id}/versions`:
+
+| Method | Path | Guard | Description |
+|--------|------|-------|-------------|
+| `GET` | `/{agent_id}/versions` | read | Paginated list of version snapshots (`offset`, `limit` default 20) |
+| `GET` | `/{agent_id}/versions/{version_num}` | read | Single version snapshot by monotonic version number |
+| `GET` | `/{agent_id}/versions/diff?from_version=N&to_version=M` | read | Field-level `AgentIdentityDiff` between two versions (`from_version < to_version` required) |
+| `POST` | `/{agent_id}/versions/rollback` | write | Restore a prior version.  Body: `{target_version: int, reason?: str}`.  Executed via `evolve_identity`, producing a new snapshot whose content hash equals the restored version -- rollbacks never mutate history. |
 
 ### Identity Diff
 

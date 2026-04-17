@@ -99,7 +99,11 @@ class TestListVersions:
             headers=make_auth_headers("ceo"),
         )
         assert resp.status_code == 200
-        assert resp.json()["data"] == []
+        body = resp.json()
+        assert body["data"] == []
+        assert body["pagination"]["total"] == 0
+        assert body["pagination"]["offset"] == 0
+        assert body["pagination"]["limit"] == 20
 
 
 class TestGetVersion:
@@ -201,6 +205,24 @@ class TestDiff:
         )
         assert resp.status_code == 404
 
+    @pytest.mark.unit
+    async def test_reversed_versions_rejected(
+        self,
+        test_client: TestClient[Any],
+        fake_persistence: FakePersistenceBackend,
+        agent_registry: AgentRegistryService,
+    ) -> None:
+        """``from_version`` must be strictly less than ``to_version``."""
+        fake_persistence.identity_versions.clear()
+        agent_registry.clear()
+        identity = await _seed_versions(agent_registry, updates=1)
+        resp = test_client.get(
+            f"/api/v1/agents/{identity.id}/versions/diff",
+            params={"from_version": 2, "to_version": 1},
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 400
+
 
 class TestRollback:
     """``POST /agents/{agent_id}/versions/rollback``."""
@@ -277,3 +299,58 @@ class TestRollback:
             headers=make_auth_headers("ceo"),
         )
         assert resp.status_code == 404
+
+    @pytest.mark.unit
+    async def test_rollback_with_reason_records_audit_trail(
+        self,
+        test_client: TestClient[Any],
+        fake_persistence: FakePersistenceBackend,
+        agent_registry: AgentRegistryService,
+    ) -> None:
+        """Optional ``reason`` passes through without breaking rollback."""
+        fake_persistence.identity_versions.clear()
+        agent_registry.clear()
+        identity = await _seed_versions(agent_registry, updates=1)
+        resp = test_client.post(
+            f"/api/v1/agents/{identity.id}/versions/rollback",
+            json={"target_version": 1, "reason": "undo accidental promotion"},
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 200
+
+    @pytest.mark.unit
+    async def test_rollback_rejects_cross_entity_snapshot(
+        self,
+        test_client: TestClient[Any],
+        fake_persistence: FakePersistenceBackend,
+        agent_registry: AgentRegistryService,
+    ) -> None:
+        """If a version's snapshot id differs from the URL agent_id, 400."""
+        fake_persistence.identity_versions.clear()
+        agent_registry.clear()
+        # Register two agents, each with one version.
+        alice = await _seed_versions(agent_registry)
+        bob = await _seed_versions(agent_registry)
+        # Forge a cross-wired snapshot: store Alice's identity under Bob's id.
+        from synthorg.versioning import VersionSnapshot
+
+        alice_latest = await fake_persistence.identity_versions.get_latest_version(
+            str(alice.id)
+        )
+        assert alice_latest is not None
+        forged = VersionSnapshot(
+            entity_id=str(bob.id),
+            version=99,
+            content_hash="f" * 64,
+            snapshot=alice_latest.snapshot,  # still has alice.id inside
+            saved_by="test-forger",
+            saved_at=alice_latest.saved_at,
+        )
+        await fake_persistence.identity_versions.save_version(forged)
+        resp = test_client.post(
+            f"/api/v1/agents/{bob.id}/versions/rollback",
+            json={"target_version": 99},
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 400
+        assert "different agent" in resp.json()["error"].lower()
