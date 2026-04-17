@@ -5,6 +5,7 @@ import { ACTIVE_STAGES } from '@/api/endpoints/fine-tuning'
 import { EmptyState } from '@/components/ui/empty-state'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { useFineTuningStore } from '@/stores/fine-tuning'
+import { formatDateTime } from '@/utils/format'
 
 const STAGE_STATUS_MAP: Record<FineTuneStage, 'active' | 'idle' | 'error' | 'offline'> = {
   complete: 'active',
@@ -21,7 +22,7 @@ function RunRow({ run }: { run: FineTuneRun }) {
   return (
     <tr className="border-b border-border/50">
       <td className="py-2 pr-4 font-mono text-xs">
-        {new Date(run.started_at).toLocaleString()}
+        {formatDateTime(run.started_at)}
       </td>
       <td className="py-2 pr-4 font-mono text-xs">
         {run.duration_seconds != null

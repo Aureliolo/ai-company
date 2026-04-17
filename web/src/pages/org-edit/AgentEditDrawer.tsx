@@ -9,6 +9,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Button } from '@/components/ui/button'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { getErrorMessage } from '@/utils/errors'
+import { formatDateOnly } from '@/utils/format'
 import { toRuntimeStatus } from '@/utils/agents'
 
 export interface AgentEditDrawerProps {
@@ -63,7 +64,7 @@ export function AgentEditDrawer({
     [departments],
   )
   const hiredDate = useMemo(
-    () => agent?.hiring_date ? new Date(agent.hiring_date).toLocaleDateString() : '',
+    () => agent?.hiring_date ? formatDateOnly(agent.hiring_date) : '',
     [agent],
   )
   const modelDisplay = useMemo(() => {

@@ -3,7 +3,7 @@ import { ArrowLeft, Clock, Hash } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { StatPill } from '@/components/ui/stat-pill'
-import { formatDate, formatLabel } from '@/utils/format'
+import { formatDate, formatLabel, formatTokenCount } from '@/utils/format'
 import {
   formatMeetingDuration,
   getMeetingStatusColor,
@@ -63,9 +63,9 @@ export function MeetingDetailHeader({ meeting, className }: MeetingDetailHeaderP
         />
         <StatPill label="Participants" value={participantCount} />
         {meeting.minutes && (
-          <StatPill label="Tokens" value={meeting.minutes.total_tokens.toLocaleString()} />
+          <StatPill label="Tokens" value={formatTokenCount(meeting.minutes.total_tokens)} />
         )}
-        <StatPill label="Budget" value={meeting.token_budget.toLocaleString()} />
+        <StatPill label="Budget" value={formatTokenCount(meeting.token_budget)} />
       </div>
 
       {/* Timestamps */}

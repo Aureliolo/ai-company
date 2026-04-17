@@ -5,6 +5,7 @@ import { useState } from 'react'
 import { ROUTES } from '@/router/routes'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { formatDateTime } from '@/utils/format'
 import type { WorkflowDefinition } from '@/api/types'
 
 interface WorkflowTableViewProps {
@@ -14,12 +15,7 @@ interface WorkflowTableViewProps {
 }
 
 function formatDate(iso: string): string {
-  return new Date(iso).toLocaleString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
+  return formatDateTime(iso)
 }
 
 export function WorkflowTableView({ workflows, onDelete, onDuplicate }: WorkflowTableViewProps) {

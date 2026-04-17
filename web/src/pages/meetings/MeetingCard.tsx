@@ -1,7 +1,7 @@
 import { Link } from 'react-router'
 import { Clock, Users } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { formatLabel, formatRelativeTime } from '@/utils/format'
+import { formatLabel, formatRelativeTime, formatTokenCount } from '@/utils/format'
 import {
   formatMeetingDuration,
   getMeetingStatusColor,
@@ -67,7 +67,7 @@ export function MeetingCard({ meeting, className }: MeetingCardProps) {
         </span>
         {meeting.minutes && (
           <span className="font-mono">
-            {meeting.minutes.total_tokens.toLocaleString()} tokens
+            {formatTokenCount(meeting.minutes.total_tokens)} tokens
           </span>
         )}
       </div>

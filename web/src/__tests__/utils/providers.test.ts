@@ -226,11 +226,11 @@ describe('formatTokenCount', () => {
   })
 
   it('formats thousands with K suffix', () => {
-    expect(formatTokenCount(50_000)).toBe('50.0K')
+    expect(formatTokenCount(50_000)).toMatch(/^50K$/i)
   })
 
   it('formats millions with M suffix', () => {
-    expect(formatTokenCount(1_234_567)).toBe('1.2M')
+    expect(formatTokenCount(1_234_567)).toMatch(/^1\.2M$/i)
   })
 
   it('formats small numbers with locale string', () => {

@@ -2,7 +2,7 @@ import { BarChart3 } from 'lucide-react'
 import { Avatar } from '@/components/ui/avatar'
 import { SectionCard } from '@/components/ui/section-card'
 import { TokenUsageBar } from '@/components/ui/token-usage-bar'
-import { formatLabel } from '@/utils/format'
+import { formatLabel, formatTokenCount } from '@/utils/format'
 import { computeTokenUsagePercent, getParticipantTokenShare } from '@/utils/meetings'
 import type { MeetingResponse } from '@/api/types'
 
@@ -37,7 +37,7 @@ function ParticipantTokenRow({ agentId, tokens, share, rankLabel }: ParticipantT
             )}
           </div>
           <span className="shrink-0 font-mono text-xs text-muted-foreground">
-            {tokens.toLocaleString()}
+            {formatTokenCount(tokens)}
           </span>
         </div>
         <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-border">
@@ -69,7 +69,7 @@ export function MeetingTokenBreakdown({ meeting, className }: MeetingTokenBreakd
         <div className="space-y-1">
           <div className="flex items-baseline justify-between">
             <span className="text-xs text-muted-foreground">
-              {totalTokens.toLocaleString()} / {meeting.token_budget.toLocaleString()} tokens
+              {formatTokenCount(totalTokens)} / {formatTokenCount(meeting.token_budget)} tokens
             </span>
             <span className="font-mono text-xs font-semibold text-foreground">
               {overallPercent.toFixed(0)}%

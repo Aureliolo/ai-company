@@ -1,32 +1,104 @@
 import {
   formatDate,
+  formatDateOnly,
+  formatDateTime,
+  formatDayLabel,
   formatRelativeTime,
   formatCurrency,
   formatCurrencyCompact,
-  formatNumber,
-  formatUptime,
+  formatFileSize,
   formatLabel,
+  formatNumber,
+  formatTime,
+  formatTodayLabel,
+  formatTokenCount,
+  formatUptime,
 } from '@/utils/format'
 
-describe('formatDate', () => {
+describe('formatDateTime', () => {
   it('returns -- for null/undefined', () => {
-    expect(formatDate(null)).toBe('--')
-    expect(formatDate(undefined)).toBe('--')
+    expect(formatDateTime(null)).toBe('--')
+    expect(formatDateTime(undefined)).toBe('--')
   })
 
   it('returns -- for empty string', () => {
-    expect(formatDate('')).toBe('--')
+    expect(formatDateTime('')).toBe('--')
   })
 
   it('returns -- for invalid date', () => {
-    expect(formatDate('not-a-date')).toBe('--')
+    expect(formatDateTime('not-a-date')).toBe('--')
   })
 
-  it('formats valid ISO date', () => {
-    const result = formatDate('2025-01-15T10:30:00Z')
+  it('formats valid ISO date under en-US', () => {
+    const result = formatDateTime('2025-01-15T10:30:00Z', 'en-US')
     expect(result).toContain('Jan')
     expect(result).toContain('15')
     expect(result).toContain('2025')
+  })
+
+  it('respects an explicit locale override', () => {
+    const en = formatDateTime('2025-01-15T10:30:00Z', 'en-US')
+    const de = formatDateTime('2025-01-15T10:30:00Z', 'de-DE')
+    expect(en).not.toBe(de)
+  })
+})
+
+describe('formatDate (alias)', () => {
+  it('is the same function as formatDateTime', () => {
+    expect(formatDate).toBe(formatDateTime)
+  })
+})
+
+describe('formatDateOnly', () => {
+  it('returns -- for null', () => {
+    expect(formatDateOnly(null)).toBe('--')
+  })
+
+  it('formats as month+day+year without time', () => {
+    const result = formatDateOnly('2025-01-15T10:30:00Z', 'en-US')
+    expect(result).toContain('Jan')
+    expect(result).toContain('15')
+    expect(result).toContain('2025')
+    expect(result).not.toMatch(/\d{1,2}:\d{2}/)
+  })
+})
+
+describe('formatTime', () => {
+  it('returns -- for null', () => {
+    expect(formatTime(null)).toBe('--')
+  })
+
+  it('returns a time-only string', () => {
+    const result = formatTime('2025-01-15T10:30:00Z', 'en-US')
+    expect(result).toMatch(/\d/)
+    expect(result).not.toContain('Jan')
+    expect(result).not.toContain('2025')
+  })
+})
+
+describe('formatDayLabel', () => {
+  it('formats an ISO string', () => {
+    expect(formatDayLabel('2025-01-15T10:30:00Z', 'en-US')).toContain('Jan')
+  })
+
+  it('formats a Date', () => {
+    expect(formatDayLabel(new Date('2025-01-15T10:30:00Z'), 'en-US')).toContain('15')
+  })
+
+  it('formats a numeric timestamp', () => {
+    const ms = new Date('2025-01-15T10:30:00Z').getTime()
+    expect(formatDayLabel(ms, 'en-US')).toContain('Jan')
+  })
+
+  it('returns -- for invalid input', () => {
+    expect(formatDayLabel('nope')).toBe('--')
+  })
+})
+
+describe('formatTodayLabel', () => {
+  it('returns a short month+day string under en-US', () => {
+    const result = formatTodayLabel('en-US')
+    expect(result).toMatch(/^[A-Z][a-z]{2} \d{1,2}$/)
   })
 })
 
@@ -60,14 +132,14 @@ describe('formatRelativeTime', () => {
     expect(formatRelativeTime(twoDaysAgo)).toBe('2d ago')
   })
 
-  it('falls back to formatDate for old dates', () => {
+  it('falls back to formatDateTime for old dates', () => {
     const twoWeeksAgo = new Date(Date.now() - 14 * 86400 * 1000).toISOString()
     const result = formatRelativeTime(twoWeeksAgo)
     expect(result).not.toContain('ago')
     expect(result).not.toBe('--')
   })
 
-  it('falls back to formatDate for future dates', () => {
+  it('falls back to formatDateTime for future dates', () => {
     const future = new Date(Date.now() + 86400 * 1000).toISOString()
     const result = formatRelativeTime(future)
     expect(result).not.toContain('ago')
@@ -127,15 +199,49 @@ describe('formatCurrency', () => {
     expect(formatCurrency(Infinity, 'USD')).toBe('--')
     expect(formatCurrency(NaN, 'USD')).toBe('--')
   })
+
+  it('respects an explicit locale override', () => {
+    const en = formatCurrency(1234.5, 'USD', 'en-US')
+    const de = formatCurrency(1234.5, 'USD', 'de-DE')
+    expect(en).not.toBe(de)
+  })
 })
 
 describe('formatNumber', () => {
-  it('formats with separators', () => {
-    expect(formatNumber(1000000)).toBe('1,000,000')
+  it('formats with separators under en-US', () => {
+    expect(formatNumber(1000000, 'en-US')).toBe('1,000,000')
   })
 
   it('formats zero', () => {
     expect(formatNumber(0)).toBe('0')
+  })
+
+  it('returns -- for non-finite values', () => {
+    expect(formatNumber(Infinity)).toBe('--')
+    expect(formatNumber(NaN)).toBe('--')
+  })
+
+  it('respects explicit locale override', () => {
+    const en = formatNumber(1234.5, 'en-US')
+    const de = formatNumber(1234.5, 'de-DE')
+    expect(en).not.toBe(de)
+  })
+})
+
+describe('formatTokenCount', () => {
+  it('uses plain separators under 1000', () => {
+    expect(formatTokenCount(42, 'en-US')).toBe('42')
+    expect(formatTokenCount(999, 'en-US')).toBe('999')
+  })
+
+  it('uses compact notation for >=1000', () => {
+    expect(formatTokenCount(1200, 'en-US')).toMatch(/K/i)
+    expect(formatTokenCount(2_500_000, 'en-US')).toMatch(/M/i)
+  })
+
+  it('returns -- for non-finite values', () => {
+    expect(formatTokenCount(Infinity)).toBe('--')
+    expect(formatTokenCount(NaN)).toBe('--')
   })
 })
 
@@ -166,6 +272,21 @@ describe('formatUptime', () => {
 
   it('handles NaN', () => {
     expect(formatUptime(NaN)).toBe('0m')
+  })
+})
+
+describe('formatFileSize', () => {
+  it('formats zero', () => {
+    expect(formatFileSize(0)).toBe('0 B')
+  })
+
+  it('formats kilobytes', () => {
+    expect(formatFileSize(2048)).toBe('2.0 KB')
+  })
+
+  it('returns -- for negative and non-finite', () => {
+    expect(formatFileSize(-1)).toBe('--')
+    expect(formatFileSize(NaN)).toBe('--')
   })
 })
 

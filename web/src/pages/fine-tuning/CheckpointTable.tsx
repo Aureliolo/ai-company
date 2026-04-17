@@ -7,6 +7,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { EmptyState } from '@/components/ui/empty-state'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { useFineTuningStore } from '@/stores/fine-tuning'
+import { formatDateOnly } from '@/utils/format'
 
 interface CheckpointRowProps {
   checkpoint: CheckpointRecord
@@ -19,7 +20,7 @@ function CheckpointRow({ checkpoint: cp, onDeploy, onRollback, onDelete }: Check
   return (
     <tr className="border-b border-border/50">
       <td className="py-2 pr-4 font-mono text-xs">
-        {new Date(cp.created_at).toLocaleDateString()}
+        {formatDateOnly(cp.created_at)}
       </td>
       <td className="py-2 pr-4">{cp.base_model}</td>
       <td className="py-2 pr-4">{cp.doc_count}</td>

@@ -1,4 +1,5 @@
 import { cn } from '@/lib/utils'
+import { formatNumber } from '@/utils/format'
 
 export interface TokenSegment {
   label: string
@@ -33,7 +34,7 @@ export function TokenUsageBar({ segments, total, className }: TokenUsageBarProps
       aria-valuenow={clampedNow}
       aria-valuemin={0}
       aria-valuemax={clampedMax}
-      aria-valuetext={`${usedTokens.toLocaleString()} of ${total.toLocaleString()}`}
+      aria-valuetext={`${formatNumber(usedTokens)} of ${formatNumber(total)}`}
       aria-label="Token usage"
       className={cn('flex flex-col gap-1', className)}
     >
@@ -52,7 +53,7 @@ export function TokenUsageBar({ segments, total, className }: TokenUsageBarProps
                 width: `${(segment.value / usedTokens) * 100}%`,
                 transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
               }}
-              title={`${segment.label}: ${segment.value.toLocaleString()} tokens`}
+              title={`${segment.label}: ${formatNumber(segment.value)} tokens`}
             />
           ))}
         </div>

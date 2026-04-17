@@ -14,6 +14,7 @@ import {
   clearQualityOverride,
 } from '@/api/endpoints/quality'
 import { getErrorMessage } from '@/utils/errors'
+import { formatDateOnly } from '@/utils/format'
 import type { OverrideResponse } from '@/api/types'
 import type { AxiosError } from 'axios'
 
@@ -149,12 +150,12 @@ export function QualityScoreOverride({
             <StatPill label="Applied by" value={override.applied_by} />
             <StatPill
               label="Applied"
-              value={new Date(override.applied_at).toLocaleDateString()}
+              value={formatDateOnly(override.applied_at)}
             />
             {override.expires_at && (
               <StatPill
                 label="Expires"
-                value={new Date(override.expires_at).toLocaleDateString()}
+                value={formatDateOnly(override.expires_at)}
               />
             )}
           </div>

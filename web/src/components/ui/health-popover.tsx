@@ -18,6 +18,7 @@ import {
 import { getHealth } from '@/api/endpoints/health'
 import { useWebSocketStore } from '@/stores/websocket'
 import { createLogger } from '@/lib/logger'
+import { formatTime } from '@/utils/format'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import type { HealthStatus } from '@/api/types'
@@ -298,7 +299,7 @@ export function HealthPopover({ children }: HealthPopoverProps) {
 
   const fetchedAtLabel =
     loadState.state === 'ok' || loadState.state === 'error'
-      ? `${loadState.fetchedAt.toLocaleTimeString()} (${formatRelative(loadState.fetchedAt.getTime(), nowMs)})`
+      ? `${formatTime(loadState.fetchedAt.toISOString())} (${formatRelative(loadState.fetchedAt.getTime(), nowMs)})`
       : null
 
   return (

@@ -1,6 +1,7 @@
 import { MetricCard } from '@/components/ui/metric-card'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { cn } from '@/lib/utils'
+import { formatTokenCount } from '@/utils/format'
 import { countByStatus, totalTokensUsed } from '@/utils/meetings'
 import type { MeetingResponse } from '@/api/types'
 
@@ -27,7 +28,7 @@ export function MeetingMetricCards({ meetings, className }: MeetingMetricCardsPr
         <MetricCard label="COMPLETED" value={completed} />
       </StaggerItem>
       <StaggerItem>
-        <MetricCard label="TOTAL TOKENS" value={tokens.toLocaleString()} />
+        <MetricCard label="TOTAL TOKENS" value={formatTokenCount(tokens)} />
       </StaggerItem>
     </StaggerGroup>
   )

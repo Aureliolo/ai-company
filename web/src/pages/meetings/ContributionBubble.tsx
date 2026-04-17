@@ -1,6 +1,6 @@
 import { Avatar } from '@/components/ui/avatar'
 import { cn } from '@/lib/utils'
-import { formatLabel } from '@/utils/format'
+import { formatLabel, formatTokenCount } from '@/utils/format'
 import { getPhaseColor, getPhaseLabel, STATUS_BADGE_CLASSES } from '@/utils/meetings'
 import type { MeetingContribution } from '@/api/types'
 
@@ -42,8 +42,8 @@ export function ContributionBubble({ contribution, className }: ContributionBubb
 
         {/* Token stats */}
         <div className="flex gap-3 font-mono text-micro text-muted-foreground">
-          <span>{contribution.input_tokens.toLocaleString()} in</span>
-          <span>{contribution.output_tokens.toLocaleString()} out</span>
+          <span>{formatTokenCount(contribution.input_tokens)} in</span>
+          <span>{formatTokenCount(contribution.output_tokens)} out</span>
         </div>
       </div>
     </div>

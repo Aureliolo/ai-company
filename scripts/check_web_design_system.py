@@ -102,6 +102,27 @@ HARDCODED_MOTION_DURATION_RE = re.compile(
     re.DOTALL,
 )
 
+# BCP 47 language-region literals used inside Intl or toLocale* calls.
+# Formatter helpers should accept `locale?: string` with getLocale() default;
+# hardcoded literals bypass the i18n-ready pipeline.
+HARDCODED_LOCALE_RE = re.compile(
+    r"""['"](?P<locale>[a-z]{2}-[A-Z]{2})['"]""",
+)
+
+# Bare `.toLocaleString(`, `.toLocaleDateString(`, `.toLocaleTimeString(`
+# calls that do not pass an explicit locale argument. These fall back to
+# the browser default and diverge in dev vs prod. Use format.ts helpers.
+BARE_TOLOCALE_RE = re.compile(
+    r"\.toLocale(?:Date|Time)?String\(\s*\)",
+)
+
+# Allowlist files where `'en-US'` is the legitimate default constant or
+# the centralized helper itself.
+_LOCALE_SKIP_PATHS: set[str] = {
+    "web/src/utils/locale.ts",
+    "web/src/utils/format.ts",
+}
+
 # Files where inline Motion durations are intentional (relative paths).
 _MOTION_DURATION_SKIP_PATHS: set[str] = {
     "web/src/lib/motion.ts",
@@ -281,6 +302,78 @@ def check_hardcoded_motion_transitions(
             f"  {rel_path}:{line_num}: Hardcoded Motion duration "
             f"-- use a preset from `@/lib/motion` or "
             f"`useAnimationPreset()` hook.\n"
+            f"    {line_text}"
+        )
+
+    return warnings
+
+
+def check_hardcoded_locale(
+    content: str,
+    file_path: Path,
+    project_root: Path,
+) -> list[str]:
+    """Find hardcoded BCP 47 locale literals and bare ``.toLocale*String`` calls.
+
+    Formatters live in ``@/utils/format`` and accept an optional
+    ``locale?: string`` parameter that defaults to ``getLocale()``.
+    Hardcoded ``'en-US'`` literals and locale-less ``.toLocaleString()``
+    calls bypass the i18n-ready pipeline.
+    """
+    rel_str = file_path.relative_to(project_root).as_posix()
+    if rel_str in _LOCALE_SKIP_PATHS:
+        return []
+    if file_path.suffix not in {".tsx", ".ts"}:
+        return []
+
+    warnings: list[str] = []
+    rel_path = file_path.relative_to(project_root)
+    lines = content.splitlines()
+
+    # Mask block comments so the regex does not match inside /* ... */.
+    stripped = _BLOCK_COMMENT_RE.sub(
+        lambda cm: "".join(" " if c != "\n" else "\n" for c in cm.group()),
+        content,
+    )
+
+    for m in HARDCODED_LOCALE_RE.finditer(stripped):
+        line_num = stripped[: m.start()].count("\n") + 1
+        col = m.start() - stripped.rfind("\n", 0, m.start()) - 1
+        original_line = lines[line_num - 1]
+        line_text = original_line.strip()
+        if line_text.startswith(_COMMENT_PREFIXES):
+            continue
+        if _is_in_comment_context(original_line, col):
+            continue
+        # Only flag locales used as Intl / toLocale arguments. Skipping
+        # narrative mentions inside longer prose strings.
+        context = stripped[max(0, m.start() - 64) : m.end() + 4]
+        if not re.search(
+            r"(?:Intl\.|toLocale(?:Date|Time)?String)",
+            context,
+        ):
+            continue
+        warnings.append(
+            f"  {rel_path}:{line_num}: Hardcoded locale `{m.group('locale')}` "
+            f"-- use a helper from `@/utils/format` (reads `getLocale()`) "
+            f"or pass the locale explicitly via the helper parameter.\n"
+            f"    {line_text}"
+        )
+
+    for m in BARE_TOLOCALE_RE.finditer(stripped):
+        line_num = stripped[: m.start()].count("\n") + 1
+        col = m.start() - stripped.rfind("\n", 0, m.start()) - 1
+        original_line = lines[line_num - 1]
+        line_text = original_line.strip()
+        if line_text.startswith(_COMMENT_PREFIXES):
+            continue
+        if _is_in_comment_context(original_line, col):
+            continue
+        warnings.append(
+            f"  {rel_path}:{line_num}: Bare `.toLocaleString()` call "
+            f"-- use `formatNumber`, `formatDateTime`, `formatDateOnly`, "
+            f"`formatTime`, `formatTokenCount`, or another helper from "
+            f"`@/utils/format` so output is deterministic and locale-aware.\n"
             f"    {line_text}"
         )
 
@@ -475,6 +568,7 @@ def check_file(file_path: Path, project_root: Path) -> list[str]:
     all_warnings.extend(
         check_hardcoded_motion_transitions(content, file_path, project_root),
     )
+    all_warnings.extend(check_hardcoded_locale(content, file_path, project_root))
     all_warnings.extend(check_missing_story(file_path, project_root))
     all_warnings.extend(check_duplicate_patterns(content, file_path, project_root))
     all_warnings.extend(propose_shared_components(content, file_path, project_root))

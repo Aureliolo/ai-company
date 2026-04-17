@@ -12,7 +12,11 @@ import { TrendingUp } from 'lucide-react'
 import { SectionCard } from '@/components/ui/section-card'
 import { StatPill } from '@/components/ui/stat-pill'
 import { EmptyState } from '@/components/ui/empty-state'
-import { formatCurrency } from '@/utils/format'
+import {
+  formatCurrency,
+  formatDayLabel as formatDayLabelHelper,
+  formatTodayLabel,
+} from '@/utils/format'
 import type { BudgetAlertConfig, ForecastResponse, TrendDataPoint } from '@/api/types'
 
 export interface SpendBurnChartProps {
@@ -43,11 +47,11 @@ function parseChartDate(dateStr: string): Date {
 function formatDayLabel(dateStr: string): string {
   const date = parseChartDate(dateStr)
   if (Number.isNaN(date.getTime())) return dateStr
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  return formatDayLabelHelper(date)
 }
 
 function getTodayLabel(): string {
-  return new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  return formatTodayLabel()
 }
 
 function buildChartData(

@@ -1,5 +1,6 @@
 import type { Message, MessagePriority, MessageType, ChannelType } from '@/api/types'
 import type { SemanticColor } from '@/lib/utils'
+import { formatDateOnly } from '@/utils/format'
 
 // ── Message type labels ────────────────────────────────────
 
@@ -116,11 +117,7 @@ export function getDateGroupLabel(dateKey: string): string {
   if (target.getTime() === today.getTime()) return 'Today'
   if (target.getTime() === yesterday.getTime()) return 'Yesterday'
 
-  return target.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  })
+  return formatDateOnly(target.toISOString())
 }
 
 // ── Thread grouping ────────────────────────────────────────

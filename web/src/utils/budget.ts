@@ -1,7 +1,7 @@
 /** Budget page utility functions -- pure computations with no side effects. */
 
 import { computeSpendTrend } from '@/utils/dashboard'
-import { formatCurrency } from '@/utils/format'
+import { formatCurrency, formatDateOnly } from '@/utils/format'
 import type { MetricCardProps } from '@/components/ui/metric-card'
 import type {
   ActivityItem,
@@ -242,11 +242,7 @@ export function computeExhaustionDate(
   if (daysUntilExhausted === null) return null
   const date = new Date()
   date.setDate(date.getDate() + daysUntilExhausted)
-  return date.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  })
+  return formatDateOnly(date.toISOString())
 }
 
 /**
