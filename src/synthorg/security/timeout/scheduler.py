@@ -15,6 +15,8 @@ from typing import TYPE_CHECKING
 from synthorg.core.enums import ApprovalStatus, TimeoutActionType
 from synthorg.notifications.dispatcher import NotificationDispatcher  # noqa: TC001
 from synthorg.observability import get_logger
+from synthorg.observability.background_tasks import BackgroundTaskRegistry
+from synthorg.observability.events.notification import NOTIFICATION_ESCALATION_SEND
 from synthorg.observability.events.timeout import (
     TIMEOUT_SCHEDULER_ERROR,
     TIMEOUT_SCHEDULER_RESCHEDULED,
@@ -71,6 +73,9 @@ class ApprovalTimeoutScheduler:
         self._notification_dispatcher = notification_dispatcher
         self._task: asyncio.Task[None] | None = None
         self._wake_event = asyncio.Event()
+        self._background_tasks = BackgroundTaskRegistry(
+            owner="security.timeout.scheduler",
+        )
 
     @property
     def is_running(self) -> bool:
@@ -98,11 +103,13 @@ class ApprovalTimeoutScheduler:
     async def stop(self) -> None:
         """Cancel the background scheduler and wait for it to finish."""
         if self._task is None:
+            await self._background_tasks.drain()
             return
         self._task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await self._task
         self._task = None
+        await self._background_tasks.drain()
         logger.info(TIMEOUT_SCHEDULER_STOPPED)
 
     def reschedule(self, interval_seconds: float) -> None:
@@ -199,7 +206,12 @@ class ApprovalTimeoutScheduler:
                 escalate_to=action.escalate_to,
                 reason=action.reason,
             )
-            asyncio.create_task(self._notify_escalation(item, action))  # noqa: RUF006
+            self._background_tasks.spawn(
+                self._notify_escalation(item, action),
+                event=NOTIFICATION_ESCALATION_SEND,
+                approval_id=item.id,
+                escalate_to=action.escalate_to,
+            )
 
     async def _resolve_item(
         self,
