@@ -73,7 +73,8 @@ def build_escalation_queue_store(
         )
 
         return PostgresEscalationRepository(pool)
-    msg = f"Unknown escalation queue backend: {config.backend!r}"
+    # Defensive: the Literal union is exhaustive today.
+    msg = f"Unknown escalation queue backend: {config.backend!r}"  # type: ignore[unreachable]
     raise ValueError(msg)
 
 
@@ -93,5 +94,6 @@ def build_decision_processor(
         return WinnerSelectProcessor()
     if config.decision_strategy == "hybrid":
         return HybridDecisionProcessor()
-    msg = f"Unknown decision_strategy: {config.decision_strategy!r}"
+    # Defensive: the Literal union is exhaustive today.
+    msg = f"Unknown decision_strategy: {config.decision_strategy!r}"  # type: ignore[unreachable]
     raise ValueError(msg)

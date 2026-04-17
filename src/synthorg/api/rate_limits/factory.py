@@ -28,5 +28,7 @@ def build_sliding_window_store(
             "Use backend='memory' or contribute a Redis adapter."
         )
         raise NotImplementedError(msg)
-    msg = f"Unknown per-op rate limit backend: {config.backend!r}"
+    # Defensive: the Literal union is exhaustive today, but any future
+    # backend value must be explicitly handled here before landing.
+    msg = f"Unknown per-op rate limit backend: {config.backend!r}"  # type: ignore[unreachable]
     raise ValueError(msg)

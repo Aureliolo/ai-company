@@ -1,8 +1,10 @@
 """SQLite escalation queue repository tests (#1418)."""
 
+from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from pydantic import AwareDatetime
 
 from synthorg.communication.conflict_resolution.escalation.models import (
     Escalation,
@@ -51,7 +53,11 @@ def _make_conflict() -> Conflict:
     )
 
 
-def _make_escalation(*, escalation_id: str, expires_at=None) -> Escalation:
+def _make_escalation(
+    *,
+    escalation_id: str,
+    expires_at: AwareDatetime | None = None,
+) -> Escalation:
     """Build a pending escalation."""
     return Escalation(
         id=escalation_id,
@@ -62,7 +68,7 @@ def _make_escalation(*, escalation_id: str, expires_at=None) -> Escalation:
 
 
 @pytest.fixture
-async def backend():
+async def backend() -> AsyncIterator[SQLitePersistenceBackend]:
     """Connected in-memory SQLite backend with the escalations table."""
     be = SQLitePersistenceBackend(SQLiteConfig(path=":memory:"))
     await be.connect()
@@ -88,7 +94,8 @@ async def backend():
     await be.disconnect()
 
 
-async def test_create_and_get(backend) -> None:
+async def test_create_and_get(backend: SQLitePersistenceBackend) -> None:
+    assert backend._db is not None
     repo = SQLiteEscalationRepository(backend._db)
     row = _make_escalation(escalation_id="escalation-sql-01")
     await repo.create(row)
@@ -99,7 +106,8 @@ async def test_create_and_get(backend) -> None:
     assert fetched.conflict.id == row.conflict.id
 
 
-async def test_list_items_filters_by_status(backend) -> None:
+async def test_list_items_filters_by_status(backend: SQLitePersistenceBackend) -> None:
+    assert backend._db is not None
     repo = SQLiteEscalationRepository(backend._db)
     await repo.create(_make_escalation(escalation_id="escalation-sql-a"))
     await repo.create(_make_escalation(escalation_id="escalation-sql-b"))
@@ -115,7 +123,10 @@ async def test_list_items_filters_by_status(backend) -> None:
     assert decided == ()
 
 
-async def test_apply_winner_decision_transitions_to_decided(backend) -> None:
+async def test_apply_winner_decision_transitions_to_decided(
+    backend: SQLitePersistenceBackend,
+) -> None:
+    assert backend._db is not None
     repo = SQLiteEscalationRepository(backend._db)
     await repo.create(_make_escalation(escalation_id="escalation-sql-win"))
     decision = WinnerDecision(
@@ -137,7 +148,10 @@ async def test_apply_winner_decision_transitions_to_decided(backend) -> None:
     assert reloaded.decision == decision
 
 
-async def test_apply_reject_decision_round_trips(backend) -> None:
+async def test_apply_reject_decision_round_trips(
+    backend: SQLitePersistenceBackend,
+) -> None:
+    assert backend._db is not None
     repo = SQLiteEscalationRepository(backend._db)
     await repo.create(_make_escalation(escalation_id="escalation-sql-rej"))
     decision = RejectDecision(reasoning="Both positions off-strategy")
@@ -150,7 +164,10 @@ async def test_apply_reject_decision_round_trips(backend) -> None:
     assert updated.decision == decision
 
 
-async def test_apply_decision_on_missing_row_raises_keyerror(backend) -> None:
+async def test_apply_decision_on_missing_row_raises_keyerror(
+    backend: SQLitePersistenceBackend,
+) -> None:
+    assert backend._db is not None
     repo = SQLiteEscalationRepository(backend._db)
     with pytest.raises(KeyError):
         await repo.apply_decision(
@@ -160,7 +177,10 @@ async def test_apply_decision_on_missing_row_raises_keyerror(backend) -> None:
         )
 
 
-async def test_apply_decision_on_decided_row_raises_valueerror(backend) -> None:
+async def test_apply_decision_on_decided_row_raises_valueerror(
+    backend: SQLitePersistenceBackend,
+) -> None:
+    assert backend._db is not None
     repo = SQLiteEscalationRepository(backend._db)
     await repo.create(_make_escalation(escalation_id="escalation-sql-dbl"))
     decision = WinnerDecision(winning_agent_id="agent-a", reasoning="ok")
@@ -177,7 +197,10 @@ async def test_apply_decision_on_decided_row_raises_valueerror(backend) -> None:
         )
 
 
-async def test_cancel_transitions_to_cancelled(backend) -> None:
+async def test_cancel_transitions_to_cancelled(
+    backend: SQLitePersistenceBackend,
+) -> None:
+    assert backend._db is not None
     repo = SQLiteEscalationRepository(backend._db)
     await repo.create(_make_escalation(escalation_id="escalation-sql-canc"))
     updated = await repo.cancel("escalation-sql-canc", cancelled_by="human:op-3")
@@ -185,7 +208,10 @@ async def test_cancel_transitions_to_cancelled(backend) -> None:
     assert updated.decided_by == "human:op-3"
 
 
-async def test_mark_expired_transitions_stale_rows(backend) -> None:
+async def test_mark_expired_transitions_stale_rows(
+    backend: SQLitePersistenceBackend,
+) -> None:
+    assert backend._db is not None
     repo = SQLiteEscalationRepository(backend._db)
     past = datetime.now(UTC) - timedelta(seconds=30)
     future = datetime.now(UTC) + timedelta(seconds=3600)
@@ -205,7 +231,10 @@ async def test_mark_expired_transitions_stale_rows(backend) -> None:
     assert new.status == EscalationStatus.PENDING
 
 
-async def test_list_items_respects_limit_and_offset(backend) -> None:
+async def test_list_items_respects_limit_and_offset(
+    backend: SQLitePersistenceBackend,
+) -> None:
+    assert backend._db is not None
     repo = SQLiteEscalationRepository(backend._db)
     for i in range(5):
         await repo.create(_make_escalation(escalation_id=f"escalation-sql-p-{i}"))
@@ -219,7 +248,8 @@ async def test_list_items_respects_limit_and_offset(backend) -> None:
     assert ids_a.isdisjoint(ids_b)
 
 
-async def test_invalid_limit_raises(backend) -> None:
+async def test_invalid_limit_raises(backend: SQLitePersistenceBackend) -> None:
+    assert backend._db is not None
     repo = SQLiteEscalationRepository(backend._db)
     with pytest.raises(ValueError, match="limit"):
         await repo.list_items(limit=0)

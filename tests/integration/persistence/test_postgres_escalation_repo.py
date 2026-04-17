@@ -58,7 +58,11 @@ def _make_conflict() -> Conflict:
     )
 
 
-def _make_escalation(*, escalation_id: str, expires_at=None) -> Escalation:
+def _make_escalation(
+    *,
+    escalation_id: str,
+    expires_at: datetime | None = None,
+) -> Escalation:
     """Build a pending escalation."""
     return Escalation(
         id=escalation_id,

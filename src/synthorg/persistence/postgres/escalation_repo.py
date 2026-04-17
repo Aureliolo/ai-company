@@ -9,7 +9,7 @@ all timestamps -- mirrors the Postgres sibling pattern from
 
 import json
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import psycopg
 from psycopg.rows import dict_row
@@ -45,7 +45,7 @@ _SELECT_COLS = (
 )
 
 
-def _row_to_escalation(row: dict) -> Escalation:
+def _row_to_escalation(row: dict[str, Any]) -> Escalation:
     """Deserialise a Postgres row dict into an :class:`Escalation`.
 
     ``conflict_json`` and ``decision_json`` arrive as native Python

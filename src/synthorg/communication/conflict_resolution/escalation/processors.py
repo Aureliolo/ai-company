@@ -5,7 +5,6 @@ from uuid import uuid4
 
 from synthorg.communication.conflict_resolution.escalation.models import (
     EscalationDecision,
-    RejectDecision,
     WinnerDecision,
 )
 from synthorg.communication.conflict_resolution.models import (
@@ -146,18 +145,18 @@ class HybridDecisionProcessor:
                 decision,
                 decided_by=decided_by,
             )
-        if isinstance(decision, RejectDecision):
-            return ConflictResolution(
-                conflict_id=conflict.id,
-                outcome=ConflictResolutionOutcome.REJECTED_BY_HUMAN,
-                winning_agent_id=None,
-                winning_position=None,
-                decided_by=decided_by,
-                reasoning=decision.reasoning,
-                resolved_at=datetime.now(UTC),
-            )
-        msg = f"Unsupported decision shape: {type(decision).__name__}"
-        raise ValueError(msg)
+        # Union is exhaustive (``winner`` | ``reject``) per
+        # :data:`EscalationDecision`.  mypy confirms no other member
+        # can reach this branch.
+        return ConflictResolution(
+            conflict_id=conflict.id,
+            outcome=ConflictResolutionOutcome.REJECTED_BY_HUMAN,
+            winning_agent_id=None,
+            winning_position=None,
+            decided_by=decided_by,
+            reasoning=decision.reasoning,
+            resolved_at=datetime.now(UTC),
+        )
 
     def build_dissent_records(
         self,

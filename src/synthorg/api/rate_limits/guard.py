@@ -7,6 +7,7 @@ Litestar app state (``connection.app.state``), so operator config
 overrides take effect without a restart.
 """
 
+from collections.abc import Awaitable, Callable  # noqa: TC003
 from typing import Any, Final, Literal
 
 from litestar.connection import ASGIConnection  # noqa: TC002
@@ -83,7 +84,10 @@ def per_op_rate_limit(
     max_requests: int,
     window_seconds: int,
     key: KeyPolicy = "user_or_ip",
-):
+) -> Callable[
+    [ASGIConnection[Any, Any, Any, Any], BaseRouteHandler],
+    Awaitable[None],
+]:
     """Build a Litestar guard that throttles ``operation``.
 
     Args:
