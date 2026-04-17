@@ -298,6 +298,13 @@ func (m setupTUI) updateSetup(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		switch m.focus {
 		case fSandbox:
 			m.sandbox = !m.sandbox
+			// Fine-tuning requires sandbox (State.Validate enforces the
+			// invariant at write time). Turning sandbox OFF auto-disables
+			// fine-tuning so the summary and generated config never report
+			// a combination that would fail at compose generation.
+			if !m.sandbox && m.fineTuning {
+				m.fineTuning = false
+			}
 			return m, nil
 		case fBusBackend:
 			m.busBackend = 1 - m.busBackend
@@ -307,6 +314,12 @@ func (m setupTUI) updateSetup(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case fFineTuning:
 			m.fineTuning = !m.fineTuning
+			// Turning fine-tuning ON auto-enables sandbox (required by
+			// State.Validate). This keeps the TUI from letting the user
+			// reach phaseSummary with an invariant-violating combination.
+			if m.fineTuning && !m.sandbox {
+				m.sandbox = true
+			}
 			return m, nil
 		case fFineTuneVariant:
 			m.fineTuneVariant = 1 - m.fineTuneVariant

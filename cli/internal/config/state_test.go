@@ -772,7 +772,7 @@ func TestValidate_FineTuningVariant(t *testing.T) {
 		wantErr    bool
 	}{
 		{"disabled+empty", false, "", false},
-		{"disabled+invalid-ignored", false, "invalid", false},
+		{"disabled+invalid-rejected", false, "invalid", true},
 		{"enabled+empty-accepted", true, "", false},
 		{"enabled+gpu", true, FineTuneVariantGPU, false},
 		{"enabled+cpu", true, FineTuneVariantCPU, false},

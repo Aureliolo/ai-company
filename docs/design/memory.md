@@ -387,9 +387,14 @@ variants ship the same Python runner and accept the same stage-config contract; 
 differ only in the bundled torch build (CUDA ~4 GB vs CPU ~1.7 GB) and whether GPU
 passthrough is usable. The variant is selected at `synthorg init` time (fresh installs)
 or via `synthorg config set fine_tuning_variant gpu|cpu` (post-init, preserves data)
-and persisted as `fine_tuning_variant` in `config.json`. Operators running a
-hand-managed `compose.yml` without the CLI set `SYNTHORG_FINE_TUNE_IMAGE` on the
-backend directly -- see [Deployment &rarr; Fine-Tuning (optional)](../guides/deployment.md#fine-tuning-optional)
+and persisted as `fine_tuning_variant` in `config.json`. The backend consumes
+`SYNTHORG_FINE_TUNE_IMAGE` verbatim as a full image reference (including registry,
+repository, and either a `:tag` or a digest-pinned `@sha256:...`); in a CLI-managed
+install the rendered `compose.yml` writes the verified digest-pinned ref into this
+env var automatically. Operators running a hand-managed `compose.yml` without the
+CLI set `SYNTHORG_FINE_TUNE_IMAGE` on the backend directly -- tag-based refs work
+for quick evaluation, but production deployments should pin a digest so the backend
+spawns the exact attested image. See [Deployment &rarr; Fine-Tuning (optional)](../guides/deployment.md#fine-tuning-optional)
 for the BYO snippet. The container reads stage configuration
 from `/etc/fine-tune/config.json`, executes the pipeline function, and emits
 structured progress markers (`STAGE_START:`, `STAGE_COMPLETE:`) on stdout. The

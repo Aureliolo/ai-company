@@ -63,8 +63,9 @@ _DOCKER_DEP_HINT = (
     "synthorg-fine-tune-gpu (default) or synthorg-fine-tune-cpu container "
     "on demand. Enable without re-init: `synthorg config set sandbox true "
     "&& synthorg config set fine_tuning true && synthorg config set "
-    "fine_tuning_variant gpu && synthorg stop && synthorg start`. "
-    "For hand-managed compose deployments see "
+    "fine_tuning_variant <gpu|cpu> && synthorg stop && synthorg start` "
+    "(pick `gpu` on NVIDIA hosts, `cpu` elsewhere). For hand-managed "
+    "compose deployments see "
     "https://synthorg.io/docs/guides/deployment/#fine-tuning-optional."
 )
 _INPROCESS_DEP_HINT = (

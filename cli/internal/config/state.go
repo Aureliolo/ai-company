@@ -393,14 +393,16 @@ func (s State) validate() error {
 	if s.FineTuning && runtime.GOARCH != "amd64" {
 		return fmt.Errorf("fine_tuning requires x86_64 (amd64) architecture; the fine-tune image is not available for %s", runtime.GOARCH)
 	}
-	if s.FineTuning {
-		switch s.FineTuningVariant {
-		case "", FineTuneVariantGPU, FineTuneVariantCPU:
-			// Empty permitted for forward compat with pre-split configs;
-			// resolved to "gpu" at read time via FineTuneVariantOrDefault.
-		default:
-			return fmt.Errorf("fine_tuning_variant must be %q or %q, got %q", FineTuneVariantGPU, FineTuneVariantCPU, s.FineTuningVariant)
-		}
+	// Variant validation is unconditional: an invalid persisted value that
+	// went unnoticed while fine_tuning=false would silently coerce to "gpu"
+	// the moment the user flipped the feature on. Reject typos at load time
+	// regardless of the current toggle state.
+	switch s.FineTuningVariant {
+	case "", FineTuneVariantGPU, FineTuneVariantCPU:
+		// Empty permitted for forward compat with pre-split configs;
+		// resolved to "gpu" at read time via FineTuneVariantOrDefault.
+	default:
+		return fmt.Errorf("fine_tuning_variant must be %q or %q, got %q", FineTuneVariantGPU, FineTuneVariantCPU, s.FineTuningVariant)
 	}
 	for name, digest := range s.VerifiedDigests {
 		if !isValidDigestFormat(digest) {

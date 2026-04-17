@@ -217,6 +217,10 @@ func printConfigFields(out *ui.UI, state config.State) {
 	if state.Sandbox && state.DockerSock != "" {
 		out.KeyValue("Docker socket", state.DockerSock)
 	}
+	out.KeyValue("Fine-tuning", strconv.FormatBool(state.FineTuning))
+	if state.FineTuning {
+		out.KeyValue("Fine-tuning variant", state.FineTuneVariantOrDefault())
+	}
 	out.KeyValue("Persistence backend", state.PersistenceBackend)
 	out.KeyValue("Memory backend", state.MemoryBackend)
 	out.KeyValue("Auto cleanup", strconv.FormatBool(state.AutoCleanup))

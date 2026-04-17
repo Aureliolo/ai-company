@@ -104,7 +104,7 @@ No corresponding flag -- settable via env var or `config set`:
 |------------|-------------|
 | `show` | Display all current settings (default when no subcommand) |
 | `get <key>` | Get a single config value (37 gettable keys) |
-| `set <key> <value>` | Set a config value (35 settable keys, compose-affecting keys trigger regeneration) |
+| `set <key> <value>` | Set a config value (37 settable keys, compose-affecting keys trigger regeneration) |
 | `unset <key>` | Reset a key to its default value |
 | `list` | Show all keys with resolved value and source (env/config/default) |
 | `path` | Print the config file path |
