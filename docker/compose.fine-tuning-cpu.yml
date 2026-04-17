@@ -25,7 +25,11 @@ services:
       - synthorg-data:/data:ro
     depends_on:
       backend:
-        condition: service_healthy
+        # The base backend service has no healthcheck, so Docker Compose
+        # would never satisfy ``service_healthy`` and the sidecar would
+        # stall forever. ``service_started`` gives correct boot ordering
+        # without fabricating a liveness signal we do not actually probe.
+        condition: service_started
     user: "10003:10003"
     group_add:
       - "65532"

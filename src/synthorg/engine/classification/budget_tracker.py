@@ -135,7 +135,7 @@ class ClassificationBudgetTracker:
         delta = actual_cost - estimated_cost
         async with self._lock:
             self._spent += delta
-            logger.debug(
+            logger.info(
                 DETECTOR_COST_INCURRED,
                 cost=actual_cost,
                 estimated_cost=estimated_cost,
@@ -169,7 +169,20 @@ class ClassificationBudgetTracker:
             )
             raise ValueError(msg)
         async with self._lock:
+            refunded = min(estimated_cost, self._spent)
             self._spent = max(0.0, self._spent - estimated_cost)
+            # Refund is a state transition (spend goes down). Log at
+            # INFO with a negative ``delta`` to mirror the ``settle``
+            # emission shape so aggregators can reconcile reserve +
+            # release pairs without special-casing the event name.
+            logger.info(
+                DETECTOR_COST_INCURRED,
+                cost=0.0,
+                estimated_cost=estimated_cost,
+                delta=-refunded,
+                total_spent=self._spent,
+                remaining=max(0.0, self._budget - self._spent),
+            )
 
     async def record(self, actual_cost: float) -> None:
         """Record cost from a completed LLM call without a prior reserve.
@@ -194,7 +207,7 @@ class ClassificationBudgetTracker:
             raise ValueError(msg)
         async with self._lock:
             self._spent += actual_cost
-            logger.debug(
+            logger.info(
                 DETECTOR_COST_INCURRED,
                 cost=actual_cost,
                 total_spent=self._spent,

@@ -307,7 +307,11 @@ class _BaseSemanticDetector:
         settled = False
         try:
             response = await self._provider.complete(messages, self._model_id)
-            actual_cost = response.usage.cost if response.usage is not None else 0.0
+            # ``CompletionResponse.usage`` is a required ``TokenUsage``
+            # (see ``synthorg.providers.models``) so Pydantic rejects
+            # responses without it at construction time -- no runtime
+            # None-check needed here.
+            actual_cost = response.usage.cost
             if reserved and self._budget_tracker is not None:
                 await self._budget_tracker.settle(
                     estimated_cost=estimated_cost,

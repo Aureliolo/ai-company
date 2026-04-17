@@ -27,9 +27,9 @@ class ModelCapabilities(BaseModel):
             currency declared by the source that populated this capability
             record -- either the provider preset (whose prices the operator
             is responsible for keeping aligned with ``budget.currency``) or
-            the upstream LiteLLM model database (USD). The routing layer
-            compares values across models from the same source only; cross-
-            source comparisons require the operator to reconcile currencies.
+            the upstream model database. The routing layer compares values
+            across models from the same source only; cross-source
+            comparisons require the operator to reconcile currencies.
         cost_per_1k_output: Cost per 1 000 output tokens, same currency
             semantics as ``cost_per_1k_input``.
     """
@@ -58,7 +58,7 @@ class ModelCapabilities(BaseModel):
         ge=0.0,
         description=(
             "Cost per 1k input tokens in the pricing currency declared "
-            "by the capability source (provider preset or LiteLLM model "
+            "by the capability source (provider preset or upstream model "
             "database); operators must keep preset pricing aligned with "
             "``budget.currency``"
         ),
