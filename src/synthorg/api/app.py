@@ -227,20 +227,28 @@ def _postgres_config_from_url(db_url: str) -> PostgresConfig:
     callers can override via ``SYNTHORG_POSTGRES_SSL_MODE`` env var.
     """
     parsed = urlparse(db_url)
+    # Source-level logging for each validation branch so operators
+    # debugging startup see the specific reason a DSN was rejected
+    # even if the caller's catch block truncates the stack trace.
+    # The caller also logs via logger.exception(...) on raise, but
+    # that only captures the final ValueError message.
     if parsed.scheme not in {"postgres", "postgresql"}:
         msg = (
             f"SYNTHORG_DATABASE_URL scheme {parsed.scheme!r} is not "
             f"supported; expected 'postgresql://...'"
         )
+        logger.warning(API_APP_STARTUP, error=msg, reason="invalid_scheme")
         raise ValueError(msg)
     if not parsed.hostname:
         msg = "SYNTHORG_DATABASE_URL is missing a host component"
+        logger.warning(API_APP_STARTUP, error=msg, reason="missing_host")
         raise ValueError(msg)
     if not parsed.username or not parsed.password:
         msg = (
             "SYNTHORG_DATABASE_URL must include a username and password "
             "(postgresql://user:pass@host:port/db)"
         )
+        logger.warning(API_APP_STARTUP, error=msg, reason="missing_credentials")
         raise ValueError(msg)
     database = parsed.path.lstrip("/")
     if not database:
@@ -248,6 +256,7 @@ def _postgres_config_from_url(db_url: str) -> PostgresConfig:
             "SYNTHORG_DATABASE_URL must include a database name in the "
             "path (postgresql://user:pass@host:port/db)"
         )
+        logger.warning(API_APP_STARTUP, error=msg, reason="missing_database")
         raise ValueError(msg)
 
     ssl_override = (os.environ.get("SYNTHORG_POSTGRES_SSL_MODE") or "").strip()
@@ -264,6 +273,7 @@ def _postgres_config_from_url(db_url: str) -> PostgresConfig:
                 f"SYNTHORG_POSTGRES_SSL_MODE={ssl_override!r} is invalid; "
                 f"must be one of: {sorted(valid_modes)}"
             )
+            logger.warning(API_APP_STARTUP, error=msg, reason="invalid_ssl_mode")
             raise ValueError(msg)
         ssl_kwargs["ssl_mode"] = ssl_override
 

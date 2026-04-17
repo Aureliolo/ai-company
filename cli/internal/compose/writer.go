@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/Aureliolo/synthorg/cli/internal/config"
 )
@@ -134,10 +135,13 @@ func atomicWriteRooted(root *os.Root, dst string, data []byte) (err error) {
 }
 
 // uniqueTempName returns a sibling name alongside dst that is unlikely
-// to collide with any concurrent writer: "<dst>.tmp-<pid>-<rand>"
-// where rand is 8 hex chars of crypto/rand output.
+// to collide with any concurrent writer. Format: dst.tmp-PID-RAND
+// where RAND is 16 hex chars (8 bytes, 64 bits of entropy) of
+// crypto/rand output. The O_EXCL open in atomicWriteRooted catches
+// the astronomically rare collision case loudly rather than silently
+// overwriting a peer's temp file.
 func uniqueTempName(dst string) (string, error) {
-	var b [4]byte
+	var b [8]byte
 	if _, err := rand.Read(b[:]); err != nil {
 		return "", err
 	}
@@ -154,6 +158,17 @@ func uniqueTempName(dst string) (string, error) {
 // through config.SecurePath). filename is a plain filename relative
 // to safeDir ("compose.yml", not a nested path).
 func AtomicWriteFile(safeDir, filename string, data []byte) error {
+	// Fail fast on paths that os.Root would reject anyway. Explicit
+	// validation gives a clearer "filename must be a plain name"
+	// error and guards against a future change that swaps os.Root
+	// out for a more permissive filesystem handle.
+	if filename == "" || filename == "." || filename == ".." ||
+		strings.ContainsAny(filename, `/\`) {
+		return fmt.Errorf(
+			"atomic write: filename %q must be a plain name without path separators",
+			filename,
+		)
+	}
 	sanitised, err := config.SecurePath(safeDir)
 	if err != nil {
 		return fmt.Errorf("atomic write: %w", err)
