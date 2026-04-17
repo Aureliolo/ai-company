@@ -43,8 +43,13 @@ async def _seed_versions(
         SeniorityLevel.LEAD,
         SeniorityLevel.PRINCIPAL,
     )
+    # Cycle through the level menu so callers can request more updates
+    # than the tuple has entries without tripping an IndexError.
     for i in range(updates):
-        await registry.update_identity(str(identity.id), level=levels[i])
+        await registry.update_identity(
+            str(identity.id),
+            level=levels[i % len(levels)],
+        )
     return identity
 
 
