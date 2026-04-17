@@ -1,5 +1,6 @@
 """AuditChainSink -- logging handler that signs and chains security events."""
 
+import hashlib
 import json
 import logging
 import threading
@@ -27,6 +28,31 @@ if TYPE_CHECKING:
     AppendCallback = Callable[[str, int, float], None]
 
 logger = get_logger(__name__)
+
+
+def _build_binding_payload(
+    *,
+    tail_hash: str,
+    event_data: bytes,
+    signature: bytes,
+) -> bytes:
+    """Return the bytes a TSA should timestamp for an append.
+
+    Including the current tail hash, a digest of the event data, and
+    the signature produces a per-append payload that an attacker
+    cannot precompute. The resulting TSA token is cryptographically
+    bound to both the prior chain state and the specific event being
+    appended, so replaying the token on a different append (or a
+    different chain) fails hash binding at verification.
+    """
+    hasher = hashlib.sha256()
+    hasher.update(tail_hash.encode("utf-8"))
+    hasher.update(b"\x00")
+    hasher.update(event_data)
+    hasher.update(b"\x00")
+    hasher.update(signature)
+    return hasher.digest()
+
 
 # Dedicated thread pool for async-to-sync bridging.  A single worker
 # avoids contention and keeps chain appends sequential.
@@ -160,10 +186,20 @@ class AuditChainSink(logging.Handler):
             )
             signed = future.result(timeout=5.0)
 
-            # Use the injected timestamp provider when available.
+            # Bind the TSA token to this specific append by stamping
+            # the concatenation of the current tail hash, the event
+            # hash, and the signature. Reading tail_hash here (not
+            # under the append lock) is safe: _SIGNING_EXECUTOR is a
+            # single worker, so appends are already serialised, and
+            # other emit() calls are blocked on future.result above.
+            binding_payload = _build_binding_payload(
+                tail_hash=self._chain.tail_hash,
+                event_data=data,
+                signature=signed.signature,
+            )
             ts_future = _SIGNING_EXECUTOR.submit(
                 asyncio.run,
-                self._timestamp_provider.get_timestamp(),
+                self._timestamp_provider.get_timestamp(binding_payload),
             )
             ts_result = ts_future.result(timeout=5.0)
 

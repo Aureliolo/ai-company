@@ -21,7 +21,10 @@ from typing import TYPE_CHECKING
 
 from synthorg.observability import get_logger
 from synthorg.observability.audit_chain.sink import AuditChainSink
-from synthorg.observability.events.metrics import METRICS_COLLECTOR_INITIALIZED
+from synthorg.observability.events.metrics import (
+    METRICS_COLLECTOR_INITIALIZED,
+    TRACE_CONFIG_INVALID_SAMPLING_RATIO,
+)
 from synthorg.observability.metrics_hub import set_active_collector
 from synthorg.observability.otlp_handler import OtlpHandler
 from synthorg.observability.tracing import (
@@ -77,7 +80,7 @@ def _load_trace_config() -> TraceConfig:
             sampling_ratio = float(sampling_ratio_raw)
         except ValueError:
             logger.warning(
-                "trace.config.invalid_sampling_ratio",
+                TRACE_CONFIG_INVALID_SAMPLING_RATIO,
                 rejected_value=sampling_ratio_raw,
                 fallback=sampling_ratio,
             )

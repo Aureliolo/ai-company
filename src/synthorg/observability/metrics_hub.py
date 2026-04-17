@@ -10,15 +10,25 @@ The collector is held behind a weak reference so tests that tear
 down ``AppState`` between cases do not keep a dead instance live and
 do not accidentally record metrics against the previous run.
 
-``record_*`` wrappers no-op when no collector is registered, so
-call sites remain safe even when metrics are disabled.
+``record_*`` wrappers are **best-effort** -- a collector exception
+is swallowed and logged so a transient label-validation failure or
+internal prometheus_client error cannot take down the business
+operation emitting the metric. They also no-op when no collector is
+registered so call sites remain safe when metrics are disabled.
 """
 
 import weakref
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
+
+from synthorg.observability import get_logger
+from synthorg.observability.events.metrics import METRICS_SCRAPE_FAILED
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from synthorg.observability.prometheus_collector import PrometheusCollector
+
+logger = get_logger(__name__)
 
 _collector_ref: weakref.ReferenceType[PrometheusCollector] | None = None
 
@@ -45,6 +55,32 @@ def _active() -> PrometheusCollector | None:
     return _collector_ref()
 
 
+def _safe_record(
+    event: str,
+    method: str,
+) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+    """Decorator that swallows and logs collector exceptions."""
+
+    def _wrap(fn: Callable[..., Any]) -> Callable[..., Any]:
+        def inner(*args: Any, **kwargs: Any) -> Any:
+            try:
+                return fn(*args, **kwargs)
+            except MemoryError, RecursionError:
+                raise
+            except Exception:
+                logger.warning(
+                    event,
+                    hub_method=method,
+                    exc_info=True,
+                )
+                return None
+
+        return inner
+
+    return _wrap
+
+
+@_safe_record(METRICS_SCRAPE_FAILED, "record_provider_usage")
 def record_provider_usage(
     *,
     provider: str,
@@ -70,6 +106,7 @@ def record_provider_usage(
     )
 
 
+@_safe_record(METRICS_SCRAPE_FAILED, "record_task_run")
 def record_task_run(*, outcome: str, duration_sec: float) -> None:
     """Forward to :meth:`PrometheusCollector.record_task_run`."""
     collector = _active()
@@ -78,6 +115,7 @@ def record_task_run(*, outcome: str, duration_sec: float) -> None:
     collector.record_task_run(outcome=outcome, duration_sec=duration_sec)
 
 
+@_safe_record(METRICS_SCRAPE_FAILED, "record_security_verdict")
 def record_security_verdict(verdict: str) -> None:
     """Forward to :meth:`PrometheusCollector.record_security_verdict`."""
     collector = _active()

@@ -8,6 +8,9 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.observability import get_logger
+
+logger = get_logger(__name__)
 
 
 class TsaPreset(StrEnum):
@@ -143,6 +146,11 @@ class AuditChainConfig(BaseModel):
         """
         if self.tsa_preset == TsaPreset.CUSTOM and self.tsa_url is None:
             msg = "tsa_preset=CUSTOM requires tsa_url to be set"
+            logger.error(
+                "audit_chain.config.invalid_preset",
+                reason="custom_without_url",
+                tsa_preset=self.tsa_preset.value,
+            )
             raise ValueError(msg)
         if (
             self.tsa_preset != TsaPreset.NONE
@@ -156,6 +164,12 @@ class AuditChainConfig(BaseModel):
                 "fall back to system trust anchors. Either supply "
                 "the preset's root certificate bundle or set "
                 "tsa_verify_signature=False (not recommended)."
+            )
+            logger.error(
+                "audit_chain.config.invalid_preset",
+                reason="verify_without_trusted_roots",
+                tsa_preset=self.tsa_preset.value,
+                tsa_verify_signature=self.tsa_verify_signature,
             )
             raise ValueError(msg)
         return self

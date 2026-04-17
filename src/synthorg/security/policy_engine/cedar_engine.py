@@ -79,6 +79,7 @@ class CedarPolicyEngine:
         }
 
         start = time.perf_counter()
+        decision: PolicyDecision | None = None
         try:
             result = cedarpy.is_authorized(
                 cedar_request,
@@ -107,19 +108,12 @@ class CedarPolicyEngine:
                 allowed=allowed,
                 latency_ms=latency_ms,
             )
-            # Record the verdict in Prometheus so the dashboards
-            # expose allow/deny trends.  No-op when the collector is
-            # not wired, keeping the Cedar engine decoupled from
-            # ``AppState``.
-            record_security_verdict("allow" if allowed else "deny")
-
-            return PolicyDecision(
+            decision = PolicyDecision(
                 allow=allowed,
                 reason=reason,
                 matched_policy="cedar_policy_set",
                 latency_ms=latency_ms,
             )
-
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
@@ -145,3 +139,11 @@ class CedarPolicyEngine:
                 reason=f"Policy evaluation error (fail-open): {exc}",
                 latency_ms=latency_ms,
             )
+
+        # Record the verdict in Prometheus *after* the authoritative
+        # decision is built. Pulling the metrics hook out of the
+        # Cedar-evaluation try/except prevents a hook exception from
+        # being misinterpreted as a policy-engine failure (which
+        # would flip ``allowed`` in fail-open mode).
+        record_security_verdict("allow" if decision.allow else "deny")
+        return decision

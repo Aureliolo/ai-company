@@ -7,6 +7,7 @@ helper live in their own module so :mod:`synthorg.observability.prometheus_colle
 stays below the 800-line limit mandated by ``CLAUDE.md``.
 """
 
+import math
 from typing import Final
 
 from synthorg.observability import get_logger
@@ -21,6 +22,7 @@ __all__ = [
     "VALID_TOKEN_DIRECTIONS",
     "VALID_TOOL_OUTCOMES",
     "VALID_VERDICTS",
+    "require_finite",
     "require_label",
     "require_non_negative",
     "status_class",
@@ -49,13 +51,32 @@ def require_label(label: str, value: str, valid: frozenset[str]) -> None:
         raise ValueError(msg)
 
 
-def require_non_negative(label: str, value: float | int) -> None:
-    """Raise ``ValueError`` if *value* is negative.
+def require_finite(label: str, value: float | int) -> None:
+    """Raise ``ValueError`` if *value* is NaN or infinite.
 
-    Emits a ``WARNING`` log with the rejected numeric input before
-    raising so cardinality / value regressions are discoverable in
-    metrics pipelines.
+    Prometheus will happily store NaN/Inf, but dashboards that rely
+    on rate() or quantile aggregations break silently when they
+    arrive, so every numeric input goes through this guard before
+    hitting ``Counter.inc()`` / ``Histogram.observe()``.
     """
+    if not math.isfinite(value):
+        logger.warning(
+            METRICS_SCRAPE_FAILED,
+            reason="non_finite_value",
+            label=label,
+            rejected_value=str(value),
+        )
+        msg = f"{label} must be a finite number, got {value!r}"
+        raise ValueError(msg)
+
+
+def require_non_negative(label: str, value: float | int) -> None:
+    """Raise ``ValueError`` if *value* is negative, NaN, or infinite.
+
+    Calls :func:`require_finite` first so NaN values (which compare
+    ``!= 0`` in both directions) are caught before the sign test.
+    """
+    require_finite(label, value)
     if value < 0:
         logger.warning(
             METRICS_SCRAPE_FAILED,

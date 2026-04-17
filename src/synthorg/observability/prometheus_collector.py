@@ -14,7 +14,7 @@ from collections import Counter
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-from prometheus_client import CollectorRegistry, Gauge, Histogram, Info
+from prometheus_client import CollectorRegistry, Gauge, Info
 from prometheus_client import Counter as PromCounter
 
 from synthorg import __version__
@@ -34,10 +34,12 @@ from synthorg.observability.prometheus_labels import (
     VALID_TASK_OUTCOMES,
     VALID_TOOL_OUTCOMES,
     VALID_VERDICTS,
+    require_finite,
     require_label,
     require_non_negative,
     status_class,
 )
+from synthorg.observability.prometheus_push_metrics import PushMetrics
 
 # Backwards-compatible alias for tests that imported the previous helper.
 _status_class = status_class
@@ -148,102 +150,23 @@ class PrometheusCollector:
             registry=self.registry,
         )
 
-        # -- Provider token/cost counters (push-updated per LLM call) ----
-        self._provider_tokens = PromCounter(
-            f"{prefix}_provider_tokens_total",
-            "Tokens consumed per provider, model, and direction",
-            ["provider", "model", "direction"],
-            registry=self.registry,
-        )
-        self._provider_cost_usd = PromCounter(
-            f"{prefix}_provider_cost_usd_total",
-            "Accumulated cost in USD per provider and model",
-            ["provider", "model"],
-            registry=self.registry,
-        )
-
-        # -- API request histogram (push-updated by middleware) ----------
-        self._api_request_duration = Histogram(
-            f"{prefix}_api_request_duration_seconds",
-            "HTTP request handler duration",
-            ["method", "route", "status_class"],
-            buckets=(
-                0.005,
-                0.01,
-                0.025,
-                0.05,
-                0.1,
-                0.25,
-                0.5,
-                1.0,
-                2.5,
-                5.0,
-                10.0,
-            ),
-            registry=self.registry,
-        )
-
-        # -- Task counters + histogram (push-updated by observer) --------
-        self._task_runs = PromCounter(
-            f"{prefix}_task_runs_total",
-            "Task completions by outcome",
-            ["outcome"],
-            registry=self.registry,
-        )
-        self._task_duration = Histogram(
-            f"{prefix}_task_duration_seconds",
-            "Task execution duration by outcome",
-            ["outcome"],
-            buckets=(0.1, 0.5, 1.0, 5.0, 10.0, 30.0, 60.0, 300.0, 600.0),
-            registry=self.registry,
-        )
-
-        # -- Tool counters + histogram (push-updated by invoker) ---------
-        self._tool_invocations = PromCounter(
-            f"{prefix}_tool_invocations_total",
-            "Tool invocation count by tool and outcome",
-            ["tool_name", "outcome"],
-            registry=self.registry,
-        )
-        self._tool_duration = Histogram(
-            f"{prefix}_tool_duration_seconds",
-            "Tool invocation duration by tool and outcome",
-            ["tool_name", "outcome"],
-            buckets=(0.005, 0.025, 0.1, 0.5, 1.0, 5.0, 30.0, 120.0),
-            registry=self.registry,
-        )
-
-        # -- Audit chain metrics (push-updated by audit sink) ------------
-        self._audit_chain_appends = PromCounter(
-            f"{prefix}_audit_chain_appends_total",
-            "Audit chain append operations by status",
-            ["status"],
-            registry=self.registry,
-        )
-        self._audit_chain_depth = Gauge(
-            f"{prefix}_audit_chain_depth",
-            "Current audit hash chain length",
-            registry=self.registry,
-        )
-        self._audit_chain_last_append_ts = Gauge(
-            f"{prefix}_audit_chain_last_append_timestamp_seconds",
-            "Unix timestamp of the last audit chain append",
-            registry=self.registry,
-        )
-
-        # -- OTLP export health (push-updated by OTLP handlers) ----------
-        self._otlp_export_batches = PromCounter(
-            f"{prefix}_otlp_export_batches_total",
-            "OTLP export batches by kind and outcome",
-            ["kind", "outcome"],
-            registry=self.registry,
-        )
-        self._otlp_export_dropped = PromCounter(
-            f"{prefix}_otlp_export_dropped_records_total",
-            "OTLP records dropped (queue full, export failed past retries)",
-            ["kind"],
-            registry=self.registry,
-        )
+        # Push-updated metric families live in their own helper so
+        # this module stays under the 800-line ceiling. The
+        # attributes below alias into ``_push`` to preserve the
+        # original public access pattern.
+        self._push = PushMetrics(registry=self.registry, prefix=prefix)
+        self._provider_tokens = self._push.provider_tokens
+        self._provider_cost_usd = self._push.provider_cost_usd
+        self._api_request_duration = self._push.api_request_duration
+        self._task_runs = self._push.task_runs
+        self._task_duration = self._push.task_duration
+        self._tool_invocations = self._push.tool_invocations
+        self._tool_duration = self._push.tool_duration
+        self._audit_chain_appends = self._push.audit_chain_appends
+        self._audit_chain_depth = self._push.audit_chain_depth
+        self._audit_chain_last_append_ts = self._push.audit_chain_last_append_ts
+        self._otlp_export_batches = self._push.otlp_export_batches
+        self._otlp_export_dropped = self._push.otlp_export_dropped
 
         logger.debug(METRICS_COLLECTOR_INITIALIZED, prefix=prefix)
 
@@ -302,19 +225,9 @@ class PrometheusCollector:
             output_tokens: Tokens in the response completion.
             cost_usd: Computed cost in USD for this call.
         """
-        if input_tokens < 0 or output_tokens < 0 or cost_usd < 0:
-            logger.warning(
-                METRICS_SCRAPE_FAILED,
-                component="provider_usage",
-                reason="negative_value",
-                provider=provider,
-                model=model,
-                input_tokens=input_tokens,
-                output_tokens=output_tokens,
-                cost_usd=cost_usd,
-            )
-            msg = "record_provider_usage: token counts and cost must be non-negative"
-            raise ValueError(msg)
+        require_non_negative("record_provider_usage: input_tokens", input_tokens)
+        require_non_negative("record_provider_usage: output_tokens", output_tokens)
+        require_non_negative("record_provider_usage: cost_usd", cost_usd)
         self._provider_tokens.labels(
             provider=provider,
             model=model,
@@ -442,6 +355,7 @@ class PrometheusCollector:
         """
         require_label("audit append status", status, VALID_AUDIT_APPEND_STATUSES)
         require_non_negative("record_audit_append: chain_depth", chain_depth)
+        require_finite("record_audit_append: timestamp_unix", timestamp_unix)
         self._audit_chain_appends.labels(status=status).inc()
         self._audit_chain_depth.set(chain_depth)
         self._audit_chain_last_append_ts.set(timestamp_unix)

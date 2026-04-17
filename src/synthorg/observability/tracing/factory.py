@@ -6,7 +6,10 @@ never sees the concrete handler class.
 """
 
 from synthorg.observability import get_logger
-from synthorg.observability.events.metrics import METRICS_COLLECTOR_INITIALIZED
+from synthorg.observability.events.metrics import (
+    METRICS_COLLECTOR_INITIALIZED,
+    TRACE_CONFIG_UNSUPPORTED_VARIANT,
+)
 from synthorg.observability.tracing.config import (
     DisabledTraceConfig,
     OtlpHttpTraceConfig,
@@ -61,7 +64,7 @@ def build_trace_handler(config: TraceConfig) -> TraceHandler:
         return OtlpTraceHandler(config)
     msg = f"Unsupported TraceConfig variant: {type(config).__name__}"  # type: ignore[unreachable]
     logger.error(
-        "trace.config.unsupported_variant",
+        TRACE_CONFIG_UNSUPPORTED_VARIANT,
         variant=type(config).__name__,
     )
     raise ValueError(msg)

@@ -169,9 +169,15 @@ def _log_request_completion(
 def _resolve_route_template(scope: Scope) -> str:
     """Resolve the route template from a post-routing ASGI scope.
 
-    Returns :data:`_UNMATCHED_ROUTE` when routing did not populate a
-    handler (404, method-not-allowed, exceptions raised pre-routing).
+    Prefers ``scope["path_template"]`` which Litestar populates with
+    the exact template that matched this request; falls back to
+    ``sorted(handler.paths)[0]`` for older router versions. Returns
+    :data:`_UNMATCHED_ROUTE` when no handler was reached (404,
+    method-not-allowed, exceptions raised pre-routing).
     """
+    template_hint = scope.get("path_template")
+    if isinstance(template_hint, str) and template_hint:
+        return template_hint
     handler: Any = scope.get("route_handler")
     if handler is None:
         return _UNMATCHED_ROUTE
@@ -201,6 +207,11 @@ def _record_request_metric(
     app_state: Any = state.get("app_state") if isinstance(state, dict) else None
     if app_state is None or not getattr(app_state, "has_prometheus_collector", False):
         return
+    # Skip pre-response disconnects entirely rather than synthesising
+    # a 5xx: those weren't errors the handler produced, and folding
+    # them into ``status_class="5xx"`` would inflate SLO alarms.
+    if status_code is None:
+        return
     try:
         collector = app_state.prometheus_collector
     except MemoryError, RecursionError:
@@ -219,7 +230,7 @@ def _record_request_metric(
         collector.record_api_request(
             method=method,
             route=_resolve_route_template(scope),
-            status_code=status_code if status_code is not None else 500,
+            status_code=status_code,
             duration_sec=duration_sec,
         )
     except MemoryError, RecursionError:

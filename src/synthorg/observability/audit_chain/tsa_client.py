@@ -312,16 +312,24 @@ class TsaClient:
             msg = f"TSA returned HTTP {response.status_code}: {response.reason_phrase}"
             raise TsaTransportError(msg)
         content_type = response.headers.get("Content-Type", "")
-        if _RESP_CONTENT_TYPE not in content_type:
+        # Strict media-type equality: strip the parameters after
+        # ``;`` and case-normalise both sides. Substring matching
+        # would accept anything that merely contains the canonical
+        # name (e.g. ``application/timestamp-reply-extended``), so
+        # this guard tightens the wire-format check.
+        content_main = content_type.split(";", 1)[0].strip().lower()
+        if content_main != _RESP_CONTENT_TYPE.lower():
             logger.warning(
                 SECURITY_TIMESTAMP_PROTOCOL_ERROR,
                 tsa_url=self._tsa_url,
                 reason="unexpected_content_type",
                 content_type=content_type,
+                content_main=content_main,
                 expected=_RESP_CONTENT_TYPE,
             )
             msg = (
-                f"TSA returned unexpected Content-Type {content_type!r}; "
+                f"TSA returned unexpected Content-Type {content_type!r} "
+                f"(media type {content_main!r}); "
                 f"expected {_RESP_CONTENT_TYPE!r}"
             )
             raise TsaProtocolError(msg)
@@ -504,6 +512,16 @@ def _load_root_cert(pem_bytes: bytes) -> x509.Certificate:
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
+        # Log a fingerprint of the rejected PEM so operators can
+        # cross-reference the config source without pasting the
+        # (potentially large) cert material into logs.
+        logger.exception(
+            SECURITY_TIMESTAMP_PROTOCOL_ERROR,
+            reason="invalid_trusted_root_pem",
+            pem_bytes=len(pem_bytes),
+            pem_sha256_prefix=hashlib.sha256(pem_bytes).hexdigest()[:16],
+            error_type=type(exc).__name__,
+        )
         msg = f"Invalid trusted-root PEM: {exc}"
         raise ValueError(msg) from exc
 

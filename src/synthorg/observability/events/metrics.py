@@ -21,3 +21,7 @@ METRICS_OTLP_FLUSHER_STOPPED: Final[str] = "metrics.otlp.flusher_stopped"
 METRICS_OTLP_FLUSHER_ERROR: Final[str] = "metrics.otlp.flusher_error"
 METRICS_OTLP_CALLBACK_ERROR: Final[str] = "metrics.otlp.callback_error"
 METRICS_OTLP_INVALID_CALLBACK: Final[str] = "metrics.otlp.invalid_callback"
+
+# Trace configuration validation events
+TRACE_CONFIG_INVALID_SAMPLING_RATIO: Final[str] = "trace.config.invalid_sampling_ratio"
+TRACE_CONFIG_UNSUPPORTED_VARIANT: Final[str] = "trace.config.unsupported_variant"

@@ -664,10 +664,11 @@ class ToolInvoker:
             try:
                 result = await self._invoke_single_inner(tool_call)
             except asyncio.CancelledError:
-                # Cancellation surfaces as its own outcome so
-                # downstream dashboards can distinguish intentional
-                # timeout/shutdown from actual errors.
-                span.set_attribute("tool.outcome", "cancelled")
+                # Map cancellation into the documented tool_span
+                # taxonomy (success / error / timeout); cancellations
+                # are nearly always driven by the execution-engine
+                # deadline, which callers reason about as "timeout".
+                span.set_attribute("tool.outcome", "timeout")
                 raise
             except MemoryError, RecursionError:
                 span.set_attribute("tool.outcome", "error")

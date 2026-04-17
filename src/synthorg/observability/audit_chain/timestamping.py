@@ -64,8 +64,19 @@ _SECURITY_INCIDENT_EXCEPTIONS: tuple[type[TsaError], ...] = (
 class TimestampProvider(Protocol):
     """Protocol for audit chain timestamp sources."""
 
-    async def get_timestamp(self) -> TimestampResult:
+    async def get_timestamp(
+        self,
+        binding_payload: bytes | None = None,
+    ) -> TimestampResult:
         """Get a trusted timestamp paired with its origin.
+
+        Args:
+            binding_payload: Optional per-append bytes to stamp
+                (typically the audit chain's current head hash).
+                When ``None``, the provider uses a default marker
+                -- providers backed by a TSA should accept and
+                forward this payload so every append is
+                cryptographically bound to its own chain state.
 
         Returns:
             :class:`TimestampResult` whose ``source`` field lets the
@@ -79,8 +90,17 @@ class TimestampProvider(Protocol):
 class LocalClockProvider:
     """Timestamp provider using the local system clock."""
 
-    async def get_timestamp(self) -> TimestampResult:
-        """Return current UTC time tagged as ``local_clock``."""
+    async def get_timestamp(
+        self,
+        binding_payload: bytes | None = None,  # noqa: ARG002
+    ) -> TimestampResult:
+        """Return current UTC time tagged as ``local_clock``.
+
+        ``binding_payload`` is accepted for protocol compatibility
+        with :class:`ResilientTimestampProvider` but has no effect
+        here -- the local clock is not a cryptographic timestamp,
+        so there's nothing to bind.
+        """
         return TimestampResult(
             timestamp=datetime.now(UTC),
             source="local_clock",
@@ -99,28 +119,34 @@ class ResilientTimestampProvider:
     Args:
         tsa_client: The TSA client. The provider does not own the
             client; shutdown is the caller's responsibility.
-        binding_payload: Bytes that the TSA should timestamp. Pass a
-            value tied to the audit chain's current head hash so the
-            returned timestamp is cryptographically bound to the
-            chain state at request time. Defaults to a fixed marker
-            when callers only need a coarse-grained time anchor.
+        default_binding_payload: Fallback bytes used when
+            :meth:`get_timestamp` is called without an explicit
+            ``binding_payload`` (e.g. interactive debugging). Callers
+            in the audit-chain hot path should always pass the
+            current chain-head bytes so each token is bound to its
+            specific append; relying on the default turns every
+            token into a timestamp of the same fixed marker and
+            defeats the replay/tamper protection.
     """
 
     def __init__(
         self,
         tsa_client: TsaClient,
         *,
-        binding_payload: bytes = b"synthorg.audit_chain.timestamp",
+        default_binding_payload: bytes = b"synthorg.audit_chain.timestamp",
     ) -> None:
         self._client = tsa_client
-        self._binding_payload = binding_payload
+        self._default_binding_payload = default_binding_payload
 
     @property
     def tsa_url(self) -> str:
         """Return the injected client's TSA endpoint."""
         return self._client.tsa_url
 
-    async def get_timestamp(self) -> TimestampResult:
+    async def get_timestamp(
+        self,
+        binding_payload: bytes | None = None,
+    ) -> TimestampResult:
         """Get timestamp from TSA, falling back to local clock.
 
         Security-incident exceptions -- hash mismatch, nonce
@@ -130,6 +156,13 @@ class ResilientTimestampProvider:
         transport errors, malformed responses) emit
         :data:`SECURITY_TIMESTAMP_FALLBACK` at WARNING and return the
         local clock so the audit chain keeps moving.
+
+        Args:
+            binding_payload: Per-append bytes the TSA should stamp
+                (typically the current chain head). When ``None``,
+                the provider falls back to its default marker --
+                callers in the audit-chain hot path must pass a
+                concrete value for the timestamp to be meaningful.
 
         Returns:
             :class:`TimestampResult` with ``source="signed"`` on a
@@ -141,8 +174,13 @@ class ResilientTimestampProvider:
             TsaNonceMismatchError: Response nonce didn't match request.
             TsaSignatureError: CMS signature didn't verify.
         """
+        payload = (
+            binding_payload
+            if binding_payload is not None
+            else self._default_binding_payload
+        )
         try:
-            token = await self._client.request_timestamp(self._binding_payload)
+            token = await self._client.request_timestamp(payload)
         except _SECURITY_INCIDENT_EXCEPTIONS as exc:
             logger.exception(
                 SECURITY_TIMESTAMP_INCIDENT,

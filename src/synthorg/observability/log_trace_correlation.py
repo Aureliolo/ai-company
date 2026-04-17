@@ -36,8 +36,16 @@ def inject_trace_context(
     except ImportError:
         return event_dict
 
-    span = _ot_trace.get_current_span()
-    context = span.get_span_context() if span is not None else None
+    # OTel raising from the current-span lookup would drop the log
+    # record entirely (structlog processors bubble exceptions). The
+    # correlation fields are best-effort enrichment; fail open.
+    try:
+        span = _ot_trace.get_current_span()
+        context = span.get_span_context() if span is not None else None
+    except MemoryError, RecursionError:
+        raise
+    except Exception:
+        return event_dict
     if context is None or not context.is_valid:
         return event_dict
     # Format matches OpenTelemetry's canonical hex representation

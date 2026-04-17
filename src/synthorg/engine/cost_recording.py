@@ -86,15 +86,21 @@ async def record_execution_costs(  # noqa: PLR0913
             finish_reason=turn.finish_reason,
             success=turn.success,
         )
-        await _submit_cost_record(
+        persisted = await _submit_cost_record(
             record,
             turn,
             agent_id,
             task_id,
             tracker=tracker,
         )
-        # Mirror the cost record to the Prometheus collector so
-        # ``synthorg_provider_tokens_total`` /
+        if not persisted:
+            # Tracker failed to store the record; skipping the
+            # metrics mirror keeps Prometheus counters consistent
+            # with the authoritative CostTracker state instead of
+            # double-counting costs that never landed.
+            continue
+        # Mirror the persisted cost record to the Prometheus
+        # collector so ``synthorg_provider_tokens_total`` /
         # ``synthorg_provider_cost_usd_total`` reflect every paid
         # completion. No-op when no collector is wired.
         record_provider_usage(
@@ -113,8 +119,15 @@ async def _submit_cost_record(
     task_id: str,
     *,
     tracker: CostTracker,
-) -> None:
-    """Submit a cost record to the tracker, logging failures."""
+) -> bool:
+    """Submit a cost record to the tracker, logging failures.
+
+    Returns:
+        ``True`` when the tracker accepted the record, ``False``
+        when recording failed. Callers gate downstream mirrors
+        (e.g. Prometheus metrics) on the return value so they do
+        not double-count costs that never actually landed.
+    """
     try:
         await tracker.record(record)
     except MemoryError, RecursionError:
@@ -136,7 +149,7 @@ async def _submit_cost_record(
             input_tokens=turn.input_tokens,
             output_tokens=turn.output_tokens,
         )
-        return
+        return False
 
     logger.info(
         EXECUTION_ENGINE_COST_RECORDED,
@@ -145,3 +158,4 @@ async def _submit_cost_record(
         cost_usd=turn.cost_usd,
         project_id=record.project_id,
     )
+    return True

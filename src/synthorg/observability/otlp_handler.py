@@ -341,7 +341,6 @@ class OtlpHandler(logging.Handler):
                 dropped_records=dropped,
                 exc_info=True,
             )
-            return
 
     def close(self) -> None:
         """Signal shutdown, flush remaining records, stop thread."""
