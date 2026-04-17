@@ -236,9 +236,20 @@ def _create_email_sink(
             error=f"invalid port: {params.get('port')!r}",
         )
         return None
+    from_addr = (params.get("from_addr") or "").strip()
+    if not from_addr:
+        # Previously defaulted to ``synthorg@localhost``, which works
+        # in dev but is rejected by most production SMTP relays for
+        # ambiguous sender hostname. Fail loudly so operators wire a
+        # real sender address.
+        logger.warning(
+            NOTIFICATION_SINK_CONFIG_INVALID,
+            sink_type="email",
+            error="from_addr is required",
+        )
+        return None
     username = params.get("username")
     password = params.get("password")
-    from_addr = params.get("from_addr", "synthorg@localhost")
     use_tls = params.get("use_tls", "true").lower() == "true"
     if bridge_config is None:
         return EmailNotificationSink(
