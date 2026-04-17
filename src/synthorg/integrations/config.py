@@ -35,6 +35,23 @@ class EncryptedSqliteConfig(BaseModel):
     master_key_env: str = "SYNTHORG_MASTER_KEY"
 
 
+class EncryptedPostgresConfig(BaseModel):
+    """Config for the encrypted Postgres secret backend.
+
+    Uses the same Fernet key material as ``encrypted_sqlite``; secrets
+    are stored as Fernet ciphertext in the ``connection_secrets``
+    Postgres table alongside the rest of the persistence data.
+
+    Attributes:
+        master_key_env: Environment variable holding the base64-encoded
+            32-byte Fernet key.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    master_key_env: str = "SYNTHORG_MASTER_KEY"
+
+
 class EnvVarConfig(BaseModel):
     """Config for the environment variable secret backend.
 
@@ -52,7 +69,8 @@ class SecretBackendConfig(BaseModel):
 
     Attributes:
         backend_type: Which backend to use.
-        encrypted_sqlite: Settings for the default backend.
+        encrypted_sqlite: Settings for the SQLite-backed Fernet backend.
+        encrypted_postgres: Settings for the Postgres-backed Fernet backend.
         env_var: Settings for the env-var backend.
     """
 
@@ -61,13 +79,21 @@ class SecretBackendConfig(BaseModel):
     # Neutral, vendor-agnostic discriminators so the public config
     # surface does not embed specific vendor names. The factory maps
     # these to concrete adapters internally:
-    #   - ``encrypted_sqlite``: bundled Fernet+SQLite backend (default)
-    #   - ``env_var``: environment variable backend
+    #   - ``encrypted_sqlite``: Fernet ciphertext in a SQLite DB (default)
+    #   - ``encrypted_postgres``: Fernet ciphertext in a Postgres table
+    #   - ``env_var``: read-only environment variable backend
     #   - ``secret_manager_vault``: HashiCorp Vault adapter (stub)
     #   - ``secret_manager_cloud_a``: AWS Secrets Manager adapter (stub)
     #   - ``secret_manager_cloud_b``: Azure Key Vault adapter (stub)
+    #
+    # ``encrypted_sqlite`` is the config default so a bare install with
+    # SQLite persistence just works. ``create_app`` auto-promotes this
+    # default to ``encrypted_postgres`` when the active persistence
+    # backend is Postgres, so operators do not have to keep the secret
+    # backend and persistence backend in manual sync.
     backend_type: Literal[
         "encrypted_sqlite",
+        "encrypted_postgres",
         "env_var",
         "secret_manager_vault",
         "secret_manager_cloud_a",
@@ -75,6 +101,9 @@ class SecretBackendConfig(BaseModel):
     ] = "encrypted_sqlite"
     encrypted_sqlite: EncryptedSqliteConfig = Field(
         default_factory=EncryptedSqliteConfig,
+    )
+    encrypted_postgres: EncryptedPostgresConfig = Field(
+        default_factory=EncryptedPostgresConfig,
     )
     env_var: EnvVarConfig = Field(
         default_factory=EnvVarConfig,

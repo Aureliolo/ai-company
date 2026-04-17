@@ -40,6 +40,8 @@ type Params struct {
 	LogLevel           string
 	JWTSecret          string
 	SettingsKey        string
+	MasterKey          string // Fernet key for encrypted secret backend
+	EncryptSecrets     bool   // whether to wire SYNTHORG_MASTER_KEY into backend
 	Sandbox            bool
 	DockerSock         string
 	DockerSockGID      int // host GID owning DockerSock; -1 skips group_add
@@ -137,6 +139,8 @@ func ParamsFromState(s config.State) (Params, error) {
 		LogLevel:              s.LogLevel,
 		JWTSecret:             s.JWTSecret,
 		SettingsKey:           s.SettingsKey,
+		MasterKey:             s.MasterKey,
+		EncryptSecrets:        s.EncryptSecrets,
 		Sandbox:               s.Sandbox,
 		DockerSock:            s.DockerSock,
 		DockerSockGID:         s.DockerSockGID,

@@ -148,7 +148,7 @@ COPY --from=builder --chown=65532:65532 /data /data
 # distroless runtime.
 COPY --from=atlas /home/curl_user/atlas /usr/local/bin/atlas
 
-ENV PATH="/app/.venv/bin:$PATH" \
+ENV PATH="/app/.venv/bin:/usr/local/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     SYNTHORG_HOST="0.0.0.0" \

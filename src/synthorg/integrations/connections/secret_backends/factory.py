@@ -3,7 +3,12 @@
 Creates a ``SecretBackend`` instance from configuration.
 """
 
+from typing import TYPE_CHECKING
+
 from synthorg.integrations.config import SecretBackendConfig  # noqa: TC001
+from synthorg.integrations.connections.secret_backends.encrypted_postgres import (
+    EncryptedPostgresSecretBackend,
+)
 from synthorg.integrations.connections.secret_backends.encrypted_sqlite import (
     EncryptedSqliteSecretBackend,
 )
@@ -18,6 +23,9 @@ from synthorg.observability.events.integrations import (
     SECRET_BACKEND_UNAVAILABLE,
 )
 
+if TYPE_CHECKING:
+    from psycopg_pool import AsyncConnectionPool
+
 logger = get_logger(__name__)
 
 
@@ -25,18 +33,23 @@ def create_secret_backend(
     config: SecretBackendConfig,
     *,
     db_path: str | None = None,
+    pg_pool: "AsyncConnectionPool | None" = None,  # noqa: UP037
 ) -> SecretBackend:
     """Create a secret backend from configuration.
 
     Args:
         config: Secret backend configuration.
-        db_path: SQLite database path (required for encrypted_sqlite).
+        db_path: SQLite database path (required for
+            ``encrypted_sqlite``).
+        pg_pool: Async Postgres connection pool (required for
+            ``encrypted_postgres``).
 
     Returns:
         A configured ``SecretBackend`` instance.
 
     Raises:
         ValueError: If the backend type is unknown or misconfigured.
+        NotImplementedError: If the backend type is a stub.
     """
     backend_type = config.backend_type
 
@@ -52,6 +65,20 @@ def create_secret_backend(
         return EncryptedSqliteSecretBackend(
             db_path=db_path,
             config=config.encrypted_sqlite,
+        )
+
+    if backend_type == "encrypted_postgres":
+        if pg_pool is None:
+            logger.error(
+                SECRET_BACKEND_UNAVAILABLE,
+                backend=backend_type,
+                error="pg_pool is required for encrypted_postgres",
+            )
+            msg = "pg_pool is required for encrypted_postgres secret backend"
+            raise ValueError(msg)
+        return EncryptedPostgresSecretBackend(
+            pool=pg_pool,
+            config=config.encrypted_postgres,
         )
 
     if backend_type == "env_var":

@@ -54,6 +54,7 @@ const (
 	fFineTuning
 	fPostgresPort
 	fNatsPort
+	fEncryptSecrets
 	fReinitOverwrite
 	fReinitCancel
 	fStartYes
@@ -63,16 +64,17 @@ const (
 // ── Model ───────────────────────────────────────────────────────────
 
 type setupTUI struct {
-	dataDir      textinput.Model
-	backendPort  textinput.Model
-	webPort      textinput.Model
-	postgresPort textinput.Model
-	natsPort     textinput.Model
-	sandbox      bool
-	busBackend   int  // 0=internal, 1=nats
-	persistence  int  // 0=sqlite, 1=postgres
-	fineTuning   bool // embedding fine-tuning sidecar (~4 GB)
-	telemetry    bool
+	dataDir        textinput.Model
+	backendPort    textinput.Model
+	webPort        textinput.Model
+	postgresPort   textinput.Model
+	natsPort       textinput.Model
+	sandbox        bool
+	busBackend     int  // 0=internal, 1=nats
+	persistence    int  // 0=sqlite, 1=postgres
+	fineTuning     bool // embedding fine-tuning sidecar (~4 GB)
+	encryptSecrets bool // Fernet-encrypt connection secrets at rest
+	telemetry      bool
 
 	focus       int
 	advExpanded bool
@@ -119,19 +121,20 @@ func newSetupTUI(dataDir, backendPort, webPort, ver string, sandbox bool) setupT
 	np.Prompt = ""
 
 	return setupTUI{
-		dataDir:      di,
-		backendPort:  bp,
-		webPort:      wp,
-		postgresPort: pp,
-		natsPort:     np,
-		sandbox:      sandbox,
-		busBackend:   1,
-		persistence:  1, // default: postgres
-		focus:        fDataDir,
-		phase:        phaseSetup,
-		version:      ver,
-		width:        80,
-		height:       24,
+		dataDir:        di,
+		backendPort:    bp,
+		webPort:        wp,
+		postgresPort:   pp,
+		natsPort:       np,
+		sandbox:        sandbox,
+		busBackend:     1,
+		persistence:    1, // default: postgres
+		encryptSecrets: true,
+		focus:          fDataDir,
+		phase:          phaseSetup,
+		version:        ver,
+		width:          80,
+		height:         24,
 	}
 }
 
@@ -148,7 +151,7 @@ func (m *setupTUI) fields() []int {
 	default:
 		f := []int{fDataDir, fPersistence, fBusBackend, fFineTuning, fAdvToggle}
 		if m.advExpanded {
-			f = append(f, fSandbox, fBackendPort, fWebPort)
+			f = append(f, fSandbox, fEncryptSecrets, fBackendPort, fWebPort)
 			if m.persistence == 1 {
 				f = append(f, fPostgresPort)
 			}
@@ -298,6 +301,9 @@ func (m setupTUI) updateSetup(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case fFineTuning:
 			m.fineTuning = !m.fineTuning
+			return m, nil
+		case fEncryptSecrets:
+			m.encryptSecrets = !m.encryptSecrets
 			return m, nil
 		case fAdvToggle:
 			if msg.String() == " " {

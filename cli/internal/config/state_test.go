@@ -37,6 +37,12 @@ func TestDefaultState(t *testing.T) {
 	if s.SettingsKey != "" {
 		t.Errorf("SettingsKey should default to empty, got %q", s.SettingsKey)
 	}
+	if s.MasterKey != "" {
+		t.Errorf("MasterKey should default to empty, got %q", s.MasterKey)
+	}
+	if !s.EncryptSecrets {
+		t.Error("EncryptSecrets should default to true so the safe path is on by default")
+	}
 	if s.AutoCleanup {
 		t.Error("AutoCleanup should default to false")
 	}

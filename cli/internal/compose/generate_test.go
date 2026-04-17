@@ -368,6 +368,73 @@ func TestGenerateWithSandboxAndSecrets(t *testing.T) {
 	assertContains(t, yaml, "/var/run/docker.sock:/var/run/docker.sock")
 }
 
+// TestGenerateMasterKeyGatedByEncryptSecrets verifies that the Fernet
+// master key only lands in the backend environment when the user opts
+// into encrypting secrets at rest. Without the toggle, the backend
+// falls back to env_var and must NOT receive the key.
+func TestGenerateMasterKeyGatedByEncryptSecrets(t *testing.T) {
+	t.Parallel()
+
+	base := Params{
+		CLIVersion:         "dev",
+		ImageTag:           "latest",
+		BackendPort:        3001,
+		WebPort:            3000,
+		LogLevel:           "info",
+		DockerSockGID:      -1,
+		JWTSecret:          "j",
+		SettingsKey:        "s",
+		MasterKey:          "m",
+		PersistenceBackend: "sqlite",
+		MemoryBackend:      "mem0",
+		BusBackend:         "internal",
+	}
+
+	t.Run("encryption on -> key rendered", func(t *testing.T) {
+		p := base
+		p.EncryptSecrets = true
+		out, err := Generate(p)
+		if err != nil {
+			t.Fatalf("Generate: %v", err)
+		}
+		assertContains(t, string(out), "SYNTHORG_MASTER_KEY")
+	})
+
+	t.Run("encryption off -> key omitted", func(t *testing.T) {
+		p := base
+		p.EncryptSecrets = false
+		out, err := Generate(p)
+		if err != nil {
+			t.Fatalf("Generate: %v", err)
+		}
+		if bytesContain(out, "SYNTHORG_MASTER_KEY") {
+			t.Errorf("SYNTHORG_MASTER_KEY must not appear when EncryptSecrets=false")
+		}
+	})
+
+	t.Run("encryption on but no key -> omitted", func(t *testing.T) {
+		p := base
+		p.EncryptSecrets = true
+		p.MasterKey = ""
+		out, err := Generate(p)
+		if err != nil {
+			t.Fatalf("Generate: %v", err)
+		}
+		if bytesContain(out, "SYNTHORG_MASTER_KEY") {
+			t.Errorf("SYNTHORG_MASTER_KEY must not appear without a key")
+		}
+	})
+}
+
+func bytesContain(haystack []byte, needle string) bool {
+	for i := 0; i+len(needle) <= len(haystack); i++ {
+		if string(haystack[i:i+len(needle)]) == needle {
+			return true
+		}
+	}
+	return false
+}
+
 func TestGenerateWithSandboxAndEmptyDigestPins(t *testing.T) {
 	t.Parallel()
 	p := Params{

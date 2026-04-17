@@ -19,17 +19,24 @@ const stateFileName = "config.json"
 
 // State is the persisted CLI configuration written by `synthorg init`.
 type State struct {
-	DataDir            string            `json:"data_dir"`
-	ImageTag           string            `json:"image_tag"`
-	Channel            string            `json:"channel"`
-	BackendPort        int               `json:"backend_port"`
-	WebPort            int               `json:"web_port"`
-	Sandbox            bool              `json:"sandbox"`
-	DockerSock         string            `json:"docker_sock,omitempty"`
-	DockerSockGID      int               `json:"docker_sock_gid"`
-	LogLevel           string            `json:"log_level"`
-	JWTSecret          string            `json:"jwt_secret,omitempty"`
-	SettingsKey        string            `json:"settings_key,omitempty"`
+	DataDir       string `json:"data_dir"`
+	ImageTag      string `json:"image_tag"`
+	Channel       string `json:"channel"`
+	BackendPort   int    `json:"backend_port"`
+	WebPort       int    `json:"web_port"`
+	Sandbox       bool   `json:"sandbox"`
+	DockerSock    string `json:"docker_sock,omitempty"`
+	DockerSockGID int    `json:"docker_sock_gid"`
+	LogLevel      string `json:"log_level"`
+	JWTSecret     string `json:"jwt_secret,omitempty"`
+	SettingsKey   string `json:"settings_key,omitempty"`
+	// MasterKey is a Fernet-compatible URL-safe base64 of 32 bytes used
+	// to encrypt connection secrets at rest. Generated at init time and
+	// preserved across re-init (regenerating would orphan every stored
+	// secret). Wired into the backend container as SYNTHORG_MASTER_KEY
+	// only when EncryptSecrets is true.
+	MasterKey          string            `json:"master_key,omitempty"`
+	EncryptSecrets     bool              `json:"encrypt_secrets"`
 	PersistenceBackend string            `json:"persistence_backend"`
 	MemoryBackend      string            `json:"memory_backend"`
 	BusBackend         string            `json:"bus_backend"`
@@ -144,6 +151,7 @@ func DefaultState() State {
 		BusBackend:         "internal",
 		NatsClientPort:     3003,
 		PostgresPort:       3002,
+		EncryptSecrets:     true,
 	}
 }
 

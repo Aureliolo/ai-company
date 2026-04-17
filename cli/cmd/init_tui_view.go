@@ -122,6 +122,8 @@ func (m setupTUI) viewSetup() []string {
 		main = append(main, brow("", w))
 		main = append(main, brow(m.sandboxToggle(w), w))
 		main = append(main, brow("", w))
+		main = append(main, brow(m.encryptSecretsToggle(w), w))
+		main = append(main, brow("", w))
 		main = append(main, brow(flabel("Backend port", m.focus == fBackendPort), w))
 		main = append(main, brow("  "+m.backendPort.View(), w))
 		main = append(main, brow("", w))
@@ -145,7 +147,7 @@ func (m setupTUI) viewSetup() []string {
 	main = append(main, boxBottom(w))
 
 	help := "\u2191\u2193 navigate  enter select  esc quit"
-	isToggle := m.focus == fSandbox || m.focus == fBusBackend || m.focus == fPersistence || m.focus == fFineTuning
+	isToggle := m.focus == fSandbox || m.focus == fBusBackend || m.focus == fPersistence || m.focus == fFineTuning || m.focus == fEncryptSecrets
 	if isToggle {
 		help = "\u2191\u2193 navigate  \u2190\u2192/space toggle  esc quit"
 	}
@@ -247,6 +249,35 @@ func (m setupTUI) helpForFocus() []string {
 			"cannot run code, shell",
 			"commands, or file-system",
 			"operations.",
+		}
+	case fEncryptSecrets:
+		if m.encryptSecrets {
+			return []string{
+				"Connection secrets (API keys,",
+				"OAuth tokens) are Fernet-",
+				"encrypted at rest inside the",
+				"database. A master key is",
+				"generated and stored in",
+				"config.json.",
+				"",
+				"Pair with disk/volume",
+				"encryption for at-rest",
+				"protection of non-secret",
+				"data.",
+			}
+		}
+		return []string{
+			"Secrets are read from",
+			"SYNTHORG_SECRET_* env vars",
+			"at runtime. No at-rest",
+			"storage, no OAuth token",
+			"persistence.",
+			"",
+			"Only pick this if you",
+			"manage secrets in an",
+			"external system (Docker",
+			"secrets, k8s Secrets,",
+			"vault, etc.).",
 		}
 	case fBackendPort:
 		return []string{
@@ -619,4 +650,8 @@ func (m setupTUI) busToggle(w int) string {
 
 func (m setupTUI) persistenceToggle(w int) string {
 	return toggle2("Database", m.focus == fPersistence, m.persistence == 1, "postgres", "sqlite", false, w)
+}
+
+func (m setupTUI) encryptSecretsToggle(w int) string {
+	return toggle2("Encrypt secrets", m.focus == fEncryptSecrets, m.encryptSecrets, "Yes", "No", true, w)
 }

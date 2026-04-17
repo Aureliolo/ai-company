@@ -29,6 +29,7 @@ var (
 	initBusBackend         string
 	initPersistenceBackend string
 	initPostgresPort       int
+	initEncryptSecrets     string // "", "true", "false" ("" = use default true)
 )
 
 var initCmd = &cobra.Command{
@@ -53,6 +54,7 @@ func init() {
 	initCmd.Flags().StringVar(&initBusBackend, "bus-backend", "", "message bus backend (\"internal\" or \"nats\"; defaults to \"internal\")")
 	initCmd.Flags().StringVar(&initPersistenceBackend, "persistence-backend", "", "persistence backend (\"sqlite\" or \"postgres\"; defaults to \"sqlite\")")
 	initCmd.Flags().IntVar(&initPostgresPort, "postgres-port", 0, "postgres port when --persistence-backend=postgres (1-65535, default 3002)")
+	initCmd.Flags().StringVar(&initEncryptSecrets, "encrypt-secrets", "", "encrypt connection secrets at rest (\"true\" or \"false\"; default \"true\")")
 	initCmd.GroupID = "core"
 	rootCmd.AddCommand(initCmd)
 }
@@ -113,6 +115,9 @@ func runInit(cmd *cobra.Command, _ []string) error {
 			}
 			if oldState.SettingsKey != "" {
 				state.SettingsKey = oldState.SettingsKey
+			}
+			if oldState.MasterKey != "" {
+				state.MasterKey = oldState.MasterKey
 			}
 			if err := preservePostgresFromOldState(cmd, &state, oldState); err != nil {
 				return fmt.Errorf("preserving postgres settings: %w", err)
@@ -243,6 +248,9 @@ func handleReinit(cmd *cobra.Command, state *config.State, opts *GlobalOpts) (bo
 		if oldState.SettingsKey != "" {
 			state.SettingsKey = oldState.SettingsKey
 		}
+		if oldState.MasterKey != "" {
+			state.MasterKey = oldState.MasterKey
+		}
 		if err := preservePostgresFromOldState(cmd, state, oldState); err != nil {
 			return false, err
 		}
@@ -261,6 +269,12 @@ func handleReinit(cmd *cobra.Command, state *config.State, opts *GlobalOpts) (bo
 	}
 	if *kept != "" {
 		state.SettingsKey = *kept
+	}
+	// Preserve the secret-storage master key so existing ciphertext
+	// stays decryptable after re-init. Regenerating it would silently
+	// orphan every stored connection secret.
+	if oldState.MasterKey != "" {
+		state.MasterKey = oldState.MasterKey
 	}
 	if err := preservePostgresFromOldState(cmd, state, oldState); err != nil {
 		return false, err
@@ -363,6 +377,7 @@ type setupAnswers struct {
 	imageTag           string // optional override (empty = use CLI version)
 	telemetryOptIn     bool
 	fineTuning         bool // enable fine-tuning pipeline (requires sandbox/Docker)
+	encryptSecrets     bool // encrypt connection secrets at rest (default true)
 	reinitConfirmed    bool // TUI reinit phase was shown and user confirmed
 }
 
@@ -380,6 +395,9 @@ func validateInitFlags(dataDir string) error {
 	}
 	if initSandbox != "" && !config.IsValidBool(initSandbox) {
 		return fmt.Errorf("invalid --sandbox %q: must be \"true\" or \"false\"", initSandbox)
+	}
+	if initEncryptSecrets != "" && !config.IsValidBool(initEncryptSecrets) {
+		return fmt.Errorf("invalid --encrypt-secrets %q: must be \"true\" or \"false\"", initEncryptSecrets)
 	}
 	if initLogLevel != "" && !config.IsValidLogLevel(initLogLevel) {
 		return fmt.Errorf("invalid --log-level %q: must be one of %s", initLogLevel, config.LogLevelNames())
@@ -452,6 +470,12 @@ func buildAnswersFromFlags(dataDir string) setupAnswers {
 		postgresPort = defaults.PostgresPort
 	}
 	sandboxEnabled := initSandbox == "true"
+	// Default encryption to ON when the flag is omitted. Only an
+	// explicit "false" turns encryption off.
+	encryptSecrets := defaults.EncryptSecrets
+	if initEncryptSecrets != "" {
+		encryptSecrets = initEncryptSecrets == "true"
+	}
 	a := setupAnswers{
 		dir:                dataDir,
 		backendPortStr:     strconv.Itoa(initBackendPort),
@@ -465,6 +489,7 @@ func buildAnswersFromFlags(dataDir string) setupAnswers {
 		postgresPort:       postgresPort,
 		channel:            initChannel,
 		imageTag:           initImageTag,
+		encryptSecrets:     encryptSecrets,
 	}
 	return a
 }
@@ -601,6 +626,7 @@ func runInteractiveInit(_ *cobra.Command, opts *GlobalOpts) (*interactiveResult,
 			postgresPort:       pgPort,
 			telemetryOptIn:     final.telemetry,
 			fineTuning:         final.fineTuning,
+			encryptSecrets:     final.encryptSecrets,
 			reinitConfirmed:    final.needReinit && !final.cancelled,
 		},
 		startNow: final.startNow,
@@ -640,7 +666,7 @@ func buildState(a setupAnswers) (config.State, error) {
 		}
 	}
 
-	jwtSecret, settingsKey, err := generateInitSecrets()
+	jwtSecret, settingsKey, masterKey, err := generateInitSecrets()
 	if err != nil {
 		return config.State{}, err
 	}
@@ -702,6 +728,8 @@ func buildState(a setupAnswers) (config.State, error) {
 		LogLevel:           a.logLevel,
 		JWTSecret:          jwtSecret,
 		SettingsKey:        settingsKey,
+		MasterKey:          masterKey,
+		EncryptSecrets:     a.encryptSecrets,
 		PersistenceBackend: a.persistenceBackend,
 		MemoryBackend:      a.memoryBackend,
 		BusBackend:         busBackend,
@@ -756,19 +784,24 @@ func resolveImageTag(override string) string {
 	return "latest"
 }
 
-// generateInitSecrets creates the JWT and settings encryption secrets.
-// The settings key is 32 bytes (44-char URL-safe base64), matching the format
-// required by Python cryptography.fernet.Fernet. Do NOT change byte counts.
-func generateInitSecrets() (jwtSecret, settingsKey string, err error) {
+// generateInitSecrets creates the JWT, settings encryption, and secret-storage
+// master keys. The settings key and master key are 32 bytes (44-char URL-safe
+// base64) each, matching the format required by Python
+// cryptography.fernet.Fernet. Do NOT change byte counts.
+func generateInitSecrets() (jwtSecret, settingsKey, masterKey string, err error) {
 	jwtSecret, err = generateSecret(48)
 	if err != nil {
-		return "", "", fmt.Errorf("generating JWT secret: %w", err)
+		return "", "", "", fmt.Errorf("generating JWT secret: %w", err)
 	}
 	settingsKey, err = generateSecret(32)
 	if err != nil {
-		return "", "", fmt.Errorf("generating settings encryption key: %w", err)
+		return "", "", "", fmt.Errorf("generating settings encryption key: %w", err)
 	}
-	return jwtSecret, settingsKey, nil
+	masterKey, err = generateSecret(32)
+	if err != nil {
+		return "", "", "", fmt.Errorf("generating secret master key: %w", err)
+	}
+	return jwtSecret, settingsKey, masterKey, nil
 }
 
 func validateDockerSock(path string) error {
