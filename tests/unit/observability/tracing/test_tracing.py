@@ -15,6 +15,7 @@ Covers:
 
 import threading
 from collections.abc import Generator
+from typing import Any, cast
 
 import pytest
 from opentelemetry import trace as _ot_trace
@@ -59,6 +60,35 @@ def _clear_otel_tracer_provider() -> None:
     _ot_trace._TRACER_PROVIDER = None
 
 
+def _restore_otel_tracer_provider(provider: Any) -> None:
+    """Restore a previously-captured provider as the OTel global.
+
+    Pairs with :func:`_clear_otel_tracer_provider`. The ``provider``
+    argument is the raw ``_TRACER_PROVIDER`` attribute captured
+    before the test, so it is either a concrete ``TracerProvider``
+    (set by an earlier test) or ``None`` (nothing has set a
+    provider yet this process). ``_done`` is set to ``True`` only
+    when a concrete provider was present -- storing the ``_ProxyTracerProvider``
+    here would create infinite recursion in ``get_tracer`` because
+    the proxy's ``get_tracer`` delegates back to ``_TRACER_PROVIDER``.
+    """
+    _ot_trace._TRACER_PROVIDER = provider
+    _ot_trace._TRACER_PROVIDER_SET_ONCE._done = provider is not None
+
+
+def _snapshot_otel_tracer_provider() -> Any:
+    """Capture the raw ``_TRACER_PROVIDER`` for later restoration.
+
+    Uses the module-level attribute directly -- not
+    ``get_tracer_provider()`` -- because the latter returns a
+    ``_ProxyTracerProvider`` when nothing has been set, and stuffing
+    that proxy back into ``_TRACER_PROVIDER`` makes subsequent
+    ``get_tracer`` calls recurse forever (proxy delegates to
+    ``_TRACER_PROVIDER`` which is the proxy itself).
+    """
+    return cast(Any, _ot_trace._TRACER_PROVIDER)
+
+
 @pytest.fixture
 def in_memory_tracer() -> Generator[InMemorySpanExporter]:
     """Install a global ``TracerProvider`` backed by InMemorySpanExporter.
@@ -70,15 +100,14 @@ def in_memory_tracer() -> Generator[InMemorySpanExporter]:
         exporter = InMemorySpanExporter()
         provider = TracerProvider(resource=Resource.create({"service.name": "test"}))
         provider.add_span_processor(SimpleSpanProcessor(exporter))
-        original = _ot_trace.get_tracer_provider()
+        original = _snapshot_otel_tracer_provider()
         _clear_otel_tracer_provider()
         _ot_trace.set_tracer_provider(provider)
         try:
             yield exporter
         finally:
             provider.shutdown()
-            _clear_otel_tracer_provider()
-            _ot_trace._TRACER_PROVIDER = original
+            _restore_otel_tracer_provider(original)
 
 
 # -- Factory dispatch --------------------------------------------------------
@@ -107,28 +136,40 @@ def test_factory_rejects_unknown_variant() -> None:
 def test_otlp_http_config_builds_otlp_handler() -> None:
     from synthorg.observability.otlp_trace_handler import OtlpTraceHandler
 
-    handler = build_trace_handler(
-        OtlpHttpTraceConfig(
-            endpoint="http://localhost:4318",
-            sampling_ratio=0.0,  # Drop everything -- no network calls.
-        )
-    )
-    try:
-        assert isinstance(handler, OtlpTraceHandler)
-    finally:
-        import asyncio
-
-        from synthorg.observability.otlp_trace_handler import _reset_for_testing
-
-        asyncio.run(handler.shutdown())
-        # shutdown() preserves both guards in production so the
-        # global TracerProvider cannot be silently replaced. In
-        # tests we clear both the module-level sentinel AND OTel's
-        # one-shot ``set_tracer_provider`` install state so the
-        # next build_trace_handler call in another test doesn't
-        # hit either guard and RuntimeError.
+    # Hold the lock through the whole test: OTel's ``Once`` guard for
+    # ``set_tracer_provider`` is process-global and we're about to
+    # install+uninstall a real provider. Running concurrently with
+    # any other test that touches the global tracer would corrupt
+    # each other's view of ``_TRACER_PROVIDER``.
+    with _tracer_provider_lock:
+        # Snapshot the pre-test provider so we can restore it after
+        # shutdown. Clearing the globals without restoring leaves
+        # ``_TRACER_PROVIDER=None`` + ``_done=False`` -- OTel's lazy
+        # init then recurses through ``get_tracer_provider`` when
+        # downstream tests call ``get_tracer``.
+        original_provider = _snapshot_otel_tracer_provider()
         _clear_otel_tracer_provider()
-        _reset_for_testing()
+        handler = build_trace_handler(
+            OtlpHttpTraceConfig(
+                endpoint="http://localhost:4318",
+                sampling_ratio=0.0,  # Drop everything -- no network calls.
+            )
+        )
+        try:
+            assert isinstance(handler, OtlpTraceHandler)
+        finally:
+            import asyncio
+
+            from synthorg.observability.otlp_trace_handler import (
+                _reset_for_testing,
+            )
+
+            asyncio.run(handler.shutdown())
+            # Restore OTel's global provider to the pre-test value so
+            # other tests don't call ``get_tracer`` on the shut-down
+            # provider or hit the lazy-init recursion path.
+            _restore_otel_tracer_provider(original_provider)
+            _reset_for_testing()
 
 
 def test_otlp_http_config_rejects_header_with_newline() -> None:
