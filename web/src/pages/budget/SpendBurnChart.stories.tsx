@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { SpendBurnChart } from './SpendBurnChart'
+import { DEFAULT_CURRENCY } from '@/utils/currencies'
 
 const TREND_DATA = [
   { timestamp: '2026-03-18', value: 4.2 },
@@ -23,7 +24,7 @@ const FORECAST = {
   days_until_exhausted: 45,
   confidence: 0.82,
   avg_daily_spend_usd: 6.27,
-  currency: 'EUR',
+  currency: DEFAULT_CURRENCY,
 }
 
 const ALERTS = {

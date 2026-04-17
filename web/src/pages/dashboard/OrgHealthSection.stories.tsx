@@ -1,13 +1,14 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { OrgHealthSection } from './OrgHealthSection'
 import type { DepartmentHealth, DepartmentName } from '@/api/types'
+import { DEFAULT_CURRENCY } from '@/utils/currencies'
 
 function makeDepts(configs: Array<{ name: DepartmentName; health: number }>): DepartmentHealth[] {
   return configs.map((c, i) => ({
     department_name: c.name,
     agent_count: 2 + i,
     active_agent_count: 1 + i,
-    currency: 'EUR',
+    currency: DEFAULT_CURRENCY,
     avg_performance_score: 7.0 + i * 0.5,
     department_cost_7d: 10 + i * 3,
     cost_trend: [],

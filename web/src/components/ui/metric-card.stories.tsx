@@ -1,5 +1,9 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { MetricCard } from './metric-card'
+import { DEFAULT_CURRENCY } from '@/utils/currencies'
+import { formatCurrency } from '@/utils/format'
+
+const SAMPLE_SPEND = formatCurrency(12.5, DEFAULT_CURRENCY)
 
 const meta = {
   title: 'UI/MetricCard',
@@ -63,7 +67,7 @@ export const FullExample: Story = {
 export const StringValue: Story = {
   args: {
     label: 'Daily Spend',
-    value: '$12.50',
+    value: SAMPLE_SPEND,
     change: { value: 8, direction: 'down' },
     sparklineData: [30, 28, 25, 22, 18, 20, 15, 12],
   },
@@ -86,7 +90,7 @@ export const MetricGrid: Story = {
       />
       <MetricCard
         label="Daily Spend"
-        value="$12.50"
+        value={SAMPLE_SPEND}
         change={{ value: 8, direction: 'down' }}
       />
       <MetricCard

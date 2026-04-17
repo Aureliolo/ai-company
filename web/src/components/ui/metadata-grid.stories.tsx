@@ -1,5 +1,9 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { MetadataGrid } from './metadata-grid'
+import { DEFAULT_CURRENCY } from '@/utils/currencies'
+import { formatCurrency } from '@/utils/format'
+
+const SAMPLE_COST = formatCurrency(12.5, DEFAULT_CURRENCY)
 
 const meta = {
   title: 'UI/MetadataGrid',
@@ -45,7 +49,7 @@ export const FourColumns: Story = {
 export const WithMonoValues: Story = {
   args: {
     items: [
-      { label: 'Cost', value: '$12.50', valueClassName: 'font-mono text-xs' },
+      { label: 'Cost', value: SAMPLE_COST, valueClassName: 'font-mono text-xs' },
       { label: 'Tokens', value: '1,234', valueClassName: 'font-mono text-xs' },
       { label: 'Duration', value: '2m 30s', valueClassName: 'font-mono text-xs' },
     ],
@@ -69,7 +73,7 @@ export const ManyItems: Story = {
       { label: 'Created', value: 'Mar 31, 2026' },
       { label: 'Updated', value: '2 hours ago' },
       { label: 'Owner', value: 'agent-eng-001' },
-      { label: 'Cost', value: '$12.50', valueClassName: 'font-mono text-xs' },
+      { label: 'Cost', value: SAMPLE_COST, valueClassName: 'font-mono text-xs' },
       { label: 'Duration', value: '2m 30s', valueClassName: 'font-mono text-xs' },
     ],
   },

@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import type { Meta, StoryObj } from '@storybook/react'
 import { SliderField } from './slider-field'
+import { DEFAULT_CURRENCY } from '@/utils/currencies'
+import { formatCurrencyCompact } from '@/utils/format'
 
 const meta = {
   title: 'UI/SliderField',
@@ -25,7 +27,7 @@ export const WithFormat: Story = {
     min: 10,
     max: 500,
     step: 10,
-    formatValue: (v) => `$${v}`,
+    formatValue: (v) => formatCurrencyCompact(v, DEFAULT_CURRENCY),
     onChange: () => {},
   },
 }

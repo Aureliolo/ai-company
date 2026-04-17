@@ -8,6 +8,7 @@ import type {
   OverviewMetrics,
   TrendDataPoint,
 } from '@/api/types'
+import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import BudgetPage from '@/pages/BudgetPage'
 
 const mockOverview: OverviewMetrics = {
@@ -28,7 +29,7 @@ const mockOverview: OverviewMetrics = {
   ] as TrendDataPoint[],
   active_agents_count: 5,
   idle_agents_count: 3,
-  currency: 'EUR',
+  currency: DEFAULT_CURRENCY,
 }
 
 const mockBudgetConfig: BudgetConfig = {
@@ -38,7 +39,7 @@ const mockBudgetConfig: BudgetConfig = {
   per_agent_daily_limit: 20,
   auto_downgrade: { enabled: true, threshold: 85, downgrade_map: [], boundary: 'task_assignment' },
   reset_day: 1,
-  currency: 'EUR',
+  currency: DEFAULT_CURRENCY,
 }
 
 const mockForecast: ForecastResponse = {
@@ -51,7 +52,7 @@ const mockForecast: ForecastResponse = {
   days_until_exhausted: 20,
   confidence: 0.82,
   avg_daily_spend_usd: 6.02,
-  currency: 'EUR',
+  currency: DEFAULT_CURRENCY,
 }
 
 function makeCostRecord(fields: Partial<CostRecord> & Pick<CostRecord, 'agent_id' | 'task_id' | 'provider' | 'model' | 'input_tokens' | 'output_tokens' | 'cost_usd' | 'timestamp' | 'call_category'>): CostRecord {

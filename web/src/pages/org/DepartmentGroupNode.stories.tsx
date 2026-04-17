@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react'
 import { ReactFlow, ReactFlowProvider } from '@xyflow/react'
 import { DepartmentGroupNode } from './DepartmentGroupNode'
 import type { DepartmentGroupData } from './build-org-tree'
+import { DEFAULT_CURRENCY } from '@/utils/currencies'
 
 const nodeTypes = { department: DepartmentGroupNode }
 
@@ -54,7 +55,7 @@ export const Populated: Story = {
       budgetPercent: 40,
       utilizationPercent: 60,
       cost7d: 45.8,
-      currency: 'EUR',
+      currency: DEFAULT_CURRENCY,
       statusDots: [
         { agentId: 'a1', runtimeStatus: 'active' },
         { agentId: 'a2', runtimeStatus: 'active' },
@@ -77,7 +78,7 @@ export const OverBudget: Story = {
       budgetPercent: 120,
       utilizationPercent: 95,
       cost7d: 22.3,
-      currency: 'EUR',
+      currency: DEFAULT_CURRENCY,
       statusDots: [
         { agentId: 'p1', runtimeStatus: 'active' },
         { agentId: 'p2', runtimeStatus: 'error' },
@@ -115,7 +116,7 @@ export const DropTargetActive: Story = {
       budgetPercent: 40,
       utilizationPercent: 70,
       cost7d: 38.5,
-      currency: 'EUR',
+      currency: DEFAULT_CURRENCY,
       statusDots: [
         { agentId: 'a1', runtimeStatus: 'active' },
         { agentId: 'a2', runtimeStatus: 'active' },

@@ -55,6 +55,7 @@ export const WithCurrency: Story = {
     usedPercent: 45,
     budgetRemaining: 550,
     daysUntilExhausted: 18,
+    // lint-allow: regional-defaults -- story variant intentionally demos a non-default currency
     currency: 'USD',
   },
 }

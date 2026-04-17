@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { ThresholdAlerts } from './ThresholdAlerts'
 import type { BudgetConfig, OverviewMetrics } from '@/api/types'
+import { DEFAULT_CURRENCY } from '@/utils/currencies'
 
 const baseBudgetConfig: BudgetConfig = {
   total_monthly: 500,
@@ -9,7 +10,7 @@ const baseBudgetConfig: BudgetConfig = {
   per_agent_daily_limit: 20,
   auto_downgrade: { enabled: false, threshold: 90, downgrade_map: [], boundary: 'task_assignment' },
   reset_day: 1,
-  currency: 'EUR',
+  currency: DEFAULT_CURRENCY,
 }
 
 function makeOverview(usedPercent: number): OverviewMetrics {
@@ -26,7 +27,7 @@ function makeOverview(usedPercent: number): OverviewMetrics {
     cost_7d_trend: [],
     active_agents_count: 3,
     idle_agents_count: 2,
-    currency: 'EUR',
+    currency: DEFAULT_CURRENCY,
   }
 }
 

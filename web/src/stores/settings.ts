@@ -2,6 +2,7 @@ import { create } from 'zustand'
 
 import * as settingsApi from '@/api/endpoints/settings'
 import type { SettingDefinition, SettingEntry, SettingNamespace, WsEvent } from '@/api/types'
+import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { getErrorMessage } from '@/utils/errors'
 import { createLogger } from '@/lib/logger'
 
@@ -54,7 +55,7 @@ interface SettingsState {
 }
 
 export const useSettingsStore = create<SettingsState>()((set, get) => ({
-  currency: 'EUR',
+  currency: DEFAULT_CURRENCY,
   schema: [],
   entries: [],
   loading: false,

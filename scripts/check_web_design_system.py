@@ -131,6 +131,50 @@ _LOCALE_SKIP_PATHS: set[str] = {
     "web/src/utils/format.ts",
 }
 
+# ISO 4217 currency codes supported by the dashboard (mirrors
+# ``web/src/utils/currencies.ts``). Hardcoding any of these as a
+# string literal outside the allowlist bakes a specific currency into
+# surfaces that should read ``DEFAULT_CURRENCY`` or the runtime
+# ``useSettingsStore().currency``.
+HARDCODED_CURRENCY_RE = re.compile(
+    r"""['"](?P<currency>"""
+    r"USD|EUR|GBP|JPY|CHF|CAD|AUD|CNY|INR|KRW|BRL|MXN|SGD|HKD|NZD|"
+    r"SEK|NOK|DKK|PLN|CZK|HUF|TRY|ZAR|THB|TWD|ILS|IDR|VND"
+    r""")['"]""",
+)
+
+# Allowlist files where ISO 4217 currency codes are legitimate (source
+# of truth + format helpers that must reference codes to build the
+# symbol map). Everywhere else must use ``DEFAULT_CURRENCY`` or the
+# runtime setting.
+_CURRENCY_SKIP_PATHS: set[str] = {
+    "web/src/utils/currencies.ts",
+    "web/src/utils/format.ts",
+}
+
+# Currency symbols adjacent to digits or template interpolation inside
+# string literals. Covers ``"$10"``, ``"\u20ac50"``, ``"\u00a3100"``, and
+# ``` `$${value}` ``` (literal ``$`` + interpolation). A lone ``${...}``
+# template interpolation produces no literal ``$`` at render time, so
+# it is NOT flagged. Symbol alone (e.g. ``"\u20ac"`` in a format helper)
+# is fine; symbol + value is the bias signature.
+HARDCODED_CURRENCY_SYMBOL_RE = re.compile(
+    r"""(?x)
+    (?:"[^"]*(?:\$\d|\$\$\{|[\u20ac\u00a3]\S)[^"]*")
+    |
+    (?:'[^']*(?:\$\d|\$\$\{|[\u20ac\u00a3]\S)[^']*')
+    |
+    (?:`[^`]*(?:\$\d|\$\$\{|[\u20ac\u00a3]\S)[^`]*`)
+    """,
+)
+
+# Identifier suffix ``_usd`` (e.g. ``cost_usd``, ``total_cost_usd``).
+# Field names should not carry a currency code -- the stored value is
+# in the operator's configured currency.
+HARDCODED_USD_FIELD_RE = re.compile(
+    r"\b(?P<field>[a-z][a-z0-9_]*_usd)\b",
+)
+
 # Files where inline Motion durations are intentional (relative paths).
 _MOTION_DURATION_SKIP_PATHS: set[str] = {
     "web/src/lib/motion.ts",
@@ -145,6 +189,33 @@ _COMMENT_PREFIXES = ("//", "/*", "*")
 
 # Regex to strip block comments (/* ... */) so full-content regex scans skip them.
 _BLOCK_COMMENT_RE = re.compile(r"/\*[\s\S]*?\*/")
+
+# Opt-out marker for the regional-defaults checks (currency code,
+# currency symbol, _usd field). Place the marker on the same line as
+# the violation or the immediately preceding line. Reserved for
+# legitimate cases: Storybook variants that intentionally demo a
+# specific currency, migration shims that must preserve a legacy
+# field name, etc. Production code should not carry this marker.
+_REGIONAL_SUPPRESSION_MARKER = "lint-allow: regional-defaults"
+
+
+_MIN_LINE_NUM_FOR_PRECEDING = 2
+
+
+def _is_regional_suppressed(lines: list[str], line_num: int) -> bool:
+    """Return True when line ``line_num`` opts out of regional checks.
+
+    Checks the same line and the immediately preceding line for the
+    ``_REGIONAL_SUPPRESSION_MARKER`` string inside any comment.
+    """
+    if line_num < 1 or line_num > len(lines):
+        return False
+    if _REGIONAL_SUPPRESSION_MARKER in lines[line_num - 1]:
+        return True
+    return (
+        line_num >= _MIN_LINE_NUM_FOR_PRECEDING
+        and _REGIONAL_SUPPRESSION_MARKER in lines[line_num - 2]
+    )
 
 
 def _normalize_hex(h: str) -> str:
@@ -404,6 +475,128 @@ def check_hardcoded_locale(
     return warnings
 
 
+def check_hardcoded_currency(
+    content: str,
+    file_path: Path,
+    project_root: Path,
+) -> list[str]:
+    """Flag hardcoded ISO 4217 currency codes outside the allowlist.
+
+    The dashboard renders every money value in the operator's
+    configured currency (``useSettingsStore().currency``, defaulting
+    to ``DEFAULT_CURRENCY`` from ``@/utils/currencies``). Hardcoding
+    ``'USD'`` / ``'EUR'`` / etc. bakes a specific currency into the
+    rendered output and contradicts the runtime-resolved pattern.
+    """
+    rel_str = file_path.relative_to(project_root).as_posix()
+    if rel_str in _CURRENCY_SKIP_PATHS:
+        return []
+    if file_path.suffix not in {".ts", ".tsx"}:
+        return []
+
+    rel_path = file_path.relative_to(project_root)
+    lines = content.splitlines()
+    stripped = _BLOCK_COMMENT_RE.sub(
+        lambda cm: "".join(" " if c != "\n" else "\n" for c in cm.group()),
+        content,
+    )
+
+    warnings: list[str] = []
+    for m in HARDCODED_CURRENCY_RE.finditer(stripped):
+        line_num, col, original_line, line_text = _locate(stripped, lines, m.start())
+        if line_text.startswith(_COMMENT_PREFIXES):
+            continue
+        if _is_in_comment_context(original_line, col):
+            continue
+        if _is_regional_suppressed(lines, line_num):
+            continue
+        warnings.append(
+            f"  {rel_path}:{line_num}: Hardcoded currency code `{m.group('currency')}` "
+            f"-- import `DEFAULT_CURRENCY` from `@/utils/currencies` or read "
+            f"`useSettingsStore().currency`.\n"
+            f"    {line_text}",
+        )
+    return warnings
+
+
+def check_hardcoded_currency_symbol(
+    content: str,
+    file_path: Path,
+    project_root: Path,
+) -> list[str]:
+    """Flag currency symbols adjacent to digits/expressions in string literals.
+
+    ``"$10"`` / ``"\u20ac50"`` / ``` `$${value}` ``` bake a regional symbol
+    into rendered output. Use ``formatCurrency(value, DEFAULT_CURRENCY)``
+    or ``formatCurrencyCompact`` from ``@/utils/format`` instead.
+    """
+    if file_path.suffix not in {".ts", ".tsx"}:
+        return []
+
+    rel_path = file_path.relative_to(project_root)
+    lines = content.splitlines()
+    stripped = _BLOCK_COMMENT_RE.sub(
+        lambda cm: "".join(" " if c != "\n" else "\n" for c in cm.group()),
+        content,
+    )
+
+    warnings: list[str] = []
+    for m in HARDCODED_CURRENCY_SYMBOL_RE.finditer(stripped):
+        line_num, col, original_line, line_text = _locate(stripped, lines, m.start())
+        if line_text.startswith(_COMMENT_PREFIXES):
+            continue
+        if _is_in_comment_context(original_line, col):
+            continue
+        if _is_regional_suppressed(lines, line_num):
+            continue
+        warnings.append(
+            f"  {rel_path}:{line_num}: Hardcoded currency symbol with value "
+            f"-- route through `formatCurrency(value, DEFAULT_CURRENCY)` or "
+            f"`formatCurrencyCompact` from `@/utils/format`.\n"
+            f"    {line_text}",
+        )
+    return warnings
+
+
+def check_usd_field_names(
+    content: str,
+    file_path: Path,
+    project_root: Path,
+) -> list[str]:
+    """Flag identifiers with a ``_usd`` suffix.
+
+    Money fields carry the operator's configured currency; the field
+    name should not encode a specific currency. Rename to the neutral
+    form (e.g. ``cost_usd`` -> ``cost``).
+    """
+    if file_path.suffix not in {".ts", ".tsx"}:
+        return []
+
+    rel_path = file_path.relative_to(project_root)
+    lines = content.splitlines()
+    stripped = _BLOCK_COMMENT_RE.sub(
+        lambda cm: "".join(" " if c != "\n" else "\n" for c in cm.group()),
+        content,
+    )
+
+    warnings: list[str] = []
+    for m in HARDCODED_USD_FIELD_RE.finditer(stripped):
+        line_num, col, original_line, line_text = _locate(stripped, lines, m.start())
+        if line_text.startswith(_COMMENT_PREFIXES):
+            continue
+        if _is_in_comment_context(original_line, col):
+            continue
+        if _is_regional_suppressed(lines, line_num):
+            continue
+        warnings.append(
+            f"  {rel_path}:{line_num}: Identifier `{m.group('field')}` ends in `_usd` "
+            f"-- rename to the currency-neutral form; stored value is in the "
+            f"operator's configured currency.\n"
+            f"    {line_text}",
+        )
+    return warnings
+
+
 def check_missing_story(file_path: Path, project_root: Path) -> list[str]:
     """Check that new components in components/ui/ have a .stories.tsx file."""
     rel_path = file_path.relative_to(project_root)
@@ -593,6 +786,11 @@ def check_file(file_path: Path, project_root: Path) -> list[str]:
         check_hardcoded_motion_transitions(content, file_path, project_root),
     )
     all_warnings.extend(check_hardcoded_locale(content, file_path, project_root))
+    all_warnings.extend(check_hardcoded_currency(content, file_path, project_root))
+    all_warnings.extend(
+        check_hardcoded_currency_symbol(content, file_path, project_root),
+    )
+    all_warnings.extend(check_usd_field_names(content, file_path, project_root))
     all_warnings.extend(check_missing_story(file_path, project_root))
     all_warnings.extend(check_duplicate_patterns(content, file_path, project_root))
     all_warnings.extend(propose_shared_components(content, file_path, project_root))

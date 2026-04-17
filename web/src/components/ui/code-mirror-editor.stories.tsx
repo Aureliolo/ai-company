@@ -1,12 +1,13 @@
 import { useState } from 'react'
 import type { Meta, StoryObj } from '@storybook/react'
 import { cn } from '@/lib/utils'
+import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { CodeMirrorEditor } from './code-mirror-editor'
 
 const SAMPLE_JSON = JSON.stringify(
   {
     api: { server_port: '3001', rate_limit_max_requests: '100' },
-    budget: { total_monthly: '100.0', currency: 'EUR' },
+    budget: { total_monthly: '100.0', currency: DEFAULT_CURRENCY },
   },
   null,
   2,
@@ -17,7 +18,7 @@ const SAMPLE_YAML = `api:
   rate_limit_max_requests: '100'
 budget:
   total_monthly: '100.0'
-  currency: EUR
+  currency: ${DEFAULT_CURRENCY}
 `
 
 const meta = {

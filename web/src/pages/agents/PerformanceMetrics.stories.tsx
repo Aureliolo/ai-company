@@ -1,5 +1,9 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { PerformanceMetrics } from './PerformanceMetrics'
+import { DEFAULT_CURRENCY } from '@/utils/currencies'
+import { formatCurrency } from '@/utils/format'
+
+const SAMPLE_COST_PER_TASK = formatCurrency(0.35, DEFAULT_CURRENCY)
 
 const meta = {
   title: 'Agents/PerformanceMetrics',
@@ -16,7 +20,7 @@ export const Default: Story = {
       { label: 'TASKS COMPLETED', value: 127, subText: '12 this week', sparklineData: [10, 12, 8, 15, 12] },
       { label: 'AVG COMPLETION TIME', value: '1h 0m' },
       { label: 'SUCCESS RATE', value: '94.0%', subText: 'across 45 tasks (30d)' },
-      { label: 'COST PER TASK', value: '$0.35' },
+      { label: 'COST PER TASK', value: SAMPLE_COST_PER_TASK },
     ],
   },
 }
