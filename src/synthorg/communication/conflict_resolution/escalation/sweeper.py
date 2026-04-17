@@ -48,8 +48,13 @@ class EscalationExpirationSweeper:
         self._store = store
         self._interval = interval_seconds
         self._task: asyncio.Task[None] | None = None
-        self._stop_event = asyncio.Event()
-        self._start_lock: asyncio.Lock = asyncio.Lock()
+        # ``asyncio.Event`` and ``asyncio.Lock`` bind to the running
+        # loop on first use.  Construction happens at app-wire time
+        # (no loop yet) and the sweeper may also be reused across
+        # multiple lifespans in tests, so create them lazily in
+        # ``start()`` on the loop that will actually run the task.
+        self._stop_event: asyncio.Event | None = None
+        self._start_lock: asyncio.Lock | None = None
 
     async def start(self) -> None:
         """Schedule the background loop.
@@ -58,6 +63,10 @@ class EscalationExpirationSweeper:
         serialize on an asyncio.Lock so at most one task is created
         even when multiple callers race.
         """
+        if self._start_lock is None:
+            self._start_lock = asyncio.Lock()
+        if self._stop_event is None:
+            self._stop_event = asyncio.Event()
         async with self._start_lock:
             if self._task is not None and not self._task.done():
                 return
@@ -73,7 +82,8 @@ class EscalationExpirationSweeper:
 
     async def stop(self) -> None:
         """Signal the loop to exit and await its completion."""
-        self._stop_event.set()
+        if self._stop_event is not None:
+            self._stop_event.set()
         task = self._task
         if task is None:
             return
@@ -93,10 +103,19 @@ class EscalationExpirationSweeper:
             )
         finally:
             self._task = None
+            # Drop the loop-bound primitives so the next ``start()``
+            # (potentially on a new event loop) can recreate them.
+            self._stop_event = None
+            self._start_lock = None
         logger.info(CONFLICT_ESCALATION_SWEEPER_STOPPED)
 
     async def _run(self) -> None:
         """Main loop body."""
+        if self._stop_event is None:
+            # Defensive: ``start()`` installs the event before
+            # scheduling the task; a ``_run`` that sees ``None`` can
+            # only be the result of ``stop()`` racing with ``start()``.
+            return
         while not self._stop_event.is_set():
             try:
                 await self._sweep_once()

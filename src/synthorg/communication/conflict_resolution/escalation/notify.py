@@ -111,11 +111,19 @@ class PostgresEscalationNotifySubscriber:
         self._channel = channel
         self._reconnect_delay = reconnect_delay_seconds
         self._task: asyncio.Task[None] | None = None
-        self._stop_event = asyncio.Event()
-        self._start_lock = asyncio.Lock()
+        # Lazy-init: asyncio primitives bind to the running loop on
+        # first use, but this subscriber is wired at app-build time
+        # (no loop) and may outlive one lifespan in tests that share
+        # an app across loops.  Create on ``start()``, drop on ``stop()``.
+        self._stop_event: asyncio.Event | None = None
+        self._start_lock: asyncio.Lock | None = None
 
     async def start(self) -> None:
         """Schedule the background subscriber loop."""
+        if self._start_lock is None:
+            self._start_lock = asyncio.Lock()
+        if self._stop_event is None:
+            self._stop_event = asyncio.Event()
         async with self._start_lock:
             if self._task is not None and not self._task.done():
                 return
@@ -131,7 +139,8 @@ class PostgresEscalationNotifySubscriber:
 
     async def stop(self) -> None:
         """Signal the loop to exit and await its completion."""
-        self._stop_event.set()
+        if self._stop_event is not None:
+            self._stop_event.set()
         task = self._task
         if task is None:
             return
@@ -149,10 +158,14 @@ class PostgresEscalationNotifySubscriber:
             )
         finally:
             self._task = None
+            self._stop_event = None
+            self._start_lock = None
         logger.info(CONFLICT_ESCALATION_SUBSCRIBER_STOPPED)
 
     async def _run(self) -> None:
         """Main loop: (re)open a listen connection and dispatch notifies."""
+        if self._stop_event is None:
+            return
         while not self._stop_event.is_set():
             try:
                 await self._listen_once()
@@ -197,7 +210,7 @@ class PostgresEscalationNotifySubscriber:
             gen = conn.notifies()
             try:
                 async for notify in gen:
-                    if self._stop_event.is_set():
+                    if self._stop_event is None or self._stop_event.is_set():
                         break
                     await self._dispatch_payload(notify.payload)
             finally:
