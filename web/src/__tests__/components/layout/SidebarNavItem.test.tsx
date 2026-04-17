@@ -108,7 +108,17 @@ describe('SidebarNavItem', () => {
 
       const link = screen.getByRole('link', { name: /docs/i })
       expect(link).toHaveAttribute('href', '/docs/')
-      expect(link).not.toHaveAttribute('rel')
+      // External links open in a new tab and carry the security rel.
+      expect(link).toHaveAttribute('target', '_blank')
+      expect(link).toHaveAttribute('rel', 'noopener noreferrer')
+    })
+
+    it('announces new-tab behavior to screen readers', () => {
+      renderWithRouter(
+        <SidebarNavItem to="/docs/" icon={Users} label="Docs" collapsed={false} external />,
+      )
+
+      expect(screen.getByText(/opens in new tab/i)).toBeInTheDocument()
     })
 
     it('shows title tooltip when collapsed', () => {

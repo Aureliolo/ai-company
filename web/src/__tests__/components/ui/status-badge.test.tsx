@@ -61,4 +61,39 @@ describe('StatusBadge', () => {
 
     expect(dot).not.toHaveClass('animate-pulse')
   })
+
+  it('emits role="img" with aria-label for standalone use', () => {
+    const { container } = render(<StatusBadge status="active" />)
+    const wrapper = container.firstElementChild
+
+    expect(wrapper).toHaveAttribute('role', 'img')
+    expect(wrapper).toHaveAttribute('aria-label', 'Active')
+  })
+
+  it('uses aria-hidden when decorative is true', () => {
+    const { container } = render(
+      <StatusBadge status="active" decorative />,
+    )
+    const wrapper = container.firstElementChild
+
+    expect(wrapper).toHaveAttribute('aria-hidden', 'true')
+    expect(wrapper).not.toHaveAttribute('role')
+    expect(wrapper).not.toHaveAttribute('aria-label')
+  })
+
+  it('decorative mode still preserves visible label when label prop is true', () => {
+    render(<StatusBadge status="error" label decorative />)
+
+    expect(screen.getByText('Error')).toBeInTheDocument()
+  })
+
+  it('announce mode sets role="status" and polite live region', () => {
+    const { container } = render(
+      <StatusBadge status="active" announce />,
+    )
+    const wrapper = container.firstElementChild
+
+    expect(wrapper).toHaveAttribute('role', 'status')
+    expect(wrapper).toHaveAttribute('aria-live', 'polite')
+  })
 })

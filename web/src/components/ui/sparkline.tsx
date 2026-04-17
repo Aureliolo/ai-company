@@ -8,7 +8,15 @@ export interface SparklineProps {
   height?: number
   animated?: boolean
   className?: string
-  /** When provided, sets role="img" and aria-label instead of aria-hidden. Use for standalone sparklines. */
+  /**
+   * Accessible name for the chart. Required for standalone usage (the
+   * sparkline becomes a labeled `role="img"` when set).
+   *
+   * When omitted, the sparkline is treated as decoration and emits
+   * `aria-hidden="true"`. Use this mode when the chart is layered
+   * beside a labeled sibling (for example, inside a `MetricCard`
+   * whose `label` + `value` already carry the semantic meaning).
+   */
   ariaLabel?: string
 }
 

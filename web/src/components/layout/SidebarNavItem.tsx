@@ -63,8 +63,15 @@ export function SidebarNavItem({
 
   if (external) {
     return (
-      <a href={to} title={collapsed ? label : undefined} className={baseClass}>
+      <a
+        href={to}
+        title={collapsed ? label : undefined}
+        className={baseClass}
+        target="_blank"
+        rel="noopener noreferrer"
+      >
         {content}
+        <span className="sr-only">(opens in new tab)</span>
       </a>
     )
   }

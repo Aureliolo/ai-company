@@ -54,17 +54,27 @@ export function TaskColumn({ column, tasks, onSelectTask }: TaskColumnProps) {
   const taskIds = tasks.map((t) => t.id)
 
   return (
-    <div
+    <section
       className="flex w-72 shrink-0 flex-col"
       data-column-id={column.id}
+      aria-labelledby={`task-column-${column.id}-label`}
     >
       {/* Column header */}
       <div className="mb-3 flex items-center gap-2 px-1">
-        <span className={cn('size-2 rounded-full', COLOR_CLASSES[column.color])} />
-        <span className="text-[13px] font-semibold text-foreground">
+        <span
+          className={cn('size-2 rounded-full', COLOR_CLASSES[column.color])}
+          aria-hidden="true"
+        />
+        <span
+          id={`task-column-${column.id}-label`}
+          className="text-[13px] font-semibold text-foreground"
+        >
           {column.label}
         </span>
-        <span className="rounded-full bg-surface px-1.5 py-0.5 text-[10px] font-mono text-text-muted">
+        <span
+          className="rounded-full bg-surface px-1.5 py-0.5 text-[10px] font-mono text-text-muted"
+          aria-label={`${tasks.length} task${tasks.length === 1 ? '' : 's'}`}
+        >
           {tasks.length}
         </span>
       </div>
@@ -96,6 +106,6 @@ export function TaskColumn({ column, tasks, onSelectTask }: TaskColumnProps) {
           )}
         </SortableContext>
       </div>
-    </div>
+    </section>
   )
 }

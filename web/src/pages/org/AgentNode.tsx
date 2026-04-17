@@ -51,7 +51,13 @@ function AgentNodeComponent({ data }: NodeProps<AgentNodeType>) {
       data-testid="agent-node"
       aria-label={`Agent: ${data.name}, ${data.role}, ${data.runtimeStatus}${data.isDeptLead ? ', department lead' : ''}`}
     >
-      <Handle type="target" position={Position.Top} className={HANDLE_CLASSES} />
+      <Handle
+        type="target"
+        position={Position.Top}
+        className={HANDLE_CLASSES}
+        isConnectable={false}
+        aria-hidden="true"
+      />
 
       {/* LEAD badge on the highest-seniority agent in the dept --
           derived from build-org-tree's `isDeptLead` flag.  Hidden
@@ -75,6 +81,7 @@ function AgentNodeComponent({ data }: NodeProps<AgentNodeType>) {
             <StatusBadge
               status={data.runtimeStatus}
               pulse={isActive || data.runtimeStatus === 'error'}
+              decorative
             />
           </div>
           <span className="block truncate font-sans text-micro text-muted-foreground">
@@ -83,7 +90,13 @@ function AgentNodeComponent({ data }: NodeProps<AgentNodeType>) {
         </div>
       </div>
 
-      <Handle type="source" position={Position.Bottom} className={HANDLE_CLASSES} />
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        className={HANDLE_CLASSES}
+        isConnectable={false}
+        aria-hidden="true"
+      />
     </div>
   )
 }

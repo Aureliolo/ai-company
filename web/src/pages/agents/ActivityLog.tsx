@@ -36,10 +36,17 @@ export function ActivityLog({ events, total, onLoadMore, className }: ActivityLo
           description="Recent actions will appear here."
         />
       ) : (
-        <StaggerGroup className="divide-y divide-border">
+        <StaggerGroup
+          className="divide-y divide-border"
+          role="list"
+          aria-label="Agent activity log"
+        >
           {events.map((event, index) => (
-            // eslint-disable-next-line @eslint-react/no-array-index-key -- events lack unique IDs; type+timestamp may collide for same-second events
-            <StaggerItem key={`${event.event_type}-${event.timestamp}-${index}`}>
+            <StaggerItem
+              // eslint-disable-next-line @eslint-react/no-array-index-key -- events lack unique IDs; type+timestamp may collide for same-second events
+              key={`${event.event_type}-${event.timestamp}-${index}`}
+              role="listitem"
+            >
               <ActivityLogItem event={event} />
             </StaggerItem>
           ))}

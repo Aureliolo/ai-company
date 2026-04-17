@@ -97,6 +97,9 @@ export function OrgChartToolbar({
 
   return (
     <div
+      role="toolbar"
+      aria-label="Org chart controls"
+      aria-orientation="horizontal"
       className={cn(
         'flex flex-wrap items-center gap-1 rounded-lg border border-border bg-card p-1',
         className,

@@ -34,6 +34,8 @@ export function TaskCard({ task, onSelect, isDragging, isOverlay, className, ref
       role="button"
       tabIndex={0}
       aria-label={`Task: ${task.title}`}
+      aria-roledescription="draggable task"
+      aria-pressed={isDragging}
       onClick={() => onSelect(task.id)}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {

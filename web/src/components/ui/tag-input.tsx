@@ -99,7 +99,7 @@ export function TagInput({ value, onChange, disabled, placeholder, className }: 
                 className="rounded-sm hover:bg-accent/20"
                 aria-label={`Remove ${item}`}
               >
-                <X className="size-3" aria-hidden />
+                <X className="size-3" aria-hidden="true" />
               </button>
             )}
           </span>

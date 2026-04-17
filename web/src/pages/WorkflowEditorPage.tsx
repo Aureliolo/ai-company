@@ -311,8 +311,29 @@ function WorkflowEditorInner() {
       {editorMode === 'visual' ? (
         <>
           <div className="relative min-h-0 flex-1 rounded-lg border border-border">
+            {/*
+             * Accessible text summary of the graph. ReactFlow's visual
+             * canvas is mouse-first; screen-reader users get a
+             * sr-only outline of nodes and edges here, referenced via
+             * `aria-describedby` on the canvas. The YAML editor below
+             * the canvas is the full-fidelity keyboard-accessible
+             * alternative for editing.
+             */}
+            <ul id="workflow-editor-node-summary" className="sr-only">
+              {nodes.map((node) => (
+                <li key={node.id}>
+                  {`Node ${node.id}: ${node.type ?? 'unknown'}`}
+                </li>
+              ))}
+              {edges.map((edge) => (
+                <li key={edge.id}>
+                  {`Edge: ${edge.source} → ${edge.target}`}
+                </li>
+              ))}
+            </ul>
             <ReactFlow
               aria-label="Workflow editor canvas"
+              aria-describedby="workflow-editor-node-summary"
               nodes={nodes}
               edges={edges}
               nodeTypes={nodeTypes}

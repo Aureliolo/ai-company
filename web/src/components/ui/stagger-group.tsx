@@ -9,6 +9,12 @@ export interface StaggerGroupProps {
   staggerDelay?: number
   /** Whether to animate on mount (default: true). */
   animate?: boolean
+  /** ARIA role (e.g. "list"). When set, children should carry `role="listitem"`. */
+  role?: string
+  /** Accessible name for the group when `role` is set. */
+  'aria-label'?: string
+  /** ID of an element that labels the group. */
+  'aria-labelledby'?: string
 }
 
 export interface StaggerItemProps {
@@ -19,6 +25,8 @@ export interface StaggerItemProps {
   /** Enable layout animation for smooth size changes. */
   layout?: boolean
   'data-testid'?: string
+  /** ARIA role (e.g. "listitem"). */
+  role?: string
 }
 
 /**
@@ -32,6 +40,9 @@ export function StaggerGroup({
   className,
   staggerDelay = 0.03,
   animate = true,
+  role,
+  'aria-label': ariaLabel,
+  'aria-labelledby': ariaLabelledBy,
 }: StaggerGroupProps) {
   const containerVariants = useMemo(
     () => ({
@@ -52,6 +63,9 @@ export function StaggerGroup({
       initial={animate ? 'hidden' : false}
       animate={animate ? 'visible' : false}
       className={className}
+      role={role}
+      aria-label={ariaLabel}
+      aria-labelledby={ariaLabelledBy}
     >
       {children}
     </motion.div>
@@ -70,6 +84,7 @@ export function StaggerItem({
   layoutId,
   layout,
   'data-testid': testId,
+  role,
 }: StaggerItemProps) {
   return (
     <motion.div
@@ -78,6 +93,7 @@ export function StaggerItem({
       layout={layout}
       className={className}
       data-testid={testId}
+      role={role}
     >
       {children}
     </motion.div>
