@@ -17,16 +17,18 @@ script, not application library code.
 import asyncio
 import http.server
 import json
+import os
 import signal
 import sys
 import threading
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 from synthorg.memory.embedding.cancellation import CancellationToken
 from synthorg.memory.embedding.fine_tune import FineTuneStage
 from synthorg.observability import get_logger
+from synthorg.observability.events.config import CONFIG_VALIDATION_FAILED
 from synthorg.observability.events.fine_tune import (
     FINE_TUNE_HEALTH_SERVER_BIND_FAILED,
     FINE_TUNE_HEALTH_SERVER_STARTED,
@@ -36,7 +38,57 @@ from synthorg.observability.events.fine_tune import (
 logger = get_logger(__name__)
 
 _CONFIG_PATH = Path("/etc/fine-tune/config.json")
-_HEALTH_PORT = 15002
+
+_DEFAULT_HEALTH_PORT: Final[int] = 15002
+_HEALTH_PORT_ENV_VAR: Final[str] = "SYNTHORG_FINE_TUNE_HEALTH_PORT"
+_MIN_TCP_PORT: Final[int] = 1
+_MAX_TCP_PORT: Final[int] = 65535
+_MAX_LOGGED_ENV_CHARS: Final[int] = 64
+
+
+def _resolve_health_port() -> int:
+    """Resolve the HTTP health server port from env or default.
+
+    Reads ``SYNTHORG_FINE_TUNE_HEALTH_PORT``; falls back to
+    :data:`_DEFAULT_HEALTH_PORT` when unset. A malformed or
+    out-of-range value is a startup-time container config error --
+    log ``CONFIG_VALIDATION_FAILED`` and raise :class:`ValueError` so
+    the orchestrator sees a fast, loud failure instead of the
+    container silently binding the wrong port.
+    """
+    raw = os.environ.get(_HEALTH_PORT_ENV_VAR)
+    if raw is None:
+        return _DEFAULT_HEALTH_PORT
+    # Truncate untrusted env input before logging to cap log line size
+    # against pathological values pasted into container configuration.
+    safe_raw = raw[:_MAX_LOGGED_ENV_CHARS]
+    try:
+        port = int(raw)
+    except ValueError as exc:
+        logger.exception(
+            CONFIG_VALIDATION_FAILED,
+            env_var=_HEALTH_PORT_ENV_VAR,
+            value=safe_raw,
+            reason="not-an-integer",
+        )
+        msg = f"{_HEALTH_PORT_ENV_VAR}={safe_raw!r} is not a valid integer"
+        raise ValueError(msg) from exc
+    if not (_MIN_TCP_PORT <= port <= _MAX_TCP_PORT):
+        logger.error(
+            CONFIG_VALIDATION_FAILED,
+            env_var=_HEALTH_PORT_ENV_VAR,
+            value=safe_raw,
+            reason="out-of-range",
+            min_port=_MIN_TCP_PORT,
+            max_port=_MAX_TCP_PORT,
+        )
+        msg = (
+            f"{_HEALTH_PORT_ENV_VAR}={port} out of range "
+            f"[{_MIN_TCP_PORT}, {_MAX_TCP_PORT}]"
+        )
+        raise ValueError(msg)
+    return port
+
 
 # Stage functions have different signatures; the runner dispatches by
 # unpacking config JSON into kwargs per stage.  Typed as Any because
@@ -114,12 +166,13 @@ def _start_health_server() -> http.server.HTTPServer | None:
     Returns:
         The server instance, or ``None`` if the port is unavailable.
     """
+    port = _resolve_health_port()
     try:
-        server = http.server.HTTPServer(("0.0.0.0", _HEALTH_PORT), _HealthHandler)  # noqa: S104
+        server = http.server.HTTPServer(("0.0.0.0", port), _HealthHandler)  # noqa: S104
     except OSError:
         logger.warning(
             FINE_TUNE_HEALTH_SERVER_BIND_FAILED,
-            port=_HEALTH_PORT,
+            port=port,
             reason="Health server could not bind; continuing without health endpoint",
             exc_info=True,
         )
@@ -127,7 +180,7 @@ def _start_health_server() -> http.server.HTTPServer | None:
     _HealthHandler._start_time = time.monotonic()  # noqa: SLF001
     t = threading.Thread(target=server.serve_forever, daemon=True)
     t.start()
-    logger.info(FINE_TUNE_HEALTH_SERVER_STARTED, port=_HEALTH_PORT)
+    logger.info(FINE_TUNE_HEALTH_SERVER_STARTED, port=port)
     return server
 
 
@@ -135,9 +188,10 @@ def _shutdown_health_server(server: http.server.HTTPServer | None) -> None:
     """Shut down and close the health server if it was started."""
     if server is None:
         return
+    port = server.server_port
     server.shutdown()
     server.server_close()
-    logger.info(FINE_TUNE_HEALTH_SERVER_STOPPED, port=_HEALTH_PORT)
+    logger.info(FINE_TUNE_HEALTH_SERVER_STOPPED, port=port)
 
 
 def _run() -> int:

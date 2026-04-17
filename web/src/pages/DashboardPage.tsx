@@ -63,7 +63,7 @@ export default function DashboardPage() {
           trendData={overview?.cost_7d_trend ?? []}
           forecast={forecast}
           budgetTotal={budgetConfig?.total_monthly ?? 0}
-          budgetRemaining={overview?.budget_remaining_usd}
+          budgetRemaining={overview?.budget_remaining}
           currency={overview?.currency}
         />
       </ErrorBoundary>

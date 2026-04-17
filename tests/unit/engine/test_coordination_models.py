@@ -281,7 +281,7 @@ class TestCoordinationResult:
         assert result.status_rollup is None
         assert result.workspace_merge is None
         assert result.waves == ()
-        assert result.total_cost_usd == 0.0
+        assert result.total_cost == 0.0
 
     @pytest.mark.unit
     def test_with_status_rollup(self) -> None:
@@ -326,7 +326,7 @@ class TestCoordinationResult:
 
     @pytest.mark.unit
     def test_negative_cost_rejected(self) -> None:
-        """Negative total_cost_usd is rejected."""
+        """Negative total_cost is rejected."""
         with pytest.raises(ValidationError, match="greater than or equal to 0"):
             CoordinationResult(
                 parent_task_id="task-1",
@@ -337,7 +337,7 @@ class TestCoordinationResult:
                     ),
                 ),
                 total_duration_seconds=0.0,
-                total_cost_usd=-1.0,
+                total_cost=-1.0,
             )
 
     @pytest.mark.unit

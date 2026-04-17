@@ -38,7 +38,7 @@ def _usage(
     return TokenUsage(
         input_tokens=input_tokens,
         output_tokens=output_tokens,
-        cost_usd=0.001,
+        cost=0.001,
     )
 
 

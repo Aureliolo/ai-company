@@ -75,8 +75,8 @@ function MessageDetailContent({ message }: MessageDetailContentProps) {
           {message.metadata.tokens_used !== null && (
             <MetadataRow label="Tokens" value={String(message.metadata.tokens_used)} mono />
           )}
-          {message.metadata.cost_usd !== null && (
-            <MetadataRow label="Cost" value={formatCurrency(message.metadata.cost_usd, DEFAULT_CURRENCY)} mono />
+          {message.metadata.cost !== null && (
+            <MetadataRow label="Cost" value={formatCurrency(message.metadata.cost, DEFAULT_CURRENCY)} mono />
           )}
           {message.metadata.extra.map(([key, value], i) => (
             <MetadataRow

@@ -34,7 +34,7 @@ class TestModelCallResult:
             token_usage=TokenUsage(
                 input_tokens=10,
                 output_tokens=5,
-                cost_usd=0.01,
+                cost=0.01,
             ),
             finish_reason="stop",
         )
@@ -48,7 +48,7 @@ class TestModelCallResult:
             token_usage=TokenUsage(
                 input_tokens=10,
                 output_tokens=5,
-                cost_usd=0.01,
+                cost=0.01,
             ),
             finish_reason="stop",
         )

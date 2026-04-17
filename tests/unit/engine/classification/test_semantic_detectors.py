@@ -75,7 +75,7 @@ def _context(
 
 def _completion_response(
     content: str,
-    cost_usd: float = 0.001,
+    cost: float = 0.001,
 ) -> CompletionResponse:
     return CompletionResponse(
         content=content,
@@ -83,7 +83,7 @@ def _completion_response(
         usage=TokenUsage(
             input_tokens=100,
             output_tokens=50,
-            cost_usd=cost_usd,
+            cost=cost,
         ),
         model="test-small-001",
     )
@@ -318,7 +318,7 @@ class TestSemanticDetectorBehavior:
 
     async def test_budget_exhausted_skips_call(self) -> None:
         provider = _mock_provider()
-        budget = ClassificationBudgetTracker(budget_usd=0.0)
+        budget = ClassificationBudgetTracker(budget=0.0)
         detector = SemanticContradictionDetector(
             provider=provider,
             model_id="test-small-001",
@@ -336,8 +336,13 @@ class TestSemanticDetectorBehavior:
         provider.complete.assert_not_awaited()
 
     async def test_budget_tracks_cost(self) -> None:
+        # ``_mock_provider`` seeds ``TokenUsage(cost=0.001)`` on every
+        # completion; after one detector run with an estimate of
+        # ``_ESTIMATED_LLM_COST`` (0.001) and an equal actual cost, the
+        # tracker should be exactly 0.001 spent. Assert the exact
+        # value so regressions in reserve/settle math are caught.
         provider = _mock_provider("[]")
-        budget = ClassificationBudgetTracker(budget_usd=1.0)
+        budget = ClassificationBudgetTracker(budget=1.0)
         detector = SemanticContradictionDetector(
             provider=provider,
             model_id="test-small-001",
@@ -350,8 +355,9 @@ class TestSemanticDetectorBehavior:
             ),
         )
         ctx = _context(messages)
+        start = budget.total_spent
         await detector.detect(ctx)
-        assert budget.total_spent_usd > 0
+        assert budget.total_spent == pytest.approx(start + 0.001)
 
     async def test_no_rate_limiter_on_detector(self) -> None:
         """Detectors delegate rate limiting to the provider.

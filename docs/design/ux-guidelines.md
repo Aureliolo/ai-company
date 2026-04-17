@@ -82,6 +82,10 @@ All fonts self-hosted via `@fontsource` -- no external CDN dependencies.
 
 **Rule**: Numbers and data always use monospace. Labels and descriptions always use sans-serif.
 
+!!! abstract "Currency in examples"
+
+    Dollar signs in the examples above illustrate the shape of a money label; runtime rendering uses the configured `budget.currency` resolved by settings/fallback policy. Helpers in `web/src/utils/format.ts` (`formatCurrency`, `formatCurrencyCompact`) apply the locale-specific symbol and grouping.
+
 ### 1.3 Spacing Grid
 
 Base unit: **8px**. All spacing values follow a 4px sub-grid (half the 8px base unit).

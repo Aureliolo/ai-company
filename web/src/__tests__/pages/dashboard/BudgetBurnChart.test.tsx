@@ -12,14 +12,14 @@ const SAMPLE_TREND: TrendDataPoint[] = [
 
 const SAMPLE_FORECAST: ForecastResponse = {
   horizon_days: 7,
-  projected_total_usd: 60,
+  projected_total: 60,
   daily_projections: [
-    { day: '2026-03-27', projected_spend_usd: 7 },
-    { day: '2026-03-28', projected_spend_usd: 7.5 },
+    { day: '2026-03-27', projected_spend: 7 },
+    { day: '2026-03-28', projected_spend: 7.5 },
   ],
   days_until_exhausted: null,
   confidence: 0.85,
-  avg_daily_spend_usd: 6.2,
+  avg_daily_spend: 6.2,
   currency: 'EUR',
 }
 

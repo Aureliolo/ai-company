@@ -140,7 +140,7 @@ class TestRepositoryTransparency:
                 model=NotBlankStr("test-small-001"),
                 input_tokens=100,
                 output_tokens=50,
-                cost_usd=0.001,
+                cost=0.001,
                 timestamp=base + timedelta(days=i % 7, hours=i),
                 call_category=None,
             )

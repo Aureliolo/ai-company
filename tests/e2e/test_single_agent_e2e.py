@@ -109,7 +109,7 @@ class TestFileToolAgent:
 
         # Cost tracking matches result
         total_cost = await cost_tracker.get_total_cost()
-        assert total_cost == pytest.approx(result.total_cost_usd)
+        assert total_cost == pytest.approx(result.total_cost)
         assert await cost_tracker.get_record_count() == 2
 
         # Completion summary is non-empty
@@ -173,7 +173,7 @@ class TestTextOnlyAgent:
 
         # Cost tracking
         total_cost = await cost_tracker.get_total_cost()
-        assert total_cost == pytest.approx(result.total_cost_usd)
+        assert total_cost == pytest.approx(result.total_cost)
         assert await cost_tracker.get_record_count() == 1
 
         # IDs and duration
@@ -263,7 +263,7 @@ class TestPermissionDeniedRecovery:
         # Cost tracking records both turns
         assert await cost_tracker.get_record_count() == 2
         total_cost = await cost_tracker.get_total_cost()
-        assert total_cost == pytest.approx(result.total_cost_usd)
+        assert total_cost == pytest.approx(result.total_cost)
 
         # IDs and duration
         assert result.agent_id == str(identity.id)
@@ -363,7 +363,7 @@ class TestMaxTurnsExhausted:
         # Cost tracking records both turns
         assert await cost_tracker.get_record_count() == 2
         total_cost = await cost_tracker.get_total_cost()
-        assert total_cost == pytest.approx(result.total_cost_usd)
+        assert total_cost == pytest.approx(result.total_cost)
 
         # IDs and duration
         assert result.agent_id == str(identity.id)

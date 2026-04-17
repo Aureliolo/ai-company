@@ -13,7 +13,7 @@ def _make_workload(agent_id: str, tasks: int) -> AgentWorkload:
     return AgentWorkload(
         agent_id=NotBlankStr(agent_id),
         active_task_count=tasks,
-        total_cost_usd=0.0,
+        total_cost=0.0,
     )
 
 

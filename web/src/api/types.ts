@@ -253,7 +253,7 @@ export interface Task {
   readonly acceptance_criteria: readonly AcceptanceCriterion[]
   estimated_complexity: Complexity
   budget_limit: number
-  cost_usd?: number
+  cost?: number
   deadline: string | null
   max_retries: number
   parent_task_id: string | null
@@ -539,7 +539,7 @@ export interface CostRecord {
   model: string
   input_tokens: number
   output_tokens: number
-  cost_usd: number
+  cost: number
   timestamp: string
   call_category: 'productive' | 'coordination' | 'system' | 'embedding' | null
   /** Quality-vs-cost ratio for the call, when measurable. */
@@ -563,7 +563,7 @@ export interface CostRecord {
 
 export interface DailySummary {
   date: string
-  total_cost_usd: number
+  total_cost: number
   total_input_tokens: number
   total_output_tokens: number
   record_count: number
@@ -571,8 +571,8 @@ export interface DailySummary {
 }
 
 export interface PeriodSummary {
-  avg_cost_usd: number
-  total_cost_usd: number
+  avg_cost: number
+  total_cost: number
   total_input_tokens: number
   total_output_tokens: number
   record_count: number
@@ -604,7 +604,7 @@ export interface BudgetConfig {
 
 export interface AgentSpending {
   agent_id: string
-  total_cost_usd: number
+  total_cost: number
   currency: string
 }
 
@@ -614,8 +614,8 @@ export interface OverviewMetrics {
   total_tasks: number
   tasks_by_status: Record<TaskStatus, number>
   total_agents: number
-  total_cost_usd: number
-  budget_remaining_usd: number
+  total_cost: number
+  budget_remaining: number
   budget_used_percent: number
   cost_7d_trend: readonly TrendDataPoint[]
   active_agents_count: number
@@ -643,16 +643,16 @@ export interface TrendsResponse {
 
 export interface ForecastPoint {
   day: string
-  projected_spend_usd: number
+  projected_spend: number
 }
 
 export interface ForecastResponse {
   horizon_days: number
-  projected_total_usd: number
+  projected_total: number
   readonly daily_projections: readonly ForecastPoint[]
   days_until_exhausted: number | null
   confidence: number
-  avg_daily_spend_usd: number
+  avg_daily_spend: number
   currency: string
 }
 
@@ -1070,7 +1070,7 @@ export interface MessageMetadata {
   task_id: string | null
   project_id: string | null
   tokens_used: number | null
-  cost_usd: number | null
+  cost: number | null
   readonly extra: readonly [string, string][]
 }
 
@@ -1441,7 +1441,7 @@ export interface LlmCalibrationRecord {
   drift: number
   rationale: string
   model_used: string
-  cost_usd: number
+  cost: number
 }
 
 export interface CalibrationSummaryResponse {
@@ -1471,7 +1471,7 @@ export interface CoordinationResultResponse {
   parent_task_id: string
   topology: CoordinationTopology
   total_duration_seconds: number
-  total_cost_usd: number
+  total_cost: number
   currency: string
   readonly phases: readonly CoordinationPhaseResponse[]
   wave_count: number
@@ -1666,6 +1666,7 @@ export type SettingNamespace =
   | 'observability'
   | 'backup'
   | 'engine'
+  | 'display'
 
 export type SettingType = 'str' | 'int' | 'float' | 'bool' | 'enum' | 'json'
 

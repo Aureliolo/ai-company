@@ -99,7 +99,7 @@ class TestConcurrentWrites:
                 model="test-small-001",
                 input_tokens=10,
                 output_tokens=10,
-                cost_usd=0.01 * (i + 1),
+                cost=0.01 * (i + 1),
                 timestamp=datetime(2026, 4, 10, 12, i % 60, tzinfo=UTC),
                 call_category=LLMCallCategory.PRODUCTIVE,
             )
@@ -229,7 +229,7 @@ class TestNativePostgresTypes:
             model="test-small-001",
             input_tokens=1,
             output_tokens=1,
-            cost_usd=0.001,
+            cost=0.001,
             timestamp=precise_ts,
             call_category=LLMCallCategory.PRODUCTIVE,
         )
@@ -249,7 +249,7 @@ class TestNativePostgresTypes:
             task_id=NotBlankStr("round-trip-task"),
             project_id=NotBlankStr("round-trip-project"),
             tokens_used=1234,
-            cost_usd=0.0425,
+            cost=0.0425,
         )
         msg = make_message(
             msg_id=uuid4(),
@@ -269,7 +269,7 @@ class TestNativePostgresTypes:
         assert fetched.metadata.task_id == "round-trip-task"
         assert fetched.metadata.project_id == "round-trip-project"
         assert fetched.metadata.tokens_used == 1234
-        assert fetched.metadata.cost_usd == 0.0425
+        assert fetched.metadata.cost == 0.0425
 
 
 @pytest.mark.integration

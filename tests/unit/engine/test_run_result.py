@@ -39,7 +39,7 @@ def _make_run_result(  # noqa: PLR0913
     *,
     termination_reason: TerminationReason = TerminationReason.COMPLETED,
     turns: tuple[TurnRecord, ...] = (),
-    cost_usd: float = 0.05,
+    cost: float = 0.05,
     error_message: str | None = None,
     agent_id: str = "agent-001",
     task_id: str = "task-001",
@@ -54,7 +54,7 @@ def _make_run_result(  # noqa: PLR0913
             "accumulated_cost": TokenUsage(
                 input_tokens=100,
                 output_tokens=50,
-                cost_usd=cost_usd,
+                cost=cost,
             ),
         },
     )
@@ -125,7 +125,7 @@ class TestAgentRunResultComputedFields:
                 turn_number=i,
                 input_tokens=10,
                 output_tokens=5,
-                cost_usd=0.001,
+                cost=0.001,
                 finish_reason=FinishReason.STOP,
             )
             for i in range(1, 4)
@@ -133,9 +133,9 @@ class TestAgentRunResultComputedFields:
         result = _make_run_result(turns=turns)
         assert result.total_turns == 3
 
-    def test_total_cost_usd(self) -> None:
-        result = _make_run_result(cost_usd=0.123)
-        assert result.total_cost_usd == pytest.approx(0.123)
+    def test_total_cost(self) -> None:
+        result = _make_run_result(cost=0.123)
+        assert result.total_cost == pytest.approx(0.123)
 
     def test_is_success_true(self) -> None:
         result = _make_run_result(termination_reason=TerminationReason.COMPLETED)
@@ -399,14 +399,14 @@ class TestMakeBudgetChecker:
                 "accumulated_cost": TokenUsage(
                     input_tokens=100,
                     output_tokens=50,
-                    cost_usd=4.99,
+                    cost=4.99,
                 ),
             },
         )
         assert checker(ctx) is False
 
     def test_checker_returns_true_at_exact_budget(self) -> None:
-        """Boundary: cost_usd == limit returns True (>= comparison)."""
+        """Boundary: cost == limit returns True (>= comparison)."""
         task = Task(
             id="task-b",
             title="Budgeted",
@@ -428,7 +428,7 @@ class TestMakeBudgetChecker:
                 "accumulated_cost": TokenUsage(
                     input_tokens=100,
                     output_tokens=50,
-                    cost_usd=5.0,
+                    cost=5.0,
                 ),
             },
         )
@@ -456,7 +456,7 @@ class TestMakeBudgetChecker:
                 "accumulated_cost": TokenUsage(
                     input_tokens=100,
                     output_tokens=50,
-                    cost_usd=5.01,
+                    cost=5.01,
                 ),
             },
         )

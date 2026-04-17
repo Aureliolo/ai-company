@@ -138,7 +138,7 @@ class CoordinationResult(BaseModel):
         status_rollup: Aggregated subtask status rollup.
         workspace_merge: Workspace merge result, if applicable.
         total_duration_seconds: Total wall-clock duration.
-        total_cost_usd: Total cost in USD (base currency) across all waves.
+        total_cost: Total cost in the configured currency across all waves.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -175,10 +175,10 @@ class CoordinationResult(BaseModel):
         ge=0.0,
         description="Total wall-clock duration",
     )
-    total_cost_usd: float = Field(
+    total_cost: float = Field(
         default=0.0,
         ge=0.0,
-        description="Total cost in USD (base currency)",
+        description="Total cost in the configured currency",
     )
 
     @model_validator(mode="after")

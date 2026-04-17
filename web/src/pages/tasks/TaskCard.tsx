@@ -88,9 +88,9 @@ export function TaskCard({ task, onSelect, isDragging, isOverlay, className, ref
             </span>
           )}
 
-          {task.cost_usd != null && task.cost_usd > 0 && (
+          {task.cost != null && task.cost > 0 && (
             <span className="text-[10px] font-mono">
-              {formatCurrency(task.cost_usd, DEFAULT_CURRENCY)}
+              {formatCurrency(task.cost, DEFAULT_CURRENCY)}
             </span>
           )}
 

@@ -22,7 +22,7 @@ template:
       description: "Name of your company"
       default: "My Company"
     - name: "budget"
-      description: "Monthly budget in USD"
+      description: "Monthly budget in the company's configured currency"
       var_type: "float"
       default: 25.0
     - name: "wip_limit"

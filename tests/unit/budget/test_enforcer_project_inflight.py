@@ -25,7 +25,7 @@ def _make_task(budget_limit: float = 5.0) -> Task:
     )
 
 
-def _make_ctx(cost_usd: float = 0.0) -> AgentContext:
+def _make_ctx(cost: float = 0.0) -> AgentContext:
     """Build an AgentContext with accumulated cost."""
     from datetime import date
     from uuid import uuid4
@@ -41,13 +41,13 @@ def _make_ctx(cost_usd: float = 0.0) -> AgentContext:
         hiring_date=date(2026, 1, 1),
     )
     ctx = AgentContext.from_identity(identity)
-    if cost_usd > 0:
+    if cost > 0:
         ctx = ctx.model_copy(
             update={
                 "accumulated_cost": TokenUsage(
                     input_tokens=0,
                     output_tokens=0,
-                    cost_usd=cost_usd,
+                    cost=cost,
                 ),
             },
         )
@@ -63,7 +63,7 @@ class TestInFlightProjectBudget:
         cfg = BudgetConfig(total_monthly=1000.0)
         tracker = CostTracker(budget_config=cfg)
         # Pre-existing project cost
-        await tracker.record(make_cost_record(project_id="proj-1", cost_usd=8.0))
+        await tracker.record(make_cost_record(project_id="proj-1", cost=8.0))
         enforcer = BudgetEnforcer(budget_config=cfg, cost_tracker=tracker)
 
         checker = await enforcer.make_budget_checker(
@@ -75,14 +75,14 @@ class TestInFlightProjectBudget:
         assert checker is not None
 
         # Running cost of 3.0 -> 8.0 baseline + 3.0 = 11.0 >= 10.0
-        ctx = _make_ctx(cost_usd=3.0)
+        ctx = _make_ctx(cost=3.0)
         assert checker(ctx) is True
 
     async def test_checker_passes_when_under_project_budget(self) -> None:
         """In-flight checker returns False when under project budget."""
         cfg = BudgetConfig(total_monthly=1000.0)
         tracker = CostTracker(budget_config=cfg)
-        await tracker.record(make_cost_record(project_id="proj-1", cost_usd=2.0))
+        await tracker.record(make_cost_record(project_id="proj-1", cost=2.0))
         enforcer = BudgetEnforcer(budget_config=cfg, cost_tracker=tracker)
 
         checker = await enforcer.make_budget_checker(
@@ -94,14 +94,14 @@ class TestInFlightProjectBudget:
         assert checker is not None
 
         # Running cost of 1.0 -> 2.0 baseline + 1.0 = 3.0 < 10.0
-        ctx = _make_ctx(cost_usd=1.0)
+        ctx = _make_ctx(cost=1.0)
         assert checker(ctx) is False
 
     async def test_checker_no_project_budget_skips(self) -> None:
         """Zero project budget means no project check in the closure."""
         cfg = BudgetConfig(total_monthly=1000.0)
         tracker = CostTracker(budget_config=cfg)
-        await tracker.record(make_cost_record(project_id="proj-1", cost_usd=999.0))
+        await tracker.record(make_cost_record(project_id="proj-1", cost=999.0))
         enforcer = BudgetEnforcer(budget_config=cfg, cost_tracker=tracker)
 
         checker = await enforcer.make_budget_checker(
@@ -113,7 +113,7 @@ class TestInFlightProjectBudget:
         assert checker is not None
 
         # Even though project spent 999, project_budget=0 -> no check
-        ctx = _make_ctx(cost_usd=1.0)
+        ctx = _make_ctx(cost=1.0)
         # Only task and monthly limits apply; with 100 task limit
         # and 1000 monthly, 1.0 running cost is fine
         assert checker(ctx) is False

@@ -261,10 +261,10 @@ class SQLiteCostRecordRepository:
                 """\
 INSERT INTO cost_records (
     agent_id, task_id, provider, model, input_tokens,
-    output_tokens, cost_usd, timestamp, call_category
+    output_tokens, cost, timestamp, call_category
 ) VALUES (
     :agent_id, :task_id, :provider, :model, :input_tokens,
-    :output_tokens, :cost_usd, :timestamp, :call_category
+    :output_tokens, :cost, :timestamp, :call_category
 )""",
                 data,
             )
@@ -302,7 +302,7 @@ INSERT INTO cost_records (
 
         sql = """\
 SELECT agent_id, task_id, provider, model, input_tokens,
-       output_tokens, cost_usd, timestamp, call_category
+       output_tokens, cost, timestamp, call_category
 FROM cost_records"""
         if clauses:
             sql += " WHERE " + " AND ".join(clauses)
@@ -329,9 +329,9 @@ FROM cost_records"""
         agent_id: str | None = None,
         task_id: str | None = None,
     ) -> float:
-        """Sum total cost_usd, optionally filtered by agent and/or task."""
+        """Sum total cost, optionally filtered by agent and/or task."""
         try:
-            sql = "SELECT COALESCE(SUM(cost_usd), 0.0) FROM cost_records"
+            sql = "SELECT COALESCE(SUM(cost), 0.0) FROM cost_records"
             conditions: list[str] = []
             params: list[str] = []
             if agent_id is not None:
@@ -364,7 +364,7 @@ FROM cost_records"""
         logger.debug(
             PERSISTENCE_COST_RECORD_AGGREGATED,
             agent_id=agent_id,
-            total_usd=total,
+            total_cost=total,
         )
         return total
 

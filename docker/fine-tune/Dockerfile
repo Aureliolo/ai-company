@@ -83,8 +83,12 @@ USER 10003
 # Source data is mounted at /data (read-only).
 # Checkpoints written to /checkpoints (read-write).
 
-# The runner starts an HTTP health server on port 15002.
+# The runner starts an HTTP health server on the port resolved by
+# ``synthorg.memory.embedding.fine_tune_runner._resolve_health_port``
+# (env ``SYNTHORG_FINE_TUNE_HEALTH_PORT``, default ``15002``). The
+# probe reads the same env var so an operator override stays in sync
+# with the actual listener.
 HEALTHCHECK --interval=10s --timeout=3s --retries=3 --start-period=30s \
-    CMD ["/app/.venv/bin/python", "-c", "import urllib.request,sys; r=urllib.request.urlopen('http://127.0.0.1:15002/healthz',timeout=2); sys.exit(0 if r.status==200 else 1)"]
+    CMD ["/app/.venv/bin/python", "-c", "import os,urllib.request,sys\np=int(os.environ.get('SYNTHORG_FINE_TUNE_HEALTH_PORT','15002'))\nif not 1<=p<=65535: raise ValueError('SYNTHORG_FINE_TUNE_HEALTH_PORT out of range [1, 65535]')\nr=urllib.request.urlopen(f'http://127.0.0.1:{p}/healthz',timeout=2)\nsys.exit(0 if r.status==200 else 1)"]
 
 ENTRYPOINT ["/app/.venv/bin/python", "-m", "synthorg.memory.embedding.fine_tune_runner"]

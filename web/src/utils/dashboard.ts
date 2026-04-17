@@ -67,14 +67,14 @@ export function computeMetricCards(
     },
     {
       label: 'SPEND',
-      value: formatCurrency(overview.total_cost_usd, overview.currency),
+      value: formatCurrency(overview.total_cost, overview.currency),
       sparklineData:
         overview.cost_7d_trend.length >= 2
           ? overview.cost_7d_trend.map((p) => p.value)
           : undefined,
       change: spendTrend,
       progress: budget
-        ? { current: Math.min(overview.total_cost_usd, budget.total_monthly), total: budget.total_monthly }
+        ? { current: Math.min(overview.total_cost, budget.total_monthly), total: budget.total_monthly }
         : undefined,
       subText: `${Math.round(overview.budget_used_percent)}% of budget`,
     },

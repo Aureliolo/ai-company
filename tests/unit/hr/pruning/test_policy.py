@@ -384,7 +384,7 @@ class TestTrendPruningPolicy:
                 slope=-0.5,
             ),
             make_trend_result(
-                metric_name="cost_usd",
+                metric_name="cost",
                 window_size="7d",
                 direction=TrendDirection.IMPROVING,
                 slope=0.3,

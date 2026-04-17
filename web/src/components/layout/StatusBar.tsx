@@ -77,7 +77,7 @@ export function StatusBar({ onHamburgerClick, sidebarOverlayOpen = false }: Stat
   const idleAgents = useAnalyticsStore((s) => s.overview?.idle_agents_count)
   const totalTasks = useAnalyticsStore((s) => s.overview?.total_tasks)
   const dataLoaded = useAnalyticsStore((s) => s.overview !== null)
-  const totalCost = useAnalyticsStore((s) => s.overview?.total_cost_usd)
+  const totalCost = useAnalyticsStore((s) => s.overview?.total_cost)
   const currency = useAnalyticsStore((s) => s.overview?.currency)
   const budgetPercent = useAnalyticsStore((s) => s.overview?.budget_used_percent)
   const inReviewCount = useAnalyticsStore((s) => s.overview?.tasks_by_status?.in_review)
@@ -118,7 +118,7 @@ export function StatusBar({ onHamburgerClick, sidebarOverlayOpen = false }: Stat
   const costDisplay =
     totalCost !== undefined && totalCost !== null
       ? formatCurrency(totalCost, currency)
-      : '$--'
+      : '--'
 
   return (
     <div

@@ -20,7 +20,7 @@ NOW = datetime(2026, 3, 15, 12, 0, 0, tzinfo=UTC)
 def _make_provider(
     *,
     content: str = '{"score": 7.5, "rationale": "Good quality output"}',
-    cost_usd: float = 0.001,
+    cost: float = 0.001,
     input_tokens: int = 200,
     output_tokens: int = 50,
 ) -> AsyncMock:
@@ -33,7 +33,7 @@ def _make_provider(
         usage=TokenUsage(
             input_tokens=input_tokens,
             output_tokens=output_tokens,
-            cost_usd=cost_usd,
+            cost=cost,
         ),
         model=NotBlankStr("test-small-001"),
     )
@@ -277,7 +277,7 @@ class TestErrorHandling:
             content=None,
             tool_calls=(),
             finish_reason=FinishReason.ERROR,
-            usage=TokenUsage(input_tokens=0, output_tokens=0, cost_usd=0.0),
+            usage=TokenUsage(input_tokens=0, output_tokens=0, cost=0.0),
             model=NotBlankStr("test-small-001"),
         )
         strategy = LlmJudgeQualityStrategy(
@@ -302,7 +302,7 @@ class TestCostTracking:
 
     async def test_cost_recorded_on_success(self) -> None:
         """Successful scoring records cost via CostTracker."""
-        provider = _make_provider(cost_usd=0.002)
+        provider = _make_provider(cost=0.002)
         cost_tracker = MagicMock()
         cost_tracker.record = AsyncMock()
         strategy = LlmJudgeQualityStrategy(
@@ -321,7 +321,7 @@ class TestCostTracking:
 
         cost_tracker.record.assert_awaited_once()
         cost_record = cost_tracker.record.await_args[0][0]
-        assert cost_record.cost_usd == 0.002
+        assert cost_record.cost == 0.002
         assert cost_record.agent_id == "agent-001"
         assert cost_record.task_id == "task-001"
         assert cost_record.model == "test-small-001"

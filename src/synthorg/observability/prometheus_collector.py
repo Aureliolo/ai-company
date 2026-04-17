@@ -106,9 +106,9 @@ class PrometheusCollector:
             "Accumulated cost as percentage of monthly budget limit",
             registry=self.registry,
         )
-        self._budget_monthly_usd = Gauge(
-            f"{prefix}_budget_monthly_usd",
-            "Monthly budget limit in USD",
+        self._budget_monthly_cost = Gauge(
+            f"{prefix}_budget_monthly_cost",
+            "Monthly budget limit in the configured currency",
             registry=self.registry,
         )
         self._budget_daily_used_percent = Gauge(
@@ -120,7 +120,7 @@ class PrometheusCollector:
         # -- Per-agent cost gauges ---------------------------------------
         self._agent_cost_total = Gauge(
             f"{prefix}_agent_cost_total",
-            "Per-agent accumulated cost in USD",
+            "Per-agent accumulated cost in the configured currency",
             ["agent_id"],
             registry=self.registry,
         )
@@ -157,7 +157,7 @@ class PrometheusCollector:
         # original public access pattern.
         self._push = PushMetrics(registry=self.registry, prefix=prefix)
         self._provider_tokens = self._push.provider_tokens
-        self._provider_cost_usd = self._push.provider_cost_usd
+        self._provider_cost = self._push.provider_cost
         self._api_request_duration = self._push.api_request_duration
         self._task_runs = self._push.task_runs
         self._task_duration = self._push.task_duration
@@ -210,7 +210,7 @@ class PrometheusCollector:
         model: str,
         input_tokens: int,
         output_tokens: int,
-        cost_usd: float,
+        cost: float,
     ) -> None:
         """Record an LLM provider call's token and cost usage.
 
@@ -224,11 +224,11 @@ class PrometheusCollector:
             model: Model name (e.g. ``"large"``).
             input_tokens: Tokens in the request prompt.
             output_tokens: Tokens in the response completion.
-            cost_usd: Computed cost in USD for this call.
+            cost: Computed cost in the configured currency for this call.
         """
         require_non_negative("record_provider_usage: input_tokens", input_tokens)
         require_non_negative("record_provider_usage: output_tokens", output_tokens)
-        require_non_negative("record_provider_usage: cost_usd", cost_usd)
+        require_non_negative("record_provider_usage: cost", cost)
         self._provider_tokens.labels(
             provider=provider,
             model=model,
@@ -239,10 +239,10 @@ class PrometheusCollector:
             model=model,
             direction="output",
         ).inc(output_tokens)
-        self._provider_cost_usd.labels(
+        self._provider_cost.labels(
             provider=provider,
             model=model,
-        ).inc(cost_usd)
+        ).inc(cost)
 
     def record_api_request(
         self,
@@ -487,16 +487,16 @@ class PrometheusCollector:
         """
         if not app_state.has_cost_tracker:
             self._budget_used_percent.set(0.0)
-            self._budget_monthly_usd.set(0.0)
+            self._budget_monthly_cost.set(0.0)
             return
         try:
             tracker = app_state.cost_tracker
             if tracker.budget_config is None:
                 self._budget_used_percent.set(0.0)
-                self._budget_monthly_usd.set(0.0)
+                self._budget_monthly_cost.set(0.0)
                 return
             monthly = tracker.budget_config.total_monthly
-            self._budget_monthly_usd.set(monthly)
+            self._budget_monthly_cost.set(monthly)
             if monthly > 0 and billing_cost is not None:
                 self._budget_used_percent.set(
                     min(100.0, (billing_cost / monthly) * 100.0),
@@ -507,7 +507,7 @@ class PrometheusCollector:
             raise
         except Exception:
             self._budget_used_percent.set(0.0)
-            self._budget_monthly_usd.set(0.0)
+            self._budget_monthly_cost.set(0.0)
             logger.warning(
                 METRICS_SCRAPE_FAILED,
                 component="budget",

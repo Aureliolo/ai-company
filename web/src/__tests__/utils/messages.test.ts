@@ -123,9 +123,9 @@ describe('groupMessagesByDate', () => {
 describe('groupMessagesByThread', () => {
   it('groups messages by task_id', () => {
     const msgs = [
-      makeMessage('1', { metadata: { task_id: 'task-1', project_id: null, tokens_used: null, cost_usd: null, extra: [] } }),
-      makeMessage('2', { metadata: { task_id: 'task-1', project_id: null, tokens_used: null, cost_usd: null, extra: [] } }),
-      makeMessage('3', { metadata: { task_id: null, project_id: null, tokens_used: null, cost_usd: null, extra: [] } }),
+      makeMessage('1', { metadata: { task_id: 'task-1', project_id: null, tokens_used: null, cost: null, extra: [] } }),
+      makeMessage('2', { metadata: { task_id: 'task-1', project_id: null, tokens_used: null, cost: null, extra: [] } }),
+      makeMessage('3', { metadata: { task_id: null, project_id: null, tokens_used: null, cost: null, extra: [] } }),
     ]
     const { threads, standalone } = groupMessagesByThread(msgs)
     expect(threads.size).toBe(1)

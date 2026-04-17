@@ -78,7 +78,7 @@ def _make_response(content: str | None = _VALID_PROPOSAL_JSON) -> CompletionResp
     return CompletionResponse(
         content=content,
         finish_reason=FinishReason.STOP,
-        usage=TokenUsage(input_tokens=100, output_tokens=50, cost_usd=0.001),
+        usage=TokenUsage(input_tokens=100, output_tokens=50, cost=0.001),
         model="test-small-001",
     )
 
@@ -208,7 +208,7 @@ class TestProceduralMemoryProposer:
         response = CompletionResponse(
             content=None,
             finish_reason=FinishReason.TOOL_USE,
-            usage=TokenUsage(input_tokens=100, output_tokens=0, cost_usd=0.0),
+            usage=TokenUsage(input_tokens=100, output_tokens=0, cost=0.0),
             model="test-small-001",
             tool_calls=(ToolCall(id="tc-1", name="noop", arguments={}),),
         )

@@ -91,7 +91,7 @@ class TestCheckProjectBudgetDurable:
         repo.get.side_effect = RuntimeError("DB error")
 
         tracker = CostTracker()
-        await tracker.record(make_cost_record(project_id="proj-1", cost_usd=2.0))
+        await tracker.record(make_cost_record(project_id="proj-1", cost=2.0))
         enforcer = _make_enforcer(tracker=tracker, project_cost_repo=repo)
 
         # Falls back to in-memory (2.0 < 10.0), should pass
@@ -99,7 +99,7 @@ class TestCheckProjectBudgetDurable:
 
     async def test_uses_in_memory_when_no_repo(self) -> None:
         tracker = CostTracker()
-        await tracker.record(make_cost_record(project_id="proj-1", cost_usd=5.0))
+        await tracker.record(make_cost_record(project_id="proj-1", cost=5.0))
         enforcer = _make_enforcer(tracker=tracker)
 
         # No repo -- uses in-memory tracker
@@ -158,7 +158,7 @@ class TestMakeBudgetCheckerDurable:
         repo.get.side_effect = RuntimeError("DB error")
 
         tracker = CostTracker()
-        await tracker.record(make_cost_record(project_id="proj-1", cost_usd=3.0))
+        await tracker.record(make_cost_record(project_id="proj-1", cost=3.0))
         enforcer = _make_enforcer(tracker=tracker, project_cost_repo=repo)
 
         task = _make_task()

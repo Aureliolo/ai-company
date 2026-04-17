@@ -417,7 +417,7 @@ async def _run_pipeline(  # noqa: PLR0913
 ) -> ClassificationResult:
     """Build detectors, load contexts, run, and collect findings."""
     budget_tracker = ClassificationBudgetTracker(
-        budget_usd=config.classification_budget_per_task_usd,
+        budget=config.classification_budget_per_task,
     )
     all_detectors = _build_detectors(
         config,

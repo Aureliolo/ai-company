@@ -41,7 +41,7 @@ def _usage(
     return TokenUsage(
         input_tokens=input_tokens,
         output_tokens=output_tokens,
-        cost_usd=0.001,
+        cost=0.001,
     )
 
 
@@ -518,7 +518,7 @@ class TestMakeTurnRecord:
         assert record.turn_number == 1
         assert record.input_tokens == 10
         assert record.output_tokens == 5
-        assert record.cost_usd == 0.001
+        assert record.cost == 0.001
         assert record.tool_calls_made == ()
         assert record.finish_reason == FinishReason.STOP
         assert record.call_category is None
@@ -687,7 +687,7 @@ class TestBuildResult:
                 turn_number=1,
                 input_tokens=10,
                 output_tokens=5,
-                cost_usd=0.001,
+                cost=0.001,
                 finish_reason=FinishReason.STOP,
             ),
         ]
@@ -710,7 +710,7 @@ class TestClearLastTurnToolCalls:
                 turn_number=1,
                 input_tokens=10,
                 output_tokens=5,
-                cost_usd=0.001,
+                cost=0.001,
                 tool_calls_made=("search", "read"),
                 tool_call_fingerprints=("read:abc123", "search:def456"),
                 finish_reason=FinishReason.TOOL_USE,
@@ -734,7 +734,7 @@ class TestClearLastTurnToolCalls:
                 turn_number=1,
                 input_tokens=10,
                 output_tokens=5,
-                cost_usd=0.001,
+                cost=0.001,
                 tool_calls_made=("search",),
                 finish_reason=FinishReason.TOOL_USE,
             ),
@@ -742,7 +742,7 @@ class TestClearLastTurnToolCalls:
                 turn_number=2,
                 input_tokens=20,
                 output_tokens=10,
-                cost_usd=0.002,
+                cost=0.002,
                 tool_calls_made=("write",),
                 finish_reason=FinishReason.TOOL_USE,
             ),
@@ -767,7 +767,7 @@ def _stagnation_turn(
         turn_number=turn_number,
         input_tokens=10,
         output_tokens=5,
-        cost_usd=0.001,
+        cost=0.001,
         tool_call_fingerprints=fingerprints,
         finish_reason=FinishReason.TOOL_USE if fingerprints else FinishReason.STOP,
     )

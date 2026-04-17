@@ -84,6 +84,16 @@ No corresponding flag -- settable via env var or `config set`:
 | `SYNTHORG_MAX_API_RESPONSE_BYTES` | Maximum bytes for API/checksum downloads (accepts `1MiB`, `1048576`) |
 | `SYNTHORG_MAX_BINARY_BYTES` | Maximum bytes for CLI binary archive downloads (accepts `256MiB`) |
 | `SYNTHORG_MAX_ARCHIVE_ENTRY_BYTES` | Maximum bytes per archive entry during extraction (accepts `128MiB`) |
+| `SYNTHORG_FINE_TUNE_HEALTH_PORT` | Override fine-tune container health server port (integer in `[1, 65535]`, default `15002`). Env-only: read directly by the fine-tune Python runner, so it is **not** exposed as a `synthorg config set` key and does not trigger compose regeneration. |
+
+### Hardcoded network literals (audit rationale)
+
+The CLI contains several `localhost` / service-DNS / port literals that look non-configurable but are correct by design:
+
+- **`localhost` in `doctor.go` / `start.go` / `status.go` / `wipe.go` / `update.go`**: these print URLs pointing at the operator's own host (e.g. `http://localhost:<BackendPort>/api/v1/health`). The port is flag/env-driven (`SYNTHORG_BACKEND_PORT`, `SYNTHORG_WEB_PORT`); the hostname is literally the host the CLI is running on.
+- **`postgres:5432` in `compose/generate.go::pgDSN`**: docker-compose internal DNS, container-to-container. The host-side Postgres port is a separate `Params.PostgresPort` tunable rendered in `compose.yml.tmpl`.
+- **`nats:4222` / `nats:8222` in `compose.yml.tmpl`**: NATS client and HTTP monitoring ports inside the compose network. `nats` is the compose service name. `8222` is the NATS-standard monitoring port, not exposed to the host.
+- **`nats://nats:4222` in `worker_start.go`**: compiled-in default for the `--nats-url` flag, already overridable via `SYNTHORG_DEFAULT_NATS_URL` (see above).
 
 ## Exit Codes
 

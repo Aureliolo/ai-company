@@ -43,7 +43,7 @@ class TaskSpending(BaseModel):
 
     Attributes:
         task_id: Task identifier.
-        total_cost_usd: Total cost for the task.
+        total_cost: Total cost for the task.
         total_tokens: Total tokens consumed (input + output).
         record_count: Number of cost records.
     """
@@ -51,7 +51,7 @@ class TaskSpending(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     task_id: NotBlankStr = Field(description="Task identifier")
-    total_cost_usd: float = Field(ge=0.0, description="Total cost")
+    total_cost: float = Field(ge=0.0, description="Total cost")
     total_tokens: int = Field(ge=0, description="Total tokens consumed")
     record_count: int = Field(ge=0, description="Number of cost records")
 
@@ -61,7 +61,7 @@ class ProviderDistribution(BaseModel):
 
     Attributes:
         provider: Provider name.
-        total_cost_usd: Total cost for the provider.
+        total_cost: Total cost for the provider.
         record_count: Number of cost records.
         percentage_of_total: Percentage of total spending.
     """
@@ -69,7 +69,7 @@ class ProviderDistribution(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     provider: NotBlankStr = Field(description="Provider name")
-    total_cost_usd: float = Field(ge=0.0, description="Total cost")
+    total_cost: float = Field(ge=0.0, description="Total cost")
     record_count: int = Field(ge=0, description="Number of cost records")
     percentage_of_total: float = Field(
         ge=0.0,
@@ -84,7 +84,7 @@ class ModelDistribution(BaseModel):
     Attributes:
         model: Model identifier.
         provider: Provider name.
-        total_cost_usd: Total cost for the model.
+        total_cost: Total cost for the model.
         record_count: Number of cost records.
         percentage_of_total: Percentage of total spending.
     """
@@ -93,7 +93,7 @@ class ModelDistribution(BaseModel):
 
     model: NotBlankStr = Field(description="Model identifier")
     provider: NotBlankStr = Field(description="Provider name")
-    total_cost_usd: float = Field(ge=0.0, description="Total cost")
+    total_cost: float = Field(ge=0.0, description="Total cost")
     record_count: int = Field(ge=0, description="Number of cost records")
     percentage_of_total: float = Field(
         ge=0.0,
@@ -108,7 +108,7 @@ class PeriodComparison(BaseModel):
     Attributes:
         current_period_cost: Cost in the current period.
         previous_period_cost: Cost in the previous period.
-        cost_change_usd: Absolute change in cost (computed).
+        cost_change: Absolute change in cost (computed).
         cost_change_percent: Percentage change in cost (computed).
             None when previous period cost is zero.
     """
@@ -126,7 +126,7 @@ class PeriodComparison(BaseModel):
 
     @computed_field  # type: ignore[prop-decorator]
     @property
-    def cost_change_usd(self) -> float:
+    def cost_change(self) -> float:
         """Absolute cost change (current - previous)."""
         return round(
             self.current_period_cost - self.previous_period_cost,
@@ -140,7 +140,7 @@ class PeriodComparison(BaseModel):
         if self.previous_period_cost <= 0:
             return None
         return round(
-            self.cost_change_usd / self.previous_period_cost * 100,
+            self.cost_change / self.previous_period_cost * 100,
             BUDGET_ROUNDING_PRECISION,
         )
 
@@ -180,11 +180,11 @@ class SpendingReport(BaseModel):
     )
     top_agents_by_cost: tuple[tuple[NotBlankStr, float], ...] = Field(
         default=(),
-        description="Top agents by cost (agent_id, cost_usd)",
+        description="Top agents by cost (agent_id, cost)",
     )
     top_tasks_by_cost: tuple[tuple[NotBlankStr, float], ...] = Field(
         default=(),
-        description="Top tasks by cost (task_id, cost_usd)",
+        description="Top tasks by cost (task_id, cost)",
     )
     generated_at: datetime = Field(description="When the report was generated")
 
@@ -292,7 +292,7 @@ class ReportGenerator:
 
         # Derive total_cost from records for consistent percentages
         total_cost = round(
-            math.fsum(r.cost_usd for r in records),
+            math.fsum(r.cost for r in records),
             BUDGET_ROUNDING_PRECISION,
         )
         by_task = _build_task_spendings(records)
@@ -323,7 +323,7 @@ class ReportGenerator:
 
         logger.info(
             CFO_REPORT_GENERATED,
-            total_cost_usd=total_cost,
+            total_cost=total_cost,
             task_count=len(by_task),
             provider_count=len(by_provider),
             model_count=len(by_model),
@@ -347,7 +347,7 @@ class ReportGenerator:
             start=prev_start,
             end=prev_end,
         )
-        prev_cost = prev_summary.period.total_cost_usd
+        prev_cost = prev_summary.period.total_cost
 
         if prev_cost == 0.0 and current_cost == 0.0:
             return None
@@ -373,14 +373,14 @@ def _build_task_spendings(
     for task_id in sorted(by_task):
         task_records = by_task[task_id]
         total_cost = round(
-            math.fsum(r.cost_usd for r in task_records),
+            math.fsum(r.cost for r in task_records),
             BUDGET_ROUNDING_PRECISION,
         )
         total_tokens = sum(r.input_tokens + r.output_tokens for r in task_records)
         spendings.append(
             TaskSpending(
                 task_id=task_id,
-                total_cost_usd=total_cost,
+                total_cost=total_cost,
                 total_tokens=total_tokens,
                 record_count=len(task_records),
             ),
@@ -401,7 +401,7 @@ def _build_provider_distribution(
     for provider in sorted(by_provider):
         provider_records = by_provider[provider]
         provider_cost = round(
-            math.fsum(r.cost_usd for r in provider_records),
+            math.fsum(r.cost for r in provider_records),
             BUDGET_ROUNDING_PRECISION,
         )
         pct = (
@@ -412,7 +412,7 @@ def _build_provider_distribution(
         distributions.append(
             ProviderDistribution(
                 provider=provider,
-                total_cost_usd=provider_cost,
+                total_cost=provider_cost,
                 record_count=len(provider_records),
                 percentage_of_total=pct,
             ),
@@ -433,7 +433,7 @@ def _build_model_distribution(
     for model, provider in sorted(by_model):
         model_records = by_model[(model, provider)]
         model_cost = round(
-            math.fsum(r.cost_usd for r in model_records),
+            math.fsum(r.cost for r in model_records),
             BUDGET_ROUNDING_PRECISION,
         )
         pct = (
@@ -445,7 +445,7 @@ def _build_model_distribution(
             ModelDistribution(
                 model=model,
                 provider=provider,
-                total_cost_usd=model_cost,
+                total_cost=model_cost,
                 record_count=len(model_records),
                 percentage_of_total=pct,
             ),
@@ -460,10 +460,10 @@ def _build_top_agents(
     """Extract top-N agents by cost from a spending summary."""
     sorted_agents = sorted(
         summary.by_agent,
-        key=lambda a: a.total_cost_usd,
+        key=lambda a: a.total_cost,
         reverse=True,
     )
-    return tuple((a.agent_id, a.total_cost_usd) for a in sorted_agents[:top_n])
+    return tuple((a.agent_id, a.total_cost) for a in sorted_agents[:top_n])
 
 
 def _build_top_tasks(
@@ -473,7 +473,7 @@ def _build_top_tasks(
     """Extract top-N tasks by cost from task spendings."""
     sorted_tasks = sorted(
         task_spendings,
-        key=lambda t: t.total_cost_usd,
+        key=lambda t: t.total_cost,
         reverse=True,
     )
-    return tuple((t.task_id, t.total_cost_usd) for t in sorted_tasks[:top_n])
+    return tuple((t.task_id, t.total_cost) for t in sorted_tasks[:top_n])

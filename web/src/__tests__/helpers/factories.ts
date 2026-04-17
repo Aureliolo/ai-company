@@ -190,7 +190,7 @@ export function makeMessage(id: string, overrides?: Partial<Message>): Message {
       task_id: null,
       project_id: null,
       tokens_used: null,
-      cost_usd: null,
+      cost: null,
       extra: [],
     },
     ...overrides,

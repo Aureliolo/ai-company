@@ -35,7 +35,7 @@ const costRecordArb: fc.Arbitrary<CostRecord> = fc.record({
   model: fc.constant('test-model-001'),
   input_tokens: fc.nat({ max: 10000 }),
   output_tokens: fc.nat({ max: 10000 }),
-  cost_usd: fc.double({ min: 0, max: 100, noNaN: true }),
+  cost: fc.double({ min: 0, max: 100, noNaN: true }),
   timestamp: fc.constant('2026-03-20T10:00:00Z'),
   call_category: callCategoryArb,
   accuracy_effort_ratio: fc.oneof(fc.double({ min: 0, max: 1, noNaN: true }), fc.constant(null)),
@@ -95,7 +95,7 @@ describe('computeCostBreakdown properties', () => {
             expect(slice.percent).toBeGreaterThanOrEqual(0)
             sum += slice.percent
           }
-          const totalCost = records.reduce((acc, r) => acc + r.cost_usd, 0)
+          const totalCost = records.reduce((acc, r) => acc + r.cost, 0)
           if (slices.length > 0 && totalCost > 0) {
             expect(sum).toBeCloseTo(100, 0)
           }
@@ -118,7 +118,7 @@ describe('computeCategoryBreakdown properties', () => {
             ratio.system.percent +
             ratio.embedding.percent +
             ratio.uncategorized.percent
-          const totalCost = records.reduce((acc, r) => acc + r.cost_usd, 0)
+          const totalCost = records.reduce((acc, r) => acc + r.cost, 0)
           if (records.length === 0 || totalCost === 0) {
             expect(sum).toBe(0)
           } else {

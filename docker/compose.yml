@@ -201,37 +201,18 @@ services:
           pids: 4
     logging: *logging
 
-  # Fine-tuning sidecar (~4 GB, PyTorch + sentence-transformers).
-  # Uncomment to enable embedding fine-tuning. Pick the image for your host:
-  #   - synthorg-fine-tune-gpu: ~4 GB, requires an NVIDIA GPU + driver
-  #   - synthorg-fine-tune-cpu: ~1.7 GB, runs anywhere but trains slowly
+  # Fine-tuning sidecar (~4 GB GPU variant / ~1.7 GB CPU-only).
   #
-  # Runs as UID 10003 -- a dedicated non-root user for security isolation
-  # from sandbox (10001), sidecar (10002), and backend (65532). The shared
-  # /data volume is owned by 65532; group_add=65532 gives this container
-  # read access to any group-readable files backend writes (so the mount
-  # keeps working even if backend tightens world-read bits to 640).
-  # fine-tune:
-  #   image: ghcr.io/aureliolo/synthorg-fine-tune-gpu:${SYNTHORG_IMAGE_TAG:-latest}
-  #   volumes:
-  #     - synthorg-data:/data:ro
-  #   depends_on:
-  #     backend:
-  #       condition: service_healthy
-  #   user: "10003:10003"
-  #   group_add:
-  #     - "65532"
-  #   security_opt:
-  #     - no-new-privileges:true
-  #   cap_drop:
-  #     - ALL
-  #   read_only: true
-  #   deploy:
-  #     resources:
-  #       limits:
-  #         memory: 8G
-  #         cpus: "4.0"
-  #   logging: *logging
+  # Enable by applying one of the overlays:
+  #   docker compose -f docker/compose.yml \
+  #     -f docker/compose.fine-tuning-gpu.yml up  # NVIDIA GPU + driver required
+  #   docker compose -f docker/compose.yml \
+  #     -f docker/compose.fine-tuning-cpu.yml up  # slower, runs anywhere
+  #
+  # Each overlay defines the full fine-tune service with its image
+  # reference, security, and resource limits. The image tags are
+  # digest-pinned by Renovate (see the 'renovate:' comments in the
+  # overlay files) so operators stay on a known-verified image.
 
 networks:
   default:

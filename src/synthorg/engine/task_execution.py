@@ -210,7 +210,7 @@ class TaskExecution(BaseModel):
             EXECUTION_COST_RECORDED,
             task_id=self.task.id,
             turn=result.turn_count,
-            cost_usd=usage.cost_usd,
+            cost=usage.cost,
         )
         return result
 

@@ -71,13 +71,13 @@ describe('TaskCard', () => {
     expect(screen.getByLabelText('Task: My task')).toBeInTheDocument()
   })
 
-  it('renders cost when cost_usd is set and > 0', () => {
-    render(<TaskCard task={makeTask({ cost_usd: 5.25 })} onSelect={() => {}} />)
+  it('renders cost when cost is set and > 0', () => {
+    render(<TaskCard task={makeTask({ cost: 5.25 })} onSelect={() => {}} />)
     expect(screen.getByText(/5\.25/)).toBeInTheDocument()
   })
 
-  it('does not render cost when cost_usd is 0', () => {
-    render(<TaskCard task={makeTask({ cost_usd: 0 })} onSelect={() => {}} />)
+  it('does not render cost when cost is 0', () => {
+    render(<TaskCard task={makeTask({ cost: 0 })} onSelect={() => {}} />)
     // Cost element should not be present since cost is 0. Currency
     // symbol is whatever ``DEFAULT_CURRENCY`` resolves to at render
     // time, so we assert on the numeric formatting rather than a

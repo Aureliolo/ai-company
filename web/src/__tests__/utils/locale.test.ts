@@ -1,44 +1,43 @@
-import { APP_LOCALE, getLocale } from '@/utils/locale'
+import { APP_LOCALE, APP_LOCALE_FALLBACK, getLocale } from '@/utils/locale'
+import { useSettingsStore } from '@/stores/settings'
 
-describe('APP_LOCALE', () => {
-  it('is a non-empty string', () => {
-    expect(typeof APP_LOCALE).toBe('string')
-    expect(APP_LOCALE.length).toBeGreaterThan(0)
+describe('APP_LOCALE_FALLBACK', () => {
+  it('is plain "en" (neutral language, no region)', () => {
+    // The fallback deliberately carries no region. "en-US" (or any
+    // other language-region) would privilege one locale's date,
+    // number, and unit defaults over others when no operator setting
+    // and no browser tag are available. Plain "en" lets Intl pick
+    // neutral defaults from the language subtag alone.
+    expect(APP_LOCALE_FALLBACK).toBe('en')
+    expect(APP_LOCALE).toBe(APP_LOCALE_FALLBACK)
   })
 
   it('canonicalizes to itself via Intl.getCanonicalLocales', () => {
-    const canonical = Intl.getCanonicalLocales(APP_LOCALE)
-    expect(canonical).toEqual([APP_LOCALE])
+    expect(Intl.getCanonicalLocales(APP_LOCALE_FALLBACK)).toEqual(['en'])
   })
 
   it('is a valid Intl locale', () => {
-    expect(() => new Intl.Locale(APP_LOCALE)).not.toThrow()
+    expect(() => new Intl.Locale(APP_LOCALE_FALLBACK)).not.toThrow()
   })
 
   it.each([
     'en_US', // underscore instead of hyphen
-    'en', // language-only (accepted by Intl but not our APP_LOCALE shape)
     '', // empty string
-    'not a locale', // whitespace, no region
-  ])('rejects the malformed candidate %j', (candidate) => {
-    if (candidate === 'en') {
-      // `Intl.getCanonicalLocales('en')` succeeds; assert it does NOT
-      // normalize to APP_LOCALE so the test still catches unintended
-      // language-only drift for our BCP 47 language-region requirement.
-      expect(Intl.getCanonicalLocales(candidate)).not.toEqual([APP_LOCALE])
-    } else {
-      expect(() => Intl.getCanonicalLocales(candidate)).toThrow()
-    }
+    'not a locale', // whitespace in subtag
+  ])('Intl rejects the malformed candidate %j', (candidate) => {
+    expect(() => Intl.getCanonicalLocales(candidate)).toThrow()
   })
 })
 
 describe('getLocale', () => {
-  it('returns a string', () => {
-    expect(typeof getLocale()).toBe('string')
+  beforeEach(() => {
+    // Reset the locale override so each test starts from the
+    // "browser or fallback" branch unless it opts in.
+    useSettingsStore.setState({ locale: null })
   })
 
-  it('defaults to APP_LOCALE when no override is configured', () => {
-    expect(getLocale()).toBe(APP_LOCALE)
+  it('returns a string', () => {
+    expect(typeof getLocale()).toBe('string')
   })
 
   it('returns a value usable by Intl APIs', () => {
@@ -49,5 +48,30 @@ describe('getLocale', () => {
     expect(() =>
       new Intl.DateTimeFormat(locale).format(new Date()),
     ).not.toThrow()
+  })
+
+  it('prefers the settings-store override over the browser locale', () => {
+    useSettingsStore.setState({ locale: 'de-CH' })
+    expect(getLocale()).toBe('de-CH')
+  })
+
+  it('trims whitespace around the override', () => {
+    useSettingsStore.setState({ locale: '  fr-FR  ' })
+    expect(getLocale()).toBe('fr-FR')
+  })
+
+  it('ignores a blank override and falls through to browser/fallback', () => {
+    useSettingsStore.setState({ locale: '   ' })
+    // Falls through to navigator.language (or fallback in JSDOM).
+    expect(getLocale()).not.toBe('   ')
+    expect(getLocale().length).toBeGreaterThan(0)
+  })
+
+  it('ignores a malformed override and falls through', () => {
+    // ``123!!!`` is syntactically invalid per BCP 47
+    // (language subtag must be alpha); Intl.getCanonicalLocales
+    // throws, so the override is discarded.
+    useSettingsStore.setState({ locale: '123!!!' })
+    expect(getLocale()).not.toBe('123!!!')
   })
 })

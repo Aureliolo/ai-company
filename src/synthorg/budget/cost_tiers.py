@@ -47,13 +47,13 @@ class CostTierDefinition(BaseModel):
     price_range_min: float = Field(
         default=0.0,
         ge=0.0,
-        description="Minimum cost_per_1k_total in USD (base currency)",
+        description="Minimum cost_per_1k_total in the configured currency",
     )
     price_range_max: float | None = Field(
         default=None,
         ge=0.0,
         description=(
-            "Maximum cost_per_1k_total in USD (base currency); None = unbounded"
+            "Maximum cost_per_1k_total in the configured currency; None = unbounded"
         ),
     )
     color: str = Field(

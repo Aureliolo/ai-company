@@ -3,6 +3,7 @@ import { MemoryRouter } from 'react-router'
 import { useAnalyticsStore } from '@/stores/analytics'
 import DashboardPage from '../DashboardPage'
 import type { ActivityItem, DepartmentHealth, OverviewMetrics, BudgetConfig, ForecastResponse } from '@/api/types'
+import { DEFAULT_CURRENCY } from '@/utils/currencies'
 
 const mockOverview: OverviewMetrics = {
   total_tasks: 24,
@@ -11,8 +12,8 @@ const mockOverview: OverviewMetrics = {
     blocked: 1, failed: 1, interrupted: 1, suspended: 0, cancelled: 1, rejected: 0, auth_required: 0,
   },
   total_agents: 10,
-  total_cost_usd: 42.17,
-  budget_remaining_usd: 457.83,
+  total_cost: 42.17,
+  budget_remaining: 457.83,
   budget_used_percent: 8.43,
   cost_7d_trend: [
     { timestamp: '2026-03-20', value: 5 },
@@ -25,7 +26,7 @@ const mockOverview: OverviewMetrics = {
   ],
   active_agents_count: 5,
   idle_agents_count: 4,
-  currency: 'EUR',
+  currency: DEFAULT_CURRENCY,
 }
 
 const mockBudgetConfig: BudgetConfig = {
@@ -35,28 +36,28 @@ const mockBudgetConfig: BudgetConfig = {
   per_agent_daily_limit: 20,
   auto_downgrade: { enabled: false, threshold: 90, downgrade_map: [], boundary: 'task_assignment' },
   reset_day: 1,
-  currency: 'EUR',
+  currency: DEFAULT_CURRENCY,
 }
 
 const mockForecast: ForecastResponse = {
   horizon_days: 7,
-  projected_total_usd: 65,
+  projected_total: 65,
   daily_projections: [
-    { day: '2026-03-27', projected_spend_usd: 6.5 },
-    { day: '2026-03-28', projected_spend_usd: 7.0 },
-    { day: '2026-03-29', projected_spend_usd: 6.8 },
+    { day: '2026-03-27', projected_spend: 6.5 },
+    { day: '2026-03-28', projected_spend: 7.0 },
+    { day: '2026-03-29', projected_spend: 6.8 },
   ],
   days_until_exhausted: null,
   confidence: 0.85,
-  avg_daily_spend_usd: 6.3,
-  currency: 'EUR',
+  avg_daily_spend: 6.3,
+  currency: DEFAULT_CURRENCY,
 }
 
 const mockDepartments: DepartmentHealth[] = [
-  { department_name: 'engineering', agent_count: 4, active_agent_count: 3, currency: 'EUR', avg_performance_score: 8.0, department_cost_7d: 18.5, cost_trend: [], collaboration_score: 7.0, utilization_percent: 92 },
-  { department_name: 'design', agent_count: 2, active_agent_count: 1, currency: 'EUR', avg_performance_score: 7.5, department_cost_7d: 8.2, cost_trend: [], collaboration_score: 6.5, utilization_percent: 78 },
-  { department_name: 'product', agent_count: 2, active_agent_count: 2, currency: 'EUR', avg_performance_score: 8.2, department_cost_7d: 7.1, cost_trend: [], collaboration_score: 7.5, utilization_percent: 85 },
-  { department_name: 'operations', agent_count: 1, active_agent_count: 1, currency: 'EUR', avg_performance_score: 6.0, department_cost_7d: 4.3, cost_trend: [], collaboration_score: null, utilization_percent: 60 },
+  { department_name: 'engineering', agent_count: 4, active_agent_count: 3, currency: DEFAULT_CURRENCY, avg_performance_score: 8.0, department_cost_7d: 18.5, cost_trend: [], collaboration_score: 7.0, utilization_percent: 92 },
+  { department_name: 'design', agent_count: 2, active_agent_count: 1, currency: DEFAULT_CURRENCY, avg_performance_score: 7.5, department_cost_7d: 8.2, cost_trend: [], collaboration_score: 6.5, utilization_percent: 78 },
+  { department_name: 'product', agent_count: 2, active_agent_count: 2, currency: DEFAULT_CURRENCY, avg_performance_score: 8.2, department_cost_7d: 7.1, cost_trend: [], collaboration_score: 7.5, utilization_percent: 85 },
+  { department_name: 'operations', agent_count: 1, active_agent_count: 1, currency: DEFAULT_CURRENCY, avg_performance_score: 6.0, department_cost_7d: 4.3, cost_trend: [], collaboration_score: null, utilization_percent: 60 },
 ]
 
 const mockActivities: ActivityItem[] = [

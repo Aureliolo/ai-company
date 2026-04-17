@@ -44,7 +44,7 @@ _SANITIZE_MAX_LENGTH = 2000
 # inside a reasonable per-run budget, large enough that a runaway
 # provider cannot silently overshoot.  Actual cost is reconciled via
 # ``ClassificationBudgetTracker.settle`` once the call completes.
-_ESTIMATED_LLM_COST_USD = 0.001
+_ESTIMATED_LLM_COST = 0.001
 _SEVERITY_MAP: MappingProxyType[str, ErrorSeverity] = MappingProxyType(
     {
         "low": ErrorSeverity.LOW,
@@ -281,7 +281,7 @@ class _BaseSemanticDetector:
         ``CompositeDetector`` cannot race through the admission
         gate and collectively exceed the per-run budget.
         """
-        estimated_cost = _ESTIMATED_LLM_COST_USD
+        estimated_cost = _ESTIMATED_LLM_COST
         if self._budget_tracker is not None:
             reserved = await self._budget_tracker.try_reserve(estimated_cost)
             if not reserved:
@@ -307,7 +307,11 @@ class _BaseSemanticDetector:
         settled = False
         try:
             response = await self._provider.complete(messages, self._model_id)
-            actual_cost = response.usage.cost_usd if response.usage is not None else 0.0
+            # ``CompletionResponse.usage`` is a required ``TokenUsage``
+            # (see ``synthorg.providers.models``) so Pydantic rejects
+            # responses without it at construction time -- no runtime
+            # None-check needed here.
+            actual_cost = response.usage.cost
             if reserved and self._budget_tracker is not None:
                 await self._budget_tracker.settle(
                     estimated_cost=estimated_cost,

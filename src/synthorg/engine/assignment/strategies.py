@@ -445,7 +445,7 @@ class CostOptimizedAssignmentStrategy:
     """Assigns a task to the cheapest eligible agent.
 
     Scores agents like ``RoleBasedAssignmentStrategy``, then
-    sorts by ``total_cost_usd`` (ascending) with score as
+    sorts by ``total_cost`` (ascending) with score as
     tiebreaker (descending).  Falls back to score-based
     ranking when cost data is absent or incomplete.
     """
@@ -496,7 +496,7 @@ class CostOptimizedAssignmentStrategy:
             )
 
         cost_map: dict[str, float] = {
-            w.agent_id: w.total_cost_usd for w in request.workloads
+            w.agent_id: w.total_cost for w in request.workloads
         }
         candidate_ids = {str(c.agent_identity.id) for c in candidates}
         has_complete_data = bool(cost_map) and candidate_ids <= cost_map.keys()
@@ -513,7 +513,7 @@ class CostOptimizedAssignmentStrategy:
                 TASK_ASSIGNMENT_COST_OPTIMIZED,
                 task_id=request.task.id,
                 agent_name=candidates[0].agent_identity.name,
-                total_cost_usd=cost_map[str(candidates[0].agent_identity.id)],
+                total_cost=cost_map[str(candidates[0].agent_identity.id)],
             )
         else:
             logger.warning(

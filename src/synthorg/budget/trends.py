@@ -71,16 +71,16 @@ class ForecastPoint(BaseModel):
 
     Attributes:
         day: Calendar date.
-        projected_spend_usd: Projected cumulative spend for this day
-            in USD (base currency).
+        projected_spend: Projected cumulative spend for this day
+            in the configured currency.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     day: date = Field(description="Calendar date")
-    projected_spend_usd: float = Field(
+    projected_spend: float = Field(
         ge=0.0,
-        description="Projected cumulative spend in USD (base currency)",
+        description="Projected cumulative spend in the configured currency",
     )
 
 
@@ -88,21 +88,24 @@ class BudgetForecast(BaseModel):
     """Budget spend projection over a time horizon.
 
     Attributes:
-        projected_total_usd: Projected total spend at end of horizon.
+        projected_total: Projected total spend at end of horizon.
         daily_projections: Per-day cumulative spend projections.
         days_until_exhausted: Days until budget exhaustion (None if
             no budget set or zero daily spend). Uses ceiling
             rounding -- the budget is exhausted on or before
             this many days.
         confidence: Confidence score (0.0-1.0) based on data density.
-        avg_daily_spend_usd: Average daily spend used for projection.
+        avg_daily_spend: Average daily spend used for projection.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    projected_total_usd: float = Field(
+    projected_total: float = Field(
         ge=0.0,
-        description="Projected total spend at end of horizon",
+        description=(
+            "Projected total spend at end of horizon in the configured "
+            "currency (see ``budget.currency``)"
+        ),
     )
     daily_projections: tuple[ForecastPoint, ...] = Field(
         description="Per-day cumulative spend projections",
@@ -117,9 +120,12 @@ class BudgetForecast(BaseModel):
         le=1.0,
         description="Confidence score based on data density",
     )
-    avg_daily_spend_usd: float = Field(
+    avg_daily_spend: float = Field(
         ge=0.0,
-        description="Average daily spend used for projection",
+        description=(
+            "Average daily spend in the configured currency used for "
+            "projection (see ``budget.currency``)"
+        ),
     )
 
 
@@ -212,7 +218,7 @@ def bucket_cost_records(
     end: datetime,
     bucket_size: BucketSize,
 ) -> tuple[TrendDataPoint, ...]:
-    """Group cost records by time bucket and sum cost_usd.
+    """Group cost records by time bucket and sum cost.
 
     Empty buckets are filled with 0.0 to produce a continuous
     time series suitable for sparkline rendering.
@@ -234,7 +240,7 @@ def bucket_cost_records(
         if ts < start or ts >= end:
             continue
         key = _bucket_key(ts, bucket_size)
-        sums[key].append(record.cost_usd)
+        sums[key].append(record.cost)
 
     return tuple(
         TrendDataPoint(
@@ -350,12 +356,15 @@ def _compute_daily_spend(
         Tuple of (avg_daily_spend, confidence, lookback_days).
     """
     timestamps = sorted(r.timestamp for r in records)
+    # Inclusive span: a record set spanning calendar days D0..DN covers N+1
+    # days, not N. Without +1 a one-day window divides total_cost by 0 (then
+    # clamped to 1) and inflates avg_daily by a factor of 2 for two-day spans.
     lookback_days = max(
-        (timestamps[-1].date() - timestamps[0].date()).days,
+        (timestamps[-1].date() - timestamps[0].date()).days + 1,
         1,
     )
     total_cost = round(
-        math.fsum(r.cost_usd for r in records),
+        math.fsum(r.cost for r in records),
         BUDGET_ROUNDING_PRECISION,
     )
     avg_daily = round(total_cost / lookback_days, BUDGET_ROUNDING_PRECISION)
@@ -375,7 +384,7 @@ def _build_projections(
     """Build cumulative daily projection points.
 
     Args:
-        avg_daily: Average daily spend in USD (base currency).
+        avg_daily: Average daily spend in the configured currency.
         horizon_days: Number of days to project.
         today: Reference date for projection start.
 
@@ -385,7 +394,7 @@ def _build_projections(
     return tuple(
         ForecastPoint(
             day=today + timedelta(days=i + 1),
-            projected_spend_usd=round(
+            projected_spend=round(
                 avg_daily * (i + 1),
                 BUDGET_ROUNDING_PRECISION,
             ),
@@ -399,7 +408,7 @@ def project_daily_spend(
     *,
     horizon_days: int,
     budget_total_monthly: float = 0.0,
-    budget_remaining_usd: float = 0.0,
+    budget_remaining: float | None = None,
     now: datetime | None = None,
 ) -> BudgetForecast:
     """Project future budget spend using average daily spend.
@@ -413,7 +422,11 @@ def project_daily_spend(
         records: Historical cost records for the lookback period.
         horizon_days: Number of days to project forward.
         budget_total_monthly: Monthly budget total (0.0 if unset).
-        budget_remaining_usd: Remaining budget (0.0 if unset).
+        budget_remaining: Remaining budget in the configured currency,
+            or ``None`` if unknown. ``None`` means ``days_until_exhausted``
+            cannot be computed; it is distinct from ``0.0`` (actually
+            exhausted) so callers who omit the kwarg do not accidentally
+            advertise zero-day runway.
         now: Reference time (defaults to current UTC time).
 
     Returns:
@@ -423,11 +436,11 @@ def project_daily_spend(
 
     if not records:
         return BudgetForecast(
-            projected_total_usd=0.0,
+            projected_total=0.0,
             daily_projections=_build_projections(0.0, horizon_days, today),
             days_until_exhausted=None,
             confidence=0.0,
-            avg_daily_spend_usd=0.0,
+            avg_daily_spend=0.0,
         )
 
     avg_daily, confidence, _ = _compute_daily_spend(records)
@@ -438,13 +451,13 @@ def project_daily_spend(
     )
 
     days_until: int | None = None
-    if budget_total_monthly > 0 and avg_daily > 0:
-        days_until = max(math.ceil(budget_remaining_usd / avg_daily), 0)
+    if budget_total_monthly > 0 and budget_remaining is not None and avg_daily > 0:
+        days_until = max(math.ceil(budget_remaining / avg_daily), 0)
 
     return BudgetForecast(
-        projected_total_usd=projected_total,
+        projected_total=projected_total,
         daily_projections=projections,
         days_until_exhausted=days_until,
         confidence=confidence,
-        avg_daily_spend_usd=avg_daily,
+        avg_daily_spend=avg_daily,
     )

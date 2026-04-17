@@ -96,7 +96,7 @@ class FakeCostRecordRepository:
         task_id: str | None = None,
     ) -> float:
         records = await self.query(agent_id=agent_id, task_id=task_id)
-        return sum(r.cost_usd for r in records)
+        return sum(r.cost for r in records)
 
 
 class FakeMessageRepository:

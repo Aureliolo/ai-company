@@ -58,7 +58,7 @@ async def record_execution_costs(  # noqa: PLR0913
         # Skip only when provably nothing happened (zero cost and
         # zero tokens); a turn with tokens but zero cost (e.g., a
         # free-tier provider) is still recorded.
-        if turn.cost_usd == 0.0 and turn.input_tokens == 0 and turn.output_tokens == 0:
+        if turn.cost == 0.0 and turn.input_tokens == 0 and turn.output_tokens == 0:
             logger.debug(
                 EXECUTION_ENGINE_COST_SKIPPED,
                 agent_id=agent_id,
@@ -68,24 +68,45 @@ async def record_execution_costs(  # noqa: PLR0913
             )
             continue
 
-        record = CostRecord(
-            agent_id=agent_id,
-            task_id=task_id,
-            project_id=project_id,
-            provider=identity.model.provider,
-            model=identity.model.model_id,
-            input_tokens=turn.input_tokens,
-            output_tokens=turn.output_tokens,
-            cost_usd=turn.cost_usd,
-            timestamp=datetime.now(UTC),
-            call_category=turn.call_category,
-            latency_ms=turn.latency_ms,
-            cache_hit=turn.cache_hit,
-            retry_count=turn.retry_count,
-            retry_reason=turn.retry_reason,
-            finish_reason=turn.finish_reason,
-            success=turn.success,
-        )
+        try:
+            record = CostRecord(
+                agent_id=agent_id,
+                task_id=task_id,
+                project_id=project_id,
+                provider=identity.model.provider,
+                model=identity.model.model_id,
+                input_tokens=turn.input_tokens,
+                output_tokens=turn.output_tokens,
+                cost=turn.cost,
+                timestamp=datetime.now(UTC),
+                call_category=turn.call_category,
+                latency_ms=turn.latency_ms,
+                cache_hit=turn.cache_hit,
+                retry_count=turn.retry_count,
+                retry_reason=turn.retry_reason,
+                finish_reason=turn.finish_reason,
+                success=turn.success,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            # Validator rejection (e.g. negative cost, blank identifier)
+            # would otherwise bubble up and abort the whole recording
+            # pass. This function documents recording failures as
+            # logged-and-suppressed -- keep that contract for
+            # construction errors too.
+            logger.exception(
+                EXECUTION_ENGINE_COST_FAILED,
+                agent_id=agent_id,
+                task_id=task_id,
+                turn_number=turn.turn_number,
+                error=f"{type(exc).__name__}: {exc}",
+                reason="cost_record_construction_failed",
+                cost=turn.cost,
+                input_tokens=turn.input_tokens,
+                output_tokens=turn.output_tokens,
+            )
+            continue
         persisted = await _submit_cost_record(
             record,
             turn,
@@ -101,7 +122,7 @@ async def record_execution_costs(  # noqa: PLR0913
             continue
         # Mirror the persisted cost record to the Prometheus
         # collector so ``synthorg_provider_tokens_total`` /
-        # ``synthorg_provider_cost_usd_total`` reflect every paid
+        # ``synthorg_provider_cost_total`` reflect every paid
         # completion. No-op when no collector is wired. Metrics
         # failures are caught locally so a prometheus label / push
         # regression cannot turn a successful persisted cost into a
@@ -114,7 +135,7 @@ async def record_execution_costs(  # noqa: PLR0913
                 model=identity.model.model_id,
                 input_tokens=turn.input_tokens,
                 output_tokens=turn.output_tokens,
-                cost_usd=turn.cost_usd,
+                cost=turn.cost,
             )
         except MemoryError, RecursionError:
             raise
@@ -127,7 +148,7 @@ async def record_execution_costs(  # noqa: PLR0913
                 model=identity.model.model_id,
                 input_tokens=turn.input_tokens,
                 output_tokens=turn.output_tokens,
-                cost_usd=turn.cost_usd,
+                cost=turn.cost,
                 reason="metrics_mirror_failed",
                 exc_info=True,
             )
@@ -166,7 +187,7 @@ async def _submit_cost_record(
             agent_id=agent_id,
             task_id=task_id,
             error=f"{type(exc).__name__}: {exc}",
-            cost_usd=turn.cost_usd,
+            cost=turn.cost,
             input_tokens=turn.input_tokens,
             output_tokens=turn.output_tokens,
         )
@@ -176,7 +197,7 @@ async def _submit_cost_record(
         EXECUTION_ENGINE_COST_RECORDED,
         agent_id=agent_id,
         task_id=task_id,
-        cost_usd=turn.cost_usd,
+        cost=turn.cost,
         project_id=record.project_id,
     )
     return True

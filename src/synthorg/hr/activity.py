@@ -113,7 +113,7 @@ def _task_metric_to_activity(
     desc = (
         f"Task {record.task_id} {status} "
         f"({record.duration_seconds:.1f}s, "
-        f"{format_cost_detail(record.cost_usd, currency)})"
+        f"{format_cost_detail(record.cost, currency)})"
     )
     return ActivityEvent(
         event_type=ActivityEventType.TASK_COMPLETED,
@@ -156,7 +156,7 @@ def _cost_record_to_activity(
     desc = (
         f"API call to {record.model} "
         f"({record.input_tokens}+{record.output_tokens} tokens, "
-        f"{format_cost_detail(record.cost_usd, currency)})"
+        f"{format_cost_detail(record.cost, currency)})"
     )
     return ActivityEvent(
         event_type=ActivityEventType.COST_INCURRED,

@@ -96,7 +96,7 @@ export function computeAgentSpending(
       group = { cost: 0, tasks: new Set() }
       groups.set(r.agent_id, group)
     }
-    group.cost += r.cost_usd
+    group.cost += r.cost
     group.tasks.add(r.task_id)
   }
 
@@ -146,8 +146,8 @@ export function computeCostBreakdown(
         key = agentDeptMap.get(r.agent_id) ?? 'Unknown'
         break
     }
-    groups.set(key, (groups.get(key) ?? 0) + r.cost_usd)
-    totalCost += r.cost_usd
+    groups.set(key, (groups.get(key) ?? 0) + r.cost)
+    totalCost += r.cost
   }
 
   // Build slices without colors first, then assign colors after sorting
@@ -202,9 +202,9 @@ export function computeCategoryBreakdown(
   for (const r of records) {
     const cat = r.call_category ?? 'uncategorized'
     const bucket = buckets[cat] ?? buckets.uncategorized
-    bucket.cost += r.cost_usd
+    bucket.cost += r.cost
     bucket.count += 1
-    totalCost += r.cost_usd
+    totalCost += r.cost
   }
 
   const pct = (cost: number) => (totalCost > 0 ? (cost / totalCost) * 100 : 0)
@@ -328,24 +328,24 @@ export function computeBudgetMetricCards(
 
   const spendCard: BudgetMetricCardData = {
     label: 'SPEND THIS PERIOD',
-    value: formatCurrency(overview.total_cost_usd, currency),
+    value: formatCurrency(overview.total_cost, currency),
     sparklineData: overview.cost_7d_trend.map((p) => p.value),
     change: computeSpendTrend(overview.cost_7d_trend),
     ...(totalMonthly > 0 && {
-      progress: { current: overview.total_cost_usd, total: totalMonthly },
+      progress: { current: overview.total_cost, total: totalMonthly },
       subText: `of ${formatCurrency(totalMonthly, currency)} budget`,
     }),
   }
 
   const remainingCard: BudgetMetricCardData = {
     label: 'BUDGET REMAINING',
-    value: formatCurrency(overview.budget_remaining_usd, currency),
+    value: formatCurrency(overview.budget_remaining, currency),
     subText: `${Math.round(Math.max(0, 100 - overview.budget_used_percent))}% of budget`,
   }
 
   const avgDayCard: BudgetMetricCardData = {
     label: 'AVG DAILY SPEND',
-    value: formatCurrency(forecast?.avg_daily_spend_usd ?? 0, currency),
+    value: formatCurrency(forecast?.avg_daily_spend ?? 0, currency),
   }
 
   const daysLeftCard: BudgetMetricCardData = {

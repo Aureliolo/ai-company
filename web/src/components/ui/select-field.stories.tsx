@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { Meta, StoryObj } from '@storybook/react'
 import { SelectField } from './select-field'
-import { CURRENCY_OPTIONS } from '@/utils/currencies'
+import { CURRENCY_OPTIONS, DEFAULT_CURRENCY } from '@/utils/currencies'
 
 const currencies = CURRENCY_OPTIONS.slice(0, 4)
 
@@ -18,7 +18,7 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const Default: Story = {
-  args: { label: 'Currency', options: currencies, value: 'EUR', onChange: () => {} },
+  args: { label: 'Currency', options: currencies, value: DEFAULT_CURRENCY, onChange: () => {} },
 }
 
 export const WithPlaceholder: Story = {
@@ -46,15 +46,15 @@ export const WithError: Story = {
 }
 
 export const Disabled: Story = {
-  args: { label: 'Currency', options: currencies, value: 'EUR', onChange: () => {}, disabled: true },
+  args: { label: 'Currency', options: currencies, value: DEFAULT_CURRENCY, onChange: () => {}, disabled: true },
 }
 
 function InteractiveSelect() {
-  const [value, setValue] = useState('EUR')
+  const [value, setValue] = useState<string>(DEFAULT_CURRENCY)
   return <SelectField label="Currency" options={currencies} value={value} onChange={setValue} />
 }
 
 export const Interactive: Story = {
-  args: { label: 'Currency', options: currencies, value: 'EUR', onChange: () => {} },
+  args: { label: 'Currency', options: currencies, value: DEFAULT_CURRENCY, onChange: () => {} },
   render: () => <InteractiveSelect />,
 }

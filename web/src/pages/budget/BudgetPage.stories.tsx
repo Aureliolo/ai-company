@@ -8,14 +8,15 @@ import type {
   OverviewMetrics,
   TrendDataPoint,
 } from '@/api/types'
+import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import BudgetPage from '@/pages/BudgetPage'
 
 const mockOverview: OverviewMetrics = {
   total_tasks: 42,
   tasks_by_status: {} as Record<string, number>,
   total_agents: 8,
-  total_cost_usd: 42.17,
-  budget_remaining_usd: 57.83,
+  total_cost: 42.17,
+  budget_remaining: 57.83,
   budget_used_percent: 42,
   cost_7d_trend: [
     { timestamp: '2026-03-20', value: 4 },
@@ -28,7 +29,7 @@ const mockOverview: OverviewMetrics = {
   ] as TrendDataPoint[],
   active_agents_count: 5,
   idle_agents_count: 3,
-  currency: 'EUR',
+  currency: DEFAULT_CURRENCY,
 }
 
 const mockBudgetConfig: BudgetConfig = {
@@ -38,23 +39,23 @@ const mockBudgetConfig: BudgetConfig = {
   per_agent_daily_limit: 20,
   auto_downgrade: { enabled: true, threshold: 85, downgrade_map: [], boundary: 'task_assignment' },
   reset_day: 1,
-  currency: 'EUR',
+  currency: DEFAULT_CURRENCY,
 }
 
 const mockForecast: ForecastResponse = {
   horizon_days: 14,
-  projected_total_usd: 80,
+  projected_total: 80,
   daily_projections: [
-    { day: '2026-03-27', projected_spend_usd: 48 },
-    { day: '2026-03-28', projected_spend_usd: 54 },
+    { day: '2026-03-27', projected_spend: 48 },
+    { day: '2026-03-28', projected_spend: 54 },
   ],
   days_until_exhausted: 20,
   confidence: 0.82,
-  avg_daily_spend_usd: 6.02,
-  currency: 'EUR',
+  avg_daily_spend: 6.02,
+  currency: DEFAULT_CURRENCY,
 }
 
-function makeCostRecord(fields: Partial<CostRecord> & Pick<CostRecord, 'agent_id' | 'task_id' | 'provider' | 'model' | 'input_tokens' | 'output_tokens' | 'cost_usd' | 'timestamp' | 'call_category'>): CostRecord {
+function makeCostRecord(fields: Partial<CostRecord> & Pick<CostRecord, 'agent_id' | 'task_id' | 'provider' | 'model' | 'input_tokens' | 'output_tokens' | 'cost' | 'timestamp' | 'call_category'>): CostRecord {
   return {
     project_id: null,
     accuracy_effort_ratio: null,
@@ -69,12 +70,12 @@ function makeCostRecord(fields: Partial<CostRecord> & Pick<CostRecord, 'agent_id
 }
 
 const mockCostRecords: CostRecord[] = [
-  makeCostRecord({ agent_id: 'a1', task_id: 't1', provider: 'prov-a', model: 'm1', input_tokens: 500, output_tokens: 200, cost_usd: 15, timestamp: '2026-03-25T10:00:00Z', call_category: 'productive' }),
-  makeCostRecord({ agent_id: 'a1', task_id: 't2', provider: 'prov-a', model: 'm1', input_tokens: 300, output_tokens: 100, cost_usd: 8, timestamp: '2026-03-25T11:00:00Z', call_category: 'coordination' }),
-  makeCostRecord({ agent_id: 'a2', task_id: 't3', provider: 'prov-b', model: 'm2', input_tokens: 800, output_tokens: 400, cost_usd: 12, timestamp: '2026-03-25T12:00:00Z', call_category: 'productive' }),
-  makeCostRecord({ agent_id: 'a3', task_id: 't4', provider: 'prov-a', model: 'm1', input_tokens: 200, output_tokens: 100, cost_usd: 5, timestamp: '2026-03-25T13:00:00Z', call_category: 'system' }),
-  makeCostRecord({ agent_id: 'a1', task_id: 't5', provider: 'prov-a', model: 'm1', input_tokens: 400, output_tokens: 0, cost_usd: 3.5, timestamp: '2026-03-25T14:00:00Z', call_category: 'embedding' }),
-  makeCostRecord({ agent_id: 'a2', task_id: 't6', provider: 'prov-b', model: 'm2', input_tokens: 100, output_tokens: 50, cost_usd: 2.17, timestamp: '2026-03-25T15:00:00Z', call_category: null }),
+  makeCostRecord({ agent_id: 'a1', task_id: 't1', provider: 'prov-a', model: 'm1', input_tokens: 500, output_tokens: 200, cost: 15, timestamp: '2026-03-25T10:00:00Z', call_category: 'productive' }),
+  makeCostRecord({ agent_id: 'a1', task_id: 't2', provider: 'prov-a', model: 'm1', input_tokens: 300, output_tokens: 100, cost: 8, timestamp: '2026-03-25T11:00:00Z', call_category: 'coordination' }),
+  makeCostRecord({ agent_id: 'a2', task_id: 't3', provider: 'prov-b', model: 'm2', input_tokens: 800, output_tokens: 400, cost: 12, timestamp: '2026-03-25T12:00:00Z', call_category: 'productive' }),
+  makeCostRecord({ agent_id: 'a3', task_id: 't4', provider: 'prov-a', model: 'm1', input_tokens: 200, output_tokens: 100, cost: 5, timestamp: '2026-03-25T13:00:00Z', call_category: 'system' }),
+  makeCostRecord({ agent_id: 'a1', task_id: 't5', provider: 'prov-a', model: 'm1', input_tokens: 400, output_tokens: 0, cost: 3.5, timestamp: '2026-03-25T14:00:00Z', call_category: 'embedding' }),
+  makeCostRecord({ agent_id: 'a2', task_id: 't6', provider: 'prov-b', model: 'm2', input_tokens: 100, output_tokens: 50, cost: 2.17, timestamp: '2026-03-25T15:00:00Z', call_category: null }),
 ]
 
 function setStoreState(overrides: Record<string, unknown> = {}) {
@@ -140,7 +141,7 @@ export const AmberZone: Story = {
   decorators: [
     (Story) => {
       setStoreState({
-        overview: { ...mockOverview, budget_used_percent: 82, budget_remaining_usd: 18, total_cost_usd: 82 },
+        overview: { ...mockOverview, budget_used_percent: 82, budget_remaining: 18, total_cost: 82 },
       })
       return <Story />
     },
@@ -151,7 +152,7 @@ export const RedZone: Story = {
   decorators: [
     (Story) => {
       setStoreState({
-        overview: { ...mockOverview, budget_used_percent: 96, budget_remaining_usd: 4, total_cost_usd: 96 },
+        overview: { ...mockOverview, budget_used_percent: 96, budget_remaining: 4, total_cost: 96 },
       })
       return <Story />
     },

@@ -91,7 +91,7 @@ def _make_response(
         content=content,
         tool_calls=tuple(tool_calls) if tool_calls else (),
         finish_reason=FinishReason.STOP,
-        usage=TokenUsage(input_tokens=10, output_tokens=5, cost_usd=0.0),
+        usage=TokenUsage(input_tokens=10, output_tokens=5, cost=0.0),
         model="test-model",
     )
 

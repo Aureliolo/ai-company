@@ -52,7 +52,7 @@ def test_record_provider_usage_updates_tokens_and_cost() -> None:
         model="large",
         input_tokens=100,
         output_tokens=50,
-        cost_usd=0.0125,
+        cost=0.0125,
     )
     parsed = _parse(collector)
     tokens = parsed["synthorg_provider_tokens"]
@@ -60,7 +60,7 @@ def test_record_provider_usage_updates_tokens_and_cost() -> None:
     output_row = next(s for lbl, s in tokens if lbl.get("direction") == "output")
     assert input_row == 100.0
     assert output_row == 50.0
-    cost = parsed["synthorg_provider_cost_usd"]
+    cost = parsed["synthorg_provider_cost"]
     (cost_labels, cost_value), *_ = cost
     assert cost_labels == {"provider": "example-provider", "model": "large"}
     assert cost_value == pytest.approx(0.0125)
@@ -74,7 +74,7 @@ def test_record_provider_usage_rejects_negative_values() -> None:
             model="m",
             input_tokens=-1,
             output_tokens=0,
-            cost_usd=0.0,
+            cost=0.0,
         )
 
 
@@ -243,7 +243,7 @@ def test_all_new_metric_families_registered() -> None:
     text = generate_latest(collector.registry).decode("utf-8")
     for name in (
         "synthorg_provider_tokens_total",
-        "synthorg_provider_cost_usd_total",
+        "synthorg_provider_cost_total",
         "synthorg_api_request_duration_seconds",
         "synthorg_task_runs_total",
         "synthorg_task_duration_seconds",

@@ -30,7 +30,7 @@ def parse_dotted_path(path: str) -> tuple[str, ...]:
     """Split a dotted path into a tuple of keys.
 
     Args:
-        path: JSON-path style string, e.g. ``"budget.monthly_usd"``.
+        path: JSON-path style string, e.g. ``"budget.total_monthly"``.
 
     Returns:
         Tuple of non-blank path components.

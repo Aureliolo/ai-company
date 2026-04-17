@@ -56,7 +56,7 @@ class EfficiencyConfig(BaseModel):
         cost_weight: Weight for cost efficiency metric.
         time_weight: Weight for time efficiency metric.
         tokens_weight: Weight for token efficiency metric.
-        reference_cost_usd: Reference cost for normalization.
+        reference_cost: Reference cost for normalization.
         reference_time_seconds: Reference completion time for normalization.
         reference_tokens: Reference token count for normalization.
     """
@@ -71,7 +71,7 @@ class EfficiencyConfig(BaseModel):
     cost_weight: float = Field(default=0.4, ge=0.0, le=1.0)
     time_weight: float = Field(default=0.3, ge=0.0, le=1.0)
     tokens_weight: float = Field(default=0.3, ge=0.0, le=1.0)
-    reference_cost_usd: float = Field(default=10.0, gt=0.0)
+    reference_cost: float = Field(default=10.0, gt=0.0)
     reference_time_seconds: float = Field(default=300.0, gt=0.0)
     reference_tokens: int = Field(default=5000, gt=0)
 

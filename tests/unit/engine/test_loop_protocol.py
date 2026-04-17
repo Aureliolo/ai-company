@@ -46,14 +46,14 @@ class TestTurnRecord:
             turn_number=1,
             input_tokens=100,
             output_tokens=50,
-            cost_usd=0.01,
+            cost=0.01,
             tool_calls_made=("search",),
             finish_reason=FinishReason.TOOL_USE,
         )
         assert record.turn_number == 1
         assert record.input_tokens == 100
         assert record.output_tokens == 50
-        assert record.cost_usd == 0.01
+        assert record.cost == 0.01
         assert record.tool_calls_made == ("search",)
         assert record.finish_reason == FinishReason.TOOL_USE
 
@@ -62,7 +62,7 @@ class TestTurnRecord:
             turn_number=1,
             input_tokens=100,
             output_tokens=50,
-            cost_usd=0.01,
+            cost=0.01,
             finish_reason=FinishReason.STOP,
         )
         with pytest.raises(ValidationError):
@@ -73,7 +73,7 @@ class TestTurnRecord:
             turn_number=1,
             input_tokens=0,
             output_tokens=0,
-            cost_usd=0.0,
+            cost=0.0,
             finish_reason=FinishReason.STOP,
         )
         assert record.tool_calls_made == ()
@@ -84,7 +84,7 @@ class TestTurnRecord:
             turn_number=1,
             input_tokens=10,
             output_tokens=5,
-            cost_usd=0.001,
+            cost=0.001,
             tool_calls_made=("search",),
             tool_call_fingerprints=("search:abc1234567890123",),
             finish_reason=FinishReason.TOOL_USE,
@@ -96,7 +96,7 @@ class TestTurnRecord:
             turn_number=1,
             input_tokens=100,
             output_tokens=50,
-            cost_usd=0.01,
+            cost=0.01,
             finish_reason=FinishReason.STOP,
         )
         assert record.total_tokens == 150
@@ -106,7 +106,7 @@ class TestTurnRecord:
             turn_number=1,
             input_tokens=0,
             output_tokens=0,
-            cost_usd=0.0,
+            cost=0.0,
             finish_reason=FinishReason.STOP,
         )
         assert record.total_tokens == 0
@@ -116,7 +116,7 @@ class TestTurnRecord:
             turn_number=1,
             input_tokens=10,
             output_tokens=5,
-            cost_usd=0.001,
+            cost=0.001,
             finish_reason=FinishReason.STOP,
         )
         assert record.call_category is None
@@ -126,7 +126,7 @@ class TestTurnRecord:
             turn_number=1,
             input_tokens=10,
             output_tokens=5,
-            cost_usd=0.001,
+            cost=0.001,
             finish_reason=FinishReason.STOP,
             call_category=LLMCallCategory.PRODUCTIVE,
         )
@@ -137,7 +137,7 @@ class TestTurnRecord:
             turn_number=1,
             input_tokens=10,
             output_tokens=5,
-            cost_usd=0.001,
+            cost=0.001,
             finish_reason=FinishReason.STOP,
             call_category=LLMCallCategory.COORDINATION,
         )
@@ -148,7 +148,7 @@ class TestTurnRecord:
             turn_number=1,
             input_tokens=10,
             output_tokens=5,
-            cost_usd=0.001,
+            cost=0.001,
             finish_reason=FinishReason.STOP,
             call_category=LLMCallCategory.SYSTEM,
         )
@@ -160,7 +160,7 @@ class TestTurnRecord:
                 turn_number=0,
                 input_tokens=10,
                 output_tokens=5,
-                cost_usd=0.01,
+                cost=0.01,
                 finish_reason=FinishReason.STOP,
             )
 
@@ -170,7 +170,7 @@ class TestTurnRecord:
                 turn_number=1,
                 input_tokens=-1,
                 output_tokens=5,
-                cost_usd=0.01,
+                cost=0.01,
                 finish_reason=FinishReason.STOP,
             )
 
@@ -180,7 +180,7 @@ class TestTurnRecord:
                 turn_number=1,
                 input_tokens=10,
                 output_tokens=5,
-                cost_usd=-0.01,
+                cost=-0.01,
                 finish_reason=FinishReason.STOP,
             )
 
@@ -194,7 +194,7 @@ class TestTurnRecordAnalyticsFields:
             turn_number=1,
             input_tokens=10,
             output_tokens=5,
-            cost_usd=0.001,
+            cost=0.001,
             finish_reason=finish_reason,
         )
 
@@ -206,7 +206,7 @@ class TestTurnRecordAnalyticsFields:
             turn_number=1,
             input_tokens=10,
             output_tokens=5,
-            cost_usd=0.001,
+            cost=0.001,
             finish_reason=FinishReason.STOP,
             latency_ms=250.0,
         )
@@ -217,7 +217,7 @@ class TestTurnRecordAnalyticsFields:
             turn_number=1,
             input_tokens=10,
             output_tokens=5,
-            cost_usd=0.001,
+            cost=0.001,
             finish_reason=FinishReason.STOP,
             latency_ms=0.0,
         )
@@ -229,7 +229,7 @@ class TestTurnRecordAnalyticsFields:
                 turn_number=1,
                 input_tokens=10,
                 output_tokens=5,
-                cost_usd=0.001,
+                cost=0.001,
                 finish_reason=FinishReason.STOP,
                 latency_ms=-1.0,
             )
@@ -242,7 +242,7 @@ class TestTurnRecordAnalyticsFields:
             turn_number=1,
             input_tokens=10,
             output_tokens=5,
-            cost_usd=0.001,
+            cost=0.001,
             finish_reason=FinishReason.STOP,
             cache_hit=True,
         )
@@ -253,7 +253,7 @@ class TestTurnRecordAnalyticsFields:
             turn_number=1,
             input_tokens=10,
             output_tokens=5,
-            cost_usd=0.001,
+            cost=0.001,
             finish_reason=FinishReason.STOP,
             cache_hit=False,
         )
@@ -267,7 +267,7 @@ class TestTurnRecordAnalyticsFields:
             turn_number=1,
             input_tokens=10,
             output_tokens=5,
-            cost_usd=0.001,
+            cost=0.001,
             finish_reason=FinishReason.STOP,
             retry_count=3,
         )
@@ -278,7 +278,7 @@ class TestTurnRecordAnalyticsFields:
             turn_number=1,
             input_tokens=10,
             output_tokens=5,
-            cost_usd=0.001,
+            cost=0.001,
             finish_reason=FinishReason.STOP,
             retry_count=0,
         )
@@ -290,7 +290,7 @@ class TestTurnRecordAnalyticsFields:
                 turn_number=1,
                 input_tokens=10,
                 output_tokens=5,
-                cost_usd=0.001,
+                cost=0.001,
                 finish_reason=FinishReason.STOP,
                 retry_count=-1,
             )
@@ -303,7 +303,7 @@ class TestTurnRecordAnalyticsFields:
             turn_number=1,
             input_tokens=10,
             output_tokens=5,
-            cost_usd=0.001,
+            cost=0.001,
             finish_reason=FinishReason.STOP,
             retry_count=1,
             retry_reason="RateLimitError",
@@ -389,7 +389,7 @@ class TestExecutionResult:
                 turn_number=1,
                 input_tokens=10,
                 output_tokens=5,
-                cost_usd=0.001,
+                cost=0.001,
                 tool_calls_made=("search", "read"),
                 finish_reason=FinishReason.TOOL_USE,
             ),
@@ -397,7 +397,7 @@ class TestExecutionResult:
                 turn_number=2,
                 input_tokens=10,
                 output_tokens=5,
-                cost_usd=0.001,
+                cost=0.001,
                 tool_calls_made=("write",),
                 finish_reason=FinishReason.STOP,
             ),
@@ -510,7 +510,7 @@ class TestMakeBudgetChecker:
         usage = TokenUsage(
             input_tokens=100,
             output_tokens=50,
-            cost_usd=0.01,
+            cost=0.01,
         )
         msg = ChatMessage(role=MessageRole.ASSISTANT, content="done")
         ctx = sample_agent_context.with_turn_completed(usage, msg)
@@ -526,7 +526,7 @@ class TestMakeBudgetChecker:
         usage = TokenUsage(
             input_tokens=100,
             output_tokens=50,
-            cost_usd=0.01,
+            cost=0.01,
         )
         msg = ChatMessage(role=MessageRole.ASSISTANT, content="done")
         ctx = sample_agent_context.with_turn_completed(usage, msg)

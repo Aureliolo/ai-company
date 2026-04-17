@@ -189,7 +189,7 @@ class TestProjectBudgetIntegration:
         tracker = CostTracker(budget_config=cfg)
         from tests.unit.budget.conftest import make_cost_record
 
-        await tracker.record(make_cost_record(project_id="proj-001", cost_usd=50.0))
+        await tracker.record(make_cost_record(project_id="proj-001", cost=50.0))
         enforcer = BudgetEnforcer(budget_config=cfg, cost_tracker=tracker)
 
         # Project has budget=10.0 but we already spent 50.0

@@ -59,7 +59,7 @@ def _make_completed_result() -> ExecutionResult:
             turn_number=1,
             input_tokens=100,
             output_tokens=50,
-            cost_usd=0.001,
+            cost=0.001,
             tool_calls_made=(),
             finish_reason=FinishReason.STOP,
         ),

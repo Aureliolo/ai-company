@@ -22,7 +22,7 @@ class TestSettingDefinition:
             namespace=SettingNamespace.BUDGET,
             key="total_monthly",
             type=SettingType.FLOAT,
-            description="Monthly budget in USD",
+            description="Monthly budget in the configured currency",
             group="Limits",
         )
         assert defn.namespace == SettingNamespace.BUDGET
@@ -69,7 +69,7 @@ class TestSettingDefinition:
             namespace=SettingNamespace.BUDGET,
             key="total_monthly",
             type=SettingType.FLOAT,
-            description="Monthly budget in USD",
+            description="Monthly budget in the configured currency",
             group="Limits",
         )
         with pytest.raises(ValidationError):
@@ -142,7 +142,7 @@ class TestSettingEntry:
             key="total_monthly",
             type=SettingType.FLOAT,
             default="100.0",
-            description="Monthly budget in USD",
+            description="Monthly budget in the configured currency",
             group="Limits",
         )
         entry = SettingEntry(
@@ -162,7 +162,7 @@ class TestSettingEntry:
             key="total_monthly",
             type=SettingType.FLOAT,
             default="100.0",
-            description="Monthly budget in USD",
+            description="Monthly budget in the configured currency",
             group="Limits",
         )
         entry = SettingEntry(

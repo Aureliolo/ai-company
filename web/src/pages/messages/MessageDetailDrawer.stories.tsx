@@ -20,7 +20,7 @@ const fullMessage: Message = {
     task_id: 'task-123',
     project_id: 'proj-456',
     tokens_used: 1200,
-    cost_usd: 0.018,
+    cost: 0.018,
     extra: [['model', 'test-medium-001'], ['latency_ms', '2340']],
   },
 }
@@ -44,7 +44,7 @@ export const MinimalMetadata: Story = {
     message: {
       ...fullMessage,
       attachments: [],
-      metadata: { task_id: null, project_id: null, tokens_used: null, cost_usd: null, extra: [] },
+      metadata: { task_id: null, project_id: null, tokens_used: null, cost: null, extra: [] },
     },
     open: true,
   },
@@ -58,7 +58,7 @@ export const WithAttachments: Story = {
         task_id: null,
         project_id: null,
         tokens_used: null,
-        cost_usd: null,
+        cost: null,
         extra: [],
       },
       attachments: [

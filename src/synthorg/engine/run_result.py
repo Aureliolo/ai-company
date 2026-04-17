@@ -74,12 +74,12 @@ class AgentRunResult(BaseModel):
         return len(self.execution_result.turns)
 
     @computed_field(  # type: ignore[prop-decorator]
-        description="Total cost in USD (base currency)",
+        description="Total cost in the configured currency",
     )
     @property
-    def total_cost_usd(self) -> float:
+    def total_cost(self) -> float:
         """Accumulated cost from the execution context."""
-        return self.execution_result.context.accumulated_cost.cost_usd
+        return self.execution_result.context.accumulated_cost.cost
 
     @computed_field(  # type: ignore[prop-decorator]
         description="Whether the run completed successfully",

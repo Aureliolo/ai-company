@@ -25,7 +25,7 @@ class TestCISignalQualityStrategy:
             make_acceptance_criterion(description="Tests pass", met=True),
             make_acceptance_criterion(description="Lint clean", met=True),
         )
-        task_result = make_task_metric(is_success=True, cost_usd=0.0)
+        task_result = make_task_metric(is_success=True, cost=0.0)
 
         result = await strategy.score(
             agent_id=NotBlankStr("agent-001"),
@@ -46,7 +46,7 @@ class TestCISignalQualityStrategy:
             make_acceptance_criterion(description="Tests pass", met=False),
             make_acceptance_criterion(description="Lint clean", met=False),
         )
-        task_result = make_task_metric(is_success=False, cost_usd=1000.0)
+        task_result = make_task_metric(is_success=False, cost=1000.0)
 
         result = await strategy.score(
             agent_id=NotBlankStr("agent-001"),
@@ -65,7 +65,7 @@ class TestCISignalQualityStrategy:
             make_acceptance_criterion(description="Tests pass", met=True),
             make_acceptance_criterion(description="Lint clean", met=False),
         )
-        task_result = make_task_metric(is_success=True, cost_usd=0.0)
+        task_result = make_task_metric(is_success=True, cost=0.0)
 
         result = await strategy.score(
             agent_id=NotBlankStr("agent-001"),
@@ -83,7 +83,7 @@ class TestCISignalQualityStrategy:
     async def test_empty_criteria_high_score_low_confidence(self) -> None:
         """Empty criteria -> criteria=10.0 but confidence halved."""
         strategy = self._make_strategy()
-        task_result = make_task_metric(is_success=True, cost_usd=0.0)
+        task_result = make_task_metric(is_success=True, cost=0.0)
 
         result = await strategy.score(
             agent_id=NotBlankStr("agent-001"),
@@ -99,7 +99,7 @@ class TestCISignalQualityStrategy:
     async def test_success_bonus(self) -> None:
         """Success=True gives 10.0 success component."""
         strategy = self._make_strategy()
-        task_result = make_task_metric(is_success=True, cost_usd=5.0)
+        task_result = make_task_metric(is_success=True, cost=5.0)
 
         result = await strategy.score(
             agent_id=NotBlankStr("agent-001"),
@@ -114,7 +114,7 @@ class TestCISignalQualityStrategy:
     async def test_failure_no_bonus(self) -> None:
         """Success=False gives 0.0 success component."""
         strategy = self._make_strategy()
-        task_result = make_task_metric(is_success=False, cost_usd=5.0)
+        task_result = make_task_metric(is_success=False, cost=5.0)
 
         result = await strategy.score(
             agent_id=NotBlankStr("agent-001"),
@@ -129,7 +129,7 @@ class TestCISignalQualityStrategy:
     async def test_cost_efficiency_zero_cost(self) -> None:
         """Zero cost -> max cost efficiency score."""
         strategy = self._make_strategy()
-        task_result = make_task_metric(cost_usd=0.0)
+        task_result = make_task_metric(cost=0.0)
 
         result = await strategy.score(
             agent_id=NotBlankStr("agent-001"),
@@ -144,7 +144,7 @@ class TestCISignalQualityStrategy:
     async def test_cost_efficiency_high_cost(self) -> None:
         """Cost exceeding budget by 10x -> zero cost efficiency score."""
         strategy = self._make_strategy()
-        task_result = make_task_metric(cost_usd=1000.0)
+        task_result = make_task_metric(cost=1000.0)
 
         result = await strategy.score(
             agent_id=NotBlankStr("agent-001"),
@@ -157,7 +157,7 @@ class TestCISignalQualityStrategy:
         assert breakdown_dict["cost_efficiency"] == 0.0
 
     @pytest.mark.parametrize(
-        ("cost_usd", "expected_cost_score"),
+        ("cost", "expected_cost_score"),
         [
             (0.0, 10.0),
             (5.0, 10.0),
@@ -168,11 +168,11 @@ class TestCISignalQualityStrategy:
     )
     async def test_cost_efficiency_parametrized(
         self,
-        cost_usd: float,
+        cost: float,
         expected_cost_score: float,
     ) -> None:
         strategy = self._make_strategy()
-        task_result = make_task_metric(cost_usd=cost_usd, is_success=True)
+        task_result = make_task_metric(cost=cost, is_success=True)
 
         result = await strategy.score(
             agent_id=NotBlankStr("agent-001"),

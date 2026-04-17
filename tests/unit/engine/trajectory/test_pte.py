@@ -21,7 +21,7 @@ def _make_turn(
         turn_number=1,
         input_tokens=input_tokens,
         output_tokens=output_tokens,
-        cost_usd=0.01,
+        cost=0.01,
         finish_reason=FinishReason.STOP,
         prior_tool_call_count=prior_tool_call_count,
         tool_response_tokens=tool_response_tokens,

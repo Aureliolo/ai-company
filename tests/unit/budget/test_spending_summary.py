@@ -32,10 +32,10 @@ class TestPeriodSpending:
         ps = PeriodSpending(
             start=datetime(2026, 2, 1, tzinfo=UTC),
             end=datetime(2026, 3, 1, tzinfo=UTC),
-            total_cost_usd=50.0,
+            total_cost=50.0,
             record_count=100,
         )
-        assert ps.total_cost_usd == 50.0
+        assert ps.total_cost == 50.0
         assert ps.record_count == 100
 
     def test_defaults(self) -> None:
@@ -44,7 +44,7 @@ class TestPeriodSpending:
             start=datetime(2026, 2, 1, tzinfo=UTC),
             end=datetime(2026, 3, 1, tzinfo=UTC),
         )
-        assert ps.total_cost_usd == 0.0
+        assert ps.total_cost == 0.0
         assert ps.total_input_tokens == 0
         assert ps.total_output_tokens == 0
         assert ps.record_count == 0
@@ -70,7 +70,7 @@ class TestPeriodSpending:
             end=datetime(2026, 3, 1, tzinfo=UTC),
         )
         with pytest.raises(ValidationError):
-            ps.total_cost_usd = 999.0  # type: ignore[misc]
+            ps.total_cost = 999.0  # type: ignore[misc]
 
     def test_factory(self) -> None:
         """Verify factory produces a valid instance."""
@@ -89,16 +89,16 @@ class TestAgentSpending:
         """Verify a valid agent spending instance."""
         a = AgentSpending(
             agent_id="sarah_chen",
-            total_cost_usd=40.0,
+            total_cost=40.0,
             record_count=80,
         )
         assert a.agent_id == "sarah_chen"
-        assert a.total_cost_usd == 40.0
+        assert a.total_cost == 40.0
 
     def test_defaults(self) -> None:
         """Verify zero defaults for aggregation fields."""
         a = AgentSpending(agent_id="test")
-        assert a.total_cost_usd == 0.0
+        assert a.total_cost == 0.0
         assert a.total_input_tokens == 0
         assert a.total_output_tokens == 0
         assert a.record_count == 0
@@ -136,16 +136,16 @@ class TestDepartmentSpending:
         """Verify a valid department spending instance."""
         d = DepartmentSpending(
             department_name="Engineering",
-            total_cost_usd=75.0,
+            total_cost=75.0,
             record_count=150,
         )
         assert d.department_name == "Engineering"
-        assert d.total_cost_usd == 75.0
+        assert d.total_cost == 75.0
 
     def test_defaults(self) -> None:
         """Verify zero defaults for aggregation fields."""
         d = DepartmentSpending(department_name="Test")
-        assert d.total_cost_usd == 0.0
+        assert d.total_cost == 0.0
         assert d.total_input_tokens == 0
         assert d.total_output_tokens == 0
         assert d.record_count == 0
@@ -210,8 +210,8 @@ class TestSpendingSummary:
                     end=datetime(2026, 3, 1, tzinfo=UTC),
                 ),
                 by_agent=(
-                    AgentSpending(agent_id="alice", total_cost_usd=10.0),
-                    AgentSpending(agent_id="alice", total_cost_usd=20.0),
+                    AgentSpending(agent_id="alice", total_cost=10.0),
+                    AgentSpending(agent_id="alice", total_cost=20.0),
                 ),
             )
 
@@ -224,8 +224,8 @@ class TestSpendingSummary:
                     end=datetime(2026, 3, 1, tzinfo=UTC),
                 ),
                 by_department=(
-                    DepartmentSpending(department_name="Eng", total_cost_usd=10.0),
-                    DepartmentSpending(department_name="Eng", total_cost_usd=20.0),
+                    DepartmentSpending(department_name="Eng", total_cost=10.0),
+                    DepartmentSpending(department_name="Eng", total_cost=20.0),
                 ),
             )
 

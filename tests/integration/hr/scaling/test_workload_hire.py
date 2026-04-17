@@ -60,7 +60,7 @@ class TestWorkloadHire:
             AgentWorkload(
                 agent_id=aid,
                 active_task_count=active_task_count,
-                total_cost_usd=10.0 if active_task_count == 3 else 5.0,
+                total_cost=10.0 if active_task_count == 3 else 5.0,
             )
             for aid in AGENT_IDS
         )

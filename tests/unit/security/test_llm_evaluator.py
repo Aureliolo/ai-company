@@ -87,7 +87,7 @@ def _make_completion_response(
         content=None,
         tool_calls=(tc,),
         finish_reason=FinishReason.TOOL_USE,
-        usage=TokenUsage(input_tokens=200, output_tokens=50, cost_usd=0.001),
+        usage=TokenUsage(input_tokens=200, output_tokens=50, cost=0.001),
         model="test-small-001",
     )
 
@@ -340,7 +340,7 @@ async def test_parse_missing_tool_call_triggers_error_policy(
         content="I think this is fine",
         tool_calls=tool_calls,
         finish_reason=FinishReason.STOP if not tool_calls else FinishReason.TOOL_USE,
-        usage=TokenUsage(input_tokens=200, output_tokens=50, cost_usd=0.001),
+        usage=TokenUsage(input_tokens=200, output_tokens=50, cost=0.001),
         model="test-small-001",
     )
     mock_driver = AsyncMock()

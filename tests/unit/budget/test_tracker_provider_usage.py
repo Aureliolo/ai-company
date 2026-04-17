@@ -24,7 +24,7 @@ class TestGetProviderUsage:
                 provider="test-provider",
                 input_tokens=1000,
                 output_tokens=500,
-                cost_usd=0.10,
+                cost=0.10,
             ),
         )
         await tracker.record(
@@ -32,7 +32,7 @@ class TestGetProviderUsage:
                 provider="test-provider",
                 input_tokens=2000,
                 output_tokens=800,
-                cost_usd=0.20,
+                cost=0.20,
             ),
         )
 
@@ -47,7 +47,7 @@ class TestGetProviderUsage:
                 provider="test-provider-a",
                 input_tokens=1000,
                 output_tokens=500,
-                cost_usd=0.10,
+                cost=0.10,
             ),
         )
         await tracker.record(
@@ -55,7 +55,7 @@ class TestGetProviderUsage:
                 provider="test-provider-b",
                 input_tokens=9000,
                 output_tokens=9000,
-                cost_usd=9.99,
+                cost=9.99,
             ),
         )
 
@@ -73,7 +73,7 @@ class TestGetProviderUsage:
                 provider="test-provider",
                 input_tokens=1000,
                 output_tokens=500,
-                cost_usd=0.10,
+                cost=0.10,
                 timestamp=t_old,
             ),
         )
@@ -82,7 +82,7 @@ class TestGetProviderUsage:
                 provider="test-provider",
                 input_tokens=2000,
                 output_tokens=800,
-                cost_usd=0.20,
+                cost=0.20,
                 timestamp=t_recent,
             ),
         )

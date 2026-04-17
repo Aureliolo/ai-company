@@ -900,7 +900,7 @@ and wrapped in an `AgentRunResult` with `TerminationReason.ERROR`.
     - `system_prompt` -- the `SystemPrompt` used for this run
     - `duration_seconds` -- wall-clock run time
     - `agent_id`, `task_id` -- identifiers
-    - Computed fields: `termination_reason`, `total_turns`, `total_cost_usd`,
+    - Computed fields: `termination_reason`, `total_turns`, `total_cost`,
       `is_success`, `completion_summary`
 
 ---
@@ -1871,7 +1871,7 @@ external audiences; use SynthOrg terms in implementation discussions.
 | Resource Constraints | `BudgetEnforcer`, quota degradation, `ContextBudget` | Strong | Richer than ACG: 3-layer enforcement + in-flight |
 | Graph Mutation | Hybrid replanning, stagnation correction injection | Partial | Runtime; not exposed as first-class graph mutation |
 | Termination Conditions | `TerminationReason` enum (7 reasons) | Strong | Explicit enumeration covers all exit paths |
-| Node Cost | `TurnRecord.cost_usd`, `TokenUsage` | Strong | Per-turn cost attribution |
+| Node Cost | `TurnRecord.cost`, `TokenUsage` | Strong | Per-turn cost attribution |
 
 **SynthOrg concepts not captured by ACG**: agent personality, episodic and procedural
 memory, trust levels, autonomy presets, hiring/firing lifecycle. These are organizational

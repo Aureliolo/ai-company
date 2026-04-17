@@ -672,7 +672,7 @@ class TestMultiAgentCoordinator:
 
     @pytest.mark.unit
     async def test_total_cost_aggregated(self) -> None:
-        """total_cost_usd sums costs from all waves."""
+        """total_cost sums costs from all waves."""
         from synthorg.providers.models import TokenUsage
 
         sub_a = make_subtask("sub-a")
@@ -691,7 +691,7 @@ class TestMultiAgentCoordinator:
         ctx_a = run_a.execution_result.context.model_copy(
             update={
                 "accumulated_cost": TokenUsage(
-                    input_tokens=100, output_tokens=50, cost_usd=0.05
+                    input_tokens=100, output_tokens=50, cost=0.05
                 )
             }
         )
@@ -712,7 +712,7 @@ class TestMultiAgentCoordinator:
         ctx_b = run_b.execution_result.context.model_copy(
             update={
                 "accumulated_cost": TokenUsage(
-                    input_tokens=80, output_tokens=40, cost_usd=0.03
+                    input_tokens=80, output_tokens=40, cost=0.03
                 )
             }
         )
@@ -763,7 +763,7 @@ class TestMultiAgentCoordinator:
 
         attributed = await coordinator.coordinate(ctx)
         result = attributed.result
-        assert result.total_cost_usd == pytest.approx(0.08)
+        assert result.total_cost == pytest.approx(0.08)
 
     @pytest.mark.unit
     async def test_fail_fast_stops_after_failed_wave(self) -> None:

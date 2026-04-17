@@ -40,7 +40,7 @@ class MessageMetadataFactory(ModelFactory[MessageMetadata]):
     task_id = None
     project_id = None
     tokens_used = None
-    cost_usd = None
+    cost = None
     extra = ()
 
 
@@ -152,7 +152,7 @@ def sample_metadata() -> MessageMetadata:
         task_id="task-123",
         project_id="proj-456",
         tokens_used=1200,
-        cost_usd=0.018,
+        cost=0.018,
     )
 
 

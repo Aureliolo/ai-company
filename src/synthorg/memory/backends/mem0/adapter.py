@@ -173,7 +173,7 @@ class Mem0MemoryBackend:
                 operation=operation,
                 model=model,
             )
-        cost_usd = input_tokens * cost_per_1k / 1000.0
+        cost = input_tokens * cost_per_1k / 1000.0
         record = CostRecord(
             agent_id=agent_id,
             task_id=task_id,
@@ -181,7 +181,7 @@ class Mem0MemoryBackend:
             model=model,
             input_tokens=input_tokens,
             output_tokens=0,
-            cost_usd=round(cost_usd, 8),
+            cost=round(cost, 8),
             timestamp=datetime.now(UTC),
             call_category=LLMCallCategory.EMBEDDING,
         )
@@ -202,7 +202,7 @@ class Mem0MemoryBackend:
                 agent_id=agent_id,
                 operation=operation,
                 input_tokens=record.input_tokens,
-                cost_usd=record.cost_usd,
+                cost=record.cost,
                 model=model,
             )
         except builtins.MemoryError, RecursionError:

@@ -23,8 +23,15 @@ class ModelCapabilities(BaseModel):
         supports_streaming: Whether the model supports streaming responses.
         supports_streaming_tool_calls: Whether tool calls can be streamed.
         supports_system_messages: Whether system messages are accepted.
-        cost_per_1k_input: Cost per 1 000 input tokens in USD.
-        cost_per_1k_output: Cost per 1 000 output tokens in USD.
+        cost_per_1k_input: Cost per 1 000 input tokens, denominated in the
+            currency declared by the source that populated this capability
+            record -- either the provider preset (whose prices the operator
+            is responsible for keeping aligned with ``budget.currency``) or
+            the upstream model database. The routing layer compares values
+            across models from the same source only; cross-source
+            comparisons require the operator to reconcile currencies.
+        cost_per_1k_output: Cost per 1 000 output tokens, same currency
+            semantics as ``cost_per_1k_input``.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -49,11 +56,19 @@ class ModelCapabilities(BaseModel):
     )
     cost_per_1k_input: float = Field(
         ge=0.0,
-        description="Cost per 1k input tokens in USD",
+        description=(
+            "Cost per 1k input tokens in the pricing currency declared "
+            "by the capability source (provider preset or upstream model "
+            "database); operators must keep preset pricing aligned with "
+            "``budget.currency``"
+        ),
     )
     cost_per_1k_output: float = Field(
         ge=0.0,
-        description="Cost per 1k output tokens in USD",
+        description=(
+            "Cost per 1k output tokens; same currency semantics as "
+            "``cost_per_1k_input``"
+        ),
     )
 
     @model_validator(mode="after")

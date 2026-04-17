@@ -39,7 +39,7 @@ class TestMultiWindowStrategy:
         records = tuple(
             make_task_metric(
                 completed_at=NOW - timedelta(days=i),
-                cost_usd=1.0,
+                cost=1.0,
                 duration_seconds=60.0,
                 tokens_used=100,
                 quality_score=8.0,
@@ -63,7 +63,7 @@ class TestMultiWindowStrategy:
         records = tuple(
             make_task_metric(
                 completed_at=NOW - timedelta(days=1),
-                cost_usd=1.0,
+                cost=1.0,
                 duration_seconds=60.0,
                 tokens_used=100,
             )
@@ -82,7 +82,7 @@ class TestMultiWindowStrategy:
         records = tuple(
             make_task_metric(
                 completed_at=NOW - timedelta(days=1),
-                cost_usd=1.0,
+                cost=1.0,
                 duration_seconds=60.0,
                 tokens_used=100,
             )
@@ -145,7 +145,7 @@ class TestMultiWindowStrategy:
         records = tuple(
             make_task_metric(
                 completed_at=NOW - timedelta(hours=i + 1),
-                cost_usd=2.0,
+                cost=2.0,
                 duration_seconds=100.0,
                 tokens_used=500,
                 quality_score=7.0,

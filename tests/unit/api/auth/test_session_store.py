@@ -12,7 +12,7 @@ import aiosqlite
 import pytest
 
 from synthorg.api.auth.session import Session
-from synthorg.api.auth.session_store import SessionStore
+from synthorg.api.auth.session_store import SessionStore, SqliteSessionStore
 from synthorg.api.guards import HumanRole
 
 pytestmark = pytest.mark.unit
@@ -99,7 +99,7 @@ async def db(migrated_db: aiosqlite.Connection) -> aiosqlite.Connection:
 
 @pytest.fixture
 async def store(db: aiosqlite.Connection) -> SessionStore:
-    s = SessionStore(db)
+    s = SqliteSessionStore(db)
     await s.load_revoked()
     return s
 
@@ -381,14 +381,14 @@ class TestSessionStoreLoadRevoked:
         db: aiosqlite.Connection,
     ) -> None:
         """Revocations survive store recreation (simulates restart)."""
-        store1 = SessionStore(db)
+        store1 = SqliteSessionStore(db)
         with _patch_now():
             await store1.load_revoked()
         await store1.create(_make_session())
         await store1.revoke("sess-1")
 
         # Create a new store (simulates restart).
-        store2 = SessionStore(db)
+        store2 = SqliteSessionStore(db)
         assert store2.is_revoked("sess-1") is False
         with _patch_now():
             await store2.load_revoked()

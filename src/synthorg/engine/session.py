@@ -246,7 +246,7 @@ def _apply_turn_event(
     """Apply a single turn event to the context.
 
     Returns:
-        Tuple of (updated context, turn number, cost_usd).
+        Tuple of (updated context, turn number, cost).
 
     Raises:
         KeyError: If ``turn`` key is missing.
@@ -260,9 +260,9 @@ def _apply_turn_event(
     if turn < 1:
         msg = f"Turn number must be >= 1, got {turn}"
         raise ValueError(msg)
-    cost_usd = float(event.data.get("cost_usd", 0.0))
+    cost = float(event.data.get("cost", 0.0))
 
-    usage = TokenUsage(input_tokens=0, output_tokens=0, cost_usd=cost_usd)
+    usage = TokenUsage(input_tokens=0, output_tokens=0, cost=cost)
     replay_msg = ChatMessage(
         role=MessageRole.ASSISTANT,
         content=f"[replayed turn {turn}]",
@@ -274,7 +274,7 @@ def _apply_turn_event(
     }
     if ctx.task_execution is not None:
         updates["task_execution"] = ctx.task_execution.with_cost(usage)
-    return ctx.model_copy(update=updates), turn, cost_usd
+    return ctx.model_copy(update=updates), turn, cost
 
 
 def _apply_transition_event(
@@ -345,10 +345,10 @@ def _replay_from_events(
                 raw_turn = event.data.get("turn")
                 if raw_turn is not None and int(raw_turn) in seen_turns:
                     continue
-                ctx, turn, cost_usd = _apply_turn_event(ctx, event)
+                ctx, turn, cost = _apply_turn_event(ctx, event)
                 seen_turns.add(turn)
                 turn_numbers.append(turn)
-                total_cost += cost_usd
+                total_cost += cost
 
             elif name == EXECUTION_TASK_TRANSITION:
                 found_transition = True

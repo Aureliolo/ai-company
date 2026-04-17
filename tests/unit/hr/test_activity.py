@@ -51,7 +51,7 @@ def _make_task_metric(  # noqa: PLR0913
     task_id: str = "task-001",
     is_success: bool = True,
     duration_seconds: float = 60.0,
-    cost_usd: float = 0.05,
+    cost: float = 0.05,
 ) -> TaskMetricRecord:
     return TaskMetricRecord(
         agent_id=agent_id,
@@ -61,7 +61,7 @@ def _make_task_metric(  # noqa: PLR0913
         completed_at=completed_at,
         is_success=is_success,
         duration_seconds=duration_seconds,
-        cost_usd=cost_usd,
+        cost=cost,
         turns_used=5,
         tokens_used=1000,
         complexity=Complexity.MEDIUM,
@@ -73,7 +73,7 @@ def _make_cost_record(  # noqa: PLR0913
     agent_id: str = "agent-001",
     task_id: str = "task-001",
     timestamp: datetime = _NOW,
-    cost_usd: float = 0.0025,
+    cost: float = 0.0025,
     input_tokens: int = 500,
     output_tokens: int = 100,
     model: str = "test-medium-001",
@@ -86,7 +86,7 @@ def _make_cost_record(  # noqa: PLR0913
         model=model,
         input_tokens=input_tokens,
         output_tokens=output_tokens,
-        cost_usd=cost_usd,
+        cost=cost,
         timestamp=timestamp,
     )
 
@@ -216,7 +216,7 @@ class TestMergeActivityTimeline:
         assert "\u20ac" in timeline[1].description
 
     def test_currency_passed_to_task_metric_descriptions(self) -> None:
-        task = _make_task_metric(task_id="task-usd", cost_usd=1.5)
+        task = _make_task_metric(task_id="task-usd", cost=1.5)
         timeline = merge_activity_timeline(
             lifecycle_events=(),
             task_metrics=(task,),
@@ -227,7 +227,7 @@ class TestMergeActivityTimeline:
         assert "$" in completed[0].description
 
     def test_currency_passed_to_cost_record_descriptions(self) -> None:
-        cost = _make_cost_record(cost_usd=0.05)
+        cost = _make_cost_record(cost=0.05)
         timeline = merge_activity_timeline(
             lifecycle_events=(),
             task_metrics=(),
@@ -357,7 +357,7 @@ class TestCostIncurredEvents:
             model="test-medium-001",
             input_tokens=500,
             output_tokens=100,
-            cost_usd=0.0025,
+            cost=0.0025,
             timestamp=_NOW,
         )
 
@@ -785,7 +785,7 @@ class TestRedactCostEvents:
             model="test-medium-001",
             input_tokens=500,
             output_tokens=100,
-            cost_usd=0.005,
+            cost=0.005,
             timestamp=_NOW,
         )
         event = _cost_record_to_activity(record, currency="EUR")

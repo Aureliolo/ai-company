@@ -30,7 +30,7 @@ def _make_state(  # noqa: PLR0913
     task_id: str | None = "task-001",
     status: ExecutionStatus = ExecutionStatus.EXECUTING,
     turn_count: int = 3,
-    accumulated_cost_usd: float = 0.05,
+    accumulated_cost: float = 0.05,
     last_activity_at: datetime = _T0,
     started_at: datetime | None = _T0,
 ) -> AgentRuntimeState:
@@ -46,7 +46,7 @@ def _make_state(  # noqa: PLR0913
         task_id=task_id,
         status=status,
         turn_count=turn_count,
-        accumulated_cost_usd=accumulated_cost_usd,
+        accumulated_cost=accumulated_cost,
         last_activity_at=last_activity_at,
         started_at=started_at,
     )
@@ -73,7 +73,7 @@ class TestSQLiteAgentStateRepository:
         assert result.task_id == state.task_id
         assert result.status == state.status
         assert result.turn_count == state.turn_count
-        assert result.accumulated_cost_usd == state.accumulated_cost_usd
+        assert result.accumulated_cost == state.accumulated_cost
         assert result.last_activity_at == state.last_activity_at
         assert result.started_at == state.started_at
 
@@ -92,20 +92,20 @@ class TestSQLiteAgentStateRepository:
         assert result.task_id is None
         assert result.started_at is None
         assert result.turn_count == 0
-        assert result.accumulated_cost_usd == 0.0
+        assert result.accumulated_cost == 0.0
 
     async def test_upsert_overwrites(self, migrated_db: aiosqlite.Connection) -> None:
         repo = SQLiteAgentStateRepository(migrated_db)
         v1 = _make_state(turn_count=1)
         await repo.save(v1)
 
-        v2 = _make_state(turn_count=5, accumulated_cost_usd=0.10)
+        v2 = _make_state(turn_count=5, accumulated_cost=0.10)
         await repo.save(v2)
 
         result = await repo.get("agent-001")
         assert result is not None
         assert result.turn_count == 5
-        assert result.accumulated_cost_usd == pytest.approx(0.10)
+        assert result.accumulated_cost == pytest.approx(0.10)
 
     async def test_get_returns_none_when_not_found(
         self, migrated_db: aiosqlite.Connection
@@ -236,7 +236,7 @@ class TestSQLiteAgentStateRepository:
         assert result.task_id is None
         assert result.started_at is None
         assert result.turn_count == 0
-        assert result.accumulated_cost_usd == 0.0
+        assert result.accumulated_cost == 0.0
 
 
 @pytest.mark.unit
@@ -277,7 +277,7 @@ class TestSQLiteAgentStateRepositoryErrors:
         await migrated_db.execute(
             "INSERT INTO agent_states "
             "(agent_id, execution_id, task_id, status, turn_count, "
-            "accumulated_cost_usd, last_activity_at, started_at) "
+            "accumulated_cost, last_activity_at, started_at) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 "agent-bad",
@@ -310,7 +310,7 @@ class TestSQLiteAgentStateRepositoryErrors:
         await migrated_db.execute(
             "INSERT INTO agent_states "
             "(agent_id, execution_id, task_id, status, turn_count, "
-            "accumulated_cost_usd, last_activity_at, started_at) "
+            "accumulated_cost, last_activity_at, started_at) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 "agent-corrupt",

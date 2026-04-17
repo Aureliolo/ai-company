@@ -80,7 +80,7 @@ async def _seed_metrics(
             completed_at=datetime.now(UTC),
             is_success=is_success,
             duration_seconds=60.0,
-            cost_usd=0.01,
+            cost=0.01,
             turns_used=5,
             tokens_used=1000,
             quality_score=quality,

@@ -85,7 +85,7 @@ class _ToolCallingProvider:
                 usage=TokenUsage(
                     input_tokens=50,
                     output_tokens=20,
-                    cost_usd=0.005,
+                    cost=0.005,
                 ),
                 model="test-model-001",
                 tool_calls=(
@@ -103,7 +103,7 @@ class _ToolCallingProvider:
             usage=TokenUsage(
                 input_tokens=80,
                 output_tokens=30,
-                cost_usd=0.008,
+                cost=0.008,
             ),
             model="test-model-001",
         )
@@ -200,7 +200,7 @@ class TestAgentEngineToolCallIntegration:
         assert result.total_turns == 2  # tool call turn + final answer turn
 
         # Verify cost was accumulated across turns
-        assert result.total_cost_usd > 0
+        assert result.total_cost > 0
         assert result.duration_seconds > 0
 
         # Verify the tool was actually called (result in conversation)

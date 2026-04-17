@@ -4,8 +4,8 @@ import { fn } from 'storybook/test'
 import { MessageList } from './MessageList'
 import type { Message, MessageMetadata } from '@/api/types'
 
-const baseMeta: MessageMetadata = { task_id: null, project_id: null, tokens_used: null, cost_usd: null, extra: [] }
-const threadMeta: MessageMetadata = { task_id: 'task-42', project_id: null, tokens_used: 500, cost_usd: 0.01, extra: [] }
+const baseMeta: MessageMetadata = { task_id: null, project_id: null, tokens_used: null, cost: null, extra: [] }
+const threadMeta: MessageMetadata = { task_id: 'task-42', project_id: null, tokens_used: 500, cost: 0.01, extra: [] }
 
 const sampleMessages: Message[] = [
   { id: '1', timestamp: '2026-03-28T09:00:00Z', sender: 'alice', to: '#eng', type: 'announcement', priority: 'normal', channel: '#eng', content: 'Sprint planning in 30 minutes.', attachments: [], metadata: baseMeta },

@@ -79,7 +79,7 @@ def _make_task_metric(
         completed_at=completed_at or _NOW,
         is_success=is_success,
         duration_seconds=10.0,
-        cost_usd=0.01,
+        cost=0.01,
         turns_used=2,
         tokens_used=150,
         complexity=Complexity.SIMPLE,
@@ -330,7 +330,7 @@ class TestActivityFeed:
             model="test-medium-001",
             input_tokens=500,
             output_tokens=100,
-            cost_usd=0.005,
+            cost=0.005,
             timestamp=_NOW - timedelta(hours=1),
         )
         await cost_tracker.record(record)
@@ -356,7 +356,7 @@ class TestActivityFeed:
             model="test-medium-001",
             input_tokens=500,
             output_tokens=100,
-            cost_usd=0.005,
+            cost=0.005,
             timestamp=_NOW - timedelta(hours=2),
         )
         await cost_tracker.record(record)
@@ -544,7 +544,7 @@ def _make_cost_record(
         model="test-medium-001",
         input_tokens=500,
         output_tokens=100,
-        cost_usd=0.005,
+        cost=0.005,
         timestamp=timestamp or _NOW - timedelta(hours=1),
     )
 

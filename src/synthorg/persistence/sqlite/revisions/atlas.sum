@@ -1,4 +1,4 @@
-h1:EIvdj4XO/1UFClqgYrnQMShR5cJFAvyidUFgeDuSQfA=
+h1:/Gdx+6DVJVbW5TSr1yyMoJIGgTbz/FSBm8TFa/Coefk=
 20260409210418_baseline.sql h1:S7ZGI9L3DKFOcpqqJWq/UNypsf1P8aOyckYHejTZUrE=
 20260410113102_subworkflows.sql h1:lrH6BsWIdWDYc5eoOtovHamSTbrF08OeGX02YnsDv28=
 20260411003128_subworkflows_updated_at.sql h1:Rs2IysKx75bU+KTHkQDi4lTzcqQSsaEkZ7eYBCArJbY=
@@ -8,4 +8,5 @@ h1:EIvdj4XO/1UFClqgYrnQMShR5cJFAvyidUFgeDuSQfA=
 20260413155032_training_service_persistence.sql h1:f24uLTnFTcBvxuiE1wgj1IfR1aImmlvIPpy3GAGePXE=
 20260415190914_add_custom_rules.sql h1:B+VjFjhtrgej982Z8Rb30P913kmfF/bhTMG1qQQxjHw=
 20260416125116_add_approvals.sql h1:Zcl0pM2/4O/Qq6GAAFATYjGlUb8WU2Hu6zxqmSjLktE=
-20260417225610_add_conflict_escalations.sql h1:kF304MiVYUHqjlkWZGSwJ/npqYPyzP4PZlr6NJJk9vs=
+20260417155731_rename_cost_usd.sql h1:+MBkQ9jNp3j/hauSG26MPcszFCqjwFAr39B953h5FxQ=
+20260417230146_add_conflict_escalations.sql h1:uWPKleMwVtVKAySHyVncvHv+glzEz/qY+GP/ybnFU5o=

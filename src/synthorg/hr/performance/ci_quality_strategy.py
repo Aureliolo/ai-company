@@ -92,7 +92,7 @@ class CISignalQualityStrategy:
         # Tasks at or below budget get full marks; above budget the
         # score decays logarithmically so high-cost tasks still
         # differentiate instead of all collapsing to 0.
-        ratio = task_result.cost_usd / self._cost_budget
+        ratio = task_result.cost / self._cost_budget
         if ratio <= 1.0:
             cost_score = _MAX_SCORE
         else:

@@ -188,7 +188,7 @@ def _create_slack_sink(
     )
 
 
-def _create_email_sink(
+def _create_email_sink(  # noqa: PLR0911 - each return is a distinct validation guard
     params: dict[str, str],
     *,
     bridge_config: NotificationsBridgeConfig | None = None,
@@ -209,8 +209,10 @@ def _create_email_sink(
         EmailNotificationSink,
     )
 
-    host = params.get("host", "")
+    host = (params.get("host") or "").strip()
     if not host:
+        # Treat whitespace-only ("   ") the same as missing; otherwise
+        # the adapter only fails at connect time with a cryptic error.
         logger.warning(
             NOTIFICATION_SINK_CONFIG_INVALID,
             sink_type="email",
@@ -227,6 +229,17 @@ def _create_email_sink(
             error="to_addrs is required",
         )
         return None
+    if any("\r" in a or "\n" in a for a in to_addrs):
+        # Same CR/LF header-injection guard we apply to ``from_addr``:
+        # ``msg["To"] = ...`` would otherwise let an operator with
+        # config-edit access inject arbitrary extra headers by splitting
+        # across a newline.
+        logger.warning(
+            NOTIFICATION_SINK_CONFIG_INVALID,
+            sink_type="email",
+            error="to_addrs must not contain CR/LF",
+        )
+        return None
     try:
         port = int(params.get("port", "587"))
     except ValueError:
@@ -236,10 +249,54 @@ def _create_email_sink(
             error=f"invalid port: {params.get('port')!r}",
         )
         return None
+    if port < 1 or port > 65535:  # noqa: PLR2004
+        # Parses as an int but falls outside the TCP port range; reject
+        # at the boundary so delivery-time failures aren't the first
+        # signal of misconfiguration.
+        logger.warning(
+            NOTIFICATION_SINK_CONFIG_INVALID,
+            sink_type="email",
+            error=f"invalid port range: {port}",
+        )
+        return None
+    from_addr = (params.get("from_addr") or "").strip()
+    if not from_addr:
+        # Previously defaulted to ``synthorg@localhost``, which works
+        # in dev but is rejected by most production SMTP relays for
+        # ambiguous sender hostname. Fail loudly so operators wire a
+        # real sender address.
+        logger.warning(
+            NOTIFICATION_SINK_CONFIG_INVALID,
+            sink_type="email",
+            error="from_addr is required",
+        )
+        return None
+    if "\r" in from_addr or "\n" in from_addr:
+        # Reject CR/LF before they reach ``msg["From"] = ...``; the
+        # stdlib ``email`` package does not auto-sanitize header values
+        # so an unchecked newline lets an operator with config-edit
+        # access inject arbitrary extra headers (Bcc, Reply-To, ...).
+        logger.warning(
+            NOTIFICATION_SINK_CONFIG_INVALID,
+            sink_type="email",
+            error="from_addr must not contain CR/LF",
+        )
+        return None
     username = params.get("username")
     password = params.get("password")
-    from_addr = params.get("from_addr", "synthorg@localhost")
-    use_tls = params.get("use_tls", "true").lower() == "true"
+    # Strict ``use_tls`` parsing: the previous ``.lower() == "true"`` form
+    # silently coerced typos ("yse", "on", "1") to ``False``, which flipped
+    # the intended transport without warning. Accept only the literal
+    # ``true``/``false`` strings (case-insensitive, trimmed).
+    use_tls_raw = (params.get("use_tls") or "true").strip().lower()
+    if use_tls_raw not in {"true", "false"}:
+        logger.warning(
+            NOTIFICATION_SINK_CONFIG_INVALID,
+            sink_type="email",
+            error=f"use_tls must be 'true' or 'false'; got {params.get('use_tls')!r}",
+        )
+        return None
+    use_tls = use_tls_raw == "true"
     if bridge_config is None:
         return EmailNotificationSink(
             host=host,

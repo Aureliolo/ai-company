@@ -18,8 +18,8 @@ const mockOverview: OverviewMetrics = {
     blocked: 1, failed: 1, interrupted: 1, cancelled: 1,
   }),
   total_agents: 10,
-  total_cost_usd: 42.17,
-  budget_remaining_usd: 457.83,
+  total_cost: 42.17,
+  budget_remaining: 457.83,
   budget_used_percent: 8.43,
   cost_7d_trend: [
     { timestamp: '2026-03-20', value: 5 },

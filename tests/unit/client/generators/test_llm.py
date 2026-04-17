@@ -44,13 +44,13 @@ class _StubProvider:
             return CompletionResponse(
                 content=None,
                 finish_reason=FinishReason.ERROR,
-                usage=TokenUsage(input_tokens=10, output_tokens=0, cost_usd=0.0),
+                usage=TokenUsage(input_tokens=10, output_tokens=0, cost=0.0),
                 model=model,
             )
         return CompletionResponse(
             content=self._content,
             finish_reason=FinishReason.STOP,
-            usage=TokenUsage(input_tokens=10, output_tokens=20, cost_usd=0.0),
+            usage=TokenUsage(input_tokens=10, output_tokens=20, cost=0.0),
             model=model,
         )
 

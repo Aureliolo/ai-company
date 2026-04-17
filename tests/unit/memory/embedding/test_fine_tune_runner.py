@@ -7,7 +7,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from synthorg.memory.embedding.fine_tune_runner import _load_config, _run
+from synthorg.memory.embedding.fine_tune_runner import (
+    _DEFAULT_HEALTH_PORT,
+    _load_config,
+    _resolve_health_port,
+    _run,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -21,6 +26,66 @@ def _mock_health_server() -> Iterator[None]:
         return_value=mock_server,
     ):
         yield
+
+
+class TestResolveHealthPort:
+    """`_resolve_health_port` env-driven port resolution."""
+
+    _ENV_VAR = "SYNTHORG_FINE_TUNE_HEALTH_PORT"
+
+    def test_env_unset_returns_default(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.delenv(self._ENV_VAR, raising=False)
+        assert _resolve_health_port() == _DEFAULT_HEALTH_PORT
+
+    @pytest.mark.parametrize(
+        ("raw", "expected"),
+        [
+            ("20000", 20000),
+            ("1", 1),
+            ("65535", 65535),
+        ],
+        ids=["typical", "low_boundary", "high_boundary"],
+    )
+    def test_valid_env_returns_int(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        raw: str,
+        expected: int,
+    ) -> None:
+        monkeypatch.setenv(self._ENV_VAR, raw)
+        assert _resolve_health_port() == expected
+
+    @pytest.mark.parametrize(
+        ("raw", "match"),
+        [
+            # Empty env var (common accidental container config) is
+            # treated as an integer-parse failure, not a silent default.
+            ("", "not a valid integer"),
+            ("not-a-port", "not a valid integer"),
+            ("-1", "out of range"),
+            ("0", "out of range"),
+            ("65536", "out of range"),
+        ],
+        ids=[
+            "empty_string_raises",
+            "non_integer_raises",
+            "negative_raises",
+            "zero_raises",
+            "above_max_raises",
+        ],
+    )
+    def test_invalid_env_raises(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        raw: str,
+        match: str,
+    ) -> None:
+        monkeypatch.setenv(self._ENV_VAR, raw)
+        with pytest.raises(ValueError, match=match):
+            _resolve_health_port()
 
 
 class TestLoadConfig:
@@ -67,6 +132,29 @@ class TestLoadConfig:
 
 class TestRun:
     """Entrypoint _run() error handling."""
+
+    def test_invalid_env_port_fails_fast_at_entrypoint(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Malformed ``SYNTHORG_FINE_TUNE_HEALTH_PORT`` aborts ``_run()``.
+
+        The other tests stub ``_start_health_server`` via the
+        ``_mock_health_server`` autouse fixture. Here we route that
+        stub through a lambda that re-invokes ``_resolve_health_port``
+        so the port validation still runs -- locking in the fast-fail
+        container contract: a bad port must crash startup, not
+        silently bind the wrong port.
+        """
+        monkeypatch.setenv("SYNTHORG_FINE_TUNE_HEALTH_PORT", "not-a-port")
+        with (
+            patch(
+                "synthorg.memory.embedding.fine_tune_runner._start_health_server",
+                side_effect=_resolve_health_port,
+            ),
+            pytest.raises(ValueError, match="not a valid integer"),
+        ):
+            _run()
 
     def test_missing_config_returns_1(self, tmp_path: Path) -> None:
         with patch(

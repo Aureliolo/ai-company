@@ -1920,7 +1920,7 @@ class AgentEngine:
             total_turns=result.total_turns,
             total_tokens=accumulated.total_tokens,
             duration_seconds=duration,
-            cost_usd=result.total_cost_usd,
+            cost=result.total_cost,
         )
 
         metrics = TaskCompletionMetrics.from_run_result(result)

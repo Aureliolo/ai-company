@@ -51,7 +51,7 @@ assessment and source file references.
 
 | ACG Concept | SynthOrg Equivalent | Source | Fidelity | Notes |
 |---|---|---|---|---|
-| **Node cost** | `TurnRecord.cost_usd` per turn, `TokenUsage` per completion | `src/synthorg/engine/loop_protocol.py`, `src/synthorg/providers/models.py` | Strong | Per-turn cost tracking with provider breakdown. Accumulated over execution via `ctx.accumulated_cost`. |
+| **Node cost** | `TurnRecord.cost` per turn, `TokenUsage` per completion | `src/synthorg/engine/loop_protocol.py`, `src/synthorg/providers/models.py` | Strong | Per-turn cost tracking with provider breakdown. Accumulated over execution via `ctx.accumulated_cost`. |
 | **Resource constraints** | `BudgetEnforcer` (3-layer), quota degradation, context budget | `src/synthorg/budget/enforcer.py`, `src/synthorg/engine/context_budget.py` | Strong -- exceeds ACG | SynthOrg's resource model is more sophisticated than ACG: multi-layer enforcement, per-agent daily limits, context fill tracking, risk budget. |
 | **Quality-cost tradeoffs** | Budget-aware loop downgrade (hybrid->plan_execute at 80%), model auto-downgrade, quota degradation strategies | `src/synthorg/engine/loop_selector.py`, `src/synthorg/budget/enforcer.py` | Strong | Explicit tradeoff mechanisms with hard budget caps. Downgrade-only at task boundaries (consistency guarantee). |
 

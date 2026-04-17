@@ -33,7 +33,7 @@ class AgentPerformanceSummary(BaseModel):
         tasks_completed: Number of tasks completed.
         tasks_failed: Number of tasks failed.
         average_quality_score: Average quality score (None if no data).
-        total_cost_usd: Total cost incurred.
+        total_cost: Total cost incurred.
         total_risk_units: Total risk units accumulated.
     """
 
@@ -47,7 +47,7 @@ class AgentPerformanceSummary(BaseModel):
         ge=0.0,
         le=10.0,
     )
-    total_cost_usd: float = Field(default=0.0, ge=0.0)
+    total_cost: float = Field(default=0.0, ge=0.0)
     total_risk_units: float = Field(default=0.0, ge=0.0)
 
 

@@ -31,9 +31,9 @@ class PushMetrics:
             ["provider", "model", "direction"],
             registry=registry,
         )
-        self.provider_cost_usd = PromCounter(
-            f"{prefix}_provider_cost_usd_total",
-            "Accumulated cost in USD per provider and model",
+        self.provider_cost = PromCounter(
+            f"{prefix}_provider_cost_total",
+            "Accumulated cost in the configured currency per provider and model",
             ["provider", "model"],
             registry=registry,
         )

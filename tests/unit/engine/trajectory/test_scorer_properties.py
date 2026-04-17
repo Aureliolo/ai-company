@@ -61,7 +61,7 @@ def _candidate(
             turn_number=1,
             input_tokens=50,
             output_tokens=trace_tokens,
-            cost_usd=0.01,
+            cost=0.01,
             finish_reason=FinishReason.STOP,
         ),
     )

@@ -25,8 +25,8 @@ class AgentRuntimeState(BaseModel):
         task_id: Current task identifier (``None`` when idle or taskless).
         status: Execution status (idle / executing / paused).
         turn_count: Turns completed in the current execution.
-        accumulated_cost_usd: Cost accumulated in the current
-            execution in USD (base currency).
+        accumulated_cost: Cost accumulated in the current
+            execution in the configured currency.
         last_activity_at: Timestamp of the last state update.
         started_at: When the current execution started (``None`` when idle).
     """
@@ -44,10 +44,10 @@ class AgentRuntimeState(BaseModel):
     )
     status: ExecutionStatus = Field(description="Execution status")
     turn_count: int = Field(default=0, ge=0, description="Turns completed")
-    accumulated_cost_usd: float = Field(
+    accumulated_cost: float = Field(
         default=0.0,
         ge=0.0,
-        description="Cost in current execution in USD (base currency)",
+        description="Cost in current execution in the configured currency",
     )
     last_activity_at: AwareDatetime = Field(
         description="Timestamp of last state update",
@@ -68,8 +68,8 @@ class AgentRuntimeState(BaseModel):
             violations.append("started_at must be None")
         if self.turn_count != 0:
             violations.append("turn_count must be 0")
-        if self.accumulated_cost_usd != 0.0:
-            violations.append("accumulated_cost_usd must be 0.0")
+        if self.accumulated_cost != 0.0:
+            violations.append("accumulated_cost must be 0.0")
         return violations
 
     @model_validator(mode="after")
@@ -78,7 +78,7 @@ class AgentRuntimeState(BaseModel):
 
         * **IDLE** requires ``execution_id``, ``task_id``, and
           ``started_at`` to be ``None``, and ``turn_count`` and
-          ``accumulated_cost_usd`` to be zero.
+          ``accumulated_cost`` to be zero.
         * **EXECUTING** / **PAUSED** require ``execution_id`` and
           ``started_at`` to be set.
         """
@@ -145,7 +145,7 @@ class AgentRuntimeState(BaseModel):
             task_id=te.task.id if te is not None else None,
             status=status,
             turn_count=context.turn_count,
-            accumulated_cost_usd=context.accumulated_cost.cost_usd,
+            accumulated_cost=context.accumulated_cost.cost,
             last_activity_at=datetime.now(UTC),
             started_at=context.started_at,
         )

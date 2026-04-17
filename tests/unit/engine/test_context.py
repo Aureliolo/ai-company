@@ -61,7 +61,7 @@ class TestAgentContextFromIdentity:
     def test_defaults(self, sample_agent_with_personality: AgentIdentity) -> None:
         ctx = AgentContext.from_identity(sample_agent_with_personality)
         assert ctx.conversation == ()
-        assert ctx.accumulated_cost.cost_usd == 0.0
+        assert ctx.accumulated_cost.cost == 0.0
         assert ctx.turn_count == 0
         assert ctx.max_turns == DEFAULT_MAX_TURNS
         assert ctx.has_turns_remaining is True
@@ -124,7 +124,7 @@ class TestAgentContextTurns:
         result = sample_agent_context.with_turn_completed(sample_token_usage, msg)
         assert result.turn_count == 1
         assert result.accumulated_cost.input_tokens == 100
-        assert result.accumulated_cost.cost_usd == pytest.approx(0.01)
+        assert result.accumulated_cost.cost == pytest.approx(0.01)
         assert len(result.conversation) == 1
         assert result.conversation[0] is msg
 
@@ -137,7 +137,7 @@ class TestAgentContextTurns:
         result = sample_agent_context.with_turn_completed(sample_token_usage, msg)
         assert result.task_execution is not None
         assert result.task_execution.turn_count == 1
-        assert result.task_execution.accumulated_cost.cost_usd == pytest.approx(0.01)
+        assert result.task_execution.accumulated_cost.cost == pytest.approx(0.01)
 
     def test_no_task_execution_still_works(
         self,
@@ -157,7 +157,7 @@ class TestAgentContextTurns:
         usage = TokenUsage(
             input_tokens=1,
             output_tokens=1,
-            cost_usd=0.0,
+            cost=0.0,
         )
         msg = _make_assistant_msg()
         assert ctx.has_turns_remaining is True
@@ -173,7 +173,7 @@ class TestAgentContextTurns:
         usage = TokenUsage(
             input_tokens=1,
             output_tokens=1,
-            cost_usd=0.0,
+            cost=0.0,
         )
         msg = _make_assistant_msg()
         step1 = ctx.with_turn_completed(usage, msg)
@@ -227,7 +227,7 @@ class TestAgentContextSnapshot:
         assert snapshot.agent_id == str(sample_agent_context.identity.id)
         assert snapshot.turn_count == 0
         assert snapshot.message_count == 0
-        assert snapshot.accumulated_cost.cost_usd == 0.0
+        assert snapshot.accumulated_cost.cost == 0.0
 
     def test_snapshot_with_task(self, sample_agent_context: AgentContext) -> None:
         assert sample_agent_context.task_execution is not None
@@ -265,7 +265,7 @@ class TestAgentContextSnapshot:
                 accumulated_cost=TokenUsage(
                     input_tokens=0,
                     output_tokens=0,
-                    cost_usd=0.0,
+                    cost=0.0,
                 ),
                 started_at=datetime.now(UTC),
                 snapshot_at=datetime.now(UTC),
@@ -283,7 +283,7 @@ class TestAgentContextSnapshot:
                 accumulated_cost=TokenUsage(
                     input_tokens=0,
                     output_tokens=0,
-                    cost_usd=0.0,
+                    cost=0.0,
                 ),
                 started_at=datetime.now(UTC),
                 snapshot_at=datetime.now(UTC),
@@ -366,7 +366,7 @@ class TestAgentContextLogging:
         usage = TokenUsage(
             input_tokens=1,
             output_tokens=1,
-            cost_usd=0.0,
+            cost=0.0,
         )
         msg = _make_assistant_msg()
         step1 = ctx.with_turn_completed(usage, msg)

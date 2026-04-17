@@ -46,7 +46,7 @@ def build_tool_call_response(  # noqa: PLR0913
     call_id: str = "call-001",
     input_tokens: int = 100,
     output_tokens: int = 30,
-    cost_usd: float = 0.0001,
+    cost: float = 0.0001,
     model: str = "test-medium-001",
 ) -> CompletionResponse:
     """Build a ``CompletionResponse`` wrapping a single scripted tool call."""
@@ -62,7 +62,7 @@ def build_tool_call_response(  # noqa: PLR0913
         usage=TokenUsage(
             input_tokens=input_tokens,
             output_tokens=output_tokens,
-            cost_usd=cost_usd,
+            cost=cost,
         ),
         model=model,
     )

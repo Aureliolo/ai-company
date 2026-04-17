@@ -358,7 +358,7 @@ def _build_performance_report(
     # Pre-aggregate cost and risk per agent.
     cost_by_agent: dict[str, float] = defaultdict(float)
     for r in cost_records:
-        cost_by_agent[r.agent_id] += r.cost_usd
+        cost_by_agent[r.agent_id] += r.cost
     risk_by_agent: dict[str, list[float]] = defaultdict(list)
     for rr in risk_records:
         risk_by_agent[rr.agent_id].append(rr.risk_units)
@@ -409,7 +409,7 @@ def _build_agent_snapshot(
         tasks_completed=completed,
         tasks_failed=len(metrics) - completed,
         average_quality_score=avg_q,
-        total_cost_usd=agent_cost,
+        total_cost=agent_cost,
         total_risk_units=math.fsum(agent_risk_values),
     )
 

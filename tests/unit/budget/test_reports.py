@@ -42,17 +42,17 @@ class TestTaskSpending:
     def test_construction(self) -> None:
         ts = TaskSpending(
             task_id="task-001",
-            total_cost_usd=5.0,
+            total_cost=5.0,
             total_tokens=10000,
             record_count=10,
         )
         assert ts.task_id == "task-001"
-        assert ts.total_cost_usd == 5.0
+        assert ts.total_cost == 5.0
 
     def test_frozen(self) -> None:
         ts = TaskSpending(
             task_id="task-001",
-            total_cost_usd=5.0,
+            total_cost=5.0,
             total_tokens=10000,
             record_count=10,
         )
@@ -65,7 +65,7 @@ class TestProviderDistribution:
     def test_construction(self) -> None:
         pd = ProviderDistribution(
             provider="test-provider",
-            total_cost_usd=50.0,
+            total_cost=50.0,
             record_count=100,
             percentage_of_total=100.0,
         )
@@ -79,7 +79,7 @@ class TestModelDistribution:
         md = ModelDistribution(
             model="test-model-001",
             provider="test-provider",
-            total_cost_usd=50.0,
+            total_cost=50.0,
             record_count=100,
             percentage_of_total=50.0,
         )
@@ -93,7 +93,7 @@ class TestPeriodComparison:
             current_period_cost=100.0,
             previous_period_cost=80.0,
         )
-        assert pc.cost_change_usd == 20.0
+        assert pc.cost_change == 20.0
         assert pc.cost_change_percent == 25.0
 
     def test_cost_decrease(self) -> None:
@@ -101,7 +101,7 @@ class TestPeriodComparison:
             current_period_cost=60.0,
             previous_period_cost=80.0,
         )
-        assert pc.cost_change_usd == -20.0
+        assert pc.cost_change == -20.0
         assert pc.cost_change_percent == -25.0
 
     def test_no_previous_data_percent_is_none(self) -> None:
@@ -109,7 +109,7 @@ class TestPeriodComparison:
             current_period_cost=50.0,
             previous_period_cost=0.0,
         )
-        assert pc.cost_change_usd == 50.0
+        assert pc.cost_change == 50.0
         assert pc.cost_change_percent is None
 
     def test_equal_periods(self) -> None:
@@ -117,7 +117,7 @@ class TestPeriodComparison:
             current_period_cost=50.0,
             previous_period_cost=50.0,
         )
-        assert pc.cost_change_usd == 0.0
+        assert pc.cost_change == 0.0
         assert pc.cost_change_percent == 0.0
 
 
@@ -137,7 +137,7 @@ class TestReportGenerator:
         assert report.by_task == ()
         assert report.by_provider == ()
         assert report.by_model == ()
-        assert report.summary.period.total_cost_usd == 0.0
+        assert report.summary.period.total_cost == 0.0
 
     async def test_generate_report_multiple_agents_tasks(self) -> None:
         gen, tracker = _make_report_generator()
@@ -146,7 +146,7 @@ class TestReportGenerator:
             make_cost_record(
                 agent_id="alice",
                 task_id="task-a",
-                cost_usd=3.0,
+                cost=3.0,
                 timestamp=_START + timedelta(hours=1),
             ),
         )
@@ -154,7 +154,7 @@ class TestReportGenerator:
             make_cost_record(
                 agent_id="bob",
                 task_id="task-b",
-                cost_usd=5.0,
+                cost=5.0,
                 timestamp=_START + timedelta(hours=2),
             ),
         )
@@ -162,18 +162,18 @@ class TestReportGenerator:
             make_cost_record(
                 agent_id="alice",
                 task_id="task-a",
-                cost_usd=2.0,
+                cost=2.0,
                 timestamp=_START + timedelta(hours=3),
             ),
         )
 
         report = await gen.generate_report(start=_START, end=_END)
-        assert report.summary.period.total_cost_usd == 10.0
+        assert report.summary.period.total_cost == 10.0
         assert len(report.by_task) == 2
 
         # task-a has 5.0, task-b has 5.0
         task_a = next(t for t in report.by_task if t.task_id == "task-a")
-        assert task_a.total_cost_usd == 5.0
+        assert task_a.total_cost == 5.0
         assert task_a.record_count == 2
 
     async def test_provider_distribution_percentages(self) -> None:
@@ -182,14 +182,14 @@ class TestReportGenerator:
         await tracker.record(
             make_cost_record(
                 provider="provider-a",
-                cost_usd=3.0,
+                cost=3.0,
                 timestamp=_START + timedelta(hours=1),
             ),
         )
         await tracker.record(
             make_cost_record(
                 provider="provider-b",
-                cost_usd=7.0,
+                cost=7.0,
                 timestamp=_START + timedelta(hours=2),
             ),
         )
@@ -205,14 +205,14 @@ class TestReportGenerator:
         await tracker.record(
             make_cost_record(
                 model="model-a",
-                cost_usd=4.0,
+                cost=4.0,
                 timestamp=_START + timedelta(hours=1),
             ),
         )
         await tracker.record(
             make_cost_record(
                 model="model-b",
-                cost_usd=6.0,
+                cost=6.0,
                 timestamp=_START + timedelta(hours=2),
             ),
         )
@@ -220,7 +220,7 @@ class TestReportGenerator:
         report = await gen.generate_report(start=_START, end=_END)
         assert len(report.by_model) == 2
         model_a = next(m for m in report.by_model if m.model == "model-a")
-        assert model_a.total_cost_usd == 4.0
+        assert model_a.total_cost == 4.0
 
     async def test_period_comparison_cost_increase(self) -> None:
         gen, tracker = _make_report_generator()
@@ -229,14 +229,14 @@ class TestReportGenerator:
         prev_start = _START - (_END - _START)
         await tracker.record(
             make_cost_record(
-                cost_usd=5.0,
+                cost=5.0,
                 timestamp=prev_start + timedelta(hours=1),
             ),
         )
         # Current period data
         await tracker.record(
             make_cost_record(
-                cost_usd=8.0,
+                cost=8.0,
                 timestamp=_START + timedelta(hours=1),
             ),
         )
@@ -245,7 +245,7 @@ class TestReportGenerator:
         assert report.period_comparison is not None
         assert report.period_comparison.current_period_cost == 8.0
         assert report.period_comparison.previous_period_cost == 5.0
-        assert report.period_comparison.cost_change_usd == 3.0
+        assert report.period_comparison.cost_change == 3.0
         assert report.period_comparison.cost_change_percent == 60.0
 
     async def test_no_prior_data_no_comparison(self) -> None:
@@ -261,7 +261,7 @@ class TestReportGenerator:
             await tracker.record(
                 make_cost_record(
                     agent_id=agent,
-                    cost_usd=float(i + 1),
+                    cost=float(i + 1),
                     timestamp=_START + timedelta(hours=i + 1),
                 ),
             )
@@ -283,7 +283,7 @@ class TestReportGenerator:
             await tracker.record(
                 make_cost_record(
                     task_id=task,
-                    cost_usd=float(i + 1) * 2,
+                    cost=float(i + 1) * 2,
                     timestamp=_START + timedelta(hours=i + 1),
                 ),
             )
@@ -307,20 +307,20 @@ class TestReportGenerator:
         prev_start = _START - (_END - _START)
         await tracker.record(
             make_cost_record(
-                cost_usd=10.0,
+                cost=10.0,
                 timestamp=prev_start + timedelta(hours=1),
             ),
         )
         await tracker.record(
             make_cost_record(
-                cost_usd=3.0,
+                cost=3.0,
                 timestamp=_START + timedelta(hours=1),
             ),
         )
 
         report = await gen.generate_report(start=_START, end=_END)
         assert report.period_comparison is not None
-        assert report.period_comparison.cost_change_usd == -7.0
+        assert report.period_comparison.cost_change == -7.0
         assert report.period_comparison.cost_change_percent is not None
         assert report.period_comparison.cost_change_percent < 0
 
@@ -329,7 +329,7 @@ class TestReportGenerator:
 
         await tracker.record(
             make_cost_record(
-                cost_usd=5.0,
+                cost=5.0,
                 timestamp=_START + timedelta(hours=1),
             ),
         )
@@ -358,7 +358,7 @@ def _make_summary() -> SpendingSummary:
         period=PeriodSpending(
             start=_START,
             end=_END,
-            total_cost_usd=0.0,
+            total_cost=0.0,
         ),
     )
 

@@ -67,7 +67,7 @@ def _mw_context() -> AgentMiddlewareContext:
 
 
 def _token_usage() -> TokenUsage:
-    return TokenUsage(input_tokens=10, output_tokens=5, cost_usd=0.01)
+    return TokenUsage(input_tokens=10, output_tokens=5, cost=0.01)
 
 
 async def _dummy_model_call(

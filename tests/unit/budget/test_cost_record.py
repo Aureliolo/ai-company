@@ -23,7 +23,7 @@ class TestCostRecord:
         assert sample_cost_record.model == "test-model-001"
         assert sample_cost_record.input_tokens == 4500
         assert sample_cost_record.output_tokens == 1200
-        assert sample_cost_record.cost_usd == 0.0315
+        assert sample_cost_record.cost == 0.0315
 
     def test_all_required_fields(self) -> None:
         """Ensure no defaults on required fields -- all must be provided."""
@@ -40,7 +40,7 @@ class TestCostRecord:
                 model="test-model",
                 input_tokens=100,
                 output_tokens=50,
-                cost_usd=0.01,
+                cost=0.01,
                 timestamp=datetime(2026, 2, 27, tzinfo=UTC),
             )
 
@@ -54,7 +54,7 @@ class TestCostRecord:
                 model="test-model",
                 input_tokens=100,
                 output_tokens=50,
-                cost_usd=0.01,
+                cost=0.01,
                 timestamp=datetime(2026, 2, 27, tzinfo=UTC),
             )
 
@@ -68,7 +68,7 @@ class TestCostRecord:
                 model="test-model",
                 input_tokens=100,
                 output_tokens=50,
-                cost_usd=0.01,
+                cost=0.01,
                 timestamp=datetime(2026, 2, 27, tzinfo=UTC),
             )
 
@@ -82,7 +82,7 @@ class TestCostRecord:
                 model="test-model",
                 input_tokens=100,
                 output_tokens=50,
-                cost_usd=0.01,
+                cost=0.01,
                 timestamp=datetime(2026, 2, 27, tzinfo=UTC),
             )
 
@@ -96,7 +96,7 @@ class TestCostRecord:
                 model="",
                 input_tokens=100,
                 output_tokens=50,
-                cost_usd=0.01,
+                cost=0.01,
                 timestamp=datetime(2026, 2, 27, tzinfo=UTC),
             )
 
@@ -110,7 +110,7 @@ class TestCostRecord:
                 model="test-model",
                 input_tokens=-1,
                 output_tokens=50,
-                cost_usd=0.01,
+                cost=0.01,
                 timestamp=datetime(2026, 2, 27, tzinfo=UTC),
             )
 
@@ -124,7 +124,7 @@ class TestCostRecord:
                 model="test-model",
                 input_tokens=100,
                 output_tokens=-1,
-                cost_usd=0.01,
+                cost=0.01,
                 timestamp=datetime(2026, 2, 27, tzinfo=UTC),
             )
 
@@ -137,14 +137,14 @@ class TestCostRecord:
             model="test-model",
             input_tokens=0,
             output_tokens=0,
-            cost_usd=0.0,
+            cost=0.0,
             timestamp=datetime(2026, 2, 27, tzinfo=UTC),
         )
         assert record.input_tokens == 0
         assert record.output_tokens == 0
 
     def test_negative_cost_rejected(self) -> None:
-        """Reject negative cost_usd."""
+        """Reject negative cost."""
         with pytest.raises(ValidationError):
             CostRecord(
                 agent_id="agent-1",
@@ -153,7 +153,7 @@ class TestCostRecord:
                 model="test-model",
                 input_tokens=100,
                 output_tokens=50,
-                cost_usd=-0.01,
+                cost=-0.01,
                 timestamp=datetime(2026, 2, 27, tzinfo=UTC),
             )
 
@@ -167,7 +167,7 @@ class TestCostRecord:
                 model="test-model",
                 input_tokens=0,
                 output_tokens=0,
-                cost_usd=0.01,
+                cost=0.01,
                 timestamp=datetime(2026, 2, 27, tzinfo=UTC),
             )
 
@@ -180,10 +180,10 @@ class TestCostRecord:
             model="test-model",
             input_tokens=100,
             output_tokens=50,
-            cost_usd=0.0,
+            cost=0.0,
             timestamp=datetime(2026, 2, 27, tzinfo=UTC),
         )
-        assert record.cost_usd == 0.0
+        assert record.cost == 0.0
         assert record.input_tokens == 100
 
     def test_naive_datetime_rejected(self) -> None:
@@ -196,14 +196,14 @@ class TestCostRecord:
                 model="test-model",
                 input_tokens=100,
                 output_tokens=50,
-                cost_usd=0.001,
+                cost=0.001,
                 timestamp=datetime(2026, 2, 27),  # noqa: DTZ001
             )
 
     def test_frozen(self, sample_cost_record: CostRecord) -> None:
         """Ensure CostRecord is immutable (append-only pattern)."""
         with pytest.raises(ValidationError):
-            sample_cost_record.cost_usd = 999.0  # type: ignore[misc]
+            sample_cost_record.cost = 999.0  # type: ignore[misc]
 
     def test_json_roundtrip(self, sample_cost_record: CostRecord) -> None:
         """Verify datetime serialization to ISO 8601."""
@@ -211,7 +211,7 @@ class TestCostRecord:
         restored = CostRecord.model_validate_json(json_str)
         assert restored.agent_id == sample_cost_record.agent_id
         assert restored.timestamp == sample_cost_record.timestamp
-        assert restored.cost_usd == sample_cost_record.cost_usd
+        assert restored.cost == sample_cost_record.cost
 
     def test_call_category_none_default(self) -> None:
         """Default call_category is None."""
@@ -222,7 +222,7 @@ class TestCostRecord:
             model="test-model",
             input_tokens=100,
             output_tokens=50,
-            cost_usd=0.01,
+            cost=0.01,
             timestamp=datetime(2026, 2, 27, tzinfo=UTC),
         )
         assert record.call_category is None
@@ -236,7 +236,7 @@ class TestCostRecord:
             model="test-model",
             input_tokens=100,
             output_tokens=50,
-            cost_usd=0.01,
+            cost=0.01,
             timestamp=datetime(2026, 2, 27, tzinfo=UTC),
             call_category=LLMCallCategory.PRODUCTIVE,
         )
@@ -251,7 +251,7 @@ class TestCostRecord:
             model="test-model",
             input_tokens=100,
             output_tokens=50,
-            cost_usd=0.01,
+            cost=0.01,
             timestamp=datetime(2026, 2, 27, tzinfo=UTC),
             call_category=LLMCallCategory.COORDINATION,
         )
@@ -266,7 +266,7 @@ class TestCostRecord:
             model="test-model",
             input_tokens=100,
             output_tokens=50,
-            cost_usd=0.01,
+            cost=0.01,
             timestamp=datetime(2026, 2, 27, tzinfo=UTC),
             call_category=LLMCallCategory.SYSTEM,
         )
@@ -281,7 +281,7 @@ class TestCostRecord:
             model="test-model",
             input_tokens=100,
             output_tokens=50,
-            cost_usd=0.01,
+            cost=0.01,
             timestamp=datetime(2026, 2, 27, tzinfo=UTC),
             call_category=LLMCallCategory.PRODUCTIVE,
         )
@@ -307,7 +307,7 @@ class TestCostRecordAnalyticsFields:
             model="test-model",
             input_tokens=100,
             output_tokens=50,
-            cost_usd=0.01,
+            cost=0.01,
             timestamp=datetime(2026, 2, 27, tzinfo=UTC),
         )
 
@@ -322,7 +322,7 @@ class TestCostRecordAnalyticsFields:
             model="test-model",
             input_tokens=100,
             output_tokens=50,
-            cost_usd=0.01,
+            cost=0.01,
             timestamp=datetime(2026, 2, 27, tzinfo=UTC),
             latency_ms=123.4,
         )
@@ -337,7 +337,7 @@ class TestCostRecordAnalyticsFields:
                 model="test-model",
                 input_tokens=100,
                 output_tokens=50,
-                cost_usd=0.01,
+                cost=0.01,
                 timestamp=datetime(2026, 2, 27, tzinfo=UTC),
                 latency_ms=-1.0,
             )
@@ -353,7 +353,7 @@ class TestCostRecordAnalyticsFields:
             model="test-model",
             input_tokens=100,
             output_tokens=50,
-            cost_usd=0.01,
+            cost=0.01,
             timestamp=datetime(2026, 2, 27, tzinfo=UTC),
             cache_hit=True,
         )
@@ -370,7 +370,7 @@ class TestCostRecordAnalyticsFields:
             model="test-model",
             input_tokens=100,
             output_tokens=50,
-            cost_usd=0.01,
+            cost=0.01,
             timestamp=datetime(2026, 2, 27, tzinfo=UTC),
             retry_count=0,
         )
@@ -385,7 +385,7 @@ class TestCostRecordAnalyticsFields:
                 model="test-model",
                 input_tokens=100,
                 output_tokens=50,
-                cost_usd=0.01,
+                cost=0.01,
                 timestamp=datetime(2026, 2, 27, tzinfo=UTC),
                 retry_count=-1,
             )
@@ -401,7 +401,7 @@ class TestCostRecordAnalyticsFields:
             model="test-model",
             input_tokens=100,
             output_tokens=50,
-            cost_usd=0.01,
+            cost=0.01,
             timestamp=datetime(2026, 2, 27, tzinfo=UTC),
             retry_count=1,
             retry_reason="RateLimitError",
@@ -417,7 +417,7 @@ class TestCostRecordAnalyticsFields:
                 model="test-model",
                 input_tokens=100,
                 output_tokens=50,
-                cost_usd=0.01,
+                cost=0.01,
                 timestamp=datetime(2026, 2, 27, tzinfo=UTC),
                 retry_reason="RateLimitError",
             )
@@ -431,7 +431,7 @@ class TestCostRecordAnalyticsFields:
                 model="test-model",
                 input_tokens=100,
                 output_tokens=50,
-                cost_usd=0.01,
+                cost=0.01,
                 timestamp=datetime(2026, 2, 27, tzinfo=UTC),
                 retry_count=0,
                 retry_reason="RateLimitError",
@@ -453,7 +453,7 @@ class TestCostRecordAnalyticsFields:
             model="test-model",
             input_tokens=100,
             output_tokens=50,
-            cost_usd=0.01,
+            cost=0.01,
             timestamp=datetime(2026, 2, 27, tzinfo=UTC),
             finish_reason=FinishReason.STOP,
             success=True,
@@ -471,7 +471,7 @@ class TestCostRecordAnalyticsFields:
             model="test-model",
             input_tokens=100,
             output_tokens=50,
-            cost_usd=0.01,
+            cost=0.01,
             timestamp=datetime(2026, 2, 27, tzinfo=UTC),
             latency_ms=150.0,
             cache_hit=True,

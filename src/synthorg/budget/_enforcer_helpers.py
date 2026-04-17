@@ -282,7 +282,7 @@ def _build_checker_closure(  # noqa: PLR0913
     last_alert: list[BudgetAlertLevel] = [BudgetAlertLevel.NORMAL]
 
     def _check(ctx: AgentContext) -> bool:
-        running_cost = ctx.accumulated_cost.cost_usd
+        running_cost = ctx.accumulated_cost.cost
         return (
             _check_task_limit(running_cost, task_limit, agent_id)
             or _check_project_limit(

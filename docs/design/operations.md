@@ -97,7 +97,7 @@ The framework uses **LiteLLM** as the provider abstraction layer:
 - Automatic retries and fallbacks
 - Load balancing across providers
 - Chat completions-compatible interface (all providers normalized)
-- **Model database**: `litellm.model_cost` provides pricing and context window data for all known models. Used at provider creation to dynamically populate model lists with up-to-date metadata. Provider-specific version filters (e.g. 4.5+ for Anthropic) exclude older generations. Deduplicates dated model variants (e.g. prefers `claude-opus-4-6` over `claude-opus-4-6-20260205`). Falls back to preset `default_models` when no models are found in the database.
+- **Model database**: `litellm.model_cost` provides pricing and context window data for all known models. Used at provider creation to dynamically populate model lists with up-to-date metadata. Provider-specific version filters (for example, a newer generation filter applied per provider) exclude older generations. Deduplicates dated model variants (e.g. prefers `example-large-002` over `example-large-002-20260205`). Falls back to preset `default_models` when no models are found in the database.
 
 ### Provider Management
 
@@ -225,7 +225,7 @@ Every API call is tracked with full context:
   "model": "example-medium-001",
   "input_tokens": 4500,
   "output_tokens": 1200,
-  "cost_usd": 0.0315,  // field name retained for API backward compatibility
+  "cost": 0.0315,  // value in the operator's configured currency (see budget.currency)
   "timestamp": "2026-02-27T10:30:00Z"
 }
 ```
@@ -238,9 +238,9 @@ models (`AgentSpending`, `DepartmentSpending`, `PeriodSpending`) extend a shared
 The `GET /budget/records` endpoint returns paginated cost records alongside two server-computed
 summaries (aggregated from **all** matching records, not just the current page):
 
-- **`daily_summary`**: per-day aggregation with `date`, `total_cost_usd`, `total_input_tokens`,
+- **`daily_summary`**: per-day aggregation with `date`, `total_cost`, `total_input_tokens`,
   `total_output_tokens`, and `record_count`, sorted chronologically.
-- **`period_summary`**: overall stats including `avg_cost_usd` (computed), `total_cost_usd`,
+- **`period_summary`**: overall stats including `avg_cost` (computed), `total_cost`,
   `total_input_tokens`, `total_output_tokens`, and `record_count`.
 
 ### CFO Agent Responsibilities
@@ -498,7 +498,7 @@ into the performance tracker (`PerformanceTrackerSink`) and notification
 dispatcher (`NotificationDispatcherSink`, threshold-filtered).
 
 **Cost control**: LLM semantic variants share the provider's rate limiter and
-track per-classification-run cost against `classification_budget_per_task_usd`.
+track per-classification-run cost against `classification_budget_per_task`.
 
 Error taxonomy classification runs post-execution (never blocks agent work)
 and logs structured events to the observability layer. Enable via
@@ -1689,7 +1689,7 @@ API -> CLI
 | Endpoint | Purpose |
 |----------|---------|
 | `/api/v1/health` | Health check, readiness |
-| `/api/v1/metrics` | Prometheus metrics scrape endpoint (unauthenticated). 12 metric families: `synthorg_app_info` (Info -- version), `synthorg_active_agents_total` (Gauge -- status, trust_level labels), `synthorg_tasks_total` (Gauge -- status, agent labels), `synthorg_cost_total` (Gauge), `synthorg_budget_used_percent` (Gauge), `synthorg_budget_monthly_usd` (Gauge), `synthorg_budget_daily_used_percent` (Gauge -- daily cost as % of prorated daily budget), `synthorg_agent_cost_total` (Gauge -- agent_id label, per-agent accumulated cost), `synthorg_agent_budget_used_percent` (Gauge -- agent_id label, per-agent daily cost as % of daily limit), `synthorg_coordination_efficiency` (Gauge -- push-updated), `synthorg_coordination_overhead_percent` (Gauge -- push-updated), `synthorg_security_evaluations_total` (Counter -- verdict label). Most refreshed per-scrape; coordination and security metrics are push-updated. |
+| `/api/v1/metrics` | Prometheus metrics scrape endpoint (unauthenticated). 12 metric families: `synthorg_app_info` (Info -- version), `synthorg_active_agents_total` (Gauge -- status, trust_level labels), `synthorg_tasks_total` (Gauge -- status, agent labels), `synthorg_cost_total` (Gauge), `synthorg_budget_used_percent` (Gauge), `synthorg_budget_monthly_cost` (Gauge), `synthorg_budget_daily_used_percent` (Gauge -- daily cost as % of prorated daily budget), `synthorg_agent_cost_total` (Gauge -- agent_id label, per-agent accumulated cost), `synthorg_agent_budget_used_percent` (Gauge -- agent_id label, per-agent daily cost as % of daily limit), `synthorg_coordination_efficiency` (Gauge -- push-updated), `synthorg_coordination_overhead_percent` (Gauge -- push-updated), `synthorg_security_evaluations_total` (Counter -- verdict label). Most refreshed per-scrape; coordination and security metrics are push-updated. |
 | `/api/v1/auth` | Authentication: setup, login (HttpOnly cookie sessions, CSRF double-submit), password change (rotates session cookie), ws-ticket, session management (list/revoke, concurrent session limits), logout, account lockout (429 with Retry-After), refresh token rotation (tiered rate limiting: 20 req/min unauth by IP, 6,000 req/min auth by user ID -- see `docs/security.md`) |
 | `/api/v1/company` | CRUD company config |
 | `/api/v1/agents` | List, hire, fire, modify agents |

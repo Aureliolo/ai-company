@@ -23,7 +23,7 @@ template:
       description: "Name of your consultancy"
       default: "Consultancy"
     - name: "budget"
-      description: "Monthly budget in USD"
+      description: "Monthly budget in the company's configured currency"
       var_type: "float"
       default: 60.0
     - name: "wip_limit"

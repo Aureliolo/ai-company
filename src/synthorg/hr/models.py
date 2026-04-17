@@ -38,7 +38,7 @@ class CandidateCard(BaseModel):
         level: Proposed seniority level.
         skills: Agent skills.
         rationale: Why this candidate was generated.
-        estimated_monthly_cost: Estimated monthly cost in USD (base currency).
+        estimated_monthly_cost: Estimated monthly cost in the configured currency.
         template_source: Template used for generation, if any.
     """
 
@@ -59,7 +59,7 @@ class CandidateCard(BaseModel):
     rationale: NotBlankStr = Field(description="Generation rationale")
     estimated_monthly_cost: float = Field(
         ge=0.0,
-        description="Estimated monthly cost in USD (base currency)",
+        description="Estimated monthly cost in the configured currency",
     )
     template_source: NotBlankStr | None = Field(
         default=None,
@@ -78,7 +78,8 @@ class HiringRequest(BaseModel):
         level: Desired seniority level.
         required_skills: Skills the candidate must have.
         reason: Business justification.
-        budget_limit_monthly: Maximum monthly cost, if constrained.
+        budget_limit_monthly: Maximum monthly cost in the configured
+            currency, if constrained.
         template_name: Template to use for candidate generation.
         status: Current request status.
         created_at: When the request was created.
@@ -105,7 +106,7 @@ class HiringRequest(BaseModel):
     budget_limit_monthly: float | None = Field(
         default=None,
         ge=0.0,
-        description="Maximum monthly cost",
+        description="Maximum monthly cost in the configured currency, if constrained",
     )
     template_name: NotBlankStr | None = Field(
         default=None,

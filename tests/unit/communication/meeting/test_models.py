@@ -35,7 +35,7 @@ class TestAgentResponse:
         assert resp.content == "Hello"
         assert resp.input_tokens == 0
         assert resp.output_tokens == 0
-        assert resp.cost_usd == 0.0
+        assert resp.cost == 0.0
 
     def test_with_token_counts(self) -> None:
         resp = AgentResponse(
@@ -43,11 +43,11 @@ class TestAgentResponse:
             content="Analysis",
             input_tokens=100,
             output_tokens=50,
-            cost_usd=0.002,
+            cost=0.002,
         )
         assert resp.input_tokens == 100
         assert resp.output_tokens == 50
-        assert resp.cost_usd == 0.002
+        assert resp.cost == 0.002
 
     def test_frozen(self) -> None:
         resp = AgentResponse(agent_id="agent-a", content="Hi")

@@ -104,7 +104,7 @@ def _mock_provider(answer: str = "Test explanation") -> AsyncMock:
         usage=TokenUsage(
             input_tokens=100,
             output_tokens=50,
-            cost_usd=0.001,
+            cost=0.001,
         ),
         model="example-small-001",
     )

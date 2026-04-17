@@ -242,7 +242,7 @@ class TestDoComplete:
             result = await driver.complete(_user_message(), "medium")
 
         # medium: 0.003/1k in + 0.015/1k out = 0.0105
-        assert result.usage.cost_usd == 0.0105
+        assert result.usage.cost == 0.0105
 
 
 # ── Streaming ────────────────────────────────────────────────────

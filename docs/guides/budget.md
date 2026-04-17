@@ -158,7 +158,7 @@ Every LLM API call is recorded as a cost record with full context:
 | `model` | Which model was used |
 | `input_tokens` | Number of input tokens |
 | `output_tokens` | Number of output tokens |
-| `cost_usd` | Computed cost in USD (internal base currency from model pricing). The `budget.currency` setting (default EUR) controls display formatting in the dashboard and reports. |
+| `cost` | Computed cost in the configured currency (internal base currency from model pricing). The `budget.currency` setting controls display formatting in the dashboard and reports. |
 | `timestamp` | When the call was made (UTC) |
 
 ### API Endpoints

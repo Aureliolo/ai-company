@@ -120,4 +120,4 @@ async def test_multi_model_alias_resolution(
     kwargs = mock_call.call_args.kwargs
     assert kwargs["model"] == "openrouter/test-model-openrouter-002"
     # (1000/1000)*0.0008 + (1000/1000)*0.0008 = 0.0016
-    assert result.usage.cost_usd == pytest.approx(0.0016)
+    assert result.usage.cost == pytest.approx(0.0016)

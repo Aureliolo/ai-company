@@ -54,7 +54,7 @@ def _make_cost_record(
     *,
     agent_id: str,
     timestamp: datetime,
-    cost_usd: float = 0.01,
+    cost: float = 0.01,
 ) -> CostRecord:
     return CostRecord(
         agent_id=agent_id,
@@ -63,7 +63,7 @@ def _make_cost_record(
         model="test-small-001",
         input_tokens=100,
         output_tokens=50,
-        cost_usd=cost_usd,
+        cost=cost,
         timestamp=timestamp,
     )
 
@@ -73,7 +73,7 @@ def _make_task_metric(
     agent_id: str,
     completed_at: datetime,
     is_success: bool = True,
-    cost_usd: float = 0.01,
+    cost: float = 0.01,
 ) -> TaskMetricRecord:
     return TaskMetricRecord(
         agent_id=agent_id,
@@ -82,7 +82,7 @@ def _make_task_metric(
         completed_at=completed_at,
         is_success=is_success,
         duration_seconds=10.0,
-        cost_usd=cost_usd,
+        cost=cost,
         turns_used=2,
         tokens_used=150,
         complexity=Complexity.SIMPLE,
@@ -214,14 +214,14 @@ class TestDepartmentHealth:
             _make_cost_record(
                 agent_id=_AGENT_ID_A,
                 timestamp=_NOW - timedelta(days=1),
-                cost_usd=0.50,
+                cost=0.50,
             ),
         )
         await cost_tracker.record(
             _make_cost_record(
                 agent_id=_AGENT_ID_B,
                 timestamp=_NOW - timedelta(days=2),
-                cost_usd=0.30,
+                cost=0.30,
             ),
         )
 

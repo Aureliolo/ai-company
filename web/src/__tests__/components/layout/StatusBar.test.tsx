@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react'
 import { useAnalyticsStore } from '@/stores/analytics'
 import { StatusBar } from '@/components/layout/StatusBar'
 import { formatCurrency } from '@/utils/format'
+import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import type { OverviewMetrics } from '@/api/types'
 
 function makeOverview(overrides: Partial<OverviewMetrics> = {}): OverviewMetrics {
@@ -12,13 +13,13 @@ function makeOverview(overrides: Partial<OverviewMetrics> = {}): OverviewMetrics
       blocked: 0, failed: 0, interrupted: 0, suspended: 0, cancelled: 0,
     } as OverviewMetrics['tasks_by_status'],
     total_agents: 0,
-    total_cost_usd: 0,
-    budget_remaining_usd: 0,
+    total_cost: 0,
+    budget_remaining: 0,
     budget_used_percent: 0,
     cost_7d_trend: [],
     active_agents_count: 0,
     idle_agents_count: 0,
-    currency: 'EUR',
+    currency: DEFAULT_CURRENCY,
     ...overrides,
   }
 }
@@ -76,8 +77,8 @@ describe('StatusBar', () => {
       overview: makeOverview({
         total_tasks: 42,
         total_agents: 12,
-        total_cost_usd: 85.5,
-        budget_remaining_usd: 414.5,
+        total_cost: 85.5,
+        budget_remaining: 414.5,
         budget_used_percent: 17.1,
         active_agents_count: 8,
         idle_agents_count: 3,
@@ -98,7 +99,12 @@ describe('StatusBar', () => {
 
   it('shows cost placeholder when no data loaded', () => {
     render(<StatusBar />)
-    expect(screen.getByText('$--')).toBeInTheDocument()
+    // Cost placeholder is a neutral ``--`` (no hardcoded currency
+    // symbol). Scope to the ``spend ... today`` chip to avoid matching
+    // sibling placeholders (``-- agents``, ``-- active``, ...).
+    const spendLabel = screen.getByText('spend')
+    const spendChip = spendLabel.parentElement
+    expect(spendChip).toHaveTextContent(/spend\s*--\s*today/)
   })
 
   it('shows budget percentage when data loaded', () => {
@@ -106,8 +112,8 @@ describe('StatusBar', () => {
       overview: makeOverview({
         total_tasks: 10,
         total_agents: 5,
-        total_cost_usd: 50,
-        budget_remaining_usd: 450,
+        total_cost: 50,
+        budget_remaining: 450,
         budget_used_percent: 10,
         active_agents_count: 3,
         idle_agents_count: 2,
@@ -126,8 +132,8 @@ describe('StatusBar', () => {
           blocked: 0, failed: 0, interrupted: 0, suspended: 0, cancelled: 0,
         } as OverviewMetrics['tasks_by_status'],
         total_agents: 5,
-        total_cost_usd: 50,
-        budget_remaining_usd: 450,
+        total_cost: 50,
+        budget_remaining: 450,
         budget_used_percent: 10,
         active_agents_count: 3,
         idle_agents_count: 2,
@@ -137,20 +143,23 @@ describe('StatusBar', () => {
     expect(screen.getByText('3 in review')).toBeInTheDocument()
   })
 
-  it('shows formatted currency for cost display (EUR default)', () => {
-    useAnalyticsStore.setState({
-      overview: makeOverview({ total_cost_usd: 1234.56 }),
-    })
+  it('shows formatted currency for cost display (default currency)', () => {
+    const overview = makeOverview({ total_cost: 1234.56 })
+    useAnalyticsStore.setState({ overview })
     render(<StatusBar />)
-    expect(screen.getByText(formatCurrency(1234.56, 'EUR'))).toBeInTheDocument()
+    expect(
+      screen.getByText(formatCurrency(1234.56, overview.currency)),
+    ).toBeInTheDocument()
   })
 
   it('shows formatted currency for non-default currency', () => {
-    useAnalyticsStore.setState({
-      overview: makeOverview({ total_cost_usd: 99.5, currency: 'GBP' }),
-    })
+    // lint-allow: regional-defaults
+    const overview = makeOverview({ total_cost: 99.5, currency: 'GBP' })
+    useAnalyticsStore.setState({ overview })
     render(<StatusBar />)
-    expect(screen.getByText(formatCurrency(99.5, 'GBP'))).toBeInTheDocument()
+    expect(
+      screen.getByText(formatCurrency(99.5, overview.currency)),
+    ).toBeInTheDocument()
   })
 
   it('renders the theme toggle', () => {

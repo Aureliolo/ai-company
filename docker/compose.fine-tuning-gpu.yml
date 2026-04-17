@@ -1,0 +1,60 @@
+# Overlay for the embedding fine-tuning sidecar, GPU variant.
+#
+# Merge this on top of docker/compose.yml to add the fine-tune
+# service backed by the ~4 GB CUDA-bundled image. Requires an
+# NVIDIA GPU + driver on the host:
+#
+#   docker compose \
+#     -f docker/compose.yml \
+#     -f docker/compose.fine-tuning-gpu.yml \
+#     up
+#
+# The CLI-generated compose.yml (written by `synthorg init`) uses a
+# different wiring: it picks the variant based on `fine_tuning_variant`
+# in config.json and pins the image via the sigstore-verified digest
+# stored in `verified_digests`. This overlay is for users running
+# `docker compose` directly without the CLI. Renovate keeps the tag +
+# digest pair fresh via `docker:pinDigests` in renovate.json.
+#
+# Runs as UID 10003 -- a dedicated non-root user for security
+# isolation from sandbox (10001), sidecar (10002), and backend
+# (65532). The shared /data volume is owned by 65532; group_add gives
+# this container read access to group-readable files the backend
+# writes.
+
+services:
+  fine-tune:
+    # renovate: datasource=docker depName=ghcr.io/aureliolo/synthorg-fine-tune-gpu
+    image: ghcr.io/aureliolo/synthorg-fine-tune-gpu:v0.6.9@sha256:0000000000000000000000000000000000000000000000000000000000000000
+    volumes:
+      - synthorg-data:/data:ro
+    depends_on:
+      backend:
+        # The base backend service has no healthcheck, so Docker Compose
+        # would never satisfy ``service_healthy`` and the sidecar would
+        # stall forever. ``service_started`` gives correct boot ordering
+        # without fabricating a liveness signal we do not actually probe.
+        condition: service_started
+    user: "10003:10003"
+    group_add:
+      - "65532"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+          cpus: "4.0"
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

@@ -21,7 +21,7 @@ class TestCostOptimizedAssignmentStrategy:
     """CostOptimizedAssignmentStrategy tests."""
 
     def test_cheapest_agent_selected(self) -> None:
-        """Agent with lower total_cost_usd wins."""
+        """Agent with lower total_cost wins."""
         scorer = AgentTaskScorer()
         strategy = CostOptimizedAssignmentStrategy(scorer)
 
@@ -45,12 +45,12 @@ class TestCostOptimizedAssignmentStrategy:
                 AgentWorkload(
                     agent_id=str(expensive.id),
                     active_task_count=1,
-                    total_cost_usd=50.0,
+                    total_cost=50.0,
                 ),
                 AgentWorkload(
                     agent_id=str(cheap.id),
                     active_task_count=1,
-                    total_cost_usd=10.0,
+                    total_cost=10.0,
                 ),
             ),
         )
@@ -89,12 +89,12 @@ class TestCostOptimizedAssignmentStrategy:
                 AgentWorkload(
                     agent_id=str(better.id),
                     active_task_count=1,
-                    total_cost_usd=20.0,
+                    total_cost=20.0,
                 ),
                 AgentWorkload(
                     agent_id=str(other.id),
                     active_task_count=1,
-                    total_cost_usd=20.0,
+                    total_cost=20.0,
                 ),
             ),
         )
@@ -182,7 +182,7 @@ class TestCostOptimizedAssignmentStrategy:
                 AgentWorkload(
                     agent_id=str(known.id),
                     active_task_count=1,
-                    total_cost_usd=30.0,
+                    total_cost=30.0,
                 ),
             ),
         )
@@ -232,7 +232,7 @@ class TestCostOptimizedAssignmentStrategy:
                 AgentWorkload(
                     agent_id=str(agents[i].id),
                     active_task_count=1,
-                    total_cost_usd=c,
+                    total_cost=c,
                 )
                 for i, c in enumerate(costs)
             ),

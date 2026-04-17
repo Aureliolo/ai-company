@@ -387,7 +387,7 @@ class FailAndReassignStrategy:
             EXECUTION_RECOVERY_SNAPSHOT,
             task_id=task_execution.task.id,
             turn_count=snapshot.turn_count,
-            cost_usd=snapshot.accumulated_cost.cost_usd,
+            cost=snapshot.accumulated_cost.cost,
             error_message=error_message,
         )
 

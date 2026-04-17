@@ -233,7 +233,7 @@ class TestMessageMetadataDefaults:
         assert meta.task_id is None
         assert meta.project_id is None
         assert meta.tokens_used is None
-        assert meta.cost_usd is None
+        assert meta.cost is None
         assert meta.extra == ()
 
     def test_custom_values(self) -> None:
@@ -241,13 +241,13 @@ class TestMessageMetadataDefaults:
             task_id="task-1",
             project_id="proj-1",
             tokens_used=500,
-            cost_usd=0.05,
+            cost=0.05,
             extra=(("key1", "val1"),),
         )
         assert meta.task_id == "task-1"
         assert meta.project_id == "proj-1"
         assert meta.tokens_used == 500
-        assert meta.cost_usd == 0.05
+        assert meta.cost == 0.05
         assert meta.extra == (("key1", "val1"),)
 
 
@@ -275,15 +275,15 @@ class TestMessageMetadataValidation:
 
     def test_negative_cost_rejected(self) -> None:
         with pytest.raises(ValidationError):
-            MessageMetadata(cost_usd=-0.01)
+            MessageMetadata(cost=-0.01)
 
     def test_zero_tokens_allowed(self) -> None:
         meta = MessageMetadata(tokens_used=0)
         assert meta.tokens_used == 0
 
     def test_zero_cost_allowed(self) -> None:
-        meta = MessageMetadata(cost_usd=0.0)
-        assert meta.cost_usd == 0.0
+        meta = MessageMetadata(cost=0.0)
+        assert meta.cost == 0.0
 
     def test_blank_extra_key_rejected(self) -> None:
         with pytest.raises(ValidationError, match="extra keys must not be blank"):
@@ -315,7 +315,7 @@ class TestMessageMetadataSerialization:
             task_id="task-1",
             project_id="proj-1",
             tokens_used=100,
-            cost_usd=0.01,
+            cost=0.01,
             extra=(("env", "prod"),),
         )
         restored = MessageMetadata.model_validate_json(meta.model_dump_json())

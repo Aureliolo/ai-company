@@ -254,7 +254,7 @@ class TestProviderHealthUsageEnrichment:
                 model="test-small-001",
                 input_tokens=3000,
                 output_tokens=1000,
-                cost_usd=0.25,
+                cost=0.25,
                 timestamp=_NOW - timedelta(minutes=5),
             ),
         )
@@ -266,7 +266,7 @@ class TestProviderHealthUsageEnrichment:
                 model="test-small-001",
                 input_tokens=2000,
                 output_tokens=500,
-                cost_usd=0.15,
+                cost=0.15,
                 timestamp=_NOW - timedelta(minutes=10),
             ),
         )
@@ -299,7 +299,7 @@ class TestProviderHealthUsageEnrichment:
                 model="test-small-001",
                 input_tokens=1000,
                 output_tokens=500,
-                cost_usd=0.10,
+                cost=0.10,
                 timestamp=_NOW - timedelta(minutes=5),
             ),
         )
@@ -311,7 +311,7 @@ class TestProviderHealthUsageEnrichment:
                 model="other-model",
                 input_tokens=9000,
                 output_tokens=9000,
-                cost_usd=9.99,
+                cost=9.99,
                 timestamp=_NOW - timedelta(minutes=5),
             ),
         )

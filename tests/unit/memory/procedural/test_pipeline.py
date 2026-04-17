@@ -74,7 +74,7 @@ def _make_recovery_result(
         accumulated_cost=TokenUsage(
             input_tokens=500,
             output_tokens=200,
-            cost_usd=0.01,
+            cost=0.01,
         ),
         task_status=TaskStatus.FAILED,
         started_at=datetime.now(UTC),
@@ -103,7 +103,7 @@ def _make_execution_result(
             turn_number=i + 1,
             input_tokens=100,
             output_tokens=50,
-            cost_usd=0.001,
+            cost=0.001,
             tool_calls_made=tools,
             finish_reason=FinishReason.STOP,
         )

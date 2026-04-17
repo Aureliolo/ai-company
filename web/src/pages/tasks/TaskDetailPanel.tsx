@@ -228,8 +228,8 @@ export function TaskDetailPanel({
                 {task.deadline && (
                   <MetaField icon={Calendar} label="Deadline" value={formatDate(task.deadline)} />
                 )}
-                {task.cost_usd != null && (
-                  <MetaField icon={Tag} label="Cost" value={formatCurrency(task.cost_usd, DEFAULT_CURRENCY)} />
+                {task.cost != null && (
+                  <MetaField icon={Tag} label="Cost" value={formatCurrency(task.cost, DEFAULT_CURRENCY)} />
                 )}
               </div>
 

@@ -284,7 +284,7 @@ field and `attachments` array have been removed in favour of a single
     "task_id": "task-123",
     "project_id": null,
     "tokens_used": 1200,
-    "cost_usd": 0.018,
+    "cost": 0.018,
     "extra": [["model", "example-medium-001"]]
   }
 }

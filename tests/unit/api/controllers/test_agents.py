@@ -176,7 +176,7 @@ def _make_task_metric(  # noqa: PLR0913
     task_id: str = "task-001",
     is_success: bool = True,
     duration_seconds: float = 60.0,
-    cost_usd: float = 0.05,
+    cost: float = 0.05,
 ) -> TaskMetricRecord:
     return TaskMetricRecord(
         agent_id=agent_id,
@@ -185,7 +185,7 @@ def _make_task_metric(  # noqa: PLR0913
         completed_at=completed_at,
         is_success=is_success,
         duration_seconds=duration_seconds,
-        cost_usd=cost_usd,
+        cost=cost,
         turns_used=5,
         tokens_used=1000,
         complexity=Complexity.MEDIUM,

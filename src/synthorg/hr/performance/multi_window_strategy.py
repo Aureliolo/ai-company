@@ -136,7 +136,7 @@ class MultiWindowStrategy:
         if has_enough:
             scored = [r.quality_score for r in records if r.quality_score is not None]
             avg_quality = sum(scored) / len(scored) if scored else None
-            avg_cost = sum(r.cost_usd for r in records) / count
+            avg_cost = sum(r.cost for r in records) / count
             avg_time = sum(r.duration_seconds for r in records) / count
             avg_tokens = sum(r.tokens_used for r in records) / count
             success_rate = completed / count

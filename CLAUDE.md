@@ -82,6 +82,20 @@ See `web/CLAUDE.md` for the full component inventory, design token rules, and po
 - **NEVER hardcode** BCP 47 locale strings (e.g. `'en-US'`) or call bare `.toLocaleString()` -- use the helpers in `@/utils/format` which read `getLocale()` from `@/utils/locale`
 - A PostToolUse hook (`scripts/check_web_design_system.py`) enforces these rules on every Edit/Write to `web/src/` (colors, fonts, Motion durations, hardcoded locales, bare `.toLocale*String()` calls, missing Storybook stories, duplicate component patterns)
 
+## Regional Defaults (MANDATORY)
+
+No default may privilege a single region, currency, or locale. Every user-facing format resolves from: user/company setting -> browser/system -> neutral fallback.
+
+- **Currency**: never hardcode ISO 4217 codes (`'USD'`, `'EUR'`, `'GBP'`, ...) or symbols (`$`, `€`, `£`) in production code. Backend: use `DEFAULT_CURRENCY` from `synthorg.budget.currency` or read the runtime `budget.currency` setting. Frontend: import `DEFAULT_CURRENCY` from `@/utils/currencies` or read `useSettingsStore().currency`. Allowlisted files: the backend symbol table (`budget/currency.py`), the dropdown options (`web/src/utils/currencies.ts`), and the `DEFAULT_CURRENCY` re-export in `format.ts`.
+- **Field naming**: no `_usd` suffix on money fields (backend, API DTOs, TS types, DB columns). The field value is in the operator's configured currency; the type carries the money semantics, not the name.
+- **Locale**: never hardcode BCP 47 tags (`'en-US'`, `'de-DE'`, ...) or call bare `.toLocaleString()` / `.toLocaleDateString()` / `.toLocaleTimeString()`. Use helpers in `@/utils/format`, all of which read `getLocale()` from `@/utils/locale`. Frontend fallback is plain `'en'` (neutral English). Backend exposes a `display.locale` setting that overrides the browser default when set.
+- **Timezone**: store UTC everywhere; render in the user's browser timezone via `Intl` without passing a `timeZone` option.
+- **Date / number format**: always via `Intl`; no `MM/DD/YYYY` / `DD/MM/YYYY` / comma-separator templates.
+- **Units**: metric only. Paper size A4 if print flows are ever added.
+- **Spelling**: American English is the UI default (`color`, `initialize`). Document deviations; do not mix.
+
+Enforced by `scripts/check_web_design_system.py` (PostToolUse hook on every `web/src/` edit). The hook flags hardcoded currency codes, currency symbols adjacent to digits (`"$10"`, `"\u20ac50"`), and identifiers ending in `_usd`. Legitimate Storybook variants that intentionally demo a specific currency can opt out via a `// lint-allow: regional-defaults` marker on or above the line.
+
 ## Shell Usage
 
 - **NEVER use `cd` in Bash commands** -- the working directory is already set to the project root. Use absolute paths or run commands directly. Do NOT prefix commands with `cd C:/Users/Aurelio/synthorg &&`. Exception: `bash -c "cd <dir> && <cmd>"` is safe (runs in a child process, no cwd side effects). Use this for tools without a `-C` flag -- e.g. `bash -c "cd web && npm install"` since `npm --prefix` is broken for bare `npm install`.

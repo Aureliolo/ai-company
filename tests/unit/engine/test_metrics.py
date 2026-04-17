@@ -188,19 +188,21 @@ class TestTaskCompletionMetricsFromRunResult:
         sample_agent_context: AgentContext,
         *,
         turns: tuple[TurnRecord, ...] = (),
-        cost_usd: float = 0.0,
+        cost: float = 0.0,
         input_tokens: int = 0,
         output_tokens: int = 0,
     ) -> AgentRunResult:
         """Build a minimal AgentRunResult for testing."""
         ctx = sample_agent_context
-        if input_tokens or output_tokens:
+        # Cover fixed-fee / minimum-charge scenarios (cost > 0 with zero
+        # tokens) in addition to the usual tokens-produce-cost shape.
+        if cost > 0 or input_tokens or output_tokens:
             ctx = ctx.model_copy(
                 update={
                     "accumulated_cost": TokenUsage(
                         input_tokens=input_tokens,
                         output_tokens=output_tokens,
-                        cost_usd=cost_usd,
+                        cost=cost,
                     ),
                 },
             )
@@ -233,14 +235,14 @@ class TestTaskCompletionMetricsFromRunResult:
                 turn_number=1,
                 input_tokens=100,
                 output_tokens=50,
-                cost_usd=0.01,
+                cost=0.01,
                 finish_reason=FinishReason.STOP,
             ),
             TurnRecord(
                 turn_number=2,
                 input_tokens=200,
                 output_tokens=80,
-                cost_usd=0.02,
+                cost=0.02,
                 finish_reason=FinishReason.STOP,
             ),
         )
@@ -249,7 +251,7 @@ class TestTaskCompletionMetricsFromRunResult:
             turns=turns,
             input_tokens=300,
             output_tokens=130,
-            cost_usd=0.03,
+            cost=0.03,
         )
         metrics = TaskCompletionMetrics.from_run_result(result)
 

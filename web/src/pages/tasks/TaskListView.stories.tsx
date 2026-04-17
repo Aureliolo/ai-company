@@ -19,7 +19,7 @@ function makeTask(id: string, title: string, overrides: Partial<Task> = {}): Tas
     acceptance_criteria: [],
     estimated_complexity: 'medium',
     budget_limit: 10,
-    cost_usd: 2.50,
+    cost: 2.50,
     deadline: null,
     max_retries: 3,
     parent_task_id: null,

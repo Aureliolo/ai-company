@@ -617,7 +617,7 @@ def make_turn_record(  # noqa: PLR0913
         turn_number=turn_number,
         input_tokens=response.usage.input_tokens,
         output_tokens=response.usage.output_tokens,
-        cost_usd=response.usage.cost_usd,
+        cost=response.usage.cost,
         tool_calls_made=tuple(tc.name for tc in response.tool_calls),
         tool_call_fingerprints=compute_fingerprints(response.tool_calls),
         finish_reason=response.finish_reason,

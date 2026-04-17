@@ -10,8 +10,8 @@ const mockOverview: OverviewMetrics = {
   total_tasks: 10,
   tasks_by_status: {} as Record<string, number>,
   total_agents: 5,
-  total_cost_usd: 42,
-  budget_remaining_usd: 58,
+  total_cost: 42,
+  budget_remaining: 58,
   budget_used_percent: 42,
   cost_7d_trend: [
     { timestamp: '2026-03-20', value: 5 },
@@ -35,15 +35,15 @@ const mockBudgetConfig: BudgetConfig = {
 
 const mockForecast: ForecastResponse = {
   horizon_days: 14,
-  projected_total_usd: 80,
+  projected_total: 80,
   daily_projections: [
-    { day: 'Day 1', projected_spend_usd: 3 },
-    { day: 'Day 2', projected_spend_usd: 4 },
-    { day: 'Day 3', projected_spend_usd: 5 },
+    { day: 'Day 1', projected_spend: 3 },
+    { day: 'Day 2', projected_spend: 4 },
+    { day: 'Day 3', projected_spend: 5 },
   ],
   days_until_exhausted: 20,
   confidence: 0.8,
-  avg_daily_spend_usd: 3,
+  avg_daily_spend: 3,
   currency: 'EUR',
 }
 

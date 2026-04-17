@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { DepartmentEditDrawer } from './DepartmentEditDrawer'
 import type { CompanyConfig, Department, DepartmentHealth } from '@/api/types'
+import { DEFAULT_CURRENCY } from '@/utils/currencies'
 
 const mockDept: Department = {
   name: 'engineering',
@@ -21,7 +22,7 @@ const mockHealth: DepartmentHealth = {
   department_name: 'engineering',
   agent_count: 3,
   active_agent_count: 2,
-  currency: 'EUR',
+  currency: DEFAULT_CURRENCY,
   avg_performance_score: 7.5,
   department_cost_7d: 25.5,
   cost_trend: [],

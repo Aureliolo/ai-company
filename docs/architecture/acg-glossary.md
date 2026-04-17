@@ -39,7 +39,7 @@ design, and agent pruning recommendations, see
 
 | ACG Concept | SynthOrg Equivalent | Source | Fidelity | Notes |
 |---|---|---|---|---|
-| Node cost | `TurnRecord.cost_usd` per turn, `TokenUsage` per completion | `engine/loop_protocol.py`, `providers/models.py` | Strong | Per-turn cost tracking with provider breakdown. Accumulated over execution via `ctx.accumulated_cost`. |
+| Node cost | `TurnRecord.cost` per turn, `TokenUsage` per completion | `engine/loop_protocol.py`, `providers/models.py` | Strong | Per-turn cost tracking with provider breakdown. Accumulated over execution via `ctx.accumulated_cost`. |
 | Resource constraints | `BudgetEnforcer` (3-layer), quota degradation, context budget | `budget/enforcer.py`, `engine/context_budget.py` | Strong | SynthOrg's resource model is more sophisticated than ACG: multi-layer enforcement, per-agent daily limits, context fill tracking, risk budget. |
 | Quality-cost tradeoffs | Budget-aware loop downgrade (hybrid->plan_execute at 80%), model auto-downgrade, quota degradation strategies | `engine/loop_selector.py`, `budget/enforcer.py` | Strong | Explicit tradeoff mechanisms with hard budget caps. Downgrade only at task boundaries (consistency guarantee). |
 
@@ -61,7 +61,7 @@ Reverse lookup for readers starting from SynthOrg terminology.
 | `ParallelExecutor`, `CoordinationWave` | Parallel composition | First-class with `fail_fast` |
 | `TerminationReason` (7 values) | Termination conditions | Richer taxonomy |
 | `BudgetEnforcer` (3-layer) | Resource constraints | Multi-layer enforcement exceeds ACG |
-| `TurnRecord.cost_usd`, `TokenUsage` | Node cost | Per-turn + per-completion |
+| `TurnRecord.cost`, `TokenUsage` | Node cost | Per-turn + per-completion |
 | Budget-aware downgrade | Quality-cost tradeoffs | Task-boundary-only downgrade |
 
 ---

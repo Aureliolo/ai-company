@@ -1,4 +1,5 @@
 import { StatPill } from '@/components/ui/stat-pill'
+import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { formatCurrency } from '@/utils/format'
 import { cn } from '@/lib/utils'
 
@@ -14,7 +15,7 @@ export function DepartmentStatsBar({
   agentCount,
   activeCount,
   cost7d,
-  currency = 'EUR',
+  currency = DEFAULT_CURRENCY,
   className,
 }: DepartmentStatsBarProps) {
   return (

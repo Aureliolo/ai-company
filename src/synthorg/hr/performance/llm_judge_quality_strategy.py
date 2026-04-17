@@ -48,7 +48,6 @@ Respond with JSON only: {{"score": <float>, "rationale": "<brief explanation>"}}
 
 Task metrics (for reference):
 - is_success: {is_success}
-- cost_usd: {cost_usd}
 - duration_seconds: {duration_seconds}
 - complexity: {complexity}
 - turns_used: {turns_used}
@@ -136,7 +135,7 @@ class LlmJudgeQualityStrategy:
         )
 
         try:
-            llm_score, _rationale, cost_usd, usage = await self._call_llm(
+            llm_score, _rationale, cost, usage = await self._call_llm(
                 task_result,
                 acceptance_criteria,
             )
@@ -163,12 +162,12 @@ class LlmJudgeQualityStrategy:
             )
             return _FALLBACK_RESULT
         clamped_score = max(0.0, min(_MAX_SCORE, llm_score))
-        await self._try_record_cost(agent_id, task_id, cost_usd, usage)
+        await self._try_record_cost(agent_id, task_id, cost, usage)
         return self._build_result(
             agent_id,
             task_id,
             clamped_score,
-            cost_usd,
+            cost,
             acceptance_criteria,
         )
 
@@ -177,7 +176,7 @@ class LlmJudgeQualityStrategy:
         agent_id: NotBlankStr,
         task_id: NotBlankStr,
         clamped_score: float,
-        cost_usd: float,
+        cost: float,
         acceptance_criteria: tuple[AcceptanceCriterion, ...],
     ) -> QualityScoreResult:
         """Build and log the quality score result."""
@@ -194,7 +193,7 @@ class LlmJudgeQualityStrategy:
             agent_id=agent_id,
             task_id=task_id,
             score=result.score,
-            cost_usd=cost_usd,
+            cost=cost,
         )
         return result
 
@@ -202,7 +201,7 @@ class LlmJudgeQualityStrategy:
         self,
         agent_id: NotBlankStr,
         task_id: NotBlankStr,
-        cost_usd: float,
+        cost: float,
         usage: tuple[int, int],
     ) -> None:
         """Record cost, logging a warning on failure."""
@@ -212,7 +211,7 @@ class LlmJudgeQualityStrategy:
             await self._record_cost(
                 agent_id=agent_id,
                 task_id=task_id,
-                cost_usd=cost_usd,
+                cost=cost,
                 usage=usage,
             )
         except MemoryError, RecursionError:
@@ -248,9 +247,14 @@ class LlmJudgeQualityStrategy:
         else:
             criteria_list = "(no acceptance criteria provided)"
 
+        # Cost intentionally omitted: any numeric form (raw or per-1k)
+        # reads differently under different ``budget.currency`` values,
+        # which would bias the judge's scores across operators. The
+        # remaining signals (success flag, duration, complexity, turns,
+        # tokens) are currency-invariant and sufficient for quality
+        # assessment.
         return _JUDGE_PROMPT.format(
             is_success=task_result.is_success,
-            cost_usd=task_result.cost_usd,
             duration_seconds=task_result.duration_seconds,
             complexity=task_result.complexity.value,
             turns_used=task_result.turns_used,
@@ -317,7 +321,7 @@ class LlmJudgeQualityStrategy:
         """Call the LLM and return parsed evaluation results.
 
         Returns:
-            Tuple of (score, rationale, cost_usd, (input_tokens, output_tokens)).
+            Tuple of (score, rationale, cost, (input_tokens, output_tokens)).
 
         Raises:
             ValueError: If the LLM response cannot be parsed.
@@ -353,7 +357,7 @@ class LlmJudgeQualityStrategy:
         return (
             llm_score,
             rationale,
-            response.usage.cost_usd,
+            response.usage.cost,
             (response.usage.input_tokens, response.usage.output_tokens),
         )
 
@@ -362,7 +366,7 @@ class LlmJudgeQualityStrategy:
         *,
         agent_id: NotBlankStr,
         task_id: NotBlankStr,
-        cost_usd: float,
+        cost: float,
         usage: tuple[int, int],
     ) -> None:
         """Record the judge call cost via CostTracker.
@@ -370,7 +374,7 @@ class LlmJudgeQualityStrategy:
         Args:
             agent_id: Agent being evaluated.
             task_id: Task being evaluated.
-            cost_usd: Cost of the LLM call.
+            cost: Cost of the LLM call.
             usage: Tuple of (input_tokens, output_tokens).
         """
         # Caller (_try_record_cost) guards for None; assert narrows type.
@@ -382,7 +386,7 @@ class LlmJudgeQualityStrategy:
             model=NotBlankStr(self._model),
             input_tokens=usage[0],
             output_tokens=usage[1],
-            cost_usd=cost_usd,
+            cost=cost,
             timestamp=datetime.now(UTC),
             call_category=LLMCallCategory.SYSTEM,
         )

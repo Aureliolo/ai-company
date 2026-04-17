@@ -40,7 +40,7 @@ function compareTasks(a: Task, b: Task, key: SortKey, dir: SortDirection): numbe
     case 'priority': cmp = (PRIORITY_ORDER[a.priority] ?? 9) - (PRIORITY_ORDER[b.priority] ?? 9); break
     case 'type': cmp = a.type.localeCompare(b.type); break
     case 'deadline': cmp = (a.deadline ?? '').localeCompare(b.deadline ?? ''); break
-    case 'cost': cmp = (a.cost_usd ?? 0) - (b.cost_usd ?? 0); break
+    case 'cost': cmp = (a.cost ?? 0) - (b.cost ?? 0); break
   }
   return dir === 'desc' ? -cmp : cmp
 }
@@ -152,7 +152,7 @@ function TaskListRow({ task, onSelectTask }: { task: Task; onSelectTask: (taskId
         {task.deadline ? formatRelativeTime(task.deadline) : '--'}
       </span>
       <span className="w-20 text-right font-mono text-[10px] text-text-muted">
-        {task.cost_usd != null ? formatCurrency(task.cost_usd, DEFAULT_CURRENCY) : '--'}
+        {task.cost != null ? formatCurrency(task.cost, DEFAULT_CURRENCY) : '--'}
       </span>
     </div>
   )

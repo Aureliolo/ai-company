@@ -514,7 +514,7 @@ class TestAgentEngineBudgetChecker:
             budget_limit=0.0,
             status=TaskStatus.ASSIGNED,
         )
-        response = _make_completion_response(cost_usd=100.0)
+        response = _make_completion_response(cost=100.0)
         provider = mock_provider_factory([response])
         engine = AgentEngine(provider=provider)
 
@@ -538,7 +538,7 @@ class TestAgentEngineCostRecording:
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
         tracker = CostTracker()
-        response = _make_completion_response(cost_usd=0.05)
+        response = _make_completion_response(cost=0.05)
         provider = mock_provider_factory([response])
         engine = AgentEngine(
             provider=provider,
@@ -591,7 +591,7 @@ class TestAgentEngineCostRecording:
             status=TaskStatus.ASSIGNED,
         )
         response = _make_completion_response(
-            cost_usd=0.0,
+            cost=0.0,
             input_tokens=0,
             output_tokens=0,
         )
@@ -621,7 +621,7 @@ class TestAgentEngineCostRecording:
             status=TaskStatus.ASSIGNED,
         )
         response = _make_completion_response(
-            cost_usd=0.0,
+            cost=0.0,
             input_tokens=5,
             output_tokens=2,
         )
@@ -642,7 +642,7 @@ class TestAgentEngineCostRecording:
         """CostTracker.record() failure does not affect execution result."""
         tracker = MagicMock()
         tracker.record = AsyncMock(side_effect=RuntimeError("DB write failed"))
-        response = _make_completion_response(cost_usd=0.05)
+        response = _make_completion_response(cost=0.05)
         provider = mock_provider_factory([response])
         engine = AgentEngine(provider=provider, cost_tracker=tracker)
 
@@ -682,7 +682,7 @@ class TestAgentEngineCompletionConfig:
                     turn_number=1,
                     input_tokens=10,
                     output_tokens=5,
-                    cost_usd=0.001,
+                    cost=0.001,
                     finish_reason=FinishReason.STOP,
                 ),
             ),
@@ -801,7 +801,7 @@ class TestAgentEngineDefaultLoop:
                     turn_number=1,
                     input_tokens=10,
                     output_tokens=5,
-                    cost_usd=0.001,
+                    cost=0.001,
                     finish_reason=FinishReason.STOP,
                 ),
             ),
@@ -981,7 +981,7 @@ class TestAgentEnginePromptTokenRatioWarning:
             "prompt_tokens",
             "input_tokens",
             "output_tokens",
-            "cost_usd",
+            "cost",
             "expect_warning",
         ),
         [
@@ -1001,7 +1001,7 @@ class TestAgentEnginePromptTokenRatioWarning:
         prompt_tokens: int,
         input_tokens: int,
         output_tokens: int,
-        cost_usd: float,
+        cost: float,
         expect_warning: bool,
     ) -> None:
         """Warning emitted iff prompt tokens dominate total tokens.
@@ -1014,7 +1014,7 @@ class TestAgentEnginePromptTokenRatioWarning:
         response = _make_completion_response(
             input_tokens=input_tokens,
             output_tokens=output_tokens,
-            cost_usd=cost_usd,
+            cost=cost,
         )
         provider = mock_provider_factory([response])
         engine = AgentEngine(provider=provider)
@@ -1147,7 +1147,7 @@ class TestSyncToTaskEngine:
                     turn_number=1,
                     input_tokens=10,
                     output_tokens=5,
-                    cost_usd=0.001,
+                    cost=0.001,
                     finish_reason=FinishReason.STOP,
                 ),
             ),
@@ -1204,7 +1204,7 @@ class TestSyncToTaskEngine:
                     turn_number=1,
                     input_tokens=10,
                     output_tokens=5,
-                    cost_usd=0.001,
+                    cost=0.001,
                     finish_reason=FinishReason.STOP,
                 ),
             ),
@@ -1260,7 +1260,7 @@ class TestSyncToTaskEngine:
                     turn_number=1,
                     input_tokens=10,
                     output_tokens=5,
-                    cost_usd=0.001,
+                    cost=0.001,
                     finish_reason=FinishReason.STOP,
                 ),
             ),

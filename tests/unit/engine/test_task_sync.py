@@ -91,7 +91,7 @@ def _make_execution_result(
                 turn_number=1,
                 input_tokens=10,
                 output_tokens=5,
-                cost_usd=0.001,
+                cost=0.001,
                 finish_reason=FinishReason.STOP,
             ),
         ),

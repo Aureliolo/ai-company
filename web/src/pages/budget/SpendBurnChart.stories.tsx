@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { SpendBurnChart } from './SpendBurnChart'
+import { DEFAULT_CURRENCY } from '@/utils/currencies'
 
 const TREND_DATA = [
   { timestamp: '2026-03-18', value: 4.2 },
@@ -13,17 +14,17 @@ const TREND_DATA = [
 
 const FORECAST = {
   horizon_days: 7,
-  projected_total_usd: 65,
+  projected_total: 65,
   daily_projections: [
-    { day: '2026-03-25', projected_spend_usd: 8.5 },
-    { day: '2026-03-26', projected_spend_usd: 9.0 },
-    { day: '2026-03-27', projected_spend_usd: 9.2 },
-    { day: '2026-03-28', projected_spend_usd: 9.5 },
+    { day: '2026-03-25', projected_spend: 8.5 },
+    { day: '2026-03-26', projected_spend: 9.0 },
+    { day: '2026-03-27', projected_spend: 9.2 },
+    { day: '2026-03-28', projected_spend: 9.5 },
   ],
   days_until_exhausted: 45,
   confidence: 0.82,
-  avg_daily_spend_usd: 6.27,
-  currency: 'EUR',
+  avg_daily_spend: 6.27,
+  currency: DEFAULT_CURRENCY,
 }
 
 const ALERTS = {
@@ -70,12 +71,12 @@ export const WithoutForecast: Story = {
 const NEAR_BUDGET_TREND = TREND_DATA.map((p) => ({ ...p, value: p.value * 10 }))
 const NEAR_BUDGET_FORECAST = {
   ...FORECAST,
-  projected_total_usd: FORECAST.projected_total_usd * 10,
-  avg_daily_spend_usd: FORECAST.avg_daily_spend_usd * 10,
+  projected_total: FORECAST.projected_total * 10,
+  avg_daily_spend: FORECAST.avg_daily_spend * 10,
   days_until_exhausted: 4,
   daily_projections: FORECAST.daily_projections.map((p) => ({
     ...p,
-    projected_spend_usd: p.projected_spend_usd * 10,
+    projected_spend: p.projected_spend * 10,
   })),
 }
 

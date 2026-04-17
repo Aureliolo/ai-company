@@ -489,7 +489,7 @@ class CompanyConfig(BaseModel):
     Attributes:
         autonomy: Autonomy configuration (level + presets).
         approval_timeout: Timeout policy for pending approval items.
-        budget_monthly: Monthly budget in USD (base currency).
+        budget_monthly: Monthly budget in the configured currency.
         communication_pattern: Default communication pattern name.
         tool_access_default: Default tool access for all agents.
         middleware: Agent and coordination middleware configuration.
@@ -512,7 +512,7 @@ class CompanyConfig(BaseModel):
     budget_monthly: float = Field(
         default=100.0,
         ge=0.0,
-        description="Monthly budget in USD (base currency)",
+        description="Monthly budget in the configured currency",
     )
     communication_pattern: NotBlankStr = Field(
         default="hybrid",

@@ -426,14 +426,14 @@ class CostOptimizer:
         self,
         *,
         agent_id: str,
-        estimated_cost_usd: float,
+        estimated_cost: float,
         now: datetime | None = None,
     ) -> ApprovalDecision:
         """Evaluate whether an operation should proceed.
 
         Evaluates three criteria in order:
 
-        1. Rejects negative ``estimated_cost_usd`` immediately.
+        1. Rejects negative ``estimated_cost`` immediately.
         2. Denies if the *projected* alert level (after adding the
            estimated cost) meets or exceeds the auto-deny threshold.
         3. Denies if the projected cost would exceed the hard-stop
@@ -446,7 +446,7 @@ class CostOptimizer:
 
         Args:
             agent_id: Agent requesting the operation.
-            estimated_cost_usd: Estimated cost of the operation.  Must
+            estimated_cost: Estimated cost of the operation.  Must
                 be >= 0.
             now: Reference timestamp for billing period computation.
                 Defaults to ``datetime.now(UTC)``.
@@ -455,16 +455,16 @@ class CostOptimizer:
             Approval decision with reasoning.
 
         Raises:
-            ValueError: If ``estimated_cost_usd`` is negative.
+            ValueError: If ``estimated_cost`` is negative.
         """
-        if estimated_cost_usd < 0:
+        if estimated_cost < 0:
             logger.warning(
                 CFO_OPERATION_DENIED,
                 agent_id=agent_id,
-                estimated_cost=estimated_cost_usd,
+                estimated_cost=estimated_cost,
                 reason="negative_estimated_cost",
             )
-            msg = f"estimated_cost_usd must be >= 0, got {estimated_cost_usd}"
+            msg = f"estimated_cost must be >= 0, got {estimated_cost}"
             raise ValueError(msg)
 
         cfg = self._budget_config
@@ -473,7 +473,7 @@ class CostOptimizer:
             return ApprovalDecision(
                 approved=True,
                 reason="Budget enforcement disabled (no monthly budget)",
-                budget_remaining_usd=0.0,
+                budget_remaining=0.0,
                 budget_used_percent=0.0,
                 alert_level=BudgetAlertLevel.NORMAL,
                 conditions=(),
@@ -495,7 +495,7 @@ class CostOptimizer:
 
         # Use projected alert level (after cost) for auto-deny check (#11)
         projected_cost = round(
-            monthly_cost + estimated_cost_usd,
+            monthly_cost + estimated_cost,
             BUDGET_ROUNDING_PRECISION,
         )
         projected_pct = round(
@@ -506,7 +506,7 @@ class CostOptimizer:
 
         denial = self._check_denial(
             agent_id=agent_id,
-            estimated_cost_usd=estimated_cost_usd,
+            estimated_cost=estimated_cost,
             remaining=remaining,
             used_pct=used_pct,
             alert_level=alert_level,
@@ -517,7 +517,7 @@ class CostOptimizer:
             return denial
 
         conditions = self._build_approval_conditions(
-            estimated_cost_usd=estimated_cost_usd,
+            estimated_cost=estimated_cost,
             projected_alert=projected_alert,
             projected_pct=projected_pct,
         )
@@ -525,7 +525,7 @@ class CostOptimizer:
         decision = ApprovalDecision(
             approved=True,
             reason="Approved",
-            budget_remaining_usd=remaining,
+            budget_remaining=remaining,
             budget_used_percent=used_pct,
             alert_level=alert_level,
             conditions=conditions,
@@ -535,7 +535,7 @@ class CostOptimizer:
             CFO_APPROVAL_EVALUATED,
             agent_id=agent_id,
             approved=True,
-            estimated_cost=estimated_cost_usd,
+            estimated_cost=estimated_cost,
             alert_level=alert_level.value,
             conditions_count=len(conditions),
         )
@@ -657,7 +657,7 @@ class CostOptimizer:
         self,
         *,
         agent_id: str,
-        estimated_cost_usd: float,
+        estimated_cost: float,
         remaining: float,
         used_pct: float,
         alert_level: BudgetAlertLevel,
@@ -674,7 +674,7 @@ class CostOptimizer:
             logger.warning(
                 CFO_OPERATION_DENIED,
                 agent_id=agent_id,
-                estimated_cost=estimated_cost_usd,
+                estimated_cost=estimated_cost,
                 alert_level=alert_level.value,
                 projected_alert_level=projected_alert.value,
                 reason="alert_level_exceeded",
@@ -686,7 +686,7 @@ class CostOptimizer:
                     f"meets or exceeds auto-deny threshold "
                     f"{auto_deny_level.value}"
                 ),
-                budget_remaining_usd=remaining,
+                budget_remaining=remaining,
                 budget_used_percent=used_pct,
                 alert_level=alert_level,
                 conditions=(),
@@ -702,7 +702,7 @@ class CostOptimizer:
             logger.warning(
                 CFO_OPERATION_DENIED,
                 agent_id=agent_id,
-                estimated_cost=estimated_cost_usd,
+                estimated_cost=estimated_cost,
                 projected_cost=projected_cost,
                 hard_stop_limit=hard_stop_limit,
                 reason="would_exceed_hard_stop",
@@ -715,7 +715,7 @@ class CostOptimizer:
                     f"would exceed hard stop "
                     f"{format_cost(hard_stop_limit, self._budget_config.currency)}"
                 ),
-                budget_remaining_usd=remaining,
+                budget_remaining=remaining,
                 budget_used_percent=used_pct,
                 alert_level=alert_level,
                 conditions=(),
@@ -726,17 +726,17 @@ class CostOptimizer:
     def _build_approval_conditions(
         self,
         *,
-        estimated_cost_usd: float,
+        estimated_cost: float,
         projected_alert: BudgetAlertLevel,
         projected_pct: float,
     ) -> tuple[str, ...]:
         """Build warning conditions for an approved operation."""
         conditions: list[str] = []
-        warn_threshold = self._config.approval_warn_threshold_usd
-        if estimated_cost_usd >= warn_threshold:
+        warn_threshold = self._config.approval_warn_threshold
+        if estimated_cost >= warn_threshold:
             conditions.append(
                 f"High-cost operation: "
-                f"{format_cost(estimated_cost_usd, self._budget_config.currency)} "
+                f"{format_cost(estimated_cost, self._budget_config.currency)} "
                 f"(threshold: "
                 f"{format_cost(warn_threshold, self._budget_config.currency)})"
             )

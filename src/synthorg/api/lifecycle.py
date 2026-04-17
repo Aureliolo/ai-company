@@ -10,7 +10,11 @@ from typing import TYPE_CHECKING, Protocol
 
 from synthorg.api.auth.secret import resolve_jwt_secret
 from synthorg.api.auth.service import AuthService
-from synthorg.api.auth.session_store import SessionStore
+from synthorg.api.auth.session_store import (
+    PostgresSessionStore,
+    SessionStore,
+    SqliteSessionStore,
+)
 from synthorg.api.auth.system_user import ensure_system_user
 from synthorg.backup.models import BackupTrigger
 from synthorg.observability import get_logger
@@ -32,6 +36,37 @@ if TYPE_CHECKING:
     from synthorg.settings.dispatcher import SettingsChangeDispatcher
 
 logger = get_logger(__name__)
+
+
+def _build_session_store(db: object) -> SessionStore:
+    """Pick the concrete session store matching the persistence backend.
+
+    ``PersistenceBackend.get_db()`` returns either an
+    ``aiosqlite.Connection`` (SQLite) or a
+    ``psycopg_pool.AsyncConnectionPool`` (Postgres). The two stores
+    use different SQL dialects and connection-handling APIs, so the
+    caller must pick the right implementation. We dispatch on the
+    concrete class name to avoid importing psycopg-pool at module
+    load time (the dependency is optional and only wired when the
+    Postgres backend is active). Unknown handles fail fast rather
+    than silently routing to the SQLite implementation.
+    """
+    cls_name = type(db).__name__
+    if cls_name == "AsyncConnectionPool":
+        return PostgresSessionStore(db)  # type: ignore[arg-type]
+    if cls_name == "Connection":
+        return SqliteSessionStore(db)  # type: ignore[arg-type]
+    msg = (
+        f"Unsupported session-store DB handle: {type(db)!r}. "
+        f"Expected aiosqlite.Connection or psycopg_pool.AsyncConnectionPool."
+    )
+    logger.error(
+        API_APP_STARTUP,
+        reason="unsupported_session_store_handle",
+        handle_type=type(db).__name__,
+        error=msg,
+    )
+    raise TypeError(msg)
 
 
 class _AsyncStartStop(Protocol):
@@ -303,7 +338,10 @@ async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
                 )
                 raise
 
-            # Session store shares the persistence db connection.
+            # Session store shares the persistence db handle. Concrete
+            # class is picked by backend type -- the two implementations
+            # have different connection handles (aiosqlite.Connection vs
+            # psycopg_pool.AsyncConnectionPool) and cannot be swapped.
             try:
                 db = persistence.get_db()
             except NotImplementedError:
@@ -314,12 +352,13 @@ async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
                 )
             else:
                 if not app_state.has_session_store:
-                    session_store = SessionStore(db)
+                    session_store: SessionStore = _build_session_store(db)
                     await session_store.load_revoked()
                     app_state.set_session_store(session_store)
                     logger.info(
                         API_APP_STARTUP,
                         note="Session store initialized",
+                        backend=type(session_store).__name__,
                     )
 
                 # Lockout store shares the same DB connection.

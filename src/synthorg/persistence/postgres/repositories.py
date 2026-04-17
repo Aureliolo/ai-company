@@ -282,10 +282,10 @@ class PostgresCostRecordRepository:
                     """
                     INSERT INTO cost_records (
                         agent_id, task_id, provider, model, input_tokens,
-                        output_tokens, cost_usd, timestamp, call_category
+                        output_tokens, cost, timestamp, call_category
                     ) VALUES (
                         %(agent_id)s, %(task_id)s, %(provider)s, %(model)s,
-                        %(input_tokens)s, %(output_tokens)s, %(cost_usd)s,
+                        %(input_tokens)s, %(output_tokens)s, %(cost)s,
                         %(timestamp)s, %(call_category)s
                     )
                     """,
@@ -296,7 +296,7 @@ class PostgresCostRecordRepository:
                         "model": record.model,
                         "input_tokens": record.input_tokens,
                         "output_tokens": record.output_tokens,
-                        "cost_usd": record.cost_usd,
+                        "cost": record.cost,
                         "timestamp": record.timestamp,
                         "call_category": record.call_category,
                     },
@@ -335,7 +335,7 @@ class PostgresCostRecordRepository:
 
         sql = (
             "SELECT agent_id, task_id, provider, model, input_tokens, "
-            "output_tokens, cost_usd, timestamp, call_category "
+            "output_tokens, cost, timestamp, call_category "
             "FROM cost_records"
         )
         if clauses:
@@ -379,8 +379,8 @@ class PostgresCostRecordRepository:
         agent_id: str | None = None,
         task_id: str | None = None,
     ) -> float:
-        """Sum total cost_usd, optionally filtered by agent and/or task."""
-        sql = "SELECT COALESCE(SUM(cost_usd), 0.0) FROM cost_records"
+        """Sum total cost, optionally filtered by agent and/or task."""
+        sql = "SELECT COALESCE(SUM(cost), 0.0) FROM cost_records"
         conditions: list[str] = []
         params: list[str] = []
         if agent_id is not None:
@@ -416,7 +416,7 @@ class PostgresCostRecordRepository:
         logger.debug(
             PERSISTENCE_COST_RECORD_AGGREGATED,
             agent_id=agent_id,
-            total_usd=total,
+            total_cost=total,
         )
         return total
 

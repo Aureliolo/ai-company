@@ -20,7 +20,7 @@ def _turn(
         turn_number=turn_number,
         input_tokens=10,
         output_tokens=5,
-        cost_usd=0.001,
+        cost=0.001,
         tool_calls_made=tuple(fp.split(":")[0] for fp in fingerprints),
         tool_call_fingerprints=fingerprints,
         finish_reason=FinishReason.TOOL_USE if fingerprints else FinishReason.STOP,

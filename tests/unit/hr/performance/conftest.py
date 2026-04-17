@@ -22,7 +22,7 @@ def make_task_metric(  # noqa: PLR0913
     completed_at: datetime | None = None,
     is_success: bool = True,
     duration_seconds: float = 60.0,
-    cost_usd: float = 0.5,
+    cost: float = 0.5,
     turns_used: int = 5,
     tokens_used: int = 1000,
     quality_score: float | None = None,
@@ -36,7 +36,7 @@ def make_task_metric(  # noqa: PLR0913
         completed_at=completed_at or datetime.now(UTC),
         is_success=is_success,
         duration_seconds=duration_seconds,
-        cost_usd=cost_usd,
+        cost=cost,
         turns_used=turns_used,
         tokens_used=tokens_used,
         quality_score=quality_score,
@@ -79,7 +79,7 @@ def make_calibration_record(  # noqa: PLR0913
     behavioral_score: float = 6.0,
     rationale: str = "Good collaboration",
     model_used: str = "test-small-001",
-    cost_usd: float = 0.001,
+    cost: float = 0.001,
 ) -> LlmCalibrationRecord:
     """Build an LlmCalibrationRecord with sensible defaults."""
     return LlmCalibrationRecord(
@@ -90,7 +90,7 @@ def make_calibration_record(  # noqa: PLR0913
         behavioral_score=behavioral_score,
         rationale=NotBlankStr(rationale),
         model_used=NotBlankStr(model_used),
-        cost_usd=cost_usd,
+        cost=cost,
     )
 
 

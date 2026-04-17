@@ -205,7 +205,7 @@ class TestSQLiteCostRecordRepository:
         *,
         agent_id: str = "alice",
         task_id: str = "task-001",
-        cost_usd: float = 0.05,
+        cost: float = 0.05,
     ) -> CostRecord:
         return CostRecord(
             agent_id=agent_id,
@@ -214,7 +214,7 @@ class TestSQLiteCostRecordRepository:
             model="test-model-001",
             input_tokens=1000,
             output_tokens=500,
-            cost_usd=cost_usd,
+            cost=cost,
             timestamp=datetime(2026, 3, 1, 12, 0, 0, tzinfo=UTC),
         )
 
@@ -226,7 +226,7 @@ class TestSQLiteCostRecordRepository:
         results = await repo.query()
         assert len(results) == 1
         assert results[0].agent_id == "alice"
-        assert results[0].cost_usd == 0.05
+        assert results[0].cost == 0.05
 
     async def test_query_by_agent(self, migrated_db: aiosqlite.Connection) -> None:
         repo = SQLiteCostRecordRepository(migrated_db)
@@ -248,24 +248,24 @@ class TestSQLiteCostRecordRepository:
 
     async def test_aggregate_all(self, migrated_db: aiosqlite.Connection) -> None:
         repo = SQLiteCostRecordRepository(migrated_db)
-        await repo.save(self._make_record(cost_usd=0.10))
-        await repo.save(self._make_record(cost_usd=0.20))
+        await repo.save(self._make_record(cost=0.10))
+        await repo.save(self._make_record(cost=0.20))
 
         total = await repo.aggregate()
         assert abs(total - 0.30) < 1e-9
 
     async def test_aggregate_by_agent(self, migrated_db: aiosqlite.Connection) -> None:
         repo = SQLiteCostRecordRepository(migrated_db)
-        await repo.save(self._make_record(agent_id="alice", cost_usd=0.10))
-        await repo.save(self._make_record(agent_id="bob", cost_usd=0.20))
+        await repo.save(self._make_record(agent_id="alice", cost=0.10))
+        await repo.save(self._make_record(agent_id="bob", cost=0.20))
 
         total = await repo.aggregate(agent_id="alice")
         assert abs(total - 0.10) < 1e-9
 
     async def test_aggregate_by_task(self, migrated_db: aiosqlite.Connection) -> None:
         repo = SQLiteCostRecordRepository(migrated_db)
-        await repo.save(self._make_record(task_id="t1", cost_usd=0.10))
-        await repo.save(self._make_record(task_id="t2", cost_usd=0.20))
+        await repo.save(self._make_record(task_id="t1", cost=0.10))
+        await repo.save(self._make_record(task_id="t2", cost=0.20))
 
         total = await repo.aggregate(task_id="t1")
         assert abs(total - 0.10) < 1e-9
@@ -274,13 +274,9 @@ class TestSQLiteCostRecordRepository:
         self, migrated_db: aiosqlite.Connection
     ) -> None:
         repo = SQLiteCostRecordRepository(migrated_db)
-        await repo.save(
-            self._make_record(agent_id="alice", task_id="t1", cost_usd=0.10)
-        )
-        await repo.save(
-            self._make_record(agent_id="alice", task_id="t2", cost_usd=0.20)
-        )
-        await repo.save(self._make_record(agent_id="bob", task_id="t1", cost_usd=0.30))
+        await repo.save(self._make_record(agent_id="alice", task_id="t1", cost=0.10))
+        await repo.save(self._make_record(agent_id="alice", task_id="t2", cost=0.20))
+        await repo.save(self._make_record(agent_id="bob", task_id="t1", cost=0.30))
 
         total = await repo.aggregate(agent_id="alice", task_id="t1")
         assert abs(total - 0.10) < 1e-9
@@ -316,7 +312,7 @@ class TestSQLiteCostRecordRepository:
             model="test-model-001",
             input_tokens=1000,
             output_tokens=500,
-            cost_usd=0.05,
+            cost=0.05,
             timestamp=datetime(2026, 3, 1, 12, 0, 0, tzinfo=UTC),
             call_category=LLMCallCategory.PRODUCTIVE,
         )
@@ -427,7 +423,7 @@ class TestSQLiteMessageRepository:
                 task_id="task-001",
                 project_id="proj-a",
                 tokens_used=100,
-                cost_usd=0.01,
+                cost=0.01,
                 extra=(("key1", "val1"),),
             ),
         )
@@ -439,7 +435,7 @@ class TestSQLiteMessageRepository:
         assert result.metadata.task_id == "task-001"
         assert result.metadata.project_id == "proj-a"
         assert result.metadata.tokens_used == 100
-        assert result.metadata.cost_usd == 0.01
+        assert result.metadata.cost == 0.01
         assert result.metadata.extra == (("key1", "val1"),)
 
     async def test_round_trip_uuid_id(self, migrated_db: aiosqlite.Connection) -> None:

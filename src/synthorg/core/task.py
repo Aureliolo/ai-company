@@ -67,7 +67,7 @@ class Task(BaseModel):
         artifacts_expected: Artifacts expected to be produced.
         acceptance_criteria: Structured acceptance criteria.
         estimated_complexity: Task complexity estimate.
-        budget_limit: Maximum spend for this task in USD (base currency).
+        budget_limit: Maximum spend for this task in the configured currency.
         deadline: Optional deadline (ISO 8601 string or ``None``).
         max_retries: Max reassignment attempts after failure (default 1).
         status: Current lifecycle status.
@@ -130,7 +130,7 @@ class Task(BaseModel):
     budget_limit: float = Field(
         default=0.0,
         ge=0.0,
-        description="Maximum spend for this task in USD (base currency)",
+        description="Maximum spend for this task in the configured currency",
     )
     deadline: str | None = Field(
         default=None,

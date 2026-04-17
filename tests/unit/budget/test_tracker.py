@@ -25,7 +25,7 @@ class TestCostTrackerRecord:
     """Tests for CostTracker.record()."""
 
     async def test_record_stores_record(self, cost_tracker: CostTracker) -> None:
-        rec = make_cost_record(cost_usd=0.10)
+        rec = make_cost_record(cost=0.10)
         await cost_tracker.record(rec)
 
         assert await cost_tracker.get_record_count() == 1
@@ -33,13 +33,13 @@ class TestCostTrackerRecord:
 
     async def test_record_multiple(self, cost_tracker: CostTracker) -> None:
         for i in range(3):
-            await cost_tracker.record(make_cost_record(cost_usd=0.10 * (i + 1)))
+            await cost_tracker.record(make_cost_record(cost=0.10 * (i + 1)))
 
         assert await cost_tracker.get_record_count() == 3
         assert await cost_tracker.get_total_cost() == pytest.approx(0.60)
 
     async def test_record_concurrent_safety(self, cost_tracker: CostTracker) -> None:
-        records = [make_cost_record(cost_usd=0.01) for _ in range(50)]
+        records = [make_cost_record(cost=0.01) for _ in range(50)]
         await asyncio.gather(*(cost_tracker.record(r) for r in records))
 
         assert await cost_tracker.get_record_count() == 50
@@ -59,7 +59,7 @@ class TestCostTrackerRecord:
         assert count_after == 2
 
     async def test_record_logs_event(self, cost_tracker: CostTracker) -> None:
-        rec = make_cost_record(agent_id="alice", cost_usd=0.05)
+        rec = make_cost_record(agent_id="alice", cost=0.05)
         with structlog.testing.capture_logs() as logs:
             await cost_tracker.record(rec)
 
@@ -68,7 +68,7 @@ class TestCostTrackerRecord:
         ]
         assert len(budget_logs) == 1
         assert budget_logs[0]["agent_id"] == "alice"
-        assert budget_logs[0]["cost_usd"] == 0.05
+        assert budget_logs[0]["cost"] == 0.05
 
 
 # ── TestCostTrackerQuery ─────────────────────────────────────────
@@ -82,9 +82,9 @@ class TestCostTrackerQuery:
         assert await cost_tracker.get_total_cost() == 0.0
 
     async def test_get_total_cost_multiple(self, cost_tracker: CostTracker) -> None:
-        await cost_tracker.record(make_cost_record(cost_usd=0.10))
-        await cost_tracker.record(make_cost_record(cost_usd=0.20))
-        await cost_tracker.record(make_cost_record(cost_usd=0.30))
+        await cost_tracker.record(make_cost_record(cost=0.10))
+        await cost_tracker.record(make_cost_record(cost=0.20))
+        await cost_tracker.record(make_cost_record(cost=0.30))
 
         assert await cost_tracker.get_total_cost() == pytest.approx(0.60)
 
@@ -95,9 +95,9 @@ class TestCostTrackerQuery:
         t2 = datetime(2026, 2, 15, tzinfo=UTC)
         t3 = datetime(2026, 2, 20, tzinfo=UTC)
 
-        await cost_tracker.record(make_cost_record(cost_usd=0.10, timestamp=t1))
-        await cost_tracker.record(make_cost_record(cost_usd=0.20, timestamp=t2))
-        await cost_tracker.record(make_cost_record(cost_usd=0.30, timestamp=t3))
+        await cost_tracker.record(make_cost_record(cost=0.10, timestamp=t1))
+        await cost_tracker.record(make_cost_record(cost=0.20, timestamp=t2))
+        await cost_tracker.record(make_cost_record(cost=0.30, timestamp=t3))
 
         # start inclusive, end exclusive
         result = await cost_tracker.get_total_cost(start=t2, end=t3)
@@ -110,9 +110,9 @@ class TestCostTrackerQuery:
         t2 = datetime(2026, 2, 15, tzinfo=UTC)
         t3 = datetime(2026, 2, 20, tzinfo=UTC)
 
-        await cost_tracker.record(make_cost_record(cost_usd=0.10, timestamp=t1))
-        await cost_tracker.record(make_cost_record(cost_usd=0.20, timestamp=t2))
-        await cost_tracker.record(make_cost_record(cost_usd=0.30, timestamp=t3))
+        await cost_tracker.record(make_cost_record(cost=0.10, timestamp=t1))
+        await cost_tracker.record(make_cost_record(cost=0.20, timestamp=t2))
+        await cost_tracker.record(make_cost_record(cost=0.30, timestamp=t3))
 
         result = await cost_tracker.get_total_cost(end=t2)
         assert result == pytest.approx(0.10)
@@ -135,14 +135,14 @@ class TestCostTrackerQuery:
             await cost_tracker.get_total_cost(start=t, end=t)
 
     async def test_get_agent_cost_found(self, cost_tracker: CostTracker) -> None:
-        await cost_tracker.record(make_cost_record(agent_id="alice", cost_usd=0.10))
-        await cost_tracker.record(make_cost_record(agent_id="bob", cost_usd=0.20))
-        await cost_tracker.record(make_cost_record(agent_id="alice", cost_usd=0.30))
+        await cost_tracker.record(make_cost_record(agent_id="alice", cost=0.10))
+        await cost_tracker.record(make_cost_record(agent_id="bob", cost=0.20))
+        await cost_tracker.record(make_cost_record(agent_id="alice", cost=0.30))
 
         assert await cost_tracker.get_agent_cost("alice") == pytest.approx(0.40)
 
     async def test_get_agent_cost_not_found(self, cost_tracker: CostTracker) -> None:
-        await cost_tracker.record(make_cost_record(agent_id="alice", cost_usd=0.10))
+        await cost_tracker.record(make_cost_record(agent_id="alice", cost=0.10))
 
         assert await cost_tracker.get_agent_cost("unknown") == 0.0
 
@@ -153,10 +153,10 @@ class TestCostTrackerQuery:
         t2 = datetime(2026, 2, 20, tzinfo=UTC)
 
         await cost_tracker.record(
-            make_cost_record(agent_id="alice", cost_usd=0.10, timestamp=t1)
+            make_cost_record(agent_id="alice", cost=0.10, timestamp=t1)
         )
         await cost_tracker.record(
-            make_cost_record(agent_id="alice", cost_usd=0.20, timestamp=t2)
+            make_cost_record(agent_id="alice", cost=0.20, timestamp=t2)
         )
 
         result = await cost_tracker.get_agent_cost(
@@ -196,7 +196,7 @@ class TestCostTrackerBuildSummary:
             start=self._PERIOD_START, end=self._PERIOD_END
         )
 
-        assert summary.period.total_cost_usd == 0.0
+        assert summary.period.total_cost == 0.0
         assert summary.period.record_count == 0
         assert summary.by_agent == ()
         assert summary.by_department == ()
@@ -205,7 +205,7 @@ class TestCostTrackerBuildSummary:
         await cost_tracker.record(
             make_cost_record(
                 agent_id="alice",
-                cost_usd=0.10,
+                cost=0.10,
                 input_tokens=100,
                 output_tokens=50,
             )
@@ -215,7 +215,7 @@ class TestCostTrackerBuildSummary:
             start=self._PERIOD_START, end=self._PERIOD_END
         )
 
-        assert summary.period.total_cost_usd == pytest.approx(0.10)
+        assert summary.period.total_cost == pytest.approx(0.10)
         assert summary.period.total_input_tokens == 100
         assert summary.period.total_output_tokens == 50
         assert summary.period.record_count == 1
@@ -226,7 +226,7 @@ class TestCostTrackerBuildSummary:
         await cost_tracker.record(
             make_cost_record(
                 agent_id="alice",
-                cost_usd=0.10,
+                cost=0.10,
                 input_tokens=100,
                 output_tokens=50,
             )
@@ -234,7 +234,7 @@ class TestCostTrackerBuildSummary:
         await cost_tracker.record(
             make_cost_record(
                 agent_id="bob",
-                cost_usd=0.20,
+                cost=0.20,
                 input_tokens=200,
                 output_tokens=100,
             )
@@ -242,7 +242,7 @@ class TestCostTrackerBuildSummary:
         await cost_tracker.record(
             make_cost_record(
                 agent_id="alice",
-                cost_usd=0.15,
+                cost=0.15,
                 input_tokens=150,
                 output_tokens=75,
             )
@@ -254,11 +254,11 @@ class TestCostTrackerBuildSummary:
 
         assert len(summary.by_agent) == 2
         agents = {a.agent_id: a for a in summary.by_agent}
-        assert agents["alice"].total_cost_usd == pytest.approx(0.25)
+        assert agents["alice"].total_cost == pytest.approx(0.25)
         assert agents["alice"].record_count == 2
         assert agents["alice"].total_input_tokens == 250
         assert agents["alice"].total_output_tokens == 125
-        assert agents["bob"].total_cost_usd == pytest.approx(0.20)
+        assert agents["bob"].total_cost == pytest.approx(0.20)
         assert agents["bob"].record_count == 1
         assert agents["bob"].total_input_tokens == 200
         assert agents["bob"].total_output_tokens == 100
@@ -267,9 +267,9 @@ class TestCostTrackerBuildSummary:
         self, cost_tracker: CostTracker
     ) -> None:
         # alice and bob → Engineering, carol → Product
-        await cost_tracker.record(make_cost_record(agent_id="alice", cost_usd=0.10))
-        await cost_tracker.record(make_cost_record(agent_id="bob", cost_usd=0.20))
-        await cost_tracker.record(make_cost_record(agent_id="carol", cost_usd=0.30))
+        await cost_tracker.record(make_cost_record(agent_id="alice", cost=0.10))
+        await cost_tracker.record(make_cost_record(agent_id="bob", cost=0.20))
+        await cost_tracker.record(make_cost_record(agent_id="carol", cost=0.30))
 
         summary = await cost_tracker.build_summary(
             start=self._PERIOD_START, end=self._PERIOD_END
@@ -277,16 +277,14 @@ class TestCostTrackerBuildSummary:
 
         depts = {d.department_name: d for d in summary.by_department}
         assert len(depts) == 2
-        assert depts["Engineering"].total_cost_usd == pytest.approx(0.30)
-        assert depts["Product"].total_cost_usd == pytest.approx(0.30)
+        assert depts["Engineering"].total_cost == pytest.approx(0.30)
+        assert depts["Product"].total_cost == pytest.approx(0.30)
 
     async def test_summary_department_resolver_returns_none(
         self, cost_tracker: CostTracker
     ) -> None:
         # "unknown_agent" is not in the department map → returns None
-        await cost_tracker.record(
-            make_cost_record(agent_id="unknown_agent", cost_usd=0.10)
-        )
+        await cost_tracker.record(make_cost_record(agent_id="unknown_agent", cost=0.10))
 
         summary = await cost_tracker.build_summary(
             start=self._PERIOD_START, end=self._PERIOD_END
@@ -301,7 +299,7 @@ class TestCostTrackerBuildSummary:
             raise RuntimeError(msg)
 
         tracker = CostTracker(department_resolver=exploding_resolver)
-        await tracker.record(make_cost_record(agent_id="alice", cost_usd=0.10))
+        await tracker.record(make_cost_record(agent_id="alice", cost=0.10))
 
         summary = await tracker.build_summary(
             start=self._PERIOD_START, end=self._PERIOD_END
@@ -318,7 +316,7 @@ class TestCostTrackerBuildSummary:
             raise RuntimeError(msg)
 
         tracker = CostTracker(department_resolver=exploding_resolver)
-        await tracker.record(make_cost_record(agent_id="alice", cost_usd=0.10))
+        await tracker.record(make_cost_record(agent_id="alice", cost=0.10))
 
         with structlog.testing.capture_logs() as logs:
             await tracker.build_summary(start=self._PERIOD_START, end=self._PERIOD_END)
@@ -336,26 +334,26 @@ class TestCostTrackerBuildSummary:
         inside = datetime(2026, 2, 15, tzinfo=UTC)
         outside = datetime(2026, 3, 15, tzinfo=UTC)
 
-        await cost_tracker.record(make_cost_record(cost_usd=0.10, timestamp=inside))
-        await cost_tracker.record(make_cost_record(cost_usd=0.20, timestamp=outside))
+        await cost_tracker.record(make_cost_record(cost=0.10, timestamp=inside))
+        await cost_tracker.record(make_cost_record(cost=0.20, timestamp=outside))
 
         summary = await cost_tracker.build_summary(
             start=self._PERIOD_START, end=self._PERIOD_END
         )
 
-        assert summary.period.total_cost_usd == pytest.approx(0.10)
+        assert summary.period.total_cost == pytest.approx(0.10)
         assert summary.period.record_count == 1
 
     async def test_summary_rounding_precision(self, cost_tracker: CostTracker) -> None:
         # Add many small costs that could cause float drift
         for _ in range(100):
-            await cost_tracker.record(make_cost_record(cost_usd=0.001, input_tokens=1))
+            await cost_tracker.record(make_cost_record(cost=0.001, input_tokens=1))
 
         summary = await cost_tracker.build_summary(
             start=self._PERIOD_START, end=self._PERIOD_END
         )
 
-        assert summary.period.total_cost_usd == pytest.approx(0.10)
+        assert summary.period.total_cost == pytest.approx(0.10)
 
     async def test_summary_start_after_end_raises(
         self, cost_tracker: CostTracker
@@ -366,7 +364,7 @@ class TestCostTrackerBuildSummary:
             )
 
     async def test_summary_logs_event(self, cost_tracker: CostTracker) -> None:
-        await cost_tracker.record(make_cost_record(cost_usd=0.10))
+        await cost_tracker.record(make_cost_record(cost=0.10))
 
         with structlog.testing.capture_logs() as logs:
             await cost_tracker.build_summary(
@@ -392,7 +390,7 @@ class TestCostTrackerAlertLevel:
 
     async def test_alert_normal(self, cost_tracker: CostTracker) -> None:
         # 50% of 100 budget → NORMAL (threshold: warn_at=75)
-        await cost_tracker.record(make_cost_record(cost_usd=50.0, input_tokens=50000))
+        await cost_tracker.record(make_cost_record(cost=50.0, input_tokens=50000))
 
         summary = await cost_tracker.build_summary(
             start=self._PERIOD_START, end=self._PERIOD_END
@@ -403,7 +401,7 @@ class TestCostTrackerAlertLevel:
 
     async def test_alert_warning(self, cost_tracker: CostTracker) -> None:
         # 80% of 100 budget → WARNING (threshold: warn_at=75, critical=90)
-        await cost_tracker.record(make_cost_record(cost_usd=80.0, input_tokens=80000))
+        await cost_tracker.record(make_cost_record(cost=80.0, input_tokens=80000))
 
         summary = await cost_tracker.build_summary(
             start=self._PERIOD_START, end=self._PERIOD_END
@@ -413,7 +411,7 @@ class TestCostTrackerAlertLevel:
 
     async def test_alert_critical(self, cost_tracker: CostTracker) -> None:
         # 92% of 100 budget → CRITICAL (critical=90, hard_stop=100)
-        await cost_tracker.record(make_cost_record(cost_usd=92.0, input_tokens=92000))
+        await cost_tracker.record(make_cost_record(cost=92.0, input_tokens=92000))
 
         summary = await cost_tracker.build_summary(
             start=self._PERIOD_START, end=self._PERIOD_END
@@ -423,7 +421,7 @@ class TestCostTrackerAlertLevel:
 
     async def test_alert_hard_stop(self, cost_tracker: CostTracker) -> None:
         # 100% of 100 budget → HARD_STOP
-        await cost_tracker.record(make_cost_record(cost_usd=100.0, input_tokens=100000))
+        await cost_tracker.record(make_cost_record(cost=100.0, input_tokens=100000))
 
         summary = await cost_tracker.build_summary(
             start=self._PERIOD_START, end=self._PERIOD_END
@@ -433,7 +431,7 @@ class TestCostTrackerAlertLevel:
 
     async def test_alert_no_budget_config(self) -> None:
         tracker = CostTracker()
-        await tracker.record(make_cost_record(cost_usd=999.0, input_tokens=999000))
+        await tracker.record(make_cost_record(cost=999.0, input_tokens=999000))
 
         summary = await tracker.build_summary(
             start=self._PERIOD_START, end=self._PERIOD_END
@@ -449,7 +447,7 @@ class TestCostTrackerAlertLevel:
             per_agent_daily_limit=0.0,
         )
         tracker = CostTracker(budget_config=config)
-        await tracker.record(make_cost_record(cost_usd=50.0, input_tokens=50000))
+        await tracker.record(make_cost_record(cost=50.0, input_tokens=50000))
 
         summary = await tracker.build_summary(
             start=self._PERIOD_START, end=self._PERIOD_END

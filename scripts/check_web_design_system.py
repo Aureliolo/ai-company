@@ -26,125 +26,99 @@ import re
 import sys
 from pathlib import Path
 
-# ── Thresholds ────────────────────────────────────────────────────────
-_SHORT_HEX_LEN = 4  # #rgb (3 digits + hash)
-_SHORT_HEX_ALPHA_LEN = 5  # #rgba (4 digits + hash)
-_LONG_HEX_ALPHA_LEN = 9  # #rrggbbaa (8 digits + hash)
-_MIN_PATH_DEPTH = 2  # web/<something>
-_MAP_BLOCK_COMPLEXITY = 8  # lines in .map() before suggesting extraction
-_REPEATED_PATTERN_MIN = 3  # icon+text rows before suggesting DataRow
-
-# ── Allowed raw hex values ────────────────────────────────────────────
-# Must match :root variables in web/src/styles/design-tokens.css.
-# Any OTHER hex color in a .tsx/.ts/.css file is a violation.
-ALLOWED_HEX_COLORS: set[str] = {
-    "#38bdf8",
-    "#0ea5e9",  # accent, accent-dim
-    "#10b981",  # success
-    "#f59e0b",  # warning
-    "#ef4444",  # danger
-    "#e2e8f0",
-    "#94a3b8",
-    "#8b95a5",  # text-primary, text-secondary, text-muted
-    "#0a0a12",
-    "#0f0f1a",
-    "#13131f",
-    "#181828",  # bg-base, bg-surface, bg-card, bg-card-hover
-    "#1e1e2e",
-    "#2a2a3e",  # border, border-bright
-}
-
-# ── Patterns that should use design tokens ────────────────────────────
-HARDCODED_COLOR_RE = re.compile(
-    r"""(?x)
-    (?:
-        # Tailwind arbitrary color values: text-[#abc], bg-[#abc123]
-        (?:text|bg|border|fill|stroke|ring|shadow|outline|from|to|via)
-        -\[(?P<tw_hex>\#[0-9a-fA-F]{3,8})\]
+# When invoked as a script, the ``scripts`` directory itself is the
+# entry-point directory (not a package), so ``from scripts.<x>``
+# fails. Add the enclosing ``scripts/`` folder to ``sys.path`` so the
+# sibling pattern module is importable both when run standalone
+# (PostToolUse hook) and when imported by tests (``scripts.`` prefix).
+if __package__ in {None, ""}:  # standalone invocation
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from _web_design_patterns import (  # type: ignore[import-not-found]
+        _BLOCK_COMMENT_RE,
+        _COMMENT_PREFIXES,
+        _CURRENCY_SKIP_PATHS,
+        _LOCALE_SKIP_PATHS,
+        _LONG_HEX_ALPHA_LEN,
+        _MAP_BLOCK_COMPLEXITY,
+        _MIN_LINE_NUM_FOR_PRECEDING,
+        _MIN_PATH_DEPTH,
+        _MOTION_DURATION_SKIP_PATHS,
+        _REGIONAL_SUPPRESSION_MARKER,
+        _REPEATED_PATTERN_MIN,
+        _SHORT_HEX_ALPHA_LEN,
+        _SHORT_HEX_LEN,
+        _SKIP_DIRS,
+        _SKIP_PATHS,
+        ALLOWED_HEX_COLORS,
+        BARE_TOLOCALE_RE,
+        HARDCODED_COLOR_RE,
+        HARDCODED_CURRENCY_RE,
+        HARDCODED_CURRENCY_SYMBOL_RE,
+        HARDCODED_FONT_RE,
+        HARDCODED_LOCALE_RE,
+        HARDCODED_MOTION_DURATION_RE,
+        HARDCODED_RGBA_RE,
+        HARDCODED_USD_FIELD_RE,
+        LOCALE_USAGE_RE,
     )
-    |
-    (?:
-        # CSS color properties with hex values
-        (?:color|background(?:-color)?|border(?:-color)?|fill|stroke|outline-color)
-        \s*:\s*(?P<css_hex>\#[0-9a-fA-F]{3,8})
+else:
+    from scripts._web_design_patterns import (
+        _BLOCK_COMMENT_RE,
+        _COMMENT_PREFIXES,
+        _CURRENCY_SKIP_PATHS,
+        _LOCALE_SKIP_PATHS,
+        _LONG_HEX_ALPHA_LEN,
+        _MAP_BLOCK_COMPLEXITY,
+        _MIN_LINE_NUM_FOR_PRECEDING,
+        _MIN_PATH_DEPTH,
+        _MOTION_DURATION_SKIP_PATHS,
+        _REGIONAL_SUPPRESSION_MARKER,
+        _REPEATED_PATTERN_MIN,
+        _SHORT_HEX_ALPHA_LEN,
+        _SHORT_HEX_LEN,
+        _SKIP_DIRS,
+        _SKIP_PATHS,
+        ALLOWED_HEX_COLORS,
+        BARE_TOLOCALE_RE,
+        HARDCODED_COLOR_RE,
+        HARDCODED_CURRENCY_RE,
+        HARDCODED_CURRENCY_SYMBOL_RE,
+        HARDCODED_FONT_RE,
+        HARDCODED_LOCALE_RE,
+        HARDCODED_MOTION_DURATION_RE,
+        HARDCODED_RGBA_RE,
+        HARDCODED_USD_FIELD_RE,
+        LOCALE_USAGE_RE,
     )
-    |
-    (?:
-        # Inline style hex colors in JSX: style={{ color: '#abc' }}
-        (?:color|backgroundColor|borderColor|fill|stroke)
-        \s*:\s*['"](?P<jsx_hex>\#[0-9a-fA-F]{3,8})['"]
+
+
+def _marker_in_comment(line: str) -> bool:
+    """Return True when the regional-suppression marker is inside a comment.
+
+    The marker may appear in string literals (test fixtures, docs about
+    the lint rule, etc.), and those must NOT silently disable the check.
+    We require the marker to be preceded by a ``//``/``/*``/``*`` comment
+    opener on the same line, using :func:`_is_in_comment_context` which
+    already tracks string boundaries.
+    """
+    pos = line.find(_REGIONAL_SUPPRESSION_MARKER)
+    return pos >= 0 and _is_in_comment_context(line, pos)
+
+
+def _is_regional_suppressed(lines: list[str], line_num: int) -> bool:
+    """Return True when line ``line_num`` opts out of regional checks.
+
+    Checks the same line and the immediately preceding line for the
+    ``_REGIONAL_SUPPRESSION_MARKER`` string inside any comment.  A
+    marker embedded in a string literal does not suppress the check.
+    """
+    if line_num < 1 or line_num > len(lines):
+        return False
+    if _marker_in_comment(lines[line_num - 1]):
+        return True
+    return line_num >= _MIN_LINE_NUM_FOR_PRECEDING and _marker_in_comment(
+        lines[line_num - 2]
     )
-    """,
-)
-
-HARDCODED_RGBA_RE = re.compile(
-    r"\brgba?\(\s*\d+\s*,\s*\d+\s*,\s*\d+",
-)
-
-HARDCODED_FONT_RE = re.compile(
-    r"""(?x)
-    font-family\s*:\s*(?!\s*var\()
-    |
-    fontFamily\s*:\s*['"](?!\s*var\()
-    """,
-)
-
-# Motion inline transition durations (should use lib/motion presets).
-# Uses re.DOTALL so [^}]* spans newlines in multiline transition objects.
-HARDCODED_MOTION_DURATION_RE = re.compile(
-    r"""(?x)
-    # Variant object exit/animate transitions: exit: { ..., transition: { duration: N } }
-    transition\s*:\s*\{[^}]*\bduration\s*:\s*[\d.]+
-    |
-    # Inline transition prop: transition={{ duration: N }}
-    transition\s*=\s*\{\s*\{[^}]*\bduration\s*:\s*[\d.]+
-    """,
-    re.DOTALL,
-)
-
-# BCP 47 language-region literals used inside Intl or toLocale* calls.
-# Formatter helpers should accept `locale?: string` with getLocale() default;
-# hardcoded literals bypass the i18n-ready pipeline.
-HARDCODED_LOCALE_RE = re.compile(
-    r"""['"](?P<locale>[a-z]{2}-[A-Z]{2})['"]""",
-)
-
-# Bare `.toLocaleString(`, `.toLocaleDateString(`, `.toLocaleTimeString(`
-# calls that do not pass an explicit locale argument. These fall back to
-# the browser default and diverge in dev vs prod. Use format.ts helpers.
-BARE_TOLOCALE_RE = re.compile(
-    r"\.toLocale(?:Date|Time)?String\(\s*\)",
-)
-
-# Any use of Intl.* or .toLocale*String(...) anywhere in the file.
-# If present, every hardcoded BCP 47 literal in the file is suspicious
-# even when not adjacent to the call site (e.g. `const locale = 'en-US'`
-# later passed to `new Intl.NumberFormat(locale)`).
-LOCALE_USAGE_RE = re.compile(
-    r"\bIntl\.|\.toLocale(?:Date|Time)?String\(",
-)
-
-# Allowlist files where `'en-US'` is the legitimate default constant or
-# the centralized helper itself.
-_LOCALE_SKIP_PATHS: set[str] = {
-    "web/src/utils/locale.ts",
-    "web/src/utils/format.ts",
-}
-
-# Files where inline Motion durations are intentional (relative paths).
-_MOTION_DURATION_SKIP_PATHS: set[str] = {
-    "web/src/lib/motion.ts",
-    "web/src/hooks/useAnimationPreset.ts",
-    "web/src/pages/setup/ThemePreview.tsx",
-}
-
-# ── Files to skip ────────────────────────────────────────────────────
-_SKIP_PATHS: set[str] = {"design-tokens.css", "global.css"}
-_SKIP_DIRS: set[str] = {"__tests__", "node_modules", ".storybook"}
-_COMMENT_PREFIXES = ("//", "/*", "*")
-
-# Regex to strip block comments (/* ... */) so full-content regex scans skip them.
-_BLOCK_COMMENT_RE = re.compile(r"/\*[\s\S]*?\*/")
 
 
 def _normalize_hex(h: str) -> str:
@@ -404,6 +378,134 @@ def check_hardcoded_locale(
     return warnings
 
 
+def check_hardcoded_currency(
+    content: str,
+    file_path: Path,
+    project_root: Path,
+) -> list[str]:
+    """Flag hardcoded ISO 4217 currency codes outside the allowlist.
+
+    The dashboard renders every money value in the operator's
+    configured currency (``useSettingsStore().currency``, defaulting
+    to ``DEFAULT_CURRENCY`` from ``@/utils/currencies``). Hardcoding
+    ``'USD'`` / ``'EUR'`` / etc. bakes a specific currency into the
+    rendered output and contradicts the runtime-resolved pattern.
+    """
+    rel_str = file_path.relative_to(project_root).as_posix()
+    if rel_str in _CURRENCY_SKIP_PATHS:
+        return []
+    if file_path.suffix not in {".ts", ".tsx"}:
+        return []
+
+    rel_path = file_path.relative_to(project_root)
+    lines = content.splitlines()
+    stripped = _BLOCK_COMMENT_RE.sub(
+        lambda cm: "".join(" " if c != "\n" else "\n" for c in cm.group()),
+        content,
+    )
+
+    warnings: list[str] = []
+    for m in HARDCODED_CURRENCY_RE.finditer(stripped):
+        line_num, col, original_line, line_text = _locate(stripped, lines, m.start())
+        if line_text.startswith(_COMMENT_PREFIXES):
+            continue
+        if _is_in_comment_context(original_line, col):
+            continue
+        if _is_regional_suppressed(lines, line_num):
+            continue
+        warnings.append(
+            f"  {rel_path}:{line_num}: Hardcoded currency code `{m.group('currency')}` "
+            f"-- import `DEFAULT_CURRENCY` from `@/utils/currencies` or read "
+            f"`useSettingsStore().currency`.\n"
+            f"    {line_text}",
+        )
+    return warnings
+
+
+def check_hardcoded_currency_symbol(
+    content: str,
+    file_path: Path,
+    project_root: Path,
+) -> list[str]:
+    """Flag currency symbols adjacent to digits/expressions in string literals.
+
+    ``"$10"`` / ``"\u20ac50"`` / ``` `$${value}` ``` bake a regional symbol
+    into rendered output. Use ``formatCurrency(value, DEFAULT_CURRENCY)``
+    or ``formatCurrencyCompact`` from ``@/utils/format`` instead.
+
+    Skip files under ``__tests__`` (test fixtures legitimately include
+    currency symbols in setup strings) to match the file-level skip in
+    :func:`check_file`.
+    """
+    if file_path.suffix not in {".ts", ".tsx"}:
+        return []
+    if any(skip in file_path.relative_to(project_root).parts for skip in _SKIP_DIRS):
+        return []
+
+    rel_path = file_path.relative_to(project_root)
+    lines = content.splitlines()
+    stripped = _BLOCK_COMMENT_RE.sub(
+        lambda cm: "".join(" " if c != "\n" else "\n" for c in cm.group()),
+        content,
+    )
+
+    warnings: list[str] = []
+    for m in HARDCODED_CURRENCY_SYMBOL_RE.finditer(stripped):
+        line_num, col, original_line, line_text = _locate(stripped, lines, m.start())
+        if line_text.startswith(_COMMENT_PREFIXES):
+            continue
+        if _is_in_comment_context(original_line, col):
+            continue
+        if _is_regional_suppressed(lines, line_num):
+            continue
+        warnings.append(
+            f"  {rel_path}:{line_num}: Hardcoded currency symbol with value "
+            f"-- route through `formatCurrency(value, DEFAULT_CURRENCY)` or "
+            f"`formatCurrencyCompact` from `@/utils/format`.\n"
+            f"    {line_text}",
+        )
+    return warnings
+
+
+def check_usd_field_names(
+    content: str,
+    file_path: Path,
+    project_root: Path,
+) -> list[str]:
+    """Flag identifiers with a ``_usd`` suffix.
+
+    Money fields carry the operator's configured currency; the field
+    name should not encode a specific currency. Rename to the neutral
+    form (e.g. ``cost_usd`` -> ``cost``).
+    """
+    if file_path.suffix not in {".ts", ".tsx"}:
+        return []
+
+    rel_path = file_path.relative_to(project_root)
+    lines = content.splitlines()
+    stripped = _BLOCK_COMMENT_RE.sub(
+        lambda cm: "".join(" " if c != "\n" else "\n" for c in cm.group()),
+        content,
+    )
+
+    warnings: list[str] = []
+    for m in HARDCODED_USD_FIELD_RE.finditer(stripped):
+        line_num, col, original_line, line_text = _locate(stripped, lines, m.start())
+        if line_text.startswith(_COMMENT_PREFIXES):
+            continue
+        if _is_in_comment_context(original_line, col):
+            continue
+        if _is_regional_suppressed(lines, line_num):
+            continue
+        warnings.append(
+            f"  {rel_path}:{line_num}: Identifier `{m.group('field')}` ends in `_usd` "
+            f"-- rename to the currency-neutral form; stored value is in the "
+            f"operator's configured currency.\n"
+            f"    {line_text}",
+        )
+    return warnings
+
+
 def check_missing_story(file_path: Path, project_root: Path) -> list[str]:
     """Check that new components in components/ui/ have a .stories.tsx file."""
     rel_path = file_path.relative_to(project_root)
@@ -593,6 +695,11 @@ def check_file(file_path: Path, project_root: Path) -> list[str]:
         check_hardcoded_motion_transitions(content, file_path, project_root),
     )
     all_warnings.extend(check_hardcoded_locale(content, file_path, project_root))
+    all_warnings.extend(check_hardcoded_currency(content, file_path, project_root))
+    all_warnings.extend(
+        check_hardcoded_currency_symbol(content, file_path, project_root),
+    )
+    all_warnings.extend(check_usd_field_names(content, file_path, project_root))
     all_warnings.extend(check_missing_story(file_path, project_root))
     all_warnings.extend(check_duplicate_patterns(content, file_path, project_root))
     all_warnings.extend(propose_shared_components(content, file_path, project_root))

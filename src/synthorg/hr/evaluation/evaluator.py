@@ -415,7 +415,7 @@ class EvaluationService:
         if cfg.cost_enabled and window.avg_cost_per_task is not None:
             score = max(
                 0.0,
-                MAX_SCORE * (1.0 - window.avg_cost_per_task / cfg.reference_cost_usd),
+                MAX_SCORE * (1.0 - window.avg_cost_per_task / cfg.reference_cost),
             )
             results.append(("cost", cfg.cost_weight, min(MAX_SCORE, score)))
 

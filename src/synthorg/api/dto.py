@@ -542,7 +542,7 @@ class CoordinationResultResponse(BaseModel):
         parent_task_id: ID of the parent task.
         topology: Resolved coordination topology.
         total_duration_seconds: Total wall-clock duration.
-        total_cost_usd: Total cost across all waves.
+        total_cost: Total cost across all waves.
         phases: Phase results in execution order.
         wave_count: Number of execution waves.
         is_success: Whether all phases succeeded (computed).
@@ -553,7 +553,7 @@ class CoordinationResultResponse(BaseModel):
     parent_task_id: NotBlankStr = Field(max_length=128)
     topology: NotBlankStr
     total_duration_seconds: float = Field(ge=0.0)
-    total_cost_usd: float = Field(ge=0.0)
+    total_cost: float = Field(ge=0.0)
     currency: str = Field(
         default=DEFAULT_CURRENCY,
         min_length=3,

@@ -123,7 +123,7 @@ class TestEvaluationService:
                 make_task_metric(
                     agent_id="agent-001",
                     task_id=f"task-{i:03d}",
-                    cost_usd=2.0,
+                    cost=2.0,
                     duration_seconds=60.0,
                     tokens_used=1000,
                 ),
@@ -153,7 +153,7 @@ class TestEvaluationService:
                 make_task_metric(
                     agent_id="agent-001",
                     task_id=f"task-{i:03d}",
-                    cost_usd=2.0,
+                    cost=2.0,
                     duration_seconds=60.0,
                     tokens_used=1000,
                 ),
@@ -231,7 +231,7 @@ class TestEvaluationService:
                 make_task_metric(
                     agent_id="agent-001",
                     task_id=f"task-{i:03d}",
-                    cost_usd=15.0,  # Above default reference of 10.0.
+                    cost=15.0,  # Above default reference of 10.0.
                     duration_seconds=60.0,
                     tokens_used=1000,
                 ),

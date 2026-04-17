@@ -29,7 +29,7 @@ class AgentResponse(BaseModel):
         content: Text content of the response.
         input_tokens: Tokens consumed by the prompt.
         output_tokens: Tokens generated in the response.
-        cost_usd: Estimated cost of the invocation.
+        cost: Estimated cost of the invocation.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -46,7 +46,7 @@ class AgentResponse(BaseModel):
         ge=0,
         description="Response tokens generated",
     )
-    cost_usd: float = Field(
+    cost: float = Field(
         default=0.0,
         ge=0.0,
         description="Estimated invocation cost",

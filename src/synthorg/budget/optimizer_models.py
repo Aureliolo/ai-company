@@ -144,7 +144,7 @@ class AgentEfficiency(BaseModel):
 
     Attributes:
         agent_id: Agent identifier.
-        total_cost_usd: Total cost in the analysis period.
+        total_cost: Total cost in the analysis period.
         total_tokens: Total tokens consumed (input + output).
         cost_per_1k_tokens: Cost per 1000 tokens (computed).
         record_count: Number of cost records.
@@ -154,7 +154,7 @@ class AgentEfficiency(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     agent_id: NotBlankStr = Field(description="Agent identifier")
-    total_cost_usd: float = Field(
+    total_cost: float = Field(
         ge=0.0,
         description="Total cost in the analysis period",
     )
@@ -171,7 +171,7 @@ class AgentEfficiency(BaseModel):
         if self.total_tokens == 0:
             return 0.0
         return round(
-            self.total_cost_usd / self.total_tokens * 1000,
+            self.total_cost / self.total_tokens * 1000,
             BUDGET_ROUNDING_PRECISION,
         )
 
@@ -313,7 +313,7 @@ class ApprovalDecision(BaseModel):
     Attributes:
         approved: Whether the operation is approved.
         reason: Explanation for the decision.
-        budget_remaining_usd: Remaining budget in USD (base currency)
+        budget_remaining: Remaining budget in the configured currency
             (may be negative if over budget).
         budget_used_percent: Percentage of budget consumed.
         alert_level: Current budget alert level.
@@ -324,9 +324,9 @@ class ApprovalDecision(BaseModel):
 
     approved: bool = Field(description="Whether the operation is approved")
     reason: NotBlankStr = Field(description="Explanation for the decision")
-    budget_remaining_usd: float = Field(
+    budget_remaining: float = Field(
         description=(
-            "Remaining budget in USD (base currency) (negative when over budget)"
+            "Remaining budget in the configured currency (negative when over budget)"
         ),
     )
     budget_used_percent: float = Field(
@@ -357,10 +357,13 @@ class CostOptimizerConfig(BaseModel):
             cost_per_1k to flag as inefficient.
         approval_auto_deny_alert_level: Alert level at or above which
             operations are automatically denied.
-        approval_warn_threshold_usd: Cost threshold for adding a
-            warning condition to approval.  When set to ``0.0``, every
-            approved operation receives a "High-cost operation" condition
-            (effectively "always warn").
+        approval_warn_threshold: Absolute cost threshold (in the
+            configured ``budget.currency``) for adding a warning
+            condition to approval.  Operators running with a different
+            currency than the default should tune this to a value
+            meaningful in their currency.  When set to ``0.0``, every
+            approved operation receives a "High-cost operation"
+            condition (effectively "always warn").
         min_anomaly_windows: Minimum number of historical windows
             required before anomaly detection activates.
     """
@@ -386,10 +389,13 @@ class CostOptimizerConfig(BaseModel):
         default=BudgetAlertLevel.HARD_STOP,
         description="Alert level triggering auto-deny",
     )
-    approval_warn_threshold_usd: float = Field(
+    approval_warn_threshold: float = Field(
         default=1.0,
         ge=0.0,
-        description="Cost threshold for warning condition",
+        description=(
+            "Absolute cost threshold (in configured currency) for "
+            "warning condition; tune per operator currency"
+        ),
     )
     min_anomaly_windows: int = Field(
         default=3,

@@ -498,12 +498,12 @@ class TestMaxConcurrentTasksEnforcement:
                 AgentWorkload(
                     agent_id=str(busy.id),
                     active_task_count=3,
-                    total_cost_usd=0.0,
+                    total_cost=0.0,
                 ),
                 AgentWorkload(
                     agent_id=str(available.id),
                     active_task_count=1,
-                    total_cost_usd=0.0,
+                    total_cost=0.0,
                 ),
             ),
         )
@@ -540,12 +540,12 @@ class TestMaxConcurrentTasksEnforcement:
                 AgentWorkload(
                     agent_id=str(busy.id),
                     active_task_count=99,
-                    total_cost_usd=0.0,
+                    total_cost=0.0,
                 ),
                 AgentWorkload(
                     agent_id=str(other.id),
                     active_task_count=1,
-                    total_cost_usd=0.0,
+                    total_cost=0.0,
                 ),
             ),
         )
@@ -582,12 +582,12 @@ class TestMaxConcurrentTasksEnforcement:
                 AgentWorkload(
                     agent_id=str(dev1.id),
                     active_task_count=2,
-                    total_cost_usd=0.0,
+                    total_cost=0.0,
                 ),
                 AgentWorkload(
                     agent_id=str(dev2.id),
                     active_task_count=3,
-                    total_cost_usd=0.0,
+                    total_cost=0.0,
                 ),
             ),
         )

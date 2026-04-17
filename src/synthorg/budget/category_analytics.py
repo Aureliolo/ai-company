@@ -221,7 +221,7 @@ def build_category_breakdown(
     for r in records:
         bucket_key = r.call_category if r.call_category in buckets else None
         costs, tokens, count = buckets[bucket_key]
-        costs.append(r.cost_usd)
+        costs.append(r.cost)
         # Integer accumulators are in a tuple; replace the tuple to
         # update them (the costs list is mutated in-place).
         buckets[bucket_key] = (

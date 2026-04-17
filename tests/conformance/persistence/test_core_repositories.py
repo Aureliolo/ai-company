@@ -80,7 +80,7 @@ class TestCostRecordRepository:
             model="test-small-001",
             input_tokens=100,
             output_tokens=50,
-            cost_usd=0.05,
+            cost=0.05,
             timestamp=datetime(2026, 4, 10, 12, tzinfo=UTC),
             call_category=LLMCallCategory.PRODUCTIVE,
         )
@@ -88,7 +88,7 @@ class TestCostRecordRepository:
 
         results = await backend.cost_records.query(agent_id="agent_1")
         assert len(results) == 1
-        assert results[0].cost_usd == 0.05
+        assert results[0].cost == 0.05
 
     async def test_aggregate_sum(self, backend: PersistenceBackend) -> None:
         task = make_task(task_id="t1")
@@ -105,7 +105,7 @@ class TestCostRecordRepository:
                     model="test-small-001",
                     input_tokens=10,
                     output_tokens=10,
-                    cost_usd=cost,
+                    cost=cost,
                     timestamp=datetime(2026, 4, 10, 12, tzinfo=UTC),
                     call_category=LLMCallCategory.PRODUCTIVE,
                 )
