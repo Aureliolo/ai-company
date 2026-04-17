@@ -132,7 +132,7 @@ class TestSearchShared:
         assert entries[0].agent_id == "test-agent-002"
         mock_client.search.assert_called_once()
         call_kwargs = mock_client.search.call_args[1]
-        assert call_kwargs["user_id"] == SHARED_NAMESPACE
+        assert call_kwargs["filters"] == {"user_id": SHARED_NAMESPACE}
 
     async def test_search_shared_without_text(
         self,

@@ -26,7 +26,7 @@ dependencies = [
     "lxml==6.0.4",
     "litestar[standard,structlog,pydantic,brotli,prometheus]==2.21.1",
     "mcp==1.27.0",
-    "mem0ai==1.0.11",
+    "mem0ai==2.0.0",
     "mmh3==5.2.1",
     "packaging==26.1",
     "pydantic==2.13.1",

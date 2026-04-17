@@ -412,10 +412,15 @@ def query_to_mem0_search_args(
             reason=msg,
         )
         raise ValueError(msg)
+    # Mem0 v2 moved entity IDs from top-level kwargs to the filters dict
+    # and renamed ``limit`` to ``top_k``. ``threshold=0.0`` disables the
+    # v2 default 0.1 similarity floor so post-filtering remains the sole
+    # relevance gate.
     return {
         "query": query.text,
-        "user_id": str(agent_id),
-        "limit": query.limit,
+        "filters": {"user_id": str(agent_id)},
+        "top_k": query.limit,
+        "threshold": 0.0,
     }
 
 
@@ -433,8 +438,8 @@ def query_to_mem0_getall_args(
         Dict of kwargs for ``Memory.get_all()``.
     """
     return {
-        "user_id": str(agent_id),
-        "limit": query.limit,
+        "filters": {"user_id": str(agent_id)},
+        "top_k": query.limit,
     }
 
 
