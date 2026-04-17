@@ -16,6 +16,7 @@ Lifecycle code picks the concrete class that matches the active
 persistence backend (see ``synthorg.api.lifecycle``).
 """
 
+import datetime as _datetime_mod
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
@@ -35,7 +36,40 @@ from synthorg.observability.events.api import (
 if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool
 
+
+def _import_dict_row() -> Any:
+    """Lazily resolve ``psycopg.rows.dict_row``.
+
+    Kept out of the module-level import block so Sqlite-only deployments
+    never need the optional ``psycopg`` dependency at import time.
+    ``AsyncConnectionPool`` is similarly deferred via ``TYPE_CHECKING``.
+    """
+    from psycopg.rows import dict_row  # noqa: PLC0415
+
+    return dict_row
+
+
 logger = get_logger(__name__)
+
+
+def _coerce_datetime(value: Any) -> datetime:
+    """Accept a pre-parsed ``datetime`` or an ISO-8601 string and return a ``datetime``.
+
+    SQLite stores timestamps as TEXT; aiosqlite returns them as ``str``.
+    Postgres stores ``TIMESTAMPTZ``; psycopg returns them already parsed
+    as ``datetime``. The session store is backend-agnostic, so this
+    helper normalises both without hiding schema-level type drift
+    behind a blanket ``str()`` cast.
+
+    The isinstance check resolves ``datetime.datetime`` via the stdlib
+    module reference rather than the ``from datetime import datetime``
+    binding because tests patch the latter with a ``MagicMock`` to
+    freeze ``datetime.now``; that mock is not a valid ``isinstance``
+    second argument.
+    """
+    if isinstance(value, _datetime_mod.datetime):
+        return value
+    return datetime.fromisoformat(value)
 
 
 def _row_to_session(row: Any) -> Session:
@@ -50,9 +84,9 @@ def _row_to_session(row: Any) -> Session:
         role=HumanRole(row["role"]),
         ip_address=row["ip_address"],
         user_agent=row["user_agent"],
-        created_at=datetime.fromisoformat(str(row["created_at"])),
-        last_active_at=datetime.fromisoformat(str(row["last_active_at"])),
-        expires_at=datetime.fromisoformat(str(row["expires_at"])),
+        created_at=_coerce_datetime(row["created_at"]),
+        last_active_at=_coerce_datetime(row["last_active_at"]),
+        expires_at=_coerce_datetime(row["expires_at"]),
         revoked=bool(row["revoked"]),
     )
 
@@ -313,10 +347,11 @@ class PostgresSessionStore:
     def __init__(self, pool: AsyncConnectionPool) -> None:
         self._pool = pool
         self._revoked: set[str] = set()
+        self._dict_row = _import_dict_row()
 
     async def load_revoked(self) -> None:
         """Load revoked session IDs from Postgres into memory."""
-        from psycopg.rows import dict_row  # noqa: PLC0415
+        dict_row = self._dict_row
 
         now = datetime.now(UTC)
         async with (
@@ -361,7 +396,7 @@ class PostgresSessionStore:
 
     async def get(self, session_id: str) -> Session | None:
         """Look up a session by ID."""
-        from psycopg.rows import dict_row  # noqa: PLC0415
+        dict_row = self._dict_row
 
         async with (
             self._pool.connection() as conn,
@@ -376,7 +411,7 @@ class PostgresSessionStore:
 
     async def list_by_user(self, user_id: str) -> tuple[Session, ...]:
         """List active (non-expired, non-revoked) sessions for a user."""
-        from psycopg.rows import dict_row  # noqa: PLC0415
+        dict_row = self._dict_row
 
         now = datetime.now(UTC).isoformat()
         async with (
@@ -395,7 +430,7 @@ class PostgresSessionStore:
 
     async def list_all(self) -> tuple[Session, ...]:
         """List all active (non-expired, non-revoked) sessions."""
-        from psycopg.rows import dict_row  # noqa: PLC0415
+        dict_row = self._dict_row
 
         now = datetime.now(UTC).isoformat()
         async with (
@@ -428,7 +463,7 @@ class PostgresSessionStore:
 
     async def revoke_all_for_user(self, user_id: str) -> int:
         """Revoke all active sessions for a user."""
-        from psycopg.rows import dict_row  # noqa: PLC0415
+        dict_row = self._dict_row
 
         now = datetime.now(UTC).isoformat()
         async with self._pool.connection() as conn:
@@ -486,7 +521,7 @@ class PostgresSessionStore:
 
     async def cleanup_expired(self) -> int:
         """Remove expired sessions from the database."""
-        from psycopg.rows import dict_row  # noqa: PLC0415
+        dict_row = self._dict_row
 
         now = datetime.now(UTC).isoformat()
         async with self._pool.connection() as conn:

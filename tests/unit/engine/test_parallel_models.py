@@ -435,7 +435,7 @@ class TestParallelExecutionResult:
         assert result.agents_failed == 1
         assert result.all_succeeded is False
 
-    def test_total_cost_usd(self) -> None:
+    def test_total_cost(self) -> None:
         i1, t1 = _make_identity("a1"), _make_task("t1")
         r1 = _make_run_result(i1, t1)
         o1 = AgentOutcome(

@@ -143,7 +143,8 @@ def test_currency_symbol_skipped_in_test_files(web_file: Path) -> None:
     src = 'expect(fn()).toBe("$42.50")\n'
     p = _write(web_file, "web/src/__tests__/utils/format.test.ts", src)
     # Check-file filters __tests__ via _SKIP_DIRS; at the per-function level
-    # the currency-symbol check should also be a no-op.
+    # the currency-symbol check must also skip test files.
+    assert check.check_hardcoded_currency_symbol(src, p, web_file) == []
     assert check.check_file(p, web_file) == []
 
 
@@ -249,11 +250,15 @@ def test_suppression_marker_does_not_leak_across_lines(web_file: Path) -> None:
 
 @pytest.mark.unit
 def test_check_file_runs_new_checks_together(web_file: Path) -> None:
-    """A file with all three violations produces three warnings."""
+    """A file with all three violations produces exactly three warnings."""
     src = "const c = 'USD'\nconst label = '$10'\ninterface X { cost_usd: number }\n"
     p = _write(web_file, "web/src/foo.tsx", src)
     warnings = check.check_file(p, web_file)
-    assert len(warnings) >= 3
+    assert len(warnings) == 3
+    joined = "\n".join(warnings).lower()
+    assert "currency code" in joined
+    assert "currency symbol" in joined
+    assert "_usd" in joined
 
 
 @pytest.mark.unit

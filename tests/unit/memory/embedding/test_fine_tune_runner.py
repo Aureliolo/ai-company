@@ -40,68 +40,51 @@ class TestResolveHealthPort:
         monkeypatch.delenv(self._ENV_VAR, raising=False)
         assert _resolve_health_port() == _DEFAULT_HEALTH_PORT
 
-    def test_env_empty_string_returns_default(
-        self,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        # Empty env var (common accidental container config) should not
-        # be treated as a valid port -- fail loudly, do not silently
-        # fall back.
-        monkeypatch.setenv(self._ENV_VAR, "")
-        with pytest.raises(ValueError, match="not a valid integer"):
-            _resolve_health_port()
-
+    @pytest.mark.parametrize(
+        ("raw", "expected"),
+        [
+            ("20000", 20000),
+            ("1", 1),
+            ("65535", 65535),
+        ],
+        ids=["typical", "low_boundary", "high_boundary"],
+    )
     def test_valid_env_returns_int(
         self,
         monkeypatch: pytest.MonkeyPatch,
+        raw: str,
+        expected: int,
     ) -> None:
-        monkeypatch.setenv(self._ENV_VAR, "20000")
-        assert _resolve_health_port() == 20000
+        monkeypatch.setenv(self._ENV_VAR, raw)
+        assert _resolve_health_port() == expected
 
-    def test_boundary_low_port(
+    @pytest.mark.parametrize(
+        ("raw", "match"),
+        [
+            # Empty env var (common accidental container config) is
+            # treated as an integer-parse failure, not a silent default.
+            ("", "not a valid integer"),
+            ("not-a-port", "not a valid integer"),
+            ("-1", "out of range"),
+            ("0", "out of range"),
+            ("65536", "out of range"),
+        ],
+        ids=[
+            "empty_string_raises",
+            "non_integer_raises",
+            "negative_raises",
+            "zero_raises",
+            "above_max_raises",
+        ],
+    )
+    def test_invalid_env_raises(
         self,
         monkeypatch: pytest.MonkeyPatch,
+        raw: str,
+        match: str,
     ) -> None:
-        monkeypatch.setenv(self._ENV_VAR, "1")
-        assert _resolve_health_port() == 1
-
-    def test_boundary_high_port(
-        self,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        monkeypatch.setenv(self._ENV_VAR, "65535")
-        assert _resolve_health_port() == 65535
-
-    def test_non_integer_env_raises(
-        self,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        monkeypatch.setenv(self._ENV_VAR, "not-a-port")
-        with pytest.raises(ValueError, match="not a valid integer"):
-            _resolve_health_port()
-
-    def test_negative_port_raises(
-        self,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        monkeypatch.setenv(self._ENV_VAR, "-1")
-        with pytest.raises(ValueError, match="out of range"):
-            _resolve_health_port()
-
-    def test_zero_port_raises(
-        self,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        monkeypatch.setenv(self._ENV_VAR, "0")
-        with pytest.raises(ValueError, match="out of range"):
-            _resolve_health_port()
-
-    def test_port_above_max_raises(
-        self,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        monkeypatch.setenv(self._ENV_VAR, "65536")
-        with pytest.raises(ValueError, match="out of range"):
+        monkeypatch.setenv(self._ENV_VAR, raw)
+        with pytest.raises(ValueError, match=match):
             _resolve_health_port()
 
 

@@ -433,8 +433,8 @@ class AuthorityBreachDetector:
                 category=self.category,
                 severity=ErrorSeverity.HIGH,
                 description=(
-                    f"Execution cost ${total_cost:.4f} exceeds "
-                    f"authority budget limit ${limit:.4f}"
+                    f"Execution cost {total_cost:.4f} exceeds "
+                    f"authority budget limit {limit:.4f}"
                 ),
                 evidence=(
                     f"total_cost={total_cost:.4f}",

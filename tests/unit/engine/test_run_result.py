@@ -133,7 +133,7 @@ class TestAgentRunResultComputedFields:
         result = _make_run_result(turns=turns)
         assert result.total_turns == 3
 
-    def test_total_cost_usd(self) -> None:
+    def test_total_cost(self) -> None:
         result = _make_run_result(cost=0.123)
         assert result.total_cost == pytest.approx(0.123)
 

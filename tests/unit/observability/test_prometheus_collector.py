@@ -211,7 +211,7 @@ class TestPrometheusCollectorRefresh:
         await collector.refresh(state)
         output = generate_latest(collector.registry).decode()
         assert "synthorg_budget_used_percent" in output
-        assert "synthorg_budget_monthly_usd" in output
+        assert "synthorg_budget_monthly_cost" in output
         assert "25.0" in output  # 50/200 * 100
 
     async def test_budget_percent_uses_billing_period_cost(self) -> None:

@@ -47,23 +47,23 @@ class TestEfficiencyConfig:
         assert cfg.cost_enabled is True
         assert cfg.time_enabled is True
         assert cfg.tokens_enabled is True
-        assert cfg.reference_cost_usd == 10.0
+        assert cfg.reference_cost == 10.0
         assert cfg.reference_time_seconds == 300.0
         assert cfg.reference_tokens == 5000
 
     def test_custom_references(self) -> None:
         cfg = EfficiencyConfig(
-            reference_cost_usd=50.0,
+            reference_cost=50.0,
             reference_time_seconds=600.0,
             reference_tokens=10000,
         )
-        assert cfg.reference_cost_usd == 50.0
+        assert cfg.reference_cost == 50.0
         assert cfg.reference_time_seconds == 600.0
         assert cfg.reference_tokens == 10000
 
     def test_reference_cost_must_be_positive(self) -> None:
         with pytest.raises(ValueError, match="greater than 0"):
-            EfficiencyConfig(reference_cost_usd=0.0)
+            EfficiencyConfig(reference_cost=0.0)
 
     def test_reference_tokens_must_be_positive(self) -> None:
         with pytest.raises(ValueError, match="greater than 0"):

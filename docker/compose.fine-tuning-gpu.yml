@@ -44,6 +44,11 @@ services:
         limits:
           memory: 8G
           cpus: "4.0"
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
     logging:
       driver: json-file
       options:

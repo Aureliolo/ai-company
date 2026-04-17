@@ -357,7 +357,7 @@ class CostOptimizerConfig(BaseModel):
             cost_per_1k to flag as inefficient.
         approval_auto_deny_alert_level: Alert level at or above which
             operations are automatically denied.
-        approval_warn_threshold_usd: Cost threshold for adding a
+        approval_warn_threshold: Cost threshold for adding a
             warning condition to approval.  When set to ``0.0``, every
             approved operation receives a "High-cost operation" condition
             (effectively "always warn").
@@ -386,7 +386,7 @@ class CostOptimizerConfig(BaseModel):
         default=BudgetAlertLevel.HARD_STOP,
         description="Alert level triggering auto-deny",
     )
-    approval_warn_threshold_usd: float = Field(
+    approval_warn_threshold: float = Field(
         default=1.0,
         ge=0.0,
         description="Cost threshold for warning condition",

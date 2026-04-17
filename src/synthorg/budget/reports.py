@@ -108,7 +108,7 @@ class PeriodComparison(BaseModel):
     Attributes:
         current_period_cost: Cost in the current period.
         previous_period_cost: Cost in the previous period.
-        cost_change_usd: Absolute change in cost (computed).
+        cost_change: Absolute change in cost (computed).
         cost_change_percent: Percentage change in cost (computed).
             None when previous period cost is zero.
     """
@@ -126,7 +126,7 @@ class PeriodComparison(BaseModel):
 
     @computed_field  # type: ignore[prop-decorator]
     @property
-    def cost_change_usd(self) -> float:
+    def cost_change(self) -> float:
         """Absolute cost change (current - previous)."""
         return round(
             self.current_period_cost - self.previous_period_cost,
@@ -140,7 +140,7 @@ class PeriodComparison(BaseModel):
         if self.previous_period_cost <= 0:
             return None
         return round(
-            self.cost_change_usd / self.previous_period_cost * 100,
+            self.cost_change / self.previous_period_cost * 100,
             BUDGET_ROUNDING_PRECISION,
         )
 

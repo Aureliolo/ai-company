@@ -15,7 +15,7 @@ CREATE TABLE `new_cost_records` (
   CONSTRAINT `0` FOREIGN KEY (`task_id`) REFERENCES `tasks` (`id`) ON UPDATE NO ACTION ON DELETE NO ACTION
 );
 -- Copy rows from old table "cost_records" to new temporary table "new_cost_records"
-INSERT INTO `new_cost_records` (`rowid`, `agent_id`, `task_id`, `provider`, `model`, `input_tokens`, `output_tokens`, `timestamp`, `call_category`) SELECT `rowid`, `agent_id`, `task_id`, `provider`, `model`, `input_tokens`, `output_tokens`, `timestamp`, `call_category` FROM `cost_records`;
+INSERT INTO `new_cost_records` (`rowid`, `agent_id`, `task_id`, `provider`, `model`, `input_tokens`, `output_tokens`, `cost`, `timestamp`, `call_category`) SELECT `rowid`, `agent_id`, `task_id`, `provider`, `model`, `input_tokens`, `output_tokens`, `cost_usd`, `timestamp`, `call_category` FROM `cost_records`;
 -- Drop "cost_records" table after copying rows
 DROP TABLE `cost_records`;
 -- Rename temporary table "new_cost_records" to "cost_records"
@@ -42,7 +42,7 @@ CREATE TABLE `new_task_metrics` (
   CONSTRAINT `0` FOREIGN KEY (`task_id`) REFERENCES `tasks` (`id`) ON UPDATE NO ACTION ON DELETE NO ACTION
 );
 -- Copy rows from old table "task_metrics" to new temporary table "new_task_metrics"
-INSERT INTO `new_task_metrics` (`id`, `agent_id`, `task_id`, `task_type`, `completed_at`, `is_success`, `duration_seconds`, `turns_used`, `tokens_used`, `quality_score`, `complexity`) SELECT `id`, `agent_id`, `task_id`, `task_type`, `completed_at`, `is_success`, `duration_seconds`, `turns_used`, `tokens_used`, `quality_score`, `complexity` FROM `task_metrics`;
+INSERT INTO `new_task_metrics` (`id`, `agent_id`, `task_id`, `task_type`, `completed_at`, `is_success`, `duration_seconds`, `cost`, `turns_used`, `tokens_used`, `quality_score`, `complexity`) SELECT `id`, `agent_id`, `task_id`, `task_type`, `completed_at`, `is_success`, `duration_seconds`, `cost_usd`, `turns_used`, `tokens_used`, `quality_score`, `complexity` FROM `task_metrics`;
 -- Drop "task_metrics" table after copying rows
 DROP TABLE `task_metrics`;
 -- Rename temporary table "new_task_metrics" to "task_metrics"
@@ -81,7 +81,7 @@ CREATE TABLE `new_agent_states` (
     )
 );
 -- Copy rows from old table "agent_states" to new temporary table "new_agent_states"
-INSERT INTO `new_agent_states` (`agent_id`, `execution_id`, `task_id`, `status`, `turn_count`, `last_activity_at`, `started_at`) SELECT `agent_id`, `execution_id`, `task_id`, `status`, `turn_count`, `last_activity_at`, `started_at` FROM `agent_states`;
+INSERT INTO `new_agent_states` (`agent_id`, `execution_id`, `task_id`, `status`, `turn_count`, `accumulated_cost`, `last_activity_at`, `started_at`) SELECT `agent_id`, `execution_id`, `task_id`, `status`, `turn_count`, `accumulated_cost_usd`, `last_activity_at`, `started_at` FROM `agent_states`;
 -- Drop "agent_states" table after copying rows
 DROP TABLE `agent_states`;
 -- Rename temporary table "new_agent_states" to "agent_states"

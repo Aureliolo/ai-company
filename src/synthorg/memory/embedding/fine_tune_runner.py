@@ -43,6 +43,7 @@ _DEFAULT_HEALTH_PORT: Final[int] = 15002
 _HEALTH_PORT_ENV_VAR: Final[str] = "SYNTHORG_FINE_TUNE_HEALTH_PORT"
 _MIN_TCP_PORT: Final[int] = 1
 _MAX_TCP_PORT: Final[int] = 65535
+_MAX_LOGGED_ENV_CHARS: Final[int] = 64
 
 
 def _resolve_health_port() -> int:
@@ -58,22 +59,25 @@ def _resolve_health_port() -> int:
     raw = os.environ.get(_HEALTH_PORT_ENV_VAR)
     if raw is None:
         return _DEFAULT_HEALTH_PORT
+    # Truncate untrusted env input before logging to cap log line size
+    # against pathological values pasted into container configuration.
+    safe_raw = raw[:_MAX_LOGGED_ENV_CHARS]
     try:
         port = int(raw)
     except ValueError as exc:
         logger.exception(
             CONFIG_VALIDATION_FAILED,
             env_var=_HEALTH_PORT_ENV_VAR,
-            value=raw,
+            value=safe_raw,
             reason="not-an-integer",
         )
-        msg = f"{_HEALTH_PORT_ENV_VAR}={raw!r} is not a valid integer"
+        msg = f"{_HEALTH_PORT_ENV_VAR}={safe_raw!r} is not a valid integer"
         raise ValueError(msg) from exc
     if not (_MIN_TCP_PORT <= port <= _MAX_TCP_PORT):
         logger.error(
             CONFIG_VALIDATION_FAILED,
             env_var=_HEALTH_PORT_ENV_VAR,
-            value=raw,
+            value=safe_raw,
             reason="out-of-range",
             min_port=_MIN_TCP_PORT,
             max_port=_MAX_TCP_PORT,

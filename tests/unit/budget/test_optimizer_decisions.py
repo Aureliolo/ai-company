@@ -127,7 +127,7 @@ class TestEvaluateOperation:
         )
         decision = await optimizer.evaluate_operation(
             agent_id="alice",
-            estimated_cost_usd=0.5,
+            estimated_cost=0.5,
             now=OPT_START + timedelta(days=15),
         )
         assert decision.approved is True
@@ -146,7 +146,7 @@ class TestEvaluateOperation:
 
         decision = await optimizer.evaluate_operation(
             agent_id="alice",
-            estimated_cost_usd=1.0,
+            estimated_cost=1.0,
             now=OPT_START + timedelta(days=15),
         )
         assert decision.approved is False
@@ -166,7 +166,7 @@ class TestEvaluateOperation:
 
         decision = await optimizer.evaluate_operation(
             agent_id="alice",
-            estimated_cost_usd=10.0,
+            estimated_cost=10.0,
             now=OPT_START + timedelta(days=15),
         )
         assert decision.approved is False
@@ -187,7 +187,7 @@ class TestEvaluateOperation:
 
         decision = await optimizer.evaluate_operation(
             agent_id="alice",
-            estimated_cost_usd=2.0,
+            estimated_cost=2.0,
             now=OPT_START + timedelta(days=15),
         )
         assert decision.approved is True
@@ -200,7 +200,7 @@ class TestEvaluateOperation:
 
         decision = await optimizer.evaluate_operation(
             agent_id="alice",
-            estimated_cost_usd=100.0,
+            estimated_cost=100.0,
         )
         assert decision.approved is True
         assert "disabled" in decision.reason.lower()
@@ -223,7 +223,7 @@ class TestEvaluateOperation:
 
         decision = await optimizer.evaluate_operation(
             agent_id="alice",
-            estimated_cost_usd=0.01,
+            estimated_cost=0.01,
             now=OPT_START + timedelta(days=15),
         )
         assert decision.approved is False
@@ -231,24 +231,24 @@ class TestEvaluateOperation:
 
     async def test_high_cost_condition(self) -> None:
         """High-cost warning condition when estimated cost >= threshold."""
-        config = CostOptimizerConfig(approval_warn_threshold_usd=0.5)
+        config = CostOptimizerConfig(approval_warn_threshold=0.5)
         optimizer, _ = make_optimizer(config=config)
 
         decision = await optimizer.evaluate_operation(
             agent_id="alice",
-            estimated_cost_usd=1.0,
+            estimated_cost=1.0,
             now=OPT_START + timedelta(days=15),
         )
         assert decision.approved is True
         assert any("High-cost" in c for c in decision.conditions)
 
     async def test_negative_estimated_cost_rejected(self) -> None:
-        """Negative estimated_cost_usd raises ValueError."""
+        """Negative estimated_cost raises ValueError."""
         optimizer, _ = make_optimizer()
-        with pytest.raises(ValueError, match="estimated_cost_usd must be >= 0"):
+        with pytest.raises(ValueError, match="estimated_cost must be >= 0"):
             await optimizer.evaluate_operation(
                 agent_id="alice",
-                estimated_cost_usd=-1.0,
+                estimated_cost=-1.0,
             )
 
     async def test_projected_alert_level_used_for_auto_deny(self) -> None:
@@ -270,7 +270,7 @@ class TestEvaluateOperation:
 
         decision = await optimizer.evaluate_operation(
             agent_id="alice",
-            estimated_cost_usd=10.0,
+            estimated_cost=10.0,
             now=OPT_START + timedelta(days=15),
         )
         assert decision.approved is False

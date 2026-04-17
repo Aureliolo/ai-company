@@ -118,7 +118,7 @@ export function StatusBar({ onHamburgerClick, sidebarOverlayOpen = false }: Stat
   const costDisplay =
     totalCost !== undefined && totalCost !== null
       ? formatCurrency(totalCost, currency)
-      : '$--'
+      : '--'
 
   return (
     <div

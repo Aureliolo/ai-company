@@ -48,12 +48,19 @@ def _build_session_store(db: object) -> SessionStore:
     caller must pick the right implementation. We dispatch on the
     concrete class name to avoid importing psycopg-pool at module
     load time (the dependency is optional and only wired when the
-    Postgres backend is active).
+    Postgres backend is active). Unknown handles fail fast rather
+    than silently routing to the SQLite implementation.
     """
     cls_name = type(db).__name__
     if cls_name == "AsyncConnectionPool":
         return PostgresSessionStore(db)  # type: ignore[arg-type]
-    return SqliteSessionStore(db)  # type: ignore[arg-type]
+    if cls_name == "Connection":
+        return SqliteSessionStore(db)  # type: ignore[arg-type]
+    msg = (
+        f"Unsupported session-store DB handle: {type(db)!r}. "
+        f"Expected aiosqlite.Connection or psycopg_pool.AsyncConnectionPool."
+    )
+    raise TypeError(msg)
 
 
 class _AsyncStartStop(Protocol):

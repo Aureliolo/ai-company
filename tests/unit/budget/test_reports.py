@@ -93,7 +93,7 @@ class TestPeriodComparison:
             current_period_cost=100.0,
             previous_period_cost=80.0,
         )
-        assert pc.cost_change_usd == 20.0
+        assert pc.cost_change == 20.0
         assert pc.cost_change_percent == 25.0
 
     def test_cost_decrease(self) -> None:
@@ -101,7 +101,7 @@ class TestPeriodComparison:
             current_period_cost=60.0,
             previous_period_cost=80.0,
         )
-        assert pc.cost_change_usd == -20.0
+        assert pc.cost_change == -20.0
         assert pc.cost_change_percent == -25.0
 
     def test_no_previous_data_percent_is_none(self) -> None:
@@ -109,7 +109,7 @@ class TestPeriodComparison:
             current_period_cost=50.0,
             previous_period_cost=0.0,
         )
-        assert pc.cost_change_usd == 50.0
+        assert pc.cost_change == 50.0
         assert pc.cost_change_percent is None
 
     def test_equal_periods(self) -> None:
@@ -117,7 +117,7 @@ class TestPeriodComparison:
             current_period_cost=50.0,
             previous_period_cost=50.0,
         )
-        assert pc.cost_change_usd == 0.0
+        assert pc.cost_change == 0.0
         assert pc.cost_change_percent == 0.0
 
 
@@ -245,7 +245,7 @@ class TestReportGenerator:
         assert report.period_comparison is not None
         assert report.period_comparison.current_period_cost == 8.0
         assert report.period_comparison.previous_period_cost == 5.0
-        assert report.period_comparison.cost_change_usd == 3.0
+        assert report.period_comparison.cost_change == 3.0
         assert report.period_comparison.cost_change_percent == 60.0
 
     async def test_no_prior_data_no_comparison(self) -> None:
@@ -320,7 +320,7 @@ class TestReportGenerator:
 
         report = await gen.generate_report(start=_START, end=_END)
         assert report.period_comparison is not None
-        assert report.period_comparison.cost_change_usd == -7.0
+        assert report.period_comparison.cost_change == -7.0
         assert report.period_comparison.cost_change_percent is not None
         assert report.period_comparison.cost_change_percent < 0
 

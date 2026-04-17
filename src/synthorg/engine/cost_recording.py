@@ -101,7 +101,7 @@ async def record_execution_costs(  # noqa: PLR0913
             continue
         # Mirror the persisted cost record to the Prometheus
         # collector so ``synthorg_provider_tokens_total`` /
-        # ``synthorg_provider_cost_usd_total`` reflect every paid
+        # ``synthorg_provider_cost_total`` reflect every paid
         # completion. No-op when no collector is wired. Metrics
         # failures are caught locally so a prometheus label / push
         # regression cannot turn a successful persisted cost into a

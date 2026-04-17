@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react'
 import { useAnalyticsStore } from '@/stores/analytics'
 import { StatusBar } from '@/components/layout/StatusBar'
 import { formatCurrency } from '@/utils/format'
+import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import type { OverviewMetrics } from '@/api/types'
 
 function makeOverview(overrides: Partial<OverviewMetrics> = {}): OverviewMetrics {
@@ -18,7 +19,7 @@ function makeOverview(overrides: Partial<OverviewMetrics> = {}): OverviewMetrics
     cost_7d_trend: [],
     active_agents_count: 0,
     idle_agents_count: 0,
-    currency: 'EUR',
+    currency: DEFAULT_CURRENCY,
     ...overrides,
   }
 }
@@ -98,7 +99,12 @@ describe('StatusBar', () => {
 
   it('shows cost placeholder when no data loaded', () => {
     render(<StatusBar />)
-    expect(screen.getByText('$--')).toBeInTheDocument()
+    // Cost placeholder is a neutral ``--`` (no hardcoded currency
+    // symbol). Scope to the ``spend ... today`` chip to avoid matching
+    // sibling placeholders (``-- agents``, ``-- active``, ...).
+    const spendLabel = screen.getByText('spend')
+    const spendChip = spendLabel.parentElement
+    expect(spendChip).toHaveTextContent(/spend\s*--\s*today/)
   })
 
   it('shows budget percentage when data loaded', () => {
@@ -137,20 +143,23 @@ describe('StatusBar', () => {
     expect(screen.getByText('3 in review')).toBeInTheDocument()
   })
 
-  it('shows formatted currency for cost display (EUR default)', () => {
-    useAnalyticsStore.setState({
-      overview: makeOverview({ total_cost: 1234.56 }),
-    })
+  it('shows formatted currency for cost display (default currency)', () => {
+    const overview = makeOverview({ total_cost: 1234.56 })
+    useAnalyticsStore.setState({ overview })
     render(<StatusBar />)
-    expect(screen.getByText(formatCurrency(1234.56, 'EUR'))).toBeInTheDocument()
+    expect(
+      screen.getByText(formatCurrency(1234.56, overview.currency)),
+    ).toBeInTheDocument()
   })
 
   it('shows formatted currency for non-default currency', () => {
-    useAnalyticsStore.setState({
-      overview: makeOverview({ total_cost: 99.5, currency: 'GBP' }),
-    })
+    // lint-allow: regional-defaults
+    const overview = makeOverview({ total_cost: 99.5, currency: 'GBP' })
+    useAnalyticsStore.setState({ overview })
     render(<StatusBar />)
-    expect(screen.getByText(formatCurrency(99.5, 'GBP'))).toBeInTheDocument()
+    expect(
+      screen.getByText(formatCurrency(99.5, overview.currency)),
+    ).toBeInTheDocument()
   })
 
   it('renders the theme toggle', () => {

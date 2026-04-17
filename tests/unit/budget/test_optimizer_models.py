@@ -349,7 +349,7 @@ class TestCostOptimizerConfig:
         assert config.anomaly_spike_factor == 3.0
         assert config.inefficiency_threshold_factor == 1.5
         assert config.approval_auto_deny_alert_level == BudgetAlertLevel.HARD_STOP
-        assert config.approval_warn_threshold_usd == 1.0
+        assert config.approval_warn_threshold == 1.0
         assert config.min_anomaly_windows == 3
 
     @pytest.mark.unit
@@ -359,7 +359,7 @@ class TestCostOptimizerConfig:
             anomaly_spike_factor=5.0,
             inefficiency_threshold_factor=2.0,
             approval_auto_deny_alert_level=BudgetAlertLevel.CRITICAL,
-            approval_warn_threshold_usd=2.5,
+            approval_warn_threshold=2.5,
             min_anomaly_windows=4,
         )
         assert config.anomaly_sigma_threshold == 3.0

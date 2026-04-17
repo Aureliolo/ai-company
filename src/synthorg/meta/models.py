@@ -147,7 +147,7 @@ class ConfigChange(BaseModel):
     """A single config field change.
 
     Attributes:
-        path: JSON-path to the config field (e.g. ``budget.monthly_usd``).
+        path: JSON-path to the config field (e.g. ``budget.total_monthly``).
         old_value: Current value.
         new_value: Proposed value.
         description: Why this change is proposed.

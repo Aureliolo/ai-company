@@ -31,7 +31,10 @@ class CostRecord(BaseModel):
         input_tokens: Input token count.
         output_tokens: Output token count.
         cost: Cost in the configured currency (see
-            ``budget.currency``; defaults to EUR).
+            ``budget.currency``).  All cost records in a single
+            deployment share the currency active at creation time;
+            operators must not change ``budget.currency`` while
+            historical records exist.
         timestamp: Timezone-aware timestamp of the API call.
         call_category: Optional LLM call category (productive,
             coordination, system, embedding).
@@ -60,9 +63,7 @@ class CostRecord(BaseModel):
     output_tokens: int = Field(ge=0, description="Output token count")
     cost: float = Field(
         ge=0.0,
-        description=(
-            "Cost in the configured currency (see budget.currency; defaults to EUR)"
-        ),
+        description="Cost in the configured currency (see budget.currency)",
     )
     timestamp: AwareDatetime = Field(description="Timestamp of the API call")
     call_category: LLMCallCategory | None = Field(

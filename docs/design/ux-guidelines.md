@@ -84,7 +84,7 @@ All fonts self-hosted via `@fontsource` -- no external CDN dependencies.
 
 !!! abstract "Currency in examples"
 
-    Dollar signs in the examples above illustrate the shape of a money label; the runtime rendering uses the company's configured currency (see `budget.currency`, defaults to EUR). Helpers in `web/src/utils/format.ts` (`formatCurrency`, `formatCurrencyCompact`) apply the locale-specific symbol and grouping.
+    Dollar signs in the examples above illustrate the shape of a money label; runtime rendering uses the configured `budget.currency` resolved by settings/fallback policy. Helpers in `web/src/utils/format.ts` (`formatCurrency`, `formatCurrencyCompact`) apply the locale-specific symbol and grouping.
 
 ### 1.3 Spacing Grid
 
