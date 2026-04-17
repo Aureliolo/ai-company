@@ -446,12 +446,33 @@ def make_personality_trim_notifier(
 
 
 async def _resolve_ticket_cleanup_interval(app_state: AppState) -> float:
-    """Resolve the ticket cleanup interval, falling back to 60 seconds."""
+    """Resolve the ticket cleanup interval, falling back to 60 seconds.
+
+    A settings-backend outage, missing setting, or malformed value must
+    not kill the cleanup task -- otherwise expired WS tickets and
+    sessions accumulate indefinitely until the next restart. Any
+    resolver failure is logged and the built-in default is returned.
+    """
     if not app_state.has_config_resolver:
         return 60.0
-    return await app_state.config_resolver.get_float(
-        SettingNamespace.API.value, "ticket_cleanup_interval_seconds"
-    )
+    try:
+        return await app_state.config_resolver.get_float(
+            SettingNamespace.API.value, "ticket_cleanup_interval_seconds"
+        )
+    except asyncio.CancelledError:
+        raise
+    except MemoryError, RecursionError:
+        raise
+    except Exception:
+        logger.warning(
+            API_WS_TICKET_CLEANUP,
+            error=(
+                "Failed to resolve ticket_cleanup_interval_seconds;"
+                " falling back to 60.0 seconds"
+            ),
+            exc_info=True,
+        )
+        return 60.0
 
 
 async def _ticket_cleanup_loop(app_state: AppState) -> None:
@@ -896,6 +917,116 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
                     ),
                     exc_info=True,
                 )
+
+            # Inject the resolver into services that were constructed
+            # before AppState so their polling / refresh loops honour
+            # operator-tuned settings.
+            if app_state.oauth_token_manager is not None:
+                app_state.oauth_token_manager.set_config_resolver(
+                    app_state.config_resolver,
+                )
+            if app_state.webhook_event_bridge is not None:
+                app_state.webhook_event_bridge.set_config_resolver(
+                    app_state.config_resolver,
+                )
+            # Inject the resolver into the JetStream bus so history
+            # queries honour the operator-tuned scan batch-size and
+            # fetch timeout.
+            _bus = app_state.message_bus if app_state.has_message_bus else None
+            if _bus is not None:
+                _set_resolver = getattr(_bus, "set_config_resolver", None)
+                if callable(_set_resolver):
+                    _set_resolver(app_state.config_resolver)
+
+            # Resolve the audit-chain signing timeout and push it onto
+            # every live ``AuditChainSink`` handler so runtime signing
+            # calls honour the operator setting.
+            try:
+                signing_timeout = await app_state.config_resolver.get_float(
+                    SettingNamespace.OBSERVABILITY.value,
+                    "audit_chain_signing_timeout_seconds",
+                )
+            except MemoryError, RecursionError:
+                raise
+            except Exception:
+                logger.warning(
+                    API_APP_STARTUP,
+                    error=(
+                        "Failed to resolve"
+                        " audit_chain_signing_timeout_seconds;"
+                        " keeping sink default"
+                    ),
+                    exc_info=True,
+                )
+            else:
+                from synthorg.observability.audit_chain.sink import (  # noqa: PLC0415
+                    AuditChainSink,
+                )
+                from synthorg.observability.startup_wiring import (  # noqa: PLC0415
+                    _iter_logging_handlers,
+                )
+
+                for _handler in _iter_logging_handlers():
+                    if isinstance(_handler, AuditChainSink):
+                        try:
+                            _handler.set_signing_timeout_seconds(signing_timeout)
+                        except MemoryError, RecursionError:
+                            raise
+                        except Exception:
+                            logger.warning(
+                                API_APP_STARTUP,
+                                error=(
+                                    "Failed to apply"
+                                    " audit_chain_signing_timeout_seconds"
+                                    " to handler"
+                                ),
+                                exc_info=True,
+                            )
+
+            # Rebuild the notification dispatcher with resolved adapter
+            # timeouts so webhook/SMTP calls honour operator tuning.
+            try:
+                notif_bridge = (
+                    await app_state.config_resolver.get_notifications_bridge_config()
+                )
+            except MemoryError, RecursionError:
+                raise
+            except Exception:
+                logger.warning(
+                    API_APP_STARTUP,
+                    error=(
+                        "Failed to resolve notifications bridge config;"
+                        " keeping dispatcher default timeouts"
+                    ),
+                    exc_info=True,
+                )
+            else:
+                if (
+                    app_state.has_notification_dispatcher
+                    and effective_config is not None
+                ):
+                    _old_dispatcher = app_state.notification_dispatcher
+                    _new_dispatcher = build_notification_dispatcher(
+                        effective_config.notifications,
+                        bridge_config=notif_bridge,
+                    )
+                    app_state.set_notification_dispatcher(_new_dispatcher)
+                    # Close the pre-startup dispatcher's sinks so their
+                    # httpx clients do not leak. Close after the swap so
+                    # in-flight dispatches finish against the old sinks.
+                    try:
+                        await _old_dispatcher.close()
+                    except MemoryError, RecursionError:
+                        raise
+                    except Exception:
+                        logger.warning(
+                            API_APP_STARTUP,
+                            error=(
+                                "Failed to close pre-startup notification"
+                                " dispatcher sinks after rebuild"
+                            ),
+                            exc_info=True,
+                        )
 
         _ticket_cleanup_task = asyncio.create_task(
             _ticket_cleanup_loop(app_state),
@@ -1696,6 +1827,9 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
                     WebhookEventBridge,
                 )
 
+                # config_resolver is injected in on_startup via
+                # ``WebhookEventBridge.set_config_resolver`` once the
+                # AppState (and therefore the resolver) has been built.
                 webhook_event_bridge = WebhookEventBridge(
                     bus=message_bus,
                     ceremony_scheduler=ceremony_scheduler,

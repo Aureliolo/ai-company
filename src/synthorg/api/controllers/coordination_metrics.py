@@ -4,6 +4,7 @@ Exposes ``GET /coordination/metrics`` for querying stored
 coordination metrics from completed multi-agent runs.
 """
 
+import asyncio
 from datetime import datetime  # noqa: TC003
 from typing import Annotated
 
@@ -35,13 +36,30 @@ _MAX_METRICS_QUERY = 10_000
 
 
 async def _resolve_metrics_cap(state: State) -> int:
-    """Resolve the active metrics-query cap, falling back to the constant."""
+    """Resolve the active metrics-query cap, falling back to the constant.
+
+    A settings outage or malformed value must not fail the endpoint;
+    the fallback constant keeps the DB-side ``LIMIT`` bounded.
+    """
     app_state = state.app_state
     if not app_state.has_config_resolver:
         return _MAX_METRICS_QUERY
-    result: int = await app_state.config_resolver.get_int(
-        SettingNamespace.API.value, "max_metrics_per_query"
-    )
+    try:
+        result: int = await app_state.config_resolver.get_int(
+            SettingNamespace.API.value, "max_metrics_per_query"
+        )
+    except asyncio.CancelledError:
+        raise
+    except MemoryError, RecursionError:
+        raise
+    except Exception:
+        logger.warning(
+            API_VALIDATION_FAILED,
+            error=("failed to resolve max_metrics_per_query; using fallback"),
+            cap=_MAX_METRICS_QUERY,
+            exc_info=True,
+        )
+        return _MAX_METRICS_QUERY
     return result
 
 

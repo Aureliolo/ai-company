@@ -94,12 +94,14 @@ _r.register(
         default="64m",
         description=(
             "Memory limit for the sandbox sidecar container, as a Docker"
-            " size string (e.g. '64m', '128m', '1g')"
+            " size string. Accepts raw bytes (e.g. '1048576') or a"
+            " single-character unit suffix 'b'/'k'/'m'/'g' (case-insensitive):"
+            " '512b', '64k', '64m', '1G'. The leading digit must be non-zero."
         ),
         group="Docker Sandbox",
         level=SettingLevel.ADVANCED,
         restart_required=True,
-        validator_pattern=r"^\d+[kmgKMG]$",
+        validator_pattern=r"^[1-9]\d*[bkmgBKMG]?$",
         yaml_path="tools.docker.sidecar_memory_limit",
     )
 )

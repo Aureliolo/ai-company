@@ -64,9 +64,16 @@ class WsTicketStore:
 
     Args:
         ttl_seconds: Ticket lifetime in seconds (default 30).
+        max_pending_per_user: Maximum pending tickets allowed per
+            authenticated user. Mirrors the
+            ``api.ws_ticket_max_pending_per_user`` setting; the API
+            startup hook calls :meth:`set_max_pending_per_user` once
+            the resolver is available so operator changes take effect
+            without a restart.
 
     Raises:
-        ValueError: If *ttl_seconds* is not positive.
+        ValueError: If *ttl_seconds* is not a positive finite number, or
+            if *max_pending_per_user* is less than 1.
     """
 
     def __init__(

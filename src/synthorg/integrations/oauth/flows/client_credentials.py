@@ -38,6 +38,9 @@ class ClientCredentialsFlow:
         *,
         http_timeout_seconds: float = _DEFAULT_HTTP_TIMEOUT_SECONDS,
     ) -> None:
+        if http_timeout_seconds <= 0:
+            msg = f"http_timeout_seconds must be > 0, got {http_timeout_seconds}"
+            raise ValueError(msg)
         self._http_timeout_seconds = http_timeout_seconds
 
     @property

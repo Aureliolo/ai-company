@@ -45,12 +45,30 @@ _MAX_LIFECYCLE_EVENTS = 10_000
 
 
 async def _resolve_lifecycle_cap(app_state: AppState) -> int:
-    """Resolve the active lifecycle-query cap, falling back to the constant."""
+    """Resolve the active lifecycle-query cap, falling back to the constant.
+
+    A settings outage or malformed value must not fail the endpoint;
+    the fallback constant keeps the DB-side ``LIMIT`` bounded even
+    when the resolver is unavailable.
+    """
     if not app_state.has_config_resolver:
         return _MAX_LIFECYCLE_EVENTS
-    return await app_state.config_resolver.get_int(
-        SettingNamespace.API.value, "max_lifecycle_events_per_query"
-    )
+    try:
+        return await app_state.config_resolver.get_int(
+            SettingNamespace.API.value, "max_lifecycle_events_per_query"
+        )
+    except asyncio.CancelledError:
+        raise
+    except MemoryError, RecursionError:
+        raise
+    except Exception:
+        logger.warning(
+            API_REQUEST_ERROR,
+            error=("failed to resolve max_lifecycle_events_per_query; using fallback"),
+            cap=_MAX_LIFECYCLE_EVENTS,
+            exc_info=True,
+        )
+        return _MAX_LIFECYCLE_EVENTS
 
 
 # Degraded source names -- used in responses and tests.

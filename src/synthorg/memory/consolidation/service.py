@@ -43,6 +43,8 @@ from synthorg.observability.events.consolidation import (
 logger = get_logger(__name__)
 
 _MAX_ENFORCE_BATCH = 1000
+_MAX_ENFORCE_BATCH_MIN = 100
+_MAX_ENFORCE_BATCH_MAX = 10_000
 
 
 class MemoryConsolidationService:
@@ -55,6 +57,12 @@ class MemoryConsolidationService:
             step if ``None``).
         archival_store: Optional archival store (skips archival if
             ``None`` or disabled in config).
+        max_enforce_batch: Maximum memories to enforce retention on per
+            invocation. Must match the bounds of the
+            ``memory.consolidation_enforce_batch_size`` setting
+            (``MemoryBridgeConfig``): between 100 and 10000 inclusive.
+            Defaults to the module constant so the service still works
+            standalone when the settings layer is not wired in.
     """
 
     def __init__(
@@ -66,8 +74,12 @@ class MemoryConsolidationService:
         archival_store: ArchivalStore | None = None,
         max_enforce_batch: int = _MAX_ENFORCE_BATCH,
     ) -> None:
-        if max_enforce_batch < 1:
-            msg = f"max_enforce_batch must be >= 1, got {max_enforce_batch}"
+        if not (_MAX_ENFORCE_BATCH_MIN <= max_enforce_batch <= _MAX_ENFORCE_BATCH_MAX):
+            msg = (
+                "max_enforce_batch must be between "
+                f"{_MAX_ENFORCE_BATCH_MIN} and {_MAX_ENFORCE_BATCH_MAX}, "
+                f"got {max_enforce_batch}"
+            )
             raise ValueError(msg)
         self._backend = backend
         self._config = config

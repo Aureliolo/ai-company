@@ -145,14 +145,30 @@ def try_parse_matching(raw: Any, subject: str) -> Message | None:
         return None
 
 
-async def scan_stream_for_subject(
+async def scan_stream_for_subject(  # noqa: PLR0913
     state: _NatsState,
     js: Any,
     *,
     subject: str,
     max_to_return: int,
+    batch_size: int = 100,
+    fetch_timeout_seconds: float = 0.5,
 ) -> list[Message]:
-    """Collect the most recent messages on a subject, oldest-first."""
+    """Collect the most recent messages on a subject, oldest-first.
+
+    Args:
+        state: NATS state.
+        js: JetStream handle.
+        subject: Subject being scanned.
+        max_to_return: Cap on returned messages.
+        batch_size: Messages fetched per JetStream pull. Mirrors the
+            ``communication.nats_history_batch_size`` setting; callers
+            resolve the current value via
+            ``ConfigResolver.get_communication_bridge_config()`` and
+            pass it in.
+        fetch_timeout_seconds: Per-batch fetch timeout. Mirrors the
+            ``communication.nats_history_fetch_timeout_seconds`` setting.
+    """
     if js is None:
         return []
 
@@ -162,7 +178,11 @@ async def scan_stream_for_subject(
 
     try:
         parsed_messages = await collect_history_batches(
-            psub, subject, state.stream_name
+            psub,
+            subject,
+            state.stream_name,
+            batch_size=batch_size,
+            fetch_timeout_seconds=fetch_timeout_seconds,
         )
     finally:
         await unsubscribe_history_consumer(psub, subject, state.stream_name)
@@ -177,8 +197,21 @@ async def get_channel_history(
     channel_name: str,
     *,
     limit: int | None = None,
+    batch_size: int = 100,
+    fetch_timeout_seconds: float = 0.5,
 ) -> tuple[Message, ...]:
-    """Get message history for a channel."""
+    """Get message history for a channel.
+
+    Args:
+        state: NATS state.
+        channel_name: Channel to query.
+        limit: Optional override on the retention default.
+        batch_size: Forwarded to :func:`scan_stream_for_subject`;
+            mirrors ``communication.nats_history_batch_size``.
+        fetch_timeout_seconds: Forwarded to
+            :func:`scan_stream_for_subject`; mirrors
+            ``communication.nats_history_fetch_timeout_seconds``.
+    """
     channel = await resolve_channel_or_raise(state, channel_name)
     async with state.lock:
         prefix = state.nats_config.stream_name_prefix
@@ -204,6 +237,8 @@ async def get_channel_history(
         js,
         subject=subject,
         max_to_return=max_to_return,
+        batch_size=batch_size,
+        fetch_timeout_seconds=fetch_timeout_seconds,
     )
 
     logger.debug(

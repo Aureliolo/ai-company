@@ -37,6 +37,14 @@ class EmailNotificationSink:
         from_addr: Sender email address.
         to_addrs: Recipient email addresses.
         use_tls: Whether to use STARTTLS.
+        smtp_timeout_seconds: SMTP connection timeout in seconds.
+            Mirrors the ``notifications.email_smtp_timeout_seconds``
+            setting; the notification factory threads the resolved
+            value in at construction so operator tuning takes effect
+            on restart. Must be positive.
+
+    Raises:
+        ValueError: If *smtp_timeout_seconds* is not positive.
     """
 
     __slots__ = (
@@ -62,6 +70,9 @@ class EmailNotificationSink:
         use_tls: bool = True,
         smtp_timeout_seconds: float = 10.0,
     ) -> None:
+        if smtp_timeout_seconds <= 0:
+            msg = f"smtp_timeout_seconds must be > 0, got {smtp_timeout_seconds}"
+            raise ValueError(msg)
         self._host = host
         self._port = port
         self._username = username

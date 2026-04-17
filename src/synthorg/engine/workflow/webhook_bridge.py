@@ -62,23 +62,77 @@ class WebhookEventBridge:
         self._task: asyncio.Task[None] | None = None
         self._lifecycle_lock = asyncio.Lock()
 
+    def set_config_resolver(self, resolver: ConfigResolver) -> None:
+        """Inject the ConfigResolver after construction.
+
+        ``WebhookEventBridge`` is instantiated before ``AppState`` in
+        :func:`synthorg.api.app.create_app` (because ``AppState``
+        takes it as a constructor argument), so the resolver is not
+        available at construction time. The API startup hook calls
+        this setter after ``AppState`` is built and before
+        :meth:`start` so polling-loop reads of the operator-tuned
+        poll timeout and error budget are honoured.
+        """
+        self._config_resolver = resolver
+
     async def _get_poll_timeout(self) -> float:
-        """Resolve the current poll timeout, falling back to the constant."""
+        """Resolve the current poll timeout, falling back to the constant.
+
+        A transient settings outage or malformed value must not crash
+        the polling loop. Any resolver failure is logged once and the
+        module-level fallback is returned.
+        """
         if self._config_resolver is None:
             return _POLL_TIMEOUT
-        return await self._config_resolver.get_float(
-            SettingNamespace.COMMUNICATION.value,
-            "webhook_bridge_poll_timeout_seconds",
-        )
+        try:
+            return await self._config_resolver.get_float(
+                SettingNamespace.COMMUNICATION.value,
+                "webhook_bridge_poll_timeout_seconds",
+            )
+        except asyncio.CancelledError:
+            raise
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.warning(
+                WEBHOOK_BRIDGE_POLL_ERROR,
+                error=(
+                    "failed to resolve webhook_bridge_poll_timeout_seconds;"
+                    " using fallback"
+                ),
+                poll_timeout=_POLL_TIMEOUT,
+                exc_info=True,
+            )
+            return _POLL_TIMEOUT
 
     async def _get_max_consecutive_errors(self) -> int:
-        """Resolve the current error budget, falling back to the constant."""
+        """Resolve the current error budget, falling back to the constant.
+
+        Same guard as :meth:`_get_poll_timeout` -- a settings outage
+        cannot kill the bridge task.
+        """
         if self._config_resolver is None:
             return _MAX_CONSECUTIVE_ERRORS
-        return await self._config_resolver.get_int(
-            SettingNamespace.COMMUNICATION.value,
-            "webhook_bridge_max_consecutive_errors",
-        )
+        try:
+            return await self._config_resolver.get_int(
+                SettingNamespace.COMMUNICATION.value,
+                "webhook_bridge_max_consecutive_errors",
+            )
+        except asyncio.CancelledError:
+            raise
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.warning(
+                WEBHOOK_BRIDGE_POLL_ERROR,
+                error=(
+                    "failed to resolve webhook_bridge_max_consecutive_errors;"
+                    " using fallback"
+                ),
+                max_errors=_MAX_CONSECUTIVE_ERRORS,
+                exc_info=True,
+            )
+            return _MAX_CONSECUTIVE_ERRORS
 
     async def start(self) -> None:
         """Subscribe and start the polling task."""
@@ -195,6 +249,9 @@ class WebhookEventBridge:
                     consecutive_errors=consecutive_errors,
                     exc_info=True,
                 )
+                # Back off for one poll interval before retrying so the
+                # loop does not tight-spin on a hot error path.
+                await asyncio.sleep(poll_timeout)
 
     async def _forward(self, message: object) -> None:
         """Extract event data and call on_external_event."""

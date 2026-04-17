@@ -20,6 +20,7 @@ synthorg[distributed]``). Importing this module raises
 """
 
 from collections.abc import Sequence  # noqa: TC003
+from typing import TYPE_CHECKING
 
 from synthorg.communication.bus import _nats_channels as _ch
 from synthorg.communication.bus import _nats_connection as _conn
@@ -42,7 +43,11 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.communication import (
     COMM_BUS_ALREADY_RUNNING,
     COMM_BUS_STARTED,
+    COMM_BUS_STREAM_SCAN_FAILED,
 )
+
+if TYPE_CHECKING:
+    from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
 
@@ -78,6 +83,18 @@ class JetStreamMessageBus:
             )
             raise ImportError(msg) from exc
         self._state = create_state(config)
+        self._config_resolver: ConfigResolver | None = None
+
+    def set_config_resolver(self, resolver: ConfigResolver) -> None:
+        """Inject the ConfigResolver after construction.
+
+        History queries (:meth:`get_channel_history`) read the
+        operator-tuned ``communication.nats_history_batch_size`` and
+        ``communication.nats_history_fetch_timeout_seconds`` settings
+        on each call when a resolver is wired. Called from the API
+        startup hook after ``AppState`` is built.
+        """
+        self._config_resolver = resolver
 
     @property
     def is_running(self) -> bool:
@@ -212,5 +229,48 @@ class JetStreamMessageBus:
         *,
         limit: int | None = None,
     ) -> tuple[Message, ...]:
-        """Get message history for a channel."""
-        return await _hist.get_channel_history(self._state, channel_name, limit=limit)
+        """Get message history for a channel.
+
+        Reads the operator-tuned history batch size and per-batch fetch
+        timeout from ``CommunicationBridgeConfig`` when a resolver is
+        wired; falls back to the module defaults on settings outage.
+        """
+        batch_size, fetch_timeout_seconds = await self._resolve_history_params()
+        return await _hist.get_channel_history(
+            self._state,
+            channel_name,
+            limit=limit,
+            batch_size=batch_size,
+            fetch_timeout_seconds=fetch_timeout_seconds,
+        )
+
+    async def _resolve_history_params(self) -> tuple[int, float]:
+        """Resolve history scan batch size and fetch timeout.
+
+        Returns the module defaults (100, 0.5) when no resolver is
+        wired or the lookup fails -- a settings outage must not break
+        history queries.
+        """
+        if self._config_resolver is None:
+            return 100, 0.5
+        try:
+            bridge_config = (
+                await self._config_resolver.get_communication_bridge_config()
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.warning(
+                COMM_BUS_STREAM_SCAN_FAILED,
+                phase="resolve_history_params",
+                error=(
+                    "failed to resolve communication bridge config;"
+                    " using history scan defaults"
+                ),
+                exc_info=True,
+            )
+            return 100, 0.5
+        return (
+            bridge_config.nats_history_batch_size,
+            bridge_config.nats_history_fetch_timeout_seconds,
+        )

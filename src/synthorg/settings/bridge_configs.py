@@ -95,7 +95,9 @@ class ToolsBridgeConfig(BaseModel):
         default=0.2, ge=0.05, le=5.0
     )
     docker_sidecar_health_timeout_seconds: float = Field(default=15.0, ge=1.0, le=300.0)
-    docker_sidecar_memory_limit: str = Field(default="64m", pattern=r"^\d+[kmgKMG]$")
+    docker_sidecar_memory_limit: str = Field(
+        default="64m", pattern=r"^[1-9]\d*[bkmgBKMG]?$"
+    )
     docker_sidecar_cpu_limit: float = Field(default=0.5, ge=0.1, le=16.0)
     docker_sidecar_max_pids: int = Field(default=32, ge=1, le=4096)
     docker_stop_grace_timeout_seconds: int = Field(default=5, ge=1, le=300)

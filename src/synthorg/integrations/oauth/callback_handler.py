@@ -4,6 +4,8 @@ Provides the ``handle_oauth_callback`` function used by the
 OAuth API controller to process authorization code callbacks.
 """
 
+from typing import TYPE_CHECKING
+
 from synthorg.integrations.connections.catalog import ConnectionCatalog  # noqa: TC001
 from synthorg.integrations.errors import (
     InvalidStateError,
@@ -23,16 +25,51 @@ from synthorg.persistence.repositories_integrations import (
     OAuthStateRepository,  # noqa: TC001
 )
 
+if TYPE_CHECKING:
+    from synthorg.settings.resolver import ConfigResolver
+
 logger = get_logger(__name__)
 
 
-async def handle_oauth_callback(
+async def resolve_oauth_http_timeout(
+    config_resolver: ConfigResolver | None,
+) -> float | None:
+    """Best-effort lookup of the operator-tuned OAuth HTTP timeout.
+
+    Returns ``None`` when no resolver is wired in or the lookup fails;
+    callers then fall back to the ``AuthorizationCodeFlow`` default
+    (:data:`integrations.oauth.flows.authorization_code._DEFAULT_HTTP_TIMEOUT_SECONDS`).
+    Never propagates -- a settings outage must not break the OAuth
+    callback path.
+    """
+    if config_resolver is None:
+        return None
+    from synthorg.settings.enums import SettingNamespace  # noqa: PLC0415
+
+    try:
+        return await config_resolver.get_float(
+            SettingNamespace.INTEGRATIONS.value,
+            "oauth_http_timeout_seconds",
+        )
+    except MemoryError, RecursionError:
+        raise
+    except Exception:
+        logger.warning(
+            OAUTH_FLOW_FAILED,
+            error=("failed to resolve oauth_http_timeout_seconds; using flow default"),
+            exc_info=True,
+        )
+        return None
+
+
+async def handle_oauth_callback(  # noqa: PLR0913
     *,
     state_param: str,
     code: str,
     state_repo: OAuthStateRepository,
     catalog: ConnectionCatalog,
     flow: AuthorizationCodeFlow | None = None,
+    config_resolver: ConfigResolver | None = None,
 ) -> str:
     """Process an OAuth authorization code callback.
 
@@ -46,7 +83,14 @@ async def handle_oauth_callback(
         code: The authorization code.
         state_repo: Repository for looking up OAuth states.
         catalog: Connection catalog for credential storage.
-        flow: Authorization code flow instance (default: new).
+        flow: Authorization code flow instance. When ``None`` a new
+            flow is constructed with the operator-tuned HTTP timeout
+            resolved from ``integrations.oauth_http_timeout_seconds``
+            (falling back to the flow's module default on settings
+            outage).
+        config_resolver: Optional ConfigResolver used to resolve the
+            OAuth HTTP timeout when ``flow`` is not provided. When
+            ``None`` the flow's hardcoded default is used.
 
     Returns:
         The connection name that was updated.
@@ -106,7 +150,15 @@ async def handle_oauth_callback(
         )
         raise TokenExchangeFailedError(msg)
 
-    auth_flow = flow or AuthorizationCodeFlow()
+    if flow is not None:
+        auth_flow = flow
+    else:
+        timeout = await resolve_oauth_http_timeout(config_resolver)
+        auth_flow = (
+            AuthorizationCodeFlow(http_timeout_seconds=timeout)
+            if timeout is not None
+            else AuthorizationCodeFlow()
+        )
     try:
         token = await auth_flow.exchange_code(
             token_url=token_url,

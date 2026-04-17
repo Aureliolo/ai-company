@@ -2,13 +2,17 @@
 
 Each helper assembles a frozen Pydantic dataclass from a namespace's
 bridged settings using :meth:`ConfigResolver._resolve_bridge_fields`.
-These tests verify:
+These tests verify the typed-return contract:
 
-1. The helper passes the expected keys/types to the settings service.
-2. The returned dataclass reflects the resolved values.
-3. Out-of-range values raise a ``ValidationError`` at dataclass
-   construction.
-4. Parallel resolution is used (all keys resolved in one TaskGroup).
+1. The returned dataclass matches the mocked resolved values.
+2. Out-of-range or pattern-mismatched values raise a
+   ``ValidationError`` at dataclass construction, so misconfigured
+   operator values never escape the settings layer.
+
+The mock-side assertions intentionally focus on the typed return
+value; the exact ``SettingsService.get`` call signature and the
+parallel ``asyncio.TaskGroup`` resolution are covered by the
+lower-level ``tests/unit/settings/test_resolver.py`` suite.
 """
 
 from typing import Any
@@ -312,8 +316,8 @@ async def test_get_tools_bridge_config_rejects_bad_memory_literal(
             ("tools", "atlas_kill_grace_timeout_seconds"): "5.0",
             ("tools", "docker_sidecar_health_poll_interval_seconds"): "0.2",
             ("tools", "docker_sidecar_health_timeout_seconds"): "15.0",
-            # invalid format ("gb" is not a single-char suffix).
-            ("tools", "docker_sidecar_memory_limit"): "2gb",
+            # invalid format (not a size string: non-digit prefix).
+            ("tools", "docker_sidecar_memory_limit"): "invalid",
             ("tools", "docker_sidecar_cpu_limit"): "0.5",
             ("tools", "docker_sidecar_max_pids"): "32",
             ("tools", "docker_stop_grace_timeout_seconds"): "5",

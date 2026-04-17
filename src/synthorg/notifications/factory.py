@@ -23,12 +23,15 @@ from synthorg.observability.events.notification import (
 
 if TYPE_CHECKING:
     from synthorg.notifications.protocol import NotificationSink
+    from synthorg.settings.bridge_configs import NotificationsBridgeConfig
 
 logger = get_logger(__name__)
 
 
 def build_notification_dispatcher(
     config: NotificationConfig,
+    *,
+    bridge_config: NotificationsBridgeConfig | None = None,
 ) -> NotificationDispatcher:
     """Build a ``NotificationDispatcher`` from configuration.
 
@@ -37,6 +40,12 @@ def build_notification_dispatcher(
 
     Args:
         config: Notification subsystem configuration.
+        bridge_config: Optional operator-tuned bridge settings
+            (webhook/SMTP timeouts). When ``None``, adapter defaults
+            are used. The API startup hook resolves this from
+            ``ConfigResolver.get_notifications_bridge_config()`` and
+            rebuilds the dispatcher so operator tuning takes effect
+            on restart.
 
     Returns:
         Configured notification dispatcher.
@@ -49,7 +58,7 @@ def build_notification_dispatcher(
                 sink_type=sink_cfg.type,
             )
             continue
-        sink = _create_notification_sink(sink_cfg)
+        sink = _create_notification_sink(sink_cfg, bridge_config=bridge_config)
         if sink is not None:
             sinks.append(sink)
     if not sinks:
@@ -62,11 +71,14 @@ def build_notification_dispatcher(
 
 def _create_notification_sink(
     cfg: NotificationSinkConfig,
+    *,
+    bridge_config: NotificationsBridgeConfig | None = None,
 ) -> NotificationSink | None:
     """Instantiate a notification sink from config.
 
     Args:
         cfg: Single sink configuration.
+        bridge_config: Optional operator-tuned bridge settings.
 
     Returns:
         Sink instance or ``None`` for unknown or invalid types.
@@ -76,11 +88,11 @@ def _create_notification_sink(
     if sink_type is NotificationSinkType.CONSOLE:
         return ConsoleNotificationSink()
     if sink_type is NotificationSinkType.NTFY:
-        return _create_ntfy_sink(params)
+        return _create_ntfy_sink(params, bridge_config=bridge_config)
     if sink_type is NotificationSinkType.SLACK:
-        return _create_slack_sink(params)
+        return _create_slack_sink(params, bridge_config=bridge_config)
     if sink_type is NotificationSinkType.EMAIL:
-        return _create_email_sink(params)
+        return _create_email_sink(params, bridge_config=bridge_config)
     # Defensive fallback for forward compatibility if new sink
     # types are added to NotificationSinkType before the factory
     # is updated.
@@ -93,6 +105,8 @@ def _create_notification_sink(
 
 def _create_ntfy_sink(
     params: dict[str, str],
+    *,
+    bridge_config: NotificationsBridgeConfig | None = None,
 ) -> NotificationSink | None:
     """Create an ntfy notification sink.
 
@@ -103,6 +117,9 @@ def _create_ntfy_sink(
 
     Args:
         params: Adapter-specific parameters.
+        bridge_config: Optional operator-tuned notification bridge
+            config. When provided, threads
+            ``ntfy_webhook_timeout_seconds`` into the adapter.
 
     Returns:
         Configured ntfy sink or ``None`` if topic is missing.
@@ -119,20 +136,34 @@ def _create_ntfy_sink(
             error="topic is required",
         )
         return None
+    server_url = params.get("server_url", "https://ntfy.sh")
+    token = params.get("token")
+    if bridge_config is None:
+        return NtfyNotificationSink(
+            server_url=server_url,
+            topic=topic,
+            token=token,
+        )
     return NtfyNotificationSink(
-        server_url=params.get("server_url", "https://ntfy.sh"),
+        server_url=server_url,
         topic=topic,
-        token=params.get("token"),
+        token=token,
+        webhook_timeout_seconds=bridge_config.ntfy_webhook_timeout_seconds,
     )
 
 
 def _create_slack_sink(
     params: dict[str, str],
+    *,
+    bridge_config: NotificationsBridgeConfig | None = None,
 ) -> NotificationSink | None:
     """Create a Slack webhook notification sink.
 
     Args:
         params: Adapter-specific parameters.
+        bridge_config: Optional operator-tuned notification bridge
+            config. When provided, threads
+            ``slack_webhook_timeout_seconds`` into the adapter.
 
     Returns:
         Configured Slack sink or ``None`` if webhook URL is missing.
@@ -149,16 +180,26 @@ def _create_slack_sink(
             error="webhook_url is required",
         )
         return None
-    return SlackNotificationSink(webhook_url=webhook_url)
+    if bridge_config is None:
+        return SlackNotificationSink(webhook_url=webhook_url)
+    return SlackNotificationSink(
+        webhook_url=webhook_url,
+        webhook_timeout_seconds=bridge_config.slack_webhook_timeout_seconds,
+    )
 
 
 def _create_email_sink(
     params: dict[str, str],
+    *,
+    bridge_config: NotificationsBridgeConfig | None = None,
 ) -> NotificationSink | None:
     """Create an email SMTP notification sink.
 
     Args:
         params: Adapter-specific parameters.
+        bridge_config: Optional operator-tuned notification bridge
+            config. When provided, threads
+            ``email_smtp_timeout_seconds`` into the adapter.
 
     Returns:
         Configured email sink or ``None`` if required params
@@ -195,12 +236,27 @@ def _create_email_sink(
             error=f"invalid port: {params.get('port')!r}",
         )
         return None
+    username = params.get("username")
+    password = params.get("password")
+    from_addr = params.get("from_addr", "synthorg@localhost")
+    use_tls = params.get("use_tls", "true").lower() == "true"
+    if bridge_config is None:
+        return EmailNotificationSink(
+            host=host,
+            port=port,
+            username=username,
+            password=password,
+            from_addr=from_addr,
+            to_addrs=to_addrs,
+            use_tls=use_tls,
+        )
     return EmailNotificationSink(
         host=host,
         port=port,
-        username=params.get("username"),
-        password=params.get("password"),
-        from_addr=params.get("from_addr", "synthorg@localhost"),
+        username=username,
+        password=password,
+        from_addr=from_addr,
         to_addrs=to_addrs,
-        use_tls=params.get("use_tls", "true").lower() == "true",
+        use_tls=use_tls,
+        smtp_timeout_seconds=bridge_config.email_smtp_timeout_seconds,
     )

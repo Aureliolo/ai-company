@@ -7,6 +7,7 @@ tokens before they expire.
 import asyncio
 import contextlib
 from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING
 
 from synthorg.integrations.connections.catalog import ConnectionCatalog  # noqa: TC001
 from synthorg.integrations.connections.models import (
@@ -24,6 +25,10 @@ from synthorg.observability.events.integrations import (
     OAUTH_TOKEN_REFRESH_FAILED,
     OAUTH_TOKEN_REFRESHED,
 )
+from synthorg.settings.enums import SettingNamespace
+
+if TYPE_CHECKING:
+    from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
 
@@ -39,6 +44,12 @@ class OAuthTokenManager:
         refresh_threshold_seconds: Refresh tokens expiring within
             this window.
         check_interval_seconds: How often to check for expiring tokens.
+        config_resolver: Optional ConfigResolver used to resolve the
+            operator-tuned OAuth HTTP timeout
+            (``integrations.oauth_http_timeout_seconds``, restart
+            required). Resolved once at :meth:`start` so refresh calls
+            honour operator tuning; when the resolver is absent or the
+            lookup fails, the flow's built-in default is used.
     """
 
     def __init__(
@@ -47,19 +58,62 @@ class OAuthTokenManager:
         *,
         refresh_threshold_seconds: int = 300,
         check_interval_seconds: int = 60,
+        config_resolver: ConfigResolver | None = None,
     ) -> None:
         self._catalog = catalog
         self._threshold = timedelta(seconds=refresh_threshold_seconds)
         self._interval = check_interval_seconds
+        self._config_resolver = config_resolver
         self._task: asyncio.Task[None] | None = None
         self._flow = AuthorizationCodeFlow()
         self._lifecycle_lock = asyncio.Lock()
+
+    def set_config_resolver(self, resolver: ConfigResolver) -> None:
+        """Inject the ConfigResolver after construction.
+
+        :class:`OAuthTokenManager` is instantiated before ``AppState``
+        in :func:`synthorg.api.app.create_app` (because ``AppState``
+        takes it as a constructor argument), so the resolver is not
+        available at construction time. The API startup hook calls
+        this setter after ``AppState`` is built and before
+        :meth:`start` to ensure refresh calls honour the operator-tuned
+        HTTP timeout.
+        """
+        self._config_resolver = resolver
+
+    async def _resolve_flow_timeout(self) -> None:
+        """Rebuild the flow with the operator-tuned HTTP timeout.
+
+        Called once inside :meth:`start` before the refresh loop spawns
+        so refreshes use the resolved value. A settings outage is
+        non-fatal -- the flow keeps its built-in default.
+        """
+        if self._config_resolver is None:
+            return
+        try:
+            timeout = await self._config_resolver.get_float(
+                SettingNamespace.INTEGRATIONS.value,
+                "oauth_http_timeout_seconds",
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.warning(
+                OAUTH_TOKEN_REFRESH_FAILED,
+                error=(
+                    "failed to resolve oauth_http_timeout_seconds; keeping flow default"
+                ),
+                exc_info=True,
+            )
+            return
+        self._flow = AuthorizationCodeFlow(http_timeout_seconds=timeout)
 
     async def start(self) -> None:
         """Start the background refresh loop."""
         async with self._lifecycle_lock:
             if self._task is not None:
                 return
+            await self._resolve_flow_timeout()
             self._task = asyncio.create_task(self._refresh_loop())
             logger.info(
                 OAUTH_TOKEN_REFRESHED,

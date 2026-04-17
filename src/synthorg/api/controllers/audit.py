@@ -7,6 +7,7 @@ JSONB-native queries (containment, key existence) are available
 when the Postgres persistence backend is active.
 """
 
+import asyncio
 import json
 from datetime import datetime  # noqa: TC003
 from typing import Annotated
@@ -40,13 +41,30 @@ _MAX_AUDIT_QUERY = 10_000
 
 
 async def _resolve_audit_cap(state: State) -> int:
-    """Resolve the active audit-query cap, falling back to the constant."""
+    """Resolve the active audit-query cap, falling back to the constant.
+
+    A settings outage or malformed value must not fail the endpoint;
+    the fallback constant keeps the DB-side ``LIMIT`` bounded.
+    """
     app_state = state.app_state
     if not app_state.has_config_resolver:
         return _MAX_AUDIT_QUERY
-    result: int = await app_state.config_resolver.get_int(
-        SettingNamespace.API.value, "max_audit_records_per_query"
-    )
+    try:
+        result: int = await app_state.config_resolver.get_int(
+            SettingNamespace.API.value, "max_audit_records_per_query"
+        )
+    except asyncio.CancelledError:
+        raise
+    except MemoryError, RecursionError:
+        raise
+    except Exception:
+        logger.warning(
+            API_VALIDATION_FAILED,
+            error=("failed to resolve max_audit_records_per_query; using fallback"),
+            cap=_MAX_AUDIT_QUERY,
+            exc_info=True,
+        )
+        return _MAX_AUDIT_QUERY
     return result
 
 

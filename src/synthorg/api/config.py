@@ -159,6 +159,17 @@ class ServerConfig(BaseModel):
         trusted_proxies: IP addresses/CIDRs trusted as reverse
             proxies for ``X-Forwarded-For``/``X-Forwarded-Proto``
             header processing.
+        compression_minimum_size_bytes: Minimum response body size
+            in bytes before brotli compression kicks in. Mirrors the
+            ``api.compression_minimum_size_bytes`` setting (restart
+            required); the API startup hook resolves the current
+            value and threads it in here so operator tuning via the
+            settings database takes effect on next boot.
+        request_max_body_size_bytes: Maximum accepted HTTP request
+            body size in bytes. Mirrors the
+            ``api.request_max_body_size_bytes`` setting (restart
+            required); populated the same way as
+            ``compression_minimum_size_bytes``.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)

@@ -868,6 +868,21 @@ class AppState:
             self._notification_dispatcher, "notification_dispatcher"
         )
 
+    def set_notification_dispatcher(
+        self,
+        dispatcher: NotificationDispatcher,
+    ) -> None:
+        """Swap the active notification dispatcher in place.
+
+        Called from the API startup hook after the ConfigResolver
+        produces the operator-tuned
+        :class:`NotificationsBridgeConfig` so adapter timeouts
+        (webhook/SMTP) take effect. Callers close the previous
+        dispatcher's sinks after the swap so in-flight dispatches
+        finish against the old references.
+        """
+        self._notification_dispatcher = dispatcher
+
     @property
     def ontology_service(self) -> OntologyService:
         """Return ontology service or raise 503."""

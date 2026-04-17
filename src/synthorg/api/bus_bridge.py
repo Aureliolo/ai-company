@@ -66,22 +66,62 @@ class MessageBusBridge:
         self._running: bool = False
 
     async def _get_poll_timeout(self) -> float:
-        """Resolve the current poll timeout, falling back to the constant."""
+        """Resolve the current poll timeout, falling back to the constant.
+
+        A transient settings outage or malformed value must not crash
+        the polling loop. Any resolver failure is logged once and the
+        module-level fallback is returned.
+        """
         if self._config_resolver is None:
             return _POLL_TIMEOUT
-        return await self._config_resolver.get_float(
-            SettingNamespace.COMMUNICATION.value,
-            "bus_bridge_poll_timeout_seconds",
-        )
+        try:
+            return await self._config_resolver.get_float(
+                SettingNamespace.COMMUNICATION.value,
+                "bus_bridge_poll_timeout_seconds",
+            )
+        except asyncio.CancelledError:
+            raise
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.warning(
+                API_BUS_BRIDGE_POLL_ERROR,
+                error=(
+                    "failed to resolve bus_bridge_poll_timeout_seconds; using fallback"
+                ),
+                poll_timeout=_POLL_TIMEOUT,
+                exc_info=True,
+            )
+            return _POLL_TIMEOUT
 
     async def _get_max_consecutive_errors(self) -> int:
-        """Resolve the current error budget, falling back to the constant."""
+        """Resolve the current error budget, falling back to the constant.
+
+        Same guard as :meth:`_get_poll_timeout` -- a settings outage
+        cannot kill the bridge task.
+        """
         if self._config_resolver is None:
             return _MAX_CONSECUTIVE_ERRORS
-        return await self._config_resolver.get_int(
-            SettingNamespace.COMMUNICATION.value,
-            "bus_bridge_max_consecutive_errors",
-        )
+        try:
+            return await self._config_resolver.get_int(
+                SettingNamespace.COMMUNICATION.value,
+                "bus_bridge_max_consecutive_errors",
+            )
+        except asyncio.CancelledError:
+            raise
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.warning(
+                API_BUS_BRIDGE_POLL_ERROR,
+                error=(
+                    "failed to resolve bus_bridge_max_consecutive_errors;"
+                    " using fallback"
+                ),
+                max_errors=_MAX_CONSECUTIVE_ERRORS,
+                exc_info=True,
+            )
+            return _MAX_CONSECUTIVE_ERRORS
 
     async def start(self) -> None:
         """Start polling tasks for each channel.

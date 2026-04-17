@@ -474,9 +474,10 @@ class SubprocessSandbox:
     ) -> tuple[bytes, bytes]:
         """Drain remaining output after killing a process.
 
-        Waits up to 5 seconds for the process to terminate.  If the
-        process does not terminate, logs an error and returns empty
-        stdout with a diagnostic stderr message.
+        Waits up to ``_DEFAULT_KILL_GRACE_SECONDS`` for the process to
+        terminate. If it does not, logs an error and returns empty
+        stdout with a diagnostic stderr message that reports the
+        actual grace period used.
         """
         try:
             return await asyncio.wait_for(
@@ -489,9 +490,15 @@ class SubprocessSandbox:
                 command=command,
                 args=_redact_args(args),
                 pid=proc.pid,
-                error="process did not terminate 5s after kill",
+                error=(
+                    f"process did not terminate {_DEFAULT_KILL_GRACE_SECONDS}s"
+                    " after kill"
+                ),
             )
-            return b"", b"[sandbox] process did not terminate after kill"
+            return b"", (
+                f"[sandbox] process did not terminate after"
+                f" {_DEFAULT_KILL_GRACE_SECONDS}s kill grace"
+            ).encode()
 
     async def execute(  # noqa: PLR0913
         self,

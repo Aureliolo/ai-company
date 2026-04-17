@@ -469,6 +469,15 @@ _EXPECTED: tuple[
         60.0,
         False,
     ),
+    _spec(
+        SettingNamespace.TOOLS,
+        "docker_sidecar_memory_limit",
+        SettingType.STRING,
+        "64m",
+        None,
+        None,
+        True,
+    ),
     # settings (3 new) - dispatcher self-config
     _spec(
         SettingNamespace.SETTINGS,
@@ -540,13 +549,18 @@ def test_config_bridge_setting_is_registered(  # noqa: PLR0913
 
 @pytest.mark.unit
 def test_docker_sidecar_memory_limit_pattern() -> None:
-    """The docker sidecar memory limit is a STRING with a size regex."""
+    """The docker sidecar memory limit is a STRING with a size regex.
+
+    The pattern allows raw bytes (no suffix) and an optional single-character
+    size unit ``b``/``k``/``m``/``g`` (case-insensitive), while rejecting
+    leading-zero and multi-character suffixes.
+    """
     registry = get_registry()
     defn = registry.get(SettingNamespace.TOOLS.value, "docker_sidecar_memory_limit")
     assert defn is not None
     assert defn.type == SettingType.STRING
     assert defn.default == "64m"
-    assert defn.validator_pattern == r"^\d+[kmgKMG]$"
+    assert defn.validator_pattern == r"^[1-9]\d*[bkmgBKMG]?$"
     assert defn.restart_required is True
 
 

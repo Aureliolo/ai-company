@@ -84,6 +84,14 @@ class AuditChainSink(logging.Handler):
         timestamp_provider: Trusted timestamp source.
         chain: Hash chain instance for append-only storage.
         config: Audit chain configuration.
+        signing_timeout_seconds: Maximum seconds to wait for sign +
+            timestamp to complete per :meth:`emit` call. Mirrors the
+            ``observability.audit_chain_signing_timeout_seconds``
+            setting. Defaults to
+            :data:`_DEFAULT_SIGNING_TIMEOUT_SECONDS`; the API startup
+            hook calls :meth:`set_signing_timeout_seconds` with the
+            operator-resolved value so tuning takes effect without
+            rebuilding the sink.
     """
 
     def __init__(
@@ -93,14 +101,37 @@ class AuditChainSink(logging.Handler):
         timestamp_provider: TimestampProvider,
         chain: HashChain | None = None,
         config: AuditChainConfig | None = None,
+        signing_timeout_seconds: float = _DEFAULT_SIGNING_TIMEOUT_SECONDS,
     ) -> None:
         super().__init__()
+        if signing_timeout_seconds <= 0:
+            msg = f"signing_timeout_seconds must be > 0, got {signing_timeout_seconds}"
+            raise ValueError(msg)
         self._signer = signer
         self._timestamp_provider = timestamp_provider
         self._chain = chain or HashChain()
         self._config = config
         self._lock = threading.Lock()
         self._append_callback: AppendCallback | None = None
+        self._signing_timeout_seconds = signing_timeout_seconds
+
+    def set_signing_timeout_seconds(self, value: float) -> None:
+        """Update the signing/timestamp timeout in place.
+
+        Called from the API startup hook after the ConfigResolver
+        produces the current value for
+        ``observability.audit_chain_signing_timeout_seconds``.
+        Thread-safe: ``emit()`` reads ``self._signing_timeout_seconds``
+        as a single float attribute so torn reads are not possible on
+        CPython.
+
+        Raises:
+            ValueError: If *value* is not positive.
+        """
+        if value <= 0:
+            msg = f"signing_timeout_seconds must be > 0, got {value}"
+            raise ValueError(msg)
+        self._signing_timeout_seconds = value
 
     def set_append_callback(
         self,
@@ -239,7 +270,7 @@ class AuditChainSink(logging.Handler):
                 asyncio.run,
                 self._sign_and_timestamp(data),
             )
-            signed, ts_result = future.result(timeout=_DEFAULT_SIGNING_TIMEOUT_SECONDS)
+            signed, ts_result = future.result(timeout=self._signing_timeout_seconds)
 
             with self._lock:
                 self._chain.append(

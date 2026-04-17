@@ -18,6 +18,9 @@ from synthorg.integrations.errors import (
     InvalidStateError,
     TokenExchangeFailedError,
 )
+from synthorg.integrations.oauth.callback_handler import (
+    resolve_oauth_http_timeout,
+)
 from synthorg.integrations.oauth.flows.authorization_code import (
     AuthorizationCodeFlow,
 )
@@ -67,8 +70,15 @@ class OAuthController(Controller):
 
         credentials = await catalog.get_credentials(connection_name)
 
-        flow = AuthorizationCodeFlow()
-        config = state["app_state"].config.integrations.oauth
+        app_state = state["app_state"]
+        resolver = app_state.config_resolver if app_state.has_config_resolver else None
+        timeout = await resolve_oauth_http_timeout(resolver)
+        flow = (
+            AuthorizationCodeFlow(http_timeout_seconds=timeout)
+            if timeout is not None
+            else AuthorizationCodeFlow()
+        )
+        config = app_state.config.integrations.oauth
         if not config.redirect_uri_base:
             msg = "oauth.redirect_uri_base must be configured to initiate OAuth flows"
             raise ApiValidationError(msg)
@@ -131,8 +141,10 @@ class OAuthController(Controller):
             handle_oauth_callback,
         )
 
-        persistence = state["app_state"].persistence
-        catalog = state["app_state"].connection_catalog
+        app_state = state["app_state"]
+        persistence = app_state.persistence
+        catalog = app_state.connection_catalog
+        resolver = app_state.config_resolver if app_state.has_config_resolver else None
 
         try:
             connection_name = await handle_oauth_callback(
@@ -140,6 +152,7 @@ class OAuthController(Controller):
                 code=code,
                 state_repo=persistence.oauth_states,
                 catalog=catalog,
+                config_resolver=resolver,
             )
         except InvalidStateError as exc:
             raise ApiValidationError(str(exc)) from exc

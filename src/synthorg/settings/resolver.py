@@ -736,6 +736,7 @@ class ConfigResolver:
             SettingNotFoundError: If a key is not in the registry.
             ValueError: If a resolved value cannot be parsed.
         """
+        tasks: dict[str, asyncio.Task[Any]] = {}
         try:
             async with asyncio.TaskGroup() as tg:
                 tasks = {
@@ -743,18 +744,47 @@ class ConfigResolver:
                     for key, kind in specs
                 }
         except ExceptionGroup as eg:
+            # Pinpoint which key(s) failed so an operator has a
+            # concrete setting name in the log instead of just an
+            # ``error_count``. Each task carries the key as its dict
+            # key, so we can enumerate tasks that completed with an
+            # exception and surface those names.
+            failed_keys = [
+                key
+                for key, task in tasks.items()
+                if task.done() and task.exception() is not None
+            ]
             logger.warning(
                 SETTINGS_FETCH_FAILED,
                 namespace=namespace,
                 key="_bridge_composed",
                 error_count=len(eg.exceptions),
+                failed_keys=failed_keys,
                 exc_info=True,
             )
             raise eg.exceptions[0] from eg
         return {key: task.result() for key, task in tasks.items()}
 
     async def _resolve_typed(self, namespace: str, key: str, kind: str) -> Any:
-        """Dispatch to the scalar accessor matching ``kind``."""
+        """Dispatch to the scalar accessor matching ``kind``.
+
+        Args:
+            namespace: Setting namespace (e.g. ``"api"``, ``"tools"``).
+            key: Setting key within the namespace.
+            kind: Type discriminator; must be one of ``"int"``,
+                ``"float"``, or ``"str"``. Any other value raises
+                ``ValueError`` so misuse fails loudly rather than
+                silently resolving the wrong accessor.
+
+        Returns:
+            The resolved value coerced to the requested type.
+
+        Raises:
+            ValueError: If *kind* is not one of the three supported
+                discriminators.
+            SettingNotFoundError: If the registry does not contain
+                *key* in *namespace*.
+        """
         if kind == "int":
             return await self.get_int(namespace, key)
         if kind == "float":
