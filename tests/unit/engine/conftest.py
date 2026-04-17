@@ -26,7 +26,7 @@ from synthorg.core.enums import (
     TaskStructure,
     TaskType,
 )
-from synthorg.core.role import Authority, Role
+from synthorg.core.role import Authority, Role, Skill
 from synthorg.core.task import AcceptanceCriterion, Task
 from synthorg.engine.context import AgentContext
 from synthorg.engine.decomposition.models import (
@@ -93,8 +93,14 @@ def sample_agent_with_personality(sample_model_config: ModelConfig) -> AgentIden
             description="A precise thinker who values correctness above all.",
         ),
         skills=SkillSet(
-            primary=("python", "system-design"),
-            secondary=("databases", "security"),
+            primary=(
+                Skill(id="python", name="Python"),
+                Skill(id="system-design", name="System design"),
+            ),
+            secondary=(
+                Skill(id="databases", name="Databases"),
+                Skill(id="security", name="Security"),
+            ),
         ),
         authority=Authority(
             can_approve=("code_reviews", "design_docs"),
@@ -396,7 +402,11 @@ def make_assignment_agent(  # noqa: PLR0913
     role: str = "Developer",
     status: AgentStatus = AgentStatus.ACTIVE,
 ) -> AgentIdentity:
-    """Build an AgentIdentity with sensible defaults for tests."""
+    """Build an AgentIdentity with sensible defaults for tests.
+
+    String ``primary_skills`` / ``secondary_skills`` are wrapped in
+    :class:`Skill` objects with ``id == name`` and default proficiency.
+    """
     return AgentIdentity(
         name=name,
         role=role,
@@ -405,8 +415,8 @@ def make_assignment_agent(  # noqa: PLR0913
         model=make_assignment_model_config(),
         hiring_date=date(2026, 1, 1),
         skills=SkillSet(
-            primary=primary_skills,
-            secondary=secondary_skills,
+            primary=tuple(Skill(id=s, name=s) for s in primary_skills),
+            secondary=tuple(Skill(id=s, name=s) for s in secondary_skills),
         ),
         status=status,
     )

@@ -19,11 +19,9 @@ from synthorg.core.enums import (
     MemoryCategory,
     MemoryLevel,
     Priority,
-    ProficiencyLevel,
     ProjectStatus,
     RiskTolerance,
     SeniorityLevel,
-    SkillCategory,
     SkillPattern,
     TaskStatus,
     TaskType,
@@ -57,12 +55,6 @@ class TestEnumMemberCounts:
 
     def test_company_type_has_10_members(self) -> None:
         assert len(CompanyType) == 10
-
-    def test_skill_category_has_9_members(self) -> None:
-        assert len(SkillCategory) == 9
-
-    def test_proficiency_level_has_4_members(self) -> None:
-        assert len(ProficiencyLevel) == 4
 
     def test_department_name_has_9_members(self) -> None:
         assert len(DepartmentName) == 9

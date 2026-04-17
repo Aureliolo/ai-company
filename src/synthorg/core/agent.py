@@ -22,7 +22,7 @@ from synthorg.core.enums import (
     StrategicOutputMode,
     ToolAccessLevel,
 )
-from synthorg.core.role import Authority
+from synthorg.core.role import Authority, Skill
 from synthorg.core.types import ModelTier, NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.config import CONFIG_VALIDATION_FAILED
@@ -136,20 +136,53 @@ class SkillSet(BaseModel):
     """Primary and secondary skills for an agent.
 
     Attributes:
-        primary: Core competency skill names.
-        secondary: Supporting skill names.
+        primary: Core competency skills.
+        secondary: Supporting skills.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    primary: tuple[NotBlankStr, ...] = Field(
+    primary: tuple[Skill, ...] = Field(
         default=(),
         description="Primary skills",
     )
-    secondary: tuple[NotBlankStr, ...] = Field(
+    secondary: tuple[Skill, ...] = Field(
         default=(),
         description="Secondary skills",
     )
+
+    @model_validator(mode="after")
+    def _validate_unique_ids(self) -> Self:
+        """Reject duplicate skill IDs within or across tiers.
+
+        Downstream consumers (routing scorer, A2A projection) build
+        ``{skill.id: skill}`` dicts and would silently drop all but one
+        entry when duplicates exist.  Reject at construction so
+        ambiguous configurations surface as validation errors instead of
+        order-dependent ranking artifacts.
+        """
+        primary_ids = [s.id for s in self.primary]
+        secondary_ids = [s.id for s in self.secondary]
+        primary_dupes = sorted(
+            {sid for sid in primary_ids if primary_ids.count(sid) > 1}
+        )
+        if primary_dupes:
+            msg = f"Duplicate skill ids in primary tier: {primary_dupes}"
+            raise ValueError(msg)
+        secondary_dupes = sorted(
+            {sid for sid in secondary_ids if secondary_ids.count(sid) > 1}
+        )
+        if secondary_dupes:
+            msg = f"Duplicate skill ids in secondary tier: {secondary_dupes}"
+            raise ValueError(msg)
+        overlap = set(primary_ids) & set(secondary_ids)
+        if overlap:
+            msg = (
+                f"Skills cannot appear in both primary and secondary tiers: "
+                f"{sorted(overlap)}"
+            )
+            raise ValueError(msg)
+        return self
 
 
 class ModelConfig(BaseModel):

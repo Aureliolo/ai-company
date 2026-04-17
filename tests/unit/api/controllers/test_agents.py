@@ -268,101 +268,18 @@ class TestAgentPerformance:
         assert resp.status_code == 404
         assert resp.json()["success"] is False
 
-    def test_performance_returns_503_without_registry(
-        self,
-        fake_persistence: FakePersistenceBackend,
-        fake_message_bus: FakeMessageBus,
-    ) -> None:
-        """Agent registry not configured returns 503."""
-        from synthorg.api.app import create_app
-        from synthorg.budget.tracker import CostTracker
-        from tests.unit.api.conftest import _make_test_auth_service, _seed_test_users
-
-        config = RootConfig(company_name="test")
-        auth_svc = _make_test_auth_service()
-        _seed_test_users(fake_persistence, auth_svc)
-        settings_svc = SettingsService(
-            repository=fake_persistence.settings,
-            registry=get_registry(),
-            config=config,
-        )
-        app = create_app(
-            config=config,
-            persistence=fake_persistence,
-            message_bus=fake_message_bus,
-            cost_tracker=CostTracker(),
-            auth_service=auth_svc,
-            settings_service=settings_svc,
-        )
-        with TestClient(app) as client:
-            client.headers.update(make_auth_headers("ceo"))
-            resp = client.get(f"/api/v1/agents/{_AGENT_NAME}/performance")
-            assert resp.status_code == 503
-            assert resp.json()["success"] is False
-
-    def test_activity_returns_503_without_registry(
-        self,
-        fake_persistence: FakePersistenceBackend,
-        fake_message_bus: FakeMessageBus,
-    ) -> None:
-        """Activity endpoint returns 503 when agent registry not configured."""
-        from synthorg.api.app import create_app
-        from synthorg.budget.tracker import CostTracker
-        from tests.unit.api.conftest import _make_test_auth_service, _seed_test_users
-
-        config = RootConfig(company_name="test")
-        auth_svc = _make_test_auth_service()
-        _seed_test_users(fake_persistence, auth_svc)
-        settings_svc = SettingsService(
-            repository=fake_persistence.settings,
-            registry=get_registry(),
-            config=config,
-        )
-        app = create_app(
-            config=config,
-            persistence=fake_persistence,
-            message_bus=fake_message_bus,
-            cost_tracker=CostTracker(),
-            auth_service=auth_svc,
-            settings_service=settings_svc,
-        )
-        with TestClient(app) as client:
-            client.headers.update(make_auth_headers("ceo"))
-            resp = client.get(f"/api/v1/agents/{_AGENT_NAME}/activity")
-            assert resp.status_code == 503
-            assert resp.json()["success"] is False
-
-    def test_history_returns_503_without_registry(
-        self,
-        fake_persistence: FakePersistenceBackend,
-        fake_message_bus: FakeMessageBus,
-    ) -> None:
-        """History endpoint returns 503 when agent registry not configured."""
-        from synthorg.api.app import create_app
-        from synthorg.budget.tracker import CostTracker
-        from tests.unit.api.conftest import _make_test_auth_service, _seed_test_users
-
-        config = RootConfig(company_name="test")
-        auth_svc = _make_test_auth_service()
-        _seed_test_users(fake_persistence, auth_svc)
-        settings_svc = SettingsService(
-            repository=fake_persistence.settings,
-            registry=get_registry(),
-            config=config,
-        )
-        app = create_app(
-            config=config,
-            persistence=fake_persistence,
-            message_bus=fake_message_bus,
-            cost_tracker=CostTracker(),
-            auth_service=auth_svc,
-            settings_service=settings_svc,
-        )
-        with TestClient(app) as client:
-            client.headers.update(make_auth_headers("ceo"))
-            resp = client.get(f"/api/v1/agents/{_AGENT_NAME}/history")
-            assert resp.status_code == 503
-            assert resp.json()["success"] is False
+    # NOTE: the former "returns 503 when no agent registry is configured"
+    # trio of HTTP-level tests was removed after ``create_app`` began
+    # auto-wiring ``AgentRegistryService``.  The controller's 503 branch is
+    # defensive code for callers that build ``AppState`` directly without a
+    # registry; its underlying behaviour is covered by
+    # ``tests/unit/api/test_state.py``, which asserts that
+    # ``AppState.agent_registry`` raises ``ServiceUnavailableError`` when
+    # the registry is ``None``.  Litestar maps that exception to HTTP 503
+    # automatically.  An HTTP-level re-test would require constructing a
+    # second full app with ``agent_registry=None`` just to exercise one
+    # branch; the property-level coverage is sufficient given the simple
+    # one-line path from property access to 503 response.
 
 
 # ── Activity endpoint tests ───────────────────────────────────

@@ -18,6 +18,7 @@ from synthorg.core.enums import (
     ApprovalRiskLevel,
     SeniorityLevel,
 )
+from synthorg.core.role import Skill
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.enums import HiringRequestStatus
 from synthorg.hr.errors import (
@@ -181,7 +182,7 @@ class HiringService:
             role=request.role,
             department=request.department,
             level=request.level,
-            skills=request.required_skills,
+            skills=tuple(Skill(id=s, name=s) for s in request.required_skills),
             rationale=NotBlankStr(
                 f"Generated for: {request.reason}",
             ),

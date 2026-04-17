@@ -13,6 +13,12 @@ from synthorg.core.agent import (
     PersonalityConfig,
     SkillSet,
 )
+from synthorg.core.role import Skill
+
+
+def _skill(skill_id: str) -> Skill:
+    """Build a minimal Skill for tests."""
+    return Skill(id=skill_id, name=skill_id)
 
 
 def _make_identity(
@@ -20,8 +26,11 @@ def _make_identity(
     name: str = "test-agent",
     role: str = "developer",
     department: str = "engineering",
-    primary_skills: tuple[str, ...] = ("python", "testing"),
-    secondary_skills: tuple[str, ...] = ("sql",),
+    primary_skills: tuple[Skill, ...] = (
+        Skill(id="python", name="python"),
+        Skill(id="testing", name="testing"),
+    ),
+    secondary_skills: tuple[Skill, ...] = (Skill(id="sql", name="sql"),),
 ) -> AgentIdentity:
     """Create a minimal AgentIdentity for testing."""
     return AgentIdentity(
@@ -145,13 +154,13 @@ class TestAgentCardBuilder:
         agents = [
             _make_identity(
                 name="agent-a",
-                primary_skills=("python",),
+                primary_skills=(_skill("python"),),
                 secondary_skills=(),
             ),
             _make_identity(
                 name="agent-b",
-                primary_skills=("go",),
-                secondary_skills=("docker",),
+                primary_skills=(_skill("go"),),
+                secondary_skills=(_skill("docker"),),
             ),
         ]
         card = builder.build_company_card(
@@ -181,16 +190,16 @@ class TestAgentCardBuilder:
 
     @pytest.mark.unit
     def test_company_card_dedup_across_agents(self) -> None:
-        """Same skill name across different agents is deduplicated."""
+        """Same skill ID across different agents is deduplicated."""
         builder = AgentCardBuilder()
         agent_a = _make_identity(
             name="agent-a",
-            primary_skills=("python",),
+            primary_skills=(_skill("python"),),
             secondary_skills=(),
         )
         agent_b = _make_identity(
             name="agent-b",
-            primary_skills=("python",),
+            primary_skills=(_skill("python"),),
             secondary_skills=(),
         )
         card = builder.build_company_card(
@@ -198,17 +207,66 @@ class TestAgentCardBuilder:
             "https://example.com/a2a",
             "Test Corp",
         )
-        # Both agents have "python" -> capability-centric ID dedup -> 1
+        # Both agents have "python" -> id-based dedup -> 1
         assert len(card.skills) == 1
-        assert card.skills[0].name == "python"
+        assert card.skills[0].id == "python"
 
     @pytest.mark.unit
-    def test_skill_ids_are_capability_centric(self) -> None:
-        """Skill IDs are based on skill name, not agent ID."""
+    def test_skill_ids_passed_through(self) -> None:
+        """Skill IDs come from the internal Skill.id, not fabricated slugs."""
         identity = _make_identity(
-            primary_skills=("python",),
-            secondary_skills=("docker",),
+            primary_skills=(_skill("python"),),
+            secondary_skills=(_skill("docker"),),
         )
         skills = _identity_to_skills(identity)
-        assert skills[0].id == "skill-python"
-        assert skills[1].id == "skill-docker"
+        assert skills[0].id == "python"
+        assert skills[1].id == "docker"
+
+    @pytest.mark.unit
+    def test_skill_description_passed_through(self) -> None:
+        """Description is rendered verbatim, not stubbed."""
+        identity = _make_identity(
+            primary_skills=(
+                Skill(
+                    id="python",
+                    name="Python",
+                    description="Backend Python 3.14+",
+                ),
+            ),
+            secondary_skills=(),
+        )
+        skills = _identity_to_skills(identity)
+        assert skills[0].description == "Backend Python 3.14+"
+
+    @pytest.mark.unit
+    def test_skill_tags_passed_through_with_tier_marker(self) -> None:
+        """User tags are preserved; tier marker is appended."""
+        identity = _make_identity(
+            primary_skills=(
+                Skill(id="python", name="Python", tags=("backend", "async")),
+            ),
+            secondary_skills=(Skill(id="docker", name="Docker", tags=("ops",)),),
+        )
+        skills = _identity_to_skills(identity)
+        primary_skill = next(s for s in skills if s.id == "python")
+        secondary_skill = next(s for s in skills if s.id == "docker")
+        assert primary_skill.tags == ("backend", "async", "primary")
+        assert secondary_skill.tags == ("ops", "secondary")
+
+    @pytest.mark.unit
+    def test_skill_input_output_modes_passed_through(self) -> None:
+        """input_modes and output_modes propagate without modification."""
+        identity = _make_identity(
+            primary_skills=(
+                Skill(
+                    id="python",
+                    name="Python",
+                    input_modes=("application/json", "text/plain"),
+                    output_modes=("application/json",),
+                ),
+            ),
+            secondary_skills=(),
+        )
+        skills = _identity_to_skills(identity)
+        assert skills[0].input_modes == ("application/json", "text/plain")
+        assert skills[0].output_modes == ("application/json",)

@@ -27,7 +27,7 @@ from synthorg.core.enums import (
     RiskTolerance,
     SeniorityLevel,
 )
-from synthorg.core.role import Authority
+from synthorg.core.role import Authority, Skill
 
 from .conftest import (
     AgentIdentityFactory,
@@ -226,44 +226,66 @@ class TestSkillSet:
         assert s.secondary == ()
 
     def test_custom_values(self) -> None:
-        """Verify explicitly provided skill tuples are persisted."""
-        s = SkillSet(
-            primary=("python", "fastapi"),
-            secondary=("docker", "redis"),
-        )
-        assert "python" in s.primary
-        assert "docker" in s.secondary
+        """Verify explicitly provided Skill objects are persisted."""
+        python = Skill(id="python", name="Python")
+        fastapi = Skill(id="fastapi", name="FastAPI")
+        docker = Skill(id="docker", name="Docker")
+        redis = Skill(id="redis", name="Redis")
+        s = SkillSet(primary=(python, fastapi), secondary=(docker, redis))
+        assert python in s.primary
+        assert docker in s.secondary
 
-    def test_empty_skill_name_rejected(self) -> None:
-        """Reject empty string in primary skills."""
-        with pytest.raises(ValidationError, match="at least 1 character"):
-            SkillSet(primary=("python", ""))
-
-    def test_whitespace_skill_name_rejected(self) -> None:
-        """Reject whitespace-only skill name in secondary."""
-        with pytest.raises(ValidationError, match="whitespace-only"):
-            SkillSet(secondary=("  ",))
+    def test_non_skill_entry_rejected(self) -> None:
+        """Primary/secondary must contain Skill objects, not strings."""
+        with pytest.raises(ValidationError):
+            SkillSet(primary=("python",))  # type: ignore[arg-type]
 
     def test_empty_primary_error_mentions_primary(self) -> None:
-        """Ensure error message references 'primary' for that field."""
+        """Ensure validation errors surface the failing field name."""
         with pytest.raises(ValidationError, match="primary"):
-            SkillSet(primary=("python", ""))
+            SkillSet(primary=("python",))  # type: ignore[arg-type]
 
     def test_empty_secondary_error_mentions_secondary(self) -> None:
-        """Ensure error message references 'secondary' for that field."""
+        """Ensure validation errors surface the failing field name."""
         with pytest.raises(ValidationError, match="secondary"):
-            SkillSet(secondary=("  ",))
+            SkillSet(secondary=("docker",))  # type: ignore[arg-type]
 
     def test_frozen(self) -> None:
         """Ensure SkillSet is immutable."""
         s = SkillSet()
         with pytest.raises(ValidationError):
-            s.primary = ("new",)  # type: ignore[misc]
+            s.primary = (Skill(id="new", name="New"),)  # type: ignore[misc]
 
     def test_factory(self) -> None:
         """Verify factory produces a valid SkillSet."""
         s = SkillSetFactory.build()
         assert isinstance(s, SkillSet)
+
+    def test_primary_secondary_overlap_rejected(self) -> None:
+        """A skill id cannot appear in both primary and secondary tiers."""
+        python = Skill(id="python", name="Python")
+        with pytest.raises(
+            ValidationError, match="Skills cannot appear in both primary and secondary"
+        ):
+            SkillSet(primary=(python,), secondary=(python,))
+
+    def test_primary_duplicate_ids_rejected(self) -> None:
+        """Duplicate skill ids within the primary tier are rejected."""
+        python_a = Skill(id="python", name="Python")
+        python_b = Skill(id="python", name="Python (senior)", proficiency=0.9)
+        with pytest.raises(
+            ValidationError, match="Duplicate skill ids in primary tier"
+        ):
+            SkillSet(primary=(python_a, python_b))
+
+    def test_secondary_duplicate_ids_rejected(self) -> None:
+        """Duplicate skill ids within the secondary tier are rejected."""
+        go_a = Skill(id="go", name="Go")
+        go_b = Skill(id="go", name="Go (systems)")
+        with pytest.raises(
+            ValidationError, match="Duplicate skill ids in secondary tier"
+        ):
+            SkillSet(secondary=(go_a, go_b))
 
 
 # ── ModelConfig ────────────────────────────────────────────────────
@@ -764,8 +786,11 @@ class TestAgentIdentity:
                 risk_tolerance=RiskTolerance.HIGH,
             ),
             skills=SkillSet(
-                primary=("python", "architecture"),
-                secondary=("docker",),
+                primary=(
+                    Skill(id="python", name="Python"),
+                    Skill(id="architecture", name="Architecture"),
+                ),
+                secondary=(Skill(id="docker", name="Docker"),),
             ),
             model=sample_model_config,
             memory=MemoryConfig(type=MemoryLevel.PERSISTENT, retention_days=90),

@@ -38,7 +38,7 @@ from synthorg.core.enums import (
     TaskStructure,
     TaskType,
 )
-from synthorg.core.role import Authority
+from synthorg.core.role import Authority, Skill
 from synthorg.core.task import Task
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.assignment.models import (
@@ -207,8 +207,8 @@ def _make_agent(  # noqa: PLR0913
         model=_model_config(),
         hiring_date=date(2026, 1, 1),
         skills=SkillSet(
-            primary=primary_skills,
-            secondary=secondary_skills,
+            primary=tuple(Skill(id=s, name=s) for s in primary_skills),
+            secondary=tuple(Skill(id=s, name=s) for s in secondary_skills),
         ),
         authority=Authority(can_delegate_to=can_delegate_to),
     )

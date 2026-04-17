@@ -8,6 +8,7 @@ import pytest
 
 from synthorg.core.agent import AgentIdentity, ModelConfig, SkillSet
 from synthorg.core.enums import SeniorityLevel, TaskStatus, TaskType
+from synthorg.core.role import Skill
 from synthorg.core.task import Task
 from synthorg.engine.checkpoint.callback_factory import make_checkpoint_callback
 from synthorg.engine.checkpoint.models import CheckpointConfig
@@ -28,7 +29,7 @@ def _make_agent() -> AgentIdentity:
         level=SeniorityLevel.MID,
         model=ModelConfig(provider="test-provider", model_id="test-small-001"),
         hiring_date=date(2026, 1, 1),
-        skills=SkillSet(primary=("python",)),
+        skills=SkillSet(primary=(Skill(id="python", name="python"),)),
     )
 
 

@@ -62,14 +62,7 @@ Personality is split into two tiers:
 
 ### Skill Model
 
-!!! info "Proposed Specification"
-
-    The enriched Skill model below is a **design specification** -- not yet implemented.
-    The current codebase uses a simpler `Skill(name, category, proficiency)` model and
-    string-based `SkillSet(primary: tuple[str], secondary: tuple[str])`. Implementation
-    will be tracked in a separate issue.
-
-Agent skills will be represented as structured capability descriptions aligned with the
+Agent skills are represented as structured capability descriptions aligned with the
 [A2A AgentSkill specification](communication.md#agent-card-projection), enabling lossless
 bidirectional mapping between internal skills and external Agent Card capabilities.
 
@@ -109,20 +102,23 @@ class SkillSet(BaseModel):
 | `output_modes` | `outputModes` | MIME types the agent produces for this skill |
 | `proficiency` | -- | SynthOrg-specific: proficiency level for quality-aware routing |
 
-**Defaults and backward compatibility:**
+**Defaults:**
 
 - `input_modes` and `output_modes` default to `("text/plain",)` -- internal agents that
   only handle text do not need to specify these fields
 - `proficiency` defaults to `1.0` -- only meaningful when comparing agents with the same
   skill at different proficiency levels
-- Existing string-based YAML configs will auto-migrate: a bare string `"python"` will be
-  interpreted as `Skill(id="python", name="python")` with all other fields at defaults
+- `SkillSet` rejects string entries, duplicate skill IDs within a tier, and overlap
+  between `primary` and `secondary` -- pre-alpha, no backward-compat coercion from the
+  legacy string-based shape
 
-**Routing impact (planned):** The `AgentTaskScorer` will use structured skills for richer
-matching: primary skill overlap (40% weight), secondary skill overlap (20% weight),
-tag-based multi-faceted matching, and proficiency-weighted scoring. Proficiency will
-enable quality-aware routing: "route to the agent with the highest Python proficiency."
-Currently, the scorer uses string-based skill overlap only.
+**Routing impact:** `AgentTaskScorer` uses the structured skill data directly.  Primary
+skill overlap is weighted at 40% and secondary at 20%, each contribution scaled by the
+agent's `proficiency` for every matched skill (default `1.0`, which reproduces
+boolean-match scoring).  When a subtask declares `required_tags`, matched skills whose
+tags cover every required tag earn an additional 10% bonus.  Proficiency thus drives
+quality-aware routing -- "route to the agent with the highest Python proficiency" -- and
+tags drive multi-faceted matching when callers opt in.
 
 **Maintenance:** Skills will be template-seeded at hire time (company templates provide
 default skill sets per role) and human-editable via the REST API. Auto-derivation from
@@ -301,12 +297,30 @@ Identity versions are persisted in the `agent_identity_versions` table (see
 pre-configured `SQLiteVersionRepository[AgentIdentity]`.
 
 `AgentRegistryService` accepts an optional `VersioningService[AgentIdentity]`
-dependency (constructor injection). When wired:
+dependency (constructor injection). The app factory (`api.app:create_app`) auto-wires
+this dependency during startup so identity versioning is enabled out of the box --
+no manual configuration required. When wired:
 
 - `register()` snapshots the initial identity immediately after storing it.
 - `update_identity()` snapshots the updated identity after applying the change.
-- Both calls are best-effort: versioning failures are logged at WARNING and do not
+- `evolve_identity()` snapshots the restored identity on rollback.
+- All calls are best-effort: versioning failures are logged at WARNING and do not
   interrupt the registry mutation.
+
+### REST API
+
+Identity version history is exposed under `/api/v1/agents/{agent_id}/versions`
+(paths in the table below are relative to that base):
+
+| Method | Path (relative) | Guard | Description |
+|--------|-----------------|-------|-------------|
+| `GET` | `/` | read | Paginated list of version snapshots (`offset`, `limit` default 20) |
+| `GET` | `/{version_num}` | read | Single version snapshot by monotonic version number |
+| `GET` | `/diff?from_version=N&to_version=M` | read | Field-level `AgentIdentityDiff` between two versions (`from_version < to_version` required) |
+| `POST` | `/rollback` | write | Restore a prior version.  Body: `{target_version: int, reason?: str}`.  Executed via `evolve_identity`, producing a new snapshot whose content hash equals the restored version -- rollbacks never mutate history. |
+
+All endpoints additionally verify that the stored snapshot's encoded owner id
+matches the path `agent_id` (cross-agent rows are rejected with 400).
 
 ### Identity Diff
 

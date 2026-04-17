@@ -4,6 +4,9 @@ from litestar import Controller
 
 from synthorg.api.auth.controller import AuthController
 from synthorg.api.controllers.activities import ActivityController
+from synthorg.api.controllers.agent_identity_versions import (
+    AgentIdentityVersionController,
+)
 from synthorg.api.controllers.agents import AgentController
 from synthorg.api.controllers.analytics import AnalyticsController
 from synthorg.api.controllers.approvals import ApprovalsController
@@ -86,11 +89,17 @@ from synthorg.api.controllers.workflows import WorkflowController
 from synthorg.api.controllers.ws import ws_handler
 
 # Core API controllers (always registered).
+#
+# Handlers that dereference ``state.app_state.persistence`` (including the
+# ``*VersionController`` family) degrade to HTTP 503 when persistence is
+# ``None`` via ``AppState.persistence``'s ``ServiceUnavailableError``.  No
+# per-controller gating is required.
 BASE_CONTROLLERS: tuple[type[Controller], ...] = (
     HealthController,
     MetricsController,
     CompanyController,
     AgentController,
+    AgentIdentityVersionController,
     ActivityController,
     DepartmentController,
     ProjectController,
@@ -166,6 +175,7 @@ __all__ = [
     "INTEGRATION_CONTROLLERS",
     "ActivityController",
     "AgentController",
+    "AgentIdentityVersionController",
     "AnalyticsController",
     "ApprovalsController",
     "ArtifactController",

@@ -17,6 +17,7 @@ from synthorg.core.agent import (
     PersonalityConfig,
     SkillSet,
 )
+from synthorg.core.role import Skill
 
 
 @pytest.mark.integration
@@ -39,8 +40,11 @@ def test_agent_card_safe_subset() -> None:
             conscientiousness=0.9,
         ),
         skills=SkillSet(
-            primary=("architecture", "code-review"),
-            secondary=("mentoring",),
+            primary=(
+                Skill(id="architecture", name="architecture"),
+                Skill(id="code-review", name="code-review"),
+            ),
+            secondary=(Skill(id="mentoring", name="mentoring"),),
         ),
         hiring_date=date(2025, 6, 1),
     )
