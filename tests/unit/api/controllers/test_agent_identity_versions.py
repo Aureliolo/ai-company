@@ -257,13 +257,27 @@ class TestRollback:
     async def test_rollback_unknown_agent_returns_404(
         self,
         test_client: TestClient[Any],
+        fake_persistence: FakePersistenceBackend,
+        agent_registry: AgentRegistryService,
     ) -> None:
+        """Covers the ``evolve_identity`` ``AgentNotFoundError`` -> 404 path.
+
+        Seeds a version (so the repository lookup in the handler succeeds)
+        and then clears the registry so ``evolve_identity`` can't find the
+        agent.  Without the seed-then-clear sequence, the 404 would come
+        from the earlier ``get_version`` branch instead.
+        """
+        fake_persistence.identity_versions.clear()
+        agent_registry.clear()
+        identity = await _seed_versions(agent_registry)
+        agent_registry.clear()
         resp = test_client.post(
-            f"/api/v1/agents/{uuid4()}/versions/rollback",
+            f"/api/v1/agents/{identity.id}/versions/rollback",
             json={"target_version": 1},
             headers=make_auth_headers("ceo"),
         )
         assert resp.status_code == 404
+        assert "agent not found" in resp.json()["error"].lower()
 
     @pytest.mark.unit
     async def test_rollback_missing_target_returns_404(
@@ -288,17 +302,42 @@ class TestRollback:
         test_client: TestClient[Any],
         fake_persistence: FakePersistenceBackend,
         agent_registry: AgentRegistryService,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """Optional ``reason`` passes through without breaking rollback."""
+        """Optional ``reason`` is forwarded into the evolution rationale.
+
+        Spies on ``evolve_identity`` to assert the reason actually reaches
+        the audit trail -- not just that the endpoint returned 200.
+        """
         fake_persistence.identity_versions.clear()
         agent_registry.clear()
         identity = await _seed_versions(agent_registry, updates=1)
+
+        captured: dict[str, str] = {}
+        original = agent_registry.evolve_identity
+
+        async def _capture(
+            agent_id: str,
+            snapshot: AgentIdentity,
+            *,
+            evolution_rationale: str,
+        ) -> AgentIdentity:
+            captured["rationale"] = evolution_rationale
+            return await original(
+                agent_id,
+                snapshot,
+                evolution_rationale=evolution_rationale,
+            )
+
+        monkeypatch.setattr(agent_registry, "evolve_identity", _capture)
         resp = test_client.post(
             f"/api/v1/agents/{identity.id}/versions/rollback",
             json={"target_version": 1, "reason": "undo accidental promotion"},
             headers=make_auth_headers("ceo"),
         )
         assert resp.status_code == 200
+        assert "undo accidental promotion" in captured["rationale"]
+        assert "rollback to v1" in captured["rationale"].lower()
 
     @pytest.mark.unit
     async def test_rollback_evolve_value_error_returns_400(
@@ -442,9 +481,14 @@ class TestReadEndpointsOwnership:
         assert resp.status_code == 200
         # Forged row must be silently dropped from the response and
         # ``pagination.total`` must reflect only the surviving rows so
-        # clients paginating by the reported total stay in sync.
+        # clients paginating by the reported total stay in sync.  Also
+        # assert the legitimate row survives so over-filtering regressions
+        # fail this test instead of passing silently with an empty list.
         body = resp.json()
         versions = body["data"]
+        assert len(versions) == 1
+        assert versions[0]["entity_id"] == str(bob.id)
+        assert versions[0]["version"] == 1
         assert all(v["version"] != 42 for v in versions)
         assert body["pagination"]["total"] == len(versions)
 
