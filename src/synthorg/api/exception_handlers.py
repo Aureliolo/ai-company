@@ -14,6 +14,7 @@ retryability, title, type URI, request correlation ID).
 """
 
 import contextlib
+import math
 from http import HTTPStatus
 from types import MappingProxyType
 from typing import Any, Final
@@ -411,10 +412,13 @@ def handle_domain_error(
         msg = str(exc) or str(getattr(exc, "default_message", "Request error"))
     retry_after_raw = getattr(exc, "retry_after", None)
     retry_after_val: int | None = None
+    # Accept only finite non-negative numerics -- ``inf``/``nan`` would
+    # crash header serialization and leak the original error.
     if (
         retry_after_raw is not None
         and not isinstance(retry_after_raw, bool)
         and isinstance(retry_after_raw, (int, float))
+        and math.isfinite(float(retry_after_raw))
         and retry_after_raw >= 0
     ):
         retry_after_val = int(retry_after_raw)

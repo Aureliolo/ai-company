@@ -49,20 +49,23 @@ class EscalationExpirationSweeper:
         self._interval = interval_seconds
         self._task: asyncio.Task[None] | None = None
         self._stop_event = asyncio.Event()
+        self._start_lock: asyncio.Lock = asyncio.Lock()
 
     async def start(self) -> None:
         """Schedule the background loop.
 
-        Idempotent: calling ``start()`` on an already-running sweeper
-        is a no-op.
+        Idempotent + concurrent-safe: concurrent ``start()`` calls
+        serialize on an asyncio.Lock so at most one task is created
+        even when multiple callers race.
         """
-        if self._task is not None and not self._task.done():
-            return
-        self._stop_event.clear()
-        self._task = asyncio.create_task(
-            self._run(),
-            name="escalation-sweeper",
-        )
+        async with self._start_lock:
+            if self._task is not None and not self._task.done():
+                return
+            self._stop_event.clear()
+            self._task = asyncio.create_task(
+                self._run(),
+                name="escalation-sweeper",
+            )
         logger.info(
             CONFLICT_ESCALATION_SWEEPER_STARTED,
             interval_seconds=self._interval,
@@ -112,9 +115,20 @@ class EscalationExpirationSweeper:
                 )
             except TimeoutError:
                 continue
+            except asyncio.CancelledError:
+                # Explicit re-raise: external cancellation (stop() or
+                # loop shutdown) must terminate the loop, not fall
+                # through to another sweep iteration.
+                raise
 
     async def _sweep_once(self) -> None:
-        """Expire any rows whose deadline has passed."""
+        """Expire any rows whose deadline has passed.
+
+        Emits the same event constant on every iteration -- at ``info``
+        when rows were expired, at ``debug`` when the pass was clean --
+        so operators can detect a silent sweeper (store returns 0 due
+        to a timezone / WHERE-clause bug) by the absence of debug logs.
+        """
         now = datetime.now(UTC)
         expired = await self._store.mark_expired(now.isoformat())
         if expired:
@@ -123,3 +137,5 @@ class EscalationExpirationSweeper:
                 expired_count=len(expired),
                 expired_ids=list(expired),
             )
+        else:
+            logger.debug(CONFLICT_ESCALATION_EXPIRED, expired_count=0)

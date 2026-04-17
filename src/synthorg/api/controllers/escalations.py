@@ -234,6 +234,14 @@ class EscalationsController(Controller):
         try:
             processor.process(row.conflict, data.decision, decided_by=operator)
         except ValueError as exc:
+            logger.warning(
+                CONFLICT_ESCALATION_RESOLVED,
+                escalation_id=escalation_id,
+                operator=operator,
+                decision_type=data.decision.type,
+                error_type="invalid_decision_shape",
+                error=str(exc),
+            )
             raise ApiValidationError(str(exc)) from exc
 
         try:
@@ -247,12 +255,18 @@ class EscalationsController(Controller):
             raise NotFoundError(msg) from exc
         except ValueError as exc:
             raise ConflictError(str(exc)) from exc
-        await registry.resolve(escalation_id, data.decision)
+        woke_resolver = await registry.resolve(escalation_id, data.decision)
         logger.info(
             CONFLICT_ESCALATION_RESOLVED,
             escalation_id=escalation_id,
             operator=operator,
             decision_type=data.decision.type,
+            resolver_woken=woke_resolver,
+            note=(
+                "delivered_to_resolver"
+                if woke_resolver
+                else "persisted_only_no_live_resolver"
+            ),
         )
         return ApiResponse[EscalationResponse](data=_to_response(updated))
 
@@ -281,7 +295,6 @@ class EscalationsController(Controller):
         and returns an ``ESCALATED_TO_HUMAN`` resolution marked as
         cancelled.
         """
-        del data  # currently captured only for audit; consumed via logs later
         app_state: AppState = state.app_state
         store = app_state.escalation_store
         registry = app_state.escalation_registry
@@ -301,5 +314,6 @@ class EscalationsController(Controller):
             CONFLICT_ESCALATION_CANCELLED,
             escalation_id=escalation_id,
             operator=operator,
+            reason=data.reason,
         )
         return ApiResponse[EscalationResponse](data=_to_response(updated))

@@ -103,6 +103,8 @@ See `web/CLAUDE.md` for the full component inventory, design token rules, and po
   - `meta/chief_of_staff/protocol.py` (`OutcomeStore`, `ConfidenceAdjuster`, `OrgInflectionSink`, `AlertSink`) + `meta/chief_of_staff/config.py` discriminator + `meta/factory.py::build_confidence_adjuster()`
   - `meta/telemetry/protocol.py` (`AnalyticsEmitter`, `AnalyticsCollector`, `RecommendationProvider`) + `meta/telemetry/config.py` discriminator + `meta/telemetry/factory.py::build_analytics_emitter()`
   - `meta/rollout/clock.py` (`Clock`) + `meta/rollout/roster.py` (`OrgRoster`) + `meta/rollout/group_aggregator.py` (`GroupSignalAggregator`) + `meta/rollout/inverse_dispatch.py` (`RollbackHandler` + 4 mutator protocols) + `meta/factory.py::build_rollout_strategies()` + `build_rollback_executor()` -- all plumbed through frozen `SelfImprovementConfig`, with safe defaults (`RealClock`, `NoOpOrgRoster`, null aggregator) so the behaviour is opt-in
+  - `api/rate_limits/protocol.py` (`SlidingWindowStore`) + `api/rate_limits/in_memory.py` + `api/rate_limits/config.py::PerOpRateLimitConfig` discriminator + `api/rate_limits/factory.py::build_sliding_window_store()`
+  - `communication/conflict_resolution/escalation/protocol.py` (`EscalationQueueStore`, `DecisionProcessor`) + in-memory/SQLite/Postgres implementations + `communication/conflict_resolution/escalation/config.py::EscalationQueueConfig` discriminator + `communication/conflict_resolution/escalation/factory.py::build_escalation_queue_store()`
 - **Line length**: 88 characters (ruff)
 - **Functions**: < 50 lines, files < 800 lines
 - **Errors**: handle explicitly, never silently swallow

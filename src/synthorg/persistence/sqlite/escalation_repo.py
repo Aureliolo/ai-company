@@ -8,7 +8,7 @@ optional decision payload as JSON TEXT columns for schema simplicity.
 
 import json
 import sqlite3
-from datetime import datetime
+from datetime import UTC, datetime
 
 import aiosqlite
 from aiosqlite import Row
@@ -172,8 +172,19 @@ class SQLiteEscalationRepository(EscalationQueueStore):
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to list escalations: {exc}"
             raise QueryError(msg) from exc
-        page = tuple(_row_to_escalation(r) for r in rows)
-        return page, total
+        # A single corrupt row must not poison the entire page -- log and
+        # skip it instead so the operator dashboard keeps functioning.
+        page_items: list[Escalation] = []
+        for row in rows:
+            try:
+                page_items.append(_row_to_escalation(row))
+            except QueryError as exc:
+                logger.warning(
+                    API_REQUEST_ERROR,
+                    error_type="escalation_row_corrupt_skipped",
+                    error=str(exc),
+                )
+        return tuple(page_items), total
 
     async def apply_decision(
         self,
@@ -183,7 +194,7 @@ class SQLiteEscalationRepository(EscalationQueueStore):
         decided_by: str,
     ) -> Escalation:
         """Transition PENDING -> DECIDED atomically."""
-        now_iso = datetime.now().astimezone().isoformat()
+        now_iso = datetime.now(UTC).isoformat()
         decision_json = _decision_adapter.dump_json(decision).decode("utf-8")
         return await self._update_terminal(
             escalation_id,
@@ -196,7 +207,7 @@ class SQLiteEscalationRepository(EscalationQueueStore):
 
     async def cancel(self, escalation_id: str, *, cancelled_by: str) -> Escalation:
         """Transition PENDING -> CANCELLED."""
-        now_iso = datetime.now().astimezone().isoformat()
+        now_iso = datetime.now(UTC).isoformat()
         return await self._update_terminal(
             escalation_id,
             new_status=EscalationStatus.CANCELLED,
@@ -279,7 +290,16 @@ class SQLiteEscalationRepository(EscalationQueueStore):
             msg = f"Failed to update escalation {escalation_id!r}: {exc}"
             raise QueryError(msg) from exc
         if cursor.rowcount == 0:
-            existing = await self.get(escalation_id)
+            # Recovery lookup runs on a fresh cursor so a crashed row
+            # doesn't poison the failure signal back to the caller.
+            try:
+                existing = await self.get(escalation_id)
+            except QueryError as exc:
+                msg = (
+                    f"Escalation {escalation_id!r} update failed and "
+                    "recovery lookup raised"
+                )
+                raise QueryError(msg) from exc
             if existing is None:
                 msg = f"Escalation {escalation_id!r} not found"
                 raise KeyError(msg)

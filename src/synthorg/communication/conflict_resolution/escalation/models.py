@@ -69,9 +69,9 @@ EscalationDecision = Annotated[
 ]
 """Human decision payload -- tagged union discriminated on ``type``.
 
-Additional decision shapes (e.g. a free-form custom resolution) can be
-added in the future without a model version bump because the
-discriminator makes the union forwards-extensible.
+New decision shapes can be added by extending this union AND updating
+every :class:`DecisionProcessor` implementation plus the REST layer's
+validation; the discriminator field keeps the wire format stable.
 """
 
 
@@ -108,7 +108,12 @@ class Escalation(BaseModel):
 
     @model_validator(mode="after")
     def _validate_status_consistency(self) -> Self:
-        """Enforce invariants between ``status`` and decision fields."""
+        """Enforce invariants between ``status`` and decision fields.
+
+        Also enforces the ``decided_by`` format (``"human:<operator_id>"``
+        or ``"system:<reason>"``) so audit consumers can rely on the
+        prefix to distinguish operator vs system transitions.
+        """
         if self.status == EscalationStatus.PENDING:
             if self.decision is not None or self.decided_at is not None:
                 msg = "PENDING escalations must have decision=None and decided_at=None"
@@ -137,4 +142,12 @@ class Escalation(BaseModel):
                     "must reference a position in the escalated conflict"
                 )
                 raise ValueError(msg)
+        if self.decided_by is not None and not self.decided_by.startswith(
+            ("human:", "system:"),
+        ):
+            msg = (
+                f"decided_by={self.decided_by!r} must start with 'human:' "
+                "or 'system:' so audit consumers can distinguish transitions"
+            )
+            raise ValueError(msg)
         return self

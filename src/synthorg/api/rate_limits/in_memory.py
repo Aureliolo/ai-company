@@ -69,6 +69,8 @@ class InMemorySlidingWindowStore(SlidingWindowStore):
                 bucket.popleft()
             if len(bucket) >= max_requests:
                 oldest = bucket[0]
+                # Minimum 0.001s so a client seeing retry_after=0 never hot-loops
+                # on sub-millisecond clock jitter while a window is still active.
                 retry_after = max(oldest + float(window_seconds) - now, 0.001)
                 return RateLimitOutcome(
                     allowed=False,
@@ -77,9 +79,17 @@ class InMemorySlidingWindowStore(SlidingWindowStore):
                 )
             bucket.append(now)
             remaining = max(max_requests - len(bucket), 0)
-            self._acquires_since_gc += 1
 
-        if self._acquires_since_gc >= _GC_EVERY_N_ACQUIRES:
+        # GC counter is shared across keys so its increment + threshold check
+        # must happen under the meta-lock to avoid redundant sweeps triggered
+        # by concurrent acquires on different keys.
+        should_gc = False
+        async with self._meta_lock:
+            self._acquires_since_gc += 1
+            if self._acquires_since_gc >= _GC_EVERY_N_ACQUIRES:
+                self._acquires_since_gc = 0
+                should_gc = True
+        if should_gc:
             await self._gc_cold_buckets(window_seconds=window_seconds)
 
         return RateLimitOutcome(
@@ -124,7 +134,9 @@ class InMemorySlidingWindowStore(SlidingWindowStore):
                     lock = self._locks.get(key)
                     if lock is not None and not lock.locked():
                         self._locks.pop(key, None)
-                self._acquires_since_gc = 0
+            except asyncio.CancelledError, MemoryError, RecursionError:
+                # Non-recoverable: propagate so shutdown / OOM is not hidden.
+                raise
             except Exception as exc:
                 # GC is best-effort -- never block acquire progress.
                 logger.warning(

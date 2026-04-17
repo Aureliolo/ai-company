@@ -723,8 +723,16 @@ All four conflict resolution strategies terminate with bounded resource use:
 - **AuthorityResolver**: Deterministic seniority comparison. Always terminates; no LLM calls.
 - **DebateResolver**: Single LLM judge call (one-shot, no retry loop). Falls back to
   Authority if no evaluator configured, or if the evaluator raises an exception (#1117).
-- **HumanEscalationResolver**: Returns `ESCALATED_TO_HUMAN` immediately. **Stub
-  implementation** pending #37 -- no actual blocking for human input yet.
+- **HumanEscalationResolver**: Persists the escalation to a pluggable queue
+  backend (in-memory / SQLite / Postgres), dispatches a
+  `NotificationCategory.ESCALATION` to operators, and awaits the operator
+  decision via an in-process ``asyncio.Future`` registered in
+  ``PendingFuturesRegistry``. On timeout (bounded by
+  ``EscalationQueueConfig.default_timeout_seconds``, ``None`` = wait forever)
+  the row is marked ``EXPIRED`` and the resolver returns an
+  ``ESCALATED_TO_HUMAN`` outcome so downstream callers always receive a
+  terminal ``ConflictResolution``. Operators collect and decide via the
+  ``/conflicts/escalations`` REST surface (#1418).
 - **HybridResolver**: Single LLM review call; deterministic fallback to Authority on ambiguity.
 
 ### Delegation Guard

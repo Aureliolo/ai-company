@@ -29,9 +29,8 @@ def _build_dissent_records_from_resolution(
 ) -> tuple[DissentRecord, ...]:
     """Emit one dissent record per non-winning position.
 
-    For no-winner outcomes (escalated/rejected) every position is
-    recorded, matching the stub resolver's existing behaviour so
-    downstream auditors keep the full stance history.
+    For outcomes without a winner (escalated / rejected), every
+    position is recorded so auditors keep the full stance history.
     """
     if resolution.outcome in _NO_WINNER_OUTCOMES:
         targets = conflict.positions

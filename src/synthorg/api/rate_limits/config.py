@@ -1,8 +1,8 @@
 """Per-operation rate limit configuration (#1391)."""
 
-from typing import Literal
+from typing import Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 
@@ -17,8 +17,8 @@ class PerOpRateLimitConfig(BaseModel):
             :class:`SlidingWindowStore` strategy.
         overrides: Operator tuning knob.  Maps operation name to
             ``(max_requests, window_seconds)`` tuples that supersede
-            the decorator defaults.  Use for zero-deploy limit changes
-            during incidents.
+            the decorator defaults.  Use zero or negative values
+            explicitly disable an operation (the guard short-circuits).
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -26,3 +26,21 @@ class PerOpRateLimitConfig(BaseModel):
     enabled: bool = True
     backend: Literal["memory", "redis"] = "memory"
     overrides: dict[NotBlankStr, tuple[int, int]] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _validate_override_tuples(self) -> Self:
+        """Reject override tuples with malformed (non-integer, negative) values.
+
+        Zero is allowed and means "disable this operation" -- the guard
+        short-circuits when either component is <= 0.  Negative values
+        are rejected because they express no meaningful intent.
+        """
+        for operation, pair in self.overrides.items():
+            max_req, window = pair
+            if max_req < 0 or window < 0:
+                msg = (
+                    f"overrides[{operation!r}]={pair!r} has negative values; "
+                    "use 0 to disable an operation"
+                )
+                raise ValueError(msg)
+        return self

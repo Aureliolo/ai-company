@@ -188,8 +188,18 @@ INSERT INTO conflict_escalations (
         except psycopg.Error as exc:
             msg = f"Failed to list escalations: {exc}"
             raise QueryError(msg) from exc
-        page = tuple(_row_to_escalation(r) for r in rows)
-        return page, total
+        # Corrupt-row resilience: skip + log instead of failing the whole page.
+        page_items: list[Escalation] = []
+        for row in rows:
+            try:
+                page_items.append(_row_to_escalation(row))
+            except QueryError as exc:
+                logger.warning(
+                    API_REQUEST_ERROR,
+                    error_type="escalation_row_corrupt_skipped",
+                    error=str(exc),
+                )
+        return tuple(page_items), total
 
     async def apply_decision(
         self,
