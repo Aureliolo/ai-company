@@ -99,11 +99,11 @@ def test_custom_without_roots_rejected_when_verifying() -> None:
         )
 
 
-def test_timeout_range_enforced() -> None:
+@pytest.mark.parametrize("tsa_timeout_sec", [0.0, 60.0])
+def test_timeout_range_enforced(tsa_timeout_sec: float) -> None:
+    """Values at or outside the ``(0, 60)`` bound are rejected."""
     with pytest.raises(ValidationError):
-        AuditChainConfig(tsa_timeout_sec=0.0)
-    with pytest.raises(ValidationError):
-        AuditChainConfig(tsa_timeout_sec=60.0)
+        AuditChainConfig(tsa_timeout_sec=tsa_timeout_sec)
 
 
 @pytest.mark.parametrize("value", [0.1, 2.5, 5.0])

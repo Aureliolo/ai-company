@@ -109,22 +109,29 @@ async def test_drain_cancels_on_timeout(
     blocker = asyncio.Event()  # Never set -- task is stuck forever.
     task = registry.spawn(_block_until_set(blocker), event="test.intent")
 
-    # Drive the timeout branch deterministically: stub
-    # ``asyncio.wait`` so both drain phases return "all pending"
-    # without a real 50ms wall-clock wait. This keeps the test
-    # off the CI scheduler's timing and rules out xdist jitter.
+    # Drive the timeout branch deterministically: stub the FIRST
+    # ``asyncio.wait`` call so the first drain phase returns "all
+    # pending" without a real 50ms wall-clock wait, then delegate
+    # subsequent calls back to the real implementation so the
+    # post-cancellation cleanup phase still observes tasks finishing.
+    # Keeps the test off the CI scheduler's timing while preserving
+    # full drain semantics.
     original_wait = asyncio.wait
+    call_count = 0
 
-    async def _immediate_wait(
+    async def _wait_shim(
         tasks: set[asyncio.Task[Any]],
         *,
         timeout: float | None = None,  # noqa: ASYNC109 - mirrors asyncio.wait
-        **_: Any,
+        **kwargs: Any,
     ) -> tuple[set[asyncio.Task[Any]], set[asyncio.Task[Any]]]:
-        del timeout
-        return (set(), set(tasks))
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            return (set(), set(tasks))
+        return await original_wait(tasks, timeout=timeout, **kwargs)
 
-    monkeypatch.setattr("asyncio.wait", _immediate_wait)
+    monkeypatch.setattr("asyncio.wait", _wait_shim)
     try:
         await registry.drain(timeout_sec=0.05)
     finally:
@@ -133,6 +140,10 @@ async def test_drain_cancels_on_timeout(
     # Allow the cancellation to settle.
     await asyncio.sleep(0)
     assert task.cancelled() or task.done()
+    # Registry must drop the task from its pending set after
+    # the done-callback fires -- otherwise a timed-out drain
+    # would leak references for the life of the registry.
+    assert registry.active_count == 0
     warn_entries = [
         entry
         for entry in captured_logs
