@@ -6,7 +6,7 @@ import { PriorityBadge } from '@/components/ui/task-status-indicator'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { EmptyState } from '@/components/ui/empty-state'
 import { getTaskTypeLabel } from '@/utils/tasks'
-import { COST_USD_CURRENCY } from '@/utils/currencies'
+import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { formatRelativeTime, formatCurrency } from '@/utils/format'
 import { ArrowDown, ArrowUp, Inbox } from 'lucide-react'
 import type { Task } from '@/api/types'
@@ -152,7 +152,7 @@ function TaskListRow({ task, onSelectTask }: { task: Task; onSelectTask: (taskId
         {task.deadline ? formatRelativeTime(task.deadline) : '--'}
       </span>
       <span className="w-20 text-right font-mono text-[10px] text-text-muted">
-        {task.cost_usd != null ? formatCurrency(task.cost_usd, COST_USD_CURRENCY) : '--'}
+        {task.cost_usd != null ? formatCurrency(task.cost_usd, DEFAULT_CURRENCY) : '--'}
       </span>
     </div>
   )

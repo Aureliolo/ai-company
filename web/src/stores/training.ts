@@ -186,6 +186,11 @@ export const useTrainingStore = create<TrainingState>()((set, get) => ({
         resultsByAgent: setMap(state.resultsByAgent, agentName, null),
         planError: setMap(state.planError, agentName, null),
         resultError: setMap(state.resultError, agentName, null),
+        // Clear loading flags so if a pre-mutation fetch was in
+        // flight, the token bump below drops its write-back and the
+        // UI does not stay stuck in a spinner state.
+        planLoading: setMap(state.planLoading, agentName, false),
+        resultLoading: setMap(state.resultLoading, agentName, false),
         // Bump both request tokens so any in-flight plan/result fetch
         // that started before this mutation will see a mismatch on
         // completion and skip its write-back -- otherwise a slow
@@ -231,6 +236,11 @@ export const useTrainingStore = create<TrainingState>()((set, get) => ({
           // the plan status below is also updated.
           resultError: setMap(state.resultError, agentName, null),
           planError: setMap(state.planError, agentName, null),
+          // Clear loading flags so any in-flight pre-mutation fetch
+          // (whose result we are about to invalidate via the token
+          // bump) does not leave the UI stuck in a spinner state.
+          planLoading: setMap(state.planLoading, agentName, false),
+          resultLoading: setMap(state.resultLoading, agentName, false),
           // Bump both tokens: an earlier ``fetchResult``/``fetchPlan``
           // completing after ``executePlan`` would otherwise overwrite
           // the authoritative execution state.
@@ -302,6 +312,10 @@ export const useTrainingStore = create<TrainingState>()((set, get) => ({
         plansByAgent: setMap(state.plansByAgent, agentName, plan),
         // Fresh write supersedes any stale plan-read error banner.
         planError: setMap(state.planError, agentName, null),
+        // Clear plan loading so a pre-mutation fetch whose write-back
+        // is about to be dropped (via the token bump below) does not
+        // leave the UI stuck in a spinner state.
+        planLoading: setMap(state.planLoading, agentName, false),
         // Bump the plan token so an in-flight ``fetchPlan`` finishing
         // after this write cannot overwrite the authoritative plan.
         planRequestTokens: setMap(

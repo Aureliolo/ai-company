@@ -78,8 +78,11 @@ describe('TaskCard', () => {
 
   it('does not render cost when cost_usd is 0', () => {
     render(<TaskCard task={makeTask({ cost_usd: 0 })} onSelect={() => {}} />)
-    // Cost element should not be present since cost is 0
-    expect(screen.queryByText(/\$0\.00/)).not.toBeInTheDocument()
+    // Cost element should not be present since cost is 0. Currency
+    // symbol is whatever ``DEFAULT_CURRENCY`` resolves to at render
+    // time, so we assert on the numeric formatting rather than a
+    // fixed symbol to keep this currency-agnostic.
+    expect(screen.queryByText(/0\.00/)).not.toBeInTheDocument()
   })
 
   it('renders deadline when set', () => {

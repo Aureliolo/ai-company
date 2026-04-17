@@ -231,7 +231,18 @@ LIMIT 1""",
         self,
         agent_id: NotBlankStr,
     ) -> TrainingPlan | None:
-        """Return the most recently created plan for an agent (any status)."""
+        """Return the most recently created plan for an agent (any status).
+
+        Args:
+            agent_id: Target agent identifier.
+
+        Returns:
+            The latest plan (by ``created_at`` DESC, then ``id`` DESC),
+            or ``None`` if the agent has no plans yet.
+
+        Raises:
+            QueryError: If the underlying Postgres query fails.
+        """
         try:
             async with (
                 self._pool.connection() as conn,

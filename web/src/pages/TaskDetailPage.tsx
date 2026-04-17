@@ -13,7 +13,7 @@ import { useWebSocket } from '@/hooks/useWebSocket'
 import { useTasksStore } from '@/stores/tasks'
 import { useToastStore } from '@/stores/toast'
 import { getTaskStatusLabel, getTaskTypeLabel, getAvailableTransitions, getPriorityLabel } from '@/utils/tasks'
-import { COST_USD_CURRENCY } from '@/utils/currencies'
+import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { formatDate, formatCurrency } from '@/utils/format'
 import { getErrorMessage } from '@/utils/errors'
 import { ROUTES } from '@/router/routes'
@@ -208,7 +208,7 @@ export default function TaskDetailPage() {
             <div><span className="block text-[10px] text-text-muted">Created</span><span className="font-mono text-xs text-foreground">{formatDate(task.created_at)}</span></div>
             <div><span className="block text-[10px] text-text-muted">Updated</span><span className="font-mono text-xs text-foreground">{formatDate(task.updated_at)}</span></div>
             {task.cost_usd != null && (
-              <div><span className="block text-[10px] text-text-muted">Cost</span><span className="font-mono text-xs text-foreground">{formatCurrency(task.cost_usd, COST_USD_CURRENCY)}</span></div>
+              <div><span className="block text-[10px] text-text-muted">Cost</span><span className="font-mono text-xs text-foreground">{formatCurrency(task.cost_usd, DEFAULT_CURRENCY)}</span></div>
             )}
           </div>
 

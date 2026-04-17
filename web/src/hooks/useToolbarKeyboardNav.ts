@@ -7,9 +7,10 @@ import { useCallback, useRef, type KeyboardEvent, type RefObject } from 'react'
  * an ``onKeyDown`` handler that moves focus among the container's
  * focusable children on Arrow (up/down/left/right), ``Home``, and
  * ``End``. The hook only owns those keys -- it does not implement
- * roving tabindex, so ``Tab``/``Shift+Tab`` still step through every
- * control in normal DOM order, which is what consumers of this
- * toolbar have historically relied on.
+ * roving tabindex, so Tab behavior remains native (driven by each
+ * child's tabbability, ``disabled`` state, and any composite-widget
+ * interception). Consumers that need Tab to skip past the toolbar
+ * should manage that with ``tabIndex`` on the children themselves.
  */
 export interface ToolbarKeyboardNav<T extends HTMLElement> {
   ref: RefObject<T | null>

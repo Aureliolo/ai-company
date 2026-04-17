@@ -1,6 +1,6 @@
 import { Drawer } from '@/components/ui/drawer'
 import { Avatar } from '@/components/ui/avatar'
-import { COST_USD_CURRENCY } from '@/utils/currencies'
+import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { formatDate, formatCurrency } from '@/utils/format'
 import { MessageTypeBadge } from './MessageTypeBadge'
 import { AttachmentList } from './AttachmentList'
@@ -76,7 +76,7 @@ function MessageDetailContent({ message }: MessageDetailContentProps) {
             <MetadataRow label="Tokens" value={String(message.metadata.tokens_used)} mono />
           )}
           {message.metadata.cost_usd !== null && (
-            <MetadataRow label="Cost" value={formatCurrency(message.metadata.cost_usd, COST_USD_CURRENCY)} mono />
+            <MetadataRow label="Cost" value={formatCurrency(message.metadata.cost_usd, DEFAULT_CURRENCY)} mono />
           )}
           {message.metadata.extra.map(([key, value], i) => (
             <MetadataRow
