@@ -77,6 +77,8 @@ Supported keys:
   channel               Update channel
   color                 Color output mode
   docker_sock           Docker socket path
+  fine_tuning           Fine-tuning pipeline enabled
+  fine_tuning_variant   Fine-tune image variant ("gpu" or "cpu")
   hints                 Hint display mode
   image_tag             Current container image tag
   log_level             Log verbosity
@@ -111,6 +113,8 @@ Supported keys:
   channel                Update channel: "stable" or "dev"
   color                  Color output: "always", "auto", "never"
   docker_sock            Docker socket path (absolute)
+  fine_tuning            Enable fine-tuning: "true" or "false" (requires sandbox=true, amd64)
+  fine_tuning_variant    Fine-tune image variant: "gpu" (default) or "cpu"
   hints                  Hint display: "always", "auto", "never"
   image_tag              Container image tag
   log_level              Log verbosity: "debug", "info", "warn", "error"
@@ -128,8 +132,8 @@ tuf_fetch_timeout, attestation_http_timeout, max_api_response_bytes,
 max_binary_bytes, max_archive_entry_bytes). See cli/CLAUDE.md for formats.
 
 Keys that affect Docker compose (backend_port, web_port, sandbox, docker_sock,
-image_tag, log_level, telemetry_opt_in, and the registry/NATS tunables)
-trigger automatic compose.yml regeneration.`,
+image_tag, log_level, telemetry_opt_in, fine_tuning, fine_tuning_variant, and
+the registry/NATS tunables) trigger automatic compose.yml regeneration.`,
 	Args:              cobra.ExactArgs(2),
 	RunE:              runConfigSet,
 	ValidArgsFunction: completeConfigSetKeys,
@@ -334,6 +338,17 @@ func runConfigSet(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("applying config value: %w", err)
 	}
 
+	// Cross-field invariant guard (e.g. fine_tuning=true requires sandbox=true,
+	// variant enum). applyConfigValue only validates the single mutated field;
+	// toggling an unrelated key like `sandbox false` on a config that already
+	// has `fine_tuning true` would otherwise persist an invalid state whose
+	// next Load() fails. regenerateCompose also validates via ParamsFromState,
+	// but it is a no-op pre-init (when compose.yml does not exist yet), so we
+	// need an explicit check here to cover that path too.
+	if err := state.Validate(); err != nil {
+		return fmt.Errorf("config set would leave state invalid: %w", err)
+	}
+
 	if invalidatesVerifiedDigests(key) {
 		state.VerifiedDigests = nil // old pins are bound to the previous registry/prefix/tags
 	}
@@ -447,17 +462,10 @@ func applyConfigValue(state *config.State, key, value string) error {
 	case "sandbox":
 		return setBool(value, key, &state.Sandbox)
 	case "fine_tuning":
-		if err := setBool(value, key, &state.FineTuning); err != nil {
-			return err
-		}
-		// Re-validate now so an inconsistent pair like fine_tuning=true +
-		// sandbox=false fails at `config set` time rather than at the next
-		// `synthorg start` via ParamsFromState. The validation rule lives
-		// in config.State.validate() and also covers the amd64 requirement.
-		if err := state.Validate(); err != nil {
-			return fmt.Errorf("invalid fine_tuning value: %w", err)
-		}
-		return nil
+		// Cross-field validation (requires sandbox + amd64) runs in
+		// runConfigSet via State.Validate() after every apply, so this
+		// branch only needs to parse the bool.
+		return setBool(value, key, &state.FineTuning)
 	case "fine_tuning_variant":
 		if value != config.FineTuneVariantGPU && value != config.FineTuneVariantCPU {
 			return fmt.Errorf("invalid fine_tuning_variant %q: must be %q or %q", value, config.FineTuneVariantGPU, config.FineTuneVariantCPU)

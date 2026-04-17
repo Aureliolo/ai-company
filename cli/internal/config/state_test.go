@@ -749,9 +749,10 @@ func TestFineTuneVariantOrDefault(t *testing.T) {
 }
 
 // TestValidate_FineTuningVariant covers State.Validate's variant validation:
-// invalid variants are rejected when fine-tuning is enabled, empty and the
-// two canonical values pass, and variant is ignored when fine-tuning is off
-// (permitted for pre-split config migration).
+// invalid variants are rejected unconditionally (typos in a persisted config
+// must not survive silently until someone flips fine_tuning on), while the
+// empty string passes as a forward-compat shim for pre-split configs and the
+// two canonical values ("gpu", "cpu") are always accepted.
 func TestValidate_FineTuningVariant(t *testing.T) {
 	if runtime.GOARCH != "amd64" {
 		t.Skip("fine_tuning validation requires amd64 architecture")
