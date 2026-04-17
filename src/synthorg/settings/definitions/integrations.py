@@ -1,0 +1,77 @@
+"""Integrations namespace setting definitions.
+
+Covers health probing of external connections, OAuth flow HTTP
+timeouts, and rate-limit coordinator polling.
+"""
+
+from synthorg.settings.enums import SettingLevel, SettingNamespace, SettingType
+from synthorg.settings.models import SettingDefinition
+from synthorg.settings.registry import get_registry
+
+_r = get_registry()
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.INTEGRATIONS,
+        key="health_probe_interval_seconds",
+        type=SettingType.INTEGER,
+        default="300",
+        description=("How often the background prober checks integration health"),
+        group="Health",
+        level=SettingLevel.ADVANCED,
+        min_value=30,
+        max_value=3600,
+        yaml_path="integrations.health.probe_interval_seconds",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.INTEGRATIONS,
+        key="oauth_http_timeout_seconds",
+        type=SettingType.FLOAT,
+        default="30.0",
+        description=(
+            "HTTP timeout for OAuth token exchange across device,"
+            " authorization-code, and client-credentials flows"
+        ),
+        group="OAuth",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+        min_value=5.0,
+        max_value=300.0,
+        yaml_path="integrations.oauth.http_timeout_seconds",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.INTEGRATIONS,
+        key="oauth_device_flow_max_wait_seconds",
+        type=SettingType.INTEGER,
+        default="600",
+        description=(
+            "Maximum time to poll the OAuth device-flow token endpoint before giving up"
+        ),
+        group="OAuth",
+        level=SettingLevel.ADVANCED,
+        min_value=60,
+        max_value=7200,
+        yaml_path="integrations.oauth.device_flow_max_wait_seconds",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.INTEGRATIONS,
+        key="rate_limit_coordinator_poll_timeout_seconds",
+        type=SettingType.FLOAT,
+        default="0.5",
+        description=("Poll timeout for the shared-state rate-limit coordinator"),
+        group="Rate Limiting",
+        level=SettingLevel.ADVANCED,
+        min_value=0.1,
+        max_value=10.0,
+        yaml_path="integrations.rate_limit.coordinator_poll_timeout_seconds",
+    )
+)

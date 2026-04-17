@@ -1,0 +1,172 @@
+"""Frozen runtime-config models assembled from bridged settings.
+
+Each class here is the return type of a ``ConfigResolver.get_<ns>_bridge_config``
+helper.  They hold the fields wired through from :mod:`synthorg.settings.definitions`
+for operator-tunable timeouts, limits, and resource parameters that previously
+lived as hardcoded module constants.
+
+The models are pure data holders: every field has a default that matches the
+historical hardcoded value so a consumer can construct one from defaults for
+tests without an active settings service.
+"""
+
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class CommunicationBridgeConfig(BaseModel):
+    """Operator-tunable values for the communication subsystem.
+
+    Covers bus bridges, NATS history replay, delegation-record storage,
+    event-stream backpressure, and loop-prevention window.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    bus_bridge_poll_timeout_seconds: float = Field(default=1.0, ge=0.1, le=10.0)
+    bus_bridge_max_consecutive_errors: int = Field(default=30, ge=5, le=100)
+    webhook_bridge_poll_timeout_seconds: float = Field(default=1.0, ge=0.1, le=10.0)
+    webhook_bridge_max_consecutive_errors: int = Field(default=30, ge=5, le=100)
+    nats_history_batch_size: int = Field(default=100, ge=10, le=1000)
+    nats_history_fetch_timeout_seconds: float = Field(default=0.5, ge=0.1, le=5.0)
+    delegation_record_store_max_size: int = Field(default=10_000, ge=100, le=1_000_000)
+    event_stream_max_queue_size: int = Field(default=256, ge=16, le=10_000)
+    loop_prevention_window_seconds: float = Field(default=60.0, ge=5.0, le=600.0)
+
+
+class A2ABridgeConfig(BaseModel):
+    """Operator-tunable values for the A2A federation subsystem."""
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    client_timeout_seconds: float = Field(default=30.0, ge=5.0, le=300.0)
+    push_verification_clock_skew_seconds: int = Field(default=300, ge=0, le=3600)
+
+
+class IntegrationsBridgeConfig(BaseModel):
+    """Operator-tunable values for the integrations subsystem.
+
+    Covers health probing of external connections, OAuth HTTP timeouts,
+    OAuth device-flow max wait, and rate-limit coordinator poll.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    health_probe_interval_seconds: int = Field(default=300, ge=30, le=3600)
+    oauth_http_timeout_seconds: float = Field(default=30.0, ge=5.0, le=300.0)
+    oauth_device_flow_max_wait_seconds: int = Field(default=600, ge=60, le=7200)
+    rate_limit_coordinator_poll_timeout_seconds: float = Field(
+        default=0.5, ge=0.1, le=10.0
+    )
+
+
+class MetaBridgeConfig(BaseModel):
+    """Operator-tunable values for the meta-agent subsystem."""
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    ci_timeout_seconds: int = Field(default=300, ge=30, le=600)
+    proposal_rate_limit_max: int = Field(default=10, ge=1, le=100)
+    outcome_store_default_limit: int = Field(default=10, ge=1, le=100)
+
+
+class NotificationsBridgeConfig(BaseModel):
+    """Operator-tunable timeouts for notification sink adapters."""
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    slack_webhook_timeout_seconds: float = Field(default=10.0, ge=1.0, le=60.0)
+    ntfy_webhook_timeout_seconds: float = Field(default=10.0, ge=1.0, le=60.0)
+    email_smtp_timeout_seconds: float = Field(default=10.0, ge=1.0, le=60.0)
+
+
+class ToolsBridgeConfig(BaseModel):
+    """Operator-tunable timeouts and resource limits for tool execution.
+
+    Covers git/Atlas subprocess kill-grace, Docker sandbox sidecar
+    (poll/timeout/memory/CPU/PIDs/stop-grace), and subprocess sandbox
+    kill-grace.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    git_kill_grace_timeout_seconds: float = Field(default=5.0, ge=1.0, le=60.0)
+    atlas_kill_grace_timeout_seconds: float = Field(default=5.0, ge=1.0, le=60.0)
+    docker_sidecar_health_poll_interval_seconds: float = Field(
+        default=0.2, ge=0.05, le=5.0
+    )
+    docker_sidecar_health_timeout_seconds: float = Field(default=15.0, ge=1.0, le=300.0)
+    docker_sidecar_memory_limit: str = Field(default="64m", pattern=r"^\d+[kmgKMG]$")
+    docker_sidecar_cpu_limit: float = Field(default=0.5, ge=0.1, le=16.0)
+    docker_sidecar_max_pids: int = Field(default=32, ge=1, le=4096)
+    docker_stop_grace_timeout_seconds: int = Field(default=5, ge=1, le=300)
+    subprocess_kill_grace_timeout_seconds: float = Field(default=5.0, ge=1.0, le=60.0)
+
+
+class ObservabilityBridgeConfig(BaseModel):
+    """Operator-tunable values for the observability subsystem.
+
+    Covers HTTP log-handler defaults and audit-chain signing timeout.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    http_batch_size: int = Field(default=100, ge=10, le=1000)
+    http_flush_interval_seconds: float = Field(default=5.0, ge=0.5, le=60.0)
+    http_timeout_seconds: float = Field(default=10.0, ge=1.0, le=60.0)
+    http_max_retries: int = Field(default=3, ge=0, le=10)
+    audit_chain_signing_timeout_seconds: float = Field(default=5.0, ge=1.0, le=60.0)
+
+
+class SettingsDispatcherBridgeConfig(BaseModel):
+    """Operator-tunable values for the settings-change dispatcher itself."""
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    poll_timeout_seconds: float = Field(default=1.0, ge=0.1, le=10.0)
+    error_backoff_seconds: float = Field(default=1.0, ge=0.1, le=60.0)
+    max_consecutive_errors: int = Field(default=30, ge=5, le=100)
+
+
+class ApiBridgeConfig(BaseModel):
+    """Operator-tunable values for the API subsystem.
+
+    Covers WebSocket ticket cleanup + per-user limit, Litestar brotli
+    threshold + request body cap, fallback per-connection max RPM, and
+    the four controller query clamps (lifecycle, audit, metrics,
+    meeting context).
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    ticket_cleanup_interval_seconds: float = Field(default=60.0, ge=5.0, le=3600.0)
+    ws_ticket_max_pending_per_user: int = Field(default=5, ge=1, le=50)
+    max_rpm_default: int = Field(default=60, ge=1, le=100_000)
+    compression_minimum_size_bytes: int = Field(default=1000, ge=100, le=10_000)
+    request_max_body_size_bytes: int = Field(
+        default=52_428_800, ge=1_000_000, le=536_870_912
+    )
+    max_lifecycle_events_per_query: int = Field(default=10_000, ge=100, le=1_000_000)
+    max_audit_records_per_query: int = Field(default=10_000, ge=100, le=1_000_000)
+    max_metrics_per_query: int = Field(default=10_000, ge=100, le=1_000_000)
+    max_meeting_context_keys: int = Field(default=20, ge=5, le=100)
+
+
+class EngineBridgeConfig(BaseModel):
+    """Operator-tunable values for the engine subsystem.
+
+    Covers approval-gate interrupt timeout and health-judge quality
+    degradation threshold.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    approval_interrupt_timeout_seconds: float = Field(default=300.0, ge=30.0, le=3600.0)
+    health_quality_degradation_threshold: int = Field(default=3, ge=1, le=10)
+
+
+class MemoryBridgeConfig(BaseModel):
+    """Operator-tunable values for the memory subsystem."""
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    consolidation_enforce_batch_size: int = Field(default=1000, ge=100, le=10_000)

@@ -74,3 +74,88 @@ _r.register(
         yaml_path="logging.custom_sinks",
     )
 )
+
+# ── HTTP log-handler defaults (applied to all HTTP sinks) ────────
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.OBSERVABILITY,
+        key="http_batch_size",
+        type=SettingType.INTEGER,
+        default="100",
+        description="Default batch size for HTTP log handlers",
+        group="HTTP Sink",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+        min_value=10,
+        max_value=1000,
+        yaml_path="logging.http_sink.batch_size",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.OBSERVABILITY,
+        key="http_flush_interval_seconds",
+        type=SettingType.FLOAT,
+        default="5.0",
+        description="Default flush interval for HTTP log handlers",
+        group="HTTP Sink",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+        min_value=0.5,
+        max_value=60.0,
+        yaml_path="logging.http_sink.flush_interval_seconds",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.OBSERVABILITY,
+        key="http_timeout_seconds",
+        type=SettingType.FLOAT,
+        default="10.0",
+        description="Default HTTP timeout for log-handler POSTs",
+        group="HTTP Sink",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+        min_value=1.0,
+        max_value=60.0,
+        yaml_path="logging.http_sink.timeout_seconds",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.OBSERVABILITY,
+        key="http_max_retries",
+        type=SettingType.INTEGER,
+        default="3",
+        description="Default retry count for HTTP log-handler POSTs",
+        group="HTTP Sink",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+        min_value=0,
+        max_value=10,
+        yaml_path="logging.http_sink.max_retries",
+    )
+)
+
+# ── Audit-chain signing timeout ─────────────────────────────────
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.OBSERVABILITY,
+        key="audit_chain_signing_timeout_seconds",
+        type=SettingType.FLOAT,
+        default="5.0",
+        description=(
+            "Timeout for signing and timestamp operations in the audit-chain sink"
+        ),
+        group="Audit Chain",
+        level=SettingLevel.ADVANCED,
+        min_value=1.0,
+        max_value=60.0,
+        yaml_path="logging.audit_chain.signing_timeout_seconds",
+    )
+)

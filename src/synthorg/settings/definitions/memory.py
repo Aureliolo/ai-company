@@ -87,3 +87,23 @@ _r.register(
         yaml_path="memory.embedder.dims",
     )
 )
+
+# ── Consolidation batch size ─────────────────────────────────────
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.MEMORY,
+        key="consolidation_enforce_batch_size",
+        type=SettingType.INTEGER,
+        default="1000",
+        description=(
+            "Number of memory records evicted per batch when enforcing"
+            " the max-memories cap during consolidation"
+        ),
+        group="Maintenance",
+        level=SettingLevel.ADVANCED,
+        min_value=100,
+        max_value=10_000,
+        yaml_path="memory.consolidation_enforce_batch_size",
+    )
+)

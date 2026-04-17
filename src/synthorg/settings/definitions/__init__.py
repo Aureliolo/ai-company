@@ -5,27 +5,41 @@ definitions into the global :func:`~synthorg.settings.registry.get_registry`.
 """
 
 from synthorg.settings.definitions import (
+    a2a,
     api,
     backup,
     budget,
+    communication,
     company,
     coordination,
     engine,
+    integrations,
     memory,
+    meta,
+    notifications,
     observability,
     providers,
     security,
+    settings_ns,
+    tools,
 )
 
 __all__ = [
+    "a2a",
     "api",
     "backup",
     "budget",
+    "communication",
     "company",
     "coordination",
     "engine",
+    "integrations",
     "memory",
+    "meta",
+    "notifications",
     "observability",
     "providers",
     "security",
+    "settings_ns",
+    "tools",
 ]

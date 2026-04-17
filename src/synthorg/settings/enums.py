@@ -20,6 +20,13 @@ class SettingNamespace(StrEnum):
     OBSERVABILITY = "observability"
     BACKUP = "backup"
     ENGINE = "engine"
+    COMMUNICATION = "communication"
+    A2A = "a2a"
+    INTEGRATIONS = "integrations"
+    META = "meta"
+    NOTIFICATIONS = "notifications"
+    TOOLS = "tools"
+    SETTINGS = "settings"
 
 
 class SettingType(StrEnum):

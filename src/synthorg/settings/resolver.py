@@ -32,6 +32,19 @@ if TYPE_CHECKING:
     from synthorg.core.company import Department
     from synthorg.core.enums import AutonomyLevel
     from synthorg.engine.coordination.config import CoordinationConfig
+    from synthorg.settings.bridge_configs import (
+        A2ABridgeConfig,
+        ApiBridgeConfig,
+        CommunicationBridgeConfig,
+        EngineBridgeConfig,
+        IntegrationsBridgeConfig,
+        MemoryBridgeConfig,
+        MetaBridgeConfig,
+        NotificationsBridgeConfig,
+        ObservabilityBridgeConfig,
+        SettingsDispatcherBridgeConfig,
+        ToolsBridgeConfig,
+    )
     from synthorg.settings.service import SettingsService
 
 logger = get_logger(__name__)
@@ -696,6 +709,246 @@ class ConfigResolver:
             fail_fast=(fail_fast if fail_fast is not None else t_ff.result()),
             enable_workspace_isolation=t_iso.result(),
             base_branch=t_branch.result(),
+        )
+
+    # ── Config-bridge composed reads (issues #1398, #1400) ──────────
+
+    async def _resolve_bridge_fields(
+        self,
+        namespace: str,
+        specs: tuple[tuple[str, str], ...],
+    ) -> dict[str, Any]:
+        """Resolve a bundle of same-namespace settings in parallel.
+
+        Each spec is ``(key, kind)`` where ``kind`` is one of
+        ``"int"``, ``"float"``, or ``"str"``.  Returns a mapping from
+        key to parsed value, suitable for passing into a Pydantic
+        model constructor as keyword arguments.
+
+        Args:
+            namespace: Setting namespace (e.g. ``"a2a"``).
+            specs: Tuple of ``(key, kind)`` pairs to resolve.
+
+        Returns:
+            Dict of ``{key: parsed_value}`` for each spec.
+
+        Raises:
+            SettingNotFoundError: If a key is not in the registry.
+            ValueError: If a resolved value cannot be parsed.
+        """
+        try:
+            async with asyncio.TaskGroup() as tg:
+                tasks = {
+                    key: tg.create_task(self._resolve_typed(namespace, key, kind))
+                    for key, kind in specs
+                }
+        except ExceptionGroup as eg:
+            logger.warning(
+                SETTINGS_FETCH_FAILED,
+                namespace=namespace,
+                key="_bridge_composed",
+                error_count=len(eg.exceptions),
+                exc_info=True,
+            )
+            raise eg.exceptions[0] from eg
+        return {key: task.result() for key, task in tasks.items()}
+
+    async def _resolve_typed(self, namespace: str, key: str, kind: str) -> Any:
+        """Dispatch to the scalar accessor matching ``kind``."""
+        if kind == "int":
+            return await self.get_int(namespace, key)
+        if kind == "float":
+            return await self.get_float(namespace, key)
+        if kind == "str":
+            return await self.get_str(namespace, key)
+        msg = f"Unsupported typed-resolve kind: {kind!r}"
+        raise ValueError(msg)
+
+    async def get_api_bridge_config(self) -> ApiBridgeConfig:
+        """Assemble ``ApiBridgeConfig`` from bridged API settings."""
+        from synthorg.settings.bridge_configs import ApiBridgeConfig  # noqa: PLC0415
+
+        values = await self._resolve_bridge_fields(
+            "api",
+            (
+                ("ticket_cleanup_interval_seconds", "float"),
+                ("ws_ticket_max_pending_per_user", "int"),
+                ("max_rpm_default", "int"),
+                ("compression_minimum_size_bytes", "int"),
+                ("request_max_body_size_bytes", "int"),
+                ("max_lifecycle_events_per_query", "int"),
+                ("max_audit_records_per_query", "int"),
+                ("max_metrics_per_query", "int"),
+                ("max_meeting_context_keys", "int"),
+            ),
+        )
+        return ApiBridgeConfig(**values)
+
+    async def get_communication_bridge_config(self) -> CommunicationBridgeConfig:
+        """Assemble ``CommunicationBridgeConfig`` from bridged settings."""
+        from synthorg.settings.bridge_configs import (  # noqa: PLC0415
+            CommunicationBridgeConfig,
+        )
+
+        values = await self._resolve_bridge_fields(
+            "communication",
+            (
+                ("bus_bridge_poll_timeout_seconds", "float"),
+                ("bus_bridge_max_consecutive_errors", "int"),
+                ("webhook_bridge_poll_timeout_seconds", "float"),
+                ("webhook_bridge_max_consecutive_errors", "int"),
+                ("nats_history_batch_size", "int"),
+                ("nats_history_fetch_timeout_seconds", "float"),
+                ("delegation_record_store_max_size", "int"),
+                ("event_stream_max_queue_size", "int"),
+                ("loop_prevention_window_seconds", "float"),
+            ),
+        )
+        return CommunicationBridgeConfig(**values)
+
+    async def get_a2a_bridge_config(self) -> A2ABridgeConfig:
+        """Assemble ``A2ABridgeConfig`` from bridged A2A settings."""
+        from synthorg.settings.bridge_configs import A2ABridgeConfig  # noqa: PLC0415
+
+        values = await self._resolve_bridge_fields(
+            "a2a",
+            (
+                ("client_timeout_seconds", "float"),
+                ("push_verification_clock_skew_seconds", "int"),
+            ),
+        )
+        return A2ABridgeConfig(**values)
+
+    async def get_engine_bridge_config(self) -> EngineBridgeConfig:
+        """Assemble ``EngineBridgeConfig`` from bridged engine settings."""
+        from synthorg.settings.bridge_configs import EngineBridgeConfig  # noqa: PLC0415
+
+        values = await self._resolve_bridge_fields(
+            "engine",
+            (
+                ("approval_interrupt_timeout_seconds", "float"),
+                ("health_quality_degradation_threshold", "int"),
+            ),
+        )
+        return EngineBridgeConfig(**values)
+
+    async def get_memory_bridge_config(self) -> MemoryBridgeConfig:
+        """Assemble ``MemoryBridgeConfig`` from bridged memory settings."""
+        from synthorg.settings.bridge_configs import MemoryBridgeConfig  # noqa: PLC0415
+
+        values = await self._resolve_bridge_fields(
+            "memory",
+            (("consolidation_enforce_batch_size", "int"),),
+        )
+        return MemoryBridgeConfig(**values)
+
+    async def get_integrations_bridge_config(self) -> IntegrationsBridgeConfig:
+        """Assemble ``IntegrationsBridgeConfig`` from bridged settings."""
+        from synthorg.settings.bridge_configs import (  # noqa: PLC0415
+            IntegrationsBridgeConfig,
+        )
+
+        values = await self._resolve_bridge_fields(
+            "integrations",
+            (
+                ("health_probe_interval_seconds", "int"),
+                ("oauth_http_timeout_seconds", "float"),
+                ("oauth_device_flow_max_wait_seconds", "int"),
+                ("rate_limit_coordinator_poll_timeout_seconds", "float"),
+            ),
+        )
+        return IntegrationsBridgeConfig(**values)
+
+    async def get_meta_bridge_config(self) -> MetaBridgeConfig:
+        """Assemble ``MetaBridgeConfig`` from bridged meta settings."""
+        from synthorg.settings.bridge_configs import MetaBridgeConfig  # noqa: PLC0415
+
+        values = await self._resolve_bridge_fields(
+            "meta",
+            (
+                ("ci_timeout_seconds", "int"),
+                ("proposal_rate_limit_max", "int"),
+                ("outcome_store_default_limit", "int"),
+            ),
+        )
+        return MetaBridgeConfig(**values)
+
+    async def get_notifications_bridge_config(self) -> NotificationsBridgeConfig:
+        """Assemble ``NotificationsBridgeConfig`` from bridged settings."""
+        from synthorg.settings.bridge_configs import (  # noqa: PLC0415
+            NotificationsBridgeConfig,
+        )
+
+        values = await self._resolve_bridge_fields(
+            "notifications",
+            (
+                ("slack_webhook_timeout_seconds", "float"),
+                ("ntfy_webhook_timeout_seconds", "float"),
+                ("email_smtp_timeout_seconds", "float"),
+            ),
+        )
+        return NotificationsBridgeConfig(**values)
+
+    async def get_tools_bridge_config(self) -> ToolsBridgeConfig:
+        """Assemble ``ToolsBridgeConfig`` from bridged tool settings."""
+        from synthorg.settings.bridge_configs import ToolsBridgeConfig  # noqa: PLC0415
+
+        values = await self._resolve_bridge_fields(
+            "tools",
+            (
+                ("git_kill_grace_timeout_seconds", "float"),
+                ("atlas_kill_grace_timeout_seconds", "float"),
+                ("docker_sidecar_health_poll_interval_seconds", "float"),
+                ("docker_sidecar_health_timeout_seconds", "float"),
+                ("docker_sidecar_memory_limit", "str"),
+                ("docker_sidecar_cpu_limit", "float"),
+                ("docker_sidecar_max_pids", "int"),
+                ("docker_stop_grace_timeout_seconds", "int"),
+                ("subprocess_kill_grace_timeout_seconds", "float"),
+            ),
+        )
+        return ToolsBridgeConfig(**values)
+
+    async def get_observability_bridge_config(self) -> ObservabilityBridgeConfig:
+        """Assemble ``ObservabilityBridgeConfig`` from bridged settings."""
+        from synthorg.settings.bridge_configs import (  # noqa: PLC0415
+            ObservabilityBridgeConfig,
+        )
+
+        values = await self._resolve_bridge_fields(
+            "observability",
+            (
+                ("http_batch_size", "int"),
+                ("http_flush_interval_seconds", "float"),
+                ("http_timeout_seconds", "float"),
+                ("http_max_retries", "int"),
+                ("audit_chain_signing_timeout_seconds", "float"),
+            ),
+        )
+        return ObservabilityBridgeConfig(**values)
+
+    async def get_settings_dispatcher_bridge_config(
+        self,
+    ) -> SettingsDispatcherBridgeConfig:
+        """Assemble ``SettingsDispatcherBridgeConfig`` from bridged settings."""
+        from synthorg.settings.bridge_configs import (  # noqa: PLC0415
+            SettingsDispatcherBridgeConfig,
+        )
+
+        values = await self._resolve_bridge_fields(
+            "settings",
+            (
+                ("dispatcher_poll_timeout_seconds", "float"),
+                ("dispatcher_error_backoff_seconds", "float"),
+                ("dispatcher_max_consecutive_errors", "int"),
+            ),
+        )
+        # Field names on the dataclass are short (poll_timeout_seconds etc.);
+        # translate from the namespaced key form.
+        return SettingsDispatcherBridgeConfig(
+            poll_timeout_seconds=values["dispatcher_poll_timeout_seconds"],
+            error_backoff_seconds=values["dispatcher_error_backoff_seconds"],
+            max_consecutive_errors=values["dispatcher_max_consecutive_errors"],
         )
 
 

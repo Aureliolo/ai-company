@@ -1,0 +1,61 @@
+"""Settings namespace self-configuration.
+
+The settings dispatcher is the notification pump for all other
+setting changes, so it needs configuration for its own poll
+behaviour.  These values are read on a best-effort basis after the
+settings service has booted -- the dispatcher falls back to
+compile-time bootstrap defaults for the first pump cycle.
+"""
+
+from synthorg.settings.enums import SettingLevel, SettingNamespace, SettingType
+from synthorg.settings.models import SettingDefinition
+from synthorg.settings.registry import get_registry
+
+_r = get_registry()
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.SETTINGS,
+        key="dispatcher_poll_timeout_seconds",
+        type=SettingType.FLOAT,
+        default="1.0",
+        description="Poll timeout for the settings change-notification dispatcher",
+        group="Dispatcher",
+        level=SettingLevel.ADVANCED,
+        min_value=0.1,
+        max_value=10.0,
+        yaml_path="settings.dispatcher.poll_timeout_seconds",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.SETTINGS,
+        key="dispatcher_error_backoff_seconds",
+        type=SettingType.FLOAT,
+        default="1.0",
+        description=(
+            "Backoff before retrying after a dispatcher loop iteration raises"
+        ),
+        group="Dispatcher",
+        level=SettingLevel.ADVANCED,
+        min_value=0.1,
+        max_value=60.0,
+        yaml_path="settings.dispatcher.error_backoff_seconds",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.SETTINGS,
+        key="dispatcher_max_consecutive_errors",
+        type=SettingType.INTEGER,
+        default="30",
+        description=("Maximum consecutive dispatcher errors before it aborts"),
+        group="Dispatcher",
+        level=SettingLevel.ADVANCED,
+        min_value=5,
+        max_value=100,
+        yaml_path="settings.dispatcher.max_consecutive_errors",
+    )
+)

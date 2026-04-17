@@ -258,3 +258,158 @@ _r.register(
         level=SettingLevel.ADVANCED,
     )
 )
+
+# ── Ticket cleanup / request size / compression ──────────────────
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.API,
+        key="ticket_cleanup_interval_seconds",
+        type=SettingType.FLOAT,
+        default="60.0",
+        description=("Interval between WebSocket ticket-store cleanup sweeps"),
+        group="WebSocket",
+        level=SettingLevel.ADVANCED,
+        min_value=5.0,
+        max_value=3600.0,
+        yaml_path="api.ticket_cleanup_interval_seconds",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.API,
+        key="max_rpm_default",
+        type=SettingType.INTEGER,
+        default="60",
+        description=(
+            "Fallback max requests-per-minute applied to per-connection"
+            " coordinators when the catalog does not provide a value"
+        ),
+        group="Rate Limiting",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+        min_value=1,
+        max_value=100_000,
+        yaml_path="api.rate_limit.max_rpm_default",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.API,
+        key="compression_minimum_size_bytes",
+        type=SettingType.INTEGER,
+        default="1000",
+        description=(
+            "Minimum response body size in bytes before brotli compression is applied"
+        ),
+        group="Server",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+        min_value=100,
+        max_value=10_000,
+        yaml_path="api.server.compression_minimum_size_bytes",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.API,
+        key="request_max_body_size_bytes",
+        type=SettingType.INTEGER,
+        default="52428800",
+        description="Maximum accepted HTTP request body size in bytes",
+        group="Server",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+        min_value=1_000_000,
+        max_value=536_870_912,
+        yaml_path="api.server.request_max_body_size_bytes",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.API,
+        key="ws_ticket_max_pending_per_user",
+        type=SettingType.INTEGER,
+        default="5",
+        description=("Maximum pending WebSocket auth tickets allowed per user"),
+        group="WebSocket",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
+        max_value=50,
+        yaml_path="api.ws_ticket_max_pending_per_user",
+    )
+)
+
+# ── Query limits (controller clamps) ─────────────────────────────
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.API,
+        key="max_lifecycle_events_per_query",
+        type=SettingType.INTEGER,
+        default="10000",
+        description=(
+            "Maximum lifecycle events returned by the activities endpoint"
+            " for a single query"
+        ),
+        group="Query Limits",
+        level=SettingLevel.ADVANCED,
+        min_value=100,
+        max_value=1_000_000,
+        yaml_path="api.query_limits.max_lifecycle_events",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.API,
+        key="max_audit_records_per_query",
+        type=SettingType.INTEGER,
+        default="10000",
+        description=(
+            "Maximum audit records returned by the audit endpoint for a single query"
+        ),
+        group="Query Limits",
+        level=SettingLevel.ADVANCED,
+        min_value=100,
+        max_value=1_000_000,
+        yaml_path="api.query_limits.max_audit_records",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.API,
+        key="max_metrics_per_query",
+        type=SettingType.INTEGER,
+        default="10000",
+        description=(
+            "Maximum metrics records returned by the coordination metrics"
+            " endpoint for a single query"
+        ),
+        group="Query Limits",
+        level=SettingLevel.ADVANCED,
+        min_value=100,
+        max_value=1_000_000,
+        yaml_path="api.query_limits.max_metrics",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.API,
+        key="max_meeting_context_keys",
+        type=SettingType.INTEGER,
+        default="20",
+        description=("Maximum number of context keys attached to a single meeting"),
+        group="Query Limits",
+        level=SettingLevel.ADVANCED,
+        min_value=5,
+        max_value=100,
+        yaml_path="api.query_limits.max_meeting_context_keys",
+    )
+)

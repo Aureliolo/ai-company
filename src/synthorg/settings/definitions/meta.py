@@ -1,0 +1,62 @@
+"""Meta namespace setting definitions.
+
+Covers the meta-agent CI validator, proposal rate-limit guard, and
+chief-of-staff outcome store defaults.
+"""
+
+from synthorg.settings.enums import SettingLevel, SettingNamespace, SettingType
+from synthorg.settings.models import SettingDefinition
+from synthorg.settings.registry import get_registry
+
+_r = get_registry()
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.META,
+        key="ci_timeout_seconds",
+        type=SettingType.INTEGER,
+        default="300",
+        description=(
+            "Timeout for CI validation subprocess calls invoked by the"
+            " meta-agent validator"
+        ),
+        group="Validation",
+        level=SettingLevel.ADVANCED,
+        min_value=30,
+        max_value=600,
+        yaml_path="meta.ci_timeout_seconds",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.META,
+        key="proposal_rate_limit_max",
+        type=SettingType.INTEGER,
+        default="10",
+        description=("Maximum meta-agent proposals accepted per rate-limit window"),
+        group="Guards",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
+        max_value=100,
+        yaml_path="meta.proposal_rate_limit_max",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.META,
+        key="outcome_store_default_limit",
+        type=SettingType.INTEGER,
+        default="10",
+        description=(
+            "Default page size for chief-of-staff outcome-store queries"
+            " when no explicit limit is provided"
+        ),
+        group="Chief of Staff",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
+        max_value=100,
+        yaml_path="meta.outcome_store.default_limit",
+    )
+)
