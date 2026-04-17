@@ -123,12 +123,25 @@ def test_timeout_accepts_boundary_values(value: float) -> None:
     assert cfg.tsa_timeout_sec == value
 
 
-def test_resolve_tsa_url_helper() -> None:
-    assert resolve_tsa_url(TsaPreset.NONE, None) is None
-    assert resolve_tsa_url(TsaPreset.NONE, "override") is None
-    assert resolve_tsa_url(TsaPreset.CUSTOM, "x") == "x"
-    assert resolve_tsa_url(TsaPreset.CUSTOM, None) is None
-    assert resolve_tsa_url(TsaPreset.DIGICERT, None) == (
-        "http://timestamp.digicert.com"
-    )
-    assert resolve_tsa_url(TsaPreset.FREETSA, "override") == "override"
+@pytest.mark.parametrize(
+    ("preset", "override", "expected"),
+    [
+        # NONE ignores any override and resolves to no URL.
+        (TsaPreset.NONE, None, None),
+        (TsaPreset.NONE, "override", None),
+        # CUSTOM requires an override; without one there is no URL.
+        (TsaPreset.CUSTOM, "x", "x"),
+        (TsaPreset.CUSTOM, None, None),
+        # Named presets resolve to their documented canonical URL when
+        # no override is supplied, and accept overrides transparently.
+        (TsaPreset.DIGICERT, None, "http://timestamp.digicert.com"),
+        (TsaPreset.FREETSA, "override", "override"),
+    ],
+)
+def test_resolve_tsa_url_helper(
+    preset: TsaPreset,
+    override: str | None,
+    expected: str | None,
+) -> None:
+    """``resolve_tsa_url`` applies preset/override semantics per case."""
+    assert resolve_tsa_url(preset, override) == expected
