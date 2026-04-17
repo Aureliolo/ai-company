@@ -257,6 +257,17 @@ class FakeTrainingPlanRepository:
             return None
         return max(pending, key=lambda p: p.created_at)
 
+    async def latest_by_agent(
+        self,
+        agent_id: NotBlankStr,
+    ) -> TrainingPlan | None:
+        plans = [
+            p for p in self._plans.values() if str(p.new_agent_id) == str(agent_id)
+        ]
+        if not plans:
+            return None
+        return max(plans, key=lambda p: p.created_at)
+
     async def list_by_agent(
         self,
         agent_id: NotBlankStr,

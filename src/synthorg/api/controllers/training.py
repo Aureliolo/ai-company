@@ -366,10 +366,10 @@ class TrainingController(Controller):
         identity = await _resolve_agent(app_state, agent_name)
         agent_id = str(identity.id)
 
-        plans = await app_state.persistence.training_plans.list_by_agent(
+        plan = await app_state.persistence.training_plans.latest_by_agent(
             NotBlankStr(agent_id),
         )
-        if not plans:
+        if plan is None:
             logger.warning(
                 API_RESOURCE_NOT_FOUND,
                 resource="training_plan",
@@ -378,7 +378,7 @@ class TrainingController(Controller):
             msg = "No training plan found"
             raise NotFoundError(msg)
 
-        return ApiResponse(data=_plan_to_response(plans[0]))
+        return ApiResponse(data=_plan_to_response(plan))
 
     @post(
         "/preview",

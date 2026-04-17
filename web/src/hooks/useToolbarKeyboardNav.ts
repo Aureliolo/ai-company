@@ -32,6 +32,12 @@ export function useToolbarKeyboardNav<
     const container = ref.current
     if (!container) return
 
+    // Let nested composite controls own the event when they call
+    // preventDefault themselves (e.g. a Menu or Combobox inside the
+    // toolbar). Without this guard the toolbar would re-handle the
+    // arrow key and move focus away mid-interaction.
+    if (event.defaultPrevented) return
+
     // Preserve browser and assistive-tech shortcuts (Ctrl/Cmd/Alt/Shift
     // chords) -- the toolbar only owns plain arrow/Home/End navigation.
     if (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) {

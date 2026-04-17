@@ -353,12 +353,20 @@ function WorkflowEditorInner() {
                   // Always expose topology (source → target); append
                   // the human label in parens when it is set, so the
                   // screen-reader summary retains both the graph shape
-                  // and any branch semantics.
+                  // and any branch semantics. Labels may live on
+                  // ``edge.label`` (xyflow default) or on
+                  // ``edge.data.label`` when the persistence layer
+                  // stores branch metadata under ``data``.
                   const topology = `${edge.source} → ${edge.target}`
-                  const text =
-                    typeof edge.label === 'string' && edge.label
-                      ? `${topology} (${edge.label})`
-                      : topology
+                  const dataLabel =
+                    edge.data && typeof edge.data === 'object' &&
+                      'label' in edge.data &&
+                      typeof (edge.data as { label?: unknown }).label === 'string'
+                      ? ((edge.data as { label: string }).label)
+                      : ''
+                  const rawLabel =
+                    (typeof edge.label === 'string' && edge.label) || dataLabel
+                  const text = rawLabel ? `${topology} (${rawLabel})` : topology
                   return <li key={edge.id}>{`Edge: ${text}`}</li>
                 })}
               </ul>

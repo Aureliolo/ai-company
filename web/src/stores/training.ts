@@ -25,12 +25,18 @@ type PerAgent<T> = Readonly<Record<string, T | null>>
 
 type LoadingMap = Readonly<Record<string, boolean>>
 type ErrorMap = Readonly<Record<string, string | null>>
+type TokenMap = Readonly<Record<string, number>>
 
 /**
  * Plan and result fetches run in parallel (see ``hydrateForAgent``)
  * so they each need their own loading/error slot; sharing the same
  * keys races -- whichever request finishes last stomps the other's
- * state. The UI reads a merged view via ``useTrainingForAgent``.
+ * state. ``planRequestTokens`` / ``resultRequestTokens`` add per-agent
+ * monotonic counters so a stale in-flight response (e.g. the user
+ * clicked away and back) cannot overwrite a newer one: each fetch
+ * captures the current token, and only commits state updates when
+ * the captured token is still the agent's latest. The UI reads a
+ * merged view via ``useTrainingForAgent``.
  */
 interface TrainingState {
   plansByAgent: PerAgent<TrainingPlanResponse>
@@ -39,6 +45,8 @@ interface TrainingState {
   resultLoading: LoadingMap
   planError: ErrorMap
   resultError: ErrorMap
+  planRequestTokens: TokenMap
+  resultRequestTokens: TokenMap
 
   fetchPlan: (agentName: string) => Promise<void>
   fetchResult: (agentName: string) => Promise<void>
@@ -79,20 +87,31 @@ export const useTrainingStore = create<TrainingState>()((set, get) => ({
   resultLoading: {},
   planError: {},
   resultError: {},
+  planRequestTokens: {},
+  resultRequestTokens: {},
 
   fetchPlan: async (agentName) => {
+    // Claim a fresh token and mark loading. Any prior in-flight
+    // fetchPlan for this agent will see a mismatch on completion and
+    // skip its state update.
+    const token = (get().planRequestTokens[agentName] ?? 0) + 1
     set((state) => ({
       planLoading: setMap(state.planLoading, agentName, true),
       planError: setMap(state.planError, agentName, null),
+      planRequestTokens: setMap(state.planRequestTokens, agentName, token),
     }))
+    const isCurrent = () =>
+      get().planRequestTokens[agentName] === token
     try {
       const plan = await getLatestTrainingPlan(agentName)
+      if (!isCurrent()) return
       set((state) => ({
         plansByAgent: setMap(state.plansByAgent, agentName, plan),
         planLoading: setMap(state.planLoading, agentName, false),
         planError: setMap(state.planError, agentName, null),
       }))
     } catch (err) {
+      if (!isCurrent()) return
       if (isExpectedNotFound(err)) {
         set((state) => ({
           plansByAgent: setMap(state.plansByAgent, agentName, null),
@@ -113,18 +132,24 @@ export const useTrainingStore = create<TrainingState>()((set, get) => ({
   },
 
   fetchResult: async (agentName) => {
+    const token = (get().resultRequestTokens[agentName] ?? 0) + 1
     set((state) => ({
       resultLoading: setMap(state.resultLoading, agentName, true),
       resultError: setMap(state.resultError, agentName, null),
+      resultRequestTokens: setMap(state.resultRequestTokens, agentName, token),
     }))
+    const isCurrent = () =>
+      get().resultRequestTokens[agentName] === token
     try {
       const result = await getTrainingResult(agentName)
+      if (!isCurrent()) return
       set((state) => ({
         resultsByAgent: setMap(state.resultsByAgent, agentName, result),
         resultLoading: setMap(state.resultLoading, agentName, false),
         resultError: setMap(state.resultError, agentName, null),
       }))
     } catch (err) {
+      if (!isCurrent()) return
       if (isExpectedNotFound(err)) {
         set((state) => ({
           resultsByAgent: setMap(state.resultsByAgent, agentName, null),
@@ -154,8 +179,13 @@ export const useTrainingStore = create<TrainingState>()((set, get) => ({
       const plan = await createTrainingPlan(agentName, overrides)
       set((state) => ({
         plansByAgent: setMap(state.plansByAgent, agentName, plan),
-        // Fresh write supersedes any stale plan-read error banner.
+        // Fresh plan invalidates any cached result (which belonged to
+        // the previous plan) and wipes stale error banners on both
+        // sides so the UI does not show a stale execution for the new
+        // plan.
+        resultsByAgent: setMap(state.resultsByAgent, agentName, null),
         planError: setMap(state.planError, agentName, null),
+        resultError: setMap(state.resultError, agentName, null),
       }))
       useToastStore.getState().add({
         variant: 'success',

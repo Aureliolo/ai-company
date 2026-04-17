@@ -764,6 +764,9 @@ class _FakeTrainingPlanRepository:
     async def latest_pending(self, agent_id: Any) -> Any | None:
         return None
 
+    async def latest_by_agent(self, agent_id: Any) -> Any | None:
+        return None
+
     async def list_by_agent(self, agent_id: Any) -> tuple[Any, ...]:
         return ()
 

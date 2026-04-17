@@ -247,6 +247,33 @@ LIMIT 1""",
             return None
         return _row_to_plan(row)
 
+    async def latest_by_agent(
+        self,
+        agent_id: NotBlankStr,
+    ) -> TrainingPlan | None:
+        """Return the most recently created plan for an agent (any status)."""
+        try:
+            cursor = await self._db.execute(
+                """\
+SELECT * FROM training_plans
+WHERE new_agent_id = ?
+ORDER BY created_at DESC
+LIMIT 1""",
+                (str(agent_id),),
+            )
+            row = await cursor.fetchone()
+        except (sqlite3.Error, aiosqlite.Error) as exc:
+            msg = f"Failed to fetch latest plan for {agent_id!r}"
+            logger.exception(
+                HR_TRAINING_PERSISTENCE_ERROR,
+                agent_id=str(agent_id),
+                error=str(exc),
+            )
+            raise QueryError(msg) from exc
+        if row is None:
+            return None
+        return _row_to_plan(row)
+
     async def list_by_agent(
         self,
         agent_id: NotBlankStr,

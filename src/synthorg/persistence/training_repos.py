@@ -54,6 +54,25 @@ class TrainingPlanRepository(Protocol):
         """
         ...
 
+    async def latest_by_agent(
+        self,
+        agent_id: NotBlankStr,
+    ) -> TrainingPlan | None:
+        """Return the most recently created plan for an agent.
+
+        Unlike :meth:`latest_pending`, this does not filter on status --
+        it returns the head of the plan history regardless of whether
+        the plan is still pending, executed, or failed. Used to
+        rehydrate the dashboard's training view after a reload.
+
+        Args:
+            agent_id: Target agent identifier.
+
+        Returns:
+            The latest plan, or ``None`` if no plans exist.
+        """
+        ...
+
     async def list_by_agent(
         self,
         agent_id: NotBlankStr,
