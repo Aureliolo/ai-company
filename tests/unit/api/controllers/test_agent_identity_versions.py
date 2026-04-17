@@ -172,56 +172,33 @@ class TestDiff:
         assert "level" in paths
 
     @pytest.mark.unit
-    async def test_same_versions_rejected(
+    @pytest.mark.parametrize(
+        ("from_version", "to_version", "expected_status"),
+        [
+            pytest.param(1, 1, 400, id="same_versions_rejected"),
+            pytest.param(2, 1, 400, id="reversed_versions_rejected"),
+            pytest.param(99, 100, 404, id="missing_from_version_returns_404"),
+            pytest.param(1, 99, 404, id="missing_to_version_returns_404"),
+        ],
+    )
+    async def test_diff_validation(  # noqa: PLR0913
         self,
         test_client: TestClient[Any],
         fake_persistence: FakePersistenceBackend,
         agent_registry: AgentRegistryService,
+        from_version: int,
+        to_version: int,
+        expected_status: int,
     ) -> None:
         fake_persistence.identity_versions.clear()
         agent_registry.clear()
         identity = await _seed_versions(agent_registry, updates=1)
         resp = test_client.get(
             f"/api/v1/agents/{identity.id}/versions/diff",
-            params={"from_version": 1, "to_version": 1},
+            params={"from_version": from_version, "to_version": to_version},
             headers=make_auth_headers("ceo"),
         )
-        assert resp.status_code == 400
-
-    @pytest.mark.unit
-    async def test_missing_from_version_returns_404(
-        self,
-        test_client: TestClient[Any],
-        fake_persistence: FakePersistenceBackend,
-        agent_registry: AgentRegistryService,
-    ) -> None:
-        fake_persistence.identity_versions.clear()
-        agent_registry.clear()
-        identity = await _seed_versions(agent_registry, updates=1)
-        resp = test_client.get(
-            f"/api/v1/agents/{identity.id}/versions/diff",
-            params={"from_version": 99, "to_version": 100},
-            headers=make_auth_headers("ceo"),
-        )
-        assert resp.status_code == 404
-
-    @pytest.mark.unit
-    async def test_reversed_versions_rejected(
-        self,
-        test_client: TestClient[Any],
-        fake_persistence: FakePersistenceBackend,
-        agent_registry: AgentRegistryService,
-    ) -> None:
-        """``from_version`` must be strictly less than ``to_version``."""
-        fake_persistence.identity_versions.clear()
-        agent_registry.clear()
-        identity = await _seed_versions(agent_registry, updates=1)
-        resp = test_client.get(
-            f"/api/v1/agents/{identity.id}/versions/diff",
-            params={"from_version": 2, "to_version": 1},
-            headers=make_auth_headers("ceo"),
-        )
-        assert resp.status_code == 400
+        assert resp.status_code == expected_status
 
 
 class TestRollback:
@@ -354,3 +331,181 @@ class TestRollback:
         )
         assert resp.status_code == 400
         assert "different agent" in resp.json()["error"].lower()
+
+
+class TestReadEndpointsOwnership:
+    """Read endpoints (list/get/diff) reject cross-entity snapshots."""
+
+    @pytest.mark.unit
+    async def test_get_version_rejects_cross_entity(
+        self,
+        test_client: TestClient[Any],
+        fake_persistence: FakePersistenceBackend,
+        agent_registry: AgentRegistryService,
+    ) -> None:
+        fake_persistence.identity_versions.clear()
+        agent_registry.clear()
+        alice = await _seed_versions(agent_registry)
+        bob = await _seed_versions(agent_registry)
+        from synthorg.versioning import VersionSnapshot
+
+        alice_latest = await fake_persistence.identity_versions.get_latest_version(
+            str(alice.id)
+        )
+        assert alice_latest is not None
+        forged = VersionSnapshot(
+            entity_id=str(bob.id),
+            version=42,
+            content_hash="e" * 64,
+            snapshot=alice_latest.snapshot,
+            saved_by="test-forger",
+            saved_at=alice_latest.saved_at,
+        )
+        await fake_persistence.identity_versions.save_version(forged)
+        resp = test_client.get(
+            f"/api/v1/agents/{bob.id}/versions/42",
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 400
+        assert "different agent" in resp.json()["error"].lower()
+
+    @pytest.mark.unit
+    async def test_list_versions_drops_cross_entity_rows(
+        self,
+        test_client: TestClient[Any],
+        fake_persistence: FakePersistenceBackend,
+        agent_registry: AgentRegistryService,
+    ) -> None:
+        fake_persistence.identity_versions.clear()
+        agent_registry.clear()
+        alice = await _seed_versions(agent_registry)
+        bob = await _seed_versions(agent_registry)
+        from synthorg.versioning import VersionSnapshot
+
+        alice_latest = await fake_persistence.identity_versions.get_latest_version(
+            str(alice.id)
+        )
+        assert alice_latest is not None
+        forged = VersionSnapshot(
+            entity_id=str(bob.id),
+            version=42,
+            content_hash="d" * 64,
+            snapshot=alice_latest.snapshot,
+            saved_by="test-forger",
+            saved_at=alice_latest.saved_at,
+        )
+        await fake_persistence.identity_versions.save_version(forged)
+        resp = test_client.get(
+            f"/api/v1/agents/{bob.id}/versions",
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 200
+        # Forged row must be silently dropped from the response.
+        versions = resp.json()["data"]
+        assert all(v["version"] != 42 for v in versions)
+
+    @pytest.mark.unit
+    async def test_diff_rejects_cross_entity_version(
+        self,
+        test_client: TestClient[Any],
+        fake_persistence: FakePersistenceBackend,
+        agent_registry: AgentRegistryService,
+    ) -> None:
+        fake_persistence.identity_versions.clear()
+        agent_registry.clear()
+        alice = await _seed_versions(agent_registry, updates=1)
+        bob = await _seed_versions(agent_registry)
+        from synthorg.versioning import VersionSnapshot
+
+        alice_latest = await fake_persistence.identity_versions.get_latest_version(
+            str(alice.id)
+        )
+        assert alice_latest is not None
+        forged = VersionSnapshot(
+            entity_id=str(bob.id),
+            version=42,
+            content_hash="c" * 64,
+            snapshot=alice_latest.snapshot,
+            saved_by="test-forger",
+            saved_at=alice_latest.saved_at,
+        )
+        await fake_persistence.identity_versions.save_version(forged)
+        resp = test_client.get(
+            f"/api/v1/agents/{bob.id}/versions/diff",
+            params={"from_version": 1, "to_version": 42},
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 400
+        assert "different agent" in resp.json()["error"].lower()
+
+
+class TestAuthGuards:
+    """Guards on version endpoints reject unauthorized roles and missing auth."""
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize(
+        ("method", "path_suffix", "body"),
+        [
+            pytest.param("get", "/versions", None, id="list_versions"),
+            pytest.param("get", "/versions/1", None, id="get_version"),
+            pytest.param(
+                "get",
+                "/versions/diff?from_version=1&to_version=2",
+                None,
+                id="get_diff",
+            ),
+            pytest.param(
+                "post",
+                "/versions/rollback",
+                {"target_version": 1},
+                id="rollback",
+            ),
+        ],
+    )
+    def test_invalid_auth_returns_401(
+        self,
+        test_client: TestClient[Any],
+        method: str,
+        path_suffix: str,
+        body: dict[str, Any] | None,
+    ) -> None:
+        url = f"/api/v1/agents/{uuid4()}{path_suffix}"
+        headers = {"Authorization": "Bearer invalid-token"}
+        resp = (
+            test_client.get(url, headers=headers)
+            if method == "get"
+            else test_client.post(url, json=body, headers=headers)
+        )
+        assert resp.status_code == 401
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("role", ["observer", "board_member"])
+    def test_rollback_write_guard_rejects_read_only_roles(
+        self,
+        test_client: TestClient[Any],
+        role: str,
+    ) -> None:
+        resp = test_client.post(
+            f"/api/v1/agents/{uuid4()}/versions/rollback",
+            json={"target_version": 1},
+            headers=make_auth_headers(role),
+        )
+        assert resp.status_code == 403
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize(
+        "role",
+        ["ceo", "manager", "pair_programmer", "observer", "board_member"],
+    )
+    def test_list_read_guard_accepts_all_human_roles(
+        self,
+        test_client: TestClient[Any],
+        role: str,
+    ) -> None:
+        resp = test_client.get(
+            f"/api/v1/agents/{uuid4()}/versions",
+            headers=make_auth_headers(role),
+        )
+        # Unknown agent still returns 200 with empty list -- the important
+        # thing is the guard does not 401/403 the request.
+        assert resp.status_code == 200

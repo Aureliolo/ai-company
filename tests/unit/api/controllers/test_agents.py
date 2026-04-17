@@ -269,10 +269,17 @@ class TestAgentPerformance:
         assert resp.json()["success"] is False
 
     # NOTE: the former "returns 503 when no agent registry is configured"
-    # trio of tests was removed after ``create_app`` began auto-wiring
-    # AgentRegistryService with versioning support.  The 503 branch in the
-    # controller is still defensive code for callers that build AppState
-    # directly without a registry; it is exercised by ``test_state.py``.
+    # trio of HTTP-level tests was removed after ``create_app`` began
+    # auto-wiring ``AgentRegistryService``.  The controller's 503 branch is
+    # defensive code for callers that build ``AppState`` directly without a
+    # registry; its underlying behaviour is covered by
+    # ``tests/unit/api/test_state.py``, which asserts that
+    # ``AppState.agent_registry`` raises ``ServiceUnavailableError`` when
+    # the registry is ``None``.  Litestar maps that exception to HTTP 503
+    # automatically.  An HTTP-level re-test would require constructing a
+    # second full app with ``agent_registry=None`` just to exercise one
+    # branch; the property-level coverage is sufficient given the simple
+    # one-line path from property access to 503 response.
 
 
 # ── Activity endpoint tests ───────────────────────────────────

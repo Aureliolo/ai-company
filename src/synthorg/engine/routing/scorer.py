@@ -136,37 +136,41 @@ def _score_skill_tiers(
     Mutates *reasons* with human-readable explanations.
     """
     required = set(subtask.required_skills)
-    primary_by_id = {s.id: s for s in agent.skills.primary}
-    secondary_by_id = {s.id: s for s in agent.skills.secondary}
-    primary_matched = required & primary_by_id.keys()
-    secondary_matched = (required & secondary_by_id.keys()) - primary_matched
-
     if not required:
         reasons.append("no skills required, skill matching skipped")
         return 0.0, []
+
+    primary_by_id = {s.id: s for s in agent.skills.primary}
+    secondary_by_id = {s.id: s for s in agent.skills.secondary}
+    # Sort matched ids so proficiency sums are deterministic regardless of
+    # set iteration order (hash randomization).
+    primary_matched = sorted(required & primary_by_id.keys())
+    secondary_matched = sorted(
+        (required & secondary_by_id.keys()) - set(primary_matched),
+    )
 
     score = 0.0
     all_matched: list[str] = []
 
     primary_contrib = (
         sum(primary_by_id[sid].proficiency for sid in primary_matched)
-        / max(len(required), 1)
+        / len(required)
         * 0.4
     )
     score += primary_contrib
-    all_matched.extend(sorted(primary_matched))
+    all_matched.extend(primary_matched)
     if primary_matched:
-        reasons.append(f"primary skills: {sorted(primary_matched)}")
+        reasons.append(f"primary skills: {primary_matched}")
 
     secondary_contrib = (
         sum(secondary_by_id[sid].proficiency for sid in secondary_matched)
-        / max(len(required), 1)
+        / len(required)
         * 0.2
     )
     score += secondary_contrib
-    all_matched.extend(sorted(secondary_matched))
+    all_matched.extend(secondary_matched)
     if secondary_matched:
-        reasons.append(f"secondary skills: {sorted(secondary_matched)}")
+        reasons.append(f"secondary skills: {secondary_matched}")
 
     required_tags = set(subtask.required_tags)
     if required_tags:

@@ -89,6 +89,11 @@ from synthorg.api.controllers.workflows import WorkflowController
 from synthorg.api.controllers.ws import ws_handler
 
 # Core API controllers (always registered).
+#
+# Handlers that dereference ``state.app_state.persistence`` (including the
+# ``*VersionController`` family) degrade to HTTP 503 when persistence is
+# ``None`` via ``AppState.persistence``'s ``ServiceUnavailableError``.  No
+# per-controller gating is required.
 BASE_CONTROLLERS: tuple[type[Controller], ...] = (
     HealthController,
     MetricsController,

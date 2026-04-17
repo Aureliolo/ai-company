@@ -79,7 +79,6 @@ from synthorg.communication.meeting.orchestrator import (
 from synthorg.communication.meeting.scheduler import MeetingScheduler  # noqa: TC001
 from synthorg.config import bootstrap_logging
 from synthorg.config.schema import RootConfig
-from synthorg.core.agent import AgentIdentity  # noqa: TC001
 from synthorg.core.approval import ApprovalItem  # noqa: TC001
 from synthorg.engine.agent_engine import (  # noqa: TC001
     PersonalityTrimNotifier,
@@ -104,6 +103,7 @@ from synthorg.observability.events.api import (
     API_APPROVAL_PUBLISH_FAILED,
     API_AUTH_LOCKOUT_CLEANUP,
     API_NETWORK_EXPOSURE_WARNING,
+    API_SERVICE_AUTO_WIRE_FAILED,
     API_SERVICE_AUTO_WIRED,
     API_SESSION_CLEANUP,
     API_WS_SEND_FAILED,
@@ -666,6 +666,36 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
             approval_timeout_scheduler,
             app_state,
         )
+
+        # Auto-wire the agent registry's identity-versioning service now
+        # that persistence is connected.  Running this before
+        # ``_safe_startup`` would access ``persistence.identity_versions``
+        # on a disconnected backend, which raises and drops the system
+        # into a no-versioning state (lost audit trail on rollback/evolve).
+        if (
+            app_state.has_agent_registry
+            and persistence is not None
+            and getattr(persistence, "is_connected", False)
+            and app_state.agent_registry._versioning is None  # noqa: SLF001
+        ):
+            try:
+                app_state.agent_registry.bind_versioning(
+                    VersioningService(persistence.identity_versions),
+                )
+                logger.info(
+                    API_SERVICE_AUTO_WIRED,
+                    service="agent_registry_versioning",
+                )
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
+                logger.warning(
+                    API_SERVICE_AUTO_WIRE_FAILED,
+                    service="agent_registry_versioning",
+                    error=f"{type(exc).__name__}: {exc}",
+                    exc_info=True,
+                )
+
         # Wire Prometheus collector (no dependencies, runs in-process).
         # Non-fatal: /metrics degrades to 503 if this fails.
         if not app_state.has_prometheus_collector:
@@ -1405,22 +1435,16 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
             perf_config=effective_config.performance,
         )
 
-    # Auto-wire agent registry with identity-versioning service so that
-    # every register/update/evolve call produces an audited VersionSnapshot.
+    # Construct the agent registry without versioning here.  The versioning
+    # service requires a *connected* persistence backend, but
+    # ``persistence.identity_versions`` is only available after
+    # ``persistence.connect()`` runs inside ``_safe_startup()``.  The
+    # registry is auto-wired with ``VersioningService[AgentIdentity]`` from
+    # the startup hook (see ``on_startup`` in ``_build_lifecycle_callbacks``)
+    # so every register/update/evolve call produces an audited
+    # ``VersionSnapshot`` in production.
     if agent_registry is None:
-        identity_versioning: VersioningService[AgentIdentity] | None = None
-        if persistence is not None:
-            try:
-                identity_versioning = VersioningService(persistence.identity_versions)
-            except MemoryError, RecursionError:
-                raise
-            except Exception:
-                logger.warning(
-                    API_APP_STARTUP,
-                    error="identity_versioning auto-wire failed (non-fatal)",
-                    exc_info=True,
-                )
-        agent_registry = AgentRegistryService(versioning=identity_versioning)
+        agent_registry = AgentRegistryService()
         logger.info(API_SERVICE_AUTO_WIRED, service="agent_registry")
 
     notification_dispatcher = build_notification_dispatcher(

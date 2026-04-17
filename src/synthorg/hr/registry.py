@@ -54,6 +54,19 @@ class AgentRegistryService:
         self._agents.clear()
         logger.info(HR_REGISTRY_CLEARED, cleared_count=cleared_count)
 
+    def bind_versioning(
+        self,
+        versioning: VersioningService[AgentIdentity],
+    ) -> None:
+        """Attach a versioning service after construction.
+
+        Enables the app factory to construct the registry synchronously in
+        ``create_app()`` and wire versioning later in ``on_startup()``, after
+        the persistence backend is connected (its ``identity_versions``
+        property requires ``connect()`` to have run).
+        """
+        self._versioning = versioning
+
     async def register(
         self,
         identity: AgentIdentity,

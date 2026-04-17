@@ -22,3 +22,8 @@ AGENT_IDENTITY_ROLLED_BACK: Final[str] = "agent.identity.rolled_back"
 
 AGENT_IDENTITY_ROLLBACK_FAILED: Final[str] = "agent.identity.rollback_failed"
 """Agent identity rollback failed."""
+
+AGENT_IDENTITY_VERSION_OWNER_MISMATCH: Final[str] = (
+    "agent.identity.version.owner_mismatch"
+)
+"""Stored snapshot's owner id does not match the path agent id."""

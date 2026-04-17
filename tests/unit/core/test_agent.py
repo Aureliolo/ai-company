@@ -269,6 +269,24 @@ class TestSkillSet:
         ):
             SkillSet(primary=(python,), secondary=(python,))
 
+    def test_primary_duplicate_ids_rejected(self) -> None:
+        """Duplicate skill ids within the primary tier are rejected."""
+        python_a = Skill(id="python", name="Python")
+        python_b = Skill(id="python", name="Python (senior)", proficiency=0.9)
+        with pytest.raises(
+            ValidationError, match="Duplicate skill ids in primary tier"
+        ):
+            SkillSet(primary=(python_a, python_b))
+
+    def test_secondary_duplicate_ids_rejected(self) -> None:
+        """Duplicate skill ids within the secondary tier are rejected."""
+        go_a = Skill(id="go", name="Go")
+        go_b = Skill(id="go", name="Go (systems)")
+        with pytest.raises(
+            ValidationError, match="Duplicate skill ids in secondary tier"
+        ):
+            SkillSet(secondary=(go_a, go_b))
+
 
 # ── ModelConfig ────────────────────────────────────────────────────
 

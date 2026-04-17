@@ -197,3 +197,28 @@ class TestAgentRegistryService:
                 str(identity.id),
                 status=AgentStatus.ON_LEAVE,
             )
+
+
+@pytest.mark.unit
+class TestBindVersioning:
+    """Post-construction versioning attachment used by the app factory."""
+
+    async def test_bind_versioning_activates_snapshot_creation(self) -> None:
+        """``bind_versioning`` wires a versioning service after construction.
+
+        Simulates the app-factory flow: ``create_app`` builds the registry
+        synchronously, then ``on_startup`` attaches versioning once
+        persistence is connected.
+        """
+        from synthorg.versioning import VersioningService
+        from tests.unit.api.fakes_backend import FakeVersionRepository
+
+        registry = AgentRegistryService()
+        repo = FakeVersionRepository()
+        versioning: VersioningService = VersioningService(repo)
+        registry.bind_versioning(versioning)
+        identity = make_agent_identity(name="alice")
+        await registry.register(identity)
+        versions = await repo.list_versions(str(identity.id), limit=10, offset=0)
+        assert len(versions) == 1
+        assert versions[0].version == 1

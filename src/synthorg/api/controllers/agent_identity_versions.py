@@ -1,5 +1,6 @@
 """Agent identity version history API -- list, get, diff, rollback."""
 
+import asyncio
 from typing import Annotated, Any
 
 from litestar import Controller, Request, Response, get, post
@@ -28,6 +29,7 @@ from synthorg.observability.events.agent_identity_version import (
     AGENT_IDENTITY_VERSION_FETCHED,
     AGENT_IDENTITY_VERSION_LISTED,
     AGENT_IDENTITY_VERSION_NOT_FOUND,
+    AGENT_IDENTITY_VERSION_OWNER_MISMATCH,
 )
 from synthorg.persistence.version_repo import VersionRepository  # noqa: TC001
 from synthorg.versioning import VersionSnapshot
@@ -37,39 +39,57 @@ logger = get_logger(__name__)
 SnapshotT = VersionSnapshot[AgentIdentity]
 
 
+def _snapshot_owner_matches(snapshot: SnapshotT, agent_id: str) -> bool:
+    """Return True when ``snapshot.snapshot.id`` equals the path ``agent_id``.
+
+    Defence in depth: the stored snapshot payload encodes its owner's
+    identity id.  Cross-wired/corrupted rows could otherwise leak one
+    agent's history under another agent's URL.  Read and mutation
+    endpoints both verify ownership before returning or acting on the
+    payload.
+    """
+    return str(snapshot.snapshot.id) == agent_id
+
+
 async def _fetch_version_pair(
     version_repo: VersionRepository[AgentIdentity],
     agent_id: str,
     from_version: int,
     to_version: int,
 ) -> tuple[SnapshotT, SnapshotT] | Response[ApiResponse[AgentIdentityDiff]]:
-    """Fetch two snapshots or return a 404 response."""
-    old = await version_repo.get_version(agent_id, from_version)
-    if old is None:
-        logger.warning(
-            AGENT_IDENTITY_VERSION_NOT_FOUND,
-            agent_id=agent_id,
-            version=from_version,
-        )
-        return Response(
-            content=ApiResponse[AgentIdentityDiff](
-                error=f"Version {from_version} not found",
-            ),
-            status_code=404,
-        )
-    new = await version_repo.get_version(agent_id, to_version)
-    if new is None:
-        logger.warning(
-            AGENT_IDENTITY_VERSION_NOT_FOUND,
-            agent_id=agent_id,
-            version=to_version,
-        )
-        return Response(
-            content=ApiResponse[AgentIdentityDiff](
-                error=f"Version {to_version} not found",
-            ),
-            status_code=404,
-        )
+    """Fetch two snapshots concurrently or return an error response."""
+    old, new = await asyncio.gather(
+        version_repo.get_version(agent_id, from_version),
+        version_repo.get_version(agent_id, to_version),
+    )
+    for snapshot, version in ((old, from_version), (new, to_version)):
+        if snapshot is None:
+            logger.warning(
+                AGENT_IDENTITY_VERSION_NOT_FOUND,
+                agent_id=agent_id,
+                version=version,
+            )
+            return Response(
+                content=ApiResponse[AgentIdentityDiff](
+                    error=f"Version {version} not found",
+                ),
+                status_code=404,
+            )
+        if not _snapshot_owner_matches(snapshot, agent_id):
+            logger.warning(
+                AGENT_IDENTITY_VERSION_OWNER_MISMATCH,
+                agent_id=agent_id,
+                version=version,
+                snapshot_id=str(snapshot.snapshot.id),
+            )
+            return Response(
+                content=ApiResponse[AgentIdentityDiff](
+                    error=f"Version {version} belongs to a different agent",
+                ),
+                status_code=400,
+            )
+    assert old is not None  # noqa: S101 -- narrowed by loop above
+    assert new is not None  # noqa: S101 -- narrowed by loop above
     return old, new
 
 
@@ -89,21 +109,33 @@ class AgentIdentityVersionController(Controller):
     ) -> Response[PaginatedResponse[SnapshotT]]:
         """List version history for an agent identity."""
         version_repo = state.app_state.persistence.identity_versions
-        versions = await version_repo.list_versions(
-            agent_id,
-            limit=limit,
-            offset=offset,
+        versions, total = await asyncio.gather(
+            version_repo.list_versions(agent_id, limit=limit, offset=offset),
+            version_repo.count_versions(agent_id),
         )
-        total = await version_repo.count_versions(agent_id)
+        # Filter out any rows whose encoded owner does not match the path
+        # agent_id.  This cannot happen for well-formed repositories but
+        # guards against forged/cross-wired snapshots leaking across
+        # agents' URLs.
+        safe_versions = tuple(
+            v for v in versions if _snapshot_owner_matches(v, agent_id)
+        )
+        dropped = len(versions) - len(safe_versions)
+        if dropped:
+            logger.warning(
+                AGENT_IDENTITY_VERSION_OWNER_MISMATCH,
+                agent_id=agent_id,
+                dropped=dropped,
+            )
         logger.debug(
             AGENT_IDENTITY_VERSION_LISTED,
             agent_id=agent_id,
-            count=len(versions),
+            count=len(safe_versions),
         )
         meta = PaginationMeta(total=total, offset=offset, limit=limit)
         return Response(
             content=PaginatedResponse[SnapshotT](
-                data=versions,
+                data=safe_versions,
                 pagination=meta,
             ),
         )
@@ -134,28 +166,19 @@ class AgentIdentityVersionController(Controller):
         ],
     ) -> Response[ApiResponse[AgentIdentityDiff]]:
         """Compute diff between two agent identity versions."""
-        if from_version == to_version:
-            logger.warning(
-                AGENT_IDENTITY_INVALID_REQUEST,
-                agent_id=agent_id,
-                error="from_version and to_version must differ",
-            )
-            return Response(
-                content=ApiResponse[AgentIdentityDiff](
-                    error="from_version and to_version must differ",
-                ),
-                status_code=400,
-            )
         if from_version >= to_version:
+            error = (
+                "from_version and to_version must differ"
+                if from_version == to_version
+                else "from_version must be less than to_version"
+            )
             logger.warning(
                 AGENT_IDENTITY_INVALID_REQUEST,
                 agent_id=agent_id,
-                error="from_version must be less than to_version",
+                error=error,
             )
             return Response(
-                content=ApiResponse[AgentIdentityDiff](
-                    error="from_version must be less than to_version",
-                ),
+                content=ApiResponse[AgentIdentityDiff](error=error),
                 status_code=400,
             )
 
@@ -212,6 +235,19 @@ class AgentIdentityVersionController(Controller):
                 ),
                 status_code=404,
             )
+        if not _snapshot_owner_matches(version, agent_id):
+            logger.warning(
+                AGENT_IDENTITY_VERSION_OWNER_MISMATCH,
+                agent_id=agent_id,
+                version=version_num,
+                snapshot_id=str(version.snapshot.id),
+            )
+            return Response(
+                content=ApiResponse[SnapshotT](
+                    error=f"Version {version_num} belongs to a different agent",
+                ),
+                status_code=400,
+            )
         logger.debug(
             AGENT_IDENTITY_VERSION_FETCHED,
             agent_id=agent_id,
@@ -254,9 +290,9 @@ class AgentIdentityVersionController(Controller):
         # Defence in depth: the snapshot's entity id must match the URL path.
         # A mismatch can only occur on corrupted/cross-entity rows -- refuse
         # to mutate the wrong agent.
-        if str(target.snapshot.id) != agent_id:
+        if not _snapshot_owner_matches(target, agent_id):
             logger.warning(
-                AGENT_IDENTITY_ROLLBACK_FAILED,
+                AGENT_IDENTITY_VERSION_OWNER_MISMATCH,
                 agent_id=agent_id,
                 error="target snapshot id does not match path agent_id",
                 snapshot_id=str(target.snapshot.id),
@@ -302,6 +338,20 @@ class AgentIdentityVersionController(Controller):
                     error=f"Cannot rollback: {exc}",
                 ),
                 status_code=400,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.exception(
+                AGENT_IDENTITY_ROLLBACK_FAILED,
+                agent_id=agent_id,
+                error=f"unexpected error: {type(exc).__name__}: {exc}",
+            )
+            return Response(
+                content=ApiResponse[AgentIdentity](
+                    error="Rollback failed due to an unexpected server error",
+                ),
+                status_code=500,
             )
 
         logger.info(

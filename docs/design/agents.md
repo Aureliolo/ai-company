@@ -102,14 +102,15 @@ class SkillSet(BaseModel):
 | `output_modes` | `outputModes` | MIME types the agent produces for this skill |
 | `proficiency` | -- | SynthOrg-specific: proficiency level for quality-aware routing |
 
-**Defaults and backward compatibility:**
+**Defaults:**
 
 - `input_modes` and `output_modes` default to `("text/plain",)` -- internal agents that
   only handle text do not need to specify these fields
 - `proficiency` defaults to `1.0` -- only meaningful when comparing agents with the same
   skill at different proficiency levels
-- Existing string-based YAML configs will auto-migrate: a bare string `"python"` will be
-  interpreted as `Skill(id="python", name="python")` with all other fields at defaults
+- `SkillSet` rejects string entries, duplicate skill IDs within a tier, and overlap
+  between `primary` and `secondary` -- pre-alpha, no backward-compat coercion from the
+  legacy string-based shape
 
 **Routing impact:** `AgentTaskScorer` uses the structured skill data directly.  Primary
 skill overlap is weighted at 40% and secondary at 20%, each contribution scaled by the
@@ -308,14 +309,18 @@ no manual configuration required. When wired:
 
 ### REST API
 
-Identity version history is exposed under `/api/v1/agents/{agent_id}/versions`:
+Identity version history is exposed under `/api/v1/agents/{agent_id}/versions`
+(paths in the table below are relative to that base):
 
-| Method | Path | Guard | Description |
-|--------|------|-------|-------------|
-| `GET` | `/{agent_id}/versions` | read | Paginated list of version snapshots (`offset`, `limit` default 20) |
-| `GET` | `/{agent_id}/versions/{version_num}` | read | Single version snapshot by monotonic version number |
-| `GET` | `/{agent_id}/versions/diff?from_version=N&to_version=M` | read | Field-level `AgentIdentityDiff` between two versions (`from_version < to_version` required) |
-| `POST` | `/{agent_id}/versions/rollback` | write | Restore a prior version.  Body: `{target_version: int, reason?: str}`.  Executed via `evolve_identity`, producing a new snapshot whose content hash equals the restored version -- rollbacks never mutate history. |
+| Method | Path (relative) | Guard | Description |
+|--------|-----------------|-------|-------------|
+| `GET` | `/` | read | Paginated list of version snapshots (`offset`, `limit` default 20) |
+| `GET` | `/{version_num}` | read | Single version snapshot by monotonic version number |
+| `GET` | `/diff?from_version=N&to_version=M` | read | Field-level `AgentIdentityDiff` between two versions (`from_version < to_version` required) |
+| `POST` | `/rollback` | write | Restore a prior version.  Body: `{target_version: int, reason?: str}`.  Executed via `evolve_identity`, producing a new snapshot whose content hash equals the restored version -- rollbacks never mutate history. |
+
+All endpoints additionally verify that the stored snapshot's encoded owner id
+matches the path `agent_id` (cross-agent rows are rejected with 400).
 
 ### Identity Diff
 

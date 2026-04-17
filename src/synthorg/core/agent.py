@@ -152,18 +152,30 @@ class SkillSet(BaseModel):
     )
 
     @model_validator(mode="after")
-    def _validate_no_overlap(self) -> Self:
-        """Reject skills appearing in both primary and secondary tiers.
+    def _validate_unique_ids(self) -> Self:
+        """Reject duplicate skill IDs within or across tiers.
 
-        The routing scorer already excludes overlap during matching, but
-        an overlapping configuration is almost certainly a mistake (a
-        skill is either a core competency or supporting, not both).
-        Reject at construction so the problem surfaces as a config error
-        rather than a silent ranking artifact.
+        Downstream consumers (routing scorer, A2A projection) build
+        ``{skill.id: skill}`` dicts and would silently drop all but one
+        entry when duplicates exist.  Reject at construction so
+        ambiguous configurations surface as validation errors instead of
+        order-dependent ranking artifacts.
         """
-        primary_ids = {s.id for s in self.primary}
-        secondary_ids = {s.id for s in self.secondary}
-        overlap = primary_ids & secondary_ids
+        primary_ids = [s.id for s in self.primary]
+        secondary_ids = [s.id for s in self.secondary]
+        primary_dupes = sorted(
+            {sid for sid in primary_ids if primary_ids.count(sid) > 1}
+        )
+        if primary_dupes:
+            msg = f"Duplicate skill ids in primary tier: {primary_dupes}"
+            raise ValueError(msg)
+        secondary_dupes = sorted(
+            {sid for sid in secondary_ids if secondary_ids.count(sid) > 1}
+        )
+        if secondary_dupes:
+            msg = f"Duplicate skill ids in secondary tier: {secondary_dupes}"
+            raise ValueError(msg)
+        overlap = set(primary_ids) & set(secondary_ids)
         if overlap:
             msg = (
                 f"Skills cannot appear in both primary and secondary tiers: "

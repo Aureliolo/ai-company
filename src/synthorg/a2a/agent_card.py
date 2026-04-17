@@ -7,6 +7,7 @@ tool permissions, budget, autonomy, strategic mode, hiring date).
 """
 
 from collections.abc import Sequence  # noqa: TC003 -- runtime for type annotation
+from typing import Literal
 
 from synthorg.a2a.models import (
     A2AAgentCard,
@@ -45,7 +46,7 @@ def _identity_to_skills(identity: AgentIdentity) -> tuple[A2AAgentSkill, ...]:
             id=s.id,
             name=s.name,
             description=s.description,
-            tags=(*s.tags, "primary"),
+            tags=_with_tier_marker(s.tags, "primary"),
             input_modes=s.input_modes,
             output_modes=s.output_modes,
         )
@@ -56,13 +57,27 @@ def _identity_to_skills(identity: AgentIdentity) -> tuple[A2AAgentSkill, ...]:
             id=s.id,
             name=s.name,
             description=s.description,
-            tags=(*s.tags, "secondary"),
+            tags=_with_tier_marker(s.tags, "secondary"),
             input_modes=s.input_modes,
             output_modes=s.output_modes,
         )
         for s in identity.skills.secondary
     )
     return primary + secondary
+
+
+def _with_tier_marker(
+    tags: tuple[str, ...],
+    marker: Literal["primary", "secondary"],
+) -> tuple[str, ...]:
+    """Append the tier marker to tags, stripping any pre-existing tier tags.
+
+    Ensures the emitted A2A ``tags`` tuple carries exactly one tier marker
+    (``"primary"`` or ``"secondary"``) regardless of what the internal Skill
+    stored, keeping the external contract unambiguous and duplicate-free.
+    """
+    cleaned = tuple(t for t in tags if t not in ("primary", "secondary"))
+    return (*cleaned, marker)
 
 
 class AgentCardBuilder:

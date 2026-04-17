@@ -308,6 +308,26 @@ class TestAgentTaskScorer:
         assert scorer.score(high, subtask).score > scorer.score(low, subtask).score
 
     @pytest.mark.unit
+    def test_proficiency_zero_contributes_nothing(self) -> None:
+        """An agent with ``proficiency=0.0`` gets no tier contribution.
+
+        Guards against silent score inflation when a skill exists on the
+        agent only as a placeholder.  The skill id still registers as
+        ``matched`` (it was in ``required_skills``) but the proficiency
+        sum is 0 so ``primary_contrib`` is 0.
+        """
+        scorer = AgentTaskScorer()
+        agent = _make_agent(
+            primary=(Skill(id="python", name="Python", proficiency=0.0),),
+            level=SeniorityLevel.JUNIOR,
+        )
+        subtask = _make_subtask(required_skills=("python",))
+
+        candidate = scorer.score(agent, subtask)
+        assert candidate.score == pytest.approx(0.0)
+        assert "python" in candidate.matched_skills
+
+    @pytest.mark.unit
     def test_tag_match_adds_bonus(self) -> None:
         """Tag match adds +0.1 when all required tags are covered."""
         scorer = AgentTaskScorer()
