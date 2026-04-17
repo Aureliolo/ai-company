@@ -146,8 +146,11 @@ func findOldImages(ctx context.Context, errOut io.Writer, info docker.Info, stat
 	currentIDs, err := collectCurrentImageIDs(ctx, info, state)
 	if err != nil {
 		if errors.Is(err, errImageNotLocal) {
-			// Nothing to compare against; treat as "no old images" silently.
-			return nil, err
+			// Nothing to compare against; surface the benign
+			// "image not pulled yet" state as an empty result
+			// rather than forwarding a sentinel error. Callers
+			// then do not need to special-case this shape.
+			return nil, nil
 		}
 		_, _ = fmt.Fprintf(errOut, "Note: could not determine current image IDs, skipping cleanup: %v\n", err)
 		return nil, err

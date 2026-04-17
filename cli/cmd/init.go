@@ -755,22 +755,31 @@ func writeInitFiles(state config.State) (string, error) {
 // When the bus is the in-process default, the file is not needed and
 // is removed if it exists from a prior distributed install.
 func writeNATSConfigIfNeeded(state config.State, safeDir string) error {
-	// Defense-in-depth: callers (init, start, config, update) pass
-	// safeDir that has already been normalised through config.SecurePath,
-	// so it is absolute + clean by construction. Re-check here so
-	// taint analysers (CodeQL) can see the sanitisation and do not flag
-	// the filepath.Join below as path injection.
-	if !filepath.IsAbs(safeDir) || filepath.Clean(safeDir) != safeDir {
-		return fmt.Errorf("nats config: refusing non-sanitised safeDir %q", safeDir)
+	// Defense-in-depth: re-sanitise safeDir at the use site via the
+	// canonical SecurePath helper. Callers (init, start, config,
+	// update) already pass a normalised path, but re-running the
+	// helper here is idempotent and lets CodeQL's go/path-injection
+	// analyser recognise the sanitisation -- without this, the taint
+	// flow from --data-dir / SYNTHORG_DATA_DIR into the filepath.Join
+	// below is flagged as a sink.
+	sanitised, err := config.SecurePath(safeDir)
+	if err != nil {
+		return fmt.Errorf("nats config: %w", err)
 	}
-	confPath := filepath.Join(safeDir, compose.NATSConfigFilename)
+	// Additional guard: SecurePath allows any absolute clean path;
+	// insist that the caller did not pass an unnormalised string so
+	// the re-sanitised result matches the input byte-for-byte.
+	if sanitised != safeDir {
+		return fmt.Errorf("nats config: safeDir %q is not canonical (expected %q)", safeDir, sanitised)
+	}
+	confPath := filepath.Join(sanitised, compose.NATSConfigFilename)
 	if state.BusBackend != "nats" {
 		if err := os.Remove(confPath); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return fmt.Errorf("removing stale nats.conf: %w", err)
 		}
 		return nil
 	}
-	if err := atomicWriteFile(confPath, []byte(compose.NATSConfigContent), safeDir); err != nil {
+	if err := atomicWriteFile(confPath, []byte(compose.NATSConfigContent), sanitised); err != nil {
 		return fmt.Errorf("writing nats.conf: %w", err)
 	}
 	return nil

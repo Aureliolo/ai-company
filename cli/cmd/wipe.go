@@ -278,16 +278,25 @@ func removeDataDirExceptSelf(dataDir string) error {
 // dirs). Split out so tests can exercise the inside-data-dir branch
 // without needing to forge os.Executable's return value.
 func removeDataDirExceptBinary(dataDir, selfPath string) error {
-	// Resolve symlinks on BOTH paths before comparing with filepath.Rel.
-	// macOS keeps /var as a symlink to /private/var, so resolving only
-	// one side makes the inside-data-dir test flip to the
-	// binary-outside-dataDir branch and wipe the kept binary.
-	// On Windows, the filesystem is case-insensitive by default so
-	// C:\Users vs c:\users would trip filepath.Rel into emitting a
-	// stray `..`; normalizePathForCompare lowercases on Windows only.
+	// Separate two concerns:
+	//  - The PATH WE DELETE is the original dataDir (the user-approved
+	//    wipe target; confirmAndWipe has already validated it).
+	//  - The PATH WE COMPARE WITH (to decide whether selfPath lives
+	//    inside the tree) is the symlink-resolved form, since macOS's
+	//    /var -> /private/var and similar shims would otherwise flip
+	//    the comparison. On Windows the filesystem is case-insensitive
+	//    by default so C:\Users vs c:\users would trip filepath.Rel
+	//    into emitting a stray `..`; normalizePathForCompare lowercases
+	//    on Windows only.
+	//
+	// If we instead resolved dataDir in place and then deleted the
+	// resolved path, a symlinked data dir could silently redirect the
+	// wipe to an unintended target -- confirmAndWipe only validated
+	// the pre-resolution form.
 	dataDirClean := filepath.Clean(dataDir)
+	dataDirForCompare := dataDirClean
 	if resolved, rErr := filepath.EvalSymlinks(dataDirClean); rErr == nil {
-		dataDirClean = resolved
+		dataDirForCompare = resolved
 	}
 
 	if resolved, rErr := filepath.EvalSymlinks(selfPath); rErr == nil {
@@ -295,17 +304,17 @@ func removeDataDirExceptBinary(dataDir, selfPath string) error {
 	}
 	selfPath = filepath.Clean(selfPath)
 
-	if rel, relErr := filepath.Rel(normalizePathForCompare(dataDirClean), normalizePathForCompare(selfPath)); relErr != nil || strings.HasPrefix(rel, "..") {
-		// Binary lives outside dataDir; safe to nuke the whole tree.
+	if rel, relErr := filepath.Rel(normalizePathForCompare(dataDirForCompare), normalizePathForCompare(selfPath)); relErr != nil || strings.HasPrefix(rel, "..") {
+		// Binary lives outside dataDir; safe to nuke the whole tree
+		// (at the user-approved path, not the resolved path).
 		return os.RemoveAll(dataDirClean)
 	}
 
 	// Binary is inside dataDir: clear everything else, leave the
-	// binary (and its ancestor dirs) in place. The user can manually
-	// delete those after running a fresh `synthorg update` swaps the
-	// exe out, or they can simply leave them -- they are otherwise
-	// inert.
-	return removeAllExcept(dataDirClean, selfPath)
+	// binary (and its ancestor dirs) in place. Walk from the
+	// resolved form so removeAllExcept can correctly skip the
+	// selfPath ancestors regardless of symlink shims on either side.
+	return removeAllExcept(dataDirForCompare, selfPath)
 }
 
 // runForm configures a huh form with the wipe context's I/O streams and runs it.

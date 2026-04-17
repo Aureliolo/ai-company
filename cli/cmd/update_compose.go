@@ -91,11 +91,8 @@ func recoverMissingCompose(out io.Writer, composePath string, state config.State
 	if genErr != nil {
 		return false, fmt.Errorf("generating compose.yml during recovery: %w", genErr)
 	}
-	if wErr := atomicWriteFile(composePath, generated, safeDir); wErr != nil {
-		return false, fmt.Errorf("writing compose.yml during recovery: %w", wErr)
-	}
-	if cErr := writeNATSConfigIfNeeded(state, safeDir); cErr != nil {
-		return false, cErr
+	if wErr := writeComposeWithNATS(composePath, generated, state, safeDir); wErr != nil {
+		return false, fmt.Errorf("writing compose files during recovery: %w", wErr)
 	}
 	_, _ = fmt.Fprintln(out, "Generated compose.yml from template.")
 	return true, nil

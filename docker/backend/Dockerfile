@@ -66,26 +66,31 @@ USER build
 
 # ---------------------------------------------------------------------------
 # Atlas CLI: required by the Postgres backend's migrate() path. We
-# download the static binary directly from Atlas's release CDN rather
-# than basing a stage on arigaio/atlas:* because the Docker image tags
-# are not consistently rebuilt when upstream ships Go stdlib security
-# patches. Pinning to a versioned URL plus per-arch SHA256 keeps the
-# build reproducible and renovate-trackable.
+# download the static binary directly from Atlas's release CDN.
 #
-# Renovate bumps `ATLAS_VERSION` via the `github-releases` datasource
-# (see `customManagers` in renovate.json) when ariga/atlas tags a new
-# release. After that bump, update both ATLAS_SHA256_* values by
-# running `curl -sL <url> | sha256sum` against the new versioned URLs
-# and committing alongside the version bump. Go stdlib CVEs waived in
-# .github/.trivyignore.yaml with a short expiration so they are
-# auto-revisited when upstream ships v1.3.0.
+# URL tag choice:
+#   Atlas publishes numbered tags (-v1.2.0) and a moving rebuild tag
+#   (-latest). The community CDN only rebuilds `-latest` when upstream
+#   ships Go stdlib security patches -- numbered tags stay frozen at
+#   the Go version available on release day, including known-vulnerable
+#   stdlib (e.g. v1.2.0 is built with Go 1.25.0, which carries several
+#   HIGH/CRITICAL CVEs in crypto/tls and crypto/x509).
+#
+#   We therefore pin the URL to `-latest` but lock the per-arch SHA256
+#   so builds are reproducible. Current rebuild: 2026-04-16, Atlas 1.2.0
+#   + Go 1.25.9 (patched). Refresh both ATLAS_SHA256_* values with
+#   `curl -sL <url> | sha256sum` whenever the upstream CDN publishes a
+#   new rebuild; renovate's customManager on ariga/atlas GitHub
+#   releases raises a reminder PR when upstream tags a new numbered
+#   version (at which point we reassess whether to switch back to a
+#   numbered URL once Atlas ships v1.3+).
 # ---------------------------------------------------------------------------
 FROM curlimages/curl:8.19.0@sha256:9a6f6a17667960e077f1b153009aaf18ac99a622221084e1938a45a06fff057a AS atlas
 
 # renovate: datasource=github-releases depName=ariga/atlas
 ARG ATLAS_VERSION=v1.2.0
-ARG ATLAS_SHA256_AMD64=19a1f09eaa5469011d2cfb07cd8bdcaa5bb39fbf7c31bd63a60ba9d9aa7f562d
-ARG ATLAS_SHA256_ARM64=8f7f89dd977a85ffe9be66fe157ce462a03036ef67a229ce8a39c3b1856e53f9
+ARG ATLAS_SHA256_AMD64=585830f49a84d7a30c49caa8e8145fd4fb07cc16952dce915f72d7e93f1ed9bc
+ARG ATLAS_SHA256_ARM64=b1c50f55ae10054286ce4c20238c68168434f3275b5d2051841a926cf7fdd62a
 ARG TARGETARCH
 
 SHELL ["/bin/ash", "-o", "pipefail", "-c"]
@@ -102,7 +107,7 @@ RUN set -eu; \
         *) echo "Unsupported TARGETARCH=${TARGETARCH}" >&2; exit 1 ;; \
     esac; \
     curl -fsSL --retry 3 \
-        "https://release.ariga.io/atlas/atlas-community-linux-${TARGETARCH:-amd64}-${ATLAS_VERSION}" \
+        "https://release.ariga.io/atlas/atlas-community-linux-${TARGETARCH:-amd64}-latest" \
         -o /home/curl_user/atlas; \
     echo "${ATLAS_SHA256}  /home/curl_user/atlas" | sha256sum -c -; \
     chmod +x /home/curl_user/atlas; \

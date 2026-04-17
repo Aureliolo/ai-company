@@ -510,23 +510,27 @@ func TestWriteNATSConfigIfNeeded(t *testing.T) {
 		if err == nil {
 			t.Fatalf("expected error for non-absolute safeDir, got nil")
 		}
-		if !strings.Contains(err.Error(), "non-sanitised") {
-			t.Errorf("expected non-sanitised error, got: %v", err)
+		// SecurePath raises "path must be absolute" for a relative input;
+		// we only assert on "absolute" so the check stays robust if the
+		// upstream wording ever changes.
+		if !strings.Contains(err.Error(), "absolute") {
+			t.Errorf("expected absolute-path error, got: %v", err)
 		}
 	})
 
 	t.Run("rejects unclean safeDir with trailing separator", func(t *testing.T) {
 		base := t.TempDir()
-		// filepath.Clean strips the trailing separator; the guard relies
-		// on that difference to fail-fast on a non-normalised input.
+		// filepath.Clean strips the trailing "." element; the
+		// "sanitised != safeDir" guard trips on that difference to
+		// fail-fast on a non-normalised input.
 		dirty := base + string(filepath.Separator) + "."
 		state := config.State{BusBackend: "nats"}
 		err := writeNATSConfigIfNeeded(state, dirty)
 		if err == nil {
 			t.Fatalf("expected error for unclean safeDir %q, got nil", dirty)
 		}
-		if !strings.Contains(err.Error(), "non-sanitised") {
-			t.Errorf("expected non-sanitised error, got: %v", err)
+		if !strings.Contains(err.Error(), "not canonical") {
+			t.Errorf("expected not-canonical error, got: %v", err)
 		}
 	})
 }
