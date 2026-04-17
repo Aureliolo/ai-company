@@ -38,6 +38,11 @@ BackendName = Literal["sqlite", "postgres"]
 # lock, network hang, or malformed migration.  Applied via
 # ``Popen.wait(timeout=...)`` in ``_run_atlas``.
 _ATLAS_SUBPROCESS_TIMEOUT_SECONDS = 120.0
+_ATLAS_KILL_GRACE_SECONDS = 5.0
+"""Grace period for the Atlas subprocess to flush after kill.
+
+Mirrors the ``tools.atlas_kill_grace_timeout_seconds`` setting.
+"""
 
 
 def _redact_url(url: str) -> str:
@@ -401,7 +406,7 @@ async def _run_atlas(  # noqa: C901, PLR0915 -- subprocess lifecycle + cancellat
             proc.kill()
             # Drain pipes so the process actually exits.
             with contextlib.suppress(subprocess.TimeoutExpired):
-                proc.communicate(timeout=5)
+                proc.communicate(timeout=_ATLAS_KILL_GRACE_SECONDS)
             stderr_text = (exc.stderr or b"").decode(errors="replace")
             msg = (
                 f"Atlas command timed out after "
@@ -413,7 +418,7 @@ async def _run_atlas(  # noqa: C901, PLR0915 -- subprocess lifecycle + cancellat
             # not orphan the subprocess.
             proc.kill()
             with contextlib.suppress(subprocess.TimeoutExpired):
-                proc.communicate(timeout=5)
+                proc.communicate(timeout=_ATLAS_KILL_GRACE_SECONDS)
             raise
         return proc.returncode, out, err
 

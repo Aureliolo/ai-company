@@ -62,13 +62,28 @@ class DeviceFlowResult:
         self.expires_in = expires_in
 
 
+_DEFAULT_HTTP_TIMEOUT_SECONDS: float = 30.0
+"""Fallback OAuth HTTP timeout used when no operator override is supplied."""
+
+
 class DeviceFlow:
     """OAuth 2.1 device authorization flow (RFC 8628).
 
     Designed for CLI/headless use where the user cannot interact
     with a browser redirect.  The user enters a code at a URL
     displayed by the application.
+
+    Args:
+        http_timeout_seconds: HTTP timeout for initiate + poll token
+            calls (mirrors ``integrations.oauth_http_timeout_seconds``).
     """
+
+    def __init__(
+        self,
+        *,
+        http_timeout_seconds: float = _DEFAULT_HTTP_TIMEOUT_SECONDS,
+    ) -> None:
+        self._http_timeout_seconds = http_timeout_seconds
 
     @property
     def grant_type(self) -> str:
@@ -105,7 +120,7 @@ class DeviceFlow:
             payload["scope"] = " ".join(scopes)
 
         try:
-            async with httpx.AsyncClient(timeout=30) as client:
+            async with httpx.AsyncClient(timeout=self._http_timeout_seconds) as client:
                 resp = await client.post(
                     device_authorization_url,
                     data=payload,
@@ -235,7 +250,9 @@ class DeviceFlow:
             await asyncio.sleep(poll_interval)
 
             try:
-                async with httpx.AsyncClient(timeout=30) as client:
+                async with httpx.AsyncClient(
+                    timeout=self._http_timeout_seconds
+                ) as client:
                     resp = await client.post(token_url, data=payload)
                     status_code = resp.status_code
                     data = resp.json()

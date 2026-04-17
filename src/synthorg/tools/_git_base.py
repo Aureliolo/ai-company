@@ -48,6 +48,11 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 _DEFAULT_TIMEOUT: Final[float] = 30.0
+_DEFAULT_KILL_GRACE_SECONDS: Final[float] = 5.0
+"""Fallback kill-grace used when no operator override is supplied.
+
+Mirrors the ``tools.git_kill_grace_timeout_seconds`` setting.
+"""
 
 # Matches http(s)://userinfo@host patterns in git URLs.
 _CREDENTIAL_RE = re.compile(r"(https?://)[^@/]+@")
@@ -360,7 +365,7 @@ class _BaseGitTool(BaseTool, ABC):
             try:
                 _, raw_stderr = await asyncio.wait_for(
                     proc.communicate(),
-                    timeout=5.0,
+                    timeout=_DEFAULT_KILL_GRACE_SECONDS,
                 )
                 raw = raw_stderr.decode("utf-8", errors="replace").strip()
                 # Sanitize: strip control chars and truncate for safety.

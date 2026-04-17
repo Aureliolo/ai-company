@@ -33,13 +33,27 @@ from synthorg.observability.events.integrations import (
 
 logger = get_logger(__name__)
 
+_DEFAULT_HTTP_TIMEOUT_SECONDS: float = 30.0
+"""Fallback OAuth HTTP timeout used when no operator override is supplied."""
+
 
 class AuthorizationCodeFlow:
     """OAuth 2.1 authorization code flow with PKCE.
 
     Implements the three-step flow: start (build auth URL),
     exchange (code for tokens), and refresh.
+
+    Args:
+        http_timeout_seconds: HTTP timeout for token exchange + refresh
+            calls (mirrors ``integrations.oauth_http_timeout_seconds``).
     """
+
+    def __init__(
+        self,
+        *,
+        http_timeout_seconds: float = _DEFAULT_HTTP_TIMEOUT_SECONDS,
+    ) -> None:
+        self._http_timeout_seconds = http_timeout_seconds
 
     @property
     def grant_type(self) -> str:
@@ -137,7 +151,7 @@ class AuthorizationCodeFlow:
             "code_verifier": verifier,
         }
         try:
-            async with httpx.AsyncClient(timeout=30) as client:
+            async with httpx.AsyncClient(timeout=self._http_timeout_seconds) as client:
                 resp = await client.post(token_url, data=payload)
                 resp.raise_for_status()
                 data = resp.json()
@@ -172,7 +186,7 @@ class AuthorizationCodeFlow:
             "client_secret": client_secret,
         }
         try:
-            async with httpx.AsyncClient(timeout=30) as client:
+            async with httpx.AsyncClient(timeout=self._http_timeout_seconds) as client:
                 resp = await client.post(token_url, data=payload)
                 resp.raise_for_status()
                 data = resp.json()

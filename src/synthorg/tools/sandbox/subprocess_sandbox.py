@@ -46,6 +46,11 @@ logger = get_logger(__name__)
 _PATH_SEP = ";" if os.name == "nt" else ":"
 
 _DEFAULT_CONFIG = SubprocessSandboxConfig()
+_DEFAULT_KILL_GRACE_SECONDS: Final[float] = 5.0
+"""Fallback kill-grace used when no operator override is supplied.
+
+Mirrors the ``tools.subprocess_kill_grace_timeout_seconds`` setting.
+"""
 
 # Unix process-group support for killing child process trees.
 _HAS_PROCESS_GROUPS: Final[bool] = hasattr(os, "killpg")
@@ -476,7 +481,7 @@ class SubprocessSandbox:
         try:
             return await asyncio.wait_for(
                 proc.communicate(),
-                timeout=5.0,
+                timeout=_DEFAULT_KILL_GRACE_SECONDS,
             )
         except TimeoutError:
             logger.exception(

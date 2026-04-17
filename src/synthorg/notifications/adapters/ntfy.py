@@ -75,13 +75,14 @@ class NtfyNotificationSink:
         server_url: str,
         topic: str,
         token: str | None = None,
+        webhook_timeout_seconds: float = 10.0,
     ) -> None:
         _validate_outbound_url(server_url, "server_url")
         self._server_url = server_url.rstrip("/")
         self._topic = topic
         self._token = token
         self._client = httpx.AsyncClient(
-            timeout=10.0,
+            timeout=webhook_timeout_seconds,
             follow_redirects=False,
         )
 

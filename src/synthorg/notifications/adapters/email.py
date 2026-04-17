@@ -44,6 +44,7 @@ class EmailNotificationSink:
         "_host",
         "_password",
         "_port",
+        "_smtp_timeout_seconds",
         "_to_addrs",
         "_use_tls",
         "_username",
@@ -59,6 +60,7 @@ class EmailNotificationSink:
         from_addr: str,
         to_addrs: tuple[str, ...],
         use_tls: bool = True,
+        smtp_timeout_seconds: float = 10.0,
     ) -> None:
         self._host = host
         self._port = port
@@ -67,6 +69,7 @@ class EmailNotificationSink:
         self._from_addr = from_addr
         self._to_addrs = to_addrs
         self._use_tls = use_tls
+        self._smtp_timeout_seconds = smtp_timeout_seconds
 
     @property
     def sink_name(self) -> str:
@@ -113,7 +116,9 @@ class EmailNotificationSink:
             f"Timestamp: {notification.timestamp.isoformat()}"
         )
 
-        with smtplib.SMTP(self._host, self._port, timeout=10) as smtp:
+        with smtplib.SMTP(
+            self._host, self._port, timeout=self._smtp_timeout_seconds
+        ) as smtp:
             if self._use_tls:
                 context = ssl.create_default_context()
                 smtp.starttls(context=context)

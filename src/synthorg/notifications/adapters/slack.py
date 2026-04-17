@@ -62,11 +62,16 @@ class SlackNotificationSink:
 
     __slots__ = ("_client", "_webhook_url")
 
-    def __init__(self, *, webhook_url: str) -> None:
+    def __init__(
+        self,
+        *,
+        webhook_url: str,
+        webhook_timeout_seconds: float = 10.0,
+    ) -> None:
         _validate_outbound_url(webhook_url, "webhook_url")
         self._webhook_url = webhook_url
         self._client = httpx.AsyncClient(
-            timeout=10.0,
+            timeout=webhook_timeout_seconds,
             follow_redirects=False,
         )
 

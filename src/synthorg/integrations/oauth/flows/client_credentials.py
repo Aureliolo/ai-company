@@ -15,13 +15,30 @@ from synthorg.observability.events.integrations import (
 
 logger = get_logger(__name__)
 
+_DEFAULT_HTTP_TIMEOUT_SECONDS: float = 30.0
+"""Fallback OAuth HTTP timeout used when no operator override is supplied."""
+
 
 class ClientCredentialsFlow:
     """OAuth 2.1 client credentials flow for M2M auth.
 
     No user interaction required.  The client authenticates
     directly with its own credentials.
+
+    Args:
+        http_timeout_seconds: HTTP timeout for the token exchange call.
+            Defaults to :data:`_DEFAULT_HTTP_TIMEOUT_SECONDS`; callers
+            are expected to pass the operator-tuned value from
+            ``ConfigResolver.get_float('integrations',
+            'oauth_http_timeout_seconds')`` at construction.
     """
+
+    def __init__(
+        self,
+        *,
+        http_timeout_seconds: float = _DEFAULT_HTTP_TIMEOUT_SECONDS,
+    ) -> None:
+        self._http_timeout_seconds = http_timeout_seconds
 
     @property
     def grant_type(self) -> str:
@@ -64,7 +81,7 @@ class ClientCredentialsFlow:
             payload["scope"] = " ".join(scopes)
 
         try:
-            async with httpx.AsyncClient(timeout=30) as client:
+            async with httpx.AsyncClient(timeout=self._http_timeout_seconds) as client:
                 resp = await client.post(token_url, data=payload)
                 resp.raise_for_status()
                 data = resp.json()

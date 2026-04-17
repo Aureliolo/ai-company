@@ -31,10 +31,18 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 _SUBSCRIBER_ID: Final[str] = "__settings_dispatcher__"
-_POLL_TIMEOUT: Final[float] = 1.0
-_ERROR_BACKOFF: Final[float] = 1.0
-_MAX_CONSECUTIVE_ERRORS: Final[int] = 30
+_BOOTSTRAP_POLL_TIMEOUT: Final[float] = 1.0
+"""Fallback poll timeout used before the settings resolver is ready."""
+_BOOTSTRAP_ERROR_BACKOFF: Final[float] = 1.0
+"""Fallback error backoff used before the settings resolver is ready."""
+_BOOTSTRAP_MAX_CONSECUTIVE_ERRORS: Final[int] = 30
+"""Fallback error budget used before the settings resolver is ready."""
 _SETTINGS_CHANNEL: Final[str] = "#settings"
+
+# Legacy aliases (retain name-compat for callers reaching into this module).
+_POLL_TIMEOUT = _BOOTSTRAP_POLL_TIMEOUT
+_ERROR_BACKOFF = _BOOTSTRAP_ERROR_BACKOFF
+_MAX_CONSECUTIVE_ERRORS = _BOOTSTRAP_MAX_CONSECUTIVE_ERRORS
 
 
 class _ChangeMetadata(NamedTuple):

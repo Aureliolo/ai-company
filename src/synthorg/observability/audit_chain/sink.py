@@ -61,6 +61,11 @@ _SIGNING_EXECUTOR = ThreadPoolExecutor(
     max_workers=1,
     thread_name_prefix=_SIGNING_EXECUTOR_PREFIX,
 )
+_DEFAULT_SIGNING_TIMEOUT_SECONDS: float = 5.0
+"""Fallback sign/timestamp timeout.
+
+Mirrors the ``observability.audit_chain_signing_timeout_seconds`` setting.
+"""
 
 
 class AuditChainSink(logging.Handler):
@@ -234,7 +239,7 @@ class AuditChainSink(logging.Handler):
                 asyncio.run,
                 self._sign_and_timestamp(data),
             )
-            signed, ts_result = future.result(timeout=5.0)
+            signed, ts_result = future.result(timeout=_DEFAULT_SIGNING_TIMEOUT_SECONDS)
 
             with self._lock:
                 self._chain.append(
