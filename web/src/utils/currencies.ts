@@ -43,3 +43,14 @@ export type CurrencyCode = (typeof CURRENCY_OPTIONS)[number]['value']
 
 /** Default currency code (matches backend DEFAULT_CURRENCY). */
 export const DEFAULT_CURRENCY: CurrencyCode = 'EUR'
+
+/**
+ * Currency used to render ``cost_usd`` fields surfaced by the backend
+ * (``Task.cost_usd``, ``Message.metadata.cost_usd``, etc.). These
+ * values are intrinsically USD-denominated on the server
+ * (``synthorg.budget.cost_record``); formatting them with any other
+ * code would display a mismatched symbol. Kept as a named constant so
+ * the intent is greppable and the design-system rule about avoiding
+ * inline currency literals still reads cleanly at call sites.
+ */
+export const COST_USD_CURRENCY: CurrencyCode = 'USD'

@@ -20,6 +20,38 @@ type DateInput = string | number | Date | null | undefined
 const DATE_ONLY_RE = /^(\d{4})-(\d{2})-(\d{2})$/
 
 /**
+ * Memoized locale-validation cache. ``Intl.getCanonicalLocales`` throws
+ * ``RangeError`` on malformed BCP 47 tags; we catch that once per tag
+ * and remember the outcome so formatter helpers can fall back to
+ * ``getLocale()`` instead of crashing the render path.
+ */
+const LOCALE_VALIDITY_CACHE = new Map<string, boolean>()
+
+function isValidLocale(locale: string): boolean {
+  const cached = LOCALE_VALIDITY_CACHE.get(locale)
+  if (cached !== undefined) return cached
+  let valid: boolean
+  try {
+    Intl.getCanonicalLocales(locale)
+    valid = true
+  } catch {
+    valid = false
+  }
+  LOCALE_VALIDITY_CACHE.set(locale, valid)
+  return valid
+}
+
+/**
+ * Return ``locale`` when it is a valid BCP 47 tag, otherwise fall back
+ * to {@link getLocale}. Prevents caller-supplied malformed locales
+ * (e.g. from a settings store that has not yet been validated) from
+ * throwing ``RangeError`` inside ``toLocaleString`` / ``Intl.*``.
+ */
+function resolveLocale(locale: string): string {
+  return isValidLocale(locale) ? locale : getLocale()
+}
+
+/**
  * Parse {@link DateInput} to a ``Date`` (or ``null`` on invalid input).
  *
  * Date-only ISO strings (``YYYY-MM-DD``) are parsed into the local
@@ -69,7 +101,7 @@ export function formatDateTime(
 ): string {
   const date = toDate(value)
   if (!date) return '--'
-  return date.toLocaleString(locale, {
+  return date.toLocaleString(resolveLocale(locale), {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
@@ -96,7 +128,7 @@ export function formatDateOnly(
 ): string {
   const date = toDate(value)
   if (!date) return '--'
-  return date.toLocaleDateString(locale, {
+  return date.toLocaleDateString(resolveLocale(locale), {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
@@ -114,7 +146,7 @@ export function formatTime(
 ): string {
   const date = toDate(value)
   if (!date) return '--'
-  return date.toLocaleTimeString(locale, {
+  return date.toLocaleTimeString(resolveLocale(locale), {
     hour: '2-digit',
     minute: '2-digit',
   })
@@ -131,7 +163,10 @@ export function formatDayLabel(
 ): string {
   const date = toDate(value)
   if (!date) return '--'
-  return date.toLocaleDateString(locale, { month: 'short', day: 'numeric' })
+  return date.toLocaleDateString(resolveLocale(locale), {
+    month: 'short',
+    day: 'numeric',
+  })
 }
 
 /**
@@ -168,7 +203,9 @@ export function formatRelativeTime(
   const diffSec = Math.floor(diffMs / MS_PER_SECOND)
   if (diffSec >= SEC_PER_WEEK) return formatDateTime(iso, locale)
 
-  const rtf = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' })
+  const rtf = new Intl.RelativeTimeFormat(resolveLocale(locale), {
+    numeric: 'auto',
+  })
   if (diffSec < SEC_PER_MIN) return rtf.format(-diffSec, 'second')
   if (diffSec < SEC_PER_HOUR) {
     return rtf.format(-Math.floor(diffSec / SEC_PER_MIN), 'minute')
@@ -196,7 +233,7 @@ export function formatCurrency(
 ): string {
   if (!Number.isFinite(value)) return '--'
   try {
-    return new Intl.NumberFormat(locale, {
+    return new Intl.NumberFormat(resolveLocale(locale), {
       style: 'currency',
       currency: currencyCode,
     }).format(value)
@@ -223,7 +260,7 @@ export function formatCurrencyCompact(
 ): string {
   if (!Number.isFinite(value)) return '--'
   try {
-    return new Intl.NumberFormat(locale, {
+    return new Intl.NumberFormat(resolveLocale(locale), {
       style: 'currency',
       currency: currencyCode,
       maximumFractionDigits: 0,
@@ -247,7 +284,7 @@ export function formatNumber(
   locale: string = getLocale(),
 ): string {
   if (!Number.isFinite(value)) return '--'
-  return new Intl.NumberFormat(locale).format(value)
+  return new Intl.NumberFormat(resolveLocale(locale)).format(value)
 }
 
 /**
@@ -261,7 +298,7 @@ export function formatTokenCount(
 ): string {
   if (!Number.isFinite(value)) return '--'
   if (value < COMPACT_K_THRESHOLD) return formatNumber(value, locale)
-  return new Intl.NumberFormat(locale, {
+  return new Intl.NumberFormat(resolveLocale(locale), {
     notation: 'compact',
     maximumFractionDigits: 1,
   }).format(value)

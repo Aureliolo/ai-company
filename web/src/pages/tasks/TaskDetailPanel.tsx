@@ -10,6 +10,7 @@ import { PriorityBadge } from '@/components/ui/task-status-indicator'
 import { Avatar } from '@/components/ui/avatar'
 import { springDefault, overlayBackdrop, tweenExitFast } from '@/lib/motion'
 import { getTaskStatusLabel, getTaskTypeLabel, getAvailableTransitions, getPriorityLabel } from '@/utils/tasks'
+import { COST_USD_CURRENCY } from '@/utils/currencies'
 import { formatDate, formatCurrency } from '@/utils/format'
 import { useToastStore } from '@/stores/toast'
 import { getErrorMessage } from '@/utils/errors'
@@ -228,7 +229,7 @@ export function TaskDetailPanel({
                   <MetaField icon={Calendar} label="Deadline" value={formatDate(task.deadline)} />
                 )}
                 {task.cost_usd != null && (
-                  <MetaField icon={Tag} label="Cost" value={formatCurrency(task.cost_usd, 'USD')} />
+                  <MetaField icon={Tag} label="Cost" value={formatCurrency(task.cost_usd, COST_USD_CURRENCY)} />
                 )}
               </div>
 

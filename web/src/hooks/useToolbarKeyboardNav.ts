@@ -32,6 +32,12 @@ export function useToolbarKeyboardNav<
     const container = ref.current
     if (!container) return
 
+    // Preserve browser and assistive-tech shortcuts (Ctrl/Cmd/Alt/Shift
+    // chords) -- the toolbar only owns plain arrow/Home/End navigation.
+    if (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) {
+      return
+    }
+
     // Do not intercept arrow keys inside editable controls -- the
     // native caret/value navigation must take precedence. Home/End
     // inside inputs also matters for text editing and we intentionally

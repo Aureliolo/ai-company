@@ -5,16 +5,9 @@ import { Avatar } from '@/components/ui/avatar'
 import { TaskStatusIndicator } from '@/components/ui/task-status-indicator'
 import { PriorityBadge } from '@/components/ui/task-status-indicator'
 import { useFlash } from '@/hooks/useFlash'
+import { COST_USD_CURRENCY } from '@/utils/currencies'
 import { formatRelativeTime, formatCurrency } from '@/utils/format'
 import type { Task } from '@/api/types'
-
-// ``Task.cost_usd`` is intrinsically USD-denominated on the backend
-// (see ``synthorg.budget.cost_record.CostRecord.cost_usd``). Format
-// it with its native currency code rather than ``DEFAULT_CURRENCY``
-// so the symbol matches the value. Converting to another currency
-// would require an up-to-date FX rate which the dashboard does not
-// currently carry.
-const COST_USD_CURRENCY_CODE = 'USD'
 
 export interface TaskCardProps {
   task: Task
@@ -56,8 +49,10 @@ export function TaskCard({ task, onSelect, isDragging, isOverlay, className, ref
         'cursor-pointer rounded-lg border border-border bg-card p-card transition-colors',
         'hover:border-border-bright hover:bg-card-hover hover:-translate-y-px hover:shadow-[var(--so-shadow-card-hover)]',
         FOCUS_RING,
-        isDragging && 'scale-[1.02] opacity-50 shadow-lg',
-        isOverlay && 'scale-[1.02] shadow-lg border-accent/50',
+        // Elevated shadow while drag/overlay is active -- same token the
+        // hover state uses, keeps shadow weight consistent across states.
+        isDragging && 'scale-[1.02] opacity-50 shadow-[var(--so-shadow-card-hover)]',
+        isOverlay && 'scale-[1.02] shadow-[var(--so-shadow-card-hover)] border-accent/50',
         className,
       )}
       {...props}
@@ -95,7 +90,7 @@ export function TaskCard({ task, onSelect, isDragging, isOverlay, className, ref
 
           {task.cost_usd != null && task.cost_usd > 0 && (
             <span className="text-[10px] font-mono">
-              {formatCurrency(task.cost_usd, COST_USD_CURRENCY_CODE)}
+              {formatCurrency(task.cost_usd, COST_USD_CURRENCY)}
             </span>
           )}
 

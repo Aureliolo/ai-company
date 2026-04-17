@@ -106,12 +106,16 @@ export const useTrainingStore = create<TrainingState>()((set, get) => ({
       set((state) => ({
         resultsByAgent: setMap(state.resultsByAgent, agentName, result),
         loading: setMap(state.loading, agentName, false),
+        // Successful read supersedes any older per-agent error banner
+        // so overlapping requests cannot leave stale state behind.
+        error: setMap(state.error, agentName, null),
       }))
     } catch (err) {
       if (isExpectedNotFound(err)) {
         set((state) => ({
           resultsByAgent: setMap(state.resultsByAgent, agentName, null),
           loading: setMap(state.loading, agentName, false),
+          error: setMap(state.error, agentName, null),
         }))
         return
       }
