@@ -82,14 +82,22 @@ def welch_t_test(
     mean_b = math.fsum(b) / n_b
     var_a = math.fsum((x - mean_a) ** 2 for x in a) / (n_a - 1)
     var_b = math.fsum((x - mean_b) ** 2 for x in b) / (n_b - 1)
-    if var_a <= 0.0 or var_b <= 0.0:
-        msg = f"both arms require non-zero variance; var_a={var_a}, var_b={var_b}"
+
+    # Welch can still run when exactly one arm is constant: the pooled
+    # standard error stays positive and the df ratio stays finite. Only
+    # reject when both arms are flat (se_sq == 0, t undefined) or when
+    # the df denominator collapses.
+    se_sq = var_a / n_a + var_b / n_b
+    df_den = (var_a / n_a) ** 2 / (n_a - 1) + (var_b / n_b) ** 2 / (n_b - 1)
+    if se_sq <= 0.0 or df_den <= 0.0:
+        msg = (
+            f"both arms require non-zero variance; "
+            f"var_a={var_a}, var_b={var_b}, se_sq={se_sq}, df_den={df_den}"
+        )
         raise ZeroVarianceError(msg)
 
-    se_sq = var_a / n_a + var_b / n_b
     t = (mean_a - mean_b) / math.sqrt(se_sq)
     df_num = se_sq * se_sq
-    df_den = (var_a / n_a) ** 2 / (n_a - 1) + (var_b / n_b) ** 2 / (n_b - 1)
     df = df_num / df_den
 
     x = df / (df + t * t)

@@ -64,6 +64,11 @@ class ABTestComparator:
         significance_level: float = 0.05,
     ) -> None:
         if not 0.0 < significance_level < 1.0:
+            logger.warning(
+                META_ABTEST_INCONCLUSIVE,
+                reason="invalid_significance_level",
+                significance_level=significance_level,
+            )
             msg = "significance_level must be in (0, 1)"
             raise ValueError(msg)
         self._min_observations = min_observations
@@ -244,14 +249,21 @@ def _check_regressions(
         if drop > thresholds.success_rate_drop:
             regressed.append("success_rate")
 
-    # Cost increase (higher is worse).
-    if control.total_spend == 0.0:
-        if treatment.total_spend > 0.0:
-            regressed.append("cost")
-    else:
-        increase = (treatment.total_spend - control.total_spend) / control.total_spend
-        if increase > thresholds.cost_increase:
-            regressed.append("cost")
+    # Cost increase (higher is worse). Compare per-agent average spend
+    # rather than raw totals so the comparison is robust to unequal
+    # group sizes (a treatment arm with 2x agents is not 2x worse).
+    control_n = control.observation_count
+    treatment_n = treatment.observation_count
+    if control_n > 0 and treatment_n > 0:
+        control_avg_spend = control.total_spend / control_n
+        treatment_avg_spend = treatment.total_spend / treatment_n
+        if control_avg_spend == 0.0:
+            if treatment_avg_spend > 0.0:
+                regressed.append("cost")
+        else:
+            increase = (treatment_avg_spend - control_avg_spend) / control_avg_spend
+            if increase > thresholds.cost_increase:
+                regressed.append("cost")
 
     return regressed
 

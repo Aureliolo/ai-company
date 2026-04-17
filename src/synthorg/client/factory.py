@@ -94,32 +94,68 @@ def build_requirement_generator(
     strategy = str(config.strategy)
     if strategy == "template":
         if config.template_path is None:
+            logger.warning(
+                "client.factory.unknown_strategy",
+                factory="requirement_generator",
+                strategy=strategy,
+                missing="config.template_path",
+            )
             msg = "template strategy requires config.template_path"
             raise UnknownStrategyError(msg)
         return TemplateGenerator(template_path=Path(config.template_path))
     if strategy == "llm":
         if provider is None:
+            logger.warning(
+                "client.factory.unknown_strategy",
+                factory="requirement_generator",
+                strategy=strategy,
+                missing="provider",
+            )
             msg = "llm strategy requires a provider"
             raise UnknownStrategyError(msg)
         effective_model = model or config.llm_model
         if effective_model is None:
+            logger.warning(
+                "client.factory.unknown_strategy",
+                factory="requirement_generator",
+                strategy=strategy,
+                missing="model",
+            )
             msg = "llm strategy requires model (argument or config.llm_model)"
             raise UnknownStrategyError(msg)
         return LLMGenerator(provider=provider, model=effective_model)
     if strategy == "dataset":
         if config.dataset_path is None:
+            logger.warning(
+                "client.factory.unknown_strategy",
+                factory="requirement_generator",
+                strategy=strategy,
+                missing="config.dataset_path",
+            )
             msg = "dataset strategy requires config.dataset_path"
             raise UnknownStrategyError(msg)
         return DatasetGenerator(dataset_path=Path(config.dataset_path))
     if strategy == "procedural":
         return ProceduralGenerator()
     if strategy == "hybrid":
+        logger.warning(
+            "client.factory.unknown_strategy",
+            factory="requirement_generator",
+            strategy=strategy,
+            reason="no_single_argument_factory",
+        )
         msg = (
             "hybrid strategy has no single-argument factory; compose "
             "HybridGenerator directly with a tuple of "
             "(generator, weight) pairs"
         )
         raise UnknownStrategyError(msg)
+    logger.warning(
+        "client.factory.unknown_strategy",
+        factory="requirement_generator",
+        strategy=strategy,
+        expected=sorted(_GENERATOR_STRATEGIES),
+    )
     msg = (
         f"unknown requirement generator strategy {strategy!r}; "
         f"expected one of {sorted(_GENERATOR_STRATEGIES)}"
@@ -209,7 +245,7 @@ def build_client_pool_strategy(
 
 
 def build_entry_point_strategy(
-    adapter: str,
+    adapter: NotBlankStr,
     *,
     project_id: NotBlankStr | None = None,
 ) -> EntryPointStrategy:

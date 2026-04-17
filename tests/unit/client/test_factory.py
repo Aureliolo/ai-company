@@ -1,5 +1,7 @@
 """Tests for client-simulation factory dispatch."""
 
+from pathlib import Path
+
 import pytest
 
 from synthorg.client.adapters import (
@@ -25,7 +27,10 @@ from synthorg.client.feedback.adversarial import AdversarialFeedback
 from synthorg.client.feedback.binary import BinaryFeedback
 from synthorg.client.feedback.criteria_check import CriteriaCheckFeedback
 from synthorg.client.feedback.scored import ScoredFeedback
+from synthorg.client.generators.dataset import DatasetGenerator
+from synthorg.client.generators.llm import LLMGenerator
 from synthorg.client.generators.procedural import ProceduralGenerator
+from synthorg.client.generators.template import TemplateGenerator
 from synthorg.client.pool import (
     DomainMatchedStrategy,
     RoundRobinStrategy,
@@ -41,33 +46,25 @@ pytestmark = pytest.mark.unit
 
 
 class TestFeedbackFactory:
-    def test_binary(self) -> None:
-        impl = build_feedback_strategy(
-            FeedbackConfig(strategy="binary"),
-            client_id=NotBlankStr("c1"),
-        )
-        assert isinstance(impl, BinaryFeedback)
-
-    def test_scored(self) -> None:
-        impl = build_feedback_strategy(
-            FeedbackConfig(strategy="scored", passing_score=0.75),
-            client_id=NotBlankStr("c1"),
-        )
-        assert isinstance(impl, ScoredFeedback)
-
-    def test_criteria_check(self) -> None:
-        impl = build_feedback_strategy(
-            FeedbackConfig(strategy="criteria_check"),
-            client_id=NotBlankStr("c1"),
-        )
-        assert isinstance(impl, CriteriaCheckFeedback)
-
-    def test_adversarial(self) -> None:
-        impl = build_feedback_strategy(
-            FeedbackConfig(strategy="adversarial"),
-            client_id=NotBlankStr("c1"),
-        )
-        assert isinstance(impl, AdversarialFeedback)
+    @pytest.mark.parametrize(
+        ("config", "expected_type"),
+        [
+            (FeedbackConfig(strategy="binary"), BinaryFeedback),
+            (
+                FeedbackConfig(strategy="scored", passing_score=0.75),
+                ScoredFeedback,
+            ),
+            (FeedbackConfig(strategy="criteria_check"), CriteriaCheckFeedback),
+            (FeedbackConfig(strategy="adversarial"), AdversarialFeedback),
+        ],
+    )
+    def test_dispatch_by_strategy(
+        self,
+        config: FeedbackConfig,
+        expected_type: type,
+    ) -> None:
+        impl = build_feedback_strategy(config, client_id=NotBlankStr("c1"))
+        assert isinstance(impl, expected_type)
 
     def test_unknown_raises(self) -> None:
         with pytest.raises(UnknownStrategyError, match="unknown feedback"):
@@ -153,12 +150,63 @@ class TestEntryPointFactory:
             build_entry_point_strategy("unknown")
 
 
+class _StubProvider:
+    """Minimal ``CompletionProvider`` stub for factory tests.
+
+    The factory only wires the provider into ``LLMGenerator``; it
+    never calls it. Using a stub avoids dragging a real provider
+    backend into unit tests while still letting the happy path
+    construct a real ``LLMGenerator``.
+    """
+
+
 class TestRequirementGeneratorFactory:
     def test_procedural(self) -> None:
         impl = build_requirement_generator(
             RequirementGeneratorConfig(strategy="procedural"),
         )
         assert isinstance(impl, ProceduralGenerator)
+
+    def test_template_happy_path(self, tmp_path: Path) -> None:
+        """``template`` strategy with ``template_path`` returns a TemplateGenerator."""
+        template_file = tmp_path / "req.json"
+        template_file.write_text(
+            '[{"title": "t", "description": "d"}]',
+            encoding="utf-8",
+        )
+        impl = build_requirement_generator(
+            RequirementGeneratorConfig(
+                strategy="template",
+                template_path=str(template_file),
+            ),
+        )
+        assert isinstance(impl, TemplateGenerator)
+
+    def test_dataset_happy_path(self, tmp_path: Path) -> None:
+        """``dataset`` strategy with ``dataset_path`` returns a DatasetGenerator."""
+        dataset_file = tmp_path / "rows.jsonl"
+        dataset_file.write_text(
+            '{"title":"t","description":"d","priority":"medium"}\n',
+            encoding="utf-8",
+        )
+        impl = build_requirement_generator(
+            RequirementGeneratorConfig(
+                strategy="dataset",
+                dataset_path=str(dataset_file),
+            ),
+        )
+        assert isinstance(impl, DatasetGenerator)
+
+    def test_llm_happy_path(self) -> None:
+        """``llm`` strategy with provider + model returns an LLMGenerator."""
+        impl = build_requirement_generator(
+            RequirementGeneratorConfig(
+                strategy="llm",
+                llm_model=NotBlankStr("test-small-001"),
+            ),
+            provider=_StubProvider(),  # type: ignore[arg-type]
+        )
+        assert isinstance(impl, LLMGenerator)
 
     def test_template_requires_path(self) -> None:
         with pytest.raises(UnknownStrategyError, match="template_path"):

@@ -125,8 +125,8 @@ class TestErrorCases:
         [
             ((1.0,), (1.0, 2.0, 3.0), InsufficientDataError),
             ((1.0, 2.0, 3.0), (), InsufficientDataError),
-            ((5.0, 5.0, 5.0), (1.0, 2.0, 3.0), ZeroVarianceError),
-            ((1.0, 2.0, 3.0), (7.0, 7.0, 7.0), ZeroVarianceError),
+            # Both arms flat: se_sq == 0, test is undefined.
+            ((5.0, 5.0, 5.0), (7.0, 7.0, 7.0), ZeroVarianceError),
         ],
     )
     def test_degenerate_inputs_raise(
@@ -137,6 +137,24 @@ class TestErrorCases:
     ) -> None:
         with pytest.raises(expected_exc):
             welch_t_test(left, right)
+
+    @pytest.mark.parametrize(
+        ("left", "right"),
+        [
+            # Only the left arm is constant; Welch can still run via
+            # the non-zero variance on the right.
+            ((5.0, 5.0, 5.0), (1.0, 2.0, 3.0)),
+            # Mirror case: only the right arm is constant.
+            ((1.0, 2.0, 3.0), (7.0, 7.0, 7.0)),
+        ],
+    )
+    def test_one_arm_constant_still_runs(
+        self,
+        left: tuple[float, ...],
+        right: tuple[float, ...],
+    ) -> None:
+        result = welch_t_test(left, right)
+        assert 0.0 <= result.p_two_sided <= 1.0
 
 
 class TestWelchResultModel:

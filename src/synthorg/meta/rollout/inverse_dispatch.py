@@ -16,6 +16,7 @@ from synthorg.observability.events.meta import (
     META_ROLLBACK_ARCHITECTURE_REVERTED,
     META_ROLLBACK_CODE_REVERTED,
     META_ROLLBACK_CONFIG_REVERTED,
+    META_ROLLBACK_OPERATION_FAILED,
     META_ROLLBACK_PROMPT_REVERTED,
 )
 
@@ -116,6 +117,13 @@ class RestorePromptHandler:
         """Reinstall the previous prompt principle."""
         text = operation.previous_value
         if not isinstance(text, str):
+            logger.warning(
+                META_ROLLBACK_OPERATION_FAILED,
+                operation_type="restore_prompt",
+                target=str(operation.target),
+                reason="non_string_previous_value",
+                got_type=type(text).__name__,
+            )
             msg = (
                 f"restore_prompt requires a string previous_value; "
                 f"got {type(text).__name__}"
@@ -161,6 +169,13 @@ class RevertCodeHandler:
         """Write ``previous_value`` back to the file at ``target``."""
         content = operation.previous_value
         if not isinstance(content, str):
+            logger.warning(
+                META_ROLLBACK_OPERATION_FAILED,
+                operation_type="revert_code",
+                target=str(operation.target),
+                reason="non_string_previous_value",
+                got_type=type(content).__name__,
+            )
             msg = (
                 f"revert_code requires a string previous_value (file "
                 f"contents); got {type(content).__name__}"

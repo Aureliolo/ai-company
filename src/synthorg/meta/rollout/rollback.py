@@ -6,6 +6,7 @@ operation types fail loudly; per-operation failures stop the loop
 immediately rather than silently partial-applying.
 """
 
+from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 from synthorg.meta.models import (
@@ -48,8 +49,15 @@ class RollbackExecutor:
         *,
         handlers: Mapping[NotBlankStr, RollbackHandler] | None = None,
     ) -> None:
-        self._handlers: Mapping[NotBlankStr, RollbackHandler] = (
-            handlers if handlers is not None else {}
+        # Shallow copy of the dispatch table + read-only wrapper:
+        # callers can't swap entries after construction, but handler
+        # instances stay identity-stable so their mutable state
+        # (counters, caches) remains observable to owners and tests.
+        snapshot: dict[NotBlankStr, RollbackHandler] = (
+            dict(handlers) if handlers else {}
+        )
+        self._handlers: Mapping[NotBlankStr, RollbackHandler] = MappingProxyType(
+            snapshot,
         )
 
     async def execute(
@@ -82,6 +90,13 @@ class RollbackExecutor:
             try:
                 changes = await handler.revert(operation)
             except MemoryError, RecursionError:
+                logger.exception(
+                    META_ROLLBACK_OPERATION_FAILED,
+                    proposal_id=str(proposal.id),
+                    operation_type=operation.operation_type,
+                    target=operation.target,
+                    reason="catastrophic_error",
+                )
                 raise
             except Exception as exc:
                 logger.exception(

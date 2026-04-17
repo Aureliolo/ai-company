@@ -339,10 +339,18 @@ def _samples_to_metrics(
     samples: GroupSamples,
     group: ABTestGroup,
 ) -> GroupMetrics:
-    """Wrap aligned sample tuples in a ``GroupMetrics``."""
+    """Wrap aligned sample tuples in a ``GroupMetrics``.
+
+    ``agent_count`` reflects agents that actually contributed samples
+    (``samples.agent_ids``), not everyone who was assigned to the group.
+    The aggregator drops agents missing metrics, so reporting the
+    assigned count would overstate the effective sample size and let
+    Welch think it had more data than it does.
+    """
+    _ = agent_ids
     return GroupMetrics(
         group=group,
-        agent_count=len(agent_ids),
+        agent_count=len(samples.agent_ids),
         quality_samples=samples.quality_samples,
         success_samples=samples.success_samples,
         spend_samples=samples.spend_samples,

@@ -1,7 +1,6 @@
 """Tests for the Clock protocol and RealClock implementation."""
 
 import asyncio
-import time
 from datetime import UTC
 
 import pytest
@@ -13,7 +12,13 @@ pytestmark = pytest.mark.unit
 
 
 class TestRealClock:
-    """Behavioural tests for the wall-clock implementation."""
+    """Behavioural tests for the wall-clock implementation.
+
+    Timing is verified by patching ``asyncio.sleep`` and asserting the
+    delegated duration, never by measuring wall time. Per CLAUDE.md's
+    flaky-test guidance, mocked sleep keeps these tests deterministic
+    across machines and CI runners.
+    """
 
     async def test_now_returns_aware_utc(self) -> None:
         clock = RealClock()
@@ -23,18 +28,33 @@ class TestRealClock:
         assert offset is not None
         assert offset.total_seconds() == 0.0
 
-    async def test_sleep_actually_waits(self) -> None:
-        clock = RealClock()
-        started = time.monotonic()
-        await clock.sleep(0.05)
-        elapsed = time.monotonic() - started
-        assert elapsed >= 0.045  # allow tiny scheduler jitter below nominal
+    async def test_sleep_delegates_to_asyncio_sleep(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """``RealClock.sleep`` awaits ``asyncio.sleep`` with the same duration."""
+        calls: list[float] = []
 
-    async def test_sleep_zero_returns_immediately(self) -> None:
-        clock = RealClock()
-        started = time.monotonic()
-        await clock.sleep(0.0)
-        assert time.monotonic() - started < 0.02
+        async def fake_sleep(seconds: float) -> None:
+            calls.append(seconds)
+
+        monkeypatch.setattr(asyncio, "sleep", fake_sleep)
+        await RealClock().sleep(0.05)
+        assert calls == [0.05]
+
+    async def test_sleep_zero_still_delegates(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """``RealClock.sleep(0.0)`` still hands off to ``asyncio.sleep``."""
+        calls: list[float] = []
+
+        async def fake_sleep(seconds: float) -> None:
+            calls.append(seconds)
+
+        monkeypatch.setattr(asyncio, "sleep", fake_sleep)
+        await RealClock().sleep(0.0)
+        assert calls == [0.0]
 
     async def test_sleep_rejects_negative(self) -> None:
         clock = RealClock()

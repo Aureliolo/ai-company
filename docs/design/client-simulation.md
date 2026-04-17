@@ -246,7 +246,7 @@ class ClientSimulationConfig(BaseModel):
 
 Each client strategy family has a config discriminator that a factory
 function in `synthorg.client.factory` dispatches to the concrete
-implementation. Misconfiguration fails loud -- every factory raises
+implementation. Misconfiguration fails loudly -- every factory raises
 `UnknownStrategyError` (a `ValueError` subclass) on an unknown
 discriminator rather than silently falling back to a default.
 

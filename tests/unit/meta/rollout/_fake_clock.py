@@ -1,8 +1,12 @@
 """Deterministic fake Clock implementation for rollout tests.
 
-Satisfies ``synthorg.meta.rollout.clock.Clock`` structurally. Time
-advances only when ``advance`` is called explicitly, so observation
-windows complete in microseconds regardless of their configured hours.
+Satisfies ``synthorg.meta.rollout.clock.Clock`` structurally. The
+internal ``_now`` advances whenever either ``sleep(seconds)`` or
+``advance(seconds)`` is called -- no real waiting happens, so an
+observation window configured for 48 hours completes in microseconds.
+Use ``sleep`` in code under test (it records the requested duration
+in ``sleep_calls``) and ``advance`` in tests that want to move time
+without recording a sleep call.
 """
 
 from datetime import UTC, datetime, timedelta

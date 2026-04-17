@@ -11,6 +11,7 @@ source is wired the detector yields ``INSUFFICIENT_DATA``: the
 detector refuses to fire without data rather than guessing.
 """
 
+import math
 from datetime import datetime  # noqa: TC003 -- Pydantic needs at runtime
 from typing import Protocol, runtime_checkable
 
@@ -125,7 +126,7 @@ class StatisticalDetector:
         thresholds: RegressionThresholds,
     ) -> RegressionResult:
         """Check for a statistically significant regression."""
-        _ = thresholds  # alpha lives on the detector; keep signature stable
+        _ = baseline, current, thresholds  # alpha lives on the detector
         baseline_samples = await self._source.fetch_for_window(
             window_end=baseline.collected_at,
         )
@@ -138,8 +139,6 @@ class StatisticalDetector:
             baseline=baseline_samples.quality_samples,
             current=current_samples.quality_samples,
             lower_is_worse=True,
-            base_value=baseline.performance.avg_quality_score,
-            curr_value=current.performance.avg_quality_score,
         )
         if verdict is not None:
             return verdict
@@ -148,8 +147,6 @@ class StatisticalDetector:
             baseline=baseline_samples.success_samples,
             current=current_samples.success_samples,
             lower_is_worse=True,
-            base_value=baseline.performance.avg_success_rate,
-            curr_value=current.performance.avg_success_rate,
         )
         if verdict is not None:
             return verdict
@@ -158,8 +155,6 @@ class StatisticalDetector:
             baseline=baseline_samples.cost_samples,
             current=current_samples.cost_samples,
             lower_is_worse=False,
-            base_value=baseline.budget.total_spend,
-            curr_value=current.budget.total_spend,
         )
         if verdict is not None:
             return verdict
@@ -174,17 +169,21 @@ class StatisticalDetector:
             )
         return RegressionResult(verdict=RegressionVerdict.NO_REGRESSION)
 
-    def _check_metric(  # noqa: PLR0913
+    def _check_metric(
         self,
         *,
         metric: str,
         baseline: tuple[float, ...],
         current: tuple[float, ...],
         lower_is_worse: bool,
-        base_value: float,
-        curr_value: float,
     ) -> RegressionResult | None:
-        """Run Welch on a single metric. Returns a verdict on regression."""
+        """Run Welch on a single metric. Returns a verdict on regression.
+
+        ``base_value`` and ``curr_value`` are derived from the sample
+        tuples themselves (sample means) so the direction check stays
+        consistent with what Welch actually saw, rather than drifting
+        from snapshot aggregates produced by a different aggregator.
+        """
         if (
             len(baseline) < self._min_data_points
             or len(current) < self._min_data_points
@@ -201,6 +200,8 @@ class StatisticalDetector:
                 current_samples=len(current),
             )
             return None
+        base_value = math.fsum(baseline) / len(baseline)
+        curr_value = math.fsum(current) / len(current)
         if welch.p_two_sided >= self._alpha:
             return None
         if lower_is_worse:
@@ -214,6 +215,8 @@ class StatisticalDetector:
             p_value=welch.p_two_sided,
             t=welch.t,
             df=welch.df,
+            base_value=base_value,
+            curr_value=curr_value,
         )
         return RegressionResult(
             verdict=RegressionVerdict.STATISTICAL_REGRESSION,
