@@ -45,6 +45,12 @@ logger = get_logger(__name__)
 _MAX_ENFORCE_BATCH = 1000
 _MAX_ENFORCE_BATCH_MIN = 100
 _MAX_ENFORCE_BATCH_MAX = 10_000
+# ``MemoryQuery.limit`` has its own schema bound (``le=1000``); the
+# max-enforce batch settings allows up to 10k records, so each
+# per-batch fetch has to be clamped to the query-layer bound before
+# constructing the MemoryQuery below. The enforce loop just issues
+# more MemoryQuery fetches to cover any excess.
+_MEMORY_QUERY_MAX_LIMIT = 1000
 
 
 class MemoryConsolidationService:
@@ -183,7 +189,12 @@ class MemoryConsolidationService:
             remaining = excess
             while remaining > 0:
                 batch_size = min(remaining, self._max_enforce_batch)
-                query = MemoryQuery(limit=batch_size)
+                # Cap the per-fetch size to MemoryQuery's own upper
+                # bound; ``self._max_enforce_batch`` can exceed it
+                # (up to 10k) and the query would then fail
+                # validation before hitting the backend.
+                effective_limit = min(batch_size, _MEMORY_QUERY_MAX_LIMIT)
+                query = MemoryQuery(limit=effective_limit)
                 entries = await self._backend.retrieve(agent_id, query)
                 if not entries:
                     break

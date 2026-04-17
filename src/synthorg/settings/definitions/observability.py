@@ -150,10 +150,14 @@ _r.register(
         type=SettingType.FLOAT,
         default="5.0",
         description=(
-            "Timeout for signing and timestamp operations in the audit-chain sink"
+            "Timeout for signing and timestamp operations in the audit-chain"
+            " sink. Applied once at API startup via"
+            " AuditChainSink.set_signing_timeout_seconds; runtime dispatch is"
+            " not wired, so a change requires a process restart."
         ),
         group="Audit Chain",
         level=SettingLevel.ADVANCED,
+        restart_required=True,
         min_value=1.0,
         max_value=60.0,
         yaml_path="logging.audit_chain.signing_timeout_seconds",

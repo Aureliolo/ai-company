@@ -18,7 +18,8 @@ Covers the consumer-side plumbing added for #1398 / #1400:
   once-per-run-of-failures and re-arms on recovery.
 - :class:`AppState.bridge_config_applied` starts ``False`` and flips
   to ``True`` exactly once via :meth:`mark_bridge_config_applied`;
-  :meth:`set_notification_dispatcher` swaps the active dispatcher.
+  :meth:`swap_notification_dispatcher` swaps the active dispatcher and
+  returns the previous instance so the caller can close its sinks.
 - :func:`build_notification_dispatcher` threads timeouts from a
   ``NotificationsBridgeConfig`` into the concrete sink constructors.
 - :func:`resolve_oauth_http_timeout` returns the resolver value on
@@ -59,66 +60,92 @@ from synthorg.tools.sandbox.subprocess_sandbox import SubprocessSandbox
 # ── Notification adapters: positive timeout validation ─────────
 
 
-class TestNotificationAdapterTimeoutValidation:
-    """The new timeout kwargs must reject zero and negative values."""
+def _slack_factory(timeout: float) -> object:
+    return SlackNotificationSink(
+        webhook_url="https://hooks.slack.com/services/T/B/XYZ",
+        webhook_timeout_seconds=timeout,
+    )
 
-    @pytest.mark.unit
-    def test_slack_rejects_zero_timeout(self) -> None:
-        with pytest.raises(ValueError, match="webhook_timeout_seconds"):
-            SlackNotificationSink(
-                webhook_url="https://hooks.slack.com/services/T/B/XYZ",
-                webhook_timeout_seconds=0,
-            )
 
-    @pytest.mark.unit
-    def test_slack_rejects_negative_timeout(self) -> None:
-        with pytest.raises(ValueError, match="webhook_timeout_seconds"):
-            SlackNotificationSink(
-                webhook_url="https://hooks.slack.com/services/T/B/XYZ",
-                webhook_timeout_seconds=-1.0,
-            )
+def _ntfy_factory(timeout: float) -> object:
+    return NtfyNotificationSink(
+        server_url="https://ntfy.example.com",
+        topic="alerts",
+        webhook_timeout_seconds=timeout,
+    )
 
-    @pytest.mark.unit
-    def test_ntfy_rejects_zero_timeout(self) -> None:
-        with pytest.raises(ValueError, match="webhook_timeout_seconds"):
-            NtfyNotificationSink(
-                server_url="https://ntfy.example.com",
-                topic="alerts",
-                webhook_timeout_seconds=0,
-            )
 
-    @pytest.mark.unit
-    def test_email_rejects_zero_timeout(self) -> None:
-        with pytest.raises(ValueError, match="smtp_timeout_seconds"):
-            EmailNotificationSink(
-                host="smtp.example.com",
-                port=587,
-                from_addr="no-reply@example.com",
-                to_addrs=("ops@example.com",),
-                smtp_timeout_seconds=0,
-            )
+def _email_factory(timeout: float) -> object:
+    return EmailNotificationSink(
+        host="smtp.example.com",
+        port=587,
+        from_addr="no-reply@example.com",
+        to_addrs=("ops@example.com",),
+        smtp_timeout_seconds=timeout,
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("factory", "match", "bad_value"),
+    [
+        (_slack_factory, "webhook_timeout_seconds", 0.0),
+        (_slack_factory, "webhook_timeout_seconds", -1.0),
+        (_slack_factory, "webhook_timeout_seconds", float("inf")),
+        (_slack_factory, "webhook_timeout_seconds", float("nan")),
+        (_ntfy_factory, "webhook_timeout_seconds", 0.0),
+        (_ntfy_factory, "webhook_timeout_seconds", float("inf")),
+        (_email_factory, "smtp_timeout_seconds", 0.0),
+        (_email_factory, "smtp_timeout_seconds", float("nan")),
+    ],
+    ids=[
+        "slack-zero",
+        "slack-negative",
+        "slack-inf",
+        "slack-nan",
+        "ntfy-zero",
+        "ntfy-inf",
+        "email-zero",
+        "email-nan",
+    ],
+)
+def test_notification_adapter_rejects_invalid_timeout(
+    factory: object,
+    match: str,
+    bad_value: float,
+) -> None:
+    """Every notification adapter rejects non-finite / non-positive timeouts."""
+    with pytest.raises(ValueError, match=match):
+        factory(bad_value)  # type: ignore[operator]
 
 
 # ── OAuth flows: positive timeout validation ──────────────────
 
 
-class TestOAuthFlowTimeoutValidation:
-    """The OAuth flows must reject zero/negative http_timeout_seconds."""
-
-    @pytest.mark.unit
-    def test_authorization_code_rejects_zero(self) -> None:
-        with pytest.raises(ValueError, match="http_timeout_seconds"):
-            AuthorizationCodeFlow(http_timeout_seconds=0)
-
-    @pytest.mark.unit
-    def test_device_flow_rejects_zero(self) -> None:
-        with pytest.raises(ValueError, match="http_timeout_seconds"):
-            DeviceFlow(http_timeout_seconds=0)
-
-    @pytest.mark.unit
-    def test_client_credentials_rejects_zero(self) -> None:
-        with pytest.raises(ValueError, match="http_timeout_seconds"):
-            ClientCredentialsFlow(http_timeout_seconds=0)
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("flow_cls", "bad_value"),
+    [
+        (AuthorizationCodeFlow, 0.0),
+        (AuthorizationCodeFlow, -1.0),
+        (DeviceFlow, 0.0),
+        (DeviceFlow, -5.0),
+        (ClientCredentialsFlow, 0.0),
+        (ClientCredentialsFlow, -1e-6),
+    ],
+    ids=[
+        "auth-code-zero",
+        "auth-code-negative",
+        "device-zero",
+        "device-negative",
+        "client-credentials-zero",
+        "client-credentials-negative",
+    ],
+)
+def test_oauth_flow_rejects_invalid_timeout(flow_cls: type, bad_value: float) -> None:
+    """Every OAuth flow rejects non-positive http_timeout_seconds."""
+    with pytest.raises(ValueError, match="http_timeout_seconds"):
+        flow_cls(http_timeout_seconds=bad_value)
 
 
 # ── AuditChainSink.set_signing_timeout_seconds ────────────────
@@ -329,7 +356,7 @@ class TestSubprocessSandboxKillGrace:
         assert sbx._kill_grace_seconds == 2.5
 
 
-# ── AppState.bridge_config_applied + set_notification_dispatcher ──
+# ── AppState.bridge_config_applied + swap_notification_dispatcher ──
 
 
 class TestAppStateBridgeConfigFlags:
@@ -348,7 +375,7 @@ class TestAppStateBridgeConfigFlags:
         assert state.bridge_config_applied is True
 
     @pytest.mark.unit
-    def test_set_notification_dispatcher_swaps(self) -> None:
+    def test_swap_notification_dispatcher_returns_previous(self) -> None:
         from synthorg.api.approval_store import ApprovalStore
         from synthorg.api.state import AppState
         from synthorg.config.schema import RootConfig
@@ -362,7 +389,11 @@ class TestAppStateBridgeConfigFlags:
         )
         first = NotificationDispatcher(sinks=())
         second = NotificationDispatcher(sinks=())
-        state.set_notification_dispatcher(first)
+        # Empty AppState has no dispatcher; first swap returns None.
+        assert state.swap_notification_dispatcher(first) is None
         assert state.notification_dispatcher is first
-        state.set_notification_dispatcher(second)
+        # Second swap returns the previously-installed dispatcher so
+        # the caller can close its sinks without reaching back through
+        # the accessor.
+        assert state.swap_notification_dispatcher(second) is first
         assert state.notification_dispatcher is second

@@ -746,13 +746,16 @@ class ConfigResolver:
         except ExceptionGroup as eg:
             # Pinpoint which key(s) failed so an operator has a
             # concrete setting name in the log instead of just an
-            # ``error_count``. Each task carries the key as its dict
-            # key, so we can enumerate tasks that completed with an
-            # exception and surface those names.
+            # ``error_count``. Skip cancelled sibling tasks:
+            # ``TaskGroup`` cancels all other tasks when one fails,
+            # and calling ``task.exception()`` on a cancelled task
+            # would raise ``CancelledError`` -- masking the original
+            # failure and polluting ``failed_keys`` with siblings
+            # that didn't actually fail.
             failed_keys = [
                 key
                 for key, task in tasks.items()
-                if task.done() and task.exception() is not None
+                if task.done() and not task.cancelled() and task.exception() is not None
             ]
             logger.warning(
                 SETTINGS_FETCH_FAILED,

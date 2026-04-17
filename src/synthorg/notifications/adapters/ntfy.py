@@ -1,6 +1,7 @@
 """ntfy notification sink -- HTTP POST to an ntfy server."""
 
 import ipaddress
+import math
 import re
 from urllib.parse import urlparse
 
@@ -85,8 +86,11 @@ class NtfyNotificationSink:
         webhook_timeout_seconds: float = 10.0,
     ) -> None:
         _validate_outbound_url(server_url, "server_url")
-        if webhook_timeout_seconds <= 0:
-            msg = f"webhook_timeout_seconds must be > 0, got {webhook_timeout_seconds}"
+        if not math.isfinite(webhook_timeout_seconds) or webhook_timeout_seconds <= 0:
+            msg = (
+                "webhook_timeout_seconds must be a finite number > 0, got "
+                f"{webhook_timeout_seconds}"
+            )
             raise ValueError(msg)
         self._server_url = server_url.rstrip("/")
         self._topic = topic

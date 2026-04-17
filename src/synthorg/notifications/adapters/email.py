@@ -1,6 +1,7 @@
 """Email notification sink -- SMTP via asyncio.to_thread."""
 
 import asyncio
+import math
 import re
 import smtplib
 import ssl
@@ -70,8 +71,11 @@ class EmailNotificationSink:
         use_tls: bool = True,
         smtp_timeout_seconds: float = 10.0,
     ) -> None:
-        if smtp_timeout_seconds <= 0:
-            msg = f"smtp_timeout_seconds must be > 0, got {smtp_timeout_seconds}"
+        if not math.isfinite(smtp_timeout_seconds) or smtp_timeout_seconds <= 0:
+            msg = (
+                "smtp_timeout_seconds must be a finite number > 0, got "
+                f"{smtp_timeout_seconds}"
+            )
             raise ValueError(msg)
         self._host = host
         self._port = port

@@ -4,9 +4,12 @@ Covers bus/NATS transport, event stream, delegation record store,
 loop prevention, and bus bridges for API and engine workflow.
 """
 
+from synthorg.observability import get_logger
 from synthorg.settings.enums import SettingLevel, SettingNamespace, SettingType
 from synthorg.settings.models import SettingDefinition
 from synthorg.settings.registry import get_registry
+
+logger = get_logger(__name__)
 
 _r = get_registry()
 

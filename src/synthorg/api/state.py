@@ -876,20 +876,25 @@ class AppState:
             self._notification_dispatcher, "notification_dispatcher"
         )
 
-    def set_notification_dispatcher(
+    def swap_notification_dispatcher(
         self,
         dispatcher: NotificationDispatcher,
-    ) -> None:
-        """Swap the active notification dispatcher in place.
+    ) -> NotificationDispatcher | None:
+        """Swap the active notification dispatcher and return the prior one.
 
         Called from the API startup hook after the ConfigResolver
         produces the operator-tuned
         :class:`NotificationsBridgeConfig` so adapter timeouts
-        (webhook/SMTP) take effect. Callers close the previous
-        dispatcher's sinks after the swap so in-flight dispatches
-        finish against the old references.
+        (webhook/SMTP) take effect. Returns the previous dispatcher
+        (or ``None`` if none was configured) so the caller can close
+        its sinks without reaching back through the accessor -- this
+        makes the handoff race-free: the new dispatcher is already
+        installed by the time the caller starts closing httpx
+        clients on the old sinks.
         """
+        previous = self._notification_dispatcher
         self._notification_dispatcher = dispatcher
+        return previous
 
     @property
     def bridge_config_applied(self) -> bool:

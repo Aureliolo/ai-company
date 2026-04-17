@@ -1009,28 +1009,31 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
                     app_state.has_notification_dispatcher
                     and effective_config is not None
                 ):
-                    _old_dispatcher = app_state.notification_dispatcher
                     _new_dispatcher = build_notification_dispatcher(
                         effective_config.notifications,
                         bridge_config=notif_bridge,
                     )
-                    app_state.set_notification_dispatcher(_new_dispatcher)
+                    _old_dispatcher = app_state.swap_notification_dispatcher(
+                        _new_dispatcher
+                    )
                     # Close the pre-startup dispatcher's sinks so their
-                    # httpx clients do not leak. Close after the swap so
-                    # in-flight dispatches finish against the old sinks.
-                    try:
-                        await _old_dispatcher.close()
-                    except MemoryError, RecursionError:
-                        raise
-                    except Exception:
-                        logger.warning(
-                            API_APP_STARTUP,
-                            error=(
-                                "Failed to close pre-startup notification"
-                                " dispatcher sinks after rebuild"
-                            ),
-                            exc_info=True,
-                        )
+                    # httpx clients do not leak. The swap returned the
+                    # old instance atomically, so closing it now cannot
+                    # race a concurrent reader landing on the new one.
+                    if _old_dispatcher is not None:
+                        try:
+                            await _old_dispatcher.close()
+                        except MemoryError, RecursionError:
+                            raise
+                        except Exception:
+                            logger.warning(
+                                API_APP_STARTUP,
+                                error=(
+                                    "Failed to close pre-startup notification"
+                                    " dispatcher sinks after rebuild"
+                                ),
+                                exc_info=True,
+                            )
 
             app_state.mark_bridge_config_applied()
 

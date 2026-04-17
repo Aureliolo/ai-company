@@ -366,7 +366,7 @@ _EXPECTED: tuple[
         "5.0",
         1.0,
         60.0,
-        False,
+        True,
     ),
     # notifications (3 new)
     _spec(

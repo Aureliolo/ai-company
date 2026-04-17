@@ -1,5 +1,6 @@
 """Slack notification sink -- webhook POST."""
 
+import math
 from typing import TYPE_CHECKING
 
 import httpx
@@ -76,8 +77,11 @@ class SlackNotificationSink:
         webhook_timeout_seconds: float = 10.0,
     ) -> None:
         _validate_outbound_url(webhook_url, "webhook_url")
-        if webhook_timeout_seconds <= 0:
-            msg = f"webhook_timeout_seconds must be > 0, got {webhook_timeout_seconds}"
+        if not math.isfinite(webhook_timeout_seconds) or webhook_timeout_seconds <= 0:
+            msg = (
+                "webhook_timeout_seconds must be a finite number > 0, got "
+                f"{webhook_timeout_seconds}"
+            )
             raise ValueError(msg)
         self._webhook_url = webhook_url
         self._client = httpx.AsyncClient(
