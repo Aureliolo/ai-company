@@ -9,6 +9,7 @@ from synthorg.communication.conflict_resolution.escalation.in_memory_store impor
     InMemoryEscalationStore,
 )
 from synthorg.communication.conflict_resolution.escalation.models import (
+    Escalation,
     EscalationDecision,
     EscalationStatus,
     RejectDecision,
@@ -222,7 +223,7 @@ class TestHumanEscalationFullLoop:
         # onto this: the row is durable; the wake-up never arrived.
         original_get = store.get
 
-        async def late_get(escalation_id: str):
+        async def late_get(escalation_id: str) -> Escalation | None:
             row = await original_get(escalation_id)
             if row is None:
                 return None
