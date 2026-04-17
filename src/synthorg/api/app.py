@@ -676,7 +676,7 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
             app_state.has_agent_registry
             and persistence is not None
             and getattr(persistence, "is_connected", False)
-            and app_state.agent_registry._versioning is None  # noqa: SLF001
+            and not app_state.agent_registry.has_versioning
         ):
             try:
                 app_state.agent_registry.bind_versioning(

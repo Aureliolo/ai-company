@@ -67,6 +67,15 @@ class AgentRegistryService:
         """
         self._versioning = versioning
 
+    @property
+    def has_versioning(self) -> bool:
+        """Return ``True`` when a versioning service is attached.
+
+        Public predicate used by the app factory's startup wiring so it
+        doesn't need to read the private ``_versioning`` slot.
+        """
+        return self._versioning is not None
+
     async def register(
         self,
         identity: AgentIdentity,
