@@ -44,9 +44,10 @@ async def _resolve_audit_cap(state: State) -> int:
     app_state = state.app_state
     if not app_state.has_config_resolver:
         return _MAX_AUDIT_QUERY
-    return await app_state.config_resolver.get_int(
+    result: int = await app_state.config_resolver.get_int(
         SettingNamespace.API.value, "max_audit_records_per_query"
     )
+    return result
 
 
 class AuditController(Controller):

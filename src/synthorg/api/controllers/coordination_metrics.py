@@ -39,9 +39,10 @@ async def _resolve_metrics_cap(state: State) -> int:
     app_state = state.app_state
     if not app_state.has_config_resolver:
         return _MAX_METRICS_QUERY
-    return await app_state.config_resolver.get_int(
+    result: int = await app_state.config_resolver.get_int(
         SettingNamespace.API.value, "max_metrics_per_query"
     )
+    return result
 
 
 class CoordinationMetricsController(Controller):
