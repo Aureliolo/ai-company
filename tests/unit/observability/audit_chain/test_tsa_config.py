@@ -99,16 +99,16 @@ def test_custom_without_roots_rejected_when_verifying() -> None:
         )
 
 
-@pytest.mark.parametrize("tsa_timeout_sec", [0.0, 60.0])
+@pytest.mark.parametrize("tsa_timeout_sec", [0.0, 5.01, 60.0])
 def test_timeout_range_enforced(tsa_timeout_sec: float) -> None:
-    """Values at or outside the ``(0, 60)`` bound are rejected."""
+    """Values outside the configured ``(0, 5.0]`` bound are rejected."""
     with pytest.raises(ValidationError):
         AuditChainConfig(tsa_timeout_sec=tsa_timeout_sec)
 
 
 @pytest.mark.parametrize("value", [0.1, 2.5, 5.0])
 def test_timeout_accepts_boundary_values(value: float) -> None:
-    """The validator permits values in the allowed ``(0, 60)`` range."""
+    """The validator permits values in the allowed ``(0, 5.0]`` range."""
     cfg = AuditChainConfig(tsa_timeout_sec=value)
     assert cfg.tsa_timeout_sec == value
 
