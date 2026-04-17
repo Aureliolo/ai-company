@@ -130,7 +130,7 @@ export const useTrainingStore = create<TrainingState>()((set) => ({
       log.error('previewPlan failed:', sanitizeForLog(agentName), err)
       useToastStore.getState().add({
         variant: 'error',
-        title: 'Preview failed',
+        title: 'Training preview failed',
         description: getErrorMessage(err),
       })
       return null

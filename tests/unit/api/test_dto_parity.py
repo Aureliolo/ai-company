@@ -68,6 +68,13 @@ class TestUpdateDepartmentRequestTeams:
 
         assert req.teams is None
 
+    def test_rejects_teams_beyond_max_length(self) -> None:
+        oversize = tuple(
+            Team(name=f"team-{i:03d}", lead=f"lead-{i}") for i in range(65)
+        )
+        with pytest.raises(ValidationError):
+            UpdateDepartmentRequest(teams=oversize)
+
 
 class TestUpdateAgentOrgRequestModel:
     """Added `model_provider` + `model_id` with paired validation."""
