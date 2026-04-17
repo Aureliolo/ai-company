@@ -77,9 +77,24 @@ HARDCODED_MOTION_DURATION_RE = re.compile(
     re.DOTALL,
 )
 
-# BCP 47 language-region literals used inside Intl or toLocale* calls.
+# BCP 47 tags used inside Intl or toLocale* calls. Covers the full
+# language-(script?)-(region?)-(variant*) shape so bypasses like
+# ``'zh-Hans-CN'``, ``'sr-Latn-RS'``, or ``'de-CH-1996'`` are caught,
+# not just the two-part ``language-REGION`` form. Extension and
+# private-use subtags are out of scope -- they are rare enough that
+# the false-positive risk on incidental strings matching the pattern
+# outweighs the catch rate.
 HARDCODED_LOCALE_RE = re.compile(
-    r"""['"](?P<locale>[a-z]{2}-[A-Z]{2})['"]""",
+    r"""(?x)
+    ['"]
+    (?P<locale>
+        [a-z]{2,3}                                      # language subtag
+        (?:-[A-Z][a-z]{3})?                             # optional script
+        -(?:[A-Z]{2}|[0-9]{3})                          # required region (alpha or UN M.49)
+        (?:-(?:[A-Za-z0-9]{5,8}|[0-9][A-Za-z0-9]{3}))*  # zero or more variants
+    )
+    ['"]
+    """,
 )
 
 # Bare `.toLocaleString(` / `.toLocaleDateString(` / `.toLocaleTimeString(`

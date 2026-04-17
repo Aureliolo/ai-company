@@ -102,7 +102,10 @@ class BudgetForecast(BaseModel):
 
     projected_total: float = Field(
         ge=0.0,
-        description="Projected total spend at end of horizon",
+        description=(
+            "Projected total spend at end of horizon in the configured "
+            "currency (see ``budget.currency``)"
+        ),
     )
     daily_projections: tuple[ForecastPoint, ...] = Field(
         description="Per-day cumulative spend projections",
@@ -119,7 +122,10 @@ class BudgetForecast(BaseModel):
     )
     avg_daily_spend: float = Field(
         ge=0.0,
-        description="Average daily spend used for projection",
+        description=(
+            "Average daily spend in the configured currency used for "
+            "projection (see ``budget.currency``)"
+        ),
     )
 
 
@@ -350,8 +356,11 @@ def _compute_daily_spend(
         Tuple of (avg_daily_spend, confidence, lookback_days).
     """
     timestamps = sorted(r.timestamp for r in records)
+    # Inclusive span: a record set spanning calendar days D0..DN covers N+1
+    # days, not N. Without +1 a one-day window divides total_cost by 0 (then
+    # clamped to 1) and inflates avg_daily by a factor of 2 for two-day spans.
     lookback_days = max(
-        (timestamps[-1].date() - timestamps[0].date()).days,
+        (timestamps[-1].date() - timestamps[0].date()).days + 1,
         1,
     )
     total_cost = round(

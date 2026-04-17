@@ -707,7 +707,7 @@ agent_metrics:
     strategy: layered combination --
 
     1. **FREE:** Objective CI signals (test pass/fail, lint, coverage delta)
-    2. **~$1/day:** Small-model LLM judge (different family than agent) evaluates output
+    2. **~1/day:** Small-model LLM judge (different family than agent) evaluates output
        vs acceptance criteria (cost figures illustrative; actual spend is in the
        operator's configured currency and provider)
     3. **On-demand:** Human override via API, highest weight

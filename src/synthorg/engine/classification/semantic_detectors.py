@@ -44,7 +44,7 @@ _SANITIZE_MAX_LENGTH = 2000
 # inside a reasonable per-run budget, large enough that a runaway
 # provider cannot silently overshoot.  Actual cost is reconciled via
 # ``ClassificationBudgetTracker.settle`` once the call completes.
-_ESTIMATED_LLM_COST_USD = 0.001
+_ESTIMATED_LLM_COST = 0.001
 _SEVERITY_MAP: MappingProxyType[str, ErrorSeverity] = MappingProxyType(
     {
         "low": ErrorSeverity.LOW,
@@ -281,7 +281,7 @@ class _BaseSemanticDetector:
         ``CompositeDetector`` cannot race through the admission
         gate and collectively exceed the per-run budget.
         """
-        estimated_cost = _ESTIMATED_LLM_COST_USD
+        estimated_cost = _ESTIMATED_LLM_COST
         if self._budget_tracker is not None:
             reserved = await self._budget_tracker.try_reserve(estimated_cost)
             if not reserved:

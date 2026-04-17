@@ -46,9 +46,10 @@ overall task completion quality on a scale of 0.0 to 10.0.
 
 Respond with JSON only: {{"score": <float>, "rationale": "<brief explanation>"}}
 
-Task metrics (for reference):
+Task metrics (for reference; ``cost_per_1k_tokens`` is a currency-invariant \
+efficiency signal, not an absolute price):
 - is_success: {is_success}
-- cost: {cost}
+- cost_per_1k_tokens: {cost_per_1k_tokens}
 - duration_seconds: {duration_seconds}
 - complexity: {complexity}
 - turns_used: {turns_used}
@@ -248,9 +249,18 @@ class LlmJudgeQualityStrategy:
         else:
             criteria_list = "(no acceptance criteria provided)"
 
+        # Raw cost is currency-dependent (EUR "5" reads very differently
+        # from USD "5"). Convert to a currency-invariant efficiency signal
+        # so judge scores stay comparable across operators with different
+        # ``budget.currency`` values. Tokens_used == 0 falls back to 0.0.
+        cost_per_1k_tokens = (
+            round(task_result.cost / task_result.tokens_used * 1000.0, 6)
+            if task_result.tokens_used > 0
+            else 0.0
+        )
         return _JUDGE_PROMPT.format(
             is_success=task_result.is_success,
-            cost=task_result.cost,
+            cost_per_1k_tokens=cost_per_1k_tokens,
             duration_seconds=task_result.duration_seconds,
             complexity=task_result.complexity.value,
             turns_used=task_result.turns_used,

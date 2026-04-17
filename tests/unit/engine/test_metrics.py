@@ -194,7 +194,9 @@ class TestTaskCompletionMetricsFromRunResult:
     ) -> AgentRunResult:
         """Build a minimal AgentRunResult for testing."""
         ctx = sample_agent_context
-        if input_tokens or output_tokens:
+        # Cover fixed-fee / minimum-charge scenarios (cost > 0 with zero
+        # tokens) in addition to the usual tokens-produce-cost shape.
+        if cost > 0 or input_tokens or output_tokens:
             ctx = ctx.model_copy(
                 update={
                     "accumulated_cost": TokenUsage(

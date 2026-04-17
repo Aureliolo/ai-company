@@ -10,6 +10,7 @@ and overspend the budget.
 """
 
 import asyncio
+import math
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.classification import (
@@ -39,8 +40,8 @@ class ClassificationBudgetTracker:
     """
 
     def __init__(self, budget: float) -> None:
-        if budget < 0:
-            msg = "budget must be non-negative"
+        if not math.isfinite(budget) or budget < 0:
+            msg = "budget must be a finite non-negative number"
             logger.error(
                 INVALID_BUDGET,
                 budget=budget,
@@ -72,8 +73,8 @@ class ClassificationBudgetTracker:
         Raises:
             ValueError: If ``estimated_cost`` is negative.
         """
-        if estimated_cost < 0:
-            msg = "estimated_cost must be non-negative"
+        if not math.isfinite(estimated_cost) or estimated_cost < 0:
+            msg = "estimated_cost must be a finite non-negative number"
             logger.warning(
                 INVALID_COST,
                 cost=estimated_cost,
@@ -113,8 +114,8 @@ class ClassificationBudgetTracker:
         Raises:
             ValueError: If ``actual_cost`` is negative.
         """
-        if estimated_cost < 0:
-            msg = "estimated_cost must be non-negative"
+        if not math.isfinite(estimated_cost) or estimated_cost < 0:
+            msg = "estimated_cost must be a finite non-negative number"
             logger.warning(
                 INVALID_COST,
                 cost=estimated_cost,
@@ -122,8 +123,8 @@ class ClassificationBudgetTracker:
                 reason=msg,
             )
             raise ValueError(msg)
-        if actual_cost < 0:
-            msg = "actual_cost must be non-negative"
+        if not math.isfinite(actual_cost) or actual_cost < 0:
+            msg = "actual_cost must be a finite non-negative number"
             logger.warning(
                 INVALID_COST,
                 cost=actual_cost,
@@ -158,8 +159,8 @@ class ClassificationBudgetTracker:
         Raises:
             ValueError: If ``estimated_cost`` is negative.
         """
-        if estimated_cost < 0:
-            msg = "estimated_cost must be non-negative"
+        if not math.isfinite(estimated_cost) or estimated_cost < 0:
+            msg = "estimated_cost must be a finite non-negative number"
             logger.warning(
                 INVALID_COST,
                 cost=estimated_cost,
@@ -182,8 +183,8 @@ class ClassificationBudgetTracker:
         Raises:
             ValueError: If ``actual_cost`` is negative.
         """
-        if actual_cost < 0:
-            msg = "actual_cost must be non-negative"
+        if not math.isfinite(actual_cost) or actual_cost < 0:
+            msg = "actual_cost must be a finite non-negative number"
             logger.warning(
                 INVALID_COST,
                 cost=actual_cost,

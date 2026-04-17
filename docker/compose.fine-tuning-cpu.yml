@@ -20,7 +20,7 @@
 services:
   fine-tune:
     # renovate: datasource=docker depName=ghcr.io/aureliolo/synthorg-fine-tune-cpu
-    image: ghcr.io/aureliolo/synthorg-fine-tune-cpu:v0.6.10-dev.17
+    image: ghcr.io/aureliolo/synthorg-fine-tune-cpu:v0.6.9@sha256:0000000000000000000000000000000000000000000000000000000000000000
     volumes:
       - synthorg-data:/data:ro
     depends_on:

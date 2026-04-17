@@ -336,6 +336,11 @@ class TestSemanticDetectorBehavior:
         provider.complete.assert_not_awaited()
 
     async def test_budget_tracks_cost(self) -> None:
+        # ``_mock_provider`` seeds ``TokenUsage(cost=0.001)`` on every
+        # completion; after one detector run with an estimate of
+        # ``_ESTIMATED_LLM_COST`` (0.001) and an equal actual cost, the
+        # tracker should be exactly 0.001 spent. Assert the exact
+        # value so regressions in reserve/settle math are caught.
         provider = _mock_provider("[]")
         budget = ClassificationBudgetTracker(budget=1.0)
         detector = SemanticContradictionDetector(
@@ -350,8 +355,9 @@ class TestSemanticDetectorBehavior:
             ),
         )
         ctx = _context(messages)
+        start = budget.total_spent
         await detector.detect(ctx)
-        assert budget.total_spent > 0
+        assert budget.total_spent == pytest.approx(start + 0.001)
 
     async def test_no_rate_limiter_on_detector(self) -> None:
         """Detectors delegate rate limiting to the provider.

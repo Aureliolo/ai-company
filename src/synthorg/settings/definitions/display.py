@@ -17,6 +17,14 @@ _r = get_registry()
 # but capped: at most ``_MAX_VARIANT_SUBTAGS`` repetitions keep the
 # total tag length under the RFC 5646 ~35-character practical ceiling
 # so an operator cannot paste a pathologically long string.
+#
+# Intentionally narrower than the full RFC 5646 grammar: extension
+# singletons (e.g. ``-u-nu-latn``) and private-use subtags
+# (``-x-private``) are rejected because the formatting helpers in
+# ``web/src/utils/format.ts`` only consume the language/script/region
+# portions, so admitting extensions would invite settings that look
+# effective but silently no-op. Operators who need extension-driven
+# behaviour should file an issue rather than setting it here.
 _MAX_VARIANT_SUBTAGS = 3
 _BCP47_PATTERN = (
     r"^[A-Za-z]{2,3}"  # language subtag
@@ -34,9 +42,11 @@ _r.register(
         type=SettingType.STRING,
         default=None,
         description=(
-            "BCP 47 locale tag overriding the browser default for "
-            "dates, numbers, and currency rendering (e.g. 'en', "
-            "'en-GB', 'de-CH'). Unset means 'follow browser'."
+            "BCP 47 locale tag (language + optional script + optional "
+            "region + up to 3 variants) overriding the browser default "
+            "for dates, numbers, and currency rendering (e.g. 'en', "
+            "'en-GB', 'de-CH', 'zh-Hant-HK'). Extension and private-use "
+            "subtags are not accepted. Unset means 'follow browser'."
         ),
         group="Formatting",
         validator_pattern=_BCP47_PATTERN,

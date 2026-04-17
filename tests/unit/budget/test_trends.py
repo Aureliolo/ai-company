@@ -358,9 +358,8 @@ class TestProjectDailySpend:
         assert len(result.daily_projections) == 7
 
     def test_known_daily_spend(self) -> None:
-        # Records on Mar 1, 2, 3 (3 calendar days).  The implementation
-        # uses an exclusive date delta: (Mar 3 - Mar 1).days = 2.
-        # Total $30 / 2-day delta = $15/day, projected over 4 days.
+        # Records on Mar 1, 2, 3 span 3 inclusive calendar days.  Total
+        # 30 over 3 days -> 10/day, projected over 4 days = 40.
         records = [
             _cost_record(
                 timestamp=datetime(2026, 3, 1, 10, 0, 0, tzinfo=UTC), cost=10.0
@@ -373,13 +372,12 @@ class TestProjectDailySpend:
             ),
         ]
         result = project_daily_spend(records, horizon_days=4)
-        # Span: Mar 3 - Mar 1 = 2 days, total $30 -> $15/day
-        assert result.avg_daily_spend == pytest.approx(15.0)
-        assert result.projected_total == pytest.approx(60.0)
+        assert result.avg_daily_spend == pytest.approx(10.0)
+        assert result.projected_total == pytest.approx(40.0)
         assert len(result.daily_projections) == 4
-        # Cumulative: day1=15, day2=30, day3=45, day4=60
-        assert result.daily_projections[0].projected_spend == pytest.approx(15.0)
-        assert result.daily_projections[3].projected_spend == pytest.approx(60.0)
+        # Cumulative: day1=10, day2=20, day3=30, day4=40
+        assert result.daily_projections[0].projected_spend == pytest.approx(10.0)
+        assert result.daily_projections[3].projected_spend == pytest.approx(40.0)
 
     def test_zero_spend(self) -> None:
         records = [
@@ -393,8 +391,8 @@ class TestProjectDailySpend:
         assert result.days_until_exhausted is None
 
     def test_days_until_exhausted(self) -> None:
-        # Exclusive delta: (Mar 2 - Mar 1).days = 1, total $20 -> $20/day
-        # $50 remaining / $20/day = 2.5 -> ceil = 3 days
+        # Inclusive span: Mar 1..Mar 2 = 2 days, total 20 -> 10/day.
+        # 50 remaining / 10/day = 5 days exactly.
         records = [
             _cost_record(
                 timestamp=datetime(2026, 3, 1, 10, 0, 0, tzinfo=UTC),
@@ -411,8 +409,8 @@ class TestProjectDailySpend:
             budget_total_monthly=100.0,
             budget_remaining=50.0,
         )
-        assert result.avg_daily_spend == pytest.approx(20.0)
-        assert result.days_until_exhausted == 3
+        assert result.avg_daily_spend == pytest.approx(10.0)
+        assert result.days_until_exhausted == 5
 
     def test_no_budget_means_no_exhaustion(self) -> None:
         records = [
@@ -445,7 +443,7 @@ class TestProjectDailySpend:
         assert result.confidence == 1.0
 
     def test_confidence_partial_coverage(self) -> None:
-        # Exclusive delta: (Mar 4 - Mar 1).days = 3, data on 2 days -> 2/3
+        # Inclusive span: Mar 1..Mar 4 = 4 days, data on 2 of them -> 0.5
         records = [
             _cost_record(
                 timestamp=datetime(2026, 3, 1, 10, 0, 0, tzinfo=UTC), cost=1.0
@@ -455,8 +453,7 @@ class TestProjectDailySpend:
             ),
         ]
         result = project_daily_spend(records, horizon_days=7)
-        # Span is 3 days (Mar 1 to Mar 4), data on 2 days -> 2/3
-        assert result.confidence == pytest.approx(2.0 / 3.0)
+        assert result.confidence == pytest.approx(0.5)
 
     def test_forecast_model_is_frozen(self) -> None:
         result = project_daily_spend([], horizon_days=3)
