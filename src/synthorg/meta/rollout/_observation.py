@@ -60,6 +60,15 @@ async def observe_until_verdict(  # noqa: PLR0913
         strategy_name: Identifies the caller in structured logs.
     """
     observation_hours = float(proposal.observation_window_hours)
+    if observation_hours <= 0.0:
+        msg = f"observation_window_hours must be positive; got {observation_hours}"
+        raise ValueError(msg)
+    if check_interval_hours <= 0.0:
+        msg = (
+            "check_interval_hours must be positive so elapsed advances "
+            f"each tick; got {check_interval_hours}"
+        )
+        raise ValueError(msg)
     elapsed = 0.0
     while elapsed < observation_hours:
         remaining = observation_hours - elapsed

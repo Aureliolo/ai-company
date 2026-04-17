@@ -95,11 +95,29 @@ class RevertConfigHandler:
         self._mutator = mutator
 
     async def revert(self, operation: RollbackOperation) -> int:
-        """Restore config path ``operation.target`` to ``previous_value``."""
-        await self._mutator.set(
-            path=str(operation.target),
-            value=operation.previous_value,
-        )
+        """Restore config path ``operation.target`` to ``previous_value``.
+
+        The mutator call is wrapped so a failing underlying service
+        (validation, write, remote I/O) is surfaced with the operation
+        target + error class before re-raising. ``MemoryError`` and
+        ``RecursionError`` propagate unchanged so catastrophic system
+        errors are never swallowed by the rollback executor's generic
+        ``except Exception`` branch.
+        """
+        try:
+            await self._mutator.set(
+                path=str(operation.target),
+                value=operation.previous_value,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.exception(
+                META_ROLLBACK_OPERATION_FAILED,
+                operation_type="revert_config",
+                target=str(operation.target),
+            )
+            raise
         logger.info(
             META_ROLLBACK_CONFIG_REVERTED,
             target=str(operation.target),

@@ -81,7 +81,7 @@ def _group_metrics(  # noqa: PLR0913
     success: float = 0.85,
     spend: float = 100.0,
     observations: int = 20,
-    agents: int = 10,
+    agents: int = 20,
 ) -> GroupMetrics:
     """Build sample-backed GroupMetrics matching the legacy aggregates.
 
@@ -280,24 +280,58 @@ class TestGroupMetrics:
     def test_valid_metrics(self) -> None:
         m = _group_metrics(ABTestGroup.CONTROL)
         assert m.group == ABTestGroup.CONTROL
-        assert m.agent_count == 10
+        assert m.agent_count == 20
         assert m.observation_count == 20
 
     def test_quality_bounds(self) -> None:
+        # Inject samples directly: the _ramp helper rejects negative
+        # centers so we can't use the _group_metrics fixture to force
+        # out-of-range values. Using direct tuples isolates the
+        # GroupMetrics validator from the ramp input guard.
         with pytest.raises(ValueError, match=r"quality_samples must be in"):
-            _group_metrics(ABTestGroup.CONTROL, quality=-1.0)
+            GroupMetrics(
+                group=ABTestGroup.CONTROL,
+                agent_count=3,
+                quality_samples=(-1.0, 0.0, 1.0),
+                success_samples=(0.5, 0.5, 0.5),
+                spend_samples=(1.0, 1.0, 1.0),
+            )
         with pytest.raises(ValueError, match=r"quality_samples must be in"):
-            _group_metrics(ABTestGroup.CONTROL, quality=11.0)
+            GroupMetrics(
+                group=ABTestGroup.CONTROL,
+                agent_count=3,
+                quality_samples=(11.0, 5.0, 5.0),
+                success_samples=(0.5, 0.5, 0.5),
+                spend_samples=(1.0, 1.0, 1.0),
+            )
 
     def test_success_rate_bounds(self) -> None:
         with pytest.raises(ValueError, match=r"success_samples must be in"):
-            _group_metrics(ABTestGroup.CONTROL, success=-0.1)
+            GroupMetrics(
+                group=ABTestGroup.CONTROL,
+                agent_count=3,
+                quality_samples=(5.0, 5.0, 5.0),
+                success_samples=(-0.1, 0.5, 0.5),
+                spend_samples=(1.0, 1.0, 1.0),
+            )
         with pytest.raises(ValueError, match=r"success_samples must be in"):
-            _group_metrics(ABTestGroup.CONTROL, success=1.1)
+            GroupMetrics(
+                group=ABTestGroup.CONTROL,
+                agent_count=3,
+                quality_samples=(5.0, 5.0, 5.0),
+                success_samples=(1.1, 0.5, 0.5),
+                spend_samples=(1.0, 1.0, 1.0),
+            )
 
-    def test_observations_without_agents_rejected(self) -> None:
+    def test_observations_exceeding_agents_rejected(self) -> None:
         with pytest.raises(ValueError, match="observation_count"):
-            _group_metrics(ABTestGroup.CONTROL, agents=0, observations=5)
+            GroupMetrics(
+                group=ABTestGroup.CONTROL,
+                agent_count=0,
+                quality_samples=(5.0, 5.0),
+                success_samples=(0.5, 0.5),
+                spend_samples=(1.0, 1.0),
+            )
 
 
 # -- ABTestComparison model -----------------------------------------------

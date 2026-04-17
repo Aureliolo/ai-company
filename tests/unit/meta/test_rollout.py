@@ -45,6 +45,11 @@ pytestmark = pytest.mark.unit
 # ── Helpers ────────────────────────────────────────────────────────
 
 
+async def _async_snapshot_builder() -> OrgSignalSnapshot:
+    """Snapshot builder used by rollout tests that want neutral baselines."""
+    return _snap()
+
+
 def _snap(
     quality: float = 7.5,
     success: float = 0.85,
@@ -443,6 +448,7 @@ class TestBeforeAfterRollout:
     async def test_successful_rollout(self) -> None:
         rollout = BeforeAfterRollout(
             clock=FakeClock(),
+            snapshot_builder=_async_snapshot_builder,
             check_interval_hours=4.0,
         )
         result = await rollout.execute(
@@ -456,6 +462,7 @@ class TestBeforeAfterRollout:
     async def test_failed_apply(self) -> None:
         rollout = BeforeAfterRollout(
             clock=FakeClock(),
+            snapshot_builder=_async_snapshot_builder,
             check_interval_hours=4.0,
         )
         result = await rollout.execute(
@@ -476,6 +483,7 @@ class TestCanarySubsetRollout:
         rollout = CanarySubsetRollout(
             canary_fraction=0.2,
             clock=FakeClock(),
+            snapshot_builder=_async_snapshot_builder,
             check_interval_hours=4.0,
         )
         result = await rollout.execute(
@@ -488,6 +496,7 @@ class TestCanarySubsetRollout:
     async def test_failed_canary_apply(self) -> None:
         rollout = CanarySubsetRollout(
             clock=FakeClock(),
+            snapshot_builder=_async_snapshot_builder,
             check_interval_hours=4.0,
         )
         result = await rollout.execute(

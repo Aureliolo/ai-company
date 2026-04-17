@@ -13,14 +13,7 @@ from typing import TYPE_CHECKING
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.models import (
     ImprovementProposal,
-    OrgBudgetSummary,
-    OrgCoordinationSummary,
-    OrgErrorSummary,
-    OrgEvolutionSummary,
-    OrgPerformanceSummary,
-    OrgScalingSummary,
     OrgSignalSnapshot,
-    OrgTelemetrySummary,
     RegressionThresholds,
     RolloutOutcome,
     RolloutResult,
@@ -43,28 +36,19 @@ SnapshotBuilder = Callable[[], Awaitable[OrgSignalSnapshot]]
 
 
 async def _default_snapshot_builder() -> OrgSignalSnapshot:
-    """Empty snapshot used when no real builder is wired."""
-    return OrgSignalSnapshot(
-        performance=OrgPerformanceSummary(
-            avg_quality_score=0.0,
-            avg_success_rate=0.0,
-            avg_collaboration_score=0.0,
-            agent_count=0,
-        ),
-        budget=OrgBudgetSummary(
-            total_spend=0.0,
-            productive_ratio=0.0,
-            coordination_ratio=0.0,
-            system_ratio=0.0,
-            forecast_confidence=0.0,
-            orchestration_overhead=0.0,
-        ),
-        coordination=OrgCoordinationSummary(),
-        scaling=OrgScalingSummary(),
-        errors=OrgErrorSummary(),
-        evolution=OrgEvolutionSummary(),
-        telemetry=OrgTelemetrySummary(),
+    """Fail loud when callers forget to wire a real snapshot builder.
+
+    A fabricated zero snapshot would silently compare against real
+    current data and produce misleading regression verdicts. Raising
+    here surfaces the misconfiguration the moment a rollout tries to
+    observe, rather than reporting false SUCCESS / REGRESSED.
+    """
+    msg = (
+        "snapshot_builder is not wired: rollouts cannot observe without "
+        "a real OrgSignalSnapshot source. Pass snapshot_builder=... to "
+        "the rollout strategy (or to SelfImprovementService)."
     )
+    raise RuntimeError(msg)
 
 
 class BeforeAfterRollout:
@@ -116,7 +100,26 @@ class BeforeAfterRollout:
             check_interval_hours=self._check_interval_hours,
         )
 
-        baseline = await self._snapshot_builder()
+        try:
+            baseline = await self._snapshot_builder()
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                META_ROLLOUT_FAILED,
+                strategy="before_after",
+                proposal_id=str(proposal.id),
+                stage="baseline_capture",
+                error=type(exc).__name__,
+                details=str(exc),
+            )
+            return RolloutResult(
+                proposal_id=proposal.id,
+                outcome=RolloutOutcome.FAILED,
+                observation_hours_elapsed=0.0,
+                details=str(exc),
+            )
+
         apply_result = await applier.apply(proposal)
         if not apply_result.success:
             logger.warning(
@@ -132,11 +135,29 @@ class BeforeAfterRollout:
                 details=apply_result.error_message,
             )
 
-        return await self._observe_window(
-            proposal=proposal,
-            baseline=baseline,
-            detector=detector,
-        )
+        try:
+            return await self._observe_window(
+                proposal=proposal,
+                baseline=baseline,
+                detector=detector,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                META_ROLLOUT_FAILED,
+                strategy="before_after",
+                proposal_id=str(proposal.id),
+                stage="observation",
+                error=type(exc).__name__,
+                details=str(exc),
+            )
+            return RolloutResult(
+                proposal_id=proposal.id,
+                outcome=RolloutOutcome.FAILED,
+                observation_hours_elapsed=0.0,
+                details=str(exc),
+            )
 
     async def _observe_window(
         self,

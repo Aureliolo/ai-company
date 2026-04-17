@@ -128,12 +128,17 @@ class TestMetaCycleIntegration:
 
     async def test_proposal_rollout_succeeds(self) -> None:
         """Scenario: approved proposal -> rollout -> success."""
+
+        async def snapshot_builder() -> OrgSignalSnapshot:
+            return _snap(quality=7.5, success=0.85)
+
         svc = SelfImprovementService(
             config=SelfImprovementConfig(
                 enabled=True,
                 config_tuning_enabled=True,
             ),
             clock=_InstantClock(),
+            snapshot_builder=snapshot_builder,
         )
         proposals = await svc.run_cycle(_snap(quality=4.0))
         assert len(proposals) >= 1

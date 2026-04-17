@@ -144,9 +144,19 @@ class GroupMetrics(BaseModel):
 
     @model_validator(mode="after")
     def _validate_observations_require_agents(self) -> Self:
-        """Observations require at least one agent."""
-        if self.observation_count > 0 and self.agent_count == 0:
-            msg = "observation_count > 0 requires agent_count > 0"
+        """``observation_count`` must not exceed ``agent_count``.
+
+        Each agent contributes at most one sample per metric per
+        observation window, so a tuple longer than ``agent_count``
+        means the producer double-counted and would inflate Welch's
+        effective sample size. The ``agent_count == 0`` case is
+        subsumed: any positive observation_count fails this check.
+        """
+        if self.observation_count > self.agent_count:
+            msg = (
+                f"observation_count ({self.observation_count}) cannot "
+                f"exceed agent_count ({self.agent_count})"
+            )
             raise ValueError(msg)
         return self
 

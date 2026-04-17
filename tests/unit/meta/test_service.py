@@ -54,6 +54,11 @@ def _snap(
     )
 
 
+async def _snapshot_builder() -> OrgSignalSnapshot:
+    """Neutral baseline for rollout-centric service tests."""
+    return _snap()
+
+
 class TestSelfImprovementService:
     """SelfImprovementService tests."""
 
@@ -70,7 +75,11 @@ class TestSelfImprovementService:
             architecture_proposals_enabled=architecture,
             prompt_tuning_enabled=prompt_tuning,
         )
-        return SelfImprovementService(config=cfg, clock=FakeClock())
+        return SelfImprovementService(
+            config=cfg,
+            clock=FakeClock(),
+            snapshot_builder=_snapshot_builder,
+        )
 
     async def test_no_triggers_returns_empty(self) -> None:
         svc = self._svc()

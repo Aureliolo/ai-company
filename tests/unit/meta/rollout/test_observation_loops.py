@@ -203,8 +203,13 @@ class TestABTestMidWindowRegressionExit:
             ) -> GroupSamples:
                 _ = since, until
                 calls["n"] += 1
-                # Even calls = control (first), odd = treatment per call pair.
-                # First pair = tick 1, second pair = tick 2.
+                # ab_test.py schedules control then treatment per tick, so
+                # odd calls (1, 3, 5...) are control and even calls (2, 4,
+                # 6...) are treatment. Pairs index as tick 0, 1, 2... so
+                # the first pair (calls 1-2) is tick 0, the second pair
+                # (calls 3-4) is tick 1, etc. With a 4h check interval the
+                # second pair corresponds to 8h elapsed, which is the
+                # assertion below.
                 tick = (calls["n"] - 1) // 2
                 is_treatment = calls["n"] % 2 == 0
                 n = len(agent_ids)

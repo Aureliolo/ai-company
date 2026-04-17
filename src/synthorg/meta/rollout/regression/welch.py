@@ -32,10 +32,14 @@ class InsufficientDataError(ValueError):
 
 
 class ZeroVarianceError(ValueError):
-    """Raised when either arm has zero sample variance.
+    """Raised when the combined Welch statistics are undefined.
 
-    Welch's t-test is undefined when one arm's sample variance is
-    exactly zero; callers should treat this as insufficient data.
+    The guard fires when ``se_sq <= 0`` (both arms flat, so the
+    t-statistic divides by zero) or when ``df_den <= 0`` (the
+    Satterthwaite denominator collapses). A single constant arm is
+    allowed: the non-zero variance of the other arm keeps ``se_sq``
+    and ``df_den`` positive, so Welch still runs. Callers should
+    treat this error as insufficient data.
     """
 
 
@@ -70,7 +74,10 @@ def welch_t_test(
 
     Raises:
         InsufficientDataError: If either arm has fewer than 2 samples.
-        ZeroVarianceError: If either arm's sample variance is zero.
+        ZeroVarianceError: If the combined standard-error squared
+            (``se_sq``) or the Welch degrees-of-freedom denominator
+            (``df_den``) is non-positive. A single constant arm is
+            accepted; both arms flat is rejected.
     """
     n_a = len(a)
     n_b = len(b)

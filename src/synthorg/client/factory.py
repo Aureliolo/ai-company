@@ -193,6 +193,12 @@ def build_feedback_strategy(
         return CriteriaCheckFeedback(client_id=client_id)
     if strategy == "adversarial":
         return AdversarialFeedback(client_id=client_id)
+    logger.warning(
+        "client.factory.unknown_strategy",
+        factory="feedback_strategy",
+        strategy=strategy,
+        expected=sorted(_FEEDBACK_STRATEGIES),
+    )
     msg = (
         f"unknown feedback strategy {strategy!r}; "
         f"expected one of {sorted(_FEEDBACK_STRATEGIES)}"
@@ -215,6 +221,12 @@ def build_report_strategy(config: ReportConfig) -> ReportStrategy:
         return JsonExportReport()
     if strategy == "metrics_only":
         return MetricsOnlyReport()
+    logger.warning(
+        "client.factory.unknown_strategy",
+        factory="report_strategy",
+        strategy=strategy,
+        expected=sorted(_REPORT_STRATEGIES),
+    )
     msg = (
         f"unknown report strategy {strategy!r}; "
         f"expected one of {sorted(_REPORT_STRATEGIES)}"
@@ -237,6 +249,12 @@ def build_client_pool_strategy(
         return WeightedRandomStrategy()
     if strategy == "domain_matched":
         return DomainMatchedStrategy()
+    logger.warning(
+        "client.factory.unknown_strategy",
+        factory="client_pool_strategy",
+        strategy=strategy,
+        expected=sorted(_POOL_STRATEGIES),
+    )
     msg = (
         f"unknown pool selection strategy {strategy!r}; "
         f"expected one of {sorted(_POOL_STRATEGIES)}"
@@ -261,11 +279,23 @@ def build_entry_point_strategy(
         return DirectAdapter()
     if adapter == "project":
         if project_id is None:
+            logger.warning(
+                "client.factory.unknown_strategy",
+                factory="entry_point_strategy",
+                adapter=adapter,
+                missing="project_id",
+            )
             msg = "project adapter requires project_id"
             raise UnknownStrategyError(msg)
         return ProjectAdapter(project_id=project_id)
     if adapter == "intake":
         return IntakeAdapter()
+    logger.warning(
+        "client.factory.unknown_strategy",
+        factory="entry_point_strategy",
+        adapter=adapter,
+        expected=sorted(_ENTRY_POINT_STRATEGIES),
+    )
     msg = (
         f"unknown entry-point adapter {adapter!r}; "
         f"expected one of {sorted(_ENTRY_POINT_STRATEGIES)}"

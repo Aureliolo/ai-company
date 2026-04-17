@@ -235,12 +235,10 @@ class ABTestRollout:
             control_samples = control_task.result()
             treatment_samples = treatment_task.result()
             control_metrics = _samples_to_metrics(
-                assignment.control_agent_ids,
                 control_samples,
                 ABTestGroup.CONTROL,
             )
             treatment_metrics = _samples_to_metrics(
-                assignment.treatment_agent_ids,
                 treatment_samples,
                 ABTestGroup.TREATMENT,
             )
@@ -335,19 +333,17 @@ class ABTestRollout:
 
 
 def _samples_to_metrics(
-    agent_ids: tuple[NotBlankStr, ...],
     samples: GroupSamples,
     group: ABTestGroup,
 ) -> GroupMetrics:
     """Wrap aligned sample tuples in a ``GroupMetrics``.
 
     ``agent_count`` reflects agents that actually contributed samples
-    (``samples.agent_ids``), not everyone who was assigned to the group.
-    The aggregator drops agents missing metrics, so reporting the
-    assigned count would overstate the effective sample size and let
-    Welch think it had more data than it does.
+    (``samples.agent_ids``), not everyone who was assigned to the
+    group. The aggregator drops agents missing metrics, so reporting
+    the assigned count would overstate the effective sample size and
+    let Welch think it had more data than it does.
     """
-    _ = agent_ids
     return GroupMetrics(
         group=group,
         agent_count=len(samples.agent_ids),
