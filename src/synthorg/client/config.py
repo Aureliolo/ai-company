@@ -85,6 +85,8 @@ class ClientPoolConfig(BaseModel):
         ai_ratio: Proportion of AI clients (0.0-1.0).
         human_ratio: Proportion of human clients (0.0-1.0).
         hybrid_ratio: Proportion of hybrid clients (0.0-1.0).
+        selection_strategy: How ``ClientPoolStrategy.select_clients``
+            picks from the pool. Dispatched by ``build_client_pool_strategy``.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -111,6 +113,10 @@ class ClientPoolConfig(BaseModel):
         ge=0.0,
         le=1.0,
         description="Proportion of hybrid clients",
+    )
+    selection_strategy: NotBlankStr = Field(
+        default="round_robin",
+        description="Pool selection strategy identifier",
     )
 
     @model_validator(mode="after")
@@ -184,6 +190,23 @@ class ContinuousModeConfig(BaseModel):
     )
 
 
+class ReportConfig(BaseModel):
+    """Configuration for simulation report output.
+
+    Attributes:
+        strategy: Report format identifier dispatched by
+            ``build_report_strategy``: ``summary``, ``detailed``,
+            ``json_export``, or ``metrics_only``.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    strategy: NotBlankStr = Field(
+        default="summary",
+        description="Report format identifier",
+    )
+
+
 class ClientSimulationConfig(BaseModel):
     """Top-level client simulation configuration.
 
@@ -193,6 +216,7 @@ class ClientSimulationConfig(BaseModel):
         pool: Client pool configuration.
         generators: Requirement generator configuration.
         feedback: Feedback strategy configuration.
+        report: Report format configuration.
         runner: Simulation runner configuration.
         continuous: Continuous mode configuration.
     """
@@ -210,6 +234,10 @@ class ClientSimulationConfig(BaseModel):
     feedback: FeedbackConfig = Field(
         default_factory=FeedbackConfig,
         description="Feedback strategy configuration",
+    )
+    report: ReportConfig = Field(
+        default_factory=ReportConfig,
+        description="Report format configuration",
     )
     runner: SimulationRunnerConfig = Field(
         default_factory=SimulationRunnerConfig,

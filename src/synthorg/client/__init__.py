@@ -11,10 +11,19 @@ from synthorg.client.config import (
     ClientSimulationConfig,
     ContinuousModeConfig,
     FeedbackConfig,
+    ReportConfig,
     RequirementGeneratorConfig,
     SimulationRunnerConfig,
 )
 from synthorg.client.continuous import ContinuousMode
+from synthorg.client.factory import (
+    UnknownStrategyError,
+    build_client_pool_strategy,
+    build_entry_point_strategy,
+    build_feedback_strategy,
+    build_report_strategy,
+    build_requirement_generator,
+)
 from synthorg.client.human_client import HumanClient
 from synthorg.client.human_queue import (
     HumanInputQueue,
@@ -73,6 +82,7 @@ __all__ = [
     "PendingRequirement",
     "PendingReview",
     "PoolConstraints",
+    "ReportConfig",
     "ReportStrategy",
     "RequestStatus",
     "RequirementGenerator",
@@ -83,6 +93,12 @@ __all__ = [
     "SimulationRunner",
     "SimulationRunnerConfig",
     "TaskRequirement",
+    "UnknownStrategyError",
+    "build_client_pool_strategy",
+    "build_entry_point_strategy",
+    "build_feedback_strategy",
+    "build_report_strategy",
+    "build_requirement_generator",
     "default_router",
     "validate_request_transition",
 ]
