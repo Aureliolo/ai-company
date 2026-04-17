@@ -65,6 +65,10 @@ class TestBcp47Pattern:
             "-US",
             "12-US",  # language subtag must be alpha
             "!!!",
+            # Pathological: four variant subtags exceeds the cap.
+            # Keeps the total tag length bounded so a config-edit-
+            # capable operator cannot paste hundreds of subtags.
+            "en-variant1-variant2-variant3-variant4",
         ],
     )
     def test_rejects_invalid_tags(self, tag: str) -> None:

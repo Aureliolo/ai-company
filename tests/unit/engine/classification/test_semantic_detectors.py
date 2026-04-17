@@ -351,7 +351,7 @@ class TestSemanticDetectorBehavior:
         )
         ctx = _context(messages)
         await detector.detect(ctx)
-        assert budget.total_spent_usd > 0
+        assert budget.total_spent > 0
 
     async def test_no_rate_limiter_on_detector(self) -> None:
         """Detectors delegate rate limiting to the provider.

@@ -16,12 +16,12 @@ class TestClassificationBudgetTracker:
     def test_initial_state(self) -> None:
         tracker = ClassificationBudgetTracker(budget=0.10)
         assert tracker.remaining == 0.10
-        assert tracker.total_spent_usd == 0.0
+        assert tracker.total_spent == 0.0
 
     async def test_try_reserve_within_budget(self) -> None:
         tracker = ClassificationBudgetTracker(budget=0.10)
         assert await tracker.try_reserve(0.05) is True
-        assert tracker.total_spent_usd == pytest.approx(0.05)
+        assert tracker.total_spent == pytest.approx(0.05)
 
     async def test_try_reserve_exact_budget(self) -> None:
         tracker = ClassificationBudgetTracker(budget=0.10)
@@ -31,12 +31,12 @@ class TestClassificationBudgetTracker:
     async def test_try_reserve_over_budget(self) -> None:
         tracker = ClassificationBudgetTracker(budget=0.10)
         assert await tracker.try_reserve(0.11) is False
-        assert tracker.total_spent_usd == 0.0
+        assert tracker.total_spent == 0.0
 
     async def test_record_reduces_remaining(self) -> None:
         tracker = ClassificationBudgetTracker(budget=0.10)
         await tracker.record(0.03)
-        assert tracker.total_spent_usd == pytest.approx(0.03)
+        assert tracker.total_spent == pytest.approx(0.03)
         assert tracker.remaining == pytest.approx(0.07)
 
     async def test_record_then_cannot_reserve(self) -> None:
@@ -44,7 +44,7 @@ class TestClassificationBudgetTracker:
         await tracker.record(0.08)
         assert await tracker.try_reserve(0.05) is False
         # The failed reserve must not leak into spent state.
-        assert tracker.total_spent_usd == pytest.approx(0.08)
+        assert tracker.total_spent == pytest.approx(0.08)
         assert await tracker.try_reserve(0.02) is True
 
     async def test_remaining_never_negative(self) -> None:
@@ -76,14 +76,14 @@ class TestClassificationBudgetTracker:
         await tracker.record(0.02)
         await tracker.record(0.03)
         await tracker.record(0.01)
-        assert tracker.total_spent_usd == pytest.approx(0.06)
+        assert tracker.total_spent == pytest.approx(0.06)
         assert tracker.remaining == pytest.approx(0.04)
 
     async def test_concurrent_records_are_lock_safe(self) -> None:
         """Concurrent record() calls must accumulate without loss."""
         tracker = ClassificationBudgetTracker(budget=10.0)
         await asyncio.gather(*(tracker.record(0.01) for _ in range(100)))
-        assert tracker.total_spent_usd == pytest.approx(1.0)
+        assert tracker.total_spent == pytest.approx(1.0)
         assert tracker.remaining == pytest.approx(9.0)
 
     async def test_concurrent_reserves_respect_budget(self) -> None:
@@ -106,11 +106,11 @@ class TestClassificationBudgetTracker:
         )
         successes = sum(1 for r in results if r)
         assert successes == expected_reservations
-        assert tracker.total_spent_usd == pytest.approx(
+        assert tracker.total_spent == pytest.approx(
             expected_reservations * reserve_cost,
         )
         # No overshoot under any scheduling.
-        assert tracker.total_spent_usd <= 1.0
+        assert tracker.total_spent <= 1.0
 
     async def test_settle_applies_delta(self) -> None:
         """settle() reconciles an estimated reservation with the actual cost."""
@@ -118,7 +118,7 @@ class TestClassificationBudgetTracker:
         assert await tracker.try_reserve(0.05) is True
         # Actual came in cheaper -- remaining must grow back.
         await tracker.settle(estimated_cost=0.05, actual_cost=0.03)
-        assert tracker.total_spent_usd == pytest.approx(0.03)
+        assert tracker.total_spent == pytest.approx(0.03)
         assert tracker.remaining == pytest.approx(0.07)
 
     async def test_settle_positive_delta(self) -> None:
@@ -126,19 +126,19 @@ class TestClassificationBudgetTracker:
         tracker = ClassificationBudgetTracker(budget=0.10)
         assert await tracker.try_reserve(0.03) is True
         await tracker.settle(estimated_cost=0.03, actual_cost=0.05)
-        assert tracker.total_spent_usd == pytest.approx(0.05)
+        assert tracker.total_spent == pytest.approx(0.05)
 
     async def test_release_refunds_reservation(self) -> None:
         """release() returns a reservation that never incurred cost."""
         tracker = ClassificationBudgetTracker(budget=0.10)
         assert await tracker.try_reserve(0.04) is True
-        assert tracker.total_spent_usd == pytest.approx(0.04)
+        assert tracker.total_spent == pytest.approx(0.04)
         await tracker.release(0.04)
-        assert tracker.total_spent_usd == pytest.approx(0.0)
+        assert tracker.total_spent == pytest.approx(0.0)
         assert tracker.remaining == pytest.approx(0.10)
 
     async def test_release_clamps_at_zero(self) -> None:
         """release() never drives spent below zero."""
         tracker = ClassificationBudgetTracker(budget=0.10)
         await tracker.release(0.05)
-        assert tracker.total_spent_usd == 0.0
+        assert tracker.total_spent == 0.0

@@ -138,8 +138,8 @@ class ClassificationBudgetTracker:
                 DETECTOR_COST_INCURRED,
                 cost=actual_cost,
                 estimated_cost=estimated_cost,
-                delta_usd=delta,
-                total_spent_usd=self._spent,
+                delta=delta,
+                total_spent=self._spent,
                 remaining=max(0.0, self._budget - self._spent),
             )
 
@@ -196,7 +196,7 @@ class ClassificationBudgetTracker:
             logger.debug(
                 DETECTOR_COST_INCURRED,
                 cost=actual_cost,
-                total_spent_usd=self._spent,
+                total_spent=self._spent,
                 remaining=max(0.0, self._budget - self._spent),
             )
 
@@ -210,6 +210,6 @@ class ClassificationBudgetTracker:
         return max(0.0, self._budget - self._spent)
 
     @property
-    def total_spent_usd(self) -> float:
+    def total_spent(self) -> float:
         """Total spent so far in the configured currency (advisory snapshot)."""
         return self._spent

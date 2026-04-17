@@ -13,13 +13,17 @@ _r = get_registry()
 
 # BCP 47 language tag. Accepts plain language subtags (e.g. ``en``,
 # ``de``), language-region pairs (``en-US``, ``de-CH``), and
-# language-script-region (``zh-Hant-HK``). Rejects empty strings and
-# tags longer than 35 characters (RFC 5646 upper bound on sane tags).
+# language-script-region (``zh-Hant-HK``). Variant subtags are allowed
+# but capped: at most ``_MAX_VARIANT_SUBTAGS`` repetitions keep the
+# total tag length under the RFC 5646 ~35-character practical ceiling
+# so an operator cannot paste a pathologically long string.
+_MAX_VARIANT_SUBTAGS = 3
 _BCP47_PATTERN = (
     r"^[A-Za-z]{2,3}"  # language subtag
     r"(?:-[A-Za-z]{4})?"  # optional script subtag
     r"(?:-[A-Za-z]{2}|-[0-9]{3})?"  # optional region subtag
-    r"(?:-[A-Za-z0-9]{5,8}|-[0-9][A-Za-z0-9]{3})*"  # variant subtags
+    r"(?:-[A-Za-z0-9]{5,8}|-[0-9][A-Za-z0-9]{3})"  # variant subtag body
+    rf"{{0,{_MAX_VARIANT_SUBTAGS}}}"  # up to _MAX_VARIANT_SUBTAGS repetitions
     r"$"
 )
 

@@ -316,10 +316,8 @@ class PostgresSessionStore:
 
     async def load_revoked(self) -> None:
         """Load revoked session IDs from Postgres into memory."""
-        import psycopg  # noqa: PLC0415
         from psycopg.rows import dict_row  # noqa: PLC0415
 
-        del psycopg
         now = datetime.now(UTC)
         async with (
             self._pool.connection() as conn,

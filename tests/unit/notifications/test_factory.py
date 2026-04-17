@@ -79,6 +79,24 @@ class TestCreateEmailSink:
         params["from_addr"] = "   "
         assert _create_email_sink(params) is None
 
+    @pytest.mark.parametrize(
+        "injected",
+        [
+            "ops@example.test\r\nBcc: attacker@evil.test",
+            "ops@example.test\nBcc: attacker@evil.test",
+            "ops@example.test\rBcc: attacker@evil.test",
+        ],
+    )
+    def test_from_addr_with_crlf_is_rejected(self, injected: str) -> None:
+        """CR/LF in ``from_addr`` would let a config-edit-capable
+        operator inject arbitrary extra headers (Bcc, Reply-To, ...)
+        because the stdlib ``email`` package does not sanitize
+        header values.
+        """
+        params = _base_email_params()
+        params["from_addr"] = injected
+        assert _create_email_sink(params) is None
+
     def test_from_addr_trimmed_and_accepted(self) -> None:
         """Leading / trailing whitespace around ``from_addr`` is
         tolerated but the underlying value must be non-empty."""

@@ -73,6 +73,7 @@ export const NAMESPACE_ORDER: readonly SettingNamespace[] = [
   'api',
   'memory',
   'budget',
+  'display',
   'security',
   'coordination',
   'observability',
@@ -92,6 +93,7 @@ export const NAMESPACE_DISPLAY_NAMES: Readonly<Record<SettingNamespace, string>>
   observability: 'Observability',
   backup: 'Backup',
   engine: 'Engine',
+  display: 'Display',
 }
 
 /** sessionStorage key for the advanced-mode first-toggle warning. */

@@ -248,6 +248,17 @@ def _create_email_sink(
             error="from_addr is required",
         )
         return None
+    if "\r" in from_addr or "\n" in from_addr:
+        # Reject CR/LF before they reach ``msg["From"] = ...``; the
+        # stdlib ``email`` package does not auto-sanitize header values
+        # so an unchecked newline lets an operator with config-edit
+        # access inject arbitrary extra headers (Bcc, Reply-To, ...).
+        logger.warning(
+            NOTIFICATION_SINK_CONFIG_INVALID,
+            sink_type="email",
+            error="from_addr must not contain CR/LF",
+        )
+        return None
     username = params.get("username")
     password = params.get("password")
     use_tls = params.get("use_tls", "true").lower() == "true"
