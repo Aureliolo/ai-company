@@ -144,7 +144,11 @@ class InMemorySlidingWindowStore(SlidingWindowStore):
 
         The horizon is computed per bucket from its own last-observed
         ``window_seconds`` so a short-window sweep cannot evict
-        long-window buckets prematurely.
+        long-window buckets prematurely.  Also reclaims orphan locks --
+        entries in ``self._locks`` that have no matching bucket (e.g.
+        a cancelled ``acquire`` that created the lock before the bucket
+        was materialised) -- so they do not leak memory across the
+        process lifetime.
         """
         async with self._meta_lock:
             try:
@@ -163,6 +167,14 @@ class InMemorySlidingWindowStore(SlidingWindowStore):
                     # Only drop the lock if no task is holding it -- a
                     # locked entry means an in-flight acquire that must
                     # observe the same lock object.
+                    lock = self._locks.get(key)
+                    if lock is not None and not lock.locked():
+                        self._locks.pop(key, None)
+                # Sweep orphan locks (keys in _locks but not in _buckets).
+                orphan_lock_keys = [
+                    key for key in list(self._locks.keys()) if key not in self._buckets
+                ]
+                for key in orphan_lock_keys:
                     lock = self._locks.get(key)
                     if lock is not None and not lock.locked():
                         self._locks.pop(key, None)

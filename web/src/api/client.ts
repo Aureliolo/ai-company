@@ -28,6 +28,18 @@ const MAX_RATE_LIMIT_RETRIES = 2
 const MAX_RETRY_AFTER_MS = 5_000
 /** Extra header we attach to retry requests so the interceptor can count. */
 const RETRY_COUNT_HEADER = 'X-SynthOrg-Retry-Count'
+/**
+ * HTTP methods safe to auto-retry on 429.
+ *
+ * Idempotent reads (GET/HEAD/OPTIONS) can be replayed without risk.  Mutating
+ * verbs (POST/PUT/PATCH/DELETE) are NOT replayed automatically: replaying a
+ * decision submission or a cancellation after the server already accepted it
+ * could double-apply the mutation.  Callers that need retry for a mutation
+ * must attach an ``Idempotency-Key`` header; the interceptor then treats the
+ * request as idempotent and retries it.
+ */
+const IDEMPOTENT_METHODS = new Set(['get', 'head', 'options'])
+const IDEMPOTENCY_KEY_HEADER = 'idempotency-key'
 
 interface RetriableConfig extends InternalAxiosRequestConfig {
   _rateLimitRetries?: number
@@ -108,8 +120,17 @@ apiClient.interceptors.response.use(
     const status = error.response?.status
     const config = error.config as RetriableConfig | undefined
     if (status === 429 && config) {
+      const method = (config.method ?? '').toLowerCase()
+      const rawHeaders = (config.headers ?? {}) as Record<string, string>
+      const normalizedHeaders: Record<string, string> = {}
+      for (const [k, v] of Object.entries(rawHeaders)) {
+        if (typeof v === 'string') normalizedHeaders[k.toLowerCase()] = v
+      }
+      const isIdempotent =
+        IDEMPOTENT_METHODS.has(method) ||
+        normalizedHeaders[IDEMPOTENCY_KEY_HEADER] !== undefined
       const retries = config._rateLimitRetries ?? 0
-      if (retries < MAX_RATE_LIMIT_RETRIES) {
+      if (isIdempotent && retries < MAX_RATE_LIMIT_RETRIES) {
         const waitMs = parseRetryAfterMs(
           error.response?.headers?.['retry-after'] as string | undefined,
           error.response?.data?.error_detail ?? null,

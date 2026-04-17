@@ -256,10 +256,17 @@ def _flatten_nullable(
         return
 
     if len(non_null) != 1:
-        # Discriminated-union nullable:
-        # ``Annotated[A | B, Field(discriminator=...)] | None`` emits oneOf
-        # with multiple $ref branches plus ``{"type": "null"}``. Converting
-        # to anyOf keeps the discriminator structure while tolerating null.
+        # Nullable multi-$ref union (typical shape for
+        # ``Annotated[A | B, Field(discriminator=...)] | None`` -- Pydantic
+        # emits ``oneOf: [$ref, $ref, ..., {type: "null"}]`` without the
+        # ``"discriminator"`` marker surviving through Litestar schema
+        # generation, so we cannot test for it directly).  Converting to
+        # ``anyOf`` keeps every branch and tolerates null without losing
+        # information: the underlying $ref schemas still carry their own
+        # constraints, so validation against the union remains sound.
+        # We intentionally do NOT touch non-``$ref`` multi-branch oneOfs
+        # here -- those would represent genuinely exclusive primitive
+        # unions that would be weakened by becoming ``anyOf``.
         if keyword == "oneOf" and all(
             isinstance(b, dict) and "$ref" in b for b in non_null
         ):

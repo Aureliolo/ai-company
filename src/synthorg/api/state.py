@@ -142,6 +142,11 @@ class AppState:
         "_distributed_task_queue",
         "_drift_detection_service",
         "_drift_report_store",
+        "_escalation_notify_subscriber",
+        "_escalation_processor",
+        "_escalation_registry",
+        "_escalation_store",
+        "_escalation_sweeper",
         "_event_stream_hub",
         "_fine_tune_orchestrator",
         "_health_prober_service",
@@ -180,11 +185,6 @@ class AppState:
         "_webhook_replay_protector",
         "approval_store",
         "config",
-        "escalation_notify_subscriber",
-        "escalation_processor",
-        "escalation_registry",
-        "escalation_store",
-        "escalation_sweeper",
         "startup_time",
     )
 
@@ -231,11 +231,11 @@ class AppState:
     ) -> None:
         self.config = config
         self.approval_store = approval_store
-        self.escalation_store: EscalationQueueStore | None = None
-        self.escalation_registry: PendingFuturesRegistry | None = None
-        self.escalation_processor: DecisionProcessor | None = None
-        self.escalation_sweeper: EscalationExpirationSweeper | None = None
-        self.escalation_notify_subscriber: EscalationNotifySubscriber | None = None
+        self._escalation_store: EscalationQueueStore | None = None
+        self._escalation_registry: PendingFuturesRegistry | None = None
+        self._escalation_processor: DecisionProcessor | None = None
+        self._escalation_sweeper: EscalationExpirationSweeper | None = None
+        self._escalation_notify_subscriber: EscalationNotifySubscriber | None = None
         self._approval_gate = approval_gate
         self._artifact_storage = artifact_storage
         self._audit_log = audit_log
@@ -1092,6 +1092,60 @@ class AppState:
     def webhook_event_bridge(self) -> WebhookEventBridge | None:
         """Return webhook event bridge, or None if not configured."""
         return self._webhook_event_bridge
+
+    # -- Human escalation queue (#1418) ──────────────────────────────
+
+    @property
+    def escalation_store(self) -> EscalationQueueStore | None:
+        """Return the escalation queue store, or None if not configured."""
+        return self._escalation_store
+
+    def set_escalation_store(self, store: EscalationQueueStore) -> None:
+        """Attach the escalation queue store (once-only)."""
+        self._set_once("_escalation_store", store, "escalation store")
+
+    @property
+    def escalation_registry(self) -> PendingFuturesRegistry | None:
+        """Return the in-process futures registry, or None if not configured."""
+        return self._escalation_registry
+
+    def set_escalation_registry(self, registry: PendingFuturesRegistry) -> None:
+        """Attach the escalation futures registry (once-only)."""
+        self._set_once("_escalation_registry", registry, "escalation registry")
+
+    @property
+    def escalation_processor(self) -> DecisionProcessor | None:
+        """Return the decision processor strategy, or None if not configured."""
+        return self._escalation_processor
+
+    def set_escalation_processor(self, processor: DecisionProcessor) -> None:
+        """Attach the escalation decision processor (once-only)."""
+        self._set_once("_escalation_processor", processor, "escalation processor")
+
+    @property
+    def escalation_sweeper(self) -> EscalationExpirationSweeper | None:
+        """Return the background expiration sweeper, or None if not configured."""
+        return self._escalation_sweeper
+
+    def set_escalation_sweeper(self, sweeper: EscalationExpirationSweeper) -> None:
+        """Attach the escalation expiration sweeper (once-only)."""
+        self._set_once("_escalation_sweeper", sweeper, "escalation sweeper")
+
+    @property
+    def escalation_notify_subscriber(self) -> EscalationNotifySubscriber | None:
+        """Return the cross-instance notify subscriber, or None if not configured."""
+        return self._escalation_notify_subscriber
+
+    def set_escalation_notify_subscriber(
+        self,
+        subscriber: EscalationNotifySubscriber,
+    ) -> None:
+        """Attach the cross-instance notify subscriber (once-only)."""
+        self._set_once(
+            "_escalation_notify_subscriber",
+            subscriber,
+            "escalation notify subscriber",
+        )
 
     # -- A2A services ────────────────────────────────────────────────
 

@@ -1747,16 +1747,16 @@ from `synthorg/api/rate_limits/guard.py`.
   treated as a deployment error and fails closed with a 429 rather
   than silently skipping.
 - **Throttled endpoints** (initial set):
-  - `/auth/ws-ticket` (20/60s by user)
-  - `PUT /artifacts/{id}/content` (10/60s by user)
-  - `POST /admin/backups/{id}/restore` (3/3600s by user)
-  - `POST /setup/complete` (5/3600s by user_or_ip)
-  - `POST /training/{agent}/execute` (20/3600s by user)
-  - `POST /simulations` (30/3600s by user)
-  - `PUT`/`DELETE /settings/{namespace}/{key}` (60/60s by user)
-  - `POST /a2a/*` (120/60s by user_or_ip)
-  - `GET /oauth/callback` (30/60s by ip)
-  - `POST /conflicts/escalations/{id}/decision` (30/60s by user)
+  - `POST /api/v1/auth/ws-ticket` (20/60s by user)
+  - `PUT /api/v1/artifacts/{id}/content` (10/60s by user)
+  - `POST /api/v1/admin/backups/{id}/restore` (3/3600s by user)
+  - `POST /api/v1/setup/complete` (5/3600s by user_or_ip)
+  - `POST /api/v1/training/{agent}/execute` (20/3600s by user)
+  - `POST /api/v1/simulations` (30/3600s by user)
+  - `PUT`/`DELETE /api/v1/settings/{namespace}/{key}` (60/60s by user)
+  - `POST /api/v1/a2a/*` (120/60s by user_or_ip)
+  - `GET /api/v1/oauth/callback` (30/60s by ip)
+  - `POST /api/v1/conflicts/escalations/{id}/decision` (30/60s by user)
 
 ### Domain Error Handler Registration
 

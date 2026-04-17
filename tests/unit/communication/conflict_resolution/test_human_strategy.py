@@ -183,12 +183,16 @@ class TestHumanEscalationFullLoop:
             )
 
     async def test_timeout_returns_escalated_outcome(self) -> None:
+        # ``timeout_seconds=0`` triggers the TimeoutError branch
+        # deterministically (no real wall-clock sleep).  The resolver
+        # contract documents ``0`` as "immediate timeout", which is
+        # exactly the path we want to exercise here.
         store = InMemoryEscalationStore()
         registry = PendingFuturesRegistry()
         resolver = HumanEscalationResolver(
             store=store,
             registry=registry,
-            timeout_seconds=1,
+            timeout_seconds=0,
         )
         conflict = make_conflict()
         resolution = await resolver.resolve(conflict)

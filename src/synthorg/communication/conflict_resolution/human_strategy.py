@@ -179,44 +179,10 @@ class HumanEscalationResolver:
                     timeout=float(self._timeout_seconds),
                 )
         except TimeoutError:
-            # Reap the Future from the registry and mark only this row
-            # EXPIRED -- pass its own expires_at as the deadline so we
-            # never accidentally expire rows whose deadline is still
-            # in the future.
-            await self._registry.cancel(escalation.id)
-            await self._store.mark_expired(datetime.now(UTC).isoformat())
-            logger.warning(
-                CONFLICT_ESCALATION_TIMEOUT,
-                escalation_id=escalation.id,
-                conflict_id=conflict.id,
-                timeout_seconds=self._timeout_seconds,
-            )
+            await self._handle_timeout_cleanup(escalation, conflict)
             return self._timeout_resolution(conflict)
         except asyncio.CancelledError:
-            # Persist terminal state so operators do not see the row
-            # stuck as PENDING after the resolver is cancelled.
-            await self._registry.cancel(escalation.id)
-            try:
-                await self._store.cancel(
-                    escalation.id,
-                    cancelled_by="system:resolver_cancelled",
-                )
-            except MemoryError, RecursionError:
-                raise
-            except Exception as exc:
-                logger.warning(
-                    CONFLICT_ESCALATION_CANCELLED,
-                    escalation_id=escalation.id,
-                    conflict_id=conflict.id,
-                    error_type=type(exc).__name__,
-                    error=str(exc),
-                    note="store_cancel_failed",
-                )
-            logger.warning(
-                CONFLICT_ESCALATION_CANCELLED,
-                escalation_id=escalation.id,
-                conflict_id=conflict.id,
-            )
+            await self._handle_cancelled_cleanup(escalation, conflict)
             return self._cancelled_resolution(conflict)
 
         # The decision endpoint is responsible for persisting the
@@ -235,6 +201,99 @@ class HumanEscalationResolver:
             outcome=resolution.outcome.value,
         )
         return resolution
+
+    async def _handle_timeout_cleanup(
+        self,
+        escalation: Escalation,
+        conflict: Conflict,
+    ) -> None:
+        """Shield-wrap the timeout cleanup so the contract is never broken.
+
+        ``resolve`` must always return a terminal ``ConflictResolution``
+        on ``TimeoutError``; ``asyncio.shield`` keeps the cleanup awaits
+        running through downstream cancellation, and the try/except
+        guards swallow storage failures so they log and keep the
+        resolver's fallback path intact.
+        """
+        try:
+            await asyncio.shield(self._registry.cancel(escalation.id))
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                CONFLICT_ESCALATION_TIMEOUT,
+                escalation_id=escalation.id,
+                conflict_id=conflict.id,
+                error_type=type(exc).__name__,
+                error=str(exc),
+                note="registry_cancel_failed",
+            )
+        try:
+            await asyncio.shield(
+                self._store.mark_expired(datetime.now(UTC).isoformat()),
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.exception(
+                CONFLICT_ESCALATION_TIMEOUT,
+                escalation_id=escalation.id,
+                conflict_id=conflict.id,
+                note="mark_expired_failed",
+            )
+        logger.warning(
+            CONFLICT_ESCALATION_TIMEOUT,
+            escalation_id=escalation.id,
+            conflict_id=conflict.id,
+            timeout_seconds=self._timeout_seconds,
+        )
+
+    async def _handle_cancelled_cleanup(
+        self,
+        escalation: Escalation,
+        conflict: Conflict,
+    ) -> None:
+        """Shield-wrap the cancel cleanup so the row transitions terminally.
+
+        Persist the CANCELLED state even when the cancelling caller
+        tries to cancel us mid-cleanup, then log for audit.
+        """
+        try:
+            await asyncio.shield(self._registry.cancel(escalation.id))
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                CONFLICT_ESCALATION_CANCELLED,
+                escalation_id=escalation.id,
+                conflict_id=conflict.id,
+                error_type=type(exc).__name__,
+                error=str(exc),
+                note="registry_cancel_failed",
+            )
+        try:
+            await asyncio.shield(
+                self._store.cancel(
+                    escalation.id,
+                    cancelled_by="system:resolver_cancelled",
+                ),
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                CONFLICT_ESCALATION_CANCELLED,
+                escalation_id=escalation.id,
+                conflict_id=conflict.id,
+                error_type=type(exc).__name__,
+                error=str(exc),
+                note="store_cancel_failed",
+            )
+        logger.warning(
+            CONFLICT_ESCALATION_CANCELLED,
+            escalation_id=escalation.id,
+            conflict_id=conflict.id,
+        )
 
     async def _resolve_decided_by(self, escalation_id: str) -> str:
         """Look up the persisted ``decided_by`` or fall back to ``"human"``.

@@ -356,14 +356,34 @@ class ArtifactController(Controller):
         artifact = await repo.get(artifact_id)
         if artifact is None:
             msg = f"Artifact {artifact_id!r} not found"
+            logger.warning(
+                PERSISTENCE_ARTIFACT_STORED,
+                artifact_id=artifact_id,
+                error_type="artifact_not_found",
+                note="upload_content_target_missing",
+            )
             raise NotFoundError(msg)
 
         storage = state.app_state.artifact_storage
         try:
             size = await storage.store(artifact_id, data)
         except ArtifactTooLargeError as exc:
+            logger.warning(
+                PERSISTENCE_ARTIFACT_STORED,
+                artifact_id=artifact_id,
+                error_type=type(exc).__name__,
+                error=str(exc),
+                note="artifact_too_large",
+            )
             raise ArtifactTooLargeApiError from exc
         except ArtifactStorageFullError as exc:
+            logger.warning(
+                PERSISTENCE_ARTIFACT_STORED,
+                artifact_id=artifact_id,
+                error_type=type(exc).__name__,
+                error=str(exc),
+                note="artifact_storage_full",
+            )
             raise ArtifactStorageFullApiError from exc
 
         updated = artifact.model_copy(

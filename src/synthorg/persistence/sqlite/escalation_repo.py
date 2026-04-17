@@ -118,12 +118,26 @@ class SQLiteEscalationRepository(EscalationQueueStore):
             await self._db.execute(_UPSERT_SQL, params)
             await self._db.commit()
         except sqlite3.IntegrityError as exc:
-            await self._db.rollback()
             msg = f"Escalation {escalation.id!r} already exists"
+            logger.warning(
+                API_REQUEST_ERROR,
+                error_type="escalation_create_duplicate",
+                escalation_id=escalation.id,
+                conflict_id=escalation.conflict.id,
+                error=str(exc),
+            )
+            await self._db.rollback()
             raise ConstraintViolationError(msg, constraint=str(exc)) from exc
         except (sqlite3.Error, aiosqlite.Error) as exc:
-            await self._db.rollback()
             msg = f"Failed to create escalation {escalation.id!r}: {exc}"
+            logger.warning(
+                API_REQUEST_ERROR,
+                error_type="escalation_create_failed",
+                escalation_id=escalation.id,
+                conflict_id=escalation.conflict.id,
+                error=str(exc),
+            )
+            await self._db.rollback()
             raise QueryError(msg) from exc
 
     async def get(self, escalation_id: str) -> Escalation | None:
@@ -134,6 +148,12 @@ class SQLiteEscalationRepository(EscalationQueueStore):
             row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to fetch escalation {escalation_id!r}: {exc}"
+            logger.warning(
+                API_REQUEST_ERROR,
+                error_type="escalation_get_failed",
+                escalation_id=escalation_id,
+                error=str(exc),
+            )
             raise QueryError(msg) from exc
         if row is None:
             return None
@@ -171,6 +191,11 @@ class SQLiteEscalationRepository(EscalationQueueStore):
             rows = await page_cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to list escalations: {exc}"
+            logger.warning(
+                API_REQUEST_ERROR,
+                error_type="escalation_list_failed",
+                error=str(exc),
+            )
             raise QueryError(msg) from exc
         # A single corrupt row must not poison the entire page -- log and
         # skip it instead so the operator dashboard keeps functioning.
@@ -236,13 +261,13 @@ class SQLiteEscalationRepository(EscalationQueueStore):
             rows = await cursor.fetchall()
             await self._db.commit()
         except (sqlite3.Error, aiosqlite.Error) as exc:
-            await self._db.rollback()
             msg = f"Failed to mark escalations expired: {exc}"
             logger.warning(
                 API_REQUEST_ERROR,
                 error_type="escalation_mark_expired_failed",
                 error=str(exc),
             )
+            await self._db.rollback()
             raise QueryError(msg) from exc
         return tuple(str(r["id"]) for r in rows)
 
@@ -283,8 +308,15 @@ class SQLiteEscalationRepository(EscalationQueueStore):
             cursor = await self._db.execute(update_sql, params)
             await self._db.commit()
         except (sqlite3.Error, aiosqlite.Error) as exc:
-            await self._db.rollback()
             msg = f"Failed to update escalation {escalation_id!r}: {exc}"
+            logger.warning(
+                API_REQUEST_ERROR,
+                error_type="escalation_update_failed",
+                escalation_id=escalation_id,
+                target_status=new_status.value,
+                error=str(exc),
+            )
+            await self._db.rollback()
             raise QueryError(msg) from exc
         if cursor.rowcount == 0:
             # Recovery lookup runs on a fresh cursor so a crashed row

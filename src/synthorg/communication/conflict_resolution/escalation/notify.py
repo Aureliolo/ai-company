@@ -176,7 +176,19 @@ class PostgresEscalationNotifySubscriber:
                 raise
 
     async def _listen_once(self) -> None:
-        """Open a dedicated connection, LISTEN, and dispatch notifies."""
+        """Open a dedicated connection, LISTEN, and dispatch notifies.
+
+        IMPORTANT: this subscriber **holds a dedicated pool connection
+        for the lifetime of the subscription** -- LISTEN is a session-
+        level state that the connection must retain.  Operators enabling
+        cross-instance notify MUST size the Postgres connection pool to
+        reserve at least one additional slot above the application's
+        normal working set (``pool_min_size`` / ``max_size`` in the
+        persistence config) to avoid starving other clients.  As a rule
+        of thumb, raise ``pool_min_size`` by ``(number_of_workers)``
+        when enabling this feature; each worker runs one subscriber and
+        pins one connection.
+        """
         pool = self._repo.pool
         async with pool.connection() as conn:
             await conn.set_autocommit(True)
@@ -193,20 +205,17 @@ class PostgresEscalationNotifySubscriber:
 
     async def _dispatch_payload(self, payload: str) -> None:
         """Interpret a NOTIFY payload and wake the local future."""
-        # Payload format: "<escalation_id>:<new_status>" where status
-        # is one of decided/expired/cancelled.
-        try:
-            escalation_id, _, status = payload.partition(":")
-        except Exception as exc:
+        # Payload format: "<escalation_id>:<new_status>" where status is
+        # one of decided/expired/cancelled.  ``str.partition`` is
+        # infallible, so no try/except around it -- malformed payloads
+        # surface as empty ``escalation_id`` / ``status`` below.
+        escalation_id, _, status = payload.partition(":")
+        if not escalation_id or not status:
             logger.warning(
                 CONFLICT_ESCALATION_SUBSCRIBER_FAILED,
-                error_type=type(exc).__name__,
-                error=str(exc),
                 note="bad_payload",
                 payload=payload,
             )
-            return
-        if not escalation_id or not status:
             return
         try:
             if status == "decided":

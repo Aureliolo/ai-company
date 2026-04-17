@@ -17,7 +17,6 @@ import {
 import type {
   ApiResponse,
   CancelEscalationRequest,
-  Escalation,
   EscalationResponse,
   EscalationStatus,
   PaginatedResponse,
@@ -52,8 +51,8 @@ export async function getEscalation(id: string): Promise<EscalationResponse> {
 export async function submitEscalationDecision(
   id: string,
   data: SubmitDecisionRequest,
-): Promise<Escalation> {
-  const response = await apiClient.post<ApiResponse<Escalation>>(
+): Promise<EscalationResponse> {
+  const response = await apiClient.post<ApiResponse<EscalationResponse>>(
     `${BASE}/${encodeURIComponent(id)}/decision`,
     data,
   )
@@ -63,8 +62,8 @@ export async function submitEscalationDecision(
 export async function cancelEscalation(
   id: string,
   data: CancelEscalationRequest,
-): Promise<Escalation> {
-  const response = await apiClient.post<ApiResponse<Escalation>>(
+): Promise<EscalationResponse> {
+  const response = await apiClient.post<ApiResponse<EscalationResponse>>(
     `${BASE}/${encodeURIComponent(id)}/cancel`,
     data,
   )

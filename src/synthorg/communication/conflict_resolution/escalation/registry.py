@@ -18,6 +18,8 @@ from synthorg.communication.conflict_resolution.escalation.models import (
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.conflict import (
+    CONFLICT_ESCALATION_CANCELLED,
+    CONFLICT_ESCALATION_QUEUED,
     CONFLICT_ESCALATION_RESOLVED,
 )
 
@@ -44,11 +46,21 @@ class PendingFuturesRegistry:
         async with self._lock:
             if escalation_id in self._futures:
                 msg = f"Future already registered for escalation {escalation_id!r}"
+                logger.warning(
+                    CONFLICT_ESCALATION_QUEUED,
+                    escalation_id=escalation_id,
+                    note="duplicate_future_register",
+                )
                 raise ValueError(msg)
             loop = asyncio.get_running_loop()
             future: asyncio.Future[EscalationDecision] = loop.create_future()
             self._futures[escalation_id] = future
-            return future
+        logger.debug(
+            CONFLICT_ESCALATION_QUEUED,
+            escalation_id=escalation_id,
+            note="future_registered",
+        )
+        return future
 
     async def resolve(
         self,
@@ -70,7 +82,10 @@ class PendingFuturesRegistry:
             if future is not None and not already_done:
                 future.set_result(decision)
         if future is None:
-            logger.warning(
+            # Expected when a decision arrives after a restart or on a
+            # worker that never registered the Future (the row is still
+            # updated by the caller, so this is not a lost signal).
+            logger.debug(
                 CONFLICT_ESCALATION_RESOLVED,
                 escalation_id=escalation_id,
                 note="no_future_registered",
@@ -81,6 +96,12 @@ class PendingFuturesRegistry:
                 CONFLICT_ESCALATION_RESOLVED,
                 escalation_id=escalation_id,
                 note="future_already_done",
+            )
+        else:
+            logger.info(
+                CONFLICT_ESCALATION_RESOLVED,
+                escalation_id=escalation_id,
+                note="future_resolved",
             )
         return True
 
@@ -95,6 +116,12 @@ class PendingFuturesRegistry:
             future = self._futures.pop(escalation_id, None)
             if future is not None and not future.done():
                 future.cancel()
+        if future is not None:
+            logger.info(
+                CONFLICT_ESCALATION_CANCELLED,
+                escalation_id=escalation_id,
+                note="future_cancelled",
+            )
         return future is not None
 
     async def is_registered(self, escalation_id: str) -> bool:

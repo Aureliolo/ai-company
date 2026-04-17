@@ -60,6 +60,7 @@ from synthorg.api.lifecycle import (
 )
 from synthorg.api.middleware import RequestLoggingMiddleware, security_headers_hook
 from synthorg.api.rate_limits import build_sliding_window_store
+from synthorg.api.rate_limits.protocol import SlidingWindowStore  # noqa: TC001
 from synthorg.api.state import AppState
 from synthorg.api.ws_models import WsEvent, WsEventType
 from synthorg.backup.factory import build_backup_service
@@ -2002,24 +2003,30 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
     # ``AppState`` so the escalations controller and the
     # ``HumanEscalationResolver`` share a single instance.
     escalation_config = effective_config.communication.conflict_resolution.escalation
-    app_state.escalation_store = build_escalation_queue_store(
+    _escalation_store = build_escalation_queue_store(
         escalation_config,
         persistence,
     )
-    app_state.escalation_processor = build_decision_processor(escalation_config)
-    app_state.escalation_registry = PendingFuturesRegistry()
-    app_state.escalation_sweeper = EscalationExpirationSweeper(
-        app_state.escalation_store,
-        interval_seconds=escalation_config.sweeper_interval_seconds,
+    app_state.set_escalation_store(_escalation_store)
+    app_state.set_escalation_processor(build_decision_processor(escalation_config))
+    _escalation_registry = PendingFuturesRegistry()
+    app_state.set_escalation_registry(_escalation_registry)
+    app_state.set_escalation_sweeper(
+        EscalationExpirationSweeper(
+            _escalation_store,
+            interval_seconds=escalation_config.sweeper_interval_seconds,
+        ),
     )
     # Cross-instance wake-up subscriber (#1418).  No-op unless the
     # queue backend is Postgres and ``cross_instance_notify`` is
     # enabled; otherwise the sweeper and per-resolver timeout cover
     # eventual consistency on their own.
-    app_state.escalation_notify_subscriber = build_escalation_notify_subscriber(
-        escalation_config,
-        app_state.escalation_store,
-        app_state.escalation_registry,
+    app_state.set_escalation_notify_subscriber(
+        build_escalation_notify_subscriber(
+            escalation_config,
+            _escalation_store,
+            _escalation_registry,
+        ),
     )
 
     bridge = (
@@ -2255,11 +2262,18 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
 
     # Per-operation rate limiter (#1391).  Layered on top of the global
     # two-tier limiter; read from app state by ``per_op_rate_limit``
-    # guards.
-    per_op_rate_limit_store = build_sliding_window_store(
-        api_config.per_op_rate_limit,
-    )
-    shutdown = [*shutdown, per_op_rate_limit_store.close]
+    # guards.  Only build the store when the feature is enabled, so an
+    # unsupported/unimplemented backend (e.g. ``redis`` before the
+    # adapter lands) does not crash startup for deployments that turn
+    # per-op limiting off.  The guard treats missing store AS enabled
+    # as a wiring error, so we only wire ``None`` when the config
+    # explicitly opts out.
+    per_op_rate_limit_store: SlidingWindowStore | None = None
+    if api_config.per_op_rate_limit.enabled:
+        per_op_rate_limit_store = build_sliding_window_store(
+            api_config.per_op_rate_limit,
+        )
+        shutdown = [*shutdown, per_op_rate_limit_store.close]
 
     return Litestar(
         route_handlers=[api_router, *a2a_root_controllers],

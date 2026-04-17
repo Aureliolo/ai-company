@@ -4,6 +4,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg.core.types import NotBlankStr  # noqa: TC001
+
 
 class EscalationQueueConfig(BaseModel):
     """Pluggable configuration for the human escalation approval queue.
@@ -42,4 +44,4 @@ class EscalationQueueConfig(BaseModel):
     default_timeout_seconds: int | None = Field(default=None, ge=1)
     sweeper_interval_seconds: float = Field(default=30.0, ge=5.0)
     cross_instance_notify: Literal["auto", "on", "off"] = "auto"
-    notify_channel: str = Field(default="conflict_escalation_events", min_length=1)
+    notify_channel: NotBlankStr = Field(default="conflict_escalation_events")
