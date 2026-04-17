@@ -247,7 +247,18 @@ class MeetingController(Controller):
 
         Returns:
             Tuple of meeting responses for all triggered meetings.
+
+        Raises:
+            ServiceUnavailableError: Raised by the
+                ``app_state.meeting_scheduler`` property (503) when the
+                scheduler was not auto-wired -- happens in the degraded
+                (unconfigured) meeting agent caller mode.  The operator
+                must provide the agent and provider registries before
+                meetings can be triggered.
         """
+        # ``app_state.meeting_scheduler`` raises ServiceUnavailableError
+        # when the scheduler is ``None`` (degraded mode), so this
+        # endpoint fails with a clean 503 rather than AttributeError.
         scheduler = state.app_state.meeting_scheduler
         records = await scheduler.trigger_event(
             data.event_name,

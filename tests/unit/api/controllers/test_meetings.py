@@ -33,7 +33,7 @@ from tests.unit.api.conftest import (
 def _create_meeting_test_app(
     *,
     meeting_orchestrator: MagicMock,
-    meeting_scheduler: MagicMock,
+    meeting_scheduler: MagicMock | None,
 ) -> Any:
     """Build a Litestar test app with the given meeting services."""
     from synthorg.api.approval_store import ApprovalStore
@@ -283,6 +283,37 @@ class TestMeetingController:
             "deploy_complete",
             context={},
         )
+
+    def test_trigger_returns_503_when_scheduler_not_configured(
+        self,
+        mock_orchestrator: MagicMock,
+        mock_scheduler: MagicMock,
+    ) -> None:
+        """Degraded mode (``meeting_scheduler=None``) yields 503, not 500.
+
+        When the meeting agent caller is unconfigured,
+        ``auto_wire_meetings`` leaves ``meeting_scheduler`` as ``None``
+        and ``app_state.meeting_scheduler`` raises
+        ``ServiceUnavailableError`` on access.  Simulating the
+        post-wire state here (by clearing the stored scheduler after
+        construction) verifies that the controller returns a clean
+        503 instead of the PR regressing to an ``AttributeError``
+        that would surface as a 500.
+        """
+        app = _create_meeting_test_app(
+            meeting_orchestrator=mock_orchestrator,
+            meeting_scheduler=mock_scheduler,
+        )
+        app.state.app_state._meeting_scheduler = None
+        with TestClient(app) as client:
+            client.headers.update(make_auth_headers("ceo"))
+            resp = client.post(
+                "/api/v1/meetings/trigger",
+                json={"event_name": "deploy_complete"},
+            )
+            assert resp.status_code == 503
+            body = resp.json()
+            assert body["success"] is False
 
     def test_trigger_response_includes_analytics(
         self,

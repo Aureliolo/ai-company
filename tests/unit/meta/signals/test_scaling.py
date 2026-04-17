@@ -234,7 +234,10 @@ class TestAggregate:
         than being masked as "no activity".  A decision with a
         non-datetime ``created_at`` triggers the filter comparison to
         raise, and we assert the ``TypeError`` escapes ``aggregate``
-        without the broad fallback catching it.
+        without the broad fallback catching it -- and that the reducer
+        logs a ``META_SIGNAL_AGGREGATION_FAILED`` event with the
+        ``stage="reduce"`` tag before re-raising so operators see the
+        failure in observability.
         """
         broken = MagicMock()
         broken.created_at = MagicMock()  # not a datetime -> comparison fails
@@ -244,8 +247,20 @@ class TestAggregate:
         agg = ScalingSignalAggregator(service=service)
         since, until = _window()
 
-        with pytest.raises(TypeError):
+        with (
+            structlog.testing.capture_logs() as cap,
+            pytest.raises(TypeError),
+        ):
             await agg.aggregate(since=since, until=until)
+
+        failures = [
+            e
+            for e in cap
+            if e.get("event") == META_SIGNAL_AGGREGATION_FAILED
+            and e.get("stage") == "reduce"
+        ]
+        assert len(failures) == 1
+        assert failures[0]["decision_count"] == 1
 
     async def test_logs_completed_on_success(self) -> None:
         decisions = (_decision(),)

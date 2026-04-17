@@ -96,30 +96,50 @@ class ScalingSignalAggregator:
             )
             return _EMPTY
 
-        filtered = tuple(d for d in decisions if since <= d.created_at < until)
-        if not filtered:
-            logger.info(
-                META_SIGNAL_AGGREGATION_COMPLETED,
-                domain="scaling",
-                total_decisions=0,
+        # Local aggregation (filter / join / reduce) must NOT be
+        # swallowed as an empty summary -- service-layer errors were
+        # already handled above.  Wrap the reducer in a narrow
+        # log-and-rethrow so operators see aggregation bugs in the
+        # observability pipeline while callers still get a real
+        # exception instead of silently degraded output.
+        try:
+            filtered = tuple(d for d in decisions if since <= d.created_at < until)
+            if not filtered:
+                logger.info(
+                    META_SIGNAL_AGGREGATION_COMPLETED,
+                    domain="scaling",
+                    total_decisions=0,
+                )
+                return _EMPTY
+
+            outcome_by_decision = {a.decision_id: a.outcome for a in actions}
+            summaries = tuple(
+                _build_summary(d, outcome_by_decision.get(d.id)) for d in filtered
             )
-            return _EMPTY
 
-        outcome_by_decision = {a.decision_id: a.outcome for a in actions}
-        summaries = tuple(
-            _build_summary(d, outcome_by_decision.get(d.id)) for d in filtered
-        )
+            total_decisions = len(filtered)
+            executed_count = sum(
+                1 for s in summaries if s.outcome == ScalingOutcome.EXECUTED.value
+            )
+            success_rate = executed_count / total_decisions
 
-        total_decisions = len(filtered)
-        executed_count = sum(
-            1 for s in summaries if s.outcome == ScalingOutcome.EXECUTED.value
-        )
-        success_rate = executed_count / total_decisions
-
-        counter = Counter(s.source_strategy for s in summaries)
-        # Counter.most_common returns items sorted by count desc,
-        # insertion order preserved for ties -- deterministic.
-        most_common_signal = counter.most_common(1)[0][0]
+            counter = Counter(s.source_strategy for s in summaries)
+            # Counter.most_common returns items sorted by count desc,
+            # insertion order preserved for ties -- deterministic.
+            most_common_signal = counter.most_common(1)[0][0]
+        except MemoryError, RecursionError:
+            raise
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception(
+                META_SIGNAL_AGGREGATION_FAILED,
+                domain="scaling",
+                stage="reduce",
+                decision_count=len(decisions),
+                action_count=len(actions),
+            )
+            raise
 
         summary = OrgScalingSummary(
             recent_decisions=summaries,
