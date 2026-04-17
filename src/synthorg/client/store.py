@@ -13,6 +13,17 @@ from synthorg.client.models import (
     SimulationMetrics,
 )
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.observability import get_logger
+from synthorg.observability.events.client import (
+    CLIENT_FEEDBACK_RECORDED,
+    CLIENT_REQUEST_SUBMITTED,
+    SIMULATION_RUN_CANCELLED,
+    SIMULATION_RUN_COMPLETED,
+    SIMULATION_RUN_FAILED,
+    SIMULATION_RUN_STARTED,
+)
+
+logger = get_logger(__name__)
 
 SimulationRunStatus = Literal[
     "pending",
@@ -24,6 +35,12 @@ SimulationRunStatus = Literal[
 _TERMINAL_STATUSES: frozenset[SimulationRunStatus] = frozenset(
     {"completed", "cancelled", "failed"},
 )
+_STATUS_EVENTS: dict[SimulationRunStatus, str] = {
+    "running": SIMULATION_RUN_STARTED,
+    "completed": SIMULATION_RUN_COMPLETED,
+    "cancelled": SIMULATION_RUN_CANCELLED,
+    "failed": SIMULATION_RUN_FAILED,
+}
 
 
 class FeedbackStore:
@@ -44,6 +61,11 @@ class FeedbackStore:
         async with self._lock:
             bucket = self._by_client.setdefault(feedback.client_id, [])
             bucket.append(feedback)
+        logger.info(
+            CLIENT_FEEDBACK_RECORDED,
+            client_id=feedback.client_id,
+            feedback_count=len(bucket),
+        )
 
     async def list_for_client(
         self,
@@ -76,6 +98,11 @@ class RequestStore:
         """Insert or replace a request by id."""
         async with self._lock:
             self._requests[request.request_id] = request
+        logger.info(
+            CLIENT_REQUEST_SUBMITTED,
+            request_id=request.request_id,
+            client_id=request.client_id,
+        )
 
     async def get(self, request_id: str) -> ClientRequest:
         """Return the request by id or raise ``KeyError``."""
@@ -183,4 +210,13 @@ class SimulationStore:
                 updates["completed_at"] = datetime.now(UTC)
             updated = existing.model_copy(update=updates)
             self._runs[simulation_id] = updated
-            return updated
+        event = _STATUS_EVENTS.get(status)
+        if event is not None:
+            logger.info(
+                event,
+                simulation_id=simulation_id,
+                previous_status=existing.status,
+                new_status=status,
+                progress=updated.progress,
+            )
+        return updated

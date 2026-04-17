@@ -25,6 +25,11 @@ from typing import Any
 from synthorg.memory.embedding.cancellation import CancellationToken
 from synthorg.memory.embedding.fine_tune import FineTuneStage
 from synthorg.observability import get_logger
+from synthorg.observability.events.fine_tune import (
+    FINE_TUNE_HEALTH_SERVER_BIND_FAILED,
+    FINE_TUNE_HEALTH_SERVER_STARTED,
+    FINE_TUNE_HEALTH_SERVER_STOPPED,
+)
 
 logger = get_logger(__name__)
 
@@ -111,15 +116,16 @@ def _start_health_server() -> http.server.HTTPServer | None:
         server = http.server.HTTPServer(("0.0.0.0", _HEALTH_PORT), _HealthHandler)  # noqa: S104
     except OSError:
         logger.warning(
-            "health_server_bind_failed",
+            FINE_TUNE_HEALTH_SERVER_BIND_FAILED,
             port=_HEALTH_PORT,
-            msg="Health server could not bind; continuing without health endpoint",
+            reason="Health server could not bind; continuing without health endpoint",
+            exc_info=True,
         )
         return None
     _HealthHandler._start_time = time.monotonic()  # noqa: SLF001
     t = threading.Thread(target=server.serve_forever, daemon=True)
     t.start()
-    logger.info("health_server_started", port=_HEALTH_PORT)
+    logger.info(FINE_TUNE_HEALTH_SERVER_STARTED, port=_HEALTH_PORT)
     return server
 
 
@@ -129,7 +135,7 @@ def _shutdown_health_server(server: http.server.HTTPServer | None) -> None:
         return
     server.shutdown()
     server.server_close()
-    logger.info("health_server_stopped", port=_HEALTH_PORT)
+    logger.info(FINE_TUNE_HEALTH_SERVER_STOPPED, port=_HEALTH_PORT)
 
 
 def _run() -> int:

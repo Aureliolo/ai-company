@@ -68,3 +68,4 @@ TEMPLATE_PACK_APPLY_DEPT_SKIPPED: Final[str] = "template.pack.apply.dept_skipped
 TEMPLATE_PACK_BUDGET_REBALANCED: Final[str] = "template.pack.budget_rebalanced"
 TEMPLATE_PACK_BUDGET_REJECTED: Final[str] = "template.pack.budget_rejected"
 TEMPLATE_PACK_CIRCULAR: Final[str] = "template.pack.circular"
+TEMPLATE_PACK_SETTING_NOT_FOUND: Final[str] = "template.pack.setting_not_found"

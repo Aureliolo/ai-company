@@ -314,11 +314,19 @@ class AppState:
     def _set_once(self, attr: str, value: object, label: str) -> None:
         """Set a private attribute once; raise if already configured."""
         if getattr(self, attr) is not None:
+            logger.error(
+                API_APP_STARTUP,
+                action="service_already_configured",
+                service=label,
+            )
             msg = f"{label} already configured"
-            logger.error(API_APP_STARTUP, error=msg)
             raise RuntimeError(msg)
         setattr(self, attr, value)
-        logger.info(API_APP_STARTUP, note=f"{label} configured")
+        logger.info(
+            API_APP_STARTUP,
+            action="service_configured",
+            service=label,
+        )
 
     def _require_service[T](self, service: T | None, name: str) -> T:
         """Return *service* or raise 503 if not configured."""
@@ -1069,8 +1077,12 @@ class AppState:
     def set_settings_service(self, settings_service: SettingsService) -> None:
         """Set settings service and rebuild derived services."""
         if self._settings_service is not None:
+            logger.error(
+                API_APP_STARTUP,
+                action="service_already_configured",
+                service="settings_service",
+            )
             msg = "Settings service already configured"
-            logger.error(API_APP_STARTUP, error=msg)
             raise RuntimeError(msg)
         self._init_derived_services(
             settings_service=settings_service,
@@ -1078,4 +1090,8 @@ class AppState:
             persistence=self._persistence,
         )
         self._settings_service = settings_service
-        logger.info(API_APP_STARTUP, note="Settings service configured")
+        logger.info(
+            API_APP_STARTUP,
+            action="service_configured",
+            service="settings_service",
+        )

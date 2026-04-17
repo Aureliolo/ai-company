@@ -26,6 +26,7 @@ from synthorg.observability.events.template import (
     TEMPLATE_PACK_BUDGET_REBALANCED,
     TEMPLATE_PACK_BUDGET_REJECTED,
     TEMPLATE_PACK_LIST,
+    TEMPLATE_PACK_SETTING_NOT_FOUND,
 )
 from synthorg.settings.errors import SettingNotFoundError
 from synthorg.templates.errors import TemplateNotFoundError
@@ -124,7 +125,11 @@ async def _read_setting_list(
     try:
         entry = await app_state.settings_service.get("company", key)
     except SettingNotFoundError:
-        logger.debug("Setting company/%s not found, returning empty list", key)
+        logger.debug(
+            TEMPLATE_PACK_SETTING_NOT_FOUND,
+            setting_namespace="company",
+            setting_key=key,
+        )
         return []
     if not entry.value:
         return []

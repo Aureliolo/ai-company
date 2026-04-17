@@ -13,6 +13,7 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_SSRF_VIOLATION_QUERY_FAILED,
     PERSISTENCE_SSRF_VIOLATION_SAVE_FAILED,
     PERSISTENCE_SSRF_VIOLATION_SAVED,
+    PERSISTENCE_SSRF_VIOLATION_STATUS_UPDATED,
 )
 from synthorg.persistence.errors import DuplicateRecordError, PersistenceError
 from synthorg.security.ssrf_violation import SsrfViolation, SsrfViolationStatus
@@ -258,7 +259,15 @@ class SQLiteSsrfViolationRepository:
             )
             raise PersistenceError(msg) from exc
 
-        return cursor.rowcount > 0
+        updated = cursor.rowcount > 0
+        logger.info(
+            PERSISTENCE_SSRF_VIOLATION_STATUS_UPDATED,
+            violation_id=violation_id,
+            new_status=status.value,
+            resolved_by=resolved_by,
+            updated=updated,
+        )
+        return updated
 
 
 def _row_to_violation(row: Any) -> SsrfViolation:
