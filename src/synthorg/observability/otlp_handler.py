@@ -21,7 +21,12 @@ from structlog.stdlib import ProcessorFormatter
 from synthorg.observability.enums import OtlpProtocol
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from synthorg.observability.config import SinkConfig
+
+    ExportCallback = Callable[[str, int], None]
+    # Signature: (outcome: "success"|"failure", dropped_records: int) -> None
 
 # Correlation ID field names injected by structlog contextvars
 _CORRELATION_FIELDS = ("request_id", "task_id", "agent_id")
@@ -85,6 +90,7 @@ class OtlpHandler(logging.Handler):
         self._pending_count = 0
         self._pending_lock = threading.Lock()
         self._dropped_count = 0
+        self._export_callback: ExportCallback | None = None
         self._shutdown = threading.Event()
         self._batch_ready = threading.Event()
         self._flusher = threading.Thread(
@@ -94,6 +100,24 @@ class OtlpHandler(logging.Handler):
         )
         if _start_flusher:
             self._flusher.start()
+
+    def set_export_callback(
+        self,
+        callback: ExportCallback | None,
+    ) -> None:
+        """Register a callback invoked after every export batch.
+
+        Passed ``(outcome, dropped_records)`` where ``outcome`` is
+        ``"success"`` or ``"failure"`` and ``dropped_records`` is the
+        number of log records the batch failed to deliver (0 on
+        success). Used by startup wiring to push
+        :meth:`PrometheusCollector.record_otlp_export` without
+        coupling the handler directly to AppState.
+
+        Thread safety: invoked from the flusher thread; the callback
+        must be safe to call concurrently with ``emit``.
+        """
+        self._export_callback = callback
 
     def emit(self, record: logging.LogRecord) -> None:
         """Queue a record for batched OTLP export."""
@@ -249,6 +273,29 @@ class OtlpHandler(logging.Handler):
                 f"WARNING: OTLP log export failed to {url}: {exc} "
                 f"(dropped {len(log_records)} records, "
                 f"total dropped: {total_dropped})",
+                file=sys.stderr,
+                flush=True,
+            )
+            self._invoke_export_callback("failure", len(log_records))
+            return
+        self._invoke_export_callback("success", 0)
+
+    def _invoke_export_callback(self, outcome: str, dropped: int) -> None:
+        """Call the registered export callback, swallowing any errors.
+
+        A callback failure must never break the export loop; we log
+        to stderr instead of re-raising.
+        """
+        callback = self._export_callback
+        if callback is None:
+            return
+        try:
+            callback(outcome, dropped)
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            print(  # noqa: T201
+                f"WARNING: otlp export callback raised: {exc}",
                 file=sys.stderr,
                 flush=True,
             )

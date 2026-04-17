@@ -281,6 +281,10 @@ class TestEventConstants:
             "verification",
             "versioning",
             "web",
+            # Added in #1395 -- logging convention cleanup:
+            "capture",
+            "fine_tune",
+            "propagation",
         }
         discovered = {info.name for info in pkgutil.iter_modules(events.__path__)}
         assert discovered == expected
