@@ -363,10 +363,14 @@ class PostgresSessionStore:
             self._pool.connection() as conn,
             conn.cursor(row_factory=dict_row) as cur,
         ):
+            # Pass the timezone-aware ``datetime`` directly; psycopg
+            # adapts it to ``TIMESTAMPTZ`` natively, which avoids the
+            # ISO-string round-trip and keeps the comparison in the
+            # column's native type.
             await cur.execute(
                 "SELECT session_id FROM sessions "
                 "WHERE revoked = TRUE AND expires_at > %s",
-                (now.isoformat(),),
+                (now,),
             )
             rows = await cur.fetchall()
         self._revoked = {row["session_id"] for row in rows}

@@ -247,6 +247,16 @@ def _create_email_sink(  # noqa: PLR0911 - each return is a distinct validation 
             error=f"invalid port: {params.get('port')!r}",
         )
         return None
+    if port < 1 or port > 65535:  # noqa: PLR2004
+        # Parses as an int but falls outside the TCP port range; reject
+        # at the boundary so delivery-time failures aren't the first
+        # signal of misconfiguration.
+        logger.warning(
+            NOTIFICATION_SINK_CONFIG_INVALID,
+            sink_type="email",
+            error=f"invalid port range: {port}",
+        )
+        return None
     from_addr = (params.get("from_addr") or "").strip()
     if not from_addr:
         # Previously defaulted to ``synthorg@localhost``, which works

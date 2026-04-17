@@ -106,7 +106,7 @@ class HiringRequest(BaseModel):
     budget_limit_monthly: float | None = Field(
         default=None,
         ge=0.0,
-        description="Maximum monthly cost in the configured currency",
+        description="Maximum monthly cost in the configured currency, if constrained",
     )
     template_name: NotBlankStr | None = Field(
         default=None,
