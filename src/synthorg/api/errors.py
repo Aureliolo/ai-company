@@ -45,34 +45,71 @@ class ErrorCode(IntEnum):
     CSRF_REJECTED = 1004
     REFRESH_TOKEN_INVALID = 1005
     SESSION_LIMIT_EXCEEDED = 1006
+    TOOL_PERMISSION_DENIED = 1007
 
     # 2xxx -- validation
     VALIDATION_ERROR = 2000
     REQUEST_VALIDATION_ERROR = 2001
+    ARTIFACT_TOO_LARGE = 2002
+    TOOL_PARAMETER_ERROR = 2003
 
     # 3xxx -- not_found
     RESOURCE_NOT_FOUND = 3000
     RECORD_NOT_FOUND = 3001
     ROUTE_NOT_FOUND = 3002
+    PROJECT_NOT_FOUND = 3003
+    TASK_NOT_FOUND = 3004
+    SUBWORKFLOW_NOT_FOUND = 3005
+    WORKFLOW_EXECUTION_NOT_FOUND = 3006
+    CHANNEL_NOT_FOUND = 3007
+    TOOL_NOT_FOUND = 3008
+    ONTOLOGY_NOT_FOUND = 3009
+    CONNECTION_NOT_FOUND = 3010
+    MODEL_NOT_FOUND = 3011
+    ESCALATION_NOT_FOUND = 3012
 
     # 4xxx -- conflict
     RESOURCE_CONFLICT = 4000
     DUPLICATE_RECORD = 4001
     VERSION_CONFLICT = 4002
+    TASK_VERSION_CONFLICT = 4003
+    ONTOLOGY_DUPLICATE = 4004
+    CHANNEL_ALREADY_EXISTS = 4005
+    ESCALATION_ALREADY_DECIDED = 4006
 
     # 5xxx -- rate_limit
     RATE_LIMITED = 5000
+    PER_OPERATION_RATE_LIMITED = 5001
 
     # 6xxx -- budget_exhausted
     BUDGET_EXHAUSTED = 6000
+    DAILY_LIMIT_EXCEEDED = 6001
+    RISK_BUDGET_EXHAUSTED = 6002
+    PROJECT_BUDGET_EXHAUSTED = 6003
+    QUOTA_EXHAUSTED = 6004
 
     # 7xxx -- provider_error
     PROVIDER_ERROR = 7000
+    PROVIDER_TIMEOUT = 7001
+    PROVIDER_CONNECTION = 7002
+    PROVIDER_INTERNAL = 7003
+    PROVIDER_AUTHENTICATION_FAILED = 7004
+    PROVIDER_INVALID_REQUEST = 7005
+    PROVIDER_CONTENT_FILTERED = 7006
+    INTEGRATION_ERROR = 7007
+    OAUTH_ERROR = 7008
+    WEBHOOK_ERROR = 7009
 
     # 8xxx -- internal
     INTERNAL_ERROR = 8000
     SERVICE_UNAVAILABLE = 8001
     PERSISTENCE_ERROR = 8002
+    ENGINE_ERROR = 8003
+    ONTOLOGY_ERROR = 8004
+    COMMUNICATION_ERROR = 8005
+    TOOL_ERROR = 8006
+    ARTIFACT_STORAGE_FULL = 8007
+    TOOL_EXECUTION_ERROR = 8008
 
 
 # Maps first digit of error code to its expected category.
@@ -288,3 +325,37 @@ class ServiceUnavailableError(ApiError):
 
     def __init__(self, message: str | None = None) -> None:
         super().__init__(message, status_code=503)
+
+
+class ArtifactTooLargeApiError(ApiError):
+    """Raised when an artifact upload exceeds the size limit (413)."""
+
+    default_message: ClassVar[str] = "Artifact content is too large"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.VALIDATION
+    error_code: ClassVar[ErrorCode] = ErrorCode.ARTIFACT_TOO_LARGE
+
+    def __init__(self, message: str | None = None) -> None:
+        super().__init__(message, status_code=413)
+
+
+class PerOperationRateLimitError(ApiError):
+    """Raised when a per-operation rate limit is exceeded (429).
+
+    Produced by :func:`synthorg.api.rate_limits.guard.per_op_rate_limit`
+    guards. Flows through ``handle_api_error`` to produce an RFC 9457
+    response with ``Retry-After`` set.
+    """
+
+    default_message: ClassVar[str] = "Rate limit exceeded"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.RATE_LIMIT
+    error_code: ClassVar[ErrorCode] = ErrorCode.PER_OPERATION_RATE_LIMITED
+    retryable: ClassVar[bool] = True
+
+    def __init__(
+        self,
+        message: str | None = None,
+        *,
+        retry_after: int = 1,
+    ) -> None:
+        super().__init__(message, status_code=429)
+        self.retry_after = max(1, int(retry_after))

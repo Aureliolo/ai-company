@@ -7,7 +7,9 @@ exception types.
 
 import math
 from types import MappingProxyType
-from typing import Any
+from typing import Any, ClassVar
+
+from synthorg.api.errors import ErrorCategory, ErrorCode
 
 _REDACTED_KEYS: frozenset[str] = frozenset(
     {"api_key", "token", "secret", "password", "authorization"},
@@ -27,6 +29,13 @@ class ProviderError(Exception):
         context: Immutable metadata about the error (provider, model, etc.).
         is_retryable: Whether the caller should retry the request.
 
+    Class Attributes:
+        status_code: HTTP 502 Bad Gateway (upstream failure).
+        error_code: RFC 9457 error code; subclasses override.
+        error_category: ``PROVIDER_ERROR``.
+        retryable: Alias of ``is_retryable`` for the exception handler.
+        default_message: Generic message safe for 5xx scrubbing.
+
     Note:
         When converted to string, sensitive context keys (api_key, token,
         secret, password, authorization) are automatically redacted
@@ -34,6 +43,11 @@ class ProviderError(Exception):
     """
 
     is_retryable: bool = False
+    retryable: ClassVar[bool] = False
+    status_code: ClassVar[int] = 502
+    error_code: ClassVar[ErrorCode] = ErrorCode.PROVIDER_ERROR
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.PROVIDER_ERROR
+    default_message: ClassVar[str] = "Provider error"
 
     def __init__(
         self,
@@ -73,12 +87,20 @@ class AuthenticationError(ProviderError):
     """Invalid or missing API credentials."""
 
     is_retryable = False
+    status_code: ClassVar[int] = 502
+    error_code: ClassVar[ErrorCode] = ErrorCode.PROVIDER_AUTHENTICATION_FAILED
+    default_message: ClassVar[str] = "Provider authentication failed"
 
 
 class RateLimitError(ProviderError):
     """Provider rate limit exceeded."""
 
     is_retryable = True
+    retryable: ClassVar[bool] = True
+    status_code: ClassVar[int] = 429
+    error_code: ClassVar[ErrorCode] = ErrorCode.RATE_LIMITED
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.RATE_LIMIT
+    default_message: ClassVar[str] = "Rate limit exceeded"
 
     def __init__(
         self,
@@ -108,36 +130,60 @@ class ModelNotFoundError(ProviderError):
     """Requested model does not exist or is not available."""
 
     is_retryable = False
+    status_code: ClassVar[int] = 404
+    error_code: ClassVar[ErrorCode] = ErrorCode.MODEL_NOT_FOUND
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.NOT_FOUND
+    default_message: ClassVar[str] = "Model not found"
 
 
 class InvalidRequestError(ProviderError):
     """Malformed request (bad parameters, too many tokens, etc.)."""
 
     is_retryable = False
+    status_code: ClassVar[int] = 422
+    error_code: ClassVar[ErrorCode] = ErrorCode.PROVIDER_INVALID_REQUEST
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.VALIDATION
+    default_message: ClassVar[str] = "Invalid provider request"
 
 
 class ContentFilterError(ProviderError):
     """Request or response blocked by the provider's content filter."""
 
     is_retryable = False
+    status_code: ClassVar[int] = 422
+    error_code: ClassVar[ErrorCode] = ErrorCode.PROVIDER_CONTENT_FILTERED
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.VALIDATION
+    default_message: ClassVar[str] = "Content filtered by provider"
 
 
 class ProviderTimeoutError(ProviderError):
     """Request timed out waiting for provider response."""
 
     is_retryable = True
+    retryable: ClassVar[bool] = True
+    status_code: ClassVar[int] = 504
+    error_code: ClassVar[ErrorCode] = ErrorCode.PROVIDER_TIMEOUT
+    default_message: ClassVar[str] = "Provider request timed out"
 
 
 class ProviderConnectionError(ProviderError):
     """Network-level failure connecting to the provider."""
 
     is_retryable = True
+    retryable: ClassVar[bool] = True
+    status_code: ClassVar[int] = 502
+    error_code: ClassVar[ErrorCode] = ErrorCode.PROVIDER_CONNECTION
+    default_message: ClassVar[str] = "Provider connection failed"
 
 
 class ProviderInternalError(ProviderError):
     """Provider returned a server-side error (5xx)."""
 
     is_retryable = True
+    retryable: ClassVar[bool] = True
+    status_code: ClassVar[int] = 502
+    error_code: ClassVar[ErrorCode] = ErrorCode.PROVIDER_INTERNAL
+    default_message: ClassVar[str] = "Provider internal error"
 
 
 class DriverNotRegisteredError(ProviderError):

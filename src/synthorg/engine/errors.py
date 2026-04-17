@@ -1,7 +1,8 @@
 """Engine-layer error hierarchy."""
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
+from synthorg.api.errors import ErrorCategory, ErrorCode
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 
 if TYPE_CHECKING:
@@ -9,7 +10,21 @@ if TYPE_CHECKING:
 
 
 class EngineError(Exception):
-    """Base exception for all engine-layer errors."""
+    """Base exception for all engine-layer errors.
+
+    Class Attributes:
+        status_code: Default HTTP status for API exposure (500).
+        error_code: Default RFC 9457 error code.
+        error_category: Default RFC 9457 error category.
+        retryable: Whether the client should retry the request.
+        default_message: Generic 5xx-safe message used by exception handlers.
+    """
+
+    status_code: ClassVar[int] = 500
+    error_code: ClassVar[ErrorCode] = ErrorCode.ENGINE_ERROR
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.INTERNAL
+    retryable: ClassVar[bool] = False
+    default_message: ClassVar[str] = "Internal server error"
 
 
 class PromptBuildError(EngineError):
@@ -80,6 +95,11 @@ class ProjectNotFoundError(EngineError):
         project_id: The project identifier that was not found.
     """
 
+    status_code: ClassVar[int] = 404
+    error_code: ClassVar[ErrorCode] = ErrorCode.PROJECT_NOT_FOUND
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.NOT_FOUND
+    default_message: ClassVar[str] = "Project not found"
+
     def __init__(self, *, project_id: NotBlankStr) -> None:
         super().__init__("Project not found")
         self.project_id: NotBlankStr = project_id
@@ -95,6 +115,11 @@ class ProjectAgentNotMemberError(EngineError):
         project_id: The project the agent attempted to access.
         agent_id: The agent that is not in the project team.
     """
+
+    status_code: ClassVar[int] = 403
+    error_code: ClassVar[ErrorCode] = ErrorCode.FORBIDDEN
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.AUTH
+    default_message: ClassVar[str] = "Agent not authorized for this project"
 
     def __init__(
         self,
@@ -146,9 +171,19 @@ class TaskMutationError(TaskEngineError):
 class TaskNotFoundError(TaskMutationError):
     """Raised when a task is not found during mutation."""
 
+    status_code: ClassVar[int] = 404
+    error_code: ClassVar[ErrorCode] = ErrorCode.TASK_NOT_FOUND
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.NOT_FOUND
+    default_message: ClassVar[str] = "Task not found"
+
 
 class TaskVersionConflictError(TaskMutationError):
     """Raised when optimistic concurrency version does not match."""
+
+    status_code: ClassVar[int] = 409
+    error_code: ClassVar[ErrorCode] = ErrorCode.TASK_VERSION_CONFLICT
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.CONFLICT
+    default_message: ClassVar[str] = "Task version conflict"
 
 
 class TaskInternalError(TaskEngineError):
@@ -225,6 +260,11 @@ class WorkflowConditionEvalError(WorkflowExecutionError):
 class WorkflowExecutionNotFoundError(WorkflowExecutionError):
     """Raised when a workflow execution instance is not found."""
 
+    status_code: ClassVar[int] = 404
+    error_code: ClassVar[ErrorCode] = ErrorCode.WORKFLOW_EXECUTION_NOT_FOUND
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.NOT_FOUND
+    default_message: ClassVar[str] = "Workflow execution not found"
+
 
 class SubworkflowNotFoundError(WorkflowExecutionError):
     """Raised when a referenced subworkflow version cannot be resolved.
@@ -233,6 +273,11 @@ class SubworkflowNotFoundError(WorkflowExecutionError):
         subworkflow_id: The subworkflow identifier.
         version: The semver pin that failed to resolve.
     """
+
+    status_code: ClassVar[int] = 404
+    error_code: ClassVar[ErrorCode] = ErrorCode.SUBWORKFLOW_NOT_FOUND
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.NOT_FOUND
+    default_message: ClassVar[str] = "Subworkflow not found"
 
     def __init__(
         self,
@@ -309,6 +354,11 @@ class SelfReviewError(EngineError):
         task_id: The task identifier the self-review was attempted on.
         agent_id: The agent identifier that is both executor and reviewer.
     """
+
+    status_code: ClassVar[int] = 403
+    error_code: ClassVar[ErrorCode] = ErrorCode.FORBIDDEN
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.AUTH
+    default_message: ClassVar[str] = "Self-review is not permitted"
 
     def __init__(
         self,

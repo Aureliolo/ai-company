@@ -36,6 +36,10 @@ from synthorg.api.errors import (
     category_title,
     category_type_uri,
 )
+from synthorg.budget.errors import BudgetExhaustedError
+from synthorg.communication.errors import CommunicationError
+from synthorg.engine.errors import EngineError
+from synthorg.integrations.errors import IntegrationError
 from synthorg.observability import get_logger
 from synthorg.observability.correlation import generate_correlation_id
 from synthorg.observability.events.api import (
@@ -45,11 +49,14 @@ from synthorg.observability.events.api import (
     API_REQUEST_ERROR,
     API_ROUTE_NOT_FOUND,
 )
+from synthorg.ontology.errors import OntologyError
 from synthorg.persistence.errors import (
     DuplicateRecordError,
     PersistenceError,
     RecordNotFoundError,
 )
+from synthorg.providers.errors import ProviderError, RateLimitError
+from synthorg.tools.errors import ToolError
 
 logger = get_logger(__name__)
 
@@ -372,6 +379,60 @@ def handle_api_error(
     )
 
 
+def handle_domain_error(
+    request: Request[Any, Any, Any],
+    exc: Exception,
+) -> Response[ApiResponse[None]] | Response[ProblemDetail]:
+    """Map domain-layer exceptions to RFC 9457 responses.
+
+    Reads HTTP metadata ClassVars declared on the domain error bases
+    (``status_code``, ``error_code``, ``error_category``, ``retryable``,
+    ``default_message``).  Falls back to 500/INTERNAL for any subclass
+    that lacks annotations so the handler is forward-compatible with
+    newly added domain errors.
+
+    Handles ``EngineError``, ``BudgetExhaustedError``, ``ProviderError``,
+    ``OntologyError``, ``CommunicationError``, ``IntegrationError``, and
+    ``ToolError`` hierarchies -- one handler function covers all seven
+    via MRO dispatch.
+
+    5xx responses return the class-level ``default_message`` to avoid
+    leaking internal detail; 4xx responses pass through the exception
+    message which is controller-authored and user-safe.
+    """
+    status_code = int(getattr(exc, "status_code", 500))
+    error_code_val = getattr(exc, "error_code", ErrorCode.INTERNAL_ERROR)
+    error_category_val = getattr(exc, "error_category", ErrorCategory.INTERNAL)
+    retryable = bool(getattr(exc, "retryable", getattr(exc, "is_retryable", False)))
+    _log_error(request, exc, status=status_code)
+    if status_code >= _SERVER_ERROR_THRESHOLD:
+        msg = str(getattr(exc, "default_message", "Internal server error"))
+    else:
+        msg = str(exc) or str(getattr(exc, "default_message", "Request error"))
+    retry_after_raw = getattr(exc, "retry_after", None)
+    retry_after_val: int | None = None
+    if (
+        retry_after_raw is not None
+        and not isinstance(retry_after_raw, bool)
+        and isinstance(retry_after_raw, (int, float))
+        and retry_after_raw >= 0
+    ):
+        retry_after_val = int(retry_after_raw)
+    headers: dict[str, str] | None = None
+    if retry_after_val is not None:
+        headers = {"Retry-After": str(retry_after_val)}
+    return _build_response(
+        request,
+        detail=msg,
+        error_code=error_code_val,
+        error_category=error_category_val,
+        retryable=retryable,
+        retry_after=retry_after_val if retryable else None,
+        status_code=status_code,
+        headers=headers,
+    )
+
+
 def handle_unexpected(
     request: Request[Any, Any, Any],
     exc: Exception,
@@ -520,6 +581,18 @@ EXCEPTION_HANDLERS: MappingProxyType[type[Exception], object] = MappingProxyType
         NotFoundException: handle_not_found,
         HTTPException: handle_http_exception,
         ApiError: handle_api_error,
+        # Domain error hierarchies -- MRO dispatch covers every subclass.
+        # RateLimitError is listed explicitly so its narrower 429 status
+        # takes precedence over the ProviderError (502) default when
+        # Litestar walks the raised exception's MRO.
+        RateLimitError: handle_domain_error,
+        EngineError: handle_domain_error,
+        BudgetExhaustedError: handle_domain_error,
+        ProviderError: handle_domain_error,
+        OntologyError: handle_domain_error,
+        CommunicationError: handle_domain_error,
+        IntegrationError: handle_domain_error,
+        ToolError: handle_domain_error,
         Exception: handle_unexpected,
     }
 )

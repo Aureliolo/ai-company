@@ -171,19 +171,14 @@ class SubworkflowController(Controller):
             Parameter(min_length=1, max_length=64),
         ],
     ) -> Response[ApiResponse[WorkflowDefinition]]:
-        """Fetch a specific subworkflow version."""
+        """Fetch a specific subworkflow version.
+
+        Raises ``SubworkflowNotFoundError`` (404) when the version
+        cannot be resolved; the domain-error handler maps it to an
+        RFC 9457 response automatically.
+        """
         registry = _registry(state)
-        try:
-            definition = await registry.get(subworkflow_id, version)
-        except SubworkflowNotFoundError:
-            return Response(
-                content=ApiResponse[WorkflowDefinition](
-                    error=(
-                        f"Subworkflow {subworkflow_id!r} version {version!r} not found"
-                    ),
-                ),
-                status_code=404,
-            )
+        definition = await registry.get(subworkflow_id, version)
         return Response(
             content=ApiResponse[WorkflowDefinition](data=definition),
         )

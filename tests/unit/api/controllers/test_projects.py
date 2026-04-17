@@ -97,10 +97,12 @@ class TestProjectController:
         self, test_client: TestClient[Any]
     ) -> None:
         resp = test_client.get("/api/v1/projects?status=bogus")
-        assert resp.status_code == 400
+        # ApiValidationError is 422 Unprocessable Entity (RFC 9457).
+        assert resp.status_code == 422
         body = resp.json()
         assert body["success"] is False
         assert "Invalid project status" in body["error"]
+        assert body["error_detail"]["error_category"] == "validation"
 
     def test_create_project_with_duplicate_team(
         self, test_client: TestClient[Any]
