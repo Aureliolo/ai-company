@@ -128,11 +128,15 @@ async def observe_until_verdict(  # noqa: PLR0913
         else RegressionVerdict.NO_REGRESSION
     )
     final_breached = last_result.breached_metric if last_result is not None else None
-    outcome = (
-        RolloutOutcome.SUCCESS
-        if final_verdict == RegressionVerdict.NO_REGRESSION
-        else RolloutOutcome.REGRESSED
-    )
+    if final_verdict == RegressionVerdict.NO_REGRESSION:
+        outcome = RolloutOutcome.SUCCESS
+    elif final_verdict == RegressionVerdict.INSUFFICIENT_DATA:
+        # "Don't know yet" must not be reported as a regression.
+        # Map to INCONCLUSIVE so callers can decide whether to extend
+        # the window or abort rather than rolling back on no data.
+        outcome = RolloutOutcome.INCONCLUSIVE
+    else:
+        outcome = RolloutOutcome.REGRESSED
     logger.info(
         META_ROLLOUT_COMPLETED,
         strategy=strategy_name,

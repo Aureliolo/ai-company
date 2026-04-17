@@ -310,6 +310,19 @@ class ABTestRollout:
             check_interval_hours=self._check_interval_hours,
         )
         observation_hours = float(proposal.observation_window_hours)
+        # Fast-fail on non-positive windows / intervals so callers see a
+        # clear misconfiguration error instead of a silent zero-tick
+        # INCONCLUSIVE result. Matches the guard in
+        # ``_observation.observe_until_verdict``.
+        if observation_hours <= 0.0:
+            msg = f"observation_window_hours must be positive; got {observation_hours}"
+            raise ValueError(msg)
+        if self._check_interval_hours <= 0.0:
+            msg = (
+                "check_interval_hours must be positive so elapsed advances "
+                f"each tick; got {self._check_interval_hours}"
+            )
+            raise ValueError(msg)
         elapsed = 0.0
         last_comparison: ABTestComparison | None = None
         while elapsed < observation_hours:
