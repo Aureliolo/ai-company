@@ -22,6 +22,7 @@ from synthorg.meta.models import (
 )
 from synthorg.meta.rollout.ab_comparator import ABTestComparator
 from synthorg.meta.rollout.ab_models import (
+    ABTestComparison,
     ABTestGroup,
     ABTestVerdict,
     GroupAssignment,
@@ -194,6 +195,50 @@ class ABTestRollout:
             assignment=assignment,
         )
 
+    async def _aggregate_tick(
+        self,
+        *,
+        assignment: GroupAssignment,
+        window_start: datetime,
+        window_end: datetime,
+    ) -> ABTestComparison:
+        """Aggregate both groups for one tick and return the comparison.
+
+        Fans out control + treatment aggregation into a ``TaskGroup``,
+        wraps the samples in ``GroupMetrics``, and hands them to the
+        comparator. Kept as a thin helper so ``_observe_and_compare``
+        stays under the 50-line budget and the aggregation shape lives
+        in exactly one place.
+        """
+        async with asyncio.TaskGroup() as tg:
+            control_task = tg.create_task(
+                self._group_aggregator.aggregate_for_agents(
+                    agent_ids=assignment.control_agent_ids,
+                    since=window_start,
+                    until=window_end,
+                ),
+            )
+            treatment_task = tg.create_task(
+                self._group_aggregator.aggregate_for_agents(
+                    agent_ids=assignment.treatment_agent_ids,
+                    since=window_start,
+                    until=window_end,
+                ),
+            )
+        control_metrics = _samples_to_metrics(
+            control_task.result(),
+            ABTestGroup.CONTROL,
+        )
+        treatment_metrics = _samples_to_metrics(
+            treatment_task.result(),
+            ABTestGroup.TREATMENT,
+        )
+        return await self._comparator.compare(
+            control=control_metrics,
+            treatment=treatment_metrics,
+            thresholds=self._thresholds,
+        )
+
     async def _observe_and_compare(
         self,
         *,
@@ -217,35 +262,10 @@ class ABTestRollout:
             elapsed += step_hours
             window_end = self._clock.now()
             window_start = window_end - timedelta(hours=elapsed)
-            async with asyncio.TaskGroup() as tg:
-                control_task = tg.create_task(
-                    self._group_aggregator.aggregate_for_agents(
-                        agent_ids=assignment.control_agent_ids,
-                        since=window_start,
-                        until=window_end,
-                    ),
-                )
-                treatment_task = tg.create_task(
-                    self._group_aggregator.aggregate_for_agents(
-                        agent_ids=assignment.treatment_agent_ids,
-                        since=window_start,
-                        until=window_end,
-                    ),
-                )
-            control_samples = control_task.result()
-            treatment_samples = treatment_task.result()
-            control_metrics = _samples_to_metrics(
-                control_samples,
-                ABTestGroup.CONTROL,
-            )
-            treatment_metrics = _samples_to_metrics(
-                treatment_samples,
-                ABTestGroup.TREATMENT,
-            )
-            comparison = await self._comparator.compare(
-                control=control_metrics,
-                treatment=treatment_metrics,
-                thresholds=self._thresholds,
+            comparison = await self._aggregate_tick(
+                assignment=assignment,
+                window_start=window_start,
+                window_end=window_end,
             )
             last_comparison = comparison
             logger.info(

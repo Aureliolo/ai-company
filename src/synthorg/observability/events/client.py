@@ -24,3 +24,7 @@ CONTINUOUS_MODE_DISABLED: Final[str] = "continuous.mode.disabled"
 CONTINUOUS_MODE_STARTED: Final[str] = "continuous.mode.started"
 CONTINUOUS_MODE_STOPPED: Final[str] = "continuous.mode.stopped"
 CLIENT_FEEDBACK_SINK_FAILED: Final[str] = "client.feedback.sink_failed"
+
+# Factory dispatch events -------------------------------------------------
+
+CLIENT_FACTORY_UNKNOWN_STRATEGY: Final[str] = "client.factory.unknown_strategy"

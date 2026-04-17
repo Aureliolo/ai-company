@@ -147,10 +147,20 @@ class RestorePromptHandler:
                 f"got {type(text).__name__}"
             )
             raise ValueError(msg)  # noqa: TRY004 -- semantic validation, not a type error
-        await self._mutator.restore_principle(
-            scope=str(operation.target),
-            text=text,
-        )
+        try:
+            await self._mutator.restore_principle(
+                scope=str(operation.target),
+                text=text,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.exception(
+                META_ROLLBACK_OPERATION_FAILED,
+                operation_type="restore_prompt",
+                target=str(operation.target),
+            )
+            raise
         logger.info(
             META_ROLLBACK_PROMPT_REVERTED,
             target=str(operation.target),
@@ -166,10 +176,20 @@ class RevertArchitectureHandler:
 
     async def revert(self, operation: RollbackOperation) -> int:
         """Restore the structural entity to its previous value."""
-        await self._mutator.restore(
-            target=str(operation.target),
-            previous_value=operation.previous_value,
-        )
+        try:
+            await self._mutator.restore(
+                target=str(operation.target),
+                previous_value=operation.previous_value,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.exception(
+                META_ROLLBACK_OPERATION_FAILED,
+                operation_type="revert_architecture",
+                target=str(operation.target),
+            )
+            raise
         logger.info(
             META_ROLLBACK_ARCHITECTURE_REVERTED,
             target=str(operation.target),
@@ -199,10 +219,20 @@ class RevertCodeHandler:
                 f"contents); got {type(content).__name__}"
             )
             raise ValueError(msg)  # noqa: TRY004 -- semantic validation, not a type error
-        await self._mutator.revert_file(
-            path=str(operation.target),
-            content=content,
-        )
+        try:
+            await self._mutator.revert_file(
+                path=str(operation.target),
+                content=content,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.exception(
+                META_ROLLBACK_OPERATION_FAILED,
+                operation_type="revert_code",
+                target=str(operation.target),
+            )
+            raise
         logger.info(
             META_ROLLBACK_CODE_REVERTED,
             target=str(operation.target),

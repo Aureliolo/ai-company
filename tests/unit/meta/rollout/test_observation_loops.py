@@ -257,5 +257,6 @@ class TestABTestMidWindowRegressionExit:
         )
         assert result.outcome == RolloutOutcome.REGRESSED
         assert result.regression_verdict == RegressionVerdict.STATISTICAL_REGRESSION
-        # Trip on tick 2 -> 2 * 4 = 8 hours elapsed.
+        # _AltAgg trips on tick >= 1 (0-indexed), i.e. the second call
+        # pair. Each pair = 4h, so two ticks = 8.0 hours elapsed.
         assert result.observation_hours_elapsed == 8.0

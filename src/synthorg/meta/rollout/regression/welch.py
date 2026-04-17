@@ -98,8 +98,9 @@ def welch_t_test(
     df_den = (var_a / n_a) ** 2 / (n_a - 1) + (var_b / n_b) ** 2 / (n_b - 1)
     if se_sq <= 0.0 or df_den <= 0.0:
         msg = (
-            f"both arms require non-zero variance; "
-            f"var_a={var_a}, var_b={var_b}, se_sq={se_sq}, df_den={df_den}"
+            f"Welch requires positive se_sq and df_den; "
+            f"got se_sq={se_sq}, df_den={df_den} "
+            f"(var_a={var_a}, var_b={var_b})"
         )
         raise ZeroVarianceError(msg)
 

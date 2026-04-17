@@ -32,7 +32,11 @@ from synthorg.client.report.detailed import DetailedReport
 from synthorg.client.report.json_export import JsonExportReport
 from synthorg.client.report.metrics_only import MetricsOnlyReport
 from synthorg.client.report.summary import SummaryReport
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
+from synthorg.observability.events.client import (
+    CLIENT_FACTORY_UNKNOWN_STRATEGY,
+)
 
 logger = get_logger(__name__)
 
@@ -50,7 +54,6 @@ if TYPE_CHECKING:
         ReportStrategy,
         RequirementGenerator,
     )
-    from synthorg.core.types import NotBlankStr
     from synthorg.providers.protocol import CompletionProvider
 
 
@@ -75,6 +78,31 @@ class UnknownStrategyError(ValueError):
     """Raised when a config discriminator does not map to any strategy."""
 
 
+def _require_non_blank(
+    value: object,
+    *,
+    factory: str,
+    strategy: str,
+    field: str,
+) -> str:
+    """Return ``value`` as a non-blank string or raise ``UnknownStrategyError``.
+
+    ``None`` and empty / whitespace-only strings both fail: the factory
+    must refuse to hand out a strategy that would later blow up on a
+    missing or useless path / identifier.
+    """
+    if value is None or not str(value).strip():
+        logger.warning(
+            CLIENT_FACTORY_UNKNOWN_STRATEGY,
+            factory=factory,
+            strategy=strategy,
+            missing=field,
+        )
+        msg = f"{strategy} strategy requires {field}"
+        raise UnknownStrategyError(msg)
+    return str(value)
+
+
 def build_requirement_generator(
     config: RequirementGeneratorConfig,
     *,
@@ -92,55 +120,49 @@ def build_requirement_generator(
     * ``hybrid`` -> ``HybridGenerator`` -- callers compose manually.
     """
     strategy = str(config.strategy)
+    factory = "requirement_generator"
     if strategy == "template":
-        if config.template_path is None:
-            logger.warning(
-                "client.factory.unknown_strategy",
-                factory="requirement_generator",
-                strategy=strategy,
-                missing="config.template_path",
-            )
-            msg = "template strategy requires config.template_path"
-            raise UnknownStrategyError(msg)
-        return TemplateGenerator(template_path=Path(config.template_path))
+        template_path = _require_non_blank(
+            config.template_path,
+            factory=factory,
+            strategy=strategy,
+            field="config.template_path",
+        )
+        return TemplateGenerator(template_path=Path(template_path))
     if strategy == "llm":
         if provider is None:
             logger.warning(
-                "client.factory.unknown_strategy",
-                factory="requirement_generator",
+                CLIENT_FACTORY_UNKNOWN_STRATEGY,
+                factory=factory,
                 strategy=strategy,
                 missing="provider",
             )
             msg = "llm strategy requires a provider"
             raise UnknownStrategyError(msg)
-        effective_model = model or config.llm_model
-        if effective_model is None:
-            logger.warning(
-                "client.factory.unknown_strategy",
-                factory="requirement_generator",
-                strategy=strategy,
-                missing="model",
-            )
-            msg = "llm strategy requires model (argument or config.llm_model)"
-            raise UnknownStrategyError(msg)
-        return LLMGenerator(provider=provider, model=effective_model)
+        effective_model = _require_non_blank(
+            model or config.llm_model,
+            factory=factory,
+            strategy=strategy,
+            field="model (argument or config.llm_model)",
+        )
+        return LLMGenerator(
+            provider=provider,
+            model=NotBlankStr(effective_model),
+        )
     if strategy == "dataset":
-        if config.dataset_path is None:
-            logger.warning(
-                "client.factory.unknown_strategy",
-                factory="requirement_generator",
-                strategy=strategy,
-                missing="config.dataset_path",
-            )
-            msg = "dataset strategy requires config.dataset_path"
-            raise UnknownStrategyError(msg)
-        return DatasetGenerator(dataset_path=Path(config.dataset_path))
+        dataset_path = _require_non_blank(
+            config.dataset_path,
+            factory=factory,
+            strategy=strategy,
+            field="config.dataset_path",
+        )
+        return DatasetGenerator(dataset_path=Path(dataset_path))
     if strategy == "procedural":
         return ProceduralGenerator()
     if strategy == "hybrid":
         logger.warning(
-            "client.factory.unknown_strategy",
-            factory="requirement_generator",
+            CLIENT_FACTORY_UNKNOWN_STRATEGY,
+            factory=factory,
             strategy=strategy,
             reason="no_single_argument_factory",
         )
@@ -151,8 +173,8 @@ def build_requirement_generator(
         )
         raise UnknownStrategyError(msg)
     logger.warning(
-        "client.factory.unknown_strategy",
-        factory="requirement_generator",
+        CLIENT_FACTORY_UNKNOWN_STRATEGY,
+        factory=factory,
         strategy=strategy,
         expected=sorted(_GENERATOR_STRATEGIES),
     )
@@ -194,7 +216,7 @@ def build_feedback_strategy(
     if strategy == "adversarial":
         return AdversarialFeedback(client_id=client_id)
     logger.warning(
-        "client.factory.unknown_strategy",
+        CLIENT_FACTORY_UNKNOWN_STRATEGY,
         factory="feedback_strategy",
         strategy=strategy,
         expected=sorted(_FEEDBACK_STRATEGIES),
@@ -222,7 +244,7 @@ def build_report_strategy(config: ReportConfig) -> ReportStrategy:
     if strategy == "metrics_only":
         return MetricsOnlyReport()
     logger.warning(
-        "client.factory.unknown_strategy",
+        CLIENT_FACTORY_UNKNOWN_STRATEGY,
         factory="report_strategy",
         strategy=strategy,
         expected=sorted(_REPORT_STRATEGIES),
@@ -250,7 +272,7 @@ def build_client_pool_strategy(
     if strategy == "domain_matched":
         return DomainMatchedStrategy()
     logger.warning(
-        "client.factory.unknown_strategy",
+        CLIENT_FACTORY_UNKNOWN_STRATEGY,
         factory="client_pool_strategy",
         strategy=strategy,
         expected=sorted(_POOL_STRATEGIES),
@@ -280,7 +302,7 @@ def build_entry_point_strategy(
     if adapter == "project":
         if project_id is None:
             logger.warning(
-                "client.factory.unknown_strategy",
+                CLIENT_FACTORY_UNKNOWN_STRATEGY,
                 factory="entry_point_strategy",
                 adapter=adapter,
                 missing="project_id",
@@ -291,7 +313,7 @@ def build_entry_point_strategy(
     if adapter == "intake":
         return IntakeAdapter()
     logger.warning(
-        "client.factory.unknown_strategy",
+        CLIENT_FACTORY_UNKNOWN_STRATEGY,
         factory="entry_point_strategy",
         adapter=adapter,
         expected=sorted(_ENTRY_POINT_STRATEGIES),

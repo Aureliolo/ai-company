@@ -4,10 +4,7 @@ Tests the full pipeline: signals -> rules -> strategies ->
 guards -> approval -> rollout -> regression detection.
 """
 
-from datetime import UTC, datetime, timedelta
-
 import pytest
-from pydantic import AwareDatetime
 
 from synthorg.meta.config import SelfImprovementConfig
 from synthorg.meta.models import (
@@ -24,29 +21,9 @@ from synthorg.meta.models import (
     RolloutOutcome,
 )
 from synthorg.meta.service import SelfImprovementService
+from tests.unit.meta.rollout._fake_clock import FakeClock
 
 pytestmark = pytest.mark.integration
-
-
-class _InstantClock:
-    """Virtual clock that does not actually wait.
-
-    Integration tests exercise the real observation loop but can't
-    afford to sleep for the configured 48h window. This fake advances
-    virtual time without awaiting real seconds.
-    """
-
-    def __init__(self) -> None:
-        self._now: datetime = datetime(2026, 1, 1, tzinfo=UTC)
-
-    async def sleep(self, seconds: float) -> None:
-        if seconds < 0.0:
-            msg = f"sleep seconds must be non-negative, got {seconds}"
-            raise ValueError(msg)
-        self._now = self._now + timedelta(seconds=seconds)
-
-    def now(self) -> AwareDatetime:
-        return self._now
 
 
 def _snap(
@@ -137,7 +114,7 @@ class TestMetaCycleIntegration:
                 enabled=True,
                 config_tuning_enabled=True,
             ),
-            clock=_InstantClock(),
+            clock=FakeClock(),
             snapshot_builder=snapshot_builder,
         )
         proposals = await svc.run_cycle(_snap(quality=4.0))
