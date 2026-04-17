@@ -1194,7 +1194,7 @@ jobs:
       matrix:
         include:
           - variant: gpu
-            extra: fine-tune
+            extra: fine-tune-gpu
           - variant: cpu
             extra: fine-tune-cpu
     permissions:
@@ -1453,6 +1453,10 @@ jobs:
           set -euo pipefail
           gpu=$(cat fine-tune-digests/fine-tune-gpu.digest 2>/dev/null || echo "")
           cpu=$(cat fine-tune-digests/fine-tune-cpu.digest 2>/dev/null || echo "")
+          if [ -z "$gpu" ] || [ -z "$cpu" ]; then
+            echo "::error::Missing fine-tune digest artifact(s): gpu='$gpu' cpu='$cpu'"
+            exit 1
+          fi
           echo "gpu=${gpu}" >> "$GITHUB_OUTPUT"
           echo "cpu=${cpu}" >> "$GITHUB_OUTPUT"
 
@@ -1562,8 +1566,8 @@ jobs:
           IMAGES=${IMAGES//WEB_DIGEST_PH/$WEB_DIGEST}
           IMAGES=${IMAGES//SANDBOX_DIGEST_PH/$SANDBOX_DIGEST}
           IMAGES=${IMAGES//SIDECAR_DIGEST_PH/$SIDECAR_DIGEST}
-          IMAGES=${IMAGES//FINE_TUNE_GPU_DIGEST_PH/${FINE_TUNE_GPU_DIGEST:-unavailable}}
-          IMAGES=${IMAGES//FINE_TUNE_CPU_DIGEST_PH/${FINE_TUNE_CPU_DIGEST:-unavailable}}
+          IMAGES=${IMAGES//FINE_TUNE_GPU_DIGEST_PH/$FINE_TUNE_GPU_DIGEST}
+          IMAGES=${IMAGES//FINE_TUNE_CPU_DIGEST_PH/$FINE_TUNE_CPU_DIGEST}
 
           # Upload container SBOMs to the draft release
           if ls sboms/sbom-*.cdx.json 1>/dev/null 2>&1; then

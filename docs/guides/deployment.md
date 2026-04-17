@@ -173,6 +173,60 @@ Both containers run on the `synthorg-net` Docker network. The web container prox
 - `http://localhost:3000/api/*` -> `http://backend:3001/api/*`
 - `ws://localhost:3000/api/v1/ws` -> `ws://backend:3001/api/v1/ws`
 
+### Fine-Tuning (optional)
+
+Embedding fine-tuning runs in a dedicated ephemeral container that the backend spawns on demand. It is **disabled by default** because the image is large and the workload is heavy.
+
+Two image variants ship from GHCR, both amd64-only:
+
+| Image | Torch | Size | When to pick |
+|-------|-------|------|--------------|
+| `ghcr.io/aureliolo/synthorg-fine-tune-gpu` | bundled CUDA (`torch==2.11.0`) | ~4 GB | Host has an NVIDIA GPU + compatible driver; practical training speed |
+| `ghcr.io/aureliolo/synthorg-fine-tune-cpu` | CPU-only (`torch==2.11.0+cpu` via `download.pytorch.org/whl/cpu`) | ~1.7 GB | Host has no GPU; correctness-first, training is slower |
+
+Fine-tuning also requires the sandbox to be enabled (`sandbox=true`). The backend launches each pipeline stage in a one-shot container using the Docker API.
+
+=== "CLI (post-install)"
+
+    Enable on an existing install without wiping data:
+
+    ```bash
+    synthorg config set sandbox true
+    synthorg config set fine_tuning true
+    synthorg config set fine_tuning_variant gpu   # or: cpu
+    synthorg stop && synthorg start               # compose.yml is regenerated automatically
+    ```
+
+    `synthorg init` also prompts for this -- but only use `init` on a **fresh** data dir; it overwrites `config.json` and regenerates `compose.yml`. Existing installs should use `config set` as above.
+
+=== "Docker Compose (manual / BYO)"
+
+    In a hand-managed `compose.yml`, wire the fine-tune image into the backend's environment and declare the service. The canonical snippet lives in the commented-out `fine-tune:` block at the bottom of [`docker/compose.yml`](https://github.com/Aureliolo/synthorg/blob/main/docker/compose.yml); uncomment and pick a variant:
+
+    ```yaml
+    services:
+      backend:
+        environment:
+          # Backend reads this on demand to spawn fine-tune containers via
+          # the Docker API. Point at a digest-pinned ref for reproducibility.
+          SYNTHORG_FINE_TUNE_IMAGE: ghcr.io/aureliolo/synthorg-fine-tune-gpu:${SYNTHORG_IMAGE_TAG:-latest}
+      fine-tune:
+        image: ghcr.io/aureliolo/synthorg-fine-tune-gpu:${SYNTHORG_IMAGE_TAG:-latest}
+        # For CPU-only hosts, swap to: ghcr.io/aureliolo/synthorg-fine-tune-cpu
+        volumes:
+          - synthorg-data:/data:ro
+        depends_on:
+          backend:
+            condition: service_healthy
+        user: "10003:10003"
+        group_add: ["65532"]
+        security_opt: [no-new-privileges:true]
+        cap_drop: [ALL]
+        read_only: true
+    ```
+
+    Image signatures can be verified out-of-band with `cosign verify` and SLSA provenance with `gh attestation verify oci://...`; the CLI-generated compose pins digests automatically. See [Image Verification](#image-verification) below.
+
 ### Local LLM Providers
 
 To use a local LLM like Ollama running on the host machine, configure the provider with `host.docker.internal`:

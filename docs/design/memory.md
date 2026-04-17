@@ -385,8 +385,12 @@ pipeline stage runs inside an ephemeral `synthorg-fine-tune-gpu` (default) or
 `synthorg-fine-tune-cpu` container spawned by the backend via the Docker API. Both
 variants ship the same Python runner and accept the same stage-config contract; they
 differ only in the bundled torch build (CUDA ~4 GB vs CPU ~1.7 GB) and whether GPU
-passthrough is usable. The variant is selected at `synthorg init` time and persisted
-as `fine_tuning_variant` in `config.json`. The container reads stage configuration
+passthrough is usable. The variant is selected at `synthorg init` time (fresh installs)
+or via `synthorg config set fine_tuning_variant gpu|cpu` (post-init, preserves data)
+and persisted as `fine_tuning_variant` in `config.json`. Operators running a
+hand-managed `compose.yml` without the CLI set `SYNTHORG_FINE_TUNE_IMAGE` on the
+backend directly -- see [Deployment &rarr; Fine-Tuning (optional)](../guides/deployment.md#fine-tuning-optional)
+for the BYO snippet. The container reads stage configuration
 from `/etc/fine-tune/config.json`, executes the pipeline function, and emits
 structured progress markers (`STAGE_START:`, `STAGE_COMPLETE:`) on stdout. The
 orchestrator will parse these markers from container logs for progress reporting

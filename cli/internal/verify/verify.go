@@ -88,6 +88,13 @@ func NewImageRef(name, tag string) ImageRef {
 // If sandbox is false, the sandbox and sidecar images are excluded.
 // If fineTuning is true, the fine-tune image for the requested variant
 // ("gpu" or "cpu") is included; empty variant defaults to "gpu".
+//
+// The refs returned here are the single source of truth for the verify /
+// pull / pin / compose-rendering pipeline. The chosen fine-tune ref is
+// propagated to the backend as SYNTHORG_FINE_TUNE_IMAGE via the compose
+// template. Do NOT read SYNTHORG_FINE_TUNE_IMAGE from os.Getenv in the
+// CLI; an operator-supplied value would bypass signature/provenance
+// verification and split the verify/run trust chain for this feature.
 func BuildImageRefs(tag string, sandbox bool, fineTuning bool, fineTuneVariant string) []ImageRef {
 	refs := []ImageRef{
 		NewImageRef("backend", tag),

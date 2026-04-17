@@ -93,6 +93,16 @@ type Params struct {
 // rather than silently emitting a compose.yml built from compiled-in
 // defaults that masks the user's broken override.
 func ParamsFromState(s config.State) (Params, error) {
+	// The compose template only emits SYNTHORG_FINE_TUNE_IMAGE behind
+	// `and .Sandbox .FineTuning`, so fine-tuning without sandbox renders a
+	// half-configured backend (flag set, image env missing). State.Validate
+	// enforces the coupling at load time; repeat the check here so callers
+	// that construct State directly (tests, in-memory mutation) fail fast
+	// instead of producing a broken compose.yml.
+	if s.FineTuning && !s.Sandbox {
+		return Params{}, fmt.Errorf("fine_tuning requires sandbox to be enabled")
+	}
+
 	busBackend := s.BusBackend
 	if busBackend == "" {
 		busBackend = "internal"

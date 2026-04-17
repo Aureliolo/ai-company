@@ -48,9 +48,14 @@ class MemoryCapabilityError(MemoryError):
 class FineTuneDependencyError(MemoryError):
     """Raised when fine-tuning ML dependencies are not installed.
 
-    The ``synthorg[fine-tune]`` extra provides ``torch`` and
-    ``sentence-transformers``.  This error includes install
-    instructions in its message.
+    In the default Docker-orchestrated deployment ``torch`` and
+    ``sentence-transformers`` ship inside the
+    ``synthorg-fine-tune-gpu`` / ``synthorg-fine-tune-cpu`` container
+    that the backend spawns on demand; this error indicates the
+    feature is turned off for the current install (`synthorg config
+    set fine_tuning true` enables it).  The optional
+    ``synthorg[fine-tune-gpu]`` / ``synthorg[fine-tune-cpu]`` extras
+    only apply when running fine-tuning in-process (dev / testing).
     """
 
 

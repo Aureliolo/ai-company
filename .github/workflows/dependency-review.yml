@@ -93,9 +93,10 @@ jobs:
           #
           # Fine-tune optional dep group (torch, sentence-transformers) and
           # transitive CUDA/NVIDIA deps. Optional -- only installed via
-          # synthorg[fine-tune]. License metadata missing from PyPI for NVIDIA
-          # CUDA packages (proprietary, freely redistributable). torch is
-          # BSD-style. scikit-learn has compound BSD-3-Clause AND scancode tag.
+          # synthorg[fine-tune-gpu] (default) or synthorg[fine-tune-cpu]. License
+          # metadata missing from PyPI for NVIDIA CUDA packages (proprietary,
+          # freely redistributable). torch is BSD-style. scikit-learn has compound
+          # BSD-3-Clause AND scancode tag.
           allow-dependencies-licenses: >-
             pkg:pypi/mem0ai@1.0.9,
             pkg:pypi/numpy@2.4.4,

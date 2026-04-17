@@ -18,6 +18,13 @@ import (
 
 const stateFileName = "config.json"
 
+// Fine-tune variant identifiers persisted in State.FineTuningVariant and
+// used to construct image service names (e.g. "synthorg-fine-tune-gpu").
+const (
+	FineTuneVariantGPU = "gpu"
+	FineTuneVariantCPU = "cpu"
+)
+
 // State is the persisted CLI configuration written by `synthorg init`.
 type State struct {
 	DataDir       string `json:"data_dir"`
@@ -388,11 +395,11 @@ func (s State) validate() error {
 	}
 	if s.FineTuning {
 		switch s.FineTuningVariant {
-		case "", "gpu", "cpu":
+		case "", FineTuneVariantGPU, FineTuneVariantCPU:
 			// Empty permitted for forward compat with pre-split configs;
 			// resolved to "gpu" at read time via FineTuneVariantOrDefault.
 		default:
-			return fmt.Errorf("fine_tuning_variant must be \"gpu\" or \"cpu\", got %q", s.FineTuningVariant)
+			return fmt.Errorf("fine_tuning_variant must be %q or %q, got %q", FineTuneVariantGPU, FineTuneVariantCPU, s.FineTuningVariant)
 		}
 	}
 	for name, digest := range s.VerifiedDigests {
@@ -406,15 +413,36 @@ func (s State) validate() error {
 	return nil
 }
 
+// Validate runs State invariants (cross-field constraints such as
+// fine_tuning requires sandbox, variant must be gpu|cpu, valid JWT /
+// master-key formats) and returns the first failure. Callers that mutate
+// State outside of Load (e.g. `synthorg config set` when toggling a
+// previously-off feature) should invoke this so inconsistent combinations
+// fail at `config set` time rather than at the next `start`.
+func (s State) Validate() error {
+	return s.validate()
+}
+
 // FineTuneVariantOrDefault returns the configured fine-tune variant,
 // falling back to "gpu" when unset. Callers that need to build image
 // refs or service names should always route through this accessor so
 // the default is consistent across start / update / diagnostics paths.
 func (s State) FineTuneVariantOrDefault() string {
-	if s.FineTuningVariant == "cpu" {
-		return "cpu"
+	if s.FineTuningVariant == FineTuneVariantCPU {
+		return FineTuneVariantCPU
 	}
-	return "gpu"
+	return FineTuneVariantGPU
+}
+
+// FineTuneVariantFromIndex maps the TUI's integer variant index to the
+// string persisted in State.FineTuningVariant. 0 -> "gpu" (default),
+// 1 -> "cpu"; any other index falls back to "gpu" rather than writing
+// an invalid value.
+func FineTuneVariantFromIndex(idx int) string {
+	if idx == 1 {
+		return FineTuneVariantCPU
+	}
+	return FineTuneVariantGPU
 }
 
 // validateTunables checks that the optional registry/tunable fields parse

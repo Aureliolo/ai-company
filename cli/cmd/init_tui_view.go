@@ -105,9 +105,11 @@ func (m setupTUI) viewSetup() []string {
 	// Fine-tuning toggle
 	main = append(main, brow(m.fineTuningToggle(w), w))
 	if m.fineTuning {
-		// Variant row appears only when fine-tuning is enabled; slight
-		// left indent signals the dependent relationship.
-		main = append(main, brow("  "+m.fineTuneVariantToggle(w-2), w))
+		// Variant row appears only when fine-tuning is enabled. The dependent
+		// relationship is signalled by the "  Variant" label in
+		// fineTuneVariantToggle, which keeps the toggle column aligned with
+		// its parent row.
+		main = append(main, brow(m.fineTuneVariantToggle(w), w))
 	}
 	main = append(main, brow("", w))
 

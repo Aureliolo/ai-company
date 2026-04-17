@@ -47,8 +47,8 @@ build-backend = "hatchling.build"
 # Fine-tune variants. Both install the same package set; torch is routed to
 # PyPI (CUDA bundled, ~2.5 GB) or the PyTorch CPU index (~200 MB) via
 # [tool.uv.sources] below. The two extras are declared mutually exclusive in
-# [tool.uv.conflicts] so uv locks them independently.
-fine-tune = ["torch==2.11.0", "sentence-transformers==5.4.1"]
+# [tool.uv] via its `conflicts = [...]` setting so uv locks them independently.
+fine-tune-gpu = ["torch==2.11.0", "sentence-transformers==5.4.1"]
 fine-tune-cpu = ["torch==2.11.0", "sentence-transformers==5.4.1"]
 telemetry = ["logfire==4.32.1"]
 # Distributed runtime: first distributed MessageBus backend + task queue workers.
@@ -92,7 +92,7 @@ docs = [
     # build script has a stable explicit dependency.
     "defusedxml==0.7.1",
 ]
-fine-tune = [
+fine-tune-gpu = [
     "torch==2.11.0",
     "sentence-transformers==5.4.1",
 ]
@@ -118,7 +118,7 @@ dev = [
 # uv -- package resolution (torch CPU vs GPU split)
 # ---------------------------------------------------------------------------
 # The fine-tune container ships in two flavors:
-#   - fine-tune       (GPU, default): torch 2.11.0 with bundled CUDA runtime
+#   - fine-tune-gpu   (GPU, default): torch 2.11.0 with bundled CUDA runtime
 #                      (~2.5 GB of nvidia-* wheels). Needed for CUDA-accelerated
 #                      fine-tuning on hosts with an NVIDIA GPU + driver.
 #   - fine-tune-cpu   (CPU-only, ~200 MB torch): pulled from the PyTorch CPU
@@ -131,11 +131,11 @@ dev = [
 [tool.uv]
 conflicts = [
     [
-        { extra = "fine-tune" },
+        { extra = "fine-tune-gpu" },
         { extra = "fine-tune-cpu" },
     ],
     [
-        { group = "fine-tune" },
+        { group = "fine-tune-gpu" },
         { group = "fine-tune-cpu" },
     ],
 ]

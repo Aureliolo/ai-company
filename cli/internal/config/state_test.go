@@ -696,3 +696,102 @@ func FuzzIsValidOutputMode(f *testing.F) {
 		}
 	})
 }
+
+// TestFineTuneVariantFromIndex covers the TUI-index -> persisted-string
+// mapping. The TUI only ever sets index 0 or 1 (toggled via `1 - variant`),
+// but the helper has a defensive fallback so an unexpected index produces a
+// valid default rather than an invalid variant string.
+func TestFineTuneVariantFromIndex(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		idx  int
+		want string
+	}{
+		{0, FineTuneVariantGPU},
+		{1, FineTuneVariantCPU},
+		{-1, FineTuneVariantGPU},
+		{2, FineTuneVariantGPU},
+		{42, FineTuneVariantGPU},
+	}
+	for _, tc := range cases {
+		if got := FineTuneVariantFromIndex(tc.idx); got != tc.want {
+			t.Errorf("FineTuneVariantFromIndex(%d) = %q, want %q", tc.idx, got, tc.want)
+		}
+	}
+}
+
+// TestFineTuneVariantOrDefault covers the persisted-string -> resolved-variant
+// mapping. Empty / unknown values resolve to "gpu" for forward compat with
+// pre-split configs.
+func TestFineTuneVariantOrDefault(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name    string
+		variant string
+		want    string
+	}{
+		{"empty", "", FineTuneVariantGPU},
+		{"gpu", FineTuneVariantGPU, FineTuneVariantGPU},
+		{"cpu", FineTuneVariantCPU, FineTuneVariantCPU},
+		{"unknown-falls-back-to-gpu", "tpu", FineTuneVariantGPU},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			s := State{FineTuningVariant: tc.variant}
+			if got := s.FineTuneVariantOrDefault(); got != tc.want {
+				t.Errorf("FineTuneVariantOrDefault() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestValidate_FineTuningVariant covers State.Validate's variant validation:
+// invalid variants are rejected when fine-tuning is enabled, empty and the
+// two canonical values pass, and variant is ignored when fine-tuning is off
+// (permitted for pre-split config migration).
+func TestValidate_FineTuningVariant(t *testing.T) {
+	if runtime.GOARCH != "amd64" {
+		t.Skip("fine_tuning validation requires amd64 architecture")
+	}
+	t.Parallel()
+
+	base := DefaultState()
+	base.JWTSecret = ""   // avoid JWT validation path
+	base.SettingsKey = "" // avoid settings-key validation path
+	base.MasterKey = ""   // avoid master-key validation path
+	base.EncryptSecrets = false
+	base.Sandbox = true
+
+	cases := []struct {
+		name       string
+		fineTuning bool
+		variant    string
+		wantErr    bool
+	}{
+		{"disabled+empty", false, "", false},
+		{"disabled+invalid-ignored", false, "invalid", false},
+		{"enabled+empty-accepted", true, "", false},
+		{"enabled+gpu", true, FineTuneVariantGPU, false},
+		{"enabled+cpu", true, FineTuneVariantCPU, false},
+		{"enabled+invalid-rejected", true, "tpu", true},
+		{"enabled+typo-rejected", true, "GPU", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			s := base
+			s.FineTuning = tc.fineTuning
+			s.FineTuningVariant = tc.variant
+			err := s.Validate()
+			if tc.wantErr && err == nil {
+				t.Errorf("Validate() returned nil, want error for variant=%q", tc.variant)
+			}
+			if !tc.wantErr && err != nil {
+				t.Errorf("Validate() = %v, want nil for variant=%q", err, tc.variant)
+			}
+		})
+	}
+}

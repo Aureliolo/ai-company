@@ -7,7 +7,7 @@
 # Stage 2 (runtime): apko-composed Wolfi base with BLAS/math libs.
 #
 # Two variants controlled by FINE_TUNE_EXTRA build-arg:
-#   - fine-tune       (GPU, default): torch with bundled CUDA runtime, ~4 GB
+#   - fine-tune-gpu   (GPU, default): torch with bundled CUDA runtime, ~4 GB
 #   - fine-tune-cpu   (CPU-only, pinned via [tool.uv.sources]):     ~1.7 GB
 #
 # Only rebuilt when docker/fine-tune/** or
@@ -15,7 +15,7 @@
 # =============================================================================
 
 ARG BASE_IMAGE
-ARG FINE_TUNE_EXTRA=fine-tune
+ARG FINE_TUNE_EXTRA=fine-tune-gpu
 
 # ---------------------------------------------------------------------------
 # Stage 1 -- Builder (installs ML deps + synthorg fine-tune code)
@@ -35,7 +35,7 @@ WORKDIR /app
 
 COPY --chown=10003:10003 pyproject.toml uv.lock ./
 USER fine-tune
-# FINE_TUNE_EXTRA is either "fine-tune" (GPU, bundled CUDA torch) or
+# FINE_TUNE_EXTRA is either "fine-tune-gpu" (bundled CUDA torch) or
 # "fine-tune-cpu" (CPU-only torch routed via [tool.uv.sources]).
 ARG FINE_TUNE_EXTRA
 RUN --mount=type=cache,target=/home/fine-tune/.cache/uv,uid=10003,gid=10003 \

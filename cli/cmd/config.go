@@ -28,6 +28,7 @@ var supportedConfigKeys = []string{
 	"channel", "color",
 	"default_nats_stream_prefix", "default_nats_url",
 	"dhi_registry", "docker_sock",
+	"fine_tuning", "fine_tuning_variant",
 	"health_check_timeout",
 	"hints", "image_repo_prefix", "image_tag", "log_level",
 	"max_api_response_bytes", "max_archive_entry_bytes", "max_binary_bytes",
@@ -256,6 +257,7 @@ var gettableConfigKeys = []string{
 	"channel", "color",
 	"default_nats_stream_prefix", "default_nats_url",
 	"dhi_registry", "docker_sock",
+	"fine_tuning", "fine_tuning_variant",
 	"health_check_timeout",
 	"hints", "image_repo_prefix", "image_tag", "log_level",
 	"max_api_response_bytes", "max_archive_entry_bytes", "max_binary_bytes",
@@ -440,6 +442,24 @@ func applyConfigValue(state *config.State, key, value string) error {
 		return setEnum(value, key, config.IsValidOutputMode, config.OutputModeNames, &state.Output)
 	case "sandbox":
 		return setBool(value, key, &state.Sandbox)
+	case "fine_tuning":
+		if err := setBool(value, key, &state.FineTuning); err != nil {
+			return err
+		}
+		// Re-validate now so an inconsistent pair like fine_tuning=true +
+		// sandbox=false fails at `config set` time rather than at the next
+		// `synthorg start` via ParamsFromState. The validation rule lives
+		// in config.State.validate() and also covers the amd64 requirement.
+		if err := state.Validate(); err != nil {
+			return fmt.Errorf("invalid fine_tuning value: %w", err)
+		}
+		return nil
+	case "fine_tuning_variant":
+		if value != config.FineTuneVariantGPU && value != config.FineTuneVariantCPU {
+			return fmt.Errorf("invalid fine_tuning_variant %q: must be %q or %q", value, config.FineTuneVariantGPU, config.FineTuneVariantCPU)
+		}
+		state.FineTuningVariant = value
+		return nil
 	case "telemetry_opt_in":
 		return setBool(value, key, &state.TelemetryOptIn)
 	case "timestamps":
@@ -534,6 +554,8 @@ var composeAffectingKeys = map[string]bool{
 	"nats_image_tag":             true,
 	"default_nats_url":           true,
 	"default_nats_stream_prefix": true,
+	"fine_tuning":                true,
+	"fine_tuning_variant":        true,
 }
 
 // regenerateCompose regenerates compose.yml from the current state.
@@ -641,6 +663,14 @@ func resetConfigValue(state *config.State, key string) error {
 		state.Output = ""
 	case "sandbox":
 		state.Sandbox = defaults.Sandbox
+	case "fine_tuning":
+		state.FineTuning = defaults.FineTuning
+		// Clearing FineTuning also clears the variant so a re-enable via
+		// `config set fine_tuning true` picks up the configured default
+		// instead of a stale variant from a previous enable cycle.
+		state.FineTuningVariant = defaults.FineTuningVariant
+	case "fine_tuning_variant":
+		state.FineTuningVariant = defaults.FineTuningVariant
 	case "telemetry_opt_in":
 		state.TelemetryOptIn = defaults.TelemetryOptIn
 	case "timestamps":
@@ -766,6 +796,10 @@ func configGetValue(state config.State, key string) string {
 		return state.PersistenceBackend
 	case "sandbox":
 		return strconv.FormatBool(state.Sandbox)
+	case "fine_tuning":
+		return strconv.FormatBool(state.FineTuning)
+	case "fine_tuning_variant":
+		return state.FineTuneVariantOrDefault()
 	case "telemetry_opt_in":
 		return strconv.FormatBool(state.TelemetryOptIn)
 	case "timestamps":

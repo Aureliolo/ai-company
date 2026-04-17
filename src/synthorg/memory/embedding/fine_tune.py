@@ -58,6 +58,22 @@ class FineTuneStage(StrEnum):
 # -- Lazy dependency helpers ------------------------------------------
 
 
+_DOCKER_DEP_HINT = (
+    "In a Docker-orchestrated install the backend spawns an ephemeral "
+    "synthorg-fine-tune-gpu (default) or synthorg-fine-tune-cpu container "
+    "on demand. Enable without re-init: `synthorg config set sandbox true "
+    "&& synthorg config set fine_tuning true && synthorg config set "
+    "fine_tuning_variant gpu && synthorg stop && synthorg start`. "
+    "For hand-managed compose deployments see "
+    "https://synthorg.io/docs/guides/deployment/#fine-tuning-optional."
+)
+_INPROCESS_DEP_HINT = (
+    "For in-process execution install the extras directly: "
+    "`pip install 'synthorg[fine-tune-gpu]'` or "
+    "`pip install 'synthorg[fine-tune-cpu]'`."
+)
+
+
 def _import_sentence_transformers() -> ModuleType:
     """Lazy-import sentence-transformers with friendly error."""
     try:
@@ -65,7 +81,7 @@ def _import_sentence_transformers() -> ModuleType:
     except ImportError as exc:
         msg = (
             "sentence-transformers is required for fine-tuning. "
-            "Install: pip install synthorg[fine-tune]"
+            f"{_DOCKER_DEP_HINT} {_INPROCESS_DEP_HINT}"
         )
         logger.warning(
             MEMORY_FINE_TUNE_DEPENDENCY_MISSING,
@@ -83,7 +99,7 @@ def _import_torch() -> ModuleType:
     except ImportError as exc:
         msg = (
             "torch is required for fine-tuning. "
-            "Install: pip install synthorg[fine-tune]"
+            f"{_DOCKER_DEP_HINT} {_INPROCESS_DEP_HINT}"
         )
         logger.warning(
             MEMORY_FINE_TUNE_DEPENDENCY_MISSING,

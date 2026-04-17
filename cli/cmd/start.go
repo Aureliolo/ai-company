@@ -290,10 +290,11 @@ func pullAllImages(ctx context.Context, info docker.Info, safeDir string, state 
 	}
 	fineTuneIdx := -1
 	if refreshed.FineTuning {
+		fineTuneSvc := verify.FineTuneServiceName(refreshed.FineTuneVariantOrDefault())
 		fineTuneIdx = len(items)
 		items = append(items, pullItem{
-			name: "fine-tune",
-			ref:  verify.FormatImageRef("fine-tune", refreshed.ImageTag, refreshed.VerifiedDigests["fine-tune"]),
+			name: fineTuneSvc,
+			ref:  verify.FormatImageRef(fineTuneSvc, refreshed.ImageTag, refreshed.VerifiedDigests[fineTuneSvc]),
 		})
 	}
 

@@ -4,30 +4,6 @@ import (
 	"testing"
 )
 
-// TestFineTuneVariantString covers the TUI-index -> persisted-string mapping.
-// The TUI only ever sets index 0 or 1 (toggled via `1 - variant`), but the
-// helper has a defensive fallback for future-proofing. Assert every reachable
-// value and a sample of out-of-range indices.
-func TestFineTuneVariantString(t *testing.T) {
-	t.Parallel()
-
-	cases := []struct {
-		idx  int
-		want string
-	}{
-		{0, "gpu"},
-		{1, "cpu"},
-		{-1, "gpu"},
-		{2, "gpu"},
-		{42, "gpu"},
-	}
-	for _, tc := range cases {
-		if got := fineTuneVariantString(tc.idx); got != tc.want {
-			t.Errorf("fineTuneVariantString(%d) = %q, want %q", tc.idx, got, tc.want)
-		}
-	}
-}
-
 // TestBuildState_FineTuneVariantGPU verifies that the TUI's default variant
 // (index 0, "gpu") round-trips into State.FineTuningVariant when fine-tuning
 // is enabled.
