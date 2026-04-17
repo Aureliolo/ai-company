@@ -26,11 +26,22 @@ from synthorg.observability.events.api import (
     API_COORDINATION_METRICS_QUERIED,
     API_VALIDATION_FAILED,
 )
+from synthorg.settings.enums import SettingNamespace
 
 logger = get_logger(__name__)
 
 _MAX_METRICS_QUERY = 10_000
-"""Safety cap on metrics records fetched per request."""
+"""Fallback cap applied when no settings resolver is wired in."""
+
+
+async def _resolve_metrics_cap(state: State) -> int:
+    """Resolve the active metrics-query cap, falling back to the constant."""
+    app_state = state.app_state
+    if not app_state.has_config_resolver:
+        return _MAX_METRICS_QUERY
+    return await app_state.config_resolver.get_int(
+        SettingNamespace.API.value, "max_metrics_per_query"
+    )
 
 
 class CoordinationMetricsController(Controller):
@@ -95,14 +106,15 @@ class CoordinationMetricsController(Controller):
                 detail="'since' must not be after 'until'",
             )
         app_state = state.app_state
+        metrics_cap = await _resolve_metrics_cap(state)
         entries, total_matches = app_state.coordination_metrics_store.query(
             task_id=task_id,
             agent_id=agent_id,
             since=since,
             until=until,
-            limit=_MAX_METRICS_QUERY,
+            limit=metrics_cap,
         )
-        effective_total = min(total_matches, _MAX_METRICS_QUERY)
+        effective_total = min(total_matches, metrics_cap)
         page, meta = paginate(
             entries,
             offset=offset,

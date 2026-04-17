@@ -31,11 +31,22 @@ from synthorg.observability.events.api import (
 )
 from synthorg.persistence.jsonb_capability import JsonbQueryCapability
 from synthorg.security.models import AuditEntry
+from synthorg.settings.enums import SettingNamespace
 
 logger = get_logger(__name__)
 
 _MAX_AUDIT_QUERY = 10_000
-"""Safety cap on audit entries fetched per request."""
+"""Fallback cap applied when no settings resolver is wired in."""
+
+
+async def _resolve_audit_cap(state: State) -> int:
+    """Resolve the active audit-query cap, falling back to the constant."""
+    app_state = state.app_state
+    if not app_state.has_config_resolver:
+        return _MAX_AUDIT_QUERY
+    return await app_state.config_resolver.get_int(
+        SettingNamespace.API.value, "max_audit_records_per_query"
+    )
 
 
 class AuditController(Controller):
@@ -114,6 +125,7 @@ class AuditController(Controller):
             )
 
         app_state = state.app_state
+        audit_cap = await _resolve_audit_cap(state)
         entries = app_state.audit_log.query(
             agent_id=agent_id,
             tool_name=tool_name,
@@ -121,7 +133,7 @@ class AuditController(Controller):
             verdict=verdict,
             since=since,
             until=until,
-            limit=_MAX_AUDIT_QUERY,
+            limit=audit_cap,
         )
         page, meta = paginate(entries, offset=offset, limit=limit)
         logger.info(
@@ -209,6 +221,7 @@ class AuditController(Controller):
             )
 
         column = "matched_rules"
+        audit_cap = await _resolve_audit_cap(state)
 
         if jsonb_contains is not None:
             try:
@@ -237,7 +250,7 @@ class AuditController(Controller):
                 value,
                 since=since,
                 until=until,
-                limit=_MAX_AUDIT_QUERY,
+                limit=audit_cap,
                 offset=0,
             )
         elif jsonb_key_exists is not None:
@@ -246,7 +259,7 @@ class AuditController(Controller):
                 jsonb_key_exists,
                 since=since,
                 until=until,
-                limit=_MAX_AUDIT_QUERY,
+                limit=audit_cap,
                 offset=0,
             )
         else:

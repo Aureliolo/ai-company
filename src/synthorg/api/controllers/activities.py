@@ -35,12 +35,23 @@ from synthorg.observability.events.api import (
     API_ACTIVITY_FEED_QUERIED,
     API_REQUEST_ERROR,
 )
+from synthorg.settings.enums import SettingNamespace
 from synthorg.tools.invocation_record import ToolInvocationRecord  # noqa: TC001
 
 logger = get_logger(__name__)
 
-# Safety cap for unbounded lifecycle event queries.
+# Fallback cap applied when no settings resolver is wired in.
 _MAX_LIFECYCLE_EVENTS = 10_000
+
+
+async def _resolve_lifecycle_cap(app_state: AppState) -> int:
+    """Resolve the active lifecycle-query cap, falling back to the constant."""
+    if not app_state.has_config_resolver:
+        return _MAX_LIFECYCLE_EVENTS
+    return await app_state.config_resolver.get_int(
+        SettingNamespace.API.value, "max_lifecycle_events_per_query"
+    )
+
 
 # Degraded source names -- used in responses and tests.
 _SRC_PERFORMANCE_TRACKER = "performance_tracker"
@@ -332,11 +343,12 @@ class ActivityController(Controller):
         app_state: AppState = state.app_state
         now = datetime.now(UTC)
         since = now - timedelta(hours=last_n_hours)
+        lifecycle_cap = await _resolve_lifecycle_cap(app_state)
 
         lifecycle_events = await app_state.persistence.lifecycle_events.list_events(
             agent_id=agent_id,
             since=since,
-            limit=_MAX_LIFECYCLE_EVENTS,
+            limit=lifecycle_cap,
         )
 
         timeline, degraded = await _build_timeline(
