@@ -1440,7 +1440,7 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
     # ``persistence.identity_versions`` is only available after
     # ``persistence.connect()`` runs inside ``_safe_startup()``.  The
     # registry is auto-wired with ``VersioningService[AgentIdentity]`` from
-    # the startup hook (see ``on_startup`` in ``_build_lifecycle_callbacks``)
+    # the startup hook (see ``on_startup`` in ``_build_lifecycle``)
     # so every register/update/evolve call produces an audited
     # ``VersionSnapshot`` in production.
     if agent_registry is None:
