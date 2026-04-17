@@ -350,11 +350,16 @@ function WorkflowEditorInner() {
               </h3>
               <ul aria-labelledby="workflow-editor-node-summary-edges">
                 {edges.map((edge) => {
-                  const label =
+                  // Always expose topology (source → target); append
+                  // the human label in parens when it is set, so the
+                  // screen-reader summary retains both the graph shape
+                  // and any branch semantics.
+                  const topology = `${edge.source} → ${edge.target}`
+                  const text =
                     typeof edge.label === 'string' && edge.label
-                      ? edge.label
-                      : `${edge.source} → ${edge.target}`
-                  return <li key={edge.id}>{`Edge: ${label}`}</li>
+                      ? `${topology} (${edge.label})`
+                      : topology
+                  return <li key={edge.id}>{`Edge: ${text}`}</li>
                 })}
               </ul>
             </section>

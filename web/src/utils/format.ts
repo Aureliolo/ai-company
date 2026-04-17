@@ -3,6 +3,7 @@
 import { createLogger } from '@/lib/logger'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { getLocale } from '@/utils/locale'
+import { sanitizeForLog } from '@/utils/logging'
 
 const log = createLogger('format')
 
@@ -35,8 +36,22 @@ function toDate(value: DateInput): Date | null {
     const match = DATE_ONLY_RE.exec(value)
     if (match) {
       const [, y, m, d] = match
-      const local = new Date(Number(y), Number(m) - 1, Number(d))
-      return Number.isNaN(local.getTime()) ? null : local
+      const year = Number(y)
+      const monthIdx = Number(m) - 1
+      const day = Number(d)
+      const local = new Date(year, monthIdx, day)
+      // ``new Date(2025, 1, 30)`` silently wraps to 2025-03-02; reject
+      // overflowed inputs (e.g. ``2025-02-30``) so only true calendar
+      // days are accepted.
+      if (
+        Number.isNaN(local.getTime()) ||
+        local.getFullYear() !== year ||
+        local.getMonth() !== monthIdx ||
+        local.getDate() !== day
+      ) {
+        return null
+      }
+      return local
     }
   }
   const date = new Date(value)
@@ -141,8 +156,12 @@ export function formatRelativeTime(
   locale: string = getLocale(),
 ): string {
   if (!iso) return '--'
-  const date = new Date(iso)
-  if (Number.isNaN(date.getTime())) return '--'
+  // Route through ``toDate`` so ``YYYY-MM-DD`` strings are read as
+  // local midnight (same parsing contract as ``formatDateTime`` and
+  // siblings). ``new Date(iso)`` would read them as UTC midnight and
+  // shift the displayed day in negative-UTC timezones.
+  const date = toDate(iso)
+  if (!date) return '--'
   const now = new Date()
   const diffMs = now.getTime() - date.getTime()
   if (diffMs < 0) return formatDateTime(iso, locale)
@@ -182,7 +201,11 @@ export function formatCurrency(
       currency: currencyCode,
     }).format(value)
   } catch (error) {
-    log.error('Intl.NumberFormat failed for currency', { currencyCode }, error)
+    log.error(
+      'Intl.NumberFormat failed for currency',
+      sanitizeForLog({ currencyCode }),
+      error,
+    )
     const digits = ZERO_DECIMAL_CURRENCIES.has(currencyCode) ? 0 : THREE_DECIMAL_CURRENCIES.has(currencyCode) ? 3 : 2
     return `${currencyCode} ${value.toFixed(digits)}`
   }
@@ -207,7 +230,11 @@ export function formatCurrencyCompact(
       notation: 'compact',
     }).format(value)
   } catch (error) {
-    log.error('Intl.NumberFormat compact failed for currency', { currencyCode }, error)
+    log.error(
+      'Intl.NumberFormat compact failed for currency',
+      sanitizeForLog({ currencyCode }),
+      error,
+    )
     return `${currencyCode} ${Math.round(value)}`
   }
 }

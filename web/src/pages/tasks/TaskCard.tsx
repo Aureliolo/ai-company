@@ -5,9 +5,16 @@ import { Avatar } from '@/components/ui/avatar'
 import { TaskStatusIndicator } from '@/components/ui/task-status-indicator'
 import { PriorityBadge } from '@/components/ui/task-status-indicator'
 import { useFlash } from '@/hooks/useFlash'
-import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { formatRelativeTime, formatCurrency } from '@/utils/format'
 import type { Task } from '@/api/types'
+
+// ``Task.cost_usd`` is intrinsically USD-denominated on the backend
+// (see ``synthorg.budget.cost_record.CostRecord.cost_usd``). Format
+// it with its native currency code rather than ``DEFAULT_CURRENCY``
+// so the symbol matches the value. Converting to another currency
+// would require an up-to-date FX rate which the dashboard does not
+// currently carry.
+const COST_USD_CURRENCY_CODE = 'USD'
 
 export interface TaskCardProps {
   task: Task
@@ -88,7 +95,7 @@ export function TaskCard({ task, onSelect, isDragging, isOverlay, className, ref
 
           {task.cost_usd != null && task.cost_usd > 0 && (
             <span className="text-[10px] font-mono">
-              {formatCurrency(task.cost_usd, DEFAULT_CURRENCY)}
+              {formatCurrency(task.cost_usd, COST_USD_CURRENCY_CODE)}
             </span>
           )}
 

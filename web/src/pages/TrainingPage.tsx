@@ -10,6 +10,7 @@ import { createLogger } from '@/lib/logger'
 import { useTrainingStore } from '@/stores/training'
 import type { AgentConfig } from '@/api/types'
 import { getErrorMessage } from '@/utils/errors'
+import { sanitizeForLog } from '@/utils/logging'
 import {
   TrainingPlanTable,
   type TrainingPlanRow,
@@ -42,7 +43,10 @@ export default function TrainingPage() {
         }
       })
       .catch((err: unknown) => {
-        log.error('Failed to load agents:', err)
+        log.error(
+          'Failed to load agents',
+          sanitizeForLog({ err, message: getErrorMessage(err) }),
+        )
         if (!cancelled) {
           setError(getErrorMessage(err))
           setLoading(false)

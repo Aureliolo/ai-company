@@ -31,23 +31,42 @@ export function useToolbarKeyboardNav<
   const onKeyDown = useCallback((event: KeyboardEvent<T>) => {
     const container = ref.current
     if (!container) return
+
+    // Do not intercept arrow keys inside editable controls -- the
+    // native caret/value navigation must take precedence. Home/End
+    // inside inputs also matters for text editing and we intentionally
+    // leave them to the browser.
+    const active = document.activeElement
+    if (active instanceof HTMLElement) {
+      const editable =
+        active.tagName === 'INPUT' ||
+        active.tagName === 'TEXTAREA' ||
+        active.tagName === 'SELECT' ||
+        active.isContentEditable
+      if (editable) return
+    }
+
     const items = Array.from(
       container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR),
     ).filter((el) => !el.hasAttribute('data-toolbar-skip'))
     if (items.length === 0) return
 
-    const activeIndex = items.indexOf(document.activeElement as HTMLElement)
+    const activeIndex = items.indexOf(active as HTMLElement)
 
     let nextIndex: number
     switch (event.key) {
       case 'ArrowRight':
       case 'ArrowDown':
-        nextIndex = (Math.max(activeIndex, 0) + 1) % items.length
+        // -1 (no active item) starts from the first control; from any
+        // live index, wrap forward via the cyclic modulo.
+        nextIndex = activeIndex < 0 ? 0 : (activeIndex + 1) % items.length
         break
       case 'ArrowLeft':
       case 'ArrowUp':
         nextIndex =
-          (Math.max(activeIndex, 0) - 1 + items.length) % items.length
+          activeIndex < 0
+            ? items.length - 1
+            : (activeIndex - 1 + items.length) % items.length
         break
       case 'Home':
         nextIndex = 0

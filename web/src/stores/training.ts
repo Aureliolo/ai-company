@@ -75,6 +75,8 @@ export const useTrainingStore = create<TrainingState>()((set, get) => ({
       const plan = await getLatestTrainingPlan(agentName)
       set((state) => ({
         plansByAgent: setMap(state.plansByAgent, agentName, plan),
+        // A successful read clears any stale per-agent error banner.
+        error: setMap(state.error, agentName, null),
       }))
     } catch (err) {
       if (isExpectedNotFound(err)) {
@@ -84,7 +86,10 @@ export const useTrainingStore = create<TrainingState>()((set, get) => ({
         }))
         return
       }
-      log.error('fetchPlan failed:', sanitizeForLog(agentName), err)
+      log.error(
+        'fetchPlan failed',
+        sanitizeForLog({ agentName, err, message: getErrorMessage(err) }),
+      )
       set((state) => ({
         error: setMap(state.error, agentName, getErrorMessage(err)),
       }))
@@ -111,7 +116,10 @@ export const useTrainingStore = create<TrainingState>()((set, get) => ({
         return
       }
       const message = getErrorMessage(err)
-      log.error('fetchResult failed:', sanitizeForLog(agentName), err)
+      log.error(
+        'fetchResult failed',
+        sanitizeForLog({ agentName, err, message }),
+      )
       set((state) => ({
         loading: setMap(state.loading, agentName, false),
         error: setMap(state.error, agentName, message),
@@ -135,7 +143,10 @@ export const useTrainingStore = create<TrainingState>()((set, get) => ({
       })
       return plan
     } catch (err) {
-      log.error('createPlan failed:', sanitizeForLog(agentName), err)
+      log.error(
+        'createPlan failed',
+        sanitizeForLog({ agentName, err, message: getErrorMessage(err) }),
+      )
       useToastStore.getState().add({
         variant: 'error',
         title: 'Failed to create training plan',
@@ -171,7 +182,10 @@ export const useTrainingStore = create<TrainingState>()((set, get) => ({
       })
       return result
     } catch (err) {
-      log.error('executePlan failed:', sanitizeForLog(agentName), err)
+      log.error(
+        'executePlan failed',
+        sanitizeForLog({ agentName, err, message: getErrorMessage(err) }),
+      )
       useToastStore.getState().add({
         variant: 'error',
         title: 'Training execution failed',
@@ -186,7 +200,10 @@ export const useTrainingStore = create<TrainingState>()((set, get) => ({
       const preview = await previewTrainingPlan(agentName)
       return preview
     } catch (err) {
-      log.error('previewPlan failed:', sanitizeForLog(agentName), err)
+      log.error(
+        'previewPlan failed',
+        sanitizeForLog({ agentName, err, message: getErrorMessage(err) }),
+      )
       useToastStore.getState().add({
         variant: 'error',
         title: 'Training preview failed',
@@ -208,7 +225,15 @@ export const useTrainingStore = create<TrainingState>()((set, get) => ({
       })
       return plan
     } catch (err) {
-      log.error('updateOverrides failed:', sanitizeForLog(agentName), err)
+      log.error(
+        'updateOverrides failed',
+        sanitizeForLog({
+          agentName,
+          planId,
+          err,
+          message: getErrorMessage(err),
+        }),
+      )
       useToastStore.getState().add({
         variant: 'error',
         title: 'Failed to save overrides',
