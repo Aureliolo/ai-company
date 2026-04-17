@@ -210,12 +210,13 @@ class TestBindVersioning:
         synchronously, then ``on_startup`` attaches versioning once
         persistence is connected.
         """
+        from synthorg.core.agent import AgentIdentity
         from synthorg.versioning import VersioningService
         from tests.unit.api.fakes_backend import FakeVersionRepository
 
         registry = AgentRegistryService()
         repo = FakeVersionRepository()
-        versioning: VersioningService = VersioningService(repo)
+        versioning: VersioningService[AgentIdentity] = VersioningService(repo)
         registry.bind_versioning(versioning)
         identity = make_agent_identity(name="alice")
         await registry.register(identity)
