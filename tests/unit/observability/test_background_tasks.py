@@ -103,11 +103,33 @@ async def test_drain_waits_for_pending_tasks() -> None:
 
 async def test_drain_cancels_on_timeout(
     captured_logs: list[MutableMapping[str, Any]],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     registry = BackgroundTaskRegistry(owner="test.owner")
     blocker = asyncio.Event()  # Never set -- task is stuck forever.
     task = registry.spawn(_block_until_set(blocker), event="test.intent")
-    await registry.drain(timeout_sec=0.05)
+
+    # Drive the timeout branch deterministically: stub
+    # ``asyncio.wait`` so both drain phases return "all pending"
+    # without a real 50ms wall-clock wait. This keeps the test
+    # off the CI scheduler's timing and rules out xdist jitter.
+    original_wait = asyncio.wait
+
+    async def _immediate_wait(
+        tasks: set[asyncio.Task[Any]],
+        *,
+        timeout: float | None = None,  # noqa: ASYNC109 - mirrors asyncio.wait
+        **_: Any,
+    ) -> tuple[set[asyncio.Task[Any]], set[asyncio.Task[Any]]]:
+        del timeout
+        return (set(), set(tasks))
+
+    monkeypatch.setattr("asyncio.wait", _immediate_wait)
+    try:
+        await registry.drain(timeout_sec=0.05)
+    finally:
+        monkeypatch.setattr("asyncio.wait", original_wait)
+
     # Allow the cancellation to settle.
     await asyncio.sleep(0)
     assert task.cancelled() or task.done()

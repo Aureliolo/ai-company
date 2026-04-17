@@ -25,3 +25,7 @@ METRICS_OTLP_INVALID_CALLBACK: Final[str] = "metrics.otlp.invalid_callback"
 # Prometheus collector lifecycle
 METRICS_COLLECTOR_ACTIVATED: Final[str] = "metrics.collector.activated"
 METRICS_COLLECTOR_DEACTIVATED: Final[str] = "metrics.collector.deactivated"
+
+# Prometheus recording / validation failures (distinct from scrape failures)
+METRICS_RECORD_FAILED: Final[str] = "metrics.record.failed"
+API_REQUEST_VALIDATION_FAILED: Final[str] = "metrics.api_request.validation_failed"

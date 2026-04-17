@@ -14,9 +14,10 @@ The client verifies two invariants before returning a
    nonce the builder generated for the request.
 
 Cert-chain + SignedData signature verification is delegated to the
-caller via :meth:`TsaClient.request_timestamp`'s ``trusted_roots``
-parameter -- when provided, the library's :class:`Verifier` validates
-the CMS SignedData structure against those PEM-encoded roots.
+caller via :class:`TsaClient`'s ``trusted_roots`` constructor argument
+-- when PEM-encoded roots are supplied at construction time, the
+library's :class:`Verifier` validates the CMS SignedData structure
+against those roots on every :meth:`TsaClient.request_timestamp` call.
 
 Reference: RFC 3161, RFC 5816.
 """

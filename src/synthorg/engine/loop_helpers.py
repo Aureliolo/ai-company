@@ -207,14 +207,31 @@ async def call_provider(  # noqa: PLR0913
                 tools=tool_defs,
                 config=config,
             )
-            usage = response.usage
-            if usage is not None:
-                span.set_attribute("gen_ai.usage.input_tokens", usage.input_tokens)
-                span.set_attribute("gen_ai.usage.output_tokens", usage.output_tokens)
-            if response.finish_reason is not None:
-                span.set_attribute(
-                    "gen_ai.response.finish_reasons",
-                    (response.finish_reason.value,),
+            # Span attribute writes must never mask a successful
+            # provider response: if OTel throws here the outer
+            # ``llm_span`` context manager would re-raise and the
+            # caller would treat the turn as a provider failure.
+            try:
+                usage = response.usage
+                if usage is not None:
+                    span.set_attribute("gen_ai.usage.input_tokens", usage.input_tokens)
+                    span.set_attribute(
+                        "gen_ai.usage.output_tokens", usage.output_tokens
+                    )
+                if response.finish_reason is not None:
+                    span.set_attribute(
+                        "gen_ai.response.finish_reasons",
+                        (response.finish_reason.value,),
+                    )
+            except MemoryError, RecursionError:
+                raise
+            except Exception:
+                logger.warning(
+                    EXECUTION_LOOP_ERROR,
+                    execution_id=ctx.execution_id,
+                    turn=turn_number,
+                    reason="span_attribute_write_failed",
+                    exc_info=True,
                 )
             return response
     except MemoryError, RecursionError:

@@ -63,6 +63,10 @@ _THIRD_PARTY_LOGGER_LEVELS: tuple[tuple[str, LogLevel], ...] = (
 )
 
 # Processors shared between structlog and stdlib (foreign) chains.
+# Trace correlation lives in ``_build_shared_processors`` so that
+# ``enable_correlation=False`` also suppresses ``trace_id``/``span_id``
+# injection -- otherwise the flag would disable ``merge_contextvars``
+# but still emit trace fields whenever an OTel span is active.
 _BASE_PROCESSORS: tuple[Any, ...] = (
     structlog.stdlib.add_logger_name,
     structlog.stdlib.add_log_level,
@@ -70,9 +74,6 @@ _BASE_PROCESSORS: tuple[Any, ...] = (
     structlog.processors.TimeStamper(fmt="iso", utc=True),
     structlog.processors.StackInfoRenderer(),
     structlog.processors.UnicodeDecoder(),
-    # Log <-> trace correlation: no-op when OTel has no active
-    # span (including when tracing is disabled entirely).
-    inject_trace_context,
     sanitize_sensitive_fields,
 )
 
@@ -87,7 +88,8 @@ def _build_shared_processors(
     (non-structlog) log records before the final renderer.
 
     Args:
-        enable_correlation: Whether to include ``merge_contextvars``.
+        enable_correlation: Whether to include ``merge_contextvars``
+            and trace-id/span-id injection.
 
     Returns:
         A list of structlog processors for the foreign pre-chain.
@@ -95,6 +97,7 @@ def _build_shared_processors(
     processors: list[Any] = []
     if enable_correlation:
         processors.append(structlog.contextvars.merge_contextvars)
+        processors.append(inject_trace_context)
     processors.extend(_BASE_PROCESSORS)
     return processors
 
@@ -129,6 +132,7 @@ def _configure_structlog(*, enable_correlation: bool = True) -> None:
     processors: list[Any] = []
     if enable_correlation:
         processors.append(structlog.contextvars.merge_contextvars)
+        processors.append(inject_trace_context)
     processors.append(structlog.stdlib.filter_by_level)
     processors.extend(_BASE_PROCESSORS)
     processors.append(structlog.stdlib.ProcessorFormatter.wrap_for_formatter)

@@ -32,7 +32,7 @@ from synthorg.observability.events.api import (
     API_REQUEST_COMPLETED,
     API_REQUEST_STARTED,
 )
-from synthorg.observability.events.metrics import METRICS_SCRAPE_FAILED
+from synthorg.observability.events.metrics import METRICS_RECORD_FAILED
 
 _UNMATCHED_ROUTE: Final[str] = "__unmatched__"
 
@@ -220,7 +220,7 @@ def _record_request_metric(
         # Log the lookup failure so operators notice a metrics-
         # pipeline regression rather than seeing silent drop-offs.
         logger.warning(
-            METRICS_SCRAPE_FAILED,
+            METRICS_RECORD_FAILED,
             component="api_request_duration",
             reason="collector_access_failed",
             exc_info=True,
@@ -237,7 +237,7 @@ def _record_request_metric(
         raise
     except Exception:
         logger.warning(
-            METRICS_SCRAPE_FAILED,
+            METRICS_RECORD_FAILED,
             component="api_request_duration",
             exc_info=True,
         )

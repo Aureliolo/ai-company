@@ -129,16 +129,17 @@ class CedarPolicyEngine:
             )
 
             if self._fail_closed:
-                return PolicyDecision(
+                decision = PolicyDecision(
                     allow=False,
                     reason=f"Policy evaluation error (fail-closed): {exc}",
                     latency_ms=latency_ms,
                 )
-            return PolicyDecision(
-                allow=True,
-                reason=f"Policy evaluation error (fail-open): {exc}",
-                latency_ms=latency_ms,
-            )
+            else:
+                decision = PolicyDecision(
+                    allow=True,
+                    reason=f"Policy evaluation error (fail-open): {exc}",
+                    latency_ms=latency_ms,
+                )
 
         # Record the verdict in Prometheus *after* the authoritative
         # decision is built. Pulling the metrics hook out of the

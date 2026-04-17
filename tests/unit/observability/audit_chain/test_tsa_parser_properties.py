@@ -21,10 +21,7 @@ pytestmark = pytest.mark.unit
 
 
 @given(data=st.binary(min_size=0, max_size=8192))
-@settings(
-    deadline=timedelta(seconds=1),
-    max_examples=50,
-)
+@settings(deadline=timedelta(seconds=1))
 def test_decode_never_raises_unhandled_exception(data: bytes) -> None:
     """Parser handles arbitrary bytes with a bounded exception set."""
     try:

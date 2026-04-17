@@ -21,6 +21,7 @@ from synthorg import __version__
 from synthorg.budget.billing import billing_period_start
 from synthorg.observability import get_logger
 from synthorg.observability.events.metrics import (
+    API_REQUEST_VALIDATION_FAILED,
     METRICS_COLLECTOR_INITIALIZED,
     METRICS_COORDINATION_RECORDED,
     METRICS_SCRAPE_COMPLETED,
@@ -267,7 +268,7 @@ class PrometheusCollector:
         status_class = _status_class(status_code)
         if status_class not in VALID_STATUS_CLASSES:
             logger.warning(
-                METRICS_SCRAPE_FAILED,
+                API_REQUEST_VALIDATION_FAILED,
                 component="api_request",
                 reason="invalid_status_code",
                 method=method,

@@ -1,14 +1,12 @@
 """In-memory stores for client simulation runtime state."""
 
 import asyncio
+from collections.abc import Mapping  # noqa: TC003 - used at module-level runtime
 from datetime import UTC, datetime
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Literal
+from typing import Literal
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
 
 from synthorg.client.models import (
     ClientFeedback,
