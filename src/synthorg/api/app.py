@@ -1778,7 +1778,13 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
         app_state.set_distributed_task_queue(distributed_task_queue)
 
     bridge = (
-        MessageBusBridge(message_bus, channels_plugin)
+        MessageBusBridge(
+            message_bus,
+            channels_plugin,
+            config_resolver=(
+                app_state.config_resolver if app_state.has_config_resolver else None
+            ),
+        )
         if message_bus is not None
         else None
     )

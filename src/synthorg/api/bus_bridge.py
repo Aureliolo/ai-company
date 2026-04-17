@@ -6,7 +6,7 @@ events to Litestar's ``ChannelsPlugin`` for WebSocket delivery.
 
 import asyncio
 from datetime import UTC, datetime
-from typing import Any, Final
+from typing import TYPE_CHECKING, Any, Final
 
 from litestar.channels import ChannelsPlugin  # noqa: TC002
 
@@ -22,12 +22,18 @@ from synthorg.observability.events.api import (
     API_BUS_BRIDGE_POLL_ERROR,
     API_BUS_BRIDGE_SUBSCRIBE_FAILED,
 )
+from synthorg.settings.enums import SettingNamespace
+
+if TYPE_CHECKING:
+    from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
 
 _SUBSCRIBER_ID: Final[str] = "__api_bridge__"
 _POLL_TIMEOUT: Final[float] = 1.0
+"""Fallback poll timeout used when no resolver is wired in."""
 _MAX_CONSECUTIVE_ERRORS: Final[int] = 30
+"""Fallback error budget used when no resolver is wired in."""
 
 
 class MessageBusBridge:
@@ -50,11 +56,32 @@ class MessageBusBridge:
         self,
         message_bus: MessageBus,
         channels_plugin: ChannelsPlugin,
+        *,
+        config_resolver: ConfigResolver | None = None,
     ) -> None:
         self._bus = message_bus
         self._plugin = channels_plugin
+        self._config_resolver = config_resolver
         self._tasks: list[asyncio.Task[None]] = []
         self._running: bool = False
+
+    async def _get_poll_timeout(self) -> float:
+        """Resolve the current poll timeout, falling back to the constant."""
+        if self._config_resolver is None:
+            return _POLL_TIMEOUT
+        return await self._config_resolver.get_float(
+            SettingNamespace.COMMUNICATION.value,
+            "bus_bridge_poll_timeout_seconds",
+        )
+
+    async def _get_max_consecutive_errors(self) -> int:
+        """Resolve the current error budget, falling back to the constant."""
+        if self._config_resolver is None:
+            return _MAX_CONSECUTIVE_ERRORS
+        return await self._config_resolver.get_int(
+            SettingNamespace.COMMUNICATION.value,
+            "bus_bridge_max_consecutive_errors",
+        )
 
     async def start(self) -> None:
         """Start polling tasks for each channel.
@@ -125,16 +152,20 @@ class MessageBusBridge:
     async def _poll_channel(self, channel_name: str) -> None:
         """Poll a single channel and publish to Litestar.
 
-        Stops polling after ``_MAX_CONSECUTIVE_ERRORS`` failures
-        in a row to avoid infinite log spam on broken channels.
+        Stops polling after the configured max-consecutive-errors
+        budget is exhausted to avoid infinite log spam on broken
+        channels.  Poll timeout and error budget are re-read each
+        iteration so operator tuning via settings takes effect
+        without a restart.
         """
         consecutive_errors = 0
         while True:
             try:
+                poll_timeout = await self._get_poll_timeout()
                 envelope = await self._bus.receive(
                     channel_name,
                     _SUBSCRIBER_ID,
-                    timeout=_POLL_TIMEOUT,
+                    timeout=poll_timeout,
                 )
                 if envelope is None:
                     continue
@@ -148,7 +179,8 @@ class MessageBusBridge:
                 break
             except OSError, ConnectionError, TimeoutError:
                 consecutive_errors += 1
-                if consecutive_errors >= _MAX_CONSECUTIVE_ERRORS:
+                max_errors = await self._get_max_consecutive_errors()
+                if consecutive_errors >= max_errors:
                     logger.error(
                         API_BRIDGE_CHANNEL_DEAD,
                         channel=channel_name,
@@ -162,7 +194,7 @@ class MessageBusBridge:
                     consecutive_errors=consecutive_errors,
                     exc_info=True,
                 )
-                await asyncio.sleep(_POLL_TIMEOUT)
+                await asyncio.sleep(await self._get_poll_timeout())
             except Exception:
                 logger.error(
                     API_BRIDGE_CHANNEL_DEAD,

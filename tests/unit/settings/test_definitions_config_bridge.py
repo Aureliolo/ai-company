@@ -125,7 +125,7 @@ _EXPECTED: tuple[
         "20",
         5,
         100,
-        False,
+        True,
     ),
     # communication (9 new)
     _spec(

@@ -405,9 +405,13 @@ _r.register(
         key="max_meeting_context_keys",
         type=SettingType.INTEGER,
         default="20",
-        description=("Maximum number of context keys attached to a single meeting"),
+        description=(
+            "Maximum number of context keys attached to a single meeting"
+            " (baked into the request DTO validator at startup)"
+        ),
         group="Query Limits",
         level=SettingLevel.ADVANCED,
+        restart_required=True,
         min_value=5,
         max_value=100,
         yaml_path="api.query_limits.max_meeting_context_keys",
