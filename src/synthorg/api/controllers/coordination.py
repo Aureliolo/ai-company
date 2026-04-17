@@ -96,7 +96,7 @@ def _map_result_to_response(
         parent_task_id=result.parent_task_id,
         topology=result.topology.value,
         total_duration_seconds=result.total_duration_seconds,
-        total_cost_usd=result.total_cost_usd,
+        total_cost=result.total_cost,
         currency=currency,
         phases=tuple(
             CoordinationPhaseResponse(

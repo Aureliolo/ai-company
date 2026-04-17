@@ -337,7 +337,7 @@ class TestAutoWireMeetings:
                 usage=TokenUsage(
                     input_tokens=12,
                     output_tokens=7,
-                    cost_usd=0.0005,
+                    cost=0.0005,
                 ),
                 model=NotBlankStr("test-medium-001"),
             )

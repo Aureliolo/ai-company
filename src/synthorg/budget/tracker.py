@@ -168,7 +168,7 @@ class CostTracker:
                 BUDGET_RECORD_ADDED,
                 agent_id=cost_record.agent_id,
                 model=cost_record.model,
-                cost_usd=cost_record.cost_usd,
+                cost=cost_record.cost,
             )
 
         await self._update_project_aggregate(cost_record)
@@ -203,14 +203,14 @@ class CostTracker:
         start: datetime | None = None,
         end: datetime | None = None,
     ) -> float:
-        """Sum of ``cost_usd`` across all records, optionally filtered by time.
+        """Sum of ``cost`` across all records, optionally filtered by time.
 
         Args:
             start: Inclusive lower bound on ``timestamp``.
             end: Exclusive upper bound on ``timestamp``.
 
         Returns:
-            Rounded total cost in USD (base currency).
+            Rounded total cost in the configured currency.
 
         Raises:
             ValueError: If both *start* and *end* are given and
@@ -229,7 +229,7 @@ class CostTracker:
         start: datetime | None = None,
         end: datetime | None = None,
     ) -> float:
-        """Sum of ``cost_usd`` for a single agent, optionally filtered by time.
+        """Sum of ``cost`` for a single agent, optionally filtered by time.
 
         Args:
             agent_id: Agent identifier to filter by.
@@ -237,7 +237,7 @@ class CostTracker:
             end: Exclusive upper bound on ``timestamp``.
 
         Returns:
-            Rounded total cost in USD (base currency) for the agent.
+            Rounded total cost in the configured currency for the agent.
 
         Raises:
             ValueError: If both *start* and *end* are given and
@@ -266,7 +266,7 @@ class CostTracker:
         start: datetime | None = None,
         end: datetime | None = None,
     ) -> float:
-        """Sum of ``cost_usd`` for a single project.
+        """Sum of ``cost`` for a single project.
 
         Args:
             project_id: Project identifier to filter by.
@@ -274,7 +274,7 @@ class CostTracker:
             end: Exclusive upper bound on ``timestamp``.
 
         Returns:
-            Rounded total cost in USD (base currency) for the project.
+            Rounded total cost in the configured currency for the project.
 
         Raises:
             ValueError: If both *start* and *end* are given and
@@ -473,7 +473,7 @@ class CostTracker:
             period=PeriodSpending(
                 start=start,
                 end=end,
-                total_cost_usd=totals.cost,
+                total_cost=totals.cost,
                 total_input_tokens=totals.input_tokens,
                 total_output_tokens=totals.output_tokens,
                 record_count=totals.record_count,
@@ -487,7 +487,7 @@ class CostTracker:
 
         logger.info(
             BUDGET_SUMMARY_BUILT,
-            total_cost_usd=totals.cost,
+            total_cost=totals.cost,
             record_count=totals.record_count,
             agent_count=len(agent_spendings),
             department_count=len(dept_spendings),
@@ -621,14 +621,14 @@ class CostTracker:
         try:
             await self._project_cost_repo.increment(
                 cost_record.project_id,
-                cost_record.cost_usd,
+                cost_record.cost,
                 cost_record.input_tokens,
                 cost_record.output_tokens,
             )
             logger.debug(
                 BUDGET_PROJECT_COST_AGGREGATED,
                 project_id=cost_record.project_id,
-                cost_usd=cost_record.cost_usd,
+                cost=cost_record.cost,
             )
         except MemoryError, RecursionError:
             raise
@@ -636,7 +636,7 @@ class CostTracker:
             logger.warning(
                 BUDGET_PROJECT_COST_AGGREGATION_FAILED,
                 project_id=cost_record.project_id,
-                cost_usd=cost_record.cost_usd,
+                cost=cost_record.cost,
                 exc_info=True,
             )
 
@@ -689,8 +689,8 @@ class CostTracker:
         return [
             DepartmentSpending(
                 department_name=dname,
-                total_cost_usd=round(
-                    math.fsum(s.total_cost_usd for s in spends),
+                total_cost=round(
+                    math.fsum(s.total_cost for s in spends),
                     BUDGET_ROUNDING_PRECISION,
                 ),
                 total_input_tokens=sum(s.total_input_tokens for s in spends),
@@ -810,7 +810,7 @@ def _build_agent_spendings(
         result.append(
             AgentSpending(
                 agent_id=aid,
-                total_cost_usd=agg.cost,
+                total_cost=agg.cost,
                 total_input_tokens=agg.input_tokens,
                 total_output_tokens=agg.output_tokens,
                 record_count=agg.record_count,
@@ -827,7 +827,7 @@ def _aggregate(
     input_tokens = 0
     output_tokens = 0
     for r in records:
-        costs.append(r.cost_usd)
+        costs.append(r.cost)
         input_tokens += r.input_tokens
         output_tokens += r.output_tokens
     cost = round(math.fsum(costs), BUDGET_ROUNDING_PRECISION)

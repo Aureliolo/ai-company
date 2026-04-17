@@ -163,14 +163,14 @@ class CostRecordRepository(Protocol):
         agent_id: NotBlankStr | None = None,
         task_id: NotBlankStr | None = None,
     ) -> float:
-        """Sum total cost_usd, optionally filtered by agent and/or task.
+        """Sum total cost, optionally filtered by agent and/or task.
 
         Args:
             agent_id: Filter by agent identifier.
             task_id: Filter by task identifier.
 
         Returns:
-            Total cost in USD (base currency).
+            Total cost in the configured currency.
 
         Raises:
             PersistenceError: If the operation fails.

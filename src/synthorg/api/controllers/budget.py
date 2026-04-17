@@ -37,15 +37,15 @@ class AgentSpending(BaseModel):
 
     Attributes:
         agent_id: Agent identifier.
-        total_cost_usd: Cumulative cost in USD (base currency).
+        total_cost: Cumulative cost in the configured currency.
         currency: ISO 4217 currency code.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     agent_id: NotBlankStr = Field(description="Agent identifier")
-    total_cost_usd: float = Field(
-        ge=0.0, description="Total cost in USD (base currency)"
+    total_cost: float = Field(
+        ge=0.0, description="Total cost in the configured currency"
     )
     currency: str = Field(
         default=DEFAULT_CURRENCY,
@@ -61,7 +61,7 @@ class DailySummary(BaseModel):
 
     Attributes:
         date: ISO date string (YYYY-MM-DD).
-        total_cost_usd: Sum of cost_usd for the day.
+        total_cost: Sum of cost for the day.
         total_input_tokens: Sum of input tokens for the day.
         total_output_tokens: Sum of output tokens for the day.
         record_count: Number of cost records on this day.
@@ -71,8 +71,8 @@ class DailySummary(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     date: NotBlankStr = Field(description="ISO date (YYYY-MM-DD)")
-    total_cost_usd: float = Field(
-        ge=0.0, description="Total cost in USD (base currency)"
+    total_cost: float = Field(
+        ge=0.0, description="Total cost in the configured currency"
     )
     currency: str = Field(
         default=DEFAULT_CURRENCY,
@@ -96,18 +96,18 @@ class PeriodSummary(BaseModel):
     """Overall stats across all matching cost records.
 
     Attributes:
-        total_cost_usd: Sum of cost_usd across all records.
+        total_cost: Sum of cost across all records.
         total_input_tokens: Sum of input tokens.
         total_output_tokens: Sum of output tokens.
         record_count: Total number of records.
-        avg_cost_usd: Average cost per record (computed, 0.0 if none).
+        avg_cost: Average cost per record (computed, 0.0 if none).
         currency: ISO 4217 currency code.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    total_cost_usd: float = Field(
-        ge=0.0, description="Total cost in USD (base currency)"
+    total_cost: float = Field(
+        ge=0.0, description="Total cost in the configured currency"
     )
     currency: str = Field(
         default=DEFAULT_CURRENCY,
@@ -128,11 +128,11 @@ class PeriodSummary(BaseModel):
 
     @computed_field(description="Average cost per record")  # type: ignore[prop-decorator]
     @property
-    def avg_cost_usd(self) -> float:
+    def avg_cost(self) -> float:
         """Average cost per record (0.0 if no records)."""
         if self.record_count == 0:
             return 0.0
-        return self.total_cost_usd / self.record_count
+        return self.total_cost / self.record_count
 
 
 class CostRecordListResponse(BaseModel):
@@ -201,7 +201,7 @@ def _build_summaries(
     """
     if not records:
         return (), PeriodSummary(
-            total_cost_usd=0.0,
+            total_cost=0.0,
             total_input_tokens=0,
             total_output_tokens=0,
             record_count=0,
@@ -215,7 +215,7 @@ def _build_summaries(
     daily = tuple(
         DailySummary(
             date=date,
-            total_cost_usd=math.fsum(r.cost_usd for r in day_records),
+            total_cost=math.fsum(r.cost for r in day_records),
             total_input_tokens=sum(r.input_tokens for r in day_records),
             total_output_tokens=sum(r.output_tokens for r in day_records),
             record_count=len(day_records),
@@ -225,7 +225,7 @@ def _build_summaries(
     )
 
     period = PeriodSummary(
-        total_cost_usd=math.fsum(r.cost_usd for r in records),
+        total_cost=math.fsum(r.cost for r in records),
         total_input_tokens=sum(r.input_tokens for r in records),
         total_output_tokens=sum(r.output_tokens for r in records),
         record_count=len(records),
@@ -341,7 +341,7 @@ class BudgetController(Controller):
         return ApiResponse(
             data=AgentSpending(
                 agent_id=agent_id,
-                total_cost_usd=total,
+                total_cost=total,
                 currency=budget_cfg.currency,
             ),
         )

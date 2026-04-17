@@ -69,7 +69,7 @@ def _completion(
     content: str = "Here is my input.",
     input_tokens: int = 17,
     output_tokens: int = 42,
-    cost_usd: float = 0.00042,
+    cost: float = 0.00042,
 ) -> CompletionResponse:
     return CompletionResponse(
         content=content,
@@ -77,7 +77,7 @@ def _completion(
         usage=TokenUsage(
             input_tokens=input_tokens,
             output_tokens=output_tokens,
-            cost_usd=cost_usd,
+            cost=cost,
         ),
         model=NotBlankStr("example-medium-001"),
     )
@@ -125,7 +125,7 @@ class TestBuildMeetingAgentCaller:
             content="I propose adding a queue.",
             input_tokens=20,
             output_tokens=30,
-            cost_usd=0.001,
+            cost=0.001,
         )
         caller, _registry, _providers = _build_caller(
             identity=identity,
@@ -138,7 +138,7 @@ class TestBuildMeetingAgentCaller:
         assert result.content == "I propose adding a queue."
         assert result.input_tokens == 20
         assert result.output_tokens == 30
-        assert result.cost_usd == pytest.approx(0.001)
+        assert result.cost == pytest.approx(0.001)
 
     async def test_unknown_agent_raises(self) -> None:
         caller, _reg, _providers = _build_caller(identity=None)

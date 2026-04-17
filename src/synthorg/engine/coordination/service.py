@@ -237,7 +237,7 @@ class MultiAgentCoordinator:
 
             total_duration = time.monotonic() - pipeline_start
             total_cost = sum(
-                w.execution_result.total_cost_usd
+                w.execution_result.total_cost
                 for w in dispatch_result.waves
                 if w.execution_result is not None
             )
@@ -252,7 +252,7 @@ class MultiAgentCoordinator:
                 status_rollup=rollup,
                 workspace_merge=dispatch_result.workspace_merge,
                 total_duration_seconds=total_duration,
-                total_cost_usd=total_cost,
+                total_cost=total_cost,
             )
 
         except CoordinationPhaseError:
@@ -273,7 +273,7 @@ class MultiAgentCoordinator:
             topology=topology.value,
             is_success=result.is_success,
             total_duration_seconds=total_duration,
-            total_cost_usd=total_cost,
+            total_cost=total_cost,
         )
 
         # Post-pipeline: build per-agent attribution.

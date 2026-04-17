@@ -37,8 +37,8 @@ export async function mockApiRoutes(page: Page) {
           interrupted: 1,
           cancelled: 0,
         },
-        total_cost_usd: 127.43,
-        budget_remaining_usd: 372.57,
+        total_cost: 127.43,
+        budget_remaining: 372.57,
         budget_used_percent: 25.5,
         currency: 'EUR',
         cost_7d_trend: [

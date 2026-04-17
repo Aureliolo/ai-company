@@ -52,7 +52,7 @@ def _turn(
         turn_number=turn_number,
         input_tokens=100,
         output_tokens=50,
-        cost_usd=0.01,
+        cost=0.01,
         finish_reason=finish_reason,
     )
 

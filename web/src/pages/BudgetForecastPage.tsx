@@ -25,7 +25,7 @@ function ProjectionRow({ point, cumulative, currency, totalMonthly }: {
     <tr>
       <td className="px-4 py-2 font-mono text-xs text-foreground">{point.day}</td>
       <td className="w-28 px-4 py-2 text-right font-mono text-xs text-text-secondary">
-        {formatCurrency(point.projected_spend_usd, currency)}
+        {formatCurrency(point.projected_spend, currency)}
       </td>
       <td className="w-28 px-4 py-2 text-right font-mono text-xs text-text-secondary">
         {formatCurrency(cumulative, currency)}
@@ -55,7 +55,7 @@ export default function BudgetForecastPage() {
     if (!forecast) return []
     let running = 0
     return forecast.daily_projections.map((p) => {
-      running += p.projected_spend_usd
+      running += p.projected_spend
       return running
     })
   }, [forecast])
@@ -65,7 +65,7 @@ export default function BudgetForecastPage() {
     return [
       {
         label: 'PROJECTED TOTAL',
-        value: formatCurrency(forecast.projected_total_usd, currency),
+        value: formatCurrency(forecast.projected_total, currency),
       },
       {
         label: 'DAYS UNTIL EXHAUSTED',
@@ -80,7 +80,7 @@ export default function BudgetForecastPage() {
       },
       {
         label: 'AVG DAILY SPEND',
-        value: formatCurrency(forecast.avg_daily_spend_usd, currency),
+        value: formatCurrency(forecast.avg_daily_spend, currency),
       },
     ]
   }, [forecast, currency])
@@ -140,7 +140,7 @@ export default function BudgetForecastPage() {
           trendData={trends?.data_points ?? []}
           forecast={forecast}
           budgetTotal={budgetConfig?.total_monthly ?? 0}
-          budgetRemaining={overview?.budget_remaining_usd}
+          budgetRemaining={overview?.budget_remaining}
           alerts={budgetConfig?.alerts}
           currency={currency}
         />

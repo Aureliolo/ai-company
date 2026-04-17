@@ -36,7 +36,7 @@ class TestTrackerProjectAggregate:
     async def test_record_calls_repo_increment_for_project(self) -> None:
         repo = _make_mock_repo()
         tracker = CostTracker(project_cost_repo=repo)
-        record = make_cost_record(project_id="proj-1", cost_usd=1.0)
+        record = make_cost_record(project_id="proj-1", cost=1.0)
 
         await tracker.record(record)
 
@@ -82,8 +82,8 @@ class TestTrackerProjectAggregate:
         repo = _make_mock_repo()
         tracker = CostTracker(project_cost_repo=repo)
 
-        await tracker.record(make_cost_record(project_id="proj-1", cost_usd=2.0))
-        await tracker.record(make_cost_record(project_id="proj-1", cost_usd=3.0))
+        await tracker.record(make_cost_record(project_id="proj-1", cost=2.0))
+        await tracker.record(make_cost_record(project_id="proj-1", cost=3.0))
 
         # In-memory queries still work
         cost = await tracker.get_project_cost("proj-1")

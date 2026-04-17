@@ -75,7 +75,7 @@ def _context(
 
 def _completion_response(
     content: str,
-    cost_usd: float = 0.001,
+    cost: float = 0.001,
 ) -> CompletionResponse:
     return CompletionResponse(
         content=content,
@@ -83,7 +83,7 @@ def _completion_response(
         usage=TokenUsage(
             input_tokens=100,
             output_tokens=50,
-            cost_usd=cost_usd,
+            cost=cost,
         ),
         model="test-small-001",
     )
@@ -318,7 +318,7 @@ class TestSemanticDetectorBehavior:
 
     async def test_budget_exhausted_skips_call(self) -> None:
         provider = _mock_provider()
-        budget = ClassificationBudgetTracker(budget_usd=0.0)
+        budget = ClassificationBudgetTracker(budget=0.0)
         detector = SemanticContradictionDetector(
             provider=provider,
             model_id="test-small-001",
@@ -337,7 +337,7 @@ class TestSemanticDetectorBehavior:
 
     async def test_budget_tracks_cost(self) -> None:
         provider = _mock_provider("[]")
-        budget = ClassificationBudgetTracker(budget_usd=1.0)
+        budget = ClassificationBudgetTracker(budget=1.0)
         detector = SemanticContradictionDetector(
             provider=provider,
             model_id="test-small-001",

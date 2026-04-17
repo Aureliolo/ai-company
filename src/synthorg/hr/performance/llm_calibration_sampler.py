@@ -130,7 +130,7 @@ class LlmCalibrationSampler:
         )
 
         try:
-            llm_score, rationale, cost_usd = await self._call_llm(record)
+            llm_score, rationale, cost = await self._call_llm(record)
         except MemoryError, RecursionError:
             raise
         except Exception:
@@ -150,7 +150,7 @@ class LlmCalibrationSampler:
             behavioral_score=behavioral_score,
             rationale=NotBlankStr(rationale),
             model_used=NotBlankStr(self._model),
-            cost_usd=cost_usd,
+            cost=cost,
         )
 
         agent_key = str(record.agent_id)
@@ -315,7 +315,7 @@ class LlmCalibrationSampler:
         """Call the LLM and return parsed evaluation results.
 
         Returns:
-            Tuple of (score, rationale, cost_usd).
+            Tuple of (score, rationale, cost).
 
         Raises:
             ValueError: If the LLM response is empty, cannot be parsed
@@ -349,7 +349,7 @@ class LlmCalibrationSampler:
             response.content,
             record,
         )
-        return score, rationale, response.usage.cost_usd
+        return score, rationale, response.usage.cost
 
     def _prune_expired(self) -> None:
         """Remove calibration records older than the retention period."""

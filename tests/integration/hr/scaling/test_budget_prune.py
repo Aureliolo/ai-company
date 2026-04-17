@@ -70,7 +70,7 @@ class TestBudgetPrune:
         alert_enum = BudgetAlertLevel[alert_level]
         summary = SpendingSummary(
             period=PeriodSpending(
-                total_cost_usd=budget_percent * 10,
+                total_cost=budget_percent * 10,
                 record_count=int(budget_percent),
                 start=start,
                 end=end,
@@ -84,7 +84,7 @@ class TestBudgetPrune:
             AgentWorkload(
                 agent_id=aid,
                 active_task_count=3,
-                total_cost_usd=5.0 if budget_percent < 50 else 10.0,
+                total_cost=5.0 if budget_percent < 50 else 10.0,
             )
             for aid in AGENT_IDS
         )

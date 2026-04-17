@@ -144,7 +144,7 @@ class _DeterministicProvider:
             usage=TokenUsage(
                 input_tokens=50,
                 output_tokens=20,
-                cost_usd=0.005,
+                cost=0.005,
             ),
             model=model,
         )
@@ -386,7 +386,7 @@ def _make_response(
         usage=TokenUsage(
             input_tokens=50,
             output_tokens=20,
-            cost_usd=cost,
+            cost=cost,
         ),
         model="test-small-001",
     )
@@ -519,7 +519,7 @@ class TestHappyPathDecomposeRouteExecute:
 
         assert exec_result.all_succeeded is True
         assert exec_result.agents_succeeded == 2
-        assert exec_result.total_cost_usd > 0
+        assert exec_result.total_cost > 0
 
         # 7. Rollup status
         subtask_statuses = tuple(
@@ -839,7 +839,7 @@ class TestParallelExecutionConcurrency:
         # All 3 succeed
         assert exec_result.all_succeeded is True
         assert exec_result.agents_succeeded == 3
-        assert exec_result.total_cost_usd > 0
+        assert exec_result.total_cost > 0
 
         # Progress callback was invoked
         assert len(progress_snapshots) > 0

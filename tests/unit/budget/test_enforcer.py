@@ -122,7 +122,7 @@ def _resolved(
 def _ctx_with_cost(
     identity: AgentIdentity,
     task: Task,
-    cost_usd: float,
+    cost: float,
 ) -> AgentContext:
     """Build an AgentContext with a specific accumulated cost."""
     ctx = AgentContext.from_identity(identity, task=task)
@@ -131,7 +131,7 @@ def _ctx_with_cost(
             "accumulated_cost": TokenUsage(
                 input_tokens=100,
                 output_tokens=50,
-                cost_usd=cost_usd,
+                cost=cost,
             ),
         },
     )
@@ -200,7 +200,7 @@ class TestCheckCanExecute:
         tracker = CostTracker(budget_config=cfg)
         await tracker.record(
             make_cost_record(
-                cost_usd=30.0,
+                cost=30.0,
                 input_tokens=100,
                 output_tokens=50,
                 timestamp=_RECORD_TS,
@@ -219,7 +219,7 @@ class TestCheckCanExecute:
         tracker = CostTracker(budget_config=cfg)
         await tracker.record(
             make_cost_record(
-                cost_usd=100.0,
+                cost=100.0,
                 input_tokens=100,
                 output_tokens=50,
                 timestamp=_RECORD_TS,
@@ -247,7 +247,7 @@ class TestCheckCanExecute:
         tracker = CostTracker(budget_config=cfg)
         await tracker.record(
             make_cost_record(
-                cost_usd=100.0,
+                cost=100.0,
                 input_tokens=100,
                 output_tokens=50,
                 timestamp=_RECORD_TS,
@@ -267,7 +267,7 @@ class TestCheckCanExecute:
         tracker = CostTracker(budget_config=cfg)
         await tracker.record(
             make_cost_record(
-                cost_usd=110.0,
+                cost=110.0,
                 input_tokens=100,
                 output_tokens=50,
                 timestamp=_RECORD_TS,
@@ -288,7 +288,7 @@ class TestCheckCanExecute:
         await tracker.record(
             make_cost_record(
                 agent_id="alice",
-                cost_usd=10.0,
+                cost=10.0,
                 input_tokens=100,
                 output_tokens=50,
                 timestamp=_RECORD_TS,
@@ -312,7 +312,7 @@ class TestCheckCanExecute:
         await tracker.record(
             make_cost_record(
                 agent_id="alice",
-                cost_usd=5.0,
+                cost=5.0,
                 input_tokens=100,
                 output_tokens=50,
                 timestamp=_RECORD_TS,
@@ -340,7 +340,7 @@ class TestCheckCanExecute:
         await tracker.record(
             make_cost_record(
                 agent_id="alice",
-                cost_usd=10.0,
+                cost=10.0,
                 input_tokens=100,
                 output_tokens=50,
                 timestamp=_RECORD_TS,
@@ -364,7 +364,7 @@ class TestCheckCanExecute:
         await tracker.record(
             make_cost_record(
                 agent_id="alice",
-                cost_usd=50.0,
+                cost=50.0,
                 input_tokens=100,
                 output_tokens=50,
                 timestamp=_RECORD_TS,
@@ -396,7 +396,7 @@ class TestResolveModel:
         # 50% usage -- below 85% threshold
         await tracker.record(
             make_cost_record(
-                cost_usd=50.0,
+                cost=50.0,
                 input_tokens=100,
                 output_tokens=50,
                 timestamp=_RECORD_TS,
@@ -430,7 +430,7 @@ class TestResolveModel:
         # 90% usage -- above 85% threshold
         await tracker.record(
             make_cost_record(
-                cost_usd=90.0,
+                cost=90.0,
                 input_tokens=100,
                 output_tokens=50,
                 timestamp=_RECORD_TS,
@@ -476,7 +476,7 @@ class TestResolveModel:
         tracker = CostTracker(budget_config=cfg)
         await tracker.record(
             make_cost_record(
-                cost_usd=90.0,
+                cost=90.0,
                 input_tokens=100,
                 output_tokens=50,
                 timestamp=_RECORD_TS,
@@ -514,7 +514,7 @@ class TestResolveModel:
         tracker = CostTracker(budget_config=cfg)
         await tracker.record(
             make_cost_record(
-                cost_usd=90.0,
+                cost=90.0,
                 input_tokens=100,
                 output_tokens=50,
                 timestamp=_RECORD_TS,
@@ -558,7 +558,7 @@ class TestResolveModel:
         # Exactly 85% usage
         await tracker.record(
             make_cost_record(
-                cost_usd=85.0,
+                cost=85.0,
                 input_tokens=100,
                 output_tokens=50,
                 timestamp=_RECORD_TS,
@@ -606,7 +606,7 @@ class TestResolveModel:
         tracker = CostTracker(budget_config=cfg)
         await tracker.record(
             make_cost_record(
-                cost_usd=90.0,
+                cost=90.0,
                 input_tokens=100,
                 output_tokens=50,
                 timestamp=_RECORD_TS,
@@ -645,7 +645,7 @@ class TestResolveModel:
         tracker = CostTracker(budget_config=cfg)
         await tracker.record(
             make_cost_record(
-                cost_usd=90.0,
+                cost=90.0,
                 input_tokens=100,
                 output_tokens=50,
                 timestamp=_RECORD_TS,
@@ -691,7 +691,7 @@ class TestResolveModel:
         tracker = CostTracker(budget_config=cfg)
         await tracker.record(
             make_cost_record(
-                cost_usd=90.0,
+                cost=90.0,
                 input_tokens=100,
                 output_tokens=50,
                 timestamp=_RECORD_TS,
@@ -739,7 +739,7 @@ class TestResolveModel:
         tracker = CostTracker(budget_config=cfg)
         await tracker.record(
             make_cost_record(
-                cost_usd=90.0,
+                cost=90.0,
                 input_tokens=100,
                 output_tokens=50,
                 timestamp=_RECORD_TS,
@@ -870,7 +870,7 @@ class TestMakeBudgetChecker:
         # Pre-existing monthly spend of 90
         await tracker.record(
             make_cost_record(
-                cost_usd=90.0,
+                cost=90.0,
                 input_tokens=100,
                 output_tokens=50,
                 timestamp=_RECORD_TS,
@@ -904,7 +904,7 @@ class TestMakeBudgetChecker:
         await tracker.record(
             make_cost_record(
                 agent_id="alice",
-                cost_usd=8.0,
+                cost=8.0,
                 input_tokens=100,
                 output_tokens=50,
                 timestamp=_RECORD_TS,
@@ -954,7 +954,7 @@ class TestMakeBudgetChecker:
         tracker = CostTracker(budget_config=cfg)
         await tracker.record(
             make_cost_record(
-                cost_usd=baseline,
+                cost=baseline,
                 input_tokens=100,
                 output_tokens=50,
                 timestamp=_RECORD_TS,
@@ -984,7 +984,7 @@ class TestMakeBudgetChecker:
         # Baseline of 70
         await tracker.record(
             make_cost_record(
-                cost_usd=70.0,
+                cost=70.0,
                 input_tokens=100,
                 output_tokens=50,
                 timestamp=_RECORD_TS,
@@ -1212,7 +1212,7 @@ class TestGetBudgetUtilizationPct:
         """50 spent out of 100 monthly => 50.0%."""
         cfg = _make_budget_config(total_monthly=100.0)
         tracker = CostTracker(budget_config=cfg)
-        await tracker.record(make_cost_record(cost_usd=50.0, timestamp=_RECORD_TS))
+        await tracker.record(make_cost_record(cost=50.0, timestamp=_RECORD_TS))
         enforcer = BudgetEnforcer(budget_config=cfg, cost_tracker=tracker)
 
         with _patch_periods():
@@ -1244,7 +1244,7 @@ class TestGetBudgetUtilizationPct:
         """Spending > budget => percentage > 100."""
         cfg = _make_budget_config(total_monthly=50.0)
         tracker = CostTracker(budget_config=cfg)
-        await tracker.record(make_cost_record(cost_usd=75.0, timestamp=_RECORD_TS))
+        await tracker.record(make_cost_record(cost=75.0, timestamp=_RECORD_TS))
         enforcer = BudgetEnforcer(budget_config=cfg, cost_tracker=tracker)
 
         with _patch_periods():

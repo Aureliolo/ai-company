@@ -26,7 +26,7 @@ class TestAgentPerformanceSummary:
             tasks_completed=10,
             tasks_failed=1,
             average_quality_score=7.5,
-            total_cost_usd=5.0,
+            total_cost=5.0,
             total_risk_units=2.0,
         )
         assert summary.agent_id == "agent-1"

@@ -49,7 +49,7 @@ class PostgresAgentStateRepository:
                     """\
 INSERT INTO agent_states (
     agent_id, execution_id, task_id, status, turn_count,
-    accumulated_cost_usd, last_activity_at, started_at
+    accumulated_cost, last_activity_at, started_at
 ) VALUES (
     %s, %s, %s, %s, %s, %s, %s, %s
 )
@@ -58,7 +58,7 @@ ON CONFLICT (agent_id) DO UPDATE SET
     task_id = EXCLUDED.task_id,
     status = EXCLUDED.status,
     turn_count = EXCLUDED.turn_count,
-    accumulated_cost_usd = EXCLUDED.accumulated_cost_usd,
+    accumulated_cost = EXCLUDED.accumulated_cost,
     last_activity_at = EXCLUDED.last_activity_at,
     started_at = EXCLUDED.started_at
 """,
@@ -68,7 +68,7 @@ ON CONFLICT (agent_id) DO UPDATE SET
                         data["task_id"],
                         data["status"],
                         data["turn_count"],
-                        data["accumulated_cost_usd"],
+                        data["accumulated_cost"],
                         data["last_activity_at"],
                         data["started_at"],
                     ),
@@ -97,7 +97,7 @@ ON CONFLICT (agent_id) DO UPDATE SET
             ):
                 await cur.execute(
                     "SELECT agent_id, execution_id, task_id, status, "
-                    "turn_count, accumulated_cost_usd, last_activity_at, started_at "
+                    "turn_count, accumulated_cost, last_activity_at, started_at "
                     "FROM agent_states WHERE agent_id = %s",
                     (agent_id,),
                 )
@@ -135,7 +135,7 @@ ON CONFLICT (agent_id) DO UPDATE SET
             ):
                 await cur.execute(
                     "SELECT agent_id, execution_id, task_id, status, "
-                    "turn_count, accumulated_cost_usd, last_activity_at, started_at "
+                    "turn_count, accumulated_cost, last_activity_at, started_at "
                     "FROM agent_states WHERE status != %s "
                     "ORDER BY last_activity_at DESC",
                     (ExecutionStatus.IDLE.value,),

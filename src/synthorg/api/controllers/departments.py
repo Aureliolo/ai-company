@@ -269,7 +269,7 @@ def _aggregate_dept_cost(
     """
     dept_records = tuple(r for r in cost_records if r.agent_id in agent_id_set)
     total = round(
-        math.fsum(r.cost_usd for r in dept_records),
+        math.fsum(r.cost for r in dept_records),
         BUDGET_ROUNDING_PRECISION,
     )
     trend = bucket_cost_records(

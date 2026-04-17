@@ -365,9 +365,9 @@ class BaseCompletionProvider(ABC):
         Args:
             input_tokens: Number of input tokens (must be >= 0).
             output_tokens: Number of output tokens (must be >= 0).
-            cost_per_1k_input: Cost per 1,000 input tokens in USD
+            cost_per_1k_input: Cost per 1,000 input tokens in the configured currency
                 (base currency; finite and >= 0).
-            cost_per_1k_output: Cost per 1,000 output tokens in USD
+            cost_per_1k_output: Cost per 1,000 output tokens in the configured currency
                 (base currency; finite and >= 0).
 
         Returns:
@@ -407,7 +407,7 @@ class BaseCompletionProvider(ABC):
         return TokenUsage(
             input_tokens=input_tokens,
             output_tokens=output_tokens,
-            cost_usd=round(cost, BUDGET_ROUNDING_PRECISION),
+            cost=round(cost, BUDGET_ROUNDING_PRECISION),
         )
 
     @staticmethod

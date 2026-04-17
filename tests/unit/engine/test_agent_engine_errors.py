@@ -200,7 +200,7 @@ class TestAgentEngineCostRecordingNonRecoverable:
         """MemoryError from CostTracker.record() is not swallowed."""
         tracker = MagicMock()
         tracker.record = AsyncMock(side_effect=MemoryError("OOM in tracker"))
-        response = make_completion_response(cost_usd=0.05)
+        response = make_completion_response(cost=0.05)
         provider = mock_provider_factory([response])
         engine = AgentEngine(provider=provider, cost_tracker=tracker)
 
@@ -221,7 +221,7 @@ class TestAgentEngineCostRecordingNonRecoverable:
         tracker.record = AsyncMock(
             side_effect=RecursionError("infinite in tracker"),
         )
-        response = make_completion_response(cost_usd=0.05)
+        response = make_completion_response(cost=0.05)
         provider = mock_provider_factory([response])
         engine = AgentEngine(provider=provider, cost_tracker=tracker)
 
@@ -411,7 +411,7 @@ class TestAgentEngineMemoryMessages:
                     turn_number=1,
                     input_tokens=10,
                     output_tokens=5,
-                    cost_usd=0.001,
+                    cost=0.001,
                     finish_reason=FinishReason.STOP,
                 ),
             ),

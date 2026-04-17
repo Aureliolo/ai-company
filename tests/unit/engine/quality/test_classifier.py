@@ -24,7 +24,7 @@ def _turn(
         turn_number=number,
         input_tokens=100,
         output_tokens=50,
-        cost_usd=0.01,
+        cost=0.01,
         tool_calls_made=tools,
         finish_reason=finish,
     )

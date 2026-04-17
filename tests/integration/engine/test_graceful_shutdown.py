@@ -53,7 +53,7 @@ class _ShutdownTriggeringProvider:
             usage=TokenUsage(
                 input_tokens=50,
                 output_tokens=25,
-                cost_usd=0.005,
+                cost=0.005,
             ),
             model="test-model-001",
         )
@@ -222,7 +222,7 @@ class TestGracefulShutdownFlow:
                 usage=TokenUsage(
                     input_tokens=50,
                     output_tokens=25,
-                    cost_usd=0.005,
+                    cost=0.005,
                 ),
                 model="test-model-001",
             ),

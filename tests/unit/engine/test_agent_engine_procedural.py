@@ -57,7 +57,7 @@ def _make_error_execution_result(identity: AgentIdentity) -> ExecutionResult:
             turn_number=1,
             input_tokens=100,
             output_tokens=50,
-            cost_usd=0.001,
+            cost=0.001,
             tool_calls_made=("code_search",),
             finish_reason=FinishReason.STOP,
         ),
@@ -101,7 +101,7 @@ def _make_provider() -> AsyncMock:
         return_value=CompletionResponse(
             content=_VALID_PROPOSAL_CONTENT,
             finish_reason=FinishReason.STOP,
-            usage=TokenUsage(input_tokens=10, output_tokens=5, cost_usd=0.0),
+            usage=TokenUsage(input_tokens=10, output_tokens=5, cost=0.0),
             model="test-small-001",
         ),
     )

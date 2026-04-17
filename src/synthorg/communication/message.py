@@ -193,7 +193,7 @@ class MessageMetadata(BaseModel):
         task_id: Related task identifier.
         project_id: Related project identifier.
         tokens_used: LLM tokens consumed producing the message.
-        cost_usd: Estimated cost of the message in USD (base currency).
+        cost: Estimated cost of the message in the configured currency.
         extra: Immutable key-value pairs for arbitrary metadata (extension).
     """
 
@@ -212,10 +212,10 @@ class MessageMetadata(BaseModel):
         ge=0,
         description="LLM tokens consumed",
     )
-    cost_usd: float | None = Field(
+    cost: float | None = Field(
         default=None,
         ge=0.0,
-        description="Estimated cost in USD (base currency)",
+        description="Estimated cost in the configured currency",
     )
     extra: tuple[tuple[str, str], ...] = Field(
         default=(),

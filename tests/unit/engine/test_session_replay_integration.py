@@ -75,7 +75,7 @@ class TestBrainFailureRecovery:
                     event_name=EXECUTION_CONTEXT_TURN,
                     timestamp=_ts(1 + turn),
                     execution_id=exec_id,
-                    data={"turn": turn, "cost_usd": 0.01 * turn},
+                    data={"turn": turn, "cost": 0.01 * turn},
                 )
             )
         store.record(
@@ -98,7 +98,7 @@ class TestBrainFailureRecovery:
 
         # Verify recovered state.
         assert result.context.turn_count == 3
-        assert result.context.accumulated_cost.cost_usd == pytest.approx(0.06)
+        assert result.context.accumulated_cost.cost == pytest.approx(0.06)
         assert result.replay_completeness >= 0.85
         assert result.events_processed == 6
         assert result.context.identity is sample_agent_with_personality
@@ -117,7 +117,7 @@ class TestBrainFailureRecovery:
                 event_name=EXECUTION_CONTEXT_TURN,
                 timestamp=_ts(2),
                 execution_id=exec_id,
-                data={"turn": 1, "cost_usd": 0.05},
+                data={"turn": 1, "cost": 0.05},
             )
         )
 
@@ -128,7 +128,7 @@ class TestBrainFailureRecovery:
         )
 
         assert result.context.turn_count == 1
-        assert result.context.accumulated_cost.cost_usd == pytest.approx(0.05)
+        assert result.context.accumulated_cost.cost == pytest.approx(0.05)
         assert result.replay_completeness < 0.85
         assert result.replay_completeness > 0.0
 

@@ -37,7 +37,7 @@ class TestTaskMetricRecord:
         assert record.completed_at == NOW
         assert record.is_success is True
         assert record.duration_seconds == 60.0
-        assert record.cost_usd == 0.5
+        assert record.cost == 0.5
         assert record.turns_used == 5
         assert record.tokens_used == 1000
         assert record.quality_score is None
@@ -86,7 +86,7 @@ class TestTaskMetricRecord:
 
     def test_negative_cost_rejected(self) -> None:
         with pytest.raises(ValidationError):
-            make_task_metric(cost_usd=-0.01)
+            make_task_metric(cost=-0.01)
 
     def test_negative_turns_rejected(self) -> None:
         with pytest.raises(ValidationError):
@@ -99,12 +99,12 @@ class TestTaskMetricRecord:
     def test_zero_values_allowed(self) -> None:
         record = make_task_metric(
             duration_seconds=0.0,
-            cost_usd=0.0,
+            cost=0.0,
             turns_used=0,
             tokens_used=0,
         )
         assert record.duration_seconds == 0.0
-        assert record.cost_usd == 0.0
+        assert record.cost == 0.0
         assert record.turns_used == 0
         assert record.tokens_used == 0
 
@@ -114,7 +114,7 @@ class TestTaskMetricRecord:
 
     def test_inf_rejected(self) -> None:
         with pytest.raises(ValidationError):
-            make_task_metric(cost_usd=float("inf"))
+            make_task_metric(cost=float("inf"))
 
     def test_started_at_before_completed_at_valid(self) -> None:
         started = NOW - timedelta(hours=1)
@@ -126,7 +126,7 @@ class TestTaskMetricRecord:
             completed_at=NOW,
             is_success=True,
             duration_seconds=60.0,
-            cost_usd=0.5,
+            cost=0.5,
             turns_used=5,
             tokens_used=1000,
             complexity=Complexity.MEDIUM,
@@ -151,7 +151,7 @@ class TestTaskMetricRecord:
                 completed_at=NOW,
                 is_success=True,
                 duration_seconds=60.0,
-                cost_usd=0.5,
+                cost=0.5,
                 turns_used=5,
                 tokens_used=1000,
                 complexity=Complexity.MEDIUM,

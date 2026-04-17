@@ -27,7 +27,7 @@ class TestCostRecordProjectId:
             model="test-model-001",
             input_tokens=100,
             output_tokens=50,
-            cost_usd=0.01,
+            cost=0.01,
             timestamp=datetime(2026, 3, 1, tzinfo=UTC),
         )
         assert rec.project_id == "proj-100"
@@ -42,7 +42,7 @@ class TestCostRecordProjectId:
                 model="test-model-001",
                 input_tokens=100,
                 output_tokens=50,
-                cost_usd=0.01,
+                cost=0.01,
                 timestamp=datetime(2026, 3, 1, tzinfo=UTC),
             )
 

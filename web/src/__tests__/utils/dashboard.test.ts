@@ -25,8 +25,8 @@ function makeOverview(overrides: Partial<OverviewMetrics> = {}): OverviewMetrics
       auth_required: 0,
     },
     total_agents: 10,
-    total_cost_usd: 42.17,
-    budget_remaining_usd: 457.83,
+    total_cost: 42.17,
+    budget_remaining: 457.83,
     budget_used_percent: 8.43,
     cost_7d_trend: [
       { timestamp: '2026-03-20', value: 5 },
@@ -87,7 +87,7 @@ describe('computeMetricCards', () => {
   })
 
   it('includes Spend card with formatted currency (EUR default)', () => {
-    const cards = computeMetricCards(makeOverview({ total_cost_usd: 42.17 }), makeBudgetConfig())
+    const cards = computeMetricCards(makeOverview({ total_cost: 42.17 }), makeBudgetConfig())
     const spendCard = cards.find((c) => c.label === 'SPEND')
     expect(spendCard).toBeDefined()
     expect(spendCard!.value).toContain('42.17')
@@ -95,7 +95,7 @@ describe('computeMetricCards', () => {
 
   it('formats Spend card value in overview currency', () => {
     const cards = computeMetricCards(
-      makeOverview({ total_cost_usd: 100, currency: 'GBP' }),
+      makeOverview({ total_cost: 100, currency: 'GBP' }),
       makeBudgetConfig(),
     )
     const spendCard = cards.find((c) => c.label === 'SPEND')
@@ -118,7 +118,7 @@ describe('computeMetricCards', () => {
 
   it('includes budget progress on spend card', () => {
     const cards = computeMetricCards(
-      makeOverview({ total_cost_usd: 200, budget_used_percent: 40 }),
+      makeOverview({ total_cost: 200, budget_used_percent: 40 }),
       makeBudgetConfig({ total_monthly: 500 }),
     )
     const spendCard = cards.find((c) => c.label === 'SPEND')
@@ -127,7 +127,7 @@ describe('computeMetricCards', () => {
 
   it('clamps spend progress when cost exceeds budget', () => {
     const cards = computeMetricCards(
-      makeOverview({ total_cost_usd: 600 }),
+      makeOverview({ total_cost: 600 }),
       makeBudgetConfig({ total_monthly: 500 }),
     )
     const spendCard = cards.find((c) => c.label === 'SPEND')

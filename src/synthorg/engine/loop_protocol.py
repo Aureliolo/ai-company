@@ -80,7 +80,7 @@ class TurnRecord(BaseModel):
         input_tokens: Input tokens consumed this turn.
         output_tokens: Output tokens generated this turn.
         total_tokens: Sum of input and output tokens (computed).
-        cost_usd: Cost in USD (base currency) for this turn.
+        cost: Cost in the configured currency for this turn.
         tool_calls_made: Names of tools invoked this turn.
         tool_call_fingerprints: Deterministic fingerprints of tool
             calls (``name:args_hash``) for stagnation detection.
@@ -108,7 +108,7 @@ class TurnRecord(BaseModel):
     turn_number: int = Field(gt=0, description="1-indexed turn number")
     input_tokens: int = Field(ge=0, description="Input tokens this turn")
     output_tokens: int = Field(ge=0, description="Output tokens this turn")
-    cost_usd: float = Field(ge=0.0, description="Cost in USD (base currency) this turn")
+    cost: float = Field(ge=0.0, description="Cost in the configured currency this turn")
     tool_calls_made: tuple[NotBlankStr, ...] = Field(
         default=(),
         description="Tool names invoked this turn",
@@ -325,6 +325,6 @@ def make_budget_checker(task: Task) -> BudgetChecker | None:
     limit = task.budget_limit
 
     def _check(ctx: AgentContext) -> bool:
-        return ctx.accumulated_cost.cost_usd >= limit
+        return ctx.accumulated_cost.cost >= limit
 
     return _check

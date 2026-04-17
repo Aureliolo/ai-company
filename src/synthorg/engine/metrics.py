@@ -30,7 +30,7 @@ class TaskCompletionMetrics(BaseModel):
         agent_id: Agent identifier (string form of UUID).
         turns_per_task: Number of LLM turns to complete the task.
         tokens_per_task: Total tokens consumed (input + output).
-        cost_per_task: Total cost for the task in USD (base currency).
+        cost_per_task: Total cost for the task in the configured currency.
         duration_seconds: Wall-clock execution time in seconds.
         prompt_tokens: Estimated system prompt tokens (per-call estimate
             from ``SystemPrompt.estimated_tokens``).
@@ -60,7 +60,7 @@ class TaskCompletionMetrics(BaseModel):
     )
     cost_per_task: float = Field(
         ge=0.0,
-        description="Total cost for the task in USD (base currency)",
+        description="Total cost for the task in the configured currency",
     )
     duration_seconds: float = Field(
         ge=0.0,
@@ -131,7 +131,7 @@ class TaskCompletionMetrics(BaseModel):
             agent_id=result.agent_id,
             turns_per_task=result.total_turns,
             tokens_per_task=accumulated.total_tokens,
-            cost_per_task=result.total_cost_usd,
+            cost_per_task=result.total_cost,
             duration_seconds=result.duration_seconds,
             prompt_tokens=result.system_prompt.estimated_tokens,
             accuracy_effort_ratio=ae_ratio,

@@ -60,7 +60,7 @@ CREATE TABLE cost_records (
     model TEXT NOT NULL,
     input_tokens BIGINT NOT NULL,
     output_tokens BIGINT NOT NULL,
-    cost_usd DOUBLE PRECISION NOT NULL,
+    cost DOUBLE PRECISION NOT NULL,
     timestamp TIMESTAMPTZ NOT NULL,
     call_category TEXT,
     PRIMARY KEY (rowid, timestamp)
@@ -114,7 +114,7 @@ CREATE TABLE task_metrics (
     completed_at TIMESTAMPTZ NOT NULL,
     is_success BOOLEAN NOT NULL,
     duration_seconds DOUBLE PRECISION NOT NULL,
-    cost_usd DOUBLE PRECISION NOT NULL,
+    cost DOUBLE PRECISION NOT NULL,
     turns_used BIGINT NOT NULL,
     tokens_used BIGINT NOT NULL,
     quality_score DOUBLE PRECISION,
@@ -350,8 +350,8 @@ CREATE TABLE agent_states (
     status TEXT NOT NULL DEFAULT 'idle'
         CHECK (status IN ('idle', 'executing', 'paused')),
     turn_count BIGINT NOT NULL DEFAULT 0 CHECK (turn_count >= 0),
-    accumulated_cost_usd DOUBLE PRECISION NOT NULL DEFAULT 0.0
-        CHECK (accumulated_cost_usd >= 0.0),
+    accumulated_cost DOUBLE PRECISION NOT NULL DEFAULT 0.0
+        CHECK (accumulated_cost >= 0.0),
     last_activity_at TIMESTAMPTZ NOT NULL,
     started_at TIMESTAMPTZ,
     CHECK (
@@ -360,7 +360,7 @@ CREATE TABLE agent_states (
          AND task_id IS NULL
          AND started_at IS NULL
          AND turn_count = 0
-         AND accumulated_cost_usd = 0.0)
+         AND accumulated_cost = 0.0)
         OR
         (status IN ('executing', 'paused')
          AND execution_id IS NOT NULL

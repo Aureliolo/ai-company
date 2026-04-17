@@ -34,7 +34,7 @@ def _usage(input_tokens: int = 10, output_tokens: int = 5) -> TokenUsage:
     return TokenUsage(
         input_tokens=input_tokens,
         output_tokens=output_tokens,
-        cost_usd=0.001,
+        cost=0.001,
     )
 
 
@@ -443,7 +443,7 @@ class TestReactLoopTurnRecords:
         assert t1.turn_number == 1
         assert t1.input_tokens == 10
         assert t1.output_tokens == 5
-        assert t1.cost_usd == 0.001
+        assert t1.cost == 0.001
         assert t1.tool_calls_made == ("echo",)
         assert t1.finish_reason == FinishReason.TOOL_USE
 
@@ -1030,7 +1030,7 @@ class TestReactLoopCostAccounting:
 
         assert result.termination_reason == TerminationReason.ERROR
         # The failing turn's cost should be in the context
-        assert result.context.accumulated_cost.cost_usd > ctx.accumulated_cost.cost_usd
+        assert result.context.accumulated_cost.cost > ctx.accumulated_cost.cost
         assert result.context.turn_count == 1
 
 

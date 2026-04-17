@@ -41,7 +41,7 @@ class TestBudgetController:
             model="test-model-001",
             input_tokens=100,
             output_tokens=50,
-            cost_usd=0.01,
+            cost=0.01,
             timestamp=datetime(2026, 3, 1, tzinfo=UTC),
         )
         await cost_tracker.record(record)
@@ -62,7 +62,7 @@ class TestBudgetController:
             model="test-model-001",
             input_tokens=100,
             output_tokens=50,
-            cost_usd=0.05,
+            cost=0.05,
             timestamp=datetime(2026, 3, 1, tzinfo=UTC),
         )
         await cost_tracker.record(record)
@@ -70,7 +70,7 @@ class TestBudgetController:
         assert resp.status_code == 200
         body = resp.json()
         assert body["data"]["agent_id"] == "bob"
-        assert body["data"]["total_cost_usd"] == 0.05
+        assert body["data"]["total_cost"] == 0.05
 
     def test_budget_requires_read_access(self, test_client: TestClient[Any]) -> None:
         resp = test_client.get(
@@ -117,7 +117,7 @@ class TestBudgetSummaries:
                     model="test-model-001",
                     input_tokens=100,
                     output_tokens=50,
-                    cost_usd=0.01,
+                    cost=0.01,
                     timestamp=datetime(2026, 3, day, tzinfo=UTC),
                 ),
             )
@@ -133,7 +133,7 @@ class TestBudgetSummaries:
         # Day 1 has 2 records with known aggregates
         day1 = next(d for d in daily if d["date"] == "2026-03-01")
         assert day1["record_count"] == 2
-        assert day1["total_cost_usd"] == pytest.approx(0.02)
+        assert day1["total_cost"] == pytest.approx(0.02)
         assert day1["total_input_tokens"] == 200
         assert day1["total_output_tokens"] == 100
 
@@ -151,7 +151,7 @@ class TestBudgetSummaries:
                     model="test-model-001",
                     input_tokens=100,
                     output_tokens=50,
-                    cost_usd=cost,
+                    cost=cost,
                     timestamp=datetime(2026, 3, 1, tzinfo=UTC),
                 ),
             )
@@ -159,8 +159,8 @@ class TestBudgetSummaries:
         body = resp.json()
         period = body["period_summary"]
         assert period["record_count"] == 3
-        assert period["total_cost_usd"] == pytest.approx(0.60)
-        assert period["avg_cost_usd"] == pytest.approx(0.20)
+        assert period["total_cost"] == pytest.approx(0.60)
+        assert period["avg_cost"] == pytest.approx(0.20)
         assert period["total_input_tokens"] == 300
         assert period["total_output_tokens"] == 150
 
@@ -172,8 +172,8 @@ class TestBudgetSummaries:
         body = resp.json()
         period = body["period_summary"]
         assert period["record_count"] == 0
-        assert period["total_cost_usd"] == 0.0
-        assert period["avg_cost_usd"] == 0.0
+        assert period["total_cost"] == 0.0
+        assert period["avg_cost"] == 0.0
 
     async def test_summaries_from_all_records_not_page(
         self,
@@ -189,7 +189,7 @@ class TestBudgetSummaries:
                     model="test-model-001",
                     input_tokens=100,
                     output_tokens=50,
-                    cost_usd=0.10,
+                    cost=0.10,
                     timestamp=datetime(2026, 3, 1, tzinfo=UTC),
                 ),
             )
@@ -202,7 +202,7 @@ class TestBudgetSummaries:
         # Page has 1 record but summaries cover all 3
         assert len(body["data"]) == 1
         assert body["period_summary"]["record_count"] == 3
-        assert body["period_summary"]["total_cost_usd"] == pytest.approx(0.30)
+        assert body["period_summary"]["total_cost"] == pytest.approx(0.30)
 
     async def test_summaries_respect_agent_filter(
         self,
@@ -218,7 +218,7 @@ class TestBudgetSummaries:
                     model="test-model-001",
                     input_tokens=100,
                     output_tokens=50,
-                    cost_usd=0.10,
+                    cost=0.10,
                     timestamp=datetime(2026, 3, 1, tzinfo=UTC),
                 ),
             )
@@ -231,7 +231,7 @@ class TestBudgetSummaries:
         # Page has 1 record, summaries cover 2 (alice only, not bob)
         assert len(body["data"]) == 1
         assert body["period_summary"]["record_count"] == 2
-        assert body["period_summary"]["total_cost_usd"] == pytest.approx(0.20)
+        assert body["period_summary"]["total_cost"] == pytest.approx(0.20)
         assert body["period_summary"]["total_input_tokens"] == 200
         assert body["period_summary"]["total_output_tokens"] == 100
 
@@ -253,7 +253,7 @@ class TestCostRecordListResponseValidator:
                 error="something went wrong",
                 pagination=PaginationMeta(total=0, offset=0, limit=50),
                 period_summary=PeriodSummary(
-                    total_cost_usd=0.0,
+                    total_cost=0.0,
                     total_input_tokens=0,
                     total_output_tokens=0,
                     record_count=0,
@@ -286,7 +286,7 @@ class TestCostRecordListResponseValidator:
                     limit=50,
                 ),
                 period_summary=PeriodSummary(
-                    total_cost_usd=0.0,
+                    total_cost=0.0,
                     total_input_tokens=0,
                     total_output_tokens=0,
                     record_count=0,
@@ -317,7 +317,7 @@ class TestCostRecordListResponseValidator:
                 limit=50,
             ),
             period_summary=PeriodSummary(
-                total_cost_usd=0.0,
+                total_cost=0.0,
                 total_input_tokens=0,
                 total_output_tokens=0,
                 record_count=0,
@@ -335,7 +335,7 @@ class TestCostRecordListResponseValidator:
         resp = CostRecordListResponse(
             pagination=PaginationMeta(total=0, offset=0, limit=50),
             period_summary=PeriodSummary(
-                total_cost_usd=0.0,
+                total_cost=0.0,
                 total_input_tokens=0,
                 total_output_tokens=0,
                 record_count=0,

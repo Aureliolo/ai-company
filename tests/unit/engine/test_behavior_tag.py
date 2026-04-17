@@ -44,7 +44,7 @@ class TestTurnRecordBehaviorExtensions:
             "turn_number": 1,
             "input_tokens": 100,
             "output_tokens": 50,
-            "cost_usd": 0.01,
+            "cost": 0.01,
             "finish_reason": FinishReason.STOP,
         }
         defaults.update(overrides)

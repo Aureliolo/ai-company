@@ -385,7 +385,7 @@ class TestAgentEngineCompletionMetrics:
         response = _make_completion_response(
             input_tokens=400,
             output_tokens=200,
-            cost_usd=0.05,
+            cost=0.05,
         )
         provider = mock_provider_factory([response])
         engine = AgentEngine(provider=provider)

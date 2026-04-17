@@ -117,7 +117,7 @@ export default function BudgetPage() {
         <ErrorBoundary level="section">
           <BudgetGauge
             usedPercent={overview?.budget_used_percent ?? 0}
-            budgetRemaining={overview?.budget_remaining_usd ?? 0}
+            budgetRemaining={overview?.budget_remaining ?? 0}
             daysUntilExhausted={forecast?.days_until_exhausted ?? null}
             currency={currency}
           />
@@ -128,7 +128,7 @@ export default function BudgetPage() {
               trendData={trends?.data_points ?? []}
               forecast={forecast}
               budgetTotal={budgetConfig?.total_monthly ?? 0}
-              budgetRemaining={overview?.budget_remaining_usd}
+              budgetRemaining={overview?.budget_remaining}
               alerts={budgetConfig?.alerts}
               currency={currency}
             />

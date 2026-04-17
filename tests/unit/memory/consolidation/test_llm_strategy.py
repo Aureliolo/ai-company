@@ -49,7 +49,7 @@ def _make_response(content: str = "synthesized summary") -> CompletionResponse:
     return CompletionResponse(
         content=content,
         finish_reason=FinishReason.STOP,
-        usage=TokenUsage(input_tokens=10, output_tokens=5, cost_usd=0.001),
+        usage=TokenUsage(input_tokens=10, output_tokens=5, cost=0.001),
         model="test-model",
     )
 

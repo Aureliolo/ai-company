@@ -225,7 +225,7 @@ Every API call is tracked with full context:
   "model": "example-medium-001",
   "input_tokens": 4500,
   "output_tokens": 1200,
-  "cost_usd": 0.0315,  // field name retained for API backward compatibility
+  "cost": 0.0315,  // field name retained for API backward compatibility
   "timestamp": "2026-02-27T10:30:00Z"
 }
 ```
@@ -238,9 +238,9 @@ models (`AgentSpending`, `DepartmentSpending`, `PeriodSpending`) extend a shared
 The `GET /budget/records` endpoint returns paginated cost records alongside two server-computed
 summaries (aggregated from **all** matching records, not just the current page):
 
-- **`daily_summary`**: per-day aggregation with `date`, `total_cost_usd`, `total_input_tokens`,
+- **`daily_summary`**: per-day aggregation with `date`, `total_cost`, `total_input_tokens`,
   `total_output_tokens`, and `record_count`, sorted chronologically.
-- **`period_summary`**: overall stats including `avg_cost_usd` (computed), `total_cost_usd`,
+- **`period_summary`**: overall stats including `avg_cost` (computed), `total_cost`,
   `total_input_tokens`, `total_output_tokens`, and `record_count`.
 
 ### CFO Agent Responsibilities
@@ -498,7 +498,7 @@ into the performance tracker (`PerformanceTrackerSink`) and notification
 dispatcher (`NotificationDispatcherSink`, threshold-filtered).
 
 **Cost control**: LLM semantic variants share the provider's rate limiter and
-track per-classification-run cost against `classification_budget_per_task_usd`.
+track per-classification-run cost against `classification_budget_per_task`.
 
 Error taxonomy classification runs post-execution (never blocks agent work)
 and logs structured events to the observability layer. Enable via

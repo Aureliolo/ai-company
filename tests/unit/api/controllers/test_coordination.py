@@ -65,7 +65,7 @@ def _make_coordination_result(
         topology=CoordinationTopology.SAS,
         phases=(phase,),
         total_duration_seconds=0.5,
-        total_cost_usd=0.01,
+        total_cost=0.01,
     )
     return CoordinationResultWithAttribution(result=result)
 

@@ -145,13 +145,13 @@ class TestAgentEfficiency:
     def test_construction(self) -> None:
         eff = AgentEfficiency(
             agent_id="alice",
-            total_cost_usd=5.0,
+            total_cost=5.0,
             total_tokens=100000,
             record_count=50,
             efficiency_rating=EfficiencyRating.NORMAL,
         )
         assert eff.agent_id == "alice"
-        assert eff.total_cost_usd == 5.0
+        assert eff.total_cost == 5.0
         assert eff.efficiency_rating == EfficiencyRating.NORMAL
         assert eff.cost_per_1k_tokens == 0.05
 
@@ -159,7 +159,7 @@ class TestAgentEfficiency:
     def test_zero_tokens(self) -> None:
         eff = AgentEfficiency(
             agent_id="alice",
-            total_cost_usd=0.0,
+            total_cost=0.0,
             total_tokens=0,
             record_count=0,
             efficiency_rating=EfficiencyRating.NORMAL,
@@ -171,7 +171,7 @@ class TestAgentEfficiency:
     def test_cost_per_1k_is_computed(self) -> None:
         eff = AgentEfficiency(
             agent_id="alice",
-            total_cost_usd=10.0,
+            total_cost=10.0,
             total_tokens=5000,
             record_count=10,
             efficiency_rating=EfficiencyRating.NORMAL,
@@ -200,14 +200,14 @@ class TestEfficiencyAnalysis:
             agents=(
                 AgentEfficiency(
                     agent_id="alice",
-                    total_cost_usd=10.0,
+                    total_cost=10.0,
                     total_tokens=1000,
                     record_count=5,
                     efficiency_rating=EfficiencyRating.INEFFICIENT,
                 ),
                 AgentEfficiency(
                     agent_id="bob",
-                    total_cost_usd=1.0,
+                    total_cost=1.0,
                     total_tokens=1000,
                     record_count=5,
                     efficiency_rating=EfficiencyRating.NORMAL,
@@ -305,20 +305,20 @@ class TestApprovalDecision:
         decision = ApprovalDecision(
             approved=True,
             reason="Approved",
-            budget_remaining_usd=50.0,
+            budget_remaining=50.0,
             budget_used_percent=50.0,
             alert_level=BudgetAlertLevel.NORMAL,
             conditions=(),
         )
         assert decision.approved is True
-        assert decision.budget_remaining_usd == 50.0
+        assert decision.budget_remaining == 50.0
 
     @pytest.mark.unit
     def test_denied(self) -> None:
         decision = ApprovalDecision(
             approved=False,
             reason="Budget exhausted",
-            budget_remaining_usd=0.0,
+            budget_remaining=0.0,
             budget_used_percent=100.0,
             alert_level=BudgetAlertLevel.HARD_STOP,
         )
@@ -330,7 +330,7 @@ class TestApprovalDecision:
         decision = ApprovalDecision(
             approved=True,
             reason="Approved with conditions",
-            budget_remaining_usd=20.0,
+            budget_remaining=20.0,
             budget_used_percent=80.0,
             alert_level=BudgetAlertLevel.WARNING,
             conditions=("High cost operation", "Budget is running low"),
@@ -429,14 +429,14 @@ class TestEfficiencyAnalysisSortOrder:
             agents=(
                 AgentEfficiency(
                     agent_id="bob",
-                    total_cost_usd=10.0,
+                    total_cost=10.0,
                     total_tokens=1000,
                     record_count=5,
                     efficiency_rating=EfficiencyRating.INEFFICIENT,
                 ),
                 AgentEfficiency(
                     agent_id="alice",
-                    total_cost_usd=1.0,
+                    total_cost=1.0,
                     total_tokens=1000,
                     record_count=5,
                     efficiency_rating=EfficiencyRating.NORMAL,
@@ -455,14 +455,14 @@ class TestEfficiencyAnalysisSortOrder:
                 agents=(
                     AgentEfficiency(
                         agent_id="alice",
-                        total_cost_usd=1.0,
+                        total_cost=1.0,
                         total_tokens=1000,
                         record_count=5,
                         efficiency_rating=EfficiencyRating.NORMAL,
                     ),
                     AgentEfficiency(
                         agent_id="bob",
-                        total_cost_usd=10.0,
+                        total_cost=10.0,
                         total_tokens=1000,
                         record_count=5,
                         efficiency_rating=EfficiencyRating.INEFFICIENT,

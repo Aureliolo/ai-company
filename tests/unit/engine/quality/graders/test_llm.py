@@ -77,7 +77,7 @@ def _response(tool_arguments: dict[str, Any]) -> CompletionResponse:
         call_id="call-grade-001",
         input_tokens=200,
         output_tokens=60,
-        cost_usd=0.0003,
+        cost=0.0003,
     )
 
 
@@ -231,7 +231,7 @@ class TestLLMRubricGraderBehavior:
         response = CompletionResponse(
             content="I refuse to grade this",
             finish_reason=FinishReason.STOP,
-            usage=TokenUsage(input_tokens=10, output_tokens=10, cost_usd=0.0),
+            usage=TokenUsage(input_tokens=10, output_tokens=10, cost=0.0),
             model="test-medium-001",
         )
         grader = LLMRubricGrader(
@@ -456,7 +456,7 @@ class TestLLMRubricGraderInvalidGrades:
                 ToolCall(id="call-b", name="emit_rubric_verdict", arguments=args),
             ),
             finish_reason=FinishReason.TOOL_USE,
-            usage=TokenUsage(input_tokens=10, output_tokens=10, cost_usd=0.0),
+            usage=TokenUsage(input_tokens=10, output_tokens=10, cost=0.0),
             model="test-medium-001",
         )
         provider = ScriptedProvider(response=response)
@@ -486,7 +486,7 @@ class TestLLMRubricGraderInvalidGrades:
         response = CompletionResponse(
             tool_calls=(ToolCall(id="call-x", name="some_other_tool", arguments={}),),
             finish_reason=FinishReason.TOOL_USE,
-            usage=TokenUsage(input_tokens=10, output_tokens=10, cost_usd=0.0),
+            usage=TokenUsage(input_tokens=10, output_tokens=10, cost=0.0),
             model="test-medium-001",
         )
         provider = ScriptedProvider(response=response)

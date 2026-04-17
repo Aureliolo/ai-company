@@ -57,7 +57,7 @@ class TestFullCycle:
             AgentWorkload(
                 agent_id=aid,
                 active_task_count=3,
-                total_cost_usd=10.0,
+                total_cost=10.0,
             )
             for aid in AGENT_IDS
         )

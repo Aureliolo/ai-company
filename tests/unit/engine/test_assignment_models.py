@@ -66,11 +66,11 @@ class TestAgentWorkload:
         workload = AgentWorkload(
             agent_id="agent-1",
             active_task_count=3,
-            total_cost_usd=1.50,
+            total_cost=1.50,
         )
         assert workload.agent_id == "agent-1"
         assert workload.active_task_count == 3
-        assert workload.total_cost_usd == 1.50
+        assert workload.total_cost == 1.50
 
     def test_negative_task_count_rejected(self) -> None:
         """Negative active_task_count raises ValidationError."""
@@ -81,12 +81,12 @@ class TestAgentWorkload:
             )
 
     def test_negative_cost_rejected(self) -> None:
-        """Negative total_cost_usd raises ValidationError."""
-        with pytest.raises(ValidationError, match="total_cost_usd"):
+        """Negative total_cost raises ValidationError."""
+        with pytest.raises(ValidationError, match="total_cost"):
             AgentWorkload(
                 agent_id="agent-1",
                 active_task_count=0,
-                total_cost_usd=-0.5,
+                total_cost=-0.5,
             )
 
     def test_zero_workload(self) -> None:
@@ -94,10 +94,10 @@ class TestAgentWorkload:
         workload = AgentWorkload(
             agent_id="agent-1",
             active_task_count=0,
-            total_cost_usd=0.0,
+            total_cost=0.0,
         )
         assert workload.active_task_count == 0
-        assert workload.total_cost_usd == 0.0
+        assert workload.total_cost == 0.0
 
     def test_blank_agent_id_rejected(self) -> None:
         """Blank agent_id raises ValidationError."""
@@ -110,12 +110,12 @@ class TestAgentWorkload:
         ids=["nan", "inf", "neg_inf"],
     )
     def test_nan_inf_cost_rejected(self, cost: float) -> None:
-        """NaN and Inf total_cost_usd values are rejected."""
+        """NaN and Inf total_cost values are rejected."""
         with pytest.raises(ValidationError):
             AgentWorkload(
                 agent_id="agent-1",
                 active_task_count=0,
-                total_cost_usd=cost,
+                total_cost=cost,
             )
 
     def test_frozen(self) -> None:

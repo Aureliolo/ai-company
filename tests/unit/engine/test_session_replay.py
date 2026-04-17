@@ -91,7 +91,7 @@ def _build_scenario_events(
                 EXEC_ID,
                 minute,
                 turn=1,
-                cost_usd=cost,
+                cost=cost,
             ),
         )
         minute += 1
@@ -101,7 +101,7 @@ def _build_scenario_events(
                 EXEC_ID,
                 minute,
                 turn=2,
-                cost_usd=cost,
+                cost=cost,
             ),
         )
         minute += 1
@@ -196,9 +196,9 @@ class TestSessionReplay:
                 1,
                 agent_id=str(sample_agent_with_personality.id),
             ),
-            _event(EXECUTION_CONTEXT_TURN, EXEC_ID, 2, turn=1, cost_usd=0.01),
-            _event(EXECUTION_CONTEXT_TURN, EXEC_ID, 3, turn=2, cost_usd=0.02),
-            _event(EXECUTION_CONTEXT_TURN, EXEC_ID, 4, turn=3, cost_usd=0.03),
+            _event(EXECUTION_CONTEXT_TURN, EXEC_ID, 2, turn=1, cost=0.01),
+            _event(EXECUTION_CONTEXT_TURN, EXEC_ID, 3, turn=2, cost=0.02),
+            _event(EXECUTION_CONTEXT_TURN, EXEC_ID, 4, turn=3, cost=0.03),
             _event(
                 EXECUTION_TASK_TRANSITION,
                 EXEC_ID,
@@ -215,7 +215,7 @@ class TestSessionReplay:
             task=sample_task_with_criteria,
         )
         assert result.context.turn_count == 3
-        assert result.context.accumulated_cost.cost_usd == pytest.approx(0.06)
+        assert result.context.accumulated_cost.cost == pytest.approx(0.06)
         assert result.replay_completeness >= 0.85
         assert result.events_processed == 6
         assert result.events_total == 6
@@ -231,8 +231,8 @@ class TestSessionReplay:
         sample_task_with_criteria: Task,
     ) -> None:
         events = (
-            _event(EXECUTION_CONTEXT_TURN, EXEC_ID, 2, turn=1, cost_usd=0.01),
-            _event(EXECUTION_CONTEXT_TURN, EXEC_ID, 3, turn=2, cost_usd=0.02),
+            _event(EXECUTION_CONTEXT_TURN, EXEC_ID, 2, turn=1, cost=0.01),
+            _event(EXECUTION_CONTEXT_TURN, EXEC_ID, 3, turn=2, cost=0.02),
         )
         reader = StubEventReader(events)
         result = await Session.replay(
@@ -242,7 +242,7 @@ class TestSessionReplay:
             task=sample_task_with_criteria,
         )
         assert result.context.turn_count == 2
-        assert result.context.accumulated_cost.cost_usd == pytest.approx(0.03)
+        assert result.context.accumulated_cost.cost == pytest.approx(0.03)
         assert 0.3 <= result.replay_completeness <= 0.7
         assert result.events_processed == 2
 
@@ -334,22 +334,22 @@ class TestSessionReplayErrorHandling:
         ("data", "error_id"),
         [
             pytest.param(
-                {"turn": "not-a-number", "cost_usd": 0.01},
+                {"turn": "not-a-number", "cost": 0.01},
                 "non_numeric_turn",
                 id="non_numeric_turn",
             ),
             pytest.param(
-                {"cost_usd": 0.01},
+                {"cost": 0.01},
                 "missing_turn",
                 id="missing_turn_key",
             ),
             pytest.param(
-                {"turn": 0, "cost_usd": 0.01},
+                {"turn": 0, "cost": 0.01},
                 "zero_turn",
                 id="zero_turn_number",
             ),
             pytest.param(
-                {"turn": 1, "cost_usd": "invalid"},
+                {"turn": 1, "cost": "invalid"},
                 "non_numeric_cost",
                 id="non_numeric_cost",
             ),
@@ -375,7 +375,7 @@ class TestSessionReplayErrorHandling:
                 EXEC_ID,
                 2,
                 turn=2,
-                cost_usd=0.02,
+                cost=0.02,
             ),
         )
         reader = StubEventReader(events)
@@ -386,7 +386,7 @@ class TestSessionReplayErrorHandling:
         )
         assert result.events_processed == 3
         assert result.context.turn_count == 1
-        assert result.context.accumulated_cost.cost_usd == pytest.approx(
+        assert result.context.accumulated_cost.cost == pytest.approx(
             0.02,
         )
 
@@ -402,7 +402,7 @@ class TestSessionReplayTaskNone:
         """Replay works when task is None (no task_execution)."""
         events = (
             _event(EXECUTION_ENGINE_START, EXEC_ID, 0),
-            _event(EXECUTION_CONTEXT_TURN, EXEC_ID, 1, turn=1, cost_usd=0.01),
+            _event(EXECUTION_CONTEXT_TURN, EXEC_ID, 1, turn=1, cost=0.01),
         )
         reader = StubEventReader(events)
         result = await Session.replay(
@@ -413,7 +413,7 @@ class TestSessionReplayTaskNone:
         )
         assert result.context.task_execution is None
         assert result.context.turn_count == 1
-        assert result.context.accumulated_cost.cost_usd == pytest.approx(0.01)
+        assert result.context.accumulated_cost.cost == pytest.approx(0.01)
         assert result.context.execution_id == EXEC_ID
 
 
@@ -428,7 +428,7 @@ class TestSessionReplayExecutionLineage:
         """Replayed context started_at comes from earliest event."""
         events = (
             _event(EXECUTION_ENGINE_START, EXEC_ID, 5),
-            _event(EXECUTION_CONTEXT_TURN, EXEC_ID, 10, turn=1, cost_usd=0.01),
+            _event(EXECUTION_CONTEXT_TURN, EXEC_ID, 10, turn=1, cost=0.01),
         )
         reader = StubEventReader(events)
         result = await Session.replay(

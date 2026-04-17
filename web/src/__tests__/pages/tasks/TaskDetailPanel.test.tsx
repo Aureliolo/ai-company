@@ -22,7 +22,7 @@ const mockTask: Task = {
   ],
   estimated_complexity: 'complex',
   budget_limit: 10,
-  cost_usd: 3.45,
+  cost: 3.45,
   deadline: null,
   max_retries: 3,
   parent_task_id: null,

@@ -24,7 +24,7 @@ class _SpendingTotals(BaseModel):
     dimension-specific identifier (agent, department, or period).
 
     Attributes:
-        total_cost_usd: Total cost for the aggregation group.
+        total_cost: Total cost for the aggregation group.
         total_input_tokens: Total input tokens consumed.
         total_output_tokens: Total output tokens consumed.
         record_count: Number of cost records aggregated.
@@ -32,7 +32,7 @@ class _SpendingTotals(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    total_cost_usd: float = Field(
+    total_cost: float = Field(
         default=0.0,
         ge=0.0,
         description="Total cost for the aggregation group",

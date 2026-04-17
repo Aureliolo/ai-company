@@ -104,7 +104,7 @@ class TestLLMCriteriaDecomposerBehavior:
         response = CompletionResponse(
             content="sorry, I can't do that",
             finish_reason=FinishReason.STOP,
-            usage=TokenUsage(input_tokens=10, output_tokens=10, cost_usd=0.0),
+            usage=TokenUsage(input_tokens=10, output_tokens=10, cost=0.0),
             model="test-medium-001",
         )
         decomposer = LLMCriteriaDecomposer(

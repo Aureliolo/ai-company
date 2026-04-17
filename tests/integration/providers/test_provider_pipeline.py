@@ -146,7 +146,7 @@ async def test_cost_computation(
         result = await driver.complete(user_messages, "medium")
 
     # (1000/1000)*0.003 + (500/1000)*0.015 = 0.003 + 0.0075 = 0.0105
-    assert result.usage.cost_usd == pytest.approx(0.0105)
+    assert result.usage.cost == pytest.approx(0.0105)
 
 
 async def test_finish_reason_max_tokens(
@@ -185,7 +185,7 @@ async def test_small_model(
     kwargs = mock_call.call_args.kwargs
     assert kwargs["model"] == "example-provider/test-model-002"
     # (1000/1000)*0.001 + (1000/1000)*0.005 = 0.001 + 0.005 = 0.006
-    assert result.usage.cost_usd == pytest.approx(0.006)
+    assert result.usage.cost == pytest.approx(0.006)
 
 
 # ── Streaming pipeline ────────────────────────────────────────────
@@ -242,7 +242,7 @@ async def test_stream_usage_chunk(
     assert usage_chunks[0].usage.input_tokens == 200
     assert usage_chunks[0].usage.output_tokens == 100
     # (200/1000)*0.003 + (100/1000)*0.015 = 0.0006 + 0.0015 = 0.0021
-    assert usage_chunks[0].usage.cost_usd == pytest.approx(0.0021)
+    assert usage_chunks[0].usage.cost == pytest.approx(0.0021)
 
 
 async def test_stream_multiple_content_deltas(

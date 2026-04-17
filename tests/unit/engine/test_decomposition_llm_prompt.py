@@ -85,7 +85,7 @@ def _make_tool_call_response(
         usage=TokenUsage(
             input_tokens=100,
             output_tokens=50,
-            cost_usd=0.01,
+            cost=0.01,
         ),
         model="test-model-001",
     )
@@ -99,7 +99,7 @@ def _make_content_response(content: str) -> CompletionResponse:
         usage=TokenUsage(
             input_tokens=100,
             output_tokens=50,
-            cost_usd=0.01,
+            cost=0.01,
         ),
         model="test-model-001",
     )
@@ -404,7 +404,7 @@ class TestParseContentResponse:
             usage=TokenUsage(
                 input_tokens=10,
                 output_tokens=5,
-                cost_usd=0.001,
+                cost=0.001,
             ),
             model="test-model-001",
         )

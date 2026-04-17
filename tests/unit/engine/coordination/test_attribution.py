@@ -39,7 +39,7 @@ def _make_coord_result(
             ),
         ),
         total_duration_seconds=1.0,
-        total_cost_usd=0.5,
+        total_cost=0.5,
     )
 
 

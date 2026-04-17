@@ -144,7 +144,7 @@ class AgentEfficiency(BaseModel):
 
     Attributes:
         agent_id: Agent identifier.
-        total_cost_usd: Total cost in the analysis period.
+        total_cost: Total cost in the analysis period.
         total_tokens: Total tokens consumed (input + output).
         cost_per_1k_tokens: Cost per 1000 tokens (computed).
         record_count: Number of cost records.
@@ -154,7 +154,7 @@ class AgentEfficiency(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     agent_id: NotBlankStr = Field(description="Agent identifier")
-    total_cost_usd: float = Field(
+    total_cost: float = Field(
         ge=0.0,
         description="Total cost in the analysis period",
     )
@@ -171,7 +171,7 @@ class AgentEfficiency(BaseModel):
         if self.total_tokens == 0:
             return 0.0
         return round(
-            self.total_cost_usd / self.total_tokens * 1000,
+            self.total_cost / self.total_tokens * 1000,
             BUDGET_ROUNDING_PRECISION,
         )
 
@@ -313,7 +313,7 @@ class ApprovalDecision(BaseModel):
     Attributes:
         approved: Whether the operation is approved.
         reason: Explanation for the decision.
-        budget_remaining_usd: Remaining budget in USD (base currency)
+        budget_remaining: Remaining budget in the configured currency
             (may be negative if over budget).
         budget_used_percent: Percentage of budget consumed.
         alert_level: Current budget alert level.
@@ -324,9 +324,9 @@ class ApprovalDecision(BaseModel):
 
     approved: bool = Field(description="Whether the operation is approved")
     reason: NotBlankStr = Field(description="Explanation for the decision")
-    budget_remaining_usd: float = Field(
+    budget_remaining: float = Field(
         description=(
-            "Remaining budget in USD (base currency) (negative when over budget)"
+            "Remaining budget in the configured currency (negative when over budget)"
         ),
     )
     budget_used_percent: float = Field(

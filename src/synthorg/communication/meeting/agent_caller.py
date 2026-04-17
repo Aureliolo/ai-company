@@ -121,14 +121,14 @@ def build_meeting_agent_caller(
             content=response.content or "",
             input_tokens=response.usage.input_tokens,
             output_tokens=response.usage.output_tokens,
-            cost_usd=response.usage.cost_usd,
+            cost=response.usage.cost,
         )
         logger.info(
             MEETING_AGENT_RESPONDED,
             agent_id=agent_id,
             input_tokens=agent_response.input_tokens,
             output_tokens=agent_response.output_tokens,
-            cost_usd=agent_response.cost_usd,
+            cost=agent_response.cost,
         )
         return agent_response
 

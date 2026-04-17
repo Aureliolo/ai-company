@@ -12,8 +12,8 @@ const mockOverview: OverviewMetrics = {
     blocked: 1, failed: 1, interrupted: 1, suspended: 0, cancelled: 1, rejected: 0, auth_required: 0,
   },
   total_agents: 10,
-  total_cost_usd: 42.17,
-  budget_remaining_usd: 457.83,
+  total_cost: 42.17,
+  budget_remaining: 457.83,
   budget_used_percent: 8.43,
   cost_7d_trend: [
     { timestamp: '2026-03-20', value: 5 },
@@ -41,15 +41,15 @@ const mockBudgetConfig: BudgetConfig = {
 
 const mockForecast: ForecastResponse = {
   horizon_days: 7,
-  projected_total_usd: 65,
+  projected_total: 65,
   daily_projections: [
-    { day: '2026-03-27', projected_spend_usd: 6.5 },
-    { day: '2026-03-28', projected_spend_usd: 7.0 },
-    { day: '2026-03-29', projected_spend_usd: 6.8 },
+    { day: '2026-03-27', projected_spend: 6.5 },
+    { day: '2026-03-28', projected_spend: 7.0 },
+    { day: '2026-03-29', projected_spend: 6.8 },
   ],
   days_until_exhausted: null,
   confidence: 0.85,
-  avg_daily_spend_usd: 6.3,
+  avg_daily_spend: 6.3,
   currency: DEFAULT_CURRENCY,
 }
 

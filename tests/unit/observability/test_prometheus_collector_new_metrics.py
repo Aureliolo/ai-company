@@ -52,7 +52,7 @@ def test_record_provider_usage_updates_tokens_and_cost() -> None:
         model="large",
         input_tokens=100,
         output_tokens=50,
-        cost_usd=0.0125,
+        cost=0.0125,
     )
     parsed = _parse(collector)
     tokens = parsed["synthorg_provider_tokens"]
@@ -74,7 +74,7 @@ def test_record_provider_usage_rejects_negative_values() -> None:
             model="m",
             input_tokens=-1,
             output_tokens=0,
-            cost_usd=0.0,
+            cost=0.0,
         )
 
 

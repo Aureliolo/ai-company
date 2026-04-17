@@ -29,9 +29,9 @@ describe('WS Dashboard Integration', () => {
           rejected: 0,
           auth_required: 0,
         },
-        total_cost_usd: 42.17,
+        total_cost: 42.17,
         budget_used_percent: 35,
-        budget_remaining_usd: 57.83,
+        budget_remaining: 57.83,
         currency: 'EUR',
         cost_7d_trend: [
           { timestamp: '2026-03-29T00:00:00Z', value: 42.17 },

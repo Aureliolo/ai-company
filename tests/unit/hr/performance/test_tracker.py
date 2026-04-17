@@ -278,7 +278,7 @@ class TestGetSnapshot:
 
         assert len(snapshot.windows) == 1
         assert snapshot.windows[0].window_size == "7d"
-        # Trends should be computed (quality_score + cost_usd)
+        # Trends should be computed (quality_score + cost)
         assert len(snapshot.trends) == 2
         assert snapshot.overall_quality_score == 7.5
 

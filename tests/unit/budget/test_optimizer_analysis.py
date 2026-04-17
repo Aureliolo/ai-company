@@ -34,7 +34,7 @@ class TestDetectAnomalies:
         for i in range(5):
             ts = OPT_START + window_duration * i + timedelta(hours=1)
             await tracker.record(
-                make_cost_record(agent_id="alice", cost_usd=1.0, timestamp=ts),
+                make_cost_record(agent_id="alice", cost=1.0, timestamp=ts),
             )
 
         result = await optimizer.detect_anomalies(start=OPT_START, end=OPT_END)
@@ -48,12 +48,12 @@ class TestDetectAnomalies:
         for i in range(4):
             ts = OPT_START + window_duration * i + timedelta(hours=1)
             await tracker.record(
-                make_cost_record(agent_id="alice", cost_usd=1.0, timestamp=ts),
+                make_cost_record(agent_id="alice", cost=1.0, timestamp=ts),
             )
 
         ts = OPT_START + window_duration * 4 + timedelta(hours=1)
         await tracker.record(
-            make_cost_record(agent_id="alice", cost_usd=20.0, timestamp=ts),
+            make_cost_record(agent_id="alice", cost=20.0, timestamp=ts),
         )
 
         result = await optimizer.detect_anomalies(start=OPT_START, end=OPT_END)
@@ -72,7 +72,7 @@ class TestDetectAnomalies:
             ts = OPT_START + window_duration * i + timedelta(hours=1)
             cost = 1.0 if i < 2 else 50.0
             await tracker.record(
-                make_cost_record(agent_id="alice", cost_usd=cost, timestamp=ts),
+                make_cost_record(agent_id="alice", cost=cost, timestamp=ts),
             )
 
         result = await optimizer.detect_anomalies(
@@ -89,17 +89,17 @@ class TestDetectAnomalies:
         for i in range(5):
             ts = OPT_START + window_duration * i + timedelta(hours=1)
             await tracker.record(
-                make_cost_record(agent_id="alice", cost_usd=1.0, timestamp=ts),
+                make_cost_record(agent_id="alice", cost=1.0, timestamp=ts),
             )
 
         for i in range(4):
             ts = OPT_START + window_duration * i + timedelta(hours=1)
             await tracker.record(
-                make_cost_record(agent_id="bob", cost_usd=1.0, timestamp=ts),
+                make_cost_record(agent_id="bob", cost=1.0, timestamp=ts),
             )
         ts = OPT_START + window_duration * 4 + timedelta(hours=1)
         await tracker.record(
-            make_cost_record(agent_id="bob", cost_usd=20.0, timestamp=ts),
+            make_cost_record(agent_id="bob", cost=20.0, timestamp=ts),
         )
 
         result = await optimizer.detect_anomalies(start=OPT_START, end=OPT_END)
@@ -125,7 +125,7 @@ class TestDetectAnomalies:
 
         ts = OPT_START + window_duration * 4 + timedelta(hours=1)
         await tracker.record(
-            make_cost_record(agent_id="alice", cost_usd=5.0, timestamp=ts),
+            make_cost_record(agent_id="alice", cost=5.0, timestamp=ts),
         )
 
         result = await optimizer.detect_anomalies(start=OPT_START, end=OPT_END)
@@ -148,12 +148,12 @@ class TestDetectAnomalies:
         for i in range(4):
             ts = OPT_START + window_duration * i + timedelta(hours=1)
             await tracker.record(
-                make_cost_record(agent_id="alice", cost_usd=1.0, timestamp=ts),
+                make_cost_record(agent_id="alice", cost=1.0, timestamp=ts),
             )
 
         ts = OPT_START + window_duration * 4 + timedelta(hours=1)
         await tracker.record(
-            make_cost_record(agent_id="alice", cost_usd=4.0, timestamp=ts),
+            make_cost_record(agent_id="alice", cost=4.0, timestamp=ts),
         )
 
         result = await optimizer.detect_anomalies(start=OPT_START, end=OPT_END)
@@ -183,7 +183,7 @@ class TestAnalyzeEfficiency:
             await tracker.record(
                 make_cost_record(
                     agent_id=agent,
-                    cost_usd=1.0,
+                    cost=1.0,
                     input_tokens=1000,
                     output_tokens=0,
                     timestamp=OPT_START + timedelta(hours=1),
@@ -202,7 +202,7 @@ class TestAnalyzeEfficiency:
         await tracker.record(
             make_cost_record(
                 agent_id="alice",
-                cost_usd=1.0,
+                cost=1.0,
                 input_tokens=1000,
                 output_tokens=0,
                 timestamp=OPT_START + timedelta(hours=1),
@@ -211,7 +211,7 @@ class TestAnalyzeEfficiency:
         await tracker.record(
             make_cost_record(
                 agent_id="bob",
-                cost_usd=10.0,
+                cost=10.0,
                 input_tokens=1000,
                 output_tokens=0,
                 timestamp=OPT_START + timedelta(hours=1),
@@ -229,7 +229,7 @@ class TestAnalyzeEfficiency:
         await tracker.record(
             make_cost_record(
                 agent_id="alice",
-                cost_usd=0.0,
+                cost=0.0,
                 input_tokens=0,
                 output_tokens=0,
                 timestamp=OPT_START + timedelta(hours=1),
@@ -247,7 +247,7 @@ class TestAnalyzeEfficiency:
         await tracker.record(
             make_cost_record(
                 agent_id="alice",
-                cost_usd=0.1,
+                cost=0.1,
                 input_tokens=10000,
                 output_tokens=0,
                 timestamp=OPT_START + timedelta(hours=1),
@@ -256,7 +256,7 @@ class TestAnalyzeEfficiency:
         await tracker.record(
             make_cost_record(
                 agent_id="bob",
-                cost_usd=1.0,
+                cost=1.0,
                 input_tokens=1000,
                 output_tokens=0,
                 timestamp=OPT_START + timedelta(hours=1),
@@ -265,7 +265,7 @@ class TestAnalyzeEfficiency:
         await tracker.record(
             make_cost_record(
                 agent_id="carol",
-                cost_usd=1.0,
+                cost=1.0,
                 input_tokens=1000,
                 output_tokens=0,
                 timestamp=OPT_START + timedelta(hours=1),

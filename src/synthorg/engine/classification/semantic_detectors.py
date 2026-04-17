@@ -307,7 +307,7 @@ class _BaseSemanticDetector:
         settled = False
         try:
             response = await self._provider.complete(messages, self._model_id)
-            actual_cost = response.usage.cost_usd if response.usage is not None else 0.0
+            actual_cost = response.usage.cost if response.usage is not None else 0.0
             if reserved and self._budget_tracker is not None:
                 await self._budget_tracker.settle(
                     estimated_cost=estimated_cost,

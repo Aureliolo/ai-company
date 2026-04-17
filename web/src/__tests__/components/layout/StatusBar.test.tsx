@@ -12,8 +12,8 @@ function makeOverview(overrides: Partial<OverviewMetrics> = {}): OverviewMetrics
       blocked: 0, failed: 0, interrupted: 0, suspended: 0, cancelled: 0,
     } as OverviewMetrics['tasks_by_status'],
     total_agents: 0,
-    total_cost_usd: 0,
-    budget_remaining_usd: 0,
+    total_cost: 0,
+    budget_remaining: 0,
     budget_used_percent: 0,
     cost_7d_trend: [],
     active_agents_count: 0,
@@ -76,8 +76,8 @@ describe('StatusBar', () => {
       overview: makeOverview({
         total_tasks: 42,
         total_agents: 12,
-        total_cost_usd: 85.5,
-        budget_remaining_usd: 414.5,
+        total_cost: 85.5,
+        budget_remaining: 414.5,
         budget_used_percent: 17.1,
         active_agents_count: 8,
         idle_agents_count: 3,
@@ -106,8 +106,8 @@ describe('StatusBar', () => {
       overview: makeOverview({
         total_tasks: 10,
         total_agents: 5,
-        total_cost_usd: 50,
-        budget_remaining_usd: 450,
+        total_cost: 50,
+        budget_remaining: 450,
         budget_used_percent: 10,
         active_agents_count: 3,
         idle_agents_count: 2,
@@ -126,8 +126,8 @@ describe('StatusBar', () => {
           blocked: 0, failed: 0, interrupted: 0, suspended: 0, cancelled: 0,
         } as OverviewMetrics['tasks_by_status'],
         total_agents: 5,
-        total_cost_usd: 50,
-        budget_remaining_usd: 450,
+        total_cost: 50,
+        budget_remaining: 450,
         budget_used_percent: 10,
         active_agents_count: 3,
         idle_agents_count: 2,
@@ -139,7 +139,7 @@ describe('StatusBar', () => {
 
   it('shows formatted currency for cost display (EUR default)', () => {
     useAnalyticsStore.setState({
-      overview: makeOverview({ total_cost_usd: 1234.56 }),
+      overview: makeOverview({ total_cost: 1234.56 }),
     })
     render(<StatusBar />)
     expect(screen.getByText(formatCurrency(1234.56, 'EUR'))).toBeInTheDocument()
@@ -147,7 +147,7 @@ describe('StatusBar', () => {
 
   it('shows formatted currency for non-default currency', () => {
     useAnalyticsStore.setState({
-      overview: makeOverview({ total_cost_usd: 99.5, currency: 'GBP' }),
+      overview: makeOverview({ total_cost: 99.5, currency: 'GBP' }),
     })
     render(<StatusBar />)
     expect(screen.getByText(formatCurrency(99.5, 'GBP'))).toBeInTheDocument()

@@ -476,11 +476,11 @@ class PerformanceTracker:
                     window_size=window.window_size,
                 )
             )
-        cost_values = tuple((r.completed_at, r.cost_usd) for r in window_records)
+        cost_values = tuple((r.completed_at, r.cost) for r in window_records)
         if cost_values:
             trends.append(
                 self._trend_strategy.detect(
-                    metric_name=NotBlankStr("cost_usd"),
+                    metric_name=NotBlankStr("cost"),
                     values=cost_values,
                     window_size=window.window_size,
                 )

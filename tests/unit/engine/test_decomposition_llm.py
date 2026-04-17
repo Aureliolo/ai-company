@@ -107,7 +107,7 @@ def _make_tool_call_response(
         usage=TokenUsage(
             input_tokens=200,
             output_tokens=100,
-            cost_usd=0.02,
+            cost=0.02,
         ),
         model="test-model-001",
     )
@@ -121,7 +121,7 @@ def _make_content_response(content: str) -> CompletionResponse:
         usage=TokenUsage(
             input_tokens=200,
             output_tokens=100,
-            cost_usd=0.02,
+            cost=0.02,
         ),
         model="test-model-001",
     )
@@ -247,7 +247,7 @@ class TestLlmDecompositionStrategy:
             usage=TokenUsage(
                 input_tokens=10,
                 output_tokens=0,
-                cost_usd=0.0,
+                cost=0.0,
             ),
             model="test-model-001",
         )

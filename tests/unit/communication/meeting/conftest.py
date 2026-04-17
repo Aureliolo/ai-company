@@ -21,7 +21,7 @@ def make_agent_response(
     content: str = "Mock response",
     input_tokens: int = 10,
     output_tokens: int = 20,
-    cost_usd: float = 0.001,
+    cost: float = 0.001,
 ) -> AgentResponse:
     """Create an AgentResponse for testing."""
     return AgentResponse(
@@ -29,7 +29,7 @@ def make_agent_response(
         content=content,
         input_tokens=input_tokens,
         output_tokens=output_tokens,
-        cost_usd=cost_usd,
+        cost=cost,
     )
 
 

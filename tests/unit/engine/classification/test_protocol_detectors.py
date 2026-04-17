@@ -99,7 +99,7 @@ def _turn(
         turn_number=turn_number,
         input_tokens=100,
         output_tokens=50,
-        cost_usd=0.01,
+        cost=0.01,
         finish_reason=finish_reason,
     )
 
@@ -381,7 +381,7 @@ class TestAuthorityBreachDetector:
                 turn_number=i + 1,
                 input_tokens=10000,
                 output_tokens=5000,
-                cost_usd=0.50,
+                cost=0.50,
                 finish_reason=FinishReason.STOP,
             )
             for i in range(5)
@@ -434,7 +434,7 @@ class TestAuthorityBreachDetector:
                 turn_number=1,
                 input_tokens=10,
                 output_tokens=5,
-                cost_usd=0.0,
+                cost=0.0,
                 finish_reason=FinishReason.STOP,
                 tool_calls_made=("delete_database",),
             ),
@@ -485,7 +485,7 @@ class TestAuthorityBreachDetector:
                 turn_number=1,
                 input_tokens=10,
                 output_tokens=5,
-                cost_usd=0.0,
+                cost=0.0,
                 finish_reason=FinishReason.STOP,
                 tool_calls_made=("DELETE_DATABASE",),
             ),
@@ -532,7 +532,7 @@ class TestAuthorityBreachDetector:
                 turn_number=1,
                 input_tokens=10,
                 output_tokens=5,
-                cost_usd=0.0,
+                cost=0.0,
                 finish_reason=FinishReason.STOP,
                 tool_calls_made=("forbidden", "forbidden", "forbidden"),
             ),
@@ -624,7 +624,7 @@ class TestAuthorityBreachDetector:
                 turn_number=1,
                 input_tokens=10,
                 output_tokens=5,
-                cost_usd=0.10,
+                cost=0.10,
                 finish_reason=FinishReason.STOP,
             ),
         )

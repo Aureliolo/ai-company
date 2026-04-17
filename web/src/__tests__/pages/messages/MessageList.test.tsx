@@ -75,12 +75,12 @@ describe('MessageList', () => {
       makeMessage('1', {
         content: 'Thread start',
         timestamp: '2026-03-28T10:00:00Z',
-        metadata: { task_id: 'task-1', project_id: null, tokens_used: null, cost_usd: null, extra: [] },
+        metadata: { task_id: 'task-1', project_id: null, tokens_used: null, cost: null, extra: [] },
       }),
       makeMessage('2', {
         content: 'Thread reply',
         timestamp: '2026-03-28T10:05:00Z',
-        metadata: { task_id: 'task-1', project_id: null, tokens_used: null, cost_usd: null, extra: [] },
+        metadata: { task_id: 'task-1', project_id: null, tokens_used: null, cost: null, extra: [] },
       }),
     ]
     render(<MessageList {...defaultProps} messages={msgs} />)

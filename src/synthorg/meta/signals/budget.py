@@ -34,7 +34,7 @@ class BudgetSignalAggregator:
 
     Args:
         cost_record_provider: Callable returning cost records for a window.
-        budget_total_monthly: Monthly budget ceiling in USD.
+        budget_total_monthly: Monthly budget ceiling in the configured currency.
         budget_remaining_provider: Callable returning remaining budget.
     """
 

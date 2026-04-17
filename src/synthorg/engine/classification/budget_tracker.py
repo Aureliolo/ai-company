@@ -32,23 +32,23 @@ class ClassificationBudgetTracker:
     the atomic primitives under the same lock.
 
     Args:
-        budget_usd: Maximum allowed spend for this run.
+        budget: Maximum allowed spend for this run.
 
     Raises:
-        ValueError: If ``budget_usd`` is negative.
+        ValueError: If ``budget`` is negative.
     """
 
-    def __init__(self, budget_usd: float) -> None:
-        if budget_usd < 0:
-            msg = "budget_usd must be non-negative"
+    def __init__(self, budget: float) -> None:
+        if budget < 0:
+            msg = "budget must be non-negative"
             logger.error(
                 INVALID_BUDGET,
-                budget_usd=budget_usd,
+                budget=budget,
                 reason=msg,
             )
             raise ValueError(msg)
-        self._budget_usd = budget_usd
-        self._spent_usd = 0.0
+        self._budget = budget
+        self._spent = 0.0
         self._lock = asyncio.Lock()
 
     async def try_reserve(self, estimated_cost: float) -> bool:
@@ -56,7 +56,7 @@ class ClassificationBudgetTracker:
 
         Acquires the internal lock, checks whether ``estimated_cost``
         fits within the remaining budget, and if so increments
-        ``_spent_usd`` by the estimate.  Returns ``True`` when the
+        ``_spent`` by the estimate.  Returns ``True`` when the
         reservation succeeded, ``False`` when the budget is
         exhausted.  The reservation MUST be paired with a call to
         :meth:`settle` once the actual cost is known so the
@@ -76,21 +76,21 @@ class ClassificationBudgetTracker:
             msg = "estimated_cost must be non-negative"
             logger.warning(
                 INVALID_COST,
-                cost_usd=estimated_cost,
+                cost=estimated_cost,
                 kind="estimated",
                 reason=msg,
             )
             raise ValueError(msg)
         async with self._lock:
-            if self._spent_usd + estimated_cost > self._budget_usd:
+            if self._spent + estimated_cost > self._budget:
                 logger.info(
                     DETECTOR_BUDGET_EXHAUSTED,
-                    spent_usd=self._spent_usd,
-                    budget_usd=self._budget_usd,
+                    spent=self._spent,
+                    budget=self._budget,
                     estimated_cost=estimated_cost,
                 )
                 return False
-            self._spent_usd += estimated_cost
+            self._spent += estimated_cost
             return True
 
     async def settle(
@@ -100,7 +100,7 @@ class ClassificationBudgetTracker:
     ) -> None:
         """Reconcile a reserved budget slot with the actual cost.
 
-        Adds ``actual_cost - estimated_cost`` to ``_spent_usd``
+        Adds ``actual_cost - estimated_cost`` to ``_spent``
         under the lock.  The delta may be negative (cheaper than
         expected) or positive (more expensive).  Call this from the
         ``finally`` of an LLM invocation that was previously gated
@@ -117,7 +117,7 @@ class ClassificationBudgetTracker:
             msg = "estimated_cost must be non-negative"
             logger.warning(
                 INVALID_COST,
-                cost_usd=estimated_cost,
+                cost=estimated_cost,
                 kind="estimated",
                 reason=msg,
             )
@@ -126,21 +126,21 @@ class ClassificationBudgetTracker:
             msg = "actual_cost must be non-negative"
             logger.warning(
                 INVALID_COST,
-                cost_usd=actual_cost,
+                cost=actual_cost,
                 kind="actual",
                 reason=msg,
             )
             raise ValueError(msg)
         delta = actual_cost - estimated_cost
         async with self._lock:
-            self._spent_usd += delta
+            self._spent += delta
             logger.debug(
                 DETECTOR_COST_INCURRED,
-                cost_usd=actual_cost,
+                cost=actual_cost,
                 estimated_cost=estimated_cost,
                 delta_usd=delta,
-                total_spent_usd=self._spent_usd,
-                remaining_usd=max(0.0, self._budget_usd - self._spent_usd),
+                total_spent_usd=self._spent,
+                remaining=max(0.0, self._budget - self._spent),
             )
 
     async def release(self, estimated_cost: float) -> None:
@@ -162,19 +162,19 @@ class ClassificationBudgetTracker:
             msg = "estimated_cost must be non-negative"
             logger.warning(
                 INVALID_COST,
-                cost_usd=estimated_cost,
+                cost=estimated_cost,
                 kind="release",
                 reason=msg,
             )
             raise ValueError(msg)
         async with self._lock:
-            self._spent_usd = max(0.0, self._spent_usd - estimated_cost)
+            self._spent = max(0.0, self._spent - estimated_cost)
 
     async def record(self, actual_cost: float) -> None:
         """Record cost from a completed LLM call without a prior reserve.
 
         Provided for call sites that bypass ``try_reserve``.  Always
-        acquires the lock before mutating ``_spent_usd``.
+        acquires the lock before mutating ``_spent``.
 
         Args:
             actual_cost: Actual cost of the completed call.
@@ -186,30 +186,30 @@ class ClassificationBudgetTracker:
             msg = "actual_cost must be non-negative"
             logger.warning(
                 INVALID_COST,
-                cost_usd=actual_cost,
+                cost=actual_cost,
                 kind="record",
                 reason=msg,
             )
             raise ValueError(msg)
         async with self._lock:
-            self._spent_usd += actual_cost
+            self._spent += actual_cost
             logger.debug(
                 DETECTOR_COST_INCURRED,
-                cost_usd=actual_cost,
-                total_spent_usd=self._spent_usd,
-                remaining_usd=max(0.0, self._budget_usd - self._spent_usd),
+                cost=actual_cost,
+                total_spent_usd=self._spent,
+                remaining=max(0.0, self._budget - self._spent),
             )
 
     @property
-    def remaining_usd(self) -> float:
-        """Remaining budget in USD.
+    def remaining(self) -> float:
+        """Remaining budget in the configured currency.
 
         Returns an advisory snapshot -- concurrent callers may see
         stale values.  Use :meth:`try_reserve` for atomic admission.
         """
-        return max(0.0, self._budget_usd - self._spent_usd)
+        return max(0.0, self._budget - self._spent)
 
     @property
     def total_spent_usd(self) -> float:
-        """Total spent so far in USD (advisory snapshot)."""
-        return self._spent_usd
+        """Total spent so far in the configured currency (advisory snapshot)."""
+        return self._spent

@@ -18,14 +18,14 @@ NOW = datetime(2026, 3, 15, 12, 0, 0, tzinfo=UTC)
 def _make_provider(
     *,
     content: str = '{"score": 7.5, "rationale": "Good collaboration"}',
-    cost_usd: float = 0.001,
+    cost: float = 0.001,
 ) -> AsyncMock:
     """Build a mock CompletionProvider."""
     provider = AsyncMock()
     provider.complete.return_value = CompletionResponse(
         content=content,
         finish_reason=FinishReason.STOP,
-        usage=TokenUsage(input_tokens=100, output_tokens=50, cost_usd=cost_usd),
+        usage=TokenUsage(input_tokens=100, output_tokens=50, cost=cost),
         model=NotBlankStr("test-small-001"),
     )
     return provider
@@ -126,7 +126,7 @@ class TestSample:
         assert result.drift == 1.5
         assert result.rationale == "Good collaboration"
         assert result.model_used == "test-small-001"
-        assert result.cost_usd == 0.001
+        assert result.cost == 0.001
         assert result.agent_id == "agent-001"
         assert result.interaction_record_id == record.id
 
@@ -207,7 +207,7 @@ class TestSample:
                 # Actually, content_filter finish reason allows None content
             ),
             finish_reason=FinishReason.CONTENT_FILTER,
-            usage=TokenUsage(input_tokens=10, output_tokens=0, cost_usd=0.0),
+            usage=TokenUsage(input_tokens=10, output_tokens=0, cost=0.0),
             model=NotBlankStr("test-small-001"),
         )
         sampler = _make_sampler(provider=provider)

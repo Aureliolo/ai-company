@@ -25,8 +25,8 @@ const mockOverview: OverviewMetrics = {
   total_tasks: 10,
   tasks_by_status: {} as Record<string, number>,
   total_agents: 5,
-  total_cost_usd: 42,
-  budget_remaining_usd: 58,
+  total_cost: 42,
+  budget_remaining: 58,
   budget_used_percent: 42,
   cost_7d_trend: [],
   active_agents_count: 3,
@@ -46,11 +46,11 @@ const mockBudgetConfig: BudgetConfig = {
 
 const mockForecast: ForecastResponse = {
   horizon_days: 14,
-  projected_total_usd: 80,
+  projected_total: 80,
   daily_projections: [],
   days_until_exhausted: 20,
   confidence: 0.8,
-  avg_daily_spend_usd: 3,
+  avg_daily_spend: 3,
   currency: 'EUR',
 }
 
@@ -69,7 +69,7 @@ const mockCostRecord: CostRecord = {
   model: 'test-model-001',
   input_tokens: 100,
   output_tokens: 50,
-  cost_usd: 1.0,
+  cost: 1.0,
   timestamp: '2026-03-20T10:00:00Z',
   call_category: 'productive',
   accuracy_effort_ratio: null,
@@ -94,8 +94,8 @@ function setupSuccessfulFetches() {
     limit: 500,
     daily_summary: [],
     period_summary: {
-      avg_cost_usd: 1,
-      total_cost_usd: 1,
+      avg_cost: 1,
+      total_cost: 1,
       total_input_tokens: 100,
       total_output_tokens: 50,
       record_count: 1,

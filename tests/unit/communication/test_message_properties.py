@@ -246,7 +246,7 @@ class TestMetadataRoundtripProperties:
             task_id=task_id,
             project_id=project_id,
             tokens_used=tokens,
-            cost_usd=cost,
+            cost=cost,
         )
         dumped = meta.model_dump()
         restored = MessageMetadata.model_validate(dumped)

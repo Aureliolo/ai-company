@@ -18,7 +18,7 @@ from synthorg.budget.tracker import CostTracker
 def _record(  # noqa: PLR0913
     *,
     category: LLMCallCategory | None = None,
-    cost_usd: float = 0.01,
+    cost: float = 0.01,
     input_tokens: int = 100,
     output_tokens: int = 50,
     agent_id: str = "alice",
@@ -31,7 +31,7 @@ def _record(  # noqa: PLR0913
         model="test-model-001",
         input_tokens=input_tokens,
         output_tokens=output_tokens,
-        cost_usd=cost_usd,
+        cost=cost,
         timestamp=datetime(2026, 2, 15, 12, 0, 0, tzinfo=UTC),
         call_category=category,
     )
@@ -50,8 +50,8 @@ class TestBuildCategoryBreakdown:
 
     def test_all_productive(self) -> None:
         records = [
-            _record(category=LLMCallCategory.PRODUCTIVE, cost_usd=0.01),
-            _record(category=LLMCallCategory.PRODUCTIVE, cost_usd=0.02),
+            _record(category=LLMCallCategory.PRODUCTIVE, cost=0.01),
+            _record(category=LLMCallCategory.PRODUCTIVE, cost=0.02),
         ]
         result = build_category_breakdown(records)
         assert result.productive_count == 2
@@ -100,8 +100,7 @@ class TestBuildCategoryBreakdown:
         """Verify math.fsum is used for accurate summation."""
         # Many small values that could accumulate floating-point error
         records = [
-            _record(category=LLMCallCategory.PRODUCTIVE, cost_usd=0.1)
-            for _ in range(10)
+            _record(category=LLMCallCategory.PRODUCTIVE, cost=0.1) for _ in range(10)
         ]
         result = build_category_breakdown(records)
         assert result.productive_cost == 1.0

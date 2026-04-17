@@ -207,8 +207,8 @@ export default function TaskDetailPage() {
             <div><span className="block text-[10px] text-text-muted">Project</span><span className="text-foreground">{task.project}</span></div>
             <div><span className="block text-[10px] text-text-muted">Created</span><span className="font-mono text-xs text-foreground">{formatDate(task.created_at)}</span></div>
             <div><span className="block text-[10px] text-text-muted">Updated</span><span className="font-mono text-xs text-foreground">{formatDate(task.updated_at)}</span></div>
-            {task.cost_usd != null && (
-              <div><span className="block text-[10px] text-text-muted">Cost</span><span className="font-mono text-xs text-foreground">{formatCurrency(task.cost_usd, DEFAULT_CURRENCY)}</span></div>
+            {task.cost != null && (
+              <div><span className="block text-[10px] text-text-muted">Cost</span><span className="font-mono text-xs text-foreground">{formatCurrency(task.cost, DEFAULT_CURRENCY)}</span></div>
             )}
           </div>
 

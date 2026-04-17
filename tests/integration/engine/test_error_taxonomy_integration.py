@@ -66,7 +66,7 @@ def _turn(
         turn_number=turn_number,
         input_tokens=100,
         output_tokens=50,
-        cost_usd=0.01,
+        cost=0.01,
         finish_reason=finish_reason,
     )
 
@@ -480,7 +480,7 @@ class TestCrossAgentNumericalDriftTaskTree:
             usage=TokenUsage(
                 input_tokens=50,
                 output_tokens=50,
-                cost_usd=0.0005,
+                cost=0.0005,
             ),
             model="test-small-001",
         )
@@ -495,7 +495,7 @@ class TestCrossAgentNumericalDriftTaskTree:
                     scope=DetectionScope.TASK_TREE,
                 ),
             },
-            classification_budget_per_task_usd=0.01,
+            classification_budget_per_task=0.01,
         )
 
         result = await classify_execution_errors(

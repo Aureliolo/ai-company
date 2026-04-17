@@ -37,14 +37,14 @@ class TestTokenUsage:
         assert sample_token_usage.input_tokens == 4500
         assert sample_token_usage.output_tokens == 1200
         assert sample_token_usage.total_tokens == 5700
-        assert sample_token_usage.cost_usd == 0.0315
+        assert sample_token_usage.cost == 0.0315
 
     def test_negative_input_rejected(self) -> None:
         with pytest.raises(ValidationError):
             TokenUsage(
                 input_tokens=-1,
                 output_tokens=0,
-                cost_usd=0.0,
+                cost=0.0,
             )
 
     def test_negative_cost_rejected(self) -> None:
@@ -52,27 +52,27 @@ class TestTokenUsage:
             TokenUsage(
                 input_tokens=100,
                 output_tokens=0,
-                cost_usd=-0.01,
+                cost=-0.01,
             )
 
     def test_zero_tokens_valid(self) -> None:
         usage = TokenUsage(
             input_tokens=0,
             output_tokens=0,
-            cost_usd=0.0,
+            cost=0.0,
         )
         assert usage.total_tokens == 0
 
     def test_frozen(self, sample_token_usage: TokenUsage) -> None:
         with pytest.raises(ValidationError):
-            sample_token_usage.cost_usd = 999.0  # type: ignore[misc]
+            sample_token_usage.cost = 999.0  # type: ignore[misc]
 
     def test_total_tokens_is_always_computed(self) -> None:
-        usage = TokenUsage(input_tokens=10, output_tokens=5, cost_usd=0.0)
+        usage = TokenUsage(input_tokens=10, output_tokens=5, cost=0.0)
         assert usage.total_tokens == 15
 
     def test_total_tokens_in_serialization(self) -> None:
-        usage = TokenUsage(input_tokens=100, output_tokens=50, cost_usd=0.01)
+        usage = TokenUsage(input_tokens=100, output_tokens=50, cost=0.01)
         dumped = usage.model_dump()
         assert dumped["total_tokens"] == 150
 
@@ -81,7 +81,7 @@ class TestTokenUsage:
         payload = TokenUsage(
             input_tokens=10,
             output_tokens=5,
-            cost_usd=0.0,
+            cost=0.0,
         ).model_dump()
         payload["total_tokens"] = 999
         usage = TokenUsage.model_validate(payload)
@@ -91,14 +91,14 @@ class TestTokenUsage:
         json_str = TokenUsage(
             input_tokens=20,
             output_tokens=10,
-            cost_usd=0.01,
+            cost=0.01,
         ).model_dump_json()
         restored = TokenUsage.model_validate_json(json_str)
         assert restored.total_tokens == 30
 
     def test_total_tokens_not_assignable(self) -> None:
         """Computed property rejects direct assignment."""
-        usage = TokenUsage(input_tokens=10, output_tokens=5, cost_usd=0.0)
+        usage = TokenUsage(input_tokens=10, output_tokens=5, cost=0.0)
         with pytest.raises((ValidationError, AttributeError)):
             usage.total_tokens = 999  # type: ignore[misc]
 

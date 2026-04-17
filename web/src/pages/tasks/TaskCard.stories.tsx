@@ -19,7 +19,7 @@ function makeTask(overrides: Partial<Task> = {}): Task {
     acceptance_criteria: [],
     estimated_complexity: 'complex',
     budget_limit: 10,
-    cost_usd: 3.45,
+    cost: 3.45,
     deadline: new Date(Date.now() + 86400000 * 2).toISOString(),
     max_retries: 3,
     parent_task_id: null,
@@ -48,7 +48,7 @@ export const Default: Story = {
 }
 
 export const MinimalFields: Story = {
-  args: { task: makeTask({ assigned_to: null, deadline: null, cost_usd: undefined, dependencies: [] }), onSelect: () => {} },
+  args: { task: makeTask({ assigned_to: null, deadline: null, cost: undefined, dependencies: [] }), onSelect: () => {} },
 }
 
 export const CriticalPriority: Story = {

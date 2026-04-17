@@ -20,7 +20,7 @@ class AgentWorkload(BaseModel):
     Attributes:
         agent_id: Unique agent identifier.
         active_task_count: Number of tasks currently in progress.
-        total_cost_usd: Total cost incurred by this agent in USD (base currency).
+        total_cost: Total cost incurred by this agent in the configured currency.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -30,10 +30,10 @@ class AgentWorkload(BaseModel):
         ge=0,
         description="Number of tasks currently in progress",
     )
-    total_cost_usd: float = Field(
+    total_cost: float = Field(
         default=0.0,
         ge=0.0,
-        description="Total cost incurred by this agent in USD (base currency)",
+        description="Total cost incurred by this agent in the configured currency",
     )
 
 

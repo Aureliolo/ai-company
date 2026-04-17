@@ -105,7 +105,7 @@ class CostRecordFactory(ModelFactory[CostRecord]):
     __model__ = CostRecord
     input_tokens = 1000
     output_tokens = 500
-    cost_usd = 0.05
+    cost = 0.05
     # Ensure retry fields are consistent: no reason without a retry count.
     retry_reason = None
 
@@ -222,7 +222,7 @@ def sample_cost_record() -> CostRecord:
         model="test-model-001",
         input_tokens=4500,
         output_tokens=1200,
-        cost_usd=0.0315,
+        cost=0.0315,
         timestamp=datetime(2026, 2, 27, 10, 30, 0, tzinfo=UTC),
     )
 
@@ -258,7 +258,7 @@ def sample_spending_summary() -> SpendingSummary:
         period=PeriodSpending(
             start=datetime(2026, 2, 1, tzinfo=UTC),
             end=datetime(2026, 3, 1, tzinfo=UTC),
-            total_cost_usd=75.50,
+            total_cost=75.50,
             total_input_tokens=500000,
             total_output_tokens=120000,
             record_count=150,
@@ -266,14 +266,14 @@ def sample_spending_summary() -> SpendingSummary:
         by_agent=(
             AgentSpending(
                 agent_id="sarah_chen",
-                total_cost_usd=40.0,
+                total_cost=40.0,
                 total_input_tokens=300000,
                 total_output_tokens=80000,
                 record_count=80,
             ),
             AgentSpending(
                 agent_id="alex_dev",
-                total_cost_usd=35.50,
+                total_cost=35.50,
                 total_input_tokens=200000,
                 total_output_tokens=40000,
                 record_count=70,
@@ -282,7 +282,7 @@ def sample_spending_summary() -> SpendingSummary:
         by_department=(
             DepartmentSpending(
                 department_name="Engineering",
-                total_cost_usd=75.50,
+                total_cost=75.50,
                 total_input_tokens=500000,
                 total_output_tokens=120000,
                 record_count=150,
@@ -353,7 +353,7 @@ def make_cost_record(  # noqa: PLR0913
     model: str = "test-model-001",
     input_tokens: int = 1000,
     output_tokens: int = 500,
-    cost_usd: float = 0.05,
+    cost: float = 0.05,
     timestamp: datetime | None = None,
 ) -> CostRecord:
     """Build a CostRecord with sensible defaults."""
@@ -365,7 +365,7 @@ def make_cost_record(  # noqa: PLR0913
         model=model,
         input_tokens=input_tokens,
         output_tokens=output_tokens,
-        cost_usd=cost_usd,
+        cost=cost,
         timestamp=timestamp or datetime(2026, 2, 15, 12, 0, 0, tzinfo=UTC),
     )
 

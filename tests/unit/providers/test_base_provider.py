@@ -52,7 +52,7 @@ class _StubProvider(BaseCompletionProvider):
             usage=TokenUsage(
                 input_tokens=10,
                 output_tokens=5,
-                cost_usd=0.0,
+                cost=0.0,
             ),
             model=model,
         )

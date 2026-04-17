@@ -450,7 +450,7 @@ class TestCoordinationResultResponse:
             parent_task_id="t1",
             topology="sas",
             total_duration_seconds=1.0,
-            total_cost_usd=0.01,
+            total_cost=0.01,
             phases=(self._ok_phase(),),
             wave_count=0,
         )
@@ -461,7 +461,7 @@ class TestCoordinationResultResponse:
             parent_task_id="t1",
             topology="sas",
             total_duration_seconds=1.0,
-            total_cost_usd=0.01,
+            total_cost=0.01,
             phases=(self._ok_phase(), self._fail_phase()),
             wave_count=1,
         )
@@ -473,7 +473,7 @@ class TestCoordinationResultResponse:
                 parent_task_id="t1",
                 topology="sas",
                 total_duration_seconds=1.0,
-                total_cost_usd=0.01,
+                total_cost=0.01,
                 phases=(),
                 wave_count=0,
             )

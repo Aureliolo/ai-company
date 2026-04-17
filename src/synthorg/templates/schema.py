@@ -362,7 +362,7 @@ class CompanyTemplate(BaseModel):
         workflow_config: Optional Kanban/Sprint sub-configurations,
             validated as ``WorkflowConfig`` on the rendered ``RootConfig``.
         communication: Communication pattern name.
-        budget_monthly: Default monthly budget in USD (base currency).
+        budget_monthly: Default monthly budget in the configured currency.
         autonomy: Autonomy configuration dict (e.g. ``{"level": "semi"}``).
         workflow_handoffs: Cross-department workflow handoff definitions.
         escalation_paths: Cross-department escalation path definitions.
@@ -403,7 +403,7 @@ class CompanyTemplate(BaseModel):
     budget_monthly: float = Field(
         default=50.0,
         ge=0.0,
-        description="Default monthly budget in USD (base currency)",
+        description="Default monthly budget in the configured currency",
     )
     autonomy: dict[str, Any] = Field(
         default_factory=lambda: {"level": "semi"},

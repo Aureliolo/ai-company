@@ -473,7 +473,7 @@ class CostOptimizer:
             return ApprovalDecision(
                 approved=True,
                 reason="Budget enforcement disabled (no monthly budget)",
-                budget_remaining_usd=0.0,
+                budget_remaining=0.0,
                 budget_used_percent=0.0,
                 alert_level=BudgetAlertLevel.NORMAL,
                 conditions=(),
@@ -525,7 +525,7 @@ class CostOptimizer:
         decision = ApprovalDecision(
             approved=True,
             reason="Approved",
-            budget_remaining_usd=remaining,
+            budget_remaining=remaining,
             budget_used_percent=used_pct,
             alert_level=alert_level,
             conditions=conditions,
@@ -686,7 +686,7 @@ class CostOptimizer:
                     f"meets or exceeds auto-deny threshold "
                     f"{auto_deny_level.value}"
                 ),
-                budget_remaining_usd=remaining,
+                budget_remaining=remaining,
                 budget_used_percent=used_pct,
                 alert_level=alert_level,
                 conditions=(),
@@ -715,7 +715,7 @@ class CostOptimizer:
                     f"would exceed hard stop "
                     f"{format_cost(hard_stop_limit, self._budget_config.currency)}"
                 ),
-                budget_remaining_usd=remaining,
+                budget_remaining=remaining,
                 budget_used_percent=used_pct,
                 alert_level=alert_level,
                 conditions=(),

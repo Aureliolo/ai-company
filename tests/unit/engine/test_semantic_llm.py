@@ -47,7 +47,7 @@ def _make_provider_response(
         content="",
         tool_calls=(tc,),
         finish_reason=FinishReason.TOOL_USE,
-        usage=TokenUsage(input_tokens=100, output_tokens=50, cost_usd=0.0),
+        usage=TokenUsage(input_tokens=100, output_tokens=50, cost=0.0),
         model="test-model",
     )
 
@@ -149,7 +149,7 @@ class TestLlmSemanticAnalyzer:
             content="not valid json at all",
             tool_calls=(),
             finish_reason=FinishReason.STOP,
-            usage=TokenUsage(input_tokens=10, output_tokens=5, cost_usd=0.0),
+            usage=TokenUsage(input_tokens=10, output_tokens=5, cost=0.0),
             model="test-model",
         )
         good_response = _make_provider_response(

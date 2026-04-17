@@ -38,7 +38,7 @@ class CandidateCard(BaseModel):
         level: Proposed seniority level.
         skills: Agent skills.
         rationale: Why this candidate was generated.
-        estimated_monthly_cost: Estimated monthly cost in USD (base currency).
+        estimated_monthly_cost: Estimated monthly cost in the configured currency.
         template_source: Template used for generation, if any.
     """
 
@@ -59,7 +59,7 @@ class CandidateCard(BaseModel):
     rationale: NotBlankStr = Field(description="Generation rationale")
     estimated_monthly_cost: float = Field(
         ge=0.0,
-        description="Estimated monthly cost in USD (base currency)",
+        description="Estimated monthly cost in the configured currency",
     )
     template_source: NotBlankStr | None = Field(
         default=None,

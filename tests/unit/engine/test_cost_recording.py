@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 def _turn(
     *,
     turn_number: int = 1,
-    cost_usd: float = 0.01,
+    cost: float = 0.01,
     input_tokens: int = 100,
     output_tokens: int = 50,
     call_category: LLMCallCategory | None = None,
@@ -30,7 +30,7 @@ def _turn(
         turn_number=turn_number,
         input_tokens=input_tokens,
         output_tokens=output_tokens,
-        cost_usd=cost_usd,
+        cost=cost,
         finish_reason=FinishReason.STOP,
         call_category=call_category,
     )
@@ -96,8 +96,8 @@ class TestRecordExecutionCosts:
 
     async def test_records_each_turn(self) -> None:
         turns = (
-            _turn(turn_number=1, cost_usd=0.01, input_tokens=100, output_tokens=50),
-            _turn(turn_number=2, cost_usd=0.02, input_tokens=200, output_tokens=100),
+            _turn(turn_number=1, cost=0.01, input_tokens=100, output_tokens=50),
+            _turn(turn_number=2, cost=0.02, input_tokens=200, output_tokens=100),
         )
         tracker = _FakeTracker()
         await record_execution_costs(
@@ -108,11 +108,11 @@ class TestRecordExecutionCosts:
             tracker=tracker,  # type: ignore[arg-type]
         )
         assert len(tracker.records) == 2
-        assert tracker.records[0].cost_usd == 0.01
-        assert tracker.records[1].cost_usd == 0.02
+        assert tracker.records[0].cost == 0.01
+        assert tracker.records[1].cost == 0.02
 
     async def test_skips_zero_cost_zero_tokens(self) -> None:
-        turns = (_turn(cost_usd=0.0, input_tokens=0, output_tokens=0),)
+        turns = (_turn(cost=0.0, input_tokens=0, output_tokens=0),)
         tracker = _FakeTracker()
         await record_execution_costs(
             _result(turns),
@@ -125,7 +125,7 @@ class TestRecordExecutionCosts:
 
     async def test_records_free_tier_turn(self) -> None:
         """Zero cost but nonzero tokens should still be recorded."""
-        turns = (_turn(cost_usd=0.0, input_tokens=100, output_tokens=50),)
+        turns = (_turn(cost=0.0, input_tokens=100, output_tokens=50),)
         tracker = _FakeTracker()
         await record_execution_costs(
             _result(turns),
@@ -135,7 +135,7 @@ class TestRecordExecutionCosts:
             tracker=tracker,  # type: ignore[arg-type]
         )
         assert len(tracker.records) == 1
-        assert tracker.records[0].cost_usd == 0.0
+        assert tracker.records[0].cost == 0.0
         assert tracker.records[0].input_tokens == 100
 
     async def test_call_category_propagated(self) -> None:
@@ -223,7 +223,7 @@ class TestAnalyticsFieldPropagation:
             turn_number=1,
             input_tokens=100,
             output_tokens=50,
-            cost_usd=0.01,
+            cost=0.01,
             finish_reason=FinishReason.STOP,
             latency_ms=latency_ms,
             cache_hit=cache_hit,
@@ -287,7 +287,7 @@ class TestAnalyticsFieldPropagation:
             turn_number=1,
             input_tokens=100,
             output_tokens=50,
-            cost_usd=0.01,
+            cost=0.01,
             finish_reason=FinishReason.ERROR,
         )
         tracker = _FakeTracker()
@@ -341,8 +341,8 @@ class TestProjectIdPropagation:
             ),
             pytest.param(
                 (
-                    _turn(turn_number=1, cost_usd=0.01),
-                    _turn(turn_number=2, cost_usd=0.02),
+                    _turn(turn_number=1, cost=0.01),
+                    _turn(turn_number=2, cost=0.02),
                 ),
                 "proj-200",
                 2,

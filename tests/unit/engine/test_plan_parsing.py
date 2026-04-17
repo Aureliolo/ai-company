@@ -10,7 +10,7 @@ from synthorg.providers.models import CompletionResponse, TokenUsage
 
 
 def _usage() -> TokenUsage:
-    return TokenUsage(input_tokens=10, output_tokens=5, cost_usd=0.001)
+    return TokenUsage(input_tokens=10, output_tokens=5, cost=0.001)
 
 
 def _response(content: str) -> CompletionResponse:

@@ -59,8 +59,8 @@ class OverviewMetrics(BaseModel):
         total_tasks: Total number of tasks.
         tasks_by_status: Task counts grouped by status.
         total_agents: Number of configured agents.
-        total_cost_usd: Total cost across all records.
-        budget_remaining_usd: Remaining budget for the current period.
+        total_cost: Total cost across all records.
+        budget_remaining: Remaining budget for the current period.
         budget_used_percent: Percentage of monthly budget used.
             Values above 100.0 indicate budget overrun.
         cost_7d_trend: Daily spend sparkline for the last 7 days.
@@ -76,12 +76,12 @@ class OverviewMetrics(BaseModel):
         description="Task counts by status (keys are TaskStatus values)",
     )
     total_agents: int = Field(ge=0, description="Number of configured agents")
-    total_cost_usd: float = Field(
-        ge=0.0, description="Total cost in USD (base currency)"
+    total_cost: float = Field(
+        ge=0.0, description="Total cost in the configured currency"
     )
-    budget_remaining_usd: float = Field(
+    budget_remaining: float = Field(
         ge=0.0,
-        description="Remaining budget in USD (base currency)",
+        description="Remaining budget in the configured currency",
     )
     currency: str = Field(
         default=DEFAULT_CURRENCY,
@@ -132,17 +132,17 @@ class ForecastResponse(BaseModel):
 
     Attributes:
         horizon_days: Projection horizon in days.
-        projected_total_usd: Projected total spend over the horizon.
+        projected_total: Projected total spend over the horizon.
         daily_projections: Per-day cumulative spend projections.
         days_until_exhausted: Days until budget exhaustion.
         confidence: Confidence score based on data density.
-        avg_daily_spend_usd: Average daily spend used for projection.
+        avg_daily_spend: Average daily spend used for projection.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     horizon_days: int = Field(ge=1, description="Projection horizon")
-    projected_total_usd: float = Field(
+    projected_total: float = Field(
         ge=0.0,
         description="Projected total spend over the horizon",
     )
@@ -159,7 +159,7 @@ class ForecastResponse(BaseModel):
         le=1.0,
         description="Confidence score based on data density",
     )
-    avg_daily_spend_usd: float = Field(
+    avg_daily_spend: float = Field(
         ge=0.0,
         description="Average daily spend used for projection",
     )
@@ -478,7 +478,7 @@ async def _assemble_overview(  # noqa: PLR0913
     logger.debug(
         ANALYTICS_OVERVIEW_QUERIED,
         total_tasks=len(all_tasks),
-        total_cost_usd=total_cost,
+        total_cost=total_cost,
         active_agents=active,
     )
 
@@ -486,8 +486,8 @@ async def _assemble_overview(  # noqa: PLR0913
         total_tasks=len(all_tasks),
         tasks_by_status=by_status,
         total_agents=len(agents),
-        total_cost_usd=total_cost,
-        budget_remaining_usd=budget.remaining,
+        total_cost=total_cost,
+        budget_remaining=budget.remaining,
         budget_used_percent=budget.used_percent,
         cost_7d_trend=cost_7d,
         active_agents_count=active,
@@ -656,14 +656,14 @@ class AnalyticsController(Controller):
             records,
             horizon_days=horizon_days,
             budget_total_monthly=budget.monthly,
-            budget_remaining_usd=budget.remaining,
+            budget_remaining=budget.remaining,
             now=now,
         )
 
         logger.debug(
             ANALYTICS_FORECAST_QUERIED,
             horizon_days=horizon_days,
-            projected_total_usd=forecast.projected_total_usd,
+            projected_total=forecast.projected_total,
             days_until_exhausted=forecast.days_until_exhausted,
         )
 
@@ -671,11 +671,11 @@ class AnalyticsController(Controller):
         return ApiResponse(
             data=ForecastResponse(
                 horizon_days=horizon_days,
-                projected_total_usd=forecast.projected_total_usd,
+                projected_total=forecast.projected_total,
                 daily_projections=forecast.daily_projections,
                 days_until_exhausted=forecast.days_until_exhausted,
                 confidence=forecast.confidence,
-                avg_daily_spend_usd=forecast.avg_daily_spend_usd,
+                avg_daily_spend=forecast.avg_daily_spend,
                 currency=budget_cfg.currency,
             ),
         )

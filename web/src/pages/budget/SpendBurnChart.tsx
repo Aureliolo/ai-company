@@ -71,7 +71,7 @@ function buildChartData(
     }
     const forecastPoints: ChartDataPoint[] = forecast.daily_projections.map((fp) => ({
       label: formatDayLabel(fp.day),
-      projected: fp.projected_spend_usd,
+      projected: fp.projected_spend,
     }))
     points = [...points, ...forecastPoints]
   }
@@ -122,7 +122,7 @@ export function SpendBurnChart({
           )}
           {forecast && (
             <>
-              <StatPill label="Avg/day" value={formatCurrency(forecast.avg_daily_spend_usd, currency)} />
+              <StatPill label="Avg/day" value={formatCurrency(forecast.avg_daily_spend, currency)} />
               {forecast.days_until_exhausted !== null && (
                 <StatPill label="Days left" value={forecast.days_until_exhausted} />
               )}

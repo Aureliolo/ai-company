@@ -27,7 +27,7 @@ def _make_executing_state(  # noqa: PLR0913
     task_id: str | None = "task-001",
     status: ExecutionStatus = ExecutionStatus.EXECUTING,
     turn_count: int = 3,
-    accumulated_cost_usd: float = 0.05,
+    accumulated_cost: float = 0.05,
     last_activity_at: AwareDatetime = _NOW,
     started_at: AwareDatetime = _NOW,
 ) -> AgentRuntimeState:
@@ -37,7 +37,7 @@ def _make_executing_state(  # noqa: PLR0913
         task_id=task_id,
         status=status,
         turn_count=turn_count,
-        accumulated_cost_usd=accumulated_cost_usd,
+        accumulated_cost=accumulated_cost,
         last_activity_at=last_activity_at,
         started_at=started_at,
     )
@@ -48,7 +48,7 @@ def _make_context(
     agent_id: str = "agent-ctx",
     task_id: str | None = "task-ctx",
     turn_count: int = 5,
-    cost_usd: float = 0.10,
+    cost: float = 0.10,
 ) -> AgentContext:
     """Build a minimal AgentContext for testing from_context."""
     from datetime import date
@@ -86,9 +86,9 @@ def _make_context(
         TokenUsage(
             input_tokens=100,
             output_tokens=50,
-            cost_usd=cost_usd,
+            cost=cost,
         )
-        if cost_usd > 0
+        if cost > 0
         else ZERO_TOKEN_USAGE
     )
 
@@ -119,7 +119,7 @@ class TestAgentRuntimeStateIdle:
         assert state.task_id is None
         assert state.started_at is None
         assert state.turn_count == 0
-        assert state.accumulated_cost_usd == 0.0
+        assert state.accumulated_cost == 0.0
 
     def test_idle_sets_last_activity_at(self) -> None:
         state = AgentRuntimeState.idle("agent-idle")
@@ -142,7 +142,7 @@ class TestAgentRuntimeStateFromContext:
         assert state.execution_id == ctx.execution_id
         assert state.status == ExecutionStatus.EXECUTING
         assert state.turn_count == ctx.turn_count
-        assert state.accumulated_cost_usd == ctx.accumulated_cost.cost_usd
+        assert state.accumulated_cost == ctx.accumulated_cost.cost
         assert state.started_at == ctx.started_at
 
     def test_from_context_paused(self) -> None:
@@ -166,9 +166,9 @@ class TestAgentRuntimeStateFromContext:
             AgentRuntimeState.from_context(ctx, ExecutionStatus.IDLE)
 
     def test_from_context_with_zero_cost(self) -> None:
-        ctx = _make_context(cost_usd=0.0)
+        ctx = _make_context(cost=0.0)
         state = AgentRuntimeState.from_context(ctx, ExecutionStatus.EXECUTING)
-        assert state.accumulated_cost_usd == 0.0
+        assert state.accumulated_cost == 0.0
 
 
 @pytest.mark.unit
@@ -182,7 +182,7 @@ class TestAgentRuntimeStateValidation:
             ({"task_id": "t"}, "task_id must be None"),
             ({"started_at": _NOW}, "started_at must be None"),
             ({"turn_count": 1}, "turn_count must be 0"),
-            ({"accumulated_cost_usd": 0.01}, r"accumulated_cost_usd must be 0\.0"),
+            ({"accumulated_cost": 0.01}, r"accumulated_cost must be 0\.0"),
         ],
     )
     def test_idle_single_violation_raises(
@@ -250,7 +250,7 @@ class TestAgentRuntimeStateValidation:
 
     def test_negative_cost_raises(self) -> None:
         with pytest.raises(ValueError, match="greater than or equal to 0"):
-            _make_executing_state(accumulated_cost_usd=-0.01)
+            _make_executing_state(accumulated_cost=-0.01)
 
     def test_blank_agent_id_raises(self) -> None:
         with pytest.raises(ValueError, match="whitespace"):

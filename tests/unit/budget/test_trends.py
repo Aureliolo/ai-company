@@ -27,7 +27,7 @@ from synthorg.hr.performance.models import TaskMetricRecord
 def _cost_record(
     *,
     timestamp: datetime,
-    cost_usd: float = 0.01,
+    cost: float = 0.01,
     agent_id: str = "agent-a",
     task_id: str = "task-001",
 ) -> CostRecord:
@@ -38,7 +38,7 @@ def _cost_record(
         model="test-small-001",
         input_tokens=100,
         output_tokens=50,
-        cost_usd=cost_usd,
+        cost=cost,
         timestamp=timestamp,
     )
 
@@ -57,7 +57,7 @@ def _task_metric(
         completed_at=completed_at,
         is_success=is_success,
         duration_seconds=10.0,
-        cost_usd=0.01,
+        cost=0.01,
         turns_used=2,
         tokens_used=150,
         complexity=Complexity.SIMPLE,
@@ -128,14 +128,12 @@ class TestBucketCostRecords:
         end = datetime(2026, 3, 4, 0, 0, 0, tzinfo=UTC)
         records = [
             _cost_record(
-                timestamp=datetime(2026, 3, 1, 10, 0, 0, tzinfo=UTC), cost_usd=1.0
+                timestamp=datetime(2026, 3, 1, 10, 0, 0, tzinfo=UTC), cost=1.0
             ),
             _cost_record(
-                timestamp=datetime(2026, 3, 1, 14, 0, 0, tzinfo=UTC), cost_usd=2.0
+                timestamp=datetime(2026, 3, 1, 14, 0, 0, tzinfo=UTC), cost=2.0
             ),
-            _cost_record(
-                timestamp=datetime(2026, 3, 2, 8, 0, 0, tzinfo=UTC), cost_usd=0.5
-            ),
+            _cost_record(timestamp=datetime(2026, 3, 2, 8, 0, 0, tzinfo=UTC), cost=0.5),
             # Day 3 has no records
         ]
         result = bucket_cost_records(records, start, end, BucketSize.DAY)
@@ -149,13 +147,13 @@ class TestBucketCostRecords:
         end = datetime(2026, 3, 1, 13, 0, 0, tzinfo=UTC)
         records = [
             _cost_record(
-                timestamp=datetime(2026, 3, 1, 10, 15, 0, tzinfo=UTC), cost_usd=0.1
+                timestamp=datetime(2026, 3, 1, 10, 15, 0, tzinfo=UTC), cost=0.1
             ),
             _cost_record(
-                timestamp=datetime(2026, 3, 1, 10, 45, 0, tzinfo=UTC), cost_usd=0.2
+                timestamp=datetime(2026, 3, 1, 10, 45, 0, tzinfo=UTC), cost=0.2
             ),
             _cost_record(
-                timestamp=datetime(2026, 3, 1, 12, 30, 0, tzinfo=UTC), cost_usd=0.5
+                timestamp=datetime(2026, 3, 1, 12, 30, 0, tzinfo=UTC), cost=0.5
             ),
         ]
         result = bucket_cost_records(records, start, end, BucketSize.HOUR)
@@ -169,14 +167,12 @@ class TestBucketCostRecords:
         end = datetime(2026, 3, 3, 0, 0, 0, tzinfo=UTC)
         records = [
             _cost_record(
-                timestamp=datetime(2026, 3, 1, 23, 0, 0, tzinfo=UTC), cost_usd=1.0
+                timestamp=datetime(2026, 3, 1, 23, 0, 0, tzinfo=UTC), cost=1.0
             ),
             _cost_record(
-                timestamp=datetime(2026, 3, 2, 12, 0, 0, tzinfo=UTC), cost_usd=0.5
+                timestamp=datetime(2026, 3, 2, 12, 0, 0, tzinfo=UTC), cost=0.5
             ),
-            _cost_record(
-                timestamp=datetime(2026, 3, 3, 0, 0, 0, tzinfo=UTC), cost_usd=1.0
-            ),
+            _cost_record(timestamp=datetime(2026, 3, 3, 0, 0, 0, tzinfo=UTC), cost=1.0),
         ]
         result = bucket_cost_records(records, start, end, BucketSize.DAY)
         assert len(result) == 1
@@ -187,7 +183,7 @@ class TestBucketCostRecords:
         end = datetime(2026, 3, 2, 0, 0, 0, tzinfo=UTC)
         records = [
             _cost_record(
-                timestamp=datetime(2026, 3, 1, 15, 30, 0, tzinfo=UTC), cost_usd=42.0
+                timestamp=datetime(2026, 3, 1, 15, 30, 0, tzinfo=UTC), cost=42.0
             ),
         ]
         result = bucket_cost_records(records, start, end, BucketSize.DAY)
@@ -355,8 +351,8 @@ class TestProjectDailySpend:
 
     def test_empty_records(self) -> None:
         result = project_daily_spend([], horizon_days=7)
-        assert result.projected_total_usd == 0.0
-        assert result.avg_daily_spend_usd == 0.0
+        assert result.projected_total == 0.0
+        assert result.avg_daily_spend == 0.0
         assert result.confidence == 0.0
         assert result.days_until_exhausted is None
         assert len(result.daily_projections) == 7
@@ -367,33 +363,33 @@ class TestProjectDailySpend:
         # Total $30 / 2-day delta = $15/day, projected over 4 days.
         records = [
             _cost_record(
-                timestamp=datetime(2026, 3, 1, 10, 0, 0, tzinfo=UTC), cost_usd=10.0
+                timestamp=datetime(2026, 3, 1, 10, 0, 0, tzinfo=UTC), cost=10.0
             ),
             _cost_record(
-                timestamp=datetime(2026, 3, 2, 10, 0, 0, tzinfo=UTC), cost_usd=10.0
+                timestamp=datetime(2026, 3, 2, 10, 0, 0, tzinfo=UTC), cost=10.0
             ),
             _cost_record(
-                timestamp=datetime(2026, 3, 3, 10, 0, 0, tzinfo=UTC), cost_usd=10.0
+                timestamp=datetime(2026, 3, 3, 10, 0, 0, tzinfo=UTC), cost=10.0
             ),
         ]
         result = project_daily_spend(records, horizon_days=4)
         # Span: Mar 3 - Mar 1 = 2 days, total $30 -> $15/day
-        assert result.avg_daily_spend_usd == pytest.approx(15.0)
-        assert result.projected_total_usd == pytest.approx(60.0)
+        assert result.avg_daily_spend == pytest.approx(15.0)
+        assert result.projected_total == pytest.approx(60.0)
         assert len(result.daily_projections) == 4
         # Cumulative: day1=15, day2=30, day3=45, day4=60
-        assert result.daily_projections[0].projected_spend_usd == pytest.approx(15.0)
-        assert result.daily_projections[3].projected_spend_usd == pytest.approx(60.0)
+        assert result.daily_projections[0].projected_spend == pytest.approx(15.0)
+        assert result.daily_projections[3].projected_spend == pytest.approx(60.0)
 
     def test_zero_spend(self) -> None:
         records = [
             _cost_record(
-                timestamp=datetime(2026, 3, 1, 10, 0, 0, tzinfo=UTC), cost_usd=0.0
+                timestamp=datetime(2026, 3, 1, 10, 0, 0, tzinfo=UTC), cost=0.0
             ),
         ]
         result = project_daily_spend(records, horizon_days=7)
-        assert result.projected_total_usd == 0.0
-        assert result.avg_daily_spend_usd == 0.0
+        assert result.projected_total == 0.0
+        assert result.avg_daily_spend == 0.0
         assert result.days_until_exhausted is None
 
     def test_days_until_exhausted(self) -> None:
@@ -402,33 +398,33 @@ class TestProjectDailySpend:
         records = [
             _cost_record(
                 timestamp=datetime(2026, 3, 1, 10, 0, 0, tzinfo=UTC),
-                cost_usd=10.0,
+                cost=10.0,
             ),
             _cost_record(
                 timestamp=datetime(2026, 3, 2, 10, 0, 0, tzinfo=UTC),
-                cost_usd=10.0,
+                cost=10.0,
             ),
         ]
         result = project_daily_spend(
             records,
             horizon_days=14,
             budget_total_monthly=100.0,
-            budget_remaining_usd=50.0,
+            budget_remaining=50.0,
         )
-        assert result.avg_daily_spend_usd == pytest.approx(20.0)
+        assert result.avg_daily_spend == pytest.approx(20.0)
         assert result.days_until_exhausted == 3
 
     def test_no_budget_means_no_exhaustion(self) -> None:
         records = [
             _cost_record(
-                timestamp=datetime(2026, 3, 1, 10, 0, 0, tzinfo=UTC), cost_usd=10.0
+                timestamp=datetime(2026, 3, 1, 10, 0, 0, tzinfo=UTC), cost=10.0
             ),
         ]
         result = project_daily_spend(
             records,
             horizon_days=7,
             budget_total_monthly=0.0,
-            budget_remaining_usd=0.0,
+            budget_remaining=0.0,
         )
         assert result.days_until_exhausted is None
 
@@ -436,13 +432,13 @@ class TestProjectDailySpend:
         # Records on all 3 days of a 3-day span -> confidence 1.0
         records = [
             _cost_record(
-                timestamp=datetime(2026, 3, 1, 10, 0, 0, tzinfo=UTC), cost_usd=1.0
+                timestamp=datetime(2026, 3, 1, 10, 0, 0, tzinfo=UTC), cost=1.0
             ),
             _cost_record(
-                timestamp=datetime(2026, 3, 2, 10, 0, 0, tzinfo=UTC), cost_usd=1.0
+                timestamp=datetime(2026, 3, 2, 10, 0, 0, tzinfo=UTC), cost=1.0
             ),
             _cost_record(
-                timestamp=datetime(2026, 3, 3, 10, 0, 0, tzinfo=UTC), cost_usd=1.0
+                timestamp=datetime(2026, 3, 3, 10, 0, 0, tzinfo=UTC), cost=1.0
             ),
         ]
         result = project_daily_spend(records, horizon_days=7)
@@ -452,10 +448,10 @@ class TestProjectDailySpend:
         # Exclusive delta: (Mar 4 - Mar 1).days = 3, data on 2 days -> 2/3
         records = [
             _cost_record(
-                timestamp=datetime(2026, 3, 1, 10, 0, 0, tzinfo=UTC), cost_usd=1.0
+                timestamp=datetime(2026, 3, 1, 10, 0, 0, tzinfo=UTC), cost=1.0
             ),
             _cost_record(
-                timestamp=datetime(2026, 3, 4, 10, 0, 0, tzinfo=UTC), cost_usd=1.0
+                timestamp=datetime(2026, 3, 4, 10, 0, 0, tzinfo=UTC), cost=1.0
             ),
         ]
         result = project_daily_spend(records, horizon_days=7)
@@ -465,13 +461,13 @@ class TestProjectDailySpend:
     def test_forecast_model_is_frozen(self) -> None:
         result = project_daily_spend([], horizon_days=3)
         with pytest.raises(ValidationError):
-            result.projected_total_usd = 99.0  # type: ignore[misc]
+            result.projected_total = 99.0  # type: ignore[misc]
 
     def test_projections_have_sequential_dates(self) -> None:
         anchor = datetime(2026, 3, 10, 14, 0, 0, tzinfo=UTC)
         records = [
             _cost_record(
-                timestamp=datetime(2026, 3, 1, 10, 0, 0, tzinfo=UTC), cost_usd=5.0
+                timestamp=datetime(2026, 3, 1, 10, 0, 0, tzinfo=UTC), cost=5.0
             ),
         ]
         result = project_daily_spend(records, horizon_days=5, now=anchor)
@@ -529,14 +525,14 @@ class TestBudgetExhaustionEdgeCases:
         records = [
             _cost_record(
                 timestamp=datetime(2026, 3, 1, 10, 0, 0, tzinfo=UTC),
-                cost_usd=10.0,
+                cost=10.0,
             ),
         ]
         result = project_daily_spend(
             records,
             horizon_days=7,
             budget_total_monthly=100.0,
-            budget_remaining_usd=0.0,
+            budget_remaining=0.0,
         )
         assert result.days_until_exhausted == 0
 

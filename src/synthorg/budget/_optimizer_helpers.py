@@ -62,7 +62,7 @@ def _build_efficiency_from_records(
     for agent_id in sorted(by_agent):
         agent_records = by_agent[agent_id]
         total_cost = round(
-            math.fsum(r.cost_usd for r in agent_records),
+            math.fsum(r.cost for r in agent_records),
             BUDGET_ROUNDING_PRECISION,
         )
         total_tokens = sum(r.input_tokens + r.output_tokens for r in agent_records)
@@ -72,7 +72,7 @@ def _build_efficiency_from_records(
         agent_efficiencies.append(
             AgentEfficiency(
                 agent_id=agent_id,
-                total_cost_usd=total_cost,
+                total_cost=total_cost,
                 total_tokens=total_tokens,
                 record_count=len(agent_records),
                 efficiency_rating=rating,
@@ -102,7 +102,7 @@ def _compute_window_costs(
     for ws in window_starts:
         window_end = ws + window_duration
         window_cost = math.fsum(
-            r.cost_usd for r in agent_records if ws <= r.timestamp < window_end
+            r.cost for r in agent_records if ws <= r.timestamp < window_end
         )
         costs.append(round(window_cost, BUDGET_ROUNDING_PRECISION))
     return tuple(costs)
@@ -238,7 +238,7 @@ def _compute_global_avg_cost_per_1k(
     records: Sequence[CostRecord],
 ) -> float:
     """Compute global average cost per 1000 tokens across all records."""
-    total_cost = math.fsum(r.cost_usd for r in records)
+    total_cost = math.fsum(r.cost for r in records)
     total_tokens = sum(r.input_tokens + r.output_tokens for r in records)
     return _compute_cost_per_1k(total_cost, total_tokens)
 

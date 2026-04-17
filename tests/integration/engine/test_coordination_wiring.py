@@ -75,7 +75,7 @@ class _DeterministicProvider:
             usage=TokenUsage(
                 input_tokens=10,
                 output_tokens=5,
-                cost_usd=0.001,
+                cost=0.001,
             ),
             model=model,
         )
@@ -248,7 +248,7 @@ class TestCoordinationWiring:
                     ),
                 ),
                 total_duration_seconds=0.05,
-                total_cost_usd=0.001,
+                total_cost=0.001,
             )
             return CoordinationResultWithAttribution(result=result)
 

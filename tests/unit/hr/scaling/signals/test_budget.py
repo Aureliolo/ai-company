@@ -24,7 +24,7 @@ def _make_summary(
 ) -> SpendingSummary:
     return SpendingSummary(
         period=PeriodSpending(
-            total_cost_usd=100.0,
+            total_cost=100.0,
             record_count=10,
             start=_START,
             end=_END,

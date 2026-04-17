@@ -30,7 +30,8 @@ class CostRecord(BaseModel):
         model: Model identifier.
         input_tokens: Input token count.
         output_tokens: Output token count.
-        cost_usd: Cost in USD (base currency).
+        cost: Cost in the configured currency (see
+            ``budget.currency``; defaults to EUR).
         timestamp: Timezone-aware timestamp of the API call.
         call_category: Optional LLM call category (productive,
             coordination, system, embedding).
@@ -57,7 +58,12 @@ class CostRecord(BaseModel):
     model: NotBlankStr = Field(description="Model identifier")
     input_tokens: int = Field(ge=0, description="Input token count")
     output_tokens: int = Field(ge=0, description="Output token count")
-    cost_usd: float = Field(ge=0.0, description="Cost in USD (base currency)")
+    cost: float = Field(
+        ge=0.0,
+        description=(
+            "Cost in the configured currency (see budget.currency; defaults to EUR)"
+        ),
+    )
     timestamp: AwareDatetime = Field(description="Timestamp of the API call")
     call_category: LLMCallCategory | None = Field(
         default=None,
@@ -101,8 +107,8 @@ class CostRecord(BaseModel):
     @model_validator(mode="after")
     def _validate_token_consistency(self) -> Self:
         """Ensure positive cost implies at least one non-zero token count."""
-        if self.cost_usd > 0 and self.input_tokens == 0 and self.output_tokens == 0:
-            msg = "cost_usd is positive but both token counts are zero"
+        if self.cost > 0 and self.input_tokens == 0 and self.output_tokens == 0:
+            msg = "cost is positive but both token counts are zero"
             raise ValueError(msg)
         return self
 

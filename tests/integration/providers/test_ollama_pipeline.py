@@ -60,7 +60,7 @@ async def test_localhost_base_url(
 async def test_zero_cost_model(
     user_messages: list[ChatMessage],
 ) -> None:
-    """Zero-cost model produces cost_usd = 0.0."""
+    """Zero-cost model produces cost = 0.0."""
     config = make_ollama_config()
     registry = ProviderRegistry.from_config(config)
     driver = registry.get("ollama")
@@ -69,7 +69,7 @@ async def test_zero_cost_model(
     with patch(_PATCH_TARGET, new_callable=AsyncMock, return_value=mock_resp):
         result = await driver.complete(user_messages, "llama")
 
-    assert result.usage.cost_usd == 0.0
+    assert result.usage.cost == 0.0
     assert result.usage.input_tokens == 5000
     assert result.usage.output_tokens == 2000
 

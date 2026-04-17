@@ -108,7 +108,7 @@ class TestSeparateAnalyzerProposer:
             usage=TokenUsage(
                 input_tokens=100,
                 output_tokens=50,
-                cost_usd=0.01,
+                cost=0.01,
             ),
             model=NotBlankStr("test-model"),
         )
@@ -138,7 +138,7 @@ class TestSeparateAnalyzerProposer:
             usage=TokenUsage(
                 input_tokens=100,
                 output_tokens=0,
-                cost_usd=0.01,
+                cost=0.01,
             ),
             model=NotBlankStr("test-model"),
         )
@@ -164,7 +164,7 @@ class TestSeparateAnalyzerProposer:
             usage=TokenUsage(
                 input_tokens=100,
                 output_tokens=50,
-                cost_usd=0.01,
+                cost=0.01,
             ),
             model=NotBlankStr("test-model"),
         )
@@ -199,7 +199,7 @@ class TestSeparateAnalyzerProposer:
             usage=TokenUsage(
                 input_tokens=100,
                 output_tokens=50,
-                cost_usd=0.01,
+                cost=0.01,
             ),
             model=NotBlankStr("test-model"),
         )
@@ -226,7 +226,7 @@ class TestSeparateAnalyzerProposer:
             usage=TokenUsage(
                 input_tokens=100,
                 output_tokens=50,
-                cost_usd=0.01,
+                cost=0.01,
             ),
             model=NotBlankStr("test-model"),
         )
@@ -270,7 +270,7 @@ class TestSeparateAnalyzerProposer:
             usage=TokenUsage(
                 input_tokens=100,
                 output_tokens=100,
-                cost_usd=0.02,
+                cost=0.02,
             ),
             model=NotBlankStr("test-model"),
         )
@@ -315,7 +315,7 @@ class TestSeparateAnalyzerProposer:
             usage=TokenUsage(
                 input_tokens=100,
                 output_tokens=50,
-                cost_usd=0.01,
+                cost=0.01,
             ),
             model=NotBlankStr("test-model"),
         )

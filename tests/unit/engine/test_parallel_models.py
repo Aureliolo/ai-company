@@ -456,7 +456,7 @@ class TestParallelExecutionResult:
 
         # Error outcome contributes no cost, success contributes its cost
         assert o1.result is not None
-        assert result.total_cost_usd == o1.result.total_cost_usd
+        assert result.total_cost == o1.result.total_cost
 
     def test_frozen(self) -> None:
         result = ParallelExecutionResult(

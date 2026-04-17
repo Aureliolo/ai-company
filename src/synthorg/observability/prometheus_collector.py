@@ -108,7 +108,7 @@ class PrometheusCollector:
         )
         self._budget_monthly_usd = Gauge(
             f"{prefix}_budget_monthly_usd",
-            "Monthly budget limit in USD",
+            "Monthly budget limit in the configured currency",
             registry=self.registry,
         )
         self._budget_daily_used_percent = Gauge(
@@ -120,7 +120,7 @@ class PrometheusCollector:
         # -- Per-agent cost gauges ---------------------------------------
         self._agent_cost_total = Gauge(
             f"{prefix}_agent_cost_total",
-            "Per-agent accumulated cost in USD",
+            "Per-agent accumulated cost in the configured currency",
             ["agent_id"],
             registry=self.registry,
         )
@@ -210,7 +210,7 @@ class PrometheusCollector:
         model: str,
         input_tokens: int,
         output_tokens: int,
-        cost_usd: float,
+        cost: float,
     ) -> None:
         """Record an LLM provider call's token and cost usage.
 
@@ -224,11 +224,11 @@ class PrometheusCollector:
             model: Model name (e.g. ``"large"``).
             input_tokens: Tokens in the request prompt.
             output_tokens: Tokens in the response completion.
-            cost_usd: Computed cost in USD for this call.
+            cost: Computed cost in the configured currency for this call.
         """
         require_non_negative("record_provider_usage: input_tokens", input_tokens)
         require_non_negative("record_provider_usage: output_tokens", output_tokens)
-        require_non_negative("record_provider_usage: cost_usd", cost_usd)
+        require_non_negative("record_provider_usage: cost", cost)
         self._provider_tokens.labels(
             provider=provider,
             model=model,
@@ -242,7 +242,7 @@ class PrometheusCollector:
         self._provider_cost_usd.labels(
             provider=provider,
             model=model,
-        ).inc(cost_usd)
+        ).inc(cost)
 
     def record_api_request(
         self,

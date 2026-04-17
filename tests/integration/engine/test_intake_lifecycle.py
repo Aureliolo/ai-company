@@ -155,7 +155,7 @@ class _StubProvider:
         return CompletionResponse(
             content=self._content,
             finish_reason=FinishReason.STOP,
-            usage=TokenUsage(input_tokens=5, output_tokens=5, cost_usd=0.0),
+            usage=TokenUsage(input_tokens=5, output_tokens=5, cost=0.0),
             model=model,
         )
 

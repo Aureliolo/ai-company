@@ -23,7 +23,7 @@ function makeRecord(overrides: Partial<CostRecord> = {}): CostRecord {
     model: 'test-model-001',
     input_tokens: 100,
     output_tokens: 50,
-    cost_usd: 1.0,
+    cost: 1.0,
     timestamp: '2026-03-20T10:00:00Z',
     call_category: 'productive',
     accuracy_effort_ratio: null,
@@ -65,9 +65,9 @@ describe('computeAgentSpending', () => {
 
   it('groups records by agent_id and sums cost', () => {
     const records = [
-      makeRecord({ agent_id: 'a1', cost_usd: 3, task_id: 't1' }),
-      makeRecord({ agent_id: 'a1', cost_usd: 2, task_id: 't2' }),
-      makeRecord({ agent_id: 'a2', cost_usd: 8, task_id: 't3' }),
+      makeRecord({ agent_id: 'a1', cost: 3, task_id: 't1' }),
+      makeRecord({ agent_id: 'a1', cost: 2, task_id: 't2' }),
+      makeRecord({ agent_id: 'a2', cost: 8, task_id: 't3' }),
     ]
     const rows = computeAgentSpending(records, 100, new Map())
     expect(rows).toHaveLength(2)
@@ -79,9 +79,9 @@ describe('computeAgentSpending', () => {
 
   it('counts unique tasks per agent', () => {
     const records = [
-      makeRecord({ agent_id: 'a1', task_id: 't1', cost_usd: 1 }),
-      makeRecord({ agent_id: 'a1', task_id: 't1', cost_usd: 2 }),
-      makeRecord({ agent_id: 'a1', task_id: 't2', cost_usd: 3 }),
+      makeRecord({ agent_id: 'a1', task_id: 't1', cost: 1 }),
+      makeRecord({ agent_id: 'a1', task_id: 't1', cost: 2 }),
+      makeRecord({ agent_id: 'a1', task_id: 't2', cost: 3 }),
     ]
     const rows = computeAgentSpending(records, 100, new Map())
     expect(rows[0]!.taskCount).toBe(2)
@@ -90,8 +90,8 @@ describe('computeAgentSpending', () => {
 
   it('computes budgetPercent relative to total', () => {
     const records = [
-      makeRecord({ agent_id: 'a1', cost_usd: 25 }),
-      makeRecord({ agent_id: 'a2', cost_usd: 75 }),
+      makeRecord({ agent_id: 'a1', cost: 25 }),
+      makeRecord({ agent_id: 'a2', cost: 75 }),
     ]
     const rows = computeAgentSpending(records, 200, new Map())
     expect(rows[0]!.budgetPercent).toBeCloseTo(37.5)
@@ -99,7 +99,7 @@ describe('computeAgentSpending', () => {
   })
 
   it('handles zero budgetTotal without division error', () => {
-    const records = [makeRecord({ agent_id: 'a1', cost_usd: 10 })]
+    const records = [makeRecord({ agent_id: 'a1', cost: 10 })]
     const rows = computeAgentSpending(records, 0, new Map())
     expect(rows[0]!.budgetPercent).toBe(0)
   })
@@ -119,9 +119,9 @@ describe('computeAgentSpending', () => {
 
   it('sorts by totalCost descending', () => {
     const records = [
-      makeRecord({ agent_id: 'cheap', cost_usd: 1 }),
-      makeRecord({ agent_id: 'expensive', cost_usd: 10 }),
-      makeRecord({ agent_id: 'mid', cost_usd: 5 }),
+      makeRecord({ agent_id: 'cheap', cost: 1 }),
+      makeRecord({ agent_id: 'expensive', cost: 10 }),
+      makeRecord({ agent_id: 'mid', cost: 5 }),
     ]
     const rows = computeAgentSpending(records, 100, new Map())
     expect(rows.map((r) => r.agentId)).toEqual(['expensive', 'mid', 'cheap'])
@@ -139,8 +139,8 @@ describe('computeCostBreakdown', () => {
 
   it('groups by agent_id', () => {
     const records = [
-      makeRecord({ agent_id: 'a1', cost_usd: 3 }),
-      makeRecord({ agent_id: 'a2', cost_usd: 7 }),
+      makeRecord({ agent_id: 'a1', cost: 3 }),
+      makeRecord({ agent_id: 'a2', cost: 7 }),
     ]
     const slices = computeCostBreakdown(records, 'agent', emptyMaps.name, emptyMaps.dept)
     expect(slices).toHaveLength(2)
@@ -151,8 +151,8 @@ describe('computeCostBreakdown', () => {
 
   it('groups by provider', () => {
     const records = [
-      makeRecord({ provider: 'prov-a', cost_usd: 4 }),
-      makeRecord({ provider: 'prov-b', cost_usd: 6 }),
+      makeRecord({ provider: 'prov-a', cost: 4 }),
+      makeRecord({ provider: 'prov-b', cost: 6 }),
     ]
     const slices = computeCostBreakdown(records, 'provider', emptyMaps.name, emptyMaps.dept)
     expect(slices).toHaveLength(2)
@@ -161,8 +161,8 @@ describe('computeCostBreakdown', () => {
 
   it('groups by department via agentDeptMap', () => {
     const records = [
-      makeRecord({ agent_id: 'a1', cost_usd: 5 }),
-      makeRecord({ agent_id: 'a2', cost_usd: 5 }),
+      makeRecord({ agent_id: 'a1', cost: 5 }),
+      makeRecord({ agent_id: 'a2', cost: 5 }),
     ]
     const deptMap = new Map([['a1', 'Engineering'], ['a2', 'Engineering']])
     const slices = computeCostBreakdown(records, 'department', emptyMaps.name, deptMap)
@@ -172,13 +172,13 @@ describe('computeCostBreakdown', () => {
   })
 
   it('groups unmapped agents as "Unknown" for department dimension', () => {
-    const records = [makeRecord({ agent_id: 'unknown-agent', cost_usd: 5 })]
+    const records = [makeRecord({ agent_id: 'unknown-agent', cost: 5 })]
     const slices = computeCostBreakdown(records, 'department', emptyMaps.name, emptyMaps.dept)
     expect(slices[0]!.key).toBe('Unknown')
   })
 
   it('uses agentNameMap for agent dimension labels', () => {
-    const records = [makeRecord({ agent_id: 'a1', cost_usd: 5 })]
+    const records = [makeRecord({ agent_id: 'a1', cost: 5 })]
     const nameMap = new Map([['a1', 'Agent Alpha']])
     const slices = computeCostBreakdown(records, 'agent', nameMap, emptyMaps.dept)
     expect(slices[0]!.label).toBe('Agent Alpha')
@@ -186,9 +186,9 @@ describe('computeCostBreakdown', () => {
 
   it('sorts slices by cost descending', () => {
     const records = [
-      makeRecord({ agent_id: 'a1', cost_usd: 1 }),
-      makeRecord({ agent_id: 'a2', cost_usd: 10 }),
-      makeRecord({ agent_id: 'a3', cost_usd: 5 }),
+      makeRecord({ agent_id: 'a1', cost: 1 }),
+      makeRecord({ agent_id: 'a2', cost: 10 }),
+      makeRecord({ agent_id: 'a3', cost: 5 }),
     ]
     const slices = computeCostBreakdown(records, 'agent', emptyMaps.name, emptyMaps.dept)
     expect(slices.map((s) => s.key)).toEqual(['a2', 'a3', 'a1'])
@@ -196,8 +196,8 @@ describe('computeCostBreakdown', () => {
 
   it('assigns colors from DONUT_COLORS palette', () => {
     const records = [
-      makeRecord({ agent_id: 'a1', cost_usd: 3 }),
-      makeRecord({ agent_id: 'a2', cost_usd: 2 }),
+      makeRecord({ agent_id: 'a1', cost: 3 }),
+      makeRecord({ agent_id: 'a2', cost: 2 }),
     ]
     const slices = computeCostBreakdown(records, 'agent', emptyMaps.name, emptyMaps.dept)
     expect(slices[0]!.color).toContain('var(--so-')
@@ -222,9 +222,9 @@ describe('computeCategoryBreakdown', () => {
 
   it('buckets records by call_category', () => {
     const records = [
-      makeRecord({ call_category: 'productive', cost_usd: 50 }),
-      makeRecord({ call_category: 'coordination', cost_usd: 30 }),
-      makeRecord({ call_category: 'system', cost_usd: 20 }),
+      makeRecord({ call_category: 'productive', cost: 50 }),
+      makeRecord({ call_category: 'coordination', cost: 30 }),
+      makeRecord({ call_category: 'system', cost: 20 }),
     ]
     const ratio = computeCategoryBreakdown(records)
     expect(ratio.productive.cost).toBe(50)
@@ -237,8 +237,8 @@ describe('computeCategoryBreakdown', () => {
 
   it('treats null call_category as uncategorized', () => {
     const records = [
-      makeRecord({ call_category: null, cost_usd: 10 }),
-      makeRecord({ call_category: 'productive', cost_usd: 10 }),
+      makeRecord({ call_category: null, cost: 10 }),
+      makeRecord({ call_category: 'productive', cost: 10 }),
     ]
     const ratio = computeCategoryBreakdown(records)
     expect(ratio.uncategorized.cost).toBe(10)
@@ -248,9 +248,9 @@ describe('computeCategoryBreakdown', () => {
 
   it('percentages sum to 100 for non-empty records', () => {
     const records = [
-      makeRecord({ call_category: 'productive', cost_usd: 33 }),
-      makeRecord({ call_category: 'coordination', cost_usd: 33 }),
-      makeRecord({ call_category: 'system', cost_usd: 34 }),
+      makeRecord({ call_category: 'productive', cost: 33 }),
+      makeRecord({ call_category: 'coordination', cost: 33 }),
+      makeRecord({ call_category: 'system', cost: 34 }),
     ]
     const ratio = computeCategoryBreakdown(records)
     const sum =
@@ -436,8 +436,8 @@ describe('computeBudgetMetricCards', () => {
     total_tasks: 10,
     tasks_by_status: {} as Record<string, number>,
     total_agents: 5,
-    total_cost_usd: 42,
-    budget_remaining_usd: 58,
+    total_cost: 42,
+    budget_remaining: 58,
     budget_used_percent: 42,
     cost_7d_trend: [] as TrendDataPoint[],
     active_agents_count: 3,
@@ -481,11 +481,11 @@ describe('computeBudgetMetricCards', () => {
   it('shows "N/A" value when days_until_exhausted is null', () => {
     const forecast: ForecastResponse = {
       horizon_days: 14,
-      projected_total_usd: 80,
+      projected_total: 80,
       daily_projections: [],
       days_until_exhausted: null,
       confidence: 0.8,
-      avg_daily_spend_usd: 3,
+      avg_daily_spend: 3,
       currency: 'EUR',
     }
     const cards = computeBudgetMetricCards(overview, null, forecast)

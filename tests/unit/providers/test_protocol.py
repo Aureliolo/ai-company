@@ -211,7 +211,7 @@ class TestBaseCompletionProvider:
         assert usage.output_tokens == 500
         assert usage.total_tokens == 1500
         expected = (1000 / 1000) * 0.003 + (500 / 1000) * 0.015
-        assert abs(usage.cost_usd - expected) < 1e-9
+        assert abs(usage.cost - expected) < 1e-9
 
     def test_compute_cost_zero(self) -> None:
         usage = BaseCompletionProvider.compute_cost(
@@ -220,7 +220,7 @@ class TestBaseCompletionProvider:
             cost_per_1k_input=0.003,
             cost_per_1k_output=0.015,
         )
-        assert usage.cost_usd == 0.0
+        assert usage.cost == 0.0
         assert usage.total_tokens == 0
 
     def test_compute_cost_large_tokens(self) -> None:
@@ -232,7 +232,7 @@ class TestBaseCompletionProvider:
         )
         assert usage.total_tokens == 208_192
         expected = (200_000 / 1000) * 0.003 + (8_192 / 1000) * 0.015
-        assert abs(usage.cost_usd - expected) < 1e-9
+        assert abs(usage.cost - expected) < 1e-9
 
     def test_base_satisfies_protocol(self) -> None:
         provider = _ConcreteProvider()
@@ -349,7 +349,7 @@ class TestBaseCompletionProvider:
             (333 / 1000) * 0.003 + (777 / 1000) * 0.015,
             BUDGET_ROUNDING_PRECISION,
         )
-        assert usage.cost_usd == expected
+        assert usage.cost == expected
 
     def test_compute_cost_inf_input_rate_rejected(self) -> None:
         with pytest.raises(InvalidRequestError, match="finite"):

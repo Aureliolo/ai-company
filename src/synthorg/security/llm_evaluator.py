@@ -318,7 +318,7 @@ class LlmSecurityEvaluator:
             risk_level=verdict.risk_level.value,
             confidence=verdict.confidence.value,
             duration_ms=duration_ms,
-            cost_usd=response.usage.cost_usd,
+            cost=response.usage.cost,
             model=response.model,
         )
 

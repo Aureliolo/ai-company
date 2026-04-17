@@ -47,7 +47,7 @@ def _make_response(
         usage=TokenUsage(
             input_tokens=10,
             output_tokens=5,
-            cost_usd=0.001,
+            cost=0.001,
         ),
         model="test-model-001",
     )

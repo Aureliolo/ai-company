@@ -21,7 +21,7 @@ def _make_provider(content: str = "Summary text.") -> AsyncMock:
         return_value=CompletionResponse(
             content=content,
             finish_reason=FinishReason.STOP,
-            usage=TokenUsage(input_tokens=10, output_tokens=5, cost_usd=0.001),
+            usage=TokenUsage(input_tokens=10, output_tokens=5, cost=0.001),
             model="test-small-001",
         ),
     )
@@ -156,7 +156,7 @@ class TestAbstractiveSummarizerBatch:
                     usage=TokenUsage(
                         input_tokens=10,
                         output_tokens=5,
-                        cost_usd=0.001,
+                        cost=0.001,
                     ),
                     model="test-small-001",
                 ),

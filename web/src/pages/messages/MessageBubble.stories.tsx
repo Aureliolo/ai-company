@@ -13,7 +13,7 @@ const baseMessage: Message = {
   channel: '#engineering',
   content: 'Completed API endpoint for user authentication. PR ready for review.',
   attachments: [],
-  metadata: { task_id: null, project_id: null, tokens_used: 1200, cost_usd: 0.018, extra: [] },
+  metadata: { task_id: null, project_id: null, tokens_used: 1200, cost: 0.018, extra: [] },
 }
 
 const meta: Meta<typeof MessageBubble> = {

@@ -7,7 +7,7 @@ const sampleMetadata: MessageMetadata = {
   task_id: 'task-42',
   project_id: 'proj-1',
   tokens_used: 500,
-  cost_usd: 0.01,
+  cost: 0.01,
   extra: [],
 }
 

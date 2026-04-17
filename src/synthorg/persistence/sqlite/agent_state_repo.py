@@ -44,10 +44,10 @@ class SQLiteAgentStateRepository:
                 """\
 INSERT OR REPLACE INTO agent_states (
     agent_id, execution_id, task_id, status, turn_count,
-    accumulated_cost_usd, last_activity_at, started_at
+    accumulated_cost, last_activity_at, started_at
 ) VALUES (
     :agent_id, :execution_id, :task_id, :status, :turn_count,
-    :accumulated_cost_usd, :last_activity_at, :started_at
+    :accumulated_cost, :last_activity_at, :started_at
 )""",
                 data,
             )
@@ -71,7 +71,7 @@ INSERT OR REPLACE INTO agent_states (
         try:
             cursor = await self._db.execute(
                 "SELECT agent_id, execution_id, task_id, status, "
-                "turn_count, accumulated_cost_usd, last_activity_at, started_at "
+                "turn_count, accumulated_cost, last_activity_at, started_at "
                 "FROM agent_states WHERE agent_id = ?",
                 (agent_id,),
             )
@@ -105,7 +105,7 @@ INSERT OR REPLACE INTO agent_states (
         try:
             cursor = await self._db.execute(
                 "SELECT agent_id, execution_id, task_id, status, "
-                "turn_count, accumulated_cost_usd, last_activity_at, started_at "
+                "turn_count, accumulated_cost, last_activity_at, started_at "
                 "FROM agent_states WHERE status != ? "
                 "ORDER BY last_activity_at DESC",
                 (ExecutionStatus.IDLE.value,),

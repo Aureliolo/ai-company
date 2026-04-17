@@ -71,7 +71,7 @@ class TestTaskExecutionFromTask:
     def test_defaults(self, sample_task_with_criteria: Task) -> None:
         exe = TaskExecution.from_task(sample_task_with_criteria)
         assert exe.transition_log == ()
-        assert exe.accumulated_cost.cost_usd == 0.0
+        assert exe.accumulated_cost.cost == 0.0
         assert exe.accumulated_cost.input_tokens == 0
         assert exe.turn_count == 0
         assert exe.started_at is None
@@ -202,7 +202,7 @@ class TestTaskExecutionCost:
         assert result.accumulated_cost.input_tokens == 100
         assert result.accumulated_cost.output_tokens == 50
         assert result.accumulated_cost.total_tokens == 150
-        assert result.accumulated_cost.cost_usd == pytest.approx(0.01)
+        assert result.accumulated_cost.cost == pytest.approx(0.01)
         assert result.turn_count == 1
 
     def test_multiple_accumulations(
@@ -215,7 +215,7 @@ class TestTaskExecutionCost:
         assert step2.accumulated_cost.input_tokens == 200
         assert step2.accumulated_cost.output_tokens == 100
         assert step2.accumulated_cost.total_tokens == 300
-        assert step2.accumulated_cost.cost_usd == pytest.approx(0.02)
+        assert step2.accumulated_cost.cost == pytest.approx(0.02)
         assert step2.turn_count == 2
 
     def test_cost_on_terminal_raises(
@@ -272,7 +272,7 @@ class TestTaskExecutionImmutability:
     ) -> None:
         _ = sample_task_execution.with_cost(sample_token_usage)
         assert sample_task_execution.turn_count == 0
-        assert sample_task_execution.accumulated_cost.cost_usd == 0.0
+        assert sample_task_execution.accumulated_cost.cost == 0.0
 
 
 @pytest.mark.unit
@@ -283,29 +283,29 @@ class TestAddTokenUsage:
         a = TokenUsage(
             input_tokens=10,
             output_tokens=5,
-            cost_usd=0.01,
+            cost=0.01,
         )
         b = TokenUsage(
             input_tokens=20,
             output_tokens=10,
-            cost_usd=0.02,
+            cost=0.02,
         )
         result = add_token_usage(a, b)
         assert result.input_tokens == 30
         assert result.output_tokens == 15
         assert result.total_tokens == 45
-        assert result.cost_usd == pytest.approx(0.03)
+        assert result.cost == pytest.approx(0.03)
 
     def test_total_tokens_is_sum_of_parts(self) -> None:
         a = TokenUsage(
             input_tokens=7,
             output_tokens=3,
-            cost_usd=0.0,
+            cost=0.0,
         )
         b = TokenUsage(
             input_tokens=13,
             output_tokens=7,
-            cost_usd=0.0,
+            cost=0.0,
         )
         result = add_token_usage(a, b)
         assert result.total_tokens == result.input_tokens + result.output_tokens
@@ -314,13 +314,13 @@ class TestAddTokenUsage:
         usage = TokenUsage(
             input_tokens=50,
             output_tokens=25,
-            cost_usd=0.05,
+            cost=0.05,
         )
         result = add_token_usage(ZERO_TOKEN_USAGE, usage)
         assert result.input_tokens == 50
         assert result.output_tokens == 25
         assert result.total_tokens == 75
-        assert result.cost_usd == pytest.approx(0.05)
+        assert result.cost == pytest.approx(0.05)
 
 
 @pytest.mark.unit

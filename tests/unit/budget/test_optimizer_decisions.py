@@ -54,7 +54,7 @@ class TestRecommendDowngrades:
             make_cost_record(
                 agent_id="alice",
                 model="test-large-001",
-                cost_usd=10.0,
+                cost=10.0,
                 input_tokens=1000,
                 output_tokens=0,
                 timestamp=OPT_START + timedelta(hours=1),
@@ -64,7 +64,7 @@ class TestRecommendDowngrades:
             make_cost_record(
                 agent_id="bob",
                 model="test-small-001",
-                cost_usd=0.1,
+                cost=0.1,
                 input_tokens=1000,
                 output_tokens=0,
                 timestamp=OPT_START + timedelta(hours=1),
@@ -104,7 +104,7 @@ class TestRecommendDowngrades:
             make_cost_record(
                 agent_id="alice",
                 model="test-only-001",
-                cost_usd=10.0,
+                cost=10.0,
                 input_tokens=1000,
                 output_tokens=0,
                 timestamp=OPT_START + timedelta(hours=1),
@@ -123,7 +123,7 @@ class TestEvaluateOperation:
     async def test_healthy_budget_approved(self) -> None:
         optimizer, tracker = make_optimizer()
         await tracker.record(
-            make_cost_record(cost_usd=10.0, timestamp=OPT_START + timedelta(hours=1)),
+            make_cost_record(cost=10.0, timestamp=OPT_START + timedelta(hours=1)),
         )
         decision = await optimizer.evaluate_operation(
             agent_id="alice",
@@ -141,7 +141,7 @@ class TestEvaluateOperation:
         optimizer, tracker = make_optimizer(budget_config=bc)
 
         await tracker.record(
-            make_cost_record(cost_usd=100.0, timestamp=OPT_START + timedelta(hours=1)),
+            make_cost_record(cost=100.0, timestamp=OPT_START + timedelta(hours=1)),
         )
 
         decision = await optimizer.evaluate_operation(
@@ -161,7 +161,7 @@ class TestEvaluateOperation:
 
         # Spend 95% and request 10 more → projected 105% → HARD_STOP
         await tracker.record(
-            make_cost_record(cost_usd=95.0, timestamp=OPT_START + timedelta(hours=1)),
+            make_cost_record(cost=95.0, timestamp=OPT_START + timedelta(hours=1)),
         )
 
         decision = await optimizer.evaluate_operation(
@@ -182,7 +182,7 @@ class TestEvaluateOperation:
 
         # Spend 80% (warning level)
         await tracker.record(
-            make_cost_record(cost_usd=80.0, timestamp=OPT_START + timedelta(hours=1)),
+            make_cost_record(cost=80.0, timestamp=OPT_START + timedelta(hours=1)),
         )
 
         decision = await optimizer.evaluate_operation(
@@ -218,7 +218,7 @@ class TestEvaluateOperation:
 
         # Spend 92% (critical level)
         await tracker.record(
-            make_cost_record(cost_usd=92.0, timestamp=OPT_START + timedelta(hours=1)),
+            make_cost_record(cost=92.0, timestamp=OPT_START + timedelta(hours=1)),
         )
 
         decision = await optimizer.evaluate_operation(
@@ -265,7 +265,7 @@ class TestEvaluateOperation:
         # Spend 95% -- current alert is CRITICAL, but requesting 10
         # would push to 105% → projected HARD_STOP → denied
         await tracker.record(
-            make_cost_record(cost_usd=95.0, timestamp=OPT_START + timedelta(hours=1)),
+            make_cost_record(cost=95.0, timestamp=OPT_START + timedelta(hours=1)),
         )
 
         decision = await optimizer.evaluate_operation(
@@ -309,7 +309,7 @@ class TestSuggestRoutingOptimizations:
             make_cost_record(
                 agent_id="alice",
                 model="test-large-001",
-                cost_usd=5.0,
+                cost=5.0,
                 input_tokens=1000,
                 output_tokens=500,
                 timestamp=OPT_START + timedelta(hours=1),
@@ -335,7 +335,7 @@ class TestSuggestRoutingOptimizations:
             make_cost_record(
                 agent_id="alice",
                 model="test-small-001",
-                cost_usd=0.1,
+                cost=0.1,
                 input_tokens=1000,
                 output_tokens=500,
                 timestamp=OPT_START + timedelta(hours=1),
@@ -381,7 +381,7 @@ class TestSuggestRoutingOptimizations:
             make_cost_record(
                 agent_id="alice",
                 model="test-large-001",
-                cost_usd=5.0,
+                cost=5.0,
                 timestamp=OPT_START + timedelta(hours=1),
             ),
         )
@@ -448,7 +448,7 @@ class TestEdgeCases:
         period_start = billing_period_start(bc.reset_day, now=now)
         await tracker.record(
             make_cost_record(
-                cost_usd=60.0,
+                cost=60.0,
                 timestamp=period_start + timedelta(hours=1),
             ),
         )
@@ -491,7 +491,7 @@ class TestEdgeCases:
             make_cost_record(
                 agent_id="alice",
                 model="test-large-001",
-                cost_usd=10.0,
+                cost=10.0,
                 input_tokens=1000,
                 output_tokens=0,
                 timestamp=OPT_START + timedelta(hours=1),
@@ -501,7 +501,7 @@ class TestEdgeCases:
             make_cost_record(
                 agent_id="bob",
                 model="test-large-001",
-                cost_usd=0.1,
+                cost=0.1,
                 input_tokens=1000,
                 output_tokens=0,
                 timestamp=OPT_START + timedelta(hours=1),
@@ -527,7 +527,7 @@ class TestEdgeCases:
         period_start = billing_period_start(bc.reset_day, now=now)
         await tracker.record(
             make_cost_record(
-                cost_usd=40.0,
+                cost=40.0,
                 timestamp=period_start + timedelta(hours=1),
             ),
         )

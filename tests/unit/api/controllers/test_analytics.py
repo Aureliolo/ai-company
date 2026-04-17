@@ -30,7 +30,7 @@ _HEADERS = make_auth_headers("ceo")
 def _make_cost_record(
     *,
     timestamp: datetime,
-    cost_usd: float = 0.01,
+    cost: float = 0.01,
     agent_id: str = "agent-a",
 ) -> CostRecord:
     return CostRecord(
@@ -40,7 +40,7 @@ def _make_cost_record(
         model="test-small-001",
         input_tokens=100,
         output_tokens=50,
-        cost_usd=cost_usd,
+        cost=cost,
         timestamp=timestamp,
     )
 
@@ -57,7 +57,7 @@ def _make_task_metric(
         completed_at=completed_at,
         is_success=is_success,
         duration_seconds=10.0,
-        cost_usd=0.01,
+        cost=0.01,
         turns_used=2,
         tokens_used=150,
         complexity=Complexity.SIMPLE,
@@ -79,7 +79,7 @@ class TestAnalyticsController:
         expected_statuses = {s.value: 0 for s in TaskStatus}
         assert data["tasks_by_status"] == expected_statuses
         assert data["total_agents"] == 0
-        assert data["total_cost_usd"] == 0.0
+        assert data["total_cost"] == 0.0
 
     def test_overview_requires_read_access(self, test_client: TestClient[Any]) -> None:
         resp = test_client.get(
@@ -100,9 +100,9 @@ class TestOverviewExtended:
         resp = test_client.get("/api/v1/analytics/overview", headers=_HEADERS)
         assert resp.status_code == 200
         data = resp.json()["data"]
-        assert "budget_remaining_usd" in data
+        assert "budget_remaining" in data
         assert "budget_used_percent" in data
-        assert data["budget_remaining_usd"] >= 0.0
+        assert data["budget_remaining"] >= 0.0
         assert data["budget_used_percent"] >= 0.0
 
     def test_overview_has_cost_7d_trend(self, test_client: TestClient[Any]) -> None:
@@ -132,12 +132,12 @@ class TestOverviewExtended:
     ) -> None:
         now = datetime.now(UTC)
         await cost_tracker.record(
-            _make_cost_record(timestamp=now - timedelta(hours=1), cost_usd=5.0),
+            _make_cost_record(timestamp=now - timedelta(hours=1), cost=5.0),
         )
         resp = test_client.get("/api/v1/analytics/overview", headers=_HEADERS)
         assert resp.status_code == 200
         data = resp.json()["data"]
-        assert data["total_cost_usd"] == 5.0
+        assert data["total_cost"] == 5.0
         # Sparkline should have non-zero value for today
         trend = data["cost_7d_trend"]
         values = [p["value"] for p in trend]
@@ -180,10 +180,10 @@ class TestTrendsEndpoint:
     ) -> None:
         now = datetime.now(UTC)
         await cost_tracker.record(
-            _make_cost_record(timestamp=now - timedelta(hours=2), cost_usd=3.0),
+            _make_cost_record(timestamp=now - timedelta(hours=2), cost=3.0),
         )
         await cost_tracker.record(
-            _make_cost_record(timestamp=now - timedelta(hours=1), cost_usd=7.0),
+            _make_cost_record(timestamp=now - timedelta(hours=1), cost=7.0),
         )
         resp = test_client.get("/api/v1/analytics/trends", headers=_HEADERS)
         assert resp.status_code == 200
@@ -286,8 +286,8 @@ class TestForecastEndpoint:
         assert resp.status_code == 200
         data = resp.json()["data"]
         assert data["horizon_days"] == 14
-        assert data["projected_total_usd"] == 0.0
-        assert data["avg_daily_spend_usd"] == 0.0
+        assert data["projected_total"] == 0.0
+        assert data["avg_daily_spend"] == 0.0
         assert data["confidence"] == 0.0
         assert data["days_until_exhausted"] is None
         assert len(data["daily_projections"]) == 14
@@ -299,10 +299,10 @@ class TestForecastEndpoint:
     ) -> None:
         now = datetime.now(UTC)
         await cost_tracker.record(
-            _make_cost_record(timestamp=now - timedelta(days=2), cost_usd=10.0),
+            _make_cost_record(timestamp=now - timedelta(days=2), cost=10.0),
         )
         await cost_tracker.record(
-            _make_cost_record(timestamp=now - timedelta(days=1), cost_usd=10.0),
+            _make_cost_record(timestamp=now - timedelta(days=1), cost=10.0),
         )
         resp = test_client.get(
             "/api/v1/analytics/forecast",
@@ -312,8 +312,8 @@ class TestForecastEndpoint:
         assert resp.status_code == 200
         data = resp.json()["data"]
         assert data["horizon_days"] == 7
-        assert data["avg_daily_spend_usd"] > 0
-        assert data["projected_total_usd"] > 0
+        assert data["avg_daily_spend"] > 0
+        assert data["projected_total"] > 0
         assert data["confidence"] > 0
         assert len(data["daily_projections"]) == 7
 
@@ -451,4 +451,4 @@ class TestAnalyticsControllerDbOverride:
             assert body["success"] is True
             assert body["data"]["total_agents"] == 3
             assert body["data"]["total_tasks"] == 0
-            assert body["data"]["total_cost_usd"] == 0.0
+            assert body["data"]["total_cost"] == 0.0

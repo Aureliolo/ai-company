@@ -175,7 +175,7 @@ def sample_token_usage() -> TokenUsage:
     return TokenUsage(
         input_tokens=100,
         output_tokens=50,
-        cost_usd=0.01,
+        cost=0.01,
     )
 
 
@@ -301,7 +301,7 @@ def make_completion_response(
     finish_reason: FinishReason = FinishReason.STOP,
     input_tokens: int = 100,
     output_tokens: int = 50,
-    cost_usd: float = 0.01,
+    cost: float = 0.01,
 ) -> CompletionResponse:
     """Build a simple CompletionResponse for tests."""
     return CompletionResponse(
@@ -310,7 +310,7 @@ def make_completion_response(
         usage=TokenUsage(
             input_tokens=input_tokens,
             output_tokens=output_tokens,
-            cost_usd=cost_usd,
+            cost=cost,
         ),
         model="test-model-001",
     )

@@ -15,7 +15,7 @@ describe('MessageDetailDrawer', () => {
       task_id: 'task-123',
       project_id: 'proj-456',
       tokens_used: 1200,
-      cost_usd: 0.018,
+      cost: 0.018,
       extra: [['model', 'test-medium-001']],
     },
   })
@@ -53,7 +53,7 @@ describe('MessageDetailDrawer', () => {
   it('hides optional metadata when null', () => {
     const minimal = makeMessage('msg-2', {
       sender: 'bob',
-      metadata: { task_id: null, project_id: null, tokens_used: null, cost_usd: null, extra: [] },
+      metadata: { task_id: null, project_id: null, tokens_used: null, cost: null, extra: [] },
     })
     render(<MessageDetailDrawer message={minimal} open={true} onClose={vi.fn()} />)
     expect(screen.queryByText('Task ID')).not.toBeInTheDocument()

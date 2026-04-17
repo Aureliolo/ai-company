@@ -214,14 +214,12 @@ class ParallelExecutionResult(BaseModel):
     )
 
     @computed_field(  # type: ignore[prop-decorator]
-        description="Total cost in USD (base currency) across all agents",
+        description="Total cost in the configured currency across all agents",
     )
     @property
-    def total_cost_usd(self) -> float:
+    def total_cost(self) -> float:
         """Sum of costs from all outcomes with results."""
-        return sum(
-            o.result.total_cost_usd for o in self.outcomes if o.result is not None
-        )
+        return sum(o.result.total_cost for o in self.outcomes if o.result is not None)
 
     @computed_field(  # type: ignore[prop-decorator]
         description="Number of agents that succeeded",

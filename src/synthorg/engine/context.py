@@ -330,7 +330,7 @@ class AgentContext(BaseModel):
             EXECUTION_CONTEXT_TURN,
             execution_id=self.execution_id,
             turn=result.turn_count,
-            cost_usd=usage.cost_usd,
+            cost=usage.cost,
         )
         return result
 

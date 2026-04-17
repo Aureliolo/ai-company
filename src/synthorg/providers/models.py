@@ -24,14 +24,14 @@ class TokenUsage(BaseModel):
         input_tokens: Number of input (prompt) tokens.
         output_tokens: Number of output (completion) tokens.
         total_tokens: Sum of input and output tokens (computed).
-        cost_usd: Estimated cost in USD (base currency) for this call.
+        cost: Estimated cost in the configured currency for this call.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     input_tokens: int = Field(ge=0, description="Input token count")
     output_tokens: int = Field(ge=0, description="Output token count")
-    cost_usd: float = Field(ge=0.0, description="Estimated cost in USD (base currency)")
+    cost: float = Field(ge=0.0, description="Estimated cost in the configured currency")
 
     @computed_field(description="Total token count")  # type: ignore[prop-decorator]  # mypy doesn't support stacked decorators on @property
     @property
@@ -43,7 +43,7 @@ class TokenUsage(BaseModel):
 ZERO_TOKEN_USAGE = TokenUsage(
     input_tokens=0,
     output_tokens=0,
-    cost_usd=0.0,
+    cost=0.0,
 )
 """Additive identity for ``TokenUsage``."""
 
@@ -62,7 +62,7 @@ def add_token_usage(a: TokenUsage, b: TokenUsage) -> TokenUsage:
     return TokenUsage(
         input_tokens=a.input_tokens + b.input_tokens,
         output_tokens=a.output_tokens + b.output_tokens,
-        cost_usd=a.cost_usd + b.cost_usd,
+        cost=a.cost + b.cost,
     )
 
 

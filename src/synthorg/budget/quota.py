@@ -86,7 +86,7 @@ class SubscriptionConfig(BaseModel):
     Attributes:
         plan_name: Name of the subscription plan.
         cost_model: How the provider charges for usage.
-        monthly_cost: Fixed monthly subscription fee in USD (base currency).
+        monthly_cost: Fixed monthly subscription fee in the configured currency.
         quotas: Rate/token/request limits per time window.
         hardware_limits: Free-text hardware constraints for local models.
     """
@@ -104,7 +104,7 @@ class SubscriptionConfig(BaseModel):
     monthly_cost: float = Field(
         default=0.0,
         ge=0.0,
-        description="Fixed monthly subscription fee in USD (base currency)",
+        description="Fixed monthly subscription fee in the configured currency",
     )
     quotas: tuple[QuotaLimit, ...] = Field(
         default=(),

@@ -42,7 +42,7 @@ CREATE TABLE cost_records (
     model TEXT NOT NULL,
     input_tokens INTEGER NOT NULL,
     output_tokens INTEGER NOT NULL,
-    cost_usd REAL NOT NULL,
+    cost REAL NOT NULL,
     timestamp TEXT NOT NULL,
     call_category TEXT
 );
@@ -92,7 +92,7 @@ CREATE TABLE task_metrics (
     completed_at TEXT NOT NULL,
     is_success INTEGER NOT NULL,
     duration_seconds REAL NOT NULL,
-    cost_usd REAL NOT NULL,
+    cost REAL NOT NULL,
     turns_used INTEGER NOT NULL,
     tokens_used INTEGER NOT NULL,
     quality_score REAL,
@@ -301,8 +301,8 @@ CREATE TABLE agent_states (
     status TEXT NOT NULL DEFAULT 'idle'
         CHECK (status IN ('idle', 'executing', 'paused')),
     turn_count INTEGER NOT NULL DEFAULT 0 CHECK (turn_count >= 0),
-    accumulated_cost_usd REAL NOT NULL DEFAULT 0.0
-        CHECK (accumulated_cost_usd >= 0.0),
+    accumulated_cost REAL NOT NULL DEFAULT 0.0
+        CHECK (accumulated_cost >= 0.0),
     last_activity_at TEXT NOT NULL,
     started_at TEXT,
     CHECK (
@@ -311,7 +311,7 @@ CREATE TABLE agent_states (
          AND task_id IS NULL
          AND started_at IS NULL
          AND turn_count = 0
-         AND accumulated_cost_usd = 0.0)
+         AND accumulated_cost = 0.0)
         OR
         (status IN ('executing', 'paused')
          AND execution_id IS NOT NULL

@@ -181,12 +181,12 @@ class TestErrorTaxonomyConfig:
 
     def test_default_classification_budget(self) -> None:
         config = ErrorTaxonomyConfig()
-        assert config.classification_budget_per_task_usd == 0.01
+        assert config.classification_budget_per_task == 0.01
 
     def test_negative_budget_rejected(self) -> None:
         with pytest.raises(ValidationError):
             ErrorTaxonomyConfig(
-                classification_budget_per_task_usd=-0.01,
+                classification_budget_per_task=-0.01,
             )
 
     def test_frozen(self) -> None:

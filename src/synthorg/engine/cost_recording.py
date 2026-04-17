@@ -58,7 +58,7 @@ async def record_execution_costs(  # noqa: PLR0913
         # Skip only when provably nothing happened (zero cost and
         # zero tokens); a turn with tokens but zero cost (e.g., a
         # free-tier provider) is still recorded.
-        if turn.cost_usd == 0.0 and turn.input_tokens == 0 and turn.output_tokens == 0:
+        if turn.cost == 0.0 and turn.input_tokens == 0 and turn.output_tokens == 0:
             logger.debug(
                 EXECUTION_ENGINE_COST_SKIPPED,
                 agent_id=agent_id,
@@ -76,7 +76,7 @@ async def record_execution_costs(  # noqa: PLR0913
             model=identity.model.model_id,
             input_tokens=turn.input_tokens,
             output_tokens=turn.output_tokens,
-            cost_usd=turn.cost_usd,
+            cost=turn.cost,
             timestamp=datetime.now(UTC),
             call_category=turn.call_category,
             latency_ms=turn.latency_ms,
@@ -114,7 +114,7 @@ async def record_execution_costs(  # noqa: PLR0913
                 model=identity.model.model_id,
                 input_tokens=turn.input_tokens,
                 output_tokens=turn.output_tokens,
-                cost_usd=turn.cost_usd,
+                cost=turn.cost,
             )
         except MemoryError, RecursionError:
             raise
@@ -127,7 +127,7 @@ async def record_execution_costs(  # noqa: PLR0913
                 model=identity.model.model_id,
                 input_tokens=turn.input_tokens,
                 output_tokens=turn.output_tokens,
-                cost_usd=turn.cost_usd,
+                cost=turn.cost,
                 reason="metrics_mirror_failed",
                 exc_info=True,
             )
@@ -166,7 +166,7 @@ async def _submit_cost_record(
             agent_id=agent_id,
             task_id=task_id,
             error=f"{type(exc).__name__}: {exc}",
-            cost_usd=turn.cost_usd,
+            cost=turn.cost,
             input_tokens=turn.input_tokens,
             output_tokens=turn.output_tokens,
         )
@@ -176,7 +176,7 @@ async def _submit_cost_record(
         EXECUTION_ENGINE_COST_RECORDED,
         agent_id=agent_id,
         task_id=task_id,
-        cost_usd=turn.cost_usd,
+        cost=turn.cost,
         project_id=record.project_id,
     )
     return True

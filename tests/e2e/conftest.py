@@ -161,7 +161,7 @@ def make_tool_call_response(
     tool_calls: tuple[ToolCall, ...],
     input_tokens: int = 50,
     output_tokens: int = 20,
-    cost_usd: float = 0.005,
+    cost: float = 0.005,
 ) -> CompletionResponse:
     """Build a ``CompletionResponse`` with tool calls."""
     return CompletionResponse(
@@ -170,7 +170,7 @@ def make_tool_call_response(
         usage=TokenUsage(
             input_tokens=input_tokens,
             output_tokens=output_tokens,
-            cost_usd=cost_usd,
+            cost=cost,
         ),
         model=_TEST_MODEL,
         tool_calls=tool_calls,
@@ -182,7 +182,7 @@ def make_text_response(
     *,
     input_tokens: int = 80,
     output_tokens: int = 30,
-    cost_usd: float = 0.008,
+    cost: float = 0.008,
 ) -> CompletionResponse:
     """Build a ``CompletionResponse`` with text content (no tool calls)."""
     return CompletionResponse(
@@ -191,7 +191,7 @@ def make_text_response(
         usage=TokenUsage(
             input_tokens=input_tokens,
             output_tokens=output_tokens,
-            cost_usd=cost_usd,
+            cost=cost,
         ),
         model=_TEST_MODEL,
     )
