@@ -340,8 +340,13 @@ class OtlpHandler(logging.Handler):
     def _invoke_export_callback(self, outcome: str, dropped: int) -> None:
         """Call the registered export callback, swallowing any errors.
 
-        A callback failure must never break the export loop; we log
-        to stderr instead of re-raising.
+        A callback failure must never break the export loop. Instead
+        of re-raising, the exception is caught and emitted as a
+        structured :data:`METRICS_OTLP_CALLBACK_ERROR` warning via
+        the module's internal logger (with ``exc_info``), so operators
+        can see which sink went bad without losing subsequent export
+        outcomes. :class:`MemoryError` and :class:`RecursionError` are
+        propagated so the interpreter can react as usual.
         """
         callback = self._export_callback
         if callback is None:

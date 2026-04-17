@@ -5,7 +5,7 @@ import json
 import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from synthorg.observability import get_logger
 from synthorg.observability.audit_chain.chain import HashChain
@@ -125,6 +125,12 @@ class AuditChainSink(logging.Handler):
         # as dead code under the strict signature.
         candidate: object = callback
         if candidate is not None and not callable(candidate):
+            logger.warning(
+                AUDIT_CHAIN_CALLBACK_ERROR,
+                reason="invalid_append_callback",
+                provided_type=type(candidate).__name__,
+                provided_repr=repr(candidate)[:200],
+            )
             msg = "append callback must be callable or None"
             raise TypeError(msg)
         self._append_callback = callback
@@ -138,6 +144,29 @@ class AuditChainSink(logging.Handler):
         """
         with self._lock:
             return self._chain.snapshot()
+
+    async def _sign_and_timestamp(
+        self,
+        data: bytes,
+    ) -> tuple[Any, Any]:
+        """Run sign + binding-payload compute + timestamp as one unit.
+
+        The three steps have to be serialised together so a
+        concurrent emit() cannot slot its own ``sign()`` in between
+        ``self._signer.sign(data)`` and
+        ``self._timestamp_provider.get_timestamp``: ``tail_hash``
+        is read between those calls, and an interleaved sign/append
+        would move the tail before the TSA stamps the binding
+        payload, breaking the payload contract.
+        """
+        signed = await self._signer.sign(data)
+        binding_payload = _build_binding_payload(
+            tail_hash=self._chain.tail_hash,
+            event_data=data,
+            signature=signed.signature,
+        )
+        ts_result = await self._timestamp_provider.get_timestamp(binding_payload)
+        return signed, ts_result
 
     def emit(self, record: logging.LogRecord) -> None:
         """Process a log record, signing security events.
@@ -192,34 +221,20 @@ class AuditChainSink(logging.Handler):
                 default=str,
             ).encode("utf-8")
 
-            # Bridge async signing into sync emit via a dedicated
-            # thread pool.  This avoids the run_until_complete
-            # deadlock that occurs when emit() is called from within
-            # an existing event loop (the normal case in async apps).
+            # Bridge async signing+timestamping into sync emit via a
+            # dedicated thread pool. Both steps run inside a single
+            # executor job so a concurrent emit() cannot interleave
+            # its sign() between our sign() and timestamp() -- that
+            # interleaving would let the TSA stamp a tail_hash that
+            # no longer reflects the state at which we signed, and
+            # break the binding-payload verification contract.
             import asyncio  # noqa: PLC0415
 
             future = _SIGNING_EXECUTOR.submit(
                 asyncio.run,
-                self._signer.sign(data),
+                self._sign_and_timestamp(data),
             )
-            signed = future.result(timeout=5.0)
-
-            # Bind the TSA token to this specific append by stamping
-            # the concatenation of the current tail hash, the event
-            # hash, and the signature. Reading tail_hash here (not
-            # under the append lock) is safe: _SIGNING_EXECUTOR is a
-            # single worker, so appends are already serialised, and
-            # other emit() calls are blocked on future.result above.
-            binding_payload = _build_binding_payload(
-                tail_hash=self._chain.tail_hash,
-                event_data=data,
-                signature=signed.signature,
-            )
-            ts_future = _SIGNING_EXECUTOR.submit(
-                asyncio.run,
-                self._timestamp_provider.get_timestamp(binding_payload),
-            )
-            ts_result = ts_future.result(timeout=5.0)
+            signed, ts_result = future.result(timeout=5.0)
 
             with self._lock:
                 self._chain.append(

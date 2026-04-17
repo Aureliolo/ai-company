@@ -318,7 +318,13 @@ class TsaClient:
             )
             msg = f"TSA transport failure: {type(exc).__name__}"
             raise TsaTransportError(msg) from exc
-        if response.status_code >= 400:  # noqa: PLR2004
+        # Any non-2xx is a transport-level failure. Treating 3xx as a
+        # success (and falling through to ASN.1 parsing) would accept
+        # redirect bodies / HTML error pages as TSA responses. RFC
+        # 3161 TSAs answer with a direct 200; we do not follow
+        # redirects (see ``follow_redirects=False`` above) so any
+        # non-200 signals a misconfigured endpoint or proxy.
+        if not 200 <= response.status_code < 300:  # noqa: PLR2004
             logger.warning(
                 SECURITY_TIMESTAMP_TRANSPORT_ERROR,
                 tsa_url=self._tsa_url,

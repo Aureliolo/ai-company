@@ -16,6 +16,7 @@ never see. Reference: issue #1404.
 
 import asyncio
 import copy
+import time
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
@@ -162,6 +163,7 @@ class BackgroundTaskRegistry:
         if not self._tasks:
             return
         pending = tuple(self._tasks)
+        start = time.monotonic()
         _, still_pending = await asyncio.wait(pending, timeout=timeout_sec)
         if not still_pending:
             return
@@ -173,13 +175,15 @@ class BackgroundTaskRegistry:
         )
         for task in still_pending:
             task.cancel()
-        # Give cancelled tasks a final loop tick to run their
-        # done-callbacks so ``active_count`` drops to zero. Bound
-        # this second wait so a task that catches ``CancelledError``
-        # without re-raising, or is stuck in non-cancellable I/O,
-        # can't extend shutdown past ``timeout_sec`` -- the whole
-        # point of ``drain`` is a bounded deadline.
-        await asyncio.wait(still_pending, timeout=timeout_sec)
+        # Give cancelled tasks the remainder of the deadline to run
+        # their done-callbacks so ``active_count`` drops to zero --
+        # the caller asked for a ``timeout_sec`` bound, not
+        # ``2 * timeout_sec``. A task that catches ``CancelledError``
+        # without re-raising still exits at most at the original
+        # deadline.
+        elapsed = time.monotonic() - start
+        remaining = max(0.0, timeout_sec - elapsed)
+        await asyncio.wait(still_pending, timeout=remaining)
 
     @property
     def active_count(self) -> int:

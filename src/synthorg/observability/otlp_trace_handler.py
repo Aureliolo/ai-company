@@ -68,6 +68,13 @@ class OtlpTraceHandler:
                 "already owns the global TracerProvider. Call "
                 "shutdown() and _reset_for_testing() to rebuild."
             )
+            logger.error(
+                "trace.handler.singleton_violation",
+                endpoint=config.endpoint,
+                service_name=config.service_name,
+                sampling_ratio=config.sampling_ratio,
+                error=msg,
+            )
             raise RuntimeError(msg)
         endpoint = _resolve_traces_endpoint(config.endpoint)
         exporter = OTLPSpanExporter(
@@ -106,6 +113,24 @@ class OtlpTraceHandler:
                 "unset OTEL_PYTHON_TRACER_PROVIDER / any library "
                 "that auto-initialises the global provider."
             )
+            logger.error(
+                "trace.handler.global_provider_collision",
+                endpoint=config.endpoint,
+                service_name=config.service_name,
+                sampling_ratio=config.sampling_ratio,
+                error=msg,
+            )
+            # The orphaned provider + processor would otherwise keep
+            # a live ``BatchSpanProcessor`` thread going. Shut the
+            # provider down before propagating the error so the
+            # failing construction leaves no background resources.
+            try:
+                self._provider.shutdown()
+            except Exception:
+                logger.warning(
+                    "trace.handler.orphan_shutdown_failed",
+                    exc_info=True,
+                )
             raise RuntimeError(msg)
         _HANDLER_INSTANCE = self
         logger.info(

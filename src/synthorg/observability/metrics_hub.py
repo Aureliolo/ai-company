@@ -90,6 +90,13 @@ def _safe_record(
                 return fn(*args, **kwargs)
             except MemoryError, RecursionError:
                 raise
+            except TypeError:
+                # TypeError from a ``record_*`` call almost always
+                # means the caller passed wrong-shaped arguments,
+                # not a runtime metrics failure. Swallowing that
+                # would mask a programming bug; let it propagate
+                # so the caller sees the wiring mistake.
+                raise
             except Exception:
                 logger.warning(
                     event,

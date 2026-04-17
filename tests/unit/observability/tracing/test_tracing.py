@@ -46,6 +46,19 @@ pytestmark = pytest.mark.unit
 _tracer_provider_lock = threading.Lock()
 
 
+def _clear_otel_tracer_provider() -> None:
+    """Reset OTel's one-shot ``set_tracer_provider`` install guard.
+
+    OpenTelemetry enforces that ``set_tracer_provider`` only succeeds
+    once per process; subsequent calls are silently ignored. Tests
+    that need to install a test provider (or rebuild one) have to
+    clear the ``Once`` sentinel first. Centralising the reset keeps
+    the SDK-private attribute names out of individual tests.
+    """
+    _ot_trace._TRACER_PROVIDER_SET_ONCE._done = False
+    _ot_trace._TRACER_PROVIDER = None
+
+
 @pytest.fixture
 def in_memory_tracer() -> Generator[InMemorySpanExporter]:
     """Install a global ``TracerProvider`` backed by InMemorySpanExporter.
@@ -58,14 +71,13 @@ def in_memory_tracer() -> Generator[InMemorySpanExporter]:
         provider = TracerProvider(resource=Resource.create({"service.name": "test"}))
         provider.add_span_processor(SimpleSpanProcessor(exporter))
         original = _ot_trace.get_tracer_provider()
-        _ot_trace._TRACER_PROVIDER_SET_ONCE._done = False
-        _ot_trace._TRACER_PROVIDER = None
+        _clear_otel_tracer_provider()
         _ot_trace.set_tracer_provider(provider)
         try:
             yield exporter
         finally:
             provider.shutdown()
-            _ot_trace._TRACER_PROVIDER_SET_ONCE._done = False
+            _clear_otel_tracer_provider()
             _ot_trace._TRACER_PROVIDER = original
 
 
@@ -109,10 +121,13 @@ def test_otlp_http_config_builds_otlp_handler() -> None:
         from synthorg.observability.otlp_trace_handler import _reset_for_testing
 
         asyncio.run(handler.shutdown())
-        # shutdown() preserves the singleton guard so the global
-        # TracerProvider cannot be silently replaced in production;
-        # tests explicitly reset it so the next build_trace_handler
-        # call in another test doesn't hit the guard and RuntimeError.
+        # shutdown() preserves both guards in production so the
+        # global TracerProvider cannot be silently replaced. In
+        # tests we clear both the module-level sentinel AND OTel's
+        # one-shot ``set_tracer_provider`` install state so the
+        # next build_trace_handler call in another test doesn't
+        # hit either guard and RuntimeError.
+        _clear_otel_tracer_provider()
         _reset_for_testing()
 
 
