@@ -213,14 +213,15 @@ async def search_shared_memories(
             raw_result = await asyncio.to_thread(
                 client.search,
                 query=str(query.text),
-                user_id=SHARED_NAMESPACE,
-                limit=query.limit,
+                filters={"user_id": SHARED_NAMESPACE},
+                top_k=query.limit,
+                threshold=0.0,
             )
         else:
             raw_result = await asyncio.to_thread(
                 client.get_all,
-                user_id=SHARED_NAMESPACE,
-                limit=query.limit,
+                filters={"user_id": SHARED_NAMESPACE},
+                top_k=query.limit,
             )
         raw_list = validate_mem0_result(
             raw_result,

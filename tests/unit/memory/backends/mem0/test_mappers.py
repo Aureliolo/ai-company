@@ -380,8 +380,9 @@ class TestQueryToMem0SearchArgs:
         args = query_to_mem0_search_args("test-agent-001", query)
 
         assert args["query"] == "find this"
-        assert args["user_id"] == "test-agent-001"
-        assert args["limit"] == 5
+        assert args["filters"] == {"user_id": "test-agent-001"}
+        assert args["top_k"] == 5
+        assert args["threshold"] == 0.0
 
     def test_raises_on_none_text(self) -> None:
         query = MemoryQuery(text=None)
@@ -395,8 +396,8 @@ class TestQueryToMem0GetallArgs:
         query = MemoryQuery(limit=20)
         args = query_to_mem0_getall_args("test-agent-001", query)
 
-        assert args["user_id"] == "test-agent-001"
-        assert args["limit"] == 20
+        assert args["filters"] == {"user_id": "test-agent-001"}
+        assert args["top_k"] == 20
 
 
 @pytest.mark.unit

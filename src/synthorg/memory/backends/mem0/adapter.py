@@ -352,8 +352,8 @@ class Mem0MemoryBackend:
         try:
             await asyncio.to_thread(
                 self._client.get_all,
-                user_id=SHARED_NAMESPACE,
-                limit=1,
+                filters={"user_id": SHARED_NAMESPACE},
+                top_k=1,
             )
         except (builtins.MemoryError, RecursionError) as exc:
             logger.exception(
@@ -840,8 +840,8 @@ class Mem0MemoryBackend:
         try:
             raw_result = await asyncio.to_thread(
                 client.get_all,
-                user_id=str(agent_id),
-                limit=self._max_memories_per_agent,
+                filters={"user_id": str(agent_id)},
+                top_k=self._max_memories_per_agent,
             )
             raw_list = validate_mem0_result(raw_result, context="count")
             if category is None:
