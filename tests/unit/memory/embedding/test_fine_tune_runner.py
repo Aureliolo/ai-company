@@ -7,7 +7,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from synthorg.memory.embedding.fine_tune_runner import _load_config, _run
+from synthorg.memory.embedding.fine_tune_runner import (
+    _DEFAULT_HEALTH_PORT,
+    _load_config,
+    _resolve_health_port,
+    _run,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -21,6 +26,83 @@ def _mock_health_server() -> Iterator[None]:
         return_value=mock_server,
     ):
         yield
+
+
+class TestResolveHealthPort:
+    """`_resolve_health_port` env-driven port resolution."""
+
+    _ENV_VAR = "SYNTHORG_FINE_TUNE_HEALTH_PORT"
+
+    def test_env_unset_returns_default(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.delenv(self._ENV_VAR, raising=False)
+        assert _resolve_health_port() == _DEFAULT_HEALTH_PORT
+
+    def test_env_empty_string_returns_default(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # Empty env var (common accidental container config) should not
+        # be treated as a valid port -- fail loudly, do not silently
+        # fall back.
+        monkeypatch.setenv(self._ENV_VAR, "")
+        with pytest.raises(ValueError, match="not a valid integer"):
+            _resolve_health_port()
+
+    def test_valid_env_returns_int(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv(self._ENV_VAR, "20000")
+        assert _resolve_health_port() == 20000
+
+    def test_boundary_low_port(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv(self._ENV_VAR, "1")
+        assert _resolve_health_port() == 1
+
+    def test_boundary_high_port(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv(self._ENV_VAR, "65535")
+        assert _resolve_health_port() == 65535
+
+    def test_non_integer_env_raises(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv(self._ENV_VAR, "not-a-port")
+        with pytest.raises(ValueError, match="not a valid integer"):
+            _resolve_health_port()
+
+    def test_negative_port_raises(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv(self._ENV_VAR, "-1")
+        with pytest.raises(ValueError, match="out of range"):
+            _resolve_health_port()
+
+    def test_zero_port_raises(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv(self._ENV_VAR, "0")
+        with pytest.raises(ValueError, match="out of range"):
+            _resolve_health_port()
+
+    def test_port_above_max_raises(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv(self._ENV_VAR, "65536")
+        with pytest.raises(ValueError, match="out of range"):
+            _resolve_health_port()
 
 
 class TestLoadConfig:

@@ -84,6 +84,7 @@ No corresponding flag -- settable via env var or `config set`:
 | `SYNTHORG_MAX_API_RESPONSE_BYTES` | Maximum bytes for API/checksum downloads (accepts `1MiB`, `1048576`) |
 | `SYNTHORG_MAX_BINARY_BYTES` | Maximum bytes for CLI binary archive downloads (accepts `256MiB`) |
 | `SYNTHORG_MAX_ARCHIVE_ENTRY_BYTES` | Maximum bytes per archive entry during extraction (accepts `128MiB`) |
+| `SYNTHORG_FINE_TUNE_HEALTH_PORT` | Override fine-tune container health server port (integer in `[1, 65535]`, default `15002`) |
 
 ## Exit Codes
 
