@@ -13,6 +13,12 @@ from synthorg.tools.base import BaseTool, ToolExecutionResult
 class EchoTool(BaseTool):
     """Echoes the input message back as the tool result.
 
+    This is a reference / example implementation of ``BaseTool`` used
+    for documentation, wiring smoke tests, and as a starting point for
+    new tools.  It reflects its input unchanged, so operators should
+    only register it in trusted contexts where reflecting the ``message``
+    argument in the result is acceptable.
+
     Examples:
         Basic usage::
 

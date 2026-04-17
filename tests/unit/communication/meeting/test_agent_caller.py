@@ -8,8 +8,10 @@ import pytest
 import structlog
 
 from synthorg.communication.meeting.agent_caller import (
+    MeetingAgentCallerNotConfiguredError,
     UnknownMeetingAgentError,
     build_meeting_agent_caller,
+    build_unconfigured_meeting_agent_caller,
 )
 from synthorg.communication.meeting.models import AgentResponse
 from synthorg.communication.meeting.protocol import AgentCaller
@@ -20,12 +22,15 @@ from synthorg.core.agent import (
 )
 from synthorg.core.enums import AgentStatus, SeniorityLevel
 from synthorg.core.types import NotBlankStr
+from synthorg.hr.registry import AgentRegistryService
 from synthorg.observability.events.meeting import (
+    MEETING_AGENT_CALL_FAILED,
     MEETING_AGENT_CALLED,
     MEETING_AGENT_RESPONDED,
 )
 from synthorg.providers.enums import FinishReason, MessageRole
 from synthorg.providers.models import CompletionResponse, TokenUsage
+from synthorg.providers.registry import ProviderRegistry
 
 pytestmark = pytest.mark.unit
 
@@ -87,8 +92,12 @@ def _build_caller(
     response: CompletionResponse | None = None,
     provider_error: Exception | None = None,
 ) -> tuple[AgentCaller, MagicMock, MagicMock]:
-    """Produce ``(caller, agent_registry, provider_registry)``."""
-    agent_registry = MagicMock()
+    """Produce ``(caller, agent_registry, provider_registry)``.
+
+    Uses ``spec=`` so interface drift between the mocks and the real
+    services surfaces as a test failure instead of silently passing.
+    """
+    agent_registry = MagicMock(spec=AgentRegistryService)
     agent_registry.get = AsyncMock(return_value=identity)
 
     provider = MagicMock()
@@ -99,7 +108,7 @@ def _build_caller(
             return_value=response or _completion(),
         )
 
-    provider_registry = MagicMock()
+    provider_registry = MagicMock(spec=ProviderRegistry)
     provider_registry.get = MagicMock(return_value=provider)
 
     caller = build_meeting_agent_caller(
@@ -189,6 +198,88 @@ class TestBuildMeetingAgentCaller:
         assert messages[0].role == MessageRole.SYSTEM
         assert messages[1].role == MessageRole.USER
         assert "agenda" in (messages[1].content or "")
+
+    async def test_clamps_max_tokens_to_identity_cap(self) -> None:
+        """A caller asking for more than the model allows is clamped down."""
+        identity = _identity()
+        assert identity.model.max_tokens == 4096
+        caller, _reg, provider_registry = _build_caller(identity=identity)
+        await caller(_AGENT_ID, "agenda", 10_000)
+        provider = provider_registry.get.return_value
+        config = provider.complete.await_args.kwargs["config"]
+        # min(10_000, 4096) == 4096.  Without the clamp the per-turn
+        # request would overshoot the agent's configured limit and the
+        # provider would either reject or silently truncate.
+        assert config.max_tokens == 4096
+
+    async def test_provider_error_logs_failure_event_before_raising(self) -> None:
+        identity = _identity()
+        caller, _reg, _providers = _build_caller(
+            identity=identity,
+            provider_error=RuntimeError("provider boom"),
+        )
+
+        with (
+            structlog.testing.capture_logs() as cap,
+            pytest.raises(RuntimeError, match="provider boom"),
+        ):
+            await caller(_AGENT_ID, "prompt", 100)
+
+        failures = [e for e in cap if e.get("event") == MEETING_AGENT_CALL_FAILED]
+        assert len(failures) == 1
+        assert failures[0]["agent_id"] == _AGENT_ID
+        assert failures[0]["error_type"] == "RuntimeError"
+
+    async def test_renders_prompt_without_traits_when_tuple_empty(
+        self,
+    ) -> None:
+        """Empty traits render without a Personality traits line.
+
+        ``PersonalityConfig.traits`` defaults to an empty tuple and
+        ``communication_style`` defaults to ``"neutral"``; both are
+        conditionally rendered.  This test pins the empty-traits branch
+        so a regression (always rendering "Personality traits:") would
+        fail fast.
+        """
+        identity = _identity()
+        identity = AgentIdentity(
+            id=identity.id,
+            name=identity.name,
+            role=identity.role,
+            department=identity.department,
+            level=identity.level,
+            personality=PersonalityConfig(),
+            model=identity.model,
+            hiring_date=identity.hiring_date,
+            status=identity.status,
+        )
+        caller, _reg, provider_registry = _build_caller(identity=identity)
+        await caller(_AGENT_ID, "agenda", 100)
+        messages = provider_registry.get.return_value.complete.await_args.args[0]
+        system_content = messages[0].content or ""
+        assert "Personality traits" not in system_content
+        # communication_style defaults to "neutral" (NotBlankStr), which
+        # is always rendered -- pin that branch too.
+        assert "Communication style: neutral." in system_content
+
+
+class TestBuildUnconfiguredMeetingAgentCaller:
+    async def test_caller_raises_with_typed_attributes(self) -> None:
+        caller = build_unconfigured_meeting_agent_caller(
+            missing_dependencies=("agent_registry", "provider_registry"),
+        )
+        with pytest.raises(MeetingAgentCallerNotConfiguredError) as exc_info:
+            await caller("agent-1", "prompt", 100)
+        assert exc_info.value.agent_id == "agent-1"
+        assert exc_info.value.missing_dependencies == (
+            "agent_registry",
+            "provider_registry",
+        )
+
+    def test_rejects_empty_missing_dependencies(self) -> None:
+        """A caller with no missing deps is a programming error, not a wire gap."""
+        with pytest.raises(ValueError, match="missing_dependencies"):
+            build_unconfigured_meeting_agent_caller(missing_dependencies=())
 
 
 _ = UTC  # keep datetime-aware reference for future date-sensitive tests

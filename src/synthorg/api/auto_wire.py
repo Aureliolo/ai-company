@@ -73,14 +73,19 @@ class Phase1Result(NamedTuple):
 class MeetingWireResult(NamedTuple):
     """Services created during meeting auto-wiring.
 
-    All fields are guaranteed non-``None`` after
-    ``auto_wire_meetings()`` returns -- explicit values pass through
-    and ``None`` inputs are replaced with auto-wired instances.
+    ``meeting_orchestrator`` is always non-``None``.  ``meeting_scheduler``
+    and ``ceremony_scheduler`` are ``None`` when auto-wiring discovered
+    missing dependencies (agent_registry / provider_registry) and so the
+    caller is known-failing -- running scheduled meetings against a
+    caller that is guaranteed to raise would produce background noise
+    with no useful output, so the schedulers are intentionally not
+    wired until the operator provides the missing dependencies.
+    Explicit values always pass through unchanged.
     """
 
     meeting_orchestrator: MeetingOrchestrator
-    meeting_scheduler: MeetingScheduler
-    ceremony_scheduler: CeremonyScheduler
+    meeting_scheduler: MeetingScheduler | None
+    ceremony_scheduler: CeremonyScheduler | None
 
 
 class BuildDispatcherFn(Protocol):
@@ -370,6 +375,15 @@ def auto_wire_meetings(
     lifecycle stage as Phase 1 -- meeting services don't need
     connected persistence.
 
+    When auto-wiring the orchestrator without an agent registry or
+    provider registry, the resulting agent caller is guaranteed to
+    raise :class:`MeetingAgentCallerNotConfiguredError` at call time.
+    Running scheduled meetings against a known-failing caller only
+    produces background noise, so ``meeting_scheduler`` and
+    ``ceremony_scheduler`` are intentionally left ``None`` in that
+    case.  Providing the missing dependencies on a subsequent app
+    build wires the schedulers for real.
+
     Args:
         effective_config: Root company configuration.
         meeting_orchestrator: Explicit orchestrator or ``None`` to
@@ -388,8 +402,16 @@ def auto_wire_meetings(
             calls fail loudly with actionable error context.
 
     Returns:
-        A ``MeetingWireResult`` with both services.
+        A ``MeetingWireResult``.  ``meeting_scheduler`` and
+        ``ceremony_scheduler`` may be ``None`` when the auto-wired
+        orchestrator has a known-failing caller (see docstring).
     """
+    orchestrator_was_auto_wired = meeting_orchestrator is None
+    missing_dependencies: tuple[str, ...] = _missing_meeting_dependencies(
+        agent_registry=agent_registry,
+        provider_registry=provider_registry,
+    )
+
     if meeting_orchestrator is None:
         meeting_orchestrator = _wire_meeting_orchestrator(
             agent_registry=agent_registry,
@@ -405,6 +427,34 @@ def auto_wire_meetings(
                     "Provide both or neither for consistent state"
                 ),
             )
+
+    # Skip scheduler/ceremony wiring only when the auto-wired
+    # orchestrator has a guaranteed-failing caller AND the operator
+    # did not supply an explicit scheduler.  Explicit schedulers always
+    # pass through unchanged so operators can mix wiring strategies.
+    skip_scheduler_wiring = (
+        orchestrator_was_auto_wired
+        and bool(missing_dependencies)
+        and meeting_scheduler is None
+    )
+
+    if skip_scheduler_wiring:
+        logger.warning(
+            API_APP_STARTUP,
+            note=(
+                "Skipping MeetingScheduler and CeremonyScheduler wiring "
+                "because meeting agent caller is unconfigured -- "
+                "scheduled meetings would invoke a caller guaranteed "
+                "to raise MeetingAgentCallerNotConfiguredError.  Provide "
+                "the missing dependencies to wire the full meeting stack"
+            ),
+            missing_dependencies=missing_dependencies,
+        )
+        return MeetingWireResult(
+            meeting_orchestrator=meeting_orchestrator,
+            meeting_scheduler=None,
+            ceremony_scheduler=None,
+        )
 
     if meeting_scheduler is None:
         meeting_scheduler = _wire_meeting_scheduler(
@@ -423,6 +473,20 @@ def auto_wire_meetings(
         meeting_scheduler=meeting_scheduler,
         ceremony_scheduler=ceremony_scheduler,
     )
+
+
+def _missing_meeting_dependencies(
+    *,
+    agent_registry: AgentRegistryService | None,
+    provider_registry: ProviderRegistry | None,
+) -> tuple[str, ...]:
+    """Return the names of meeting dependencies that are ``None``."""
+    missing: list[str] = []
+    if agent_registry is None:
+        missing.append("agent_registry")
+    if provider_registry is None:
+        missing.append("provider_registry")
+    return tuple(missing)
 
 
 def _build_protocol_registry() -> Mapping[MeetingProtocolType, MeetingProtocol]:
@@ -498,23 +562,22 @@ def _wire_meeting_orchestrator(
     """
     try:
         protocol_registry = _build_protocol_registry()
-        missing: list[str] = []
-        if agent_registry is None:
-            missing.append("agent_registry")
-        if provider_registry is None:
-            missing.append("provider_registry")
+        missing = _missing_meeting_dependencies(
+            agent_registry=agent_registry,
+            provider_registry=provider_registry,
+        )
         if missing:
             logger.warning(
                 API_APP_STARTUP,
                 note=(
-                    "MeetingOrchestrator wired without "
-                    + ", ".join(missing)
-                    + "; agent invocation will fail at call time "
-                    "until those dependencies are provided"
+                    "MeetingOrchestrator wired with an unconfigured agent "
+                    "caller; agent invocation will fail at call time until "
+                    "the missing dependencies are provided"
                 ),
+                missing_dependencies=missing,
             )
             agent_caller: AgentCaller = build_unconfigured_meeting_agent_caller(
-                missing_dependencies=tuple(missing),
+                missing_dependencies=missing,
             )
         else:
             # Both registries are non-None (the `missing` check above).

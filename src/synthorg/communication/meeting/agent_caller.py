@@ -25,6 +25,7 @@ from synthorg.communication.meeting.models import AgentResponse
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.meeting import (
+    MEETING_AGENT_CALL_FAILED,
     MEETING_AGENT_CALLED,
     MEETING_AGENT_RESPONDED,
 )
@@ -47,12 +48,12 @@ class UnknownMeetingAgentError(LookupError):
         agent_id: The agent identifier that was not found in the registry.
     """
 
-    def __init__(self, agent_id: str) -> None:
+    def __init__(self, agent_id: NotBlankStr) -> None:
         super().__init__(
             f"Meeting agent {agent_id!r} is not registered in the "
             f"agent registry; cannot dispatch LLM call"
         )
-        self.agent_id = agent_id
+        self.agent_id: NotBlankStr = agent_id
 
 
 def build_meeting_agent_caller(
@@ -75,29 +76,43 @@ def build_meeting_agent_caller(
         prompt: str,
         max_tokens: int,
     ) -> AgentResponse:
+        typed_agent_id = NotBlankStr(agent_id)
         logger.info(
             MEETING_AGENT_CALLED,
             agent_id=agent_id,
             max_tokens=max_tokens,
             prompt_length=len(prompt),
         )
-        identity = await agent_registry.get(NotBlankStr(agent_id))
+        identity = await agent_registry.get(typed_agent_id)
         if identity is None:
-            raise UnknownMeetingAgentError(agent_id)
+            raise UnknownMeetingAgentError(typed_agent_id)
 
-        provider = provider_registry.get(str(identity.model.provider))
+        provider_name = str(identity.model.provider)
+        provider = provider_registry.get(provider_name)
         messages = _build_messages(identity, prompt)
+        effective_max_tokens = min(max_tokens, identity.model.max_tokens)
         config = CompletionConfig(
             temperature=identity.model.temperature,
-            max_tokens=max_tokens,
+            max_tokens=effective_max_tokens,
         )
-        response = await provider.complete(
-            messages,
-            str(identity.model.model_id),
-            config=config,
-        )
+        try:
+            response = await provider.complete(
+                messages,
+                str(identity.model.model_id),
+                config=config,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                MEETING_AGENT_CALL_FAILED,
+                agent_id=agent_id,
+                provider=provider_name,
+                error_type=type(exc).__name__,
+            )
+            raise
         agent_response = AgentResponse(
-            agent_id=NotBlankStr(agent_id),
+            agent_id=typed_agent_id,
             content=response.content or "",
             input_tokens=response.usage.input_tokens,
             output_tokens=response.usage.output_tokens,
@@ -164,15 +179,26 @@ class MeetingAgentCallerNotConfiguredError(RuntimeError):
         agent_id: The agent identifier that the meeting tried to invoke.
         missing_dependencies: Names of the dependencies that were
             absent at wire time (e.g. ``("agent_registry",
-            "provider_registry")``).
+            "provider_registry")``).  Guaranteed non-empty: the error
+            is only meaningful when at least one dependency is missing.
+
+    Raises:
+        ValueError: If *missing_dependencies* is empty -- the error is
+            only meaningful when at least one dependency is missing.
     """
 
     def __init__(
         self,
         *,
-        agent_id: str,
+        agent_id: NotBlankStr,
         missing_dependencies: tuple[str, ...],
     ) -> None:
+        if not missing_dependencies:
+            msg = (
+                "MeetingAgentCallerNotConfiguredError requires at least one "
+                "entry in missing_dependencies"
+            )
+            raise ValueError(msg)
         missing = ", ".join(missing_dependencies)
         super().__init__(
             f"Meeting agent caller invoked for {agent_id!r} but the "
@@ -180,8 +206,8 @@ class MeetingAgentCallerNotConfiguredError(RuntimeError):
             f"{missing}.  Provide them via create_app(...) so meeting "
             f"turns can dispatch real LLM calls."
         )
-        self.agent_id = agent_id
-        self.missing_dependencies = missing_dependencies
+        self.agent_id: NotBlankStr = agent_id
+        self.missing_dependencies: tuple[str, ...] = missing_dependencies
 
 
 def build_unconfigured_meeting_agent_caller(
@@ -193,7 +219,20 @@ def build_unconfigured_meeting_agent_caller(
     Used when the orchestrator is wired before the agent / provider
     registries are available.  Surfaces the root cause to operators
     at first use rather than silently succeeding with empty content.
+
+    Args:
+        missing_dependencies: Names of the dependencies missing at wire
+            time.  Must be non-empty.
+
+    Raises:
+        ValueError: If *missing_dependencies* is empty.
     """
+    if not missing_dependencies:
+        msg = (
+            "build_unconfigured_meeting_agent_caller requires at least one "
+            "entry in missing_dependencies"
+        )
+        raise ValueError(msg)
 
     async def _caller(
         agent_id: str,
@@ -201,7 +240,7 @@ def build_unconfigured_meeting_agent_caller(
         _max_tokens: int,
     ) -> AgentResponse:
         raise MeetingAgentCallerNotConfiguredError(
-            agent_id=agent_id,
+            agent_id=NotBlankStr(agent_id),
             missing_dependencies=missing_dependencies,
         )
 

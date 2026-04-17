@@ -121,12 +121,20 @@ class TestAggregate:
 
         assert summary.total_decisions == 2
         assert summary.success_rate == 0.5
-        outcomes = {s.outcome for s in summary.recent_decisions}
-        assert outcomes == {"executed", "failed"}
-        assert summary.most_common_signal in {
-            "workload",
-            "performance_pruning",
+        # Assert the join by decision_id explicitly -- a positional
+        # match would pass even if the implementation accidentally
+        # paired by order instead of decision_id.
+        outcome_by_decision = {
+            s.action_type + "/" + s.source_strategy: s.outcome
+            for s in summary.recent_decisions
         }
+        assert outcome_by_decision == {
+            "hire/workload": "executed",
+            "prune/performance_pruning": "failed",
+        }
+        # Counter.most_common preserves insertion order for ties, so
+        # the first-inserted strategy (workload) wins deterministically.
+        assert summary.most_common_signal == "workload"
 
     async def test_decision_without_action_is_pending(self) -> None:
         decisions = (_decision(decision_id="d-orphan"),)
@@ -212,9 +220,33 @@ class TestAggregate:
         with structlog.testing.capture_logs() as cap:
             summary = await agg.aggregate(since=since, until=until)
 
+        assert summary is not None
+        assert isinstance(summary, OrgScalingSummary)
         assert summary == OrgScalingSummary()
         failures = [e for e in cap if e.get("event") == META_SIGNAL_AGGREGATION_FAILED]
         assert len(failures) == 1
+
+    async def test_local_aggregation_bugs_propagate(self) -> None:
+        """Bugs in local reducing must not be swallowed as empty summaries.
+
+        Only :class:`ScalingService` fetch errors are mapped to
+        ``_EMPTY``; errors in the local filter/join/reduce steps must
+        propagate so they surface through normal error handling rather
+        than being masked as "no activity".  A decision with a
+        non-datetime ``created_at`` triggers the filter comparison to
+        raise, and we assert the ``TypeError`` escapes ``aggregate``
+        without the broad fallback catching it.
+        """
+        broken = MagicMock()
+        broken.created_at = MagicMock()  # not a datetime -> comparison fails
+        service = MagicMock()
+        service.get_recent_decisions = MagicMock(return_value=(broken,))
+        service.get_recent_actions = MagicMock(return_value=())
+        agg = ScalingSignalAggregator(service=service)
+        since, until = _window()
+
+        with pytest.raises(TypeError):
+            await agg.aggregate(since=since, until=until)
 
     async def test_logs_completed_on_success(self) -> None:
         decisions = (_decision(),)

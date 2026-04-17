@@ -291,37 +291,44 @@ class TestEvictionWarningConcurrency:
 
         assert _count_eviction_warnings(cap) == 2
 
-    def test_interleaved_clear_and_record_never_drops_warning(self) -> None:
+    def test_interleaved_clear_and_record_emits_exactly_one_warning_per_cycle(
+        self,
+    ) -> None:
         """Each fill cycle that overflows emits its warning exactly once.
 
-        With the ``threading.Lock`` around the check-then-set, the naive
-        race (where ``clear()`` resets the flag between another thread's
-        check and set, dropping the warning for that cycle) is gone.
-        Every cycle whose ``fills_per_cycle >= max_records + 1`` must
-        fire one and only one ``DELEGATION_RECORD_EVICTED`` warning
-        before the closing ``clear()``.
+        Cycles are serialised by a barrier so each executes fully before
+        the next starts -- this is what "exactly once per cycle" actually
+        means.  Threads within a cycle race through 12 ``record_sync``
+        calls concurrently past ``max_records=3`` and the closing
+        ``clear()``; because the check/set on ``_eviction_warned`` and
+        the buffer mutations are both held under ``_warning_lock``, the
+        cycle emits exactly one warning regardless of thread scheduling.
         """
         store = DelegationRecordStore(max_records=3)
         cycles = 30
         fills_per_cycle = 12
+        threads_per_cycle = 8
 
-        def fill_cycle() -> None:
+        def fill_thread(start: threading.Barrier, done: threading.Barrier) -> None:
+            start.wait()
             for i in range(fills_per_cycle):
                 store.record_sync(_make_record(delegation_id=f"d-{i:03d}"))
-            store.clear()
+            done.wait()
 
-        with (
-            structlog.testing.capture_logs() as cap,
-            ThreadPoolExecutor(max_workers=8) as executor,
-        ):
-            futures = [executor.submit(fill_cycle) for _ in range(cycles)]
-            for future in futures:
-                future.result()
+        with structlog.testing.capture_logs() as cap:
+            for _cycle in range(cycles):
+                start = threading.Barrier(threads_per_cycle)
+                done = threading.Barrier(threads_per_cycle + 1)
+                with ThreadPoolExecutor(max_workers=threads_per_cycle) as executor:
+                    futures = [
+                        executor.submit(fill_thread, start, done)
+                        for _ in range(threads_per_cycle)
+                    ]
+                    done.wait()
+                    for future in futures:
+                        future.result()
+                store.clear()
 
-        warnings = _count_eviction_warnings(cap)
-        # With the lock, each cycle emits exactly one warning. Parallel
-        # cycles can observe each other's clears, so one cycle may produce
-        # up to two warnings if a concurrent clear resets the flag between
-        # its own fills. The lower bound is the number of cycles; the
-        # upper bound is 2x the cycles as a generous safety net.
-        assert cycles <= warnings <= 2 * cycles
+        # With per-cycle serialisation + the lock protecting both the
+        # flag and the buffer, exactly one warning fires per cycle.
+        assert _count_eviction_warnings(cap) == cycles

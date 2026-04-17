@@ -15,6 +15,7 @@ MEETING_PHASE_COMPLETED: Final[str] = "meeting.phase.completed"
 # Agent interaction
 MEETING_AGENT_CALLED: Final[str] = "meeting.agent.called"
 MEETING_AGENT_RESPONDED: Final[str] = "meeting.agent.responded"
+MEETING_AGENT_CALL_FAILED: Final[str] = "meeting.agent.call_failed"
 MEETING_CONTRIBUTION_RECORDED: Final[str] = "meeting.contribution.recorded"
 
 # Conflict detection

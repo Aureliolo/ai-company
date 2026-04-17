@@ -145,6 +145,11 @@ class TestAutoWireMeetings:
         )
 
         assert isinstance(result.meeting_orchestrator, MeetingOrchestrator)
+        # Schedulers must stay ``None`` when the caller is guaranteed to
+        # raise -- running scheduled meetings against an unconfigured
+        # caller would only produce background noise.
+        assert result.meeting_scheduler is None
+        assert result.ceremony_scheduler is None
         caller = result.meeting_orchestrator._agent_caller
         with pytest.raises(MeetingAgentCallerNotConfiguredError) as exc_info:
             await caller("agent-1", "prompt", 100)
@@ -157,6 +162,52 @@ class TestAutoWireMeetings:
         }
         assert "agent_registry" in str(exc_info.value)
         assert "provider_registry" in str(exc_info.value)
+
+    @pytest.mark.parametrize(
+        ("agent_registry_value", "provider_registry_value", "expected_missing"),
+        [
+            pytest.param(
+                None,
+                MagicMock(),
+                ("agent_registry",),
+                id="only-agent-missing",
+            ),
+            pytest.param(
+                MagicMock(),
+                None,
+                ("provider_registry",),
+                id="only-provider-missing",
+            ),
+        ],
+    )
+    async def test_partial_missing_registries_names_exact_gap(
+        self,
+        agent_registry_value: MagicMock | None,
+        provider_registry_value: MagicMock | None,
+        expected_missing: tuple[str, ...],
+    ) -> None:
+        """Only the actually-missing dependency appears in the error."""
+        from synthorg.api.auto_wire import auto_wire_meetings
+        from synthorg.communication.meeting.agent_caller import (
+            MeetingAgentCallerNotConfiguredError,
+        )
+
+        config = _default_config()
+        result = auto_wire_meetings(
+            effective_config=config,
+            meeting_orchestrator=None,
+            meeting_scheduler=None,
+            agent_registry=agent_registry_value,
+            provider_registry=provider_registry_value,
+        )
+
+        assert isinstance(result.meeting_orchestrator, MeetingOrchestrator)
+        assert result.meeting_scheduler is None
+        assert result.ceremony_scheduler is None
+        caller = result.meeting_orchestrator._agent_caller
+        with pytest.raises(MeetingAgentCallerNotConfiguredError) as exc_info:
+            await caller("agent-1", "prompt", 100)
+        assert exc_info.value.missing_dependencies == expected_missing
 
     def test_preserves_explicit_orchestrator(self) -> None:
         from synthorg.api.auto_wire import auto_wire_meetings

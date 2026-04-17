@@ -223,9 +223,17 @@ def _build_async_task_tools(
     """Instantiate the five async task steering tools.
 
     Returns an empty tuple when *service* is ``None``.
+
+    Raises:
+        ValueError: When *service* is provided but either
+            *supervisor_id* or *supervisor_task_id* is empty or
+            whitespace-only.  Blank identifiers silently produce
+            orphan async tasks, so we fail loudly at wire time.
     """
     if service is None:
         return ()
+    _require_non_blank(supervisor_id, name="async_task_supervisor_id")
+    _require_non_blank(supervisor_task_id, name="async_task_supervisor_task_id")
     from synthorg.tools.communication import (  # noqa: PLC0415
         CancelAsyncTaskTool,
         CheckAsyncTaskTool,
@@ -248,6 +256,13 @@ def _build_async_task_tools(
             supervisor_task_id=supervisor_task_id,
         ),
     )
+
+
+def _require_non_blank(value: str, *, name: str) -> None:
+    """Raise ``ValueError`` if *value* is empty or whitespace-only."""
+    if not value or not value.strip():
+        msg = f"{name} must be a non-empty, non-whitespace string, got {value!r}"
+        raise ValueError(msg)
 
 
 def _build_code_execution_tools(

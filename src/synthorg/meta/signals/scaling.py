@@ -69,43 +69,22 @@ class ScalingSignalAggregator:
 
         Returns:
             Org-wide scaling summary.  Returns an empty summary when
-            no decisions fall in the window, or when the service
-            raises a non-fatal exception (the error is logged via
-            ``META_SIGNAL_AGGREGATION_FAILED``).
+            no decisions fall in the window, or when the underlying
+            :class:`ScalingService` raises a non-fatal exception while
+            fetching recent history (the error is logged via
+            ``META_SIGNAL_AGGREGATION_FAILED``).  Bugs in local
+            aggregation (filtering, joining, reducing) propagate
+            unchanged so they are never masked as empty summaries.
 
         Raises:
             MemoryError: Re-raised without logging -- fatal.
             RecursionError: Re-raised without logging -- fatal.
-            asyncio.CancelledError: Re-raised without logging -- honoured.
+            asyncio.CancelledError: Re-raised without logging so task
+                cancellation propagates as normal control flow.
         """
         try:
             decisions = self._service.get_recent_decisions()
             actions = self._service.get_recent_actions()
-
-            filtered = tuple(d for d in decisions if since <= d.created_at < until)
-            if not filtered:
-                logger.info(
-                    META_SIGNAL_AGGREGATION_COMPLETED,
-                    domain="scaling",
-                    total_decisions=0,
-                )
-                return _EMPTY
-
-            outcome_by_decision = {a.decision_id: a.outcome for a in actions}
-            summaries = tuple(
-                _build_summary(d, outcome_by_decision.get(d.id)) for d in filtered
-            )
-
-            total_decisions = len(filtered)
-            executed_count = sum(
-                1 for s in summaries if s.outcome == ScalingOutcome.EXECUTED.value
-            )
-            success_rate = executed_count / total_decisions
-
-            counter = Counter(s.source_strategy for s in summaries)
-            # Counter.most_common returns items sorted by count desc,
-            # insertion order preserved for ties -- deterministic.
-            most_common_signal = counter.most_common(1)[0][0]
         except MemoryError, RecursionError:
             raise
         except asyncio.CancelledError:
@@ -116,6 +95,31 @@ class ScalingSignalAggregator:
                 domain="scaling",
             )
             return _EMPTY
+
+        filtered = tuple(d for d in decisions if since <= d.created_at < until)
+        if not filtered:
+            logger.info(
+                META_SIGNAL_AGGREGATION_COMPLETED,
+                domain="scaling",
+                total_decisions=0,
+            )
+            return _EMPTY
+
+        outcome_by_decision = {a.decision_id: a.outcome for a in actions}
+        summaries = tuple(
+            _build_summary(d, outcome_by_decision.get(d.id)) for d in filtered
+        )
+
+        total_decisions = len(filtered)
+        executed_count = sum(
+            1 for s in summaries if s.outcome == ScalingOutcome.EXECUTED.value
+        )
+        success_rate = executed_count / total_decisions
+
+        counter = Counter(s.source_strategy for s in summaries)
+        # Counter.most_common returns items sorted by count desc,
+        # insertion order preserved for ties -- deterministic.
+        most_common_signal = counter.most_common(1)[0][0]
 
         summary = OrgScalingSummary(
             recent_decisions=summaries,

@@ -41,12 +41,17 @@ class DelegationRecordStore:
     ``_lock`` (which serialises concurrent async readers only).
     Cooperative asyncio scheduling and deque's internal maxlen
     enforcement make single-call sync writes safe
-    (``deque.append`` cannot be interrupted).  The one-shot
-    eviction warning is protected by ``_warning_lock``
-    (``threading.Lock``) so the check-then-set on
-    ``_eviction_warned`` is atomic across threads and coroutines:
-    exactly one warning is emitted per fill cycle, and ``clear()``
-    cleanly resets the flag for the next cycle.
+    (``deque.append`` cannot be interrupted).  The eviction warning
+    flag and the record buffer mutations are both held under
+    ``_warning_lock`` (``threading.Lock``) so the check-then-set on
+    ``_eviction_warned`` and the subsequent ``deque.append`` /
+    ``deque.clear`` happen as a single atomic unit.  This prevents
+    duplicate warnings caused by interleaving between checking the
+    flag and updating it, and it keeps the flag in step with the
+    buffer length -- ``clear()`` resets the flag for subsequent
+    writes under the same lock.  Concurrent fill cycles may still
+    observe each other's clears; the lock protects atomicity, not
+    sequencing across independent cycles.
 
     Args:
         max_records: Maximum records before oldest are evicted.
@@ -72,9 +77,9 @@ class DelegationRecordStore:
 
     def clear(self) -> None:
         """Reset all delegation records for test isolation."""
-        cleared_count = len(self._records)
-        self._records.clear()
         with self._warning_lock:
+            cleared_count = len(self._records)
+            self._records.clear()
             self._eviction_warned = False
         logger.info(
             DELEGATION_RECORD_STORE_CLEARED,
@@ -98,7 +103,7 @@ class DelegationRecordStore:
                     max_records=self._records.maxlen,
                 )
                 self._eviction_warned = True
-        self._records.append(delegation)
+            self._records.append(delegation)
         logger.debug(
             DELEGATION_RECORD_STORED,
             delegation_id=delegation.delegation_id,
