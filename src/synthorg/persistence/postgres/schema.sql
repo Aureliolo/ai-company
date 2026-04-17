@@ -959,3 +959,35 @@ CREATE UNIQUE INDEX idx_training_results_plan
     ON training_results(plan_id);
 CREATE INDEX idx_training_results_agent
     ON training_results(new_agent_id, completed_at DESC);
+
+-- ── Conflict escalations (#1418) ───────────────────────────────
+-- Human escalation approval queue: one row per conflict awaiting a
+-- human decision.  Matches the SQLite sibling ``conflict_escalations``
+-- but uses JSONB for payloads and TIMESTAMPTZ for timestamps.
+CREATE TABLE conflict_escalations (
+    id TEXT NOT NULL PRIMARY KEY,
+    conflict_id TEXT NOT NULL,
+    conflict_json JSONB NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK(
+        status IN ('pending', 'decided', 'expired', 'cancelled')
+    ),
+    created_at TIMESTAMPTZ NOT NULL,
+    expires_at TIMESTAMPTZ,
+    decided_at TIMESTAMPTZ,
+    decided_by TEXT,
+    decision_json JSONB,
+    CHECK(length(trim(id)) > 0),
+    CHECK(length(trim(conflict_id)) > 0),
+    CHECK(
+        status != 'decided'
+        OR (decision_json IS NOT NULL AND decided_at IS NOT NULL AND decided_by IS NOT NULL)
+    ),
+    CHECK(
+        status != 'pending'
+        OR (decision_json IS NULL AND decided_at IS NULL)
+    )
+);
+CREATE INDEX idx_conflict_escalations_status_created
+    ON conflict_escalations(status, created_at);
+CREATE INDEX idx_conflict_escalations_conflict_id
+    ON conflict_escalations(conflict_id);

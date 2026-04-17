@@ -45,20 +45,34 @@ def build_escalation_queue_store(
         if persistence is None:
             msg = "sqlite backend requires a SQLite persistence backend"
             raise ValueError(msg)
+        db = getattr(persistence, "_db", None)
+        if db is None:
+            msg = (
+                "sqlite backend requires an active aiosqlite.Connection "
+                "on the persistence backend (is it connected?)"
+            )
+            raise ValueError(msg)
         from synthorg.persistence.sqlite.escalation_repo import (  # noqa: PLC0415
             SQLiteEscalationRepository,
         )
 
-        return SQLiteEscalationRepository(persistence)  # type: ignore[arg-type]
+        return SQLiteEscalationRepository(db)
     if config.backend == "postgres":
         if persistence is None:
             msg = "postgres backend requires a Postgres persistence backend"
+            raise ValueError(msg)
+        pool = getattr(persistence, "_pool", None)
+        if pool is None:
+            msg = (
+                "postgres backend requires an active psycopg_pool on the "
+                "persistence backend (is it connected?)"
+            )
             raise ValueError(msg)
         from synthorg.persistence.postgres.escalation_repo import (  # noqa: PLC0415
             PostgresEscalationRepository,
         )
 
-        return PostgresEscalationRepository(persistence)  # type: ignore[arg-type]
+        return PostgresEscalationRepository(pool)
     msg = f"Unknown escalation queue backend: {config.backend!r}"
     raise ValueError(msg)
 

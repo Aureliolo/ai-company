@@ -994,3 +994,38 @@ CREATE TABLE approvals (
 CREATE INDEX idx_approvals_status ON approvals(status);
 CREATE INDEX idx_approvals_action_type ON approvals(action_type);
 CREATE INDEX idx_approvals_risk_level ON approvals(risk_level);
+
+-- Conflict escalations (#1418: human escalation approval queue).
+-- Persists one row per conflict awaiting a human decision so the
+-- queue survives process restarts and auditors can replay decisions.
+CREATE TABLE conflict_escalations (
+    id TEXT NOT NULL PRIMARY KEY CHECK(length(trim(id)) > 0),
+    conflict_id TEXT NOT NULL CHECK(length(trim(conflict_id)) > 0),
+    conflict_json TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK(
+        status IN ('pending', 'decided', 'expired', 'cancelled')
+    ),
+    created_at TEXT NOT NULL CHECK(
+        created_at LIKE '%+00:00' OR created_at LIKE '%Z'
+    ),
+    expires_at TEXT CHECK(
+        expires_at IS NULL OR expires_at LIKE '%+00:00' OR expires_at LIKE '%Z'
+    ),
+    decided_at TEXT CHECK(
+        decided_at IS NULL OR decided_at LIKE '%+00:00' OR decided_at LIKE '%Z'
+    ),
+    decided_by TEXT,
+    decision_json TEXT,
+    CHECK(
+        (status != 'decided')
+        OR (decision_json IS NOT NULL AND decided_at IS NOT NULL AND decided_by IS NOT NULL)
+    ),
+    CHECK(
+        (status != 'pending')
+        OR (decision_json IS NULL AND decided_at IS NULL)
+    )
+);
+CREATE INDEX idx_conflict_escalations_status_created ON
+    conflict_escalations(status, created_at);
+CREATE INDEX idx_conflict_escalations_conflict_id ON
+    conflict_escalations(conflict_id);
