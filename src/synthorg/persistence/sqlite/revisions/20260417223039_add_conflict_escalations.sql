@@ -24,6 +24,8 @@ CREATE TABLE `conflict_escalations` (
   CHECK (
         decided_at IS NULL OR decided_at LIKE '%+00:00' OR decided_at LIKE '%Z'
     ),
+  CHECK (json_valid(conflict_json)),
+  CHECK (decision_json IS NULL OR json_valid(decision_json)),
   CHECK (
         (status != 'decided')
         OR (

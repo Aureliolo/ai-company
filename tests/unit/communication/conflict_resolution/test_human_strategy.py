@@ -56,26 +56,26 @@ class TestHumanEscalationDefaults:
     """With no arguments the resolver times out immediately."""
 
     async def test_returns_escalated_outcome(self) -> None:
-        resolver = HumanEscalationResolver()
+        resolver = HumanEscalationResolver(timeout_seconds=0)
         conflict = make_conflict()
         resolution = await resolver.resolve(conflict)
         assert resolution.outcome == ConflictResolutionOutcome.ESCALATED_TO_HUMAN
 
     async def test_no_winning_agent(self) -> None:
-        resolver = HumanEscalationResolver()
+        resolver = HumanEscalationResolver(timeout_seconds=0)
         conflict = make_conflict()
         resolution = await resolver.resolve(conflict)
         assert resolution.winning_agent_id is None
         assert resolution.winning_position is None
 
     async def test_decided_by_human(self) -> None:
-        resolver = HumanEscalationResolver()
+        resolver = HumanEscalationResolver(timeout_seconds=0)
         conflict = make_conflict()
         resolution = await resolver.resolve(conflict)
         assert resolution.decided_by == "human"
 
     async def test_dissent_records_strategy(self) -> None:
-        resolver = HumanEscalationResolver()
+        resolver = HumanEscalationResolver(timeout_seconds=0)
         conflict = make_conflict()
         resolution = await resolver.resolve(conflict)
         records = resolver.build_dissent_records(conflict, resolution)

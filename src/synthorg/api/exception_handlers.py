@@ -380,6 +380,84 @@ def handle_api_error(
     )
 
 
+def _normalize_status_code(raw: object) -> int:
+    """Coerce a raw ``status_code`` attribute to a valid HTTP error code.
+
+    A non-int attribute or a value outside the 400-599 error range is
+    mis-annotation territory; normalize to 500 so the handler cannot
+    produce a "successful" error envelope.
+    """
+    value: int
+    try:
+        if isinstance(raw, bool) or not isinstance(raw, (int, float, str)):
+            return 500
+        value = int(raw)
+    except TypeError, ValueError:
+        return 500
+    if not (400 <= value <= 599):  # noqa: PLR2004
+        return 500
+    return value
+
+
+def _normalize_error_metadata(
+    exc: Exception,
+) -> tuple[ErrorCode, ErrorCategory]:
+    """Return validated ``(error_code, error_category)`` for ``exc``.
+
+    Values that are not members of their respective enums are replaced
+    by the generic INTERNAL fallbacks so ``_build_response`` never
+    serialises junk.
+    """
+    raw_code = getattr(exc, "error_code", ErrorCode.INTERNAL_ERROR)
+    code = raw_code if isinstance(raw_code, ErrorCode) else ErrorCode.INTERNAL_ERROR
+    raw_cat = getattr(exc, "error_category", ErrorCategory.INTERNAL)
+    cat = raw_cat if isinstance(raw_cat, ErrorCategory) else ErrorCategory.INTERNAL
+    return code, cat
+
+
+def _determine_retryable(exc: Exception) -> bool:
+    """Honour an explicit ``is_retryable`` override, else fall back.
+
+    Subclasses that set ``is_retryable`` (True or False) must have
+    that value respected -- a stale ClassVar ``retryable`` elsewhere
+    in the MRO would otherwise mask the more specific signal.
+    ``retryable`` is consulted only when ``is_retryable`` is not set.
+    """
+    if hasattr(exc, "is_retryable"):
+        return bool(exc.is_retryable)
+    return bool(getattr(exc, "retryable", False))
+
+
+def _select_message(exc: Exception, status_code: int) -> str:
+    """Pick a user-safe message for the RFC 9457 envelope.
+
+    5xx responses return the class-level ``default_message`` to avoid
+    leaking internal detail; 4xx responses pass through the exception
+    message (controller-authored, user-safe).
+    """
+    if status_code >= _SERVER_ERROR_THRESHOLD:
+        return str(getattr(exc, "default_message", "Internal server error"))
+    return str(exc) or str(getattr(exc, "default_message", "Request error"))
+
+
+def _parse_retry_after(raw: object) -> int | None:
+    """Validate + round-up ``retry_after`` attribute.
+
+    Accept only finite non-negative numerics (``inf``/``nan`` would
+    crash header serialization).  Round up rather than truncate so a
+    fractional 0.5s delay is surfaced as at least 1s and clients
+    never hot-loop.  Returns ``None`` for anything else.
+    """
+    if raw is None or isinstance(raw, bool):
+        return None
+    if not isinstance(raw, (int, float)):
+        return None
+    value = float(raw)
+    if not math.isfinite(value) or value < 0:
+        return None
+    return math.ceil(value)
+
+
 def handle_domain_error(
     request: Request[Any, Any, Any],
     exc: Exception,
@@ -401,61 +479,12 @@ def handle_domain_error(
     leaking internal detail; 4xx responses pass through the exception
     message which is controller-authored and user-safe.
     """
-    # Defensive: an exception class with a malformed ClassVar (e.g. a
-    # non-int ``status_code`` injected by accident) must never crash
-    # the handler -- fall back to 500.  Also clamp to the HTTP error
-    # range (400-599): a 2xx/3xx on an exception path is a
-    # mis-annotation, so we normalize to 500 instead of producing a
-    # surprising "successful" error envelope.
-    raw_status = getattr(exc, "status_code", 500)
-    try:
-        status_code = int(raw_status)
-    except TypeError, ValueError:
-        status_code = 500
-    if not (400 <= status_code <= 599):  # noqa: PLR2004
-        status_code = 500
-    # Validate ``error_code`` / ``error_category`` against their enum
-    # membership; unknown values get normalized to the generic
-    # INTERNAL fallback so ``_build_response`` never sees junk that
-    # would serialize oddly.
-    raw_code = getattr(exc, "error_code", ErrorCode.INTERNAL_ERROR)
-    error_code_val = (
-        raw_code if isinstance(raw_code, ErrorCode) else ErrorCode.INTERNAL_ERROR
-    )
-    raw_category = getattr(exc, "error_category", ErrorCategory.INTERNAL)
-    error_category_val = (
-        raw_category
-        if isinstance(raw_category, ErrorCategory)
-        else ErrorCategory.INTERNAL
-    )
-    # Honour an explicit instance ``is_retryable`` (False included)
-    # when the attribute is present -- subclasses that know they are
-    # non-retryable must not be overridden by a stale ClassVar
-    # ``retryable`` elsewhere in the MRO.  Only fall back to
-    # ``retryable`` when ``is_retryable`` is not set at all.
-    if hasattr(exc, "is_retryable"):
-        retryable = bool(exc.is_retryable)
-    else:
-        retryable = bool(getattr(exc, "retryable", False))
+    status_code = _normalize_status_code(getattr(exc, "status_code", 500))
+    error_code_val, error_category_val = _normalize_error_metadata(exc)
+    retryable = _determine_retryable(exc)
     _log_error(request, exc, status=status_code)
-    if status_code >= _SERVER_ERROR_THRESHOLD:
-        msg = str(getattr(exc, "default_message", "Internal server error"))
-    else:
-        msg = str(exc) or str(getattr(exc, "default_message", "Request error"))
-    retry_after_raw = getattr(exc, "retry_after", None)
-    retry_after_val: int | None = None
-    # Accept only finite non-negative numerics -- ``inf``/``nan`` would
-    # crash header serialization and leak the original error.  Round up
-    # rather than truncate so a fractional 0.5s delay is surfaced as at
-    # least 1s and clients never hot-loop.
-    if (
-        retry_after_raw is not None
-        and not isinstance(retry_after_raw, bool)
-        and isinstance(retry_after_raw, (int, float))
-        and math.isfinite(float(retry_after_raw))
-        and retry_after_raw >= 0
-    ):
-        retry_after_val = math.ceil(float(retry_after_raw))
+    msg = _select_message(exc, status_code)
+    retry_after_val = _parse_retry_after(getattr(exc, "retry_after", None))
     # Retry-After header and body field must agree: only emit the header
     # when the error is actually retryable, so 429/503-style envelopes
     # can never claim ``retryable: false`` while handing clients a

@@ -48,7 +48,7 @@ class TestHybridResolverAutoResolve:
         resolver = HybridResolver(
             hierarchy=hierarchy,
             config=HybridConfig(),
-            human_resolver=HumanEscalationResolver(),
+            human_resolver=HumanEscalationResolver(timeout_seconds=0),
             review_evaluator=evaluator,
         )
         conflict = make_conflict(
@@ -77,7 +77,7 @@ class TestHybridResolverAmbiguous:
         resolver = HybridResolver(
             hierarchy=hierarchy,
             config=HybridConfig(escalate_on_ambiguity=True),
-            human_resolver=HumanEscalationResolver(),
+            human_resolver=HumanEscalationResolver(timeout_seconds=0),
             review_evaluator=evaluator,
         )
         conflict = make_conflict(
@@ -101,7 +101,7 @@ class TestHybridResolverAmbiguous:
         resolver = HybridResolver(
             hierarchy=hierarchy,
             config=HybridConfig(escalate_on_ambiguity=False),
-            human_resolver=HumanEscalationResolver(),
+            human_resolver=HumanEscalationResolver(timeout_seconds=0),
             review_evaluator=evaluator,
         )
         conflict = make_conflict(
@@ -128,7 +128,7 @@ class TestHybridResolverNoEvaluator:
         resolver = HybridResolver(
             hierarchy=hierarchy,
             config=HybridConfig(),
-            human_resolver=HumanEscalationResolver(),
+            human_resolver=HumanEscalationResolver(timeout_seconds=0),
             review_evaluator=None,
         )
         conflict = make_conflict(
@@ -156,7 +156,7 @@ class TestHybridResolverDissentRecord:
         resolver = HybridResolver(
             hierarchy=hierarchy,
             config=HybridConfig(),
-            human_resolver=HumanEscalationResolver(),
+            human_resolver=HumanEscalationResolver(timeout_seconds=0),
             review_evaluator=evaluator,
         )
         conflict = make_conflict(
@@ -182,7 +182,7 @@ class TestHybridResolverDissentRecord:
         resolver = HybridResolver(
             hierarchy=hierarchy,
             config=HybridConfig(escalate_on_ambiguity=True),
-            human_resolver=HumanEscalationResolver(),
+            human_resolver=HumanEscalationResolver(timeout_seconds=0),
             review_evaluator=evaluator,
         )
         conflict = make_conflict(

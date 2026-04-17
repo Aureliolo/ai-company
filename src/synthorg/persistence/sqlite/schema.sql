@@ -1016,6 +1016,11 @@ CREATE TABLE conflict_escalations (
     ),
     decided_by TEXT,
     decision_json TEXT,
+    -- Payload columns must hold valid JSON so a corrupt write (e.g.,
+    -- from an out-of-band migration or a faulty ETL) cannot persist
+    -- garbage.  ``json_valid`` is a SQLite core function (3.38+).
+    CHECK(json_valid(conflict_json)),
+    CHECK(decision_json IS NULL OR json_valid(decision_json)),
     -- DECIDED rows carry the full decision triple; decided_by must
     -- be a nonblank actor identifier so audit consumers can always
     -- attribute the transition.

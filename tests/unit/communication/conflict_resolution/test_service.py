@@ -44,7 +44,9 @@ def _make_service(
             ConflictResolutionStrategy.AUTHORITY: AuthorityResolver(
                 hierarchy=hierarchy,
             ),
-            ConflictResolutionStrategy.HUMAN: HumanEscalationResolver(),
+            ConflictResolutionStrategy.HUMAN: HumanEscalationResolver(
+                timeout_seconds=0,
+            ),
         },
     )
 

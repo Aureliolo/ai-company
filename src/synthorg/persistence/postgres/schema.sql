@@ -1020,25 +1020,11 @@ CREATE INDEX idx_conflict_escalations_status_expires_at
 CREATE UNIQUE INDEX idx_conflict_escalations_unique_pending_conflict
     ON conflict_escalations(conflict_id) WHERE status = 'pending';
 
--- LISTEN/NOTIFY wiring for cross-instance resolver wake-up (#1418).
--- When a row transitions out of PENDING the trigger publishes
--- "<id>:<new_status>" on the ``conflict_escalation_events`` channel so
--- subscribers on other workers can forward the signal to their local
--- PendingFuturesRegistry.  The channel name matches
--- ``EscalationQueueConfig.notify_channel`` (default).
-CREATE OR REPLACE FUNCTION notify_conflict_escalation_event()
-RETURNS TRIGGER AS $$
-BEGIN
-    IF (TG_OP = 'UPDATE' AND OLD.status = 'pending' AND NEW.status <> 'pending') THEN
-        PERFORM pg_notify(
-            'conflict_escalation_events',
-            NEW.id || ':' || NEW.status
-        );
-    END IF;
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE TRIGGER conflict_escalations_notify_after_update
-AFTER UPDATE ON conflict_escalations
-FOR EACH ROW EXECUTE FUNCTION notify_conflict_escalation_event();
+-- LISTEN/NOTIFY wiring for cross-instance resolver wake-up (#1418)
+-- is emitted by the application (``PostgresEscalationRepository._
+-- publish_notify``) using ``EscalationQueueConfig.notify_channel``
+-- so operators can rename the channel without a schema change.  We
+-- intentionally do NOT install a DB-side trigger: a hard-coded
+-- channel in the trigger would break deployments that override the
+-- notify channel, and double-publishing (trigger + app) would cause
+-- duplicate wake-ups.

@@ -7,6 +7,7 @@ Litestar app state (``connection.app.state``), so operator config
 overrides take effect without a restart.
 """
 
+import ipaddress
 import math
 from collections.abc import Awaitable, Callable  # noqa: TC003
 from typing import Any, Final, Literal
@@ -112,23 +113,54 @@ def _client_ip(connection: ASGIConnection[Any, Any, Any, Any]) -> str:
     if isinstance(trusted, str) and trusted:
         return trusted
     peer = _peer_ip(connection)
-    trusted_proxies: frozenset[str] = getattr(
-        connection.app.state,
-        STATE_KEY_TRUSTED_PROXIES,
-        frozenset(),
-    )
-    if (
-        peer is not None
-        and isinstance(trusted_proxies, frozenset)
-        and peer in trusted_proxies
-    ):
+    trusted_networks = _trusted_networks(connection)
+    if peer is not None and _ip_in_networks(peer, trusted_networks):
         forwarded = connection.headers.get("x-forwarded-for", "")
         if forwarded:
             hops = [h.strip() for h in forwarded.split(",") if h.strip()]
             for hop in reversed(hops):
-                if hop not in trusted_proxies:
+                if not _ip_in_networks(hop, trusted_networks):
                     return hop
     return peer or "unknown"
+
+
+def _trusted_networks(
+    connection: ASGIConnection[Any, Any, Any, Any],
+) -> tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...]:
+    """Read and parse the trusted-proxy state into IP networks.
+
+    ``per_op_trusted_proxies`` is seeded as a ``frozenset[str]`` at app
+    startup (raw strings from the config).  Parse each entry into an
+    ``ip_network`` object so both bare IPs (``"10.0.0.1"``) and CIDR
+    ranges (``"10.0.0.0/8"``) match correctly; malformed entries are
+    skipped (logged by config validation at ingest time, not here).
+    """
+    raw: frozenset[str] = getattr(
+        connection.app.state,
+        STATE_KEY_TRUSTED_PROXIES,
+        frozenset(),
+    )
+    parsed: list[ipaddress.IPv4Network | ipaddress.IPv6Network] = []
+    for entry in raw:
+        try:
+            parsed.append(ipaddress.ip_network(entry, strict=False))
+        except ValueError:
+            continue
+    return tuple(parsed)
+
+
+def _ip_in_networks(
+    ip_str: str,
+    networks: tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...],
+) -> bool:
+    """Return True when ``ip_str`` is inside any of ``networks``."""
+    if not networks:
+        return False
+    try:
+        addr = ipaddress.ip_address(ip_str)
+    except ValueError:
+        return False
+    return any(addr in net for net in networks)
 
 
 def per_op_rate_limit(

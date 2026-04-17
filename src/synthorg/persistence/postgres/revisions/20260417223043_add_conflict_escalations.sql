@@ -25,17 +25,3 @@ CREATE INDEX "idx_conflict_escalations_status_created" ON "conflict_escalations"
 CREATE INDEX "idx_conflict_escalations_status_expires_at" ON "conflict_escalations" ("status", "expires_at");
 -- Create index "idx_conflict_escalations_unique_pending_conflict" to table: "conflict_escalations"
 CREATE UNIQUE INDEX "idx_conflict_escalations_unique_pending_conflict" ON "conflict_escalations" ("conflict_id") WHERE (status = 'pending'::text);
--- Create "notify_conflict_escalation_event" function
-CREATE FUNCTION "notify_conflict_escalation_event" () RETURNS trigger LANGUAGE plpgsql AS $$
-BEGIN
-    IF (TG_OP = 'UPDATE' AND OLD.status = 'pending' AND NEW.status <> 'pending') THEN
-        PERFORM pg_notify(
-            'conflict_escalation_events',
-            NEW.id || ':' || NEW.status
-        );
-    END IF;
-    RETURN NEW;
-END;
-$$;
--- Create trigger "conflict_escalations_notify_after_update"
-CREATE TRIGGER "conflict_escalations_notify_after_update" AFTER UPDATE ON "conflict_escalations" FOR EACH ROW EXECUTE FUNCTION "notify_conflict_escalation_event"();

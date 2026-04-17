@@ -95,9 +95,17 @@ class HumanEscalationResolver:
             queue row is created.  When ``None`` the resolver skips
             notification dispatch (useful for tests).
         timeout_seconds: Maximum seconds to wait for a human decision.
-            ``None`` disables the timeout (wait forever); ``0`` causes
-            an immediate timeout -- matches the pre-queue stub contract
-            for callers that only care about the ESCALATED outcome.
+            Default is ``None`` -- wait indefinitely for an operator to
+            decide via the REST endpoint; the sweeper will still
+            transition stale rows to ``EXPIRED`` based on
+            ``expires_at`` regardless of whether a resolver is
+            listening.  ``0`` causes an immediate timeout -- use this
+            in tests that only care about the ESCALATED outcome
+            without submitting a decision.  Any positive integer is a
+            bounded wait.  Production deployments that want a bounded
+            wait should pass an explicit value (or set
+            ``EscalationQueueConfig.default_timeout_seconds`` and thread
+            it through the resolver wiring).
     """
 
     def __init__(
@@ -107,7 +115,7 @@ class HumanEscalationResolver:
         processor: DecisionProcessor | None = None,
         registry: PendingFuturesRegistry | None = None,
         notifier: NotificationDispatcher | None = None,
-        timeout_seconds: int | None = 0,
+        timeout_seconds: int | None = None,
     ) -> None:
         """Initialise the resolver with its dependencies."""
         # Local imports keep the optional-dep defaults lightweight.
