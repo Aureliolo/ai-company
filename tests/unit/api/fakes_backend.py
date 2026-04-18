@@ -700,10 +700,25 @@ class FakePersistenceBackend:
         return self._ontology_drift_stub
 
     def build_lockouts(self, _auth_config: object) -> object:
-        """Fake lockout repository builder."""
-        from unittest.mock import AsyncMock
+        """Fake lockout repository builder.
 
-        return AsyncMock()
+        ``is_locked`` is sync on the real protocol (auth hot-path), so
+        the wrapped ``AsyncMock`` has that attribute replaced with a
+        sync ``MagicMock`` that returns ``False``.  ``record_failure``
+        is coerced to an async wrapper around a fixed-``False`` return
+        so invalid logins don't spuriously trip ``AccountLockedError``.
+        ``lockout_duration_seconds`` is an ``int`` so Retry-After
+        rendering never sees a ``MagicMock``.  An empty ``_locked``
+        dict keeps the conftest cache-clear helpers happy.
+        """
+        from unittest.mock import AsyncMock, MagicMock
+
+        stub = AsyncMock()
+        stub.is_locked = MagicMock(return_value=False)
+        stub.record_failure = AsyncMock(return_value=False)
+        stub.lockout_duration_seconds = 0
+        stub._locked = {}
+        return stub
 
     def build_escalations(
         self,
