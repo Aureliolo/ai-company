@@ -15,7 +15,6 @@ import importlib.util
 import json
 import subprocess
 import sys
-from collections.abc import Generator
 from pathlib import Path
 
 import pytest
@@ -53,11 +52,12 @@ def _write_fixture(tmp_path: Path, relative: str, content: str) -> Path:
 def _scan(tmp_path: Path, relative: str, content: str) -> list[str]:
     """Invoke the script's ``_scan_file`` against a tmp-path fixture."""
     fp = _write_fixture(tmp_path, relative, content)
-    return _MODULE._scan_file(fp, tmp_path)  # type: ignore[attr-defined]
+    result: list[str] = _MODULE._scan_file(fp, tmp_path)  # type: ignore[attr-defined]
+    return result
 
 
 @pytest.fixture
-def src_dir(tmp_path: Path) -> Generator[Path]:
+def src_dir(tmp_path: Path) -> Path:
     """Yield the tmp-path root; tests write fixtures under it."""
     return tmp_path
 

@@ -79,7 +79,6 @@ class TestCurrencyCodeProperties:
     @given(
         text=st.text(
             alphabet=st.characters(
-                whitelist_categories=("Lu",),
                 min_codepoint=0x41,
                 max_codepoint=0x5A,
             ),
