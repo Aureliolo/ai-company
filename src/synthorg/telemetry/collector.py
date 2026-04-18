@@ -5,10 +5,12 @@ import contextlib
 import os
 import platform
 import sys
+import tempfile
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from synthorg.observability import get_logger
@@ -29,8 +31,6 @@ from synthorg.telemetry.reporters import create_reporter
 from synthorg.telemetry.reporters.noop import NoopReporter
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from synthorg.telemetry.config import TelemetryConfig
 
 logger = get_logger(__name__)
@@ -411,8 +411,39 @@ class TelemetryCollector:
         """Load deployment ID from file or create a new UUID.
 
         Returns a valid UUID string in all cases (never raises).
-        Logs warnings on I/O errors.
+        Logs warnings on I/O errors. Performs a local path-injection
+        sanitiser (startswith allow-list) immediately before the
+        filesystem operations so CodeQL's ``py/path-injection``
+        query sees the guard adjacent to the sinks -- the same
+        validation in :func:`synthorg.api.app._resolve_memory_dir`
+        does not register with the dataflow tracker across the
+        caller/callee boundary.
         """
+        # Local sanitiser: verify ``self._data_dir`` is under a
+        # trusted root before any file operation below. Mirrors the
+        # builder's allow-list (``/data`` + OS temp dir) and falls
+        # back to an in-memory UUID when the path is outside the
+        # allow-list, so a misconfigured env var can never steer
+        # writes to an operator-sensitive location.
+        data_dir_str = str(self._data_dir)
+        trusted_roots: tuple[str, ...] = (str(Path("/data")),)
+        try:
+            tmp_root = str(Path(tempfile.gettempdir()))
+        except OSError, RuntimeError:
+            tmp_root = None
+        if tmp_root is not None:
+            trusted_roots = (*trusted_roots, tmp_root)
+        if not any(
+            data_dir_str == root or data_dir_str.startswith(root + os.sep)
+            for root in trusted_roots
+        ):
+            logger.warning(
+                TELEMETRY_REPORT_FAILED,
+                detail="data_dir_not_trusted",
+                value=data_dir_str,
+            )
+            return str(uuid.uuid4())
+
         id_file = self._data_dir / "telemetry_id"
         try:
             if id_file.exists():
