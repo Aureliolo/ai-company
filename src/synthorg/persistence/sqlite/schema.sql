@@ -1076,3 +1076,40 @@ CREATE INDEX idx_conflict_escalations_status_expires_at ON
 -- same conflict.
 CREATE UNIQUE INDEX idx_conflict_escalations_unique_pending_conflict ON
     conflict_escalations(conflict_id) WHERE status = 'pending';
+
+-- Org memory: MVCC operation log + materialized snapshot (#1457 A4).
+CREATE TABLE org_facts_operation_log (
+    operation_id TEXT PRIMARY KEY,
+    fact_id TEXT NOT NULL,
+    operation_type TEXT NOT NULL CHECK(operation_type IN ('PUBLISH', 'RETRACT')),
+    content TEXT,
+    tags TEXT NOT NULL DEFAULT '[]',
+    author_agent_id TEXT,
+    author_seniority TEXT,
+    author_is_human INTEGER NOT NULL DEFAULT 0,
+    author_autonomy_level TEXT,
+    category TEXT,
+    timestamp TEXT NOT NULL,
+    version INTEGER NOT NULL,
+    UNIQUE(fact_id, version)
+);
+CREATE INDEX idx_oplog_fact_id ON org_facts_operation_log (fact_id);
+CREATE INDEX idx_oplog_timestamp ON org_facts_operation_log (timestamp);
+CREATE INDEX idx_oplog_ts_fact ON org_facts_operation_log (timestamp, fact_id);
+
+CREATE TABLE org_facts_snapshot (
+    fact_id TEXT PRIMARY KEY,
+    content TEXT NOT NULL,
+    category TEXT NOT NULL,
+    tags TEXT NOT NULL DEFAULT '[]',
+    author_agent_id TEXT,
+    author_seniority TEXT,
+    author_is_human INTEGER NOT NULL DEFAULT 0,
+    author_autonomy_level TEXT,
+    created_at TEXT NOT NULL,
+    retracted_at TEXT,
+    version INTEGER NOT NULL
+);
+CREATE INDEX idx_snapshot_category ON org_facts_snapshot (category);
+CREATE INDEX idx_snapshot_active ON org_facts_snapshot (retracted_at)
+    WHERE retracted_at IS NULL;

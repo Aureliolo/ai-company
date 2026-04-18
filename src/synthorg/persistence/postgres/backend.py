@@ -81,6 +81,9 @@ from synthorg.persistence.postgres.lockout_repo import (
 from synthorg.persistence.postgres.mcp_installation_repo import (
     PostgresMcpInstallationRepository,
 )
+from synthorg.persistence.postgres.org_fact_repo import (
+    PostgresOrgFactRepository,
+)
 from synthorg.persistence.postgres.parked_context_repo import (
     PostgresParkedContextRepository,
 )
@@ -255,6 +258,7 @@ class PostgresPersistenceBackend:
         self._sessions: PostgresSessionRepository | None = None
         self._refresh_tokens: PostgresRefreshTokenRepository | None = None
         self._mcp_installations: PostgresMcpInstallationRepository | None = None
+        self._org_facts: PostgresOrgFactRepository | None = None
         self._connections_stub = StubConnectionRepository()
         self._connection_secrets_stub = StubConnectionSecretRepository()
         self._oauth_states_stub = StubOAuthStateRepository()
@@ -302,6 +306,7 @@ class PostgresPersistenceBackend:
         self._sessions = None
         self._refresh_tokens = None
         self._mcp_installations = None
+        self._org_facts = None
 
     async def _configure_connection(
         self,
@@ -466,6 +471,7 @@ class PostgresPersistenceBackend:
         self._sessions = PostgresSessionRepository(pool)
         self._refresh_tokens = PostgresRefreshTokenRepository(pool)
         self._mcp_installations = PostgresMcpInstallationRepository(pool)
+        self._org_facts = PostgresOrgFactRepository(pool)
 
     def get_db(self) -> AsyncConnectionPool:
         """Return the shared connection pool.
@@ -958,6 +964,11 @@ class PostgresPersistenceBackend:
             self._mcp_installations,
             "mcp_installations",
         )
+
+    @property
+    def org_facts(self) -> PostgresOrgFactRepository:
+        """Repository for organizational fact persistence (MVCC)."""
+        return self._require_connected(self._org_facts, "org_facts")
 
     def build_lockouts(self, auth_config: AuthConfig) -> LockoutRepository:
         """Construct a lockout repository using this backend's pool."""

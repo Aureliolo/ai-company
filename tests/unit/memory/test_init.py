@@ -56,7 +56,6 @@ class TestMemoryExports:
             "OrgMemoryError",
             "OrgMemoryQuery",
             "RetentionEnforcer",
-            "SQLiteOrgFactStore",
             "ScoredMemory",
             "SharedKnowledgeStore",
             "SimpleConsolidationStrategy",

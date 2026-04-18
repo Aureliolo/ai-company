@@ -24,7 +24,6 @@ from synthorg.memory.org.models import (
 from synthorg.memory.org.store import OrgFactStore  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.org_memory import (
-    ORG_MEMORY_CONNECT_FAILED,
     ORG_MEMORY_NOT_CONNECTED,
     ORG_MEMORY_POLICIES_LISTED,
     ORG_MEMORY_QUERY_COMPLETE,
@@ -66,37 +65,27 @@ class HybridPromptRetrievalBackend:
         self._connected = False
 
     async def connect(self) -> None:
-        """Connect the underlying store.
+        """Mark the backend live; store lifecycle is owned by persistence.
 
-        Raises:
-            OrgMemoryConnectionError: If the store connection fails.
+        After A4 the extended ``OrgFactStore`` is a repository on the
+        shared :class:`PersistenceBackend`, whose connection is opened
+        earlier in the startup sequence.  Connecting/disconnecting the
+        store here would double-close it on shutdown.
         """
-        try:
-            await self._store.connect()
-        except OrgMemoryConnectionError:
-            logger.exception(
-                ORG_MEMORY_CONNECT_FAILED,
-                backend="hybrid_prompt_retrieval",
-                reason="store connection failed",
-            )
-            raise
         self._connected = True
 
     async def disconnect(self) -> None:
-        """Disconnect the underlying store."""
-        try:
-            await self._store.disconnect()
-        finally:
-            self._connected = False
+        """Release the backend without touching the shared store."""
+        self._connected = False
 
     async def health_check(self) -> bool:
-        """Check store connectivity by delegating to the store.
+        """Return the local connection flag.
 
-        Returns:
-            ``True`` if connected and the store reports connected,
-            ``False`` otherwise.
+        Persistence-backed repositories do not expose a per-store
+        ``is_connected`` probe (and should not -- the pool is health-
+        checked by the main backend).
         """
-        return self._connected and self._store.is_connected
+        return self._connected
 
     @property
     def is_connected(self) -> bool:

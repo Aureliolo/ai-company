@@ -1,4 +1,4 @@
-"""SQLite-backed org fact store with MVCC -- append-only log + snapshot."""
+"""SQLite-backed org fact repository with MVCC (append-only log + snapshot)."""
 
 import asyncio
 import contextlib
@@ -6,10 +6,9 @@ import json
 import sqlite3
 import uuid
 from datetime import UTC, datetime
-from pathlib import PurePosixPath, PureWindowsPath
-from typing import Literal
+from typing import Any, Literal
 
-import aiosqlite
+import aiosqlite  # noqa: TC002
 from pydantic import ValidationError
 
 from synthorg.core.enums import (
@@ -19,7 +18,6 @@ from synthorg.core.enums import (
 )
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.org.errors import (
-    OrgMemoryConnectionError,
     OrgMemoryQueryError,
     OrgMemoryWriteError,
 )
@@ -31,105 +29,16 @@ from synthorg.memory.org.models import (
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.org_memory import (
-    ORG_MEMORY_CONNECT_FAILED,
-    ORG_MEMORY_DISCONNECT_FAILED,
     ORG_MEMORY_MVCC_LOG_QUERIED,
     ORG_MEMORY_MVCC_PUBLISH_APPENDED,
     ORG_MEMORY_MVCC_RETRACT_APPENDED,
     ORG_MEMORY_MVCC_SNAPSHOT_AT_QUERIED,
-    ORG_MEMORY_NOT_CONNECTED,
     ORG_MEMORY_QUERY_FAILED,
     ORG_MEMORY_ROW_PARSE_FAILED,
     ORG_MEMORY_WRITE_FAILED,
 )
 
 logger = get_logger(__name__)
-
-# ── Schema DDL ──────────────────────────────────────────────────
-
-_CREATE_OPERATION_LOG_SQL = """\
-CREATE TABLE IF NOT EXISTS org_facts_operation_log (
-    operation_id TEXT PRIMARY KEY,
-    fact_id TEXT NOT NULL,
-    operation_type TEXT NOT NULL CHECK(operation_type IN ('PUBLISH', 'RETRACT')),
-    content TEXT,
-    tags TEXT NOT NULL DEFAULT '[]',
-    author_agent_id TEXT,
-    author_seniority TEXT,
-    author_is_human INTEGER NOT NULL DEFAULT 0,
-    author_autonomy_level TEXT,
-    category TEXT,
-    timestamp TEXT NOT NULL,
-    version INTEGER NOT NULL,
-    UNIQUE(fact_id, version)
-)
-"""
-
-_CREATE_OPLOG_FACT_INDEX_SQL = """\
-CREATE INDEX IF NOT EXISTS idx_oplog_fact_id
-ON org_facts_operation_log (fact_id)
-"""
-
-_CREATE_OPLOG_TIMESTAMP_INDEX_SQL = """\
-CREATE INDEX IF NOT EXISTS idx_oplog_timestamp
-ON org_facts_operation_log (timestamp)
-"""
-
-_CREATE_OPLOG_COMPOSITE_INDEX_SQL = """\
-CREATE INDEX IF NOT EXISTS idx_oplog_ts_fact
-ON org_facts_operation_log (timestamp, fact_id)
-"""
-
-_CREATE_SNAPSHOT_SQL = """\
-CREATE TABLE IF NOT EXISTS org_facts_snapshot (
-    fact_id TEXT PRIMARY KEY,
-    content TEXT NOT NULL,
-    category TEXT NOT NULL,
-    tags TEXT NOT NULL DEFAULT '[]',
-    author_agent_id TEXT,
-    author_seniority TEXT,
-    author_is_human INTEGER NOT NULL DEFAULT 0,
-    author_autonomy_level TEXT,
-    created_at TEXT NOT NULL,
-    retracted_at TEXT,
-    version INTEGER NOT NULL
-)
-"""
-
-_CREATE_SNAPSHOT_CATEGORY_INDEX_SQL = """\
-CREATE INDEX IF NOT EXISTS idx_snapshot_category
-ON org_facts_snapshot (category)
-"""
-
-_CREATE_SNAPSHOT_ACTIVE_INDEX_SQL = """\
-CREATE INDEX IF NOT EXISTS idx_snapshot_active
-ON org_facts_snapshot (retracted_at) WHERE retracted_at IS NULL
-"""
-
-
-# ── Helpers ─────────────────────────────────────────────────────
-
-
-def _reject_traversal(db_path: str) -> None:
-    """Reject paths containing ``..`` traversal components.
-
-    Args:
-        db_path: Database file path to validate.
-
-    Raises:
-        OrgMemoryConnectionError: If traversal is detected.
-    """
-    if db_path == ":memory:":
-        return
-    for cls in (PurePosixPath, PureWindowsPath):
-        if ".." in cls(db_path).parts:
-            msg = f"Path traversal detected in db_path: {db_path!r}"
-            logger.warning(
-                ORG_MEMORY_CONNECT_FAILED,
-                db_path=db_path,
-                reason="path traversal",
-            )
-            raise OrgMemoryConnectionError(msg)
 
 
 def _tags_to_json(tags: tuple[NotBlankStr, ...]) -> str:
@@ -138,17 +47,7 @@ def _tags_to_json(tags: tuple[NotBlankStr, ...]) -> str:
 
 
 def _tags_from_json(raw: str) -> tuple[NotBlankStr, ...]:
-    """Deserialize JSON array to tags tuple.
-
-    Args:
-        raw: JSON string expected to be an array of strings.
-
-    Returns:
-        Tuple of non-blank tag strings.
-
-    Raises:
-        OrgMemoryQueryError: If the JSON is not a list.
-    """
+    """Deserialize JSON array to tags tuple."""
     parsed = json.loads(raw)
     if not isinstance(parsed, list):
         msg = f"Tags must be a JSON array, got {type(parsed).__name__}"
@@ -169,18 +68,8 @@ def _parse_timestamp(raw: str) -> datetime:
     return dt
 
 
-def _snapshot_row_to_org_fact(row: aiosqlite.Row) -> OrgFact:
-    """Reconstruct an ``OrgFact`` from a snapshot row.
-
-    Args:
-        row: A database row with org_facts_snapshot columns.
-
-    Returns:
-        An ``OrgFact`` model instance.
-
-    Raises:
-        OrgMemoryQueryError: If the row cannot be deserialized.
-    """
+def _snapshot_row_to_org_fact(row: Any) -> OrgFact:
+    """Reconstruct an ``OrgFact`` from a snapshot row."""
     try:
         created_at = _parse_timestamp(row["created_at"])
         author = OrgFactAuthor(
@@ -215,20 +104,8 @@ def _snapshot_row_to_org_fact(row: aiosqlite.Row) -> OrgFact:
         raise OrgMemoryQueryError(msg) from exc
 
 
-def _row_to_operation_log_entry(
-    row: aiosqlite.Row,
-) -> OperationLogEntry:
-    """Reconstruct an ``OperationLogEntry`` from a database row.
-
-    Args:
-        row: A database row with org_facts_operation_log columns.
-
-    Returns:
-        An ``OperationLogEntry`` model instance.
-
-    Raises:
-        OrgMemoryQueryError: If the row cannot be deserialized.
-    """
+def _row_to_operation_log_entry(row: Any) -> OperationLogEntry:
+    """Reconstruct an ``OperationLogEntry`` from a database row."""
     try:
         return OperationLogEntry(
             operation_id=row["operation_id"],
@@ -262,18 +139,8 @@ def _row_to_operation_log_entry(
         raise OrgMemoryQueryError(msg) from exc
 
 
-def _row_to_snapshot(row: aiosqlite.Row) -> OperationLogSnapshot:
-    """Reconstruct an ``OperationLogSnapshot`` from a time-travel query row.
-
-    Args:
-        row: A result row from the ``snapshot_at`` CTE query.
-
-    Returns:
-        An ``OperationLogSnapshot`` model instance.
-
-    Raises:
-        OrgMemoryQueryError: If the row cannot be deserialized.
-    """
+def _row_to_snapshot(row: Any) -> OperationLogSnapshot:
+    """Reconstruct an ``OperationLogSnapshot`` from a time-travel query row."""
     try:
         op_type: str = row["operation_type"]
         retracted_at = (
@@ -303,111 +170,20 @@ def _row_to_snapshot(row: aiosqlite.Row) -> OperationLogSnapshot:
         raise OrgMemoryQueryError(msg) from exc
 
 
-# ── SQLite Implementation ───────────────────────────────────────
-
-
-class SQLiteOrgFactStore:
-    """SQLite-backed organizational fact store with MVCC.
+class SQLiteOrgFactRepository:
+    """SQLite-backed organizational fact repository with MVCC.
 
     All writes are appended to an operation log; a materialized
     snapshot table maintains the current committed state.  Reads
     query the snapshot.  Time-travel queries replay the log.
 
-    Uses a separate database from the operational persistence layer
-    to keep institutional knowledge decoupled.
-
     Args:
-        db_path: Path to the SQLite database file (or ``:memory:``).
-
-    Raises:
-        OrgMemoryConnectionError: If the path contains traversal.
+        db: Open aiosqlite connection with ``row_factory`` set.
     """
 
-    def __init__(self, db_path: str) -> None:
-        _reject_traversal(db_path)
-        self._db_path = db_path
-        self._db: aiosqlite.Connection | None = None
+    def __init__(self, db: aiosqlite.Connection) -> None:
+        self._db = db
         self._write_lock = asyncio.Lock()
-
-    async def connect(self) -> None:
-        """Open the SQLite database with WAL mode and ensure schema.
-
-        Raises:
-            OrgMemoryConnectionError: If the connection fails.
-        """
-        if self._db is not None:
-            return
-        try:
-            self._db = await aiosqlite.connect(self._db_path)
-            self._db.row_factory = aiosqlite.Row
-            if self._db_path != ":memory:":
-                await self._db.execute("PRAGMA journal_mode=WAL")
-            await self._ensure_schema()
-        except (sqlite3.Error, OSError) as exc:
-            if self._db is not None:
-                try:
-                    await self._db.close()
-                except (sqlite3.Error, OSError) as close_exc:
-                    logger.warning(
-                        ORG_MEMORY_DISCONNECT_FAILED,
-                        db_path=self._db_path,
-                        reason="cleanup close during failed connect",
-                        error=str(close_exc),
-                        error_type=type(close_exc).__name__,
-                    )
-            self._db = None
-            msg = f"Failed to connect to org fact store: {exc}"
-            logger.exception(
-                ORG_MEMORY_CONNECT_FAILED,
-                db_path=self._db_path,
-                error=str(exc),
-            )
-            raise OrgMemoryConnectionError(msg) from exc
-
-    async def _ensure_schema(self) -> None:
-        """Create tables and indexes if they don't exist."""
-        db = self._require_connected()
-        await db.execute(_CREATE_OPERATION_LOG_SQL)
-        await db.execute(_CREATE_OPLOG_FACT_INDEX_SQL)
-        await db.execute(_CREATE_OPLOG_TIMESTAMP_INDEX_SQL)
-        await db.execute(_CREATE_OPLOG_COMPOSITE_INDEX_SQL)
-        await db.execute(_CREATE_SNAPSHOT_SQL)
-        await db.execute(_CREATE_SNAPSHOT_CATEGORY_INDEX_SQL)
-        await db.execute(_CREATE_SNAPSHOT_ACTIVE_INDEX_SQL)
-        await db.commit()
-
-    async def disconnect(self) -> None:
-        """Close the database connection."""
-        if self._db is None:
-            return
-        try:
-            await self._db.close()
-        except (sqlite3.Error, OSError) as exc:
-            logger.warning(
-                ORG_MEMORY_DISCONNECT_FAILED,
-                db_path=self._db_path,
-                error=str(exc),
-                error_type=type(exc).__name__,
-            )
-        finally:
-            self._db = None
-
-    def _require_connected(self) -> aiosqlite.Connection:
-        """Return the connection or raise if not connected.
-
-        Raises:
-            OrgMemoryConnectionError: If not connected.
-        """
-        if self._db is None:
-            msg = "Not connected -- call connect() first"
-            logger.warning(
-                ORG_MEMORY_NOT_CONNECTED,
-                db_path=self._db_path,
-            )
-            raise OrgMemoryConnectionError(msg)
-        return self._db
-
-    # ── Write operations ────────────────────────────────────────
 
     async def _append_to_operation_log(  # noqa: PLR0913
         self,
@@ -423,26 +199,7 @@ class SQLiteOrgFactStore:
         author_is_human: bool,
         author_autonomy_level: AutonomyLevel | None,
     ) -> tuple[int, datetime]:
-        """Append an operation to the log within the caller's transaction.
-
-        Must be called inside a ``BEGIN IMMEDIATE`` transaction
-        managed by the caller.
-
-        Args:
-            db: Active database connection (caller-managed txn).
-            fact_id: Logical fact identifier.
-            operation_type: ``PUBLISH`` or ``RETRACT``.
-            content: Fact body (``None`` for RETRACT).
-            category: Fact category at time of operation.
-            tags: Metadata tags.
-            author_agent_id: Agent ID (``None`` for human).
-            author_seniority: Agent seniority level.
-            author_is_human: Whether the author is human.
-            author_autonomy_level: Autonomy level at write time.
-
-        Returns:
-            Tuple of ``(version, timestamp)``.
-        """
+        """Append an operation within the caller's transaction."""
         operation_id = str(uuid.uuid4())
         now = datetime.now(UTC)
         cursor = await db.execute(
@@ -451,7 +208,6 @@ class SQLiteOrgFactStore:
             (fact_id,),
         )
         row = await cursor.fetchone()
-        # COALESCE(MAX(version), 0) always returns exactly one row.
         current: int = row[0] if row is not None else 0
         next_version = current + 1
         await db.execute(
@@ -479,19 +235,8 @@ class SQLiteOrgFactStore:
         return next_version, now
 
     async def save(self, fact: OrgFact) -> None:
-        """Publish a fact: append PUBLISH to log, upsert snapshot.
-
-        Re-publishing a fact with the same ``fact_id`` creates a
-        new version in the operation log and updates the snapshot.
-
-        Args:
-            fact: The fact to persist.
-
-        Raises:
-            OrgMemoryConnectionError: If not connected.
-            OrgMemoryWriteError: If the save fails.
-        """
-        db = self._require_connected()
+        """Publish a fact: append PUBLISH to log, upsert snapshot."""
+        db = self._db
         async with self._write_lock:
             try:
                 await db.execute("BEGIN IMMEDIATE")
@@ -575,24 +320,8 @@ class SQLiteOrgFactStore:
         *,
         author: OrgFactAuthor,
     ) -> bool:
-        """Retract a fact: append RETRACT to log, mark snapshot.
-
-        The provided ``author`` is recorded as the actor who
-        performed the retraction (not the original publisher).
-
-        Args:
-            fact_id: Fact identifier.
-            author: The author performing the retraction.
-
-        Returns:
-            ``True`` if retracted, ``False`` if not found or
-            already retracted.
-
-        Raises:
-            OrgMemoryConnectionError: If not connected.
-            OrgMemoryWriteError: If the retraction fails.
-        """
-        db = self._require_connected()
+        """Retract a fact: append RETRACT to log, mark snapshot."""
+        db = self._db
         async with self._write_lock:
             try:
                 await db.execute("BEGIN IMMEDIATE")
@@ -628,11 +357,7 @@ class SQLiteOrgFactStore:
                     (now.isoformat(), version, fact_id),
                 )
                 await db.commit()
-            except (
-                sqlite3.Error,
-                ValueError,
-                OrgMemoryQueryError,
-            ) as exc:
+            except (sqlite3.Error, ValueError, OrgMemoryQueryError) as exc:
                 with contextlib.suppress(sqlite3.Error):
                     await db.execute("ROLLBACK")
                 logger.exception(
@@ -650,24 +375,10 @@ class SQLiteOrgFactStore:
                 )
                 return True
 
-    # ── Read operations ─────────────────────────────────────────
-
     async def get(self, fact_id: NotBlankStr) -> OrgFact | None:
-        """Get an active fact by its ID.
-
-        Args:
-            fact_id: Fact identifier.
-
-        Returns:
-            The fact or ``None`` if not found or retracted.
-
-        Raises:
-            OrgMemoryConnectionError: If not connected.
-            OrgMemoryQueryError: If the query fails.
-        """
-        db = self._require_connected()
+        """Get an active fact by its ID."""
         try:
-            cursor = await db.execute(
+            cursor = await self._db.execute(
                 "SELECT * FROM org_facts_snapshot "
                 "WHERE fact_id = ? AND retracted_at IS NULL",
                 (fact_id,),
@@ -692,23 +403,8 @@ class SQLiteOrgFactStore:
         text: str | None = None,
         limit: int = 5,
     ) -> tuple[OrgFact, ...]:
-        """Query active facts by category and/or text content.
-
-        All dynamic values are passed as parameterized query parameters.
-
-        Args:
-            categories: Category filter.
-            text: Text substring filter.
-            limit: Maximum results.
-
-        Returns:
-            Matching active facts.
-
-        Raises:
-            OrgMemoryConnectionError: If not connected.
-            OrgMemoryQueryError: If the query fails.
-        """
-        db = self._require_connected()
+        """Query active facts by category and/or text content."""
+        db = self._db
         limit = max(1, min(limit, 100))
         clauses: list[str] = ["retracted_at IS NULL"]
         params: list[str | int] = []
@@ -718,7 +414,6 @@ class SQLiteOrgFactStore:
             clauses.append(f"category IN ({placeholders})")
             params.extend(c.value for c in categories)
 
-        escaped = ""
         if text is not None:
             escaped = text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
             clauses.append("content LIKE ? ESCAPE '\\'")
@@ -740,10 +435,7 @@ class SQLiteOrgFactStore:
             cursor = await db.execute(sql, params)
             rows = await cursor.fetchall()
         except sqlite3.Error as exc:
-            logger.exception(
-                ORG_MEMORY_QUERY_FAILED,
-                error=str(exc),
-            )
+            logger.exception(ORG_MEMORY_QUERY_FAILED, error=str(exc))
             msg = f"Failed to query org facts: {exc}"
             raise OrgMemoryQueryError(msg) from exc
         return tuple(_snapshot_row_to_org_fact(row) for row in rows)
@@ -752,21 +444,9 @@ class SQLiteOrgFactStore:
         self,
         category: OrgFactCategory,
     ) -> tuple[OrgFact, ...]:
-        """List all active facts in a category.
-
-        Args:
-            category: The category to list.
-
-        Returns:
-            Active facts in the category.
-
-        Raises:
-            OrgMemoryConnectionError: If not connected.
-            OrgMemoryQueryError: If the query fails.
-        """
-        db = self._require_connected()
+        """List all active facts in a category."""
         try:
-            cursor = await db.execute(
+            cursor = await self._db.execute(
                 "SELECT * FROM org_facts_snapshot "
                 "WHERE category = ? AND retracted_at IS NULL "
                 "ORDER BY created_at DESC",
@@ -783,40 +463,17 @@ class SQLiteOrgFactStore:
             raise OrgMemoryQueryError(msg) from exc
         return tuple(_snapshot_row_to_org_fact(row) for row in rows)
 
-    # ── Time-travel queries ─────────────────────────────────────
-
     async def snapshot_at(
         self,
         timestamp: datetime,
     ) -> tuple[OperationLogSnapshot, ...]:
-        """Point-in-time snapshot of all facts at a given timestamp.
-
-        Reconstructs fact state from the operation log.  Active facts
-        have ``retracted_at=None``; retracted facts carry the retract
-        timestamp.
-
-        Args:
-            timestamp: UTC timestamp for the snapshot.
-
-        Returns:
-            Snapshot entries as they existed at the given time.
-
-        Raises:
-            OrgMemoryConnectionError: If not connected.
-            OrgMemoryQueryError: If the query fails.
-        """
-        db = self._require_connected()
+        """Point-in-time snapshot of all facts at a given timestamp."""
+        db = self._db
         if timestamp.tzinfo is None:
             timestamp = timestamp.replace(tzinfo=UTC)
         else:
             timestamp = timestamp.astimezone(UTC)
         query_ts = timestamp.isoformat()
-        # Time-travel CTE: reconstruct fact state at a timestamp.
-        # 1. latest_ops: find the most recent operation per fact_id
-        #    before the query timestamp via ROW_NUMBER window.
-        # 2. Main query: for RETRACT ops (NULL content), fall back
-        #    to the most recent PUBLISH content/tags.  Derive
-        #    created_at from the earliest PUBLISH timestamp.
         sql = """\
 WITH latest_ops AS (
     SELECT fact_id, operation_type, content, tags, category,
@@ -887,21 +544,9 @@ ORDER BY lo.fact_id
         self,
         fact_id: NotBlankStr,
     ) -> tuple[OperationLogEntry, ...]:
-        """Retrieve full audit trail for a fact.
-
-        Args:
-            fact_id: Fact identifier.
-
-        Returns:
-            All operations in chronological (version) order.
-
-        Raises:
-            OrgMemoryConnectionError: If not connected.
-            OrgMemoryQueryError: If the query fails.
-        """
-        db = self._require_connected()
+        """Retrieve full audit trail for a fact."""
         try:
-            cursor = await db.execute(
+            cursor = await self._db.execute(
                 "SELECT * FROM org_facts_operation_log "
                 "WHERE fact_id = ? ORDER BY version ASC",
                 (fact_id,),
@@ -923,13 +568,3 @@ ORDER BY lo.fact_id
                 count=len(result),
             )
             return result
-
-    @property
-    def is_connected(self) -> bool:
-        """Whether the store has an active connection."""
-        return self._db is not None
-
-    @property
-    def backend_name(self) -> NotBlankStr:
-        """Human-readable store identifier."""
-        return NotBlankStr("sqlite_org_facts")

@@ -72,6 +72,9 @@ from synthorg.persistence.sqlite.lockout_repo import (
 from synthorg.persistence.sqlite.mcp_installation_repo import (
     SQLiteMcpInstallationRepository,
 )
+from synthorg.persistence.sqlite.org_fact_repo import (
+    SQLiteOrgFactRepository,
+)
 from synthorg.persistence.sqlite.parked_context_repo import (
     SQLiteParkedContextRepository,
 )
@@ -197,6 +200,7 @@ class SQLitePersistenceBackend:
         self._sessions: SQLiteSessionRepository | None = None
         self._refresh_tokens: SQLiteRefreshTokenRepository | None = None
         self._mcp_installations: SQLiteMcpInstallationRepository | None = None
+        self._org_facts: SQLiteOrgFactRepository | None = None
         self._connections_stub = StubConnectionRepository()
         self._connection_secrets_stub = StubConnectionSecretRepository()
         self._oauth_states_stub = StubOAuthStateRepository()
@@ -242,6 +246,7 @@ class SQLitePersistenceBackend:
         self._sessions = None
         self._refresh_tokens = None
         self._mcp_installations = None
+        self._org_facts = None
 
     async def connect(self) -> None:
         """Open the SQLite database and configure WAL mode."""
@@ -393,6 +398,7 @@ class SQLitePersistenceBackend:
         self._sessions = SQLiteSessionRepository(self._db)
         self._refresh_tokens = SQLiteRefreshTokenRepository(self._db)
         self._mcp_installations = SQLiteMcpInstallationRepository(self._db)
+        self._org_facts = SQLiteOrgFactRepository(self._db)
 
     async def _cleanup_failed_connect(self, exc: sqlite3.Error | OSError) -> None:
         """Log failure, close partial connection, and raise.
@@ -773,6 +779,11 @@ class SQLitePersistenceBackend:
             self._mcp_installations,
             "mcp_installations",
         )
+
+    @property
+    def org_facts(self) -> SQLiteOrgFactRepository:
+        """Repository for organizational fact persistence (MVCC)."""
+        return self._require_connected(self._org_facts, "org_facts")
 
     def build_lockouts(self, auth_config: AuthConfig) -> LockoutRepository:
         """Construct a lockout repository using this backend's connection."""
