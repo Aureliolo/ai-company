@@ -105,7 +105,9 @@ class TestTelemetryEvent:
         )
         assert event.environment == "prod"
 
-    def test_environment_rejects_blank(self) -> None:
+    @pytest.mark.parametrize("environment", ["", "   ", "\t"])
+    def test_environment_rejects_blank(self, environment: str) -> None:
+        """``NotBlankStr`` rejects empty and whitespace-only values."""
         with pytest.raises(ValidationError):
             TelemetryEvent(
                 event_type="deployment.heartbeat",
@@ -113,7 +115,7 @@ class TestTelemetryEvent:
                 synthorg_version="0.6.4",
                 python_version="3.14.0",
                 os_platform="Linux",
-                environment="",
+                environment=environment,
                 timestamp=datetime.now(UTC),
             )
 

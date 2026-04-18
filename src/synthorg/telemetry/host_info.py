@@ -183,31 +183,17 @@ def _extract(info: Mapping[str, object]) -> DockerHostInfo:
     return result
 
 
-async def fetch_docker_info() -> DockerHostInfo:  # noqa: PLR0911
-    """Fetch a telemetry-safe snapshot of Docker daemon ``/info``.
+async def _probe_docker_socket() -> DockerHostInfo | None:
+    """Check whether the Docker socket is mounted and reachable.
 
-    Returns the allowlisted fields with
-    ``docker_info_available=True`` when the daemon responds. On
-    every failure path (socket not bind-mounted, ``aiodocker`` not
-    installed, daemon unreachable, daemon returned an error), the
-    payload collapses to the ``docker_info_available=False`` marker
-    with a categorical reason. The caller merges the result straight
-    into a :class:`TelemetryEvent`'s ``properties``.
+    Returns a marker payload when the socket is absent or the stat
+    call fails; ``None`` when the socket is present (the caller
+    continues to the daemon probe). Never raises.
 
-    Never raises: every failure is caught, logged at the
-    appropriate level, and collapsed into the marker payload.
-    Telemetry must not affect the main application.
+    ``os.path.exists`` is a blocking stat syscall; a wedged FUSE
+    mount or dying NFS on ``/var/run`` could stall the loop, so it
+    runs off-thread via :func:`asyncio.to_thread`.
     """
-    # ``os.path.exists`` is a blocking stat syscall. On a healthy
-    # loopback socket the call is sub-millisecond, but a wedged FUSE
-    # mount or dying NFS on ``/var/run`` could stall the loop --
-    # running it off-thread keeps the event loop responsive under
-    # those edge cases without forcing trio/anyio on an asyncio-only
-    # project. The sync ``os`` API is the one ``asyncio.to_thread``
-    # can call without reimporting. Any ``OSError`` that escapes the
-    # stat (permission denied on a strange mount, etc.) still needs
-    # to collapse into a marker -- the docstring contract is
-    # ``Never raises``.
     try:
         socket_exists = await asyncio.to_thread(
             os.path.exists,
@@ -222,7 +208,17 @@ async def fetch_docker_info() -> DockerHostInfo:  # noqa: PLR0911
         return _unavailable(_REASON_DAEMON_UNREACHABLE)
     if not socket_exists:
         return _unavailable(_REASON_SOCKET_NOT_MOUNTED)
+    return None
 
+
+def _import_aiodocker() -> object | None:
+    """Import ``aiodocker`` lazily; return the module or ``None``.
+
+    ``aiodocker`` is an optional dependency (installed alongside the
+    sandbox sidecar). Returning ``None`` on ``ImportError`` lets the
+    caller collapse to :data:`_REASON_AIODOCKER_NOT_INSTALLED`
+    without a try/except in the orchestrator.
+    """
     try:
         import aiodocker  # type: ignore[import-untyped,unused-ignore]  # noqa: PLC0415
     except ImportError:
@@ -230,26 +226,31 @@ async def fetch_docker_info() -> DockerHostInfo:  # noqa: PLR0911
             TELEMETRY_REPORT_FAILED,
             detail="docker_info_aiodocker_missing",
         )
-        return _unavailable(_REASON_AIODOCKER_NOT_INSTALLED)
+        return None
+    return aiodocker
 
+
+async def _probe_daemon_info(aiodocker_mod: object) -> object | None:
+    """Construct a client and fetch raw daemon ``/info``.
+
+    Returns the raw dict on success, ``None`` on any failure
+    (client construction error, timeout, daemon error, non-dict
+    response). Never raises. The :func:`asyncio.timeout` wrapper
+    caps the probe at :data:`_DOCKER_INFO_TIMEOUT_SECONDS` because
+    ``aiodocker`` inherits aiohttp's 300 s ``sock_read`` default --
+    a wedged-but-reachable daemon would otherwise stall startup for
+    up to five minutes.
+    """
     try:
-        client = aiodocker.Docker()
+        client = aiodocker_mod.Docker()  # type: ignore[attr-defined]
     except Exception as exc:
         logger.warning(
             TELEMETRY_REPORT_FAILED,
             detail="docker_info_client_construction",
             error_type=type(exc).__name__,
         )
-        return _unavailable(_REASON_DAEMON_UNREACHABLE)
+        return None
 
-    # ``aiodocker.Docker`` supports the async-context-manager
-    # protocol, so the cleanup contract is "whatever ``__aexit__``
-    # does" rather than "we remembered to call ``close``". Matches
-    # the pattern we want for the sandbox layer too. The
-    # ``asyncio.timeout`` wrapper caps the probe at
-    # ``_DOCKER_INFO_TIMEOUT_SECONDS`` because ``aiodocker`` inherits
-    # aiohttp's 300 s ``sock_read`` default -- a wedged-but-reachable
-    # daemon would otherwise stall startup for up to five minutes.
     try:
         async with asyncio.timeout(_DOCKER_INFO_TIMEOUT_SECONDS), client:
             info = await client.system.info()
@@ -259,16 +260,45 @@ async def fetch_docker_info() -> DockerHostInfo:  # noqa: PLR0911
             detail="docker_info_fetch_timeout",
             error_type=type(exc).__name__,
         )
-        return _unavailable(_REASON_DAEMON_UNREACHABLE)
+        return None
     except Exception as exc:
         logger.warning(
             TELEMETRY_REPORT_FAILED,
             detail="docker_info_fetch_failed",
             error_type=type(exc).__name__,
         )
-        return _unavailable(_REASON_DAEMON_UNREACHABLE)
+        return None
 
     if not isinstance(info, dict):
+        return None
+    return info
+
+
+async def fetch_docker_info() -> DockerHostInfo:
+    """Fetch a telemetry-safe snapshot of Docker daemon ``/info``.
+
+    Returns the allowlisted fields with
+    ``docker_info_available=True`` when the daemon responds. On
+    every failure path (socket not bind-mounted, ``aiodocker`` not
+    installed, daemon unreachable, daemon returned an error), the
+    payload collapses to the ``docker_info_available=False`` marker
+    with a categorical reason. The caller merges the result straight
+    into a :class:`TelemetryEvent`'s ``properties``.
+
+    Never raises: every failure is caught, logged at the
+    appropriate level, and collapsed into the marker payload.
+    Telemetry must not affect the main application.
+    """
+    socket_marker = await _probe_docker_socket()
+    if socket_marker is not None:
+        return socket_marker
+
+    aiodocker_mod = _import_aiodocker()
+    if aiodocker_mod is None:
+        return _unavailable(_REASON_AIODOCKER_NOT_INSTALLED)
+
+    raw_info = await _probe_daemon_info(aiodocker_mod)
+    if raw_info is None:
         return _unavailable(_REASON_DAEMON_UNREACHABLE)
 
-    return _extract(info)
+    return _extract(raw_info)  # type: ignore[arg-type]
