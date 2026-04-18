@@ -143,7 +143,11 @@ class LogfireReporter:
 
         # ``**safe_properties`` intentionally carries arbitrary
         # allowlisted keys; mypy's narrowed ``to_thread`` signature
-        # rejects unknown kwargs so we type-ignore the dispatch.
+        # rejects unknown kwargs on any backend that gives
+        # ``self._logfire.info`` a concrete type. When ``logfire``
+        # stubs are absent (``ignore_missing_imports``), the callable
+        # widens to ``Any`` and the ignore becomes unused -- hence the
+        # composite suppression.
         await asyncio.to_thread(
             self._logfire.info,
             event.event_type,
@@ -153,7 +157,7 @@ class LogfireReporter:
             python_version=event.python_version,
             os_platform=event.os_platform,
             environment=event.environment,
-            **safe_properties,  # type: ignore[arg-type]
+            **safe_properties,  # type: ignore[arg-type, unused-ignore]
         )
 
     async def flush(self) -> None:

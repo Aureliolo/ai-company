@@ -269,6 +269,10 @@ module = "aiodocker.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
+module = "logfire.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
 module = "aiosqlite.*"
 ignore_missing_imports = true
 
