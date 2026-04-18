@@ -28,7 +28,7 @@ def _make_project_record(
         input_tokens=1000,
         output_tokens=500,
         cost=cost,
-        currency="EUR",
+        currency="USD",
         timestamp=timestamp or datetime(2026, 2, 15, 12, 0, 0, tzinfo=UTC),
     )
 

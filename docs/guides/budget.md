@@ -15,13 +15,13 @@ Budgets are enforced in a three-layer hierarchy:
 
 ```mermaid
 graph TD
-    Company["Company Budget<br/><small>total_monthly: 200 EUR</small>"]
-    Eng["Engineering<br/><small>60% = 120 EUR</small>"]
-    Prod["Product<br/><small>20% = 40 EUR</small>"]
-    Exec["Executive<br/><small>20% = 40 EUR</small>"]
-    Dev1["Developer A<br/><small>daily: 25 EUR</small>"]
-    Dev2["Developer B<br/><small>daily: 25 EUR</small>"]
-    PM["Product Manager<br/><small>daily: 25 EUR</small>"]
+    Company["Company Budget<br/><small>total_monthly: 200 USD</small>"]
+    Eng["Engineering<br/><small>60% = 120 USD</small>"]
+    Prod["Product<br/><small>20% = 40 USD</small>"]
+    Exec["Executive<br/><small>20% = 40 USD</small>"]
+    Dev1["Developer A<br/><small>daily: 25 USD</small>"]
+    Dev2["Developer B<br/><small>daily: 25 USD</small>"]
+    PM["Product Manager<br/><small>daily: 25 USD</small>"]
 
     Company --> Eng
     Company --> Prod
@@ -44,7 +44,7 @@ The budget enforcer checks spending at three boundaries:
 ```yaml
 budget:
   total_monthly: 200.0
-  currency: "EUR"
+  currency: "USD"
   reset_day: 1
   per_task_limit: 10.0
   per_agent_daily_limit: 25.0
@@ -55,7 +55,7 @@ budget:
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `total_monthly` | float | `100.0` | Monthly budget limit. Set to `0` to disable enforcement. |
-| `currency` | string | `"EUR"` | ISO 4217 currency code for display |
+| `currency` | string | `"USD"` | ISO 4217 currency code for display. **Display only** -- SynthOrg does not convert LLM provider costs (token prices are USD-denominated). Changing this relabels the symbol but leaves the numeric values untouched. |
 | `reset_day` | int | `1` | Day of the month the budget resets (1--28) |
 | `per_task_limit` | float | `5.0` | Maximum cost allowed per individual task |
 | `per_agent_daily_limit` | float | `10.0` | Maximum cost per agent per day |
@@ -158,8 +158,8 @@ Every LLM API call is recorded as a cost record with full context:
 | `model` | Which model was used |
 | `input_tokens` | Number of input tokens |
 | `output_tokens` | Number of output tokens |
-| `cost` | Numeric cost of the call, denominated in `currency`. |
-| `currency` | ISO 4217 currency code for `cost` (e.g. `EUR`, `USD`, `JPY`). Stamped from `budget.currency` at record-creation time; historical rows retain the code that was active when they were created, so changing the setting is safe. |
+| `cost` | Numeric cost of the call. Provider APIs publish token prices in USD; changing `budget.currency` relabels the stamped code but does not convert this value. |
+| `currency` | ISO 4217 currency code (e.g. `USD`, `EUR`, `JPY`). Stamped from `budget.currency` at record-creation time; historical rows retain the code that was active when they were created. |
 | `timestamp` | When the call was made (UTC) |
 
 !!! info "Aggregation invariant"
@@ -215,7 +215,7 @@ Here is a complete budget configuration for a startup team with three tiers of m
 ```yaml
 budget:
   total_monthly: 150.0
-  currency: "EUR"
+  currency: "USD"
   reset_day: 1
   per_task_limit: 8.0
   per_agent_daily_limit: 20.0
@@ -234,12 +234,12 @@ budget:
 **Scenario walkthrough:**
 
 1. **Day 1--15**: Normal operation. The CEO uses the `large` model, developers use `medium`.
-2. **Day 16**: Spending reaches 70% (105 EUR). A warning alert is emitted.
-3. **Day 18**: Spending reaches 80% (120 EUR). Auto-downgrade triggers:
+2. **Day 16**: Spending reaches 70% (105 USD). A warning alert is emitted.
+3. **Day 18**: Spending reaches 80% (120 USD). Auto-downgrade triggers:
    - The CEO's *next* task uses `medium` instead of `large`
    - Developers' *next* tasks use `small` instead of `medium`
-4. **Day 22**: Spending reaches 85% (127.50 EUR). Critical alert emitted.
-5. **Day 25**: Spending reaches 95% (142.50 EUR). Hard stop -- new tasks are rejected until the budget resets on Day 1.
+4. **Day 22**: Spending reaches 85% (127.50 USD). Critical alert emitted.
+5. **Day 25**: Spending reaches 95% (142.50 USD). Hard stop -- new tasks are rejected until the budget resets on Day 1.
 
 ---
 

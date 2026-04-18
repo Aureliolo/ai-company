@@ -43,7 +43,8 @@ CREATE TABLE cost_records (
     input_tokens INTEGER NOT NULL,
     output_tokens INTEGER NOT NULL,
     cost REAL NOT NULL,
-    currency TEXT NOT NULL DEFAULT 'EUR',
+    currency TEXT NOT NULL DEFAULT 'USD'
+        CHECK (currency GLOB '[A-Z][A-Z][A-Z]'),
     timestamp TEXT NOT NULL,
     call_category TEXT
 );
@@ -94,7 +95,8 @@ CREATE TABLE task_metrics (
     is_success INTEGER NOT NULL,
     duration_seconds REAL NOT NULL,
     cost REAL NOT NULL,
-    currency TEXT NOT NULL DEFAULT 'EUR',
+    currency TEXT NOT NULL DEFAULT 'USD'
+        CHECK (currency GLOB '[A-Z][A-Z][A-Z]'),
     turns_used INTEGER NOT NULL,
     tokens_used INTEGER NOT NULL,
     quality_score REAL,
@@ -305,7 +307,8 @@ CREATE TABLE agent_states (
     turn_count INTEGER NOT NULL DEFAULT 0 CHECK (turn_count >= 0),
     accumulated_cost REAL NOT NULL DEFAULT 0.0
         CHECK (accumulated_cost >= 0.0),
-    currency TEXT NOT NULL DEFAULT 'EUR',
+    currency TEXT NOT NULL DEFAULT 'USD'
+        CHECK (currency GLOB '[A-Z][A-Z][A-Z]'),
     last_activity_at TEXT NOT NULL,
     started_at TEXT,
     CHECK (

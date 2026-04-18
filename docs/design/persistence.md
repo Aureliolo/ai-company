@@ -39,10 +39,15 @@ The schema (`src/synthorg/persistence/postgres/schema.sql` and its SQLite
 sibling) mixes two write patterns:
 
 **Mutable tables** -- canonical state with in-place updates.  Examples:
-`users`, `settings`, `agent_states`, `heartbeats`.  Rows are updated on every
-state transition; row count stays bounded.  Concurrent updates are serialised
-by MVCC + application-level CAS (settings use `updated_at` as an etag; see
-`SettingsRepository.set` and `set_many`).
+`users`, `settings`, `agent_states`, `heartbeats`, `approvals`,
+`custom_rules`.  Rows are updated on every state transition; row count stays
+bounded.  Concurrent updates are serialised by MVCC + application-level CAS
+(settings use `updated_at` as an etag; see `SettingsRepository.set` and
+`set_many`).  Both `approvals` (human-in-the-loop decision queue,
+`pending`/`approved`/`rejected`/`expired` state machine) and `custom_rules`
+(operator-defined alert thresholds) exist on both backends -- previously
+they shipped only on SQLite and the Postgres parity gap was closed in the
+budget-persistence audit.
 
 **Append-only time-series tables** -- facts with a timestamp column, never
 updated in place.  Examples: `cost_records`, `audit_entries`,
@@ -56,12 +61,28 @@ touching any application code.
 **Monetary columns carry a sibling `currency TEXT NOT NULL` column.**
 `cost_records`, `task_metrics`, and `agent_states` each store an ISO 4217 code
 alongside the numeric cost (or `accumulated_cost`) so the unit travels with the
-value.  Aggregators read both columns and enforce a same-currency invariant at
+value.  A DB-level CHECK constraint (`currency ~ '^[A-Z]{3}$'` on Postgres,
+`currency GLOB '[A-Z][A-Z][A-Z]'` on SQLite) keeps direct-SQL writes honest.
+Aggregators read both columns and enforce a same-currency invariant at
 read time; mixing currencies in a single rollup raises
-`MixedCurrencyAggregationError`.  New currency columns default to `'EUR'` so
-existing deployments migrate without a manual backfill; operators running a
-non-EUR deployment can re-stamp historical rows via the backend's post-migrate
-hook or by running a targeted `UPDATE`.
+`MixedCurrencyAggregationError`.  New currency columns default to `'USD'`
+(the provider-native token-pricing unit for every major LLM vendor the
+project integrates with) so existing deployments migrate without a manual
+backfill.  Operators running a non-USD deployment can re-stamp historical
+rows after the migration runs by executing a targeted
+`UPDATE <table> SET currency = '<ISO 4217 code>' WHERE currency = 'USD'`
+statement; SynthOrg does not provide a post-migrate hook for this because
+the correct target currency depends on the operator's business model.
+
+**Currency is a display preference, not a conversion unit.**  SynthOrg
+stamps each record with the operator's configured `budget.currency` but
+does not perform FX conversion on the numeric values.  Every major LLM
+provider (Anthropic, OpenAI, Google Gemini, Mistral, Cohere, Groq, et al.)
+publishes token pricing in USD, and LiteLLM returns `response_cost` in USD
+too.  Changing `budget.currency` relabels the display symbol for future
+rows; it does not translate the numbers.  Cross-currency reporting (with a
+real FX rate source and timestamped conversion) is a separate feature
+tracked on the roadmap.
 
 `heartbeats` is deliberately **excluded** from the append-only set.  Despite
 having a timestamp, it stores one row per `execution_id` and updates that row

@@ -13,6 +13,7 @@ from psycopg.types.json import Jsonb
 from pydantic import ValidationError
 
 from synthorg.budget.cost_record import CostRecord
+from synthorg.budget.errors import MixedCurrencyAggregationError
 from synthorg.communication.message import Message
 from synthorg.core.enums import TaskStatus  # noqa: TC001
 from synthorg.core.task import Task
@@ -381,8 +382,16 @@ class PostgresCostRecordRepository:
         agent_id: str | None = None,
         task_id: str | None = None,
     ) -> float:
-        """Sum total cost, optionally filtered by agent and/or task."""
-        sql = "SELECT COALESCE(SUM(cost), 0.0) FROM cost_records"
+        """Sum total cost, optionally filtered by agent and/or task.
+
+        Raises :class:`MixedCurrencyAggregationError` when the matched rows
+        span multiple currencies -- summing across currencies produces a
+        meaningless number, so the invariant is enforced at the SQL layer.
+        Both distinct-currency probe and SUM run in the same connection
+        (and therefore the same transactional view under default
+        ``read committed`` isolation) so a concurrent INSERT cannot land
+        between the two queries.
+        """
         conditions: list[str] = []
         params: list[str] = []
         if agent_id is not None:
@@ -391,12 +400,36 @@ class PostgresCostRecordRepository:
         if task_id is not None:
             conditions.append("task_id = %s")
             params.append(task_id)
-        if conditions:
-            sql += " WHERE " + " AND ".join(conditions)
+        where_clause = (" WHERE " + " AND ".join(conditions)) if conditions else ""
+        # where_clause is built from fixed column names only; user values
+        # go through bound %s parameters.  S608 suppressed on each
+        # f-string below.
+        currency_sql = f"SELECT DISTINCT currency FROM cost_records{where_clause}"  # noqa: S608
+        sum_sql = f"SELECT COALESCE(SUM(cost), 0.0) FROM cost_records{where_clause}"  # noqa: S608
 
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
-                await cur.execute(sql, params)
+                await cur.execute(currency_sql, params)
+                currency_rows = await cur.fetchall()
+                distinct = frozenset(
+                    str(r[0]) for r in currency_rows if r[0] is not None
+                )
+                if len(distinct) > 1:
+                    logger.error(
+                        PERSISTENCE_COST_RECORD_AGGREGATE_FAILED,
+                        agent_id=agent_id,
+                        task_id=task_id,
+                        currencies=sorted(distinct),
+                        error="mixed-currency aggregation rejected",
+                    )
+                    mixed_msg = "Cannot aggregate costs across mixed currencies"
+                    raise MixedCurrencyAggregationError(
+                        mixed_msg,
+                        currencies=distinct,
+                        agent_id=agent_id,
+                        task_id=task_id,
+                    )
+                await cur.execute(sum_sql, params)
                 row = await cur.fetchone()
         except psycopg.Error as exc:
             msg = "Failed to aggregate cost records"

@@ -202,11 +202,17 @@ class BudgetConfig(BaseModel):
         ),
     )
     currency: str = Field(
-        default="EUR",
+        default="USD",
         min_length=3,
         max_length=3,
         pattern=r"^[A-Z]{3}$",
-        description="ISO 4217 currency code for display formatting",
+        description=(
+            "ISO 4217 currency code for display formatting. "
+            "Display-only preference: SynthOrg does not convert LLM "
+            "provider costs. All provider token prices are denominated "
+            "in USD; changing this setting relabels the display symbol "
+            "but does not translate the numeric values."
+        ),
     )
     risk_budget: RiskBudgetConfig = Field(
         default_factory=RiskBudgetConfig,

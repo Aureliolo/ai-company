@@ -129,19 +129,40 @@ class TestCostTrackerMixedCurrency:
             await tracker.get_provider_usage(NotBlankStr("test-provider"))
 
     async def test_department_rollup_raises_on_mixed(self) -> None:
-        """Agents in the same department must agree on currency."""
+        """Agents in the same department must agree on currency.
+
+        ``build_summary`` would raise on the period-wide aggregation path
+        before ever reaching ``_build_dept_spendings``, so we exercise the
+        department-rollup branch directly with pre-built ``AgentSpending``
+        rows carrying different currencies.  This guarantees coverage of
+        the department-specific guard rather than the period-wide guard.
+        """
 
         def resolver(aid: str) -> str | None:
             return {"alice": "Eng", "bob": "Eng"}.get(aid)
 
         tracker = CostTracker(department_resolver=resolver)
-        await tracker.record(_rec("EUR", cost=0.10, agent="alice"))
-        await tracker.record(_rec("USD", cost=0.20, agent="bob"))
-        with pytest.raises(MixedCurrencyAggregationError):
-            await tracker.build_summary(
-                start=_NOW,
-                end=datetime(2026, 4, 2, tzinfo=UTC),
-            )
+        agent_spendings = [
+            AgentSpending(
+                agent_id="alice",
+                total_cost=0.10,
+                currency="EUR",
+                total_input_tokens=0,
+                total_output_tokens=0,
+                record_count=1,
+            ),
+            AgentSpending(
+                agent_id="bob",
+                total_cost=0.20,
+                currency="USD",
+                total_input_tokens=0,
+                total_output_tokens=0,
+                record_count=1,
+            ),
+        ]
+        with pytest.raises(MixedCurrencyAggregationError) as exc_info:
+            tracker._build_dept_spendings(agent_spendings)
+        assert exc_info.value.currencies == frozenset({"EUR", "USD"})
 
 
 class TestAgentSpendingCurrencyInvariant:

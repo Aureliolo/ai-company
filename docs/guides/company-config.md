@@ -266,7 +266,7 @@ Budget configuration is covered in detail in the [Budget & Cost Control](budget.
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `total_monthly` | float | `100.0` | Monthly budget limit |
-| `currency` | string | `"EUR"` | ISO 4217 currency code |
+| `currency` | string | `"USD"` | ISO 4217 currency code (display-only; no FX conversion) |
 | `per_task_limit` | float | `5.0` | Maximum cost per task |
 | `per_agent_daily_limit` | float | `10.0` | Maximum cost per agent per day |
 | `reset_day` | int | `1` | Budget reset day (1--28) |
@@ -550,7 +550,7 @@ SynthOrg enforces the following cross-field validation rules at load time:
 
     budget:
       total_monthly: 200.0
-      currency: "EUR"
+      currency: "USD"
       per_task_limit: 10.0
       per_agent_daily_limit: 25.0
       alerts:

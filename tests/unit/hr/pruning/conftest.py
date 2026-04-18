@@ -33,7 +33,7 @@ def make_window_metrics(  # noqa: PLR0913
     avg_tokens_per_task: float | None = 500.0,
     success_rate: float | None = 0.8,
     collaboration_score: float | None = 5.0,
-    currency: str = "EUR",
+    currency: str = "USD",
 ) -> WindowMetrics:
     """Build a WindowMetrics with sensible defaults."""
     return WindowMetrics(

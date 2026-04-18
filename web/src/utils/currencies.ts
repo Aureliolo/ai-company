@@ -41,5 +41,10 @@ export const CURRENCY_OPTIONS = [
 /** Derived union type of supported ISO 4217 currency codes. */
 export type CurrencyCode = (typeof CURRENCY_OPTIONS)[number]['value']
 
-/** Default currency code (matches backend DEFAULT_CURRENCY). */
-export const DEFAULT_CURRENCY: CurrencyCode = 'EUR'
+/** Default currency code (matches backend DEFAULT_CURRENCY).
+ *
+ * USD is the default because every LLM provider SynthOrg integrates with
+ * prices tokens in USD. Changing the runtime setting relabels the display
+ * symbol for future rows but does not convert numeric values -- SynthOrg
+ * performs no FX conversion. */
+export const DEFAULT_CURRENCY: CurrencyCode = 'USD'

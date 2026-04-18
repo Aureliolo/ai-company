@@ -210,8 +210,11 @@ graph TD
 !!! abstract "Note"
 
     Percentages are illustrative defaults. All allocations are configurable per company.
-    Dollar signs in the diagram are illustrative -- the actual currency is determined by
-    the `budget.currency` setting (ISO 4217 code, defaults to EUR).
+    Dollar signs in the diagram match the default: `budget.currency` is an ISO 4217 code
+    that defaults to `USD` (the provider-native token-pricing unit for every major LLM
+    vendor SynthOrg integrates with). SynthOrg stamps the configured currency onto each
+    record but does not convert the numeric values; changing the setting relabels the
+    display symbol without translating cost amounts.
 
 ### Cost Tracking
 
@@ -226,7 +229,7 @@ Every API call is tracked with full context:
   "input_tokens": 4500,
   "output_tokens": 1200,
   "cost": 0.0315,
-  "currency": "EUR",
+  "currency": "USD",
   "timestamp": "2026-02-27T10:30:00Z"
 }
 ```
@@ -285,7 +288,7 @@ task-boundary auto-downgrade.
 ```yaml
 budget:
   total_monthly: 100.00
-  currency: "EUR"  # ISO 4217 currency code for display
+  currency: "USD"  # ISO 4217 currency code for display (no FX conversion)
   reset_day: 1
   alerts:
     warn_at: 75               # percent

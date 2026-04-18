@@ -175,12 +175,12 @@ class Mem0MemoryBackend:
                 model=model,
             )
         cost = input_tokens * cost_per_1k / 1000.0
-        currency = (
-            self._cost_tracker.budget_config.currency
-            if self._cost_tracker is not None
-            and self._cost_tracker.budget_config is not None
-            else DEFAULT_CURRENCY
-        )
+        # ``_cost_tracker`` is guaranteed non-``None`` here -- the early
+        # return at the top of the function exits when it is.  Only the
+        # budget-config attribute can still be ``None`` when the tracker
+        # was built without a config.
+        budget_cfg = self._cost_tracker.budget_config
+        currency = budget_cfg.currency if budget_cfg is not None else DEFAULT_CURRENCY
         record = CostRecord(
             agent_id=agent_id,
             task_id=task_id,

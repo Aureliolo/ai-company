@@ -175,7 +175,7 @@ org_memory:
   core_policies:
     - "All code must pass review before merging."
     - "Customer data is never logged or stored in plain text."
-    - "Budget decisions require CFO approval above 50 EUR."
+    - "Budget decisions require CFO approval above 50 units in the configured currency."
   extended_store:
     backend: "sqlite"
     max_retrieved_per_query: 5

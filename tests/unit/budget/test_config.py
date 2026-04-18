@@ -220,7 +220,7 @@ class TestBudgetConfig:
         assert cfg.alerts.warn_at == 75
         assert cfg.auto_downgrade.enabled is False
         assert cfg.reset_day == 1
-        assert cfg.currency == "EUR"
+        assert cfg.currency == "USD"
 
     def test_custom_values(self, sample_budget_config: BudgetConfig) -> None:
         """Accept valid custom budget config."""

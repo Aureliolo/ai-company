@@ -6,6 +6,10 @@ within a sliding time window.
 
 The ``is_locked`` method is synchronous (O(1) dict lookup)
 for use in the login hot path without blocking the event loop.
+Access to the in-memory ``_locked`` dict is guarded by a
+``threading.Lock`` so concurrent event-loop tasks (and any
+embedded sync callers) see a consistent view when the dict is
+mutated by ``record_failure`` / ``record_success``.
 
 The public surface is the :class:`LockoutStore` protocol; two
 concrete implementations back it:
@@ -16,8 +20,26 @@ concrete implementations back it:
 
 Lifecycle code picks the concrete class that matches the active
 persistence backend (see ``synthorg.api.lifecycle``).
+
+**Deployment assumption:** these stores are **single-instance only**.
+The ``_locked`` cache is process-local, so horizontally-scaled
+deployments would see per-node drift: a lockout recorded on node A
+is invisible to node B until B records its own failure for the same
+username.  Multi-instance deployments require a shared lock store
+(Redis, DB-authoritative ``is_locked`` query, or the like); that
+work is out of scope for the initial release and tracked as a
+follow-up.  Callers that share a process (single ASGI worker,
+multiple concurrent tasks) are the supported configuration.
+
+**Pool lifecycle:** both stores receive the connection handle from
+the caller and never close it.  ``SqliteLockoutStore`` composes on
+an ``aiosqlite.Connection`` and ``PostgresLockoutStore`` on an
+``AsyncConnectionPool``.  The caller owns the handle for the whole
+application lifetime and must outlive the store; callers must not
+close the pool while store operations may still be in flight.
 """
 
+import threading
 import time
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
@@ -123,6 +145,12 @@ class SqliteLockoutStore:
         self._duration = timedelta(minutes=config.lockout_duration_minutes)
         self._duration_seconds = config.lockout_duration_minutes * 60
         self._locked: dict[str, float] = {}
+        # ``is_locked`` is sync and runs on the hot path, so we cannot
+        # use ``asyncio.Lock``.  ``threading.Lock`` is GIL-friendly and
+        # fast enough for the low-contention access pattern; it keeps
+        # the sync expiry-pop atomic vs concurrent ``record_failure`` /
+        # ``record_success`` writes.
+        self._locked_lock: threading.Lock = threading.Lock()
 
     def is_locked(self, username: str) -> bool:
         """Check if an account is locked (sync, O(1)).
@@ -136,13 +164,14 @@ class SqliteLockoutStore:
             ``True`` if the account is currently locked.
         """
         username = username.lower()
-        locked_until = self._locked.get(username)
-        if locked_until is None:
-            return False
-        if time.monotonic() > locked_until:
-            self._locked.pop(username, None)
-            return False
-        return True
+        with self._locked_lock:
+            locked_until = self._locked.get(username)
+            if locked_until is None:
+                return False
+            if time.monotonic() > locked_until:
+                self._locked.pop(username, None)
+                return False
+            return True
 
     @property
     def lockout_duration_seconds(self) -> int:
@@ -155,6 +184,13 @@ class SqliteLockoutStore:
         Queries the database for usernames that have accumulated
         enough failures within the sliding window to be locked.
         Called once at startup so that lockout survives restarts.
+        The SQL aggregates within the lockout window -- bounded by
+        the number of distinct locked usernames in that window, not
+        by the full history -- so no explicit timeout is required
+        for the typical deployment size.  Operators with very large
+        ``login_attempts`` tables should prune via ``cleanup_expired``
+        on a schedule; the sliding-window ``WHERE`` clause keeps this
+        query from degenerating into a full table scan.
 
         Returns:
             Number of accounts restored to locked state.
@@ -173,18 +209,19 @@ class SqliteLockoutStore:
         rows = await cursor.fetchall()
         mono_now = time.monotonic()
         restored = 0
-        for row in rows:
-            uname = row["username"]
-            uname = uname.lower()
-            if uname not in self._locked:
-                max_at = datetime.fromisoformat(
-                    row["max_attempted_at"],
-                )
-                locked_until = max_at + self._duration
-                remaining = (locked_until - now).total_seconds()
-                if remaining > 0:
-                    self._locked[uname] = mono_now + remaining
-                    restored += 1
+        with self._locked_lock:
+            for row in rows:
+                uname = row["username"]
+                uname = uname.lower()
+                if uname not in self._locked:
+                    max_at = datetime.fromisoformat(
+                        row["max_attempted_at"],
+                    )
+                    locked_until = max_at + self._duration
+                    remaining = (locked_until - now).total_seconds()
+                    if remaining > 0:
+                        self._locked[uname] = mono_now + remaining
+                        restored += 1
         if restored:
             logger.info(
                 API_AUTH_ACCOUNT_LOCKED,
@@ -201,8 +238,11 @@ class SqliteLockoutStore:
         """Record a failed login attempt.
 
         Inserts the attempt into SQLite, then counts recent
-        attempts within the sliding window.  If the count
-        reaches the threshold, the account is locked.
+        attempts within the sliding window.  The INSERT and SELECT
+        run inside a single ``BEGIN IMMEDIATE`` transaction so a
+        concurrent ``cleanup_expired`` cannot delete rows between
+        write and count -- that race could otherwise leave the
+        account marked locked with a stale, below-threshold count.
 
         Args:
             username: Login username.
@@ -213,25 +253,30 @@ class SqliteLockoutStore:
         """
         username = username.lower()
         now = datetime.now(UTC)
-        await self._db.execute(
-            "INSERT INTO login_attempts "
-            "(username, attempted_at, ip_address) "
-            "VALUES (?, ?, ?)",
-            (username, now.isoformat(), ip_address),
-        )
-        await self._db.commit()
-
         window_start = (now - self._window).isoformat()
-        cursor = await self._db.execute(
-            "SELECT COUNT(*) FROM login_attempts "
-            "WHERE username = ? AND attempted_at >= ?",
-            (username, window_start),
-        )
-        row = await cursor.fetchone()
+        await self._db.execute("BEGIN IMMEDIATE")
+        try:
+            await self._db.execute(
+                "INSERT INTO login_attempts "
+                "(username, attempted_at, ip_address) "
+                "VALUES (?, ?, ?)",
+                (username, now.isoformat(), ip_address),
+            )
+            cursor = await self._db.execute(
+                "SELECT COUNT(*) FROM login_attempts "
+                "WHERE username = ? AND attempted_at >= ?",
+                (username, window_start),
+            )
+            row = await cursor.fetchone()
+            await self._db.commit()
+        except BaseException:
+            await self._db.rollback()
+            raise
         count = row[0] if row else 0
 
         if count >= self._threshold:
-            self._locked[username] = time.monotonic() + self._duration_seconds
+            with self._locked_lock:
+                self._locked[username] = time.monotonic() + self._duration_seconds
             logger.warning(
                 API_AUTH_ACCOUNT_LOCKED,
                 username=username,
@@ -257,7 +302,9 @@ class SqliteLockoutStore:
             (username,),
         )
         await self._db.commit()
-        if self._locked.pop(username, None) is not None:
+        with self._locked_lock:
+            was_locked = self._locked.pop(username, None) is not None
+        if was_locked:
             logger.info(
                 API_AUTH_LOCKOUT_CLEARED,
                 username=username,
@@ -313,12 +360,15 @@ class PostgresLockoutStore:
         self._duration = timedelta(minutes=config.lockout_duration_minutes)
         self._duration_seconds = config.lockout_duration_minutes * 60
         self._locked: dict[str, float] = {}
+        self._locked_lock: threading.Lock = threading.Lock()
         self._dict_row = _import_dict_row()
 
     def is_locked(self, username: str) -> bool:
         """Check if an account is locked (sync, O(1)).
 
-        Called on every login attempt -- must not block.
+        Called on every login attempt -- must not block.  Reads only
+        the process-local cache; see the module docstring for the
+        single-instance deployment caveat.
 
         Args:
             username: Login username to check.
@@ -327,13 +377,14 @@ class PostgresLockoutStore:
             ``True`` if the account is currently locked.
         """
         username = username.lower()
-        locked_until = self._locked.get(username)
-        if locked_until is None:
-            return False
-        if time.monotonic() > locked_until:
-            self._locked.pop(username, None)
-            return False
-        return True
+        with self._locked_lock:
+            locked_until = self._locked.get(username)
+            if locked_until is None:
+                return False
+            if time.monotonic() > locked_until:
+                self._locked.pop(username, None)
+                return False
+            return True
 
     @property
     def lockout_duration_seconds(self) -> int:
@@ -371,16 +422,17 @@ class PostgresLockoutStore:
 
         mono_now = time.monotonic()
         restored = 0
-        for row in rows:
-            uname = row["username"]
-            uname = uname.lower()
-            if uname not in self._locked:
-                max_at = row["max_attempted_at"]
-                locked_until = max_at + self._duration
-                remaining = (locked_until - now).total_seconds()
-                if remaining > 0:
-                    self._locked[uname] = mono_now + remaining
-                    restored += 1
+        with self._locked_lock:
+            for row in rows:
+                uname = row["username"]
+                uname = uname.lower()
+                if uname not in self._locked:
+                    max_at = row["max_attempted_at"]
+                    locked_until = max_at + self._duration
+                    remaining = (locked_until - now).total_seconds()
+                    if remaining > 0:
+                        self._locked[uname] = mono_now + remaining
+                        restored += 1
         if restored:
             logger.info(
                 API_AUTH_ACCOUNT_LOCKED,
@@ -397,8 +449,11 @@ class PostgresLockoutStore:
         """Record a failed login attempt.
 
         Inserts the attempt into Postgres, then counts recent
-        attempts within the sliding window.  If the count
-        reaches the threshold, the account is locked.
+        attempts within the sliding window.  INSERT + COUNT share a
+        single ``async with conn`` scope (one psycopg implicit
+        transaction) so a concurrent ``cleanup_expired`` cannot
+        delete rows between write and count -- that race would
+        otherwise leave the account locked with a stale count.
 
         Args:
             username: Login username.
@@ -411,7 +466,11 @@ class PostgresLockoutStore:
         now = datetime.now(UTC)
         window_start = now - self._window
 
-        async with self._pool.connection() as conn, conn.cursor() as cur:
+        async with (
+            self._pool.connection() as conn,
+            conn.transaction(),
+            conn.cursor() as cur,
+        ):
             await cur.execute(
                 "INSERT INTO login_attempts "
                 "(username, attempted_at, ip_address) "
@@ -427,7 +486,8 @@ class PostgresLockoutStore:
 
         count = row[0] if row else 0
         if count >= self._threshold:
-            self._locked[username] = time.monotonic() + self._duration_seconds
+            with self._locked_lock:
+                self._locked[username] = time.monotonic() + self._duration_seconds
             logger.warning(
                 API_AUTH_ACCOUNT_LOCKED,
                 username=username,
@@ -453,7 +513,9 @@ class PostgresLockoutStore:
                 "DELETE FROM login_attempts WHERE username = %s",
                 (username,),
             )
-        if self._locked.pop(username, None) is not None:
+        with self._locked_lock:
+            was_locked = self._locked.pop(username, None) is not None
+        if was_locked:
             logger.info(
                 API_AUTH_LOCKOUT_CLEARED,
                 username=username,

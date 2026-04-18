@@ -47,14 +47,14 @@ class TestBudgetVelocityCalculator:
     @pytest.mark.unit
     def test_primary_unit(self) -> None:
         calc = BudgetVelocityCalculator()
-        assert calc.primary_unit == "pts/EUR"
+        assert calc.primary_unit == "pts/USD"
 
     @pytest.mark.unit
     def test_compute_basic(self) -> None:
         calc = BudgetVelocityCalculator()
         record = _make_record(points_completed=42.0, budget_consumed=10.0)
         metrics = calc.compute(record)
-        assert metrics.primary_unit == "pts/EUR"
+        assert metrics.primary_unit == "pts/USD"
         assert metrics.primary_value == pytest.approx(4.2)
 
     @pytest.mark.unit
@@ -106,9 +106,9 @@ class TestBudgetVelocityCalculator:
             ),
         ]
         metrics = calc.rolling_average(records, window=3)
-        # Total: 120 pts / 40 EUR = 3.0
+        # Total: 120 pts / 40 USD = 3.0
         assert metrics.primary_value == pytest.approx(3.0)
-        assert metrics.primary_unit == "pts/EUR"
+        assert metrics.primary_unit == "pts/USD"
 
     @pytest.mark.unit
     def test_rolling_average_skips_none_budget(self) -> None:

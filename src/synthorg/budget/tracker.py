@@ -127,6 +127,13 @@ class CostTracker:
         self._department_resolver = department_resolver
         self._auto_prune_threshold = auto_prune_threshold
         self._project_cost_repo = project_cost_repo
+        # When no budget_config is attached, a project-scoped aggregate is
+        # still durable via ``project_cost_repo``.  We remember the first
+        # currency seen per project_id so a subsequent record in a
+        # different currency cannot silently collapse into the same total.
+        # This is process-local state (rebuilt on restart) but matches the
+        # lifetime of the aggregate repo reference the caller holds.
+        self._project_currencies: dict[str, str] = {}
         logger.debug(
             BUDGET_TRACKER_CREATED,
             has_budget_config=budget_config is not None,
@@ -187,6 +194,32 @@ class CostTracker:
                 task_id=cost_record.task_id,
                 project_id=cost_record.project_id,
             )
+        # Per-project guard: without a budget_config we cannot compare
+        # against a single configured currency, but we still must not let
+        # the durable project aggregate collapse mixed-currency rows into
+        # a single running total.  The first record for a project defines
+        # the currency; subsequent records in a different currency raise.
+        if (
+            self._budget_config is None
+            and self._project_cost_repo is not None
+            and cost_record.project_id is not None
+        ):
+            pinned = self._project_currencies.get(cost_record.project_id)
+            if pinned is None:
+                self._project_currencies[cost_record.project_id] = cost_record.currency
+            elif pinned != cost_record.currency:
+                msg = (
+                    f"Record currency {cost_record.currency!r} does not match "
+                    f"project {cost_record.project_id!r} aggregate currency "
+                    f"{pinned!r}"
+                )
+                raise MixedCurrencyAggregationError(
+                    msg,
+                    currencies=frozenset({cost_record.currency, pinned}),
+                    agent_id=cost_record.agent_id,
+                    task_id=cost_record.task_id,
+                    project_id=cost_record.project_id,
+                )
         # Lock protects in-memory list only.  DB aggregate update is
         # best-effort and runs outside the lock to avoid blocking other
         # callers on I/O.

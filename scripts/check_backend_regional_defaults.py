@@ -180,8 +180,11 @@ def _scan_file(
 ) -> list[str]:
     """Return a list of violation messages for *file_path*.
 
-    Empty list means the file is clean.  Unreadable files produce a single
-    warning-style entry that callers treat as non-blocking.
+    Empty list means the file is clean.  Unreadable files log a warning to
+    stderr and return an empty list -- this is a best-effort hook, not a
+    gate, so a transient read failure should not block the Edit that
+    triggered it.  The pre-push/CI gate (``check_forbidden_literals.py``)
+    uses fail-closed semantics for the same code paths.
     """
     try:
         rel = file_path.relative_to(project_root).as_posix()
@@ -311,11 +314,26 @@ def _run_hook() -> int:
 
 
 def _check_one(file_path: Path) -> int:
-    """Scan a single file; return exit code (0 clean, 1 violations)."""
+    """Scan a single file; return exit code (0 clean, 1 violations).
+
+    ``file_path`` originates from Claude Code's hook JSON payload.  Resolve
+    it against the project root and refuse to proceed when the result
+    escapes the repo -- silently returning 0 for out-of-scope paths keeps
+    the hook contract intact while closing the path-traversal footgun
+    CodeQL flagged against untrusted hook input.
+    """
     project_root = Path(__file__).resolve().parent.parent
-    if not file_path.is_absolute():
-        file_path = (project_root / file_path).resolve()
-    issues = _scan_file(file_path, project_root)
+    try:
+        resolved = (
+            file_path if file_path.is_absolute() else project_root / file_path
+        ).resolve(strict=False)
+    except OSError:
+        return 0
+    try:
+        resolved.relative_to(project_root)
+    except ValueError:
+        return 0
+    issues = _scan_file(resolved, project_root)
     if issues:
         for msg in issues:
             print(msg)

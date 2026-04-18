@@ -70,7 +70,7 @@ class TestFreshInstallPostgresLifecycle:
         """Phase 5 migration must stamp currency on cost_records, task_metrics,
         and agent_states.  The Postgres post-migrate path applies the
         currency column + approvals + custom_rules tables in one shot; this
-        verifies every new column exists and defaults to 'EUR'.
+        verifies every new column exists and defaults to 'USD'.
         """
         pool = postgres_backend.get_db()
         async with pool.connection() as conn, conn.cursor() as cur:
@@ -87,8 +87,8 @@ class TestFreshInstallPostgresLifecycle:
                 )
                 _, is_nullable, default = row
                 assert is_nullable == "NO", f"{table}.currency must be NOT NULL"
-                assert "EUR" in (default or ""), (
-                    f"{table}.currency must default to 'EUR', got {default!r}"
+                assert "USD" in (default or ""), (
+                    f"{table}.currency must default to 'USD', got {default!r}"
                 )
 
     async def test_approvals_and_custom_rules_tables_created(

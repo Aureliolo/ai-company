@@ -106,7 +106,7 @@ class CostRecordFactory(ModelFactory[CostRecord]):
     input_tokens = 1000
     output_tokens = 500
     cost = 0.05
-    currency = "EUR"
+    currency = "USD"
     # Ensure retry fields are consistent: no reason without a retry count.
     retry_reason = None
 
@@ -115,17 +115,17 @@ class PeriodSpendingFactory(ModelFactory[PeriodSpending]):
     __model__ = PeriodSpending
     start = datetime(2026, 2, 1, tzinfo=UTC)
     end = datetime(2026, 3, 1, tzinfo=UTC)
-    currency = "EUR"
+    currency = "USD"
 
 
 class AgentSpendingFactory(ModelFactory[AgentSpending]):
     __model__ = AgentSpending
-    currency = "EUR"
+    currency = "USD"
 
 
 class DepartmentSpendingFactory(ModelFactory[DepartmentSpending]):
     __model__ = DepartmentSpending
-    currency = "EUR"
+    currency = "USD"
 
 
 class SpendingSummaryFactory(ModelFactory[SpendingSummary]):
@@ -227,7 +227,7 @@ def sample_cost_record() -> CostRecord:
         input_tokens=4500,
         output_tokens=1200,
         cost=0.0315,
-        currency="EUR",
+        currency="USD",
         timestamp=datetime(2026, 2, 27, 10, 30, 0, tzinfo=UTC),
     )
 
@@ -264,7 +264,7 @@ def sample_spending_summary() -> SpendingSummary:
             start=datetime(2026, 2, 1, tzinfo=UTC),
             end=datetime(2026, 3, 1, tzinfo=UTC),
             total_cost=75.50,
-            currency="EUR",
+            currency="USD",
             total_input_tokens=500000,
             total_output_tokens=120000,
             record_count=150,
@@ -273,7 +273,7 @@ def sample_spending_summary() -> SpendingSummary:
             AgentSpending(
                 agent_id="sarah_chen",
                 total_cost=40.0,
-                currency="EUR",
+                currency="USD",
                 total_input_tokens=300000,
                 total_output_tokens=80000,
                 record_count=80,
@@ -281,7 +281,7 @@ def sample_spending_summary() -> SpendingSummary:
             AgentSpending(
                 agent_id="alex_dev",
                 total_cost=35.50,
-                currency="EUR",
+                currency="USD",
                 total_input_tokens=200000,
                 total_output_tokens=40000,
                 record_count=70,
@@ -291,7 +291,7 @@ def sample_spending_summary() -> SpendingSummary:
             DepartmentSpending(
                 department_name="Engineering",
                 total_cost=75.50,
-                currency="EUR",
+                currency="USD",
                 total_input_tokens=500000,
                 total_output_tokens=120000,
                 record_count=150,
@@ -363,7 +363,7 @@ def make_cost_record(  # noqa: PLR0913
     input_tokens: int = 1000,
     output_tokens: int = 500,
     cost: float = 0.05,
-    currency: str = "EUR",
+    currency: str = "USD",
     timestamp: datetime | None = None,
 ) -> CostRecord:
     """Build a CostRecord with sensible defaults."""

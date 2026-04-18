@@ -398,6 +398,11 @@ class PostgresRefreshStore:
         dict_row = self._dict_row
         now = datetime.now(UTC)
 
+        # Run the conditional UPDATE and the replay-detection SELECT in
+        # the same connection (and therefore the same transactional view
+        # under psycopg's implicit transaction per ``async with conn``)
+        # so a concurrent ``cleanup_expired`` cannot delete the row
+        # between the two queries and lie about the rejection reason.
         async with (
             self._pool.connection() as conn,
             conn.cursor(row_factory=dict_row) as cur,
@@ -411,9 +416,22 @@ class PostgresRefreshStore:
                 (token_hash, now),
             )
             row = await cur.fetchone()
+            replay_row: dict[str, Any] | None = None
+            if row is None:
+                await cur.execute(
+                    "SELECT used FROM refresh_tokens WHERE token_hash = %s",
+                    (token_hash,),
+                )
+                replay_row = await cur.fetchone()
 
         if row is not None:
-            # Reject if the associated session has been revoked.
+            # Revocation check runs outside the transaction on purpose:
+            # the callback may consult a separate durable store with
+            # its own connection scope.  If the session is revoked
+            # concurrently the UPDATE still committed, so a subsequent
+            # retry will be rejected as a replay rather than a
+            # revocation -- acceptable audit-trail fuzz, security
+            # outcome (token rejected) is correct either way.
             if is_session_revoked and is_session_revoked(
                 row["session_id"],
             ):
@@ -436,17 +454,6 @@ class PostgresRefreshStore:
                 used=bool(row["used"]),
                 created_at=row["created_at"],
             )
-
-        # Check if it was a replay (token exists but already used)
-        async with (
-            self._pool.connection() as conn,
-            conn.cursor(row_factory=dict_row) as cur,
-        ):
-            await cur.execute(
-                "SELECT used FROM refresh_tokens WHERE token_hash = %s",
-                (token_hash,),
-            )
-            replay_row = await cur.fetchone()
 
         if replay_row is not None and replay_row["used"]:
             logger.warning(

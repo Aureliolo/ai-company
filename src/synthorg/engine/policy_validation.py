@@ -8,7 +8,7 @@ Examples of **good** policies (non-inferable, actionable):
 
 - ``"All API responses must include a correlation_id header"``
 - ``"Never store PII in memory without encryption"``
-- ``"Escalate budget overruns above $5 to the CFO"``  # lint-allow: regional-defaults
+- ``"Escalate budget overruns above 5 units in the configured currency to the CFO"``
 
 Examples of **bad** policies (inferable or non-actionable):
 

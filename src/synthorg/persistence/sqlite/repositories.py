@@ -11,6 +11,7 @@ import aiosqlite
 from pydantic import BaseModel, ValidationError
 
 from synthorg.budget.cost_record import CostRecord
+from synthorg.budget.errors import MixedCurrencyAggregationError
 from synthorg.communication.message import Message
 from synthorg.core.enums import TaskStatus  # noqa: TC001
 from synthorg.core.task import Task
@@ -329,9 +330,14 @@ FROM cost_records"""
         agent_id: str | None = None,
         task_id: str | None = None,
     ) -> float:
-        """Sum total cost, optionally filtered by agent and/or task."""
+        """Sum total cost, optionally filtered by agent and/or task.
+
+        Raises :class:`MixedCurrencyAggregationError` when the matched rows
+        span multiple currencies -- summing across currencies would produce
+        a meaningless number, so the invariant is checked at the SQL layer
+        and surfaced rather than silently collapsed.
+        """
         try:
-            sql = "SELECT COALESCE(SUM(cost), 0.0) FROM cost_records"
             conditions: list[str] = []
             params: list[str] = []
             if agent_id is not None:
@@ -340,9 +346,33 @@ FROM cost_records"""
             if task_id is not None:
                 conditions.append("task_id = ?")
                 params.append(task_id)
-            if conditions:
-                sql += " WHERE " + " AND ".join(conditions)
-            cursor = await self._db.execute(sql, tuple(params))
+            where_clause = (" WHERE " + " AND ".join(conditions)) if conditions else ""
+
+            # where_clause is built from fixed column names only; user
+            # values go through bound parameters.  S608 suppressed on the
+            # f-string lines themselves.
+            currency_sql = f"SELECT DISTINCT currency FROM cost_records{where_clause}"  # noqa: S608
+            currency_cursor = await self._db.execute(currency_sql, tuple(params))
+            currency_rows = await currency_cursor.fetchall()
+            distinct = frozenset(str(r[0]) for r in currency_rows if r[0] is not None)
+            if len(distinct) > 1:
+                logger.error(
+                    PERSISTENCE_COST_RECORD_AGGREGATE_FAILED,
+                    agent_id=agent_id,
+                    task_id=task_id,
+                    currencies=sorted(distinct),
+                    error="mixed-currency aggregation rejected",
+                )
+                mixed_msg = "Cannot aggregate costs across mixed currencies"
+                raise MixedCurrencyAggregationError(
+                    mixed_msg,
+                    currencies=distinct,
+                    agent_id=agent_id,
+                    task_id=task_id,
+                )
+
+            sum_sql = f"SELECT COALESCE(SUM(cost), 0.0) FROM cost_records{where_clause}"  # noqa: S608
+            cursor = await self._db.execute(sum_sql, tuple(params))
             row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to aggregate cost records"

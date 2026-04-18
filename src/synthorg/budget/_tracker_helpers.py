@@ -19,7 +19,7 @@ from synthorg.budget.cost_record import CostRecord  # noqa: TC001 -- runtime use
 from synthorg.budget.errors import MixedCurrencyAggregationError
 from synthorg.budget.spending_summary import AgentSpending
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
-from synthorg.core.types import NotBlankStr
+from synthorg.core.types import NotBlankStr  # noqa: TC001 -- runtime use in filter
 from synthorg.observability import get_logger
 from synthorg.observability.events.budget import BUDGET_TIME_RANGE_INVALID
 
@@ -107,9 +107,9 @@ def _assert_single_currency(
     if len(codes) > 1:
         raise MixedCurrencyAggregationError(
             currencies=frozenset(codes),
-            agent_id=NotBlankStr(agent_id) if agent_id else None,
-            task_id=NotBlankStr(task_id) if task_id else None,
-            project_id=NotBlankStr(project_id) if project_id else None,
+            agent_id=agent_id or None,
+            task_id=task_id or None,
+            project_id=project_id or None,
         )
     return next(iter(codes))
 

@@ -213,7 +213,7 @@ class TestFormatTaskInstruction:
         assert "JWT-based authentication" in result
         assert "## Acceptance Criteria" in result
         assert "- Login endpoint returns JWT token" in result
-        assert "\u20ac5.00" in result
+        assert "$5.00" in result
 
     def test_deadline_included(self, sample_task_with_criteria: Task) -> None:
         result = format_task_instruction(sample_task_with_criteria)
@@ -290,7 +290,7 @@ class TestFormatTaskInstruction:
         )
         result = format_task_instruction(task)
 
-        assert "\u20ac10.00" in result
+        assert "$10.00" in result
         assert "Deadline" not in result
 
     def test_budget_with_eur_currency(self) -> None:

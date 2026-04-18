@@ -72,6 +72,7 @@ class TestBudgetPrune:
             period=PeriodSpending(
                 total_cost=budget_percent * 10,
                 record_count=int(budget_percent),
+                currency="USD",
                 start=start,
                 end=end,
             ),

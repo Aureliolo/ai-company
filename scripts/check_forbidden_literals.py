@@ -5,9 +5,9 @@ tracked Python file under ``src/synthorg/`` for a curated list of
 forbidden patterns that have no legitimate use in application code.
 Designed for pre-push and GitHub Actions.
 
-Docs are intentionally NOT scanned -- operator-facing deployment guides
-legitimately contain ``localhost:<port>`` examples and the occasional
-``'en-US'`` / currency-code reference.
+Only ``*.py`` files are scanned.  Docs are intentionally NOT scanned --
+operator-facing deployment guides legitimately contain ``localhost:<port>``
+examples and the occasional ``'en-US'`` / currency-code reference.
 
 Forbidden patterns (all outside tests/, CLI Go code, and explicit allowlists):
 
@@ -20,7 +20,13 @@ Exits non-zero with a structured list on violations.
 
 Usage:
     python scripts/check_forbidden_literals.py
-    python scripts/check_forbidden_literals.py --paths src/synthorg docs
+    python scripts/check_forbidden_literals.py --paths src/synthorg
+
+Security:
+    ``--paths`` arguments are resolved against the project root and
+    rejected if they escape it.  This prevents the script from being
+    coerced into scanning (and emitting paths for) files outside the
+    repository when invoked with an attacker-controlled argv.
 """
 
 import argparse
@@ -69,11 +75,17 @@ _SUPPRESSION_MARKER: Final[str] = "lint-allow: regional-defaults"
 
 
 def _scan_file(file_path: Path, rel: str) -> list[str]:
-    """Return violation messages for a single file."""
+    """Return violation messages for a single file.
+
+    Read errors (permissions, corrupt encoding) are reported as
+    ``<rel>:0: unable to scan file: <cause>`` instead of being swallowed.
+    A pre-push gate that fails open on unreadable files would silently
+    disable enforcement -- we prefer to surface the failure.
+    """
     try:
         text = file_path.read_text(encoding="utf-8")
-    except OSError, UnicodeDecodeError:
-        return []
+    except (OSError, UnicodeDecodeError) as exc:
+        return [f"{rel}:0: unable to scan file: {exc}"]
     issues: list[str] = []
     for idx, line in enumerate(text.splitlines(), start=1):
         if _SUPPRESSION_MARKER in line:
@@ -97,23 +109,47 @@ def _scan_file(file_path: Path, rel: str) -> list[str]:
     return issues
 
 
+def _resolve_root(root: Path, project_root: Path) -> Path | None:
+    """Resolve *root* to an absolute path anchored under *project_root*.
+
+    Returns ``None`` if the resolved path is outside the project root --
+    the caller should treat that as a fatal argv error rather than a
+    silent skip.  This is the path-traversal guard: a ``--paths ../..``
+    argument is a configuration mistake, not a valid scan target.
+    """
+    candidate = root if root.is_absolute() else project_root / root
+    try:
+        resolved = candidate.resolve(strict=False)
+    except OSError:
+        return None
+    try:
+        resolved.relative_to(project_root)
+    except ValueError:
+        return None
+    return resolved
+
+
 def _iter_targets(roots: list[Path], project_root: Path) -> list[tuple[Path, str]]:
-    """Yield ``(absolute_path, posix_relative_path)`` for every file to scan."""
+    """Yield ``(absolute_path, posix_relative_path)`` for every file to scan.
+
+    Only Python source files are scanned.  Markdown docs are deliberately
+    excluded (see module docstring): they host legitimate examples of the
+    very literals this gate forbids in application code.
+    """
     targets: list[tuple[Path, str]] = []
     for root in roots:
-        abs_root = root if root.is_absolute() else project_root / root
-        if not abs_root.exists():
+        abs_root = _resolve_root(root, project_root)
+        if abs_root is None or not abs_root.exists():
             continue
-        for ext in ("*.py", "*.md"):
-            for path in abs_root.rglob(ext):
-                rel = path.relative_to(project_root).as_posix()
-                if rel in _ALLOWLIST:
-                    continue
-                if rel.startswith("tests/") or "/tests/" in rel:
-                    continue
-                if rel.startswith("cli/"):
-                    continue
-                targets.append((path, rel))
+        for path in abs_root.rglob("*.py"):
+            rel = path.relative_to(project_root).as_posix()
+            if rel in _ALLOWLIST:
+                continue
+            if rel.startswith("tests/") or "/tests/" in rel:
+                continue
+            if rel.startswith("cli/"):
+                continue
+            targets.append((path, rel))
     return targets
 
 
@@ -130,6 +166,13 @@ def main() -> int:
 
     project_root = Path(__file__).resolve().parent.parent
     roots = [Path(p) for p in args.paths]
+    for root in roots:
+        if _resolve_root(root, project_root) is None:
+            print(
+                f"refusing to scan path outside project root: {root}",
+                file=sys.stderr,
+            )
+            return 2
     total = 0
     for path, rel in _iter_targets(roots, project_root):
         issues = _scan_file(path, rel)

@@ -138,9 +138,12 @@ _r.register(
         namespace=SettingNamespace.BUDGET,
         key="currency",
         type=SettingType.STRING,
-        default="EUR",
+        default="USD",
         description=(
-            "ISO 4217 currency code for display formatting (e.g. USD, EUR, GBP)"
+            "ISO 4217 currency code for display formatting (e.g. USD, EUR, GBP). "
+            "Display-only: SynthOrg does not convert LLM provider costs. "
+            "Token prices are USD-denominated; changing this relabels the "
+            "display symbol but does not translate numeric values."
         ),
         group="Display",
         validator_pattern=r"^[A-Z]{3}$",

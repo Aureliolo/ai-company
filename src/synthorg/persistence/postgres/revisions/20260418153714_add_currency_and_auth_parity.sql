@@ -1,9 +1,9 @@
 -- Modify "agent_states" table
-ALTER TABLE "agent_states" ADD COLUMN "currency" text NOT NULL DEFAULT 'EUR';
+ALTER TABLE "agent_states" ADD CONSTRAINT "agent_states_currency_check" CHECK (currency ~ '^[A-Z]{3}$'::text), ADD COLUMN "currency" text NOT NULL DEFAULT 'USD';
 -- Modify "cost_records" table
-ALTER TABLE "cost_records" ADD COLUMN "currency" text NOT NULL DEFAULT 'EUR';
+ALTER TABLE "cost_records" ADD CONSTRAINT "cost_records_currency_check" CHECK (currency ~ '^[A-Z]{3}$'::text), ADD COLUMN "currency" text NOT NULL DEFAULT 'USD';
 -- Modify "task_metrics" table
-ALTER TABLE "task_metrics" ADD COLUMN "currency" text NOT NULL DEFAULT 'EUR';
+ALTER TABLE "task_metrics" ADD CONSTRAINT "task_metrics_currency_check" CHECK (currency ~ '^[A-Z]{3}$'::text), ADD COLUMN "currency" text NOT NULL DEFAULT 'USD';
 -- Create "custom_rules" table
 CREATE TABLE "custom_rules" (
   "id" text NOT NULL,

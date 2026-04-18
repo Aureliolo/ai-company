@@ -44,8 +44,10 @@ class TestGetCurrencySymbol:
 class TestFormatCost:
     """Tests for format_cost with various currencies and precisions."""
 
-    def test_eur_default(self) -> None:
-        assert format_cost(42.50) == "\u20ac42.50"
+    def test_usd_default(self) -> None:
+        """``DEFAULT_CURRENCY`` is ``USD``; format_cost with no explicit code
+        follows that default (provider token prices are USD-denominated)."""
+        assert format_cost(42.50) == "$42.50"
 
     def test_usd_explicit(self) -> None:
         assert format_cost(42.50, "USD") == "$42.50"
@@ -107,8 +109,9 @@ class TestFormatCost:
 class TestFormatCostDetail:
     """Tests for format_cost_detail (4-decimal precision)."""
 
-    def test_eur_default(self) -> None:
-        assert format_cost_detail(0.0315) == "\u20ac0.0315"
+    def test_usd_default(self) -> None:
+        """``format_cost_detail`` honours ``DEFAULT_CURRENCY`` (``USD``)."""
+        assert format_cost_detail(0.0315) == "$0.0315"
 
     def test_usd(self) -> None:
         assert format_cost_detail(0.0315, "USD") == "$0.0315"

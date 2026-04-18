@@ -59,7 +59,7 @@ def make_performance_snapshot(
         tasks_failed=tasks_failed,
         avg_quality_score=quality,
         success_rate=success_rate,
-        currency="EUR",
+        currency="USD",
     )
     return AgentPerformanceSnapshot(
         agent_id=agent_id,

@@ -61,7 +61,8 @@ CREATE TABLE cost_records (
     input_tokens BIGINT NOT NULL,
     output_tokens BIGINT NOT NULL,
     cost DOUBLE PRECISION NOT NULL,
-    currency TEXT NOT NULL DEFAULT 'EUR',
+    currency TEXT NOT NULL DEFAULT 'USD'
+        CHECK (currency ~ '^[A-Z]{3}$'),
     timestamp TIMESTAMPTZ NOT NULL,
     call_category TEXT,
     PRIMARY KEY (rowid, timestamp)
@@ -116,7 +117,8 @@ CREATE TABLE task_metrics (
     is_success BOOLEAN NOT NULL,
     duration_seconds DOUBLE PRECISION NOT NULL,
     cost DOUBLE PRECISION NOT NULL,
-    currency TEXT NOT NULL DEFAULT 'EUR',
+    currency TEXT NOT NULL DEFAULT 'USD'
+        CHECK (currency ~ '^[A-Z]{3}$'),
     turns_used BIGINT NOT NULL,
     tokens_used BIGINT NOT NULL,
     quality_score DOUBLE PRECISION,
@@ -354,7 +356,8 @@ CREATE TABLE agent_states (
     turn_count BIGINT NOT NULL DEFAULT 0 CHECK (turn_count >= 0),
     accumulated_cost DOUBLE PRECISION NOT NULL DEFAULT 0.0
         CHECK (accumulated_cost >= 0.0),
-    currency TEXT NOT NULL DEFAULT 'EUR',
+    currency TEXT NOT NULL DEFAULT 'USD'
+        CHECK (currency ~ '^[A-Z]{3}$'),
     last_activity_at TIMESTAMPTZ NOT NULL,
     started_at TIMESTAMPTZ,
     CHECK (
