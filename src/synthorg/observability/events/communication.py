@@ -7,6 +7,7 @@ COMM_BUS_STARTED: Final[str] = "communication.bus.started"
 COMM_BUS_STOPPED: Final[str] = "communication.bus.stopped"
 COMM_BUS_ALREADY_RUNNING: Final[str] = "communication.bus.already_running"
 COMM_BUS_NOT_RUNNING: Final[str] = "communication.bus.not_running"
+COMM_BUS_HEALTH_CHECK_FAILED: Final[str] = "communication.bus.health_check_failed"
 
 # Bus connection lifecycle (distributed backends only)
 COMM_BUS_CONNECTED: Final[str] = "communication.bus.connected"

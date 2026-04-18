@@ -1097,10 +1097,13 @@ export interface Channel {
 
 // ── Health ───────────────────────────────────────────────────
 
+export type TelemetryStatus = 'enabled' | 'disabled'
+
 export interface HealthStatus {
   status: 'ok' | 'degraded' | 'down'
   persistence: boolean | null
   message_bus: boolean | null
+  telemetry: TelemetryStatus
   version: string
   uptime_seconds: number
 }

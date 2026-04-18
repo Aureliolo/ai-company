@@ -42,6 +42,7 @@ from synthorg.communication.subscription import (  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.communication import (
     COMM_BUS_ALREADY_RUNNING,
+    COMM_BUS_HEALTH_CHECK_FAILED,
     COMM_BUS_STARTED,
     COMM_BUS_STREAM_SCAN_FAILED,
 )
@@ -113,8 +114,10 @@ class JetStreamMessageBus:
         Checks that the client is both locally marked running and
         actually connected, then performs a PING/PONG round-trip
         via ``nc.flush()`` with a short timeout. Returns ``False``
-        rather than raising when the probe fails, so the caller
+        rather than raising when the probe fails so the caller
         treats the bus as degraded without a ``try``/``except``.
+        Flush exceptions are logged at WARNING so operators can
+        distinguish broker-unreachable from client-logic bugs.
         """
         state = self._state
         if not state.running:
@@ -126,7 +129,13 @@ class JetStreamMessageBus:
             await client.flush(timeout=2)
         except MemoryError, RecursionError:
             raise
-        except Exception:
+        except Exception as exc:
+            logger.warning(
+                COMM_BUS_HEALTH_CHECK_FAILED,
+                phase="flush",
+                error_type=type(exc).__name__,
+                exc_info=True,
+            )
             return False
         return True
 

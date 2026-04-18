@@ -1,12 +1,16 @@
 """Tests for health check endpoint."""
 
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from litestar.testing import TestClient
 
 from synthorg.api.app import create_app
+from synthorg.api.controllers.health import (
+    TelemetryStatus,
+    _resolve_telemetry_status,
+)
 from tests.unit.api.fakes import FakeMessageBus, FakePersistenceBackend
 
 
@@ -20,6 +24,7 @@ class TestHealthCheck:
         assert body["data"]["status"] == "ok"
         assert body["data"]["persistence"] is True
         assert body["data"]["message_bus"] is True
+        assert body["data"]["telemetry"] in {"enabled", "disabled"}
         assert "version" in body["data"]
         assert body["data"]["uptime_seconds"] >= 0
 
@@ -178,3 +183,39 @@ class TestHealthCheckExceptionPaths:
             assert body["data"][response_key] is False
             expected_status = service_spec.get("expected_status", "down")
             assert body["data"]["status"] == expected_status
+
+
+@pytest.mark.unit
+class TestResolveTelemetryStatus:
+    """Branch coverage for the health controller helper."""
+
+    def test_disabled_when_no_collector(self) -> None:
+        app_state = MagicMock()
+        app_state.has_telemetry_collector = False
+        assert _resolve_telemetry_status(app_state) is TelemetryStatus.DISABLED
+
+    def test_enabled_when_collector_enabled(self) -> None:
+        app_state = MagicMock()
+        app_state.has_telemetry_collector = True
+        app_state.telemetry_collector.enabled = True
+        assert _resolve_telemetry_status(app_state) is TelemetryStatus.ENABLED
+
+    def test_disabled_when_collector_disabled(self) -> None:
+        app_state = MagicMock()
+        app_state.has_telemetry_collector = True
+        app_state.telemetry_collector.enabled = False
+        assert _resolve_telemetry_status(app_state) is TelemetryStatus.DISABLED
+
+
+@pytest.mark.unit
+class TestHealthTelemetryField:
+    """The /health endpoint always surfaces a telemetry status."""
+
+    def test_disabled_by_default(self, test_client: TestClient[Any]) -> None:
+        response = test_client.get("/api/v1/health")
+        assert response.status_code == 200
+        body = response.json()
+        # Default TelemetryConfig has enabled=False and nothing flips the
+        # SYNTHORG_TELEMETRY env var in the test fixture, so the collector
+        # is created but stays disabled.
+        assert body["data"]["telemetry"] == "disabled"
