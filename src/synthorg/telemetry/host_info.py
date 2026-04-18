@@ -281,6 +281,16 @@ async def _probe_daemon_info(aiodocker_mod: object) -> object | None:
         return None
 
     if not isinstance(info, dict):
+        # A daemon that responds 200 OK but with a non-dict payload
+        # is a real anomaly (protocol drift, proxy injection, etc.)
+        # rather than a simple unreachable-daemon case. Log the
+        # observed type so operators can distinguish it from the
+        # ordinary ``daemon_unreachable`` collapse in dashboards.
+        logger.warning(
+            TELEMETRY_REPORT_FAILED,
+            detail="docker_info_malformed_response",
+            response_type=type(info).__name__,
+        )
         return None
     return info
 
