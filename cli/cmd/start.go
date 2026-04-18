@@ -609,7 +609,6 @@ func thirdPartyImages(state config.State) []thirdPartyImage {
 	}
 	if state.BusBackend == "nats" {
 		images = append(images, thirdPartyImage{"nats", "dhi.io/nats:2.12-debian13"})
-		images = append(images, thirdPartyImage{"nats-healthcheck", "busybox:1.37-musl"})
 	}
 	return images
 }

@@ -10,6 +10,7 @@ import contextlib
 import functools
 import os
 import sys
+import tempfile
 import time
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -155,6 +156,7 @@ from synthorg.settings.subscribers import (
     ObservabilitySettingsSubscriber,
     ProviderSettingsSubscriber,
 )
+from synthorg.telemetry import TelemetryCollector, TelemetryConfig
 from synthorg.tools.invocation_tracker import ToolInvocationTracker  # noqa: TC001
 from synthorg.versioning import VersioningService
 
@@ -1373,6 +1375,125 @@ def _build_default_trust_service() -> TrustService:
     )
 
 
+_DEFAULT_MEMORY_DIR = Path("/data/memory")
+
+
+def _allowed_memory_dir_roots() -> tuple[str, ...]:
+    r"""Return the string roots a memory dir must begin with.
+
+    Production containers mount the data volume at ``/data``, which
+    is the only legitimate runtime base. Tests drive the builder
+    with ``tmp_path``, so :func:`tempfile.gettempdir` is also
+    admitted -- covering POSIX (``/tmp``, ``/var/tmp``) and Windows
+    (``C:\Users\...\AppData\Local\Temp``) runners without special
+    casing. Returned as plain strings so the caller can use
+    explicit :py:meth:`str.startswith` checks, which CodeQL's
+    ``py/path-injection`` query recognises as a sanitiser for
+    tainted-path dataflow (``Path.is_relative_to`` / ``.resolve``
+    do not register with the query).
+    """
+    roots: list[str] = [str(Path("/data"))]
+    try:
+        tmp_root: str | None = str(Path(tempfile.gettempdir()))
+    except OSError, RuntimeError:
+        tmp_root = None
+    if tmp_root is not None:
+        roots.append(tmp_root)
+    return tuple(roots)
+
+
+def _resolve_memory_dir() -> Path:
+    """Read and validate ``SYNTHORG_MEMORY_DIR`` for derived paths.
+
+    The value is operator-controlled (container runtime env), so it
+    is treated as untrusted input for path-injection purposes. The
+    string is stripped, rejected if empty, rejected if any path
+    segment equals ``..`` (traversal attempt), rejected if not
+    absolute, and rejected if the resulting path string does not
+    begin with one of the roots returned by
+    :func:`_allowed_memory_dir_roots`. Failures fall back to
+    :data:`_DEFAULT_MEMORY_DIR` and log the reason so
+    misconfiguration is observable, never silent.
+    """
+    raw = os.environ.get("SYNTHORG_MEMORY_DIR")
+    if raw is None:
+        return _DEFAULT_MEMORY_DIR
+    candidate = raw.strip()
+    if not candidate:
+        logger.warning(
+            API_APP_STARTUP,
+            detail="memory_dir_blank",
+            reason="empty_or_whitespace",
+        )
+        return _DEFAULT_MEMORY_DIR
+    # Explicit ``..`` guard: reject traversal attempts up front so
+    # the string-prefix check below cannot be bypassed with
+    # ``/data/../etc``-style inputs.
+    path = Path(candidate)
+    if ".." in path.parts:
+        logger.warning(
+            API_APP_STARTUP,
+            detail="memory_dir_traversal",
+            value=candidate,
+        )
+        return _DEFAULT_MEMORY_DIR
+    if not path.is_absolute():
+        logger.warning(
+            API_APP_STARTUP,
+            detail="memory_dir_not_absolute",
+            value=candidate,
+        )
+        return _DEFAULT_MEMORY_DIR
+    # String-based ``startswith`` allow-list -- the pattern CodeQL
+    # ``py/path-injection`` recognises as a sanitiser. ``normcase``
+    # lower-cases and normalises separators on Windows so the
+    # prefix check is case-insensitive there and unchanged on
+    # POSIX. The equality case (``candidate_str == root``) is
+    # deliberately NOT accepted: ``_build_telemetry_collector``
+    # derives ``memory_dir.parent / "telemetry"``, so if the env
+    # var points exactly at a root (``/data``) the telemetry dir
+    # would escape to ``/telemetry``. Requiring ``root + os.sep``
+    # means the memory dir must be a strict descendant.
+    candidate_str = os.path.normcase(str(path))
+    allowed_roots = _allowed_memory_dir_roots()
+    if not any(
+        candidate_str.startswith(os.path.normcase(root) + os.sep)
+        for root in allowed_roots
+    ):
+        logger.warning(
+            API_APP_STARTUP,
+            detail="memory_dir_outside_allowed_roots",
+            value=str(path),
+            allowed=list(allowed_roots),
+        )
+        return _DEFAULT_MEMORY_DIR
+    return path
+
+
+def _build_telemetry_collector(
+    telemetry_cfg: TelemetryConfig | None = None,
+) -> TelemetryCollector:
+    """Build the project telemetry collector.
+
+    Takes the parsed :class:`TelemetryConfig` from the app's
+    :class:`RootConfig` so config-file settings (e.g.
+    ``telemetry.backend``, ``telemetry.heartbeat_interval_hours``)
+    survive wiring -- passing ``None`` falls back to defaults
+    (``enabled=False``) for callers without a parsed config, like
+    early-boot helpers.  :class:`TelemetryCollector` reads
+    ``SYNTHORG_TELEMETRY`` inside its own ``__init__``
+    (``true``/``1``/``yes`` to enable) and overrides the config's
+    ``enabled`` flag, so the env var still wins over the config
+    file. The data directory stores the anonymous deployment ID --
+    placed under the same base as ``SYNTHORG_MEMORY_DIR`` so the
+    container volume holds it.
+    """
+    memory_dir = _resolve_memory_dir()
+    telemetry_dir = memory_dir.parent / "telemetry"
+    config = telemetry_cfg if telemetry_cfg is not None else TelemetryConfig()
+    return TelemetryCollector(config=config, data_dir=telemetry_dir)
+
+
 def _build_performance_tracker(
     *,
     cost_tracker: CostTracker | None = None,
@@ -2266,6 +2387,25 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
         should_auto_wire_settings=_should_auto_wire,
         effective_config=effective_config,
     )
+
+    # Project telemetry: build collector (reads SYNTHORG_TELEMETRY env for
+    # opt-in, defaults to disabled). Attach to app_state so the health
+    # endpoint can report the state, and hook start()/shutdown() into the
+    # Litestar lifespan. Telemetry is SynthOrg-owned and silent on
+    # failure: a broken reporter falls back to noop and never affects
+    # the app.
+    #
+    # Shutdown is appended (runs LAST), not prepended: critical
+    # infrastructure (task engine drain, persistence disconnect, bus
+    # stop) must complete first so the session-summary event emitted
+    # by ``telemetry_collector.shutdown`` reflects final state, and so
+    # a hanging Logfire flush never blocks cleanup of load-bearing
+    # resources.
+    telemetry_collector = _build_telemetry_collector(effective_config.telemetry)
+    app_state.set_telemetry_collector(telemetry_collector)
+    startup = [*startup, telemetry_collector.start]
+    shutdown = [*shutdown, telemetry_collector.shutdown]
+
     if _skip_lifecycle_shutdown:
         shutdown = []
 

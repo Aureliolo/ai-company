@@ -39,7 +39,7 @@ def create_reporter(config: TelemetryConfig) -> TelemetryReporter:
                 LogfireReporter,
             )
 
-            return LogfireReporter(token=config.token)
+            return LogfireReporter()
         except Exception as exc:
             logger.warning(
                 TELEMETRY_REPORT_FAILED,

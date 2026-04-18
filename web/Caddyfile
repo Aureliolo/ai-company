@@ -72,6 +72,16 @@
 :8080 {
 	root * /usr/share/caddy/html
 
+	# --- Container health probe: plain-text 200 for Docker HEALTHCHECK.
+	# Served before any static-asset handling so the probe stays cheap
+	# and independent of SPA bundle state. No security headers -- the
+	# response body is a literal "ok" with no user content. log_skip
+	# keeps the access log quiet under a 10s probe interval.
+	handle /healthz {
+		log_skip
+		respond "ok" 200
+	}
+
 	# --- WebSocket proxy: must precede /api/* so it matches first ---
 	@ws path /api/v1/ws
 	handle @ws {

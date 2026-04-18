@@ -98,6 +98,15 @@ class TestBusLifecycle:
         assert bus.is_running is False
 
     @pytest.mark.unit
+    async def test_health_check_tracks_running(self) -> None:
+        bus = InMemoryMessageBus(config=_make_config())
+        assert await bus.health_check() is False
+        await bus.start()
+        assert await bus.health_check() is True
+        await bus.stop()
+        assert await bus.health_check() is False
+
+    @pytest.mark.unit
     async def test_publish_on_stopped_bus_raises(self) -> None:
         bus = InMemoryMessageBus(config=_make_config())
         msg = _make_message(channel="#general")

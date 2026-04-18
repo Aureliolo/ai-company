@@ -5,10 +5,12 @@ import contextlib
 import os
 import platform
 import sys
+import tempfile
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from synthorg.observability import get_logger
@@ -26,10 +28,9 @@ from synthorg.observability.events.telemetry import (
 from synthorg.telemetry.privacy import PrivacyScrubber, PrivacyViolationError
 from synthorg.telemetry.protocol import TelemetryEvent, TelemetryReporter
 from synthorg.telemetry.reporters import create_reporter
+from synthorg.telemetry.reporters.noop import NoopReporter
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from synthorg.telemetry.config import TelemetryConfig
 
 logger = get_logger(__name__)
@@ -149,6 +150,23 @@ class TelemetryCollector:
         """Whether telemetry is enabled."""
         return self._config.enabled
 
+    @property
+    def is_functional(self) -> bool:
+        """Whether telemetry is both opted in AND the reporter can deliver.
+
+        Returns ``False`` when telemetry is opt-out, and also when the
+        operator opted in but :func:`create_reporter` fell back to
+        :class:`NoopReporter` (missing ``logfire`` extra, reporter
+        construction failure, or explicit ``TelemetryBackend.NOOP``).
+        This is what the health endpoint surfaces: ``enabled`` alone
+        would lie about delivery whenever the reporter silently
+        degraded to noop.
+        """
+        return self._config.enabled and not isinstance(
+            self._reporter,
+            NoopReporter,
+        )
+
     async def start(self) -> None:
         """Start the periodic heartbeat if telemetry is enabled.
 
@@ -191,6 +209,7 @@ class TelemetryCollector:
                             TELEMETRY_REPORT_FAILED,
                             detail="session_summary_snapshot_failed",
                             error_type=type(exc).__name__,
+                            exc_info=True,
                         )
 
                 try:
@@ -200,6 +219,7 @@ class TelemetryCollector:
                         TELEMETRY_REPORT_FAILED,
                         detail="send_session_summary_failed",
                         error_type=type(exc).__name__,
+                        exc_info=True,
                     )
 
                 try:
@@ -209,6 +229,7 @@ class TelemetryCollector:
                         TELEMETRY_REPORT_FAILED,
                         detail="send_shutdown_event_failed",
                         error_type=type(exc).__name__,
+                        exc_info=True,
                     )
 
             try:
@@ -218,6 +239,7 @@ class TelemetryCollector:
                     TELEMETRY_REPORT_FAILED,
                     detail="reporter_shutdown_failed",
                     error_type=type(exc).__name__,
+                    exc_info=True,
                 )
 
     async def send_heartbeat(
@@ -385,16 +407,80 @@ class TelemetryCollector:
                     error_type=type(exc).__name__,
                 )
 
-    def _load_or_create_deployment_id(self) -> str:
+    def _load_or_create_deployment_id(self) -> str:  # noqa: C901
         """Load deployment ID from file or create a new UUID.
 
         Returns a valid UUID string in all cases (never raises).
         Logs warnings on I/O errors.
+
+        Applies the OWASP path-injection recipe (:func:`os.path.normpath`
+        + :py:meth:`str.startswith` on the normalised full path +
+        trusted-root allow-list) immediately before the filesystem
+        operations. The duplicate of
+        :func:`synthorg.api.app._resolve_memory_dir` is deliberate
+        defense-in-depth: ``normpath`` collapses ``..``/redundant
+        separators that a caller constructing ``TelemetryCollector``
+        directly could otherwise smuggle past ``self._data_dir``,
+        and the startswith check is the sanitiser CodeQL's
+        ``py/path-injection`` query tracks across the sinks below.
         """
-        id_file = self._data_dir / "telemetry_id"
+        # Build the full target path as a normalised, case-folded
+        # string: the ``str(os.path.normcase(os.path.normpath(
+        # os.path.join(base, name))))`` recipe from OWASP / CodeQL.
+        # ``normpath`` collapses ``..`` and redundant ``/`` so the
+        # prefix check below cannot be bypassed with
+        # ``/data/../etc/telemetry_id``; ``normcase`` lower-cases on
+        # Windows (no-op on POSIX) so the comparison is
+        # case-insensitive where the filesystem is. The ``PTH*``
+        # ruff lints (prefer ``Path``) are intentionally suppressed:
+        # CodeQL's ``py/path-injection`` query only recognises
+        # string-based ``normpath``/``startswith`` + ``os.path``/
+        # builtin I/O as a sanitiser + sink pair; the equivalent
+        # ``Path`` methods leave the sinks flagged even with a
+        # valid guard.
+        id_path_str = os.path.normcase(
+            os.path.normpath(
+                os.path.join(  # noqa: PTH118
+                    os.fspath(self._data_dir),
+                    "telemetry_id",
+                ),
+            ),
+        )
+        data_root = os.path.normcase(os.path.normpath(str(Path("/data"))))
         try:
-            if id_file.exists():
-                stored = id_file.read_text(encoding="utf-8").strip()
+            tmp_root: str | None = os.path.normcase(
+                os.path.normpath(str(Path(tempfile.gettempdir()))),
+            )
+        except OSError, RuntimeError:
+            tmp_root = None
+        # Require a strict descendant of a trusted root (``root +
+        # sep``). Equality (``path == root``) is rejected because
+        # the caller would still derive ``parent / "telemetry"``
+        # above this function, and a path equal to the root would
+        # escape one level up (``/data`` -> ``/telemetry``). The
+        # checks here use ``id_path_str`` directly (the same
+        # variable read at every sink below) so CodeQL's dataflow
+        # query sees the sanitiser on the exact value it tracks.
+        if not (
+            id_path_str.startswith(data_root + os.sep)
+            or (tmp_root is not None and id_path_str.startswith(tmp_root + os.sep))
+        ):
+            logger.warning(
+                TELEMETRY_REPORT_FAILED,
+                detail="data_dir_not_trusted",
+                value=id_path_str,
+            )
+            return str(uuid.uuid4())
+
+        # Use the sanitised string with plain ``os`` / builtin I/O
+        # so the sanitiser and each sink sit on adjacent lines --
+        # the pattern CodeQL's static dataflow query matches on.
+        # The inline PTH-rule suppressions below carry the same
+        # rationale as the builder above.
+        try:
+            if os.path.exists(id_path_str):  # noqa: PTH110
+                with open(id_path_str, encoding="utf-8") as fh:  # noqa: PTH123
+                    stored = fh.read().strip()
                 if stored:
                     try:
                         uuid.UUID(stored)
@@ -415,9 +501,48 @@ class TelemetryCollector:
 
         new_id = str(uuid.uuid4())
         try:
-            id_file.parent.mkdir(parents=True, exist_ok=True)
-            id_file.write_text(new_id, encoding="utf-8")
-            id_file.chmod(0o600)
+            os.makedirs(  # noqa: PTH103
+                os.path.dirname(id_path_str),  # noqa: PTH120
+                exist_ok=True,
+            )
+            # Atomic exclusive create: under concurrent startups
+            # (e.g. two backend replicas mounting the same ``/data``
+            # volume) the prior ``exists`` + ``open("w")`` pair
+            # could overwrite a peer's freshly-written UUID and
+            # leave each replica with a different deployment ID.
+            # ``O_CREAT | O_EXCL`` with the final mode bits set
+            # atomically wins-or-loses the race; if a peer wrote
+            # first we re-read and reuse its UUID so the persisted
+            # ID stays stable.
+            fd = os.open(
+                id_path_str,
+                os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+                0o600,
+            )
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                    fh.write(new_id)
+            except BaseException:
+                # ``fdopen`` owns the fd on success; close it
+                # ourselves if construction raised.
+                os.close(fd)
+                raise
+        except FileExistsError:
+            # A peer wrote first. Re-read; fall back to our own
+            # freshly-minted UUID if their file is unreadable or
+            # corrupt (same contract as the read path above).
+            try:
+                with open(id_path_str, encoding="utf-8") as fh:  # noqa: PTH123
+                    stored = fh.read().strip()
+                uuid.UUID(stored)
+            except (OSError, ValueError) as exc:
+                logger.warning(
+                    TELEMETRY_REPORT_FAILED,
+                    detail="deployment_id_peer_read",
+                    error_type=type(exc).__name__,
+                )
+            else:
+                return stored
         except OSError as exc:
             logger.warning(
                 TELEMETRY_REPORT_FAILED,

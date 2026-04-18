@@ -11,7 +11,8 @@
 # top. No setup stage needed -- the symlink fix is done in the builder itself.
 # =============================================================================
 
-ARG BASE_IMAGE
+# CI overrides with digest-pinned ref; default keeps standalone builds working.
+ARG BASE_IMAGE=ghcr.io/aureliolo/synthorg-backend-base:latest
 
 # ---------------------------------------------------------------------------
 # Stage 1 -- Builder (ephemeral: compiles deps, fixes venv symlink)
@@ -31,19 +32,22 @@ WORKDIR /app
 
 COPY --chown=65532:65532 pyproject.toml uv.lock ./
 USER build
-# Install the `postgres` and `distributed` extras unconditionally: both
-# are runtime-selectable via `synthorg init --persistence-backend` and
-# `--bus-backend`, so the image must carry psycopg and nats-py whether
-# or not the user has chosen them yet. `fine-tune` lives in the
-# dedicated synthorg-fine-tune-gpu / -cpu images (large, torch inside);
-# `telemetry` stays opt-in to avoid pulling logfire on default installs.
+# Install the `postgres`, `distributed`, and `telemetry` extras
+# unconditionally. `postgres` and `distributed` are runtime-selectable
+# via `synthorg init --persistence-backend` and `--bus-backend`, so the
+# image must carry psycopg and nats-py whether or not the user has
+# chosen them yet. `telemetry` ships the logfire SDK so the opt-in
+# project telemetry signal actually reaches Logfire when operators flip
+# `SYNTHORG_TELEMETRY=true` -- shipping the image without it would make
+# the opt-in a silent noop. `fine-tune` lives in the dedicated
+# synthorg-fine-tune-gpu / -cpu images (large, torch inside).
 RUN --mount=type=cache,target=/home/build/.cache/uv,uid=65532,gid=65532 \
-    uv sync --frozen --no-dev --no-install-project --extra postgres --extra distributed
+    uv sync --frozen --no-dev --no-install-project --extra postgres --extra distributed --extra telemetry
 
 RUN touch README.md
 COPY --chown=65532:65532 src/ src/
 RUN --mount=type=cache,target=/home/build/.cache/uv,uid=65532,gid=65532 \
-    uv sync --frozen --no-dev --extra postgres --extra distributed
+    uv sync --frozen --no-dev --extra postgres --extra distributed --extra telemetry
 
 RUN find /app/src -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 
@@ -124,6 +128,9 @@ RUN set -eu; \
 # ---------------------------------------------------------------------------
 FROM ${BASE_IMAGE}
 
+# Optional build-time telemetry write token. Empty default disables delivery.
+ARG LOGFIRE_PROJECT_TOKEN=""
+
 LABEL org.opencontainers.image.title="synthorg-backend" \
       org.opencontainers.image.description="SynthOrg orchestration backend" \
       org.opencontainers.image.url="https://github.com/Aureliolo/synthorg" \
@@ -156,6 +163,7 @@ ENV PATH="/app/.venv/bin:/usr/local/bin:$PATH" \
     SYNTHORG_PORT="3001" \
     UVICORN_HOST="0.0.0.0" \
     UVICORN_PORT="3001" \
+    SYNTHORG_LOGFIRE_PROJECT_TOKEN=${LOGFIRE_PROJECT_TOKEN} \
     PYTHONWARNINGS="ignore::UserWarning:litestar.plugins.pydantic.utils"
 
 USER 65532

@@ -100,6 +100,9 @@ class _FakeBus:
     def is_running(self) -> bool:
         return self._running
 
+    async def health_check(self) -> bool:
+        return self._running
+
     async def start(self) -> None:
         self._running = True
 

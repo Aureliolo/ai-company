@@ -78,6 +78,9 @@ class FakeMessageBus:
     def is_running(self) -> bool:
         return self._running
 
+    async def health_check(self) -> bool:
+        return self._running
+
     async def publish(
         self,
         message: object,

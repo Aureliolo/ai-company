@@ -4,8 +4,6 @@ from enum import StrEnum, unique
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic needs at runtime
-
 
 @unique
 class TelemetryBackend(StrEnum):
@@ -16,29 +14,29 @@ class TelemetryBackend(StrEnum):
 
 
 class TelemetryConfig(BaseModel):
-    """Configuration for opt-in anonymous product telemetry.
+    """Configuration for opt-in anonymous project telemetry.
 
-    Telemetry is **disabled by default**.  When enabled, only
+    Telemetry is **disabled by default**. When enabled, only
     aggregate usage metrics are sent -- never API keys, chat
-    content, or personal data.
+    content, or personal data. Telemetry is SynthOrg-owned and
+    project-scoped: the write token is embedded in source and
+    cannot be redirected to a different backend. Operators that
+    need their own observability stack use the Postgres +
+    Prometheus + audit-chain path, not this module.
 
     Attributes:
-        enabled: Master switch (default ``False``).  Can be
-            overridden by ``SYNTHORG_TELEMETRY`` env var.
+        enabled: Master switch (default ``False``). Can be
+            overridden by the ``SYNTHORG_TELEMETRY`` env var.
         backend: Reporter backend to use.
         heartbeat_interval_hours: Hours between periodic heartbeat
             events.
-        token: Write token for the telemetry backend.  When
-            ``None``, the embedded default project token is used.
-            Can be overridden by ``SYNTHORG_TELEMETRY_TOKEN`` env
-            var (useful for self-hosted backends).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     enabled: bool = Field(
         default=False,
-        description="Enable anonymous product telemetry (default: off)",
+        description="Enable anonymous project telemetry (default: off)",
     )
     backend: TelemetryBackend = Field(
         default=TelemetryBackend.LOGFIRE,
@@ -49,9 +47,4 @@ class TelemetryConfig(BaseModel):
         gt=0.0,
         le=168.0,
         description="Hours between heartbeat events (1h--168h)",
-    )
-    token: NotBlankStr | None = Field(
-        default=None,
-        repr=False,
-        description="Backend write token override (None = embedded default)",
     )

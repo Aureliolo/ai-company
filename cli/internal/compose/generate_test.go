@@ -52,10 +52,12 @@ func TestGenerateDefault(t *testing.T) {
 		t.Error("default output should not contain SETTINGS_KEY")
 	}
 
-	// Compose must not override Dockerfile healthchecks.
-	if strings.Contains(yaml, "healthcheck:") {
-		t.Error("compose output must not override healthcheck (defined in Dockerfile)")
-	}
+	// Web service carries a compose-level healthcheck because its apko
+	// image intentionally ships no Dockerfile HEALTHCHECK; backend and
+	// postgres own their probes at the image layer. Absence would
+	// mean `docker ps` reports no health for the web container, which
+	// is the bug this block guards against regressing.
+	assertContains(t, yaml, "http://127.0.0.1:8080/healthz")
 
 	compareGolden(t, "compose_default.yml", out)
 }
@@ -132,10 +134,10 @@ func TestGenerateWithSandbox(t *testing.T) {
 	// Hardening still present on backend.
 	assertContains(t, yaml, "no-new-privileges:true")
 
-	// Compose must not override Dockerfile healthchecks.
-	if strings.Contains(yaml, "healthcheck:") {
-		t.Error("compose output must not override healthcheck (defined in Dockerfile)")
-	}
+	// Web service carries a compose-level healthcheck (apko image
+	// ships no Dockerfile HEALTHCHECK). Guards against regressing to
+	// the previous "no health status for web" behaviour.
+	assertContains(t, yaml, "http://127.0.0.1:8080/healthz")
 
 	// DockerSockGID is -1 (detection failed), so no group_add block should render.
 	if strings.Contains(yaml, "group_add:") {
