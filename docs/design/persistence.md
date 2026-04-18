@@ -53,6 +53,16 @@ primary candidates for time-based partitioning.  `cost_records` and
 the primary key so they can be converted to TimescaleDB hypertables without
 touching any application code.
 
+**Monetary columns carry a sibling `currency TEXT NOT NULL` column.**
+`cost_records`, `task_metrics`, and `agent_states` each store an ISO 4217 code
+alongside the numeric cost (or `accumulated_cost`) so the unit travels with the
+value.  Aggregators read both columns and enforce a same-currency invariant at
+read time; mixing currencies in a single rollup raises
+`MixedCurrencyAggregationError`.  New currency columns default to `'EUR'` so
+existing deployments migrate without a manual backfill; operators running a
+non-EUR deployment can re-stamp historical rows via the backend's post-migrate
+hook or by running a targeted `UPDATE`.
+
 `heartbeats` is deliberately **excluded** from the append-only set.  Despite
 having a timestamp, it stores one row per `execution_id` and updates that row
 on every pulse -- the write pattern is update-heavy and the row count is

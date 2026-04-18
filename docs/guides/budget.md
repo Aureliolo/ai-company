@@ -158,8 +158,17 @@ Every LLM API call is recorded as a cost record with full context:
 | `model` | Which model was used |
 | `input_tokens` | Number of input tokens |
 | `output_tokens` | Number of output tokens |
-| `cost` | Computed cost in the configured currency (internal base currency from model pricing). The `budget.currency` setting controls display formatting in the dashboard and reports. |
+| `cost` | Numeric cost of the call, denominated in `currency`. |
+| `currency` | ISO 4217 currency code for `cost` (e.g. `EUR`, `USD`, `JPY`). Stamped from `budget.currency` at record-creation time; historical rows retain the code that was active when they were created, so changing the setting is safe. |
 | `timestamp` | When the call was made (UTC) |
+
+!!! info "Aggregation invariant"
+
+    Every sum/average/budget-check site requires a single currency across the
+    contributing rows. Mixing currencies raises
+    `MixedCurrencyAggregationError` (HTTP 409). This is by design -- FX
+    conversion is out of scope for the initial release; partition records by
+    currency first, or apply your own conversion before aggregating.
 
 ### API Endpoints
 

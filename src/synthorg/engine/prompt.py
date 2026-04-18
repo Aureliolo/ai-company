@@ -172,8 +172,8 @@ def build_system_prompt(  # noqa: PLR0913, C901, PLR0912
         effective_autonomy: Resolved autonomy for the current run.
         context_budget_indicator: Formatted context budget indicator
             string to inject into the prompt.
-        currency: ISO 4217 currency code for budget displays
-            (e.g. ``"USD"``, ``"EUR"``).
+        currency: ISO 4217 currency code for budget displays.  Validated
+            against the allowlist in ``synthorg.budget.currency``.
         model_tier: Model capability tier for prompt profile selection.
             ``None`` defaults to the full (large) profile.
         personality_trimming_enabled: When ``True`` (default), the

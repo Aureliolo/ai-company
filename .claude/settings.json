@@ -40,6 +40,11 @@
             "type": "command",
             "command": "python scripts/check_web_design_system.py",
             "timeout": 10000
+          },
+          {
+            "type": "command",
+            "command": "python scripts/check_backend_regional_defaults.py",
+            "timeout": 10000
           }
         ]
       }

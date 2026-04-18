@@ -67,7 +67,10 @@ class TemplateFormatterTool(BaseCommunicationTool):
             result = await tool.execute(
                 arguments={
                     "template": "Hello {{ name }}, your balance is {{ amount }}.",
-                    "variables": {"name": "Alice", "amount": "$100"},
+                    "variables": {
+                        "name": "Alice",
+                        "amount": "$100",
+                    },  # lint-allow: regional-defaults
                 }
             )
     """

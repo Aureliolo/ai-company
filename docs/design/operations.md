@@ -225,15 +225,30 @@ Every API call is tracked with full context:
   "model": "example-medium-001",
   "input_tokens": 4500,
   "output_tokens": 1200,
-  "cost": 0.0315,  // value in the operator's configured currency (see budget.currency)
+  "cost": 0.0315,
+  "currency": "EUR",
   "timestamp": "2026-02-27T10:30:00Z"
 }
 ```
 
+Every `CostRecord`, `TaskMetricRecord`, and `AgentRuntimeState` carries its own `currency`
+(ISO 4217 code validated against the allowlist in `synthorg.budget.currency`). The
+`budget.currency` setting determines the currency stamped on new rows; historical rows
+retain the code that was active when they were created, so changing `budget.currency`
+is safe and does not invalidate history.
+
+Every aggregation site -- `CostTracker`, `ReportGenerator`, `CostOptimizer`,
+per-agent / per-department / per-project rollups, and the HR `WindowMetrics` multi-window
+strategy -- enforces a same-currency invariant. Mixing currencies raises
+`MixedCurrencyAggregationError` (HTTP 409, `MIXED_CURRENCY_AGGREGATION` error code) at the
+aggregator rather than silently producing a meaningless total. `CostTracker.record()` also
+rejects at the ingestion boundary when the incoming record's currency differs from the
+configured `budget.currency`, so downstream aggregators never see mixed-currency state.
+
 `CostRecord` stores `input_tokens` and `output_tokens`; `total_tokens` is a `@computed_field`
 property on `TokenUsage` (the model embedded in `CompletionResponse`). Spending aggregation
 models (`AgentSpending`, `DepartmentSpending`, `PeriodSpending`) extend a shared
-`_SpendingTotals` base class.
+`_SpendingTotals` base class that also carries the per-aggregation currency.
 
 The `GET /budget/records` endpoint returns paginated cost records alongside two server-computed
 summaries (aggregated from **all** matching records, not just the current page):

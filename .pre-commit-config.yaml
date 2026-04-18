@@ -2,7 +2,7 @@ ci:
   autoupdate_schedule: never
   autofix_prs: true
   autofix_commit_msg: "style: auto-fix pre-commit hooks"
-  skip: [commitizen, gitleaks, hadolint-docker, caddy-validate, no-em-dashes, no-redundant-timeout, mypy, pytest-unit, golangci-lint, go-vet, go-test, eslint-web, check-push-rebased, check-single-migration-per-pr, check-no-modify-migration]
+  skip: [commitizen, gitleaks, hadolint-docker, caddy-validate, no-em-dashes, no-redundant-timeout, mypy, pytest-unit, golangci-lint, go-vet, go-test, eslint-web, check-push-rebased, check-single-migration-per-pr, check-no-modify-migration, forbidden-literals]
 
 default_install_hook_types: [pre-commit, commit-msg, pre-push]
 
@@ -157,3 +157,11 @@ repos:
         files: ^web/src/.*\.(ts|tsx)$
         pass_filenames: false
         stages: [pre-commit, pre-push]
+
+      - id: forbidden-literals
+        name: forbidden-literal gate (src/synthorg)
+        entry: uv run python scripts/check_forbidden_literals.py
+        language: system
+        files: ^src/synthorg/.*\.py$
+        pass_filenames: false
+        stages: [pre-push]

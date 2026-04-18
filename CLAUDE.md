@@ -94,7 +94,9 @@ No default may privilege a single region, currency, or locale. Every user-facing
 - **Units**: metric only. Paper size A4 if print flows are ever added.
 - **Spelling**: American English is the UI default (`color`, `initialize`). Document deviations; do not mix.
 
-Enforced by `scripts/check_web_design_system.py` (PostToolUse hook on every `web/src/` edit). The hook flags hardcoded currency codes, currency symbols adjacent to digits (`"$10"`, `"\u20ac50"`), and identifiers ending in `_usd`. Legitimate Storybook variants that intentionally demo a specific currency can opt out via a `// lint-allow: regional-defaults` marker on or above the line.
+- **Monetary models**: every cost-bearing Pydantic model (``CostRecord``, ``TaskMetricRecord``, ``LlmCalibrationRecord``, ``AgentRuntimeState``) carries ``currency: CurrencyCode`` (ISO 4217, validated against the allowlist in ``synthorg.budget.currency``). Every aggregation site (``CostTracker``, ``ReportGenerator``, ``CostOptimizer``, HR ``WindowMetrics``) enforces a same-currency invariant; mixing currencies raises ``MixedCurrencyAggregationError`` (HTTP 409).
+
+Enforced by `scripts/check_web_design_system.py` (PostToolUse hook on every `web/src/` edit) for the frontend surface, and by `scripts/check_backend_regional_defaults.py` (PostToolUse hook on every `src/synthorg/` edit) for the Python backend. Both hooks flag hardcoded currency codes, currency symbols adjacent to digits (`"$10"`, `"\u20ac50"`), identifiers ending in `_usd`, BCP 47 locale literals (`'en-US'`), and `localhost:<port>` in application code. Legitimate opt-outs use a `# lint-allow: regional-defaults` (Python) or `// lint-allow: regional-defaults` (TS) marker on or above the line. A stricter CI-gated `scripts/check_forbidden_literals.py` runs in pre-push and GitHub Actions to catch the same issues on non-Claude commits.
 
 ## Shell Usage
 
