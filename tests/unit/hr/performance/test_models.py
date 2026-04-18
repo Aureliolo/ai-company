@@ -447,6 +447,7 @@ class TestWindowMetrics:
             avg_tokens_per_task=2000.0,
             success_rate=0.8,
             collaboration_score=6.0,
+            currency="EUR",
         )
         assert wm.window_size == "7d"
         assert wm.data_point_count == 10

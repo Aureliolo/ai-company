@@ -56,6 +56,7 @@ def _make_snapshot(agent_id: str) -> AgentPerformanceSnapshot:
                 data_point_count=10,
                 tasks_completed=5,
                 tasks_failed=5,
+                currency="EUR",
             ),
         ),
         trends=(

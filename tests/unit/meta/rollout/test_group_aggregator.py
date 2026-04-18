@@ -53,6 +53,7 @@ def _snapshot(
         avg_quality_score=quality,
         avg_cost_per_task=cost_per_task,
         success_rate=success,
+        currency="EUR",
     )
     return AgentPerformanceSnapshot(
         agent_id=NotBlankStr(agent_id),

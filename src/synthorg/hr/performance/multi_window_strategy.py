@@ -8,6 +8,7 @@ import re
 from datetime import timedelta
 from typing import TYPE_CHECKING
 
+from synthorg.budget.errors import MixedCurrencyAggregationError
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.performance.models import TaskMetricRecord, WindowMetrics
 from synthorg.observability import get_logger
@@ -132,10 +133,22 @@ class MultiWindowStrategy:
         avg_time = None
         avg_tokens = None
         success_rate = None
+        window_currency: str | None = None
 
         if has_enough:
             scored = [r.quality_score for r in records if r.quality_score is not None]
             avg_quality = sum(scored) / len(scored) if scored else None
+            currencies = {r.currency for r in records}
+            if len(currencies) > 1:
+                msg = (
+                    f"Window {window_label!r} contains TaskMetricRecords "
+                    f"with mixed currencies: {sorted(currencies)}"
+                )
+                raise MixedCurrencyAggregationError(
+                    msg,
+                    currencies=frozenset(currencies),
+                )
+            window_currency = next(iter(currencies))
             avg_cost = sum(r.cost for r in records) / count
             avg_time = sum(r.duration_seconds for r in records) / count
             avg_tokens = sum(r.tokens_used for r in records) / count
@@ -150,6 +163,7 @@ class MultiWindowStrategy:
                 round(avg_quality, 4) if avg_quality is not None else None
             ),
             avg_cost_per_task=(round(avg_cost, 4) if avg_cost is not None else None),
+            currency=window_currency,
             avg_completion_time_seconds=(
                 round(avg_time, 4) if avg_time is not None else None
             ),

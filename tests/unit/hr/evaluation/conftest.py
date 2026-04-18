@@ -101,6 +101,7 @@ def make_snapshot(
                 avg_completion_time_seconds=120.0,
                 avg_tokens_per_task=2000.0,
                 success_rate=0.8,
+                currency="EUR",
             ),
         )
     return AgentPerformanceSnapshot(

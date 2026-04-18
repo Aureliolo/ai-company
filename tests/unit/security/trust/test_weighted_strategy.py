@@ -204,6 +204,7 @@ class TestWeightedTrustStrategy:
             tasks_failed=0,
             avg_quality_score=None,
             success_rate=1.0,
+            currency="EUR",
         )
         snapshot = AgentPerformanceSnapshot(
             agent_id="agent-001",

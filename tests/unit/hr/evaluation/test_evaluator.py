@@ -187,6 +187,7 @@ class TestEvaluationService:
                     avg_completion_time_seconds=100.0,
                     avg_tokens_per_task=1500.0,
                     success_rate=0.8,
+                    currency="EUR",
                 ),
             ),
         )

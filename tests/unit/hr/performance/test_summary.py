@@ -27,6 +27,7 @@ def _make_window(  # noqa: PLR0913
     avg_completion_time_seconds: float | None = 120.0,
     avg_quality_score: float | None = 7.5,
     collaboration_score: float | None = 8.0,
+    currency: str = "EUR",
 ) -> WindowMetrics:
     return WindowMetrics(
         window_size=window_size,
@@ -38,6 +39,7 @@ def _make_window(  # noqa: PLR0913
         avg_completion_time_seconds=avg_completion_time_seconds,
         avg_quality_score=avg_quality_score,
         collaboration_score=collaboration_score,
+        currency=currency,
     )
 
 

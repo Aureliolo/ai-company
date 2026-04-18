@@ -257,6 +257,7 @@ class TestGetSnapshot:
             tasks_completed=8,
             tasks_failed=2,
             success_rate=0.8,
+            currency="EUR",
         )
         tracker = _make_tracker(
             window=MockWindowStrategy(
