@@ -619,57 +619,61 @@ class FakePersistenceBackend:
 
     @property
     def sessions(self) -> object:
-        """Fake session repository (minimal stand-in)."""
-        from unittest.mock import MagicMock
+        """Fake session repository (AsyncMock so awaited methods resolve)."""
+        from unittest.mock import AsyncMock
 
-        return MagicMock()
+        return AsyncMock()
 
     @property
     def refresh_tokens(self) -> object:
-        """Fake refresh-token repository (minimal stand-in)."""
-        from unittest.mock import MagicMock
+        """Fake refresh-token repository."""
+        from unittest.mock import AsyncMock
 
-        return MagicMock()
+        return AsyncMock()
 
     @property
     def mcp_installations(self) -> object:
-        """Fake MCP installations repository (minimal stand-in)."""
-        from unittest.mock import MagicMock
+        """Fake MCP installations repository."""
+        from unittest.mock import AsyncMock
 
-        return MagicMock()
+        return AsyncMock()
 
     @property
     def org_facts(self) -> object:
-        """Fake org fact repository (minimal stand-in)."""
-        from unittest.mock import MagicMock
+        """Fake org fact repository."""
+        from unittest.mock import AsyncMock
 
-        return MagicMock()
+        return AsyncMock()
 
     @property
     def ontology_entities(self) -> object:
-        """Fake ontology entity repository (minimal stand-in)."""
-        from unittest.mock import MagicMock
+        """Fake ontology entity repository."""
+        from unittest.mock import AsyncMock
 
-        return MagicMock()
+        return AsyncMock()
 
     @property
     def ontology_drift(self) -> object:
-        """Fake ontology drift-report repository (minimal stand-in)."""
-        from unittest.mock import MagicMock
+        """Fake ontology drift-report repository."""
+        from unittest.mock import AsyncMock
 
-        return MagicMock()
+        return AsyncMock()
 
     def build_lockouts(self, _auth_config: object) -> object:
         """Fake lockout repository builder."""
-        from unittest.mock import MagicMock
+        from unittest.mock import AsyncMock
 
-        return MagicMock()
+        return AsyncMock()
 
-    def build_escalations(self, *, notify_channel: str | None = None) -> object:
+    def build_escalations(
+        self,
+        *,
+        notify_channel: str | None = None,
+    ) -> object:
         """Fake escalation repository builder."""
-        from unittest.mock import MagicMock
+        from unittest.mock import AsyncMock
 
-        return MagicMock()
+        return AsyncMock()
 
     async def get_setting(self, key: str) -> str | None:
         return self._settings.get(key)

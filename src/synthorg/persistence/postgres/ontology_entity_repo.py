@@ -59,7 +59,7 @@ class PostgresOntologyEntityRepository:
     @property
     def backend_name(self) -> NotBlankStr:
         """Human-readable backend identifier."""
-        return "postgres"  # type: ignore[return-value]
+        return "postgres"
 
     def _row_to_entity(self, row: dict[str, Any]) -> EntityDefinition:
         """Deserialize a psycopg dict row into an EntityDefinition."""
