@@ -13,6 +13,15 @@ vi.mock('@/api/endpoints/auth', () => ({
   changePassword: vi.fn(),
 }))
 
+// `handleUnauthorized` dynamically imports `@/stores/websocket` and calls
+// `disconnect()`. Without a mock, the dynamic import + `.then().catch()`
+// chain outlives the test body and leaks as PROMISEs. Stub the module.
+vi.mock('@/stores/websocket', () => ({
+  useWebSocketStore: {
+    getState: () => ({ disconnect: vi.fn() }),
+  },
+}))
+
 // Prevent actual navigation in tests
 const originalLocation = window.location
 beforeAll(() => {

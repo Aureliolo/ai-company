@@ -67,21 +67,38 @@ async function renderDetailPage() {
 }
 
 describe('TaskDetailPage', () => {
+  // Controllable pending promises let loading-state tests simulate an
+  // in-flight fetch without leaving a never-settled promise past teardown.
+  // Each test appends its pending resolver to this list; afterEach
+  // resolves them all so --detect-async-leaks sees a clean slate.
+  const pendingResolvers: Array<() => void> = []
+  function pendingPromise<T>(): Promise<T> {
+    return new Promise<T>((resolve) => {
+      pendingResolvers.push(() => resolve(undefined as T))
+    })
+  }
+
   beforeEach(() => {
     resetStore()
     vi.clearAllMocks()
     mockGetTask.mockResolvedValue(mockTask)
   })
 
+  afterEach(() => {
+    while (pendingResolvers.length > 0) {
+      pendingResolvers.pop()?.()
+    }
+  })
+
   it('renders loading spinner when loadingDetail is true', async () => {
-    mockGetTask.mockReturnValue(new Promise(() => {}))
+    mockGetTask.mockReturnValue(pendingPromise())
     resetStore({ loadingDetail: true })
     await renderDetailPage()
     expect(screen.queryByText('Test task')).not.toBeInTheDocument()
   })
 
   it('renders loading spinner when task is null', async () => {
-    mockGetTask.mockReturnValue(new Promise(() => {}))
+    mockGetTask.mockReturnValue(pendingPromise())
     resetStore({ selectedTask: null, loadingDetail: false })
     await renderDetailPage()
     // Should show spinner since task is null (fetch is pending)

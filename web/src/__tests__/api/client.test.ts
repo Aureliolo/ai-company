@@ -187,48 +187,63 @@ function getRequestInterceptor(): (config: Record<string, unknown>) => Record<st
   return fulfilled as (config: Record<string, unknown>) => Record<string, unknown>
 }
 
+// Spy on getCsrfToken rather than setting `document.cookie` -- jsdom's
+// tough-cookie backed `document.cookie` setter creates a Promise via
+// `createPromiseCallback` that leaks past test teardown under
+// --detect-async-leaks. Mocking the reader is a narrower, leak-free path
+// to the same coverage.
+vi.mock('@/utils/csrf', () => ({
+  getCsrfToken: vi.fn(),
+}))
+
 describe('apiClient request interceptor (CSRF)', () => {
+  let csrfMock: ReturnType<typeof vi.fn>
+
+  beforeAll(async () => {
+    const mod = await import('@/utils/csrf')
+    csrfMock = vi.mocked(mod.getCsrfToken) as ReturnType<typeof vi.fn>
+  })
+
+  beforeEach(() => {
+    csrfMock.mockReturnValue('test-csrf-token')
+  })
+
   afterEach(() => {
-    // Clear any test cookies
-    document.cookie = 'csrf_token=; Max-Age=0'
+    csrfMock.mockReset()
   })
 
   it('attaches CSRF token on POST requests when cookie present', () => {
-    document.cookie = 'csrf_token=test-csrf-token'
     const fulfilled = getRequestInterceptor()
     const result = fulfilled({ method: 'post', headers: {} }) as { headers: Record<string, string> }
     expect(result.headers['X-CSRF-Token']).toBe('test-csrf-token')
   })
 
   it('attaches CSRF token on PUT requests when cookie present', () => {
-    document.cookie = 'csrf_token=test-csrf-token'
     const fulfilled = getRequestInterceptor()
     const result = fulfilled({ method: 'put', headers: {} }) as { headers: Record<string, string> }
     expect(result.headers['X-CSRF-Token']).toBe('test-csrf-token')
   })
 
   it('attaches CSRF token on PATCH requests when cookie present', () => {
-    document.cookie = 'csrf_token=test-csrf-token'
     const fulfilled = getRequestInterceptor()
     const result = fulfilled({ method: 'patch', headers: {} }) as { headers: Record<string, string> }
     expect(result.headers['X-CSRF-Token']).toBe('test-csrf-token')
   })
 
   it('attaches CSRF token on DELETE requests when cookie present', () => {
-    document.cookie = 'csrf_token=test-csrf-token'
     const fulfilled = getRequestInterceptor()
     const result = fulfilled({ method: 'delete', headers: {} }) as { headers: Record<string, string> }
     expect(result.headers['X-CSRF-Token']).toBe('test-csrf-token')
   })
 
   it('does not attach CSRF token on GET requests', () => {
-    document.cookie = 'csrf_token=test-csrf-token'
     const fulfilled = getRequestInterceptor()
     const result = fulfilled({ method: 'get', headers: {} }) as { headers: Record<string, string> }
     expect(result.headers['X-CSRF-Token']).toBeUndefined()
   })
 
   it('does not attach CSRF token when cookie is absent', () => {
+    csrfMock.mockReturnValue(null)
     const fulfilled = getRequestInterceptor()
     const result = fulfilled({ method: 'post', headers: {} }) as { headers: Record<string, string> }
     expect(result.headers['X-CSRF-Token']).toBeUndefined()

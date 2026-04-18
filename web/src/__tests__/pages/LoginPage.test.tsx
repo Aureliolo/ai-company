@@ -282,8 +282,15 @@ describe('LoginPage', () => {
 
   it('disables inputs during submission', async () => {
     mockGetSetupStatus.mockResolvedValue(setupStatusResponse())
-    // Never resolves -- stays in submitting state.
-    mockLogin.mockReturnValue(new Promise(() => {}))
+    // Deferred promise rather than ``new Promise(() => {})`` so
+    // --detect-async-leaks doesn't flag the intentionally-pending
+    // submission state as a leak: we resolve it at the end of the
+    // test so the login store's promise chain settles before teardown.
+    let resolveLogin: () => void
+    const loginDeferred = new Promise<void>((resolve) => {
+      resolveLogin = resolve
+    })
+    mockLogin.mockReturnValue(loginDeferred)
     const user = userEvent.setup()
 
     renderLogin()
@@ -298,6 +305,11 @@ describe('LoginPage', () => {
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Signing In...' })).toBeDisabled()
     })
+
+    // Settle the deferred so the in-flight login promise resolves
+    // before the worker tears down.
+    resolveLogin!()
+    await loginDeferred
   })
 
   it('shows lockout warning when locked', async () => {
