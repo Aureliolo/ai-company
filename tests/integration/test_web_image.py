@@ -65,6 +65,9 @@ def web_container() -> Generator[str]:
                 "manifest unknown" in stderr
                 or "pull access denied" in stderr
                 or "repository does not exist" in stderr
+                or "not found" in stderr
+                or "failed to resolve reference" in stderr
+                or "unable to find image" in stderr
             ):
                 pytest.skip(f"Web image not available: {exc.stderr.strip()}")
             if (

@@ -4,6 +4,7 @@ import json
 from collections.abc import Iterable  # noqa: TC003
 from typing import TYPE_CHECKING, Any
 
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.ontology import (
     ONTOLOGY_ENTITY_DELETED,
@@ -27,8 +28,6 @@ from synthorg.ontology.models import (
 
 if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool
-
-    from synthorg.core.types import NotBlankStr
 
 
 def _import_dict_row() -> Any:
@@ -59,23 +58,44 @@ class PostgresOntologyEntityRepository:
     @property
     def backend_name(self) -> NotBlankStr:
         """Human-readable backend identifier."""
-        return "postgres"
+        return NotBlankStr("postgres")
 
     def _row_to_entity(self, row: dict[str, Any]) -> EntityDefinition:
-        """Deserialize a psycopg dict row into an EntityDefinition."""
+        """Deserialize a psycopg dict row into an EntityDefinition.
+
+        Postgres JSONB columns come back as already-parsed lists/dicts
+        when psycopg has the jsonb loader wired in; callers that store
+        values through ``json.dumps`` then fetch via raw text adapters
+        get a ``str`` back instead.  Handle both so the repo stays
+        portable across psycopg loader configurations.
+        """
         entity_name = row["name"]
         try:
+            fields_raw = row["fields"]
+            constraints_raw = row["constraints"]
+            relationships_raw = row["relationships"]
+            fields_data = (
+                json.loads(fields_raw) if isinstance(fields_raw, str) else fields_raw
+            )
+            constraints_data = (
+                json.loads(constraints_raw)
+                if isinstance(constraints_raw, str)
+                else constraints_raw
+            )
+            relationships_data = (
+                json.loads(relationships_raw)
+                if isinstance(relationships_raw, str)
+                else relationships_raw
+            )
             return EntityDefinition(
                 name=entity_name,
                 tier=EntityTier(row["tier"]),
                 source=EntitySource(row["source"]),
                 definition=row["definition"],
-                fields=tuple(EntityField(**f) for f in json.loads(row["fields"])),
-                constraints=tuple(json.loads(row["constraints"])),
+                fields=tuple(EntityField(**f) for f in fields_data),
+                constraints=tuple(constraints_data),
                 disambiguation=row["disambiguation"],
-                relationships=tuple(
-                    EntityRelation(**r) for r in json.loads(row["relationships"])
-                ),
+                relationships=tuple(EntityRelation(**r) for r in relationships_data),
                 created_by=row["created_by"],
                 created_at=row["created_at"],
                 updated_at=row["updated_at"],
@@ -244,7 +264,7 @@ class PostgresOntologyEntityRepository:
                 continue
         return tuple(results)
 
-    async def get_version_manifest(self) -> dict[str, int]:
+    async def get_version_manifest(self) -> dict[NotBlankStr, int]:
         """Return the latest version number for each entity."""
         dict_row = self._dict_row
         async with (
@@ -257,4 +277,4 @@ class PostgresOntologyEntityRepository:
                    GROUP BY entity_id""",
             )
             rows = await cur.fetchall()
-        return {row["entity_id"]: row["latest_version"] for row in rows}
+        return {NotBlankStr(row["entity_id"]): row["latest_version"] for row in rows}

@@ -1,3 +1,9 @@
+-- Baseline migration for SynthOrg's Postgres persistence backend.
+-- Generated via `atlas migrate diff --env postgres baseline` after the
+-- pre-alpha history squash (issue #1457, Part B).  Do NOT hand-edit
+-- this file or `atlas.sum`; see `docs/guides/persistence-migrations.md`
+-- for the regeneration / squash workflow and the for-agents rules.
+--
 -- Create "entity_definitions" table
 CREATE TABLE "entity_definitions" (
   "name" text NOT NULL,

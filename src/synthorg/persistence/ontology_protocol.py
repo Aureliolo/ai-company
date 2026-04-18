@@ -72,7 +72,7 @@ class OntologyEntityRepository(Protocol):
         """Substring search against entity name and definition text."""
         ...
 
-    async def get_version_manifest(self) -> dict[str, int]:
+    async def get_version_manifest(self) -> dict[NotBlankStr, int]:
         """Return the latest version number for each entity."""
         ...
 

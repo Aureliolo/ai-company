@@ -1,3 +1,9 @@
+-- Baseline migration for SynthOrg's SQLite persistence backend.
+-- Generated via `atlas migrate diff --env sqlite baseline` after the
+-- pre-alpha history squash (issue #1457, Part B).  Do NOT hand-edit
+-- this file or `atlas.sum`; see `docs/guides/persistence-migrations.md`
+-- for the regeneration / squash workflow and the for-agents rules.
+--
 -- Create "tasks" table
 CREATE TABLE `tasks` (
   `id` text NOT NULL,

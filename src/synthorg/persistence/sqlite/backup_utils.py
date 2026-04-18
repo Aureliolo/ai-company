@@ -27,8 +27,31 @@ def vacuum_into(source_path: str, target_path: str) -> int:
     return Path(target_path).stat().st_size
 
 
+class IntegrityCheckError(RuntimeError):
+    """Raised when ``PRAGMA integrity_check`` cannot run.
+
+    Distinct from the check itself reporting corruption (which returns
+    ``False``).  This is the "could not determine" case: the database
+    file is unreadable, the sqlite driver itself raised, or similar.
+    Callers should treat this as a system failure, not a corrupt backup.
+    """
+
+
 def integrity_check(db_path: str) -> bool:
-    """Run ``PRAGMA integrity_check`` on a SQLite database file."""
-    with contextlib.closing(sqlite3.connect(db_path)) as conn:
-        result = conn.execute("PRAGMA integrity_check").fetchone()
-        return result is not None and result[0] == "ok"
+    """Run ``PRAGMA integrity_check`` on a SQLite database file.
+
+    Returns:
+        ``True`` if SQLite reports the file is ``ok``; ``False`` when
+        the check itself runs but reports corruption.
+
+    Raises:
+        IntegrityCheckError: When the check could not be executed
+            (I/O error, not a SQLite database, driver error, etc.).
+    """
+    try:
+        with contextlib.closing(sqlite3.connect(db_path)) as conn:
+            result = conn.execute("PRAGMA integrity_check").fetchone()
+    except (sqlite3.Error, OSError) as exc:
+        msg = f"integrity_check could not run on {db_path!r}: {exc}"
+        raise IntegrityCheckError(msg) from exc
+    return result is not None and result[0] == "ok"

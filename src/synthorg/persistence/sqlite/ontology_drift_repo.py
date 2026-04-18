@@ -6,6 +6,10 @@ from typing import TYPE_CHECKING, Any
 import aiosqlite  # noqa: TC002
 
 from synthorg.observability import get_logger
+from synthorg.observability.events.ontology import (
+    ONTOLOGY_DRIFT_STORE_DESERIALIZE_FAILED,
+    ONTOLOGY_DRIFT_STORE_WRITE_FAILED,
+)
 from synthorg.ontology.models import AgentDrift, DriftAction, DriftReport
 
 if TYPE_CHECKING:
@@ -36,7 +40,7 @@ def _row_to_report(row: Any) -> DriftReport:
         )
     except (json.JSONDecodeError, KeyError, ValueError, TypeError) as exc:
         logger.exception(
-            "ontology.drift.store_deserialize_failed",
+            ONTOLOGY_DRIFT_STORE_DESERIALIZE_FAILED,
             entity_name=str(entity_name),
         )
         msg = f"Malformed drift report row for entity {entity_name!r}"
@@ -80,7 +84,7 @@ class SQLiteOntologyDriftReportRepository:
             await self._db.commit()
         except Exception:
             logger.error(
-                "ontology.drift.store_write_failed",
+                ONTOLOGY_DRIFT_STORE_WRITE_FAILED,
                 entity_name=report.entity_name,
                 exc_info=True,
             )

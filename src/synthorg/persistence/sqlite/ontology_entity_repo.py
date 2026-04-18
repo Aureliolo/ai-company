@@ -3,10 +3,10 @@
 import json
 import sqlite3
 from collections.abc import Iterable  # noqa: TC003
-from typing import TYPE_CHECKING
 
 import aiosqlite  # noqa: TC002
 
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.ontology import (
     ONTOLOGY_ENTITY_DELETED,
@@ -28,9 +28,6 @@ from synthorg.ontology.models import (
     EntityTier,
 )
 
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
-
 logger = get_logger(__name__)
 
 
@@ -47,7 +44,7 @@ class SQLiteOntologyEntityRepository:
     @property
     def backend_name(self) -> NotBlankStr:
         """Human-readable backend identifier."""
-        return "sqlite"
+        return NotBlankStr("sqlite")
 
     def _row_to_entity(self, row: aiosqlite.Row) -> EntityDefinition:
         """Deserialize a database row into an EntityDefinition."""
@@ -219,7 +216,7 @@ class SQLiteOntologyEntityRepository:
                 continue
         return tuple(results)
 
-    async def get_version_manifest(self) -> dict[str, int]:
+    async def get_version_manifest(self) -> dict[NotBlankStr, int]:
         """Return the latest version number for each entity."""
         cursor = await self._db.execute(
             """SELECT entity_id, MAX(version) AS latest_version
@@ -227,4 +224,4 @@ class SQLiteOntologyEntityRepository:
                GROUP BY entity_id""",
         )
         rows = await cursor.fetchall()
-        return {row["entity_id"]: row["latest_version"] for row in rows}
+        return {NotBlankStr(row["entity_id"]): row["latest_version"] for row in rows}
