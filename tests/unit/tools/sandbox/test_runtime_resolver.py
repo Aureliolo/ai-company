@@ -192,3 +192,39 @@ class TestSandboxRuntimeResolverProbe:
         monkeypatch.setattr("aiodocker.Docker", _raise_error)
         result = await SandboxRuntimeResolver.probe_available_runtimes()
         assert result == frozenset({"runc"})
+
+    async def test_probe_falls_back_on_timeout(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Wedged-but-reachable daemon trips the startup timeout cap.
+
+        ``aiodocker`` inherits aiohttp's 300 s ``sock_read`` default;
+        the :func:`asyncio.timeout` wrapper must short-circuit to the
+        ``runc`` fallback so startup doesn't stall for five minutes.
+        """
+        import asyncio
+
+        class _MockSystem:
+            @staticmethod
+            async def info() -> dict[str, object]:
+                # Simulate a wedged daemon: never returns until cancelled.
+                await asyncio.Event().wait()
+                return {}
+
+        class _MockDocker:
+            system = _MockSystem()
+
+            async def __aenter__(self) -> _MockDocker:
+                return self
+
+            async def __aexit__(self, *_: object) -> None:
+                return None
+
+        monkeypatch.setattr("aiodocker.Docker", _MockDocker)
+        monkeypatch.setattr(
+            "synthorg.tools.sandbox.runtime_resolver._RUNTIME_PROBE_TIMEOUT_SECONDS",
+            0.01,
+        )
+        result = await SandboxRuntimeResolver.probe_available_runtimes()
+        assert result == frozenset({"runc"})

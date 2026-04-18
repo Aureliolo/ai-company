@@ -6,7 +6,8 @@ overrides and global defaults, with automatic fallback when the
 requested runtime is unavailable.
 """
 
-from typing import TYPE_CHECKING
+import asyncio
+from typing import TYPE_CHECKING, Final
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.sandbox import (
@@ -20,6 +21,14 @@ if TYPE_CHECKING:
     from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
 
 logger = get_logger(__name__)
+
+_RUNTIME_PROBE_TIMEOUT_SECONDS: Final[float] = 5.0
+"""Upper bound on the Docker ``/info`` runtime probe.
+
+``aiodocker`` inherits aiohttp's defaults (``sock_read=300s``); a
+wedged daemon would otherwise stall startup for five minutes. Cap
+the probe so it degrades to the ``runc`` fallback quickly.
+"""
 
 
 class SandboxRuntimeResolver:
@@ -60,10 +69,19 @@ class SandboxRuntimeResolver:
         try:
             import aiodocker  # noqa: PLC0415
 
-            async with aiodocker.Docker() as client:
+            async with (
+                asyncio.timeout(_RUNTIME_PROBE_TIMEOUT_SECONDS),
+                aiodocker.Docker() as client,
+            ):
                 info = await client.system.info()
                 runtimes = info.get("Runtimes", {})
                 names = frozenset(runtimes.keys()) if runtimes else frozenset({"runc"})
+        except TimeoutError:
+            logger.warning(
+                SANDBOX_GVISOR_UNAVAILABLE,
+                reason="docker_info_timeout",
+            )
+            return frozenset({"runc"})
         except Exception:
             logger.warning(
                 SANDBOX_GVISOR_UNAVAILABLE,

@@ -161,7 +161,12 @@ def _extract(info: Mapping[str, object]) -> DockerHostInfo:
     )
     for src, dst in str_keys:
         raw = info.get(src)
-        if raw is None or raw == "":
+        # Reject non-str values outright -- the /info contract says
+        # these fields are strings, but a future Docker daemon could
+        # return a dict / list / structured payload; ``str(raw)``
+        # would leak it into telemetry verbatim. Mirrors the
+        # isinstance guard in the int loop below.
+        if not isinstance(raw, str) or raw == "":
             continue
         result[dst] = _truncate(raw)  # type: ignore[literal-required]
 

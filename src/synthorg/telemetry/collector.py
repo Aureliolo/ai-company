@@ -508,6 +508,13 @@ class TelemetryCollector:
         kernel / Docker version / storage driver / NVIDIA-runtime
         availability without joining on a separate system.
 
+        Short-circuits when :attr:`is_functional` is ``False`` --
+        the reporter is a :class:`NoopReporter`, so emitting the
+        event would be discarded anyway, and the Docker socket
+        probe (which crosses the ``asyncio.to_thread`` boundary
+        and potentially reaches for ``/var/run/docker.sock``) is
+        wasted work.
+
         :func:`fetch_docker_info` is designed to never raise (every
         failure collapses to a ``docker_info_available=False``
         marker). The outer ``try`` below is a belt-and-suspenders
@@ -517,6 +524,9 @@ class TelemetryCollector:
         signal in Logfire and we'd rather ship it without docker
         info than not ship it at all.
         """
+        if not self.is_functional:
+            return
+
         try:
             docker_info: DockerHostInfo = await fetch_docker_info()
         except Exception as exc:

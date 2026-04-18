@@ -2416,7 +2416,18 @@ Event-specific properties are allowlisted per event type in
 ``synthorg.telemetry.privacy._ALLOWED_PROPERTIES``. Keys matching any forbidden pattern
 (``key``, ``token``, ``secret``, ``password``, ``content``, ``message``, ``prompt``,
 ``description``, ``credential``, ``bearer``, ``auth``) are rejected even when on the
-allowlist. String values are capped at ``MAX_STRING_LENGTH`` (64 chars).
+allowlist.
+
+**String length enforcement is validation-first, not lossy.**
+``PrivacyScrubber._check_properties`` rejects any string value longer than
+``MAX_STRING_LENGTH`` (64 chars) and ``_send`` drops the event on
+``PrivacyViolationError`` -- over-cap strings are *not* silently truncated
+downstream. Producers that want to keep a long value on the wire must slice
+explicitly before emitting; the two producers that do this are
+``synthorg.telemetry.host_info._truncate()`` (Docker ``/info`` fields) and
+``synthorg.telemetry.collector._resolve_environment()`` (operator-supplied
+environment tag). The cap therefore acts as a budget signal: emitters know
+up-front that anything over 64 chars must be summarised at the source.
 
 **``deployment.startup``** also carries a Docker daemon ``/info`` snapshot when
 ``/var/run/docker.sock`` is bind-mounted into the backend container:

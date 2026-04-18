@@ -3,7 +3,11 @@
 import pytest
 from pydantic import ValidationError
 
-from synthorg.telemetry.config import TelemetryBackend, TelemetryConfig
+from synthorg.telemetry.config import (
+    MAX_STRING_LENGTH,
+    TelemetryBackend,
+    TelemetryConfig,
+)
 
 
 @pytest.mark.unit
@@ -56,9 +60,10 @@ class TestTelemetryConfig:
         with pytest.raises(ValidationError):
             TelemetryConfig(environment=blank)
 
-    def test_environment_rejects_over_64_chars(self) -> None:
+    def test_environment_rejects_over_cap(self) -> None:
+        """Reject values longer than :data:`MAX_STRING_LENGTH`."""
         with pytest.raises(ValidationError):
-            TelemetryConfig(environment="x" * 65)
+            TelemetryConfig(environment="x" * (MAX_STRING_LENGTH + 1))
 
 
 @pytest.mark.unit
