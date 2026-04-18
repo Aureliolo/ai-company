@@ -43,17 +43,24 @@ class TestLogfireReporterReportRaises:
             "logfire",
             reason="logfire extra not installed in this environment",
         )
+        import logfire as real_logfire
+
         from synthorg.telemetry.reporters.logfire import LogfireReporter
 
         # Reporter refuses to initialise without a token; a dummy
         # value exercises the construction path without enabling
-        # delivery (the SDK handles an unauthenticated token by
-        # dropping events).
+        # delivery. ``logfire.configure`` is patched so it does NOT
+        # spawn the background ``check_logfire_token`` thread that
+        # would otherwise hit the real Logfire API with a bogus
+        # token and raise an unhandled 401 in a worker thread --
+        # pytest-threadexception surfaces those as test errors in
+        # the full-suite run the pre-push hook triggers.
         monkeypatch.setenv(
             "SYNTHORG_LOGFIRE_PROJECT_TOKEN",
             "pylf_v1_test_000000000000000000000000000000000000000000",
         )
-        return LogfireReporter()
+        with patch.object(real_logfire, "configure"):
+            return LogfireReporter()
 
     async def test_backend_exception_propagates(
         self,
