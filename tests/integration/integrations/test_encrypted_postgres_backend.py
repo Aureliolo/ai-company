@@ -9,15 +9,15 @@ Postgres 18 container via testcontainers, using the shared
 import pytest
 from cryptography.fernet import Fernet
 
-from synthorg.integrations.connections.secret_backends.encrypted_postgres import (
-    EncryptedPostgresSecretBackend,
-)
 from synthorg.integrations.errors import (
     SecretRetrievalError,
     SecretRotationError,
     SecretStorageError,
 )
 from synthorg.persistence.postgres.backend import PostgresPersistenceBackend
+from synthorg.persistence.secret_backends.encrypted_postgres import (
+    EncryptedPostgresSecretBackend,
+)
 
 
 @pytest.fixture

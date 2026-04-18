@@ -1869,9 +1869,6 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
             from synthorg.integrations.connections.catalog import (  # noqa: PLC0415
                 ConnectionCatalog,
             )
-            from synthorg.integrations.connections.secret_backends.factory import (  # noqa: PLC0415
-                create_secret_backend,
-            )
             from synthorg.integrations.health.prober import (  # noqa: PLC0415
                 HealthProberService,
                 bind_health_check_catalog,
@@ -1881,6 +1878,9 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
             )
             from synthorg.integrations.tunnel.ngrok_adapter import (  # noqa: PLC0415
                 NgrokAdapter,
+            )
+            from synthorg.persistence.secret_backends.factory import (  # noqa: PLC0415
+                create_secret_backend,
             )
 
             # Prefer the active SQLite persistence path so the
@@ -1941,7 +1941,7 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
             # promotes the default to match postgres persistence, and
             # downgrades to env_var with an ERROR log when the master
             # key is unset or the underlying store is unavailable.
-            from synthorg.integrations.connections.secret_backends.factory import (  # noqa: PLC0415
+            from synthorg.persistence.secret_backends.factory import (  # noqa: PLC0415
                 resolve_secret_backend_config,
             )
 

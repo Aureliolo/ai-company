@@ -8,21 +8,21 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from synthorg.integrations.config import SecretBackendConfig  # noqa: TC001
-from synthorg.integrations.connections.secret_backends.encrypted_postgres import (
-    EncryptedPostgresSecretBackend,
-)
-from synthorg.integrations.connections.secret_backends.encrypted_sqlite import (
-    EncryptedSqliteSecretBackend,
-)
-from synthorg.integrations.connections.secret_backends.env_var import (
-    EnvVarSecretBackend,
-)
-from synthorg.integrations.connections.secret_backends.protocol import (
-    SecretBackend,  # noqa: TC001
-)
 from synthorg.observability import get_logger
 from synthorg.observability.events.integrations import (
     SECRET_BACKEND_UNAVAILABLE,
+)
+from synthorg.persistence.secret_backends.encrypted_postgres import (
+    EncryptedPostgresSecretBackend,
+)
+from synthorg.persistence.secret_backends.encrypted_sqlite import (
+    EncryptedSqliteSecretBackend,
+)
+from synthorg.persistence.secret_backends.env_var import (
+    EnvVarSecretBackend,
+)
+from synthorg.persistence.secret_backends.protocol import (
+    SecretBackend,  # noqa: TC001
 )
 
 if TYPE_CHECKING:
