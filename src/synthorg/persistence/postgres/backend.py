@@ -138,6 +138,7 @@ if TYPE_CHECKING:
     from synthorg.persistence.circuit_breaker_repo import (
         CircuitBreakerStateRepository,
     )
+    from synthorg.persistence.escalation_protocol import EscalationQueueRepository
     from synthorg.persistence.preset_repository import PersonalityPresetRepository
     from synthorg.persistence.repositories import (
         AgentStateRepository,
@@ -948,6 +949,23 @@ class PostgresPersistenceBackend:
         """Construct a lockout repository using this backend's pool."""
         pool = self.get_db()
         return PostgresLockoutRepository(pool, auth_config)
+
+    def build_escalations(
+        self,
+        *,
+        notify_channel: str | None = None,
+    ) -> EscalationQueueRepository:
+        """Construct an escalation queue repository on the shared pool.
+
+        ``notify_channel`` enables cross-instance pg_notify publishing
+        when the escalation subsystem has enabled it.
+        """
+        from synthorg.persistence.postgres.escalation_repo import (  # noqa: PLC0415
+            PostgresEscalationRepository,
+        )
+
+        pool = self.get_db()
+        return PostgresEscalationRepository(pool, notify_channel=notify_channel)
 
     async def get_setting(self, key: NotBlankStr) -> str | None:
         """Retrieve a setting value by key from the ``_system`` namespace.

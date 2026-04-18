@@ -50,42 +50,20 @@ def build_escalation_queue_store(
         return InMemoryEscalationStore()
     if config.backend == "sqlite":
         if persistence is None:
-            msg = "sqlite backend requires a SQLite persistence backend"
+            msg = "sqlite backend requires a connected persistence backend"
             raise ValueError(msg)
-        db = getattr(persistence, "_db", None)
-        if db is None:
-            msg = (
-                "sqlite backend requires an active aiosqlite.Connection "
-                "on the persistence backend (is it connected?)"
-            )
-            raise ValueError(msg)
-        from synthorg.persistence.sqlite.escalation_repo import (  # noqa: PLC0415
-            SQLiteEscalationRepository,
-        )
-
-        return SQLiteEscalationRepository(db)
+        return persistence.build_escalations()
     if config.backend == "postgres":
         if persistence is None:
-            msg = "postgres backend requires a Postgres persistence backend"
+            msg = "postgres backend requires a connected persistence backend"
             raise ValueError(msg)
-        pool = getattr(persistence, "_pool", None)
-        if pool is None:
-            msg = (
-                "postgres backend requires an active psycopg_pool on the "
-                "persistence backend (is it connected?)"
-            )
-            raise ValueError(msg)
-        from synthorg.persistence.postgres.escalation_repo import (  # noqa: PLC0415
-            PostgresEscalationRepository,
-        )
-
         # Pass the notify channel only when cross-instance notify is
         # enabled so the repo's NOTIFY publishing is a true no-op for
         # single-worker deployments.
         notify_channel: str | None = None
         if config.cross_instance_notify in {"auto", "on"}:
             notify_channel = config.notify_channel
-        return PostgresEscalationRepository(pool, notify_channel=notify_channel)
+        return persistence.build_escalations(notify_channel=notify_channel)
     # Defensive: the Literal union is exhaustive today.
     msg = f"Unknown escalation queue backend: {config.backend!r}"  # type: ignore[unreachable]
     raise ValueError(msg)

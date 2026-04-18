@@ -126,6 +126,7 @@ if TYPE_CHECKING:
     from synthorg.api.auth.config import AuthConfig
     from synthorg.persistence.auth_protocol import LockoutRepository
     from synthorg.persistence.config import SQLiteConfig
+    from synthorg.persistence.escalation_protocol import EscalationQueueRepository
 
 logger = get_logger(__name__)
 
@@ -763,6 +764,23 @@ class SQLitePersistenceBackend:
         """Construct a lockout repository using this backend's connection."""
         db = self.get_db()
         return SQLiteLockoutRepository(db, auth_config)
+
+    def build_escalations(
+        self,
+        *,
+        notify_channel: str | None = None,  # noqa: ARG002
+    ) -> EscalationQueueRepository:
+        """Construct an escalation queue repository.
+
+        ``notify_channel`` is ignored by SQLite (no cross-instance
+        NOTIFY/LISTEN).
+        """
+        from synthorg.persistence.sqlite.escalation_repo import (  # noqa: PLC0415
+            SQLiteEscalationRepository,
+        )
+
+        db = self.get_db()
+        return SQLiteEscalationRepository(db)
 
     async def get_setting(self, key: NotBlankStr) -> str | None:
         """Retrieve a setting value by key from the ``_system`` namespace.

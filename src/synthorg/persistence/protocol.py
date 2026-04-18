@@ -32,6 +32,9 @@ from synthorg.persistence.circuit_breaker_repo import (
 from synthorg.persistence.custom_rule_repo import (
     CustomRuleRepository,  # noqa: TC001
 )
+from synthorg.persistence.escalation_protocol import (
+    EscalationQueueRepository,  # noqa: TC001
+)
 from synthorg.persistence.preset_repository import (
     PersonalityPresetRepository,  # noqa: TC001
 )
@@ -398,6 +401,23 @@ class PersistenceBackend(Protocol):
         which is app-layer config, not persistence-layer.  Callers supply
         the config at startup; the returned repo shares this backend's
         connection / pool.
+
+        Raises:
+            PersistenceConnectionError: If the backend is not connected.
+        """
+        ...
+
+    def build_escalations(
+        self,
+        *,
+        notify_channel: str | None = None,
+    ) -> EscalationQueueRepository:
+        """Construct an escalation queue repository for this backend.
+
+        Method-based rather than property because Postgres escalations
+        accept an optional NOTIFY channel name -- cross-instance notify
+        config lives on the escalation subsystem, not on persistence.
+        ``notify_channel`` is ignored by the SQLite implementation.
 
         Raises:
             PersistenceConnectionError: If the backend is not connected.
