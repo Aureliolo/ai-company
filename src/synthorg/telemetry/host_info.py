@@ -34,14 +34,20 @@ sync -- both are the scrub surface.
 
 import asyncio
 import os
-from typing import TYPE_CHECKING, Final, Literal, NotRequired, TypedDict
+
+# ``Mapping`` is kept as a runtime import (rather than under
+# ``TYPE_CHECKING``) so it is resolvable by
+# :func:`typing.get_type_hints` on ``_extract`` under PEP 649 lazy
+# annotations. Ruff would push this into the type-checking block via
+# TC003 since the only reference is in a function signature, but a
+# ``NameError`` at annotation-evaluation time (tests, docs, introspection
+# tooling) is strictly worse than the cheap stdlib import.
+from collections.abc import Mapping  # noqa: TC003
+from typing import Final, Literal, NotRequired, TypedDict
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.telemetry import TELEMETRY_REPORT_FAILED
 from synthorg.telemetry.config import MAX_STRING_LENGTH
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
 
 logger = get_logger(__name__)
 
