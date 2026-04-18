@@ -102,6 +102,11 @@ _ALLOWLIST: Final[frozenset[str]] = frozenset(
         # Destructive-op-detector tests feed SQL fragments as test
         # inputs to the detector -- same reason as the detector itself.
         "tests/unit/security/rules/test_destructive_op_detector.py",
+        # Boundary-checker self-test: feeds SQL keyword fixtures into
+        # the matcher to prove it flags them.  The strings ARE the test
+        # input -- adding suppression markers per line would defeat the
+        # exact behavior under test.
+        "tests/unit/scripts/test_check_persistence_boundary.py",
     }
 )
 
