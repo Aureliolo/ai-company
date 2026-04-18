@@ -167,28 +167,53 @@ _LOCALHOST_PORT_RE: Final[re.Pattern[str]] = re.compile(
 )
 
 
+def _line_has_dedicated_marker(line: str) -> bool:
+    """Return True iff *line* is a whole-line marker comment.
+
+    Matches exactly ``#`` + optional whitespace + the marker string (no
+    other text).  Rejects inline-after-code markers and markers embedded
+    in longer comments (e.g. ``# TODO lint-allow: regional-defaults
+    later``) so neither form bleeds into the following line.
+    """
+    stripped = line.strip()
+    if not stripped.startswith("#"):
+        return False
+    return stripped[1:].strip() == _SUPPRESSION_MARKER
+
+
+def _line_has_trailing_marker(line: str) -> bool:
+    """Return True iff *line* carries the marker as a trailing ``#`` comment.
+
+    We only honour markers that appear inside the comment fragment of
+    the line, not inside string literals -- the minimum parser that
+    achieves this is ``split on first '#'``.  The rule mirrors
+    :func:`_line_has_dedicated_marker`: the comment tail, after
+    stripping, must start with the marker.  This prevents tricks like
+    ``x = "# lint-allow: regional-defaults"`` from silencing real
+    violations on the same line.
+    """
+    hash_idx = line.find("#")
+    if hash_idx == -1:
+        return False
+    comment = line[hash_idx + 1 :].strip()
+    return comment.startswith(_SUPPRESSION_MARKER)
+
+
 def _is_suppressed(lines: list[str], idx: int) -> bool:
     """Return ``True`` when a lint-allow marker applies to line ``idx``.
 
-    The marker suppresses either (a) the same line it appears on, or
-    (b) the line immediately below it when it sits on a dedicated
-    suppression line (``# lint-allow: regional-defaults`` with nothing
-    but whitespace before the ``#``).  A trailing inline marker on an
-    unrelated previous line does **not** bleed into the next line.
+    The marker suppresses either (a) the same line when it appears as a
+    trailing ``#`` comment (not inside a string literal), or (b) the
+    line immediately below a dedicated ``# lint-allow: regional-defaults``
+    comment line.  Anything else -- markers inside string literals,
+    inline markers on the *previous* line, or markers embedded in
+    longer comments -- does not suppress.
     """
-    if _SUPPRESSION_MARKER in lines[idx]:
+    if _line_has_trailing_marker(lines[idx]):
         return True
     if idx == 0:
         return False
-    prev = lines[idx - 1].strip()
-    # A dedicated suppression-comment line is exactly ``#`` followed by
-    # optional whitespace and the marker.  Anything else on the previous
-    # line -- an inline marker after code, a marker embedded in a
-    # longer comment like ``# TODO lint-allow: regional-defaults
-    # later``, or any trailing text -- only covers its own line.
-    if not prev.startswith("#"):
-        return False
-    return prev[1:].strip() == _SUPPRESSION_MARKER
+    return _line_has_dedicated_marker(lines[idx - 1])
 
 
 def _scan_file(

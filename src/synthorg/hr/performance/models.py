@@ -21,6 +21,10 @@ from synthorg.budget.currency import CurrencyCode  # noqa: TC001
 from synthorg.core.enums import Complexity, TaskType  # noqa: TC001
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.enums import TrendDirection  # noqa: TC001
+from synthorg.observability import get_logger
+from synthorg.observability.events.hr import HR_PERFORMANCE_CURRENCY_INVARIANT_VIOLATED
+
+logger = get_logger(__name__)
 
 
 class TaskMetricRecord(BaseModel):
@@ -365,8 +369,12 @@ class WindowMetrics(BaseModel):
         tasks_failed: Number of failed tasks.
         avg_quality_score: Average quality score, None if insufficient data.
         avg_cost_per_task: Average cost per task, None if insufficient data.
-        currency: ISO 4217 currency code for ``avg_cost_per_task``;
-            ``None`` only when ``avg_cost_per_task`` is ``None``.
+        currency: ISO 4217 currency code for ``avg_cost_per_task``.
+            Required whenever ``avg_cost_per_task`` is set; the reverse
+            is not enforced -- a snapshot may carry a configured currency
+            ahead of any cost signal (e.g. a freshly provisioned agent
+            whose window has produced tasks but no LLM spend).  See
+            ``_validate_currency_presence`` for the validator contract.
         avg_completion_time_seconds: Average time, None if insufficient data.
         avg_tokens_per_task: Average tokens, None if insufficient data.
         success_rate: Task success rate (0.0-1.0), None if no tasks.
@@ -451,6 +459,12 @@ class WindowMetrics(BaseModel):
             msg = (
                 "currency is required when avg_cost_per_task is set "
                 f"(avg_cost_per_task={self.avg_cost_per_task})"
+            )
+            logger.warning(
+                HR_PERFORMANCE_CURRENCY_INVARIANT_VIOLATED,
+                avg_cost_per_task=self.avg_cost_per_task,
+                currency=self.currency,
+                window_size=self.window_size,
             )
             raise ValueError(msg)
         return self

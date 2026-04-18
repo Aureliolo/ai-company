@@ -36,6 +36,7 @@ Security:
 
 import argparse
 import re
+import subprocess
 import sys
 from pathlib import Path
 from typing import Final
@@ -100,6 +101,34 @@ _ALLOWLIST: Final[frozenset[str]] = frozenset(
 _SUPPRESSION_MARKER: Final[str] = "lint-allow: regional-defaults"
 
 
+def _line_has_dedicated_marker(line: str) -> bool:
+    """Return True iff *line* is a whole-line marker comment.
+
+    Matches exactly ``#`` + optional whitespace + the marker string,
+    with no other text.  Rejects markers embedded in longer comments
+    (e.g. ``# TODO lint-allow: regional-defaults later``) so they do
+    not bleed into the following line.
+    """
+    stripped = line.strip()
+    if not stripped.startswith("#"):
+        return False
+    return stripped[1:].strip() == _SUPPRESSION_MARKER
+
+
+def _line_has_trailing_marker(line: str) -> bool:
+    """Return True iff *line* carries the marker as a trailing ``#`` comment.
+
+    Parses only the comment fragment after the first ``#`` so the
+    marker cannot be smuggled in via a string literal (e.g.
+    ``x = "# lint-allow: regional-defaults"`` does not suppress).
+    """
+    hash_idx = line.find("#")
+    if hash_idx == -1:
+        return False
+    comment = line[hash_idx + 1 :].strip()
+    return comment.startswith(_SUPPRESSION_MARKER)
+
+
 def _scan_file(file_path: Path, rel: str) -> list[str]:
     """Return violation messages for a single file.
 
@@ -113,8 +142,15 @@ def _scan_file(file_path: Path, rel: str) -> list[str]:
     except (OSError, UnicodeDecodeError) as exc:
         return [f"{rel}:0: unable to scan file: {exc}"]
     issues: list[str] = []
-    for idx, line in enumerate(text.splitlines(), start=1):
-        if _SUPPRESSION_MARKER in line:
+    file_lines = text.splitlines()
+    for idx, line in enumerate(file_lines, start=1):
+        # Same-line suppression: trailing ``#`` comment only, never a
+        # string literal occurrence.
+        if _line_has_trailing_marker(line):
+            continue
+        # Dedicated previous-line suppression: the line above is
+        # exactly ``# lint-allow: regional-defaults``.
+        if idx > 1 and _line_has_dedicated_marker(file_lines[idx - 2]):
             continue
         stripped = line.lstrip()
         # Ignore pure-comment lines -- they discuss forbidden literals.
@@ -159,20 +195,48 @@ def _resolve_root(root: Path, project_root: Path) -> Path | None:
     return resolved
 
 
+def _git_tracked_python_files(
+    abs_root: Path, project_root: Path
+) -> list[tuple[Path, str]]:
+    """Return every tracked ``*.py`` file under *abs_root* as ``(abs, rel)``.
+
+    Delegates to ``git ls-files`` so the scanner ignores untracked
+    scratch files, build artifacts, and ``.venv`` contents.  Falling
+    back to ``rglob`` would flag, for example, a dev's one-off
+    ``debug_usd.py`` in the project root.
+    """
+    rel_root = abs_root.relative_to(project_root).as_posix() or "."
+    try:
+        result = subprocess.run(
+            ["git", "ls-files", "-z", "--", f"{rel_root}/*.py"],
+            check=True,
+            capture_output=True,
+            cwd=project_root,
+        )
+    except subprocess.CalledProcessError, FileNotFoundError:
+        # Not a git checkout or git missing: fall back to rglob so the
+        # script still works in source tarballs / CI caches without .git.
+        return [
+            (p, p.relative_to(project_root).as_posix()) for p in abs_root.rglob("*.py")
+        ]
+    out = result.stdout.decode("utf-8", errors="replace")
+    paths = [p for p in out.split("\0") if p]
+    return [((project_root / rel_path), rel_path) for rel_path in paths]
+
+
 def _iter_targets(roots: list[Path], project_root: Path) -> list[tuple[Path, str]]:
     """Yield ``(absolute_path, posix_relative_path)`` for every file to scan.
 
-    Only Python source files are scanned.  Markdown docs are deliberately
-    excluded (see module docstring): they host legitimate examples of the
-    very literals this gate forbids in application code.
+    Only tracked ``*.py`` files are scanned.  Markdown docs are
+    deliberately excluded (see module docstring).  Untracked and
+    ignored files are excluded via ``git ls-files``.
     """
     targets: list[tuple[Path, str]] = []
     for root in roots:
         abs_root = _resolve_root(root, project_root)
         if abs_root is None or not abs_root.exists():
             continue
-        for path in abs_root.rglob("*.py"):
-            rel = path.relative_to(project_root).as_posix()
+        for path, rel in _git_tracked_python_files(abs_root, project_root):
             if rel in _ALLOWLIST:
                 continue
             if rel.startswith("tests/") or "/tests/" in rel:

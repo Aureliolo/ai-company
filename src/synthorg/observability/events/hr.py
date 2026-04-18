@@ -103,3 +103,7 @@ HR_SCALING_FACTORY_ASSEMBLED: Final[str] = "hr.scaling.factory_assembled"
 HR_SCALING_CONTROLLER_INVALID_REQUEST: Final[str] = (
     "hr.scaling.controller_invalid_request"
 )
+
+HR_PERFORMANCE_CURRENCY_INVARIANT_VIOLATED: Final[str] = (
+    "hr.performance.currency_invariant_violated"
+)
