@@ -79,13 +79,14 @@ class TestFetchDockerInfoUnavailablePaths:
 
         mock_client = AsyncMock()
         mock_client.system.info = AsyncMock(side_effect=RuntimeError("boom"))
-        mock_client.close = AsyncMock()
         monkeypatch.setattr(aiodocker, "Docker", lambda *_a, **_k: mock_client)
 
         result = await host_info.fetch_docker_info()
         assert result["docker_info_available"] is False
         assert result["docker_info_unavailable_reason"] == "daemon_unreachable"
-        mock_client.close.assert_awaited_once()
+        # ``async with`` cleanup runs via ``__aexit__``; verify it fired
+        # instead of the legacy ``close()`` path removed in V3.
+        mock_client.__aexit__.assert_awaited_once()
 
     async def test_info_non_dict_returns_marker(
         self, monkeypatch: pytest.MonkeyPatch
@@ -99,7 +100,6 @@ class TestFetchDockerInfoUnavailablePaths:
 
         mock_client = AsyncMock()
         mock_client.system.info = AsyncMock(return_value="not a dict")
-        mock_client.close = AsyncMock()
         monkeypatch.setattr(aiodocker, "Docker", lambda *_a, **_k: mock_client)
 
         result = await host_info.fetch_docker_info()
@@ -122,7 +122,6 @@ class TestFetchDockerInfoSuccess:
         )
 
         mock_client = AsyncMock()
-        mock_client.close = AsyncMock()
         monkeypatch.setattr(aiodocker, "Docker", lambda *_a, **_k: mock_client)
         return mock_client
 
@@ -207,23 +206,25 @@ class TestFetchDockerInfoSuccess:
             return_value={"OperatingSystem": long_os},
         )
         result = await host_info.fetch_docker_info()
-        assert len(result["docker_operating_system"]) == 64  # type: ignore[arg-type]
+        assert len(result["docker_operating_system"]) == 64
 
-    async def test_client_close_called_even_on_success(
+    async def test_async_with_cleanup_runs_on_success(
         self, mock_daemon: AsyncMock
     ) -> None:
+        """`async with` calls ``__aexit__`` once after a successful fetch."""
         mock_daemon.system.info = AsyncMock(return_value={"ServerVersion": "27.3.1"})
         await host_info.fetch_docker_info()
-        mock_daemon.close.assert_awaited_once()
+        mock_daemon.__aexit__.assert_awaited_once()
 
 
 @pytest.mark.unit
 class TestFetchDockerInfoNeverRaises:
     """The fetch must never raise -- telemetry is best-effort."""
 
-    async def test_exception_in_close_is_swallowed(
+    async def test_exception_in_cleanup_is_swallowed(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        """A failing ``__aexit__`` (async-with cleanup) does not bubble up."""
         pytest.importorskip("aiodocker")
         import aiodocker
 
@@ -232,8 +233,13 @@ class TestFetchDockerInfoNeverRaises:
         )
         mock_client = AsyncMock()
         mock_client.system.info = AsyncMock(return_value={"ServerVersion": "27.3.1"})
-        mock_client.close = AsyncMock(side_effect=RuntimeError("close failure"))
+        mock_client.__aexit__ = AsyncMock(side_effect=RuntimeError("cleanup failure"))
         monkeypatch.setattr(aiodocker, "Docker", lambda *_a, **_k: mock_client)
 
         result = await host_info.fetch_docker_info()
-        assert result["docker_info_available"] is True
+        # The cleanup exception is caught by the outer try/except in
+        # fetch_docker_info; the result collapses to the unavailable
+        # marker rather than raising or silently returning a stale
+        # success payload.
+        assert result["docker_info_available"] is False
+        assert result["docker_info_unavailable_reason"] == "daemon_unreachable"

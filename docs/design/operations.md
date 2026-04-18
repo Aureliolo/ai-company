@@ -2398,7 +2398,51 @@ swarm-style agent frameworks that lack centralized policy enforcement.
 | Policy Enforcement | `security/service.py`, `security/rules/engine.py`, `security/autonomy/resolver.py` | Fail-closed rule engine; 3-level inheritance (agent > department > company) |
 | Token Metering | `budget/enforcer.py`, `budget/tracker.py`, `budget/quota.py` | 3-layer enforcement (pre-flight, in-flight, task boundary) |
 | Observability | `observability/setup.py`, `observability/sinks.py`, `observability/events/` | 82+ structured events; multi-sink routing; 3 correlation IDs |
-| Product Telemetry | `telemetry/collector.py`, `telemetry/protocol.py`, `telemetry/privacy.py`, `telemetry/reporters/` | Opt-in (disabled by default); TelemetryReporter protocol; PrivacyScrubber validation; pluggable backends (Logfire, Noop) |
+| Product Telemetry | `telemetry/collector.py`, `telemetry/protocol.py`, `telemetry/privacy.py`, `telemetry/host_info.py`, `telemetry/reporters/` | Opt-in (disabled by default); TelemetryReporter protocol; PrivacyScrubber validation; pluggable backends (Logfire, Noop); deployment-environment tagging; Docker daemon `/info` enrichment |
+
+#### Product Telemetry: Event Catalog
+
+Every `TelemetryEvent` carries resource-level fields set by the collector: `event_type`,
+`deployment_id`, `synthorg_version`, `python_version`, `os_platform`, `environment`,
+`timestamp`. The ``environment`` field is resolved through a four-level priority chain in
+``synthorg.telemetry.collector._resolve_environment`` -- operator override
+(``SYNTHORG_TELEMETRY_ENV``), CI auto-detection (``CI`` / ``GITLAB_CI`` / ``BUILDKITE`` /
+``JENKINS_URL`` / any ``RUNPOD_*`` -> ``"ci"``), Dockerfile-baked default
+(``SYNTHORG_TELEMETRY_ENV_BAKED``), then config default (``"dev"``). Logfire receives it
+both as the OTel ``deployment.environment`` resource attribute and as a per-record
+kwarg.
+
+Event-specific properties are allowlisted per event type in
+``synthorg.telemetry.privacy._ALLOWED_PROPERTIES``. Keys matching any forbidden pattern
+(``key``, ``token``, ``secret``, ``password``, ``content``, ``message``, ``prompt``,
+``description``, ``credential``, ``bearer``, ``auth``) are rejected even when on the
+allowlist. String values are capped at ``MAX_STRING_LENGTH`` (64 chars).
+
+**``deployment.startup``** also carries a Docker daemon ``/info`` snapshot when
+``/var/run/docker.sock`` is bind-mounted into the backend container:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `docker_info_available` | bool | Always present. ``False`` means no other `docker_*` fields are populated. |
+| `docker_info_unavailable_reason` | str | Categorical: `socket_not_mounted` / `aiodocker_not_installed` / `daemon_unreachable`. Only when `available=False`. |
+| `docker_server_version` | str | Docker engine version (`27.3.1`, ...). |
+| `docker_operating_system` | str | Host OS string (`Docker Desktop`, `Ubuntu 22.04 LTS`, ...). |
+| `docker_os_type` | str | `linux` / `windows`. |
+| `docker_os_version` | str | OS version (may be empty on some platforms). |
+| `docker_architecture` | str | Host architecture (`x86_64`, `aarch64`, ...). |
+| `docker_kernel_version` | str | Host kernel release. |
+| `docker_storage_driver` | str | Docker storage driver (`overlay2`, `btrfs`, `zfs`, ...). |
+| `docker_default_runtime` | str | Default container runtime (`runc`, `nvidia`, ...). |
+| `docker_isolation` | str | Windows-only isolation mode; empty on Linux hosts. |
+| `docker_ncpu` | int | Host CPU count as reported by the daemon. |
+| `docker_mem_total` | int | Host total memory in bytes. |
+| `docker_gpu_runtime_nvidia_available` | bool | ``true`` when the daemon has the NVIDIA container runtime registered. AMD / Intel GPUs do not register a Docker runtime and are therefore not detectable from this surface. |
+
+GPU inventory (model names, VRAM, driver version) is deliberately out of scope for the
+backend-side telemetry path: the backend base image has no NVIDIA tooling and the compose
+topology does not give the backend container GPU access. The ``docker_gpu_runtime_nvidia_available``
+flag is the achievable host-capability signal; richer GPU inventory would require a separate
+collection surface.
 
 The integration advantage is real and hard to replicate by composing separate tools: budget
 enforcement gates security escalation, performance tracking feeds autonomy decisions, and

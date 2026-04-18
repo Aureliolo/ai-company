@@ -496,12 +496,21 @@ class TestCollectorEnvironmentPropagation:
     async def test_startup_event_attaches_docker_info_marker(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """When the docker socket is missing, startup ships the marker."""
+        """When the docker socket is missing, startup ships the marker.
+
+        Also verifies the event carries the resolved ``environment``
+        field so a docker-info regression doesn't mask an
+        environment-resolution regression.
+        """
         monkeypatch.setattr(
             "synthorg.telemetry.host_info.os.path.exists",
             lambda _path: False,
         )
-        config = TelemetryConfig(enabled=True, backend=TelemetryBackend.NOOP)
+        config = TelemetryConfig(
+            enabled=True,
+            backend=TelemetryBackend.NOOP,
+            environment="test-env",
+        )
         collector = TelemetryCollector(config=config, data_dir=tmp_path)
         mock_reporter = AsyncMock()
         collector._reporter = mock_reporter
@@ -511,7 +520,51 @@ class TestCollectorEnvironmentPropagation:
         mock_reporter.report.assert_awaited_once()
         event = mock_reporter.report.call_args.args[0]
         assert event.event_type == "deployment.startup"
+        assert event.environment == "test-env"
         assert event.properties["docker_info_available"] is False
         assert (
             event.properties["docker_info_unavailable_reason"] == "socket_not_mounted"
         )
+
+    async def test_startup_event_passes_privacy_scrubber_end_to_end(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Full flow: startup event with docker info passes scrubber validation."""
+        from synthorg.telemetry.privacy import PrivacyScrubber
+
+        monkeypatch.setattr(
+            "synthorg.telemetry.host_info.os.path.exists",
+            lambda _path: False,
+        )
+        config = TelemetryConfig(
+            enabled=True,
+            backend=TelemetryBackend.NOOP,
+            environment="integration-test",
+        )
+        collector = TelemetryCollector(config=config, data_dir=tmp_path)
+        mock_reporter = AsyncMock()
+        collector._reporter = mock_reporter
+
+        await collector._send_startup_event()
+
+        event = mock_reporter.report.call_args.args[0]
+        # The collector emits events through `_send`, which already
+        # runs the scrubber. Running it again here locks in the
+        # end-to-end contract: every field the collector sends on
+        # startup is either on the allowlist or filtered out.
+        PrivacyScrubber().validate(event)
+
+    def test_looks_like_ci_uses_os_environ_when_none(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """_looks_like_ci(None) falls back to os.environ -- covers
+        the production call path where the collector passes None."""
+        from synthorg.telemetry.collector import _looks_like_ci
+
+        monkeypatch.setenv("CI", "true")
+        assert _looks_like_ci(None) is True
+
+        monkeypatch.delenv("CI", raising=False)
+        assert _looks_like_ci(None) is False

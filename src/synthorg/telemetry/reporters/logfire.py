@@ -120,7 +120,28 @@ class LogfireReporter:
         (via :meth:`__init__`'s ``configure`` call) and as a
         per-record kwarg so dashboards can filter either way.
         """
-        # ``**event.properties`` intentionally carries arbitrary
+        # Reserved kwargs we always pass explicitly. If a future
+        # event's ``properties`` ever carried one of these names the
+        # ``**event.properties`` unpack below would raise
+        # ``TypeError`` on the duplicate kwarg; filter them out of
+        # the properties payload as a belt-and-suspenders defense
+        # (the :class:`PrivacyScrubber` allowlists don't currently
+        # permit any of these names either, but relying on the
+        # scrubber alone would couple two layers that already exist
+        # to catch different classes of mistake).
+        reserved = {
+            "event_timestamp",
+            "deployment_id",
+            "synthorg_version",
+            "python_version",
+            "os_platform",
+            "environment",
+        }
+        safe_properties = {
+            k: v for k, v in event.properties.items() if k not in reserved
+        }
+
+        # ``**safe_properties`` intentionally carries arbitrary
         # allowlisted keys; mypy's narrowed ``to_thread`` signature
         # rejects unknown kwargs so we type-ignore the dispatch.
         await asyncio.to_thread(
@@ -132,7 +153,7 @@ class LogfireReporter:
             python_version=event.python_version,
             os_platform=event.os_platform,
             environment=event.environment,
-            **event.properties,  # type: ignore[arg-type]
+            **safe_properties,  # type: ignore[arg-type]
         )
 
     async def flush(self) -> None:

@@ -138,6 +138,18 @@ Enforced by `scripts/check_web_design_system.py` (PostToolUse hook on every `web
 - **DEBUG** for object creation, internal flow, entry/exit of key functions
 - Pure data models, enums, and re-exports do NOT need logging
 
+## Telemetry (Product)
+
+- **Opt-in, off by default.** Enable with `SYNTHORG_TELEMETRY=true` or the `telemetry.enabled` setting. Delivery backend is Logfire; missing token or extra downgrades to the noop reporter silently.
+- **Privacy by allowlist.** Every event property must be explicitly listed in `src/synthorg/telemetry/privacy.py::_ALLOWED_PROPERTIES` keyed by event type. Unknown keys raise `PrivacyViolationError` and are dropped before delivery. Forbidden key patterns (`key`, `token`, `secret`, `password`, `content`, `message`, `prompt`, `description`, `credential`, `bearer`, `auth`) are rejected even if allowlisted. String values are capped at `synthorg.telemetry.config.MAX_STRING_LENGTH` (64 chars).
+- **Environment resolution chain** (first match wins, in `synthorg.telemetry.collector._resolve_environment`):
+  1. `SYNTHORG_TELEMETRY_ENV` (operator override) -- always wins
+  2. CI auto-detection: `CI`, `GITLAB_CI`, `BUILDKITE`, `JENKINS_URL`, any `RUNPOD_*` -> `"ci"`
+  3. `SYNTHORG_TELEMETRY_ENV_BAKED` (Dockerfile `ARG DEPLOYMENT_ENV` baked in at build; CI sets `prod` / `pre-release` / `dev`)
+  4. `TelemetryConfig.environment` (default `"dev"`)
+- **Docker daemon enrichment** at startup via `synthorg.telemetry.host_info.fetch_docker_info` (uses `aiodocker`). Requires `/var/run/docker.sock` bind-mounted (sandbox overlay / `synthorg init --sandbox true`). Allowlisted fields: `docker_server_version`, `docker_operating_system`, `docker_os_type`, `docker_os_version`, `docker_architecture`, `docker_kernel_version`, `docker_storage_driver`, `docker_default_runtime`, `docker_isolation`, `docker_ncpu`, `docker_mem_total`, `docker_gpu_runtime_nvidia_available`. When the socket isn't mounted or the daemon is unreachable, the event carries `docker_info_available=False` + a categorical `docker_info_unavailable_reason`.
+- **Adding a new event or property**: keep `host_info._extract()`, the `DockerHostInfo` TypedDict, and the scrubber's `_ALLOWED_PROPERTIES` entry for the event type in sync. New allowlisted keys must not match a forbidden pattern. Never bypass the scrubber.
+
 ## Resilience
 
 - **All provider calls** go through `BaseCompletionProvider` which applies retry + rate limiting automatically

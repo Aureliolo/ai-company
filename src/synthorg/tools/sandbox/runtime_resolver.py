@@ -60,13 +60,10 @@ class SandboxRuntimeResolver:
         try:
             import aiodocker  # noqa: PLC0415
 
-            client = aiodocker.Docker()
-            try:
+            async with aiodocker.Docker() as client:
                 info = await client.system.info()
                 runtimes = info.get("Runtimes", {})
                 names = frozenset(runtimes.keys()) if runtimes else frozenset({"runc"})
-            finally:
-                await client.close()
         except Exception:
             logger.warning(
                 SANDBOX_GVISOR_UNAVAILABLE,

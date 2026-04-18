@@ -145,8 +145,11 @@ class TestSandboxRuntimeResolverProbe:
         class _MockDocker:
             system = _MockSystem()
 
-            async def close(self) -> None:
-                pass
+            async def __aenter__(self) -> _MockDocker:
+                return self
+
+            async def __aexit__(self, *_: object) -> None:
+                return None
 
         monkeypatch.setattr("aiodocker.Docker", _MockDocker)
         result = await SandboxRuntimeResolver.probe_available_runtimes()
@@ -166,8 +169,11 @@ class TestSandboxRuntimeResolverProbe:
         class _MockDocker:
             system = _MockSystem()
 
-            async def close(self) -> None:
-                pass
+            async def __aenter__(self) -> _MockDocker:
+                return self
+
+            async def __aexit__(self, *_: object) -> None:
+                return None
 
         monkeypatch.setattr("aiodocker.Docker", _MockDocker)
         result = await SandboxRuntimeResolver.probe_available_runtimes()

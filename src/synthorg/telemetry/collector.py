@@ -17,6 +17,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.telemetry import (
     TELEMETRY_DISABLED,
     TELEMETRY_ENABLED,
+    TELEMETRY_ENVIRONMENT_RESOLVED,
     TELEMETRY_EVENT_DEPLOYMENT_HEARTBEAT,
     TELEMETRY_EVENT_DEPLOYMENT_SESSION_SUMMARY,
     TELEMETRY_EVENT_DEPLOYMENT_SHUTDOWN,
@@ -25,7 +26,7 @@ from synthorg.observability.events.telemetry import (
     TELEMETRY_REPORT_FAILED,
     TELEMETRY_SESSION_SUMMARY_SENT,
 )
-from synthorg.telemetry.host_info import fetch_docker_info
+from synthorg.telemetry.host_info import DockerHostInfo, fetch_docker_info
 from synthorg.telemetry.privacy import PrivacyScrubber, PrivacyViolationError
 from synthorg.telemetry.protocol import TelemetryEvent, TelemetryReporter
 from synthorg.telemetry.reporters import create_reporter
@@ -65,7 +66,12 @@ entry). RunPod's ``RUNPOD_*`` family is handled separately via
 """
 
 _CI_ENV_PREFIXES: tuple[str, ...] = ("RUNPOD_",)
-"""Env var prefixes that indicate a CI / ephemeral runner context."""
+"""Env var prefixes that indicate a CI / ephemeral runner context.
+
+Stored as a tuple because :meth:`str.startswith` accepts a tuple of
+candidate prefixes natively; any future prefix (e.g. ``MODAL_``,
+``REPLIT_``) goes here without touching :func:`_looks_like_ci`.
+"""
 
 
 def _looks_like_ci(environ: Mapping[str, str] | None = None) -> bool:
@@ -214,6 +220,11 @@ class TelemetryCollector:
         # :func:`_resolve_environment` for the full priority contract.
         resolved_env = _resolve_environment(config.environment)
         if resolved_env != config.environment:
+            logger.info(
+                TELEMETRY_ENVIRONMENT_RESOLVED,
+                configured_environment=config.environment,
+                resolved_environment=resolved_env,
+            )
             config = config.model_copy(update={"environment": resolved_env})
 
         self._config = config
@@ -465,13 +476,29 @@ class TelemetryCollector:
         Also fetches the telemetry-safe Docker daemon ``/info``
         snapshot so dashboards can split deployments by host OS /
         kernel / Docker version / storage driver / NVIDIA-runtime
-        availability without joining on a separate system. The
-        fetch is fire-and-forget: any failure collapses to a
-        ``docker_info_available=False`` marker inside
-        :func:`fetch_docker_info` itself, so startup telemetry
-        always ships regardless of whether the socket is mounted.
+        availability without joining on a separate system.
+
+        :func:`fetch_docker_info` is designed to never raise (every
+        failure collapses to a ``docker_info_available=False``
+        marker). The outer ``try`` below is a belt-and-suspenders
+        guard: a regression in the helper or an unexpected
+        exception type must not abort the startup event, since the
+        startup event is the primary deployment-identification
+        signal in Logfire and we'd rather ship it without docker
+        info than not ship it at all.
         """
-        docker_info = await fetch_docker_info()
+        try:
+            docker_info: DockerHostInfo = await fetch_docker_info()
+        except Exception as exc:
+            logger.warning(
+                TELEMETRY_REPORT_FAILED,
+                detail="docker_info_fetch_unexpected_exception",
+                error_type=type(exc).__name__,
+            )
+            docker_info = {
+                "docker_info_available": False,
+                "docker_info_unavailable_reason": "daemon_unreachable",
+            }
         event = self._build_event(
             TELEMETRY_EVENT_DEPLOYMENT_STARTUP,
             agent_count=0,

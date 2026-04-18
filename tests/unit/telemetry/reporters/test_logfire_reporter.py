@@ -95,33 +95,16 @@ class TestLogfireReporterReportRaises:
 class TestLogfireReporterConfigure:
     """``configure()`` call shape: silences introspection + tags environment."""
 
-    def _fresh_reporter(
-        self,
-        monkeypatch: pytest.MonkeyPatch,
-        *,
-        environment: str = "pre-release",
-    ) -> Any:
-        pytest.importorskip(
-            "logfire",
-            reason="logfire extra not installed in this environment",
-        )
-        from synthorg.telemetry.reporters.logfire import LogfireReporter
-
-        monkeypatch.setenv(
-            "SYNTHORG_LOGFIRE_PROJECT_TOKEN",
-            "pylf_v1_test_000000000000000000000000000000000000000000",
-        )
-        with patch(
-            "synthorg.telemetry.reporters.logfire.LogfireReporter.__init__",
-            autospec=True,
-        ):
-            pass  # placeholder; real construction happens below
-        return LogfireReporter(environment=environment)
-
     def test_configure_receives_inspect_arguments_false_and_environment(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """``configure()`` silences the introspection warning and tags env."""
+        """``configure()`` silences the introspection warning and tags env.
+
+        The ``assert_called_once_with`` form locks the full kwarg
+        set: an accidental extra kwarg (e.g. a future ``tags=...``
+        slip) would break this test instead of sneaking past a
+        partial-kwargs check.
+        """
         pytest.importorskip(
             "logfire",
             reason="logfire extra not installed in this environment",
@@ -140,9 +123,21 @@ class TestLogfireReporterConfigure:
 
         mock_configure.assert_called_once()
         kwargs = mock_configure.call_args.kwargs
+        expected_keys = {
+            "token",
+            "send_to_logfire",
+            "service_name",
+            "service_version",
+            "environment",
+            "inspect_arguments",
+        }
+        assert set(kwargs) == expected_keys, (
+            f"configure() kwarg drift: got {set(kwargs)}, want {expected_keys}"
+        )
         assert kwargs["inspect_arguments"] is False
         assert kwargs["environment"] == "pre-release"
         assert kwargs["service_name"] == "synthorg-telemetry"
+        assert kwargs["send_to_logfire"] == "if-token-present"
 
     async def test_report_includes_environment_kwarg(
         self, monkeypatch: pytest.MonkeyPatch

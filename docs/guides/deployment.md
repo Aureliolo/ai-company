@@ -80,6 +80,17 @@ All environment variables are configured in `docker/.env` (copy from `docker/.en
 | `WEB_PORT` | `3000` | Host port for the web dashboard |
 | `MEM0_TELEMETRY` | `false` | Mem0 telemetry (disable to reduce overhead) |
 | `DOCKER_HOST` | *(unset)* | Docker socket for agent code execution sandbox (optional) |
+| `SYNTHORG_TELEMETRY` | `false` | Enable opt-in anonymous product telemetry. Set to `true` / `1` / `yes` to enable; values like `false` / `0` / `no` keep it off. |
+| `SYNTHORG_LOGFIRE_PROJECT_TOKEN` | *(unset)* | Logfire write token for product telemetry delivery. Empty disables delivery (collector falls back to noop). Only consulted when `SYNTHORG_TELEMETRY=true`. Baked into the image at build time via the `LOGFIRE_PROJECT_TOKEN` build-arg; can be overridden at runtime. |
+| `SYNTHORG_TELEMETRY_ENV` | *(unset)* | Explicit deployment-environment tag (`dev` / `pre-release` / `prod` / `ci` / `staging-east` / ...). Always wins the resolution chain if set. When unset, the collector auto-detects: CI markers -> `ci`; otherwise falls back to `SYNTHORG_TELEMETRY_ENV_BAKED`; otherwise the config default `dev`. |
+| `SYNTHORG_TELEMETRY_ENV_BAKED` | set by image | Image-baked fallback tag for the deployment environment. Release-tag CI builds bake `prod`; `-dev.N` pre-release tag builds bake `pre-release`; everything else bakes `dev`. Operators normally override via `SYNTHORG_TELEMETRY_ENV` at runtime. |
+
+### Image build-args
+
+| Build arg | Default | Description |
+|-----------|---------|-------------|
+| `LOGFIRE_PROJECT_TOKEN` | empty | Optional telemetry write token baked into the image at build time. Empty disables delivery. |
+| `DEPLOYMENT_ENV` | `dev` | Baked deployment-environment tag (`dev` / `pre-release` / `prod`). CI computes and passes this automatically; local `docker build` without `--build-arg` inherits `dev`. |
 
 ---
 

@@ -144,13 +144,15 @@ jobs:
 
       # Resolve the deployment environment baked into backend images
       # built by this run. Ties into the existing version-label logic:
-      # final release tags -> "prod", -dev.N pre-release tags ->
-      # "pre-release", everything else (main pushes, PR builds,
-      # workflow_dispatch) -> "dev". The backend Dockerfile reads this
-      # as a build-arg and bakes it into SYNTHORG_TELEMETRY_ENV_BAKED,
-      # which synthorg.telemetry.collector._resolve_environment picks
-      # up as the fallback tag when no operator override or CI
-      # auto-detection applies.
+      # final release tags (e.g. v0.7.0) -> "prod"; -dev.N pre-release
+      # tags (e.g. v0.7.1-dev.2) -> "pre-release"; everything else
+      # (main pushes, PR builds, workflow_dispatch manual runs, and
+      # any local `docker build` without --build-arg) -> "dev".
+      # The backend Dockerfile reads this as a build-arg and bakes it
+      # into SYNTHORG_TELEMETRY_ENV_BAKED, which
+      # synthorg.telemetry.collector._resolve_environment picks up as
+      # the fallback tag when no operator override or CI auto-detection
+      # applies.
       - name: Resolve baked deployment environment
         id: deployment-env
         env:

@@ -18,13 +18,14 @@ from synthorg.observability.events.telemetry import (
     TELEMETRY_EVENT_DEPLOYMENT_STARTUP,
     TELEMETRY_PRIVACY_VIOLATION,
 )
+from synthorg.telemetry.config import MAX_STRING_LENGTH
 
 if TYPE_CHECKING:
     from synthorg.telemetry.protocol import TelemetryEvent
 
 logger = get_logger(__name__)
 
-_MAX_STRING_VALUE_LENGTH = 64
+_MAX_STRING_VALUE_LENGTH = MAX_STRING_LENGTH
 """Cap string property values to prevent content leaking as 'names'."""
 
 _FORBIDDEN_KEY_PATTERNS: tuple[re.Pattern[str], ...] = (

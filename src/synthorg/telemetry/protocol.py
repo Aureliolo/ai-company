@@ -6,7 +6,7 @@ from typing import Protocol, runtime_checkable
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.telemetry.config import DEFAULT_ENVIRONMENT
+from synthorg.telemetry.config import DEFAULT_ENVIRONMENT, MAX_STRING_LENGTH
 
 
 class TelemetryEvent(BaseModel):
@@ -52,7 +52,7 @@ class TelemetryEvent(BaseModel):
     )
     environment: NotBlankStr = Field(
         default=DEFAULT_ENVIRONMENT,
-        max_length=64,
+        max_length=MAX_STRING_LENGTH,
         description="Deployment environment tag (local-docker / ci / prod / ...)",
     )
     timestamp: datetime = Field(

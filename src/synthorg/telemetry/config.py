@@ -1,12 +1,25 @@
 """Telemetry configuration model."""
 
 from enum import StrEnum, unique
+from typing import Final
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.types import (
     NotBlankStr,  # noqa: TC001 -- Pydantic needs it at runtime
 )
+
+MAX_STRING_LENGTH: Final[int] = 64
+"""Cap for telemetry string values.
+
+Shared between :class:`synthorg.telemetry.privacy.PrivacyScrubber`,
+the Docker daemon enrichment helpers in
+:mod:`synthorg.telemetry.host_info`, and the ``environment`` fields
+on :class:`TelemetryConfig` / :class:`TelemetryEvent`. One constant
+avoids the silent-divergence hazard where a future edit raises one
+cap and leaves the other unchanged, letting unexpectedly long
+strings slip past downstream validation.
+"""
 
 DEFAULT_ENVIRONMENT: NotBlankStr = "dev"
 """Baseline tag used when no explicit environment is configured.
@@ -81,9 +94,13 @@ class TelemetryConfig(BaseModel):
         le=168.0,
         description="Hours between heartbeat events (1h--168h)",
     )
+    # Stays :class:`NotBlankStr` (not a ``Literal``) on purpose so
+    # operators can set free-form tags like ``staging-east``,
+    # ``canary-v2``, or ``eu-prod`` without a code change. The 64-char
+    # cap pins the value against the scrubber's string-length rule.
     environment: NotBlankStr = Field(
         default=DEFAULT_ENVIRONMENT,
-        max_length=64,
+        max_length=MAX_STRING_LENGTH,
         description=(
             "Deployment environment tag (local-docker / ci / prod / ...). "
             "Overridden by SYNTHORG_TELEMETRY_ENV at runtime."
