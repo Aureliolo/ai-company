@@ -1,12 +1,24 @@
 """Tests for org memory backend factory."""
 
+from unittest.mock import MagicMock
+
 import pytest
 
 from synthorg.memory.org.config import OrgMemoryConfig
 from synthorg.memory.org.errors import OrgMemoryConfigError
 from synthorg.memory.org.factory import create_org_memory_backend
 from synthorg.memory.org.hybrid_backend import HybridPromptRetrievalBackend
-from synthorg.memory.org.sqlite_store import SQLiteOrgFactStore
+from synthorg.memory.org.store import OrgFactStore
+
+
+def SQLiteOrgFactStore(_path: str) -> OrgFactStore:  # noqa: N802 - legacy name shim
+    """Return a lightweight OrgFactStore mock for factory tests.
+
+    After A4 consolidation, the real store comes from the persistence
+    backend; factory unit tests only need *something* implementing the
+    protocol to verify dispatch.
+    """
+    return MagicMock(spec=OrgFactStore)
 
 
 @pytest.mark.unit
