@@ -617,6 +617,60 @@ class FakePersistenceBackend:
         """Fake custom rule repository."""
         return self._custom_rules_repo
 
+    @property
+    def sessions(self) -> object:
+        """Fake session repository (minimal stand-in)."""
+        from unittest.mock import MagicMock
+
+        return MagicMock()
+
+    @property
+    def refresh_tokens(self) -> object:
+        """Fake refresh-token repository (minimal stand-in)."""
+        from unittest.mock import MagicMock
+
+        return MagicMock()
+
+    @property
+    def mcp_installations(self) -> object:
+        """Fake MCP installations repository (minimal stand-in)."""
+        from unittest.mock import MagicMock
+
+        return MagicMock()
+
+    @property
+    def org_facts(self) -> object:
+        """Fake org fact repository (minimal stand-in)."""
+        from unittest.mock import MagicMock
+
+        return MagicMock()
+
+    @property
+    def ontology_entities(self) -> object:
+        """Fake ontology entity repository (minimal stand-in)."""
+        from unittest.mock import MagicMock
+
+        return MagicMock()
+
+    @property
+    def ontology_drift(self) -> object:
+        """Fake ontology drift-report repository (minimal stand-in)."""
+        from unittest.mock import MagicMock
+
+        return MagicMock()
+
+    def build_lockouts(self, _auth_config: object) -> object:
+        """Fake lockout repository builder."""
+        from unittest.mock import MagicMock
+
+        return MagicMock()
+
+    def build_escalations(self, *, notify_channel: str | None = None) -> object:
+        """Fake escalation repository builder."""
+        from unittest.mock import MagicMock
+
+        return MagicMock()
+
     async def get_setting(self, key: str) -> str | None:
         return self._settings.get(key)
 

@@ -3,7 +3,7 @@
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
 
-import aiosqlite
+import aiosqlite  # lint-allow: persistence-boundary -- in-memory test fixture
 import pytest
 
 from synthorg.core.enums import AutonomyLevel, OrgFactCategory, SeniorityLevel

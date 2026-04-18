@@ -31,7 +31,7 @@ def _patch_now() -> Iterator[None]:
     """Patch datetime.now in the session store module."""
     mock_dt = MagicMock(wraps=datetime)
     mock_dt.now.return_value = _FROZEN_NOW
-    with patch("synthorg.api.auth.session_store.datetime", mock_dt):
+    with patch("synthorg.persistence.sqlite.session_repo.datetime", mock_dt):
         yield
 
 
