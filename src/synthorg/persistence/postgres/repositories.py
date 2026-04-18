@@ -298,6 +298,7 @@ class PostgresCostRecordRepository:
                         "input_tokens": record.input_tokens,
                         "output_tokens": record.output_tokens,
                         "cost": record.cost,
+                        "currency": record.currency,
                         "timestamp": record.timestamp,
                         "call_category": record.call_category,
                     },

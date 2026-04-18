@@ -9,17 +9,18 @@ size, or currency combination.
 from datetime import UTC, datetime
 
 import pytest
-from hypothesis import given
+from hypothesis import example, given
 from hypothesis import strategies as st
 
+from synthorg.budget._tracker_helpers import _aggregate, _assert_single_currency
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.errors import MixedCurrencyAggregationError
-from synthorg.budget.spending_summary import AgentSpending
-from synthorg.budget.tracker import (
-    CostTracker,
-    _aggregate,
-    _assert_single_currency,
+from synthorg.budget.spending_summary import (
+    AgentSpending,
+    DepartmentSpending,
+    PeriodSpending,
 )
+from synthorg.budget.tracker import CostTracker
 
 pytestmark = pytest.mark.unit
 
@@ -177,6 +178,10 @@ class TestAgentSpendingCurrencyInvariant:
 class TestAggregationProperties:
     """Property-based: arbitrary mixed-currency streams always raise."""
 
+    @example(codes=["EUR", "USD"])
+    @example(codes=["EUR", "USD", "JPY"])
+    @example(codes=["EUR", "USD", "JPY", "GBP"])
+    @example(codes=["USD", "EUR"] * 10)
     @given(
         codes=st.lists(
             st.sampled_from(["EUR", "USD", "JPY", "GBP"]),
@@ -190,6 +195,8 @@ class TestAggregationProperties:
             _aggregate(records)
         assert exc.value.currencies == frozenset(codes)
 
+    @example(code="EUR", count=1)
+    @example(code="JPY", count=30)
     @given(
         code=st.sampled_from(["EUR", "USD", "JPY", "GBP", "CHF", "CNY"]),
         count=st.integers(min_value=1, max_value=30),
@@ -199,3 +206,72 @@ class TestAggregationProperties:
         result = _aggregate(records)
         assert result.currency == code
         assert result.record_count == count
+
+
+class TestSiblingSpendingCurrencyValidator:
+    """``PeriodSpending`` and ``DepartmentSpending`` enforce the same invariant.
+
+    ``_SpendingTotals._validate_currency_presence`` is inherited by every
+    subclass; the ``AgentSpending`` suite above exercises one subclass.
+    These tests pin the contract for the other two so a future regression
+    on a sibling model cannot slip through.
+    """
+
+    def test_period_record_count_zero_currency_none_ok(self) -> None:
+        period = PeriodSpending(
+            start=datetime(2026, 4, 1, tzinfo=UTC),
+            end=datetime(2026, 5, 1, tzinfo=UTC),
+        )
+        assert period.currency is None
+        assert period.record_count == 0
+
+    def test_period_record_count_positive_requires_currency(self) -> None:
+        from pydantic import ValidationError
+
+        with pytest.raises(
+            ValidationError,
+            match="currency is required when record_count > 0",
+        ):
+            PeriodSpending(
+                start=datetime(2026, 4, 1, tzinfo=UTC),
+                end=datetime(2026, 5, 1, tzinfo=UTC),
+                total_cost=10.0,
+                record_count=5,
+            )
+
+    def test_period_record_count_positive_with_currency(self) -> None:
+        period = PeriodSpending(
+            start=datetime(2026, 4, 1, tzinfo=UTC),
+            end=datetime(2026, 5, 1, tzinfo=UTC),
+            total_cost=10.0,
+            currency="EUR",
+            record_count=5,
+        )
+        assert period.currency == "EUR"
+
+    def test_department_record_count_zero_currency_none_ok(self) -> None:
+        dept = DepartmentSpending(department_name="Engineering")
+        assert dept.currency is None
+        assert dept.record_count == 0
+
+    def test_department_record_count_positive_requires_currency(self) -> None:
+        from pydantic import ValidationError
+
+        with pytest.raises(
+            ValidationError,
+            match="currency is required when record_count > 0",
+        ):
+            DepartmentSpending(
+                department_name="Engineering",
+                total_cost=75.0,
+                record_count=15,
+            )
+
+    def test_department_record_count_positive_with_currency(self) -> None:
+        dept = DepartmentSpending(
+            department_name="Engineering",
+            total_cost=75.0,
+            currency="EUR",
+            record_count=15,
+        )
+        assert dept.currency == "EUR"

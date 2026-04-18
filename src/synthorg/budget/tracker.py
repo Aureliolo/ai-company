@@ -15,6 +15,12 @@ from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, NamedTuple
 
+from synthorg.budget._tracker_helpers import (
+    _aggregate,
+    _build_agent_spendings,
+    _filter_records,
+    _validate_time_range,
+)
 from synthorg.budget.call_category import OrchestrationAlertLevel
 from synthorg.budget.category_analytics import (
     CategoryBreakdown,
@@ -49,14 +55,13 @@ from synthorg.observability.events.budget import (
     BUDGET_RECORDS_PRUNED,
     BUDGET_RECORDS_QUERIED,
     BUDGET_SUMMARY_BUILT,
-    BUDGET_TIME_RANGE_INVALID,
     BUDGET_TOTAL_COST_QUERIED,
     BUDGET_TRACKER_CLEARED,
     BUDGET_TRACKER_CREATED,
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    from collections.abc import Callable
 
     from synthorg.budget.config import BudgetConfig
     from synthorg.budget.coordination_config import (
@@ -67,7 +72,7 @@ if TYPE_CHECKING:
         ProjectCostAggregateRepository,
     )
 
-from synthorg.core.types import NotBlankStr
+from synthorg.core.types import NotBlankStr  # noqa: TC001 -- runtime use
 
 logger = get_logger(__name__)
 
@@ -80,23 +85,6 @@ class ProviderUsageSummary(NamedTuple):
 
     total_tokens: int
     total_cost: float
-
-
-class _AggregateResult(NamedTuple):
-    """Aggregated cost and token totals.
-
-    ``currency`` is ``None`` only when ``record_count == 0``.  Any
-    non-empty aggregation carries the single currency that every input
-    record shared; mixed-currency input raises
-    :class:`~synthorg.budget.errors.MixedCurrencyAggregationError` at
-    the aggregator before this tuple is constructed.
-    """
-
-    cost: float
-    currency: str | None
-    input_tokens: int
-    output_tokens: int
-    record_count: int
 
 
 class CostTracker:
@@ -811,138 +799,3 @@ class CostTracker:
                 error_type=type(exc).__qualname__,
             )
             return None
-
-
-# ── Module-level pure helpers ────────────────────────────────────
-
-
-def _validate_time_range(
-    start: datetime | None,
-    end: datetime | None,
-) -> None:
-    """Raise ``ValueError`` if *start* >= *end* when both are given."""
-    if start is not None and end is not None and start >= end:
-        logger.warning(
-            BUDGET_TIME_RANGE_INVALID,
-            start=start.isoformat(),
-            end=end.isoformat(),
-        )
-        msg = f"start ({start.isoformat()}) must be before end ({end.isoformat()})"
-        raise ValueError(msg)
-
-
-def _filter_records(  # noqa: PLR0913
-    records: Sequence[CostRecord],
-    *,
-    agent_id: str | None = None,
-    task_id: str | None = None,
-    project_id: str | None = None,
-    provider: NotBlankStr | None = None,
-    start: datetime | None = None,
-    end: datetime | None = None,
-) -> tuple[CostRecord, ...]:
-    """Filter records by agent, task, project, provider, and/or time range.
-
-    Time semantics: ``start <= timestamp < end``.
-    """
-    return tuple(
-        r
-        for r in records
-        if (agent_id is None or r.agent_id == agent_id)
-        and (task_id is None or r.task_id == task_id)
-        and (project_id is None or r.project_id == project_id)
-        and (provider is None or r.provider == provider)
-        and (start is None or r.timestamp >= start)
-        and (end is None or r.timestamp < end)
-    )
-
-
-def _build_agent_spendings(
-    filtered: Sequence[CostRecord],
-) -> list[AgentSpending]:
-    """Group filtered records by agent and aggregate each group."""
-    by_agent: dict[str, list[CostRecord]] = defaultdict(list)
-    for rec in filtered:
-        by_agent[rec.agent_id].append(rec)
-
-    result: list[AgentSpending] = []
-    for aid in sorted(by_agent):
-        agg = _aggregate(by_agent[aid], agent_id=aid)
-        result.append(
-            AgentSpending(
-                agent_id=aid,
-                total_cost=agg.cost,
-                currency=agg.currency,
-                total_input_tokens=agg.input_tokens,
-                total_output_tokens=agg.output_tokens,
-                record_count=agg.record_count,
-            )
-        )
-    return result
-
-
-def _assert_single_currency(
-    records: Sequence[CostRecord],
-    *,
-    agent_id: str | None = None,
-    task_id: str | None = None,
-    project_id: str | None = None,
-) -> str | None:
-    """Verify every record in *records* shares a single currency.
-
-    Empty input returns ``None`` -- an absent currency is meaningful on
-    an empty aggregation and lets callers use a fallback (e.g. the
-    current ``budget.currency`` setting) without muddying the data.
-
-    Raises:
-        MixedCurrencyAggregationError: If two or more distinct
-            currency codes are observed.
-    """
-    if not records:
-        return None
-    codes = {r.currency for r in records}
-    if len(codes) > 1:
-        raise MixedCurrencyAggregationError(
-            currencies=frozenset(codes),
-            agent_id=NotBlankStr(agent_id) if agent_id else None,
-            task_id=NotBlankStr(task_id) if task_id else None,
-            project_id=NotBlankStr(project_id) if project_id else None,
-        )
-    return next(iter(codes))
-
-
-def _aggregate(
-    records: Sequence[CostRecord],
-    *,
-    agent_id: str | None = None,
-    task_id: str | None = None,
-    project_id: str | None = None,
-) -> _AggregateResult:
-    """Aggregate records into cost, token totals, count, and currency.
-
-    Same-currency invariant: every contributing record must share the
-    same ``currency``.  Mixed currencies raise
-    :class:`MixedCurrencyAggregationError` before any summation runs,
-    so callers cannot accidentally produce a cost in an undefined unit.
-    """
-    currency = _assert_single_currency(
-        records,
-        agent_id=agent_id,
-        task_id=task_id,
-        project_id=project_id,
-    )
-    costs: list[float] = []
-    input_tokens = 0
-    output_tokens = 0
-    for r in records:
-        costs.append(r.cost)
-        input_tokens += r.input_tokens
-        output_tokens += r.output_tokens
-    cost = round(math.fsum(costs), BUDGET_ROUNDING_PRECISION)
-    return _AggregateResult(
-        cost=cost,
-        currency=currency,
-        input_tokens=input_tokens,
-        output_tokens=output_tokens,
-        record_count=len(costs),
-    )
