@@ -39,7 +39,10 @@ class TestBuildTelemetryCollector:
         monkeypatch.setenv("SYNTHORG_MEMORY_DIR", str(memory_dir))
         monkeypatch.delenv("SYNTHORG_TELEMETRY", raising=False)
         collector = _build_telemetry_collector()
-        assert collector._data_dir == tmp_path / "telemetry"
+        # Builder canonicalises via ``Path.resolve`` to satisfy the
+        # path-injection sanitiser; compare against the resolved form
+        # so macOS (``/var -> /private/var``) passes like Linux.
+        assert collector._data_dir == (tmp_path / "telemetry").resolve()
 
     def test_opt_in_flips_enabled_via_env(
         self,
@@ -51,7 +54,7 @@ class TestBuildTelemetryCollector:
         collector = _build_telemetry_collector()
         assert collector.enabled is True
         # Deployment ID gets persisted under the derived telemetry dir.
-        assert (tmp_path / "telemetry").exists()
+        assert (tmp_path / "telemetry").resolve().exists()
 
 
 @pytest.mark.unit
@@ -100,5 +103,38 @@ class TestMemoryDirValidation:
         )
         monkeypatch.delenv("SYNTHORG_TELEMETRY", raising=False)
         collector = _build_telemetry_collector()
-        # Surrounding whitespace is stripped before path resolution.
-        assert collector._data_dir == tmp_path / "telemetry"
+        # Whitespace is stripped before path resolution; the result
+        # is the canonicalised form (matches Linux and macOS).
+        assert collector._data_dir == (tmp_path / "telemetry").resolve()
+
+    def test_path_outside_allowed_roots_falls_back(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Absolute paths outside ``/data`` + temp dir are rejected.
+
+        CodeQL's ``py/path-injection`` rule treats the env var as
+        untrusted input; the builder caps the allow-list to the
+        container data volume and the OS temp dir so a hostile or
+        typo'd value (e.g. ``/etc``) cannot steer deployment-ID
+        writes outside the intended surface.
+        """
+        monkeypatch.setenv("SYNTHORG_MEMORY_DIR", "/etc/synthorg")
+        monkeypatch.delenv("SYNTHORG_TELEMETRY", raising=False)
+        collector = _build_telemetry_collector()
+        assert collector._data_dir == Path("/data/telemetry")
+
+    def test_traversal_via_dotdot_is_canonicalised_and_checked(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """`/data/../etc` gets canonicalised to `/etc` and rejected.
+
+        ``Path.resolve`` collapses ``..`` segments before the
+        allow-list check runs, so traversal tricks cannot smuggle
+        paths past the prefix comparison.
+        """
+        monkeypatch.setenv("SYNTHORG_MEMORY_DIR", "/data/../etc/memory")
+        monkeypatch.delenv("SYNTHORG_TELEMETRY", raising=False)
+        collector = _build_telemetry_collector()
+        assert collector._data_dir == Path("/data/telemetry")

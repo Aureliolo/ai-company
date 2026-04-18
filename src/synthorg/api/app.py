@@ -10,6 +10,7 @@ import contextlib
 import functools
 import os
 import sys
+import tempfile
 import time
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -1377,16 +1378,39 @@ def _build_default_trust_service() -> TrustService:
 _DEFAULT_MEMORY_DIR = Path("/data/memory")
 
 
+def _allowed_memory_dir_roots() -> tuple[Path, ...]:
+    r"""Return the roots a resolved memory dir must live inside.
+
+    Production containers mount the data volume at ``/data``, so
+    that path's parent is the only legitimate runtime base. Tests
+    exercise the builder with ``tmp_path`` fixtures, which land
+    under the OS temp dir -- resolved here so Windows CI
+    (``C:\Users\...``) and POSIX runners (``/tmp``, ``/var/tmp``)
+    both pass validation. Resolving eagerly canonicalises symlinks
+    (e.g. macOS ``/var -> /private/var``) so prefix comparison is
+    meaningful.
+    """
+    roots: list[Path] = [Path("/data").resolve(strict=False)]
+    try:
+        tmp_root = Path(tempfile.gettempdir()).resolve(strict=False)
+    except OSError, RuntimeError:
+        tmp_root = None
+    if tmp_root is not None:
+        roots.append(tmp_root)
+    return tuple(roots)
+
+
 def _resolve_memory_dir() -> Path:
     """Read and validate ``SYNTHORG_MEMORY_DIR`` for derived paths.
 
-    Rejects empty, whitespace-only, and relative values -- those
-    would resolve ``memory_dir.parent / "telemetry"`` to a
-    path outside the container volume (e.g. ``./telemetry`` or
-    ``/telemetry``) instead of the intended
-    ``/data/telemetry``. Logs a warning and falls back to
-    ``/data/memory`` in each failure mode so misconfiguration is
-    observable.
+    The value is operator-controlled (container runtime env), so it
+    is treated as untrusted input for path-injection purposes: the
+    raw string is stripped, must be absolute, canonicalised via
+    :meth:`Path.resolve`, and must land under one of the roots
+    returned by :func:`_allowed_memory_dir_roots` (container volume
+    ``/data``, or the OS temp dir for tests). Any failure falls
+    back to :data:`_DEFAULT_MEMORY_DIR` and logs the reason so
+    misconfiguration is observable, never silent.
     """
     raw = os.environ.get("SYNTHORG_MEMORY_DIR")
     if raw is None:
@@ -1407,7 +1431,23 @@ def _resolve_memory_dir() -> Path:
             value=candidate,
         )
         return _DEFAULT_MEMORY_DIR
-    return path
+    # Canonicalise: eliminates ``..`` segments and resolves symlinks
+    # so the allow-list check below can rely on simple prefix
+    # comparison. ``strict=False`` tolerates paths that do not yet
+    # exist (first-boot of a fresh data volume).
+    canonical = path.resolve(strict=False)
+    allowed_roots = _allowed_memory_dir_roots()
+    if not any(
+        canonical == root or canonical.is_relative_to(root) for root in allowed_roots
+    ):
+        logger.warning(
+            API_APP_STARTUP,
+            detail="memory_dir_outside_allowed_roots",
+            value=str(canonical),
+            allowed=[str(r) for r in allowed_roots],
+        )
+        return _DEFAULT_MEMORY_DIR
+    return canonical
 
 
 def _build_telemetry_collector() -> TelemetryCollector:
