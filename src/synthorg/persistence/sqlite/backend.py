@@ -69,6 +69,9 @@ from synthorg.persistence.sqlite.hr_repositories import (
 from synthorg.persistence.sqlite.lockout_repo import (
     SQLiteLockoutRepository,
 )
+from synthorg.persistence.sqlite.mcp_installation_repo import (
+    SQLiteMcpInstallationRepository,
+)
 from synthorg.persistence.sqlite.parked_context_repo import (
     SQLiteParkedContextRepository,
 )
@@ -193,6 +196,7 @@ class SQLitePersistenceBackend:
         self._custom_rules: SQLiteCustomRuleRepository | None = None
         self._sessions: SQLiteSessionRepository | None = None
         self._refresh_tokens: SQLiteRefreshTokenRepository | None = None
+        self._mcp_installations: SQLiteMcpInstallationRepository | None = None
         self._connections_stub = StubConnectionRepository()
         self._connection_secrets_stub = StubConnectionSecretRepository()
         self._oauth_states_stub = StubOAuthStateRepository()
@@ -237,6 +241,7 @@ class SQLitePersistenceBackend:
         self._custom_rules = None
         self._sessions = None
         self._refresh_tokens = None
+        self._mcp_installations = None
 
     async def connect(self) -> None:
         """Open the SQLite database and configure WAL mode."""
@@ -387,6 +392,7 @@ class SQLitePersistenceBackend:
         self._custom_rules = SQLiteCustomRuleRepository(self._db)
         self._sessions = SQLiteSessionRepository(self._db)
         self._refresh_tokens = SQLiteRefreshTokenRepository(self._db)
+        self._mcp_installations = SQLiteMcpInstallationRepository(self._db)
 
     async def _cleanup_failed_connect(self, exc: sqlite3.Error | OSError) -> None:
         """Log failure, close partial connection, and raise.
@@ -758,6 +764,14 @@ class SQLitePersistenceBackend:
         return self._require_connected(
             self._refresh_tokens,
             "refresh_tokens",
+        )
+
+    @property
+    def mcp_installations(self) -> SQLiteMcpInstallationRepository:
+        """Repository for MCP catalog installations."""
+        return self._require_connected(
+            self._mcp_installations,
+            "mcp_installations",
         )
 
     def build_lockouts(self, auth_config: AuthConfig) -> LockoutRepository:

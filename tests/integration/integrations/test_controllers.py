@@ -354,10 +354,10 @@ class TestMCPCatalogController:
             InstallEntryRequest,
             MCPCatalogController,
         )
-        from synthorg.integrations.mcp_catalog.service import CatalogService
-        from synthorg.integrations.mcp_catalog.sqlite_repo import (
+        from synthorg.integrations.mcp_catalog.in_memory_installations import (
             InMemoryMcpInstallationRepository,
         )
+        from synthorg.integrations.mcp_catalog.service import CatalogService
 
         repo = InMemoryMcpInstallationRepository()
         state = {
@@ -395,10 +395,10 @@ class TestMCPCatalogController:
             InstallEntryRequest,
             MCPCatalogController,
         )
-        from synthorg.integrations.mcp_catalog.service import CatalogService
-        from synthorg.integrations.mcp_catalog.sqlite_repo import (
+        from synthorg.integrations.mcp_catalog.in_memory_installations import (
             InMemoryMcpInstallationRepository,
         )
+        from synthorg.integrations.mcp_catalog.service import CatalogService
 
         state = {
             "app_state": MagicMock(
@@ -420,10 +420,10 @@ class TestMCPCatalogController:
             InstallEntryRequest,
             MCPCatalogController,
         )
-        from synthorg.integrations.mcp_catalog.service import CatalogService
-        from synthorg.integrations.mcp_catalog.sqlite_repo import (
+        from synthorg.integrations.mcp_catalog.in_memory_installations import (
             InMemoryMcpInstallationRepository,
         )
+        from synthorg.integrations.mcp_catalog.service import CatalogService
 
         catalog = MagicMock()
         wrong_type_conn = Connection(
@@ -454,11 +454,11 @@ class TestMCPCatalogController:
 
     async def test_uninstall_existing_entry(self) -> None:
         from synthorg.api.controllers.mcp_catalog import MCPCatalogController
-        from synthorg.integrations.mcp_catalog.installations import McpInstallation
-        from synthorg.integrations.mcp_catalog.service import CatalogService
-        from synthorg.integrations.mcp_catalog.sqlite_repo import (
+        from synthorg.integrations.mcp_catalog.in_memory_installations import (
             InMemoryMcpInstallationRepository,
         )
+        from synthorg.integrations.mcp_catalog.installations import McpInstallation
+        from synthorg.integrations.mcp_catalog.service import CatalogService
 
         repo = InMemoryMcpInstallationRepository()
         await repo.save(
@@ -486,10 +486,10 @@ class TestMCPCatalogController:
 
     async def test_uninstall_missing_is_idempotent(self) -> None:
         from synthorg.api.controllers.mcp_catalog import MCPCatalogController
-        from synthorg.integrations.mcp_catalog.service import CatalogService
-        from synthorg.integrations.mcp_catalog.sqlite_repo import (
+        from synthorg.integrations.mcp_catalog.in_memory_installations import (
             InMemoryMcpInstallationRepository,
         )
+        from synthorg.integrations.mcp_catalog.service import CatalogService
 
         state = {
             "app_state": MagicMock(

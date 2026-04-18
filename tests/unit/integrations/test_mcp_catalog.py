@@ -15,15 +15,15 @@ from synthorg.integrations.errors import (
     ConnectionNotFoundError,
     InvalidConnectionAuthError,
 )
+from synthorg.integrations.mcp_catalog.in_memory_installations import (
+    InMemoryMcpInstallationRepository,
+)
 from synthorg.integrations.mcp_catalog.install import (
     installation_to_server_config,
     merge_installed_servers,
 )
 from synthorg.integrations.mcp_catalog.installations import McpInstallation
 from synthorg.integrations.mcp_catalog.service import CatalogService
-from synthorg.integrations.mcp_catalog.sqlite_repo import (
-    InMemoryMcpInstallationRepository,
-)
 from synthorg.tools.mcp.config import MCPConfig, MCPServerConfig
 
 

@@ -1837,31 +1837,16 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
     # hot-path regressions at suite scale. Check ``is_connected`` up
     # front and fall through silently to in-memory otherwise.
     try:
-        from synthorg.integrations.mcp_catalog.sqlite_repo import (  # noqa: PLC0415
+        from synthorg.integrations.mcp_catalog.in_memory_installations import (  # noqa: PLC0415
             InMemoryMcpInstallationRepository,
-            SQLiteMcpInstallationRepository,
         )
 
-        sqlite_db = None
         if persistence is not None and getattr(persistence, "is_connected", False):
-            get_db_fn = getattr(persistence, "get_db", None)
-            if callable(get_db_fn):
-                try:
-                    sqlite_db = get_db_fn()
-                except MemoryError, RecursionError:
-                    raise
-                except Exception:
-                    # Fall through to in-memory silently; the repo is a
-                    # degraded-mode fallback by design and a startup
-                    # warning here would fire on every test that builds
-                    # an app without a SQLite backend.
-                    sqlite_db = None
-        if sqlite_db is not None:
-            mcp_installations_repo = SQLiteMcpInstallationRepository(sqlite_db)
+            mcp_installations_repo = persistence.mcp_installations
             logger.info(
                 API_SERVICE_AUTO_WIRED,
                 service="mcp_installations_repo",
-                backend="sqlite",
+                backend=type(persistence).__name__,
             )
         else:
             mcp_installations_repo = InMemoryMcpInstallationRepository()

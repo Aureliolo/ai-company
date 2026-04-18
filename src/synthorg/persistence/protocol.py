@@ -35,6 +35,9 @@ from synthorg.persistence.custom_rule_repo import (
 from synthorg.persistence.escalation_protocol import (
     EscalationQueueRepository,  # noqa: TC001
 )
+from synthorg.persistence.mcp_protocol import (
+    McpInstallationRepository,  # noqa: TC001
+)
 from synthorg.persistence.preset_repository import (
     PersonalityPresetRepository,  # noqa: TC001
 )
@@ -391,6 +394,11 @@ class PersistenceBackend(Protocol):
     @property
     def refresh_tokens(self) -> RefreshTokenRepository:
         """Repository for single-use refresh-token rotation."""
+        ...
+
+    @property
+    def mcp_installations(self) -> McpInstallationRepository:
+        """Repository for MCP catalog installation records."""
         ...
 
     def build_lockouts(self, auth_config: AuthConfig) -> LockoutRepository:
