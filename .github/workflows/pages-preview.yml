@@ -15,6 +15,7 @@ on:
       - "scripts/**"
       - "cli/scripts/install.sh"
       - "cli/scripts/install.ps1"
+      - ".github/actions/**"
       - ".github/workflows/pages-preview.yml"
   workflow_dispatch:
     inputs:

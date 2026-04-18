@@ -36,15 +36,24 @@ jobs:
             python:
               - 'src/**'
               - 'tests/**'
+              - 'scripts/**'
               - 'pyproject.toml'
               - 'uv.lock'
               - '.github/actions/**'
+              - '.github/workflows/ci.yml'
               - 'atlas.hcl'
             dashboard:
               - 'web/**'
+              - 'src/synthorg/api/schemas/**'
+              - 'scripts/export_openapi.py'
+              - 'pyproject.toml'
+              - 'uv.lock'
+              - '.github/actions/**'
+              - '.github/workflows/ci.yml'
             docker:
               - 'docker/**'
               - '.dockerignore'
+              - '.github/workflows/ci.yml'
 
   # ── Python: Lint ──
   lint:
