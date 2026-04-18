@@ -81,6 +81,12 @@ from synthorg.persistence.postgres.lockout_repo import (
 from synthorg.persistence.postgres.mcp_installation_repo import (
     PostgresMcpInstallationRepository,
 )
+from synthorg.persistence.postgres.ontology_drift_repo import (
+    PostgresOntologyDriftReportRepository,
+)
+from synthorg.persistence.postgres.ontology_entity_repo import (
+    PostgresOntologyEntityRepository,
+)
 from synthorg.persistence.postgres.org_fact_repo import (
     PostgresOrgFactRepository,
 )
@@ -259,6 +265,8 @@ class PostgresPersistenceBackend:
         self._refresh_tokens: PostgresRefreshTokenRepository | None = None
         self._mcp_installations: PostgresMcpInstallationRepository | None = None
         self._org_facts: PostgresOrgFactRepository | None = None
+        self._ontology_entities: PostgresOntologyEntityRepository | None = None
+        self._ontology_drift: PostgresOntologyDriftReportRepository | None = None
         self._connections_stub = StubConnectionRepository()
         self._connection_secrets_stub = StubConnectionSecretRepository()
         self._oauth_states_stub = StubOAuthStateRepository()
@@ -307,6 +315,8 @@ class PostgresPersistenceBackend:
         self._refresh_tokens = None
         self._mcp_installations = None
         self._org_facts = None
+        self._ontology_entities = None
+        self._ontology_drift = None
 
     async def _configure_connection(
         self,
@@ -472,6 +482,8 @@ class PostgresPersistenceBackend:
         self._refresh_tokens = PostgresRefreshTokenRepository(pool)
         self._mcp_installations = PostgresMcpInstallationRepository(pool)
         self._org_facts = PostgresOrgFactRepository(pool)
+        self._ontology_entities = PostgresOntologyEntityRepository(pool)
+        self._ontology_drift = PostgresOntologyDriftReportRepository(pool)
 
     def get_db(self) -> AsyncConnectionPool:
         """Return the shared connection pool.
@@ -969,6 +981,22 @@ class PostgresPersistenceBackend:
     def org_facts(self) -> PostgresOrgFactRepository:
         """Repository for organizational fact persistence (MVCC)."""
         return self._require_connected(self._org_facts, "org_facts")
+
+    @property
+    def ontology_entities(self) -> PostgresOntologyEntityRepository:
+        """Repository for ontology entity definitions."""
+        return self._require_connected(
+            self._ontology_entities,
+            "ontology_entities",
+        )
+
+    @property
+    def ontology_drift(self) -> PostgresOntologyDriftReportRepository:
+        """Repository for ontology drift reports."""
+        return self._require_connected(
+            self._ontology_drift,
+            "ontology_drift",
+        )
 
     def build_lockouts(self, auth_config: AuthConfig) -> LockoutRepository:
         """Construct a lockout repository using this backend's pool."""

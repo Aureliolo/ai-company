@@ -38,10 +38,12 @@ CREATE TABLE `cost_records` (
   `model` text NOT NULL,
   `input_tokens` integer NOT NULL,
   `output_tokens` integer NOT NULL,
-  `cost_usd` real NOT NULL,
+  `cost` real NOT NULL,
+  `currency` text NOT NULL DEFAULT 'USD',
   `timestamp` text NOT NULL,
   `call_category` text NULL,
-  CONSTRAINT `0` FOREIGN KEY (`task_id`) REFERENCES `tasks` (`id`) ON UPDATE NO ACTION ON DELETE NO ACTION
+  CONSTRAINT `0` FOREIGN KEY (`task_id`) REFERENCES `tasks` (`id`) ON UPDATE NO ACTION ON DELETE NO ACTION,
+  CHECK (currency GLOB '[A-Z][A-Z][A-Z]')
 );
 -- Create index "idx_cost_records_agent_id" to table: "cost_records"
 CREATE INDEX `idx_cost_records_agent_id` ON `cost_records` (`agent_id`);
@@ -92,13 +94,15 @@ CREATE TABLE `task_metrics` (
   `completed_at` text NOT NULL,
   `is_success` integer NOT NULL,
   `duration_seconds` real NOT NULL,
-  `cost_usd` real NOT NULL,
+  `cost` real NOT NULL,
+  `currency` text NOT NULL DEFAULT 'USD',
   `turns_used` integer NOT NULL,
   `tokens_used` integer NOT NULL,
   `quality_score` real NULL,
   `complexity` text NOT NULL,
   PRIMARY KEY (`id`),
-  CONSTRAINT `0` FOREIGN KEY (`task_id`) REFERENCES `tasks` (`id`) ON UPDATE NO ACTION ON DELETE NO ACTION
+  CONSTRAINT `0` FOREIGN KEY (`task_id`) REFERENCES `tasks` (`id`) ON UPDATE NO ACTION ON DELETE NO ACTION,
+  CHECK (currency GLOB '[A-Z][A-Z][A-Z]')
 );
 -- Create index "idx_tm_agent_id" to table: "task_metrics"
 CREATE INDEX `idx_tm_agent_id` ON `task_metrics` (`agent_id`);
@@ -196,6 +200,33 @@ CREATE UNIQUE INDEX `users_username` ON `users` (`username`);
 CREATE INDEX `idx_users_role` ON `users` (`role`);
 -- Create index "idx_single_ceo" to table: "users"
 CREATE UNIQUE INDEX `idx_single_ceo` ON `users` (`role`) WHERE role = 'ceo';
+-- Create trigger "enforce_ceo_minimum"
+CREATE TRIGGER `enforce_ceo_minimum` BEFORE UPDATE OF `role` ON `users` FOR EACH ROW WHEN OLD.role = 'ceo' AND NEW.role != 'ceo' BEGIN
+    SELECT RAISE(ABORT, 'Cannot remove the last CEO')
+    WHERE (SELECT COUNT(*) FROM users WHERE role = 'ceo' AND id != OLD.id) = 0;
+END;
+-- Create trigger "enforce_owner_minimum"
+CREATE TRIGGER `enforce_owner_minimum` BEFORE UPDATE OF `org_roles` ON `users` FOR EACH ROW WHEN EXISTS (SELECT 1 FROM json_each(OLD.org_roles) WHERE value = 'owner')
+  AND NOT EXISTS (SELECT 1 FROM json_each(NEW.org_roles) WHERE value = 'owner') BEGIN
+    SELECT RAISE(ABORT, 'Cannot remove the last owner')
+    WHERE (
+        SELECT COUNT(*) FROM users u, json_each(u.org_roles) je
+        WHERE u.id != OLD.id AND je.value = 'owner'
+    ) = 0;
+END;
+-- Create trigger "enforce_ceo_minimum_delete"
+CREATE TRIGGER `enforce_ceo_minimum_delete` BEFORE DELETE ON `users` FOR EACH ROW WHEN OLD.role = 'ceo' BEGIN
+    SELECT RAISE(ABORT, 'Cannot remove the last CEO')
+    WHERE (SELECT COUNT(*) FROM users WHERE role = 'ceo' AND id != OLD.id) = 0;
+END;
+-- Create trigger "enforce_owner_minimum_delete"
+CREATE TRIGGER `enforce_owner_minimum_delete` BEFORE DELETE ON `users` FOR EACH ROW WHEN EXISTS (SELECT 1 FROM json_each(OLD.org_roles) WHERE value = 'owner') BEGIN
+    SELECT RAISE(ABORT, 'Cannot remove the last owner')
+    WHERE (
+        SELECT COUNT(*) FROM users u, json_each(u.org_roles) je
+        WHERE u.id != OLD.id AND je.value = 'owner'
+    ) = 0;
+END;
 -- Create "api_keys" table
 CREATE TABLE `api_keys` (
   `id` text NOT NULL,
@@ -271,20 +302,22 @@ CREATE TABLE `agent_states` (
   `task_id` text NULL,
   `status` text NOT NULL DEFAULT 'idle',
   `turn_count` integer NOT NULL DEFAULT 0,
-  `accumulated_cost_usd` real NOT NULL DEFAULT 0.0,
+  `accumulated_cost` real NOT NULL DEFAULT 0.0,
+  `currency` text NOT NULL DEFAULT 'USD',
   `last_activity_at` text NOT NULL,
   `started_at` text NULL,
   PRIMARY KEY (`agent_id`),
   CHECK (status IN ('idle', 'executing', 'paused')),
   CHECK (turn_count >= 0),
-  CHECK (accumulated_cost_usd >= 0.0),
+  CHECK (accumulated_cost >= 0.0),
+  CHECK (currency GLOB '[A-Z][A-Z][A-Z]'),
   CHECK (
         (status = 'idle'
          AND execution_id IS NULL
          AND task_id IS NULL
          AND started_at IS NULL
          AND turn_count = 0
-         AND accumulated_cost_usd = 0.0)
+         AND accumulated_cost = 0.0)
         OR
         (status IN ('executing', 'paused')
          AND execution_id IS NOT NULL
@@ -366,30 +399,67 @@ CREATE TABLE `workflow_definitions` (
   `name` text NOT NULL,
   `description` text NOT NULL DEFAULT '',
   `workflow_type` text NOT NULL,
+  `version` text NOT NULL DEFAULT '1.0.0',
+  `inputs` text NOT NULL DEFAULT '[]',
+  `outputs` text NOT NULL DEFAULT '[]',
+  `is_subworkflow` integer NOT NULL DEFAULT 0,
   `nodes` text NOT NULL,
   `edges` text NOT NULL,
   `created_by` text NOT NULL,
   `created_at` text NOT NULL,
   `updated_at` text NOT NULL,
-  `version` integer NOT NULL DEFAULT 1,
+  `revision` integer NOT NULL DEFAULT 1,
   PRIMARY KEY (`id`),
   CHECK (length(id) > 0),
   CHECK (length(name) > 0),
   CHECK (workflow_type IN (
         'sequential_pipeline', 'parallel_execution', 'kanban', 'agile_kanban'
     )),
+  CHECK (length(version) > 0),
+  CHECK (is_subworkflow IN (0, 1)),
   CHECK (length(created_by) > 0),
-  CHECK (version >= 1)
+  CHECK (revision >= 1)
 );
 -- Create index "idx_wd_workflow_type" to table: "workflow_definitions"
 CREATE INDEX `idx_wd_workflow_type` ON `workflow_definitions` (`workflow_type`);
 -- Create index "idx_wd_updated_at" to table: "workflow_definitions"
 CREATE INDEX `idx_wd_updated_at` ON `workflow_definitions` (`updated_at` DESC);
+-- Create index "idx_wd_is_subworkflow" to table: "workflow_definitions"
+CREATE INDEX `idx_wd_is_subworkflow` ON `workflow_definitions` (`is_subworkflow`);
+-- Create "subworkflows" table
+CREATE TABLE `subworkflows` (
+  `subworkflow_id` text NOT NULL,
+  `semver` text NOT NULL,
+  `name` text NOT NULL,
+  `description` text NOT NULL DEFAULT '',
+  `workflow_type` text NOT NULL,
+  `inputs` text NOT NULL DEFAULT '[]',
+  `outputs` text NOT NULL DEFAULT '[]',
+  `nodes` text NOT NULL,
+  `edges` text NOT NULL,
+  `created_by` text NOT NULL,
+  `created_at` text NOT NULL,
+  `updated_at` text NOT NULL DEFAULT '1970-01-01T00:00:00+00:00',
+  PRIMARY KEY (`subworkflow_id`, `semver`),
+  CHECK (length(subworkflow_id) > 0),
+  CHECK (length(semver) > 0),
+  CHECK (length(name) > 0),
+  CHECK (workflow_type IN (
+        'sequential_pipeline', 'parallel_execution', 'kanban', 'agile_kanban'
+    )),
+  CHECK (length(created_by) > 0)
+);
+-- Create index "idx_subworkflows_id" to table: "subworkflows"
+CREATE INDEX `idx_subworkflows_id` ON `subworkflows` (`subworkflow_id`);
+-- Create index "idx_subworkflows_created_at" to table: "subworkflows"
+CREATE INDEX `idx_subworkflows_created_at` ON `subworkflows` (`created_at` DESC);
+-- Create index "idx_subworkflows_updated_at" to table: "subworkflows"
+CREATE INDEX `idx_subworkflows_updated_at` ON `subworkflows` (`updated_at` DESC);
 -- Create "workflow_executions" table
 CREATE TABLE `workflow_executions` (
   `id` text NOT NULL,
   `definition_id` text NOT NULL,
-  `definition_version` integer NOT NULL,
+  `definition_revision` integer NOT NULL,
   `status` text NOT NULL,
   `node_executions` text NOT NULL DEFAULT '[]',
   `activated_by` text NOT NULL,
@@ -403,7 +473,7 @@ CREATE TABLE `workflow_executions` (
   CONSTRAINT `0` FOREIGN KEY (`definition_id`) REFERENCES `workflow_definitions` (`id`) ON UPDATE NO ACTION ON DELETE NO ACTION,
   CHECK (length(id) > 0),
   CHECK (length(definition_id) > 0),
-  CHECK (definition_version >= 1),
+  CHECK (definition_revision >= 1),
   CHECK (status IN (
         'pending', 'running', 'completed', 'failed', 'cancelled'
     )),
@@ -419,6 +489,8 @@ CREATE INDEX `idx_wfe_status` ON `workflow_executions` (`status`);
 CREATE INDEX `idx_wfe_updated_at` ON `workflow_executions` (`updated_at` DESC);
 -- Create index "idx_wfe_definition_updated" to table: "workflow_executions"
 CREATE INDEX `idx_wfe_definition_updated` ON `workflow_executions` (`definition_id`, `updated_at` DESC);
+-- Create index "idx_wfe_definition_revision" to table: "workflow_executions"
+CREATE INDEX `idx_wfe_definition_revision` ON `workflow_executions` (`definition_id`, `definition_revision`);
 -- Create index "idx_wfe_status_updated" to table: "workflow_executions"
 CREATE INDEX `idx_wfe_status_updated` ON `workflow_executions` (`status`, `updated_at` DESC);
 -- Create index "idx_wfe_project" to table: "workflow_executions"
@@ -773,3 +845,345 @@ CREATE TABLE `entity_definition_versions` (
 CREATE INDEX `idx_edv_entity_saved` ON `entity_definition_versions` (`entity_id`, `saved_at` DESC);
 -- Create index "idx_edv_content_hash" to table: "entity_definition_versions"
 CREATE INDEX `idx_edv_content_hash` ON `entity_definition_versions` (`entity_id`, `content_hash`);
+-- Create "connection_secrets" table
+CREATE TABLE `connection_secrets` (
+  `secret_id` text NOT NULL,
+  `encrypted_value` blob NOT NULL,
+  `key_version` integer NOT NULL DEFAULT 1,
+  `created_at` text NOT NULL,
+  `rotated_at` text NULL,
+  PRIMARY KEY (`secret_id`),
+  CHECK (length(secret_id) > 0),
+  CHECK (key_version >= 1)
+);
+-- Create "connections" table
+CREATE TABLE `connections` (
+  `name` text NOT NULL,
+  `connection_type` text NOT NULL,
+  `auth_method` text NOT NULL,
+  `base_url` text NULL,
+  `secret_refs_json` text NOT NULL DEFAULT '[]',
+  `rate_limit_rpm` integer NOT NULL DEFAULT 0,
+  `rate_limit_concurrent` integer NOT NULL DEFAULT 0,
+  `health_check_enabled` integer NOT NULL DEFAULT 1,
+  `health_status` text NOT NULL DEFAULT 'unknown',
+  `last_health_check_at` text NULL,
+  `metadata_json` text NOT NULL DEFAULT '{}',
+  `created_at` text NOT NULL,
+  `updated_at` text NOT NULL,
+  PRIMARY KEY (`name`),
+  CHECK (length(name) > 0),
+  CHECK (
+        connection_type IN (
+            'github', 'slack', 'smtp', 'database',
+            'generic_http', 'oauth_app'
+        )
+    ),
+  CHECK (
+        auth_method IN (
+            'api_key', 'oauth2', 'basic_auth',
+            'bearer_token', 'custom'
+        )
+    ),
+  CHECK (rate_limit_rpm >= 0),
+  CHECK (rate_limit_concurrent >= 0),
+  CHECK (health_check_enabled IN (0, 1)),
+  CHECK (
+            health_status IN ('healthy', 'degraded', 'unhealthy', 'unknown')
+        )
+);
+-- Create index "idx_connections_type" to table: "connections"
+CREATE INDEX `idx_connections_type` ON `connections` (`connection_type`);
+-- Create "oauth_states" table
+CREATE TABLE `oauth_states` (
+  `state_token` text NOT NULL,
+  `connection_name` text NOT NULL,
+  `pkce_verifier` text NULL,
+  `scopes_requested` text NOT NULL DEFAULT '',
+  `redirect_uri` text NOT NULL DEFAULT '',
+  `created_at` text NOT NULL,
+  `expires_at` text NOT NULL,
+  PRIMARY KEY (`state_token`),
+  CONSTRAINT `0` FOREIGN KEY (`connection_name`) REFERENCES `connections` (`name`) ON UPDATE NO ACTION ON DELETE CASCADE
+);
+-- Create index "idx_oauth_states_expires" to table: "oauth_states"
+CREATE INDEX `idx_oauth_states_expires` ON `oauth_states` (`expires_at`);
+-- Create index "idx_oauth_states_connection" to table: "oauth_states"
+CREATE INDEX `idx_oauth_states_connection` ON `oauth_states` (`connection_name`);
+-- Create "webhook_receipts" table
+CREATE TABLE `webhook_receipts` (
+  `id` text NOT NULL,
+  `connection_name` text NOT NULL,
+  `event_type` text NOT NULL DEFAULT '',
+  `status` text NOT NULL DEFAULT 'received',
+  `received_at` text NOT NULL,
+  `processed_at` text NULL,
+  `payload_json` text NOT NULL DEFAULT '{}',
+  `error` text NULL,
+  PRIMARY KEY (`id`),
+  CONSTRAINT `0` FOREIGN KEY (`connection_name`) REFERENCES `connections` (`name`) ON UPDATE NO ACTION ON DELETE CASCADE
+);
+-- Create index "idx_webhook_receipts_conn_received" to table: "webhook_receipts"
+CREATE INDEX `idx_webhook_receipts_conn_received` ON `webhook_receipts` (`connection_name`, `received_at` DESC);
+-- Create "mcp_installations" table
+CREATE TABLE `mcp_installations` (
+  `catalog_entry_id` text NOT NULL,
+  `connection_name` text NULL,
+  `installed_at` text NOT NULL,
+  PRIMARY KEY (`catalog_entry_id`),
+  CONSTRAINT `0` FOREIGN KEY (`connection_name`) REFERENCES `connections` (`name`) ON UPDATE NO ACTION ON DELETE SET NULL,
+  CHECK (length(catalog_entry_id) > 0)
+);
+-- Create index "idx_mcp_installations_connection" to table: "mcp_installations"
+CREATE INDEX `idx_mcp_installations_connection` ON `mcp_installations` (`connection_name`);
+-- Create "training_plans" table
+CREATE TABLE `training_plans` (
+  `id` text NOT NULL,
+  `new_agent_id` text NOT NULL,
+  `new_agent_role` text NOT NULL,
+  `new_agent_level` text NOT NULL,
+  `new_agent_department` text NULL,
+  `source_selector_type` text NOT NULL DEFAULT 'role_top_performers',
+  `enabled_content_types` text NOT NULL DEFAULT '[]',
+  `curation_strategy_type` text NOT NULL DEFAULT 'relevance',
+  `volume_caps` text NOT NULL DEFAULT '[]',
+  `override_sources` text NOT NULL DEFAULT '[]',
+  `skip_training` integer NOT NULL DEFAULT 0,
+  `require_review` integer NOT NULL DEFAULT 1,
+  `status` text NOT NULL DEFAULT 'pending',
+  `created_at` text NOT NULL,
+  `executed_at` text NULL,
+  PRIMARY KEY (`id`),
+  CHECK (status IN ('pending', 'executed', 'failed')),
+  CHECK (
+        (status = 'pending' AND executed_at IS NULL)
+        OR (status <> 'pending' AND executed_at IS NOT NULL)
+    )
+);
+-- Create index "idx_training_plans_agent_status" to table: "training_plans"
+CREATE INDEX `idx_training_plans_agent_status` ON `training_plans` (`new_agent_id`, `status`);
+-- Create index "idx_training_plans_created" to table: "training_plans"
+CREATE INDEX `idx_training_plans_created` ON `training_plans` (`created_at`);
+-- Create "training_results" table
+CREATE TABLE `training_results` (
+  `id` text NOT NULL,
+  `plan_id` text NOT NULL,
+  `new_agent_id` text NOT NULL,
+  `source_agents_used` text NOT NULL DEFAULT '[]',
+  `items_extracted` text NOT NULL DEFAULT '[]',
+  `items_after_curation` text NOT NULL DEFAULT '[]',
+  `items_after_guards` text NOT NULL DEFAULT '[]',
+  `items_stored` text NOT NULL DEFAULT '[]',
+  `approval_item_id` text NULL,
+  `pending_approvals` text NOT NULL DEFAULT '[]',
+  `review_pending` integer NOT NULL DEFAULT 0,
+  `errors` text NOT NULL DEFAULT '[]',
+  `started_at` text NOT NULL,
+  `completed_at` text NOT NULL,
+  PRIMARY KEY (`id`),
+  CONSTRAINT `0` FOREIGN KEY (`plan_id`) REFERENCES `training_plans` (`id`) ON UPDATE NO ACTION ON DELETE NO ACTION,
+  CHECK (completed_at >= started_at)
+);
+-- Create index "idx_training_results_plan" to table: "training_results"
+CREATE UNIQUE INDEX `idx_training_results_plan` ON `training_results` (`plan_id`);
+-- Create index "idx_training_results_agent" to table: "training_results"
+CREATE INDEX `idx_training_results_agent` ON `training_results` (`new_agent_id`, `completed_at` DESC);
+-- Create "custom_rules" table
+CREATE TABLE `custom_rules` (
+  `id` text NOT NULL,
+  `name` text NOT NULL,
+  `description` text NOT NULL,
+  `metric_path` text NOT NULL,
+  `comparator` text NOT NULL,
+  `threshold` real NOT NULL,
+  `severity` text NOT NULL,
+  `target_altitudes` text NOT NULL,
+  `enabled` integer NOT NULL DEFAULT 1,
+  `created_at` text NOT NULL,
+  `updated_at` text NOT NULL,
+  PRIMARY KEY (`id`),
+  CHECK (length(id) > 0),
+  CHECK (length(trim(name)) > 0),
+  CHECK (length(trim(description)) > 0),
+  CHECK (length(trim(metric_path)) > 0),
+  CHECK (length(trim(comparator)) > 0),
+  CHECK (length(trim(severity)) > 0),
+  CHECK (
+        created_at LIKE '%+00:00' OR created_at LIKE '%Z'
+    ),
+  CHECK (
+        updated_at LIKE '%+00:00' OR updated_at LIKE '%Z'
+    )
+);
+-- Create index "custom_rules_name" to table: "custom_rules"
+CREATE UNIQUE INDEX `custom_rules_name` ON `custom_rules` (`name`);
+-- Create "approvals" table
+CREATE TABLE `approvals` (
+  `id` text NOT NULL,
+  `action_type` text NOT NULL,
+  `title` text NOT NULL,
+  `description` text NOT NULL,
+  `requested_by` text NOT NULL,
+  `risk_level` text NOT NULL DEFAULT 'medium',
+  `status` text NOT NULL DEFAULT 'pending',
+  `created_at` text NOT NULL,
+  `expires_at` text NULL,
+  `decided_at` text NULL,
+  `decided_by` text NULL,
+  `decision_reason` text NULL,
+  `task_id` text NULL,
+  `evidence_package` text NULL,
+  `metadata` text NOT NULL DEFAULT '{}',
+  PRIMARY KEY (`id`),
+  CONSTRAINT `fk_approvals_task_id` FOREIGN KEY (`task_id`) REFERENCES `tasks` (`id`) ON UPDATE NO ACTION ON DELETE NO ACTION,
+  CHECK (length(trim(id)) > 0),
+  CHECK (length(trim(action_type)) > 0),
+  CHECK (length(trim(title)) > 0),
+  CHECK (length(trim(requested_by)) > 0),
+  CHECK (
+        risk_level IN ('low', 'medium', 'high', 'critical')
+    ),
+  CHECK (
+        status IN ('pending', 'approved', 'rejected', 'expired')
+    ),
+  CHECK (
+        created_at LIKE '%+00:00' OR created_at LIKE '%Z'
+    ),
+  CHECK (
+        expires_at IS NULL OR expires_at LIKE '%+00:00' OR expires_at LIKE '%Z'
+    ),
+  CHECK (
+        decided_at IS NULL OR decided_at LIKE '%+00:00' OR decided_at LIKE '%Z'
+    ),
+  CHECK (
+        (decided_at IS NULL AND decided_by IS NULL)
+        OR (decided_at IS NOT NULL AND decided_by IS NOT NULL)
+    ),
+  CHECK (
+        status != 'rejected' OR (decision_reason IS NOT NULL AND length(trim(decision_reason)) > 0)
+    )
+);
+-- Create index "idx_approvals_status" to table: "approvals"
+CREATE INDEX `idx_approvals_status` ON `approvals` (`status`);
+-- Create index "idx_approvals_action_type" to table: "approvals"
+CREATE INDEX `idx_approvals_action_type` ON `approvals` (`action_type`);
+-- Create index "idx_approvals_risk_level" to table: "approvals"
+CREATE INDEX `idx_approvals_risk_level` ON `approvals` (`risk_level`);
+-- Create "conflict_escalations" table
+CREATE TABLE `conflict_escalations` (
+  `id` text NOT NULL,
+  `conflict_id` text NOT NULL,
+  `conflict_json` text NOT NULL,
+  `status` text NOT NULL DEFAULT 'pending',
+  `created_at` text NOT NULL,
+  `expires_at` text NULL,
+  `decided_at` text NULL,
+  `decided_by` text NULL,
+  `decision_json` text NULL,
+  PRIMARY KEY (`id`),
+  CHECK (length(trim(id)) > 0),
+  CHECK (length(trim(conflict_id)) > 0),
+  CHECK (
+        status IN ('pending', 'decided', 'expired', 'cancelled')
+    ),
+  CHECK (
+        created_at LIKE '%+00:00' OR created_at LIKE '%Z'
+    ),
+  CHECK (
+        expires_at IS NULL OR expires_at LIKE '%+00:00' OR expires_at LIKE '%Z'
+    ),
+  CHECK (
+        decided_at IS NULL OR decided_at LIKE '%+00:00' OR decided_at LIKE '%Z'
+    ),
+  CHECK (json_valid(conflict_json) AND json_type(conflict_json) = 'object'),
+  CHECK (
+        decision_json IS NULL
+        OR (json_valid(decision_json) AND json_type(decision_json) = 'object')
+    ),
+  CHECK (
+        (status != 'decided')
+        OR (
+            decision_json IS NOT NULL
+            AND decided_at IS NOT NULL
+            AND decided_by IS NOT NULL
+            AND length(trim(decided_by)) > 0
+        )
+    ),
+  CHECK (
+        (status != 'pending')
+        OR (decision_json IS NULL AND decided_at IS NULL AND decided_by IS NULL)
+    ),
+  CHECK (
+        (status NOT IN ('expired', 'cancelled'))
+        OR (
+            decision_json IS NULL
+            AND decided_at IS NOT NULL
+            AND decided_by IS NOT NULL
+            AND length(trim(decided_by)) > 0
+        )
+    )
+);
+-- Create index "idx_conflict_escalations_status_created" to table: "conflict_escalations"
+CREATE INDEX `idx_conflict_escalations_status_created` ON `conflict_escalations` (`status`, `created_at`);
+-- Create index "idx_conflict_escalations_conflict_id" to table: "conflict_escalations"
+CREATE INDEX `idx_conflict_escalations_conflict_id` ON `conflict_escalations` (`conflict_id`);
+-- Create index "idx_conflict_escalations_status_expires_at" to table: "conflict_escalations"
+CREATE INDEX `idx_conflict_escalations_status_expires_at` ON `conflict_escalations` (`status`, `expires_at`);
+-- Create index "idx_conflict_escalations_unique_pending_conflict" to table: "conflict_escalations"
+CREATE UNIQUE INDEX `idx_conflict_escalations_unique_pending_conflict` ON `conflict_escalations` (`conflict_id`) WHERE status = 'pending';
+-- Create "org_facts_operation_log" table
+CREATE TABLE `org_facts_operation_log` (
+  `operation_id` text NULL,
+  `fact_id` text NOT NULL,
+  `operation_type` text NOT NULL,
+  `content` text NULL,
+  `tags` text NOT NULL DEFAULT '[]',
+  `author_agent_id` text NULL,
+  `author_seniority` text NULL,
+  `author_is_human` integer NOT NULL DEFAULT 0,
+  `author_autonomy_level` text NULL,
+  `category` text NULL,
+  `timestamp` text NOT NULL,
+  `version` integer NOT NULL,
+  PRIMARY KEY (`operation_id`),
+  CHECK (operation_type IN ('PUBLISH', 'RETRACT'))
+);
+-- Create index "org_facts_operation_log_fact_id_version" to table: "org_facts_operation_log"
+CREATE UNIQUE INDEX `org_facts_operation_log_fact_id_version` ON `org_facts_operation_log` (`fact_id`, `version`);
+-- Create index "idx_oplog_fact_id" to table: "org_facts_operation_log"
+CREATE INDEX `idx_oplog_fact_id` ON `org_facts_operation_log` (`fact_id`);
+-- Create index "idx_oplog_timestamp" to table: "org_facts_operation_log"
+CREATE INDEX `idx_oplog_timestamp` ON `org_facts_operation_log` (`timestamp`);
+-- Create index "idx_oplog_ts_fact" to table: "org_facts_operation_log"
+CREATE INDEX `idx_oplog_ts_fact` ON `org_facts_operation_log` (`timestamp`, `fact_id`);
+-- Create "org_facts_snapshot" table
+CREATE TABLE `org_facts_snapshot` (
+  `fact_id` text NULL,
+  `content` text NOT NULL,
+  `category` text NOT NULL,
+  `tags` text NOT NULL DEFAULT '[]',
+  `author_agent_id` text NULL,
+  `author_seniority` text NULL,
+  `author_is_human` integer NOT NULL DEFAULT 0,
+  `author_autonomy_level` text NULL,
+  `created_at` text NOT NULL,
+  `retracted_at` text NULL,
+  `version` integer NOT NULL,
+  PRIMARY KEY (`fact_id`)
+);
+-- Create index "idx_snapshot_category" to table: "org_facts_snapshot"
+CREATE INDEX `idx_snapshot_category` ON `org_facts_snapshot` (`category`);
+-- Create index "idx_snapshot_active" to table: "org_facts_snapshot"
+CREATE INDEX `idx_snapshot_active` ON `org_facts_snapshot` (`retracted_at`) WHERE retracted_at IS NULL;
+-- Create "drift_reports" table
+CREATE TABLE `drift_reports` (
+  `id` integer NULL PRIMARY KEY AUTOINCREMENT,
+  `entity_name` text NOT NULL,
+  `divergence_score` real NOT NULL,
+  `canonical_version` integer NOT NULL,
+  `recommendation` text NOT NULL,
+  `divergent_agents` text NOT NULL DEFAULT '[]',
+  `created_at` text NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+-- Create index "idx_dr_entity_created" to table: "drift_reports"
+CREATE INDEX `idx_dr_entity_created` ON `drift_reports` (`entity_name`, `created_at` DESC);

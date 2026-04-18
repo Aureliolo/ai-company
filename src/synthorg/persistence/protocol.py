@@ -41,6 +41,10 @@ from synthorg.persistence.mcp_protocol import (
 from synthorg.persistence.memory_protocol import (
     OrgFactRepository,  # noqa: TC001
 )
+from synthorg.persistence.ontology_protocol import (
+    OntologyDriftReportRepository,  # noqa: TC001
+    OntologyEntityRepository,  # noqa: TC001
+)
 from synthorg.persistence.preset_repository import (
     PersonalityPresetRepository,  # noqa: TC001
 )
@@ -407,6 +411,16 @@ class PersistenceBackend(Protocol):
     @property
     def org_facts(self) -> OrgFactRepository:
         """Repository for organizational fact persistence (MVCC)."""
+        ...
+
+    @property
+    def ontology_entities(self) -> OntologyEntityRepository:
+        """Repository for ontology entity definitions."""
+        ...
+
+    @property
+    def ontology_drift(self) -> OntologyDriftReportRepository:
+        """Repository for ontology drift reports."""
         ...
 
     def build_lockouts(self, auth_config: AuthConfig) -> LockoutRepository:

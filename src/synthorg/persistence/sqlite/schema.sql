@@ -1113,3 +1113,16 @@ CREATE TABLE org_facts_snapshot (
 CREATE INDEX idx_snapshot_category ON org_facts_snapshot (category);
 CREATE INDEX idx_snapshot_active ON org_facts_snapshot (retracted_at)
     WHERE retracted_at IS NULL;
+
+-- Ontology drift reports (#1457 A5).
+CREATE TABLE drift_reports (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    entity_name TEXT NOT NULL,
+    divergence_score REAL NOT NULL,
+    canonical_version INTEGER NOT NULL,
+    recommendation TEXT NOT NULL,
+    divergent_agents TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+CREATE INDEX idx_dr_entity_created
+    ON drift_reports(entity_name, created_at DESC);

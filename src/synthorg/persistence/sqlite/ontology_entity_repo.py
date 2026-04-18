@@ -1,19 +1,14 @@
-"""SQLite implementation of the OntologyBackend protocol."""
+"""SQLite-backed ontology entity repository."""
 
-import asyncio
 import json
 import sqlite3
+from collections.abc import Iterable  # noqa: TC003
 from typing import TYPE_CHECKING
 
-import aiosqlite
+import aiosqlite  # noqa: TC002
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.ontology import (
-    ONTOLOGY_BACKEND_CONNECTED,
-    ONTOLOGY_BACKEND_CONNECTING,
-    ONTOLOGY_BACKEND_CONNECTION_FAILED,
-    ONTOLOGY_BACKEND_DISCONNECTED,
-    ONTOLOGY_BACKEND_HEALTH_CHECK,
     ONTOLOGY_ENTITY_DELETED,
     ONTOLOGY_ENTITY_DESERIALIZATION_FAILED,
     ONTOLOGY_ENTITY_REGISTERED,
@@ -21,7 +16,6 @@ from synthorg.observability.events.ontology import (
     ONTOLOGY_SEARCH_EXECUTED,
 )
 from synthorg.ontology.errors import (
-    OntologyConnectionError,
     OntologyDuplicateError,
     OntologyError,
     OntologyNotFoundError,
@@ -35,134 +29,25 @@ from synthorg.ontology.models import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
-
     from synthorg.core.types import NotBlankStr
 
 logger = get_logger(__name__)
 
 
-class SQLiteOntologyBackend:
-    """SQLite implementation of the OntologyBackend protocol.
-
-    Uses a single aiosqlite connection with WAL mode for
-    file-based databases.
-
-    **Lifecycle contract**: ``connect()`` and ``disconnect()`` bracket
-    all CRUD usage.  Callers must not invoke ``disconnect()`` while
-    CRUD operations are in flight.
+class SQLiteOntologyEntityRepository:
+    """SQLite implementation of ``OntologyEntityRepository``.
 
     Args:
-        db_path: Path to the SQLite database file.  In-memory
-            databases (``":memory:"``) are not supported because
-            schema setup requires Atlas CLI (a separate process).
+        db: Open aiosqlite connection with ``row_factory`` set.
     """
 
-    def __init__(self, db_path: str) -> None:
-        self._db_path = db_path
-        self._db: aiosqlite.Connection | None = None
-        self._lifecycle_lock = asyncio.Lock()
-
-    # ── Lifecycle ───────────────────────────────────────────────
-
-    async def connect(self) -> None:
-        """Establish connection, enable WAL, verify schema."""
-        async with self._lifecycle_lock:
-            if self._db is not None:
-                return
-            logger.info(ONTOLOGY_BACKEND_CONNECTING, db_path=self._db_path)
-            db: aiosqlite.Connection | None = None
-            try:
-                db = await aiosqlite.connect(self._db_path)
-                db.row_factory = aiosqlite.Row
-                if self._db_path != ":memory:":
-                    await db.execute("PRAGMA journal_mode=WAL")
-                # Ontology tables are created by the persistence
-                # baseline migration (consolidated schema).  Verify
-                # the expected table exists as a fail-fast check.
-                cursor = await db.execute(
-                    "SELECT name FROM sqlite_master "
-                    "WHERE type='table' AND name='entity_definitions'",
-                )
-                has_table = await cursor.fetchone() is not None
-            except (sqlite3.Error, aiosqlite.Error, OSError) as exc:
-                if db is not None:
-                    await db.close()
-                msg = f"Failed to connect to {self._db_path}"
-                logger.exception(
-                    ONTOLOGY_BACKEND_CONNECTION_FAILED,
-                    error=str(exc),
-                )
-                raise OntologyConnectionError(msg) from exc
-
-            if not has_table:
-                msg = (
-                    "entity_definitions table not found -- "
-                    "persistence migrations must run before "
-                    "ontology backend connects"
-                )
-                logger.error(
-                    ONTOLOGY_BACKEND_CONNECTION_FAILED,
-                    db_path=self._db_path,
-                    error=msg,
-                )
-                await db.close()
-                raise OntologyConnectionError(msg)
-
-            self._db = db
-            logger.info(ONTOLOGY_BACKEND_CONNECTED, db_path=self._db_path)
-
-    async def disconnect(self) -> None:
-        """Close the database connection."""
-        async with self._lifecycle_lock:
-            if self._db is None:
-                return
-            db = self._db
-            self._db = None
-            await db.close()
-            logger.info(ONTOLOGY_BACKEND_DISCONNECTED)
-
-    async def health_check(self) -> bool:
-        """Return True if the connection is alive."""
-        async with self._lifecycle_lock:
-            if self._db is None:
-                return False
-            try:
-                cursor = await self._db.execute("SELECT 1")
-                await cursor.fetchone()
-            except (sqlite3.Error, aiosqlite.Error) as exc:
-                logger.warning(
-                    ONTOLOGY_BACKEND_HEALTH_CHECK,
-                    healthy=False,
-                    error_type=type(exc).__name__,
-                    error=str(exc),
-                )
-                return False
-        logger.debug(ONTOLOGY_BACKEND_HEALTH_CHECK, healthy=True)
-        return True
-
-    @property
-    def is_connected(self) -> bool:
-        """Whether the backend has an active connection."""
-        return self._db is not None
+    def __init__(self, db: aiosqlite.Connection) -> None:
+        self._db = db
 
     @property
     def backend_name(self) -> NotBlankStr:
         """Human-readable backend identifier."""
-        return "sqlite"
-
-    # ── Helpers ──────────────────────────────────────────────────
-
-    def _require_connected(self) -> aiosqlite.Connection:
-        """Return the active connection or raise."""
-        if self._db is None:
-            msg = "Ontology backend is not connected"
-            logger.warning(
-                ONTOLOGY_BACKEND_CONNECTION_FAILED,
-                error=msg,
-            )
-            raise OntologyConnectionError(msg)
-        return self._db
+        return "sqlite"  # type: ignore[return-value]
 
     def _row_to_entity(self, row: aiosqlite.Row) -> EntityDefinition:
         """Deserialize a database row into an EntityDefinition."""
@@ -212,19 +97,11 @@ class SQLiteOntologyBackend:
             "updated_at": entity.updated_at.isoformat(),
         }
 
-    # ── CRUD ────────────────────────────────────────────────────
-
-    async def _get_db(self) -> aiosqlite.Connection:
-        """Return the active connection, guarded by the lifecycle lock."""
-        async with self._lifecycle_lock:
-            return self._require_connected()
-
     async def register(self, entity: EntityDefinition) -> None:
         """Register a new entity definition."""
-        db = await self._get_db()
         params = self._entity_to_params(entity)
         try:
-            await db.execute(
+            await self._db.execute(
                 """INSERT INTO entity_definitions
                    (name, tier, source, definition, fields, constraints,
                     disambiguation, relationships, created_by,
@@ -234,9 +111,9 @@ class SQLiteOntologyBackend:
                            :created_by, :created_at, :updated_at)""",
                 params,
             )
-            await db.commit()
+            await self._db.commit()
         except sqlite3.IntegrityError as exc:
-            await db.rollback()
+            await self._db.rollback()
             msg = f"Entity '{entity.name}' already exists"
             raise OntologyDuplicateError(msg) from exc
         logger.info(
@@ -247,8 +124,7 @@ class SQLiteOntologyBackend:
 
     async def get(self, name: str) -> EntityDefinition:
         """Retrieve an entity definition by name."""
-        db = await self._get_db()
-        cursor = await db.execute(
+        cursor = await self._db.execute(
             "SELECT * FROM entity_definitions WHERE name = :name",
             {"name": name},
         )
@@ -259,14 +135,9 @@ class SQLiteOntologyBackend:
         return self._row_to_entity(row)
 
     async def update(self, entity: EntityDefinition) -> None:
-        """Update an existing entity definition.
-
-        Only mutable fields are written; ``created_by`` and
-        ``created_at`` are preserved from the original row.
-        """
-        db = await self._get_db()
+        """Update an existing entity definition."""
         params = self._entity_to_params(entity)
-        cursor = await db.execute(
+        cursor = await self._db.execute(
             """UPDATE entity_definitions
                SET tier = :tier, source = :source,
                    definition = :definition, fields = :fields,
@@ -278,27 +149,23 @@ class SQLiteOntologyBackend:
             params,
         )
         if cursor.rowcount == 0:
-            await db.rollback()
+            await self._db.rollback()
             msg = f"Entity '{entity.name}' not found"
             raise OntologyNotFoundError(msg)
-        await db.commit()
-        logger.info(
-            ONTOLOGY_ENTITY_UPDATED,
-            entity_name=entity.name,
-        )
+        await self._db.commit()
+        logger.info(ONTOLOGY_ENTITY_UPDATED, entity_name=entity.name)
 
     async def delete(self, name: str) -> None:
         """Delete an entity definition by name."""
-        db = await self._get_db()
-        cursor = await db.execute(
+        cursor = await self._db.execute(
             "DELETE FROM entity_definitions WHERE name = :name",
             {"name": name},
         )
         if cursor.rowcount == 0:
-            await db.rollback()
+            await self._db.rollback()
             msg = f"Entity '{name}' not found"
             raise OntologyNotFoundError(msg)
-        await db.commit()
+        await self._db.commit()
         logger.info(ONTOLOGY_ENTITY_DELETED, entity_name=name)
 
     async def list_entities(
@@ -307,15 +174,14 @@ class SQLiteOntologyBackend:
         tier: EntityTier | None = None,
     ) -> tuple[EntityDefinition, ...]:
         """List entities, optionally filtered by tier."""
-        db = await self._get_db()
         if tier is not None:
-            cursor = await db.execute(
+            cursor = await self._db.execute(
                 """SELECT * FROM entity_definitions
                    WHERE tier = :tier LIMIT 1000""",
                 {"tier": tier.value},
             )
         else:
-            cursor = await db.execute(
+            cursor = await self._db.execute(
                 "SELECT * FROM entity_definitions LIMIT 1000",
             )
         rows = await cursor.fetchall()
@@ -323,10 +189,9 @@ class SQLiteOntologyBackend:
 
     async def search(self, query: str) -> tuple[EntityDefinition, ...]:
         """Search entities by name or definition text."""
-        db = await self._get_db()
         escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         pattern = f"%{escaped}%"
-        cursor = await db.execute(
+        cursor = await self._db.execute(
             """SELECT * FROM entity_definitions
                WHERE name LIKE :pattern ESCAPE '\\'
                   OR definition LIKE :pattern ESCAPE '\\'
@@ -351,24 +216,15 @@ class SQLiteOntologyBackend:
             try:
                 results.append(self._row_to_entity(row))
             except OntologyError:
-                continue  # Already logged by _row_to_entity.
+                continue
         return tuple(results)
 
     async def get_version_manifest(self) -> dict[str, int]:
         """Return the latest version number for each entity."""
-        db = await self._get_db()
-        cursor = await db.execute(
+        cursor = await self._db.execute(
             """SELECT entity_id, MAX(version) AS latest_version
                FROM entity_definition_versions
                GROUP BY entity_id""",
         )
         rows = await cursor.fetchall()
         return {row["entity_id"]: row["latest_version"] for row in rows}
-
-    def get_db(self) -> aiosqlite.Connection:
-        """Return the underlying database connection.
-
-        Raises:
-            OntologyConnectionError: If not connected.
-        """
-        return self._require_connected()

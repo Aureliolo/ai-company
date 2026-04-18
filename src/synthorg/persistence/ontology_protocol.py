@@ -1,9 +1,11 @@
-"""Ontology repository protocols -- entity definitions + drift reports.
+"""Ontology repository protocols.
 
-Replaces the old parallel ``OntologyBackend`` abstraction.  Composite
-methods (search orchestration, version-manifest assembly, drift
-comparisons) belong to ``synthorg.ontology.service.OntologyService``,
-not the data layer.
+Replaces the old parallel ``OntologyBackend`` abstraction from
+``synthorg.ontology.protocol``.  The same method surface (register,
+get, update, delete, list_entities, search, get_version_manifest)
+is now provided by the persistence-layer repository; lifecycle
+methods (``connect`` / ``disconnect`` / ``health_check`` /
+``is_connected`` / ``get_db``) belong to :class:`PersistenceBackend`.
 """
 
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
@@ -19,22 +21,26 @@ if TYPE_CHECKING:
 
 @runtime_checkable
 class OntologyEntityRepository(Protocol):
-    """CRUD interface for entity definitions."""
+    """CRUD + search interface for entity definitions."""
+
+    @property
+    def backend_name(self) -> NotBlankStr:
+        """Human-readable backend identifier."""
+        ...
 
     async def register(self, entity: EntityDefinition) -> None:
         """Register a new entity definition.
 
         Raises:
-            OntologyDuplicateError: If an entity with the same name
-                already exists.
+            OntologyDuplicateError: If an entity with that name exists.
         """
         ...
 
-    async def get(self, name: NotBlankStr) -> EntityDefinition:
+    async def get(self, name: str) -> EntityDefinition:
         """Retrieve an entity definition by name.
 
         Raises:
-            OntologyNotFoundError: If no entity with that name exists.
+            OntologyNotFoundError: If no such entity exists.
         """
         ...
 
@@ -42,15 +48,15 @@ class OntologyEntityRepository(Protocol):
         """Update an existing entity definition (matched by name).
 
         Raises:
-            OntologyNotFoundError: If no entity with that name exists.
+            OntologyNotFoundError: If no such entity exists.
         """
         ...
 
-    async def delete(self, name: NotBlankStr) -> None:
+    async def delete(self, name: str) -> None:
         """Delete an entity definition by name.
 
         Raises:
-            OntologyNotFoundError: If no entity with that name exists.
+            OntologyNotFoundError: If no such entity exists.
         """
         ...
 
@@ -62,12 +68,20 @@ class OntologyEntityRepository(Protocol):
         """List all entity definitions, optionally filtered by tier."""
         ...
 
-    async def search(
-        self,
-        query: NotBlankStr,
-    ) -> tuple[EntityDefinition, ...]:
+    async def search(self, query: str) -> tuple[EntityDefinition, ...]:
         """Substring search against entity name and definition text."""
         ...
+
+    async def get_version_manifest(self) -> dict[str, int]:
+        """Return the latest version number for each entity."""
+        ...
+
+
+# Alias for callers that still type-hint against the old name.  The
+# old ``OntologyBackend`` carried lifecycle methods; those have moved
+# to :class:`PersistenceBackend` and callers who need them reach
+# through the shared backend instead.
+OntologyBackend = OntologyEntityRepository
 
 
 @runtime_checkable

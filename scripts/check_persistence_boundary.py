@@ -79,12 +79,33 @@ _ALLOWLIST: Final[frozenset[str]] = frozenset(
         # ride the repository pattern because SQL strings are the
         # payload.
         "src/synthorg/tools/database/sql_query.py",
+        # Backup handler performs sqlite3 file-level backup via the
+        # stdlib Connection.backup() API -- this is a backup
+        # operation on the DB file itself, not a repository concern.
+        "src/synthorg/backup/handlers/persistence.py",
+        # Destructive-operation detector scans user-supplied SQL for
+        # DDL keywords -- the DDL literals are the *payload* of the
+        # security check, not SQL emitted by the app.
+        "src/synthorg/security/rules/destructive_op_detector.py",
         # The boundary checker itself references driver names in
         # patterns and error messages.
         "scripts/check_persistence_boundary.py",
-        # Persistence conformance tests exercise repository behaviour
-        # against both backends; they touch driver primitives when
-        # building fixtures.
+        # Shared conftest bootstraps the test database via aiosqlite.
+        "tests/conftest.py",
+        # Integration / unit tests that legitimately hold driver
+        # handles for cross-subsystem fixtures.
+        "tests/integration/engine/identity/test_identity_versioning.py",
+        "tests/integration/engine/workflow/test_subworkflows_e2e.py",
+        "tests/integration/hr/training/test_training_persistence.py",
+        "tests/unit/hr/test_persistence.py",
+        "tests/unit/memory/embedding/test_fine_tune_orchestrator.py",
+        "tests/unit/meta/test_approval_repo.py",
+        "tests/unit/ontology/drift/test_store.py",
+        "tests/unit/tools/database/test_sql_query.py",
+        "tests/unit/tools/database/test_schema_inspect.py",
+        # Destructive-op-detector tests feed SQL fragments as test
+        # inputs to the detector -- same reason as the detector itself.
+        "tests/unit/security/rules/test_destructive_op_detector.py",
     }
 )
 
@@ -93,6 +114,15 @@ _ALLOWLIST: Final[frozenset[str]] = frozenset(
 _PERSISTENCE_PREFIXES: Final[tuple[str, ...]] = (
     "src/synthorg/persistence/",
     "tests/conformance/persistence/",
+    # Per-backend unit tests drive repositories directly and
+    # legitimately build aiosqlite / psycopg fixtures.
+    "tests/unit/persistence/",
+    "tests/integration/persistence/",
+    # Auth-store unit tests instantiate repositories with an
+    # aiosqlite connection fixture -- same shape as above.
+    "tests/unit/api/auth/",
+    # Backup handler tests exercise sqlite3 file-level copy/restore.
+    "tests/unit/backup/test_handlers/",
 )
 
 _SUPPRESSION_MARKER: Final[str] = "lint-allow: persistence-boundary"

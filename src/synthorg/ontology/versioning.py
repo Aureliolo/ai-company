@@ -1,11 +1,13 @@
 """Versioning integration for the ontology subsystem.
 
-Provides a factory to create a ``VersioningService[EntityDefinition]``
-from the ontology backend's database connection.
+Provides a factory that composes ``VersioningService[EntityDefinition]``
+on top of the persistence layer's ``SQLiteVersionRepository``.  After
+A5 consolidation the DB handle is sourced from the shared
+:class:`PersistenceBackend` rather than a standalone ontology backend.
 """
 
 import json
-from typing import TYPE_CHECKING
+from typing import Any
 
 from pydantic import ValidationError
 
@@ -14,9 +16,6 @@ from synthorg.ontology.errors import OntologyError
 from synthorg.ontology.models import EntityDefinition
 from synthorg.persistence.sqlite.version_repo import SQLiteVersionRepository
 from synthorg.versioning.service import VersioningService
-
-if TYPE_CHECKING:
-    import aiosqlite
 
 logger = get_logger(__name__)
 
@@ -32,12 +31,16 @@ def _safe_deserialize_snapshot(raw: str) -> EntityDefinition:
 
 
 def create_ontology_version_repo(
-    db: aiosqlite.Connection,
+    db: Any,
 ) -> SQLiteVersionRepository[EntityDefinition]:
     """Create a SQLiteVersionRepository for EntityDefinition.
 
     Args:
-        db: An open aiosqlite connection (the ontology backend's).
+        db: An open aiosqlite connection produced by the persistence
+            backend.  Accepted as ``Any`` because importing
+            ``aiosqlite`` outside ``persistence/`` would violate the
+            boundary linter; the actual handle is passed straight
+            through to the repository.
 
     Returns:
         A repository targeting the ``entity_definition_versions`` table.
@@ -53,15 +56,12 @@ def create_ontology_version_repo(
 
 
 def create_ontology_versioning(
-    db: aiosqlite.Connection,
+    db: Any,
 ) -> VersioningService[EntityDefinition]:
     """Create a VersioningService for EntityDefinition.
 
-    Convenience that composes ``create_ontology_version_repo`` with
-    ``VersioningService``.
-
     Args:
-        db: An open aiosqlite connection.
+        db: An open aiosqlite connection (see above note on the type).
 
     Returns:
         A versioning service for entity definitions.

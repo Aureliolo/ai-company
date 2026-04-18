@@ -765,15 +765,20 @@ async def auto_wire_settings(  # noqa: PLR0913
 
 async def auto_wire_ontology(
     effective_config: RootConfig,
+    persistence: PersistenceBackend | None = None,
 ) -> OntologyService | None:
-    """Auto-wire the ontology subsystem.
+    """Auto-wire the ontology subsystem on top of the shared persistence backend.
 
-    Creates the SQLite backend, connects it, applies the schema,
-    wires up versioning, creates the ``OntologyService``, and runs
-    bootstrap (decorator registry + config entities).
+    Wires versioning on top of ``persistence.get_db()``, constructs
+    the ``OntologyService`` against ``persistence.ontology_entities``,
+    and runs bootstrap (decorator registry + config entities).
 
     Args:
         effective_config: Root company configuration.
+        persistence: Connected persistence backend (required).  Safe
+            to pass ``None`` -- the wire-up simply no-ops when the
+            backend is absent, matching prior behaviour for
+            ontology-disabled deployments.
 
     Returns:
         The bootstrapped ``OntologyService``, or ``None`` if wiring
@@ -782,23 +787,27 @@ async def auto_wire_ontology(
     from synthorg.observability.events.ontology import (  # noqa: PLC0415
         ONTOLOGY_AUTO_WIRE_FAILED,
     )
-    from synthorg.ontology.backends.sqlite.backend import (  # noqa: PLC0415
-        SQLiteOntologyBackend,
-    )
     from synthorg.ontology.service import OntologyService  # noqa: PLC0415
     from synthorg.ontology.versioning import (  # noqa: PLC0415
         create_ontology_versioning,
     )
 
     ontology_config = effective_config.ontology
-    # Resolve database path: use the persistence SQLite path if available,
-    # otherwise default to in-memory.
-    db_path = effective_config.persistence.sqlite.path or ":memory:"
+    if persistence is None or not getattr(persistence, "is_connected", False):
+        logger.warning(
+            ONTOLOGY_AUTO_WIRE_FAILED,
+            error_type="NoPersistence",
+            error="ontology auto-wire requires a connected persistence backend",
+        )
+        return None
 
-    backend = SQLiteOntologyBackend(db_path=db_path)
+    # Ontology runs on the shared persistence backend (#1457 A5): the
+    # entity repository and versioning service both take the backend's
+    # active aiosqlite connection, so schema migrations (Atlas) and
+    # connection lifecycle are owned by PersistenceBackend.
+    backend = persistence.ontology_entities
     try:
-        await backend.connect()
-        versioning = create_ontology_versioning(backend.get_db())
+        versioning = create_ontology_versioning(persistence.get_db())
         service = OntologyService(
             backend=backend,
             versioning=versioning,
@@ -816,8 +825,6 @@ async def auto_wire_ontology(
             error=str(exc),
             exc_info=True,
         )
-        with contextlib.suppress(Exception):
-            await backend.disconnect()
         return None
     else:
         logger.info(API_SERVICE_AUTO_WIRED, service="ontology_service")
