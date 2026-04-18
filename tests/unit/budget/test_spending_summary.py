@@ -33,10 +33,12 @@ class TestPeriodSpending:
             start=datetime(2026, 2, 1, tzinfo=UTC),
             end=datetime(2026, 3, 1, tzinfo=UTC),
             total_cost=50.0,
+            currency="EUR",
             record_count=100,
         )
         assert ps.total_cost == 50.0
         assert ps.record_count == 100
+        assert ps.currency == "EUR"
 
     def test_defaults(self) -> None:
         """Verify zero defaults for aggregation fields."""
@@ -90,10 +92,12 @@ class TestAgentSpending:
         a = AgentSpending(
             agent_id="sarah_chen",
             total_cost=40.0,
+            currency="EUR",
             record_count=80,
         )
         assert a.agent_id == "sarah_chen"
         assert a.total_cost == 40.0
+        assert a.currency == "EUR"
 
     def test_defaults(self) -> None:
         """Verify zero defaults for aggregation fields."""
@@ -137,10 +141,12 @@ class TestDepartmentSpending:
         d = DepartmentSpending(
             department_name="Engineering",
             total_cost=75.0,
+            currency="EUR",
             record_count=150,
         )
         assert d.department_name == "Engineering"
         assert d.total_cost == 75.0
+        assert d.currency == "EUR"
 
     def test_defaults(self) -> None:
         """Verify zero defaults for aggregation fields."""

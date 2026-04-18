@@ -250,6 +250,7 @@ class TestCheckCanExecute:
                 cost=100.0,
                 input_tokens=100,
                 output_tokens=50,
+                currency="GBP",
                 timestamp=_RECORD_TS,
             ),
         )

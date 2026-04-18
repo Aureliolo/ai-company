@@ -13,6 +13,7 @@ from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from synthorg.budget.currency import CurrencyCode  # noqa: TC001
 from synthorg.budget.enums import BudgetAlertLevel
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 
@@ -25,6 +26,12 @@ class _SpendingTotals(BaseModel):
 
     Attributes:
         total_cost: Total cost for the aggregation group.
+        currency: ISO 4217 currency code for ``total_cost``.  ``None``
+            only when ``record_count == 0``; any non-empty aggregation
+            carries the single currency shared by its contributing
+            records (mixed-currency input raises
+            :class:`~synthorg.budget.errors.MixedCurrencyAggregationError`
+            at the aggregator).
         total_input_tokens: Total input tokens consumed.
         total_output_tokens: Total output tokens consumed.
         record_count: Number of cost records aggregated.
@@ -36,6 +43,13 @@ class _SpendingTotals(BaseModel):
         default=0.0,
         ge=0.0,
         description="Total cost for the aggregation group",
+    )
+    currency: CurrencyCode | None = Field(
+        default=None,
+        description=(
+            "ISO 4217 currency code for ``total_cost``; ``None`` only when "
+            "``record_count == 0``"
+        ),
     )
     total_input_tokens: int = Field(
         default=0,
@@ -52,6 +66,17 @@ class _SpendingTotals(BaseModel):
         ge=0,
         description="Number of cost records aggregated",
     )
+
+    @model_validator(mode="after")
+    def _validate_currency_presence(self) -> Self:
+        """Require ``currency`` whenever at least one record aggregated."""
+        if self.record_count > 0 and self.currency is None:
+            msg = (
+                f"currency is required when record_count > 0 "
+                f"(record_count={self.record_count})"
+            )
+            raise ValueError(msg)
+        return self
 
 
 class PeriodSpending(_SpendingTotals):
