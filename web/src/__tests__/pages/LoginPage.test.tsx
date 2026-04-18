@@ -73,7 +73,7 @@ describe('LoginPage', () => {
     // pending state as a leak: the assertion runs while the promise
     // is still pending, then we resolve + await it in teardown so
     // no promise outlives the test.
-    let resolveSetup: (value: ReturnType<typeof setupStatusResponse>) => void
+    let resolveSetup: ((value: ReturnType<typeof setupStatusResponse>) => void) | undefined
     const deferred = new Promise<ReturnType<typeof setupStatusResponse>>(
       (resolve) => {
         resolveSetup = resolve
@@ -82,7 +82,8 @@ describe('LoginPage', () => {
     mockGetSetupStatus.mockReturnValue(deferred)
     renderLogin()
     expect(screen.getByText('Checking setup status...')).toBeInTheDocument()
-    resolveSetup!(setupStatusResponse({ needs_admin: false }))
+    if (!resolveSetup) throw new Error('deferred resolver was never assigned')
+    resolveSetup(setupStatusResponse({ needs_admin: false }))
     await waitFor(() => {
       expect(
         screen.queryByText('Checking setup status...'),
@@ -282,8 +283,15 @@ describe('LoginPage', () => {
 
   it('disables inputs during submission', async () => {
     mockGetSetupStatus.mockResolvedValue(setupStatusResponse())
-    // Never resolves -- stays in submitting state.
-    mockLogin.mockReturnValue(new Promise(() => {}))
+    // Deferred promise rather than ``new Promise(() => {})`` so
+    // --detect-async-leaks doesn't flag the intentionally-pending
+    // submission state as a leak: we resolve it at the end of the
+    // test so the login store's promise chain settles before teardown.
+    let resolveLogin: (() => void) | undefined
+    const loginDeferred = new Promise<void>((resolve) => {
+      resolveLogin = resolve
+    })
+    mockLogin.mockReturnValue(loginDeferred)
     const user = userEvent.setup()
 
     renderLogin()
@@ -298,6 +306,12 @@ describe('LoginPage', () => {
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Signing In...' })).toBeDisabled()
     })
+
+    // Settle the deferred so the in-flight login promise resolves
+    // before the worker tears down.
+    if (!resolveLogin) throw new Error('deferred resolver was never assigned')
+    resolveLogin()
+    await loginDeferred
   })
 
   it('shows lockout warning when locked', async () => {
@@ -329,6 +343,57 @@ describe('LoginPage', () => {
 
     await waitFor(() => {
       expect(mockLogin).toHaveBeenCalledWith('admin', 'secret123456')
+    })
+  })
+
+  describe('XSS safety', () => {
+    const XSS_PAYLOAD = '<script>window.__xss_fired__ = true</script>'
+
+    beforeEach(() => {
+      // Remove the flag in case a prior test set it.
+      delete (globalThis as { __xss_fired__?: boolean }).__xss_fired__
+    })
+
+    it('renders username input as text, not executable HTML', async () => {
+      mockGetSetupStatus.mockResolvedValue(setupStatusResponse())
+      const user = userEvent.setup()
+
+      renderLogin()
+      await waitFor(() => {
+        expect(screen.getByRole('heading', { name: 'Sign In' })).toBeInTheDocument()
+      })
+
+      const username = screen.getByLabelText('Username') as HTMLInputElement
+      await user.type(username, XSS_PAYLOAD)
+
+      // The input `value` preserves the payload as a literal string.
+      expect(username.value).toBe(XSS_PAYLOAD)
+      // No script element was added to the DOM.
+      expect(document.querySelector('script[data-xss], body script')).toBeNull()
+      // The payload did not execute in the test realm.
+      expect((globalThis as { __xss_fired__?: boolean }).__xss_fired__).toBeUndefined()
+    })
+
+    it('forwards XSS payload to the login action as a plain string', async () => {
+      mockGetSetupStatus.mockResolvedValue(setupStatusResponse())
+      mockLogin.mockResolvedValue(undefined)
+      const user = userEvent.setup()
+
+      renderLogin()
+      await waitFor(() => {
+        expect(screen.getByRole('heading', { name: 'Sign In' })).toBeInTheDocument()
+      })
+
+      await user.type(screen.getByLabelText('Username'), XSS_PAYLOAD)
+      await user.type(screen.getByLabelText('Password'), 'password12345')
+      await user.click(screen.getByRole('button', { name: 'Sign In' }))
+
+      await waitFor(() => {
+        expect(mockLogin).toHaveBeenCalledWith(XSS_PAYLOAD, 'password12345')
+      })
+
+      // The payload was never executed as HTML during render.
+      expect((globalThis as { __xss_fired__?: boolean }).__xss_fired__).toBeUndefined()
     })
   })
 })

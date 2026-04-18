@@ -52,6 +52,21 @@ describe('toast store', () => {
     expect(useToastStore.getState().toasts).toHaveLength(0)
   })
 
+  it('cancelAllPending() clears pending auto-dismiss timers but preserves toasts', () => {
+    useToastStore.getState().add({ variant: 'info', title: 'Keep me' })
+    useToastStore.getState().add({ variant: 'success', title: 'Keep me too' })
+    expect(useToastStore.getState().toasts).toHaveLength(2)
+
+    useToastStore.getState().cancelAllPending()
+
+    // Toasts remain in state -- only timers are cleared.
+    expect(useToastStore.getState().toasts).toHaveLength(2)
+
+    // Advancing past the longest auto-dismiss duration must not remove anything.
+    vi.advanceTimersByTime(60_000)
+    expect(useToastStore.getState().toasts).toHaveLength(2)
+  })
+
   it('auto-dismisses after default duration', () => {
     useToastStore.getState().add({ variant: 'info', title: 'Auto' })
     expect(useToastStore.getState().toasts).toHaveLength(1)

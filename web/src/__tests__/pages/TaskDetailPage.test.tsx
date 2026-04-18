@@ -67,24 +67,58 @@ async function renderDetailPage() {
 }
 
 describe('TaskDetailPage', () => {
+  // Controllable pending promises let loading-state tests simulate an
+  // in-flight fetch without leaving a never-settled promise past teardown.
+  // Each test appends its pending promise to this list; afterEach resolves
+  // every pending promise with a valid `mockTask` (never `undefined`, which
+  // would drive the real `fetchTask` continuation to set `selectedTask =
+  // undefined` and cross-test-interfere with the next test) and then awaits
+  // the microtask chain so the continuation settles before the test
+  // boundary -- --detect-async-leaks sees a clean slate either way.
+  const pendingPromises: Array<{ resolve: () => void; settled: Promise<unknown> }> = []
+  function pendingPromise<T>(resolveValue: T = mockTask as T): Promise<T> {
+    let resolveFn!: (value: T) => void
+    const p = new Promise<T>((resolve) => {
+      resolveFn = resolve
+    })
+    pendingPromises.push({ resolve: () => resolveFn(resolveValue), settled: p })
+    return p
+  }
+
   beforeEach(() => {
     resetStore()
     vi.clearAllMocks()
     mockGetTask.mockResolvedValue(mockTask)
   })
 
+  afterEach(async () => {
+    const outstanding = pendingPromises.splice(0, pendingPromises.length)
+    for (const { resolve } of outstanding) {
+      resolve()
+    }
+    // Await each promise so its continuation runs inside the test boundary
+    // (otherwise the microtask could land in the next test's beforeEach
+    // and briefly set invalid store state before resetStore wipes it).
+    await Promise.all(outstanding.map((p) => p.settled))
+  })
+
   it('renders loading spinner when loadingDetail is true', async () => {
-    mockGetTask.mockReturnValue(new Promise(() => {}))
+    mockGetTask.mockReturnValue(pendingPromise())
     resetStore({ loadingDetail: true })
     await renderDetailPage()
+    // Positive assertion: the loading UI (role="status", aria-label="Loading task")
+    // must be rendered. Asserting presence -- not just absence of the loaded
+    // content -- catches regressions where the page renders nothing or an
+    // error state instead of the spinner.
+    expect(screen.getByRole('status', { name: 'Loading task' })).toBeInTheDocument()
     expect(screen.queryByText('Test task')).not.toBeInTheDocument()
   })
 
   it('renders loading spinner when task is null', async () => {
-    mockGetTask.mockReturnValue(new Promise(() => {}))
+    mockGetTask.mockReturnValue(pendingPromise())
     resetStore({ selectedTask: null, loadingDetail: false })
     await renderDetailPage()
-    // Should show spinner since task is null (fetch is pending)
+    expect(screen.getByRole('status', { name: 'Loading task' })).toBeInTheDocument()
     expect(screen.queryByText('Test task')).not.toBeInTheDocument()
   })
 

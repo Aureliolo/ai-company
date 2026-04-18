@@ -336,18 +336,67 @@ describe('Sidebar', () => {
       expect(onOverlayClose).toHaveBeenCalledOnce()
     })
 
-    // Property: navigating to any different static route while overlay is open triggers exactly one close
+    // Each iteration mounts a tablet-sized Sidebar with a Base UI Drawer; the Drawer's
+    // `useTransitionStatus` schedules requestAnimationFrame callbacks (jsdom emulates rAF via
+    // setInterval) that would previously leak past unmount under `--detect-async-leaks`.
+    // The rAF shim in `test-setup.tsx` keeps these tests leak-free.
+    //
+    // Coverage strategy: `it.each` enumerates every route exactly once (deterministic coverage,
+    // stable CI timing), and a low-iteration `fast-check` property test shuffles ordering to
+    // catch cross-render state leaks that a fixed order would miss.
     const staticRoutes = Object.values(ROUTES).filter((r) => !r.includes(':') && r !== '/')
-    it('close-on-navigate fires exactly once for any static route (property)', { timeout: 15000 }, async () => {
-      await fc.assert(
-        fc.asyncProperty(fc.constantFrom(...staticRoutes), async (route) => {
-          const onOverlayClose = vi.fn()
-          const { router, unmount } = setupTablet(true, onOverlayClose)
-          await act(() => router.navigate(route))
-          expect(onOverlayClose).toHaveBeenCalledOnce()
-          unmount()
-        }),
-      )
-    })
+    it.each(staticRoutes)(
+      'close-on-navigate fires exactly once when navigating to %s',
+      async (route) => {
+        const onOverlayClose = vi.fn()
+        const { router, unmount } = setupTablet(true, onOverlayClose)
+        await act(() => router.navigate(route))
+        expect(onOverlayClose).toHaveBeenCalledOnce()
+        unmount()
+      },
+    )
+
+    // Permutation coverage: each iteration mounts ONE Drawer and navigates
+    // a random ordered subset of routes through it, so route-order
+    // interactions on a shared component instance are actually exercised
+    // (not masked by per-iteration remount). Cumulative call assertions
+    // (toHaveBeenCalledTimes(index + 1)) verify every navigation fires
+    // close-on-navigate rather than just the last one.
+    //
+    // The subset size is bounded (max 3) because React Router's `navigate`
+    // schedules a setImmediate per call that only drains on unmount --
+    // sweeping every route inside one mount would tip the test over the
+    // --detect-async-leaks threshold. 3 routes per iteration x 10 runs
+    // gives 30 ordered-pair navigations per CI run, which is enough to
+    // exercise cross-render state leaks without reintroducing the leak
+    // this PR is fixing.
+    const PERMUTATION_SIZE = Math.min(3, staticRoutes.length)
+    it(
+      'close-on-navigate is independent of route order (property)',
+      { timeout: 15_000 },
+      async () => {
+        await fc.assert(
+          fc.asyncProperty(
+            fc.shuffledSubarray(staticRoutes, {
+              minLength: PERMUTATION_SIZE,
+              maxLength: PERMUTATION_SIZE,
+            }),
+            async (routesInRandomOrder) => {
+              const onOverlayClose = vi.fn()
+              const { router, unmount } = setupTablet(true, onOverlayClose)
+              try {
+                for (const [index, route] of routesInRandomOrder.entries()) {
+                  await act(() => router.navigate(route))
+                  expect(onOverlayClose).toHaveBeenCalledTimes(index + 1)
+                }
+              } finally {
+                unmount()
+              }
+            },
+          ),
+          { numRuns: 10 },
+        )
+      },
+    )
   })
 })
