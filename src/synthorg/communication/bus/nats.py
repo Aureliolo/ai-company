@@ -112,11 +112,15 @@ class JetStreamMessageBus:
         """Live probe against the NATS server.
 
         Checks that the client is both locally marked running and
-        actually connected, then performs a PING/PONG round-trip
-        via ``nc.flush()`` with a short timeout. Returns ``False``
-        rather than raising when the probe fails so the caller
-        treats the bus as degraded without a ``try``/``except``.
-        Flush exceptions are logged at WARNING so operators can
+        actually connected, then calls ``nc.flush(timeout=2)`` --
+        which waits for any pending publishes to ack and, when the
+        queue is empty, resolves to a broker round-trip. The
+        2-second budget is deliberately tight so a stuck probe
+        fails fast rather than blocking the health endpoint.
+        Returns ``False`` instead of raising when the probe fails
+        so the caller can treat the bus as degraded without its
+        own ``try``/``except``. Flush exceptions are logged at
+        WARNING with exception type and traceback so operators can
         distinguish broker-unreachable from client-logic bugs.
         """
         state = self._state

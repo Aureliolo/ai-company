@@ -76,6 +76,7 @@ class LogfireReporter:
                 TELEMETRY_REPORT_FAILED,
                 detail="logfire_configure_failed",
                 error_type=type(exc).__name__,
+                exc_info=True,
             )
             raise
 
@@ -104,6 +105,7 @@ class LogfireReporter:
                 TELEMETRY_REPORT_FAILED,
                 event_type=event.event_type,
                 error_type=type(exc).__name__,
+                exc_info=True,
             )
 
     async def flush(self) -> None:
@@ -115,6 +117,7 @@ class LogfireReporter:
                 TELEMETRY_REPORT_FAILED,
                 detail="flush",
                 error_type=type(exc).__name__,
+                exc_info=True,
             )
 
     async def shutdown(self) -> None:
@@ -127,6 +130,7 @@ class LogfireReporter:
                 TELEMETRY_REPORT_FAILED,
                 detail="shutdown",
                 error_type=type(exc).__name__,
+                exc_info=True,
             )
 
 

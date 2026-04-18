@@ -194,16 +194,34 @@ class TestResolveTelemetryStatus:
         app_state.has_telemetry_collector = False
         assert _resolve_telemetry_status(app_state) is TelemetryStatus.DISABLED
 
-    def test_enabled_when_collector_enabled(self) -> None:
+    def test_enabled_when_collector_is_functional(self) -> None:
         app_state = MagicMock()
         app_state.has_telemetry_collector = True
-        app_state.telemetry_collector.enabled = True
+        app_state.telemetry_collector.is_functional = True
         assert _resolve_telemetry_status(app_state) is TelemetryStatus.ENABLED
 
-    def test_disabled_when_collector_disabled(self) -> None:
+    def test_disabled_when_collector_opted_out(self) -> None:
         app_state = MagicMock()
         app_state.has_telemetry_collector = True
-        app_state.telemetry_collector.enabled = False
+        app_state.telemetry_collector.is_functional = False
+        assert _resolve_telemetry_status(app_state) is TelemetryStatus.DISABLED
+
+    def test_disabled_when_enabled_but_reporter_is_noop(self) -> None:
+        """Enabled config + noop reporter must surface as ``disabled``.
+
+        Regression guard: ``_resolve_telemetry_status`` previously read
+        ``collector.enabled`` (config opt-in only), so the endpoint lied
+        whenever ``create_reporter`` degraded to ``NoopReporter``
+        (missing ``logfire`` extra, reporter init failure). The
+        ``is_functional`` property collapses "opted in but not
+        delivering" to ``False`` so the surfaced status matches reality.
+        """
+        app_state = MagicMock()
+        app_state.has_telemetry_collector = True
+        # Simulate the "opted in but reporter degraded to noop" case:
+        # ``enabled`` reports True, ``is_functional`` reports False.
+        app_state.telemetry_collector.enabled = True
+        app_state.telemetry_collector.is_functional = False
         assert _resolve_telemetry_status(app_state) is TelemetryStatus.DISABLED
 
 

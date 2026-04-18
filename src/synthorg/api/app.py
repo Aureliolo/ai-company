@@ -1374,17 +1374,54 @@ def _build_default_trust_service() -> TrustService:
     )
 
 
+_DEFAULT_MEMORY_DIR = Path("/data/memory")
+
+
+def _resolve_memory_dir() -> Path:
+    """Read and validate ``SYNTHORG_MEMORY_DIR`` for derived paths.
+
+    Rejects empty, whitespace-only, and relative values -- those
+    would resolve ``memory_dir.parent / "telemetry"`` to a
+    path outside the container volume (e.g. ``./telemetry`` or
+    ``/telemetry``) instead of the intended
+    ``/data/telemetry``. Logs a warning and falls back to
+    ``/data/memory`` in each failure mode so misconfiguration is
+    observable.
+    """
+    raw = os.environ.get("SYNTHORG_MEMORY_DIR")
+    if raw is None:
+        return _DEFAULT_MEMORY_DIR
+    candidate = raw.strip()
+    if not candidate:
+        logger.warning(
+            API_APP_STARTUP,
+            detail="memory_dir_blank",
+            reason="empty_or_whitespace",
+        )
+        return _DEFAULT_MEMORY_DIR
+    path = Path(candidate)
+    if not path.is_absolute():
+        logger.warning(
+            API_APP_STARTUP,
+            detail="memory_dir_not_absolute",
+            value=candidate,
+        )
+        return _DEFAULT_MEMORY_DIR
+    return path
+
+
 def _build_telemetry_collector() -> TelemetryCollector:
     """Build the project telemetry collector.
 
-    ``TelemetryConfig()`` defaults to ``enabled=False``; the
-    ``TelemetryCollector`` constructor honours the
-    ``SYNTHORG_TELEMETRY`` env var (``true``/``1``/``yes`` to
-    enable). The data directory stores the anonymous deployment
-    ID -- placed under the same base as
-    ``SYNTHORG_MEMORY_DIR`` so the container volume holds it.
+    ``TelemetryConfig()`` defaults to ``enabled=False``;
+    :class:`TelemetryCollector` reads ``SYNTHORG_TELEMETRY`` inside
+    its own ``__init__`` (``true``/``1``/``yes`` to enable) and
+    overrides the config accordingly, so the env var wins over the
+    config file. The data directory stores the anonymous deployment
+    ID -- placed under the same base as ``SYNTHORG_MEMORY_DIR`` so
+    the container volume holds it.
     """
-    memory_dir = Path(os.environ.get("SYNTHORG_MEMORY_DIR", "/data/memory"))
+    memory_dir = _resolve_memory_dir()
     telemetry_dir = memory_dir.parent / "telemetry"
     return TelemetryCollector(config=TelemetryConfig(), data_dir=telemetry_dir)
 
@@ -2289,10 +2326,17 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
     # Litestar lifespan. Telemetry is SynthOrg-owned and silent on
     # failure: a broken reporter falls back to noop and never affects
     # the app.
+    #
+    # Shutdown is appended (runs LAST), not prepended: critical
+    # infrastructure (task engine drain, persistence disconnect, bus
+    # stop) must complete first so the session-summary event emitted
+    # by ``telemetry_collector.shutdown`` reflects final state, and so
+    # a hanging Logfire flush never blocks cleanup of load-bearing
+    # resources.
     telemetry_collector = _build_telemetry_collector()
     app_state.set_telemetry_collector(telemetry_collector)
     startup = [*startup, telemetry_collector.start]
-    shutdown = [telemetry_collector.shutdown, *shutdown]
+    shutdown = [*shutdown, telemetry_collector.shutdown]
 
     if _skip_lifecycle_shutdown:
         shutdown = []

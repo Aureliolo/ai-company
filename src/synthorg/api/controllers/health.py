@@ -1,5 +1,6 @@
 """Health check controller."""
 
+import asyncio
 import time
 from enum import StrEnum
 from typing import TYPE_CHECKING
@@ -31,13 +32,16 @@ class ServiceStatus(StrEnum):
 class TelemetryStatus(StrEnum):
     """Project telemetry runtime state.
 
-    ``enabled`` means the collector is configured to send events to
-    the SynthOrg Logfire project (``SYNTHORG_TELEMETRY=true`` plus the
-    ``telemetry`` extra installed). ``disabled`` covers every other
-    case: opt-out, noop reporter, missing ``logfire`` package, or
-    construction failure. Reflects the reporter class, not delivery
-    confirmation -- the collector itself is fire-and-forget and
-    never signals send failure upstream.
+    ``enabled`` means the collector is opted in AND the reporter can
+    deliver events (``SYNTHORG_TELEMETRY=true`` plus the ``telemetry``
+    extra installed and :func:`create_reporter` returning a live
+    backend). ``disabled`` covers every other case: opt-out, noop
+    reporter, missing ``logfire`` package, or reporter construction
+    failure -- the factory degrades to :class:`NoopReporter` in the
+    latter three, and the collector's ``is_functional`` property
+    reflects that. The collector itself is still fire-and-forget:
+    this field reflects the reporter's ability to deliver, not
+    post-send delivery confirmation.
     """
 
     ENABLED = "enabled"
@@ -94,16 +98,19 @@ async def _probe_service(
 def _resolve_telemetry_status(app_state: AppState) -> TelemetryStatus:
     """Read the telemetry collector and map to a public status.
 
-    Returns ``disabled`` when no collector is attached (test harness)
-    or when the collector reports itself disabled (opt-out, missing
-    logfire extra, or reporter init failure -- the factory degrades
-    to ``NoopReporter`` silently in all three cases).
+    Returns ``disabled`` when no collector is attached (test harness),
+    when the operator opted out, or when the reporter silently
+    degraded to :class:`NoopReporter` (missing ``logfire`` extra,
+    reporter construction failure, or explicit ``noop`` backend).
+    Uses ``collector.is_functional`` instead of ``enabled`` so the
+    health endpoint reflects delivery capability, not just the
+    config opt-in flag.
     """
     if not app_state.has_telemetry_collector:
         return TelemetryStatus.DISABLED
     return (
         TelemetryStatus.ENABLED
-        if app_state.telemetry_collector.enabled
+        if app_state.telemetry_collector.is_functional
         else TelemetryStatus.DISABLED
     )
 
@@ -129,16 +136,31 @@ class HealthController(Controller):
         """
         app_state: AppState = state.app_state
 
-        persistence_ok = await _probe_service(
-            configured=app_state.has_persistence,
-            probe=lambda: app_state.persistence.health_check(),  # noqa: PLW0108
-            component="persistence",
-        )
-        bus_ok = await _probe_service(
-            configured=app_state.has_message_bus,
-            probe=lambda: app_state.message_bus.health_check(),  # noqa: PLW0108
-            component="message_bus",
-        )
+        # Probe persistence and the message bus in parallel: the two
+        # checks are independent and each may wait on a round-trip
+        # (e.g. NATS PING/PONG), so sequential awaits add their
+        # latencies. TaskGroup gives structured concurrency with
+        # proper cancellation propagation if one probe raises (the
+        # ``_probe_service`` wrapper already swallows expected
+        # failures into ``False``, so only truly unexpected errors
+        # -- e.g. MemoryError -- propagate here).
+        async with asyncio.TaskGroup() as tg:
+            persistence_task = tg.create_task(
+                _probe_service(
+                    configured=app_state.has_persistence,
+                    probe=lambda: app_state.persistence.health_check(),  # noqa: PLW0108
+                    component="persistence",
+                ),
+            )
+            bus_task = tg.create_task(
+                _probe_service(
+                    configured=app_state.has_message_bus,
+                    probe=lambda: app_state.message_bus.health_check(),  # noqa: PLW0108
+                    component="message_bus",
+                ),
+            )
+        persistence_ok = persistence_task.result()
+        bus_ok = bus_task.result()
         telemetry_status = _resolve_telemetry_status(app_state)
 
         checks = [v for v in (persistence_ok, bus_ok) if v is not None]

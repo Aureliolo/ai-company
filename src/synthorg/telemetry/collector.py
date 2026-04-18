@@ -26,6 +26,7 @@ from synthorg.observability.events.telemetry import (
 from synthorg.telemetry.privacy import PrivacyScrubber, PrivacyViolationError
 from synthorg.telemetry.protocol import TelemetryEvent, TelemetryReporter
 from synthorg.telemetry.reporters import create_reporter
+from synthorg.telemetry.reporters.noop import NoopReporter
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -149,6 +150,23 @@ class TelemetryCollector:
         """Whether telemetry is enabled."""
         return self._config.enabled
 
+    @property
+    def is_functional(self) -> bool:
+        """Whether telemetry is both opted in AND the reporter can deliver.
+
+        Returns ``False`` when telemetry is opt-out, and also when the
+        operator opted in but :func:`create_reporter` fell back to
+        :class:`NoopReporter` (missing ``logfire`` extra, reporter
+        construction failure, or explicit ``TelemetryBackend.NOOP``).
+        This is what the health endpoint surfaces: ``enabled`` alone
+        would lie about delivery whenever the reporter silently
+        degraded to noop.
+        """
+        return self._config.enabled and not isinstance(
+            self._reporter,
+            NoopReporter,
+        )
+
     async def start(self) -> None:
         """Start the periodic heartbeat if telemetry is enabled.
 
@@ -191,6 +209,7 @@ class TelemetryCollector:
                             TELEMETRY_REPORT_FAILED,
                             detail="session_summary_snapshot_failed",
                             error_type=type(exc).__name__,
+                            exc_info=True,
                         )
 
                 try:
@@ -200,6 +219,7 @@ class TelemetryCollector:
                         TELEMETRY_REPORT_FAILED,
                         detail="send_session_summary_failed",
                         error_type=type(exc).__name__,
+                        exc_info=True,
                     )
 
                 try:
@@ -209,6 +229,7 @@ class TelemetryCollector:
                         TELEMETRY_REPORT_FAILED,
                         detail="send_shutdown_event_failed",
                         error_type=type(exc).__name__,
+                        exc_info=True,
                     )
 
             try:
@@ -218,6 +239,7 @@ class TelemetryCollector:
                     TELEMETRY_REPORT_FAILED,
                     detail="reporter_shutdown_failed",
                     error_type=type(exc).__name__,
+                    exc_info=True,
                 )
 
     async def send_heartbeat(

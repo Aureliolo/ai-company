@@ -29,7 +29,38 @@ class TestTelemetryCollector:
         config = TelemetryConfig()
         collector = TelemetryCollector(config=config, data_dir=tmp_path)
         assert collector.enabled is False
+        assert collector.is_functional is False
         assert collector.deployment_id is None
+
+    def test_is_functional_false_when_reporter_is_noop(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Opted in + noop reporter collapses to ``is_functional=False``.
+
+        Covers the "enabled in config but reporter degraded to noop"
+        case that the health endpoint used to mis-report as enabled.
+        """
+        config = TelemetryConfig(enabled=True, backend=TelemetryBackend.NOOP)
+        collector = TelemetryCollector(config=config, data_dir=tmp_path)
+        assert collector.enabled is True
+        assert collector.is_functional is False
+
+    def test_is_functional_true_when_logfire_reporter_built(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Functional is True when opted in and a non-noop reporter is wired."""
+        pytest.importorskip(
+            "logfire",
+            reason="logfire extra not installed in this environment",
+        )
+        config = TelemetryConfig(
+            enabled=True,
+            backend=TelemetryBackend.LOGFIRE,
+        )
+        collector = TelemetryCollector(config=config, data_dir=tmp_path)
+        assert collector.is_functional is True
 
     def test_generates_deployment_id(self, tmp_path: Path) -> None:
         config = TelemetryConfig(enabled=True, backend=TelemetryBackend.NOOP)

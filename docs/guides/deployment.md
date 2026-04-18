@@ -103,7 +103,7 @@ After the containers are running, open `http://localhost:3000`. The setup wizard
 
 - **Base image**: Pure apko Wolfi (Caddy + melange-packaged static assets, no Dockerfile)
 - **User**: UID 65532 (caddy)
-- **Health check**: none (stateless static server; container readiness determined by TCP port availability)
+- **Health check**: `GET /healthz` via Caddy (compose-level probe using `wget`; 10s interval, 3s timeout, 3 retries, 10s start period). The apko image intentionally ships no Dockerfile `HEALTHCHECK`, so the probe is declared alongside the service and targets `127.0.0.1` to avoid Docker DNS.
 - **Routing**: SPA routing (`try_files {path} /index.html`), API proxy to backend, WebSocket proxy, per-request CSP nonce via Caddy `templates` directive
 - **Caching**: `/index.html` is no-cache; `/assets/*` is immutable with 1-year max-age (content-hashed filenames)
 - **Static compression**: pre-compressed `.gz` files served via `file_server { precompressed gzip }`
