@@ -29,3 +29,30 @@ class TestCreateReporter:
         # when logfire is not installed or init fails.
         reporter_name = type(reporter).__name__
         assert reporter_name in {"LogfireReporter", "NoopReporter"}
+
+    def test_config_environment_threaded_into_logfire_reporter(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``config.environment`` must reach ``LogfireReporter.__init__``."""
+        pytest.importorskip(
+            "logfire",
+            reason="logfire extra not installed in this environment",
+        )
+        from unittest.mock import patch
+
+        monkeypatch.setenv(
+            "SYNTHORG_LOGFIRE_PROJECT_TOKEN",
+            "pylf_v1_test_000000000000000000000000000000000000000000",
+        )
+        config = TelemetryConfig(
+            enabled=True,
+            backend=TelemetryBackend.LOGFIRE,
+            environment="staging",
+        )
+
+        import synthorg.telemetry.reporters.logfire as logfire_module
+
+        with patch.object(logfire_module, "LogfireReporter") as mock_reporter_cls:
+            create_reporter(config)
+
+        mock_reporter_cls.assert_called_once_with(environment="staging")

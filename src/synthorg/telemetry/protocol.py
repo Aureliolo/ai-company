@@ -6,6 +6,7 @@ from typing import Protocol, runtime_checkable
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.telemetry.config import DEFAULT_ENVIRONMENT
 
 
 class TelemetryEvent(BaseModel):
@@ -22,6 +23,11 @@ class TelemetryEvent(BaseModel):
         synthorg_version: Installed SynthOrg version string.
         python_version: Python interpreter version.
         os_platform: Operating system platform identifier.
+        environment: Deployment environment tag (``local-docker``,
+            ``ci``, ``prod``, ...). Emitted as the OTel
+            ``deployment.environment`` resource attribute so every
+            span in Logfire can be filtered without joining on a
+            startup event.
         timestamp: UTC timestamp of the event.
         properties: Event-specific key-value data.  Values are
             restricted to primitives (int, float, str, bool).
@@ -43,6 +49,11 @@ class TelemetryEvent(BaseModel):
     )
     os_platform: NotBlankStr = Field(
         description="OS platform identifier",
+    )
+    environment: NotBlankStr = Field(
+        default=DEFAULT_ENVIRONMENT,
+        max_length=64,
+        description="Deployment environment tag (local-docker / ci / prod / ...)",
     )
     timestamp: datetime = Field(
         description="UTC timestamp of the event",

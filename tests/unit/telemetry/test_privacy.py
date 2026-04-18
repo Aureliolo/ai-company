@@ -81,6 +81,45 @@ class TestPrivacyScrubber:
         result = self.scrubber.validate(event)
         assert result is event
 
+    def test_valid_startup_with_docker_info_passes(self) -> None:
+        event = _make_event(
+            "deployment.startup",
+            agent_count=0,
+            department_count=0,
+            template_name="",
+            persistence_backend="sqlite",
+            memory_backend="mem0",
+            docker_info_available=True,
+            docker_server_version="27.3.1",
+            docker_operating_system="Docker Desktop",
+            docker_os_type="linux",
+            docker_os_version="",
+            docker_architecture="x86_64",
+            docker_kernel_version="6.10.14-linuxkit",
+            docker_storage_driver="overlay2",
+            docker_default_runtime="runc",
+            docker_isolation="",
+            docker_ncpu=8,
+            docker_mem_total=8589934592,
+            docker_gpu_runtime_nvidia_available=False,
+        )
+        result = self.scrubber.validate(event)
+        assert result is event
+
+    def test_valid_startup_with_unavailable_docker_marker_passes(self) -> None:
+        event = _make_event(
+            "deployment.startup",
+            agent_count=0,
+            department_count=0,
+            template_name="",
+            persistence_backend="sqlite",
+            memory_backend="mem0",
+            docker_info_available=False,
+            docker_info_unavailable_reason="socket_not_mounted",
+        )
+        result = self.scrubber.validate(event)
+        assert result is event
+
     def test_valid_shutdown_passes(self) -> None:
         event = _make_event(
             "deployment.shutdown",

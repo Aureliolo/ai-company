@@ -27,6 +27,7 @@ def _event() -> TelemetryEvent:
         synthorg_version="test",
         python_version="3.14.0",
         os_platform="Linux",
+        environment="test",
         timestamp=datetime.now(UTC),
         properties={},
     )
@@ -88,3 +89,94 @@ class TestLogfireReporterReportRaises:
         ):
             await reporter.report(event)
         mock_logger.warning.assert_not_called()
+
+
+@pytest.mark.unit
+class TestLogfireReporterConfigure:
+    """``configure()`` call shape: silences introspection + tags environment."""
+
+    def _fresh_reporter(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        *,
+        environment: str = "pre-release",
+    ) -> Any:
+        pytest.importorskip(
+            "logfire",
+            reason="logfire extra not installed in this environment",
+        )
+        from synthorg.telemetry.reporters.logfire import LogfireReporter
+
+        monkeypatch.setenv(
+            "SYNTHORG_LOGFIRE_PROJECT_TOKEN",
+            "pylf_v1_test_000000000000000000000000000000000000000000",
+        )
+        with patch(
+            "synthorg.telemetry.reporters.logfire.LogfireReporter.__init__",
+            autospec=True,
+        ):
+            pass  # placeholder; real construction happens below
+        return LogfireReporter(environment=environment)
+
+    def test_configure_receives_inspect_arguments_false_and_environment(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``configure()`` silences the introspection warning and tags env."""
+        pytest.importorskip(
+            "logfire",
+            reason="logfire extra not installed in this environment",
+        )
+        import logfire as real_logfire
+
+        from synthorg.telemetry.reporters.logfire import LogfireReporter
+
+        monkeypatch.setenv(
+            "SYNTHORG_LOGFIRE_PROJECT_TOKEN",
+            "pylf_v1_test_000000000000000000000000000000000000000000",
+        )
+
+        with patch.object(real_logfire, "configure") as mock_configure:
+            LogfireReporter(environment="pre-release")
+
+        mock_configure.assert_called_once()
+        kwargs = mock_configure.call_args.kwargs
+        assert kwargs["inspect_arguments"] is False
+        assert kwargs["environment"] == "pre-release"
+        assert kwargs["service_name"] == "synthorg-telemetry"
+
+    async def test_report_includes_environment_kwarg(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Per-record ``environment`` kwarg is attached to every ``info()`` call."""
+        pytest.importorskip(
+            "logfire",
+            reason="logfire extra not installed in this environment",
+        )
+        import logfire as real_logfire
+
+        from synthorg.telemetry.reporters.logfire import LogfireReporter
+
+        monkeypatch.setenv(
+            "SYNTHORG_LOGFIRE_PROJECT_TOKEN",
+            "pylf_v1_test_000000000000000000000000000000000000000000",
+        )
+        with patch.object(real_logfire, "configure"):
+            reporter = LogfireReporter(environment="ci")
+
+        event = TelemetryEvent(
+            event_type="deployment.heartbeat",
+            deployment_id="00000000-0000-0000-0000-000000000002",
+            synthorg_version="test",
+            python_version="3.14.0",
+            os_platform="Linux",
+            environment="ci",
+            timestamp=datetime.now(UTC),
+            properties={},
+        )
+        with patch.object(reporter._logfire, "info") as mock_info:
+            await reporter.report(event)
+
+        mock_info.assert_called_once()
+        kwargs = mock_info.call_args.kwargs
+        assert kwargs["environment"] == "ci"
+        assert kwargs["deployment_id"] == "00000000-0000-0000-0000-000000000002"

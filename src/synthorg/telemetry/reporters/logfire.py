@@ -14,6 +14,7 @@ from synthorg.observability.events.telemetry import (
     TELEMETRY_REPORT_FAILED,
     TELEMETRY_REPORTER_INITIALIZED,
 )
+from synthorg.telemetry.config import DEFAULT_ENVIRONMENT
 
 if TYPE_CHECKING:
     from synthorg.telemetry.protocol import TelemetryEvent
@@ -30,11 +31,20 @@ class LogfireReporter:
     properties. A missing or empty project token disables
     delivery by raising :class:`ImportError` so the reporter
     factory falls back to :class:`NoopReporter`.
+
+    Args:
+        environment: Deployment-environment tag (``dev`` /
+            ``pre-release`` / ``prod`` / ``ci`` / ...). Passed to
+            :func:`logfire.configure` so the OTel
+            ``deployment.environment`` resource attribute is set
+            on every span and also included as a kwarg on every
+            log record -- giving dashboards two ways to filter
+            without joining on a startup event.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, environment: str = DEFAULT_ENVIRONMENT) -> None:
         try:
-            import logfire as _logfire  # type: ignore[import-not-found]  # noqa: PLC0415
+            import logfire as _logfire  # type: ignore[import-not-found,unused-ignore]  # noqa: PLC0415
         except ImportError as exc:
             msg = (
                 "logfire package not installed. "
@@ -59,13 +69,26 @@ class LogfireReporter:
             raise ImportError(msg)
 
         self._logfire = _logfire
+        self._environment = environment
 
         try:
+            # ``inspect_arguments=False`` silences the noisy
+            # "Failed to introspect calling code" warning. Logfire
+            # would otherwise try to introspect the source line
+            # for every ``.info(event.event_type, ...)`` call to
+            # treat the first positional as an f-string template.
+            # Our call site passes a variable, not a literal, so
+            # introspection fails on every event -- disabling it
+            # is the explicit suppression the warning itself
+            # suggests. ``environment=`` maps to the OTel
+            # ``deployment.environment`` resource attribute.
             self._logfire.configure(
                 token=token,
                 send_to_logfire="if-token-present",
                 service_name="synthorg-telemetry",
                 service_version=_get_synthorg_version(),
+                environment=environment,
+                inspect_arguments=False,
             )
         except Exception as exc:
             logger.warning(
@@ -76,7 +99,11 @@ class LogfireReporter:
             )
             raise
 
-        logger.info(TELEMETRY_REPORTER_INITIALIZED, backend="logfire")
+        logger.info(
+            TELEMETRY_REPORTER_INITIALIZED,
+            backend="logfire",
+            environment=environment,
+        )
 
     async def report(self, event: TelemetryEvent) -> None:
         """Send a telemetry event to Logfire.
@@ -88,7 +115,14 @@ class LogfireReporter:
         undelivered write. :meth:`TelemetryCollector._send` owns
         the ``TELEMETRY_REPORT_FAILED`` alert -- no log here
         avoids duplicating the same metric per failure.
+
+        ``environment`` is included both as a resource attribute
+        (via :meth:`__init__`'s ``configure`` call) and as a
+        per-record kwarg so dashboards can filter either way.
         """
+        # ``**event.properties`` intentionally carries arbitrary
+        # allowlisted keys; mypy's narrowed ``to_thread`` signature
+        # rejects unknown kwargs so we type-ignore the dispatch.
         await asyncio.to_thread(
             self._logfire.info,
             event.event_type,
@@ -97,7 +131,8 @@ class LogfireReporter:
             synthorg_version=event.synthorg_version,
             python_version=event.python_version,
             os_platform=event.os_platform,
-            **event.properties,
+            environment=event.environment,
+            **event.properties,  # type: ignore[arg-type]
         )
 
     async def flush(self) -> None:

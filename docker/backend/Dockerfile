@@ -131,6 +131,15 @@ FROM ${BASE_IMAGE}
 # Optional build-time telemetry write token. Empty default disables delivery.
 ARG LOGFIRE_PROJECT_TOKEN=""
 
+# Baked deployment-environment tag. Release-tag builds pass
+# `prod`; `-dev.N` pre-release tag builds pass `pre-release`;
+# everything else (main pushes, PR builds, local `docker build`)
+# keeps the `dev` default. Runtime can still override via
+# SYNTHORG_TELEMETRY_ENV; CI auto-detection also wins over this
+# baked value. See synthorg.telemetry.collector._resolve_environment
+# for the full priority chain.
+ARG DEPLOYMENT_ENV="dev"
+
 LABEL org.opencontainers.image.title="synthorg-backend" \
       org.opencontainers.image.description="SynthOrg orchestration backend" \
       org.opencontainers.image.url="https://github.com/Aureliolo/synthorg" \
@@ -164,6 +173,7 @@ ENV PATH="/app/.venv/bin:/usr/local/bin:$PATH" \
     UVICORN_HOST="0.0.0.0" \
     UVICORN_PORT="3001" \
     SYNTHORG_LOGFIRE_PROJECT_TOKEN=${LOGFIRE_PROJECT_TOKEN} \
+    SYNTHORG_TELEMETRY_ENV_BAKED=${DEPLOYMENT_ENV} \
     PYTHONWARNINGS="ignore::UserWarning:litestar.plugins.pydantic.utils"
 
 USER 65532

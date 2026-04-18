@@ -18,8 +18,21 @@ from synthorg.telemetry.protocol import TelemetryEvent
 
 @pytest.fixture(autouse=True)
 def clear_synthorg_telemetry(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Ensure SYNTHORG_TELEMETRY is unset so tests are deterministic."""
+    """Ensure the SYNTHORG_TELEMETRY* vars + well-known CI markers are unset.
+
+    The collector reads a four-level env chain on construction; any
+    leaking env var would make test behaviour depend on the shell it
+    runs in. Scrub the whole set so each test specifies exactly the
+    inputs it exercises.
+    """
     monkeypatch.delenv("SYNTHORG_TELEMETRY", raising=False)
+    monkeypatch.delenv("SYNTHORG_TELEMETRY_ENV", raising=False)
+    monkeypatch.delenv("SYNTHORG_TELEMETRY_ENV_BAKED", raising=False)
+    for marker in ("CI", "GITLAB_CI", "BUILDKITE", "JENKINS_URL"):
+        monkeypatch.delenv(marker, raising=False)
+    for name in list(os.environ):
+        if name.startswith("RUNPOD_"):
+            monkeypatch.delenv(name, raising=False)
 
 
 @pytest.mark.unit
@@ -362,3 +375,143 @@ class TestSessionSummaryParams:
         p = _SessionSummaryParams(tasks_created=5)
         with pytest.raises(AttributeError, match="cannot assign"):
             p.tasks_created = 10  # type: ignore[misc]
+
+
+@pytest.mark.unit
+class TestResolveEnvironment:
+    """Four-level priority chain for deployment-environment resolution."""
+
+    def test_config_value_used_when_no_env(self) -> None:
+        from synthorg.telemetry.collector import _resolve_environment
+
+        assert _resolve_environment("dev", environ={}) == "dev"
+
+    def test_operator_override_beats_everything(self) -> None:
+        from synthorg.telemetry.collector import _resolve_environment
+
+        env = {
+            "SYNTHORG_TELEMETRY_ENV": "staging",
+            "SYNTHORG_TELEMETRY_ENV_BAKED": "prod",
+            "CI": "true",
+        }
+        assert _resolve_environment("dev", environ=env) == "staging"
+
+    @pytest.mark.parametrize(
+        "marker",
+        ["CI", "GITLAB_CI", "BUILDKITE", "JENKINS_URL"],
+    )
+    def test_ci_marker_sets_ci(self, marker: str) -> None:
+        from synthorg.telemetry.collector import _resolve_environment
+
+        env = {marker: "true", "SYNTHORG_TELEMETRY_ENV_BAKED": "prod"}
+        assert _resolve_environment("dev", environ=env) == "ci"
+
+    def test_runpod_prefix_marker_sets_ci(self) -> None:
+        from synthorg.telemetry.collector import _resolve_environment
+
+        env = {"RUNPOD_POD_ID": "abc123"}
+        assert _resolve_environment("dev", environ=env) == "ci"
+
+    def test_baked_value_used_when_no_ci_or_override(self) -> None:
+        from synthorg.telemetry.collector import _resolve_environment
+
+        env = {"SYNTHORG_TELEMETRY_ENV_BAKED": "pre-release"}
+        assert _resolve_environment("dev", environ=env) == "pre-release"
+
+    def test_ci_beats_baked_value(self) -> None:
+        """Running a pre-release / prod image under CI tags as ci."""
+        from synthorg.telemetry.collector import _resolve_environment
+
+        env = {
+            "CI": "true",
+            "SYNTHORG_TELEMETRY_ENV_BAKED": "prod",
+        }
+        assert _resolve_environment("dev", environ=env) == "ci"
+
+    def test_whitespace_values_ignored(self) -> None:
+        from synthorg.telemetry.collector import _resolve_environment
+
+        env = {"SYNTHORG_TELEMETRY_ENV": "   ", "SYNTHORG_TELEMETRY_ENV_BAKED": ""}
+        assert _resolve_environment("dev", environ=env) == "dev"
+
+    def test_override_truncated_to_64_chars(self) -> None:
+        from synthorg.telemetry.collector import _resolve_environment
+
+        env = {"SYNTHORG_TELEMETRY_ENV": "x" * 100}
+        result = _resolve_environment("dev", environ=env)
+        assert len(result) == 64
+        assert result == "x" * 64
+
+
+@pytest.mark.unit
+class TestCollectorEnvironmentPropagation:
+    """End-to-end: constructor env resolution and event enrichment."""
+
+    def test_ci_env_marker_overrides_config_environment(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("CI", "true")
+        config = TelemetryConfig(
+            enabled=True,
+            backend=TelemetryBackend.NOOP,
+            environment="dev",
+        )
+        collector = TelemetryCollector(config=config, data_dir=tmp_path)
+        assert collector._config.environment == "ci"
+
+    def test_baked_env_overrides_config_environment(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("SYNTHORG_TELEMETRY_ENV_BAKED", "prod")
+        config = TelemetryConfig(
+            enabled=True,
+            backend=TelemetryBackend.NOOP,
+            environment="dev",
+        )
+        collector = TelemetryCollector(config=config, data_dir=tmp_path)
+        assert collector._config.environment == "prod"
+
+    def test_operator_override_beats_ci(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("CI", "true")
+        monkeypatch.setenv("SYNTHORG_TELEMETRY_ENV", "staging")
+        config = TelemetryConfig(
+            enabled=True,
+            backend=TelemetryBackend.NOOP,
+            environment="dev",
+        )
+        collector = TelemetryCollector(config=config, data_dir=tmp_path)
+        assert collector._config.environment == "staging"
+
+    def test_built_event_carries_resolved_environment(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("SYNTHORG_TELEMETRY_ENV", "pre-release")
+        config = TelemetryConfig(enabled=True, backend=TelemetryBackend.NOOP)
+        collector = TelemetryCollector(config=config, data_dir=tmp_path)
+        event = collector._build_event("deployment.heartbeat")
+        assert event.environment == "pre-release"
+
+    async def test_startup_event_attaches_docker_info_marker(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """When the docker socket is missing, startup ships the marker."""
+        monkeypatch.setattr(
+            "synthorg.telemetry.host_info.os.path.exists",
+            lambda _path: False,
+        )
+        config = TelemetryConfig(enabled=True, backend=TelemetryBackend.NOOP)
+        collector = TelemetryCollector(config=config, data_dir=tmp_path)
+        mock_reporter = AsyncMock()
+        collector._reporter = mock_reporter
+
+        await collector._send_startup_event()
+
+        mock_reporter.report.assert_awaited_once()
+        event = mock_reporter.report.call_args.args[0]
+        assert event.event_type == "deployment.startup"
+        assert event.properties["docker_info_available"] is False
+        assert (
+            event.properties["docker_info_unavailable_reason"] == "socket_not_mounted"
+        )
