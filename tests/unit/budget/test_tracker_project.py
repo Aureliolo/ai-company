@@ -10,12 +10,13 @@ from synthorg.budget.tracker import CostTracker
 from .conftest import make_cost_record
 
 
-def _make_project_record(
+def _make_project_record(  # noqa: PLR0913
     *,
     project_id: str = "proj-1",
     agent_id: str = "alice",
     task_id: str = "task-001",
     cost: float = 0.05,
+    currency: str = "USD",
     timestamp: datetime | None = None,
 ) -> CostRecord:
     """Build a CostRecord with project_id set."""
@@ -28,7 +29,7 @@ def _make_project_record(
         input_tokens=1000,
         output_tokens=500,
         cost=cost,
-        currency="USD",
+        currency=currency,
         timestamp=timestamp or datetime(2026, 2, 15, 12, 0, 0, tzinfo=UTC),
     )
 
@@ -138,3 +139,59 @@ class TestGetProjectRecords:
         )
         assert len(records) == 1
         assert records[0].cost == pytest.approx(0.20)
+
+
+@pytest.mark.unit
+class TestPerProjectCurrencyGuardWithoutBudgetConfig:
+    """Without a budget_config, project_cost_repo-backed trackers must
+    still refuse to collapse mixed-currency rows into one project aggregate.
+    """
+
+    async def test_first_record_pins_project_currency(self) -> None:
+        """A subsequent USD write after an initial USD record is accepted."""
+        from unittest.mock import AsyncMock
+
+        tracker = CostTracker(
+            project_cost_repo=AsyncMock(),
+        )
+        await tracker.record(_make_project_record(project_id="proj-x", currency="USD"))
+        await tracker.record(
+            _make_project_record(
+                project_id="proj-x",
+                currency="USD",
+                cost=0.01,
+                task_id="task-2",
+            )
+        )
+
+    async def test_second_record_in_different_currency_raises(self) -> None:
+        """Switching currency mid-stream within the same project raises."""
+        from unittest.mock import AsyncMock
+
+        from synthorg.budget.errors import MixedCurrencyAggregationError
+
+        tracker = CostTracker(
+            project_cost_repo=AsyncMock(),
+        )
+        await tracker.record(_make_project_record(project_id="proj-y", currency="USD"))
+        with pytest.raises(MixedCurrencyAggregationError) as exc_info:
+            await tracker.record(
+                _make_project_record(
+                    project_id="proj-y",
+                    currency="EUR",
+                    cost=0.01,
+                    task_id="task-2",
+                )
+            )
+        assert exc_info.value.currencies == frozenset({"USD", "EUR"})
+
+    async def test_different_projects_may_use_different_currencies(self) -> None:
+        """The per-project pin is scoped to project_id, not global."""
+        from unittest.mock import AsyncMock
+
+        tracker = CostTracker(
+            project_cost_repo=AsyncMock(),
+        )
+        await tracker.record(_make_project_record(project_id="proj-a", currency="USD"))
+        await tracker.record(_make_project_record(project_id="proj-b", currency="EUR"))
+        # Both projects accepted their own currency; no raise.

@@ -9,6 +9,7 @@ BUDGET_SUMMARY_BUILT: Final[str] = "budget.summary.built"
 BUDGET_TOTAL_COST_QUERIED: Final[str] = "budget.total_cost.queried"
 BUDGET_AGENT_COST_QUERIED: Final[str] = "budget.agent_cost.queried"
 BUDGET_TIME_RANGE_INVALID: Final[str] = "budget.time_range.invalid"
+BUDGET_MIXED_CURRENCY_REJECTED: Final[str] = "budget.mixed_currency.rejected"
 BUDGET_DEPARTMENT_RESOLVE_FAILED: Final[str] = "budget.department.resolve_failed"
 
 BUDGET_CATEGORY_BREAKDOWN_QUERIED: Final[str] = "budget.category_breakdown.queried"

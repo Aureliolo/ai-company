@@ -205,11 +205,14 @@ class BudgetConfig(BaseModel):
     currency: CurrencyCode = Field(
         default=DEFAULT_CURRENCY,
         description=(
-            "ISO 4217 currency code for display formatting. "
-            "Display-only preference: SynthOrg does not convert LLM "
-            "provider costs. All provider token prices are denominated "
-            "in USD; changing this setting relabels the display symbol "
-            "but does not translate the numeric values."
+            "ISO 4217 currency code stamped onto every new cost record "
+            "and used for display formatting. SynthOrg does not convert "
+            "provider costs -- provider token prices are reported in the "
+            "provider-native currency (see ``DEFAULT_CURRENCY``) and "
+            "changing this setting relabels the code stamped onto "
+            "subsequent records without translating any numeric values. "
+            "Historical rows retain the code that was active when they "
+            "were written."
         ),
     )
     risk_budget: RiskBudgetConfig = Field(

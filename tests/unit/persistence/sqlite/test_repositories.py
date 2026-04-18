@@ -10,6 +10,7 @@ if TYPE_CHECKING:
     import aiosqlite
 
 from synthorg.budget.cost_record import CostRecord
+from synthorg.budget.errors import MixedCurrencyAggregationError
 from synthorg.communication.message import (
     MessageMetadata,
 )
@@ -206,7 +207,7 @@ class TestSQLiteCostRecordRepository:
         agent_id: str = "alice",
         task_id: str = "task-001",
         cost: float = 0.05,
-        currency: str = "EUR",
+        currency: str = "USD",
     ) -> CostRecord:
         return CostRecord(
             agent_id=agent_id,
@@ -287,6 +288,49 @@ class TestSQLiteCostRecordRepository:
         repo = SQLiteCostRecordRepository(migrated_db)
         total = await repo.aggregate()
         assert total == 0.0
+
+    async def test_aggregate_rejects_mixed_currency(
+        self, migrated_db: aiosqlite.Connection
+    ) -> None:
+        """Aggregating across USD + EUR rows raises rather than summing."""
+        repo = SQLiteCostRecordRepository(migrated_db)
+        await repo.save(self._make_record(task_id="t1", currency="USD", cost=0.10))
+        await repo.save(self._make_record(task_id="t2", currency="EUR", cost=0.20))
+
+        with pytest.raises(MixedCurrencyAggregationError) as exc_info:
+            await repo.aggregate()
+        assert exc_info.value.currencies == frozenset({"USD", "EUR"})
+
+    async def test_aggregate_mixed_currency_filtered_by_agent_is_clean(
+        self, migrated_db: aiosqlite.Connection
+    ) -> None:
+        """Filters narrow the aggregation scope before the invariant fires."""
+        repo = SQLiteCostRecordRepository(migrated_db)
+        await repo.save(self._make_record(agent_id="alice", currency="USD", cost=0.10))
+        await repo.save(self._make_record(agent_id="bob", currency="EUR", cost=0.20))
+
+        # Scoped to alice: only USD rows -- aggregates cleanly.
+        total = await repo.aggregate(agent_id="alice")
+        assert abs(total - 0.10) < 1e-9
+
+    async def test_aggregate_mixed_currency_filtered_by_task_raises(
+        self, migrated_db: aiosqlite.Connection
+    ) -> None:
+        """Mixed-currency rows under the same task_id still raise."""
+        repo = SQLiteCostRecordRepository(migrated_db)
+        await repo.save(
+            self._make_record(
+                agent_id="alice", task_id="shared", currency="USD", cost=0.10
+            )
+        )
+        await repo.save(
+            self._make_record(
+                agent_id="bob", task_id="shared", currency="EUR", cost=0.20
+            )
+        )
+
+        with pytest.raises(MixedCurrencyAggregationError):
+            await repo.aggregate(task_id="shared")
 
     async def test_query_with_combined_filters(
         self, migrated_db: aiosqlite.Connection

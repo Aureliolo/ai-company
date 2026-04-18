@@ -13,6 +13,7 @@ from synthorg.budget.config import (
 )
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.cost_tiers import CostTierDefinition, CostTiersConfig
+from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.budget.enums import BudgetAlertLevel
 from synthorg.budget.hierarchy import (
     BudgetHierarchy,
@@ -367,7 +368,7 @@ def make_cost_record(  # noqa: PLR0913
     input_tokens: int = 1000,
     output_tokens: int = 500,
     cost: float = 0.05,
-    currency: str = "USD",
+    currency: str = DEFAULT_CURRENCY,
     timestamp: datetime | None = None,
 ) -> CostRecord:
     """Build a CostRecord with sensible defaults."""

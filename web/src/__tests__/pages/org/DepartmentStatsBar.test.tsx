@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import { DepartmentStatsBar } from '@/pages/org/DepartmentStatsBar'
+import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { formatCurrency } from '@/utils/format'
 
 describe('DepartmentStatsBar', () => {
@@ -12,9 +13,11 @@ describe('DepartmentStatsBar', () => {
     expect(screen.getByText('Active')).toBeInTheDocument()
   })
 
-  it('renders cost with default USD currency', () => {
+  it('renders cost with the default currency', () => {
     render(<DepartmentStatsBar agentCount={5} activeCount={3} cost7d={45.8} />)
-    expect(screen.getByText(formatCurrency(45.8, 'USD'))).toBeInTheDocument()
+    expect(
+      screen.getByText(formatCurrency(45.8, DEFAULT_CURRENCY)),
+    ).toBeInTheDocument()
     expect(screen.getByText('Cost (7d)')).toBeInTheDocument()
   })
 

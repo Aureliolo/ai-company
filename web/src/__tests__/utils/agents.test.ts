@@ -15,6 +15,8 @@ import type {
   AgentStatus,
   CareerEventType,
 } from '@/api/types'
+import { DEFAULT_CURRENCY } from '@/utils/currencies'
+import { formatCurrency } from '@/utils/format'
 
 // ── Factories ──────────────────────────────────────────────
 
@@ -322,10 +324,9 @@ describe('formatCompletionTime', () => {
 // ── formatCostPerTask ──────────────────────────────────────
 
 describe('formatCostPerTask', () => {
-  it('formats cost in the default currency (USD)', () => {
+  it('formats cost via the canonical formatCurrency default', () => {
     const result = formatCostPerTask(0.35)
-    expect(result).toContain('0.35')
-    expect(result).toMatch(/\$/)
+    expect(result).toBe(formatCurrency(0.35, DEFAULT_CURRENCY))
   })
 
   it('formats larger cost', () => {

@@ -107,7 +107,7 @@ class TestCostRecordRepository:
                     input_tokens=10,
                     output_tokens=10,
                     cost=cost,
-                    currency="EUR",
+                    currency="USD",
                     timestamp=datetime(2026, 4, 10, 12, tzinfo=UTC),
                     call_category=LLMCallCategory.PRODUCTIVE,
                 )
@@ -120,6 +120,36 @@ class TestCostRecordRepository:
         self, backend: PersistenceBackend
     ) -> None:
         assert await backend.cost_records.aggregate(agent_id="agent_1") == 0.0
+
+    async def test_aggregate_rejects_mixed_currency(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """The single-query probe must raise, not silently sum USD + EUR."""
+        from synthorg.budget.cost_record import CostRecord
+        from synthorg.budget.errors import MixedCurrencyAggregationError
+
+        task = make_task(task_id="t-mixed")
+        await backend.tasks.save(task)
+
+        for currency, cost in (("USD", 0.1), ("EUR", 0.2)):
+            await backend.cost_records.save(
+                CostRecord(
+                    agent_id="agent_mix",
+                    task_id="t-mixed",
+                    provider="test-provider",
+                    model="test-small-001",
+                    input_tokens=10,
+                    output_tokens=10,
+                    cost=cost,
+                    currency=currency,
+                    timestamp=datetime(2026, 4, 10, 12, tzinfo=UTC),
+                    call_category=LLMCallCategory.PRODUCTIVE,
+                )
+            )
+
+        with pytest.raises(MixedCurrencyAggregationError) as exc_info:
+            await backend.cost_records.aggregate(agent_id="agent_mix")
+        assert exc_info.value.currencies == frozenset({"USD", "EUR"})
 
 
 @pytest.mark.integration

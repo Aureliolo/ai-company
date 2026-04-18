@@ -1,4 +1,5 @@
 import fc from 'fast-check'
+import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { formatCurrency, formatUptime, formatLabel, formatDate } from '@/utils/format'
 
 describe('format property tests', () => {
@@ -46,12 +47,14 @@ describe('format property tests', () => {
     )
   })
 
-  it('formatCurrency with no currencyCode defaults to USD', () => {
+  it('formatCurrency with no currencyCode defaults to DEFAULT_CURRENCY', () => {
     fc.assert(
       fc.property(
         fc.double({ min: -1e9, max: 1e9, noNaN: true }),
         (value) => {
-          expect(formatCurrency(value)).toContain('$')
+          expect(formatCurrency(value)).toEqual(
+            formatCurrency(value, DEFAULT_CURRENCY),
+          )
         },
       ),
     )

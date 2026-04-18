@@ -246,9 +246,14 @@ Every aggregation site -- `CostTracker`, `ReportGenerator`, `CostOptimizer`,
 per-agent / per-department / per-project rollups, and the HR `WindowMetrics` multi-window
 strategy -- enforces a same-currency invariant. Mixing currencies raises
 `MixedCurrencyAggregationError` (HTTP 409, `MIXED_CURRENCY_AGGREGATION` error code) at the
-aggregator rather than silently producing a meaningless total. `CostTracker.record()` also
-rejects at the ingestion boundary when the incoming record's currency differs from the
-configured `budget.currency`, so downstream aggregators never see mixed-currency state.
+aggregator rather than silently producing a meaningless total. `CostTracker.record()`
+additionally rejects at the ingestion boundary when the incoming record's currency differs
+from the currently-configured `budget.currency`, so new writes cannot introduce drift
+against the live setting. Historical rows written before a `budget.currency` change still
+carry their original code, so a rollup that spans the change window will legitimately see
+mixed currencies -- the aggregator raises rather than silently combining them. Operators
+who change `budget.currency` and want historical continuity must either re-stamp legacy
+rows with a targeted `UPDATE` or scope their reports to a single currency window.
 
 `CostRecord` stores `input_tokens` and `output_tokens`; `total_tokens` is a `@computed_field`
 property on `TokenUsage` (the model embedded in `CompletionResponse`). Spending aggregation
