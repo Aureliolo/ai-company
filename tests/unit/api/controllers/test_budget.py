@@ -42,6 +42,7 @@ class TestBudgetController:
             input_tokens=100,
             output_tokens=50,
             cost=0.01,
+            currency="EUR",
             timestamp=datetime(2026, 3, 1, tzinfo=UTC),
         )
         await cost_tracker.record(record)
@@ -63,6 +64,7 @@ class TestBudgetController:
             input_tokens=100,
             output_tokens=50,
             cost=0.05,
+            currency="EUR",
             timestamp=datetime(2026, 3, 1, tzinfo=UTC),
         )
         await cost_tracker.record(record)
@@ -118,6 +120,7 @@ class TestBudgetSummaries:
                     input_tokens=100,
                     output_tokens=50,
                     cost=0.01,
+                    currency="EUR",
                     timestamp=datetime(2026, 3, day, tzinfo=UTC),
                 ),
             )
@@ -152,6 +155,7 @@ class TestBudgetSummaries:
                     input_tokens=100,
                     output_tokens=50,
                     cost=cost,
+                    currency="EUR",
                     timestamp=datetime(2026, 3, 1, tzinfo=UTC),
                 ),
             )
@@ -190,6 +194,7 @@ class TestBudgetSummaries:
                     input_tokens=100,
                     output_tokens=50,
                     cost=0.10,
+                    currency="EUR",
                     timestamp=datetime(2026, 3, 1, tzinfo=UTC),
                 ),
             )
@@ -219,6 +224,7 @@ class TestBudgetSummaries:
                     input_tokens=100,
                     output_tokens=50,
                     cost=0.10,
+                    currency="EUR",
                     timestamp=datetime(2026, 3, 1, tzinfo=UTC),
                 ),
             )

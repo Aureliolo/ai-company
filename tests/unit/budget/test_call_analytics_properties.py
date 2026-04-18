@@ -31,6 +31,7 @@ def _record(
         input_tokens=100,
         output_tokens=50,
         cost=0.01,
+        currency="EUR",
         timestamp=datetime(2026, 4, 1, tzinfo=UTC),
         retry_count=retry_count,
         cache_hit=cache_hit,

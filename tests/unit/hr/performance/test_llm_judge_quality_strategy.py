@@ -305,6 +305,9 @@ class TestCostTracking:
         provider = _make_provider(cost=0.002)
         cost_tracker = MagicMock()
         cost_tracker.record = AsyncMock()
+        # budget_config=None triggers the DEFAULT_CURRENCY fallback so the
+        # CostRecord validator does not see a MagicMock currency.
+        cost_tracker.budget_config = None
         strategy = LlmJudgeQualityStrategy(
             provider=provider,
             model=NotBlankStr("test-small-001"),
@@ -322,6 +325,7 @@ class TestCostTracking:
         cost_tracker.record.assert_awaited_once()
         cost_record = cost_tracker.record.await_args[0][0]
         assert cost_record.cost == 0.002
+        assert cost_record.currency == "EUR"
         assert cost_record.agent_id == "agent-001"
         assert cost_record.task_id == "task-001"
         assert cost_record.model == "test-small-001"
@@ -332,6 +336,7 @@ class TestCostTracking:
         provider.complete.side_effect = RuntimeError("fail")
         cost_tracker = MagicMock()
         cost_tracker.record = AsyncMock()
+        cost_tracker.budget_config = None
         strategy = LlmJudgeQualityStrategy(
             provider=provider,
             model=NotBlankStr("test-small-001"),

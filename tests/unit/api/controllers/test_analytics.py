@@ -41,6 +41,7 @@ def _make_cost_record(
         input_tokens=100,
         output_tokens=50,
         cost=cost,
+        currency="EUR",
         timestamp=timestamp,
     )
 
@@ -58,6 +59,7 @@ def _make_task_metric(
         is_success=is_success,
         duration_seconds=10.0,
         cost=0.01,
+        currency="EUR",
         turns_used=2,
         tokens_used=150,
         complexity=Complexity.SIMPLE,

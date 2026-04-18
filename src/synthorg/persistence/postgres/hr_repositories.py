@@ -193,10 +193,10 @@ class PostgresTaskMetricRepository:
                     """
                     INSERT INTO task_metrics (
                         id, agent_id, task_id, task_type, completed_at,
-                        is_success, duration_seconds, cost, turns_used,
-                        tokens_used, quality_score, complexity
+                        is_success, duration_seconds, cost, currency,
+                        turns_used, tokens_used, quality_score, complexity
                     ) VALUES (
-                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
                     )
                     """,
                     (
@@ -208,6 +208,7 @@ class PostgresTaskMetricRepository:
                         data["is_success"],
                         data["duration_seconds"],
                         data["cost"],
+                        data["currency"],
                         data["turns_used"],
                         data["tokens_used"],
                         data["quality_score"],
@@ -265,7 +266,7 @@ class PostgresTaskMetricRepository:
 
         sql = """\
 SELECT id, agent_id, task_id, task_type, completed_at,
-       is_success, duration_seconds, cost, turns_used,
+       is_success, duration_seconds, cost, currency, turns_used,
        tokens_used, quality_score, complexity
 FROM task_metrics"""
         if clauses:

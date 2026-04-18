@@ -17,6 +17,7 @@ from pydantic import (
     model_validator,
 )
 
+from synthorg.budget.currency import CurrencyCode  # noqa: TC001
 from synthorg.core.enums import Complexity, TaskType  # noqa: TC001
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.enums import TrendDirection  # noqa: TC001
@@ -34,7 +35,8 @@ class TaskMetricRecord(BaseModel):
         completed_at: When the task was completed.
         is_success: Whether the task completed successfully.
         duration_seconds: Wall-clock execution time.
-        cost: Cost of the task in the configured currency.
+        cost: Numeric cost of the task, denominated in ``currency``.
+        currency: ISO 4217 currency code for ``cost``.
         turns_used: Number of LLM turns used.
         tokens_used: Total tokens consumed.
         quality_score: Quality score (0.0-10.0), None if not scored.
@@ -62,7 +64,10 @@ class TaskMetricRecord(BaseModel):
     )
     cost: float = Field(
         ge=0.0,
-        description="Cost of the task in the configured currency",
+        description="Numeric cost of the task, denominated in ``currency``",
+    )
+    currency: CurrencyCode = Field(
+        description="ISO 4217 currency code for ``cost``",
     )
     turns_used: int = Field(ge=0, description="Number of LLM turns used")
     tokens_used: int = Field(ge=0, description="Total tokens consumed")
@@ -218,7 +223,8 @@ class LlmCalibrationRecord(BaseModel):
         drift: Absolute difference between LLM and behavioral scores (computed).
         rationale: LLM's explanation for the score.
         model_used: Which LLM model was used for evaluation.
-        cost: Cost of the LLM call in the configured currency.
+        cost: Numeric cost of the LLM call, denominated in ``currency``.
+        currency: ISO 4217 currency code for ``cost``.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -260,7 +266,10 @@ class LlmCalibrationRecord(BaseModel):
     )
     cost: float = Field(
         ge=0.0,
-        description="Cost of the LLM call in the configured currency",
+        description="Numeric cost of the LLM call, denominated in ``currency``",
+    )
+    currency: CurrencyCode = Field(
+        description="ISO 4217 currency code for ``cost``",
     )
 
 

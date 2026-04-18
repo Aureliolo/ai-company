@@ -100,6 +100,7 @@ class TestConcurrentWrites:
                 input_tokens=10,
                 output_tokens=10,
                 cost=0.01 * (i + 1),
+                currency="EUR",
                 timestamp=datetime(2026, 4, 10, 12, i % 60, tzinfo=UTC),
                 call_category=LLMCallCategory.PRODUCTIVE,
             )
@@ -230,6 +231,7 @@ class TestNativePostgresTypes:
             input_tokens=1,
             output_tokens=1,
             cost=0.001,
+            currency="EUR",
             timestamp=precise_ts,
             call_category=LLMCallCategory.PRODUCTIVE,
         )

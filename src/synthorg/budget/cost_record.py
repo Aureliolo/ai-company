@@ -10,6 +10,7 @@ from typing import Self
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.budget.call_category import LLMCallCategory  # noqa: TC001
+from synthorg.budget.currency import CurrencyCode  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.ontology.decorator import ontology_entity
 from synthorg.providers.enums import FinishReason  # noqa: TC001
@@ -30,11 +31,14 @@ class CostRecord(BaseModel):
         model: Model identifier.
         input_tokens: Input token count.
         output_tokens: Output token count.
-        cost: Cost in the configured currency (see
-            ``budget.currency``).  All cost records in a single
-            deployment share the currency active at creation time;
-            operators must not change ``budget.currency`` while
-            historical records exist.
+        cost: Numeric cost of the call, denominated in ``currency``.
+            Every record carries its own currency so aggregators can
+            enforce same-currency invariants without relying on a
+            global configuration value; see ``currency`` for the
+            accompanying ISO 4217 code.
+        currency: ISO 4217 currency code for ``cost`` (e.g. ``"EUR"``,
+            ``"USD"``, ``"JPY"``).  Validated against the allowlist in
+            ``synthorg.budget.currency``.
         timestamp: Timezone-aware timestamp of the API call.
         call_category: Optional LLM call category (productive,
             coordination, system, embedding).
@@ -63,7 +67,10 @@ class CostRecord(BaseModel):
     output_tokens: int = Field(ge=0, description="Output token count")
     cost: float = Field(
         ge=0.0,
-        description="Cost in the configured currency (see budget.currency)",
+        description="Numeric cost of the call, denominated in ``currency``",
+    )
+    currency: CurrencyCode = Field(
+        description="ISO 4217 currency code for ``cost``",
     )
     timestamp: AwareDatetime = Field(description="Timestamp of the API call")
     call_category: LLMCallCategory | None = Field(

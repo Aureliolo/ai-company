@@ -81,6 +81,7 @@ class TestCostRecordRepository:
             input_tokens=100,
             output_tokens=50,
             cost=0.05,
+            currency="EUR",
             timestamp=datetime(2026, 4, 10, 12, tzinfo=UTC),
             call_category=LLMCallCategory.PRODUCTIVE,
         )
@@ -106,6 +107,7 @@ class TestCostRecordRepository:
                     input_tokens=10,
                     output_tokens=10,
                     cost=cost,
+                    currency="EUR",
                     timestamp=datetime(2026, 4, 10, 12, tzinfo=UTC),
                     call_category=LLMCallCategory.PRODUCTIVE,
                 )

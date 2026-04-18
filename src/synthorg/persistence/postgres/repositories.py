@@ -282,11 +282,12 @@ class PostgresCostRecordRepository:
                     """
                     INSERT INTO cost_records (
                         agent_id, task_id, provider, model, input_tokens,
-                        output_tokens, cost, timestamp, call_category
+                        output_tokens, cost, currency, timestamp,
+                        call_category
                     ) VALUES (
                         %(agent_id)s, %(task_id)s, %(provider)s, %(model)s,
                         %(input_tokens)s, %(output_tokens)s, %(cost)s,
-                        %(timestamp)s, %(call_category)s
+                        %(currency)s, %(timestamp)s, %(call_category)s
                     )
                     """,
                     {
@@ -335,7 +336,7 @@ class PostgresCostRecordRepository:
 
         sql = (
             "SELECT agent_id, task_id, provider, model, input_tokens, "
-            "output_tokens, cost, timestamp, call_category "
+            "output_tokens, cost, currency, timestamp, call_category "
             "FROM cost_records"
         )
         if clauses:

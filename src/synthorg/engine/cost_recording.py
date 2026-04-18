@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from synthorg.budget.cost_record import CostRecord
+from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.execution import (
@@ -54,6 +55,9 @@ async def record_execution_costs(  # noqa: PLR0913
         )
         return
 
+    budget_config = getattr(tracker, "budget_config", None)
+    currency = budget_config.currency if budget_config is not None else DEFAULT_CURRENCY
+
     for turn in result.turns:
         # Skip only when provably nothing happened (zero cost and
         # zero tokens); a turn with tokens but zero cost (e.g., a
@@ -78,6 +82,7 @@ async def record_execution_costs(  # noqa: PLR0913
                 input_tokens=turn.input_tokens,
                 output_tokens=turn.output_tokens,
                 cost=turn.cost,
+                currency=currency,
                 timestamp=datetime.now(UTC),
                 call_category=turn.call_category,
                 latency_ms=turn.latency_ms,

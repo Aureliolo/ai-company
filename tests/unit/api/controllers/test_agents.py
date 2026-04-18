@@ -186,6 +186,7 @@ def _make_task_metric(  # noqa: PLR0913
         is_success=is_success,
         duration_seconds=duration_seconds,
         cost=cost,
+        currency="EUR",
         turns_used=5,
         tokens_used=1000,
         complexity=Complexity.MEDIUM,

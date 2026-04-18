@@ -38,6 +38,7 @@ def _make_executing_state(  # noqa: PLR0913
         status=status,
         turn_count=turn_count,
         accumulated_cost=accumulated_cost,
+        currency="EUR",
         last_activity_at=last_activity_at,
         started_at=started_at,
     )
@@ -112,7 +113,7 @@ class TestAgentRuntimeStateIdle:
     """Tests for the idle() factory."""
 
     def test_idle_creates_idle_state(self) -> None:
-        state = AgentRuntimeState.idle("agent-idle")
+        state = AgentRuntimeState.idle("agent-idle", currency="EUR")
         assert state.agent_id == "agent-idle"
         assert state.status == ExecutionStatus.IDLE
         assert state.execution_id is None
@@ -122,13 +123,13 @@ class TestAgentRuntimeStateIdle:
         assert state.accumulated_cost == 0.0
 
     def test_idle_sets_last_activity_at(self) -> None:
-        state = AgentRuntimeState.idle("agent-idle")
+        state = AgentRuntimeState.idle("agent-idle", currency="EUR")
         assert state.last_activity_at is not None
         assert state.last_activity_at.tzinfo is not None
 
     def test_idle_with_blank_agent_id_raises(self) -> None:
         with pytest.raises(ValueError, match="whitespace"):
-            AgentRuntimeState.idle("  ")
+            AgentRuntimeState.idle("  ", currency="EUR")
 
 
 @pytest.mark.unit
@@ -137,7 +138,9 @@ class TestAgentRuntimeStateFromContext:
 
     def test_from_context_executing(self) -> None:
         ctx = _make_context()
-        state = AgentRuntimeState.from_context(ctx, ExecutionStatus.EXECUTING)
+        state = AgentRuntimeState.from_context(
+            ctx, ExecutionStatus.EXECUTING, currency="EUR"
+        )
         assert state.agent_id == str(ctx.identity.id)
         assert state.execution_id == ctx.execution_id
         assert state.status == ExecutionStatus.EXECUTING
@@ -147,27 +150,35 @@ class TestAgentRuntimeStateFromContext:
 
     def test_from_context_paused(self) -> None:
         ctx = _make_context()
-        state = AgentRuntimeState.from_context(ctx, ExecutionStatus.PAUSED)
+        state = AgentRuntimeState.from_context(
+            ctx, ExecutionStatus.PAUSED, currency="EUR"
+        )
         assert state.status == ExecutionStatus.PAUSED
 
     def test_from_context_with_task(self) -> None:
         ctx = _make_context(task_id="my-task")
-        state = AgentRuntimeState.from_context(ctx, ExecutionStatus.EXECUTING)
+        state = AgentRuntimeState.from_context(
+            ctx, ExecutionStatus.EXECUTING, currency="EUR"
+        )
         assert state.task_id == "my-task"
 
     def test_from_context_without_task(self) -> None:
         ctx = _make_context(task_id=None)
-        state = AgentRuntimeState.from_context(ctx, ExecutionStatus.EXECUTING)
+        state = AgentRuntimeState.from_context(
+            ctx, ExecutionStatus.EXECUTING, currency="EUR"
+        )
         assert state.task_id is None
 
     def test_from_context_rejects_idle(self) -> None:
         ctx = _make_context()
         with pytest.raises(ValueError, match="IDLE"):
-            AgentRuntimeState.from_context(ctx, ExecutionStatus.IDLE)
+            AgentRuntimeState.from_context(ctx, ExecutionStatus.IDLE, currency="EUR")
 
     def test_from_context_with_zero_cost(self) -> None:
         ctx = _make_context(cost=0.0)
-        state = AgentRuntimeState.from_context(ctx, ExecutionStatus.EXECUTING)
+        state = AgentRuntimeState.from_context(
+            ctx, ExecutionStatus.EXECUTING, currency="EUR"
+        )
         assert state.accumulated_cost == 0.0
 
 
@@ -191,6 +202,7 @@ class TestAgentRuntimeStateValidation:
         fields = {
             "agent_id": "a",
             "status": ExecutionStatus.IDLE,
+            "currency": "EUR",
             "last_activity_at": _NOW,
             **kwargs,
         }
@@ -203,6 +215,7 @@ class TestAgentRuntimeStateValidation:
                 agent_id="a",
                 status=ExecutionStatus.EXECUTING,
                 started_at=_NOW,
+                currency="EUR",
                 last_activity_at=_NOW,
             )
 
@@ -212,6 +225,7 @@ class TestAgentRuntimeStateValidation:
                 agent_id="a",
                 execution_id="e",
                 status=ExecutionStatus.EXECUTING,
+                currency="EUR",
                 last_activity_at=_NOW,
             )
 
@@ -221,6 +235,7 @@ class TestAgentRuntimeStateValidation:
                 agent_id="a",
                 status=ExecutionStatus.PAUSED,
                 started_at=_NOW,
+                currency="EUR",
                 last_activity_at=_NOW,
             )
 
@@ -230,6 +245,7 @@ class TestAgentRuntimeStateValidation:
                 agent_id="a",
                 execution_id="e",
                 status=ExecutionStatus.PAUSED,
+                currency="EUR",
                 last_activity_at=_NOW,
             )
 
@@ -241,6 +257,7 @@ class TestAgentRuntimeStateValidation:
                 execution_id="e",
                 task_id="t",
                 status=ExecutionStatus.IDLE,
+                currency="EUR",
                 last_activity_at=_NOW,
             )
 
@@ -275,7 +292,7 @@ class TestAgentRuntimeStateImmutability:
         assert restored == state
 
     def test_json_roundtrip_idle(self) -> None:
-        state = AgentRuntimeState.idle("agent-rt")
+        state = AgentRuntimeState.idle("agent-rt", currency="EUR")
         data = state.model_dump(mode="json")
         restored = AgentRuntimeState.model_validate(data)
         assert restored == state

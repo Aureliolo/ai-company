@@ -69,6 +69,7 @@ def _make_task_metric(  # noqa: PLR0913
         is_success=is_success,
         duration_seconds=duration_seconds,
         cost=cost,
+        currency="EUR",
         turns_used=turns_used,
         tokens_used=tokens_used,
         quality_score=quality_score,

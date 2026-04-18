@@ -61,6 +61,7 @@ CREATE TABLE cost_records (
     input_tokens BIGINT NOT NULL,
     output_tokens BIGINT NOT NULL,
     cost DOUBLE PRECISION NOT NULL,
+    currency TEXT NOT NULL DEFAULT 'EUR',
     timestamp TIMESTAMPTZ NOT NULL,
     call_category TEXT,
     PRIMARY KEY (rowid, timestamp)
@@ -115,6 +116,7 @@ CREATE TABLE task_metrics (
     is_success BOOLEAN NOT NULL,
     duration_seconds DOUBLE PRECISION NOT NULL,
     cost DOUBLE PRECISION NOT NULL,
+    currency TEXT NOT NULL DEFAULT 'EUR',
     turns_used BIGINT NOT NULL,
     tokens_used BIGINT NOT NULL,
     quality_score DOUBLE PRECISION,
@@ -352,6 +354,7 @@ CREATE TABLE agent_states (
     turn_count BIGINT NOT NULL DEFAULT 0 CHECK (turn_count >= 0),
     accumulated_cost DOUBLE PRECISION NOT NULL DEFAULT 0.0
         CHECK (accumulated_cost >= 0.0),
+    currency TEXT NOT NULL DEFAULT 'EUR',
     last_activity_at TIMESTAMPTZ NOT NULL,
     started_at TIMESTAMPTZ,
     CHECK (
@@ -1035,3 +1038,62 @@ CREATE UNIQUE INDEX idx_conflict_escalations_unique_pending_conflict
 -- channel in the trigger would break deployments that override the
 -- notify channel, and double-publishing (trigger + app) would cause
 -- duplicate wake-ups.
+
+-- ── Custom signal rules (#1443) ─────────────────────────────────
+-- Mirror of the SQLite ``custom_rules`` table; existed on SQLite
+-- only until the parity sweep.  Boolean ``enabled`` uses native
+-- BOOLEAN; JSON target_altitudes uses JSONB.
+CREATE TABLE custom_rules (
+    id TEXT NOT NULL PRIMARY KEY CHECK (length(id) > 0),
+    name TEXT NOT NULL CHECK (length(trim(name)) > 0),
+    description TEXT NOT NULL CHECK (length(trim(description)) > 0),
+    metric_path TEXT NOT NULL CHECK (length(trim(metric_path)) > 0),
+    comparator TEXT NOT NULL CHECK (length(trim(comparator)) > 0),
+    threshold DOUBLE PRECISION NOT NULL,
+    severity TEXT NOT NULL CHECK (length(trim(severity)) > 0),
+    target_altitudes JSONB NOT NULL,
+    enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL
+);
+
+CREATE UNIQUE INDEX custom_rules_name ON custom_rules (name);
+
+-- ── Approvals (#1443) ───────────────────────────────────────────
+-- Mirror of the SQLite ``approvals`` table.  Boolean-ish checks
+-- express the same state-machine invariants; JSONB metadata +
+-- evidence_package replace TEXT blobs.
+CREATE TABLE approvals (
+    id TEXT NOT NULL PRIMARY KEY CHECK (length(trim(id)) > 0),
+    action_type TEXT NOT NULL CHECK (length(trim(action_type)) > 0),
+    title TEXT NOT NULL CHECK (length(trim(title)) > 0),
+    description TEXT NOT NULL,
+    requested_by TEXT NOT NULL CHECK (length(trim(requested_by)) > 0),
+    risk_level TEXT NOT NULL DEFAULT 'medium' CHECK (
+        risk_level IN ('low', 'medium', 'high', 'critical')
+    ),
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (
+        status IN ('pending', 'approved', 'rejected', 'expired')
+    ),
+    created_at TIMESTAMPTZ NOT NULL,
+    expires_at TIMESTAMPTZ,
+    decided_at TIMESTAMPTZ,
+    decided_by TEXT,
+    decision_reason TEXT,
+    task_id TEXT REFERENCES tasks(id),
+    evidence_package JSONB,
+    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+    CHECK (
+        (decided_at IS NULL AND decided_by IS NULL)
+        OR (decided_at IS NOT NULL AND decided_by IS NOT NULL)
+    ),
+    CHECK (
+        status <> 'rejected'
+        OR (decision_reason IS NOT NULL
+            AND length(trim(decision_reason)) > 0)
+    )
+);
+
+CREATE INDEX idx_approvals_status ON approvals(status);
+CREATE INDEX idx_approvals_action_type ON approvals(action_type);
+CREATE INDEX idx_approvals_risk_level ON approvals(risk_level);

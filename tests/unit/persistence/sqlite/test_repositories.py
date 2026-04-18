@@ -206,6 +206,7 @@ class TestSQLiteCostRecordRepository:
         agent_id: str = "alice",
         task_id: str = "task-001",
         cost: float = 0.05,
+        currency: str = "EUR",
     ) -> CostRecord:
         return CostRecord(
             agent_id=agent_id,
@@ -215,6 +216,7 @@ class TestSQLiteCostRecordRepository:
             input_tokens=1000,
             output_tokens=500,
             cost=cost,
+            currency=currency,
             timestamp=datetime(2026, 3, 1, 12, 0, 0, tzinfo=UTC),
         )
 
@@ -313,6 +315,7 @@ class TestSQLiteCostRecordRepository:
             input_tokens=1000,
             output_tokens=500,
             cost=0.05,
+            currency="EUR",
             timestamp=datetime(2026, 3, 1, 12, 0, 0, tzinfo=UTC),
             call_category=LLMCallCategory.PRODUCTIVE,
         )

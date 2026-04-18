@@ -37,6 +37,7 @@ def _record(  # noqa: PLR0913
         input_tokens=input_tokens,
         output_tokens=output_tokens,
         cost=cost,
+        currency="EUR",
         timestamp=datetime(2026, 4, 1, tzinfo=UTC),
         latency_ms=latency_ms,
         cache_hit=cache_hit,

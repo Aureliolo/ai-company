@@ -106,6 +106,7 @@ class CostRecordFactory(ModelFactory[CostRecord]):
     input_tokens = 1000
     output_tokens = 500
     cost = 0.05
+    currency = "EUR"
     # Ensure retry fields are consistent: no reason without a retry count.
     retry_reason = None
 
@@ -223,6 +224,7 @@ def sample_cost_record() -> CostRecord:
         input_tokens=4500,
         output_tokens=1200,
         cost=0.0315,
+        currency="EUR",
         timestamp=datetime(2026, 2, 27, 10, 30, 0, tzinfo=UTC),
     )
 
@@ -354,6 +356,7 @@ def make_cost_record(  # noqa: PLR0913
     input_tokens: int = 1000,
     output_tokens: int = 500,
     cost: float = 0.05,
+    currency: str = "EUR",
     timestamp: datetime | None = None,
 ) -> CostRecord:
     """Build a CostRecord with sensible defaults."""
@@ -366,6 +369,7 @@ def make_cost_record(  # noqa: PLR0913
         input_tokens=input_tokens,
         output_tokens=output_tokens,
         cost=cost,
+        currency=currency,
         timestamp=timestamp or datetime(2026, 2, 15, 12, 0, 0, tzinfo=UTC),
     )
 

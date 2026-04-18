@@ -49,9 +49,9 @@ class PostgresAgentStateRepository:
                     """\
 INSERT INTO agent_states (
     agent_id, execution_id, task_id, status, turn_count,
-    accumulated_cost, last_activity_at, started_at
+    accumulated_cost, currency, last_activity_at, started_at
 ) VALUES (
-    %s, %s, %s, %s, %s, %s, %s, %s
+    %s, %s, %s, %s, %s, %s, %s, %s, %s
 )
 ON CONFLICT (agent_id) DO UPDATE SET
     execution_id = EXCLUDED.execution_id,
@@ -59,6 +59,7 @@ ON CONFLICT (agent_id) DO UPDATE SET
     status = EXCLUDED.status,
     turn_count = EXCLUDED.turn_count,
     accumulated_cost = EXCLUDED.accumulated_cost,
+    currency = EXCLUDED.currency,
     last_activity_at = EXCLUDED.last_activity_at,
     started_at = EXCLUDED.started_at
 """,
@@ -69,6 +70,7 @@ ON CONFLICT (agent_id) DO UPDATE SET
                         data["status"],
                         data["turn_count"],
                         data["accumulated_cost"],
+                        data["currency"],
                         data["last_activity_at"],
                         data["started_at"],
                     ),
@@ -97,7 +99,8 @@ ON CONFLICT (agent_id) DO UPDATE SET
             ):
                 await cur.execute(
                     "SELECT agent_id, execution_id, task_id, status, "
-                    "turn_count, accumulated_cost, last_activity_at, started_at "
+                    "turn_count, accumulated_cost, currency, "
+                    "last_activity_at, started_at "
                     "FROM agent_states WHERE agent_id = %s",
                     (agent_id,),
                 )
@@ -135,7 +138,8 @@ ON CONFLICT (agent_id) DO UPDATE SET
             ):
                 await cur.execute(
                     "SELECT agent_id, execution_id, task_id, status, "
-                    "turn_count, accumulated_cost, last_activity_at, started_at "
+                    "turn_count, accumulated_cost, currency, "
+                    "last_activity_at, started_at "
                     "FROM agent_states WHERE status != %s "
                     "ORDER BY last_activity_at DESC",
                     (ExecutionStatus.IDLE.value,),

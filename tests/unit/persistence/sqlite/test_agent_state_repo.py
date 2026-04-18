@@ -31,6 +31,7 @@ def _make_state(  # noqa: PLR0913
     status: ExecutionStatus = ExecutionStatus.EXECUTING,
     turn_count: int = 3,
     accumulated_cost: float = 0.05,
+    currency: str = "EUR",
     last_activity_at: datetime = _T0,
     started_at: datetime | None = _T0,
 ) -> AgentRuntimeState:
@@ -38,6 +39,7 @@ def _make_state(  # noqa: PLR0913
         return AgentRuntimeState(
             agent_id=agent_id,
             status=ExecutionStatus.IDLE,
+            currency=currency,
             last_activity_at=last_activity_at,
         )
     return AgentRuntimeState(
@@ -47,6 +49,7 @@ def _make_state(  # noqa: PLR0913
         status=status,
         turn_count=turn_count,
         accumulated_cost=accumulated_cost,
+        currency=currency,
         last_activity_at=last_activity_at,
         started_at=started_at,
     )

@@ -255,6 +255,7 @@ class TestProviderHealthUsageEnrichment:
                 input_tokens=3000,
                 output_tokens=1000,
                 cost=0.25,
+                currency="EUR",
                 timestamp=_NOW - timedelta(minutes=5),
             ),
         )
@@ -267,6 +268,7 @@ class TestProviderHealthUsageEnrichment:
                 input_tokens=2000,
                 output_tokens=500,
                 cost=0.15,
+                currency="EUR",
                 timestamp=_NOW - timedelta(minutes=10),
             ),
         )
@@ -300,6 +302,7 @@ class TestProviderHealthUsageEnrichment:
                 input_tokens=1000,
                 output_tokens=500,
                 cost=0.10,
+                currency="EUR",
                 timestamp=_NOW - timedelta(minutes=5),
             ),
         )
@@ -312,6 +315,7 @@ class TestProviderHealthUsageEnrichment:
                 input_tokens=9000,
                 output_tokens=9000,
                 cost=9.99,
+                currency="EUR",
                 timestamp=_NOW - timedelta(minutes=5),
             ),
         )

@@ -81,6 +81,7 @@ async def _seed_metrics(
             is_success=is_success,
             duration_seconds=60.0,
             cost=0.01,
+            currency="EUR",
             turns_used=5,
             tokens_used=1000,
             quality_score=quality,

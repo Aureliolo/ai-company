@@ -36,6 +36,7 @@ def _make_task_record(
         is_success=True,
         duration_seconds=3600.0,
         cost=cost,
+        currency="EUR",
         turns_used=5,
         tokens_used=1000,
         quality_score=quality,

@@ -10,6 +10,7 @@ import random
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
+from synthorg.budget.currency import DEFAULT_CURRENCY, CurrencyCode
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.performance.models import LlmCalibrationRecord
 from synthorg.observability import get_logger
@@ -79,6 +80,7 @@ class LlmCalibrationSampler:
         model: NotBlankStr,
         sampling_rate: float = 0.01,
         retention_days: int = 90,
+        currency: CurrencyCode = DEFAULT_CURRENCY,
     ) -> None:
         if not (0.0 <= sampling_rate <= 1.0):
             msg = f"sampling_rate must be in [0.0, 1.0], got {sampling_rate}"
@@ -90,6 +92,7 @@ class LlmCalibrationSampler:
         self._model = str(model)
         self._sampling_rate = sampling_rate
         self._retention_days = retention_days
+        self._currency = currency
         self._records: dict[str, list[LlmCalibrationRecord]] = {}
 
     def should_sample(self) -> bool:
@@ -151,6 +154,7 @@ class LlmCalibrationSampler:
             rationale=NotBlankStr(rationale),
             model_used=NotBlankStr(self._model),
             cost=cost,
+            currency=self._currency,
         )
 
         agent_key = str(record.agent_id)

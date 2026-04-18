@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.cost_record import CostRecord
+from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.performance.models import QualityScoreResult, TaskMetricRecord
 from synthorg.observability import get_logger
@@ -379,6 +380,11 @@ class LlmJudgeQualityStrategy:
         """
         # Caller (_try_record_cost) guards for None; assert narrows type.
         assert self._cost_tracker is not None  # noqa: S101
+        currency = (
+            self._cost_tracker.budget_config.currency
+            if self._cost_tracker.budget_config is not None
+            else DEFAULT_CURRENCY
+        )
         record = CostRecord(
             agent_id=agent_id,
             task_id=task_id,
@@ -387,6 +393,7 @@ class LlmJudgeQualityStrategy:
             input_tokens=usage[0],
             output_tokens=usage[1],
             cost=cost,
+            currency=currency,
             timestamp=datetime.now(UTC),
             call_category=LLMCallCategory.SYSTEM,
         )

@@ -32,6 +32,7 @@ def _record(  # noqa: PLR0913
         input_tokens=input_tokens,
         output_tokens=output_tokens,
         cost=cost,
+        currency="EUR",
         timestamp=datetime(2026, 2, 15, 12, 0, 0, tzinfo=UTC),
         call_category=category,
     )

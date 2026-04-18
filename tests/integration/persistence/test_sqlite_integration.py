@@ -84,6 +84,7 @@ class TestSQLiteOnDisk:
             input_tokens=500,
             output_tokens=200,
             cost=0.03,
+            currency="EUR",
             timestamp=datetime(2026, 3, 1, 12, 0, 0, tzinfo=UTC),
         )
         await backend.cost_records.save(record)

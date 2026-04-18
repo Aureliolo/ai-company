@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
+from synthorg.budget.currency import CurrencyCode  # noqa: TC001
 from synthorg.core.enums import ExecutionStatus
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.context import AgentContext  # noqa: TC001
@@ -25,8 +26,13 @@ class AgentRuntimeState(BaseModel):
         task_id: Current task identifier (``None`` when idle or taskless).
         status: Execution status (idle / executing / paused).
         turn_count: Turns completed in the current execution.
-        accumulated_cost: Cost accumulated in the current
-            execution in the configured currency.
+        accumulated_cost: Cost accumulated in the current execution,
+            denominated in ``currency``.
+        currency: ISO 4217 currency code for ``accumulated_cost``.
+            Required even when the agent is IDLE and the balance is
+            zero so the persisted row always carries an unambiguous
+            unit; callers pass the operator's active ``budget.currency``
+            at construction time.
         last_activity_at: Timestamp of the last state update.
         started_at: When the current execution started (``None`` when idle).
     """
@@ -47,7 +53,10 @@ class AgentRuntimeState(BaseModel):
     accumulated_cost: float = Field(
         default=0.0,
         ge=0.0,
-        description="Cost in current execution in the configured currency",
+        description="Cost in current execution, denominated in ``currency``",
+    )
+    currency: CurrencyCode = Field(
+        description="ISO 4217 currency code for ``accumulated_cost``",
     )
     last_activity_at: AwareDatetime = Field(
         description="Timestamp of last state update",
@@ -102,11 +111,20 @@ class AgentRuntimeState(BaseModel):
         return self
 
     @classmethod
-    def idle(cls, agent_id: NotBlankStr) -> AgentRuntimeState:
+    def idle(
+        cls,
+        agent_id: NotBlankStr,
+        *,
+        currency: CurrencyCode,
+    ) -> AgentRuntimeState:
         """Create an IDLE state for the given agent.
 
         Args:
             agent_id: The agent identifier.
+            currency: Operator's active ISO 4217 currency code.  Stored
+                even when the balance is zero so the persisted row keeps
+                an unambiguous unit if the agent later transitions to
+                EXECUTING.
 
         Returns:
             A new ``AgentRuntimeState`` in IDLE status.
@@ -114,6 +132,7 @@ class AgentRuntimeState(BaseModel):
         return cls(
             agent_id=agent_id,
             status=ExecutionStatus.IDLE,
+            currency=currency,
             last_activity_at=datetime.now(UTC),
         )
 
@@ -122,12 +141,16 @@ class AgentRuntimeState(BaseModel):
         cls,
         context: AgentContext,
         status: ExecutionStatus,
+        *,
+        currency: CurrencyCode,
     ) -> AgentRuntimeState:
         """Create a runtime state from an ``AgentContext``.
 
         Args:
             context: The agent execution context.
             status: Must be ``EXECUTING`` or ``PAUSED`` (not ``IDLE``).
+            currency: Operator's active ISO 4217 currency code used to
+                denominate ``context.accumulated_cost``.
 
         Returns:
             A new ``AgentRuntimeState`` derived from the context.
@@ -146,6 +169,7 @@ class AgentRuntimeState(BaseModel):
             status=status,
             turn_count=context.turn_count,
             accumulated_cost=context.accumulated_cost.cost,
+            currency=currency,
             last_activity_at=datetime.now(UTC),
             started_at=context.started_at,
         )

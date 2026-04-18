@@ -62,6 +62,7 @@ def _make_task_metric(  # noqa: PLR0913
         is_success=is_success,
         duration_seconds=duration_seconds,
         cost=cost,
+        currency="EUR",
         turns_used=5,
         tokens_used=1000,
         complexity=Complexity.MEDIUM,
@@ -87,6 +88,7 @@ def _make_cost_record(  # noqa: PLR0913
         input_tokens=input_tokens,
         output_tokens=output_tokens,
         cost=cost,
+        currency="EUR",
         timestamp=timestamp,
     )
 
@@ -786,6 +788,7 @@ class TestRedactCostEvents:
             input_tokens=500,
             output_tokens=100,
             cost=0.005,
+            currency="EUR",
             timestamp=_NOW,
         )
         event = _cost_record_to_activity(record, currency="EUR")

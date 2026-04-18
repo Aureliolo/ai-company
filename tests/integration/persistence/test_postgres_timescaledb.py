@@ -141,6 +141,7 @@ class TestRepositoryTransparency:
                 input_tokens=100,
                 output_tokens=50,
                 cost=0.001,
+                currency="EUR",
                 timestamp=base + timedelta(days=i % 7, hours=i),
                 call_category=None,
             )

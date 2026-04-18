@@ -41,6 +41,7 @@ class TestCostRecord:
                 input_tokens=100,
                 output_tokens=50,
                 cost=0.01,
+                currency="EUR",
                 timestamp=datetime(2026, 2, 27, tzinfo=UTC),
             )
 
@@ -55,6 +56,7 @@ class TestCostRecord:
                 input_tokens=100,
                 output_tokens=50,
                 cost=0.01,
+                currency="EUR",
                 timestamp=datetime(2026, 2, 27, tzinfo=UTC),
             )
 
@@ -69,6 +71,7 @@ class TestCostRecord:
                 input_tokens=100,
                 output_tokens=50,
                 cost=0.01,
+                currency="EUR",
                 timestamp=datetime(2026, 2, 27, tzinfo=UTC),
             )
 
@@ -83,6 +86,7 @@ class TestCostRecord:
                 input_tokens=100,
                 output_tokens=50,
                 cost=0.01,
+                currency="EUR",
                 timestamp=datetime(2026, 2, 27, tzinfo=UTC),
             )
 
@@ -97,6 +101,7 @@ class TestCostRecord:
                 input_tokens=100,
                 output_tokens=50,
                 cost=0.01,
+                currency="EUR",
                 timestamp=datetime(2026, 2, 27, tzinfo=UTC),
             )
 
@@ -111,6 +116,7 @@ class TestCostRecord:
                 input_tokens=-1,
                 output_tokens=50,
                 cost=0.01,
+                currency="EUR",
                 timestamp=datetime(2026, 2, 27, tzinfo=UTC),
             )
 
@@ -125,6 +131,7 @@ class TestCostRecord:
                 input_tokens=100,
                 output_tokens=-1,
                 cost=0.01,
+                currency="EUR",
                 timestamp=datetime(2026, 2, 27, tzinfo=UTC),
             )
 
@@ -138,6 +145,7 @@ class TestCostRecord:
             input_tokens=0,
             output_tokens=0,
             cost=0.0,
+            currency="EUR",
             timestamp=datetime(2026, 2, 27, tzinfo=UTC),
         )
         assert record.input_tokens == 0
@@ -154,6 +162,7 @@ class TestCostRecord:
                 input_tokens=100,
                 output_tokens=50,
                 cost=-0.01,
+                currency="EUR",
                 timestamp=datetime(2026, 2, 27, tzinfo=UTC),
             )
 
@@ -168,6 +177,7 @@ class TestCostRecord:
                 input_tokens=0,
                 output_tokens=0,
                 cost=0.01,
+                currency="EUR",
                 timestamp=datetime(2026, 2, 27, tzinfo=UTC),
             )
 
@@ -181,6 +191,7 @@ class TestCostRecord:
             input_tokens=100,
             output_tokens=50,
             cost=0.0,
+            currency="EUR",
             timestamp=datetime(2026, 2, 27, tzinfo=UTC),
         )
         assert record.cost == 0.0
@@ -197,6 +208,7 @@ class TestCostRecord:
                 input_tokens=100,
                 output_tokens=50,
                 cost=0.001,
+                currency="EUR",
                 timestamp=datetime(2026, 2, 27),  # noqa: DTZ001
             )
 
@@ -223,6 +235,7 @@ class TestCostRecord:
             input_tokens=100,
             output_tokens=50,
             cost=0.01,
+            currency="EUR",
             timestamp=datetime(2026, 2, 27, tzinfo=UTC),
         )
         assert record.call_category is None
@@ -237,6 +250,7 @@ class TestCostRecord:
             input_tokens=100,
             output_tokens=50,
             cost=0.01,
+            currency="EUR",
             timestamp=datetime(2026, 2, 27, tzinfo=UTC),
             call_category=LLMCallCategory.PRODUCTIVE,
         )
@@ -252,6 +266,7 @@ class TestCostRecord:
             input_tokens=100,
             output_tokens=50,
             cost=0.01,
+            currency="EUR",
             timestamp=datetime(2026, 2, 27, tzinfo=UTC),
             call_category=LLMCallCategory.COORDINATION,
         )
@@ -267,6 +282,7 @@ class TestCostRecord:
             input_tokens=100,
             output_tokens=50,
             cost=0.01,
+            currency="EUR",
             timestamp=datetime(2026, 2, 27, tzinfo=UTC),
             call_category=LLMCallCategory.SYSTEM,
         )
@@ -282,6 +298,7 @@ class TestCostRecord:
             input_tokens=100,
             output_tokens=50,
             cost=0.01,
+            currency="EUR",
             timestamp=datetime(2026, 2, 27, tzinfo=UTC),
             call_category=LLMCallCategory.PRODUCTIVE,
         )
@@ -308,6 +325,7 @@ class TestCostRecordAnalyticsFields:
             input_tokens=100,
             output_tokens=50,
             cost=0.01,
+            currency="EUR",
             timestamp=datetime(2026, 2, 27, tzinfo=UTC),
         )
 
@@ -323,6 +341,7 @@ class TestCostRecordAnalyticsFields:
             input_tokens=100,
             output_tokens=50,
             cost=0.01,
+            currency="EUR",
             timestamp=datetime(2026, 2, 27, tzinfo=UTC),
             latency_ms=123.4,
         )
@@ -338,6 +357,7 @@ class TestCostRecordAnalyticsFields:
                 input_tokens=100,
                 output_tokens=50,
                 cost=0.01,
+                currency="EUR",
                 timestamp=datetime(2026, 2, 27, tzinfo=UTC),
                 latency_ms=-1.0,
             )
@@ -354,6 +374,7 @@ class TestCostRecordAnalyticsFields:
             input_tokens=100,
             output_tokens=50,
             cost=0.01,
+            currency="EUR",
             timestamp=datetime(2026, 2, 27, tzinfo=UTC),
             cache_hit=True,
         )
@@ -371,6 +392,7 @@ class TestCostRecordAnalyticsFields:
             input_tokens=100,
             output_tokens=50,
             cost=0.01,
+            currency="EUR",
             timestamp=datetime(2026, 2, 27, tzinfo=UTC),
             retry_count=0,
         )
@@ -386,6 +408,7 @@ class TestCostRecordAnalyticsFields:
                 input_tokens=100,
                 output_tokens=50,
                 cost=0.01,
+                currency="EUR",
                 timestamp=datetime(2026, 2, 27, tzinfo=UTC),
                 retry_count=-1,
             )
@@ -402,6 +425,7 @@ class TestCostRecordAnalyticsFields:
             input_tokens=100,
             output_tokens=50,
             cost=0.01,
+            currency="EUR",
             timestamp=datetime(2026, 2, 27, tzinfo=UTC),
             retry_count=1,
             retry_reason="RateLimitError",
@@ -418,6 +442,7 @@ class TestCostRecordAnalyticsFields:
                 input_tokens=100,
                 output_tokens=50,
                 cost=0.01,
+                currency="EUR",
                 timestamp=datetime(2026, 2, 27, tzinfo=UTC),
                 retry_reason="RateLimitError",
             )
@@ -432,6 +457,7 @@ class TestCostRecordAnalyticsFields:
                 input_tokens=100,
                 output_tokens=50,
                 cost=0.01,
+                currency="EUR",
                 timestamp=datetime(2026, 2, 27, tzinfo=UTC),
                 retry_count=0,
                 retry_reason="RateLimitError",
@@ -454,6 +480,7 @@ class TestCostRecordAnalyticsFields:
             input_tokens=100,
             output_tokens=50,
             cost=0.01,
+            currency="EUR",
             timestamp=datetime(2026, 2, 27, tzinfo=UTC),
             finish_reason=FinishReason.STOP,
             success=True,
@@ -472,6 +499,7 @@ class TestCostRecordAnalyticsFields:
             input_tokens=100,
             output_tokens=50,
             cost=0.01,
+            currency="EUR",
             timestamp=datetime(2026, 2, 27, tzinfo=UTC),
             latency_ms=150.0,
             cache_hit=True,

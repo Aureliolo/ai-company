@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any
 
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.cost_record import CostRecord
+from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.core.enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.backends.mem0.config import (
@@ -174,6 +175,12 @@ class Mem0MemoryBackend:
                 model=model,
             )
         cost = input_tokens * cost_per_1k / 1000.0
+        currency = (
+            self._cost_tracker.budget_config.currency
+            if self._cost_tracker is not None
+            and self._cost_tracker.budget_config is not None
+            else DEFAULT_CURRENCY
+        )
         record = CostRecord(
             agent_id=agent_id,
             task_id=task_id,
@@ -182,6 +189,7 @@ class Mem0MemoryBackend:
             input_tokens=input_tokens,
             output_tokens=0,
             cost=round(cost, 8),
+            currency=currency,
             timestamp=datetime.now(UTC),
             call_category=LLMCallCategory.EMBEDDING,
         )
