@@ -102,7 +102,11 @@ export default function TaskDetailPage() {
 
   if (loadingDetail || !task) {
     return (
-      <div className="flex items-center justify-center py-20">
+      <div
+        className="flex items-center justify-center py-20"
+        role="status"
+        aria-label="Loading task"
+      >
         <Loader2 className="size-8 animate-spin text-text-muted" />
       </div>
     )

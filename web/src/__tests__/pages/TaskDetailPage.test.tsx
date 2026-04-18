@@ -106,6 +106,11 @@ describe('TaskDetailPage', () => {
     mockGetTask.mockReturnValue(pendingPromise())
     resetStore({ loadingDetail: true })
     await renderDetailPage()
+    // Positive assertion: the loading UI (role="status", aria-label="Loading task")
+    // must be rendered. Asserting presence -- not just absence of the loaded
+    // content -- catches regressions where the page renders nothing or an
+    // error state instead of the spinner.
+    expect(screen.getByRole('status', { name: 'Loading task' })).toBeInTheDocument()
     expect(screen.queryByText('Test task')).not.toBeInTheDocument()
   })
 
@@ -113,7 +118,7 @@ describe('TaskDetailPage', () => {
     mockGetTask.mockReturnValue(pendingPromise())
     resetStore({ selectedTask: null, loadingDetail: false })
     await renderDetailPage()
-    // Should show spinner since task is null (fetch is pending)
+    expect(screen.getByRole('status', { name: 'Loading task' })).toBeInTheDocument()
     expect(screen.queryByText('Test task')).not.toBeInTheDocument()
   })
 
