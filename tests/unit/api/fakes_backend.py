@@ -637,7 +637,7 @@ class FakePersistenceBackend:
         return self._custom_rules_repo
 
     @property
-    def sessions(self) -> object:
+    def sessions(self) -> Any:
         """Cached fake session repository.
 
         ``is_revoked`` is sync on the real protocol (auth hot-path),
@@ -655,7 +655,7 @@ class FakePersistenceBackend:
         return self._sessions_stub
 
     @property
-    def refresh_tokens(self) -> object:
+    def refresh_tokens(self) -> Any:
         """Cached fake refresh-token repository."""
         from unittest.mock import AsyncMock
 
@@ -664,7 +664,7 @@ class FakePersistenceBackend:
         return self._refresh_tokens_stub
 
     @property
-    def mcp_installations(self) -> object:
+    def mcp_installations(self) -> Any:
         """Cached fake MCP installations repository."""
         from unittest.mock import AsyncMock
 
@@ -673,7 +673,7 @@ class FakePersistenceBackend:
         return self._mcp_installations_stub
 
     @property
-    def org_facts(self) -> object:
+    def org_facts(self) -> Any:
         """Cached fake org fact repository."""
         from unittest.mock import AsyncMock
 
@@ -682,7 +682,7 @@ class FakePersistenceBackend:
         return self._org_facts_stub
 
     @property
-    def ontology_entities(self) -> object:
+    def ontology_entities(self) -> Any:
         """Cached fake ontology entity repository."""
         from unittest.mock import AsyncMock
 
@@ -691,7 +691,7 @@ class FakePersistenceBackend:
         return self._ontology_entities_stub
 
     @property
-    def ontology_drift(self) -> object:
+    def ontology_drift(self) -> Any:
         """Cached fake ontology drift-report repository."""
         from unittest.mock import AsyncMock
 
@@ -699,7 +699,7 @@ class FakePersistenceBackend:
             self._ontology_drift_stub = AsyncMock()
         return self._ontology_drift_stub
 
-    def build_lockouts(self, _auth_config: object) -> object:
+    def build_lockouts(self, auth_config: Any) -> Any:
         """Fake lockout repository builder.
 
         ``is_locked`` is sync on the real protocol (auth hot-path), so
@@ -724,7 +724,7 @@ class FakePersistenceBackend:
         self,
         *,
         notify_channel: str | None = None,
-    ) -> object:
+    ) -> Any:
         """Fake escalation repository builder."""
         from unittest.mock import AsyncMock
 
