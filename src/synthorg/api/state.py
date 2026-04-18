@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 from synthorg.api.approval_store import ApprovalStore  # noqa: TC001
 from synthorg.api.auth.lockout_store import LockoutStore  # noqa: TC001
 from synthorg.api.auth.presence import UserPresence
+from synthorg.api.auth.refresh_store import RefreshStore  # noqa: TC001
 from synthorg.api.auth.service import AuthService  # noqa: TC001
 from synthorg.api.auth.session_store import SessionStore  # noqa: TC001
 from synthorg.api.auth.ticket_store import WsTicketStore
@@ -170,6 +171,7 @@ class AppState:
         "_provider_health_tracker",
         "_provider_management",
         "_provider_registry",
+        "_refresh_store",
         "_review_gate_service",
         "_scaling_service",
         "_session_store",
@@ -306,6 +308,7 @@ class AppState:
         self._approval_timeout_scheduler: ApprovalTimeoutScheduler | None = None
         self._session_store: SessionStore | None = None
         self._lockout_store: LockoutStore | None = None
+        self._refresh_store: RefreshStore | None = None
         self._ticket_store = WsTicketStore()
         self._user_presence = UserPresence()
         self.startup_time = startup_time
@@ -856,6 +859,23 @@ class AppState:
     def set_lockout_store(self, store: LockoutStore) -> None:
         """Attach the lockout store (once-only)."""
         self._set_once("_lockout_store", store, "Lockout store")
+
+    @property
+    def has_refresh_store(self) -> bool:
+        """Check whether the refresh-token store is configured."""
+        return self._refresh_store is not None
+
+    @property
+    def refresh_store(self) -> RefreshStore:
+        """Return the refresh-token store."""
+        return self._require_service(
+            self._refresh_store,
+            "refresh_store",
+        )
+
+    def set_refresh_store(self, store: RefreshStore) -> None:
+        """Attach the refresh-token store (once-only)."""
+        self._set_once("_refresh_store", store, "Refresh store")
 
     @property
     def user_presence(self) -> UserPresence:

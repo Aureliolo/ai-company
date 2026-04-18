@@ -8,6 +8,9 @@ supporting helpers.
 import asyncio
 from typing import TYPE_CHECKING, Protocol
 
+from synthorg.api.auth.config import AuthConfig  # noqa: TC001
+from synthorg.api.auth.lockout_store import LockoutStore  # noqa: TC001
+from synthorg.api.auth.refresh_store import RefreshStore  # noqa: TC001
 from synthorg.api.auth.secret import resolve_jwt_secret
 from synthorg.api.auth.service import AuthService
 from synthorg.api.auth.session_store import (
@@ -63,6 +66,86 @@ def _build_session_store(db: object) -> SessionStore:
     logger.error(
         API_APP_STARTUP,
         reason="unsupported_session_store_handle",
+        handle_type=type(db).__name__,
+        error=msg,
+    )
+    raise TypeError(msg)
+
+
+def _build_lockout_store(
+    db: object,
+    auth_cfg: AuthConfig,
+) -> LockoutStore:
+    """Pick the concrete lockout store matching the persistence backend.
+
+    Dispatches on the concrete class name to avoid importing psycopg-pool
+    at module load time. Unknown handles fail fast.
+
+    Args:
+        db: Database handle (aiosqlite.Connection or AsyncConnectionPool).
+        auth_cfg: Auth configuration with lockout thresholds.
+
+    Returns:
+        A LockoutStore implementation.
+
+    Raises:
+        TypeError: If the DB handle type is not recognized.
+    """
+    from synthorg.api.auth.lockout_store import (  # noqa: PLC0415
+        PostgresLockoutStore,
+        SqliteLockoutStore,
+    )
+
+    cls_name = type(db).__name__
+    if cls_name == "AsyncConnectionPool":
+        return PostgresLockoutStore(db, auth_cfg)  # type: ignore[arg-type]
+    if cls_name == "Connection":
+        return SqliteLockoutStore(db, auth_cfg)  # type: ignore[arg-type]
+    msg = (
+        f"Unsupported lockout-store DB handle: {type(db)!r}. "
+        f"Expected aiosqlite.Connection or psycopg_pool.AsyncConnectionPool."
+    )
+    logger.error(
+        API_APP_STARTUP,
+        reason="unsupported_lockout_store_handle",
+        handle_type=type(db).__name__,
+        error=msg,
+    )
+    raise TypeError(msg)
+
+
+def _build_refresh_store(db: object) -> RefreshStore:
+    """Pick the concrete refresh store matching the persistence backend.
+
+    Dispatches on the concrete class name to avoid importing psycopg-pool
+    at module load time. Unknown handles fail fast.
+
+    Args:
+        db: Database handle (aiosqlite.Connection or AsyncConnectionPool).
+
+    Returns:
+        A RefreshStore implementation.
+
+    Raises:
+        TypeError: If the DB handle type is not recognized.
+    """
+    from synthorg.api.auth.refresh_store import (  # noqa: PLC0415
+        PostgresRefreshStore,
+        SqliteRefreshStore,
+    )
+
+    cls_name = type(db).__name__
+    if cls_name == "AsyncConnectionPool":
+        return PostgresRefreshStore(db)  # type: ignore[arg-type]
+    if cls_name == "Connection":
+        return SqliteRefreshStore(db)  # type: ignore[arg-type]
+    msg = (
+        f"Unsupported refresh-store DB handle: {type(db)!r}. "
+        f"Expected aiosqlite.Connection or psycopg_pool.AsyncConnectionPool."
+    )
+    logger.error(
+        API_APP_STARTUP,
+        reason="unsupported_refresh_store_handle",
         handle_type=type(db).__name__,
         error=msg,
     )
@@ -362,21 +445,21 @@ async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
                     )
 
                 # Lockout store shares the same DB connection.
-                from synthorg.api.auth.lockout_store import (  # noqa: PLC0415
-                    LockoutStore,
-                )
-
                 auth_cfg = (
                     app_state.config.api.auth if app_state.config is not None else None
                 )
                 if auth_cfg is not None and not app_state.has_lockout_store:
                     try:
-                        lockout_store = LockoutStore(db, auth_cfg)
+                        lockout_store: LockoutStore = _build_lockout_store(
+                            db,
+                            auth_cfg,
+                        )
                         await lockout_store.load_locked()
                         app_state.set_lockout_store(lockout_store)
                         logger.info(
                             API_APP_STARTUP,
                             note="Lockout store initialized",
+                            backend=type(lockout_store).__name__,
                         )
                     except MemoryError, RecursionError:
                         raise
@@ -384,6 +467,24 @@ async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
                         logger.error(
                             API_APP_STARTUP,
                             note="Lockout store initialization failed",
+                            exc_info=True,
+                        )
+
+                if not app_state.has_refresh_store:
+                    try:
+                        refresh_store: RefreshStore = _build_refresh_store(db)
+                        app_state.set_refresh_store(refresh_store)
+                        logger.info(
+                            API_APP_STARTUP,
+                            note="Refresh-token store initialized",
+                            backend=type(refresh_store).__name__,
+                        )
+                    except MemoryError, RecursionError:
+                        raise
+                    except Exception:
+                        logger.error(
+                            API_APP_STARTUP,
+                            note="Refresh-token store initialization failed",
                             exc_info=True,
                         )
 

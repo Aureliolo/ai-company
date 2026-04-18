@@ -7,7 +7,7 @@ import aiosqlite
 import pytest
 
 from synthorg.api.auth.config import AuthConfig
-from synthorg.api.auth.lockout_store import LockoutStore
+from synthorg.api.auth.lockout_store import SqliteLockoutStore as LockoutStore
 
 pytestmark = pytest.mark.unit
 
