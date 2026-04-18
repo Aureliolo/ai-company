@@ -144,10 +144,10 @@ jobs:
 
       # Resolve the deployment environment baked into backend images
       # built by this run. Ties into the existing version-label logic:
-      # final release tags (e.g. v0.7.0) -> "prod"; -dev.N pre-release
-      # tags (e.g. v0.7.1-dev.2) -> "pre-release"; everything else
-      # (main pushes, PR builds, workflow_dispatch manual runs, and
-      # any local `docker build` without --build-arg) -> "dev".
+      # final release tags (e.g. v0.7.0) -> "prod"; every other tagged
+      # pre-release form (-dev.N, -rc.N, -alpha.N, -beta.N) -> "pre-release";
+      # everything else (main pushes, PR builds, workflow_dispatch manual
+      # runs, and any local `docker build` without --build-arg) -> "dev".
       # The backend Dockerfile reads this as a build-arg and bakes it
       # into SYNTHORG_TELEMETRY_ENV_BAKED, which
       # synthorg.telemetry.collector._resolve_environment picks up as
@@ -158,10 +158,15 @@ jobs:
         env:
           GITHUB_REF: ${{ github.ref }}
         run: |
-          if [[ "${GITHUB_REF}" == refs/tags/v* && "${GITHUB_REF}" != *-dev.* ]]; then
-            ENV_TAG="prod"
-          elif [[ "${GITHUB_REF}" == refs/tags/v* && "${GITHUB_REF}" == *-dev.* ]]; then
-            ENV_TAG="pre-release"
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            case "${GITHUB_REF}" in
+              *-dev.*|*-rc.*|*-alpha.*|*-beta.*)
+                ENV_TAG="pre-release"
+                ;;
+              *)
+                ENV_TAG="prod"
+                ;;
+            esac
           else
             ENV_TAG="dev"
           fi

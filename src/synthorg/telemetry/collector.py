@@ -26,6 +26,7 @@ from synthorg.observability.events.telemetry import (
     TELEMETRY_REPORT_FAILED,
     TELEMETRY_SESSION_SUMMARY_SENT,
 )
+from synthorg.telemetry.config import DEFAULT_ENVIRONMENT, MAX_STRING_LENGTH
 from synthorg.telemetry.host_info import DockerHostInfo, fetch_docker_info
 from synthorg.telemetry.privacy import PrivacyScrubber, PrivacyViolationError
 from synthorg.telemetry.protocol import TelemetryEvent, TelemetryReporter
@@ -106,24 +107,30 @@ def _resolve_environment(
        itself falls back to :data:`DEFAULT_ENVIRONMENT` when not
        set.
 
-    Strings are trimmed and truncated at 64 chars to match the
+    Strings are trimmed and truncated at
+    :data:`MAX_STRING_LENGTH` chars to match the
     :class:`PrivacyScrubber` cap; whitespace-only values at any
     level are ignored so they cannot mask a lower-priority signal.
+    Falls back to :data:`DEFAULT_ENVIRONMENT` when the parsed
+    config value is blank after stripping.
     """
     env = environ if environ is not None else os.environ
 
     override = env.get(_ENV_OVERRIDE_VAR, "").strip()
     if override:
-        return override[:64]
+        return override[:MAX_STRING_LENGTH]
 
     if _looks_like_ci(env):
         return "ci"
 
     baked = env.get(_ENV_BAKED_VAR, "").strip()
     if baked:
-        return baked[:64]
+        return baked[:MAX_STRING_LENGTH]
 
-    return config_environment
+    stripped_config = config_environment.strip()
+    if stripped_config:
+        return stripped_config[:MAX_STRING_LENGTH]
+    return DEFAULT_ENVIRONMENT
 
 
 if TYPE_CHECKING:
@@ -201,6 +208,29 @@ class TelemetryCollector:
         heartbeat_snapshot_provider: HeartbeatSnapshotProvider | None = None,
         session_summary_snapshot_provider: SessionSummarySnapshotProvider | None = None,
     ) -> None:
+        """Wire the collector to its reporter and resolve runtime env.
+
+        Applies the ``SYNTHORG_TELEMETRY`` opt-in override first, then
+        runs the parsed ``config.environment`` through the four-level
+        resolution chain in :func:`_resolve_environment`. Only after
+        consent is established does the constructor load or create the
+        anonymous ``deployment_id`` on disk -- a disabled collector
+        leaves no on-disk trace.
+
+        Args:
+            config: Parsed telemetry configuration from
+                :class:`TelemetryConfig`.
+            data_dir: Directory used to persist the deployment ID
+                when telemetry is enabled.
+            heartbeat_snapshot_provider: Optional callable returning
+                the current :class:`_HeartbeatParams` snapshot; used
+                by the heartbeat loop to attach fresh aggregate
+                metrics to each heartbeat event.
+            session_summary_snapshot_provider: Optional callable
+                returning the current :class:`_SessionSummaryParams`
+                snapshot; used by :meth:`shutdown` to emit the final
+                session summary.
+        """
         # Env var overrides config file (documented priority).
         env_val = os.environ.get("SYNTHORG_TELEMETRY", "").strip().lower()
         if env_val in ("true", "1", "yes"):

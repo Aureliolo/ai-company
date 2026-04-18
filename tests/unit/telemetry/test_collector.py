@@ -536,6 +536,46 @@ class TestCollectorEnvironmentPropagation:
             event.properties["docker_info_unavailable_reason"] == "socket_not_mounted"
         )
 
+    async def test_startup_event_survives_fetch_docker_info_regression(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Belt-and-suspenders: unexpected exception from the helper
+        still ships the startup event with the daemon-unreachable marker.
+
+        :func:`synthorg.telemetry.host_info.fetch_docker_info` is
+        contracted to never raise, but a regression there must not
+        abort the startup event. The outer ``try/except`` in
+        :meth:`_send_startup_event` is the safety net; this test
+        verifies it catches the exception, logs the categorical
+        reason, and ships the event with the collapsed marker.
+        """
+        from unittest.mock import AsyncMock as _AsyncMock
+
+        monkeypatch.setattr(
+            "synthorg.telemetry.collector.fetch_docker_info",
+            _AsyncMock(side_effect=RuntimeError("helper regression")),
+        )
+        config = TelemetryConfig(
+            enabled=True,
+            backend=TelemetryBackend.NOOP,
+            environment="dev",
+        )
+        collector = TelemetryCollector(config=config, data_dir=tmp_path)
+        mock_reporter = AsyncMock()
+        collector._reporter = mock_reporter
+
+        await collector._send_startup_event()
+
+        mock_reporter.report.assert_awaited_once()
+        event = mock_reporter.report.call_args.args[0]
+        assert event.event_type == "deployment.startup"
+        assert event.properties["docker_info_available"] is False
+        assert (
+            event.properties["docker_info_unavailable_reason"] == "daemon_unreachable"
+        )
+
     async def test_startup_event_passes_privacy_scrubber_end_to_end(
         self,
         tmp_path: Path,

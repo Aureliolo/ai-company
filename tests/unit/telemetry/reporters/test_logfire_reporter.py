@@ -182,3 +182,66 @@ class TestLogfireReporterConfigure:
         kwargs = mock_info.call_args.kwargs
         assert kwargs["environment"] == "ci"
         assert kwargs["deployment_id"] == "00000000-0000-0000-0000-000000000002"
+
+    async def test_reserved_kwargs_in_properties_are_filtered(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Reserved kwarg names in ``properties`` are dropped before unpack.
+
+        Belt-and-suspenders defense against a future scrubber
+        allowlist admitting a reserved name (``environment``,
+        ``deployment_id``, etc.) which would otherwise collide with
+        the explicit kwargs below and raise ``TypeError``. The
+        property value from the event is discarded; the explicit
+        kwarg (sourced from the event's top-level field) is the one
+        that lands in Logfire.
+        """
+        pytest.importorskip(
+            "logfire",
+            reason="logfire extra not installed in this environment",
+        )
+        import logfire as real_logfire
+
+        from synthorg.telemetry.reporters.logfire import LogfireReporter
+
+        monkeypatch.setenv(
+            "SYNTHORG_LOGFIRE_PROJECT_TOKEN",
+            "pylf_v1_test_000000000000000000000000000000000000000000",
+        )
+        with patch.object(real_logfire, "configure"):
+            reporter = LogfireReporter(environment="prod")
+
+        event = TelemetryEvent(
+            event_type="deployment.heartbeat",
+            deployment_id="00000000-0000-0000-0000-000000000003",
+            synthorg_version="test",
+            python_version="3.14.0",
+            os_platform="Linux",
+            environment="prod",
+            timestamp=datetime.now(UTC),
+            properties={
+                "environment": "SMUGGLED",
+                "deployment_id": "SMUGGLED",
+                "event_timestamp": "SMUGGLED",
+                "synthorg_version": "SMUGGLED",
+                "python_version": "SMUGGLED",
+                "os_platform": "SMUGGLED",
+                "allowed_custom_key": "kept",
+            },
+        )
+        with patch.object(reporter._logfire, "info") as mock_info:
+            await reporter.report(event)
+
+        mock_info.assert_called_once()
+        kwargs = mock_info.call_args.kwargs
+        # Explicit kwargs win; the smuggled property values are
+        # dropped before ``**safe_properties`` unpack. No
+        # ``TypeError`` raised from duplicate kwargs.
+        assert kwargs["environment"] == "prod"
+        assert kwargs["deployment_id"] == "00000000-0000-0000-0000-000000000003"
+        assert kwargs["synthorg_version"] == "test"
+        assert kwargs["python_version"] == "3.14.0"
+        assert kwargs["os_platform"] == "Linux"
+        assert "SMUGGLED" not in kwargs.values()
+        # Non-reserved keys still pass through unchanged.
+        assert kwargs["allowed_custom_key"] == "kept"

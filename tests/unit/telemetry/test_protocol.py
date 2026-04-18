@@ -125,7 +125,6 @@ class TestTelemetryReporterProtocol:
     def test_noop_is_reporter(self) -> None:
         assert isinstance(NoopReporter(), TelemetryReporter)
 
-    @pytest.mark.asyncio
     async def test_noop_report_is_silent(self) -> None:
         reporter = NoopReporter()
         event = TelemetryEvent(

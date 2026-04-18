@@ -12,16 +12,17 @@ absent and every fetch path degrades to a single
 shows up in telemetry without looking broken.
 
 GPU inventory (model names, VRAM, driver version) is intentionally
-**not** probed from the backend. The backend base image
-(``python:3.14.3-slim``) has no NVIDIA tooling, and the
-``compose.yml`` topology scopes GPU access to the ``fine-tune``
-service only. ``nvidia-smi`` is injected by the NVIDIA Container
-Toolkit at launch time -- only into containers that request GPUs.
-Running the probe from the backend would emit ``no_nvidia_smi`` on
-every deployment. The achievable backend-side GPU signal is the
-host-capability flag ``docker_gpu_runtime_nvidia_available``
-derived from ``/info.Runtimes``; AMD and Intel GPUs do not
-register a Docker runtime so they are undetectable from here.
+**not** probed from the backend. The backend runtime image is an
+apko-composed distroless Wolfi base (no shell, no package manager,
+no NVIDIA tooling), and the ``compose.yml`` topology scopes GPU
+access to the ``fine-tune`` service only. ``nvidia-smi`` is injected
+by the NVIDIA Container Toolkit at launch time -- only into
+containers that request GPUs. Running the probe from the backend
+would emit ``no_nvidia_smi`` on every deployment. The achievable
+backend-side GPU signal is the host-capability flag
+``docker_gpu_runtime_nvidia_available`` derived from
+``/info.Runtimes``; AMD and Intel GPUs do not register a Docker
+runtime so they are undetectable from here.
 
 Only a hand-picked subset of ``/info`` keys is exported. The raw
 response includes host machine names, container IDs, labels, and
@@ -33,7 +34,7 @@ sync -- both are the scrub surface.
 
 import asyncio
 import os
-from typing import TYPE_CHECKING, Final, NotRequired, TypedDict
+from typing import TYPE_CHECKING, Final, Literal, NotRequired, TypedDict
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.telemetry import TELEMETRY_REPORT_FAILED
@@ -46,9 +47,20 @@ logger = get_logger(__name__)
 
 _DOCKER_SOCKET_PATH: Final[str] = "/var/run/docker.sock"
 
-_REASON_SOCKET_NOT_MOUNTED: Final[str] = "socket_not_mounted"
-_REASON_AIODOCKER_NOT_INSTALLED: Final[str] = "aiodocker_not_installed"
-_REASON_DAEMON_UNREACHABLE: Final[str] = "daemon_unreachable"
+_DOCKER_INFO_TIMEOUT_SECONDS: Final[float] = 5.0
+"""Upper bound on the Docker ``/info`` probe.
+
+``aiodocker`` inherits aiohttp's defaults (``sock_read=300s``), so a
+wedged-but-reachable daemon could stall the startup event for five
+minutes. Cap the probe so startup degrades to
+``docker_info_available=False`` instead of hanging.
+"""
+
+_REASON_SOCKET_NOT_MOUNTED: Final[Literal["socket_not_mounted"]] = "socket_not_mounted"
+_REASON_AIODOCKER_NOT_INSTALLED: Final[Literal["aiodocker_not_installed"]] = (
+    "aiodocker_not_installed"
+)
+_REASON_DAEMON_UNREACHABLE: Final[Literal["daemon_unreachable"]] = "daemon_unreachable"
 
 _NVIDIA_RUNTIME_NAME: Final[str] = "nvidia"
 """Runtime key the NVIDIA Container Toolkit registers with Docker."""
@@ -68,7 +80,13 @@ class DockerHostInfo(TypedDict):
     """
 
     docker_info_available: bool
-    docker_info_unavailable_reason: NotRequired[str]
+    docker_info_unavailable_reason: NotRequired[
+        Literal[
+            "socket_not_mounted",
+            "aiodocker_not_installed",
+            "daemon_unreachable",
+        ]
+    ]
     docker_server_version: NotRequired[str]
     docker_operating_system: NotRequired[str]
     docker_os_type: NotRequired[str]
@@ -89,7 +107,14 @@ def _truncate(value: object) -> str:
     return text[:MAX_STRING_LENGTH]
 
 
-def _unavailable(reason: str) -> DockerHostInfo:
+DockerInfoUnavailableReason = Literal[
+    "socket_not_mounted",
+    "aiodocker_not_installed",
+    "daemon_unreachable",
+]
+
+
+def _unavailable(reason: DockerInfoUnavailableReason) -> DockerHostInfo:
     """Produce the uniform "no daemon info" marker payload.
 
     Returns:
@@ -158,7 +183,7 @@ def _extract(info: Mapping[str, object]) -> DockerHostInfo:
     return result
 
 
-async def fetch_docker_info() -> DockerHostInfo:
+async def fetch_docker_info() -> DockerHostInfo:  # noqa: PLR0911
     """Fetch a telemetry-safe snapshot of Docker daemon ``/info``.
 
     Returns the allowlisted fields with
@@ -178,12 +203,23 @@ async def fetch_docker_info() -> DockerHostInfo:
     # mount or dying NFS on ``/var/run`` could stall the loop --
     # running it off-thread keeps the event loop responsive under
     # those edge cases without forcing trio/anyio on an asyncio-only
-    # project. PTH110 is suppressed because the sync os API is the
-    # one ``asyncio.to_thread`` can call without reimporting.
-    socket_exists = await asyncio.to_thread(
-        os.path.exists,
-        _DOCKER_SOCKET_PATH,
-    )
+    # project. The sync ``os`` API is the one ``asyncio.to_thread``
+    # can call without reimporting. Any ``OSError`` that escapes the
+    # stat (permission denied on a strange mount, etc.) still needs
+    # to collapse into a marker -- the docstring contract is
+    # ``Never raises``.
+    try:
+        socket_exists = await asyncio.to_thread(
+            os.path.exists,
+            _DOCKER_SOCKET_PATH,
+        )
+    except OSError as exc:
+        logger.warning(
+            TELEMETRY_REPORT_FAILED,
+            detail="docker_socket_stat_failed",
+            error_type=type(exc).__name__,
+        )
+        return _unavailable(_REASON_DAEMON_UNREACHABLE)
     if not socket_exists:
         return _unavailable(_REASON_SOCKET_NOT_MOUNTED)
 
@@ -209,10 +245,21 @@ async def fetch_docker_info() -> DockerHostInfo:
     # ``aiodocker.Docker`` supports the async-context-manager
     # protocol, so the cleanup contract is "whatever ``__aexit__``
     # does" rather than "we remembered to call ``close``". Matches
-    # the pattern we want for the sandbox layer too.
+    # the pattern we want for the sandbox layer too. The
+    # ``asyncio.timeout`` wrapper caps the probe at
+    # ``_DOCKER_INFO_TIMEOUT_SECONDS`` because ``aiodocker`` inherits
+    # aiohttp's 300 s ``sock_read`` default -- a wedged-but-reachable
+    # daemon would otherwise stall startup for up to five minutes.
     try:
-        async with client:
+        async with asyncio.timeout(_DOCKER_INFO_TIMEOUT_SECONDS), client:
             info = await client.system.info()
+    except TimeoutError as exc:
+        logger.warning(
+            TELEMETRY_REPORT_FAILED,
+            detail="docker_info_fetch_timeout",
+            error_type=type(exc).__name__,
+        )
+        return _unavailable(_REASON_DAEMON_UNREACHABLE)
     except Exception as exc:
         logger.warning(
             TELEMETRY_REPORT_FAILED,
