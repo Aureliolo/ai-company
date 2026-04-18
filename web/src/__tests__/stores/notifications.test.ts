@@ -143,4 +143,39 @@ describe('handleWsEvent payload sanitization', () => {
     expect(items).toHaveLength(1)
     expect(items[0]!.description).toBeUndefined()
   })
+
+  it('preserves common whitespace (TAB, LF, CR) in multi-line messages', () => {
+    useNotificationsStore.getState().handleWsEvent(
+      makeEvent('system.error', {
+        message: 'line1\nline2\r\nindented:\tvalue',
+      }),
+    )
+
+    const items = useNotificationsStore.getState().items
+    expect(items).toHaveLength(1)
+    // Whitespace in the interior survives; leading/trailing trim still applies
+    // (none in this input).
+    expect(items[0]!.description).toBe('line1\nline2\r\nindented:\tvalue')
+  })
+
+  it('truncates at code-point boundaries so surrogate pairs are not split', () => {
+    // Each "🌟" is a 2-code-unit surrogate pair. 200 stars = 400 UTF-16 units
+    // (200 code points), well over the 128-code-point cap. Naive
+    // `.slice(0, 128)` would return 64 whole stars followed by a LONE HIGH
+    // SURROGATE from star #65 -- that lone surrogate serializes to U+FFFD
+    // and leaks a bad character into storage. The code-point-aware slice
+    // returns exactly 128 whole stars with no orphans.
+    const stars = '\u{1F31F}'.repeat(200)
+    useNotificationsStore.getState().handleWsEvent(
+      makeEvent('system.error', { message: stars }),
+    )
+
+    const items = useNotificationsStore.getState().items
+    expect(items).toHaveLength(1)
+    const description = items[0]!.description
+    expect(description).toBeDefined()
+    // Must contain exactly 128 whole emojis -- no more, no fewer, no lone surrogates.
+    expect([...description!]).toHaveLength(128)
+    expect([...description!].every((c) => c === '\u{1F31F}')).toBe(true)
+  })
 })

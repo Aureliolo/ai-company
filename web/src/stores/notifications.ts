@@ -191,9 +191,13 @@ const MAX_STRING_LEN = 128
  * non-presentational paths:
  *  - strips C0 controls and DELETE (U+0000..U+001F, U+007F) that would
  *    corrupt log lines, terminal output, and notification tooltips,
+ *    except the common whitespace set (TAB U+0009, LF U+000A, CR U+000D)
+ *    so multi-line messages retain their line structure,
  *  - strips bidi-override characters (U+202A..U+202E, U+2066..U+2069)
  *    that can flip on-screen token order in sensitive UI (CVE-2021-42574),
- *  - trims surrounding whitespace and caps length at `maxLen`.
+ *  - trims surrounding whitespace and caps length at `maxLen`. The length
+ *    cap iterates by Unicode code points so surrogate pairs (emojis, rare
+ *    CJK) are never split mid-character.
  *
  * Returns `undefined` for non-strings so callers can pass the result
  * directly into an optional field without widening the type.
@@ -202,11 +206,13 @@ function sanitizeWsString(value: unknown, maxLen: number = MAX_STRING_LEN): stri
   if (typeof value !== 'string') return undefined
   const stripped = value
     // eslint-disable-next-line no-control-regex
-    .replace(/[\u0000-\u001F\u007F]/g, '')
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '')
     .replace(/[\u202A-\u202E\u2066-\u2069]/g, '')
     .trim()
   if (stripped.length === 0) return undefined
-  return stripped.slice(0, maxLen)
+  const codePoints = [...stripped]
+  if (codePoints.length <= maxLen) return stripped
+  return codePoints.slice(0, maxLen).join('')
 }
 
 // ---------------------------------------------------------------------------

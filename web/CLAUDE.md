@@ -61,7 +61,9 @@ All Zustand store **mutation** actions (create/update/delete) MUST follow the `s
 
 **List reads** (`fetch*`) follow the same pattern for logging but set `error: string | null` on the store instead of toasting -- the UI surface (usually a page-level error banner) consumes the error state.
 
-**Test teardown**: `web/src/test-setup.tsx` registers a global `afterEach` that calls `useToastStore.getState().cancelAllPending()` + resets `toasts` state, and invokes `cancelPendingPersist()` on the notifications store. `cancelAllPending()` clears pending `setTimeout` handles used for auto-dismiss without mutating the toast list, so per-test assertions against `toasts` still work. This contract is required for `npm run test -- --detect-async-leaks` to exit 0; any new store that schedules timers must expose an equivalent cleanup hook.
+**Test teardown**: `web/src/test-setup.tsx` registers a global `afterEach` that calls `useToastStore.getState().dismissAll()` (clears pending auto-dismiss timers + the toasts array in one idiomatic call) and invokes `cancelPendingPersist()` on the notifications store. Tests that need to inspect the toasts list *after* timers drain can call `useToastStore.getState().cancelAllPending()` directly in their own teardown -- it clears timers without mutating `toasts`. This contract is required for `npm run test -- --detect-async-leaks` to exit 0; any new store that schedules timers must expose an equivalent cleanup hook.
+
+**WS payload sanitization**: `sanitizeWsString()` (internal to `web/src/stores/notifications.ts`) normalizes every string field received from WebSocket events before it reaches storage or display. It strips C0 control characters and DELETE (except common whitespace `\t` / `\n` / `\r`), strips bidi-override characters (CVE-2021-42574 class), trims, and caps length at `MAX_STRING_LEN` (128) at code-point boundaries so surrogate pairs are not split. Any new WS payload handler in the notifications store (or a sibling store that ingests untrusted strings) MUST route string fields through this sanitizer.
 
 ## Design System (MANDATORY)
 
@@ -81,7 +83,7 @@ All Zustand store **mutation** actions (create/update/delete) MUST follow the `s
 | `StatPill` | `@/components/ui/stat-pill` | Compact inline label + value pair |
 | `Avatar` | `@/components/ui/avatar` | Circular initials avatar with optional `borderColor?` prop |
 | `Button` | `@/components/ui/button` | Standard button (shadcn) |
-| `Toast` / `ToastContainer` | `@/components/ui/toast` | Success/error/warning/info notifications with auto-dismiss queue (mount `ToastContainer` once in AppLayout). Store exposes `cancelAllPending()` for test teardown -- called from the global `afterEach` in `test-setup.tsx`. |
+| `Toast` / `ToastContainer` | `@/components/ui/toast` | Success/error/warning/info notifications with auto-dismiss queue (mount `ToastContainer` once in AppLayout). Store exposes `dismissAll()` (timers + toasts) and `cancelAllPending()` (timers only, preserves toasts) for test teardown -- the global `afterEach` in `test-setup.tsx` uses `dismissAll()`. |
 | `Skeleton` / `SkeletonCard` / `SkeletonMetric` / `SkeletonTable` / `SkeletonText` | `@/components/ui/skeleton` | Loading placeholders matching component shapes (shimmer animation, respects `prefers-reduced-motion`) |
 | `EmptyState` | `@/components/ui/empty-state` | No-data / no-results placeholder with icon, title, description, optional action button |
 | `ErrorBoundary` | `@/components/ui/error-boundary` | React error boundary with retry -- `level` prop: `page` / `section` / `component` |

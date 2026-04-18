@@ -30,22 +30,9 @@ vi.mock('@/hooks/useGlobalNotifications', () => ({
   useGlobalNotifications: vi.fn(),
 }))
 
-// AuthGuard fires `useSettingsStore.getState().fetchLocale()` when the user
-// is authenticated; that hits `/settings/display`, which returns 401 in the
-// jsdom test environment. The axios 401 interceptor then flips auth state
-// back to 'unauthenticated', which bounces the router to /login. Stub the
-// settings endpoint to return an empty list so the locale fetch is a no-op.
-vi.mock('@/api/endpoints/settings', () => ({
-  getSchema: vi.fn().mockResolvedValue([]),
-  getNamespaceSchema: vi.fn().mockResolvedValue([]),
-  getAllSettings: vi.fn().mockResolvedValue([]),
-  getNamespaceSettings: vi.fn().mockResolvedValue([]),
-  updateSetting: vi.fn().mockResolvedValue(undefined),
-  deleteSetting: vi.fn().mockResolvedValue(undefined),
-  restartServer: vi.fn().mockResolvedValue(undefined),
-  listSinks: vi.fn().mockResolvedValue([]),
-  testSink: vi.fn().mockResolvedValue({ ok: true } satisfies { ok: boolean }),
-}))
+// AuthGuard's `fetchLocale()` call is neutralized by the global mock of
+// `@/api/endpoints/settings` in `src/test-setup.tsx`; no per-file override
+// is needed.
 
 // AppLayout + LoginPage are React.lazy() imports that transitively pull in
 // motion, cmdk, Base UI, and every lazy route module. Under vitest with

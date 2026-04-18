@@ -23,10 +23,9 @@ vi.mock('@/api/endpoints/settings', async () => {
     getAllSettings: vi.fn().mockResolvedValue([]),
     getNamespaceSettings: vi.fn().mockResolvedValue([]),
     updateSetting: vi.fn().mockResolvedValue(undefined),
-    deleteSetting: vi.fn().mockResolvedValue(undefined),
-    restartServer: vi.fn().mockResolvedValue(undefined),
+    resetSetting: vi.fn().mockResolvedValue(undefined),
     listSinks: vi.fn().mockResolvedValue([]),
-    testSink: vi.fn().mockResolvedValue({ ok: true }),
+    testSinkConfig: vi.fn().mockResolvedValue({ ok: true }),
   }
 })
 
@@ -150,8 +149,10 @@ if (typeof window !== 'undefined' && typeof window.matchMedia !== 'function') {
 
 // Toast store schedules a `setTimeout` per auto-dismiss (success / info toasts
 // with a real timer). Without a global teardown hook these timers survive the
-// test boundary and vitest flags them as leaked. `cancelAllPending()` clears
-// the handles; resetting `toasts` keeps subsequent tests isolated.
+// test boundary and vitest flags them as leaked. `dismissAll()` clears both
+// the pending handles and the toasts array in one idiomatic call; tests that
+// need to inspect the toasts list after pending timers drain can instead call
+// `cancelAllPending()` directly in their own teardown.
 //
 // We run this in `afterEach` (not `beforeEach`) deliberately: the test body's
 // assertions on toast state complete *before* the afterEach fires, so
@@ -160,8 +161,7 @@ if (typeof window !== 'undefined' && typeof window.matchMedia !== 'function') {
 // still visible after a dialog closes) should inline its own assertion
 // within the test body, never rely on post-teardown state.
 afterEach(() => {
-  useToastStore.getState().cancelAllPending()
-  useToastStore.setState({ toasts: [] })
+  useToastStore.getState().dismissAll()
   // Notifications store debounces localStorage persistence with a 300ms
   // setTimeout; drop any pending handle so it does not outlive the test.
   cancelPendingPersist()

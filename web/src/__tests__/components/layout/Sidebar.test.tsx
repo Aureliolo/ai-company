@@ -356,19 +356,33 @@ describe('Sidebar', () => {
       },
     )
 
+    // Permutation coverage: each iteration navigates a random ordered subset
+    // of routes inside the SAME Drawer mount. The subset size is bounded
+    // (max 3) because React Router's `navigate` schedules a setImmediate
+    // per call that only drains on unmount -- sweeping every route inside
+    // one iteration would tip the test over the --detect-async-leaks
+    // threshold. 3 routes per iteration x 10 runs gives 30 ordered-pair
+    // navigations per CI run, which is enough to exercise cross-render
+    // state leaks without reintroducing the leak this PR is fixing.
+    const PERMUTATION_SIZE = Math.min(3, staticRoutes.length)
     it(
       'close-on-navigate is independent of route order (property)',
       { timeout: 15_000 },
       async () => {
         await fc.assert(
           fc.asyncProperty(
-            fc.constantFrom(...staticRoutes),
-            async (route) => {
-              const onOverlayClose = vi.fn()
-              const { router, unmount } = setupTablet(true, onOverlayClose)
-              await act(() => router.navigate(route))
-              expect(onOverlayClose).toHaveBeenCalledOnce()
-              unmount()
+            fc.shuffledSubarray(staticRoutes, {
+              minLength: PERMUTATION_SIZE,
+              maxLength: PERMUTATION_SIZE,
+            }),
+            async (routesInRandomOrder) => {
+              for (const route of routesInRandomOrder) {
+                const onOverlayClose = vi.fn()
+                const { router, unmount } = setupTablet(true, onOverlayClose)
+                await act(() => router.navigate(route))
+                expect(onOverlayClose).toHaveBeenCalledOnce()
+                unmount()
+              }
             },
           ),
           { numRuns: 10 },
