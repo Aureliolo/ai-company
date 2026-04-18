@@ -66,6 +66,9 @@ from synthorg.persistence.sqlite.hr_repositories import (
     SQLiteLifecycleEventRepository,
     SQLiteTaskMetricRepository,
 )
+from synthorg.persistence.sqlite.lockout_repo import (
+    SQLiteLockoutRepository,
+)
 from synthorg.persistence.sqlite.parked_context_repo import (
     SQLiteParkedContextRepository,
 )
@@ -78,6 +81,9 @@ from synthorg.persistence.sqlite.project_cost_aggregate_repo import (
 from synthorg.persistence.sqlite.project_repo import (
     SQLiteProjectRepository,
 )
+from synthorg.persistence.sqlite.refresh_repo import (
+    SQLiteRefreshTokenRepository,
+)
 from synthorg.persistence.sqlite.repositories import (
     SQLiteCostRecordRepository,
     SQLiteMessageRepository,
@@ -85,6 +91,9 @@ from synthorg.persistence.sqlite.repositories import (
 )
 from synthorg.persistence.sqlite.risk_override_repo import (
     SQLiteRiskOverrideRepository,
+)
+from synthorg.persistence.sqlite.session_repo import (
+    SQLiteSessionRepository,
 )
 from synthorg.persistence.sqlite.settings_repo import (
     SQLiteSettingsRepository,
@@ -114,6 +123,8 @@ from synthorg.persistence.sqlite.workflow_execution_repo import (
 )
 
 if TYPE_CHECKING:
+    from synthorg.api.auth.config import AuthConfig
+    from synthorg.persistence.auth_protocol import LockoutRepository
     from synthorg.persistence.config import SQLiteConfig
 
 logger = get_logger(__name__)
@@ -179,6 +190,8 @@ class SQLitePersistenceBackend:
         self._training_plans: SQLiteTrainingPlanRepository | None = None
         self._training_results: SQLiteTrainingResultRepository | None = None
         self._custom_rules: SQLiteCustomRuleRepository | None = None
+        self._sessions: SQLiteSessionRepository | None = None
+        self._refresh_tokens: SQLiteRefreshTokenRepository | None = None
         self._connections_stub = StubConnectionRepository()
         self._connection_secrets_stub = StubConnectionSecretRepository()
         self._oauth_states_stub = StubOAuthStateRepository()
@@ -221,6 +234,8 @@ class SQLitePersistenceBackend:
         self._training_plans = None
         self._training_results = None
         self._custom_rules = None
+        self._sessions = None
+        self._refresh_tokens = None
 
     async def connect(self) -> None:
         """Open the SQLite database and configure WAL mode."""
@@ -369,6 +384,8 @@ class SQLitePersistenceBackend:
         self._training_plans = SQLiteTrainingPlanRepository(self._db)
         self._training_results = SQLiteTrainingResultRepository(self._db)
         self._custom_rules = SQLiteCustomRuleRepository(self._db)
+        self._sessions = SQLiteSessionRepository(self._db)
+        self._refresh_tokens = SQLiteRefreshTokenRepository(self._db)
 
     async def _cleanup_failed_connect(self, exc: sqlite3.Error | OSError) -> None:
         """Log failure, close partial connection, and raise.
@@ -728,6 +745,24 @@ class SQLitePersistenceBackend:
             self._custom_rules,
             "custom_rules",
         )
+
+    @property
+    def sessions(self) -> SQLiteSessionRepository:
+        """Repository for hybrid session state (durable + in-memory cache)."""
+        return self._require_connected(self._sessions, "sessions")
+
+    @property
+    def refresh_tokens(self) -> SQLiteRefreshTokenRepository:
+        """Repository for single-use refresh-token rotation."""
+        return self._require_connected(
+            self._refresh_tokens,
+            "refresh_tokens",
+        )
+
+    def build_lockouts(self, auth_config: AuthConfig) -> LockoutRepository:
+        """Construct a lockout repository using this backend's connection."""
+        db = self.get_db()
+        return SQLiteLockoutRepository(db, auth_config)
 
     async def get_setting(self, key: NotBlankStr) -> str | None:
         """Retrieve a setting value by key from the ``_system`` namespace.

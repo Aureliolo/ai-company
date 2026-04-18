@@ -15,13 +15,14 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from synthorg.api.auth.session import Session
-from synthorg.api.auth.session_store import (
-    PostgresSessionStore,
-    SessionStore,
-    SqliteSessionStore,
-)
 from synthorg.api.guards import HumanRole
-from synthorg.api.lifecycle import _build_session_store
+from synthorg.persistence.auth_protocol import SessionRepository as SessionStore
+from synthorg.persistence.postgres.session_repo import (
+    PostgresSessionRepository as PostgresSessionStore,
+)
+from synthorg.persistence.sqlite.session_repo import (
+    SQLiteSessionRepository as SqliteSessionStore,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -106,28 +107,18 @@ def test_postgres_session_store_implements_protocol() -> None:
 
 
 def test_build_session_store_routes_async_pool_to_postgres() -> None:
-    """``_build_session_store`` selects Postgres for AsyncConnectionPool."""
-    # Construct a minimal class whose name matches what psycopg_pool
-    # exports. ``_build_session_store`` dispatches on ``type(db).__name__``
-    # so an explicit empty class is clearer and more honest than mutating
-    # ``MagicMock.__name__``.
-    pool = type("AsyncConnectionPool", (), {})()
-    store = _build_session_store(pool)
-    assert isinstance(store, PostgresSessionStore)
+    """After A1 consolidation, dispatcher tests are obsolete.
 
-
-def test_build_session_store_routes_connection_to_sqlite() -> None:
-    """``_build_session_store`` selects SQLite for aiosqlite.Connection."""
-    conn = type("Connection", (), {})()
-    store = _build_session_store(conn)
-    assert isinstance(store, SqliteSessionStore)
-
-
-def test_build_session_store_rejects_unknown_handle() -> None:
-    """Unknown DB handle types fail fast with TypeError."""
-    handle = type("SomeOtherDB", (), {})()
-    with pytest.raises(TypeError, match="Unsupported session-store DB handle"):
-        _build_session_store(handle)
+    Backend-type selection now happens in each persistence backend's
+    ``connect()`` method (it knows its own handle type), so the
+    dispatcher triplet that previously lived in ``api/lifecycle`` has
+    been removed.  Coverage lives in the persistence conformance
+    suite against both SQLite and Postgres backends.
+    """
+    # Smoke check: both concrete classes still import cleanly from
+    # their new persistence-layer locations.
+    assert PostgresSessionStore is not None
+    assert SqliteSessionStore is not None
 
 
 # -- Happy-path SQL shape (one test per method) ----------------------

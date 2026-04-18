@@ -268,8 +268,8 @@ async def _make_session_cookies(  # noqa: PLR0913
         refresh_persisted = False
         if app_state is not None and session_id and user_id:
             try:
-                from synthorg.api.auth.refresh_store import (  # noqa: PLC0415, TC001
-                    RefreshStore,
+                from synthorg.persistence.auth_protocol import (  # noqa: PLC0415, TC001
+                    RefreshTokenRepository as RefreshStore,
                 )
 
                 auth_service: AuthService = app_state.auth_service

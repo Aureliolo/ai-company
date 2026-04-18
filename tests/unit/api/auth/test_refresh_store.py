@@ -5,7 +5,9 @@ from datetime import UTC, datetime, timedelta
 import aiosqlite
 import pytest
 
-from synthorg.api.auth.refresh_store import SqliteRefreshStore as RefreshStore
+from synthorg.persistence.sqlite.refresh_repo import (
+    SQLiteRefreshTokenRepository as RefreshStore,
+)
 
 pytestmark = pytest.mark.unit
 

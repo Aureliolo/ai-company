@@ -75,6 +75,9 @@ from synthorg.persistence.postgres.hr_repositories import (
     PostgresLifecycleEventRepository,
     PostgresTaskMetricRepository,
 )
+from synthorg.persistence.postgres.lockout_repo import (
+    PostgresLockoutRepository,
+)
 from synthorg.persistence.postgres.parked_context_repo import (
     PostgresParkedContextRepository,
 )
@@ -85,6 +88,9 @@ from synthorg.persistence.postgres.project_cost_aggregate_repo import (
     PostgresProjectCostAggregateRepository,
 )
 from synthorg.persistence.postgres.project_repo import PostgresProjectRepository
+from synthorg.persistence.postgres.refresh_repo import (
+    PostgresRefreshTokenRepository,
+)
 from synthorg.persistence.postgres.repositories import (
     PostgresCostRecordRepository,
     PostgresMessageRepository,
@@ -92,6 +98,9 @@ from synthorg.persistence.postgres.repositories import (
 )
 from synthorg.persistence.postgres.risk_override_repo import (
     PostgresRiskOverrideRepository,
+)
+from synthorg.persistence.postgres.session_repo import (
+    PostgresSessionRepository,
 )
 from synthorg.persistence.postgres.settings_repo import PostgresSettingsRepository
 from synthorg.persistence.postgres.ssrf_violation_repo import (
@@ -119,11 +128,13 @@ from synthorg.persistence.postgres.workflow_execution_repo import (
 )
 
 if TYPE_CHECKING:
+    from synthorg.api.auth.config import AuthConfig
     from synthorg.hr.persistence_protocol import (
         CollaborationMetricRepository,
         LifecycleEventRepository,
         TaskMetricRepository,
     )
+    from synthorg.persistence.auth_protocol import LockoutRepository
     from synthorg.persistence.circuit_breaker_repo import (
         CircuitBreakerStateRepository,
     )
@@ -237,6 +248,8 @@ class PostgresPersistenceBackend:
         self._circuit_breaker_state: CircuitBreakerStateRepository | None = None
         self._training_plans: PostgresTrainingPlanRepository | None = None
         self._training_results: PostgresTrainingResultRepository | None = None
+        self._sessions: PostgresSessionRepository | None = None
+        self._refresh_tokens: PostgresRefreshTokenRepository | None = None
         self._connections_stub = StubConnectionRepository()
         self._connection_secrets_stub = StubConnectionSecretRepository()
         self._oauth_states_stub = StubOAuthStateRepository()
@@ -281,6 +294,8 @@ class PostgresPersistenceBackend:
         self._project_cost_aggregates = None
         self._training_plans = None
         self._training_results = None
+        self._sessions = None
+        self._refresh_tokens = None
 
     async def _configure_connection(
         self,
@@ -442,6 +457,8 @@ class PostgresPersistenceBackend:
         self._project_cost_aggregates = PostgresProjectCostAggregateRepository(pool)
         self._training_plans = PostgresTrainingPlanRepository(pool)
         self._training_results = PostgresTrainingResultRepository(pool)
+        self._sessions = PostgresSessionRepository(pool)
+        self._refresh_tokens = PostgresRefreshTokenRepository(pool)
 
     def get_db(self) -> AsyncConnectionPool:
         """Return the shared connection pool.
@@ -913,6 +930,24 @@ class PostgresPersistenceBackend:
             error=msg,
         )
         raise NotImplementedError(msg)
+
+    @property
+    def sessions(self) -> PostgresSessionRepository:
+        """Repository for hybrid session state (durable + in-memory cache)."""
+        return self._require_connected(self._sessions, "sessions")
+
+    @property
+    def refresh_tokens(self) -> PostgresRefreshTokenRepository:
+        """Repository for single-use refresh-token rotation."""
+        return self._require_connected(
+            self._refresh_tokens,
+            "refresh_tokens",
+        )
+
+    def build_lockouts(self, auth_config: AuthConfig) -> LockoutRepository:
+        """Construct a lockout repository using this backend's pool."""
+        pool = self.get_db()
+        return PostgresLockoutRepository(pool, auth_config)
 
     async def get_setting(self, key: NotBlankStr) -> str | None:
         """Retrieve a setting value by key from the ``_system`` namespace.

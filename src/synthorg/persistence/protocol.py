@@ -6,6 +6,7 @@ management.  Repository protocols provide entity-level access.
 
 from typing import Any, Protocol, runtime_checkable
 
+from synthorg.api.auth.config import AuthConfig  # noqa: TC001
 from synthorg.budget.config import BudgetConfig  # noqa: TC001
 from synthorg.core.agent import AgentIdentity  # noqa: TC001
 from synthorg.core.company import Company  # noqa: TC001
@@ -19,6 +20,11 @@ from synthorg.hr.persistence_protocol import (
     CollaborationMetricRepository,  # noqa: TC001
     LifecycleEventRepository,  # noqa: TC001
     TaskMetricRepository,  # noqa: TC001
+)
+from synthorg.persistence.auth_protocol import (
+    LockoutRepository,  # noqa: TC001
+    RefreshTokenRepository,  # noqa: TC001
+    SessionRepository,  # noqa: TC001
 )
 from synthorg.persistence.circuit_breaker_repo import (
     CircuitBreakerStateRepository,  # noqa: TC001
@@ -372,6 +378,30 @@ class PersistenceBackend(Protocol):
     @property
     def custom_rules(self) -> CustomRuleRepository:
         """Repository for custom signal rule persistence."""
+        ...
+
+    @property
+    def sessions(self) -> SessionRepository:
+        """Repository for hybrid session state (durable + in-memory cache)."""
+        ...
+
+    @property
+    def refresh_tokens(self) -> RefreshTokenRepository:
+        """Repository for single-use refresh-token rotation."""
+        ...
+
+    def build_lockouts(self, auth_config: AuthConfig) -> LockoutRepository:
+        """Construct a lockout repository for this backend.
+
+        Method-based rather than property because :class:`LockoutRepository`
+        needs the operator's ``AuthConfig`` (threshold, window, duration)
+        which is app-layer config, not persistence-layer.  Callers supply
+        the config at startup; the returned repo shares this backend's
+        connection / pool.
+
+        Raises:
+            PersistenceConnectionError: If the backend is not connected.
+        """
         ...
 
     async def get_setting(self, key: NotBlankStr) -> str | None:
