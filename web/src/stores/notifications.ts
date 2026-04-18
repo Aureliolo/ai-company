@@ -164,6 +164,19 @@ function debouncedPersist(state: NotificationsState): void {
   }, PERSIST_DEBOUNCE_MS)
 }
 
+/**
+ * Clear the pending debounce timer without flushing. Intended for tests
+ * that enqueue notifications but finish before the persist interval
+ * elapses; without this the timer outlives the test boundary and vitest's
+ * --detect-async-leaks flags it.
+ */
+export function cancelPendingPersist(): void {
+  if (persistTimer !== null) {
+    clearTimeout(persistTimer)
+    persistTimer = null
+  }
+}
+
 function countUnread(items: readonly NotificationItem[]): number {
   return items.filter((i) => !i.read).length
 }

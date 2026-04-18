@@ -18,6 +18,13 @@ interface ToastState {
   add: (toast: Omit<ToastItem, 'id'>) => string
   dismiss: (id: string) => void
   dismissAll: () => void
+  /**
+   * Clear all pending auto-dismiss timers without mutating the toasts array.
+   * Intended for test teardown where the toast list is still needed for
+   * assertions but pending setTimeout handles would otherwise leak past the
+   * test boundary.
+   */
+  cancelAllPending: () => void
 }
 
 /** Variant-specific auto-dismiss durations. Warning/error are persistent (no auto-dismiss). */
@@ -79,5 +86,12 @@ export const useToastStore = create<ToastState>((set, get) => ({
     timers.clear()
 
     set({ toasts: [] })
+  },
+
+  cancelAllPending() {
+    for (const timer of timers.values()) {
+      clearTimeout(timer)
+    }
+    timers.clear()
   },
 }))
