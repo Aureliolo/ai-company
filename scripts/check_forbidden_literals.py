@@ -46,10 +46,41 @@ from typing import Final
 _USD_FIELD_RE: Final[re.Pattern[str]] = re.compile(
     r"\b[A-Za-z_][A-Za-z0-9_]*_usd\b",
 )
-# Any quoted 3-uppercase-letter token.  Filtered downstream against
-# ``_ISO_4217_CODES`` so only genuine currency codes raise.
+# Every pattern below is intentionally a copy of the equivalent regex
+# in ``scripts/check_backend_regional_defaults.py``.  Keep them byte-
+# for-byte identical: the PostToolUse hook (backend script, best-
+# effort) and the pre-push / CI gate (this script, fail-closed) must
+# catch the same set of violations, otherwise a Claude-edited file
+# could sail through the hook and land on a branch that the gate
+# then rejects minutes later, or vice versa.
 _BARE_CURRENCY_RE: Final[re.Pattern[str]] = re.compile(
-    r"""(?<![A-Z_])['"]([A-Z]{3})['"](?![A-Z_])""",
+    r"""(?<![A-Z_])                 # left boundary: no identifier char
+        ['"]([A-Z]{3})['"]          # quoted 3-uppercase-letter code
+        (?![A-Z_])                  # right boundary""",
+    re.VERBOSE,
+)
+# Currency symbol adjacent to digit inside a string literal (e.g.
+# ``"$100"`` or ``"\u20ac50"``).  Mirrors the backend hook.
+_CURRENCY_SYMBOL_RE: Final[re.Pattern[str]] = re.compile(
+    r"""['"][^'"]*                  # start of a string literal
+        (?:\$|\u20ac|\u00a3|\u00a5) # common currency symbols
+        \d                          # immediately followed by digit
+        [^'"]*['"]""",
+    re.VERBOSE,
+)
+# BCP 47 language-region tag (two-OR-three-letter language subtag,
+# two-or-three-letter region).  The 3-letter language branch catches
+# ISO 639-3 tags like ``"fil-PH"`` that the backend hook already
+# matches.  Kept in sync with the backend regex.
+_BARE_LOCALE_RE: Final[re.Pattern[str]] = re.compile(
+    r"""['"]                        # opening quote
+        ([a-z]{2,3}                 # language subtag
+        -[A-Z]{2,3})                # region subtag
+        ['"]""",
+    re.VERBOSE,
+)
+_LOCALHOST_PORT_RE: Final[re.Pattern[str]] = re.compile(
+    r"(?:localhost|127\.0\.0\.1):\d+",
 )
 # ISO 4217 allowlist mirrored from ``check_backend_regional_defaults.py``.
 # Kept deliberately in sync: both scripts decide "is this string a
@@ -65,26 +96,45 @@ _ISO_4217_CODES: Final[frozenset[str]] = frozenset(
         "TND",
     }
 )  # fmt: skip
-# BCP 47 language-region tag: two lowercase letters, a dash, two or
-# three uppercase letters.  Filtering here is intentionally liberal --
-# if a test string happens to collide with a BCP 47 shape, move it
-# into a test file (already excluded) or wrap it in the suppression
-# marker.
-_BARE_LOCALE_RE: Final[re.Pattern[str]] = re.compile(
-    r"""['"][a-z]{2}-[A-Z]{2,3}['"]""",
-)
-_LOCALHOST_PORT_RE: Final[re.Pattern[str]] = re.compile(
-    r"(?:localhost|127\.0\.0\.1):\d+",
-)
 
-# Paths whose explicit purpose is to enumerate or demo these literals.
-_ALLOWLIST: Final[frozenset[str]] = frozenset(
+# ── Per-rule allowlists ────────────────────────────────────────
+#
+# A global allowlist blanket-exempts a file from every rule, which
+# is a footgun: ``providers/presets.py`` legitimately hosts
+# ``localhost:<port>`` entries for the local Ollama/LM Studio presets
+# but should still be held to the currency/locale rule.  Split the
+# allowlists per-rule so each exemption is a deliberate choice.
+# These mirror the three allowlists in
+# ``check_backend_regional_defaults.py``; keep them in sync.
+
+# Files whose payload IS currency-code metadata -- the very thing the
+# rule would otherwise flag.
+_CURRENCY_ALLOWLIST: Final[frozenset[str]] = frozenset(
     {
         "src/synthorg/budget/currency.py",
         "src/synthorg/budget/config.py",
         "src/synthorg/core/types.py",
         "src/synthorg/settings/definitions/budget.py",
         "src/synthorg/settings/definitions/display.py",
+        "scripts/check_backend_regional_defaults.py",
+        "scripts/check_forbidden_literals.py",
+        "scripts/check_web_design_system.py",
+        "scripts/_web_design_patterns.py",
+    }
+)
+# Files whose payload IS locale-tag metadata.
+_LOCALE_ALLOWLIST: Final[frozenset[str]] = frozenset(
+    {
+        "src/synthorg/settings/definitions/display.py",
+        "scripts/check_backend_regional_defaults.py",
+        "scripts/check_forbidden_literals.py",
+    }
+)
+# Files where ``localhost:<port>`` is correct-by-design (docker DNS,
+# operator-host CLI output, NATS monitoring, local-provider presets,
+# API/persistence/communication default configs).
+_LOCALHOST_ALLOWLIST: Final[frozenset[str]] = frozenset(
+    {
         "src/synthorg/api/config.py",
         "src/synthorg/communication/config.py",
         "src/synthorg/persistence/config.py",
@@ -95,8 +145,6 @@ _ALLOWLIST: Final[frozenset[str]] = frozenset(
         "src/synthorg/memory/embedding/fine_tune_runner.py",
         "scripts/check_backend_regional_defaults.py",
         "scripts/check_forbidden_literals.py",
-        "scripts/check_web_design_system.py",
-        "scripts/_web_design_patterns.py",
     }
 )
 
@@ -147,13 +195,16 @@ def _line_has_trailing_marker(line: str) -> bool:
     return False
 
 
-def _scan_file(file_path: Path, rel: str) -> list[str]:
+def _scan_file(file_path: Path, rel: str) -> list[str]:  # noqa: C901
     """Return violation messages for a single file.
 
     Read errors (permissions, corrupt encoding) are reported as
     ``<rel>:0: unable to scan file: <cause>`` instead of being swallowed.
     A pre-push gate that fails open on unreadable files would silently
     disable enforcement -- we prefer to surface the failure.
+
+    (noqa C901: the per-rule fan-out is linear -- splitting into
+    smaller helpers would add more indirection than it removes.)
     """
     try:
         text = file_path.read_text(encoding="utf-8")
@@ -161,6 +212,9 @@ def _scan_file(file_path: Path, rel: str) -> list[str]:
         return [f"{rel}:0: unable to scan file: {exc}"]
     issues: list[str] = []
     file_lines = text.splitlines()
+    currency_exempt = rel in _CURRENCY_ALLOWLIST
+    locale_exempt = rel in _LOCALE_ALLOWLIST
+    localhost_exempt = rel in _LOCALHOST_ALLOWLIST
     for idx, line in enumerate(file_lines, start=1):
         # Same-line suppression: trailing ``#`` comment only, never a
         # string literal occurrence.
@@ -174,19 +228,29 @@ def _scan_file(file_path: Path, rel: str) -> list[str]:
         # Ignore pure-comment lines -- they discuss forbidden literals.
         if stripped.startswith(("#", "//")):
             continue
+        # ``_usd`` suffix has no allowlist -- the suffix itself is
+        # always wrong because the project removed it from every
+        # model/column/type per the regional-defaults mandate.
         issues.extend(
             f"{rel}:{idx}: identifier {match.group(0)!r} ends in '_usd'"
             for match in _USD_FIELD_RE.finditer(line)
         )
-        for match in _BARE_CURRENCY_RE.finditer(line):
-            code = match.group(1)
-            if code in _ISO_4217_CODES:
+        if not currency_exempt:
+            for match in _BARE_CURRENCY_RE.finditer(line):
+                code = match.group(1)
+                if code in _ISO_4217_CODES:
+                    issues.append(
+                        f"{rel}:{idx}: hardcoded ISO 4217 code {code!r} "
+                        "in application code"
+                    )
+            if _CURRENCY_SYMBOL_RE.search(line):
                 issues.append(
-                    f"{rel}:{idx}: hardcoded ISO 4217 code {code!r} in application code"
+                    f"{rel}:{idx}: hardcoded currency symbol adjacent "
+                    "to digit -- use format_cost() or format_cost_detail()"
                 )
-        if _BARE_LOCALE_RE.search(line):
+        if not locale_exempt and _BARE_LOCALE_RE.search(line):
             issues.append(f"{rel}:{idx}: hardcoded BCP 47 locale literal")
-        if _LOCALHOST_PORT_RE.search(line):
+        if not localhost_exempt and _LOCALHOST_PORT_RE.search(line):
             issues.append(
                 f"{rel}:{idx}: hardcoded localhost:<port> in application code"
             )
@@ -248,6 +312,13 @@ def _iter_targets(roots: list[Path], project_root: Path) -> list[tuple[Path, str
     Only tracked ``*.py`` files are scanned.  Markdown docs are
     deliberately excluded (see module docstring).  Untracked and
     ignored files are excluded via ``git ls-files``.
+
+    Per-rule allowlists live inside ``_scan_file`` -- this function
+    deliberately does not skip any tracked source file, because a
+    file legitimately exempt from one rule (e.g. ``providers/presets.py``
+    from localhost) must still be scanned for the others.  Tests and
+    CLI Go code are excluded wholesale because they are out of scope
+    for the regional-defaults mandate.
     """
     targets: list[tuple[Path, str]] = []
     for root in roots:
@@ -255,8 +326,6 @@ def _iter_targets(roots: list[Path], project_root: Path) -> list[tuple[Path, str
         if abs_root is None or not abs_root.exists():
             continue
         for path, rel in _git_tracked_python_files(abs_root, project_root):
-            if rel in _ALLOWLIST:
-                continue
             if rel.startswith("tests/") or "/tests/" in rel:
                 continue
             if rel.startswith("cli/"):

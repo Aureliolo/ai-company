@@ -101,7 +101,17 @@ class AuthConfig(BaseModel):
     )
     cookie_path: NotBlankStr = Field(
         default="/api",
-        description="Path scope for session cookies",
+        description="Path scope for the session cookie (HttpOnly)",
+    )
+    csrf_cookie_path: NotBlankStr = Field(
+        default="/",
+        description=(
+            "Path scope for the CSRF cookie (non-HttpOnly). Defaults to "
+            "``/`` so ``document.cookie`` in JavaScript can read it from "
+            "any SPA route; scoping it under ``/api`` (like the session "
+            "cookie) would hide it from code running on application "
+            "pages, breaking the double-submit pattern."
+        ),
     )
     cookie_domain: NotBlankStr | None = Field(
         default=None,

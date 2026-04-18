@@ -78,6 +78,9 @@ class TestAuthConfig:
         config = AuthConfig()
         assert config.csrf_cookie_name == "csrf_token"
         assert config.csrf_header_name == "x-csrf-token"
+        # CSRF cookie path must be '/' so document.cookie can read it
+        # from any SPA route; the session cookie stays scoped to '/api'.
+        assert config.csrf_cookie_path == "/"
 
     # ── Concurrent sessions ──────────────────────────────────
 

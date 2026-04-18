@@ -47,7 +47,13 @@ def make_csrf_cookie(
 
     Intentionally NOT HttpOnly so JavaScript can read the
     value and submit it as the ``X-CSRF-Token`` header
-    (double-submit cookie pattern).
+    (double-submit cookie pattern).  The path is deliberately
+    broader than the session cookie's path: ``document.cookie``
+    in the browser only exposes cookies whose ``Path=`` prefix
+    matches the current URL, so a CSRF cookie scoped to
+    ``/api`` would be invisible to JavaScript running on any
+    SPA route outside ``/api`` -- breaking the header-attach
+    step of the double-submit flow.
 
     Args:
         csrf_token: CSRF token string.
@@ -63,7 +69,7 @@ def make_csrf_cookie(
         httponly=False,
         secure=config.cookie_secure,
         samesite=config.cookie_samesite,
-        path=config.cookie_path,
+        path=config.csrf_cookie_path,
         domain=config.cookie_domain,
         max_age=max_age,
     )
@@ -124,6 +130,12 @@ def make_clear_session_cookie(config: AuthConfig) -> Cookie:
 def make_clear_csrf_cookie(config: AuthConfig) -> Cookie:
     """Create a cookie that clears the CSRF cookie.
 
+    The path **must** match the path used in :func:`make_csrf_cookie`
+    (``config.csrf_cookie_path``); a ``Set-Cookie`` with a different
+    path creates a *new* cookie rather than deleting the old one, and
+    the stale CSRF token would continue to shadow subsequent logins
+    from the same browser.
+
     Args:
         config: Auth configuration.
 
@@ -137,7 +149,7 @@ def make_clear_csrf_cookie(config: AuthConfig) -> Cookie:
         httponly=False,
         secure=config.cookie_secure,
         samesite=config.cookie_samesite,
-        path=config.cookie_path,
+        path=config.csrf_cookie_path,
         domain=config.cookie_domain,
         max_age=0,
     )
