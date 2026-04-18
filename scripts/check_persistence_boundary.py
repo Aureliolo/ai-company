@@ -79,10 +79,6 @@ _ALLOWLIST: Final[frozenset[str]] = frozenset(
         # ride the repository pattern because SQL strings are the
         # payload.
         "src/synthorg/tools/database/sql_query.py",
-        # Backup handler performs sqlite3 file-level backup via the
-        # stdlib Connection.backup() API -- this is a backup
-        # operation on the DB file itself, not a repository concern.
-        "src/synthorg/backup/handlers/persistence.py",
         # Destructive-operation detector scans user-supplied SQL for
         # DDL keywords -- the DDL literals are the *payload* of the
         # security check, not SQL emitted by the app.

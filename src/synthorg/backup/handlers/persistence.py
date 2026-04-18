@@ -1,10 +1,8 @@
 """Persistence component handler -- SQLite VACUUM INTO backup."""
 
 import asyncio
-import contextlib
 import shutil
-import sqlite3
-from pathlib import Path
+from pathlib import Path  # noqa: TC003
 
 from synthorg.backup.errors import ComponentBackupError
 from synthorg.backup.models import BackupComponent
@@ -13,6 +11,10 @@ from synthorg.observability.events.backup import (
     BACKUP_COMPONENT_COMPLETED,
     BACKUP_COMPONENT_FAILED,
     BACKUP_COMPONENT_STARTED,
+)
+from synthorg.persistence.sqlite.backup_utils import (
+    integrity_check,
+    vacuum_into,
 )
 
 logger = get_logger(__name__)
@@ -149,25 +151,13 @@ class PersistenceComponentHandler:
 
     @staticmethod
     def _vacuum_into(source_path: str, target_path: str) -> int:
-        """Execute VACUUM INTO to produce a consistent copy.
-
-        Args:
-            source_path: Path to the live database.
-            target_path: Path for the backup copy.
-
-        Returns:
-            Size of the resulting backup file in bytes.
-        """
-        with contextlib.closing(sqlite3.connect(source_path)) as conn:
-            conn.execute("VACUUM INTO ?", (target_path,))
-        return Path(target_path).stat().st_size
+        """Delegate to the persistence-layer backup primitive."""
+        return vacuum_into(source_path, target_path)
 
     @staticmethod
     def _check_integrity(db_path: str) -> bool:
-        """Run PRAGMA integrity_check on a database file."""
-        with contextlib.closing(sqlite3.connect(db_path)) as conn:
-            result = conn.execute("PRAGMA integrity_check").fetchone()
-            return result is not None and result[0] == "ok"
+        """Delegate to the persistence-layer integrity check."""
+        return integrity_check(db_path)
 
     @staticmethod
     def _remove_sidecars(db_path: Path) -> None:
@@ -196,12 +186,10 @@ class PersistenceComponentHandler:
 
         try:
             shutil.copy2(source_file, db_path)
-            # Validate the restored copy
-            with contextlib.closing(sqlite3.connect(str(db_path))) as conn:
-                result = conn.execute("PRAGMA integrity_check").fetchone()
-                if result is None or result[0] != "ok":
-                    msg = "Restored database failed integrity check"
-                    raise ComponentBackupError(msg)  # noqa: TRY301
+            # Validate the restored copy via the persistence-layer helper.
+            if not integrity_check(str(db_path)):
+                msg = "Restored database failed integrity check"
+                raise ComponentBackupError(msg)  # noqa: TRY301
         except Exception:
             # Rollback: restore the original
             if bak_path.exists():
