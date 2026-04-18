@@ -1,5 +1,6 @@
 import { act, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import fc from 'fast-check'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
 import { Sidebar } from '@/components/layout/Sidebar'
@@ -335,12 +336,14 @@ describe('Sidebar', () => {
       expect(onOverlayClose).toHaveBeenCalledOnce()
     })
 
-    // Property: navigating to any different static route while overlay is open triggers exactly one close.
     // Each iteration mounts a tablet-sized Sidebar with a Base UI Drawer; the Drawer's
     // `useTransitionStatus` schedules requestAnimationFrame callbacks (jsdom emulates rAF via
-    // setInterval) that leak past unmount under `--detect-async-leaks`. Using `it.each` instead of
-    // fast-check lets us cover every static route deterministically while keeping iteration count
-    // low enough that any residual rAF handle is flushed within the 15s test budget.
+    // setInterval) that would previously leak past unmount under `--detect-async-leaks`.
+    // The rAF shim in `test-setup.tsx` keeps these tests leak-free.
+    //
+    // Coverage strategy: `it.each` enumerates every route exactly once (deterministic coverage,
+    // stable CI timing), and a low-iteration `fast-check` property test shuffles ordering to
+    // catch cross-render state leaks that a fixed order would miss.
     const staticRoutes = Object.values(ROUTES).filter((r) => !r.includes(':') && r !== '/')
     it.each(staticRoutes)(
       'close-on-navigate fires exactly once when navigating to %s',
@@ -350,6 +353,26 @@ describe('Sidebar', () => {
         await act(() => router.navigate(route))
         expect(onOverlayClose).toHaveBeenCalledOnce()
         unmount()
+      },
+    )
+
+    it(
+      'close-on-navigate is independent of route order (property)',
+      { timeout: 15_000 },
+      async () => {
+        await fc.assert(
+          fc.asyncProperty(
+            fc.constantFrom(...staticRoutes),
+            async (route) => {
+              const onOverlayClose = vi.fn()
+              const { router, unmount } = setupTablet(true, onOverlayClose)
+              await act(() => router.navigate(route))
+              expect(onOverlayClose).toHaveBeenCalledOnce()
+              unmount()
+            },
+          ),
+          { numRuns: 10 },
+        )
       },
     )
   })

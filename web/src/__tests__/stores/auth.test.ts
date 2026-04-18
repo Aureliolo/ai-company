@@ -15,10 +15,12 @@ vi.mock('@/api/endpoints/auth', () => ({
 
 // `handleUnauthorized` dynamically imports `@/stores/websocket` and calls
 // `disconnect()`. Without a mock, the dynamic import + `.then().catch()`
-// chain outlives the test body and leaks as PROMISEs. Stub the module.
+// chain outlives the test body and leaks as PROMISEs. Stub the module
+// with a stable spy so tests can assert `disconnect` was called.
+const mockDisconnect = vi.fn()
 vi.mock('@/stores/websocket', () => ({
   useWebSocketStore: {
-    getState: () => ({ disconnect: vi.fn() }),
+    getState: () => ({ disconnect: mockDisconnect }),
   },
 }))
 
@@ -75,6 +77,19 @@ describe('auth store', () => {
 
       expect(useAuthStore.getState().authStatus).toBe('unauthenticated')
       expect(useAuthStore.getState().user).toBeNull()
+    })
+
+    it('tears down the WebSocket transport', async () => {
+      const { vi: viLocal } = await import('vitest')
+      useAuthStore.setState({ authStatus: 'authenticated', user: mockUser })
+
+      useAuthStore.getState().handleUnauthorized()
+
+      // `handleUnauthorized` uses a dynamic import + .then() to call
+      // disconnect. Wait for the chain to resolve before asserting.
+      await viLocal.waitFor(() => {
+        expect(mockDisconnect).toHaveBeenCalled()
+      })
     })
 
     it('redirects to /login when not already there', () => {

@@ -191,7 +191,14 @@ function getRequestInterceptor(): (config: Record<string, unknown>) => Record<st
 // tough-cookie backed `document.cookie` setter creates a Promise via
 // `createPromiseCallback` that leaks past test teardown under
 // --detect-async-leaks. Mocking the reader is a narrower, leak-free path
-// to the same coverage.
+// to the interceptor's behavior; the cookie-parsing logic inside
+// `csrf.ts` itself is covered directly by `__tests__/utils/csrf.test.ts`.
+// Compile-time guard: if `@/utils/csrf` gains new exports, the type
+// import below will error until this mock is extended.
+import type * as CsrfModule from '@/utils/csrf'
+type CsrfExports = keyof typeof CsrfModule
+const _csrfMockExports: Record<CsrfExports, unknown> = { getCsrfToken: true }
+void _csrfMockExports
 vi.mock('@/utils/csrf', () => ({
   getCsrfToken: vi.fn(),
 }))
@@ -267,5 +274,50 @@ describe('apiClient 401 response interceptor', () => {
     )
 
     await expect(apiClient.interceptors.response.handlers?.[0]?.rejected?.(error)).rejects.toBeDefined()
+  })
+
+  it('flips auth to unauthenticated on 401 (integration)', async () => {
+    const { AxiosError } = await import('axios')
+    const { useAuthStore } = await import('@/stores/auth')
+
+    // Seed an authenticated session so we can observe the flip.
+    useAuthStore.setState({
+      authStatus: 'authenticated',
+      user: {
+        id: '1',
+        username: 'admin',
+        role: 'ceo',
+        must_change_password: false,
+        org_roles: [],
+        scoped_departments: [],
+      },
+      loading: false,
+    })
+
+    const error = new AxiosError(
+      'Unauthorized',
+      'ERR_BAD_RESPONSE',
+      undefined,
+      undefined,
+      {
+        status: 401,
+        data: {},
+        headers: {},
+        statusText: 'Unauthorized',
+        config: {} as AxiosResponse['config'],
+      } as AxiosResponse,
+    )
+
+    // The interceptor re-throws after triggering handleUnauthorized.
+    await expect(
+      apiClient.interceptors.response.handlers?.[0]?.rejected?.(error),
+    ).rejects.toBeDefined()
+
+    // Dynamic import chain inside the interceptor resolves on a microtask;
+    // wait for the flip rather than assuming synchronous execution.
+    await vi.waitFor(() => {
+      expect(useAuthStore.getState().authStatus).toBe('unauthenticated')
+      expect(useAuthStore.getState().user).toBeNull()
+    })
   })
 })

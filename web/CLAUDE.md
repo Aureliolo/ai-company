@@ -13,6 +13,7 @@ npm --prefix web run build                 # production build
 npm --prefix web run lint                  # ESLint (zero warnings enforced)
 npm --prefix web run type-check            # TypeScript type checking
 npm --prefix web run test                  # Vitest unit tests (coverage scoped to files changed vs origin/main)
+npm --prefix web run test -- --coverage --detect-async-leaks  # Full suite + unhandled-handle detection (matches CI)
 npm --prefix web run analyze               # bundle size treemap (opens stats.html)
 npm --prefix web run e2e                   # Playwright visual regression tests
 npm --prefix web run e2e:update            # update Playwright screenshot baselines
@@ -60,6 +61,8 @@ All Zustand store **mutation** actions (create/update/delete) MUST follow the `s
 
 **List reads** (`fetch*`) follow the same pattern for logging but set `error: string | null` on the store instead of toasting -- the UI surface (usually a page-level error banner) consumes the error state.
 
+**Test teardown**: `web/src/test-setup.tsx` registers a global `afterEach` that calls `useToastStore.getState().cancelAllPending()` + resets `toasts` state, and invokes `cancelPendingPersist()` on the notifications store. `cancelAllPending()` clears pending `setTimeout` handles used for auto-dismiss without mutating the toast list, so per-test assertions against `toasts` still work. This contract is required for `npm run test -- --detect-async-leaks` to exit 0; any new store that schedules timers must expose an equivalent cleanup hook.
+
 ## Design System (MANDATORY)
 
 ### Component Reuse
@@ -78,7 +81,7 @@ All Zustand store **mutation** actions (create/update/delete) MUST follow the `s
 | `StatPill` | `@/components/ui/stat-pill` | Compact inline label + value pair |
 | `Avatar` | `@/components/ui/avatar` | Circular initials avatar with optional `borderColor?` prop |
 | `Button` | `@/components/ui/button` | Standard button (shadcn) |
-| `Toast` / `ToastContainer` | `@/components/ui/toast` | Success/error/warning/info notifications with auto-dismiss queue (mount `ToastContainer` once in AppLayout) |
+| `Toast` / `ToastContainer` | `@/components/ui/toast` | Success/error/warning/info notifications with auto-dismiss queue (mount `ToastContainer` once in AppLayout). Store exposes `cancelAllPending()` for test teardown -- called from the global `afterEach` in `test-setup.tsx`. |
 | `Skeleton` / `SkeletonCard` / `SkeletonMetric` / `SkeletonTable` / `SkeletonText` | `@/components/ui/skeleton` | Loading placeholders matching component shapes (shimmer animation, respects `prefers-reduced-motion`) |
 | `EmptyState` | `@/components/ui/empty-state` | No-data / no-results placeholder with icon, title, description, optional action button |
 | `ErrorBoundary` | `@/components/ui/error-boundary` | React error boundary with retry -- `level` prop: `page` / `section` / `component` |

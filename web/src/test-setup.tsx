@@ -152,6 +152,13 @@ if (typeof window !== 'undefined' && typeof window.matchMedia !== 'function') {
 // with a real timer). Without a global teardown hook these timers survive the
 // test boundary and vitest flags them as leaked. `cancelAllPending()` clears
 // the handles; resetting `toasts` keeps subsequent tests isolated.
+//
+// We run this in `afterEach` (not `beforeEach`) deliberately: the test body's
+// assertions on toast state complete *before* the afterEach fires, so
+// resetting here does not mask in-test assertions. A test that needs toast
+// state to persist across a teardown boundary (e.g. asserting a toast is
+// still visible after a dialog closes) should inline its own assertion
+// within the test body, never rely on post-teardown state.
 afterEach(() => {
   useToastStore.getState().cancelAllPending()
   useToastStore.setState({ toasts: [] })

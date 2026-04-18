@@ -4,6 +4,12 @@ import { useSetupStore } from '@/stores/setup'
 import { router } from '@/router'
 import App from '../App'
 
+// Note: `@/api/endpoints/settings` is mocked globally in
+// `src/test-setup.tsx`. Do NOT override it here with a partial shape --
+// per-file overrides replace the global mock entirely, so any test that
+// runs after a partial override inherits the missing exports. Extend
+// the global mock in `test-setup.tsx` if more endpoints are needed.
+
 // Mock the setup API (used by SetupGuard)
 vi.mock('@/api/endpoints/setup', () => ({
   getSetupStatus: vi.fn().mockResolvedValue({

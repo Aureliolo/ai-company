@@ -181,6 +181,34 @@ function countUnread(items: readonly NotificationItem[]): number {
   return items.filter((i) => !i.read).length
 }
 
+const MAX_STRING_LEN = 128
+
+/**
+ * Clamp a WS-supplied string for safe storage and display.
+ *
+ * React escapes HTML at render time, so XSS via the default text path is
+ * already covered. This helper adds defense-in-depth for the
+ * non-presentational paths:
+ *  - strips C0 controls and DELETE (U+0000..U+001F, U+007F) that would
+ *    corrupt log lines, terminal output, and notification tooltips,
+ *  - strips bidi-override characters (U+202A..U+202E, U+2066..U+2069)
+ *    that can flip on-screen token order in sensitive UI (CVE-2021-42574),
+ *  - trims surrounding whitespace and caps length at `maxLen`.
+ *
+ * Returns `undefined` for non-strings so callers can pass the result
+ * directly into an optional field without widening the type.
+ */
+function sanitizeWsString(value: unknown, maxLen: number = MAX_STRING_LEN): string | undefined {
+  if (typeof value !== 'string') return undefined
+  const stripped = value
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u001F\u007F]/g, '')
+    .replace(/[\u202A-\u202E\u2066-\u2069]/g, '')
+    .trim()
+  if (stripped.length === 0) return undefined
+  return stripped.slice(0, maxLen)
+}
+
 // ---------------------------------------------------------------------------
 // Store
 // ---------------------------------------------------------------------------
@@ -395,9 +423,9 @@ export const useNotificationsStore = create<NotificationsState>()((set, get) => 
           enqueue({
             category: 'approvals.pending',
             title: 'Approval requested',
-            description: typeof payload.title === 'string' ? payload.title.slice(0, 128) : undefined,
+            description: sanitizeWsString(payload.title),
             href: typeof payload.approval_id === 'string' ? `/approvals` : undefined,
-            entityId: typeof payload.approval_id === 'string' ? payload.approval_id : undefined,
+            entityId: sanitizeWsString(payload.approval_id),
           })
           break
 
@@ -405,7 +433,7 @@ export const useNotificationsStore = create<NotificationsState>()((set, get) => 
           enqueue({
             category: 'approvals.expiring',
             title: 'Approval expiring',
-            entityId: typeof payload.approval_id === 'string' ? payload.approval_id : undefined,
+            entityId: sanitizeWsString(payload.approval_id),
           })
           break
 
@@ -413,7 +441,7 @@ export const useNotificationsStore = create<NotificationsState>()((set, get) => 
           enqueue({
             category: 'approvals.decided',
             title: 'Approval approved',
-            entityId: typeof payload.approval_id === 'string' ? payload.approval_id : undefined,
+            entityId: sanitizeWsString(payload.approval_id),
           })
           break
 
@@ -421,7 +449,7 @@ export const useNotificationsStore = create<NotificationsState>()((set, get) => 
           enqueue({
             category: 'approvals.decided',
             title: 'Approval rejected',
-            entityId: typeof payload.approval_id === 'string' ? payload.approval_id : undefined,
+            entityId: sanitizeWsString(payload.approval_id),
           })
           break
 
@@ -431,7 +459,7 @@ export const useNotificationsStore = create<NotificationsState>()((set, get) => 
           enqueue({
             category: isExhausted ? 'budget.exhausted' : 'budget.threshold',
             title: isExhausted ? 'Budget exhausted' : 'Budget threshold crossed',
-            description: typeof payload.message === 'string' ? payload.message.slice(0, 128) : undefined,
+            description: sanitizeWsString(payload.message),
             severity: isExhausted ? 'critical' : 'warning',
           })
           break
@@ -441,7 +469,7 @@ export const useNotificationsStore = create<NotificationsState>()((set, get) => 
           enqueue({
             category: 'system.error',
             title: 'System error',
-            description: typeof payload.message === 'string' ? payload.message.slice(0, 128) : undefined,
+            description: sanitizeWsString(payload.message),
           })
           break
 
@@ -452,23 +480,23 @@ export const useNotificationsStore = create<NotificationsState>()((set, get) => 
           })
           break
 
-        case 'personality.trimmed':
+        case 'personality.trimmed': {
+          const agentName = sanitizeWsString(payload.agent_name, 64)
           enqueue({
             category: 'agents.personality_trimmed',
             title: 'Personality trimmed',
-            description: typeof payload.agent_name === 'string'
-              ? `${payload.agent_name.slice(0, 64)} personality was trimmed`
-              : undefined,
-            entityId: typeof payload.agent_id === 'string' ? payload.agent_id : undefined,
+            description: agentName ? `${agentName} personality was trimmed` : undefined,
+            entityId: sanitizeWsString(payload.agent_id),
           })
           break
+        }
 
         case 'agent.hired':
           enqueue({
             category: 'agents.hired',
             title: 'Agent hired',
-            description: typeof payload.agent_name === 'string' ? payload.agent_name.slice(0, 64) : undefined,
-            entityId: typeof payload.agent_id === 'string' ? payload.agent_id : undefined,
+            description: sanitizeWsString(payload.agent_name, 64),
+            entityId: sanitizeWsString(payload.agent_id),
           })
           break
 
@@ -476,27 +504,29 @@ export const useNotificationsStore = create<NotificationsState>()((set, get) => 
           enqueue({
             category: 'agents.fired',
             title: 'Agent fired',
-            description: typeof payload.agent_name === 'string' ? payload.agent_name.slice(0, 64) : undefined,
-            entityId: typeof payload.agent_id === 'string' ? payload.agent_id : undefined,
+            description: sanitizeWsString(payload.agent_name, 64),
+            entityId: sanitizeWsString(payload.agent_id),
           })
           break
 
         case 'task.status_changed': {
           const status = typeof payload.status === 'string' ? payload.status : ''
+          const taskId = sanitizeWsString(payload.task_id)
+          const title = sanitizeWsString(payload.title)
           if (status === 'failed') {
             enqueue({
               category: 'tasks.failed',
               title: 'Task failed',
-              description: typeof payload.title === 'string' ? payload.title.slice(0, 128) : undefined,
-              entityId: typeof payload.task_id === 'string' ? payload.task_id : undefined,
-              href: typeof payload.task_id === 'string' ? `/tasks` : undefined,
+              description: title,
+              entityId: taskId,
+              href: taskId ? `/tasks` : undefined,
             })
           } else if (status === 'blocked') {
             enqueue({
               category: 'tasks.blocked',
               title: 'Task blocked',
-              description: typeof payload.title === 'string' ? payload.title.slice(0, 128) : undefined,
-              entityId: typeof payload.task_id === 'string' ? payload.task_id : undefined,
+              description: title,
+              entityId: taskId,
             })
           }
           break
