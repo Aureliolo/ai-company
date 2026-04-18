@@ -6,6 +6,7 @@ import type { NotificationFilterGroup } from '@/types/notifications'
 const MESSAGES: Record<NotificationFilterGroup, string> = {
   all: 'No notifications yet',
   approvals: 'No approval notifications',
+  escalations: 'No escalation notifications',
   budget: 'No budget notifications',
   system: 'No system notifications',
   tasks: 'No task notifications',

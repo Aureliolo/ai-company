@@ -59,6 +59,8 @@ from synthorg.api.lifecycle import (
     _try_stop,
 )
 from synthorg.api.middleware import RequestLoggingMiddleware, security_headers_hook
+from synthorg.api.rate_limits import build_sliding_window_store
+from synthorg.api.rate_limits.protocol import SlidingWindowStore  # noqa: TC001
 from synthorg.api.state import AppState
 from synthorg.api.ws_models import WsEvent, WsEventType
 from synthorg.backup.factory import build_backup_service
@@ -68,6 +70,13 @@ from synthorg.budget.coordination_store import (
 )
 from synthorg.budget.tracker import CostTracker  # noqa: TC001
 from synthorg.communication.bus_protocol import MessageBus  # noqa: TC001
+from synthorg.communication.conflict_resolution.escalation import (
+    EscalationExpirationSweeper,
+    PendingFuturesRegistry,
+    build_decision_processor,
+    build_escalation_notify_subscriber,
+    build_escalation_queue_store,
+)
 from synthorg.communication.delegation.record_store import (
     DelegationRecordStore,  # noqa: TC001
 )
@@ -1088,6 +1097,28 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
                     error="OAuth token manager startup failed (non-fatal)",
                     exc_info=True,
                 )
+        if app_state.escalation_sweeper is not None:
+            try:
+                await app_state.escalation_sweeper.start()
+            except MemoryError, RecursionError:
+                raise
+            except Exception:
+                logger.warning(
+                    API_APP_STARTUP,
+                    error="Escalation sweeper startup failed (non-fatal)",
+                    exc_info=True,
+                )
+        if app_state.escalation_notify_subscriber is not None:
+            try:
+                await app_state.escalation_notify_subscriber.start()
+            except MemoryError, RecursionError:
+                raise
+            except Exception:
+                logger.warning(
+                    API_APP_STARTUP,
+                    error="Escalation notify subscriber startup failed (non-fatal)",
+                    exc_info=True,
+                )
 
     async def on_shutdown() -> None:  # noqa: C901, PLR0912
         nonlocal _ticket_cleanup_task, _auto_wired_dispatcher
@@ -1116,6 +1147,27 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
             )
             _health_prober = None
         # Stop integration background services (reverse start order).
+        if app_state.escalation_notify_subscriber is not None:
+            await _try_stop(
+                app_state.escalation_notify_subscriber.stop(),
+                API_APP_SHUTDOWN,
+                "Failed to stop escalation notify subscriber",
+            )
+        if app_state.escalation_sweeper is not None:
+            await _try_stop(
+                app_state.escalation_sweeper.stop(),
+                API_APP_SHUTDOWN,
+                "Failed to stop escalation sweeper",
+            )
+        # Cancel any unresolved pending futures so coroutines awaiting
+        # operator decisions get a clean CancelledError (instead of
+        # hanging past shutdown) and the registry map is emptied.
+        if app_state.escalation_registry is not None:
+            await _try_stop(
+                app_state.escalation_registry.close(),
+                API_APP_SHUTDOWN,
+                "Failed to close escalation pending-futures registry",
+            )
         if app_state.oauth_token_manager is not None:
             await _try_stop(
                 app_state.oauth_token_manager.stop(),
@@ -1955,6 +2007,37 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
     if distributed_task_queue is not None:
         app_state.set_distributed_task_queue(distributed_task_queue)
 
+    # Human escalation approval queue (#1418).  Builds the pluggable
+    # store + processor + Future registry and attaches them to
+    # ``AppState`` so the escalations controller and the
+    # ``HumanEscalationResolver`` share a single instance.
+    escalation_config = effective_config.communication.conflict_resolution.escalation
+    _escalation_store = build_escalation_queue_store(
+        escalation_config,
+        persistence,
+    )
+    app_state.set_escalation_store(_escalation_store)
+    app_state.set_escalation_processor(build_decision_processor(escalation_config))
+    _escalation_registry = PendingFuturesRegistry()
+    app_state.set_escalation_registry(_escalation_registry)
+    app_state.set_escalation_sweeper(
+        EscalationExpirationSweeper(
+            _escalation_store,
+            interval_seconds=escalation_config.sweeper_interval_seconds,
+        ),
+    )
+    # Cross-instance wake-up subscriber (#1418).  No-op unless the
+    # queue backend is Postgres and ``cross_instance_notify`` is
+    # enabled; otherwise the sweeper and per-resolver timeout cover
+    # eventual consistency on their own.
+    app_state.set_escalation_notify_subscriber(
+        build_escalation_notify_subscriber(
+            escalation_config,
+            _escalation_store,
+            _escalation_registry,
+        ),
+    )
+
     bridge = (
         MessageBusBridge(
             message_bus,
@@ -2186,6 +2269,25 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
     if _skip_lifecycle_shutdown:
         shutdown = []
 
+    # Per-operation rate limiter (#1391).  Layered on top of the global
+    # two-tier limiter; read from app state by ``per_op_rate_limit``
+    # guards.  Only build the store when the feature is enabled, so an
+    # unsupported/unimplemented backend (e.g. ``redis`` before the
+    # adapter lands) does not crash startup for deployments that turn
+    # per-op limiting off.  The guard treats missing store AS enabled
+    # as a wiring error, so we only wire ``None`` when the config
+    # explicitly opts out.
+    per_op_rate_limit_store: SlidingWindowStore | None = None
+    if api_config.per_op_rate_limit.enabled:
+        per_op_rate_limit_store = build_sliding_window_store(
+            api_config.per_op_rate_limit,
+        )
+        # Honour ``_skip_lifecycle_shutdown`` so tests that share an
+        # app across multiple lifespans do not tear down the store
+        # (and its background GC) on the first teardown.
+        if not _skip_lifecycle_shutdown:
+            shutdown = [*shutdown, per_op_rate_limit_store.close]
+
     return Litestar(
         route_handlers=[api_router, *a2a_root_controllers],
         # Disable Litestar's built-in logging config to preserve the
@@ -2196,7 +2298,20 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
         # queue_listener, causing all runtime logs to go only to Docker
         # stdout.
         logging_config=None,
-        state=State({"app_state": app_state}),
+        state=State(
+            {
+                "app_state": app_state,
+                "per_op_rate_limit_store": per_op_rate_limit_store,
+                "per_op_rate_limit_config": api_config.per_op_rate_limit,
+                # Mirrors the global limiter's trusted-proxy set so the
+                # per-op guard extracts the same "real" client IP behind
+                # reverse proxies instead of bucketing all traffic by
+                # the proxy's IP.
+                "per_op_trusted_proxies": frozenset(
+                    api_config.server.trusted_proxies,
+                ),
+            },
+        ),
         cors_config=CORSConfig(
             allow_origins=list(api_config.cors.allowed_origins),
             allow_methods=list(api_config.cors.allow_methods),  # type: ignore[arg-type]

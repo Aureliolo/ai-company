@@ -10,13 +10,30 @@ deterministic (bad config, invalid state, missing credentials) and
 should propagate.
 """
 
+from typing import ClassVar
+
+from synthorg.api.errors import ErrorCategory, ErrorCode
+
 
 class IntegrationError(Exception):
-    """Base exception for all integration operations."""
+    """Base exception for all integration operations.
+
+    Class Attributes:
+        status_code: HTTP 502 default (upstream/integration failure).
+        error_code: ``INTEGRATION_ERROR``.
+        error_category: ``PROVIDER_ERROR``.
+        retryable: Mirrors ``is_retryable``; subclasses override both.
+        default_message: Generic 5xx-safe message.
+    """
 
     # Default: deterministic failure -- do NOT retry. Subclasses
     # representing transient failures override this.
     is_retryable: bool = False
+    retryable: ClassVar[bool] = False
+    status_code: ClassVar[int] = 502
+    error_code: ClassVar[ErrorCode] = ErrorCode.INTEGRATION_ERROR
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.PROVIDER_ERROR
+    default_message: ClassVar[str] = "Integration error"
 
 
 # -- Connection errors ---------------------------------------------------
@@ -25,9 +42,19 @@ class IntegrationError(Exception):
 class ConnectionNotFoundError(IntegrationError):
     """A connection with the given name does not exist."""
 
+    status_code: ClassVar[int] = 404
+    error_code: ClassVar[ErrorCode] = ErrorCode.CONNECTION_NOT_FOUND
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.NOT_FOUND
+    default_message: ClassVar[str] = "Connection not found"
+
 
 class DuplicateConnectionError(IntegrationError):
     """A connection with the given name already exists."""
+
+    status_code: ClassVar[int] = 409
+    error_code: ClassVar[ErrorCode] = ErrorCode.RESOURCE_CONFLICT
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.CONFLICT
+    default_message: ClassVar[str] = "Connection already exists"
 
 
 class InvalidConnectionAuthError(IntegrationError):
@@ -38,6 +65,7 @@ class ConnectionHealthError(IntegrationError):
     """A health check operation failed."""
 
     is_retryable = True
+    retryable: ClassVar[bool] = True
 
 
 # -- Secret errors -------------------------------------------------------
@@ -47,18 +75,21 @@ class SecretRetrievalError(IntegrationError):
     """A secret could not be retrieved from the backend."""
 
     is_retryable = True
+    retryable: ClassVar[bool] = True
 
 
 class SecretStorageError(IntegrationError):
     """A secret could not be stored in the backend."""
 
     is_retryable = True
+    retryable: ClassVar[bool] = True
 
 
 class SecretRotationError(IntegrationError):
     """A secret rotation operation failed."""
 
     is_retryable = True
+    retryable: ClassVar[bool] = True
 
 
 class MasterKeyError(IntegrationError):
@@ -70,6 +101,10 @@ class MasterKeyError(IntegrationError):
 
 class OAuthError(IntegrationError):
     """Base exception for OAuth flow failures."""
+
+    status_code: ClassVar[int] = 502
+    error_code: ClassVar[ErrorCode] = ErrorCode.OAUTH_ERROR
+    default_message: ClassVar[str] = "OAuth flow failed"
 
 
 class OAuthFlowError(OAuthError):
@@ -84,6 +119,7 @@ class TokenExchangeFailedError(OAuthError):
     """
 
     is_retryable = True
+    retryable: ClassVar[bool] = True
 
 
 class TokenRefreshFailedError(OAuthError):
@@ -94,6 +130,7 @@ class TokenRefreshFailedError(OAuthError):
     """
 
     is_retryable = True
+    retryable: ClassVar[bool] = True
 
 
 class InvalidStateError(OAuthError):
@@ -113,6 +150,10 @@ class PKCEValidationError(OAuthError):
 
 class WebhookError(IntegrationError):
     """Base exception for webhook operations."""
+
+    status_code: ClassVar[int] = 502
+    error_code: ClassVar[ErrorCode] = ErrorCode.WEBHOOK_ERROR
+    default_message: ClassVar[str] = "Webhook processing failed"
 
 
 class SignatureVerificationFailedError(WebhookError):
@@ -138,6 +179,7 @@ class ConnectionRateLimitError(IntegrationError):
     """The connection's rate limit has been exceeded."""
 
     is_retryable = True
+    retryable: ClassVar[bool] = True
 
 
 # -- Tunnel errors -------------------------------------------------------
@@ -147,6 +189,7 @@ class TunnelError(IntegrationError):
     """An error occurred starting or operating the tunnel."""
 
     is_retryable = True
+    retryable: ClassVar[bool] = True
 
 
 # -- MCP catalog errors --------------------------------------------------

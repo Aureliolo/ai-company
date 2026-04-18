@@ -12,6 +12,7 @@ from typing import Any, Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.api.auth.config import AuthConfig
+from synthorg.api.rate_limits.config import PerOpRateLimitConfig
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
@@ -311,7 +312,9 @@ class ApiConfig(BaseModel):
 
     Attributes:
         cors: CORS configuration.
-        rate_limit: Rate limiting configuration.
+        rate_limit: Global two-tier rate limiting configuration.
+        per_op_rate_limit: Per-operation throttling configuration
+            (layered on top of the global two-tier limiter).
         server: Uvicorn server configuration.
         auth: Authentication configuration.
         api_prefix: URL prefix for all API routes.
@@ -325,7 +328,11 @@ class ApiConfig(BaseModel):
     )
     rate_limit: RateLimitConfig = Field(
         default_factory=RateLimitConfig,
-        description="Rate limiting configuration",
+        description="Global two-tier rate limiting configuration",
+    )
+    per_op_rate_limit: PerOpRateLimitConfig = Field(
+        default_factory=PerOpRateLimitConfig,
+        description="Per-operation throttling (layered on the global limiter)",
     )
     server: ServerConfig = Field(
         default_factory=ServerConfig,

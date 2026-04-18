@@ -24,6 +24,23 @@ CONFLICT_HYBRID_AUTO_RESOLVED: Final[str] = "conflict.hybrid.auto_resolved"
 
 # Human escalation
 CONFLICT_HUMAN_ESCALATION_STUB: Final[str] = "conflict.human.escalation_stub"
+CONFLICT_ESCALATION_QUEUED: Final[str] = "conflict.escalation.queued"
+CONFLICT_ESCALATION_RESOLVED: Final[str] = "conflict.escalation.resolved"
+CONFLICT_ESCALATION_CANCELLED: Final[str] = "conflict.escalation.cancelled"
+CONFLICT_ESCALATION_EXPIRED: Final[str] = "conflict.escalation.expired"
+CONFLICT_ESCALATION_TIMEOUT: Final[str] = "conflict.escalation.timeout"
+CONFLICT_ESCALATION_SWEEPER_STARTED: Final[str] = "conflict.escalation.sweeper_started"
+CONFLICT_ESCALATION_SWEEPER_STOPPED: Final[str] = "conflict.escalation.sweeper_stopped"
+CONFLICT_ESCALATION_SWEEPER_FAILED: Final[str] = "conflict.escalation.sweeper_failed"
+CONFLICT_ESCALATION_SUBSCRIBER_STARTED: Final[str] = (
+    "conflict.escalation.subscriber_started"
+)
+CONFLICT_ESCALATION_SUBSCRIBER_STOPPED: Final[str] = (
+    "conflict.escalation.subscriber_stopped"
+)
+CONFLICT_ESCALATION_SUBSCRIBER_FAILED: Final[str] = (
+    "conflict.escalation.subscriber_failed"
+)
 
 # Validation
 CONFLICT_VALIDATION_ERROR: Final[str] = "conflict.validation.error"

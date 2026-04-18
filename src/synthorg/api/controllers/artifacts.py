@@ -11,9 +11,15 @@ from litestar.params import Body, Parameter
 
 from synthorg.api.channels import CHANNEL_ARTIFACTS, publish_ws_event
 from synthorg.api.dto import ApiResponse, CreateArtifactRequest, PaginatedResponse
+from synthorg.api.errors import (
+    ArtifactStorageFullApiError,
+    ArtifactTooLargeApiError,
+    NotFoundError,
+)
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import PaginationLimit, PaginationOffset, paginate
 from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
+from synthorg.api.rate_limits.guard import per_op_rate_limit
 from synthorg.api.ws_models import WsEventType
 from synthorg.core.artifact import Artifact
 from synthorg.core.enums import ArtifactType
@@ -22,10 +28,12 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.persistence import (
     PERSISTENCE_ARTIFACT_CONTENT_MISSING,
     PERSISTENCE_ARTIFACT_DELETED,
+    PERSISTENCE_ARTIFACT_FETCH_FAILED,
     PERSISTENCE_ARTIFACT_SAVE_FAILED,
     PERSISTENCE_ARTIFACT_SAVED,
     PERSISTENCE_ARTIFACT_STORAGE_DELETE_FAILED,
     PERSISTENCE_ARTIFACT_STORAGE_ROLLBACK_FAILED,
+    PERSISTENCE_ARTIFACT_STORE_FAILED,
     PERSISTENCE_ARTIFACT_STORED,
 )
 from synthorg.persistence.errors import (
@@ -312,7 +320,15 @@ class ArtifactController(Controller):
 
     @put(
         "/{artifact_id:str}/content",
-        guards=[require_write_access],
+        guards=[
+            require_write_access,
+            per_op_rate_limit(
+                "artifacts.upload",
+                max_requests=10,
+                window_seconds=60,
+                key="user",
+            ),
+        ],
         media_type="application/json",
     )
     async def upload_content(
@@ -341,30 +357,36 @@ class ArtifactController(Controller):
         repo = state.app_state.persistence.artifacts
         artifact = await repo.get(artifact_id)
         if artifact is None:
-            return Response(
-                content=ApiResponse[Artifact](
-                    error=f"Artifact {artifact_id!r} not found",
-                ),
-                status_code=404,
+            msg = f"Artifact {artifact_id!r} not found"
+            logger.warning(
+                PERSISTENCE_ARTIFACT_FETCH_FAILED,
+                artifact_id=artifact_id,
+                error_type="artifact_not_found",
+                note="upload_content_target_missing",
             )
+            raise NotFoundError(msg)
 
         storage = state.app_state.artifact_storage
         try:
             size = await storage.store(artifact_id, data)
-        except ArtifactTooLargeError:
-            return Response(
-                content=ApiResponse[Artifact](
-                    error="Artifact content is too large",
-                ),
-                status_code=413,
+        except ArtifactTooLargeError as exc:
+            logger.warning(
+                PERSISTENCE_ARTIFACT_STORE_FAILED,
+                artifact_id=artifact_id,
+                error_type=type(exc).__name__,
+                error=str(exc),
+                note="artifact_too_large",
             )
-        except ArtifactStorageFullError:
-            return Response(
-                content=ApiResponse[Artifact](
-                    error="Artifact storage is full",
-                ),
-                status_code=507,
+            raise ArtifactTooLargeApiError from exc
+        except ArtifactStorageFullError as exc:
+            logger.warning(
+                PERSISTENCE_ARTIFACT_STORE_FAILED,
+                artifact_id=artifact_id,
+                error_type=type(exc).__name__,
+                error=str(exc),
+                note="artifact_storage_full",
             )
+            raise ArtifactStorageFullApiError from exc
 
         updated = artifact.model_copy(
             update={

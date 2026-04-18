@@ -34,6 +34,7 @@ from synthorg.api.controllers.coordination_metrics import (
 )
 from synthorg.api.controllers.custom_rules import CustomRuleController
 from synthorg.api.controllers.departments import DepartmentController
+from synthorg.api.controllers.escalations import EscalationsController
 from synthorg.api.controllers.evaluation_config_versions import (
     EvaluationConfigVersionController,
 )
@@ -111,6 +112,7 @@ BASE_CONTROLLERS: tuple[type[Controller], ...] = (
     AnalyticsController,
     ProviderController,
     ApprovalsController,
+    EscalationsController,
     AutonomyController,
     AuthController,
     CollaborationController,
@@ -196,6 +198,7 @@ __all__ = [
     "CoordinationMetricsController",
     "CustomRuleController",
     "DepartmentController",
+    "EscalationsController",
     "EvaluationConfigVersionController",
     "EventStreamController",
     "HealthController",

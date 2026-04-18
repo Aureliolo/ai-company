@@ -1,4 +1,4 @@
-h1:ijWBkCVftiVC/xuCse2RIOgthf3opz8KHeKPnJWt2U0=
+h1:yTakR/0sp0s21YkYUrPyvvWjwDQsbm3yL81ga6Gycj0=
 20260410082619_baseline.sql h1:IeX80H/WDmbKJO7HLqEDUv71Xsu57mf8OBh1eft7DPM=
 20260410205014_subworkflows.sql h1:X5P6i3Jnawx9laPDB6kDNYKaaE7HI7t6CqSPnZ7cZss=
 20260411124351_user_invariant_triggers.sql h1:PBzczzzamFx1F1fiIgKoF7jqreHxQLfxMfUwrMYl5/Y=
@@ -7,3 +7,4 @@ h1:ijWBkCVftiVC/xuCse2RIOgthf3opz8KHeKPnJWt2U0=
 20260411224256_postgres_followups_composite_pks_and_advisory_locks.sql h1:LvMyv9B9yNRaccdBi34XdpJTLOuxlvxPAFrMZtZmP4Y=
 20260413155044_training_service_persistence.sql h1:vsOQhAHMhpGDCl/D3/wb3WUBLL+E6MalbrQg6nFefzs=
 20260417160205_rename_cost_usd.sql h1:Dh1ZywGRHXnTPDI0x/IlqVTTjbgjBdwxn2w67+Oou5c=
+20260417232418_add_conflict_escalations.sql h1:+Zc5s/nZip4ERy3jZLY4nnVyy6aYVZzsCgwbOZphccQ=

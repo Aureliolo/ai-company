@@ -1,0 +1,143 @@
+"""Protocols for the escalation queue backend and decision processor (#1418)."""
+
+from typing import Protocol, runtime_checkable
+
+from synthorg.communication.conflict_resolution.escalation.models import (
+    Escalation,
+    EscalationDecision,
+    EscalationStatus,
+)
+from synthorg.communication.conflict_resolution.models import (  # noqa: TC001
+    Conflict,
+    ConflictResolution,
+    DissentRecord,
+)
+
+_DEFAULT_LIMIT = 50
+_DEFAULT_OFFSET = 0
+
+
+@runtime_checkable
+class EscalationQueueStore(Protocol):
+    """Persistence contract for the human escalation queue.
+
+    Implementations persist escalations across process restarts.  All
+    methods are async to accommodate DB-backed adapters without forcing
+    the in-memory default to fake blocking I/O.
+    """
+
+    async def create(self, escalation: Escalation) -> None:
+        """Persist a new PENDING escalation.
+
+        Args:
+            escalation: The row to insert.  Must have ``status == PENDING``.
+
+        Raises:
+            ValueError: ``escalation.id`` already exists.
+        """
+        ...
+
+    async def get(self, escalation_id: str) -> Escalation | None:
+        """Return the escalation by ID, or ``None`` if missing."""
+        ...
+
+    async def list_items(
+        self,
+        *,
+        status: EscalationStatus | None = EscalationStatus.PENDING,
+        limit: int = _DEFAULT_LIMIT,
+        offset: int = _DEFAULT_OFFSET,
+    ) -> tuple[tuple[Escalation, ...], int]:
+        """Page over escalations, oldest-first by ``created_at``.
+
+        Args:
+            status: Filter by status (``None`` = all statuses).
+            limit: Maximum rows to return.
+            offset: Number of rows to skip.
+
+        Returns:
+            Tuple ``(page, total)`` where ``total`` is the unpaginated
+            row count matching ``status``.
+        """
+        ...
+
+    async def apply_decision(
+        self,
+        escalation_id: str,
+        *,
+        decision: EscalationDecision,
+        decided_by: str,
+    ) -> Escalation:
+        """Transition a PENDING escalation to DECIDED with ``decision``.
+
+        Args:
+            escalation_id: Target escalation.
+            decision: Operator decision payload.
+            decided_by: Operator identifier (``"human:<operator_id>"``).
+
+        Returns:
+            The updated :class:`Escalation`.
+
+        Raises:
+            KeyError: ``escalation_id`` does not exist.
+            ValueError: escalation is not PENDING (already decided,
+                expired, or cancelled).
+        """
+        ...
+
+    async def cancel(self, escalation_id: str, *, cancelled_by: str) -> Escalation:
+        """Transition a PENDING escalation to CANCELLED."""
+        ...
+
+    async def mark_expired(self, now_iso: str) -> tuple[str, ...]:
+        """Transition any PENDING row with ``expires_at <= now`` to EXPIRED.
+
+        Args:
+            now_iso: Current timestamp in ISO 8601 UTC -- passed in so
+                tests can pin time deterministically.
+
+        Returns:
+            IDs of escalations that were transitioned.
+        """
+        ...
+
+    async def close(self) -> None:
+        """Release any background resources."""
+        ...
+
+
+@runtime_checkable
+class DecisionProcessor(Protocol):
+    """Converts an operator decision into a :class:`ConflictResolution`.
+
+    Strategies differ in which decision shapes they accept:
+
+    - :class:`WinnerSelectProcessor` (default) accepts only
+      ``WinnerDecision`` -- safest surface.
+    - :class:`HybridDecisionProcessor` additionally accepts
+      ``RejectDecision`` and produces a ``REJECTED_BY_HUMAN`` outcome.
+    """
+
+    def process(
+        self,
+        conflict: Conflict,
+        decision: EscalationDecision,
+        *,
+        decided_by: str,
+    ) -> ConflictResolution:
+        """Build a :class:`ConflictResolution` from a decision.
+
+        Raises:
+            ValueError: the decision shape is not accepted by this
+                strategy, or the decision references an agent outside
+                the conflict.
+        """
+        ...
+
+    def build_dissent_records(
+        self,
+        conflict: Conflict,
+        resolution: ConflictResolution,
+    ) -> tuple[DissentRecord, ...]:
+        """Build dissent records for overruled positions."""
+        ...

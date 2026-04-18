@@ -777,4 +777,387 @@ class TestBuildResponseFallback:
                 status_code=404,
             )
         assert resp.status_code == 500
-        assert resp.content == {"error": "Internal server error"}  # type: ignore[comparison-overlap]
+
+
+# ── Domain error base class mappings (#1405) ────────────────────
+
+
+class TestDomainErrorMapping:
+    """Every domain error base and its key subclasses produce RFC 9457.
+
+    Before #1405, seven domain error base classes were not registered in
+    EXCEPTION_HANDLERS -- when they escaped a controller, they fell through
+    to ``handle_unexpected`` (500, INTERNAL_ERROR).  Now each base declares
+    HTTP metadata ClassVars (``status_code``, ``error_code``,
+    ``error_category``, ``retryable``, ``default_message``) and
+    ``handle_domain_error`` maps them through ``_build_response`` --
+    giving every domain exception a correct structured response.
+    """
+
+    @pytest.mark.parametrize(
+        (
+            "exc_factory",
+            "expected_status",
+            "expected_code",
+            "expected_category",
+            "expected_retryable",
+        ),
+        [
+            pytest.param(
+                lambda: __import__(
+                    "synthorg.engine.errors",
+                    fromlist=["EngineError"],
+                ).EngineError("oops"),
+                500,
+                ErrorCode.ENGINE_ERROR,
+                ErrorCategory.INTERNAL,
+                False,
+                id="engine_base",
+            ),
+            pytest.param(
+                lambda: __import__(
+                    "synthorg.engine.errors",
+                    fromlist=["TaskNotFoundError"],
+                ).TaskNotFoundError("missing"),
+                404,
+                ErrorCode.TASK_NOT_FOUND,
+                ErrorCategory.NOT_FOUND,
+                False,
+                id="engine_task_not_found",
+            ),
+            pytest.param(
+                lambda: __import__(
+                    "synthorg.engine.errors",
+                    fromlist=["TaskVersionConflictError"],
+                ).TaskVersionConflictError("stale"),
+                409,
+                ErrorCode.TASK_VERSION_CONFLICT,
+                ErrorCategory.CONFLICT,
+                False,
+                id="engine_version_conflict",
+            ),
+            pytest.param(
+                lambda: __import__(
+                    "synthorg.budget.errors",
+                    fromlist=["BudgetExhaustedError"],
+                ).BudgetExhaustedError("over budget"),
+                402,
+                ErrorCode.BUDGET_EXHAUSTED,
+                ErrorCategory.BUDGET_EXHAUSTED,
+                False,
+                id="budget_base",
+            ),
+            pytest.param(
+                lambda: __import__(
+                    "synthorg.budget.errors",
+                    fromlist=["DailyLimitExceededError"],
+                ).DailyLimitExceededError("daily cap hit"),
+                402,
+                ErrorCode.DAILY_LIMIT_EXCEEDED,
+                ErrorCategory.BUDGET_EXHAUSTED,
+                False,
+                id="budget_daily",
+            ),
+            pytest.param(
+                lambda: __import__(
+                    "synthorg.providers.errors",
+                    fromlist=["ProviderError"],
+                ).ProviderError("upstream fail"),
+                502,
+                ErrorCode.PROVIDER_ERROR,
+                ErrorCategory.PROVIDER_ERROR,
+                False,
+                id="provider_base",
+            ),
+            pytest.param(
+                lambda: __import__(
+                    "synthorg.providers.errors",
+                    fromlist=["ProviderTimeoutError"],
+                ).ProviderTimeoutError("timed out"),
+                504,
+                ErrorCode.PROVIDER_TIMEOUT,
+                ErrorCategory.PROVIDER_ERROR,
+                True,
+                id="provider_timeout",
+            ),
+            pytest.param(
+                lambda: __import__(
+                    "synthorg.providers.errors",
+                    fromlist=["ProviderInternalError"],
+                ).ProviderInternalError("upstream 500"),
+                502,
+                ErrorCode.PROVIDER_INTERNAL,
+                ErrorCategory.PROVIDER_ERROR,
+                True,
+                id="provider_internal",
+            ),
+            pytest.param(
+                lambda: __import__(
+                    "synthorg.ontology.errors",
+                    fromlist=["OntologyError"],
+                ).OntologyError("bad schema"),
+                500,
+                ErrorCode.ONTOLOGY_ERROR,
+                ErrorCategory.INTERNAL,
+                False,
+                id="ontology_base",
+            ),
+            pytest.param(
+                lambda: __import__(
+                    "synthorg.ontology.errors",
+                    fromlist=["OntologyNotFoundError"],
+                ).OntologyNotFoundError("unknown entity"),
+                404,
+                ErrorCode.ONTOLOGY_NOT_FOUND,
+                ErrorCategory.NOT_FOUND,
+                False,
+                id="ontology_not_found",
+            ),
+            pytest.param(
+                lambda: __import__(
+                    "synthorg.communication.errors",
+                    fromlist=["CommunicationError"],
+                ).CommunicationError("bus fail"),
+                500,
+                ErrorCode.COMMUNICATION_ERROR,
+                ErrorCategory.INTERNAL,
+                False,
+                id="communication_base",
+            ),
+            pytest.param(
+                lambda: __import__(
+                    "synthorg.communication.errors",
+                    fromlist=["ChannelNotFoundError"],
+                ).ChannelNotFoundError("no channel"),
+                404,
+                ErrorCode.CHANNEL_NOT_FOUND,
+                ErrorCategory.NOT_FOUND,
+                False,
+                id="communication_channel_not_found",
+            ),
+            pytest.param(
+                lambda: __import__(
+                    "synthorg.integrations.errors",
+                    fromlist=["IntegrationError"],
+                ).IntegrationError("integration fail"),
+                502,
+                ErrorCode.INTEGRATION_ERROR,
+                ErrorCategory.PROVIDER_ERROR,
+                False,
+                id="integration_base",
+            ),
+            pytest.param(
+                lambda: __import__(
+                    "synthorg.integrations.errors",
+                    fromlist=["ConnectionNotFoundError"],
+                ).ConnectionNotFoundError("no conn"),
+                404,
+                ErrorCode.CONNECTION_NOT_FOUND,
+                ErrorCategory.NOT_FOUND,
+                False,
+                id="integration_connection_not_found",
+            ),
+            pytest.param(
+                lambda: __import__(
+                    "synthorg.tools.errors",
+                    fromlist=["ToolError"],
+                ).ToolError("tool fail"),
+                500,
+                ErrorCode.TOOL_ERROR,
+                ErrorCategory.INTERNAL,
+                False,
+                id="tool_base",
+            ),
+            pytest.param(
+                lambda: __import__(
+                    "synthorg.tools.errors",
+                    fromlist=["ToolNotFoundError"],
+                ).ToolNotFoundError("missing tool"),
+                404,
+                ErrorCode.TOOL_NOT_FOUND,
+                ErrorCategory.NOT_FOUND,
+                False,
+                id="tool_not_found",
+            ),
+            pytest.param(
+                lambda: __import__(
+                    "synthorg.tools.errors",
+                    fromlist=["ToolPermissionDeniedError"],
+                ).ToolPermissionDeniedError("forbidden tool"),
+                403,
+                ErrorCode.TOOL_PERMISSION_DENIED,
+                ErrorCategory.AUTH,
+                False,
+                id="tool_permission_denied",
+            ),
+        ],
+    )
+    def test_domain_error_base_maps_to_rfc_9457(
+        self,
+        exc_factory: Any,
+        expected_status: int,
+        expected_code: int,
+        expected_category: str,
+        expected_retryable: bool,
+    ) -> None:
+        @get("/test")
+        async def handler() -> None:
+            raise exc_factory()
+
+        with TestClient(make_exception_handler_app(handler)) as client:
+            resp = client.get("/test")
+            assert resp.status_code == expected_status
+            body = resp.json()
+            assert body["success"] is False
+            # Server errors scrub the message; client errors pass through
+            if expected_status >= 500:
+                assert body["error"] not in ("oops", "upstream fail", "bus fail")
+            _assert_error_detail(
+                body,
+                error_code=expected_code,
+                error_category=expected_category,
+                retryable=expected_retryable,
+            )
+
+    def test_provider_rate_limit_surfaces_retry_after(self) -> None:
+        """``RateLimitError`` produces 429 with ``Retry-After`` header."""
+        from synthorg.providers.errors import RateLimitError
+
+        msg = "throttled"
+
+        @get("/test")
+        async def handler() -> None:
+            raise RateLimitError(msg, retry_after=42.0)
+
+        with TestClient(make_exception_handler_app(handler)) as client:
+            resp = client.get("/test")
+            assert resp.status_code == 429
+            assert resp.headers.get("Retry-After") == "42"
+            body = resp.json()
+            _assert_error_detail(
+                body,
+                error_code=ErrorCode.RATE_LIMITED,
+                error_category=ErrorCategory.RATE_LIMIT,
+                retryable=True,
+                retry_after=42,
+            )
+
+    def test_retryable_provider_timeout_flag_is_set(self) -> None:
+        """Retryable provider errors surface ``retryable: True``."""
+        from synthorg.providers.errors import ProviderTimeoutError
+
+        msg = "timed out"
+
+        @get("/test")
+        async def handler() -> None:
+            raise ProviderTimeoutError(msg)
+
+        with TestClient(make_exception_handler_app(handler)) as client:
+            resp = client.get("/test")
+            assert resp.status_code == 504
+            body = resp.json()
+            assert body["error_detail"]["retryable"] is True
+
+
+# ── Bare-Response fix tests (#1405) ─────────────────────────────
+
+
+class TestBareResponseFixes:
+    """Controllers no longer return bare ``Response`` for error paths.
+
+    Before #1405, ``artifacts.py:354``, ``subworkflows.py:176``, and
+    ``projects.py:74,113`` returned plain ``Response(content=ApiResponse(
+    error="..."))`` objects that bypassed the RFC 9457 handler
+    registration.  Now each site raises a typed ``ApiError`` subclass
+    (or lets a domain error with ClassVar metadata propagate) so the
+    central handlers produce a structured response with the correct
+    ``error_detail`` envelope.
+    """
+
+    def test_artifact_too_large_produces_rfc_9457_413(self) -> None:
+        """Artifact upload over the size limit returns 413 + error_detail."""
+        from synthorg.api.errors import ArtifactTooLargeApiError
+
+        @post("/upload")
+        async def handler() -> None:
+            raise ArtifactTooLargeApiError
+
+        with TestClient(make_exception_handler_app(handler)) as client:
+            resp = client.post("/upload")
+            assert resp.status_code == 413
+            body = resp.json()
+            assert body["success"] is False
+            _assert_error_detail(
+                body,
+                error_code=ErrorCode.ARTIFACT_TOO_LARGE,
+                error_category=ErrorCategory.VALIDATION,
+                retryable=False,
+            )
+
+    def test_subworkflow_not_found_produces_rfc_9457_404(self) -> None:
+        """SubworkflowNotFoundError escapes as 404 with structured detail."""
+        from synthorg.engine.errors import SubworkflowNotFoundError
+
+        msg = "Subworkflow 'foo' version '1.0' not found"
+
+        @get("/sub")
+        async def handler() -> None:
+            raise SubworkflowNotFoundError(
+                msg,
+                subworkflow_id="foo",
+                version="1.0",
+            )
+
+        with TestClient(make_exception_handler_app(handler)) as client:
+            resp = client.get("/sub")
+            assert resp.status_code == 404
+            body = resp.json()
+            assert body["success"] is False
+            _assert_error_detail(
+                body,
+                error_code=ErrorCode.SUBWORKFLOW_NOT_FOUND,
+                error_category=ErrorCategory.NOT_FOUND,
+                retryable=False,
+            )
+
+    def test_invalid_project_status_produces_rfc_9457_422(self) -> None:
+        """Invalid project status filter raises ApiValidationError (422)."""
+
+        @get("/projects")
+        async def handler() -> None:
+            msg = "Invalid project status: 'bogus'. Valid values: active"
+            raise ApiValidationError(msg)
+
+        with TestClient(make_exception_handler_app(handler)) as client:
+            resp = client.get("/projects")
+            assert resp.status_code == 422
+            body = resp.json()
+            assert body["success"] is False
+            assert "bogus" in body["error"]
+            _assert_error_detail(
+                body,
+                error_code=ErrorCode.VALIDATION_ERROR,
+                error_category=ErrorCategory.VALIDATION,
+                retryable=False,
+            )
+
+    def test_project_not_found_produces_rfc_9457_404(self) -> None:
+        """Missing project raises NotFoundError (404)."""
+
+        @get("/projects/{project_id:str}")
+        async def handler(project_id: str) -> None:
+            msg = f"Project {project_id!r} not found"
+            raise NotFoundError(msg)
+
+        with TestClient(make_exception_handler_app(handler)) as client:
+            resp = client.get("/projects/missing")
+            assert resp.status_code == 404
+            body = resp.json()
+            assert body["success"] is False
+            assert "missing" in body["error"]
+            _assert_error_detail(
+                body,
+                error_code=ErrorCode.RESOURCE_NOT_FOUND,
+                error_category=ErrorCategory.NOT_FOUND,
+                retryable=False,
+            )

@@ -994,3 +994,79 @@ CREATE TABLE approvals (
 CREATE INDEX idx_approvals_status ON approvals(status);
 CREATE INDEX idx_approvals_action_type ON approvals(action_type);
 CREATE INDEX idx_approvals_risk_level ON approvals(risk_level);
+
+-- Conflict escalations (#1418: human escalation approval queue).
+-- Persists one row per conflict awaiting a human decision so the
+-- queue survives process restarts and auditors can replay decisions.
+CREATE TABLE conflict_escalations (
+    id TEXT NOT NULL PRIMARY KEY CHECK(length(trim(id)) > 0),
+    conflict_id TEXT NOT NULL CHECK(length(trim(conflict_id)) > 0),
+    conflict_json TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK(
+        status IN ('pending', 'decided', 'expired', 'cancelled')
+    ),
+    created_at TEXT NOT NULL CHECK(
+        created_at LIKE '%+00:00' OR created_at LIKE '%Z'
+    ),
+    expires_at TEXT CHECK(
+        expires_at IS NULL OR expires_at LIKE '%+00:00' OR expires_at LIKE '%Z'
+    ),
+    decided_at TEXT CHECK(
+        decided_at IS NULL OR decided_at LIKE '%+00:00' OR decided_at LIKE '%Z'
+    ),
+    decided_by TEXT,
+    decision_json TEXT,
+    -- Payload columns must hold valid JSON objects (not scalars,
+    -- arrays, or nulls) so a corrupt write (e.g., from an
+    -- out-of-band migration or a faulty ETL) cannot persist shapes
+    -- the repository cannot deserialize.  ``json_valid`` and
+    -- ``json_type`` are SQLite core functions (3.38+).
+    CHECK(json_valid(conflict_json) AND json_type(conflict_json) = 'object'),
+    CHECK(
+        decision_json IS NULL
+        OR (json_valid(decision_json) AND json_type(decision_json) = 'object')
+    ),
+    -- DECIDED rows carry the full decision triple; decided_by must
+    -- be a nonblank actor identifier so audit consumers can always
+    -- attribute the transition.
+    CHECK(
+        (status != 'decided')
+        OR (
+            decision_json IS NOT NULL
+            AND decided_at IS NOT NULL
+            AND decided_by IS NOT NULL
+            AND length(trim(decided_by)) > 0
+        )
+    ),
+    -- PENDING rows carry no decision triple at all (decided_by must
+    -- also be NULL so audit consumers can distinguish pending from
+    -- terminal states by column nullability alone).
+    CHECK(
+        (status != 'pending')
+        OR (decision_json IS NULL AND decided_at IS NULL AND decided_by IS NULL)
+    ),
+    -- EXPIRED / CANCELLED rows drop any decision payload but MUST
+    -- carry both audit-trail columns (transition timestamp +
+    -- attributable nonblank actor "system:..." or "human:...") so
+    -- auditors can always answer "who expired/cancelled this, and when".
+    CHECK(
+        (status NOT IN ('expired', 'cancelled'))
+        OR (
+            decision_json IS NULL
+            AND decided_at IS NOT NULL
+            AND decided_by IS NOT NULL
+            AND length(trim(decided_by)) > 0
+        )
+    )
+);
+CREATE INDEX idx_conflict_escalations_status_created ON
+    conflict_escalations(status, created_at);
+CREATE INDEX idx_conflict_escalations_conflict_id ON
+    conflict_escalations(conflict_id);
+CREATE INDEX idx_conflict_escalations_status_expires_at ON
+    conflict_escalations(status, expires_at);
+-- Enforce "at most one PENDING escalation per conflict" so two
+-- concurrent resolvers cannot enqueue competing queue rows for the
+-- same conflict.
+CREATE UNIQUE INDEX idx_conflict_escalations_unique_pending_conflict ON
+    conflict_escalations(conflict_id) WHERE status = 'pending';

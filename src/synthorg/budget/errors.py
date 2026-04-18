@@ -6,8 +6,9 @@ these exceptions are needed by both the budget enforcer and the
 engine layer.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
+from synthorg.api.errors import ErrorCategory, ErrorCode
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 
 if TYPE_CHECKING:
@@ -25,11 +26,28 @@ class BudgetExhaustedError(Exception):
     2. Caught by the engine layer (``AgentEngine.run``) and used to
        build an ``AgentRunResult`` with
        ``TerminationReason.BUDGET_EXHAUSTED``.
+
+    Class Attributes:
+        status_code: HTTP 402 Payment Required.
+        error_code: ``BUDGET_EXHAUSTED``.
+        error_category: ``BUDGET_EXHAUSTED``.
+        retryable: ``False`` -- caller must adjust budget or wait for
+            period reset.
+        default_message: Generic message safe for user-facing responses.
     """
+
+    status_code: ClassVar[int] = 402
+    error_code: ClassVar[ErrorCode] = ErrorCode.BUDGET_EXHAUSTED
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.BUDGET_EXHAUSTED
+    retryable: ClassVar[bool] = False
+    default_message: ClassVar[str] = "Budget exhausted"
 
 
 class DailyLimitExceededError(BudgetExhaustedError):
     """Per-agent daily spending limit exceeded."""
+
+    error_code: ClassVar[ErrorCode] = ErrorCode.DAILY_LIMIT_EXCEEDED
+    default_message: ClassVar[str] = "Daily spending limit exceeded"
 
 
 class RiskBudgetExhaustedError(BudgetExhaustedError):
@@ -44,6 +62,9 @@ class RiskBudgetExhaustedError(BudgetExhaustedError):
         risk_units_used: Cumulative risk units consumed.
         risk_limit: The limit that was exceeded.
     """
+
+    error_code: ClassVar[ErrorCode] = ErrorCode.RISK_BUDGET_EXHAUSTED
+    default_message: ClassVar[str] = "Risk budget exhausted"
 
     def __init__(
         self,
@@ -69,6 +90,9 @@ class ProjectBudgetExhaustedError(BudgetExhaustedError):
         project_budget: The project's total budget.
         project_spent: Amount already spent on the project.
     """
+
+    error_code: ClassVar[ErrorCode] = ErrorCode.PROJECT_BUDGET_EXHAUSTED
+    default_message: ClassVar[str] = "Project budget exhausted"
 
     def __init__(
         self,
@@ -98,6 +122,9 @@ class QuotaExhaustedError(BudgetExhaustedError):
         degradation_action: The degradation strategy that was
             attempted, or ``None`` when not available.
     """
+
+    error_code: ClassVar[ErrorCode] = ErrorCode.QUOTA_EXHAUSTED
+    default_message: ClassVar[str] = "Provider quota exhausted"
 
     def __init__(
         self,

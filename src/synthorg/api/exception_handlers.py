@@ -14,6 +14,7 @@ retryability, title, type URI, request correlation ID).
 """
 
 import contextlib
+import math
 from http import HTTPStatus
 from types import MappingProxyType
 from typing import Any, Final
@@ -36,6 +37,10 @@ from synthorg.api.errors import (
     category_title,
     category_type_uri,
 )
+from synthorg.budget.errors import BudgetExhaustedError
+from synthorg.communication.errors import CommunicationError
+from synthorg.engine.errors import EngineError
+from synthorg.integrations.errors import IntegrationError
 from synthorg.observability import get_logger
 from synthorg.observability.correlation import generate_correlation_id
 from synthorg.observability.events.api import (
@@ -45,11 +50,14 @@ from synthorg.observability.events.api import (
     API_REQUEST_ERROR,
     API_ROUTE_NOT_FOUND,
 )
+from synthorg.ontology.errors import OntologyError
 from synthorg.persistence.errors import (
     DuplicateRecordError,
     PersistenceError,
     RecordNotFoundError,
 )
+from synthorg.providers.errors import ProviderError, RateLimitError
+from synthorg.tools.errors import ToolError
 
 logger = get_logger(__name__)
 
@@ -372,6 +380,130 @@ def handle_api_error(
     )
 
 
+def _normalize_status_code(raw: object) -> int:
+    """Coerce a raw ``status_code`` attribute to a valid HTTP error code.
+
+    A non-int attribute or a value outside the 400-599 error range is
+    mis-annotation territory; normalize to 500 so the handler cannot
+    produce a "successful" error envelope.
+    """
+    value: int
+    try:
+        if isinstance(raw, bool) or not isinstance(raw, (int, float, str)):
+            return 500
+        value = int(raw)
+    except TypeError, ValueError:
+        return 500
+    if not (400 <= value <= 599):  # noqa: PLR2004
+        return 500
+    return value
+
+
+def _normalize_error_metadata(
+    exc: Exception,
+) -> tuple[ErrorCode, ErrorCategory]:
+    """Return validated ``(error_code, error_category)`` for ``exc``.
+
+    Values that are not members of their respective enums are replaced
+    by the generic INTERNAL fallbacks so ``_build_response`` never
+    serialises junk.
+    """
+    raw_code = getattr(exc, "error_code", ErrorCode.INTERNAL_ERROR)
+    code = raw_code if isinstance(raw_code, ErrorCode) else ErrorCode.INTERNAL_ERROR
+    raw_cat = getattr(exc, "error_category", ErrorCategory.INTERNAL)
+    cat = raw_cat if isinstance(raw_cat, ErrorCategory) else ErrorCategory.INTERNAL
+    return code, cat
+
+
+def _determine_retryable(exc: Exception) -> bool:
+    """Honour an explicit ``is_retryable`` override, else fall back.
+
+    Subclasses that set ``is_retryable`` (True or False) must have
+    that value respected -- a stale ClassVar ``retryable`` elsewhere
+    in the MRO would otherwise mask the more specific signal.
+    ``retryable`` is consulted only when ``is_retryable`` is not set.
+    """
+    if hasattr(exc, "is_retryable"):
+        return bool(exc.is_retryable)
+    return bool(getattr(exc, "retryable", False))
+
+
+def _select_message(exc: Exception, status_code: int) -> str:
+    """Pick a user-safe message for the RFC 9457 envelope.
+
+    5xx responses return the class-level ``default_message`` to avoid
+    leaking internal detail; 4xx responses pass through the exception
+    message (controller-authored, user-safe).
+    """
+    if status_code >= _SERVER_ERROR_THRESHOLD:
+        return str(getattr(exc, "default_message", "Internal server error"))
+    return str(exc) or str(getattr(exc, "default_message", "Request error"))
+
+
+def _parse_retry_after(raw: object) -> int | None:
+    """Validate + round-up ``retry_after`` attribute.
+
+    Accept only finite non-negative numerics (``inf``/``nan`` would
+    crash header serialization).  Round up rather than truncate so a
+    fractional 0.5s delay is surfaced as at least 1s and clients
+    never hot-loop.  Returns ``None`` for anything else.
+    """
+    if raw is None or isinstance(raw, bool):
+        return None
+    if not isinstance(raw, (int, float)):
+        return None
+    value = float(raw)
+    if not math.isfinite(value) or value < 0:
+        return None
+    return math.ceil(value)
+
+
+def handle_domain_error(
+    request: Request[Any, Any, Any],
+    exc: Exception,
+) -> Response[ApiResponse[None]] | Response[ProblemDetail]:
+    """Map domain-layer exceptions to RFC 9457 responses.
+
+    Reads HTTP metadata ClassVars declared on the domain error bases
+    (``status_code``, ``error_code``, ``error_category``, ``retryable``,
+    ``default_message``).  Falls back to 500/INTERNAL for any subclass
+    that lacks annotations so the handler is forward-compatible with
+    newly added domain errors.
+
+    Handles ``EngineError``, ``BudgetExhaustedError``, ``ProviderError``,
+    ``OntologyError``, ``CommunicationError``, ``IntegrationError``, and
+    ``ToolError`` hierarchies -- one handler function covers all seven
+    via MRO dispatch.
+
+    5xx responses return the class-level ``default_message`` to avoid
+    leaking internal detail; 4xx responses pass through the exception
+    message which is controller-authored and user-safe.
+    """
+    status_code = _normalize_status_code(getattr(exc, "status_code", 500))
+    error_code_val, error_category_val = _normalize_error_metadata(exc)
+    retryable = _determine_retryable(exc)
+    _log_error(request, exc, status=status_code)
+    msg = _select_message(exc, status_code)
+    retry_after_val = _parse_retry_after(getattr(exc, "retry_after", None))
+    # Retry-After header and body field must agree: only emit the header
+    # when the error is actually retryable, so 429/503-style envelopes
+    # can never claim ``retryable: false`` while handing clients a
+    # Retry-After to wait on.
+    headers: dict[str, str] | None = None
+    if retry_after_val is not None and retryable:
+        headers = {"Retry-After": str(retry_after_val)}
+    return _build_response(
+        request,
+        detail=msg,
+        error_code=error_code_val,
+        error_category=error_category_val,
+        retryable=retryable,
+        retry_after=retry_after_val if retryable else None,
+        status_code=status_code,
+        headers=headers,
+    )
+
+
 def handle_unexpected(
     request: Request[Any, Any, Any],
     exc: Exception,
@@ -520,6 +652,18 @@ EXCEPTION_HANDLERS: MappingProxyType[type[Exception], object] = MappingProxyType
         NotFoundException: handle_not_found,
         HTTPException: handle_http_exception,
         ApiError: handle_api_error,
+        # Domain error hierarchies -- MRO dispatch covers every subclass.
+        # RateLimitError is listed explicitly so its narrower 429 status
+        # takes precedence over the ProviderError (502) default when
+        # Litestar walks the raised exception's MRO.
+        RateLimitError: handle_domain_error,
+        EngineError: handle_domain_error,
+        BudgetExhaustedError: handle_domain_error,
+        ProviderError: handle_domain_error,
+        OntologyError: handle_domain_error,
+        CommunicationError: handle_domain_error,
+        IntegrationError: handle_domain_error,
+        ToolError: handle_domain_error,
         Exception: handle_unexpected,
     }
 )

@@ -6,7 +6,9 @@ structured metadata, following the same pattern as ``ToolError``.
 
 import copy
 from types import MappingProxyType
-from typing import Any
+from typing import Any, ClassVar
+
+from synthorg.api.errors import ErrorCategory, ErrorCode
 
 
 class CommunicationError(Exception):
@@ -15,7 +17,20 @@ class CommunicationError(Exception):
     Attributes:
         message: Human-readable error description.
         context: Immutable metadata about the error.
+
+    Class Attributes:
+        status_code: HTTP 500 default.
+        error_code: ``COMMUNICATION_ERROR``.
+        error_category: ``INTERNAL``.
+        retryable: ``False``.
+        default_message: Generic 5xx-safe message.
     """
+
+    status_code: ClassVar[int] = 500
+    error_code: ClassVar[ErrorCode] = ErrorCode.COMMUNICATION_ERROR
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.INTERNAL
+    retryable: ClassVar[bool] = False
+    default_message: ClassVar[str] = "Communication error"
 
     def __init__(
         self,
@@ -47,9 +62,19 @@ class CommunicationError(Exception):
 class ChannelNotFoundError(CommunicationError):
     """Requested channel does not exist."""
 
+    status_code: ClassVar[int] = 404
+    error_code: ClassVar[ErrorCode] = ErrorCode.CHANNEL_NOT_FOUND
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.NOT_FOUND
+    default_message: ClassVar[str] = "Channel not found"
+
 
 class ChannelAlreadyExistsError(CommunicationError):
     """Channel with the given name already exists."""
+
+    status_code: ClassVar[int] = 409
+    error_code: ClassVar[ErrorCode] = ErrorCode.CHANNEL_ALREADY_EXISTS
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.CONFLICT
+    default_message: ClassVar[str] = "Channel already exists"
 
 
 class NotSubscribedError(CommunicationError):

@@ -723,8 +723,56 @@ All four conflict resolution strategies terminate with bounded resource use:
 - **AuthorityResolver**: Deterministic seniority comparison. Always terminates; no LLM calls.
 - **DebateResolver**: Single LLM judge call (one-shot, no retry loop). Falls back to
   Authority if no evaluator configured, or if the evaluator raises an exception (#1117).
-- **HumanEscalationResolver**: Returns `ESCALATED_TO_HUMAN` immediately. **Stub
-  implementation** pending #37 -- no actual blocking for human input yet.
+- **HumanEscalationResolver**: Persists the escalation to a pluggable queue
+  backend (in-memory / SQLite / Postgres), dispatches a
+  `NotificationCategory.ESCALATION` to operators, and awaits the operator
+  decision via an in-process ``asyncio.Future`` registered in
+  ``PendingFuturesRegistry``. On timeout (bounded by
+  ``EscalationQueueConfig.default_timeout_seconds``, ``None`` = wait forever)
+  the row is marked ``EXPIRED`` and the resolver returns an
+  ``ESCALATED_TO_HUMAN`` outcome so downstream callers always receive a
+  terminal ``ConflictResolution``. Operators collect and decide via the
+  ``/conflicts/escalations`` REST surface (#1418).
+
+    **Multi-worker wake-up (#1444):** ``PendingFuturesRegistry`` is
+    process-local by design.  When the API runs across multiple workers
+    or pods sharing a Postgres backend, a decision submitted through
+    worker B must still wake a resolver blocked on worker A.  The queue
+    wires this via Postgres ``LISTEN`` / ``NOTIFY``: the Postgres
+    repository publishes ``<id>:<status>`` on the
+    ``conflict_escalation_events`` channel from the *application* side
+    after every terminal transition (``mark_decided``, ``mark_expired``,
+    ``cancel``) -- no database trigger is installed, so operators need
+    no elevated privileges to ship the schema.  An
+    ``EscalationNotifySubscriber`` running in each worker listens on
+    that channel and forwards the signal to its local registry.  The
+    subscriber is controlled by
+    ``EscalationQueueConfig.cross_instance_notify`` (``auto`` -- default,
+    enables it automatically for the Postgres backend; ``on`` -- force
+    it, fail startup if the backend cannot support it; ``off`` -- scope
+    to a single worker).
+
+    **Timeout re-read fallback.** Because the NOTIFY publish is
+    app-side and best-effort, a subscriber restart, network blip, or
+    deployment rollover can drop the wake-up for an in-flight
+    resolver.  To keep the decision path correct under those windows,
+    ``HumanEscalationResolver`` re-reads the escalation row on
+    ``TimeoutError`` and, if it finds a persisted ``DECIDED`` payload,
+    hands the operator's decision to the processor instead of
+    returning the generic ``ESCALATED_TO_HUMAN`` fallback.  The
+    sweeper and per-resolver timeout still bound stale rows; the
+    re-read guarantees that an operator's choice is never masked by a
+    missed notification.
+
+    **Schema-level invariants.** The ``conflict_escalations`` table
+    enforces three CHECK constraints that together make impossible
+    row shapes unrepresentable: (1) ``DECIDED`` requires the full
+    ``decision_json`` / ``decided_at`` / ``decided_by`` triple, (2)
+    ``PENDING`` forbids all three, (3) ``EXPIRED`` / ``CANCELLED``
+    forbid ``decision_json``.  A partial unique index on ``conflict_id
+    WHERE status = 'pending'`` enforces "at most one active escalation
+    per conflict", and a ``(status, expires_at)`` index backs the
+    sweeper's hot ``mark_expired`` query.
 - **HybridResolver**: Single LLM review call; deterministic fallback to Authority on ambiguity.
 
 ### Delegation Guard

@@ -1720,6 +1720,58 @@ API -> CLI
 | `/api/v1/admin/backups` | Manual backup, list, detail, delete |
 | `/api/v1/ws` | WebSocket for real-time updates (ticket auth via `?ticket=`) |
 | `POST /api/v1/auth/ws-ticket` | Exchange JWT for one-time WebSocket connection ticket |
+| `/api/v1/conflicts/escalations` | Human escalation approval queue (#1418). `GET` lists pending escalations; `GET /{id}` fetches one; `POST /{id}/decision` submits a WinnerDecision or RejectDecision (approver roles only, per-op rate limit 30/60s); `POST /{id}/cancel` abandons a stuck escalation (approver roles only). Backed by a pluggable `EscalationQueueStore` (in-memory / SQLite / Postgres) with schema-level state-machine CHECKs and a partial unique index enforcing "one PENDING per conflict". |
+
+### Per-Operation Rate Limiting (#1391)
+
+In addition to the global two-tier limiter applied in `api/app.py`, a
+pluggable sliding-window limiter throttles individual expensive or
+abuse-prone operations.  Guards are declared at the route level via
+`per_op_rate_limit("<op>", max_requests=N, window_seconds=W, key=...)`
+from `synthorg/api/rate_limits/guard.py`.
+
+- **Backend**: `SlidingWindowStore` protocol (default `memory`); Redis
+  reserved for future cross-worker fairness.  Configuration lives in
+  `PerOpRateLimitConfig` under `api.per_op_rate_limit` with an
+  `overrides: {op -> (max_requests, window_seconds)}` map that takes
+  effect without restart.  Setting either component to `0` disables
+  the operation; negative values are rejected at startup with a logged
+  error for diagnosability.
+- **Keying**: `user`, `ip`, or `user_or_ip` (default).  The ``ip``
+  source is the proxy-normalised ``trusted_client_ip`` populated on
+  the ASGI scope; the raw ``X-Forwarded-For`` header is NOT trusted.
+- **Denials** raise `PerOperationRateLimitError` (`error_code=5001`,
+  `error_category=rate_limit`, `retryable=True`).  Responses include a
+  `Retry-After` header that agrees with the envelope's `retry_after`
+  (header is only set when `retryable: true`).  Missing wiring is
+  treated as a deployment error and fails closed with a 429 rather
+  than silently skipping.
+- **Throttled endpoints** (initial set):
+  - `POST /api/v1/auth/ws-ticket` (20/60s by user)
+  - `PUT /api/v1/artifacts/{id}/content` (10/60s by user)
+  - `POST /api/v1/admin/backups/restore` (3/3600s by user)
+  - `POST /api/v1/setup/complete` (5/3600s by user_or_ip)
+  - `POST /api/v1/training/{agent}/execute` (20/3600s by user)
+  - `POST /api/v1/simulations` (30/3600s by user)
+  - `PUT`/`DELETE /api/v1/settings/{namespace}/{key}` (60/60s by user)
+  - `POST /api/v1/a2a/*` (120/60s by user_or_ip)
+  - `GET /api/v1/oauth/callback` (30/60s by ip)
+  - `POST /api/v1/conflicts/escalations/{id}/decision` (30/60s by user)
+
+### Domain Error Handler Registration
+
+A single `handle_domain_error` handler (registered in
+`api/exception_handlers.EXCEPTION_HANDLERS`) maps seven domain error
+base classes to RFC 9457 responses: `EngineError`,
+`BudgetExhaustedError`, `ProviderError`, `OntologyError`,
+`CommunicationError`, `IntegrationError`, `ToolError`.  Each base
+carries `status_code` / `error_code` / `error_category` / `retryable`
+/ `default_message` as ClassVar metadata so MRO dispatch picks up
+subclass overrides automatically.  5xx responses return the class-level
+`default_message`; 4xx pass the controller-authored message through
+(user-safe).  A single `is_retryable=True` on a subclass is sufficient
+to surface `retryable: true` in the envelope even when the base class
+opts out -- the handler prefers the instance flag when set.
 
 ### Error Response Format (RFC 9457)
 

@@ -13,6 +13,7 @@ from litestar.params import Parameter
 from synthorg.api.dto import ApiResponse
 from synthorg.api.errors import ApiValidationError, NotFoundError
 from synthorg.api.guards import require_read_access, require_write_access
+from synthorg.api.rate_limits.guard import per_op_rate_limit
 from synthorg.integrations.errors import (
     ConnectionNotFoundError,
     InvalidStateError,
@@ -119,6 +120,14 @@ class OAuthController(Controller):
     @get(
         "/callback",
         summary="OAuth callback",
+        guards=[
+            per_op_rate_limit(
+                "oauth.callback",
+                max_requests=30,
+                window_seconds=60,
+                key="ip",
+            ),
+        ],
     )
     async def callback(
         self,

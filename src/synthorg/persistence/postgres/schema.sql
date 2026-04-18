@@ -959,3 +959,79 @@ CREATE UNIQUE INDEX idx_training_results_plan
     ON training_results(plan_id);
 CREATE INDEX idx_training_results_agent
     ON training_results(new_agent_id, completed_at DESC);
+
+-- ── Conflict escalations (#1418) ───────────────────────────────
+-- Human escalation approval queue: one row per conflict awaiting a
+-- human decision.  Matches the SQLite sibling ``conflict_escalations``
+-- but uses JSONB for payloads and TIMESTAMPTZ for timestamps.
+CREATE TABLE conflict_escalations (
+    id TEXT NOT NULL PRIMARY KEY,
+    conflict_id TEXT NOT NULL,
+    conflict_json JSONB NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK(
+        status IN ('pending', 'decided', 'expired', 'cancelled')
+    ),
+    created_at TIMESTAMPTZ NOT NULL,
+    expires_at TIMESTAMPTZ,
+    decided_at TIMESTAMPTZ,
+    decided_by TEXT,
+    decision_json JSONB,
+    CHECK(length(trim(id)) > 0),
+    CHECK(length(trim(conflict_id)) > 0),
+    -- Payload columns must be JSON objects (not scalars, arrays,
+    -- nulls, or strings), matching the SQLite sibling's
+    -- ``json_type = 'object'`` invariant so both backends refuse
+    -- malformed payloads at the schema layer.
+    CHECK(jsonb_typeof(conflict_json) = 'object'),
+    CHECK(decision_json IS NULL OR jsonb_typeof(decision_json) = 'object'),
+    -- DECIDED rows carry the full decision triple; decided_by must
+    -- be a nonblank actor identifier.
+    CHECK(
+        status != 'decided'
+        OR (
+            decision_json IS NOT NULL
+            AND jsonb_typeof(decision_json) = 'object'
+            AND decided_at IS NOT NULL
+            AND decided_by IS NOT NULL
+            AND length(trim(decided_by)) > 0
+        )
+    ),
+    -- PENDING rows carry no decision triple at all.
+    CHECK(
+        status != 'pending'
+        OR (decision_json IS NULL AND decided_at IS NULL AND decided_by IS NULL)
+    ),
+    -- EXPIRED / CANCELLED rows drop any decision payload but MUST
+    -- carry audit-trail columns (transition timestamp + nonblank
+    -- actor) so auditors can always answer "who transitioned this,
+    -- and when".
+    CHECK(
+        status NOT IN ('expired', 'cancelled')
+        OR (
+            decision_json IS NULL
+            AND decided_at IS NOT NULL
+            AND decided_by IS NOT NULL
+            AND length(trim(decided_by)) > 0
+        )
+    )
+);
+CREATE INDEX idx_conflict_escalations_status_created
+    ON conflict_escalations(status, created_at);
+CREATE INDEX idx_conflict_escalations_conflict_id
+    ON conflict_escalations(conflict_id);
+CREATE INDEX idx_conflict_escalations_status_expires_at
+    ON conflict_escalations(status, expires_at);
+-- Enforce "at most one PENDING escalation per conflict" so two
+-- concurrent resolvers cannot enqueue competing queue rows for the
+-- same conflict.
+CREATE UNIQUE INDEX idx_conflict_escalations_unique_pending_conflict
+    ON conflict_escalations(conflict_id) WHERE status = 'pending';
+
+-- LISTEN/NOTIFY wiring for cross-instance resolver wake-up (#1418)
+-- is emitted by the application (``PostgresEscalationRepository._
+-- publish_notify``) using ``EscalationQueueConfig.notify_channel``
+-- so operators can rename the channel without a schema change.  We
+-- intentionally do NOT install a DB-side trigger: a hard-coded
+-- channel in the trigger would break deployments that override the
+-- notify channel, and double-publishing (trigger + app) would cause
+-- duplicate wake-ups.

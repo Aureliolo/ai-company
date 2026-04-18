@@ -2,7 +2,12 @@
  * Axios client with cookie-based auth and ApiResponse envelope unwrapping.
  */
 
-import axios, { type AxiosError, type AxiosResponse } from 'axios'
+import axios, {
+  type AxiosError,
+  type AxiosRequestConfig,
+  type AxiosResponse,
+  type InternalAxiosRequestConfig,
+} from 'axios'
 import { createLogger } from '@/lib/logger'
 import { IS_DEV_AUTH_BYPASS } from '@/utils/dev'
 import { getCsrfToken } from '@/utils/csrf'
@@ -17,12 +22,75 @@ const BASE_URL = RAW_BASE.replace(/\/+$/, '').replace(/\/api\/v1\/?$/, '')
 /** CSRF-protected HTTP methods that require the X-CSRF-Token header. */
 const CSRF_METHODS = new Set(['post', 'put', 'patch', 'delete'])
 
+/** Maximum transparent retries on 429 responses. */
+const MAX_RATE_LIMIT_RETRIES = 2
+/** Upper bound on Retry-After wait per retry so a hostile backend can't hang the UI. */
+const MAX_RETRY_AFTER_MS = 5_000
+/** Extra header we attach to retry requests so the interceptor can count. */
+const RETRY_COUNT_HEADER = 'X-SynthOrg-Retry-Count'
+/**
+ * HTTP methods safe to auto-retry on 429.
+ *
+ * Idempotent reads (GET/HEAD/OPTIONS) can be replayed without risk.  Mutating
+ * verbs (POST/PUT/PATCH/DELETE) are NOT replayed automatically: replaying a
+ * decision submission or a cancellation after the server already accepted it
+ * could double-apply the mutation.  Callers that need retry for a mutation
+ * must attach an ``Idempotency-Key`` header; the interceptor then treats the
+ * request as idempotent and retries it.
+ */
+const IDEMPOTENT_METHODS = new Set(['get', 'head', 'options'])
+const IDEMPOTENCY_KEY_HEADER = 'idempotency-key'
+
+interface RetriableConfig extends InternalAxiosRequestConfig {
+  _rateLimitRetries?: number
+}
+
 export const apiClient = axios.create({
   baseURL: `${BASE_URL}/api/v1`,
   headers: { 'Content-Type': 'application/json' },
   timeout: 30_000,
   withCredentials: true,
 })
+
+/** Sentinel returned by {@link parseRetryAfterMs} when we must NOT auto-retry. */
+const DO_NOT_RETRY = -1
+
+function parseRetryAfterMs(
+  headerValue: string | undefined,
+  errorDetail: ErrorDetail | null | undefined,
+): number {
+  // Prefer the Retry-After header (RFC 9110: either delta-seconds or an
+  // HTTP-date), fall back to the ``retry_after`` field from the
+  // RFC 9457 envelope which is always delta-seconds.
+  const raw = headerValue ?? (errorDetail?.retry_after != null
+    ? String(errorDetail.retry_after)
+    : undefined)
+  if (!raw) return 0
+  let ms: number
+  const trimmed = raw.trim()
+  const seconds = Number.parseInt(trimmed, 10)
+  // RFC 9110 delta-seconds must be a run of digits.  Anything else
+  // (e.g. ``Wed, 21 Oct 2015 07:28:00 GMT``) is treated as an HTTP-date.
+  if (/^\d+$/.test(trimmed) && Number.isFinite(seconds) && seconds >= 0) {
+    ms = seconds * 1000
+  } else {
+    const parsedDate = Date.parse(trimmed)
+    if (!Number.isFinite(parsedDate)) return 0
+    ms = Math.max(0, parsedDate - Date.now())
+  }
+  // If the server wants us to wait longer than our bounded budget,
+  // surface the error to the caller instead of silently truncating --
+  // a truncated retry would hit the same 429 immediately and waste
+  // the backend's budget.
+  if (ms > MAX_RETRY_AFTER_MS) return DO_NOT_RETRY
+  return ms
+}
+
+async function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms)
+  })
+}
 
 // ── Request interceptor: attach CSRF token ─────────────────
 // SECURITY NOTE: Authentication uses HttpOnly session cookies set by the
@@ -47,7 +115,9 @@ apiClient.interceptors.request.use((config) => {
 
 apiClient.interceptors.response.use(
   (response: AxiosResponse) => response,
-  (error: AxiosError<{ error?: string; success?: boolean }>) => {
+  async (
+    error: AxiosError<{ error?: string; success?: boolean; error_detail?: ErrorDetail | null }>,
+  ) => {
     if (error.response?.status === 401 && !IS_DEV_AUTH_BYPASS) {
       // The server clears the session cookie via Set-Cookie: Max-Age=0.
       // We only need to sync the Zustand auth state.
@@ -60,6 +130,51 @@ apiClient.interceptors.response.use(
           window.location.href = '/login'
         }
       })
+    }
+    // Transparent retry for 429 responses when the backend surfaces
+    // a Retry-After.  Bounded so a hostile or mis-tuned server can't
+    // hang the UI; surfaces the error to the caller after retries
+    // exhaust so per-endpoint UX (toasts, disabled buttons) can take
+    // over from there.
+    const status = error.response?.status
+    const config = error.config as RetriableConfig | undefined
+    if (status === 429 && config) {
+      const method = (config.method ?? '').toLowerCase()
+      const rawHeaders = (config.headers ?? {}) as Record<string, string>
+      const normalizedHeaders: Record<string, string> = {}
+      for (const [k, v] of Object.entries(rawHeaders)) {
+        if (typeof v === 'string') normalizedHeaders[k.toLowerCase()] = v
+      }
+      // An idempotency key only enables retry when it's a non-empty,
+      // non-whitespace value -- an empty or blank header is a client
+      // bug, not an opt-in, and must not license replaying an
+      // accepted mutation.
+      const idempotencyKey = normalizedHeaders[IDEMPOTENCY_KEY_HEADER]
+      const isIdempotent =
+        IDEMPOTENT_METHODS.has(method) ||
+        (typeof idempotencyKey === 'string' && idempotencyKey.trim().length > 0)
+      const retries = config._rateLimitRetries ?? 0
+      if (isIdempotent && retries < MAX_RATE_LIMIT_RETRIES) {
+        const waitMs = parseRetryAfterMs(
+          error.response?.headers?.['retry-after'] as string | undefined,
+          error.response?.data?.error_detail ?? null,
+        )
+        // ``waitMs === DO_NOT_RETRY`` means the server wants us to wait
+        // longer than our bounded budget -- propagate the 429 to the
+        // caller instead of hammering the backend with a shortened retry
+        // that would just 429 again.
+        if (waitMs > 0 && waitMs !== DO_NOT_RETRY) {
+          config._rateLimitRetries = retries + 1
+          const nextHeaders = { ...(config.headers ?? {}) } as Record<string, string>
+          nextHeaders[RETRY_COUNT_HEADER] = String(retries + 1)
+          const retryConfig: AxiosRequestConfig = {
+            ...config,
+            headers: nextHeaders,
+          }
+          await sleep(waitMs)
+          return apiClient.request(retryConfig)
+        }
+      }
     }
     return Promise.reject(error)
   },

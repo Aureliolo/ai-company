@@ -37,6 +37,7 @@ from synthorg.api.errors import (
     UnauthorizedError,
 )
 from synthorg.api.guards import HumanRole
+from synthorg.api.rate_limits.guard import per_op_rate_limit
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
@@ -861,6 +862,14 @@ class AuthController(Controller):
         "/ws-ticket",
         status_code=200,
         summary="Issue a one-time WebSocket connection ticket",
+        guards=[
+            per_op_rate_limit(
+                "auth.ws_ticket",
+                max_requests=20,
+                window_seconds=60,
+                key="user",
+            ),
+        ],
     )
     async def ws_ticket(
         self,

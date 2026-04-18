@@ -13,6 +13,7 @@ from synthorg.api.dto import (
     CreateProjectRequest,
     PaginatedResponse,
 )
+from synthorg.api.errors import ApiValidationError, NotFoundError
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import PaginationLimit, PaginationOffset, paginate
 from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
@@ -59,7 +60,7 @@ class ProjectController(Controller):
         limit: PaginationLimit = 50,
         status: ProjectStatusFilter = None,
         lead: LeadFilter = None,
-    ) -> PaginatedResponse[Project] | Response[ApiResponse[None]]:
+    ) -> PaginatedResponse[Project]:
         """List projects with optional filters.
 
         Args:
@@ -70,22 +71,20 @@ class ProjectController(Controller):
             lead: Filter by project lead agent ID.
 
         Returns:
-            Paginated list of projects, or 400 for invalid filters.
+            Paginated list of projects.
+
+        Raises:
+            ApiValidationError: ``status`` is not a valid
+                :class:`ProjectStatus` value.
         """
         parsed_status: ProjectStatus | None = None
         if status is not None:
             try:
                 parsed_status = ProjectStatus(status)
-            except ValueError:
+            except ValueError as exc:
                 valid = ", ".join(e.value for e in ProjectStatus)
-                return Response(
-                    content=ApiResponse[None](
-                        error=(
-                            f"Invalid project status: {status!r}. Valid values: {valid}"
-                        ),
-                    ),
-                    status_code=400,
-                )
+                msg = f"Invalid project status: {status!r}. Valid values: {valid}"
+                raise ApiValidationError(msg) from exc
 
         repo = state.app_state.persistence.projects
         projects = await repo.list_projects(
@@ -113,12 +112,8 @@ class ProjectController(Controller):
         repo = state.app_state.persistence.projects
         project = await repo.get(project_id)
         if project is None:
-            return Response(
-                content=ApiResponse[Project](
-                    error=f"Project {project_id!r} not found",
-                ),
-                status_code=404,
-            )
+            msg = f"Project {project_id!r} not found"
+            raise NotFoundError(msg)
         return Response(
             content=ApiResponse[Project](data=project),
             status_code=200,
