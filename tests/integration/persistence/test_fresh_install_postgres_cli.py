@@ -1,0 +1,114 @@
+"""Fresh-install Postgres end-to-end integration test.
+
+Closes the coverage gap surfaced by issue #1443: until the dual-backend
+auth stores shipped, ``synthorg start --persistence-backend postgres`` on
+a freshly-provisioned container crashed with an ``AttributeError`` at
+``LockoutStore(pool)``.  The existing Postgres integration tests exercise
+the repository layer; this one drives the full lifecycle wire-up so any
+regression in `_build_*_store` dispatch, protocol-compat, or migration
+ordering trips a loud test failure.
+
+The test uses the programmatic lifecycle entry point rather than spawning
+a subprocess -- all the failure modes (import errors, handle-type
+mismatches, Atlas migration failures) surface synchronously and are easy
+to diagnose.
+"""
+
+from typing import TYPE_CHECKING
+
+import pytest
+
+from synthorg.api.auth.session_store import PostgresSessionStore
+
+pytestmark = [pytest.mark.integration, pytest.mark.slow]
+
+if TYPE_CHECKING:
+    from synthorg.persistence.postgres.backend import PostgresPersistenceBackend
+
+
+class TestFreshInstallPostgresLifecycle:
+    """Exercise the full persistence wire-up on a freshly-migrated Postgres db."""
+
+    async def test_dual_backend_stores_instantiate(
+        self,
+        postgres_backend: PostgresPersistenceBackend,
+    ) -> None:
+        """Every auth store must instantiate against AsyncConnectionPool.
+
+        Before #1443, ``LockoutStore`` and ``RefreshStore`` were hardcoded
+        to ``aiosqlite.Connection`` and crashed at construction when
+        ``PersistenceBackend.get_db()`` returned the Postgres pool.  The
+        dispatchers in ``synthorg.api.lifecycle`` now pick the concrete
+        ``Postgres*`` variant via type dispatch; this test proves the
+        happy path end-to-end.
+        """
+        from synthorg.api.auth.config import AuthConfig
+        from synthorg.api.auth.lockout_store import PostgresLockoutStore
+        from synthorg.api.auth.refresh_store import PostgresRefreshStore
+        from synthorg.api.lifecycle import (
+            _build_lockout_store,
+            _build_refresh_store,
+            _build_session_store,
+        )
+
+        db = postgres_backend.get_db()
+        session_store = _build_session_store(db)
+        lockout_store = _build_lockout_store(db, AuthConfig())
+        refresh_store = _build_refresh_store(db)
+
+        assert isinstance(session_store, PostgresSessionStore)
+        assert isinstance(lockout_store, PostgresLockoutStore)
+        assert isinstance(refresh_store, PostgresRefreshStore)
+
+        await session_store.load_revoked()
+        await lockout_store.load_locked()
+
+    async def test_currency_column_present_on_fresh_migration(
+        self,
+        postgres_backend: PostgresPersistenceBackend,
+    ) -> None:
+        """Phase 5 migration must stamp currency on cost_records, task_metrics,
+        and agent_states.  The Postgres post-migrate path applies the
+        currency column + approvals + custom_rules tables in one shot; this
+        verifies every new column exists and defaults to 'EUR'.
+        """
+        pool = postgres_backend.get_db()
+        async with pool.connection() as conn, conn.cursor() as cur:
+            for table in ("cost_records", "task_metrics", "agent_states"):
+                await cur.execute(
+                    "SELECT column_name, is_nullable, column_default "
+                    "FROM information_schema.columns "
+                    "WHERE table_name = %s AND column_name = 'currency'",
+                    (table,),
+                )
+                row = await cur.fetchone()
+                assert row is not None, (
+                    f"Table {table!r} is missing the currency column"
+                )
+                _, is_nullable, default = row
+                assert is_nullable == "NO", f"{table}.currency must be NOT NULL"
+                assert "EUR" in (default or ""), (
+                    f"{table}.currency must default to 'EUR', got {default!r}"
+                )
+
+    async def test_approvals_and_custom_rules_tables_created(
+        self,
+        postgres_backend: PostgresPersistenceBackend,
+    ) -> None:
+        """approvals and custom_rules existed only in SQLite before #1443.
+
+        The new Postgres migration adds them with translated types.  This
+        test confirms both tables are present after a fresh migration so
+        controllers that query them do not 42P01 on first boot.
+        """
+        pool = postgres_backend.get_db()
+        async with pool.connection() as conn, conn.cursor() as cur:
+            await cur.execute(
+                "SELECT table_name FROM information_schema.tables "
+                "WHERE table_schema = 'public' "
+                "AND table_name IN ('approvals', 'custom_rules') "
+                "ORDER BY table_name"
+            )
+            rows = await cur.fetchall()
+        table_names = {row[0] for row in rows}
+        assert table_names == {"approvals", "custom_rules"}
