@@ -1,5 +1,49 @@
 # Changelog
 
+## [0.7.0](https://github.com/Aureliolo/synthorg/compare/v0.6.9...v0.7.0) (2026-04-18)
+
+
+### Features
+
+* API hardening -- error handling + per-op rate limits + escalation queue ([#1444](https://github.com/Aureliolo/synthorg/issues/1444)) ([b6558ae](https://github.com/Aureliolo/synthorg/commit/b6558aebad13b4f3c509d983be47a3375db9816c))
+* implement engine quality, shadow evaluation, and applier dry-run ([#1383](https://github.com/Aureliolo/synthorg/issues/1383), [#1382](https://github.com/Aureliolo/synthorg/issues/1382), [#1381](https://github.com/Aureliolo/synthorg/issues/1381)) ([#1425](https://github.com/Aureliolo/synthorg/issues/1425)) ([e15c55c](https://github.com/Aureliolo/synthorg/commit/e15c55c10344bbe112fbe73b196a2e325930faf9))
+* observability hardening -- logging, metrics, TSA, OTLP traces, tracked fire-and-forget tasks ([#1436](https://github.com/Aureliolo/synthorg/issues/1436)) ([64edcdf](https://github.com/Aureliolo/synthorg/commit/64edcdf45199068d5ca65507f48a16d218269a4a))
+* **settings:** wire ~40 hardcoded values to SettingsService + ConfigResolver ([#1440](https://github.com/Aureliolo/synthorg/issues/1440)) ([28e3738](https://github.com/Aureliolo/synthorg/commit/28e373875d79a4de7a5fa99a991256ed8b7d6c31))
+* split fine-tune image into -gpu and -cpu variants + free CI runner disk ([#1442](https://github.com/Aureliolo/synthorg/issues/1442)) ([cf8744e](https://github.com/Aureliolo/synthorg/commit/cf8744e249fcddf82ec2c79ed16d7fe0710aa978))
+
+
+### Bug Fixes
+
+* **cli,backend:** postgres mode actually works end-to-end ([#1427](https://github.com/Aureliolo/synthorg/issues/1427)) ([9501b1c](https://github.com/Aureliolo/synthorg/commit/9501b1c7e5b8f9dde82297e2e1682f693e7a9e33))
+* **cli:** tunables + error wrapping + workerCmd wiring ([#1424](https://github.com/Aureliolo/synthorg/issues/1424)) ([7f3e942](https://github.com/Aureliolo/synthorg/commit/7f3e94221cd29f498e1df5ae905c301132713149))
+* correct volume ownership for DHI postgres and nats containers ([#1426](https://github.com/Aureliolo/synthorg/issues/1426)) ([496babf](https://github.com/Aureliolo/synthorg/commit/496babf799c18170525030a6e1a32e941be29b01))
+* dashboard quality pass (locale, DTO parity, a11y, training UI) ([#1433](https://github.com/Aureliolo/synthorg/issues/1433)) ([76c3937](https://github.com/Aureliolo/synthorg/commit/76c39376e9a9cf115a8bedfe508276976e14ff1a)), closes [#1402](https://github.com/Aureliolo/synthorg/issues/1402) [#1386](https://github.com/Aureliolo/synthorg/issues/1386) [#1389](https://github.com/Aureliolo/synthorg/issues/1389) [#1394](https://github.com/Aureliolo/synthorg/issues/1394)
+* defaults cleanup — hardcoded network values + regional bias + Postgres SessionStore ([#1445](https://github.com/Aureliolo/synthorg/issues/1445)) ([b9378aa](https://github.com/Aureliolo/synthorg/commit/b9378aa114c21ca2800ed7bebb902bc4bad94939)), closes [#1399](https://github.com/Aureliolo/synthorg/issues/1399) [#1437](https://github.com/Aureliolo/synthorg/issues/1437)
+* fresh-install backend restart loop + encrypted_postgres secret backend + CLI encryption toggle ([#1438](https://github.com/Aureliolo/synthorg/issues/1438)) ([51a2615](https://github.com/Aureliolo/synthorg/commit/51a2615f77dc044a7595c196081d2a1b9bf2f676))
+* frontend cleanup batch (dead code, stores, empty state, currency, chart tokens) ([#1422](https://github.com/Aureliolo/synthorg/issues/1422)) ([1562f39](https://github.com/Aureliolo/synthorg/commit/1562f392f4450774a36ad5e33a98c1c49a14b8ec)), closes [#1396](https://github.com/Aureliolo/synthorg/issues/1396) [#1387](https://github.com/Aureliolo/synthorg/issues/1387) [#1406](https://github.com/Aureliolo/synthorg/issues/1406) [#1409](https://github.com/Aureliolo/synthorg/issues/1409) [#1388](https://github.com/Aureliolo/synthorg/issues/1388)
+* kill stubs across engine/meta/security/tools/communication ([#1434](https://github.com/Aureliolo/synthorg/issues/1434)) ([cf38bea](https://github.com/Aureliolo/synthorg/commit/cf38beaf9c2c6e810e204a6bce33c1899089613d)), closes [#1408](https://github.com/Aureliolo/synthorg/issues/1408) [#1392](https://github.com/Aureliolo/synthorg/issues/1392) [#1414](https://github.com/Aureliolo/synthorg/issues/1414) [#1413](https://github.com/Aureliolo/synthorg/issues/1413) [#1419](https://github.com/Aureliolo/synthorg/issues/1419)
+* model/convention hygiene across Python src/ (5 issues) ([#1423](https://github.com/Aureliolo/synthorg/issues/1423)) ([5995ca9](https://github.com/Aureliolo/synthorg/commit/5995ca92d2599945de02fd22db900796c541f0f4)), closes [#1390](https://github.com/Aureliolo/synthorg/issues/1390) [#1397](https://github.com/Aureliolo/synthorg/issues/1397) [#1401](https://github.com/Aureliolo/synthorg/issues/1401) [#1403](https://github.com/Aureliolo/synthorg/issues/1403) [#1407](https://github.com/Aureliolo/synthorg/issues/1407)
+* real rollout observation + Welch's t-test + rollback dispatch + client factory ([#1441](https://github.com/Aureliolo/synthorg/issues/1441)) ([3c4315e](https://github.com/Aureliolo/synthorg/commit/3c4315e3ab72d4f437a2c21a9e08ae2a91b75953))
+
+
+### CI/CD
+
+* Update CI tool dependencies ([#1432](https://github.com/Aureliolo/synthorg/issues/1432)) ([ec93737](https://github.com/Aureliolo/synthorg/commit/ec93737f295091f664a3fa2aea83cc8c4c05fcbf))
+
+
+### Maintenance
+
+* block opentelemetry-* &gt;=1.41.0 in Renovate while logfire pins &lt;1.41.0 ([#1450](https://github.com/Aureliolo/synthorg/issues/1450)) ([15b95ce](https://github.com/Aureliolo/synthorg/commit/15b95cee73febc2e892bb4d43bb9c0068d2d5a1a))
+* expand audit skill to 75 agents + worktree decision protocol ([#1421](https://github.com/Aureliolo/synthorg/issues/1421)) ([59796ca](https://github.com/Aureliolo/synthorg/commit/59796ca3d6f068675dc0cb7fc1528a962b0bfb30))
+* rewrite /codebase-audit skill with 58-agent roster and file-based output ([#1378](https://github.com/Aureliolo/synthorg/issues/1378)) ([2696e3c](https://github.com/Aureliolo/synthorg/commit/2696e3cb81b00279f26d8a4dbfa96b3a1467d266))
+* Update dependency mem0ai to v2 ([#1435](https://github.com/Aureliolo/synthorg/issues/1435)) ([9ef8140](https://github.com/Aureliolo/synthorg/commit/9ef814053b92a71bb8bc3310342cec443c863e52))
+* Update dhi.io/nats:2.12-debian13 Docker digest to ec28201 ([#1447](https://github.com/Aureliolo/synthorg/issues/1447)) ([8604869](https://github.com/Aureliolo/synthorg/commit/86048698afecd3f61b3eb94bcd32e2eee150bcde))
+* Update golang:1.26-alpine Docker digest to f853308 ([#1428](https://github.com/Aureliolo/synthorg/issues/1428)) ([f8aee98](https://github.com/Aureliolo/synthorg/commit/f8aee98075284e8abd2bceb2c929eea5cdfa54a0))
+* Update module charm.land/bubbletea/v2 to v2.0.6 ([#1429](https://github.com/Aureliolo/synthorg/issues/1429)) ([e04a70e](https://github.com/Aureliolo/synthorg/commit/e04a70e1966a75d45b5211bbce0d9c8bcb629117))
+* Update Python dependencies to v0.15.11 ([#1430](https://github.com/Aureliolo/synthorg/issues/1430)) ([4242550](https://github.com/Aureliolo/synthorg/commit/424255095de2856d91aa8f85490158c76656490b))
+* Update Web dependencies ([#1431](https://github.com/Aureliolo/synthorg/issues/1431)) ([9c48619](https://github.com/Aureliolo/synthorg/commit/9c4861940ad063aa39bd2feb04943ad9ed82400d))
+* Update Web dependencies ([#1448](https://github.com/Aureliolo/synthorg/issues/1448)) ([40bf3d3](https://github.com/Aureliolo/synthorg/commit/40bf3d3a0b664b87f91c74cb52d2b981f127f10d))
+
 ## [0.6.9](https://github.com/Aureliolo/synthorg/compare/v0.6.8...v0.6.9) (2026-04-16)
 
 
