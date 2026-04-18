@@ -65,11 +65,20 @@ class TestTelemetryCollector:
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """Functional is True when opted in and a non-noop reporter is wired."""
+        """Functional is True when opted in and a non-noop reporter is wired.
+
+        ``logfire.configure`` is patched out to stop the SDK from
+        spawning its ``check_logfire_token`` background thread,
+        which would hit the real Logfire API with the dummy token
+        and surface a thread-level 401 as a spurious test failure
+        against an unrelated test in the full-suite run.
+        """
         pytest.importorskip(
             "logfire",
             reason="logfire extra not installed in this environment",
         )
+        import logfire as real_logfire
+
         monkeypatch.setenv(
             "SYNTHORG_LOGFIRE_PROJECT_TOKEN",
             "pylf_v1_test_000000000000000000000000000000000000000000",
@@ -78,7 +87,8 @@ class TestTelemetryCollector:
             enabled=True,
             backend=TelemetryBackend.LOGFIRE,
         )
-        collector = TelemetryCollector(config=config, data_dir=tmp_path)
+        with patch.object(real_logfire, "configure"):
+            collector = TelemetryCollector(config=config, data_dir=tmp_path)
         assert collector.is_functional is True
 
     def test_generates_deployment_id(self, tmp_path: Path) -> None:
