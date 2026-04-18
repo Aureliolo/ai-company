@@ -36,9 +36,12 @@ class CostRecord(BaseModel):
             enforce same-currency invariants without relying on a
             global configuration value; see ``currency`` for the
             accompanying ISO 4217 code.
-        currency: ISO 4217 currency code for ``cost``.  Examples in
-            ``synthorg.budget.currency`` include EUR, JPY, GBP, and more;
-            every code in the allowlist is accepted.
+        currency: ISO 4217 currency code for ``cost``.  See
+            :class:`synthorg.budget.currency.CurrencyCode` and the
+            ``_KNOWN_ISO4217`` allowlist in ``synthorg.budget.currency``
+            for the accepted values; concrete code literals are
+            deliberately not listed here so this docstring does not
+            drift from the allowlist or privilege a specific region.
         timestamp: Timezone-aware timestamp of the API call.
         call_category: Optional LLM call category (productive,
             coordination, system, embedding).

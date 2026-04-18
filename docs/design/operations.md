@@ -252,8 +252,14 @@ from the currently-configured `budget.currency`, so new writes cannot introduce 
 against the live setting. Historical rows written before a `budget.currency` change still
 carry their original code, so a rollup that spans the change window will legitimately see
 mixed currencies -- the aggregator raises rather than silently combining them. Operators
-who change `budget.currency` and want historical continuity must either re-stamp legacy
-rows with a targeted `UPDATE` or scope their reports to a single currency window.
+who change `budget.currency` should either scope reports to a single currency window or
+run a proper migration that converts both the numeric amount and the currency code
+together under a documented FX policy; a raw
+`UPDATE cost_records SET currency = '<new-code>'` is a **re-label, not a conversion**,
+and must only be used when the operator knows the existing numeric values are already
+denominated in the target code (for example, correcting an initial mis-configuration
+before any production data accumulated). SynthOrg does not ship an FX engine; callers are
+responsible for the conversion policy when they need one.
 
 `CostRecord` stores `input_tokens` and `output_tokens`; `total_tokens` is a `@computed_field`
 property on `TokenUsage` (the model embedded in `CompletionResponse`). Spending aggregation

@@ -179,6 +179,11 @@ class TestTaskMetricRepository:
         assert saved.id == "tm-001"
         assert saved.agent_id == "agent-001"
         assert saved.is_success is True
+        # Currency must round-trip through the repository.  A silent drop
+        # or overwrite here would leave the persisted row in an
+        # unrecoverable "numeric cost without a unit" state.
+        assert saved.currency == "EUR"
+        assert saved.cost == pytest.approx(0.50)
 
     async def test_query_metrics_by_agent(
         self,

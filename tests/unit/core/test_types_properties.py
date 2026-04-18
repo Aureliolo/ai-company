@@ -107,7 +107,13 @@ class TestCurrencyCodeProperties:
         """Allowlisted codes in lowercase are rejected by the pattern."""
         lower = code.lower()
         if lower == code:
-            # The code contains no letters (e.g. numeric ISO code) -- skip.
+            # Skip codes that are unchanged by ``str.lower()`` (already
+            # lowercase, no letter characters, or composed of characters
+            # whose case folding is a no-op).  ISO 4217 codes are
+            # alphabetic and uppercase, so this branch is defensive
+            # against future additions to ``_KNOWN_CODES`` -- the test
+            # only asserts rejection for codes that actually change
+            # under lowering.
             return
         with pytest.raises(ValidationError):
             _CurrencyModel(currency=lower)

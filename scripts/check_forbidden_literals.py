@@ -12,8 +12,13 @@ examples and the occasional ``'en-US'`` / currency-code reference.
 Forbidden patterns (all outside tests/, CLI Go code, and explicit allowlists):
 
 * Identifier suffix ``_usd``
-* Bare string literal ``'USD'`` / ``"USD"``
-* Bare BCP 47 tag ``'en-US'`` / ``"en-US"``
+* Bare ISO 4217 currency literal in any curated code -- ``'USD'``,
+  ``'EUR'``, ``'GBP'``, ``'JPY'``, etc.  Matches are gated against
+  ``_ISO_4217_CODES`` so unrelated three-letter strings (HTTP methods
+  like ``'GET'``, role names like ``'CEO'``, license ids) never trip
+  the gate.
+* Bare BCP 47 language-region tag -- ``'en-US'``, ``'de-DE'``,
+  ``'fr-FR'``, etc.
 * ``localhost:<port>`` references in application code
 
 Exits non-zero with a structured list on violations.
@@ -38,11 +43,32 @@ from typing import Final
 _USD_FIELD_RE: Final[re.Pattern[str]] = re.compile(
     r"\b[A-Za-z_][A-Za-z0-9_]*_usd\b",
 )
-_BARE_USD_RE: Final[re.Pattern[str]] = re.compile(
-    r"""(?<![A-Z_])['"]USD['"](?![A-Z_])""",
+# Any quoted 3-uppercase-letter token.  Filtered downstream against
+# ``_ISO_4217_CODES`` so only genuine currency codes raise.
+_BARE_CURRENCY_RE: Final[re.Pattern[str]] = re.compile(
+    r"""(?<![A-Z_])['"]([A-Z]{3})['"](?![A-Z_])""",
 )
-_BARE_EN_US_RE: Final[re.Pattern[str]] = re.compile(
-    r"""['"]en-US['"]""",
+# ISO 4217 allowlist mirrored from ``check_backend_regional_defaults.py``.
+# Kept deliberately in sync: both scripts decide "is this string a
+# currency code?" the same way.
+_ISO_4217_CODES: Final[frozenset[str]] = frozenset(
+    {
+        "AUD", "BRL", "CAD", "CHF", "CNY", "CZK", "DKK", "EUR",
+        "GBP", "HKD", "HUF", "IDR", "ILS", "INR", "JPY", "KRW",
+        "MXN", "NOK", "NZD", "PLN", "SEK", "SGD", "THB", "TRY",
+        "TWD", "USD", "VND", "ZAR", "BIF", "CLP", "DJF", "GNF",
+        "ISK", "KMF", "MGA", "PYG", "RWF", "UGX", "VUV", "XAF",
+        "XOF", "XPF", "BHD", "IQD", "JOD", "KWD", "LYD", "OMR",
+        "TND",
+    }
+)  # fmt: skip
+# BCP 47 language-region tag: two lowercase letters, a dash, two or
+# three uppercase letters.  Filtering here is intentionally liberal --
+# if a test string happens to collide with a BCP 47 shape, move it
+# into a test file (already excluded) or wrap it in the suppression
+# marker.
+_BARE_LOCALE_RE: Final[re.Pattern[str]] = re.compile(
+    r"""['"][a-z]{2}-[A-Z]{2,3}['"]""",
 )
 _LOCALHOST_PORT_RE: Final[re.Pattern[str]] = re.compile(
     r"(?:localhost|127\.0\.0\.1):\d+",
@@ -98,10 +124,14 @@ def _scan_file(file_path: Path, rel: str) -> list[str]:
             f"{rel}:{idx}: identifier {match.group(0)!r} ends in '_usd'"
             for match in _USD_FIELD_RE.finditer(line)
         )
-        if _BARE_USD_RE.search(line):
-            issues.append(f"{rel}:{idx}: hardcoded 'USD' literal")
-        if _BARE_EN_US_RE.search(line):
-            issues.append(f"{rel}:{idx}: hardcoded 'en-US' locale")
+        for match in _BARE_CURRENCY_RE.finditer(line):
+            code = match.group(1)
+            if code in _ISO_4217_CODES:
+                issues.append(
+                    f"{rel}:{idx}: hardcoded ISO 4217 code {code!r} in application code"
+                )
+        if _BARE_LOCALE_RE.search(line):
+            issues.append(f"{rel}:{idx}: hardcoded BCP 47 locale literal")
         if _LOCALHOST_PORT_RE.search(line):
             issues.append(
                 f"{rel}:{idx}: hardcoded localhost:<port> in application code"

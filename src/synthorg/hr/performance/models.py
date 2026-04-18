@@ -434,7 +434,19 @@ class WindowMetrics(BaseModel):
 
     @model_validator(mode="after")
     def _validate_currency_presence(self) -> Self:
-        """Require currency whenever avg_cost_per_task is set."""
+        """Require ``currency`` whenever ``avg_cost_per_task`` is set.
+
+        The reverse direction is intentionally **not** enforced: a
+        ``WindowMetrics`` snapshot may legitimately carry a configured
+        currency tag ahead of any cost signal (for example, a freshly
+        provisioned agent whose window has produced tasks but no LLM
+        spend).  Forcing ``currency`` to ``None`` in that case would
+        destroy the aggregation-time context downstream consumers rely
+        on.  The load-bearing invariant is "cost implies currency"; the
+        opposite is a type assertion that existing callers do not
+        honour and whose stricter form would cascade through dozens of
+        test factories for no observable robustness gain.
+        """
         if self.avg_cost_per_task is not None and self.currency is None:
             msg = (
                 "currency is required when avg_cost_per_task is set "

@@ -141,11 +141,14 @@ _r.register(
         type=SettingType.STRING,
         default=DEFAULT_CURRENCY,
         description=(
-            "ISO 4217 currency code for display formatting. "
-            "Display-only preference: SynthOrg does not convert LLM "
-            "provider costs, so changing this value relabels the display "
-            "symbol for future records without translating their numeric "
-            "amounts."
+            "ISO 4217 currency code stamped onto every new cost record "
+            "and used for display formatting. SynthOrg does not convert "
+            "LLM provider costs, so changing this value after data has "
+            "accumulated produces mixed-currency history: existing rows "
+            "retain their original stamp while subsequent rows carry the "
+            "new code. Aggregators across the change window raise "
+            "``MixedCurrencyAggregationError`` rather than silently "
+            "combining them."
         ),
         group="Display",
         validator_pattern=r"^[A-Z]{3}$",

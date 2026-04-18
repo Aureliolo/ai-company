@@ -180,11 +180,15 @@ def _is_suppressed(lines: list[str], idx: int) -> bool:
         return True
     if idx == 0:
         return False
-    prev = lines[idx - 1].lstrip()
-    # Dedicated suppression-comment lines start with '#' followed by the
-    # marker; anything else on the previous line is an inline marker
-    # that only covers its own line.
-    return prev.startswith("#") and _SUPPRESSION_MARKER in prev
+    prev = lines[idx - 1].strip()
+    # A dedicated suppression-comment line is exactly ``#`` followed by
+    # optional whitespace and the marker.  Anything else on the previous
+    # line -- an inline marker after code, a marker embedded in a
+    # longer comment like ``# TODO lint-allow: regional-defaults
+    # later``, or any trailing text -- only covers its own line.
+    if not prev.startswith("#"):
+        return False
+    return prev[1:].strip() == _SUPPRESSION_MARKER
 
 
 def _scan_file(
