@@ -4,9 +4,17 @@ import { CURRENCY_OPTIONS, DEFAULT_CURRENCY } from '@/utils/currencies'
 
 /** Any currency that is not the project default -- used by tests that need to
  *  prove a non-default value is reset back to {@link DEFAULT_CURRENCY}. Picked
- *  from the canonical list rather than hardcoded to avoid drift. */
-const NON_DEFAULT_CURRENCY =
-  CURRENCY_OPTIONS.find((c) => c.value !== DEFAULT_CURRENCY)?.value ?? 'EUR'
+ *  from the canonical list rather than hardcoded, so the test fails loudly if
+ *  the currency list ever shrinks to a single entry instead of silently
+ *  masking that precondition. */
+const _NON_DEFAULT = CURRENCY_OPTIONS.find((c) => c.value !== DEFAULT_CURRENCY)
+if (!_NON_DEFAULT) {
+  throw new Error(
+    'CURRENCY_OPTIONS must contain at least one non-default currency ' +
+      'for this test; update @/utils/currencies.',
+  )
+}
+const NON_DEFAULT_CURRENCY = _NON_DEFAULT.value
 
 vi.mock('@/api/endpoints/setup', () => ({
   getSetupStatus: vi.fn(),

@@ -13,7 +13,7 @@ from synthorg.budget.config import (
 )
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.cost_tiers import CostTierDefinition, CostTiersConfig
-from synthorg.budget.currency import DEFAULT_CURRENCY
+from synthorg.budget.currency import DEFAULT_CURRENCY, CurrencyCode
 from synthorg.budget.enums import BudgetAlertLevel
 from synthorg.budget.hierarchy import (
     BudgetHierarchy,
@@ -232,7 +232,7 @@ def sample_cost_record() -> CostRecord:
         input_tokens=4500,
         output_tokens=1200,
         cost=0.0315,
-        currency="USD",
+        currency=DEFAULT_CURRENCY,
         timestamp=datetime(2026, 2, 27, 10, 30, 0, tzinfo=UTC),
     )
 
@@ -269,7 +269,7 @@ def sample_spending_summary() -> SpendingSummary:
             start=datetime(2026, 2, 1, tzinfo=UTC),
             end=datetime(2026, 3, 1, tzinfo=UTC),
             total_cost=75.50,
-            currency="USD",
+            currency=DEFAULT_CURRENCY,
             total_input_tokens=500000,
             total_output_tokens=120000,
             record_count=150,
@@ -278,7 +278,7 @@ def sample_spending_summary() -> SpendingSummary:
             AgentSpending(
                 agent_id="sarah_chen",
                 total_cost=40.0,
-                currency="USD",
+                currency=DEFAULT_CURRENCY,
                 total_input_tokens=300000,
                 total_output_tokens=80000,
                 record_count=80,
@@ -286,7 +286,7 @@ def sample_spending_summary() -> SpendingSummary:
             AgentSpending(
                 agent_id="alex_dev",
                 total_cost=35.50,
-                currency="USD",
+                currency=DEFAULT_CURRENCY,
                 total_input_tokens=200000,
                 total_output_tokens=40000,
                 record_count=70,
@@ -296,7 +296,7 @@ def sample_spending_summary() -> SpendingSummary:
             DepartmentSpending(
                 department_name="Engineering",
                 total_cost=75.50,
-                currency="USD",
+                currency=DEFAULT_CURRENCY,
                 total_input_tokens=500000,
                 total_output_tokens=120000,
                 record_count=150,
@@ -368,7 +368,7 @@ def make_cost_record(  # noqa: PLR0913
     input_tokens: int = 1000,
     output_tokens: int = 500,
     cost: float = 0.05,
-    currency: str = DEFAULT_CURRENCY,
+    currency: CurrencyCode = DEFAULT_CURRENCY,
     timestamp: datetime | None = None,
 ) -> CostRecord:
     """Build a CostRecord with sensible defaults."""
