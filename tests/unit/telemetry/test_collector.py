@@ -1,5 +1,6 @@
 """Tests for the telemetry collector."""
 
+import os
 from datetime import datetime
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
@@ -82,40 +83,59 @@ class TestTelemetryCollector:
         assert id_file.read_text(encoding="utf-8").strip() == collector.deployment_id
 
     def test_deployment_id_read_error_generates_new(self, tmp_path: Path) -> None:
-        """OSError on read falls back to generating a new ID."""
+        """OSError on read falls back to generating a new ID.
+
+        Patches :func:`os.path.exists` (the post-sanitiser read
+        probe) instead of ``Path.exists``; ``_load_or_create_deployment_id``
+        uses the ``os`` / builtin I/O pair so the CodeQL
+        path-injection sanitiser sits on the same lines as the
+        filesystem sinks.
+        """
         config = TelemetryConfig(enabled=True, backend=TelemetryBackend.NOOP)
-        deployment_file = tmp_path / "telemetry_id"
-        original_exists = Path.exists
+        deployment_file_str = str(tmp_path / "telemetry_id")
         read_error = OSError("permission denied")
+        original_exists = os.path.exists
 
-        def exists_side_effect(self: Path) -> bool:
-            if self == deployment_file:
+        def exists_side_effect(path: str) -> bool:
+            if path == deployment_file_str:
                 raise read_error
-            return original_exists(self)
+            return original_exists(path)
 
-        with patch.object(
-            Path, "exists", autospec=True, side_effect=exists_side_effect
+        with patch(
+            "synthorg.telemetry.collector.os.path.exists",
+            side_effect=exists_side_effect,
         ):
             collector = TelemetryCollector(config=config, data_dir=tmp_path)
             assert collector.deployment_id is not None
             assert len(collector.deployment_id) == 36  # UUID4 with hyphens: 8-4-4-4-12
 
     def test_deployment_id_write_error_still_returns(self, tmp_path: Path) -> None:
-        """OSError on write still returns the generated ID."""
+        """OSError on write still returns the generated ID.
+
+        Patches the builtin :func:`open` (the post-sanitiser writer)
+        instead of ``Path.write_text``; the collector now uses
+        ``open()`` directly so the sanitiser and sink are textually
+        adjacent for CodeQL.
+        """
         config = TelemetryConfig(enabled=True, backend=TelemetryBackend.NOOP)
-        deployment_file = tmp_path / "telemetry_id"
-        original_write_text = Path.write_text
+        deployment_file_str = str(tmp_path / "telemetry_id")
         write_error = OSError("disk full")
+        original_open = open
 
-        def write_text_side_effect(
-            self: Path, data: str, encoding: str | None = None, **kwargs: object
-        ) -> int:
-            if self == deployment_file:
+        def open_side_effect(
+            file: str,
+            mode: str = "r",
+            *args: object,
+            **kwargs: object,
+        ) -> object:
+            if file == deployment_file_str and "w" in mode:
                 raise write_error
-            return original_write_text(self, data, encoding=encoding, **kwargs)  # type: ignore[arg-type]
+            return original_open(file, mode, *args, **kwargs)  # type: ignore[call-overload]
 
-        with patch.object(
-            Path, "write_text", autospec=True, side_effect=write_text_side_effect
+        with patch(
+            "synthorg.telemetry.collector.open",
+            side_effect=open_side_effect,
+            create=True,
         ):
             collector = TelemetryCollector(config=config, data_dir=tmp_path)
             assert collector.deployment_id is not None

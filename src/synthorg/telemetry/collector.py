@@ -411,43 +411,67 @@ class TelemetryCollector:
         """Load deployment ID from file or create a new UUID.
 
         Returns a valid UUID string in all cases (never raises).
-        Logs warnings on I/O errors. Performs a local path-injection
-        sanitiser (startswith allow-list) immediately before the
-        filesystem operations so CodeQL's ``py/path-injection``
-        query sees the guard adjacent to the sinks -- the same
-        validation in :func:`synthorg.api.app._resolve_memory_dir`
-        does not register with the dataflow tracker across the
-        caller/callee boundary.
+        Logs warnings on I/O errors.
+
+        Applies the OWASP path-injection recipe (:func:`os.path.normpath`
+        + :py:meth:`str.startswith` on the normalised full path +
+        trusted-root allow-list) immediately before the filesystem
+        operations. The duplicate of
+        :func:`synthorg.api.app._resolve_memory_dir` is deliberate
+        defense-in-depth: ``normpath`` collapses ``..``/redundant
+        separators that a caller constructing ``TelemetryCollector``
+        directly could otherwise smuggle past ``self._data_dir``,
+        and the startswith check is the sanitiser CodeQL's
+        ``py/path-injection`` query tracks across the sinks below.
         """
-        # Local sanitiser: verify ``self._data_dir`` is under a
-        # trusted root before any file operation below. Mirrors the
-        # builder's allow-list (``/data`` + OS temp dir) and falls
-        # back to an in-memory UUID when the path is outside the
-        # allow-list, so a misconfigured env var can never steer
-        # writes to an operator-sensitive location.
-        data_dir_str = str(self._data_dir)
-        trusted_roots: tuple[str, ...] = (str(Path("/data")),)
+        # Build the full target path as a normalised string: this is
+        # the ``str(os.path.normpath(os.path.join(base, name)))``
+        # recipe from OWASP / CodeQL. ``normpath`` collapses ``..``
+        # and redundant ``/`` so the prefix check below cannot be
+        # bypassed with ``/data/../etc/telemetry_id``. The ``PTH*``
+        # ruff lints (prefer ``Path``) are intentionally suppressed
+        # here: CodeQL's ``py/path-injection`` query only recognises
+        # string-based ``normpath``/``startswith`` + ``os.path``/
+        # builtin I/O as a sanitiser + sink pair; the equivalent
+        # ``Path`` methods leave the sinks flagged even with a
+        # valid guard.
+        id_path_str = os.path.normpath(
+            os.path.join(os.fspath(self._data_dir), "telemetry_id"),  # noqa: PTH118
+        )
+        data_root = os.path.normpath(str(Path("/data")))
         try:
-            tmp_root = str(Path(tempfile.gettempdir()))
+            tmp_root: str | None = os.path.normpath(str(Path(tempfile.gettempdir())))
         except OSError, RuntimeError:
             tmp_root = None
-        if tmp_root is not None:
-            trusted_roots = (*trusted_roots, tmp_root)
-        if not any(
-            data_dir_str == root or data_dir_str.startswith(root + os.sep)
-            for root in trusted_roots
-        ):
+        # Require a strict descendant of a trusted root (``root +
+        # sep``). Equality (``path == root``) is rejected because
+        # the caller would still derive ``parent / "telemetry"``
+        # above this function, and a path equal to the root would
+        # escape one level up (``/data`` -> ``/telemetry``).
+        # ``normcase`` lower-cases on Windows and is a no-op on
+        # POSIX -- pairing it with normpath keeps the comparison
+        # case-insensitive where the filesystem is.
+        candidate_norm = os.path.normcase(id_path_str)
+        allowed = candidate_norm.startswith(os.path.normcase(data_root) + os.sep) or (
+            tmp_root is not None
+            and candidate_norm.startswith(os.path.normcase(tmp_root) + os.sep)
+        )
+        if not allowed:
             logger.warning(
                 TELEMETRY_REPORT_FAILED,
                 detail="data_dir_not_trusted",
-                value=data_dir_str,
+                value=id_path_str,
             )
             return str(uuid.uuid4())
 
-        id_file = self._data_dir / "telemetry_id"
+        # Use the sanitised string with plain ``os`` / builtin I/O
+        # so the sanitiser and each sink sit on adjacent lines --
+        # the pattern CodeQL's static dataflow query matches on.
+        # ``# noqa: PTH*`` rationale above applies here too.
         try:
-            if id_file.exists():
-                stored = id_file.read_text(encoding="utf-8").strip()
+            if os.path.exists(id_path_str):  # noqa: PTH110
+                with open(id_path_str, encoding="utf-8") as fh:  # noqa: PTH123
+                    stored = fh.read().strip()
                 if stored:
                     try:
                         uuid.UUID(stored)
@@ -468,9 +492,13 @@ class TelemetryCollector:
 
         new_id = str(uuid.uuid4())
         try:
-            id_file.parent.mkdir(parents=True, exist_ok=True)
-            id_file.write_text(new_id, encoding="utf-8")
-            id_file.chmod(0o600)
+            os.makedirs(  # noqa: PTH103
+                os.path.dirname(id_path_str),  # noqa: PTH120
+                exist_ok=True,
+            )
+            with open(id_path_str, "w", encoding="utf-8") as fh:  # noqa: PTH123
+                fh.write(new_id)
+            os.chmod(id_path_str, 0o600)  # noqa: PTH101
         except OSError as exc:
             logger.warning(
                 TELEMETRY_REPORT_FAILED,

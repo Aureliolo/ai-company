@@ -86,32 +86,23 @@ class LogfireReporter:
         """Send a telemetry event to Logfire.
 
         Offloads the synchronous SDK call to a thread to avoid
-        blocking the event loop. Logs at WARNING and re-raises so
-        :meth:`TelemetryCollector._send` returns ``False`` and does
-        not emit a misleading ``*_SENT`` success event for an
-        undelivered write. The outer collector already swallows
-        this exception, keeping telemetry fire-and-forget at the
-        application boundary.
+        blocking the event loop. Lets backend exceptions propagate
+        so :meth:`TelemetryCollector._send` returns ``False`` and
+        skips the misleading ``*_SENT`` success event for an
+        undelivered write. :meth:`TelemetryCollector._send` owns
+        the ``TELEMETRY_REPORT_FAILED`` alert -- no log here
+        avoids duplicating the same metric per failure.
         """
-        try:
-            await asyncio.to_thread(
-                self._logfire.info,
-                event.event_type,
-                event_timestamp=event.timestamp,
-                deployment_id=event.deployment_id,
-                synthorg_version=event.synthorg_version,
-                python_version=event.python_version,
-                os_platform=event.os_platform,
-                **event.properties,
-            )
-        except Exception as exc:
-            logger.warning(
-                TELEMETRY_REPORT_FAILED,
-                event_type=event.event_type,
-                error_type=type(exc).__name__,
-                exc_info=True,
-            )
-            raise
+        await asyncio.to_thread(
+            self._logfire.info,
+            event.event_type,
+            event_timestamp=event.timestamp,
+            deployment_id=event.deployment_id,
+            synthorg_version=event.synthorg_version,
+            python_version=event.python_version,
+            os_platform=event.os_platform,
+            **event.properties,
+        )
 
     async def flush(self) -> None:
         """Flush the Logfire exporter."""

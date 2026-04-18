@@ -4,8 +4,11 @@ The collector's ``_send`` helper only flips the "delivered" return
 value to ``False`` when ``report()`` raises. Earlier revisions of
 the Logfire reporter logged and swallowed backend exceptions, so
 failed writes surfaced as successful deliveries (``*_SENT``
-debug events fired regardless). These tests lock in the re-raise
-contract so that regression cannot sneak back in.
+debug events fired regardless). These tests lock in the
+propagate-don't-swallow contract so that regression cannot sneak
+back in. The reporter does **not** log ``TELEMETRY_REPORT_FAILED``
+itself -- :meth:`TelemetryCollector._send` owns that alert and
+duplicate logs would double-count failures.
 """
 
 from datetime import UTC, datetime
@@ -14,7 +17,6 @@ from unittest.mock import patch
 
 import pytest
 
-from synthorg.observability.events.telemetry import TELEMETRY_REPORT_FAILED
 from synthorg.telemetry.protocol import TelemetryEvent
 
 
@@ -32,7 +34,7 @@ def _event() -> TelemetryEvent:
 
 @pytest.mark.unit
 class TestLogfireReporterReportRaises:
-    """``report()`` must re-raise backend failures after logging."""
+    """``report()`` must propagate backend failures, not swallow them."""
 
     @pytest.fixture
     def reporter(self) -> Any:
@@ -44,7 +46,7 @@ class TestLogfireReporterReportRaises:
 
         return LogfireReporter()
 
-    async def test_backend_exception_is_logged_and_reraised(
+    async def test_backend_exception_propagates(
         self,
         reporter: Any,
     ) -> None:
@@ -55,15 +57,26 @@ class TestLogfireReporterReportRaises:
                 "info",
                 side_effect=RuntimeError("backend down"),
             ),
-            patch(
-                "synthorg.telemetry.reporters.logfire.logger",
-            ) as mock_logger,
             pytest.raises(RuntimeError, match="backend down"),
         ):
             await reporter.report(event)
-        mock_logger.warning.assert_called_once()
-        call = mock_logger.warning.call_args
-        assert call.args[0] == TELEMETRY_REPORT_FAILED
-        assert call.kwargs["event_type"] == event.event_type
-        assert call.kwargs["error_type"] == "RuntimeError"
-        assert call.kwargs["exc_info"] is True
+
+    async def test_reporter_does_not_emit_report_failed_alert(
+        self,
+        reporter: Any,
+    ) -> None:
+        """The collector owns ``TELEMETRY_REPORT_FAILED``; reporter stays quiet."""
+        event = _event()
+        with (
+            patch.object(
+                reporter._logfire,
+                "info",
+                side_effect=RuntimeError("backend down"),
+            ),
+            patch(
+                "synthorg.telemetry.reporters.logfire.logger",
+            ) as mock_logger,
+            pytest.raises(RuntimeError),
+        ):
+            await reporter.report(event)
+        mock_logger.warning.assert_not_called()

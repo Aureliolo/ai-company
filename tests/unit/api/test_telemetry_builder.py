@@ -124,13 +124,31 @@ class TestMemoryDirValidation:
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """`/data/../etc` gets canonicalised to `/etc` and rejected.
+        """`/data/../etc` gets rejected via the ``..`` traversal guard.
 
-        ``Path.resolve`` collapses ``..`` segments before the
-        allow-list check runs, so traversal tricks cannot smuggle
-        paths past the prefix comparison.
+        The explicit ``Path.parts`` check catches traversal attempts
+        before the prefix check, so ``/data/../etc`` cannot smuggle
+        past the allow-list by starting with ``/data``.
         """
         monkeypatch.setenv("SYNTHORG_MEMORY_DIR", "/data/../etc/memory")
+        monkeypatch.delenv("SYNTHORG_TELEMETRY", raising=False)
+        collector = _build_telemetry_collector()
+        assert collector._data_dir == Path("/data/telemetry")
+
+    def test_path_equal_to_root_is_rejected(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """``SYNTHORG_MEMORY_DIR=/data`` must fall back to the default.
+
+        Regression guard: ``_build_telemetry_collector`` derives
+        ``memory_dir.parent / "telemetry"``. If the memory dir
+        equals a root (``/data``), the parent is ``/`` and the
+        telemetry dir would escape to ``/telemetry``. The
+        allow-list therefore requires the memory dir to be a
+        *strict* descendant of a root.
+        """
+        monkeypatch.setenv("SYNTHORG_MEMORY_DIR", "/data")
         monkeypatch.delenv("SYNTHORG_TELEMETRY", raising=False)
         collector = _build_telemetry_collector()
         assert collector._data_dir == Path("/data/telemetry")

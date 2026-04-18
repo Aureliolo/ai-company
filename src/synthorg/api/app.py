@@ -1445,20 +1445,25 @@ def _resolve_memory_dir() -> Path:
         )
         return _DEFAULT_MEMORY_DIR
     # String-based ``startswith`` allow-list -- the pattern CodeQL
-    # ``py/path-injection`` recognises as a sanitiser. Normalise
-    # through ``str(Path(...))`` on both sides so platform
-    # separators line up on Windows. Appending ``os.sep`` on the
-    # root avoids ``/data-evil`` matching ``/data`` by prefix.
-    candidate_str = str(path)
+    # ``py/path-injection`` recognises as a sanitiser. ``normcase``
+    # lower-cases and normalises separators on Windows so the
+    # prefix check is case-insensitive there and unchanged on
+    # POSIX. The equality case (``candidate_str == root``) is
+    # deliberately NOT accepted: ``_build_telemetry_collector``
+    # derives ``memory_dir.parent / "telemetry"``, so if the env
+    # var points exactly at a root (``/data``) the telemetry dir
+    # would escape to ``/telemetry``. Requiring ``root + os.sep``
+    # means the memory dir must be a strict descendant.
+    candidate_str = os.path.normcase(str(path))
     allowed_roots = _allowed_memory_dir_roots()
     if not any(
-        candidate_str == root or candidate_str.startswith(root + os.sep)
+        candidate_str.startswith(os.path.normcase(root) + os.sep)
         for root in allowed_roots
     ):
         logger.warning(
             API_APP_STARTUP,
             detail="memory_dir_outside_allowed_roots",
-            value=candidate_str,
+            value=str(path),
             allowed=list(allowed_roots),
         )
         return _DEFAULT_MEMORY_DIR
