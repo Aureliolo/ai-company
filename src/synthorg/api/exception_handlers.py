@@ -37,7 +37,10 @@ from synthorg.api.errors import (
     category_title,
     category_type_uri,
 )
-from synthorg.budget.errors import BudgetExhaustedError
+from synthorg.budget.errors import (
+    BudgetExhaustedError,
+    MixedCurrencyAggregationError,
+)
 from synthorg.communication.errors import CommunicationError
 from synthorg.engine.errors import EngineError
 from synthorg.integrations.errors import IntegrationError
@@ -470,9 +473,10 @@ def handle_domain_error(
     that lacks annotations so the handler is forward-compatible with
     newly added domain errors.
 
-    Handles ``EngineError``, ``BudgetExhaustedError``, ``ProviderError``,
+    Handles ``EngineError``, ``BudgetExhaustedError``,
+    ``MixedCurrencyAggregationError``, ``ProviderError``,
     ``OntologyError``, ``CommunicationError``, ``IntegrationError``, and
-    ``ToolError`` hierarchies -- one handler function covers all seven
+    ``ToolError`` hierarchies -- one handler function covers all eight
     via MRO dispatch.
 
     5xx responses return the class-level ``default_message`` to avoid
@@ -659,6 +663,7 @@ EXCEPTION_HANDLERS: MappingProxyType[type[Exception], object] = MappingProxyType
         RateLimitError: handle_domain_error,
         EngineError: handle_domain_error,
         BudgetExhaustedError: handle_domain_error,
+        MixedCurrencyAggregationError: handle_domain_error,
         ProviderError: handle_domain_error,
         OntologyError: handle_domain_error,
         CommunicationError: handle_domain_error,

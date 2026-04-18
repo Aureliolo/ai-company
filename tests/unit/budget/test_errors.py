@@ -2,9 +2,11 @@
 
 import pytest
 
+from synthorg.api.errors import ErrorCategory, ErrorCode
 from synthorg.budget.errors import (
     BudgetExhaustedError,
     DailyLimitExceededError,
+    MixedCurrencyAggregationError,
     QuotaExhaustedError,
 )
 
@@ -59,3 +61,58 @@ class TestBudgetErrorHierarchy:
         msg = "subclass caught"
         with pytest.raises(BudgetExhaustedError):
             raise exc_cls(msg)
+
+
+@pytest.mark.unit
+class TestMixedCurrencyAggregationError:
+    """Validation + taxonomy contract for ``MixedCurrencyAggregationError``."""
+
+    def test_not_a_budget_exhausted_subclass(self) -> None:
+        """Data-integrity error must not be caught by BudgetExhaustedError."""
+        assert not issubclass(
+            MixedCurrencyAggregationError,
+            BudgetExhaustedError,
+        )
+
+    def test_classvar_http_metadata(self) -> None:
+        """ClassVars match the RFC 9457 conflict taxonomy."""
+        assert MixedCurrencyAggregationError.status_code == 409
+        assert (
+            MixedCurrencyAggregationError.error_code
+            == ErrorCode.MIXED_CURRENCY_AGGREGATION
+        )
+        assert MixedCurrencyAggregationError.error_category == ErrorCategory.CONFLICT
+        assert MixedCurrencyAggregationError.retryable is False
+
+    def test_requires_at_least_two_distinct_currencies(self) -> None:
+        """Constructor rejects inputs that do not actually mix currencies."""
+        with pytest.raises(ValueError, match="at least 2 distinct currencies"):
+            MixedCurrencyAggregationError(
+                "only one code",
+                currencies=frozenset({"EUR"}),
+            )
+        with pytest.raises(ValueError, match="at least 2 distinct currencies"):
+            MixedCurrencyAggregationError(
+                "empty set",
+                currencies=frozenset(),
+            )
+
+    def test_exposes_currency_set_and_context(self) -> None:
+        err = MixedCurrencyAggregationError(
+            currencies=frozenset({"EUR", "JPY"}),
+            agent_id="agent-1",
+            task_id="task-9",
+            project_id="proj-42",
+        )
+        assert err.currencies == frozenset({"EUR", "JPY"})
+        assert err.agent_id == "agent-1"
+        assert err.task_id == "task-9"
+        assert err.project_id == "proj-42"
+        assert str(err) == MixedCurrencyAggregationError.default_message
+
+    def test_custom_message_preserved(self) -> None:
+        err = MixedCurrencyAggregationError(
+            "custom detail",
+            currencies=frozenset({"EUR", "USD"}),
+        )
+        assert str(err) == "custom detail"

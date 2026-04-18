@@ -860,6 +860,20 @@ class TestDomainErrorMapping:
             ),
             pytest.param(
                 lambda: __import__(
+                    "synthorg.budget.errors",
+                    fromlist=["MixedCurrencyAggregationError"],
+                ).MixedCurrencyAggregationError(
+                    "cannot aggregate",
+                    currencies=frozenset({"EUR", "JPY"}),
+                ),
+                409,
+                ErrorCode.MIXED_CURRENCY_AGGREGATION,
+                ErrorCategory.CONFLICT,
+                False,
+                id="budget_mixed_currency",
+            ),
+            pytest.param(
+                lambda: __import__(
                     "synthorg.providers.errors",
                     fromlist=["ProviderError"],
                 ).ProviderError("upstream fail"),

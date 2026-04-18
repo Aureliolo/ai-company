@@ -108,6 +108,68 @@ class ProjectBudgetExhaustedError(BudgetExhaustedError):
         self.project_spent = project_spent
 
 
+class MixedCurrencyAggregationError(Exception):
+    """Raised when cost values in different currencies would be aggregated.
+
+    Cost summation, averaging, and budget checks only produce meaningful
+    results when every contributing row carries the same currency.  This
+    error signals that the caller handed an aggregator a mix of
+    currencies; the fix is to partition records by currency first (or
+    apply an FX conversion -- out of scope for the initial release).
+
+    Intentionally a sibling of :class:`BudgetExhaustedError`, not a
+    subclass: this is a data-integrity / caller-contract violation, not
+    a budget-exhaustion signal, so the engine layer's
+    ``BudgetExhaustedError`` catch block must not absorb it.
+
+    Class Attributes:
+        status_code: HTTP 409 Conflict.
+        error_code: ``MIXED_CURRENCY_AGGREGATION``.
+        error_category: ``CONFLICT``.
+        retryable: ``False`` -- retrying without partitioning the input
+            produces the same error.
+        default_message: Generic message safe for user-facing responses.
+
+    Instance Attributes:
+        currencies: The set of distinct currency codes observed in the
+            input.  Exposed so structured logs and error envelopes can
+            surface the conflicting codes without inspecting the
+            offending records directly.
+        agent_id: Optional agent identifier the aggregation targeted.
+        task_id: Optional task identifier the aggregation targeted.
+        project_id: Optional project identifier the aggregation targeted.
+    """
+
+    status_code: ClassVar[int] = 409
+    error_code: ClassVar[ErrorCode] = ErrorCode.MIXED_CURRENCY_AGGREGATION
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.CONFLICT
+    retryable: ClassVar[bool] = False
+    default_message: ClassVar[str] = (
+        "Cannot aggregate cost values across different currencies"
+    )
+
+    def __init__(
+        self,
+        msg: str | None = None,
+        *,
+        currencies: frozenset[str],
+        agent_id: NotBlankStr | None = None,
+        task_id: NotBlankStr | None = None,
+        project_id: NotBlankStr | None = None,
+    ) -> None:
+        if len(currencies) < 2:  # noqa: PLR2004
+            detail = (
+                f"MixedCurrencyAggregationError requires at least 2 distinct "
+                f"currencies, got {sorted(currencies)!r}"
+            )
+            raise ValueError(detail)
+        super().__init__(msg or self.default_message)
+        self.currencies = currencies
+        self.agent_id = agent_id
+        self.task_id = task_id
+        self.project_id = project_id
+
+
 class QuotaExhaustedError(BudgetExhaustedError):
     """Raised when provider quota is exhausted and unresolvable.
 
