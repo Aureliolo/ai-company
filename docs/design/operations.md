@@ -211,10 +211,12 @@ graph TD
 
     Percentages are illustrative defaults. All allocations are configurable per company.
     Dollar signs in the diagram match the default: `budget.currency` is an ISO 4217 code
-    that defaults to `USD` (the provider-native token-pricing unit for every major LLM
-    vendor SynthOrg integrates with). SynthOrg stamps the configured currency onto each
-    record but does not convert the numeric values; changing the setting relabels the
-    display symbol without translating cost amounts.
+    that defaults to `USD` (the provider-native token-pricing unit for major LLM
+    providers SynthOrg integrates with). SynthOrg stamps `budget.currency` onto every
+    row at record-creation time; historical rows retain the code that was active when
+    they were written, so changing the setting only affects newly created rows.
+    Numeric cost values are never converted -- updating the setting relabels the display
+    symbol for future records, not the existing ones.
 
 ### Cost Tracking
 

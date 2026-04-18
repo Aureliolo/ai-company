@@ -322,10 +322,10 @@ describe('formatCompletionTime', () => {
 // ── formatCostPerTask ──────────────────────────────────────
 
 describe('formatCostPerTask', () => {
-  it('formats cost in EUR', () => {
+  it('formats cost in the default currency (USD)', () => {
     const result = formatCostPerTask(0.35)
     expect(result).toContain('0.35')
-    expect(result).toMatch(/€/)
+    expect(result).toMatch(/\$/)
   })
 
   it('formats larger cost', () => {

@@ -29,13 +29,12 @@ from pydantic import AfterValidator, StringConstraints
 DEFAULT_CURRENCY: Final[str] = "USD"
 """Default ISO 4217 currency code.
 
-USD is the honest default: every major LLM provider (Anthropic, OpenAI,
-Google, Mistral, Cohere, et al.) publishes token pricing in USD and
-LiteLLM returns ``response_cost`` in USD.  SynthOrg does not convert
-FX at record time or display time -- the ``budget.currency`` setting
-is a display-only preference.  Overridden at runtime by the
-``budget.currency`` setting; this constant is the fallback when the
-setting has not been resolved yet.
+USD is the honest default: major LLM providers publish token pricing
+in USD, and LiteLLM returns ``response_cost`` in USD.  SynthOrg does
+not convert FX at record time or display time -- the
+``budget.currency`` setting is a display-only preference.  Overridden
+at runtime by the ``budget.currency`` setting; this constant is the
+fallback when the setting has not been resolved yet.
 """
 
 CURRENCY_SYMBOLS: Final[MappingProxyType[str, str]] = MappingProxyType(

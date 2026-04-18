@@ -385,12 +385,11 @@ class PostgresCostRecordRepository:
         """Sum total cost, optionally filtered by agent and/or task.
 
         Raises :class:`MixedCurrencyAggregationError` when the matched rows
-        span multiple currencies -- summing across currencies produces a
-        meaningless number, so the invariant is enforced at the SQL layer.
-        Both distinct-currency probe and SUM run in the same connection
-        (and therefore the same transactional view under default
-        ``read committed`` isolation) so a concurrent INSERT cannot land
-        between the two queries.
+        span multiple currencies.  The distinct-currency probe and the
+        ``SUM`` run in a **single** aggregating query
+        (``COUNT(DISTINCT)`` + ``STRING_AGG(DISTINCT)`` + ``SUM``) so the
+        two observations share one snapshot and a concurrent commit
+        cannot change the result between them.
         """
         conditions: list[str] = []
         params: list[str] = []
@@ -402,34 +401,19 @@ class PostgresCostRecordRepository:
             params.append(task_id)
         where_clause = (" WHERE " + " AND ".join(conditions)) if conditions else ""
         # where_clause is built from fixed column names only; user values
-        # go through bound %s parameters.  S608 suppressed on each
-        # f-string below.
-        currency_sql = f"SELECT DISTINCT currency FROM cost_records{where_clause}"  # noqa: S608
-        sum_sql = f"SELECT COALESCE(SUM(cost), 0.0) FROM cost_records{where_clause}"  # noqa: S608
+        # go through bound %s parameters.
+        agg_select = (
+            "SELECT "
+            "COUNT(DISTINCT currency) AS distinct_count, "
+            "STRING_AGG(DISTINCT currency, ',') AS currencies, "
+            "COALESCE(SUM(cost), 0.0) AS total_cost "
+            "FROM cost_records"
+        )
+        agg_sql = f"{agg_select}{where_clause}"
 
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
-                await cur.execute(currency_sql, params)
-                currency_rows = await cur.fetchall()
-                distinct = frozenset(
-                    str(r[0]) for r in currency_rows if r[0] is not None
-                )
-                if len(distinct) > 1:
-                    logger.error(
-                        PERSISTENCE_COST_RECORD_AGGREGATE_FAILED,
-                        agent_id=agent_id,
-                        task_id=task_id,
-                        currencies=sorted(distinct),
-                        error="mixed-currency aggregation rejected",
-                    )
-                    mixed_msg = "Cannot aggregate costs across mixed currencies"
-                    raise MixedCurrencyAggregationError(
-                        mixed_msg,
-                        currencies=distinct,
-                        agent_id=agent_id,
-                        task_id=task_id,
-                    )
-                await cur.execute(sum_sql, params)
+                await cur.execute(agg_sql, params)
                 row = await cur.fetchone()
         except psycopg.Error as exc:
             msg = "Failed to aggregate cost records"
@@ -447,7 +431,25 @@ class PostgresCostRecordRepository:
                 error=msg,
             )
             raise QueryError(msg)
-        total = float(row[0])
+        distinct_count = int(row[0] or 0)
+        currencies_csv = row[1]
+        total = float(row[2])
+        if distinct_count > 1:
+            distinct = frozenset(c for c in (currencies_csv or "").split(",") if c)
+            logger.error(
+                PERSISTENCE_COST_RECORD_AGGREGATE_FAILED,
+                agent_id=agent_id,
+                task_id=task_id,
+                currencies=sorted(distinct),
+                error="mixed-currency aggregation rejected",
+            )
+            mixed_msg = "Cannot aggregate costs across mixed currencies"
+            raise MixedCurrencyAggregationError(
+                mixed_msg,
+                currencies=distinct,
+                agent_id=agent_id,
+                task_id=task_id,
+            )
         logger.debug(
             PERSISTENCE_COST_RECORD_AGGREGATED,
             agent_id=agent_id,

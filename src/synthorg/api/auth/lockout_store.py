@@ -73,24 +73,56 @@ def _import_dict_row() -> Any:
 logger = get_logger(__name__)
 
 
-@runtime_checkable
-class LockoutStore(Protocol):
-    """Account lockout store contract implemented by SQLite and Postgres backends.
+class _InMemoryLockoutCacheMixin:
+    """Shared in-memory lockout-cache behaviour.
 
-    All methods are async except :meth:`is_locked`, which hits the
-    in-memory dict and must not block the event loop (auth middleware
-    hot path). Method docstrings on this protocol describe the
-    contract; concrete implementations reuse the same semantics.
-
-    Attributes:
-        _locked: In-memory cache of locked usernames to monotonic unlock times.
+    Both :class:`SqliteLockoutStore` and :class:`PostgresLockoutStore`
+    wrap a persistent backend but keep a process-local
+    ``{username: monotonic_unlock_time}`` map for O(1) synchronous
+    ``is_locked`` checks on the auth hot path.  This mixin hosts the
+    single implementation so both concrete stores stay in sync; each
+    concrete store owns the ``_locked`` dict and its guarding
+    :class:`threading.Lock` (set in ``__init__``).
     """
 
     _locked: dict[str, float]
-    _threshold: int
-    _window: timedelta
-    _duration: timedelta
-    _duration_seconds: int
+    _locked_lock: threading.Lock
+
+    def is_locked(self, username: str) -> bool:
+        """Check if an account is locked (sync, O(1)).
+
+        Called on every login attempt -- must not block.  Reads only
+        the process-local cache; see the module docstring for the
+        single-instance deployment caveat.
+
+        Args:
+            username: Login username to check.
+
+        Returns:
+            ``True`` if the account is currently locked.
+        """
+        username = username.lower()
+        with self._locked_lock:
+            locked_until = self._locked.get(username)
+            if locked_until is None:
+                return False
+            if time.monotonic() > locked_until:
+                self._locked.pop(username, None)
+                return False
+            return True
+
+
+@runtime_checkable
+class LockoutStore(Protocol):
+    """Public contract every lockout-store backend must satisfy.
+
+    All methods are async except :meth:`is_locked`, which hits the
+    in-memory dict and must not block the event loop (auth middleware
+    hot path).  Concrete implementations ship the state they need
+    (cache dict, threshold, window, duration) as private attributes;
+    callers only depend on the public methods and
+    :attr:`lockout_duration_seconds`.
+    """
 
     async def load_locked(self) -> int:
         """Restore in-memory lockout state from database."""
@@ -122,12 +154,13 @@ class LockoutStore(Protocol):
         ...
 
 
-class SqliteLockoutStore:
+class SqliteLockoutStore(_InMemoryLockoutCacheMixin):
     """SQLite-backed account lockout store.
 
     Tracks failed login attempts per username and enforces
     temporary lockout after exceeding the threshold within a window.
-    The in-memory lockout dict is O(1) for the auth hot path.
+    The in-memory lockout dict is O(1) for the auth hot path;
+    :meth:`is_locked` is inherited from :class:`_InMemoryLockoutCacheMixin`.
 
     Args:
         db: Open aiosqlite connection with ``row_factory`` set.
@@ -151,27 +184,6 @@ class SqliteLockoutStore:
         # the sync expiry-pop atomic vs concurrent ``record_failure`` /
         # ``record_success`` writes.
         self._locked_lock: threading.Lock = threading.Lock()
-
-    def is_locked(self, username: str) -> bool:
-        """Check if an account is locked (sync, O(1)).
-
-        Called on every login attempt -- must not block.
-
-        Args:
-            username: Login username to check.
-
-        Returns:
-            ``True`` if the account is currently locked.
-        """
-        username = username.lower()
-        with self._locked_lock:
-            locked_until = self._locked.get(username)
-            if locked_until is None:
-                return False
-            if time.monotonic() > locked_until:
-                self._locked.pop(username, None)
-                return False
-            return True
 
     @property
     def lockout_duration_seconds(self) -> int:
@@ -334,7 +346,7 @@ class SqliteLockoutStore:
         return count
 
 
-class PostgresLockoutStore:
+class PostgresLockoutStore(_InMemoryLockoutCacheMixin):
     """Postgres-backed account lockout store.
 
     Uses the shared ``AsyncConnectionPool`` (same one every
@@ -342,7 +354,8 @@ class PostgresLockoutStore:
     out a connection via ``async with pool.connection() as conn``;
     the context manager auto-commits the transaction on a clean
     exit and rolls back on exception, so no explicit ``commit()``
-    call is required.
+    call is required.  :meth:`is_locked` is inherited from
+    :class:`_InMemoryLockoutCacheMixin`.
 
     Args:
         pool: An open ``psycopg_pool.AsyncConnectionPool``.
@@ -362,29 +375,6 @@ class PostgresLockoutStore:
         self._locked: dict[str, float] = {}
         self._locked_lock: threading.Lock = threading.Lock()
         self._dict_row = _import_dict_row()
-
-    def is_locked(self, username: str) -> bool:
-        """Check if an account is locked (sync, O(1)).
-
-        Called on every login attempt -- must not block.  Reads only
-        the process-local cache; see the module docstring for the
-        single-instance deployment caveat.
-
-        Args:
-            username: Login username to check.
-
-        Returns:
-            ``True`` if the account is currently locked.
-        """
-        username = username.lower()
-        with self._locked_lock:
-            locked_until = self._locked.get(username)
-            if locked_until is None:
-                return False
-            if time.monotonic() > locked_until:
-                self._locked.pop(username, None)
-                return False
-            return True
 
     @property
     def lockout_duration_seconds(self) -> int:

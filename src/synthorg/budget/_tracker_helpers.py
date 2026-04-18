@@ -107,9 +107,9 @@ def _assert_single_currency(
     if len(codes) > 1:
         raise MixedCurrencyAggregationError(
             currencies=frozenset(codes),
-            agent_id=agent_id or None,
-            task_id=task_id or None,
-            project_id=project_id or None,
+            agent_id=agent_id,
+            task_id=task_id,
+            project_id=project_id,
         )
     return next(iter(codes))
 

@@ -53,8 +53,8 @@ describe('setup wizard store', () => {
       }
     })
 
-    it('has EUR as default currency', () => {
-      expect(useSetupWizardStore.getState().currency).toBe('EUR')
+    it('has USD as default currency', () => {
+      expect(useSetupWizardStore.getState().currency).toBe('USD')
     })
 
     it('has no template selected', () => {
@@ -339,14 +339,14 @@ describe('setup wizard store', () => {
       useSetupWizardStore.setState({
         selectedTemplate: 'startup',
         companyName: 'Acme',
-        currency: 'USD',
+        currency: 'EUR',
       })
       useSetupWizardStore.getState().reset()
 
       const state = useSetupWizardStore.getState()
       expect(state.selectedTemplate).toBeNull()
       expect(state.companyName).toBe('')
-      expect(state.currency).toBe('EUR')
+      expect(state.currency).toBe('USD')
     })
   })
 

@@ -532,7 +532,9 @@ def test_client(  # noqa: C901, PLR0912, PLR0913, PLR0915
     if app_state._session_store is not None:
         app_state._session_store._revoked.clear()
     if app_state._lockout_store is not None:
-        app_state._lockout_store._locked.clear()
+        # _locked is an internal cache on the concrete store; the
+        # LockoutStore Protocol exposes only the public API.
+        app_state._lockout_store._locked.clear()  # type: ignore[attr-defined]
     app_state._ticket_store._tickets.clear()
     app_state._user_presence._counts.clear()
     if app_state._interrupt_store is not None:

@@ -5,6 +5,7 @@ from uuid import uuid4
 
 from pydantic import AwareDatetime
 
+from synthorg.budget.currency import DEFAULT_CURRENCY, CurrencyCode
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.core.types import NotBlankStr
@@ -33,7 +34,7 @@ def make_window_metrics(  # noqa: PLR0913
     avg_tokens_per_task: float | None = 500.0,
     success_rate: float | None = 0.8,
     collaboration_score: float | None = 5.0,
-    currency: str = "USD",
+    currency: CurrencyCode = DEFAULT_CURRENCY,
 ) -> WindowMetrics:
     """Build a WindowMetrics with sensible defaults."""
     return WindowMetrics(

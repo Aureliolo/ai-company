@@ -1,5 +1,6 @@
 """Budget namespace setting definitions."""
 
+from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.settings.enums import SettingLevel, SettingNamespace, SettingType
 from synthorg.settings.models import SettingDefinition
 from synthorg.settings.registry import get_registry
@@ -138,12 +139,13 @@ _r.register(
         namespace=SettingNamespace.BUDGET,
         key="currency",
         type=SettingType.STRING,
-        default="USD",
+        default=DEFAULT_CURRENCY,
         description=(
-            "ISO 4217 currency code for display formatting (e.g. USD, EUR, GBP). "
-            "Display-only: SynthOrg does not convert LLM provider costs. "
-            "Token prices are USD-denominated; changing this relabels the "
-            "display symbol but does not translate numeric values."
+            "ISO 4217 currency code for display formatting. "
+            "Display-only preference: SynthOrg does not convert LLM "
+            "provider costs, so changing this value relabels the display "
+            "symbol for future records without translating their numeric "
+            "amounts."
         ),
         group="Display",
         validator_pattern=r"^[A-Z]{3}$",

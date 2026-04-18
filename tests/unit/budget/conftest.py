@@ -80,6 +80,10 @@ class BudgetConfigFactory(ModelFactory[BudgetConfig]):
     total_monthly = 100.0
     per_task_limit = 5.0
     per_agent_daily_limit = 10.0
+    # Pin a known-valid ISO 4217 code; polyfactory's random-string
+    # generator would otherwise emit codes outside the formatter
+    # allowlist (e.g. "JLF") and fail ``CurrencyCode`` validation.
+    currency = "USD"
     alerts = BudgetAlertConfigFactory
     auto_downgrade = AutoDowngradeConfigFactory
     risk_budget = RiskBudgetConfigFactory

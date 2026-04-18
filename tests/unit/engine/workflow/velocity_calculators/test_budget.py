@@ -131,7 +131,7 @@ class TestBudgetVelocityCalculator:
             ),
         ]
         metrics = calc.rolling_average(records, window=3)
-        # Only sprint 1 and 3: 80 pts / 20 EUR = 4.0
+        # Only sprint 1 and 3: 80 pts / 20 USD = 4.0
         assert metrics.primary_value == pytest.approx(4.0)
 
     @pytest.mark.unit
@@ -150,7 +150,7 @@ class TestBudgetVelocityCalculator:
             ),
         ]
         metrics = calc.rolling_average(records, window=2)
-        # Only sprint 1: 30 pts / 10 EUR = 3.0
+        # Only sprint 1: 30 pts / 10 USD = 3.0
         assert metrics.primary_value == pytest.approx(3.0)
 
     @pytest.mark.unit
@@ -190,7 +190,7 @@ class TestBudgetVelocityCalculator:
             ),
         ]
         metrics = calc.rolling_average(records, window=2)
-        # Last 2: 50 pts / 10 EUR = 5.0
+        # Last 2: 50 pts / 10 USD = 5.0
         assert metrics.primary_value == pytest.approx(5.0)
 
     @pytest.mark.unit

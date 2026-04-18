@@ -12,9 +12,9 @@ describe('DepartmentStatsBar', () => {
     expect(screen.getByText('Active')).toBeInTheDocument()
   })
 
-  it('renders cost with default EUR currency', () => {
+  it('renders cost with default USD currency', () => {
     render(<DepartmentStatsBar agentCount={5} activeCount={3} cost7d={45.8} />)
-    expect(screen.getByText(formatCurrency(45.8, 'EUR'))).toBeInTheDocument()
+    expect(screen.getByText(formatCurrency(45.8, 'USD'))).toBeInTheDocument()
     expect(screen.getByText('Cost (7d)')).toBeInTheDocument()
   })
 

@@ -333,9 +333,11 @@ FROM cost_records"""
         """Sum total cost, optionally filtered by agent and/or task.
 
         Raises :class:`MixedCurrencyAggregationError` when the matched rows
-        span multiple currencies -- summing across currencies would produce
-        a meaningless number, so the invariant is checked at the SQL layer
-        and surfaced rather than silently collapsed.
+        span multiple currencies.  The distinct-currency probe and the
+        ``SUM`` run in a **single** aggregating query (``COUNT(DISTINCT)``
+        + ``GROUP_CONCAT(DISTINCT)`` + ``SUM``) so the two observations
+        share one snapshot and a concurrent insert cannot change the
+        result between them.
         """
         try:
             conditions: list[str] = []
@@ -349,30 +351,16 @@ FROM cost_records"""
             where_clause = (" WHERE " + " AND ".join(conditions)) if conditions else ""
 
             # where_clause is built from fixed column names only; user
-            # values go through bound parameters.  S608 suppressed on the
-            # f-string lines themselves.
-            currency_sql = f"SELECT DISTINCT currency FROM cost_records{where_clause}"  # noqa: S608
-            currency_cursor = await self._db.execute(currency_sql, tuple(params))
-            currency_rows = await currency_cursor.fetchall()
-            distinct = frozenset(str(r[0]) for r in currency_rows if r[0] is not None)
-            if len(distinct) > 1:
-                logger.error(
-                    PERSISTENCE_COST_RECORD_AGGREGATE_FAILED,
-                    agent_id=agent_id,
-                    task_id=task_id,
-                    currencies=sorted(distinct),
-                    error="mixed-currency aggregation rejected",
-                )
-                mixed_msg = "Cannot aggregate costs across mixed currencies"
-                raise MixedCurrencyAggregationError(
-                    mixed_msg,
-                    currencies=distinct,
-                    agent_id=agent_id,
-                    task_id=task_id,
-                )
-
-            sum_sql = f"SELECT COALESCE(SUM(cost), 0.0) FROM cost_records{where_clause}"  # noqa: S608
-            cursor = await self._db.execute(sum_sql, tuple(params))
+            # values go through bound parameters.
+            agg_select = (
+                "SELECT "
+                "COUNT(DISTINCT currency) AS distinct_count, "
+                "GROUP_CONCAT(DISTINCT currency) AS currencies, "
+                "COALESCE(SUM(cost), 0.0) AS total_cost "
+                "FROM cost_records"
+            )
+            agg_sql = f"{agg_select}{where_clause}"
+            cursor = await self._db.execute(agg_sql, tuple(params))
             row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to aggregate cost records"
@@ -390,7 +378,25 @@ FROM cost_records"""
                 error=msg,
             )
             raise QueryError(msg)
-        total = float(row[0])
+        distinct_count = int(row[0] or 0)
+        currencies_csv = row[1]
+        total = float(row[2])
+        if distinct_count > 1:
+            distinct = frozenset(c for c in (currencies_csv or "").split(",") if c)
+            logger.error(
+                PERSISTENCE_COST_RECORD_AGGREGATE_FAILED,
+                agent_id=agent_id,
+                task_id=task_id,
+                currencies=sorted(distinct),
+                error="mixed-currency aggregation rejected",
+            )
+            mixed_msg = "Cannot aggregate costs across mixed currencies"
+            raise MixedCurrencyAggregationError(
+                mixed_msg,
+                currencies=distinct,
+                agent_id=agent_id,
+                task_id=task_id,
+            )
         logger.debug(
             PERSISTENCE_COST_RECORD_AGGREGATED,
             agent_id=agent_id,

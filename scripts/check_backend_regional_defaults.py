@@ -168,10 +168,23 @@ _LOCALHOST_PORT_RE: Final[re.Pattern[str]] = re.compile(
 
 
 def _is_suppressed(lines: list[str], idx: int) -> bool:
-    """Return ``True`` when a lint-allow marker applies to line ``idx``."""
+    """Return ``True`` when a lint-allow marker applies to line ``idx``.
+
+    The marker suppresses either (a) the same line it appears on, or
+    (b) the line immediately below it when it sits on a dedicated
+    suppression line (``# lint-allow: regional-defaults`` with nothing
+    but whitespace before the ``#``).  A trailing inline marker on an
+    unrelated previous line does **not** bleed into the next line.
+    """
     if _SUPPRESSION_MARKER in lines[idx]:
         return True
-    return idx > 0 and _SUPPRESSION_MARKER in lines[idx - 1]
+    if idx == 0:
+        return False
+    prev = lines[idx - 1].lstrip()
+    # Dedicated suppression-comment lines start with '#' followed by the
+    # marker; anything else on the previous line is an inline marker
+    # that only covers its own line.
+    return prev.startswith("#") and _SUPPRESSION_MARKER in prev
 
 
 def _scan_file(

@@ -12,6 +12,7 @@ from synthorg.budget.category_analytics import (
 )
 from synthorg.budget.coordination_config import OrchestrationAlertThresholds
 from synthorg.budget.cost_record import CostRecord
+from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.budget.tracker import CostTracker
 
 
@@ -23,6 +24,7 @@ def _record(  # noqa: PLR0913
     output_tokens: int = 50,
     agent_id: str = "alice",
     task_id: str = "task-001",
+    currency: str = DEFAULT_CURRENCY,
 ) -> CostRecord:
     return CostRecord(
         agent_id=agent_id,
@@ -32,7 +34,7 @@ def _record(  # noqa: PLR0913
         input_tokens=input_tokens,
         output_tokens=output_tokens,
         cost=cost,
-        currency="USD",
+        currency=currency,
         timestamp=datetime(2026, 2, 15, 12, 0, 0, tzinfo=UTC),
         call_category=category,
     )

@@ -14,6 +14,7 @@ mismatches, Atlas migration failures) surface synchronously and are easy
 to diagnose.
 """
 
+import re
 from typing import TYPE_CHECKING
 
 import pytest
@@ -87,7 +88,13 @@ class TestFreshInstallPostgresLifecycle:
                 )
                 _, is_nullable, default = row
                 assert is_nullable == "NO", f"{table}.currency must be NOT NULL"
-                assert "USD" in (default or ""), (
+                # Postgres ``column_default`` rendering is
+                # ``'USD'::text`` for a literal text default.  Match the
+                # quoted literal precisely rather than any occurrence of
+                # the three letters, which would pass for
+                # ``coalesce(op_get_currency(), 'USD')`` style defaults
+                # that we do not want to be installed.
+                assert re.search(r"'USD'(::|$)", default or ""), (
                     f"{table}.currency must default to 'USD', got {default!r}"
                 )
 
