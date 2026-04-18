@@ -407,7 +407,7 @@ class TelemetryCollector:
                     error_type=type(exc).__name__,
                 )
 
-    def _load_or_create_deployment_id(self) -> str:
+    def _load_or_create_deployment_id(self) -> str:  # noqa: C901
         """Load deployment ID from file or create a new UUID.
 
         Returns a valid UUID string in all cases (never raises).
@@ -424,39 +424,47 @@ class TelemetryCollector:
         and the startswith check is the sanitiser CodeQL's
         ``py/path-injection`` query tracks across the sinks below.
         """
-        # Build the full target path as a normalised string: this is
-        # the ``str(os.path.normpath(os.path.join(base, name)))``
-        # recipe from OWASP / CodeQL. ``normpath`` collapses ``..``
-        # and redundant ``/`` so the prefix check below cannot be
-        # bypassed with ``/data/../etc/telemetry_id``. The ``PTH*``
-        # ruff lints (prefer ``Path``) are intentionally suppressed
-        # here: CodeQL's ``py/path-injection`` query only recognises
+        # Build the full target path as a normalised, case-folded
+        # string: the ``str(os.path.normcase(os.path.normpath(
+        # os.path.join(base, name))))`` recipe from OWASP / CodeQL.
+        # ``normpath`` collapses ``..`` and redundant ``/`` so the
+        # prefix check below cannot be bypassed with
+        # ``/data/../etc/telemetry_id``; ``normcase`` lower-cases on
+        # Windows (no-op on POSIX) so the comparison is
+        # case-insensitive where the filesystem is. The ``PTH*``
+        # ruff lints (prefer ``Path``) are intentionally suppressed:
+        # CodeQL's ``py/path-injection`` query only recognises
         # string-based ``normpath``/``startswith`` + ``os.path``/
         # builtin I/O as a sanitiser + sink pair; the equivalent
         # ``Path`` methods leave the sinks flagged even with a
         # valid guard.
-        id_path_str = os.path.normpath(
-            os.path.join(os.fspath(self._data_dir), "telemetry_id"),  # noqa: PTH118
+        id_path_str = os.path.normcase(
+            os.path.normpath(
+                os.path.join(  # noqa: PTH118
+                    os.fspath(self._data_dir),
+                    "telemetry_id",
+                ),
+            ),
         )
-        data_root = os.path.normpath(str(Path("/data")))
+        data_root = os.path.normcase(os.path.normpath(str(Path("/data"))))
         try:
-            tmp_root: str | None = os.path.normpath(str(Path(tempfile.gettempdir())))
+            tmp_root: str | None = os.path.normcase(
+                os.path.normpath(str(Path(tempfile.gettempdir()))),
+            )
         except OSError, RuntimeError:
             tmp_root = None
         # Require a strict descendant of a trusted root (``root +
         # sep``). Equality (``path == root``) is rejected because
         # the caller would still derive ``parent / "telemetry"``
         # above this function, and a path equal to the root would
-        # escape one level up (``/data`` -> ``/telemetry``).
-        # ``normcase`` lower-cases on Windows and is a no-op on
-        # POSIX -- pairing it with normpath keeps the comparison
-        # case-insensitive where the filesystem is.
-        candidate_norm = os.path.normcase(id_path_str)
-        allowed = candidate_norm.startswith(os.path.normcase(data_root) + os.sep) or (
-            tmp_root is not None
-            and candidate_norm.startswith(os.path.normcase(tmp_root) + os.sep)
-        )
-        if not allowed:
+        # escape one level up (``/data`` -> ``/telemetry``). The
+        # checks here use ``id_path_str`` directly (the same
+        # variable read at every sink below) so CodeQL's dataflow
+        # query sees the sanitiser on the exact value it tracks.
+        if not (
+            id_path_str.startswith(data_root + os.sep)
+            or (tmp_root is not None and id_path_str.startswith(tmp_root + os.sep))
+        ):
             logger.warning(
                 TELEMETRY_REPORT_FAILED,
                 detail="data_dir_not_trusted",
@@ -467,7 +475,8 @@ class TelemetryCollector:
         # Use the sanitised string with plain ``os`` / builtin I/O
         # so the sanitiser and each sink sit on adjacent lines --
         # the pattern CodeQL's static dataflow query matches on.
-        # ``# noqa: PTH*`` rationale above applies here too.
+        # The inline PTH-rule suppressions below carry the same
+        # rationale as the builder above.
         try:
             if os.path.exists(id_path_str):  # noqa: PTH110
                 with open(id_path_str, encoding="utf-8") as fh:  # noqa: PTH123
@@ -496,9 +505,44 @@ class TelemetryCollector:
                 os.path.dirname(id_path_str),  # noqa: PTH120
                 exist_ok=True,
             )
-            with open(id_path_str, "w", encoding="utf-8") as fh:  # noqa: PTH123
-                fh.write(new_id)
-            os.chmod(id_path_str, 0o600)  # noqa: PTH101
+            # Atomic exclusive create: under concurrent startups
+            # (e.g. two backend replicas mounting the same ``/data``
+            # volume) the prior ``exists`` + ``open("w")`` pair
+            # could overwrite a peer's freshly-written UUID and
+            # leave each replica with a different deployment ID.
+            # ``O_CREAT | O_EXCL`` with the final mode bits set
+            # atomically wins-or-loses the race; if a peer wrote
+            # first we re-read and reuse its UUID so the persisted
+            # ID stays stable.
+            fd = os.open(
+                id_path_str,
+                os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+                0o600,
+            )
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                    fh.write(new_id)
+            except BaseException:
+                # ``fdopen`` owns the fd on success; close it
+                # ourselves if construction raised.
+                os.close(fd)
+                raise
+        except FileExistsError:
+            # A peer wrote first. Re-read; fall back to our own
+            # freshly-minted UUID if their file is unreadable or
+            # corrupt (same contract as the read path above).
+            try:
+                with open(id_path_str, encoding="utf-8") as fh:  # noqa: PTH123
+                    stored = fh.read().strip()
+                uuid.UUID(stored)
+            except (OSError, ValueError) as exc:
+                logger.warning(
+                    TELEMETRY_REPORT_FAILED,
+                    detail="deployment_id_peer_read",
+                    error_type=type(exc).__name__,
+                )
+            else:
+                return stored
         except OSError as exc:
             logger.warning(
                 TELEMETRY_REPORT_FAILED,

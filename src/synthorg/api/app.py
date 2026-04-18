@@ -1470,20 +1470,28 @@ def _resolve_memory_dir() -> Path:
     return path
 
 
-def _build_telemetry_collector() -> TelemetryCollector:
+def _build_telemetry_collector(
+    telemetry_cfg: TelemetryConfig | None = None,
+) -> TelemetryCollector:
     """Build the project telemetry collector.
 
-    ``TelemetryConfig()`` defaults to ``enabled=False``;
-    :class:`TelemetryCollector` reads ``SYNTHORG_TELEMETRY`` inside
-    its own ``__init__`` (``true``/``1``/``yes`` to enable) and
-    overrides the config accordingly, so the env var wins over the
-    config file. The data directory stores the anonymous deployment
-    ID -- placed under the same base as ``SYNTHORG_MEMORY_DIR`` so
-    the container volume holds it.
+    Takes the parsed :class:`TelemetryConfig` from the app's
+    :class:`RootConfig` so config-file settings (e.g.
+    ``telemetry.backend``, ``telemetry.heartbeat_interval_hours``)
+    survive wiring -- passing ``None`` falls back to defaults
+    (``enabled=False``) for callers without a parsed config, like
+    early-boot helpers.  :class:`TelemetryCollector` reads
+    ``SYNTHORG_TELEMETRY`` inside its own ``__init__``
+    (``true``/``1``/``yes`` to enable) and overrides the config's
+    ``enabled`` flag, so the env var still wins over the config
+    file. The data directory stores the anonymous deployment ID --
+    placed under the same base as ``SYNTHORG_MEMORY_DIR`` so the
+    container volume holds it.
     """
     memory_dir = _resolve_memory_dir()
     telemetry_dir = memory_dir.parent / "telemetry"
-    return TelemetryCollector(config=TelemetryConfig(), data_dir=telemetry_dir)
+    config = telemetry_cfg if telemetry_cfg is not None else TelemetryConfig()
+    return TelemetryCollector(config=config, data_dir=telemetry_dir)
 
 
 def _build_performance_tracker(
@@ -2393,7 +2401,7 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
     # by ``telemetry_collector.shutdown`` reflects final state, and so
     # a hanging Logfire flush never blocks cleanup of load-bearing
     # resources.
-    telemetry_collector = _build_telemetry_collector()
+    telemetry_collector = _build_telemetry_collector(effective_config.telemetry)
     app_state.set_telemetry_collector(telemetry_collector)
     startup = [*startup, telemetry_collector.start]
     shutdown = [*shutdown, telemetry_collector.shutdown]

@@ -89,15 +89,18 @@ class TestTelemetryCollector:
         probe) instead of ``Path.exists``; ``_load_or_create_deployment_id``
         uses the ``os`` / builtin I/O pair so the CodeQL
         path-injection sanitiser sits on the same lines as the
-        filesystem sinks.
+        filesystem sinks. Matching the sanitised form
+        (``normcase``+``normpath``) makes the patch cross-platform.
         """
         config = TelemetryConfig(enabled=True, backend=TelemetryBackend.NOOP)
-        deployment_file_str = str(tmp_path / "telemetry_id")
+        deployment_file_str = os.path.normcase(
+            os.path.normpath(str(tmp_path / "telemetry_id")),
+        )
         read_error = OSError("permission denied")
         original_exists = os.path.exists
 
         def exists_side_effect(path: str) -> bool:
-            if path == deployment_file_str:
+            if os.path.normcase(os.path.normpath(path)) == deployment_file_str:
                 raise read_error
             return original_exists(path)
 
@@ -110,36 +113,79 @@ class TestTelemetryCollector:
             assert len(collector.deployment_id) == 36  # UUID4 with hyphens: 8-4-4-4-12
 
     def test_deployment_id_write_error_still_returns(self, tmp_path: Path) -> None:
-        """OSError on write still returns the generated ID.
+        """OSError on the atomic create still returns the generated ID.
 
-        Patches the builtin :func:`open` (the post-sanitiser writer)
-        instead of ``Path.write_text``; the collector now uses
-        ``open()`` directly so the sanitiser and sink are textually
-        adjacent for CodeQL.
+        Patches :func:`os.open` (the ``O_CREAT | O_EXCL`` sink used
+        by the atomic write path) instead of ``Path.write_text``;
+        the collector now wins-or-loses the write race with
+        :func:`os.open` so the sanitiser and sink stay textually
+        adjacent for CodeQL and the ID survives a concurrent peer.
         """
         config = TelemetryConfig(enabled=True, backend=TelemetryBackend.NOOP)
-        deployment_file_str = str(tmp_path / "telemetry_id")
+        deployment_file_str = os.path.normcase(
+            os.path.normpath(str(tmp_path / "telemetry_id")),
+        )
         write_error = OSError("disk full")
-        original_open = open
+        original_os_open = os.open
 
-        def open_side_effect(
-            file: str,
-            mode: str = "r",
-            *args: object,
-            **kwargs: object,
-        ) -> object:
-            if file == deployment_file_str and "w" in mode:
+        def os_open_side_effect(
+            path: str,
+            flags: int,
+            mode: int = 0o777,
+        ) -> int:
+            if (
+                os.path.normcase(os.path.normpath(path)) == deployment_file_str
+                and flags & os.O_EXCL
+            ):
                 raise write_error
-            return original_open(file, mode, *args, **kwargs)  # type: ignore[call-overload]
+            return original_os_open(path, flags, mode)
 
         with patch(
-            "synthorg.telemetry.collector.open",
-            side_effect=open_side_effect,
-            create=True,
+            "synthorg.telemetry.collector.os.open",
+            side_effect=os_open_side_effect,
         ):
             collector = TelemetryCollector(config=config, data_dir=tmp_path)
             assert collector.deployment_id is not None
             assert len(collector.deployment_id) == 36  # UUID4 with hyphens: 8-4-4-4-12
+
+    def test_deployment_id_concurrent_peer_wins_race(self, tmp_path: Path) -> None:
+        """``FileExistsError`` on atomic create reuses the peer's UUID.
+
+        Regression guard for the TOCTOU race: two replicas racing
+        against the same ``/data`` volume must converge on one
+        deployment ID instead of each clobbering the other. Simulated
+        by making ``os.open`` with ``O_CREAT|O_EXCL`` raise
+        ``FileExistsError`` while the peer file's UUID is pre-written
+        on disk -- the collector reads that and uses it.
+        """
+        config = TelemetryConfig(enabled=True, backend=TelemetryBackend.NOOP)
+        deployment_file = tmp_path / "telemetry_id"
+        deployment_file_str = os.path.normcase(
+            os.path.normpath(str(deployment_file)),
+        )
+        peer_uuid = "12345678-1234-5678-1234-567812345678"
+        original_os_open = os.open
+
+        def os_open_side_effect(
+            path: str,
+            flags: int,
+            mode: int = 0o777,
+        ) -> int:
+            if (
+                os.path.normcase(os.path.normpath(path)) == deployment_file_str
+                and flags & os.O_EXCL
+            ):
+                # Peer wrote between our ``exists`` check and ``os.open``.
+                deployment_file.write_text(peer_uuid, encoding="utf-8")
+                raise FileExistsError(17, "File exists", path)
+            return original_os_open(path, flags, mode)
+
+        with patch(
+            "synthorg.telemetry.collector.os.open",
+            side_effect=os_open_side_effect,
+        ):
+            collector = TelemetryCollector(config=config, data_dir=tmp_path)
+        assert collector.deployment_id == peer_uuid
 
     async def test_send_heartbeat_disabled(self, tmp_path: Path) -> None:
         """Heartbeat should be a no-op when disabled."""

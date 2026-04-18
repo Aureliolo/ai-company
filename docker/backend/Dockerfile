@@ -11,7 +11,10 @@
 # top. No setup stage needed -- the symlink fix is done in the builder itself.
 # =============================================================================
 
-ARG BASE_IMAGE
+# CI always passes ``--build-arg BASE_IMAGE=...`` (digest-pinned);
+# the default here makes the Dockerfile buildable standalone for
+# local dev without tripping InvalidDefaultArgInFrom.
+ARG BASE_IMAGE=ghcr.io/aureliolo/synthorg-backend-base:latest
 
 # ---------------------------------------------------------------------------
 # Stage 1 -- Builder (ephemeral: compiles deps, fixes venv symlink)
