@@ -43,7 +43,23 @@ class MessageBus(Protocol):
 
     @property
     def is_running(self) -> bool:
-        """Whether the bus is currently running."""
+        """Whether the bus client thinks it is running.
+
+        Local state check: flipped by :meth:`start` / :meth:`stop`.
+        Does not reflect live server reachability -- use
+        :meth:`health_check` for that.
+        """
+        ...
+
+    async def health_check(self) -> bool:
+        """Live liveness probe against the underlying transport.
+
+        Unlike :attr:`is_running`, this performs an actual
+        round-trip to confirm the broker is reachable and the
+        connection is healthy. Implementations return ``False``
+        rather than raising when the probe fails, so the caller
+        can treat the bus as degraded without a try/except.
+        """
         ...
 
     async def publish(

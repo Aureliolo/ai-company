@@ -567,6 +567,9 @@ func renderHealthSection(out *ui.UI, snap statusSnapshot, jsonOut bool) {
 	if hr.MessageBus != nil {
 		out.KeyValue("Message bus", fmt.Sprintf("%v", hr.MessageBus))
 	}
+	if hr.Telemetry != "" {
+		out.KeyValue("Telemetry", hr.Telemetry)
+	}
 	out.Blank()
 }
 
@@ -662,6 +665,7 @@ type healthResponse struct {
 	Version     string  `json:"version"`
 	Persistence any     `json:"persistence"`
 	MessageBus  any     `json:"message_bus"`
+	Telemetry   string  `json:"telemetry"`
 	Uptime      float64 `json:"uptime_seconds"`
 }
 

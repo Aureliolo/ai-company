@@ -1,6 +1,7 @@
 """Tests for telemetry configuration."""
 
 import pytest
+from pydantic import ValidationError
 
 from synthorg.telemetry.config import TelemetryBackend, TelemetryConfig
 
@@ -14,15 +15,10 @@ class TestTelemetryConfig:
         assert config.enabled is False
         assert config.backend == TelemetryBackend.LOGFIRE
         assert config.heartbeat_interval_hours == 6.0
-        assert config.token is None
 
-    def test_enabled_with_token(self) -> None:
-        config = TelemetryConfig(
-            enabled=True,
-            token="test-token-123",
-        )
+    def test_enabled(self) -> None:
+        config = TelemetryConfig(enabled=True)
         assert config.enabled is True
-        assert config.token == "test-token-123"
 
     def test_noop_backend(self) -> None:
         config = TelemetryConfig(
@@ -35,6 +31,10 @@ class TestTelemetryConfig:
         config = TelemetryConfig()
         with pytest.raises(Exception, match="frozen"):
             config.enabled = True  # type: ignore[misc]
+
+    def test_token_field_is_removed(self) -> None:
+        with pytest.raises(ValidationError):
+            TelemetryConfig(token="anything")  # type: ignore[call-arg]
 
     @pytest.mark.parametrize("hours", [0.0, -1.0])
     def test_rejects_non_positive_heartbeat(self, hours: float) -> None:

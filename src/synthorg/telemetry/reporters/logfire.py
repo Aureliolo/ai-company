@@ -1,16 +1,22 @@
 """Logfire telemetry reporter.
 
-Sends curated, privacy-validated telemetry events to a Logfire
-project via the Logfire SDK (OpenTelemetry-compatible).
+Sends curated, privacy-validated telemetry events to the
+SynthOrg project on Logfire via the Logfire SDK (OpenTelemetry
+compatible).
 
-The ``logfire`` package is an optional dependency.  This module
+The ``logfire`` package is an optional dependency. This module
 is only imported when ``TelemetryBackend.LOGFIRE`` is selected,
 so the import is deferred to avoid loading logfire when telemetry
 is disabled.
+
+The Logfire write token is project-owned and compiled in: it is
+the only source, and cannot be overridden at runtime. Telemetry
+is a SynthOrg product signal, not a user-facing observability
+channel. Operators who need their own metrics pipeline use the
+Postgres + Prometheus + audit-chain stack.
 """
 
 import asyncio
-import os
 from typing import TYPE_CHECKING
 
 from synthorg.observability import get_logger
@@ -24,29 +30,24 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_TOKEN_ENV = "SYNTHORG_TELEMETRY_TOKEN"  # noqa: S105
-
 # Write-only token for the SynthOrg project on Logfire.
-# This token can ONLY send data -- it cannot read telemetry,
-# access the account, or perform any other operation.  Safe to
+# This token can ONLY send data: it cannot read telemetry,
+# access the account, or perform any other operation. Safe to
 # embed in source (same pattern as Sentry DSNs, PostHog keys).
-# Override via SYNTHORG_TELEMETRY_TOKEN env var for self-hosted.
-_DEFAULT_TOKEN = "pylf_v1_eu_BMgmPmm3hLxdSz2fRQkpL0l62rYzvRJBbScQddH2wB7n"  # noqa: S105
+# Runtime override is intentionally not supported -- see module
+# docstring for rationale.
+_PROJECT_TOKEN = "pylf_v1_eu_BMgmPmm3hLxdSz2fRQkpL0l62rYzvRJBbScQddH2wB7n"  # noqa: S105
 
 
 class LogfireReporter:
     """Logfire SDK-based telemetry reporter.
 
-    Initializes ``logfire.configure()`` with the project write token.
-    Events are sent as Logfire log records with structured properties.
-
-    Args:
-        token: Logfire write token.  When ``None``, uses the
-            ``SYNTHORG_TELEMETRY_TOKEN`` env var or the embedded
-            default project token.
+    Initializes ``logfire.configure()`` with the compiled-in
+    project write token. Events are sent as Logfire log records
+    with structured properties.
     """
 
-    def __init__(self, token: str | None = None) -> None:
+    def __init__(self) -> None:
         try:
             import logfire as _logfire  # type: ignore[import-not-found]  # noqa: PLC0415
         except ImportError as exc:
@@ -63,12 +64,9 @@ class LogfireReporter:
 
         self._logfire = _logfire
 
-        has_custom_token = token is not None or os.environ.get(_TOKEN_ENV) is not None
-        resolved_token = token or os.environ.get(_TOKEN_ENV) or _DEFAULT_TOKEN
-
         try:
             self._logfire.configure(
-                token=resolved_token,
+                token=_PROJECT_TOKEN,
                 send_to_logfire="if-token-present",
                 service_name="synthorg-telemetry",
                 service_version=_get_synthorg_version(),
@@ -81,17 +79,13 @@ class LogfireReporter:
             )
             raise
 
-        logger.info(
-            TELEMETRY_REPORTER_INITIALIZED,
-            backend="logfire",
-            has_custom_token=has_custom_token,
-        )
+        logger.info(TELEMETRY_REPORTER_INITIALIZED, backend="logfire")
 
     async def report(self, event: TelemetryEvent) -> None:
         """Send a telemetry event to Logfire.
 
         Offloads the synchronous SDK call to a thread to avoid
-        blocking the event loop.  Catches and logs all exceptions
+        blocking the event loop. Catches and logs all exceptions
         (telemetry must never affect the main application).
         """
         try:

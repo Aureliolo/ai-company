@@ -155,6 +155,7 @@ from synthorg.settings.subscribers import (
     ObservabilitySettingsSubscriber,
     ProviderSettingsSubscriber,
 )
+from synthorg.telemetry import TelemetryCollector, TelemetryConfig
 from synthorg.tools.invocation_tracker import ToolInvocationTracker  # noqa: TC001
 from synthorg.versioning import VersioningService
 
@@ -1373,6 +1374,21 @@ def _build_default_trust_service() -> TrustService:
     )
 
 
+def _build_telemetry_collector() -> TelemetryCollector:
+    """Build the project telemetry collector.
+
+    ``TelemetryConfig()`` defaults to ``enabled=False``; the
+    ``TelemetryCollector`` constructor honours the
+    ``SYNTHORG_TELEMETRY`` env var (``true``/``1``/``yes`` to
+    enable). The data directory stores the anonymous deployment
+    ID -- placed under the same base as
+    ``SYNTHORG_MEMORY_DIR`` so the container volume holds it.
+    """
+    memory_dir = Path(os.environ.get("SYNTHORG_MEMORY_DIR", "/data/memory"))
+    telemetry_dir = memory_dir.parent / "telemetry"
+    return TelemetryCollector(config=TelemetryConfig(), data_dir=telemetry_dir)
+
+
 def _build_performance_tracker(
     *,
     cost_tracker: CostTracker | None = None,
@@ -2266,6 +2282,18 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
         should_auto_wire_settings=_should_auto_wire,
         effective_config=effective_config,
     )
+
+    # Project telemetry: build collector (reads SYNTHORG_TELEMETRY env for
+    # opt-in, defaults to disabled). Attach to app_state so the health
+    # endpoint can report the state, and hook start()/shutdown() into the
+    # Litestar lifespan. Telemetry is SynthOrg-owned and silent on
+    # failure: a broken reporter falls back to noop and never affects
+    # the app.
+    telemetry_collector = _build_telemetry_collector()
+    app_state.set_telemetry_collector(telemetry_collector)
+    startup = [*startup, telemetry_collector.start]
+    shutdown = [telemetry_collector.shutdown, *shutdown]
+
     if _skip_lifecycle_shutdown:
         shutdown = []
 

@@ -82,8 +82,13 @@ services:
         condition: service_healthy
     env_file: .env
     environment:
-      SYNTHORG_HOST: "${SYNTHORG_HOST:-0.0.0.0}"
-      SYNTHORG_PORT: "${SYNTHORG_PORT:-3001}"
+      # Only set values that are deployment-specific (DB URL, bus
+      # backend, NATS URL, memory/log dirs, log level, third-party
+      # telemetry toggles). SYNTHORG_HOST / SYNTHORG_PORT / UVICORN_HOST
+      # / UVICORN_PORT already carry correct defaults from the image
+      # ENV (see docker/backend/Dockerfile); setting them here just
+      # duplicates the baseline without offering operator control that
+      # docker-compose run-time env files do not already provide.
       SYNTHORG_DATABASE_URL: "postgresql://synthorg:${POSTGRES_PASSWORD}@postgres:5432/synthorg"
       # Local docker-network postgres runs plaintext inside the bridge.
       # For production, override to `verify-full` with proper certs.
@@ -95,9 +100,8 @@ services:
       SYNTHORG_LOG_DIR: "${SYNTHORG_LOG_DIR:-/data/logs}"
       SYNTHORG_LOG_LEVEL: "${SYNTHORG_LOG_LEVEL:-info}"
       MEM0_TELEMETRY: "${MEM0_TELEMETRY:-false}"
-      UVICORN_HOST: "${SYNTHORG_HOST:-0.0.0.0}"
-      UVICORN_PORT: "${SYNTHORG_PORT:-3001}"
-    user: "65532:65532"
+    # Image sets USER 65532 in the Dockerfile; no compose override
+    # needed.
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -121,7 +125,8 @@ services:
     depends_on:
       backend:
         condition: service_healthy
-    user: "65532:65532"
+    # apko sets run-as: "65532" in docker/web/apko.yaml; no compose
+    # override needed.
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -131,6 +136,15 @@ services:
       - /tmp:noexec,nosuid,nodev,size=16m
       - /config/caddy:noexec,nosuid,nodev,size=8m
       - /data/caddy:noexec,nosuid,nodev,size=16m
+    healthcheck:
+      # Caddy serves a plain "ok" 200 at /healthz; wget is installed in
+      # the apko image specifically for this probe. Target 127.0.0.1 to
+      # avoid pulling in external DNS resolution.
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
     restart: unless-stopped
     deploy:
       resources:
@@ -173,33 +187,11 @@ services:
           pids: 64
     logging: *logging
 
-  # Healthcheck sidecar for distroless NATS (no shell/wget inside).
-  # Probes NATS monitoring endpoint via Docker network DNS.
-  nats-healthcheck:
-    # renovate: datasource=docker depName=busybox
-    image: busybox:1.37-musl@sha256:19b646668802469d968a05342a601e78da4322a414a7c09b1c9ee25165042138
-    depends_on:
-      nats:
-        condition: service_started
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://nats:8222/healthz"]
-      interval: 10s
-      timeout: 3s
-      retries: 3
-      start_period: 10s
-    entrypoint: ["sleep", "infinity"]
-    user: "65532:65532"
-    read_only: true
-    cap_drop:
-      - ALL
-    restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          memory: 8M
-          cpus: "0.05"
-          pids: 4
-    logging: *logging
+  # NATS health is surfaced via the backend's /api/v1/health endpoint.
+  # `NatsBus.health_check` performs a live PING/PONG round-trip, so
+  # shipping a busybox sidecar purely to produce a green dot in
+  # `docker ps` added a container for zero dependency value -- nothing
+  # in compose ever consumed the sidecar's `service_healthy` state.
 
   # Fine-tuning sidecar (~4 GB GPU variant / ~1.7 GB CPU-only).
   #

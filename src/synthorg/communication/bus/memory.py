@@ -115,7 +115,21 @@ class InMemoryMessageBus:
 
     @property
     def is_running(self) -> bool:
-        """Whether the bus is currently running."""
+        """Whether the bus client thinks it is running.
+
+        Local state check: flipped by :meth:`start` / :meth:`stop`.
+        Tracks the same bit as :meth:`health_check` for the
+        in-process backend -- there is no external broker to race.
+        """
+        return self._running
+
+    async def health_check(self) -> bool:
+        """Liveness probe for the in-process bus.
+
+        No external transport to round-trip; the bus is healthy
+        when it reports itself running. Async matches the
+        :class:`MessageBus` protocol.
+        """
         return self._running
 
     async def start(self) -> None:

@@ -28,6 +28,22 @@ class ServiceStatus(StrEnum):
     DOWN = "down"
 
 
+class TelemetryStatus(StrEnum):
+    """Project telemetry runtime state.
+
+    ``enabled`` means the collector is configured to send events to
+    the SynthOrg Logfire project (``SYNTHORG_TELEMETRY=true`` plus the
+    ``telemetry`` extra installed). ``disabled`` covers every other
+    case: opt-out, noop reporter, missing ``logfire`` package, or
+    construction failure. Reflects the reporter class, not delivery
+    confirmation -- the collector itself is fire-and-forget and
+    never signals send failure upstream.
+    """
+
+    ENABLED = "enabled"
+    DISABLED = "disabled"
+
+
 class HealthStatus(BaseModel):
     """Health check response payload.
 
@@ -35,6 +51,8 @@ class HealthStatus(BaseModel):
         status: Overall health status.
         persistence: True if healthy, False if unhealthy, None if not configured.
         message_bus: True if running, False if stopped, None if not configured.
+        telemetry: ``enabled`` when the collector is actively sending
+            anonymous project telemetry, ``disabled`` otherwise.
         version: Application version.
         uptime_seconds: Seconds since application startup.
     """
@@ -47,6 +65,9 @@ class HealthStatus(BaseModel):
     )
     message_bus: bool | None = Field(
         description="Message bus running (None if not configured)",
+    )
+    telemetry: TelemetryStatus = Field(
+        description="Project telemetry delivery state",
     )
     version: str = Field(description="Application version")
     uptime_seconds: float = Field(
@@ -70,20 +91,21 @@ async def _probe_service(
         return False
 
 
-def _probe_sync_service(
-    *,
-    configured: bool,
-    probe: Callable[[], bool],
-    component: str,
-) -> bool | None:
-    """Probe a synchronous service, returning None if not configured."""
-    if not configured:
-        return None
-    try:
-        return probe()
-    except Exception:
-        logger.warning(API_HEALTH_CHECK, component=component, exc_info=True)
-        return False
+def _resolve_telemetry_status(app_state: AppState) -> TelemetryStatus:
+    """Read the telemetry collector and map to a public status.
+
+    Returns ``disabled`` when no collector is attached (test harness)
+    or when the collector reports itself disabled (opt-out, missing
+    logfire extra, or reporter init failure -- the factory degrades
+    to ``NoopReporter`` silently in all three cases).
+    """
+    if not app_state.has_telemetry_collector:
+        return TelemetryStatus.DISABLED
+    return (
+        TelemetryStatus.ENABLED
+        if app_state.telemetry_collector.enabled
+        else TelemetryStatus.DISABLED
+    )
 
 
 class HealthController(Controller):
@@ -112,11 +134,12 @@ class HealthController(Controller):
             probe=lambda: app_state.persistence.health_check(),  # noqa: PLW0108
             component="persistence",
         )
-        bus_ok = _probe_sync_service(
+        bus_ok = await _probe_service(
             configured=app_state.has_message_bus,
-            probe=lambda: app_state.message_bus.is_running,
+            probe=lambda: app_state.message_bus.health_check(),  # noqa: PLW0108
             component="message_bus",
         )
+        telemetry_status = _resolve_telemetry_status(app_state)
 
         checks = [v for v in (persistence_ok, bus_ok) if v is not None]
         if not checks or all(checks):
@@ -133,6 +156,7 @@ class HealthController(Controller):
             status=status.value,
             persistence=persistence_ok,
             message_bus=bus_ok,
+            telemetry=telemetry_status.value,
         )
 
         return ApiResponse(
@@ -140,6 +164,7 @@ class HealthController(Controller):
                 status=status,
                 persistence=persistence_ok,
                 message_bus=bus_ok,
+                telemetry=telemetry_status,
                 version=__version__,
                 uptime_seconds=uptime,
             ),

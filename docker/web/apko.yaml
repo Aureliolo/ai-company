@@ -4,6 +4,7 @@
 # Contents:
 #   - caddy (Wolfi package, static binary, memory-safe Go)
 #   - ca-certificates-bundle, tzdata
+#   - wget (HTTP client used by the Docker HEALTHCHECK to probe /healthz)
 #   - synthorg-web-assets (melange-built apk from docker/web/melange.yaml,
 #     carrying the Vite SPA bundle, zensical docs output, pre-gzipped siblings,
 #     and the Caddyfile)
@@ -24,6 +25,7 @@ contents:
     - ca-certificates-bundle
     - tzdata
     - caddy
+    - wget
     - synthorg-web-assets@local
 
 accounts:

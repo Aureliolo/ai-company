@@ -88,6 +88,7 @@ from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler  # noqa
 from synthorg.security.trust.service import TrustService  # noqa: TC001
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service import SettingsService  # noqa: TC001
+from synthorg.telemetry.collector import TelemetryCollector  # noqa: TC001
 from synthorg.tools.invocation_tracker import ToolInvocationTracker  # noqa: TC001
 
 if TYPE_CHECKING:
@@ -174,6 +175,7 @@ class AppState:
         "_session_store",
         "_settings_service",
         "_task_engine",
+        "_telemetry_collector",
         "_ticket_store",
         "_tool_invocation_tracker",
         "_trace_handler",
@@ -256,6 +258,7 @@ class AppState:
         self._agent_registry = agent_registry
         self._performance_tracker = performance_tracker
         self._trust_service = trust_service
+        self._telemetry_collector: TelemetryCollector | None = None
         self._meeting_orchestrator = meeting_orchestrator
         self._meeting_scheduler = meeting_scheduler
         self._ceremony_scheduler = ceremony_scheduler
@@ -653,6 +656,23 @@ class AppState:
     def has_trust_service(self) -> bool:
         """Check whether the trust service is configured."""
         return self._trust_service is not None
+
+    @property
+    def has_telemetry_collector(self) -> bool:
+        """Check whether the project telemetry collector is configured."""
+        return self._telemetry_collector is not None
+
+    @property
+    def telemetry_collector(self) -> TelemetryCollector:
+        """Return project telemetry collector or raise 503."""
+        return self._require_service(
+            self._telemetry_collector,
+            "telemetry_collector",
+        )
+
+    def set_telemetry_collector(self, collector: TelemetryCollector) -> None:
+        """Attach the project telemetry collector (once-only)."""
+        self._set_once("_telemetry_collector", collector, "telemetry collector")
 
     @property
     def coordination_metrics_store(self) -> CoordinationMetricsStore:

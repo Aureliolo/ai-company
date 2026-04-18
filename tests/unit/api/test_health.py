@@ -1,7 +1,7 @@
 """Tests for health check endpoint."""
 
 from typing import Any
-from unittest.mock import PropertyMock, patch
+from unittest.mock import patch
 
 import pytest
 from litestar.testing import TestClient
@@ -146,8 +146,8 @@ class TestHealthCheckExceptionPaths:
                     "factory": FakeMessageBus,
                     "init": "start",
                     "kwarg": "message_bus",
-                    "attr": "is_running",
-                    "patch_kw": {"new_callable": PropertyMock},
+                    "attr": "health_check",
+                    "patch_kw": {},
                 },
                 "message_bus",
                 id="message_bus_exception",

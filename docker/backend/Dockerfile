@@ -31,19 +31,22 @@ WORKDIR /app
 
 COPY --chown=65532:65532 pyproject.toml uv.lock ./
 USER build
-# Install the `postgres` and `distributed` extras unconditionally: both
-# are runtime-selectable via `synthorg init --persistence-backend` and
-# `--bus-backend`, so the image must carry psycopg and nats-py whether
-# or not the user has chosen them yet. `fine-tune` lives in the
-# dedicated synthorg-fine-tune-gpu / -cpu images (large, torch inside);
-# `telemetry` stays opt-in to avoid pulling logfire on default installs.
+# Install the `postgres`, `distributed`, and `telemetry` extras
+# unconditionally. `postgres` and `distributed` are runtime-selectable
+# via `synthorg init --persistence-backend` and `--bus-backend`, so the
+# image must carry psycopg and nats-py whether or not the user has
+# chosen them yet. `telemetry` ships the logfire SDK so the opt-in
+# project telemetry signal actually reaches Logfire when operators flip
+# `SYNTHORG_TELEMETRY=true` -- shipping the image without it would make
+# the opt-in a silent noop. `fine-tune` lives in the dedicated
+# synthorg-fine-tune-gpu / -cpu images (large, torch inside).
 RUN --mount=type=cache,target=/home/build/.cache/uv,uid=65532,gid=65532 \
-    uv sync --frozen --no-dev --no-install-project --extra postgres --extra distributed
+    uv sync --frozen --no-dev --no-install-project --extra postgres --extra distributed --extra telemetry
 
 RUN touch README.md
 COPY --chown=65532:65532 src/ src/
 RUN --mount=type=cache,target=/home/build/.cache/uv,uid=65532,gid=65532 \
-    uv sync --frozen --no-dev --extra postgres --extra distributed
+    uv sync --frozen --no-dev --extra postgres --extra distributed --extra telemetry
 
 RUN find /app/src -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 

@@ -29,8 +29,11 @@ services:
       data-init:
         condition: service_completed_successfully
     environment:
-      SYNTHORG_HOST: "0.0.0.0"
-      SYNTHORG_PORT: "3001"
+      # SYNTHORG_HOST/SYNTHORG_PORT/UVICORN_HOST/UVICORN_PORT are baked
+      # into the backend image ENV -- see docker/backend/Dockerfile.
+      # Setting them here only duplicates the defaults; operators who
+      # need to override still do so via env_file / shell env, which
+      # docker-compose forwards into the container.
       SYNTHORG_DB_PATH: "/data/synthorg.db"
       SYNTHORG_MEMORY_DIR: "/data/memory"
       SYNTHORG_PERSISTENCE_BACKEND: "sqlite"
@@ -40,7 +43,8 @@ services:
       MEM0_TELEMETRY: "false"
       SYNTHORG_TELEMETRY: "false"
       SYNTHORG_LOG_LEVEL: "info"
-    user: "65532:65532"
+    # Image sets USER 65532 (docker/backend/Dockerfile); no compose
+    # override needed.
     # CIS Docker Benchmark v1.6.0 hardening (5.3, 5.12, 5.25, 5.28)
     security_opt:
       - no-new-privileges:true
@@ -70,7 +74,8 @@ services:
     depends_on:
       backend:
         condition: service_healthy
-    user: "65532:65532"
+    # apko image sets run-as: "65532" (docker/web/apko.yaml); no
+    # compose override needed.
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -80,6 +85,15 @@ services:
       - /tmp:noexec,nosuid,nodev,size=16m
       - /config/caddy:noexec,nosuid,nodev,size=8m
       - /data/caddy:noexec,nosuid,nodev,size=16m
+    healthcheck:
+      # Caddy serves a plain "ok" 200 at /healthz; the apko image
+      # includes wget solely for this probe. Target 127.0.0.1 to avoid
+      # DNS resolution in the probe hot path.
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
     restart: unless-stopped
     deploy:
       resources:
