@@ -35,9 +35,11 @@ Security:
 """
 
 import argparse
+import io
 import re
 import subprocess
 import sys
+import tokenize
 from pathlib import Path
 from typing import Final
 
@@ -118,15 +120,31 @@ def _line_has_dedicated_marker(line: str) -> bool:
 def _line_has_trailing_marker(line: str) -> bool:
     """Return True iff *line* carries the marker as a trailing ``#`` comment.
 
-    Parses only the comment fragment after the first ``#`` so the
-    marker cannot be smuggled in via a string literal (e.g.
-    ``x = "# lint-allow: regional-defaults"`` does not suppress).
+    Uses Python's :mod:`tokenize` so a ``#`` inside a string literal
+    (e.g. ``x = "# lint-allow: regional-defaults"; y = "USD"``) is not
+    mistaken for a comment and does not silence the ``y = "USD"``
+    violation on the same line.  The marker must either exactly match
+    ``_SUPPRESSION_MARKER`` or be followed by whitespace so substring
+    prefixes like ``lint-allow: regional-defaults-extra`` are rejected.
+
+    If :mod:`tokenize` fails on the line (typically an unterminated
+    triple-quoted string that continues on the next line), we
+    conservatively return ``False`` so the gate fails closed rather
+    than suppressing a real violation.
     """
-    hash_idx = line.find("#")
-    if hash_idx == -1:
+    try:
+        tokens = list(tokenize.generate_tokens(io.StringIO(line).readline))
+    except tokenize.TokenError, IndentationError, SyntaxError:
         return False
-    comment = line[hash_idx + 1 :].strip()
-    return comment.startswith(_SUPPRESSION_MARKER)
+    for tok in tokens:
+        if tok.type != tokenize.COMMENT:
+            continue
+        comment = tok.string.lstrip("#").strip()
+        if comment == _SUPPRESSION_MARKER:
+            return True
+        if comment.startswith(_SUPPRESSION_MARKER + " "):
+            return True
+    return False
 
 
 def _scan_file(file_path: Path, rel: str) -> list[str]:

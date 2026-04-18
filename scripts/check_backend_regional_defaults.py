@@ -28,9 +28,11 @@ Usage (CLI mode -- for testing / whole-tree sweep):
 """
 
 import argparse
+import io
 import json
 import re
 import sys
+import tokenize
 from collections.abc import Iterable  # noqa: TC003
 from pathlib import Path
 from typing import Final
@@ -184,19 +186,31 @@ def _line_has_dedicated_marker(line: str) -> bool:
 def _line_has_trailing_marker(line: str) -> bool:
     """Return True iff *line* carries the marker as a trailing ``#`` comment.
 
-    We only honour markers that appear inside the comment fragment of
-    the line, not inside string literals -- the minimum parser that
-    achieves this is ``split on first '#'``.  The rule mirrors
-    :func:`_line_has_dedicated_marker`: the comment tail, after
-    stripping, must start with the marker.  This prevents tricks like
-    ``x = "# lint-allow: regional-defaults"`` from silencing real
-    violations on the same line.
+    Uses Python's :mod:`tokenize` so ``#`` characters inside string
+    literals (e.g. ``x = "# lint-allow: regional-defaults"``) do not
+    masquerade as suppression comments.  The marker must either
+    exactly match ``_SUPPRESSION_MARKER`` or be followed by whitespace
+    so substring prefixes like
+    ``lint-allow: regional-defaults-in-a-word`` are rejected.
+
+    If :mod:`tokenize` fails on the line (rare -- usually an
+    unterminated triple-quoted string that continues on the next line),
+    we conservatively return ``False`` so the gate fails closed rather
+    than suppressing a real violation.
     """
-    hash_idx = line.find("#")
-    if hash_idx == -1:
+    try:
+        tokens = list(tokenize.generate_tokens(io.StringIO(line).readline))
+    except tokenize.TokenError, IndentationError, SyntaxError:
         return False
-    comment = line[hash_idx + 1 :].strip()
-    return comment.startswith(_SUPPRESSION_MARKER)
+    for tok in tokens:
+        if tok.type != tokenize.COMMENT:
+            continue
+        comment = tok.string.lstrip("#").strip()
+        if comment == _SUPPRESSION_MARKER:
+            return True
+        if comment.startswith(_SUPPRESSION_MARKER + " "):
+            return True
+    return False
 
 
 def _is_suppressed(lines: list[str], idx: int) -> bool:
@@ -248,8 +262,11 @@ def _scan_file(
     issues: list[str] = []
 
     for idx, line in enumerate(lines, start=1):
-        if _SUPPRESSION_MARKER in line:
-            continue
+        # Per-line suppression is delegated to ``_is_suppressed`` via
+        # the per-rule helpers below; we deliberately do not short-
+        # circuit here on a raw substring match because that would
+        # let ``x = "lint-allow: regional-defaults"`` inside a string
+        # literal silence every rule on the line.
         stripped = line.lstrip()
         # Skip pure-comment lines; they discuss forbidden values, not use them.
         if stripped.startswith("#"):

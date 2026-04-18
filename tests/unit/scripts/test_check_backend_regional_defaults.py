@@ -147,6 +147,42 @@ class TestSuppressionMarker:
         )
         assert issues == []
 
+    def test_marker_inside_string_literal_does_not_suppress(
+        self, src_dir: Path
+    ) -> None:
+        """A ``#`` inside a string literal must not be parsed as a
+        comment; otherwise an attacker could smuggle a suppression
+        marker past the gate by putting it in a string.
+        """
+        issues = _scan(
+            src_dir,
+            "demo.py",
+            'x = "# lint-allow: regional-defaults"; y = "USD"\n',
+        )
+        # ``y = "USD"`` is a real violation and must be reported.
+        assert any("USD" in msg for msg in issues), issues
+
+    def test_marker_embedded_in_longer_comment_does_not_suppress(
+        self, src_dir: Path
+    ) -> None:
+        """A dedicated suppression line must be exactly the marker;
+        embedded-in-prose comments must not silence the next line."""
+        issues = _scan(
+            src_dir,
+            "demo.py",
+            '# TODO lint-allow: regional-defaults later\nx = "USD"\n',
+        )
+        assert any("USD" in msg for msg in issues), issues
+
+    def test_inline_marker_on_previous_line_does_not_bleed(self, src_dir: Path) -> None:
+        """A trailing inline marker on line N must not suppress line N+1."""
+        issues = _scan(
+            src_dir,
+            "demo.py",
+            'a = 1  # lint-allow: regional-defaults\nx = "USD"\n',
+        )
+        assert any("USD" in msg for msg in issues), issues
+
 
 class TestCommentLinesSkipped:
     """Pure-comment lines are not scanned (they discuss forbidden values)."""

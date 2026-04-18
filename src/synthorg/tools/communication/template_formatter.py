@@ -69,8 +69,8 @@ class TemplateFormatterTool(BaseCommunicationTool):
                     "template": "Hello {{ name }}, your balance is {{ amount }}.",
                     "variables": {
                         "name": "Alice",
-                        "amount": "$100",
-                    },  # lint-allow: regional-defaults
+                        "amount": "100 units",
+                    },
                 }
             )
     """
