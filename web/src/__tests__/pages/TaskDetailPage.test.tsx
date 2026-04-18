@@ -69,13 +69,20 @@ async function renderDetailPage() {
 describe('TaskDetailPage', () => {
   // Controllable pending promises let loading-state tests simulate an
   // in-flight fetch without leaving a never-settled promise past teardown.
-  // Each test appends its pending resolver to this list; afterEach
-  // resolves them all so --detect-async-leaks sees a clean slate.
-  const pendingResolvers: Array<() => void> = []
-  function pendingPromise<T>(): Promise<T> {
-    return new Promise<T>((resolve) => {
-      pendingResolvers.push(() => resolve(undefined as T))
+  // Each test appends its pending promise to this list; afterEach resolves
+  // every pending promise with a valid `mockTask` (never `undefined`, which
+  // would drive the real `fetchTask` continuation to set `selectedTask =
+  // undefined` and cross-test-interfere with the next test) and then awaits
+  // the microtask chain so the continuation settles before the test
+  // boundary -- --detect-async-leaks sees a clean slate either way.
+  const pendingPromises: Array<{ resolve: () => void; settled: Promise<unknown> }> = []
+  function pendingPromise<T>(resolveValue: T = mockTask as T): Promise<T> {
+    let resolveFn!: (value: T) => void
+    const p = new Promise<T>((resolve) => {
+      resolveFn = resolve
     })
+    pendingPromises.push({ resolve: () => resolveFn(resolveValue), settled: p })
+    return p
   }
 
   beforeEach(() => {
@@ -84,10 +91,15 @@ describe('TaskDetailPage', () => {
     mockGetTask.mockResolvedValue(mockTask)
   })
 
-  afterEach(() => {
-    while (pendingResolvers.length > 0) {
-      pendingResolvers.pop()?.()
+  afterEach(async () => {
+    const outstanding = pendingPromises.splice(0, pendingPromises.length)
+    for (const { resolve } of outstanding) {
+      resolve()
     }
+    // Await each promise so its continuation runs inside the test boundary
+    // (otherwise the microtask could land in the next test's beforeEach
+    // and briefly set invalid store state before resetStore wipes it).
+    await Promise.all(outstanding.map((p) => p.settled))
   })
 
   it('renders loading spinner when loadingDetail is true', async () => {

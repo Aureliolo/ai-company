@@ -107,6 +107,13 @@ vi.mock('motion/react', async () => {
 // --detect-async-leaks flags it as a Timeout leak. Replace rAF with
 // `setTimeout(cb, 0)` so each frame is a discrete macrotask that drains
 // cleanly between tests.
+//
+// We intentionally do NOT drain pending rAF callbacks in the global
+// afterEach: d3-timer (used by d3-force in `pages/org/force-layout.ts`)
+// binds `setFrame` to our shim at module load time and relies on its
+// wake() callback firing to clear its internal `setInterval(poke)` after
+// `simulation.stop()`. Clearing the shim's setTimeout handles before
+// wake() can run strands that interval and reintroduces a leak.
 if (typeof window !== 'undefined') {
   const timers = new Set<ReturnType<typeof setTimeout>>()
   window.requestAnimationFrame = (callback: FrameRequestCallback): number => {
