@@ -1,6 +1,12 @@
 import { useSetupWizardStore } from '@/stores/setup-wizard'
 import type { SeniorityLevel } from '@/api/types'
-import { DEFAULT_CURRENCY } from '@/utils/currencies'
+import { CURRENCY_OPTIONS, DEFAULT_CURRENCY } from '@/utils/currencies'
+
+/** Any currency that is not the project default -- used by tests that need to
+ *  prove a non-default value is reset back to {@link DEFAULT_CURRENCY}. Picked
+ *  from the canonical list rather than hardcoded to avoid drift. */
+const NON_DEFAULT_CURRENCY =
+  CURRENCY_OPTIONS.find((c) => c.value !== DEFAULT_CURRENCY)?.value ?? 'EUR'
 
 vi.mock('@/api/endpoints/setup', () => ({
   getSetupStatus: vi.fn(),
@@ -340,7 +346,7 @@ describe('setup wizard store', () => {
       useSetupWizardStore.setState({
         selectedTemplate: 'startup',
         companyName: 'Acme',
-        currency: DEFAULT_CURRENCY === 'EUR' ? 'USD' : 'EUR',
+        currency: NON_DEFAULT_CURRENCY,
       })
       useSetupWizardStore.getState().reset()
 

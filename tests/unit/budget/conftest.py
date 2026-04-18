@@ -84,7 +84,7 @@ class BudgetConfigFactory(ModelFactory[BudgetConfig]):
     # Pin a known-valid ISO 4217 code; polyfactory's random-string
     # generator would otherwise emit codes outside the formatter
     # allowlist (e.g. "JLF") and fail ``CurrencyCode`` validation.
-    currency = "USD"
+    currency = DEFAULT_CURRENCY
     alerts = BudgetAlertConfigFactory
     auto_downgrade = AutoDowngradeConfigFactory
     risk_budget = RiskBudgetConfigFactory
@@ -111,7 +111,7 @@ class CostRecordFactory(ModelFactory[CostRecord]):
     input_tokens = 1000
     output_tokens = 500
     cost = 0.05
-    currency = "USD"
+    currency = DEFAULT_CURRENCY
     # Ensure retry fields are consistent: no reason without a retry count.
     retry_reason = None
 
@@ -120,17 +120,17 @@ class PeriodSpendingFactory(ModelFactory[PeriodSpending]):
     __model__ = PeriodSpending
     start = datetime(2026, 2, 1, tzinfo=UTC)
     end = datetime(2026, 3, 1, tzinfo=UTC)
-    currency = "USD"
+    currency = DEFAULT_CURRENCY
 
 
 class AgentSpendingFactory(ModelFactory[AgentSpending]):
     __model__ = AgentSpending
-    currency = "USD"
+    currency = DEFAULT_CURRENCY
 
 
 class DepartmentSpendingFactory(ModelFactory[DepartmentSpending]):
     __model__ = DepartmentSpending
-    currency = "USD"
+    currency = DEFAULT_CURRENCY
 
 
 class SpendingSummaryFactory(ModelFactory[SpendingSummary]):
