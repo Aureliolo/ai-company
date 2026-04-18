@@ -53,6 +53,16 @@ logger = get_logger(__name__)
 
 _DOCKER_SOCKET_PATH: Final[str] = "/var/run/docker.sock"
 
+_DOCKER_SOCKET_STAT_TIMEOUT_SECONDS: Final[float] = 1.0
+"""Upper bound on the blocking ``os.path.exists`` stat.
+
+``asyncio.to_thread`` offloads the stat to a worker thread, but a
+wedged FUSE mount or unresponsive NFS export can still hold that
+thread indefinitely. Cap the wait so a stuck filesystem degrades
+the startup event to ``docker_info_available=False`` instead of
+leaking an orphan worker thread.
+"""
+
 _DOCKER_INFO_TIMEOUT_SECONDS: Final[float] = 5.0
 """Upper bound on the Docker ``/info`` probe.
 
@@ -203,13 +213,24 @@ async def _probe_docker_socket() -> DockerHostInfo | None:
 
     ``os.path.exists`` is a blocking stat syscall; a wedged FUSE
     mount or dying NFS on ``/var/run`` could stall the loop, so it
-    runs off-thread via :func:`asyncio.to_thread`.
+    runs off-thread via :func:`asyncio.to_thread` and is bounded by
+    :data:`_DOCKER_SOCKET_STAT_TIMEOUT_SECONDS`. A stat that does
+    not return within the cap collapses to ``daemon_unreachable``
+    rather than holding the startup path indefinitely.
     """
     try:
-        socket_exists = await asyncio.to_thread(
-            os.path.exists,
-            _DOCKER_SOCKET_PATH,
+        async with asyncio.timeout(_DOCKER_SOCKET_STAT_TIMEOUT_SECONDS):
+            socket_exists = await asyncio.to_thread(
+                os.path.exists,
+                _DOCKER_SOCKET_PATH,
+            )
+    except TimeoutError as exc:
+        logger.warning(
+            TELEMETRY_REPORT_FAILED,
+            detail="docker_socket_stat_timeout",
+            error_type=type(exc).__name__,
         )
+        return _unavailable(_REASON_DAEMON_UNREACHABLE)
     except OSError as exc:
         logger.warning(
             TELEMETRY_REPORT_FAILED,
