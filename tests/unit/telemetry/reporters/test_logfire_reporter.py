@@ -37,13 +37,21 @@ class TestLogfireReporterReportRaises:
     """``report()`` must propagate backend failures, not swallow them."""
 
     @pytest.fixture
-    def reporter(self) -> Any:
+    def reporter(self, monkeypatch: pytest.MonkeyPatch) -> Any:
         pytest.importorskip(
             "logfire",
             reason="logfire extra not installed in this environment",
         )
         from synthorg.telemetry.reporters.logfire import LogfireReporter
 
+        # Reporter refuses to initialise without a token; a dummy
+        # value exercises the construction path without enabling
+        # delivery (the SDK handles an unauthenticated token by
+        # dropping events).
+        monkeypatch.setenv(
+            "SYNTHORG_LOGFIRE_PROJECT_TOKEN",
+            "pylf_v1_test_000000000000000000000000000000000000000000",
+        )
         return LogfireReporter()
 
     async def test_backend_exception_propagates(

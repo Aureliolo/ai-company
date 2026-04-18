@@ -2,21 +2,11 @@
 
 Sends curated, privacy-validated telemetry events to the
 SynthOrg project on Logfire via the Logfire SDK (OpenTelemetry
-compatible).
-
-The ``logfire`` package is an optional dependency. This module
-is only imported when ``TelemetryBackend.LOGFIRE`` is selected,
-so the import is deferred to avoid loading logfire when telemetry
-is disabled.
-
-The Logfire write token is project-owned and compiled in: it is
-the only source, and cannot be overridden at runtime. Telemetry
-is a SynthOrg product signal, not a user-facing observability
-channel. Operators who need their own metrics pipeline use the
-Postgres + Prometheus + audit-chain stack.
+compatible). The ``logfire`` package is an optional dependency.
 """
 
 import asyncio
+import os
 from typing import TYPE_CHECKING
 
 from synthorg.observability import get_logger
@@ -30,21 +20,16 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-# Write-only token for the SynthOrg project on Logfire.
-# This token can ONLY send data: it cannot read telemetry,
-# access the account, or perform any other operation. Safe to
-# embed in source (same pattern as Sentry DSNs, PostHog keys).
-# Runtime override is intentionally not supported -- see module
-# docstring for rationale.
-_PROJECT_TOKEN = "pylf_v1_eu_BMgmPmm3hLxdSz2fRQkpL0l62rYzvRJBbScQddH2wB7n"  # noqa: S105
+_PROJECT_TOKEN_ENV = "SYNTHORG_LOGFIRE_PROJECT_TOKEN"  # noqa: S105
 
 
 class LogfireReporter:
     """Logfire SDK-based telemetry reporter.
 
-    Initializes ``logfire.configure()`` with the compiled-in
-    project write token. Events are sent as Logfire log records
-    with structured properties.
+    Events are sent as Logfire log records with structured
+    properties. A missing or empty project token disables
+    delivery by raising :class:`ImportError` so the reporter
+    factory falls back to :class:`NoopReporter`.
     """
 
     def __init__(self) -> None:
@@ -62,11 +47,22 @@ class LogfireReporter:
             )
             raise ImportError(msg) from exc
 
+        token = os.environ.get(_PROJECT_TOKEN_ENV, "").strip()
+        if not token:
+            logger.warning(
+                TELEMETRY_REPORT_FAILED,
+                detail="logfire_token_missing",
+                error_type="ValueError",
+                env_var=_PROJECT_TOKEN_ENV,
+            )
+            msg = f"{_PROJECT_TOKEN_ENV} is not set; telemetry disabled."
+            raise ImportError(msg)
+
         self._logfire = _logfire
 
         try:
             self._logfire.configure(
-                token=_PROJECT_TOKEN,
+                token=token,
                 send_to_logfire="if-token-present",
                 service_name="synthorg-telemetry",
                 service_version=_get_synthorg_version(),

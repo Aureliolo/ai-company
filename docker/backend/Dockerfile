@@ -11,9 +11,7 @@
 # top. No setup stage needed -- the symlink fix is done in the builder itself.
 # =============================================================================
 
-# CI always passes ``--build-arg BASE_IMAGE=...`` (digest-pinned);
-# the default here makes the Dockerfile buildable standalone for
-# local dev without tripping InvalidDefaultArgInFrom.
+# CI overrides with digest-pinned ref; default keeps standalone builds working.
 ARG BASE_IMAGE=ghcr.io/aureliolo/synthorg-backend-base:latest
 
 # ---------------------------------------------------------------------------
@@ -130,6 +128,9 @@ RUN set -eu; \
 # ---------------------------------------------------------------------------
 FROM ${BASE_IMAGE}
 
+# Optional build-time telemetry write token. Empty default disables delivery.
+ARG LOGFIRE_PROJECT_TOKEN=""
+
 LABEL org.opencontainers.image.title="synthorg-backend" \
       org.opencontainers.image.description="SynthOrg orchestration backend" \
       org.opencontainers.image.url="https://github.com/Aureliolo/synthorg" \
@@ -162,6 +163,7 @@ ENV PATH="/app/.venv/bin:/usr/local/bin:$PATH" \
     SYNTHORG_PORT="3001" \
     UVICORN_HOST="0.0.0.0" \
     UVICORN_PORT="3001" \
+    SYNTHORG_LOGFIRE_PROJECT_TOKEN=${LOGFIRE_PROJECT_TOKEN} \
     PYTHONWARNINGS="ignore::UserWarning:litestar.plugins.pydantic.utils"
 
 USER 65532

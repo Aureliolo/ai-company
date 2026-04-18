@@ -50,11 +50,16 @@ class TestTelemetryCollector:
     def test_is_functional_true_when_logfire_reporter_built(
         self,
         tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Functional is True when opted in and a non-noop reporter is wired."""
         pytest.importorskip(
             "logfire",
             reason="logfire extra not installed in this environment",
+        )
+        monkeypatch.setenv(
+            "SYNTHORG_LOGFIRE_PROJECT_TOKEN",
+            "pylf_v1_test_000000000000000000000000000000000000000000",
         )
         config = TelemetryConfig(
             enabled=True,

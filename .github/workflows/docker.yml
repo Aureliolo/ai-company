@@ -375,6 +375,7 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             BASE_IMAGE=${{ needs.build-backend-base.outputs.digest != '' && format('ghcr.io/aureliolo/synthorg-backend-base@{0}', needs.build-backend-base.outputs.digest) || format('ghcr.io/aureliolo/synthorg-backend-base:{0}', needs.build-backend-base.outputs.tag) }}
+            LOGFIRE_PROJECT_TOKEN=${{ secrets.LOGFIRE_PROJECT_TOKEN }}
           cache-from: ${{ github.event_name != 'pull_request' && 'type=gha' || '' }}
           cache-to: ${{ github.event_name != 'pull_request' && 'type=gha,mode=max' || '' }}
           platforms: linux/amd64
@@ -448,6 +449,7 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             BASE_IMAGE=${{ needs.build-backend-base.outputs.digest != '' && format('ghcr.io/aureliolo/synthorg-backend-base@{0}', needs.build-backend-base.outputs.digest) || format('ghcr.io/aureliolo/synthorg-backend-base:{0}', needs.build-backend-base.outputs.tag) }}
+            LOGFIRE_PROJECT_TOKEN=${{ secrets.LOGFIRE_PROJECT_TOKEN }}
           cache-from: type=gha
           platforms: linux/amd64,linux/arm64
           sbom: true
