@@ -1,17 +1,30 @@
-"""Currency display formatting utilities.
+"""Currency display formatting utilities and the ``CurrencyCode`` type.
 
 Provides locale-independent currency formatting using ISO 4217 codes.
 No external dependencies -- symbol lookup uses a built-in table of
 common currencies with fallback to the ISO code for unknown codes.
 
-This module handles **display formatting only**.  Internal cost storage
-remains in a single base currency; see the ``budget.currency`` setting
-in ``settings/definitions/budget.py`` for the configured display currency.
+Owns two related concerns:
+
+* **Display formatting** -- ``format_cost`` / ``format_cost_detail`` /
+  ``get_currency_symbol`` / ``CURRENCY_SYMBOLS`` / ``MINOR_UNITS``.
+* **Validation** -- the ``CurrencyCode`` Annotated type used on every
+  cost-bearing model (``CostRecord``, ``TaskMetricRecord``,
+  ``AgentRuntimeState``, et al.) to reject typos and codes the display
+  layer does not know how to format.
+
+The ``CurrencyCode`` allowlist is derived from the union of keys in
+``CURRENCY_SYMBOLS`` and ``MINOR_UNITS`` so that adopting a new
+currency requires adding it to the display mappings first; a row with
+a code the formatter cannot render would be a latent bug waiting to
+surface in a report.
 """
 
 import math
 from types import MappingProxyType
-from typing import Final
+from typing import Annotated, Final
+
+from pydantic import AfterValidator, StringConstraints
 
 DEFAULT_CURRENCY: Final[str] = "EUR"
 """Default ISO 4217 currency code.
@@ -159,3 +172,37 @@ def format_cost_detail(value: float, currency: str = DEFAULT_CURRENCY) -> str:
         Formatted string with 4 decimal places, e.g. ``"$0.0315"``.
     """
     return format_cost(value, currency, precision=4)
+
+
+_KNOWN_ISO4217: Final[frozenset[str]] = frozenset(CURRENCY_SYMBOLS) | frozenset(
+    MINOR_UNITS
+)
+"""Allowlist of ISO 4217 codes the display/formatting layer supports.
+
+Drawn from ``CURRENCY_SYMBOLS`` and ``MINOR_UNITS``.  A new currency
+must be added to at least one of those mappings before any row may
+carry the code; this keeps persistence and formatting in sync.
+"""
+
+
+def _check_iso4217(value: str) -> str:
+    """Reject currency codes not present in the known ISO 4217 allowlist."""
+    if value not in _KNOWN_ISO4217:
+        msg = f"unknown ISO 4217 currency code: {value!r}"
+        raise ValueError(msg)
+    return value
+
+
+CurrencyCode = Annotated[
+    str,
+    StringConstraints(min_length=3, max_length=3, pattern=r"^[A-Z]{3}$"),
+    AfterValidator(_check_iso4217),
+]
+"""An ISO 4217 currency code (3 uppercase ASCII letters).
+
+Validation is two-phase: the string pattern rejects blank, lowercase,
+and wrong-length inputs at parse time; the ``AfterValidator`` then
+requires the code to be present in ``_KNOWN_ISO4217`` so typos
+(``EURR``) and well-formed but unsupported codes (``ZZZ``) are rejected
+together.
+"""

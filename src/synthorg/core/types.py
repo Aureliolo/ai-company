@@ -1,4 +1,12 @@
-"""Reusable Pydantic type annotations and validators."""
+"""Reusable Pydantic type annotations and validators.
+
+``CurrencyCode`` intentionally lives in ``synthorg.budget.currency``
+next to the ISO 4217 allowlist data.  Importing it here would force
+``core`` to depend on ``budget``, introducing a circular import via
+the many budget modules that already import from ``core.types``.
+Consumers who need the validated currency type import it from
+``synthorg.budget.currency``.
+"""
 
 from collections import Counter
 from typing import Annotated, Literal

@@ -3,6 +3,7 @@
 import pytest
 from pydantic import BaseModel, ConfigDict, ValidationError
 
+from synthorg.budget.currency import CURRENCY_SYMBOLS, MINOR_UNITS, CurrencyCode
 from synthorg.core.types import NotBlankStr, validate_unique_strings
 
 # ── Test models ─────────────────────────────────────────────────
@@ -123,3 +124,106 @@ class TestValidateUniqueStrings:
     def test_reports_all_duplicates(self) -> None:
         with pytest.raises(ValueError, match=r"'a'.*'b'|'b'.*'a'"):
             validate_unique_strings(("a", "b", "a", "b"), "test_field")
+
+
+# ── CurrencyCode ────────────────────────────────────────────────
+
+
+class _CurrencyModel(BaseModel):
+    model_config = ConfigDict(frozen=True)
+    currency: CurrencyCode
+
+
+class _OptionalCurrencyModel(BaseModel):
+    model_config = ConfigDict(frozen=True)
+    currency: CurrencyCode | None = None
+
+
+_KNOWN_CODES = sorted(frozenset(CURRENCY_SYMBOLS) | frozenset(MINOR_UNITS))
+
+
+@pytest.mark.unit
+class TestCurrencyCode:
+    """Validation behaviour for the ``CurrencyCode`` Annotated type."""
+
+    @pytest.mark.parametrize("code", _KNOWN_CODES)
+    def test_accepts_every_known_code(self, code: str) -> None:
+        """Every code in CURRENCY_SYMBOLS or MINOR_UNITS round-trips."""
+        m = _CurrencyModel(currency=code)
+        assert m.currency == code
+
+    @pytest.mark.parametrize(
+        "value",
+        ["", " ", "   ", "\t", "\n"],
+        ids=["empty", "single_space", "spaces", "tab", "newline"],
+    )
+    def test_rejects_blank(self, value: str) -> None:
+        with pytest.raises(ValidationError):
+            _CurrencyModel(currency=value)
+
+    @pytest.mark.parametrize(
+        "value",
+        ["eur", "usd", "Eur", "USd", "uSd"],
+        ids=["eur_lower", "usd_lower", "title", "mixed1", "mixed2"],
+    )
+    def test_rejects_non_uppercase(self, value: str) -> None:
+        with pytest.raises(ValidationError):
+            _CurrencyModel(currency=value)
+
+    @pytest.mark.parametrize(
+        "value",
+        ["EU", "EURO", "US", "USDS", "E", "EEEE"],
+        ids=["short2", "long4", "short2b", "long4b", "single", "quad"],
+    )
+    def test_rejects_wrong_length(self, value: str) -> None:
+        with pytest.raises(ValidationError):
+            _CurrencyModel(currency=value)
+
+    @pytest.mark.parametrize(
+        "value",
+        ["EU1", "E2R", "123", "US!", "E-R"],
+        ids=["digit_tail", "digit_mid", "digits", "punct_tail", "punct_mid"],
+    )
+    def test_rejects_non_letters(self, value: str) -> None:
+        with pytest.raises(ValidationError):
+            _CurrencyModel(currency=value)
+
+    def test_rejects_unknown_but_well_formed_code(self) -> None:
+        """3-uppercase-letter strings that are not ISO 4217 codes are rejected."""
+        with pytest.raises(
+            ValidationError,
+            match="unknown ISO 4217 currency code",
+        ):
+            _CurrencyModel(currency="ZZZ")
+
+    def test_rejects_real_iso4217_code_not_in_allowlist(self) -> None:
+        """Codes not present in CURRENCY_SYMBOLS/MINOR_UNITS are rejected.
+
+        The allowlist is intentionally curated: adopting a new currency
+        requires adding it to ``budget.currency`` first so display
+        formatting is well-defined before any row can carry the value.
+        """
+        # AED is a valid ISO 4217 code but intentionally not in the allowlist
+        # yet (test_currency.py documents this: it falls back to the code).
+        with pytest.raises(
+            ValidationError,
+            match="unknown ISO 4217 currency code",
+        ):
+            _CurrencyModel(currency="AED")
+
+
+@pytest.mark.unit
+class TestOptionalCurrencyCode:
+    """``CurrencyCode | None`` behaves as expected."""
+
+    def test_accepts_none(self) -> None:
+        m = _OptionalCurrencyModel(currency=None)
+        assert m.currency is None
+
+    def test_accepts_known_code(self) -> None:
+        m = _OptionalCurrencyModel(currency="EUR")
+        assert m.currency == "EUR"
+
+    def test_rejects_unknown_code_even_when_optional(self) -> None:
+        with pytest.raises(ValidationError):
+            _OptionalCurrencyModel(currency="ZZZ")
