@@ -2,7 +2,7 @@ ci:
   autoupdate_schedule: never
   autofix_prs: true
   autofix_commit_msg: "style: auto-fix pre-commit hooks"
-  skip: [commitizen, gitleaks, hadolint-docker, caddy-validate, no-em-dashes, no-redundant-timeout, mypy, pytest-unit, golangci-lint, go-vet, go-test, eslint-web, check-push-rebased, check-single-migration-per-pr, check-no-modify-migration, forbidden-literals]
+  skip: [commitizen, gitleaks, hadolint-docker, caddy-validate, no-em-dashes, no-redundant-timeout, mypy, pytest-unit, golangci-lint, go-vet, go-test, eslint-web, check-push-rebased, check-single-migration-per-pr, check-no-modify-migration, forbidden-literals, persistence-boundary]
 
 default_install_hook_types: [pre-commit, commit-msg, pre-push]
 
@@ -163,5 +163,13 @@ repos:
         entry: uv run python scripts/check_forbidden_literals.py
         language: system
         files: ^src/synthorg/.*\.py$
+        pass_filenames: false
+        stages: [pre-push]
+
+      - id: persistence-boundary
+        name: persistence-boundary gate (src/ + tests/)
+        entry: uv run python scripts/check_persistence_boundary.py
+        language: system
+        files: ^(src/synthorg|tests)/.*\.py$
         pass_filenames: false
         stages: [pre-push]

@@ -79,6 +79,9 @@ jobs:
       - name: Forbidden literals gate (src/synthorg)
         run: uv run python scripts/check_forbidden_literals.py
 
+      - name: Persistence boundary gate (src/ + tests/)
+        run: uv run python scripts/check_persistence_boundary.py
+
   # ── Schema: Migration Validation ──
   schema-validate:
     name: Schema Validation
