@@ -59,3 +59,50 @@ class TestBuildStoreDispatchRejectsUnknownHandle:
     def test_refresh_store_rejects_int_handle(self) -> None:
         with pytest.raises(TypeError):
             _build_refresh_store(42)
+
+
+class TestBuildStoreDispatchPositivePaths:
+    """Dispatchers pick the correct concrete class for each backend.
+
+    The SQLite classes accept a plain ``aiosqlite.Connection``; exercising
+    them with a real in-memory connection covers the positive dispatch
+    branch without an integration test.  Postgres positive paths are
+    covered by ``test_fresh_install_postgres_cli.py`` with a real
+    testcontainer pool.
+    """
+
+    async def test_session_store_builds_sqlite_variant(self) -> None:
+        import aiosqlite
+
+        from synthorg.api.auth.session_store import SqliteSessionStore
+
+        conn = await aiosqlite.connect(":memory:")
+        try:
+            store = _build_session_store(conn)
+        finally:
+            await conn.close()
+        assert isinstance(store, SqliteSessionStore)
+
+    async def test_lockout_store_builds_sqlite_variant(self) -> None:
+        import aiosqlite
+
+        from synthorg.api.auth.lockout_store import SqliteLockoutStore
+
+        conn = await aiosqlite.connect(":memory:")
+        try:
+            store = _build_lockout_store(conn, AuthConfig())
+        finally:
+            await conn.close()
+        assert isinstance(store, SqliteLockoutStore)
+
+    async def test_refresh_store_builds_sqlite_variant(self) -> None:
+        import aiosqlite
+
+        from synthorg.api.auth.refresh_store import SqliteRefreshStore
+
+        conn = await aiosqlite.connect(":memory:")
+        try:
+            store = _build_refresh_store(conn)
+        finally:
+            await conn.close()
+        assert isinstance(store, SqliteRefreshStore)
