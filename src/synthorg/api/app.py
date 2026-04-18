@@ -1378,21 +1378,23 @@ def _build_default_trust_service() -> TrustService:
 _DEFAULT_MEMORY_DIR = Path("/data/memory")
 
 
-def _allowed_memory_dir_roots() -> tuple[Path, ...]:
-    r"""Return the roots a resolved memory dir must live inside.
+def _allowed_memory_dir_roots() -> tuple[str, ...]:
+    r"""Return the string roots a memory dir must begin with.
 
-    Production containers mount the data volume at ``/data``, so
-    that path's parent is the only legitimate runtime base. Tests
-    exercise the builder with ``tmp_path`` fixtures, which land
-    under the OS temp dir -- resolved here so Windows CI
-    (``C:\Users\...``) and POSIX runners (``/tmp``, ``/var/tmp``)
-    both pass validation. Resolving eagerly canonicalises symlinks
-    (e.g. macOS ``/var -> /private/var``) so prefix comparison is
-    meaningful.
+    Production containers mount the data volume at ``/data``, which
+    is the only legitimate runtime base. Tests drive the builder
+    with ``tmp_path``, so :func:`tempfile.gettempdir` is also
+    admitted -- covering POSIX (``/tmp``, ``/var/tmp``) and Windows
+    (``C:\Users\...\AppData\Local\Temp``) runners without special
+    casing. Returned as plain strings so the caller can use
+    explicit :py:meth:`str.startswith` checks, which CodeQL's
+    ``py/path-injection`` query recognises as a sanitiser for
+    tainted-path dataflow (``Path.is_relative_to`` / ``.resolve``
+    do not register with the query).
     """
-    roots: list[Path] = [Path("/data").resolve(strict=False)]
+    roots: list[str] = [str(Path("/data"))]
     try:
-        tmp_root = Path(tempfile.gettempdir()).resolve(strict=False)
+        tmp_root: str | None = str(Path(tempfile.gettempdir()))
     except OSError, RuntimeError:
         tmp_root = None
     if tmp_root is not None:
@@ -1404,12 +1406,13 @@ def _resolve_memory_dir() -> Path:
     """Read and validate ``SYNTHORG_MEMORY_DIR`` for derived paths.
 
     The value is operator-controlled (container runtime env), so it
-    is treated as untrusted input for path-injection purposes: the
-    raw string is stripped, must be absolute, canonicalised via
-    :meth:`Path.resolve`, and must land under one of the roots
-    returned by :func:`_allowed_memory_dir_roots` (container volume
-    ``/data``, or the OS temp dir for tests). Any failure falls
-    back to :data:`_DEFAULT_MEMORY_DIR` and logs the reason so
+    is treated as untrusted input for path-injection purposes. The
+    string is stripped, rejected if empty, rejected if any path
+    segment equals ``..`` (traversal attempt), rejected if not
+    absolute, and rejected if the resulting path string does not
+    begin with one of the roots returned by
+    :func:`_allowed_memory_dir_roots`. Failures fall back to
+    :data:`_DEFAULT_MEMORY_DIR` and log the reason so
     misconfiguration is observable, never silent.
     """
     raw = os.environ.get("SYNTHORG_MEMORY_DIR")
@@ -1423,7 +1426,17 @@ def _resolve_memory_dir() -> Path:
             reason="empty_or_whitespace",
         )
         return _DEFAULT_MEMORY_DIR
+    # Explicit ``..`` guard: reject traversal attempts up front so
+    # the string-prefix check below cannot be bypassed with
+    # ``/data/../etc``-style inputs.
     path = Path(candidate)
+    if ".." in path.parts:
+        logger.warning(
+            API_APP_STARTUP,
+            detail="memory_dir_traversal",
+            value=candidate,
+        )
+        return _DEFAULT_MEMORY_DIR
     if not path.is_absolute():
         logger.warning(
             API_APP_STARTUP,
@@ -1431,23 +1444,25 @@ def _resolve_memory_dir() -> Path:
             value=candidate,
         )
         return _DEFAULT_MEMORY_DIR
-    # Canonicalise: eliminates ``..`` segments and resolves symlinks
-    # so the allow-list check below can rely on simple prefix
-    # comparison. ``strict=False`` tolerates paths that do not yet
-    # exist (first-boot of a fresh data volume).
-    canonical = path.resolve(strict=False)
+    # String-based ``startswith`` allow-list -- the pattern CodeQL
+    # ``py/path-injection`` recognises as a sanitiser. Normalise
+    # through ``str(Path(...))`` on both sides so platform
+    # separators line up on Windows. Appending ``os.sep`` on the
+    # root avoids ``/data-evil`` matching ``/data`` by prefix.
+    candidate_str = str(path)
     allowed_roots = _allowed_memory_dir_roots()
     if not any(
-        canonical == root or canonical.is_relative_to(root) for root in allowed_roots
+        candidate_str == root or candidate_str.startswith(root + os.sep)
+        for root in allowed_roots
     ):
         logger.warning(
             API_APP_STARTUP,
             detail="memory_dir_outside_allowed_roots",
-            value=str(canonical),
-            allowed=[str(r) for r in allowed_roots],
+            value=candidate_str,
+            allowed=list(allowed_roots),
         )
         return _DEFAULT_MEMORY_DIR
-    return canonical
+    return path
 
 
 def _build_telemetry_collector() -> TelemetryCollector:

@@ -86,8 +86,12 @@ class LogfireReporter:
         """Send a telemetry event to Logfire.
 
         Offloads the synchronous SDK call to a thread to avoid
-        blocking the event loop. Catches and logs all exceptions
-        (telemetry must never affect the main application).
+        blocking the event loop. Logs at WARNING and re-raises so
+        :meth:`TelemetryCollector._send` returns ``False`` and does
+        not emit a misleading ``*_SENT`` success event for an
+        undelivered write. The outer collector already swallows
+        this exception, keeping telemetry fire-and-forget at the
+        application boundary.
         """
         try:
             await asyncio.to_thread(
@@ -107,6 +111,7 @@ class LogfireReporter:
                 error_type=type(exc).__name__,
                 exc_info=True,
             )
+            raise
 
     async def flush(self) -> None:
         """Flush the Logfire exporter."""

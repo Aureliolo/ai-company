@@ -39,10 +39,7 @@ class TestBuildTelemetryCollector:
         monkeypatch.setenv("SYNTHORG_MEMORY_DIR", str(memory_dir))
         monkeypatch.delenv("SYNTHORG_TELEMETRY", raising=False)
         collector = _build_telemetry_collector()
-        # Builder canonicalises via ``Path.resolve`` to satisfy the
-        # path-injection sanitiser; compare against the resolved form
-        # so macOS (``/var -> /private/var``) passes like Linux.
-        assert collector._data_dir == (tmp_path / "telemetry").resolve()
+        assert collector._data_dir == tmp_path / "telemetry"
 
     def test_opt_in_flips_enabled_via_env(
         self,
@@ -54,7 +51,7 @@ class TestBuildTelemetryCollector:
         collector = _build_telemetry_collector()
         assert collector.enabled is True
         # Deployment ID gets persisted under the derived telemetry dir.
-        assert (tmp_path / "telemetry").resolve().exists()
+        assert (tmp_path / "telemetry").exists()
 
 
 @pytest.mark.unit
@@ -103,9 +100,8 @@ class TestMemoryDirValidation:
         )
         monkeypatch.delenv("SYNTHORG_TELEMETRY", raising=False)
         collector = _build_telemetry_collector()
-        # Whitespace is stripped before path resolution; the result
-        # is the canonicalised form (matches Linux and macOS).
-        assert collector._data_dir == (tmp_path / "telemetry").resolve()
+        # Surrounding whitespace is stripped before the prefix check.
+        assert collector._data_dir == tmp_path / "telemetry"
 
     def test_path_outside_allowed_roots_falls_back(
         self,
