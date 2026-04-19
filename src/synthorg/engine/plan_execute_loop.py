@@ -9,12 +9,11 @@ Re-planning is triggered when a step fails, up to a configurable
 limit.  When re-planning is exhausted, the loop terminates with ERROR.
 """
 
-import copy
 from typing import TYPE_CHECKING
 
+from synthorg.engine.plan_execute_step_mixin import PlanExecuteStepMixin
 from synthorg.observability import get_logger
 from synthorg.observability.events.execution import (
-    EXECUTION_CHECKPOINT_CALLBACK_FAILED,
     EXECUTION_LOOP_START,
     EXECUTION_LOOP_TERMINATED,
     EXECUTION_LOOP_TURN_COMPLETE,
@@ -25,13 +24,11 @@ from synthorg.observability.events.execution import (
     EXECUTION_PLAN_STEP_COMPLETE,
     EXECUTION_PLAN_STEP_FAILED,
     EXECUTION_PLAN_STEP_START,
-    EXECUTION_PLAN_STEP_TRUNCATED,
 )
-from synthorg.providers.enums import FinishReason, MessageRole
+from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import (
     ChatMessage,
     CompletionConfig,
-    CompletionResponse,
 )
 
 from .loop_helpers import (
@@ -42,8 +39,6 @@ from .loop_helpers import (
     check_shutdown,
     check_stagnation,
     classify_turn,
-    clear_last_turn_tool_calls,
-    execute_tool_calls,
     get_tool_definitions,
     invoke_compaction,
     make_turn_record,
@@ -57,7 +52,6 @@ from .loop_protocol import (
     TurnRecord,
 )
 from .plan_helpers import (
-    assess_step_success,
     extract_task_summary,
     update_step_status,
 )
@@ -86,7 +80,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-class PlanExecuteLoop:
+class PlanExecuteLoop(PlanExecuteStepMixin):
     """Plan-and-Execute execution loop.
 
     Decomposes a task into steps via LLM planning, then executes each
@@ -739,168 +733,3 @@ class PlanExecuteLoop:
                 ctx, step_corrections = stag_outcome
 
         return ctx, False
-
-    async def _run_step_turn(  # noqa: PLR0913
-        self,
-        ctx: AgentContext,
-        provider: CompletionProvider,
-        model: str,
-        config: CompletionConfig,
-        tool_defs: list[ToolDefinition] | None,
-        tool_invoker: ToolInvoker | None,
-        turns: list[TurnRecord],
-        budget_checker: BudgetChecker | None,
-        shutdown_checker: ShutdownChecker | None,
-    ) -> AgentContext | ExecutionResult | tuple[AgentContext, bool]:
-        """Execute a single turn within a step's mini-ReAct sub-loop.
-
-        Returns:
-            ``AgentContext`` to continue the loop, ``(ctx, bool)`` for
-            step completion, or ``ExecutionResult`` for termination.
-        """
-        shutdown_result = check_shutdown(ctx, shutdown_checker, turns)
-        if shutdown_result is not None:
-            return shutdown_result
-        budget_result = check_budget(ctx, budget_checker, turns)
-        if budget_result is not None:
-            return budget_result
-
-        turn_number = ctx.turn_count + 1
-        response = await call_provider(
-            ctx,
-            provider,
-            model,
-            tool_defs,
-            config,
-            turn_number,
-            turns,
-        )
-        if isinstance(response, ExecutionResult):
-            return response
-
-        turns.append(
-            make_turn_record(
-                turn_number,
-                response,
-                call_category=classify_turn(turn_number, response, ctx),
-                provider_metadata=response.provider_metadata,
-            )
-        )
-
-        error = check_response_errors(ctx, response, turn_number, turns)
-        if error is not None:
-            return error
-
-        ctx = ctx.with_turn_completed(
-            response.usage,
-            response_to_message(response),
-        )
-        logger.info(
-            EXECUTION_LOOP_TURN_COMPLETE,
-            execution_id=ctx.execution_id,
-            turn=turn_number,
-            finish_reason=response.finish_reason.value,
-            tool_call_count=len(response.tool_calls),
-        )
-
-        await self._invoke_checkpoint_callback(ctx, turn_number)
-
-        if not response.tool_calls:
-            return self._handle_step_completion(ctx, response, turn_number)
-
-        return await self._handle_step_tool_calls(
-            ctx,
-            tool_invoker,
-            response,
-            turn_number,
-            turns,
-            shutdown_checker,
-        )
-
-    def _handle_step_completion(
-        self,
-        ctx: AgentContext,
-        response: CompletionResponse,
-        turn_number: int,
-    ) -> tuple[AgentContext, bool]:
-        """Assess step success and log truncation if applicable."""
-        success = assess_step_success(response)
-        if response.finish_reason == FinishReason.MAX_TOKENS:
-            logger.warning(
-                EXECUTION_PLAN_STEP_TRUNCATED,
-                execution_id=ctx.execution_id,
-                turn=turn_number,
-                truncated=True,
-            )
-        return ctx, success
-
-    async def _handle_step_tool_calls(  # noqa: PLR0913
-        self,
-        ctx: AgentContext,
-        tool_invoker: ToolInvoker | None,
-        response: CompletionResponse,
-        turn_number: int,
-        turns: list[TurnRecord],
-        shutdown_checker: ShutdownChecker | None,
-    ) -> AgentContext | ExecutionResult:
-        """Check shutdown and execute tool calls for a step turn."""
-        shutdown_result = check_shutdown(ctx, shutdown_checker, turns)
-        if shutdown_result is not None:
-            clear_last_turn_tool_calls(turns)
-            # Rebuild with cleaned turns (shutdown_result snapshot'd old turns)
-            return shutdown_result.model_copy(
-                update={"turns": tuple(turns)},
-            )
-
-        return await execute_tool_calls(
-            ctx,
-            tool_invoker,
-            response,
-            turn_number,
-            turns,
-            approval_gate=self._approval_gate,
-        )
-
-    # ── Checkpoint ──────────────────────────────────────────────────
-
-    async def _invoke_checkpoint_callback(
-        self,
-        ctx: AgentContext,
-        turn_number: int,
-    ) -> None:
-        """Invoke the checkpoint callback if configured.
-
-        Errors are logged but never propagated -- checkpointing must
-        not interrupt execution.
-        """
-        if self._checkpoint_callback is None:
-            return
-        try:
-            await self._checkpoint_callback(ctx)
-        except MemoryError, RecursionError:
-            raise
-        except Exception as exc:
-            logger.exception(
-                EXECUTION_CHECKPOINT_CALLBACK_FAILED,
-                execution_id=ctx.execution_id,
-                turn=turn_number,
-                error=f"{type(exc).__name__}: {exc}",
-            )
-
-    @staticmethod
-    def _finalize(
-        result: ExecutionResult,
-        all_plans: list[ExecutionPlan],
-        replans_used: int,
-    ) -> ExecutionResult:
-        """Attach plan metadata to the execution result."""
-        metadata = copy.deepcopy(result.metadata)
-        metadata.update(
-            {
-                "loop_type": "plan_execute",
-                "plans": [p.model_dump() for p in all_plans],
-                "final_plan": (all_plans[-1].model_dump() if all_plans else None),
-                "replans_used": replans_used,
-            }
-        )
-        return result.model_copy(update={"metadata": metadata})
