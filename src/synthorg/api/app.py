@@ -5,17 +5,12 @@ controllers, middleware, exception handlers, plugins, and
 lifecycle hooks (startup/shutdown).
 """
 
-import asyncio
-import functools
 import os
 import sys
 import tempfile
 import time
-from collections.abc import Callable
-from datetime import UTC, datetime
 from pathlib import Path, PurePath
-from typing import TYPE_CHECKING, Any, get_args
-from urllib.parse import unquote, urlparse
+from typing import TYPE_CHECKING
 
 from litestar import Controller, Litestar, Router
 from litestar.config.compression import CompressionConfig
@@ -23,9 +18,14 @@ from litestar.config.cors import CORSConfig
 from litestar.datastructures import State
 from litestar.openapi import OpenAPIConfig
 from litestar.openapi.plugins import ScalarRenderPlugin
-from pydantic import SecretStr
 
 from synthorg import __version__
+from synthorg.api.app_helpers import (
+    _make_expire_callback,
+    _make_meeting_publisher,
+    _postgres_config_from_url,
+    _resolve_artifact_dir_env,
+)
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.api.auth.controller_helpers import require_password_changed
 from synthorg.api.auth.service import AuthService  # noqa: TC001
@@ -35,9 +35,6 @@ from synthorg.api.auto_wire import (
 )
 from synthorg.api.bus_bridge import MessageBusBridge
 from synthorg.api.channels import (
-    CHANNEL_AGENTS,
-    CHANNEL_APPROVALS,
-    CHANNEL_MEETINGS,
     create_channels_plugin,
 )
 from synthorg.api.controllers import BASE_CONTROLLERS
@@ -49,7 +46,6 @@ from synthorg.api.middleware_factory import _build_middleware
 from synthorg.api.rate_limits import build_sliding_window_store
 from synthorg.api.rate_limits.protocol import SlidingWindowStore  # noqa: TC001
 from synthorg.api.state import AppState
-from synthorg.api.ws_models import WsEvent, WsEventType
 from synthorg.backup.factory import build_backup_service
 from synthorg.budget.coordination_store import (
     CoordinationMetricsStore,
@@ -74,11 +70,6 @@ from synthorg.communication.meeting.orchestrator import (
 from synthorg.communication.meeting.scheduler import MeetingScheduler  # noqa: TC001
 from synthorg.config import bootstrap_logging
 from synthorg.config.schema import RootConfig
-from synthorg.core.approval import ApprovalItem  # noqa: TC001
-from synthorg.engine.agent_engine import (  # noqa: TC001
-    PersonalityTrimNotifier,
-    PersonalityTrimPayload,
-)
 from synthorg.engine.coordination.service import MultiAgentCoordinator  # noqa: TC001
 from synthorg.engine.review_gate import ReviewGateService
 from synthorg.engine.task_engine import TaskEngine  # noqa: TC001
@@ -94,20 +85,13 @@ from synthorg.observability import get_logger
 from synthorg.observability.config import DEFAULT_SINKS, LogConfig
 from synthorg.observability.events.api import (
     API_APP_STARTUP,
-    API_APPROVAL_PUBLISH_FAILED,
     API_SERVICE_AUTO_WIRED,
-    API_WS_SEND_FAILED,
-)
-from synthorg.observability.events.prompt import (
-    PROMPT_PERSONALITY_NOTIFY_FAILED,
 )
 from synthorg.persistence.artifact_storage import (
     ArtifactStorageBackend,  # noqa: TC001
 )
 from synthorg.persistence.config import (
     PersistenceConfig,
-    PostgresConfig,
-    PostgresSslMode,
     SQLiteConfig,
 )
 from synthorg.persistence.factory import create_backend
@@ -127,8 +111,6 @@ from synthorg.telemetry import TelemetryCollector, TelemetryConfig
 from synthorg.tools.invocation_tracker import ToolInvocationTracker  # noqa: TC001
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-
     from litestar.channels import ChannelsPlugin
 
     from synthorg.integrations.mcp_catalog.installations import (
@@ -137,285 +119,6 @@ if TYPE_CHECKING:
     from synthorg.settings.service import SettingsService
 
 logger = get_logger(__name__)
-
-
-def _make_expire_callback(
-    channels_plugin: ChannelsPlugin,
-) -> Callable[[ApprovalItem], None]:
-    """Create a sync callback that publishes APPROVAL_EXPIRED events.
-
-    The callback is invoked by ``ApprovalStore._check_expiration``
-    when lazy expiry transitions an item to EXPIRED.  Best-effort:
-    publish errors are logged and swallowed.
-
-    Args:
-        channels_plugin: Litestar channels plugin for WebSocket delivery.
-
-    Returns:
-        Sync callback accepting an expired ``ApprovalItem``.
-    """
-
-    def _on_expire(item: ApprovalItem) -> None:
-        event = WsEvent(
-            event_type=WsEventType.APPROVAL_EXPIRED,
-            channel=CHANNEL_APPROVALS,
-            timestamp=datetime.now(UTC),
-            payload={
-                "approval_id": item.id,
-                "status": item.status.value,
-                "action_type": item.action_type,
-                "risk_level": item.risk_level.value,
-            },
-        )
-        try:
-            channels_plugin.publish(
-                event.model_dump_json(),
-                channels=[CHANNEL_APPROVALS],
-            )
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
-            logger.warning(
-                API_APPROVAL_PUBLISH_FAILED,
-                approval_id=item.id,
-                event_type=WsEventType.APPROVAL_EXPIRED.value,
-                exc_info=True,
-            )
-
-    return _on_expire
-
-
-def _postgres_config_from_url(db_url: str) -> PostgresConfig:
-    """Build a PostgresConfig from a libpq-style URL.
-
-    Accepts the canonical form the CLI compose template emits:
-    ``postgresql://user:password@host:5432/dbname``. Userinfo,
-    hostname, port, and path are URL-decoded so credentials with
-    reserved characters survive the round-trip. The parser is strict
-    about presence of the user, password, host, and database fields
-    -- ambiguous URLs are rejected up front so the auto-wire path
-    fails fast rather than producing a half-configured backend that
-    explodes later under load.
-
-    The default ``ssl_mode`` from PostgresConfig (``"require"``)
-    rejects plaintext connections; for local Docker compose where the
-    backend talks to Postgres over an internal network without TLS,
-    callers can override via ``SYNTHORG_POSTGRES_SSL_MODE`` env var.
-    """
-    parsed = urlparse(db_url)
-    # Source-level logging for each validation branch so operators
-    # debugging startup see the specific reason a DSN was rejected
-    # even if the caller's catch block truncates the stack trace.
-    # The caller also logs via logger.exception(...) on raise, but
-    # that only captures the final ValueError message.
-    if parsed.scheme not in {"postgres", "postgresql"}:
-        msg = (
-            f"SYNTHORG_DATABASE_URL scheme {parsed.scheme!r} is not "
-            f"supported; expected 'postgresql://...'"
-        )
-        logger.warning(API_APP_STARTUP, error=msg, reason="invalid_scheme")
-        raise ValueError(msg)
-    if not parsed.hostname:
-        msg = "SYNTHORG_DATABASE_URL is missing a host component"
-        logger.warning(API_APP_STARTUP, error=msg, reason="missing_host")
-        raise ValueError(msg)
-    if not parsed.username or not parsed.password:
-        msg = (
-            "SYNTHORG_DATABASE_URL must include a username and password "
-            "(postgresql://user:pass@host:port/db)"
-        )
-        logger.warning(API_APP_STARTUP, error=msg, reason="missing_credentials")
-        raise ValueError(msg)
-    database = parsed.path.lstrip("/")
-    if not database:
-        msg = (
-            "SYNTHORG_DATABASE_URL must include a database name in the "
-            "path (postgresql://user:pass@host:port/db)"
-        )
-        logger.warning(API_APP_STARTUP, error=msg, reason="missing_database")
-        raise ValueError(msg)
-
-    ssl_override = (os.environ.get("SYNTHORG_POSTGRES_SSL_MODE") or "").strip()
-    ssl_kwargs: dict[str, Any] = {}
-    if ssl_override:
-        # Validate up front rather than letting Pydantic raise a less
-        # actionable error during PostgresConfig construction. Derive
-        # the allow-list from PostgresSslMode itself so adding or
-        # removing a mode in persistence/config.py automatically keeps
-        # this check in sync (no duplicate literal sets to drift).
-        valid_modes = set(get_args(PostgresSslMode))
-        if ssl_override not in valid_modes:
-            msg = (
-                f"SYNTHORG_POSTGRES_SSL_MODE={ssl_override!r} is invalid; "
-                f"must be one of: {sorted(valid_modes)}"
-            )
-            logger.warning(API_APP_STARTUP, error=msg, reason="invalid_ssl_mode")
-            raise ValueError(msg)
-        ssl_kwargs["ssl_mode"] = ssl_override
-
-    return PostgresConfig(
-        host=unquote(parsed.hostname),
-        port=parsed.port or 5432,
-        database=unquote(database),
-        username=unquote(parsed.username),
-        password=SecretStr(unquote(parsed.password)),
-        **ssl_kwargs,
-    )
-
-
-def _resolve_artifact_dir_env() -> str:
-    """Resolve the postgres-mode artifact directory from the environment.
-
-    Reads ``SYNTHORG_ARTIFACT_DIR`` and falls back to ``/data`` (the
-    compose template's mount point) when the variable is unset or
-    consists only of whitespace. Rejects relative or traversal paths
-    at the env boundary so artifacts cannot end up in the process
-    working directory or outside the mounted volume.
-
-    Returns:
-        The absolute directory string to hand to
-        :class:`FileSystemArtifactStorage`.
-
-    Raises:
-        ValueError: If the env var is set to a non-absolute path. A
-            previous implementation used ``os.environ.get(...) or
-            "/data"`` which treated whitespace as truthy and
-            collapsed to ``Path("")``; this helper strips first and
-            then validates.
-    """
-    artifact_dir_str = os.environ.get("SYNTHORG_ARTIFACT_DIR", "").strip()
-    if not artifact_dir_str:
-        return "/data"
-    if not Path(artifact_dir_str).is_absolute():
-        msg = (
-            f"SYNTHORG_ARTIFACT_DIR={artifact_dir_str!r} must be an absolute "
-            f"path to avoid writing artifacts to the process working directory"
-        )
-        logger.warning(API_APP_STARTUP, error=msg, reason="non_absolute_artifact_dir")
-        raise ValueError(msg)
-    return artifact_dir_str
-
-
-def _make_meeting_publisher(
-    channels_plugin: ChannelsPlugin,
-) -> Callable[[str, dict[str, Any]], None]:
-    """Create a sync callback that publishes meeting events to WS.
-
-    Args:
-        channels_plugin: Litestar channels plugin for WebSocket delivery.
-
-    Returns:
-        Sync callback ``(event_name, payload) -> None``.
-    """
-
-    def _on_meeting_event(
-        event_name: str,
-        payload: dict[str, Any],
-    ) -> None:
-        event = WsEvent(
-            event_type=WsEventType(event_name),
-            channel=CHANNEL_MEETINGS,
-            timestamp=datetime.now(UTC),
-            payload=payload,
-        )
-        try:
-            channels_plugin.publish(
-                event.model_dump_json(),
-                channels=[CHANNEL_MEETINGS],
-            )
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
-            logger.warning(
-                API_WS_SEND_FAILED,
-                note="Failed to publish meeting WebSocket event",
-                event_name=event_name,
-                exc_info=True,
-            )
-
-    return _on_meeting_event
-
-
-def make_personality_trim_notifier(
-    channels_plugin: ChannelsPlugin,
-) -> PersonalityTrimNotifier:
-    """Create an async callback that publishes ``personality.trimmed`` events.
-
-    The returned callback matches the
-    :data:`~synthorg.engine.agent_engine.PersonalityTrimNotifier` contract and
-    can be passed to ``AgentEngine`` via the ``personality_trim_notifier``
-    constructor parameter.  It publishes a ``WsEvent(event_type=
-    WsEventType.PERSONALITY_TRIMMED, channel=agents)`` so the dashboard can
-    render a live toast when personality trimming fires.
-
-    External engine runners (CLI workers, Kubernetes jobs, etc.) that host an
-    ``AgentEngine`` should call this factory with their ``ChannelsPlugin``
-    instance and wire the result into the engine constructor.  ``create_app``
-    itself does not instantiate ``AgentEngine`` and therefore does not call
-    this factory -- it exists as a public wiring utility for downstream
-    consumers.
-
-    The callback is declared ``async`` to match the
-    :data:`PersonalityTrimNotifier` contract.  The underlying
-    :meth:`ChannelsPlugin.publish` call is synchronous -- a fire-and-forget
-    enqueue onto the channels backlog that normally completes in
-    microseconds.  We wrap it in :func:`asyncio.to_thread` so that:
-    (a) a pathological channels-plugin implementation cannot block the
-    event loop, and (b) the engine-side :func:`asyncio.timeout` has an
-    actual ``await`` point to cancel at.  Without the ``to_thread`` hop a
-    synchronous stall would bypass the timeout entirely.
-
-    Best-effort error handling distinguishes ordinary transport failures
-    from system-level or cancellation conditions:
-
-    * Ordinary ``Exception`` subclasses raised during the publish (broken
-      channel, serialization error, backend unavailable) are logged via
-      ``PROMPT_PERSONALITY_NOTIFY_FAILED`` and **swallowed** so a broken
-      notification pipeline never blocks task execution.
-    * :class:`MemoryError` and :class:`RecursionError` are re-raised so the
-      enclosing task can tear down cleanly under resource exhaustion.
-    * :class:`asyncio.CancelledError` propagates naturally because it is a
-      :class:`BaseException` subclass and is not caught by ``except
-      Exception``, preserving structured cancellation.
-
-    Args:
-        channels_plugin: Litestar channels plugin for WebSocket delivery.
-
-    Returns:
-        Async callback accepting a ``PersonalityTrimPayload``.
-    """
-
-    async def _on_personality_trimmed(payload: PersonalityTrimPayload) -> None:
-        event = WsEvent(
-            event_type=WsEventType.PERSONALITY_TRIMMED,
-            channel=CHANNEL_AGENTS,
-            timestamp=datetime.now(UTC),
-            payload=dict(payload),
-        )
-        try:
-            await asyncio.to_thread(
-                functools.partial(
-                    channels_plugin.publish,
-                    event.model_dump_json(),
-                    channels=[CHANNEL_AGENTS],
-                ),
-            )
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
-            logger.warning(
-                PROMPT_PERSONALITY_NOTIFY_FAILED,
-                reason="failed to publish personality.trimmed WebSocket event",
-                agent_id=payload.get("agent_id"),
-                agent_name=payload.get("agent_name"),
-                task_id=payload.get("task_id"),
-                trim_tier=payload.get("trim_tier"),
-                before_tokens=payload.get("before_tokens"),
-                after_tokens=payload.get("after_tokens"),
-                exc_info=True,
-            )
-
-    return _on_personality_trimmed
 
 
 # 2-Phase Init: Phase 1 (construct) bakes immutable middleware/CORS/routes

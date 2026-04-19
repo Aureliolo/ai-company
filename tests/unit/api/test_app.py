@@ -9,9 +9,11 @@ from litestar.testing import TestClient
 
 from synthorg.api.app import (
     _bootstrap_app_logging,
+    create_app,
+)
+from synthorg.api.app_helpers import (
     _postgres_config_from_url,
     _resolve_artifact_dir_env,
-    create_app,
 )
 from synthorg.api.middleware import _SECURITY_HEADERS
 from synthorg.api.state import AppState
