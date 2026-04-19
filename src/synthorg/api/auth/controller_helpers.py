@@ -233,6 +233,7 @@ def extract_jti(request: Request[Any, Any, Any]) -> str | None:
 def get_auth_config(app_state: AppState) -> AuthConfig:
     """Return the auth config from app state."""
     try:
-        return app_state.config.api.auth
+        cfg: AuthConfig = app_state.config.api.auth
+        return cfg  # noqa: TRY300
     except AttributeError, TypeError:
         return AuthConfig()

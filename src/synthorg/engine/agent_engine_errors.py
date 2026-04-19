@@ -4,7 +4,7 @@ Extracts completion logging, provider degradation, and fatal-error
 handling into a mixin so the main module stays under the size limit.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from synthorg.budget.errors import BudgetExhaustedError, QuotaExhaustedError
 from synthorg.budget.quota import DegradationAction
@@ -46,7 +46,8 @@ class AgentEngineErrorsMixin:
     """Mixin providing completion logging + error/degradation handlers."""
 
     _provider_registry: ProviderRegistry | None
-    _task_engine: object
+    _task_engine: Any
+    _apply_recovery: Any
 
     def _log_completion(
         self,
@@ -338,4 +339,4 @@ class AgentEngineErrorsMixin:
             effective_autonomy=effective_autonomy,
             provider=provider,
         )
-        return result
+        return result  # type: ignore[no-any-return]

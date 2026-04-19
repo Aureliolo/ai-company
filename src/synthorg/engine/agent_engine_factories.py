@@ -1,6 +1,6 @@
 """Factory mixin for :class:`AgentEngine`: approval gate, loop, tool invoker."""
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from synthorg.engine._security_factory import (
     make_security_interceptor,
@@ -32,6 +32,28 @@ logger = get_logger(__name__)
 
 class AgentEngineFactoriesMixin:
     """Mixin providing approval-gate, loop, and tool-invoker factories."""
+
+    _approval_store: Any
+    _parked_context_repo: Any
+    _event_stream_hub: Any
+    _interrupt_store: Any
+    _approval_gate: Any
+    _stagnation_detector: Any
+    _compaction_callback: Any
+    _auto_loop_config: Any
+    _loop: Any
+    _hybrid_loop_config: Any
+    _plan_execute_config: Any
+    _memory_injection_strategy: Any
+    _ontology_injection_strategy: Any
+    _model_resolver: Any
+    _provider_configs: Any
+    _provider_registry: Any
+    _tool_registry: Any
+    _tool_invocation_tracker: Any
+    _security_config: Any
+    _budget_enforcer: Any
+    _audit_log: Any
 
     def _make_approval_gate(self) -> ApprovalGate | None:
         """Build an ApprovalGate if an approval store is configured."""
@@ -65,7 +87,7 @@ class AgentEngineFactoriesMixin:
     ) -> ExecutionLoop:
         """Select the execution loop for a task."""
         if self._auto_loop_config is None:
-            return self._loop
+            return self._loop  # type: ignore[no-any-return]
 
         cfg = self._auto_loop_config
         preliminary = select_loop_type(

@@ -52,7 +52,7 @@ def _get_cookie_name(app_state: AppState) -> str:
         Session cookie name string.
     """
     try:
-        return app_state.config.api.auth.cookie_name
+        return str(app_state.config.api.auth.cookie_name)
     except AttributeError, TypeError:
         return _DEFAULT_COOKIE_NAME
 

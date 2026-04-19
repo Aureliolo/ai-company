@@ -7,10 +7,8 @@ import pytest
 from litestar import Litestar
 from litestar.testing import TestClient
 
-from synthorg.api.app import (
-    _bootstrap_app_logging,
-    create_app,
-)
+from synthorg.api.app import create_app
+from synthorg.api.app_builders import _bootstrap_app_logging
 from synthorg.api.app_helpers import (
     _postgres_config_from_url,
     _resolve_artifact_dir_env,

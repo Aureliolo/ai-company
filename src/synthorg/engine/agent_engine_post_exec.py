@@ -3,7 +3,7 @@
 import asyncio
 import contextlib
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from synthorg.engine.checkpoint.resume import (
     cleanup_checkpoint_artifacts,
@@ -47,6 +47,24 @@ _TRANSITION_REASON_CRITERIA_CAP = 5
 
 class AgentEnginePostExecMixin:
     """Mixin providing post-execution, timeout wrapper, and result builder."""
+
+    _cost_tracker: Any
+    _task_engine: Any
+    _approval_store: Any
+    _apply_recovery: Any
+    _recovery_strategy: Any
+    _checkpoint_repo: Any
+    _heartbeat_repo: Any
+    _error_taxonomy_config: Any
+    _checkpoint_config: Any
+    _coordination_metrics_collector: Any
+    _distillation_capture_enabled: Any
+    _log_completion: Any
+    _memory_backend: Any
+    _procedural_memory_config: Any
+    _procedural_proposer: Any
+    _provider: Any
+    _shutdown_checker: Any
 
     async def _post_execution_pipeline(  # noqa: PLR0913
         self,

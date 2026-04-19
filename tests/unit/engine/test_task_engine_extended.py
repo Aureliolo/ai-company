@@ -20,7 +20,8 @@ from synthorg.engine.errors import (
     TaskInternalError,
     TaskMutationError,
 )
-from synthorg.engine.task_engine import TaskEngine, _MutationEnvelope
+from synthorg.engine.task_engine import TaskEngine
+from synthorg.engine.task_engine_loops import _MutationEnvelope
 from synthorg.engine.task_engine_models import (
     CancelTaskMutation,
     CreateTaskMutation,

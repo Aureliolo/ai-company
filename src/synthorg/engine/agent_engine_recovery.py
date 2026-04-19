@@ -1,6 +1,6 @@
 """Recovery and checkpoint-resume mixin for :class:`AgentEngine`."""
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from synthorg.budget.errors import BudgetExhaustedError
 from synthorg.engine.checkpoint.resume import (
@@ -42,6 +42,21 @@ logger = get_logger(__name__)
 
 class AgentEngineRecoveryMixin:
     """Mixin providing recovery and checkpoint-resume helpers."""
+
+    _recovery_strategy: Any
+    _project_repo: Any
+    _validate_project: Any
+    _budget_enforcer: Any
+    _loop: Any
+    _resolve_loop: Any
+    _make_loop_with_callback: Any
+    _provider: Any
+    _make_tool_invoker: Any
+    _shutdown_checker: Any
+    _cost_tracker: Any
+    _task_engine: Any
+    _checkpoint_repo: Any
+    _heartbeat_repo: Any
 
     async def _apply_recovery(  # noqa: PLR0913
         self,
@@ -265,7 +280,7 @@ class AgentEngineRecoveryMixin:
                 task_id,
             )
         loop = self._make_loop_with_callback(base_loop, agent_id, task_id)
-        return await loop.execute(
+        result: ExecutionResult = await loop.execute(
             context=checkpoint_ctx,
             provider=provider or self._provider,
             tool_invoker=self._make_tool_invoker(
@@ -277,6 +292,7 @@ class AgentEngineRecoveryMixin:
             shutdown_checker=self._shutdown_checker,
             completion_config=completion_config,
         )
+        return result
 
     async def _finalize_resume(  # noqa: PLR0913
         self,

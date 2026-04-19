@@ -12,10 +12,12 @@ from typing import TYPE_CHECKING
 from synthorg.budget.call_category import OrchestrationAlertLevel
 from synthorg.budget.category_analytics import (
     CategoryBreakdown,
-    OrchestrationAlertThresholds,
     OrchestrationRatio,
     build_category_breakdown,
     compute_orchestration_ratio,
+)
+from synthorg.budget.coordination_config import (
+    OrchestrationAlertThresholds,  # noqa: TC001
 )
 from synthorg.budget.enums import BudgetAlertLevel
 from synthorg.budget.errors import MixedCurrencyAggregationError
@@ -53,12 +55,13 @@ class CostTrackerSummaryMixin:
     _budget_config: BudgetConfig | None
     _department_resolver: Callable[[str], str | None] | None
 
-    async def _snapshot(self) -> list[CostRecord]:
-        """Return an immutable copy of the current records.
+    async def _snapshot(self, *, now: datetime | None = None) -> tuple[CostRecord, ...]:
+        """Return an immutable snapshot of records.
 
         Overridden by the concrete class; declared here only to satisfy
         mypy's attribute check against the mixin.
         """
+        raise NotImplementedError
 
     async def build_summary(
         self,

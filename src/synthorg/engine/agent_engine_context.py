@@ -1,7 +1,7 @@
 """Context preparation mixin for :class:`AgentEngine`."""
 
 import asyncio
-from typing import TYPE_CHECKING, Literal, TypedDict
+from typing import TYPE_CHECKING, Any, Literal, TypedDict
 
 from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.engine.context import AgentContext
@@ -49,6 +49,15 @@ class PersonalityTrimPayload(TypedDict):
 
 class AgentEngineContextMixin:
     """Mixin providing context preparation and project validation."""
+
+    # Slot attrs populated on the concrete ``AgentEngine``; typed as
+    # ``Any`` here because the mixin only reads them. The concrete
+    # class carries the authoritative type.
+    _budget_enforcer: Any
+    _config_resolver: Any
+    _task_engine: Any
+    _personality_trim_notifier: Any
+    _project_repo: Any
 
     async def _prepare_context(  # noqa: PLR0913
         self,
@@ -199,10 +208,11 @@ class AgentEngineContextMixin:
         if self._config_resolver is None:
             return True
         try:
-            return await self._config_resolver.get_bool(
+            result: bool = await self._config_resolver.get_bool(
                 "engine",
                 "personality_trimming_notify",
             )
+            return result  # noqa: TRY300
         except MemoryError, RecursionError:
             raise
         except Exception:
@@ -230,7 +240,7 @@ class AgentEngineContextMixin:
         """Validate project existence and agent membership."""
         if not task.project:
             return 0.0
-        project = await self._project_repo.get(task.project)  # type: ignore[union-attr]
+        project = await self._project_repo.get(task.project)
         if project is None:
             logger.warning(
                 EXECUTION_PROJECT_VALIDATION_FAILED,
@@ -257,4 +267,4 @@ class AgentEngineContextMixin:
                 project_id=project.id,
                 project_budget=project.budget,
             )
-        return project.budget
+        return float(project.budget)
