@@ -9,19 +9,20 @@ from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg.engine.coordination.models import (  # noqa: TC001
+    CoordinationPhaseResult,
+    CoordinationWave,
+)
+from synthorg.engine.workspace.models import (  # noqa: TC001
+    Workspace,
+    WorkspaceGroupResult,
+)
+
 if TYPE_CHECKING:
     from synthorg.engine.coordination.config import CoordinationConfig
-    from synthorg.engine.coordination.models import (
-        CoordinationPhaseResult,
-        CoordinationWave,
-    )
     from synthorg.engine.decomposition.models import DecompositionResult
     from synthorg.engine.parallel import ParallelExecutor
     from synthorg.engine.routing.models import RoutingResult
-    from synthorg.engine.workspace.models import (
-        Workspace,
-        WorkspaceGroupResult,
-    )
     from synthorg.engine.workspace.service import WorkspaceIsolationService
 
 
