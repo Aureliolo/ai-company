@@ -1,0 +1,156 @@
+import { http, HttpResponse } from 'msw'
+import { setupServer } from 'msw/node'
+import { ensureFreshAppState } from '@/utils/app-version'
+
+const STORAGE_KEY = 'synthorg:app_build_id'
+
+/**
+ * Vite's `define` substitutes `import.meta.env.VITE_APP_BUILD_ID` at
+ * build time. In tests (Vitest reuses the Vite pipeline) it resolves
+ * to the value baked in `vite.config.ts` -- which reads package.json.
+ * Read the substituted value here so tests adapt to whatever is baked.
+ */
+const CURRENT_BUILD_ID: string = import.meta.env.VITE_APP_BUILD_ID ?? 'dev'
+
+/**
+ * Local MSW server. Once PR #1462 (the global MSW migration) lands,
+ * `test-setup.tsx` will bootstrap a shared `setupServer` with the
+ * default `POST /api/v1/auth/logout` handler, and this local setup
+ * can be collapsed into `server.use(...)` overrides. Until then,
+ * this file owns its own MSW lifecycle so the tests don't depend on
+ * global state that doesn't exist yet on `main`.
+ */
+const logoutCalls: Array<{ credentials?: RequestCredentials }> = []
+const server = setupServer(
+  http.post('/api/v1/auth/logout', ({ request }) => {
+    logoutCalls.push({ credentials: request.credentials })
+    return new HttpResponse(null, { status: 204 })
+  }),
+)
+
+describe('ensureFreshAppState', () => {
+  let reloadSpy: ReturnType<typeof vi.fn>
+
+  beforeAll(() => {
+    server.listen({ onUnhandledRequest: 'error' })
+  })
+
+  afterAll(() => {
+    server.close()
+  })
+
+  beforeEach(() => {
+    localStorage.clear()
+    sessionStorage.clear()
+    logoutCalls.length = 0
+    reloadSpy = vi.fn()
+    // Preserve href so MSW can resolve `/api/v1/auth/logout` against
+    // a valid base URL -- jsdom's default `about:blank` breaks fetch
+    // with "Invalid URL" on relative paths, which silently swallows
+    // the logout request before MSW sees it.
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: {
+        href: 'http://localhost/',
+        origin: 'http://localhost',
+        reload: reloadSpy,
+      },
+    })
+  })
+
+  afterEach(() => {
+    server.resetHandlers(
+      http.post('/api/v1/auth/logout', ({ request }) => {
+        logoutCalls.push({ credentials: request.credentials })
+        return new HttpResponse(null, { status: 204 })
+      }),
+    )
+  })
+
+  it('stamps the build id on first load and does not call logout or reload', async () => {
+    await ensureFreshAppState()
+    expect(localStorage.getItem(STORAGE_KEY)).toBe(CURRENT_BUILD_ID)
+    expect(logoutCalls).toHaveLength(0)
+    expect(reloadSpy).not.toHaveBeenCalled()
+  })
+
+  it('is a no-op when the stored id matches the current build id', async () => {
+    localStorage.setItem(STORAGE_KEY, CURRENT_BUILD_ID)
+    localStorage.setItem('other-key', 'keep-me')
+    await ensureFreshAppState()
+    expect(logoutCalls).toHaveLength(0)
+    expect(reloadSpy).not.toHaveBeenCalled()
+    expect(localStorage.getItem('other-key')).toBe('keep-me')
+  })
+
+  it('on mismatch: calls POST /auth/logout, clears storage, and stamps the new id', async () => {
+    localStorage.setItem(STORAGE_KEY, 'some-old-build')
+    localStorage.setItem('theme', 'dark')
+    sessionStorage.setItem('tmp', 'value')
+
+    // ensureFreshAppState awaits a never-resolving promise after
+    // reload to keep the splash visible; race it with a setTimeout
+    // so we can assert side-effects without hanging the test.
+    await Promise.race([
+      ensureFreshAppState(),
+      new Promise((resolve) => setTimeout(resolve, 50)),
+    ])
+
+    expect(logoutCalls).toHaveLength(1)
+    expect(logoutCalls[0]!.credentials).toBe('include')
+    expect(localStorage.getItem('theme')).toBeNull()
+    expect(sessionStorage.getItem('tmp')).toBeNull()
+    expect(localStorage.getItem(STORAGE_KEY)).toBe(CURRENT_BUILD_ID)
+    expect(reloadSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it('continues on logout fetch failure (best-effort) and still clears + reloads', async () => {
+    localStorage.setItem(STORAGE_KEY, 'some-old-build')
+    server.use(
+      http.post('/api/v1/auth/logout', () => HttpResponse.error()),
+    )
+
+    await Promise.race([
+      ensureFreshAppState(),
+      new Promise((resolve) => setTimeout(resolve, 50)),
+    ])
+
+    expect(localStorage.getItem(STORAGE_KEY)).toBe(CURRENT_BUILD_ID)
+    expect(reloadSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it('returns silently when localStorage.getItem throws (private mode)', async () => {
+    const getItemSpy = vi
+      .spyOn(Storage.prototype, 'getItem')
+      .mockImplementation(() => {
+        throw new DOMException('blocked', 'SecurityError')
+      })
+
+    await ensureFreshAppState()
+    expect(logoutCalls).toHaveLength(0)
+    expect(reloadSpy).not.toHaveBeenCalled()
+    getItemSpy.mockRestore()
+  })
+
+  it('skips reload when final setItem fails (avoids infinite loop)', async () => {
+    localStorage.setItem(STORAGE_KEY, 'some-old-build')
+    const originalSetItem = Storage.prototype.setItem
+    const setItemSpy = vi
+      .spyOn(Storage.prototype, 'setItem')
+      .mockImplementation(function (
+        this: Storage,
+        key: string,
+        value: string,
+      ) {
+        // Let the seed write succeed; fail the post-clear stamp.
+        if (key === STORAGE_KEY && value === CURRENT_BUILD_ID) {
+          throw new DOMException('quota', 'QuotaExceededError')
+        }
+        originalSetItem.call(this, key, value)
+      })
+
+    await ensureFreshAppState()
+    expect(reloadSpy).not.toHaveBeenCalled()
+    setItemSpy.mockRestore()
+  })
+})

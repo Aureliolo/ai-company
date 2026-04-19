@@ -595,3 +595,84 @@ class TestSystemUserBlocking:
             },
         )
         assert response.status_code == 201
+
+
+@pytest.mark.unit
+class TestLogoutIdempotency:
+    """The ``POST /auth/logout`` endpoint must be idempotent.
+
+    Regardless of whether the caller is authenticated -- or whether
+    the server-side session store call succeeds -- logout must always
+    return 204 and emit clear-cookie + ``Clear-Site-Data`` headers so
+    clients can recover from stale cookie state.
+    """
+
+    def _assert_clear_cookies(self, response: Any) -> None:
+        """Assert the response emits Max-Age=0 cookies and Clear-Site-Data."""
+        set_cookies = [
+            v for k, v in response.headers.multi_items() if k == "set-cookie"
+        ]
+        combined = "\n".join(set_cookies).lower()
+        assert "session=" in combined
+        assert "csrf_token=" in combined
+        assert "refresh_token=" in combined
+        assert "max-age=0" in combined
+        assert response.headers.get("Clear-Site-Data") == '"cookies"'
+
+    def test_logout_without_auth_returns_204_with_clear_cookies(
+        self,
+        bare_client: TestClient[Any],
+    ) -> None:
+        # No Authorization header, no session cookie -- the idempotent
+        # logout still has to work so clients with stale cookies can
+        # clear them.
+        response = bare_client.post("/api/v1/auth/logout")
+        assert response.status_code == 204
+        self._assert_clear_cookies(response)
+
+    def test_logout_with_invalid_bearer_still_returns_204(
+        self,
+        bare_client: TestClient[Any],
+    ) -> None:
+        response = bare_client.post(
+            "/api/v1/auth/logout",
+            headers={"Authorization": "Bearer not-a-real-token"},
+        )
+        assert response.status_code == 204
+        self._assert_clear_cookies(response)
+
+    def test_logout_with_valid_auth_returns_204_and_revokes_session(
+        self,
+        bare_client: TestClient[Any],
+    ) -> None:
+        response = bare_client.post(
+            "/api/v1/auth/logout",
+            headers=make_auth_headers(role=HumanRole.CEO),
+        )
+        assert response.status_code == 204
+        self._assert_clear_cookies(response)
+
+    def test_logout_still_204_when_session_store_revoke_fails(
+        self,
+        bare_client: TestClient[Any],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        app_state = bare_client.app.state["app_state"]
+        if not getattr(app_state, "has_session_store", False):
+            pytest.skip("No session store configured in this fixture")
+
+        async def _boom(_jti: str) -> None:
+            msg = "simulated session store failure"
+            raise RuntimeError(msg)
+
+        monkeypatch.setattr(app_state.session_store, "revoke", _boom)
+
+        response = bare_client.post(
+            "/api/v1/auth/logout",
+            headers=make_auth_headers(role=HumanRole.CEO),
+        )
+        # Idempotent contract: the client is trying to recover from
+        # stale state, so a transient revoke failure must not mask
+        # the cookie-clear with a 500.
+        assert response.status_code == 204
+        self._assert_clear_cookies(response)

@@ -51,6 +51,7 @@ from synthorg.observability.events.api import (
     API_SESSION_CREATED,
     API_SESSION_FORCE_LOGOUT,
     API_SESSION_LISTED,
+    API_SESSION_REVOKE_FAILED,
     API_SESSION_REVOKED,
 )
 
@@ -1050,25 +1051,44 @@ class AuthController(Controller):
         self,
         request: Request[Any, Any, Any],
     ) -> Response[None]:
-        """Revoke the current session and clear cookies."""
-        auth_user = request.scope.get("user")
-        if not isinstance(auth_user, AuthenticatedUser):
-            logger.warning(
-                API_AUTH_FAILED,
-                reason="unauthenticated_logout",
-            )
-            msg = "Authentication required"
-            raise UnauthorizedError(msg)
+        """Revoke the current session (if any) and clear cookies.
 
+        Idempotent: always returns 204 with cookie-clearing headers,
+        whether or not the caller is authenticated.  This lets clients
+        recover from stale cookie state (e.g. an app-version upgrade
+        that invalidated the session semantics) without first needing
+        a valid session to call logout -- which would be a catch-22.
+        Revoking the server-side session record is a best-effort
+        extra step when the JWT is still valid.
+        """
+        auth_user = request.scope.get("user")
         app_state = request.app.state["app_state"]
-        jti = _extract_jti(request)
-        if jti and app_state.has_session_store:
-            await app_state.session_store.revoke(jti)
-            logger.info(
-                API_SESSION_FORCE_LOGOUT,
-                session_id=jti,
-                user_id=auth_user.user_id,
-            )
+
+        if isinstance(auth_user, AuthenticatedUser):
+            jti = _extract_jti(request)
+            if jti and app_state.has_session_store:
+                # Best-effort revocation -- if the session store is
+                # unreachable we still return 204 with cleared cookies
+                # so the client can recover from stale state.  Without
+                # this, a transient DB error would 500 the logout and
+                # trap users in the exact stale-cookie scenario the
+                # idempotent contract was designed to fix.
+                try:
+                    await app_state.session_store.revoke(jti)
+                    logger.info(
+                        API_SESSION_FORCE_LOGOUT,
+                        session_id=jti,
+                        user_id=auth_user.user_id,
+                    )
+                except MemoryError, RecursionError:
+                    raise
+                except Exception as err:
+                    logger.warning(
+                        API_SESSION_REVOKE_FAILED,
+                        session_id=jti,
+                        user_id=auth_user.user_id,
+                        error=str(err),
+                    )
 
         auth_config = _get_auth_config(
             app_state,

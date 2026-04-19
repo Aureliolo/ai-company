@@ -62,4 +62,55 @@ describe('InputField', () => {
     render(<InputField label="Name" disabled />)
     expect(screen.getByLabelText('Name')).toBeDisabled()
   })
+
+  it('renders a leading icon and adds left padding to the input', () => {
+    render(
+      <InputField
+        label="Search"
+        leadingIcon={<svg data-testid="lead-icon" aria-hidden="true" />}
+      />,
+    )
+    expect(screen.getByTestId('lead-icon')).toBeInTheDocument()
+    expect(screen.getByLabelText('Search')).toHaveClass('pl-8')
+  })
+
+  it('renders a trailing element and adds right padding to the input', async () => {
+    const user = userEvent.setup()
+    const onClick = vi.fn()
+    render(
+      <InputField
+        label="Search"
+        trailingElement={
+          <button type="button" aria-label="Clear" onClick={onClick}>
+            x
+          </button>
+        }
+      />,
+    )
+    const button = screen.getByRole('button', { name: 'Clear' })
+    expect(button).toBeInTheDocument()
+    expect(screen.getByLabelText('Search')).toHaveClass('pr-8')
+    await user.click(button)
+    expect(onClick).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not leak the leadingIcon / trailingElement props onto the DOM input', () => {
+    render(
+      <InputField
+        label="Search"
+        leadingIcon={<svg data-testid="lead" aria-hidden="true" />}
+        trailingElement={<span data-testid="trail">x</span>}
+      />,
+    )
+    const input = screen.getByLabelText('Search')
+    expect(input).not.toHaveAttribute('leadingicon')
+    expect(input).not.toHaveAttribute('trailingelement')
+  })
+
+  it('keeps leadingIcon / trailingElement padding off the input when not provided', () => {
+    render(<InputField label="Plain" />)
+    const input = screen.getByLabelText('Plain')
+    expect(input).not.toHaveClass('pl-8')
+    expect(input).not.toHaveClass('pr-8')
+  })
 })

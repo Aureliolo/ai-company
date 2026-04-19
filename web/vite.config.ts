@@ -2,7 +2,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { fileURLToPath, URL } from 'node:url'
-import { rm } from 'node:fs/promises'
+import { readFile, rm } from 'node:fs/promises'
 import path from 'node:path'
 
 /** Vendor chunk groups for production bundle splitting. */
@@ -28,6 +28,15 @@ function manualChunks(id: string): string | undefined {
 }
 
 export default defineConfig(async () => {
+  // Stamp the bundle with a build identifier so the client can detect
+  // upgrades and clear stale cookies / localStorage on boot. Uses the
+  // package.json version as the stable base; CI can override with
+  // SYNTHORG_BUILD_ID (e.g. a git SHA) for finer granularity.
+  const pkg = JSON.parse(
+    await readFile(path.resolve(__dirname, 'package.json'), 'utf-8'),
+  )
+  const buildId = process.env.SYNTHORG_BUILD_ID ?? pkg.version
+
   const plugins = [
     react(),
     tailwindcss(),
@@ -47,6 +56,9 @@ export default defineConfig(async () => {
 
   return {
     plugins,
+    define: {
+      'import.meta.env.VITE_APP_BUILD_ID': JSON.stringify(buildId),
+    },
     resolve: {
       alias: {
         '@': fileURLToPath(new URL('./src', import.meta.url)),
@@ -67,6 +79,14 @@ export default defineConfig(async () => {
       strictPort: true,
     },
     build: {
+      // Never inline font files as data: URIs. Vite's default 4096 B threshold
+      // inlines small unicode-range subsets (e.g. JetBrains Mono cyrillic-ext
+      // at 2 KB), producing @font-face { src: url(data:font/woff2;base64,...) }
+      // rules that violate the Caddy CSP (font-src 'self'; no data:). Inlined
+      // fonts also bloat the render-blocking CSS bundle and can't be cached
+      // independently of it.
+      assetsInlineLimit: (filePath: string): boolean | undefined =>
+        /\.(woff2?|ttf|otf|eot)$/i.test(filePath) ? false : undefined,
       rollupOptions: {
         output: {
           manualChunks,

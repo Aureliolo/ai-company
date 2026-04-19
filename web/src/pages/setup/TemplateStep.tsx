@@ -289,26 +289,26 @@ export function TemplateStep() {
 
       {/* Filter bar */}
       <div className="flex flex-wrap items-end gap-3">
-        {/* Search -- custom wrapper for leading icon + clear button (InputField does not support icons) */}
-        <div className="relative flex-1 min-w-52 max-w-xs">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+        <div className="flex-1 min-w-52 max-w-xs">
           <InputField
             label="Search"
             value={searchQuery}
             onValueChange={setSearchQuery}
             placeholder="Search templates..."
-            className="pl-8 pr-8"
+            leadingIcon={<Search className="size-3.5" />}
+            trailingElement={
+              searchQuery ? (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="text-muted-foreground hover:text-foreground"
+                  aria-label="Clear search"
+                >
+                  <X className="size-3.5" aria-hidden="true" />
+                </button>
+              ) : undefined
+            }
           />
-          {searchQuery && (
-            <button
-              type="button"
-              onClick={() => setSearchQuery('')}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-              aria-label="Clear search"
-            >
-              <X className="size-3.5" aria-hidden="true" />
-            </button>
-          )}
         </div>
 
         {/* Category filter */}
