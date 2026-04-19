@@ -1,0 +1,349 @@
+"""Archive/manifest helpers for :class:`BackupService`.
+
+Extracted from :mod:`synthorg.backup.service` to keep the main module
+under the project size limit.
+"""
+
+import asyncio
+import hashlib
+import json
+import shutil
+import tarfile
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+from synthorg.backup.errors import BackupNotFoundError, ManifestError
+from synthorg.backup.models import BackupInfo, BackupManifest
+from synthorg.observability import get_logger
+from synthorg.observability.events.backup import (
+    BACKUP_DELETED,
+    BACKUP_FAILED,
+    BACKUP_LISTED,
+    BACKUP_MANIFEST_INVALID,
+    BACKUP_NOT_FOUND,
+)
+
+if TYPE_CHECKING:
+    from synthorg.backup.config import BackupConfig
+
+logger = get_logger(__name__)
+
+_CHECKSUM_CHUNK_SIZE = 65536
+_MANIFEST_MAX_SIZE = 65536
+
+
+class BackupServiceArchiveMixin:
+    """Mixin providing archive/manifest/listing helpers."""
+
+    _backup_path: Path
+    _config: BackupConfig
+
+    async def list_backups(self) -> tuple[BackupInfo, ...]:
+        """List all available backups."""
+        if not self._backup_path.exists():
+            logger.debug(BACKUP_LISTED, count=0)
+            return ()
+
+        infos: list[BackupInfo] = []
+
+        for entry in self._backup_path.iterdir():
+            if entry.is_dir():
+                info = self._try_load_dir_info(entry)
+                if info is not None:
+                    infos.append(info)
+            elif entry.name.endswith(".tar.gz"):
+                info = await self._try_load_archive_info(entry)
+                if info is not None:
+                    infos.append(info)
+
+        infos.sort(key=lambda i: i.timestamp, reverse=True)
+        logger.debug(BACKUP_LISTED, count=len(infos))
+        return tuple(infos)
+
+    def _try_load_dir_info(
+        self,
+        entry: Path,
+    ) -> BackupInfo | None:
+        """Try to load backup info from a directory manifest."""
+        manifest_path = entry / "manifest.json"
+        if not manifest_path.exists():
+            return None
+        try:
+            data = json.loads(manifest_path.read_text(encoding="utf-8"))
+            m = BackupManifest.model_validate(data)
+            return BackupInfo.from_manifest(m, compressed=False)
+        except Exception:
+            logger.warning(
+                BACKUP_MANIFEST_INVALID,
+                path=str(manifest_path),
+                exc_info=True,
+            )
+            return None
+
+    async def _try_load_archive_info(
+        self,
+        entry: Path,
+    ) -> BackupInfo | None:
+        """Try to load backup info from a compressed archive."""
+        try:
+            m = await asyncio.to_thread(
+                self._read_manifest_from_archive,
+                entry,
+            )
+            if m is not None:
+                return BackupInfo.from_manifest(m, compressed=True)
+        except Exception:
+            logger.warning(
+                BACKUP_MANIFEST_INVALID,
+                path=str(entry),
+                exc_info=True,
+            )
+        return None
+
+    async def get_backup(self, backup_id: str) -> BackupManifest:
+        """Get the full manifest for a specific backup."""
+        from synthorg.backup.service import _validate_backup_id  # noqa: PLC0415
+
+        _validate_backup_id(backup_id)
+        return await self._load_manifest(backup_id)
+
+    async def delete_backup(self, backup_id: str) -> None:
+        """Delete a backup by ID."""
+        from synthorg.backup.service import _validate_backup_id  # noqa: PLC0415
+
+        _validate_backup_id(backup_id)
+        deleted = await asyncio.to_thread(self._try_delete_backup, backup_id)
+
+        if not deleted:
+            logger.warning(BACKUP_NOT_FOUND, backup_id=backup_id)
+            msg = f"Backup not found: {backup_id}"
+            raise BackupNotFoundError(msg)
+
+        logger.info(BACKUP_DELETED, backup_id=backup_id)
+
+    def _try_delete_backup(self, backup_id: str) -> bool:
+        """Attempt to delete a backup, returning True on success."""
+        if not self._backup_path.exists():
+            return False
+
+        for entry in self._backup_path.iterdir():
+            if entry.is_dir():
+                if self._dir_matches_backup(entry, backup_id):
+                    shutil.rmtree(entry)
+                    return True
+            elif (
+                entry.is_file()
+                and entry.name.endswith(".tar.gz")
+                and entry.name.startswith(f"{backup_id}_")
+            ):
+                entry.unlink()
+                return True
+        return False
+
+    def _dir_matches_backup(self, entry: Path, backup_id: str) -> bool:
+        """Check if a directory contains a manifest matching backup_id."""
+        manifest_path = entry / "manifest.json"
+        if not manifest_path.exists():
+            return False
+        try:
+            data = json.loads(manifest_path.read_text(encoding="utf-8"))
+            return bool(data.get("backup_id") == backup_id)
+        except Exception:
+            logger.warning(
+                BACKUP_MANIFEST_INVALID,
+                path=str(manifest_path),
+            )
+            return False
+
+    async def _load_manifest(self, backup_id: str) -> BackupManifest:
+        """Load manifest for a given backup ID."""
+        if self._backup_path.exists():
+            for entry in self._backup_path.iterdir():
+                result = await self._try_load_entry_manifest(entry, backup_id)
+                if result is not None:
+                    return result
+
+        logger.warning(BACKUP_NOT_FOUND, backup_id=backup_id)
+        msg = f"Backup not found: {backup_id}"
+        raise BackupNotFoundError(msg)
+
+    async def _try_load_entry_manifest(
+        self,
+        entry: Path,
+        backup_id: str,
+    ) -> BackupManifest | None:
+        """Try to load a manifest matching backup_id."""
+        if entry.is_dir():  # noqa: ASYNC240
+            manifest_path = entry / "manifest.json"
+            if manifest_path.exists():
+                try:
+                    data = json.loads(manifest_path.read_text(encoding="utf-8"))
+                    m = BackupManifest.model_validate(data)
+                    if m.backup_id == backup_id:
+                        return m
+                except Exception as exc:
+                    logger.warning(
+                        BACKUP_MANIFEST_INVALID,
+                        path=str(manifest_path),
+                        error=str(exc),
+                    )
+        elif entry.name.endswith(".tar.gz"):
+            try:
+                archive_manifest = await asyncio.to_thread(
+                    self._read_manifest_from_archive,
+                    entry,
+                )
+                if (
+                    archive_manifest is not None
+                    and archive_manifest.backup_id == backup_id
+                ):
+                    return archive_manifest
+            except Exception:
+                logger.warning(
+                    BACKUP_MANIFEST_INVALID,
+                    path=str(entry),
+                    exc_info=True,
+                )
+        return None
+
+    def _find_backup_dir(self, backup_id: str) -> Path | None:
+        """Find uncompressed backup directory by ID."""
+        if not self._backup_path.exists():
+            return None
+        for entry in self._backup_path.iterdir():
+            if not entry.is_dir():
+                continue
+            if self._dir_matches_backup(entry, backup_id):
+                return entry
+        return None
+
+    async def _extract_archive(self, backup_id: str) -> Path | None:
+        """Extract a compressed backup archive to a temp directory."""
+        if not self._backup_path.exists():
+            return None
+        for entry in self._backup_path.iterdir():
+            if not entry.name.endswith(".tar.gz"):
+                continue
+            if not self._archive_matches_backup(entry, backup_id):
+                continue
+
+            temp_dir = self._backup_path / f"_restore_{backup_id}"
+            try:
+                await asyncio.to_thread(
+                    self._extract_tar,
+                    entry,
+                    temp_dir,
+                )
+            except ManifestError:
+                raise
+            except Exception:
+                logger.warning(
+                    BACKUP_FAILED,
+                    backup_id=backup_id,
+                    error="Failed to extract archive",
+                    exc_info=True,
+                )
+                if temp_dir.exists():
+                    await asyncio.to_thread(shutil.rmtree, temp_dir)
+                msg = f"Failed to extract archive for backup: {backup_id}"
+                raise ManifestError(msg) from None
+            else:
+                return temp_dir
+        return None
+
+    def _archive_matches_backup(
+        self,
+        entry: Path,
+        backup_id: str,
+    ) -> bool:
+        """Check if an archive contains a manifest matching backup_id."""
+        if entry.name.startswith(f"{backup_id}_"):
+            return True
+        try:
+            m = self._read_manifest_from_archive(entry)
+        except Exception:
+            logger.warning(
+                BACKUP_MANIFEST_INVALID,
+                path=str(entry),
+                error="Failed to read archive manifest for matching",
+            )
+            return False
+        else:
+            return m is not None and m.backup_id == backup_id
+
+    @staticmethod
+    def _compute_checksum(directory: Path) -> str:
+        """Compute SHA-256 checksum of all files in a directory."""
+        hasher = hashlib.sha256()
+        for filepath in sorted(directory.rglob("*")):
+            if (
+                filepath.is_file()
+                and not filepath.is_symlink()
+                and filepath.name != "manifest.json"
+            ):
+                rel = filepath.relative_to(directory).as_posix()
+                hasher.update(rel.encode("utf-8"))
+                with filepath.open("rb") as fh:
+                    while chunk := fh.read(_CHECKSUM_CHUNK_SIZE):
+                        hasher.update(chunk)
+        return hasher.hexdigest()
+
+    @staticmethod
+    def _compress_dir(source_dir: Path, archive_path: Path) -> None:
+        """Create a tar.gz archive from a directory."""
+        with tarfile.open(archive_path, "w:gz") as tar:
+            for item in source_dir.iterdir():
+                tar.add(item, arcname=item.name)
+
+    @staticmethod
+    def _extract_tar(archive_path: Path, target_dir: Path) -> None:
+        """Extract a tar.gz archive to a target directory."""
+        target_dir.mkdir(parents=True, exist_ok=True)
+        with tarfile.open(archive_path, "r:gz") as tar:
+            for member in tar.getmembers():
+                if member.name.startswith("/") or ".." in Path(member.name).parts:
+                    msg = f"Unsafe path in archive: {member.name}"
+                    raise ManifestError(msg)
+                if member.issym() or member.islnk():
+                    linkname = member.linkname
+                    if linkname.startswith("/") or ".." in Path(linkname).parts:
+                        msg = (
+                            f"Unsafe symlink target in archive: "
+                            f"{member.name} -> {linkname}"
+                        )
+                        raise ManifestError(msg)
+            tar.extractall(target_dir, filter="data")
+
+    @staticmethod
+    def _read_manifest_from_archive(
+        archive_path: Path,
+    ) -> BackupManifest | None:
+        """Read manifest.json from a tar.gz archive."""
+        try:
+            with tarfile.open(archive_path, "r:gz") as tar:
+                try:
+                    member = tar.getmember("manifest.json")
+                except KeyError:
+                    return None
+                f = tar.extractfile(member)
+                if f is None:
+                    return None
+                raw = f.read(_MANIFEST_MAX_SIZE)
+                if len(raw) == _MANIFEST_MAX_SIZE:
+                    logger.warning(
+                        BACKUP_MANIFEST_INVALID,
+                        path=str(archive_path),
+                        error="manifest.json exceeds size limit",
+                    )
+                    return None
+                data = json.loads(raw)
+                return BackupManifest.model_validate(data)
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.warning(
+                BACKUP_MANIFEST_INVALID,
+                path=str(archive_path),
+                exc_info=True,
+            )
+            return None
