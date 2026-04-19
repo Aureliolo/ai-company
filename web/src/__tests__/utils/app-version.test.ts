@@ -46,6 +46,17 @@ class ReloadSentinel extends Error {
 
 describe('ensureFreshAppState', () => {
   let reloadSpy: ReturnType<typeof vi.fn>
+  // Snapshot the real ``window.location`` descriptor once -- each
+  // test replaces it with a mock via ``Object.defineProperty``, and
+  // ``vi.restoreAllMocks()`` does NOT undo that, so we must restore
+  // it ourselves in ``afterEach``.  Without this, the mutated
+  // Location stub leaks into unrelated tests that run later in the
+  // same file (and into the real ``location`` global if the Vitest
+  // environment is reused).
+  const originalLocationDescriptor = Object.getOwnPropertyDescriptor(
+    window,
+    'location',
+  )
 
   beforeAll(() => {
     server.listen({ onUnhandledRequest: 'error' })
@@ -53,6 +64,9 @@ describe('ensureFreshAppState', () => {
 
   afterAll(() => {
     server.close()
+    if (originalLocationDescriptor) {
+      Object.defineProperty(window, 'location', originalLocationDescriptor)
+    }
   })
 
   beforeEach(() => {
@@ -78,6 +92,9 @@ describe('ensureFreshAppState', () => {
 
   afterEach(() => {
     vi.restoreAllMocks()
+    if (originalLocationDescriptor) {
+      Object.defineProperty(window, 'location', originalLocationDescriptor)
+    }
     server.resetHandlers(
       http.post('/api/v1/auth/logout', ({ request }) => {
         logoutCalls.push({ credentials: request.credentials })

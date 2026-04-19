@@ -115,13 +115,18 @@ class RateLimitConfig(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     floor_max_requests: int = Field(
-        default=300,
+        default=10000,
         ge=1,
         description=(
             "Maximum total requests per time window (by IP) across"
             " the whole API, including requests rejected by the auth"
             " middleware.  Defense-in-depth against floods of invalid"
-            " auth attempts on protected endpoints."
+            " auth attempts on protected endpoints.  Must be >="
+            " ``auth_max_requests`` -- the floor wraps the"
+            " authenticated tier, so a lower floor would silently"
+            " cap legitimate per-user traffic below its documented"
+            " budget (especially behind a shared NAT where many users"
+            " share one IP)."
         ),
     )
     unauth_max_requests: int = Field(
@@ -152,6 +157,28 @@ class RateLimitConfig(BaseModel):
             " (mirrors the api.max_rpm_default setting; restart required)"
         ),
     )
+
+    @model_validator(mode="after")
+    def _validate_floor_above_auth(self) -> Self:
+        """Reject a floor lower than the authenticated per-user cap.
+
+        The IP floor wraps the authenticated tier in the middleware
+        stack, so it is a hard ceiling on the per-user tier.  If
+        ``floor_max_requests`` is below ``auth_max_requests`` the
+        documented user budget can never be reached and shared-IP
+        deployments (office NAT, corporate gateway) would silently
+        regress to the floor cap.  Require operators to size the
+        floor above their per-user budget.
+        """
+        if self.floor_max_requests < self.auth_max_requests:
+            msg = (
+                f"floor_max_requests={self.floor_max_requests} must be"
+                f" >= auth_max_requests={self.auth_max_requests} so"
+                " the authenticated per-user budget is reachable"
+                " (the IP floor wraps the authenticated tier)."
+            )
+            raise ValueError(msg)
+        return self
 
     @model_validator(mode="before")
     @classmethod
@@ -333,9 +360,11 @@ class ApiConfig(BaseModel):
 
     Attributes:
         cors: CORS configuration.
-        rate_limit: Global two-tier rate limiting configuration.
+        rate_limit: Global three-tier rate limiting configuration
+            (IP floor un-gated, unauthenticated by IP, authenticated
+            by user ID).
         per_op_rate_limit: Per-operation throttling configuration
-            (layered on top of the global two-tier limiter).
+            (layered on top of the global three-tier limiter).
         server: Uvicorn server configuration.
         auth: Authentication configuration.
         api_prefix: URL prefix for all API routes.
@@ -349,7 +378,10 @@ class ApiConfig(BaseModel):
     )
     rate_limit: RateLimitConfig = Field(
         default_factory=RateLimitConfig,
-        description="Global two-tier rate limiting configuration",
+        description=(
+            "Global three-tier rate limiting configuration: un-gated"
+            " IP floor, unauthenticated by IP, authenticated by user ID"
+        ),
     )
     per_op_rate_limit: PerOpRateLimitConfig = Field(
         default_factory=PerOpRateLimitConfig,

@@ -86,10 +86,25 @@ export function filterAgents(
 
 // ── Sorting ────────────────────────────────────────────────
 
-// Semantic ordering for ordinal fields (lexicographic comparison is incorrect)
-const LEVEL_RANK: Record<SeniorityLevel, number> = {
+/**
+ * Single source of truth for seniority ordering across the dashboard.
+ * Higher value = more senior. Exported so other modules (e.g. the setup
+ * wizard's MiniOrgChart) don't duplicate the ranking locally.
+ */
+export const SENIORITY_RANK: Readonly<Record<SeniorityLevel, number>> = {
   junior: 0, mid: 1, senior: 2, lead: 3, principal: 4, director: 5, vp: 6, c_suite: 7,
 }
+
+/**
+ * Return the numeric seniority rank for a level (or ``-1`` for null),
+ * suitable for use as a sort key or head-picking tiebreak.
+ */
+export function seniorityRank(level: SeniorityLevel | null): number {
+  return level === null ? -1 : SENIORITY_RANK[level]
+}
+
+// Legacy alias retained for the local sort function below.
+const LEVEL_RANK = SENIORITY_RANK
 const STATUS_RANK: Record<AgentStatus, number> = {
   active: 0, onboarding: 1, on_leave: 2, terminated: 3,
 }

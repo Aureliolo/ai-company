@@ -610,15 +610,24 @@ class TestLogoutIdempotency:
     """
 
     def _assert_clear_cookies(self, response: Any) -> None:
-        """Assert the response emits Max-Age=0 cookies and Clear-Site-Data."""
+        """Assert each clear-cookie header carries ``Max-Age=0``.
+
+        Checking ``max-age=0`` on the concatenated string would still
+        pass if one cookie regressed while another kept the attribute.
+        Match each expected cookie header individually so a regression
+        on any single cookie is caught.
+        """
         set_cookies = [
             v for k, v in response.headers.multi_items() if k == "set-cookie"
         ]
-        combined = "\n".join(set_cookies).lower()
-        assert "session=" in combined
-        assert "csrf_token=" in combined
-        assert "refresh_token=" in combined
-        assert "max-age=0" in combined
+        for cookie_name in ("session", "csrf_token", "refresh_token"):
+            matching = [
+                c for c in set_cookies if c.lower().startswith(f"{cookie_name}=")
+            ]
+            assert matching, f"missing Set-Cookie for {cookie_name}"
+            assert "max-age=0" in matching[0].lower(), (
+                f"{cookie_name} cookie lacks Max-Age=0: {matching[0]}"
+            )
         assert response.headers.get("Clear-Site-Data") == '"cookies"'
 
     def test_logout_without_auth_returns_204_with_clear_cookies(

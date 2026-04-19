@@ -206,7 +206,7 @@ The `type` URI points to the category section of the [Error Reference](../errors
 
 ## Rate Limiting
 
-The API applies three-tier rate limiting via Litestar's built-in `RateLimitConfig`: an un-gated per-IP floor (default 300/min/IP, covers every request including those the auth middleware rejects with 401), a per-IP unauthenticated tier (default 20/min/IP, only fires when `scope["user"]` is unset), and a per-user authenticated tier (default 6,000/min/user). All three are configurable per deployment -- see `docs/security.md` for tuning. Clients that exceed any tier receive `429 Too Many Requests` carrying `error_code` 5000 (`RATE_LIMITED`) and a `Retry-After` header. In the envelope form the code lives at `error_detail.error_code`.
+The API applies three-tier rate limiting via Litestar's built-in `RateLimitConfig`: an un-gated per-IP floor (default 10,000/min/IP, covers every request including those the auth middleware rejects with 401), a per-IP unauthenticated tier (default 20/min/IP, only fires when `scope["user"]` is unset), and a per-user authenticated tier (default 6,000/min/user). The floor default is sized above the authenticated per-user cap so shared-NAT deployments do not clip legitimate traffic; config validation rejects a floor lower than the authenticated cap. All three are configurable per deployment -- see `docs/security.md` for tuning. Clients that exceed any tier receive `429 Too Many Requests` carrying `error_code` 5000 (`RATE_LIMITED`) and a `Retry-After` header. In the envelope form the code lives at `error_detail.error_code`.
 
 ---
 

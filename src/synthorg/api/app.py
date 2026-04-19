@@ -2622,6 +2622,12 @@ def _build_auth_exclude_paths(
     """Compute auth middleware exclude paths with fail-safe defaults."""
     setup_status_path = f"^{prefix}/setup/status$"
     metrics_path = f"^{prefix}/metrics$"
+    # Logout must always bypass auth so clients can recover from
+    # stale cookie state (an app-version upgrade invalidates the
+    # session without giving the client a way to clear it).  Kept
+    # as a fail-safe even when operators override
+    # ``auth.exclude_paths`` with a custom list.
+    logout_path = f"^{prefix}/auth/logout$"
     # The OAuth provider redirects the user's browser here without a
     # session cookie, so the global auth middleware has to let it
     # through. CSRF protection is handled by the state token the
@@ -2637,7 +2643,7 @@ def _build_auth_exclude_paths(
             "^/api$",
             f"^{prefix}/auth/setup$",
             f"^{prefix}/auth/login$",
-            f"^{prefix}/auth/logout$",
+            logout_path,
             setup_status_path,
             oauth_callback_path,
         )
@@ -2646,6 +2652,8 @@ def _build_auth_exclude_paths(
         exclude_paths = (*exclude_paths, metrics_path)
     if setup_status_path not in exclude_paths:
         exclude_paths = (*exclude_paths, setup_status_path)
+    if logout_path not in exclude_paths:
+        exclude_paths = (*exclude_paths, logout_path)
     if ws_path not in exclude_paths:
         exclude_paths = (*exclude_paths, ws_path)
     if oauth_callback_path not in exclude_paths:

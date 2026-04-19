@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import type { SeniorityLevel, SetupAgentSummary } from '@/api/types'
 import { cn } from '@/lib/utils'
+import { seniorityRank } from '@/utils/agents'
 
 export interface MiniOrgChartProps {
   agents: readonly SetupAgentSummary[]
@@ -38,22 +39,10 @@ const SVG_BOTTOM_PADDING = 20
 const SVG_HORIZONTAL_PADDING = 20
 
 /**
- * Seniority ranking for identifying the head of a department.
- * Higher index = more senior.  Used to pick the head automatically
- * when the backend doesn't expose ``head_role`` in the agent summary.
+ * Levels that get emphasized styling (department leaders, executives).
+ * Seniority *ordering* lives in ``@/utils/agents`` (`SENIORITY_RANK`
+ * / `seniorityRank`) so this file doesn't re-derive the same ladder.
  */
-const LEVEL_RANK: Record<SeniorityLevel, number> = {
-  junior: 0,
-  mid: 1,
-  senior: 2,
-  lead: 3,
-  principal: 4,
-  director: 5,
-  vp: 6,
-  c_suite: 7,
-}
-
-/** Levels that get emphasized styling (department leaders, executives). */
 const LEADER_LEVELS: ReadonlySet<SeniorityLevel> = new Set([
   'c_suite', 'vp', 'director', 'principal', 'lead',
 ])
@@ -80,15 +69,11 @@ function formatDeptName(snake: string): string {
     .join(' ')
 }
 
-function levelRank(level: SeniorityLevel | null): number {
-  return level === null ? -1 : LEVEL_RANK[level]
-}
-
 function pickHead(agents: readonly SetupAgentSummary[]): SetupAgentSummary | null {
   if (agents.length === 0) return null
   let head = agents[0]!
   for (const agent of agents) {
-    if (levelRank(agent.level) > levelRank(head.level)) head = agent
+    if (seniorityRank(agent.level) > seniorityRank(head.level)) head = agent
   }
   return head
 }

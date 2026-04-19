@@ -5,6 +5,16 @@ import { fileURLToPath, URL } from 'node:url'
 import { readFile, rm } from 'node:fs/promises'
 import path from 'node:path'
 
+/**
+ * Project root (directory containing this config file).  Using
+ * ``import.meta.url`` is the standard ESM replacement for the
+ * CommonJS ``__dirname`` global; ``"type": "module"`` in
+ * ``package.json`` means ``__dirname`` is not defined in the
+ * module scope.  Derive the path once and reuse it for every
+ * file-system lookup in this config.
+ */
+const PROJECT_ROOT = fileURLToPath(new URL('.', import.meta.url))
+
 /** Vendor chunk groups for production bundle splitting. */
 const VENDOR_CHUNKS: Record<string, readonly string[]> = {
   'vendor-react': ['react', 'react-dom', 'react-router'],
@@ -33,7 +43,7 @@ export default defineConfig(async () => {
   // package.json version as the stable base; CI can override with
   // SYNTHORG_BUILD_ID (e.g. a git SHA) for finer granularity.
   const pkg = JSON.parse(
-    await readFile(path.resolve(__dirname, 'package.json'), 'utf-8'),
+    await readFile(path.resolve(PROJECT_ROOT, 'package.json'), 'utf-8'),
   )
   const buildId = process.env.SYNTHORG_BUILD_ID ?? pkg.version
 
@@ -44,7 +54,7 @@ export default defineConfig(async () => {
       name: 'remove-msw-worker',
       apply: 'build' as const,
       closeBundle: async () => {
-        await rm(path.resolve(__dirname, 'dist', 'mockServiceWorker.js'), { force: true })
+        await rm(path.resolve(PROJECT_ROOT, 'dist', 'mockServiceWorker.js'), { force: true })
       },
     },
   ]

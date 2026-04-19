@@ -27,11 +27,28 @@ class TestApiConfig:
 
     def test_rate_limit_defaults(self) -> None:
         rl = RateLimitConfig()
+        assert rl.floor_max_requests == 10000
         assert rl.unauth_max_requests == 20
         assert rl.auth_max_requests == 6000
         assert rl.time_unit == RateLimitTimeUnit.MINUTE
         assert rl.time_unit.value == "minute"
         assert "/api/v1/health" in rl.exclude_paths
+        # Default floor must be >= default auth cap -- otherwise the
+        # authenticated per-user budget is clipped by the floor.
+        assert rl.floor_max_requests >= rl.auth_max_requests
+
+    def test_rate_limit_floor_below_auth_rejected(self) -> None:
+        # Regression guard: a floor below the authenticated cap makes
+        # the documented per-user budget unreachable because the floor
+        # wraps the authenticated tier in the middleware stack.
+        with pytest.raises(
+            ValidationError,
+            match=r"floor_max_requests=.*must be >= auth_max_requests",
+        ):
+            RateLimitConfig(
+                floor_max_requests=100,
+                auth_max_requests=6000,
+            )
 
     def test_rate_limit_custom_values(self) -> None:
         rl = RateLimitConfig(
