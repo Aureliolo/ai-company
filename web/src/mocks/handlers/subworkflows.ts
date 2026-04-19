@@ -9,7 +9,7 @@ import type {
 } from '@/api/endpoints/subworkflows'
 import type { WorkflowDefinition } from '@/api/types'
 import { buildWorkflow as buildDomainWorkflow } from './workflows'
-import { successFor, voidSuccess } from './helpers'
+import { apiError, successFor, voidSuccess } from './helpers'
 
 /**
  * Subworkflow-flavoured `buildWorkflow`. Delegates to the canonical
@@ -50,9 +50,26 @@ export const subworkflowsHandlers = [
     HttpResponse.json(successFor<typeof listParents>([])),
   ),
   http.post('/api/v1/subworkflows', async ({ request }) => {
-    const body = (await request.json()) as { name: string }
+    let body: unknown
+    try {
+      body = await request.json()
+    } catch {
+      return HttpResponse.json(apiError('Invalid JSON body'), { status: 400 })
+    }
+    const rawName = (body as { name?: unknown } | null)?.name
+    if (!body || typeof body !== 'object' || typeof rawName !== 'string') {
+      return HttpResponse.json(apiError("Field 'name' is required"), {
+        status: 400,
+      })
+    }
+    const name = rawName.trim()
+    if (!name) {
+      return HttpResponse.json(apiError("Field 'name' is required"), {
+        status: 400,
+      })
+    }
     return HttpResponse.json(
-      successFor<typeof createSubworkflow>(buildSubworkflow({ name: body.name })),
+      successFor<typeof createSubworkflow>(buildSubworkflow({ name })),
       { status: 201 },
     )
   }),
