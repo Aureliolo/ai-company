@@ -7,7 +7,6 @@ Uses ``aiodocker`` for asynchronous Docker daemon communication.
 
 import asyncio
 import platform
-import secrets
 import time
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any, Final
@@ -15,29 +14,17 @@ from typing import TYPE_CHECKING, Any, Final
 import aiodocker
 import aiodocker.containers
 
-from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.docker import (
-    DOCKER_CLEANUP,
     DOCKER_CONTAINER_CREATED,
-    DOCKER_CONTAINER_REMOVE_FAILED,
-    DOCKER_CONTAINER_REMOVED,
-    DOCKER_CONTAINER_STOP_FAILED,
-    DOCKER_CONTAINER_STOPPED,
     DOCKER_DAEMON_UNAVAILABLE,
     DOCKER_EXECUTE_FAILED,
     DOCKER_EXECUTE_START,
-    DOCKER_EXECUTE_SUCCESS,
     DOCKER_EXECUTE_TIMEOUT,
-    DOCKER_HEALTH_CHECK,
 )
 from synthorg.observability.events.sandbox import (
     SANDBOX_CONTAINER_LOGS_COLLECTED,
-    SANDBOX_NETWORK_ENFORCEMENT,
     SANDBOX_RUNTIME_RESOLVER_ATTACHED,
-    SANDBOX_SIDECAR_CREATED,
-    SANDBOX_SIDECAR_HEALTH_FAILED,
-    SANDBOX_SIDECAR_HEALTHY,
     SANDBOX_SIDECAR_REMOVE_FAILED,
     SANDBOX_SIDECAR_REMOVED,
     SANDBOX_SIDECAR_STARTED,
@@ -49,6 +36,10 @@ from synthorg.tools.sandbox.container_log_shipper import (
 )
 from synthorg.tools.sandbox.credential_manager import SandboxCredentialManager
 from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
+from synthorg.tools.sandbox.docker_sandbox_lifecycle import (
+    DockerSandboxLifecycleMixin,
+)
+from synthorg.tools.sandbox.docker_sandbox_sidecar import DockerSandboxSidecarMixin
 from synthorg.tools.sandbox.errors import SandboxError, SandboxStartError
 from synthorg.tools.sandbox.result import SandboxResult
 
@@ -111,7 +102,7 @@ def _to_posix_bind_path(path: Path) -> str:
     return str(path)
 
 
-class DockerSandbox:
+class DockerSandbox(DockerSandboxSidecarMixin, DockerSandboxLifecycleMixin):
     """Docker sandbox backend.
 
     Runs commands in ephemeral Docker containers with workspace mounts,
@@ -388,166 +379,6 @@ class DockerSandbox:
             self._config.allowed_hosts or self._config.network_allow_all,
         )
         return has_rules and self._config.network != "none"
-
-    async def _create_sidecar(
-        self,
-        docker: aiodocker.Docker,
-    ) -> str:
-        """Create a sidecar proxy container.
-
-        The sidecar enforces ``allowed_hosts`` via dual-layer DNS +
-        DNAT transparent proxy.  It runs on bridge network with
-        ``NET_ADMIN`` capability (for iptables DNAT rules).
-
-        Args:
-            docker: Docker client.
-
-        Returns:
-            The sidecar container ID.
-
-        Raises:
-            SandboxStartError: If container creation fails.
-        """
-        admin_token = secrets.token_urlsafe(32)
-        env_list: list[str] = [f"SIDECAR_ADMIN_TOKEN={admin_token}"]
-
-        if self._config.network_allow_all:
-            env_list.append("SIDECAR_ALLOW_ALL=1")
-        else:
-            hosts_csv = ",".join(self._config.allowed_hosts)
-            env_list.append(f"SIDECAR_ALLOWED_HOSTS={hosts_csv}")
-
-        dns_flag = "1" if self._config.dns_allowed else "0"
-        lo_flag = "1" if self._config.loopback_allowed else "0"
-        env_list.append(f"SIDECAR_DNS_ALLOWED={dns_flag}")
-        env_list.append(f"SIDECAR_LOOPBACK_ALLOWED={lo_flag}")
-
-        # Inject correlation env vars so sidecar logs can self-correlate.
-        env_list.extend(build_correlation_env())
-
-        memory_bytes = self._parse_memory_limit(_SIDECAR_MEMORY)
-        nano_cpus = int(_SIDECAR_CPU * _NANO_CPUS_MULTIPLIER)
-
-        config: dict[str, Any] = {
-            "Image": self._config.sidecar_image,
-            "Env": env_list,
-            "HostConfig": {
-                "NetworkMode": "bridge",
-                "CapDrop": ["ALL"],
-                "CapAdd": ["NET_ADMIN"],
-                "ReadonlyRootfs": True,
-                "Tmpfs": {
-                    "/tmp": "size=8m,noexec,nosuid",  # noqa: S108
-                    "/run": "size=1m,nosuid",  # iptables needs /run/xtables.lock
-                },
-                "Memory": memory_bytes,
-                "NanoCpus": nano_cpus,
-                "PidsLimit": _SIDECAR_PIDS,
-                "AutoRemove": False,
-                "SecurityOpt": ["no-new-privileges"],
-            },
-        }
-
-        try:
-            container = await docker.containers.create(config)  # pyright: ignore[reportAttributeAccessIssue]
-        except Exception as exc:
-            msg = f"Failed to create sidecar container: {exc}"
-            logger.exception(
-                DOCKER_EXECUTE_FAILED,
-                command="sidecar",
-                error=msg,
-            )
-            raise SandboxStartError(msg) from exc
-
-        sidecar_id = container.id
-        logger.debug(
-            SANDBOX_SIDECAR_CREATED,
-            sidecar_id=sidecar_id[:12],
-            image=self._config.sidecar_image,
-        )
-
-        allowed = (
-            "allow_all"
-            if self._config.network_allow_all
-            else ",".join(self._config.allowed_hosts)
-        )
-        logger.debug(
-            SANDBOX_NETWORK_ENFORCEMENT,
-            allowed_hosts=allowed,
-            dns_allowed=self._config.dns_allowed,
-            loopback_allowed=self._config.loopback_allowed,
-        )
-        return sidecar_id
-
-    async def _wait_sidecar_healthy(
-        self,
-        docker: aiodocker.Docker,
-        sidecar_id: str,
-    ) -> None:
-        """Wait for the sidecar container to report healthy.
-
-        Polls Docker's built-in health check status every 200ms
-        until ``healthy`` or timeout.
-
-        Args:
-            docker: Docker client.
-            sidecar_id: Sidecar container ID.
-
-        Raises:
-            SandboxStartError: On timeout or unhealthy status.
-        """
-        loop = asyncio.get_running_loop()
-        deadline = loop.time() + _SIDECAR_HEALTH_TIMEOUT
-        container_obj = docker.containers.container(sidecar_id)  # pyright: ignore[reportAttributeAccessIssue]
-
-        while loop.time() < deadline:
-            try:
-                info = await container_obj.show()
-            except TimeoutError, ConnectionError, OSError:
-                await asyncio.sleep(_SIDECAR_HEALTH_POLL_INTERVAL)
-                continue
-
-            state = info.get("State", {})
-
-            # Fail fast if sidecar exited before becoming healthy.
-            container_status = state.get("Status", "")
-            if container_status in ("exited", "dead"):
-                msg = (
-                    f"Sidecar exited before becoming healthy"
-                    f" (status={container_status})"
-                )
-                logger.warning(
-                    SANDBOX_SIDECAR_HEALTH_FAILED,
-                    sidecar_id=sidecar_id[:12],
-                    status=container_status,
-                )
-                raise SandboxStartError(msg)
-
-            health_status = state.get("Health", {}).get("Status")
-            if health_status == "healthy":
-                logger.debug(
-                    SANDBOX_SIDECAR_HEALTHY,
-                    sidecar_id=sidecar_id[:12],
-                )
-                return
-            if health_status == "unhealthy":
-                msg = "Sidecar health check reported unhealthy"
-                logger.warning(
-                    SANDBOX_SIDECAR_HEALTH_FAILED,
-                    sidecar_id=sidecar_id[:12],
-                    status=health_status,
-                )
-                raise SandboxStartError(msg)
-
-            await asyncio.sleep(_SIDECAR_HEALTH_POLL_INTERVAL)
-
-        msg = "Sidecar health check timed out"
-        logger.warning(
-            SANDBOX_SIDECAR_HEALTH_FAILED,
-            sidecar_id=sidecar_id[:12],
-            timeout=_SIDECAR_HEALTH_TIMEOUT,
-        )
-        raise SandboxStartError(msg)
 
     @staticmethod
     def _parse_memory_limit(limit: str) -> int:
@@ -927,183 +758,3 @@ class DockerSandbox:
             )
             await self._stop_container(docker, container_id)
             return (True, -1)
-
-    async def _safe_collect_logs(
-        self,
-        container_obj: aiodocker.containers.DockerContainer,
-        container_id: str,
-    ) -> tuple[str, str]:
-        """Collect logs, returning empty strings on failure."""
-        try:
-            return await self._collect_logs(container_obj)
-        except Exception as exc:
-            logger.warning(
-                DOCKER_EXECUTE_FAILED,
-                container_id=container_id[:12],
-                error=f"Log collection failed: {exc}",
-            )
-            return ("", "")
-
-    @staticmethod
-    def _log_execution_outcome(
-        command: str,
-        args: tuple[str, ...],
-        container_id: str,
-        returncode: int,
-        stderr: str,
-    ) -> None:
-        """Log the execution outcome at the appropriate level."""
-        if returncode != 0:
-            logger.warning(
-                DOCKER_EXECUTE_FAILED,
-                command=command,
-                args=args,
-                returncode=returncode,
-                stderr_length=len(stderr),
-                stderr_head=stderr[:_MAX_STDERR_LOG_CHARS],
-            )
-        else:
-            logger.debug(
-                DOCKER_EXECUTE_SUCCESS,
-                command=command,
-                args=args,
-                container_id=container_id[:12],
-            )
-
-    @staticmethod
-    async def _collect_logs(
-        container_obj: aiodocker.containers.DockerContainer,
-    ) -> tuple[str, str]:
-        """Collect stdout and stderr logs from a container.
-
-        Args:
-            container_obj: Docker container object.
-
-        Returns:
-            Tuple of (stdout, stderr) as strings.
-        """
-        stdout_logs = await container_obj.log(
-            stdout=True,
-            stderr=False,
-        )
-        stderr_logs = await container_obj.log(
-            stdout=False,
-            stderr=True,
-        )
-        stdout = "".join(stdout_logs)
-        stderr = "".join(stderr_logs)
-        return stdout, stderr
-
-    @staticmethod
-    async def _stop_container(
-        docker: aiodocker.Docker,
-        container_id: str,
-    ) -> None:
-        """Stop a running container.
-
-        Args:
-            docker: Docker client.
-            container_id: Container ID to stop.
-        """
-        try:
-            container_obj = docker.containers.container(container_id)  # pyright: ignore[reportAttributeAccessIssue]
-            await container_obj.stop(
-                t=_STOP_TIMEOUT_SECONDS,
-            )
-            logger.debug(
-                DOCKER_CONTAINER_STOPPED,
-                container_id=container_id[:12],
-            )
-        except Exception as exc:
-            logger.warning(
-                DOCKER_CONTAINER_STOP_FAILED,
-                container_id=container_id[:12],
-                error=str(exc),
-            )
-
-    @staticmethod
-    async def _remove_container(
-        docker: aiodocker.Docker,
-        container_id: str,
-    ) -> bool:
-        """Remove a container, forcing removal if necessary.
-
-        Args:
-            docker: Docker client.
-            container_id: Container ID to remove.
-
-        Returns:
-            ``True`` if removal succeeded, ``False`` on failure.
-        """
-        try:
-            container_obj = docker.containers.container(container_id)  # pyright: ignore[reportAttributeAccessIssue]
-            await container_obj.delete(force=True)
-            logger.debug(
-                DOCKER_CONTAINER_REMOVED,
-                container_id=container_id[:12],
-            )
-        except Exception as exc:
-            logger.warning(
-                DOCKER_CONTAINER_REMOVE_FAILED,
-                container_id=container_id[:12],
-                error=str(exc),
-            )
-            return False
-        return True
-
-    async def cleanup(self) -> None:
-        """Stop and remove tracked containers, then close the Docker session.
-
-        Removes sandbox containers first, then their paired sidecars,
-        to allow graceful network shutdown.
-        """
-        logger.debug(
-            DOCKER_CLEANUP,
-            tracked_count=len(self._tracked_containers),
-        )
-        if self._docker is not None:
-            for sandbox_id, sidecar_id in list(
-                self._tracked_containers.items(),
-            ):
-                await self._stop_container(self._docker, sandbox_id)
-                await self._remove_container(self._docker, sandbox_id)
-                if sidecar_id:
-                    await self._stop_container(self._docker, sidecar_id)
-                    await self._remove_container(self._docker, sidecar_id)
-            try:
-                await self._docker.close()
-            except Exception as exc:
-                logger.warning(
-                    DOCKER_CLEANUP,
-                    error=f"Docker client close failed: {exc}",
-                )
-            finally:
-                self._docker = None
-        self._tracked_containers = {}
-
-    async def health_check(self) -> bool:
-        """Return ``True`` if the Docker daemon is reachable.
-
-        Returns:
-            ``True`` if healthy, ``False`` otherwise.
-        """
-        try:
-            docker = await self._ensure_docker()
-            await docker.version()
-        except Exception as exc:
-            logger.warning(
-                DOCKER_HEALTH_CHECK,
-                healthy=False,
-                error=str(exc),
-            )
-            return False
-        else:
-            logger.debug(
-                DOCKER_HEALTH_CHECK,
-                healthy=True,
-            )
-            return True
-
-    def get_backend_type(self) -> NotBlankStr:
-        """Return ``'docker'``."""
-        return NotBlankStr("docker")

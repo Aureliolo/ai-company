@@ -10,11 +10,7 @@ re-raised.  ``BaseException`` subclasses (``KeyboardInterrupt``,
 import asyncio
 import copy
 from contextlib import nullcontext
-from typing import TYPE_CHECKING, Never
-
-import jsonschema
-from referencing import Registry as JsonSchemaRegistry
-from referencing.exceptions import NoSuchResource
+from typing import TYPE_CHECKING
 
 from synthorg.core.enums import ApprovalRiskLevel
 from synthorg.observability import get_logger
@@ -25,16 +21,12 @@ from synthorg.observability.events.security import (
 from synthorg.observability.events.tool import (
     TOOL_INVOKE_ALL_COMPLETE,
     TOOL_INVOKE_ALL_START,
-    TOOL_INVOKE_DEEPCOPY_ERROR,
     TOOL_INVOKE_EXECUTION_ERROR,
     TOOL_INVOKE_NON_RECOVERABLE,
     TOOL_INVOKE_NOT_FOUND,
-    TOOL_INVOKE_PARAMETER_ERROR,
-    TOOL_INVOKE_SCHEMA_ERROR,
     TOOL_INVOKE_START,
     TOOL_INVOKE_SUCCESS,
     TOOL_INVOKE_TOOL_ERROR,
-    TOOL_INVOKE_VALIDATION_UNEXPECTED,
     TOOL_PERMISSION_DENIED,
     TOOL_SECURITY_DENIED,
     TOOL_SECURITY_ESCALATED,
@@ -44,16 +36,16 @@ from synthorg.providers.models import ToolCall, ToolResult
 from synthorg.security.models import SecurityContext, SecurityVerdictType
 
 from .base import ToolExecutionResult
-from .errors import ToolExecutionError, ToolNotFoundError, ToolParameterError
+from .errors import ToolExecutionError, ToolNotFoundError
 from .invocation_bridge import record_tool_invocation
+from .invoker_discovery import ToolInvokerDiscoveryMixin
+from .invoker_validation import ToolInvokerValidationMixin
 from .scan_result_handler import handle_sensitive_scan
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-    from synthorg.core.tool_disclosure import ToolL1Metadata, ToolL2Body, ToolL3Resource
     from synthorg.engine.approval_gate_models import EscalationInfo
-    from synthorg.providers.models import ToolDefinition
     from synthorg.security.protocol import SecurityInterceptionStrategy
     from synthorg.tools.html_parse_guard import HTMLParseGuard
 
@@ -65,17 +57,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-def _no_remote_retrieve(uri: str) -> Never:
-    """Block remote ``$ref`` resolution to prevent SSRF."""
-    raise NoSuchResource(uri)
-
-
-_SAFE_REGISTRY: JsonSchemaRegistry = JsonSchemaRegistry(  # type: ignore[call-arg]
-    retrieve=_no_remote_retrieve,
-)
-
-
-class ToolInvoker:
+class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
     """Validate parameters, enforce security policies, and execute tools.
 
     Recoverable errors are returned as ``ToolResult(is_error=True)``.
@@ -148,240 +130,6 @@ class ToolInvoker:
         ``invoke()`` and ``invoke_all()`` call.
         """
         return tuple(self._pending_escalations)
-
-    def get_permitted_definitions(self) -> tuple[ToolDefinition, ...]:
-        """Return tool definitions filtered by the permission checker.
-
-        When no permission checker is set, returns all definitions.
-
-        Returns:
-            Tuple of permitted tool definitions, sorted by name.
-        """
-        if self._permission_checker is None:
-            return self._registry.to_definitions()
-        return self._permission_checker.filter_definitions(self._registry)
-
-    def get_l1_summaries(self) -> tuple[ToolL1Metadata, ...]:
-        """Return L1 metadata for all permitted tools.
-
-        For system prompt injection -- lightweight summaries that
-        let the agent discover available tools without loading
-        full definitions.  Malformed tools are logged and skipped.
-
-        Returns:
-            Sorted tuple of L1 metadata for permitted tools.
-        """
-        from synthorg.observability.events.tool import (  # noqa: PLC0415
-            TOOL_DISCLOSURE_L1_SUMMARY_ERROR,
-        )
-
-        result: list[ToolL1Metadata] = []
-        for name in self._registry.list_tools():
-            try:
-                tool = self._registry.get(name)
-            except MemoryError, RecursionError:
-                raise
-            except Exception:
-                logger.warning(
-                    TOOL_DISCLOSURE_L1_SUMMARY_ERROR,
-                    tool_name=name,
-                    note="registry lookup failed during L1 summary",
-                    exc_info=True,
-                )
-                continue
-            if (
-                self._permission_checker is not None
-                and not self._permission_checker.is_permitted(name, tool.category)
-            ):
-                continue
-            try:
-                result.append(tool.to_l1_metadata())
-            except MemoryError, RecursionError:
-                raise
-            except Exception:
-                logger.warning(
-                    TOOL_DISCLOSURE_L1_SUMMARY_ERROR,
-                    tool_name=name,
-                    note="to_l1_metadata() failed",
-                    exc_info=True,
-                )
-        result.sort(key=lambda m: m.name)
-        return tuple(result)
-
-    def get_loaded_definitions(
-        self,
-        loaded_tools: frozenset[str],
-    ) -> tuple[ToolDefinition, ...]:
-        """Return full definitions for loaded tools + discovery tools.
-
-        Only tools in ``loaded_tools`` get their full
-        ``ToolDefinition`` (with L2 body) included.  The three
-        discovery tools (``list_tools``, ``load_tool``,
-        ``load_tool_resource``) are always included.
-
-        Args:
-            loaded_tools: Tool names with L2 active.
-
-        Returns:
-            Sorted tuple of full definitions for loaded and
-            discovery tools only.
-        """
-        from .discovery import _DISCOVERY_NAMES  # noqa: PLC0415
-
-        target_names = set(loaded_tools) | _DISCOVERY_NAMES
-        included: list[ToolDefinition] = []
-        for name in sorted(target_names):
-            try:
-                tool = self._registry.get(name)
-            except ToolNotFoundError:
-                continue
-            except MemoryError, RecursionError:
-                raise
-            except Exception:
-                logger.warning(
-                    TOOL_INVOKE_NOT_FOUND,
-                    tool_name=name,
-                    note="unexpected error during loaded definition lookup",
-                    exc_info=True,
-                )
-                continue
-            # Discovery tools bypass permission checks
-            if name not in _DISCOVERY_NAMES and (
-                self._permission_checker is not None
-                and not self._permission_checker.is_permitted(name, tool.category)
-            ):
-                continue
-            try:
-                included.append(tool.to_definition())
-            except MemoryError, RecursionError:
-                raise
-            except Exception:
-                logger.warning(
-                    TOOL_INVOKE_NOT_FOUND,
-                    tool_name=name,
-                    note="to_definition() failed during loaded definition lookup",
-                    exc_info=True,
-                )
-        return tuple(included)
-
-    # ── ToolDisclosureManager protocol ────────────────────────────
-
-    def get_l2_body(self, tool_name: str) -> ToolL2Body | None:
-        """Return L2 body for a specific permitted tool.
-
-        Args:
-            tool_name: Name of the tool.
-
-        Returns:
-            The L2 body, or ``None`` if the tool is not found
-            or not permitted.
-        """
-        try:
-            tool = self._registry.get(tool_name)
-        except ToolNotFoundError:
-            logger.debug(
-                TOOL_INVOKE_NOT_FOUND,
-                tool_name=tool_name,
-                note="tool not found during L2 disclosure query",
-            )
-            return None
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
-            logger.warning(
-                TOOL_INVOKE_NOT_FOUND,
-                tool_name=tool_name,
-                note="unexpected error during disclosure lookup",
-                exc_info=True,
-            )
-            return None
-        if (
-            self._permission_checker is not None
-            and not self._permission_checker.is_permitted(tool_name, tool.category)
-        ):
-            logger.debug(
-                TOOL_PERMISSION_DENIED,
-                tool_name=tool_name,
-                note="permission denied during L2 disclosure query",
-            )
-            return None
-        try:
-            return tool.to_l2_body()
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
-            logger.warning(
-                TOOL_INVOKE_NOT_FOUND,
-                tool_name=tool_name,
-                note="to_l2_body() failed during disclosure query",
-                exc_info=True,
-            )
-            return None
-
-    def get_l3_resource(
-        self,
-        tool_name: str,
-        resource_id: str,
-    ) -> ToolL3Resource | None:
-        """Return a specific L3 resource for a permitted tool.
-
-        Args:
-            tool_name: Name of the tool.
-            resource_id: Identifier of the resource.
-
-        Returns:
-            The L3 resource, or ``None`` if not found or
-            not permitted.
-        """
-        try:
-            tool = self._registry.get(tool_name)
-        except ToolNotFoundError:
-            logger.debug(
-                TOOL_INVOKE_NOT_FOUND,
-                tool_name=tool_name,
-                resource_id=resource_id,
-                note="tool not found during L3 disclosure query",
-            )
-            return None
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
-            logger.warning(
-                TOOL_INVOKE_NOT_FOUND,
-                tool_name=tool_name,
-                resource_id=resource_id,
-                note="unexpected error during disclosure lookup",
-                exc_info=True,
-            )
-            return None
-        if (
-            self._permission_checker is not None
-            and not self._permission_checker.is_permitted(tool_name, tool.category)
-        ):
-            logger.debug(
-                TOOL_PERMISSION_DENIED,
-                tool_name=tool_name,
-                resource_id=resource_id,
-                note="permission denied during L3 disclosure query",
-            )
-            return None
-        try:
-            resources = tool.get_l3_resources()
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
-            logger.warning(
-                TOOL_INVOKE_NOT_FOUND,
-                tool_name=tool_name,
-                resource_id=resource_id,
-                note="get_l3_resources() failed during disclosure query",
-                exc_info=True,
-            )
-            return None
-        return next(
-            (r for r in resources if r.resource_id == resource_id),
-            None,
-        )
 
     def _check_permission(
         self,
@@ -755,139 +503,6 @@ class ToolInvoker:
             return ToolResult(
                 tool_call_id=tool_call.id,
                 content=str(exc),
-                is_error=True,
-            )
-
-    def _validate_params(
-        self,
-        tool: BaseTool,
-        tool_call: ToolCall,
-    ) -> ToolResult | None:
-        """Validate tool call arguments against JSON Schema.
-
-        Returns ``None`` on success or a ``ToolResult`` on failure.
-        """
-        schema = tool.parameters_schema
-        if schema is None:
-            return None
-        try:
-            jsonschema.validate(
-                instance=dict(tool_call.arguments),
-                schema=schema,
-                registry=_SAFE_REGISTRY,
-            )
-        except jsonschema.SchemaError as exc:
-            return self._schema_error_result(tool_call, exc.message)
-        except jsonschema.ValidationError as exc:
-            return self._param_error_result(tool_call, exc.message)
-        except (MemoryError, RecursionError) as exc:
-            logger.exception(
-                TOOL_INVOKE_NON_RECOVERABLE,
-                tool_call_id=tool_call.id,
-                tool_name=tool_call.name,
-                error=f"{type(exc).__name__}: {exc}",
-            )
-            raise
-        except Exception as exc:
-            error_msg = str(exc) or f"{type(exc).__name__} (no message)"
-            return self._unexpected_validation_result(tool_call, error_msg)
-        return None
-
-    def _schema_error_result(
-        self,
-        tool_call: ToolCall,
-        error_msg: str,
-    ) -> ToolResult:
-        """Build an error result for an invalid tool schema."""
-        logger.error(
-            TOOL_INVOKE_SCHEMA_ERROR,
-            tool_call_id=tool_call.id,
-            tool_name=tool_call.name,
-            error=error_msg,
-        )
-        return ToolResult(
-            tool_call_id=tool_call.id,
-            content=(
-                f"Tool {tool_call.name!r} has an invalid parameter schema: {error_msg}"
-            ),
-            is_error=True,
-        )
-
-    def _param_error_result(
-        self,
-        tool_call: ToolCall,
-        error_msg: str,
-    ) -> ToolResult:
-        """Build an error result for failed parameter validation."""
-        logger.warning(
-            TOOL_INVOKE_PARAMETER_ERROR,
-            tool_call_id=tool_call.id,
-            tool_name=tool_call.name,
-            error=error_msg,
-        )
-        param_err = ToolParameterError(
-            error_msg,
-            context={"tool": tool_call.name},
-        )
-        return ToolResult(
-            tool_call_id=tool_call.id,
-            content=str(param_err),
-            is_error=True,
-        )
-
-    def _unexpected_validation_result(
-        self,
-        tool_call: ToolCall,
-        error_msg: str,
-    ) -> ToolResult:
-        """Build an error result for unexpected validation failures."""
-        logger.exception(
-            TOOL_INVOKE_VALIDATION_UNEXPECTED,
-            tool_call_id=tool_call.id,
-            tool_name=tool_call.name,
-            error=error_msg,
-        )
-        return ToolResult(
-            tool_call_id=tool_call.id,
-            content=(
-                f"Tool {tool_call.name!r} parameter validation failed: {error_msg}"
-            ),
-            is_error=True,
-        )
-
-    def _safe_deepcopy_args(
-        self,
-        tool_call: ToolCall,
-    ) -> dict[str, object] | ToolResult:
-        """Deep-copy tool call arguments for isolation.
-
-        Returns the copied dict on success, or a ``ToolResult`` on
-        failure.  Non-recoverable errors propagate after logging.
-        """
-        try:
-            return copy.deepcopy(tool_call.arguments)
-        except (MemoryError, RecursionError) as exc:
-            logger.exception(
-                TOOL_INVOKE_NON_RECOVERABLE,
-                tool_call_id=tool_call.id,
-                tool_name=tool_call.name,
-                error=f"{type(exc).__name__}: {exc}",
-            )
-            raise
-        except Exception as exc:
-            error_msg = str(exc) or f"{type(exc).__name__} (no message)"
-            logger.exception(
-                TOOL_INVOKE_DEEPCOPY_ERROR,
-                tool_call_id=tool_call.id,
-                tool_name=tool_call.name,
-                error=f"Failed to deep-copy arguments: {error_msg}",
-            )
-            return ToolResult(
-                tool_call_id=tool_call.id,
-                content=(
-                    f"Tool {tool_call.name!r} arguments could not be "
-                    f"safely copied: {error_msg}"
-                ),
                 is_error=True,
             )
 
