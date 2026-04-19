@@ -11,8 +11,11 @@
 # top. No setup stage needed -- the symlink fix is done in the builder itself.
 # =============================================================================
 
-# CI overrides with digest-pinned ref; default keeps standalone builds working.
-ARG BASE_IMAGE=ghcr.io/aureliolo/synthorg-backend-base:latest
+# CI always provides BASE_IMAGE explicitly and uses a digest-pinned ref when
+# available (otherwise a tag/local artifact tag). No default: standalone
+# builds without an explicit --build-arg BASE_IMAGE=... fail fast instead of
+# silently pulling a mutable :latest tag (Scorecard Pinned-Dependencies).
+ARG BASE_IMAGE
 
 # ---------------------------------------------------------------------------
 # Stage 1 -- Builder (ephemeral: compiles deps, fixes venv symlink)
