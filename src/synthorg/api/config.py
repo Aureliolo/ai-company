@@ -159,16 +159,16 @@ class RateLimitConfig(BaseModel):
     )
 
     @model_validator(mode="after")
-    def _validate_floor_above_auth(self) -> Self:
-        """Reject a floor lower than the authenticated per-user cap.
+    def _validate_floor_above_user_tiers(self) -> Self:
+        """Reject a floor lower than either user-gated cap.
 
-        The IP floor wraps the authenticated tier in the middleware
-        stack, so it is a hard ceiling on the per-user tier.  If
-        ``floor_max_requests`` is below ``auth_max_requests`` the
-        documented user budget can never be reached and shared-IP
+        The IP floor wraps both the unauthenticated and authenticated
+        tiers in the middleware stack, so it is a hard ceiling on
+        both.  If ``floor_max_requests`` is below either cap the
+        corresponding budget can never be reached and shared-IP
         deployments (office NAT, corporate gateway) would silently
         regress to the floor cap.  Require operators to size the
-        floor above their per-user budget.
+        floor above both user-gated caps.
         """
         if self.floor_max_requests < self.auth_max_requests:
             msg = (
@@ -176,6 +176,14 @@ class RateLimitConfig(BaseModel):
                 f" >= auth_max_requests={self.auth_max_requests} so"
                 " the authenticated per-user budget is reachable"
                 " (the IP floor wraps the authenticated tier)."
+            )
+            raise ValueError(msg)
+        if self.floor_max_requests < self.unauth_max_requests:
+            msg = (
+                f"floor_max_requests={self.floor_max_requests} must be"
+                f" >= unauth_max_requests={self.unauth_max_requests} so"
+                " the unauthenticated per-IP budget is reachable"
+                " (the IP floor wraps the unauthenticated tier)."
             )
             raise ValueError(msg)
         return self

@@ -1,3 +1,4 @@
+import fc from 'fast-check'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 import { ensureFreshAppState } from '@/utils/app-version'
@@ -192,5 +193,40 @@ describe('ensureFreshAppState', () => {
     await ensureFreshAppState()
     expect(reloadSpy).not.toHaveBeenCalled()
     setItemSpy.mockRestore()
+  })
+
+  it('exercises the mismatch path for any arbitrary non-matching stored id', async () => {
+    // Property: for every string that is NOT the current build id,
+    // ``ensureFreshAppState`` must (1) POST logout exactly once,
+    // (2) clear ``localStorage``/``sessionStorage`` except the new
+    // stamp, (3) stamp the current build id, and (4) hit the reload
+    // boundary (``reloadSpy`` throws ``ReloadSentinel``).
+    //
+    // Low ``numRuns`` keeps unit-suite wall time tight; deep fuzzing
+    // runs via the ``HYPOTHESIS_PROFILE``-equivalent dev profile are
+    // covered by CI's broader property-test runs.
+    await fc.assert(
+      fc.asyncProperty(
+        fc.string().filter((s) => s !== CURRENT_BUILD_ID),
+        async (storedId) => {
+          localStorage.clear()
+          sessionStorage.clear()
+          logoutCalls.length = 0
+          reloadSpy.mockClear()
+          localStorage.setItem(STORAGE_KEY, storedId)
+          localStorage.setItem('theme', 'keep-until-cleared')
+          sessionStorage.setItem('tmp', 'keep-until-cleared')
+
+          await runUntilReload()
+
+          expect(logoutCalls).toHaveLength(1)
+          expect(localStorage.getItem('theme')).toBeNull()
+          expect(sessionStorage.getItem('tmp')).toBeNull()
+          expect(localStorage.getItem(STORAGE_KEY)).toBe(CURRENT_BUILD_ID)
+          expect(reloadSpy).toHaveBeenCalledTimes(1)
+        },
+      ),
+      { numRuns: 25 },
+    )
   })
 })

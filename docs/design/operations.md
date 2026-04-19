@@ -1755,7 +1755,9 @@ API -> CLI
 
 ### Per-Operation Rate Limiting (#1391)
 
-In addition to the global two-tier limiter applied in `api/app.py`, a
+In addition to the global three-tier limiter applied in `api/app.py`
+(10,000 req/min/IP floor, 20 req/min unauth by IP, 6,000 req/min auth
+by user ID -- see `docs/security.md` for the exact behaviour), a
 pluggable sliding-window limiter throttles individual expensive or
 abuse-prone operations.  Guards are declared at the route level via
 `per_op_rate_limit("<op>", max_requests=N, window_seconds=W, key=...)`
