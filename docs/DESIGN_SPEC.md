@@ -21,6 +21,7 @@ The design specification has been split into focused documentation pages for bet
 | [Multi-Agent Memory Consistency](design/memory-consistency.md) | Consistency Model | Append-only writes, MVCC snapshot reads, conflict handling, deployment rollout |
 | [Semantic Ontology](design/ontology.md) | Entity Definitions, Versioning, Drift | Shared vocabulary, decorator, backend, bootstrap, drift detection |
 | [Operations](design/operations.md) | Providers, Budget, Tools, Security, Human Interaction | Provider layer, cost management, sandboxing, security, API |
+| [Web HTTP Adapter](design/web-http-adapter.md) | HTTP Transport, Async Leaks, CI Gate | Axios XHR vs fetch, MSW interceptor async-leak investigation, test teardown contract, CI leak-gate ceiling |
 | [Brand Identity & UX](design/brand-and-ux.md) | Brand, Themes, Colors, Typography, Density, Animation | Visual identity, semantic color system, theme architecture |
 | [Page Structure & IA](design/page-structure.md) | Pages, Navigation, Routing, WebSocket, Responsive | Page list, sidebar hierarchy, URL routing map, WS subscriptions |
 | [UX Design Guidelines](design/ux-guidelines.md) | Color System, Components, Interaction, Animation, Accessibility, Responsive | Implementable specs for all v0.5.0 dashboard pages |

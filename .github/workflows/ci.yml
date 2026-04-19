@@ -344,13 +344,13 @@ jobs:
           # always reported 0 leaks regardless of reality. Vitest honors
           # `NO_COLOR` via chalk.
           NO_COLOR: '1'
-          # Structural ceiling: the post-shim leak count is ~50 locally and
-          # ~64 in CI. The delta is platform-level event-loop timing (CI is
-          # ubuntu-latest on GitHub runners; contributors run jsdom under
-          # Windows/macOS). The ceiling is 70 -- the CI baseline plus a
-          # small run-to-run variance buffer -- so the gate actually fires
-          # on regressions instead of silently reporting 0 like the legacy
-          # parser did. The structural 50-leak floor is still the local
+          # Structural ceiling: the post-shim leak count measured
+          # 2026-04-19 is ~50 locally and ~64 in CI. The delta is
+          # platform-level event-loop timing (CI is ubuntu-latest on
+          # GitHub runners; contributors run jsdom under Windows/macOS).
+          # The ceiling is 70 -- the CI baseline plus a small run-to-run
+          # variance buffer -- so the gate actually fires on regressions
+          # instead of silently reporting 0 like the legacy parser did. The structural 50-leak floor is still the local
           # target and comes from MSW 2.x's own CookieStore (tough-cookie),
           # the MSW XHR interceptor's `queueMicrotask` dispatch, and
           # axios's internal interceptor `promise.then` chain -- none
@@ -383,10 +383,13 @@ jobs:
           # naive `tail -n 200` cuts the summary off. Anchor the match
           # to the whole line instead: a test's `console.log('Reporter:
           # Leaks 50 leaks detected')` (or any substring containing the
-          # phrase) will not satisfy the gate, and `tail -1` keeps the
-          # last match so repeated summaries favor the real one. The
-          # count is extracted with a bash regex capture group so extra
-          # digits elsewhere on the line cannot bleed in.
+          # phrase) will not satisfy the gate, and `tail -1` picks the
+          # final match -- defensive guard against any rare case where
+          # grep returns multiple anchored lines (e.g. Vitest reruns
+          # emitting two summary blocks); the last line is the reporter's
+          # authoritative total. The count is extracted with a bash
+          # regex capture group so extra digits elsewhere on the line
+          # cannot bleed in.
           leaks_line=$(grep -E '^[[:space:]]*Leaks +[0-9]+ leaks[[:space:]]*$' vitest-output.log | tail -1 || true)
           if [ -z "$leaks_line" ]; then
             echo "::error::Could not locate 'Leaks N leaks' line in Vitest output tail."

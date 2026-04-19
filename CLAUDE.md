@@ -10,7 +10,7 @@
 
 ## Design Spec (MANDATORY)
 
-- **ALWAYS read the relevant `docs/design/` page** before implementing any feature or planning any issue. [DESIGN_SPEC.md](docs/DESIGN_SPEC.md) is a pointer file linking to the 19 design pages.
+- **ALWAYS read the relevant `docs/design/` page** before implementing any feature or planning any issue. [DESIGN_SPEC.md](docs/DESIGN_SPEC.md) is a pointer file linking to the 20 design pages.
 - The design spec is the **starting point** for architecture, data models, and behavior
 - If implementation deviates from the spec (better approach found, scope evolved, etc.), **alert the user and explain why** -- user decides whether to proceed or update the spec
 - Do NOT silently diverge -- every deviation needs explicit user approval

@@ -49,7 +49,13 @@ if (typeof document !== 'undefined') {
       if (eq === -1) return
       const name = pair.slice(0, eq).trim()
       const value = pair.slice(eq + 1).trim()
-      if (!name || name === '__proto__' || name === 'constructor') return
+      if (
+        !name ||
+        name === '__proto__' ||
+        name === 'constructor' ||
+        name === 'prototype'
+      )
+        return
       const isDelete = segments.slice(1).some((segment) => {
         const attr = segment.trim().toLowerCase()
         if (attr === 'max-age=0') return true
