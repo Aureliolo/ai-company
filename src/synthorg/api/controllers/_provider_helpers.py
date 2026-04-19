@@ -1,0 +1,58 @@
+"""Module-level helpers for the provider controller."""
+
+from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING
+
+from synthorg.observability import get_logger
+from synthorg.observability.events.api import API_PROVIDER_USAGE_ENRICHMENT_FAILED
+
+if TYPE_CHECKING:
+    from synthorg.api.state import AppState
+    from synthorg.providers.health import ProviderHealthSummary
+
+logger = get_logger(__name__)
+
+
+def sse_error(msg: str) -> dict[str, object]:
+    """Build a PullProgressEvent-shaped error dict for SSE."""
+    return {
+        "status": msg,
+        "progress_percent": None,
+        "total_bytes": None,
+        "completed_bytes": None,
+        "error": msg,
+        "done": True,
+    }
+
+
+async def enrich_with_usage(
+    summary: ProviderHealthSummary,
+    app_state: AppState,
+    name: str,
+) -> ProviderHealthSummary:
+    """Enrich a health summary with token/cost data from CostTracker."""
+    if not app_state.has_cost_tracker:
+        return summary
+    try:
+        now = datetime.now(UTC)
+        usage = await app_state.cost_tracker.get_provider_usage(
+            name,
+            start=now - timedelta(hours=24),
+            end=now,
+        )
+        return summary.model_copy(
+            update={
+                "total_tokens_24h": usage.total_tokens,
+                "total_cost_24h": usage.total_cost,
+            },
+        )
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        logger.warning(
+            API_PROVIDER_USAGE_ENRICHMENT_FAILED,
+            provider=name,
+            error=str(exc),
+            error_type=type(exc).__qualname__,
+        )
+        return summary

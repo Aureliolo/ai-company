@@ -34,7 +34,7 @@ from pydantic import SecretStr
 
 from synthorg import __version__
 from synthorg.api.approval_store import ApprovalStore
-from synthorg.api.auth.controller import require_password_changed
+from synthorg.api.auth.controller_helpers import require_password_changed
 from synthorg.api.auth.csrf import create_csrf_middleware_class
 from synthorg.api.auth.middleware import create_auth_middleware_class
 from synthorg.api.auth.service import AuthService  # noqa: TC001

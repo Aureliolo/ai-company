@@ -489,7 +489,7 @@ class TestWsTicketAuth:
         """
         from unittest.mock import MagicMock
 
-        from synthorg.api.auth.controller import require_password_changed
+        from synthorg.api.auth.controller_helpers import require_password_changed
 
         connection = MagicMock()
         connection.url.path = "/api/v1/ws"

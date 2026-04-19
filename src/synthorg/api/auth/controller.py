@@ -1,31 +1,36 @@
 """Auth controller -- setup, login, password change, me, ws-ticket, sessions."""
 
 import math
-import secrets
 import uuid
-from datetime import UTC, datetime, timedelta
-from typing import Any, Self
+from datetime import UTC, datetime
+from typing import Any
 
-import jwt
 from litestar import Controller, Request, Response, delete, get, post
-from litestar.connection import ASGIConnection  # noqa: TC002
 from litestar.exceptions import PermissionDeniedException
 from litestar.middleware.rate_limit import RateLimitConfig as LitestarRateLimitConfig
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
-from synthorg.api.auth.config import AuthConfig
+from synthorg.api.auth.controller_dtos import (
+    ChangePasswordRequest,
+    CookieSessionResponse,
+    LoginRequest,
+    SessionResponse,
+    SetupRequest,
+    UserInfoResponse,
+    WsTicketResponse,
+)
+from synthorg.api.auth.controller_helpers import (
+    create_session_record,
+    extract_jti,
+    get_auth_config,
+    make_session_cookies,
+)
 from synthorg.api.auth.cookies import (
-    generate_csrf_token,
     make_clear_csrf_cookie,
     make_clear_refresh_cookie,
     make_clear_session_cookie,
-    make_csrf_cookie,
-    make_refresh_cookie,
-    make_session_cookie,
 )
 from synthorg.api.auth.models import AuthenticatedUser, AuthMethod, User
 from synthorg.api.auth.service import AuthService  # noqa: TC001
-from synthorg.api.auth.session import Session
 from synthorg.api.auth.system_user import SYSTEM_USERNAME, is_system_user
 from synthorg.api.auth.ticket_store import TicketLimitExceededError
 from synthorg.api.dto import ApiResponse
@@ -38,17 +43,12 @@ from synthorg.api.errors import (
 )
 from synthorg.api.guards import HumanRole
 from synthorg.api.rate_limits.guard import per_op_rate_limit
-from synthorg.api.state import AppState  # noqa: TC001
-from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_AUTH_FAILED,
-    API_AUTH_GUARD_SKIPPED,
     API_AUTH_PASSWORD_CHANGED,
     API_AUTH_SETUP_COMPLETE,
     API_AUTH_TOKEN_ISSUED,
-    API_SESSION_CREATE_FAILED,
-    API_SESSION_CREATED,
     API_SESSION_FORCE_LOGOUT,
     API_SESSION_LISTED,
     API_SESSION_REVOKE_FAILED,
@@ -56,9 +56,6 @@ from synthorg.observability.events.api import (
 )
 
 logger = get_logger(__name__)
-
-# Derive from AuthConfig default to prevent silent divergence.
-_MIN_PASSWORD_LENGTH: int = AuthConfig.model_fields["min_password_length"].default
 
 # Pre-computed Argon2id hash for constant-time rejection when the
 # username doesn't exist -- prevents timing-based username enumeration.
@@ -68,412 +65,6 @@ _DUMMY_ARGON2_HASH = (
     "c2FsdHNhbHRzYWx0$"
     "mB0bZKSNwOhSdxMQfsldT3qGmFyjVqbkntMkutMfdUs"
 )
-
-
-def _check_password_length(password: str) -> str:
-    """Validate that a password meets the minimum length requirement.
-
-    Args:
-        password: Password to validate.
-
-    Returns:
-        The password unchanged.
-
-    Raises:
-        ValueError: If the password is too short.
-    """
-    if len(password) < _MIN_PASSWORD_LENGTH:
-        msg = f"Password must be at least {_MIN_PASSWORD_LENGTH} characters"
-        raise ValueError(msg)
-    return password
-
-
-# ── Request DTOs ──────────────────────────────────────────────
-
-
-class SetupRequest(BaseModel):
-    """First-run admin account creation payload.
-
-    Attributes:
-        username: Admin login username.
-        password: Admin password (min 12 chars).
-    """
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
-
-    username: NotBlankStr = Field(max_length=128)
-    password: NotBlankStr = Field(max_length=128)
-
-    @model_validator(mode="after")
-    def _validate_password_length(self) -> Self:
-        """Reject passwords shorter than the minimum."""
-        _check_password_length(self.password)
-        return self
-
-
-class LoginRequest(BaseModel):
-    """Login credentials payload.
-
-    Attributes:
-        username: Login username.
-        password: Login password.
-    """
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
-
-    username: NotBlankStr = Field(max_length=128)
-    password: NotBlankStr = Field(max_length=128)
-
-
-class ChangePasswordRequest(BaseModel):
-    """Password change payload.
-
-    Attributes:
-        current_password: Current password for verification.
-        new_password: New password (min 12 chars).
-    """
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
-
-    current_password: NotBlankStr = Field(max_length=128)
-    new_password: NotBlankStr = Field(max_length=128)
-
-    @model_validator(mode="after")
-    def _validate_password_length(self) -> Self:
-        """Reject new passwords shorter than the minimum."""
-        _check_password_length(self.new_password)
-        return self
-
-
-# ── Response DTOs ─────────────────────────────────────────────
-
-
-class CookieSessionResponse(BaseModel):
-    """Cookie-based session response.
-
-    The JWT is delivered via an HttpOnly ``Set-Cookie`` header,
-    not in the response body.  This DTO contains only the
-    metadata the frontend needs.
-
-    Attributes:
-        expires_in: Session lifetime in seconds.
-        must_change_password: Whether password change is required.
-    """
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
-
-    expires_in: int = Field(gt=0)
-    must_change_password: bool
-
-
-class UserInfoResponse(BaseModel):
-    """Current user information.
-
-    Attributes:
-        id: User ID.
-        username: Login username.
-        role: Access control role.
-        must_change_password: Whether password change is required.
-        org_roles: Permission-level roles for org config access.
-        scoped_departments: Departments accessible to dept admins.
-    """
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
-
-    id: NotBlankStr
-    username: NotBlankStr
-    role: HumanRole
-    must_change_password: bool
-    org_roles: tuple[str, ...] = ()
-    scoped_departments: tuple[str, ...] = ()
-
-
-class WsTicketResponse(BaseModel):
-    """One-time WebSocket connection ticket.
-
-    Attributes:
-        ticket: Single-use, short-lived ticket string.
-        expires_in: Ticket lifetime in seconds.
-    """
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
-
-    ticket: NotBlankStr
-    expires_in: int = Field(gt=0)
-
-
-class SessionResponse(BaseModel):
-    """Active JWT session response DTO.
-
-    Attributes:
-        session_id: Unique session identifier (JWT ``jti``).
-        user_id: Session owner's user ID.
-        username: Session owner's login name.
-        ip_address: Client IP at login time.
-        user_agent: Client User-Agent at login time.
-        created_at: Session creation timestamp.
-        last_active_at: Last activity timestamp.
-        expires_at: Session expiry timestamp.
-        is_current: Whether this is the caller's current session.
-    """
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
-
-    session_id: NotBlankStr
-    user_id: NotBlankStr
-    username: NotBlankStr
-    ip_address: str
-    user_agent: str
-    created_at: AwareDatetime
-    last_active_at: AwareDatetime
-    expires_at: AwareDatetime
-    is_current: bool = False
-
-
-async def _make_session_cookies(  # noqa: PLR0913
-    token: str,
-    expires_in: int,
-    config: AuthConfig,
-    *,
-    app_state: AppState | None = None,
-    session_id: str = "",
-    user_id: str = "",
-) -> list[Any]:
-    """Build the cookie list for a login/setup response.
-
-    Returns session cookie + CSRF cookie, plus a refresh
-    cookie when ``jwt_refresh_enabled`` is ``True``.  When
-    refresh is enabled the token is also persisted to the
-    refresh store for single-use validation.
-
-    Args:
-        token: Encoded JWT string.
-        expires_in: Cookie lifetime in seconds.
-        config: Auth configuration.
-        app_state: App state (needed for refresh store persistence).
-        session_id: JWT session ID (``jti``) for refresh binding.
-        user_id: Token owner's user ID for refresh binding.
-
-    Returns:
-        List of ``Cookie`` objects to attach to the response.
-    """
-    cookies: list[Any] = [
-        make_session_cookie(token, expires_in, config),
-        make_csrf_cookie(generate_csrf_token(), expires_in, config),
-    ]
-    if config.jwt_refresh_enabled:
-        refresh_token = secrets.token_urlsafe(32)
-        refresh_max_age = config.jwt_refresh_expiry_minutes * 60
-        # Persist hashed refresh token BEFORE setting the cookie.
-        # Only append the cookie if persistence succeeds.
-        refresh_persisted = False
-        if app_state is not None and session_id and user_id:
-            try:
-                from synthorg.persistence.auth_protocol import (  # noqa: PLC0415, TC001
-                    RefreshTokenRepository as RefreshStore,
-                )
-
-                auth_service: AuthService = app_state.auth_service
-                token_hash = auth_service.hash_api_key(refresh_token)
-                refresh_expiry = datetime.now(UTC) + timedelta(
-                    seconds=refresh_max_age,
-                )
-                # Access refresh store from app_state if available.
-                store: RefreshStore | None = getattr(app_state, "_refresh_store", None)
-                if store is not None:
-                    await store.create(
-                        token_hash=token_hash,
-                        session_id=session_id,
-                        user_id=user_id,
-                        expires_at=refresh_expiry,
-                    )
-                    refresh_persisted = True
-                else:
-                    logger.warning(
-                        API_AUTH_FAILED,
-                        reason="refresh_store_not_available",
-                    )
-            except MemoryError, RecursionError:
-                raise
-            except Exception:
-                logger.warning(
-                    API_AUTH_FAILED,
-                    reason="refresh_token_persist_failed",
-                    exc_info=True,
-                )
-        else:
-            logger.warning(
-                API_AUTH_FAILED,
-                reason="refresh_token_persist_skipped",
-                has_app_state=app_state is not None,
-                has_session_id=bool(session_id),
-                has_user_id=bool(user_id),
-            )
-        if refresh_persisted:
-            cookies.append(
-                make_refresh_cookie(refresh_token, refresh_max_age, config),
-            )
-    return cookies
-
-
-_PWD_CHANGE_EXEMPT_SUFFIXES = ("/auth/change-password", "/auth/me")
-
-# ── Guards ────────────────────────────────────────────────────
-
-
-def require_password_changed(
-    connection: ASGIConnection,  # type: ignore[type-arg]
-    _: object,
-) -> None:
-    """Guard that blocks users who must change their password.
-
-    Paths ending with ``/auth/change-password`` or ``/auth/me``
-    are exempt so the user can actually change the password or
-    inspect their own profile.
-
-    Args:
-        connection: The incoming connection.
-        _: Route handler (unused).
-
-    Raises:
-        PermissionDeniedException: If password change is required
-            or the user object is present but not an
-            ``AuthenticatedUser``.
-    """
-    path = str(connection.url.path)
-    if any(path.endswith(s) for s in _PWD_CHANGE_EXEMPT_SUFFIXES):
-        logger.debug(
-            API_AUTH_GUARD_SKIPPED,
-            guard="require_password_changed",
-            path=path,
-            reason="exempt_suffix",
-        )
-        return
-    user = connection.scope.get("user")
-    if user is None:
-        # Expected for WebSocket upgrade requests -- the auth
-        # middleware is HTTP-only, so WS connections arrive here
-        # without a user in scope.  Ticket auth runs in the handler.
-        scope_type = connection.scope.get("type", "unknown")
-        logger.debug(
-            API_AUTH_GUARD_SKIPPED,
-            guard="require_password_changed",
-            path=path,
-            scope_type=scope_type,
-            reason="no_user_in_scope",
-        )
-        return
-    if not isinstance(user, AuthenticatedUser):
-        logger.warning(
-            API_AUTH_FAILED,
-            reason="unexpected_user_type",
-            user_type=type(user).__qualname__,
-            path=path,
-        )
-        raise PermissionDeniedException(detail="Invalid user session")
-    if user.must_change_password:
-        raise PermissionDeniedException(detail="Password change required")
-
-
-# ── Helpers ───────────────────────────────────────────────────
-
-
-async def _create_session(
-    request: Request[Any, Any, Any],
-    app_state: AppState,
-    session_id: str,
-    user: User,
-    expires_in: int,
-) -> None:
-    """Create a session record after login/setup.
-
-    Failures are non-fatal -- logged as warnings and swallowed
-    so login/setup still succeeds.
-    """
-    try:
-        store = app_state.session_store
-        now = datetime.now(UTC)
-        client = request.client
-        ua = request.headers.get("user-agent", "")[:512]
-        session = Session(
-            session_id=session_id,
-            user_id=user.id,
-            username=user.username,
-            role=user.role,
-            ip_address=client.host if client else "",
-            user_agent=ua,
-            created_at=now,
-            last_active_at=now,
-            expires_at=now + timedelta(seconds=expires_in),
-        )
-        await store.create(session)
-        logger.info(
-            API_SESSION_CREATED,
-            session_id=session_id,
-            user_id=user.id,
-        )
-    except MemoryError, RecursionError:
-        raise
-    except Exception:
-        logger.warning(
-            API_SESSION_CREATE_FAILED,
-            error="Session creation failed (non-fatal)",
-            session_id=session_id,
-            user_id=user.id,
-            exc_info=True,
-        )
-
-
-def _extract_jti(request: Request[Any, Any, Any]) -> str | None:
-    """Extract the JWT ``jti`` claim from cookie or header."""
-    app_state = request.app.state["app_state"]
-    auth_config = _get_auth_config(app_state)
-
-    # Try session cookie first (primary auth path)
-    token = request.cookies.get(auth_config.cookie_name)
-    if not token:
-        # Fall back to Authorization header (system user, API key)
-        auth_header = request.headers.get("authorization", "")
-        if not auth_header.startswith("Bearer "):
-            return None
-        token = auth_header[7:]
-
-    try:
-        claims = app_state.auth_service.decode_token(token)
-    except jwt.InvalidTokenError:
-        logger.debug(
-            API_AUTH_FAILED,
-            reason="jti_extraction_jwt_error",
-        )
-        return None
-    except Exception:
-        logger.warning(
-            API_AUTH_FAILED,
-            reason="jti_extraction_failed",
-            exc_info=True,
-        )
-        return None
-    else:
-        jti: str | None = claims.get("jti")
-        return jti
-
-
-def _get_auth_config(app_state: AppState) -> AuthConfig:
-    """Return the auth config from app state.
-
-    Falls back to default ``AuthConfig`` when the config
-    is not available.
-
-    Args:
-        app_state: Application state container.
-
-    Returns:
-        Auth configuration.
-    """
-    try:
-        return app_state.config.api.auth
-    except AttributeError, TypeError:
-        return AuthConfig()
 
 
 # ── Controller ────────────────────────────────────────────────
@@ -568,7 +159,7 @@ class AuthController(Controller):
 
         token, expires_in, session_id = auth_service.create_token(user)
 
-        await _create_session(
+        await create_session_record(
             request,
             app_state,
             session_id,
@@ -576,7 +167,7 @@ class AuthController(Controller):
             expires_in,
         )
 
-        auth_config = _get_auth_config(app_state)
+        auth_config = get_auth_config(app_state)
         if app_state.has_session_store:
             await app_state.session_store.enforce_session_limit(
                 user.id,
@@ -597,7 +188,7 @@ class AuthController(Controller):
                 ),
             ),
             status_code=201,
-            cookies=await _make_session_cookies(
+            cookies=await make_session_cookies(
                 token,
                 expires_in,
                 auth_config,
@@ -678,7 +269,7 @@ class AuthController(Controller):
 
         token, expires_in, session_id = auth_service.create_token(user)
 
-        await _create_session(
+        await create_session_record(
             request,
             app_state,
             session_id,
@@ -686,7 +277,7 @@ class AuthController(Controller):
             expires_in,
         )
 
-        auth_config = _get_auth_config(app_state)
+        auth_config = get_auth_config(app_state)
         if app_state.has_session_store:
             await app_state.session_store.enforce_session_limit(
                 user.id,
@@ -706,7 +297,7 @@ class AuthController(Controller):
                     must_change_password=user.must_change_password,
                 ),
             ),
-            cookies=await _make_session_cookies(
+            cookies=await make_session_cookies(
                 token,
                 expires_in,
                 auth_config,
@@ -783,7 +374,7 @@ class AuthController(Controller):
         await persistence.users.save(updated_user)
 
         # Revoke the old session before issuing a new one.
-        old_jti = _extract_jti(request)
+        old_jti = extract_jti(request)
         if old_jti and app_state.has_session_store:
             await app_state.session_store.revoke(old_jti)
 
@@ -791,14 +382,14 @@ class AuthController(Controller):
         token, expires_in, session_id = auth_service.create_token(
             updated_user,
         )
-        await _create_session(
+        await create_session_record(
             request,
             app_state,
             session_id,
             updated_user,
             expires_in,
         )
-        auth_config = _get_auth_config(app_state)
+        auth_config = get_auth_config(app_state)
 
         logger.info(
             API_AUTH_PASSWORD_CHANGED,
@@ -817,7 +408,7 @@ class AuthController(Controller):
                     scoped_departments=updated_user.scoped_departments,
                 ),
             ),
-            cookies=await _make_session_cookies(
+            cookies=await make_session_cookies(
                 token,
                 expires_in,
                 auth_config,
@@ -971,7 +562,7 @@ class AuthController(Controller):
                 auth_user.user_id,
             )
 
-        current_jti = _extract_jti(request)
+        current_jti = extract_jti(request)
 
         data = [
             SessionResponse(
@@ -1077,7 +668,7 @@ class AuthController(Controller):
         user_id = (
             auth_user.user_id if isinstance(auth_user, AuthenticatedUser) else None
         )
-        jti = _extract_jti(request)
+        jti = extract_jti(request)
         if jti and app_state.has_session_store:
             # Best-effort revocation -- if the session store is
             # unreachable we still return 204 with cleared cookies
@@ -1103,7 +694,7 @@ class AuthController(Controller):
                     error=str(err),
                 )
 
-        auth_config = _get_auth_config(
+        auth_config = get_auth_config(
             app_state,
         )
         return Response(
