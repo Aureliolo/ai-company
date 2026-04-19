@@ -76,91 +76,87 @@ func runInit(cmd *cobra.Command, _ []string) error {
 	if err := validateInitFlags(opts.DataDir); err != nil {
 		return fmt.Errorf("validating init flags: %w", err)
 	}
-	var answers setupAnswers
 	switch {
 	case initAllFlagsSet():
 		// Non-interactive: all required flags provided.
-		answers = buildAnswersFromFlags(opts.DataDir)
+		answers := buildAnswersFromFlags(opts.DataDir)
+		return runInitNonInteractive(cmd, out, answers, opts)
 	case isInteractive():
-		result, err := runInteractiveInit(cmd, opts)
-		if err != nil {
-			return fmt.Errorf("running interactive setup: %w", err)
-		}
-		if result == nil {
-			return nil // user cancelled
-		}
-		answers = result.answers
-
-		state, err := buildState(answers)
-		if err != nil {
-			return fmt.Errorf("building state from TUI: %w", err)
-		}
-
-		// Apply NATS port override from TUI.
-		if result.natsPort > 0 {
-			state.NatsClientPort = result.natsPort
-		}
-
-		// Handle re-init secret preservation. Check the final dataDir
-		// (which the user may have changed in the TUI) for an existing
-		// config. The TUI's reinit phase only checks the initial dir.
-		if existing := config.StatePath(state.DataDir); fileExists(existing) {
-			if !result.answers.reinitConfirmed {
-				errOut := ui.NewUIWithOptions(cmd.ErrOrStderr(), GetGlobalOpts(cmd.Context()).UIOptions())
-				errOut.Warn(fmt.Sprintf("Existing configuration found at %s -- secrets will be regenerated.", existing))
-			}
-			oldState, loadErr := config.Load(state.DataDir)
-			if loadErr != nil {
-				return fmt.Errorf("existing config unreadable: %w", loadErr)
-			}
-			if oldState.SettingsKey != "" {
-				state.SettingsKey = oldState.SettingsKey
-			}
-			if oldState.MasterKey != "" {
-				state.MasterKey = oldState.MasterKey
-			}
-			if err := preservePostgresFromOldState(cmd, &state, oldState); err != nil {
-				return fmt.Errorf("preserving postgres settings: %w", err)
-			}
-		}
-
-		safeDir, err := writeInitFiles(state)
-		if err != nil {
-			return fmt.Errorf("writing init files: %w", err)
-		}
-		state.DataDir = safeDir
-
-		// Print post-init output using shared summary renderer.
-		out.Logo(version.Version)
-		out.Success("SynthOrg initialized")
-		out.Blank()
-
-		out.Box("Configuration", summaryLines(buildSummaryFromState(state)))
-
-		out.Blank()
-		out.Warn("Keep compose.yml and config.json private -- they contain your secrets.")
-		hintAfterInit(out, state)
-
-		if result.startNow {
-			out.Blank()
-			_ = os.Setenv("SYNTHORG_NO_LOGO", "1")
-			cmd.Root().SetArgs([]string{"start"})
-			return cmd.Root().Execute()
-		}
-		out.Blank()
-		out.Section("Next: synthorg start")
-		return nil
-
+		return runInitInteractive(cmd, out)
 	default:
 		return fmt.Errorf("synthorg init requires an interactive terminal (or provide all flags: --backend-port, --web-port, --sandbox, --log-level)")
 	}
+}
 
+func runInitInteractive(cmd *cobra.Command, out *ui.UI) error {
+	opts := GetGlobalOpts(cmd.Context())
+	result, err := runInteractiveInit(cmd, opts)
+	if err != nil {
+		return fmt.Errorf("running interactive setup: %w", err)
+	}
+	if result == nil {
+		return nil // user cancelled
+	}
+
+	state, err := buildState(result.answers)
+	if err != nil {
+		return fmt.Errorf("building state from TUI: %w", err)
+	}
+	if result.natsPort > 0 {
+		state.NatsClientPort = result.natsPort
+	}
+
+	if existing := config.StatePath(state.DataDir); fileExists(existing) {
+		if !result.answers.reinitConfirmed {
+			errOut := ui.NewUIWithOptions(cmd.ErrOrStderr(), GetGlobalOpts(cmd.Context()).UIOptions())
+			errOut.Warn(fmt.Sprintf("Existing configuration found at %s -- secrets will be regenerated.", existing))
+		}
+		oldState, loadErr := config.Load(state.DataDir)
+		if loadErr != nil {
+			return fmt.Errorf("existing config unreadable: %w", loadErr)
+		}
+		if oldState.SettingsKey != "" {
+			state.SettingsKey = oldState.SettingsKey
+		}
+		if oldState.MasterKey != "" {
+			state.MasterKey = oldState.MasterKey
+		}
+		if err := preservePostgresFromOldState(cmd, &state, oldState); err != nil {
+			return fmt.Errorf("preserving postgres settings: %w", err)
+		}
+	}
+
+	safeDir, err := writeInitFiles(state)
+	if err != nil {
+		return fmt.Errorf("writing init files: %w", err)
+	}
+	state.DataDir = safeDir
+
+	out.Logo(version.Version)
+	out.Success("SynthOrg initialized")
+	out.Blank()
+	out.Box("Configuration", summaryLines(buildSummaryFromState(state)))
+	out.Blank()
+	out.Warn("Keep compose.yml and config.json private -- they contain your secrets.")
+	hintAfterInit(out, state)
+
+	if result.startNow {
+		out.Blank()
+		_ = os.Setenv("SYNTHORG_NO_LOGO", "1")
+		cmd.Root().SetArgs([]string{"start"})
+		return cmd.Root().Execute()
+	}
+	out.Blank()
+	out.Section("Next: synthorg start")
+	return nil
+}
+
+func runInitNonInteractive(cmd *cobra.Command, out *ui.UI, answers setupAnswers, opts *GlobalOpts) error {
 	state, err := buildState(answers)
 	if err != nil {
 		return fmt.Errorf("building state from flags: %w", err)
 	}
 
-	// Non-interactive: handle re-init.
 	if existing := config.StatePath(state.DataDir); fileExists(existing) {
 		proceed, err := handleReinit(cmd, &state, opts)
 		if err != nil {
@@ -180,8 +176,7 @@ func runInit(cmd *cobra.Command, _ []string) error {
 	out.Blank()
 	out.Success("SynthOrg initialized")
 	out.Blank()
-	data := buildSummaryFromState(state)
-	out.Box("Configuration", summaryLines(data))
+	out.Box("Configuration", summaryLines(buildSummaryFromState(state)))
 	out.Blank()
 	out.Warn("Keep compose.yml and config.json private -- they contain your secrets.")
 	hintAfterInit(out, state)
