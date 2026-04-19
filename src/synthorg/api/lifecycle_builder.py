@@ -15,26 +15,22 @@ from synthorg.api.lifecycle import (
     _safe_startup,
     _try_stop,
 )
-from synthorg.notifications.factory import build_notification_dispatcher
+from synthorg.api.lifecycle_helpers import (
+    _apply_bridge_config,
+    _build_settings_dispatcher,
+    _maybe_bootstrap_agents,
+    _maybe_promote_first_owner,
+    _ticket_cleanup_loop,
+)
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_APP_SHUTDOWN,
     API_APP_STARTUP,
-    API_AUTH_LOCKOUT_CLEANUP,
     API_SERVICE_AUTO_WIRE_FAILED,
     API_SERVICE_AUTO_WIRED,
-    API_SESSION_CLEANUP,
     API_WS_TICKET_CLEANUP,
 )
-from synthorg.observability.events.setup import SETUP_AGENT_BOOTSTRAP_FAILED
-from synthorg.settings.dispatcher import SettingsChangeDispatcher
-from synthorg.settings.enums import SettingNamespace
-from synthorg.settings.subscribers import (
-    BackupSettingsSubscriber,
-    MemorySettingsSubscriber,
-    ObservabilitySettingsSubscriber,
-    ProviderSettingsSubscriber,
-)
+from synthorg.settings.dispatcher import SettingsChangeDispatcher  # noqa: TC001
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Sequence
@@ -50,232 +46,10 @@ if TYPE_CHECKING:
     from synthorg.persistence.protocol import PersistenceBackend
     from synthorg.providers.health_prober import ProviderHealthProber
     from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler
-    from synthorg.settings.service import SettingsService
-    from synthorg.settings.subscriber import SettingsSubscriber
 
     _ = _datetime  # keep import consistent with original module
 
 logger = get_logger(__name__)
-
-
-async def _resolve_ticket_cleanup_interval(app_state: AppState) -> float:
-    """Resolve the ticket cleanup interval, falling back to 60 seconds.
-
-    A settings-backend outage, missing setting, or malformed value must
-    not kill the cleanup task -- otherwise expired WS tickets and
-    sessions accumulate indefinitely until the next restart. Any
-    resolver failure is logged and the built-in default is returned.
-    """
-    if not app_state.has_config_resolver:
-        return 60.0
-    try:
-        return await app_state.config_resolver.get_float(
-            SettingNamespace.API.value, "ticket_cleanup_interval_seconds"
-        )
-    except asyncio.CancelledError:
-        raise
-    except MemoryError, RecursionError:
-        raise
-    except Exception:
-        logger.warning(
-            API_WS_TICKET_CLEANUP,
-            error=(
-                "Failed to resolve ticket_cleanup_interval_seconds;"
-                " falling back to 60.0 seconds"
-            ),
-            exc_info=True,
-        )
-        return 60.0
-
-
-async def _ticket_cleanup_loop(app_state: AppState) -> None:
-    """Periodically prune expired WS tickets and sessions."""
-    while True:
-        await asyncio.sleep(await _resolve_ticket_cleanup_interval(app_state))
-        try:
-            app_state.ticket_store.cleanup_expired()
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
-            logger.warning(
-                API_WS_TICKET_CLEANUP,
-                error="Periodic ticket cleanup failed",
-                exc_info=True,
-            )
-        # Session cleanup also runs every iteration.
-        try:
-            if app_state.has_session_store:
-                await app_state.session_store.cleanup_expired()
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
-            logger.warning(
-                API_SESSION_CLEANUP,
-                error="Periodic session cleanup failed",
-                exc_info=True,
-            )
-        # Lockout cleanup.
-        try:
-            if app_state.has_lockout_store:
-                await app_state.lockout_store.cleanup_expired()
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
-            logger.warning(
-                API_AUTH_LOCKOUT_CLEANUP,
-                error="Periodic lockout cleanup failed",
-                exc_info=True,
-            )
-
-
-async def _maybe_promote_first_owner(app_state: AppState) -> None:
-    """Promote the first user to owner if no owner exists.
-
-    This is a one-time idempotent migration that runs on every boot
-    until at least one user has the ``OrgRole.OWNER`` role.
-    """
-    from datetime import UTC, datetime  # noqa: PLC0415
-
-    if not app_state.has_persistence:
-        return
-    try:
-        users = await app_state.persistence.users.list_users()
-    except MemoryError, RecursionError:
-        raise
-    except Exception:
-        logger.warning(
-            API_APP_STARTUP,
-            note="Owner auto-promote skipped: failed to list users",
-            exc_info=True,
-        )
-        return
-    if not users:
-        return
-
-    from synthorg.api.auth.models import OrgRole  # noqa: PLC0415
-
-    has_owner = any(OrgRole.OWNER in u.org_roles for u in users)
-    if has_owner:
-        return
-
-    # Promote the first user (by created_at, oldest first from list_users)
-    first = users[0]
-    promoted = first.model_copy(
-        update={
-            "org_roles": (*first.org_roles, OrgRole.OWNER),
-            "updated_at": datetime.now(UTC),
-        },
-    )
-    try:
-        await app_state.persistence.users.save(promoted)
-    except MemoryError, RecursionError:
-        raise
-    except Exception:
-        logger.warning(
-            API_APP_STARTUP,
-            note="Owner auto-promote failed",
-            exc_info=True,
-        )
-        return
-    logger.info(
-        API_APP_STARTUP,
-        note="Auto-promoted first user to owner",
-        user_id=first.id,
-        username=first.username,
-    )
-
-
-async def _maybe_bootstrap_agents(app_state: AppState) -> None:
-    """Bootstrap agents if setup is complete and services are available.
-
-    On first run, setup isn't complete yet so bootstrap is deferred
-    to ``POST /setup/complete``.  On subsequent starts, agents are
-    loaded from persisted config into the runtime registry.
-    """
-    if not (
-        app_state.has_config_resolver
-        and app_state.has_agent_registry
-        and app_state.has_settings_service
-    ):
-        logger.debug(
-            API_APP_STARTUP,
-            note="Agent bootstrap skipped: required services not available",
-        )
-        return
-
-    try:
-        setup_entry = await app_state.settings_service.get_entry(
-            "api",
-            "setup_complete",
-        )
-        is_complete = setup_entry.value == "true"
-    except MemoryError, RecursionError:
-        raise
-    except Exception:
-        logger.warning(
-            API_APP_STARTUP,
-            note="Could not read setup_complete setting; skipping agent bootstrap",
-            exc_info=True,
-        )
-        is_complete = False
-
-    if not is_complete:
-        logger.debug(
-            API_APP_STARTUP,
-            note="Agent bootstrap skipped: setup not complete",
-        )
-        return
-
-    try:
-        from synthorg.api.bootstrap import bootstrap_agents  # noqa: PLC0415
-
-        await bootstrap_agents(
-            config_resolver=app_state.config_resolver,
-            agent_registry=app_state.agent_registry,
-        )
-    except MemoryError, RecursionError:
-        raise
-    except Exception:
-        logger.warning(
-            SETUP_AGENT_BOOTSTRAP_FAILED,
-            error="Agent bootstrap failed at startup (non-fatal)",
-            exc_info=True,
-        )
-
-
-def _build_settings_dispatcher(
-    message_bus: MessageBus | None,
-    settings_service: SettingsService | None,
-    config: RootConfig,
-    app_state: AppState,
-    backup_service: BackupService | None = None,
-) -> SettingsChangeDispatcher | None:
-    """Create settings change dispatcher if bus and settings are available."""
-    if message_bus is None or settings_service is None:
-        return None
-    provider_sub = ProviderSettingsSubscriber(
-        config=config,
-        app_state=app_state,
-        settings_service=settings_service,
-    )
-    memory_sub = MemorySettingsSubscriber()
-    log_dir = config.logging.log_dir if config.logging is not None else "logs"
-    observability_sub = ObservabilitySettingsSubscriber(
-        settings_service=settings_service,
-        log_dir=log_dir,
-    )
-    subs: list[SettingsSubscriber] = [provider_sub, memory_sub, observability_sub]
-    if backup_service is not None:
-        subs.append(
-            BackupSettingsSubscriber(
-                backup_service=backup_service,
-                settings_service=settings_service,
-            ),
-        )
-    return SettingsChangeDispatcher(
-        message_bus=message_bus,
-        subscribers=tuple(subs),
-    )
 
 
 def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
@@ -549,147 +323,7 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
                 raise
             except Exception:  # noqa: S110 -- already logged via done-callback
                 pass
-        # Apply operator-tuned API bridge settings to mutable stores
-        # that outlive this startup frame. Failure is non-fatal so the
-        # app still boots with built-in defaults. Guarded by
-        # ``bridge_config_applied`` so a re-entering Litestar lifespan
-        # (shared-app test fixtures, multi-lifespan runs) does not
-        # churn httpx/SMTP clients in the notification-dispatcher
-        # sinks or rebuild the OAuth flow on every startup.
-        if app_state.has_config_resolver and not app_state.bridge_config_applied:
-            try:
-                app_state.ticket_store.set_max_pending_per_user(
-                    await app_state.config_resolver.get_int(
-                        SettingNamespace.API.value,
-                        "ws_ticket_max_pending_per_user",
-                    )
-                )
-            except MemoryError, RecursionError:
-                raise
-            except Exception:
-                logger.warning(
-                    API_APP_STARTUP,
-                    error=(
-                        "Failed to apply ws_ticket_max_pending_per_user;"
-                        " using built-in default"
-                    ),
-                    exc_info=True,
-                )
-
-            # Inject the resolver into services that were constructed
-            # before AppState so their polling / refresh loops honour
-            # operator-tuned settings.
-            if app_state.oauth_token_manager is not None:
-                app_state.oauth_token_manager.set_config_resolver(
-                    app_state.config_resolver,
-                )
-            if app_state.webhook_event_bridge is not None:
-                app_state.webhook_event_bridge.set_config_resolver(
-                    app_state.config_resolver,
-                )
-            # Inject the resolver into the JetStream bus so history
-            # queries honour the operator-tuned scan batch-size and
-            # fetch timeout.
-            _bus = app_state.message_bus if app_state.has_message_bus else None
-            if _bus is not None:
-                _set_resolver = getattr(_bus, "set_config_resolver", None)
-                if callable(_set_resolver):
-                    _set_resolver(app_state.config_resolver)
-
-            # Resolve the audit-chain signing timeout and push it onto
-            # every live ``AuditChainSink`` handler so runtime signing
-            # calls honour the operator setting.
-            try:
-                signing_timeout = await app_state.config_resolver.get_float(
-                    SettingNamespace.OBSERVABILITY.value,
-                    "audit_chain_signing_timeout_seconds",
-                )
-            except MemoryError, RecursionError:
-                raise
-            except Exception:
-                logger.warning(
-                    API_APP_STARTUP,
-                    error=(
-                        "Failed to resolve"
-                        " audit_chain_signing_timeout_seconds;"
-                        " keeping sink default"
-                    ),
-                    exc_info=True,
-                )
-            else:
-                from synthorg.observability.audit_chain.sink import (  # noqa: PLC0415
-                    AuditChainSink,
-                )
-                from synthorg.observability.startup_wiring import (  # noqa: PLC0415
-                    _iter_logging_handlers,
-                )
-
-                for _handler in _iter_logging_handlers():
-                    if isinstance(_handler, AuditChainSink):
-                        try:
-                            _handler.set_signing_timeout_seconds(signing_timeout)
-                        except MemoryError, RecursionError:
-                            raise
-                        except Exception:
-                            logger.warning(
-                                API_APP_STARTUP,
-                                error=(
-                                    "Failed to apply"
-                                    " audit_chain_signing_timeout_seconds"
-                                    " to handler"
-                                ),
-                                exc_info=True,
-                            )
-
-            # Rebuild the notification dispatcher with resolved adapter
-            # timeouts so webhook/SMTP calls honour operator tuning.
-            try:
-                notif_bridge = (
-                    await app_state.config_resolver.get_notifications_bridge_config()
-                )
-            except MemoryError, RecursionError:
-                raise
-            except Exception:
-                logger.warning(
-                    API_APP_STARTUP,
-                    error=(
-                        "Failed to resolve notifications bridge config;"
-                        " keeping dispatcher default timeouts"
-                    ),
-                    exc_info=True,
-                )
-            else:
-                if (
-                    app_state.has_notification_dispatcher
-                    and effective_config is not None
-                ):
-                    _new_dispatcher = build_notification_dispatcher(
-                        effective_config.notifications,
-                        bridge_config=notif_bridge,
-                    )
-                    _old_dispatcher = app_state.swap_notification_dispatcher(
-                        _new_dispatcher
-                    )
-                    # Close the pre-startup dispatcher's sinks so their
-                    # httpx clients do not leak. The swap returned the
-                    # old instance atomically, so closing it now cannot
-                    # race a concurrent reader landing on the new one.
-                    if _old_dispatcher is not None:
-                        try:
-                            await _old_dispatcher.close()
-                        except MemoryError, RecursionError:
-                            raise
-                        except Exception:
-                            logger.warning(
-                                API_APP_STARTUP,
-                                error=(
-                                    "Failed to close pre-startup notification"
-                                    " dispatcher sinks after rebuild"
-                                ),
-                                exc_info=True,
-                            )
-
-            app_state.mark_bridge_config_applied()
+        await _apply_bridge_config(app_state, effective_config)
 
         _ticket_cleanup_task = asyncio.create_task(
             _ticket_cleanup_loop(app_state),
