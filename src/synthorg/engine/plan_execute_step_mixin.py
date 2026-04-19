@@ -14,8 +14,6 @@ from synthorg.engine.loop_helpers import (
     check_response_errors,
     check_shutdown,
     classify_turn,
-    clear_last_turn_tool_calls,
-    execute_tool_calls,
     make_turn_record,
     response_to_message,
 )
@@ -24,6 +22,10 @@ from synthorg.engine.loop_protocol import (
     ExecutionResult,
     ShutdownChecker,
     TurnRecord,
+)
+from synthorg.engine.loop_tool_execution import (
+    clear_last_turn_tool_calls,
+    execute_tool_calls,
 )
 from synthorg.engine.plan_helpers import assess_step_success
 from synthorg.engine.plan_models import ExecutionPlan  # noqa: TC001

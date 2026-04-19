@@ -15,13 +15,15 @@ from synthorg.engine.loop_helpers import (
     check_response_errors,
     check_shutdown,
     check_stagnation,
-    clear_last_turn_tool_calls,
-    execute_tool_calls,
     get_tool_definitions,
     make_turn_record,
     response_to_message,
 )
 from synthorg.engine.loop_protocol import TerminationReason, TurnRecord
+from synthorg.engine.loop_tool_execution import (
+    clear_last_turn_tool_calls,
+    execute_tool_calls,
+)
 from synthorg.providers.enums import FinishReason, MessageRole
 from synthorg.providers.models import (
     CompletionConfig,

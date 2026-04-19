@@ -30,8 +30,6 @@ from .loop_helpers import (
     check_shutdown,
     check_stagnation,
     classify_turn,
-    clear_last_turn_tool_calls,
-    execute_tool_calls,
     get_tool_definitions,
     invoke_compaction,
     make_turn_record,
@@ -43,6 +41,10 @@ from .loop_protocol import (
     ShutdownChecker,
     TerminationReason,
     TurnRecord,
+)
+from .loop_tool_execution import (
+    clear_last_turn_tool_calls,
+    execute_tool_calls,
 )
 
 if TYPE_CHECKING:
