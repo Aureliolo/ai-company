@@ -8,28 +8,19 @@ import type {
   searchSubworkflows,
 } from '@/api/endpoints/subworkflows'
 import type { WorkflowDefinition } from '@/api/types'
+import { buildWorkflow as buildDomainWorkflow } from './workflows'
 import { successFor, voidSuccess } from './helpers'
 
-function buildWorkflow(
+/**
+ * Subworkflow-flavoured `buildWorkflow`. Delegates to the canonical
+ * workflow builder and just flips `is_subworkflow` true so subworkflow
+ * handlers return fixtures that still surface the boundary field that
+ * distinguishes them from top-level workflows.
+ */
+function buildSubworkflow(
   overrides: Partial<WorkflowDefinition> = {},
 ): WorkflowDefinition {
-  return {
-    id: 'workflow-default',
-    name: 'Default Workflow',
-    description: '',
-    workflow_type: 'default',
-    version: '1',
-    inputs: [],
-    outputs: [],
-    is_subworkflow: true,
-    nodes: [],
-    edges: [],
-    created_by: 'user-1',
-    created_at: '2026-04-19T00:00:00Z',
-    updated_at: '2026-04-19T00:00:00Z',
-    revision: 1,
-    ...overrides,
-  }
+  return buildDomainWorkflow({ is_subworkflow: true, ...overrides })
 }
 
 export const subworkflowsHandlers = [
@@ -45,7 +36,7 @@ export const subworkflowsHandlers = [
   http.get('/api/v1/subworkflows/:id/versions/:version', ({ params }) =>
     HttpResponse.json(
       successFor<typeof getVersion>(
-        buildWorkflow({
+        buildSubworkflow({
           id: String(params.id),
           version: String(params.version),
         }),
@@ -58,7 +49,7 @@ export const subworkflowsHandlers = [
   http.post('/api/v1/subworkflows', async ({ request }) => {
     const body = (await request.json()) as { name: string }
     return HttpResponse.json(
-      successFor<typeof createSubworkflow>(buildWorkflow({ name: body.name })),
+      successFor<typeof createSubworkflow>(buildSubworkflow({ name: body.name })),
       { status: 201 },
     )
   }),

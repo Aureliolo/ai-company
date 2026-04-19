@@ -207,20 +207,30 @@ export {
 export { buildAgent } from './agents'
 export { buildApproval } from './approvals'
 export { buildArtifact } from './artifacts'
-export { buildBackupInfo } from './backup'
+export { buildAuthUser } from './auth'
+export { buildManifest as buildBackupManifest, buildBackupInfo } from './backup'
 export { buildBudgetConfig } from './budget'
 export { buildCeremonyPolicy } from './ceremony-policy'
+export {
+  buildProfile as buildClientProfile,
+  buildRequirement as buildClientRequirement,
+  buildRequest as buildClientRequest,
+  buildSimulation as buildClientSimulation,
+} from './clients'
 export { buildCompanyConfig, buildDepartment, buildTeam } from './company'
 export { buildConnection } from './connections'
 export { buildCheckpoint } from './fine-tuning'
 export { buildCustomRule } from './custom-rules'
 export { buildEscalation } from './escalations'
+export { buildMcpCatalogEntry } from './mcp-catalog'
 export { buildMeeting } from './meetings'
 export { buildMessage, buildChannel } from './messages'
 export { buildEntity } from './ontology'
 export { buildProject } from './projects'
 export { buildProvider } from './providers'
 export { buildSettingEntry } from './settings'
+export { buildAgentSummary as buildSetupAgentSummary } from './setup'
 export { buildTask } from './tasks'
 export { buildPlan as buildTrainingPlan, buildResult as buildTrainingResult } from './training'
+export { buildUser } from './users'
 export { buildWorkflow } from './workflows'

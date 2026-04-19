@@ -7,7 +7,7 @@ import type {
 import type { OrgRole } from '@/api/types'
 import { successFor, voidSuccess } from './helpers'
 
-function buildUser(overrides: Partial<UserResponse> = {}): UserResponse {
+export function buildUser(overrides: Partial<UserResponse> = {}): UserResponse {
   return {
     id: 'user-default',
     username: 'default',

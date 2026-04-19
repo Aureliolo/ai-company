@@ -3,7 +3,8 @@ import { http, HttpResponse } from 'msw'
 import { useAuthStore } from '@/stores/auth'
 import { useSetupStore } from '@/stores/setup'
 import { router } from '@/router'
-import { apiSuccess } from '@/mocks/handlers'
+import { successFor } from '@/mocks/handlers'
+import type { getSetupStatus } from '@/api/endpoints/setup'
 import { server } from '@/test-setup'
 import App from '../App'
 
@@ -70,7 +71,7 @@ describe('App', () => {
     server.use(
       http.get('/api/v1/setup/status', () =>
         HttpResponse.json(
-          apiSuccess({
+          successFor<typeof getSetupStatus>({
             needs_admin: false,
             needs_setup: false,
             has_providers: true,

@@ -145,7 +145,7 @@ export const companyHandlers = [
           name: body.name,
           role: body.role,
           department: body.department,
-        }) as AgentConfig,
+        }),
       ),
       { status: 201 },
     )

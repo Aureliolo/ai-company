@@ -37,17 +37,30 @@ export const meetingsHandlers = [
     ),
   ),
   http.post('/api/v1/meetings/trigger', async ({ request }) => {
-    const body = (await request.json()) as { event_name?: string }
-    if (!body.event_name) {
+    let body: unknown
+    try {
+      body = await request.json()
+    } catch {
       return HttpResponse.json(apiError("Field 'event_name' is required"), {
         status: 400,
       })
     }
+    if (
+      !body ||
+      typeof body !== 'object' ||
+      typeof (body as { event_name?: unknown }).event_name !== 'string' ||
+      !(body as { event_name: string }).event_name
+    ) {
+      return HttpResponse.json(apiError("Field 'event_name' is required"), {
+        status: 400,
+      })
+    }
+    const eventName = (body as { event_name: string }).event_name
     return HttpResponse.json(
       successFor<typeof triggerMeeting>([
         buildMeeting({
-          meeting_id: `meeting-${body.event_name}`,
-          meeting_type_name: body.event_name,
+          meeting_id: `meeting-${eventName}`,
+          meeting_type_name: eventName,
         }),
       ]),
     )

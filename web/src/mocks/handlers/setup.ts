@@ -21,7 +21,7 @@ import type {
 } from '@/api/types'
 import { apiSuccess, successFor } from './helpers'
 
-function buildAgentSummary(
+export function buildAgentSummary(
   overrides: Partial<SetupAgentSummary> = {},
 ): SetupAgentSummary {
   return {

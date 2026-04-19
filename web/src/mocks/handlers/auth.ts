@@ -15,7 +15,9 @@ const mockAuthResponse: AuthResponse = {
   must_change_password: false,
 }
 
-function buildUser(overrides: Partial<UserInfoResponse> = {}): UserInfoResponse {
+export function buildAuthUser(
+  overrides: Partial<UserInfoResponse> = {},
+): UserInfoResponse {
   return {
     id: 'user-default',
     username: 'default',
@@ -56,10 +58,10 @@ export const authHandlers = [
   }),
   http.post('/api/v1/auth/logout', () => HttpResponse.json(voidSuccess())),
   http.post('/api/v1/auth/change-password', () =>
-    HttpResponse.json(successFor<typeof changePassword>(buildUser())),
+    HttpResponse.json(successFor<typeof changePassword>(buildAuthUser())),
   ),
   http.get('/api/v1/auth/me', () =>
-    HttpResponse.json(successFor<typeof getMe>(buildUser())),
+    HttpResponse.json(successFor<typeof getMe>(buildAuthUser())),
   ),
   http.post('/api/v1/auth/ws-ticket', () =>
     HttpResponse.json(

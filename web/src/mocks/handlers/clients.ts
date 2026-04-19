@@ -25,7 +25,7 @@ import type {
 } from '@/api/endpoints/clients'
 import { apiError, emptyPage, paginatedFor, successFor, voidSuccess } from './helpers'
 
-function buildProfile(overrides: Partial<ClientProfile> = {}): ClientProfile {
+export function buildProfile(overrides: Partial<ClientProfile> = {}): ClientProfile {
   return {
     client_id: 'client-default',
     name: 'Default Client',
@@ -36,7 +36,7 @@ function buildProfile(overrides: Partial<ClientProfile> = {}): ClientProfile {
   }
 }
 
-function buildRequirement(): TaskRequirement {
+export function buildRequirement(): TaskRequirement {
   return {
     title: 'Stub requirement',
     description: 'Default requirement for tests',
@@ -47,7 +47,7 @@ function buildRequirement(): TaskRequirement {
   }
 }
 
-function buildRequest(overrides: Partial<ClientRequest> = {}): ClientRequest {
+export function buildRequest(overrides: Partial<ClientRequest> = {}): ClientRequest {
   return {
     request_id: 'req-default',
     client_id: 'client-default',
@@ -59,7 +59,7 @@ function buildRequest(overrides: Partial<ClientRequest> = {}): ClientRequest {
   }
 }
 
-function buildSimulation(
+export function buildSimulation(
   overrides: Partial<SimulationStatus> = {},
 ): SimulationStatus {
   return {

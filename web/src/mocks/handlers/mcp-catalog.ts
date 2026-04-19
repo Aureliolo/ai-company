@@ -8,7 +8,9 @@ import type {
 import type { McpCatalogEntry } from '@/api/types'
 import { apiError, successFor, voidSuccess } from './helpers'
 
-function buildEntry(overrides: Partial<McpCatalogEntry> = {}): McpCatalogEntry {
+export function buildMcpCatalogEntry(
+  overrides: Partial<McpCatalogEntry> = {},
+): McpCatalogEntry {
   return {
     id: 'mcp-default',
     name: 'Default MCP',
@@ -24,7 +26,7 @@ function buildEntry(overrides: Partial<McpCatalogEntry> = {}): McpCatalogEntry {
 
 // ── Storybook-facing named export (preserve populated catalog). ──
 const mockCatalogEntries: McpCatalogEntry[] = [
-  buildEntry({
+  buildMcpCatalogEntry({
     id: 'github-mcp',
     name: 'GitHub',
     description: 'Read and write GitHub repositories, issues, pull requests, and actions',
@@ -33,7 +35,7 @@ const mockCatalogEntries: McpCatalogEntry[] = [
     capabilities: ['repository_access', 'issue_management'],
     tags: ['vcs'],
   }),
-  buildEntry({
+  buildMcpCatalogEntry({
     id: 'slack-mcp',
     name: 'Slack',
     description: 'Send and receive Slack messages, manage channels and users',
@@ -42,7 +44,7 @@ const mockCatalogEntries: McpCatalogEntry[] = [
     capabilities: ['messaging'],
     tags: ['communication'],
   }),
-  buildEntry({
+  buildMcpCatalogEntry({
     id: 'filesystem-mcp',
     name: 'Filesystem',
     description: 'Read, write, and manage files on the local filesystem',
@@ -107,7 +109,7 @@ export const mcpCatalogDefaultHandlers = [
   http.get('/api/v1/integrations/mcp/catalog/:entryId', ({ params }) =>
     HttpResponse.json(
       successFor<typeof getMcpCatalogEntry>(
-        buildEntry({ id: String(params.entryId), name: String(params.entryId) }),
+        buildMcpCatalogEntry({ id: String(params.entryId), name: String(params.entryId) }),
       ),
     ),
   ),

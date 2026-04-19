@@ -8,7 +8,7 @@ import type {
 import type { BackupInfo, BackupManifest } from '@/api/types'
 import { successFor, voidSuccess } from './helpers'
 
-function buildManifest(overrides: Partial<BackupManifest> = {}): BackupManifest {
+export function buildManifest(overrides: Partial<BackupManifest> = {}): BackupManifest {
   return {
     backup_id: 'backup-default',
     synthorg_version: '0.6.4',
