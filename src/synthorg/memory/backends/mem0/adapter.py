@@ -9,14 +9,12 @@ All Mem0 SDK calls run in ``asyncio.to_thread()``.
 
 import asyncio
 import builtins
-from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-from synthorg.budget.call_category import LLMCallCategory
-from synthorg.budget.cost_record import CostRecord
-from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.core.enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
+from synthorg.memory.backends.mem0.adapter_cost import Mem0AdapterCostMixin
+from synthorg.memory.backends.mem0.adapter_shared import Mem0AdapterSharedMixin
 from synthorg.memory.backends.mem0.config import (
     Mem0BackendConfig,
     build_mem0_config_dict,
@@ -33,14 +31,8 @@ from synthorg.memory.backends.mem0.mappers import (
     validate_add_result,
     validate_mem0_result,
 )
-from synthorg.memory.backends.mem0.shared import (
-    publish_shared,
-    retract_shared,
-    search_shared_memories,
-)
 from synthorg.memory.backends.mem0.sparse_search import (
     async_init_sparse_field,
-    async_retrieve_sparse,
     async_try_sparse_upsert,
 )
 from synthorg.memory.errors import (
@@ -53,11 +45,6 @@ from synthorg.memory.errors import (
 )
 from synthorg.memory.sparse import BM25Tokenizer
 from synthorg.observability import get_logger
-from synthorg.observability.events.budget import (
-    BUDGET_EMBEDDING_COST_FAILED,
-    BUDGET_EMBEDDING_COST_RECORDED,
-    BUDGET_EMBEDDING_MODEL_UNPRICED,
-)
 from synthorg.observability.events.memory import (
     MEMORY_BACKEND_AGENT_ID_REJECTED,
     MEMORY_BACKEND_CONFIG_INVALID,
@@ -104,7 +91,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-class Mem0MemoryBackend:
+class Mem0MemoryBackend(Mem0AdapterCostMixin, Mem0AdapterSharedMixin):
     """Mem0-backed agent memory backend.
 
     Implements the ``MemoryBackend``, ``MemoryCapabilities``, and
@@ -142,100 +129,6 @@ class Mem0MemoryBackend:
         self._sparse_encoder: BM25Tokenizer | None = (
             BM25Tokenizer() if mem0_config.sparse_search_enabled else None
         )
-
-    # ── Embedding cost tracking ────────────────────────────────────
-
-    async def _record_embedding_cost(
-        self,
-        *,
-        agent_id: str,
-        task_id: str,
-        content_length: int,
-        operation: str,
-    ) -> None:
-        """Record an embedding cost estimate if tracking is enabled.
-
-        Best-effort: non-system failures are logged but never
-        propagate.  The ``task_id`` is a synthetic sentinel
-        (``"memory-store"`` / ``"memory-retrieve"``) because the
-        backend protocol does not carry task context.
-        """
-        cost_cfg = self._mem0_config.embedding_cost
-        if not cost_cfg.enabled or self._cost_tracker is None:
-            return
-        cpt = cost_cfg.default_chars_per_token
-        input_tokens = max(1, (content_length + cpt - 1) // cpt)
-        model = str(self._mem0_config.embedder.model)
-        cost_per_1k = cost_cfg.model_pricing.get(model, 0.0)
-        if cost_per_1k == 0.0 and model not in cost_cfg.model_pricing:
-            logger.debug(
-                BUDGET_EMBEDDING_MODEL_UNPRICED,
-                agent_id=agent_id,
-                operation=operation,
-                model=model,
-            )
-        cost = input_tokens * cost_per_1k / 1000.0
-        # ``_cost_tracker`` is guaranteed non-``None`` here -- the early
-        # return at the top of the function exits when it is.  Only the
-        # budget-config attribute can still be ``None`` when the tracker
-        # was built without a config.
-        budget_cfg = self._cost_tracker.budget_config
-        currency = budget_cfg.currency if budget_cfg is not None else DEFAULT_CURRENCY
-        record = CostRecord(
-            agent_id=agent_id,
-            task_id=task_id,
-            provider=str(self._mem0_config.embedder.provider),
-            model=model,
-            input_tokens=input_tokens,
-            output_tokens=0,
-            cost=round(cost, 8),
-            currency=currency,
-            timestamp=datetime.now(UTC),
-            call_category=LLMCallCategory.EMBEDDING,
-        )
-        await self._record_cost(record, agent_id, operation, model)
-
-    async def _record_cost(
-        self,
-        record: CostRecord,
-        agent_id: str,
-        operation: str,
-        model: str,
-    ) -> None:
-        """Persist a CostRecord via the tracker (best-effort)."""
-        try:
-            await self._cost_tracker.record(record)  # type: ignore[union-attr]
-            logger.debug(
-                BUDGET_EMBEDDING_COST_RECORDED,
-                agent_id=agent_id,
-                operation=operation,
-                input_tokens=record.input_tokens,
-                cost=record.cost,
-                model=model,
-            )
-        except builtins.MemoryError, RecursionError:
-            logger.error(
-                BUDGET_EMBEDDING_COST_FAILED,
-                agent_id=agent_id,
-                operation=operation,
-                error_type="system",
-                model=model,
-                exc_info=True,
-            )
-            raise
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:
-            logger.warning(
-                BUDGET_EMBEDDING_COST_FAILED,
-                agent_id=agent_id,
-                operation=operation,
-                error=str(exc),
-                error_type=type(exc).__name__,
-                reason="cost_tracking_failed",
-            )
-
-    # ── Lifecycle ─────────────────────────────────────────────────
 
     async def connect(self) -> None:
         """Establish connection to Mem0.
@@ -397,8 +290,6 @@ class Mem0MemoryBackend:
         """Human-readable backend identifier."""
         return NotBlankStr("mem0")
 
-    # ── Capabilities ──────────────────────────────────────────────
-
     @property
     def supported_categories(self) -> frozenset[MemoryCategory]:
         """All memory categories are supported."""
@@ -435,8 +326,6 @@ class Mem0MemoryBackend:
         return (
             self._mem0_config.sparse_search_enabled and self._qdrant_client is not None
         )
-
-    # ── Guards ────────────────────────────────────────────────────
 
     def _require_connected(self) -> Mem0Client:
         """Return the client or raise ``MemoryConnectionError``.
@@ -486,8 +375,6 @@ class Mem0MemoryBackend:
             )
             raise error_cls(msg)
 
-    # ── Sparse helpers ─────────────────────────────────────────────
-
     async def _try_sparse_upsert(
         self,
         agent_id: NotBlankStr,
@@ -505,8 +392,6 @@ class Mem0MemoryBackend:
             memory_id,
             content,
         )
-
-    # ── CRUD Operations ───────────────────────────────────────────
 
     async def store(
         self,
@@ -904,101 +789,3 @@ class Mem0MemoryBackend:
                     category=category.value if category else None,
                 )
             return total
-
-    # ── Sparse Search ──────────────────────────────────────────────
-
-    async def retrieve_sparse(
-        self,
-        agent_id: NotBlankStr,
-        query: MemoryQuery,
-    ) -> tuple[MemoryEntry, ...]:
-        """Retrieve memories via BM25 sparse search (delegates to sparse_search)."""
-        if not self.supports_sparse_search or self._sparse_encoder is None:
-            return ()
-        self._require_connected()
-        self._validate_agent_id(agent_id, error_cls=MemoryRetrievalError)
-        return await async_retrieve_sparse(
-            self._sparse_encoder,
-            self._qdrant_client,
-            self._mem0_config.collection_name,
-            agent_id,
-            query,
-        )
-
-    # ── SharedKnowledgeStore ──────────────────────────────────────
-    # Implementations live in shared.py to keep this file under
-    # the 800-line guideline.  These methods validate preconditions
-    # (connection, agent ID) and delegate to the standalone functions.
-
-    async def publish(
-        self,
-        agent_id: NotBlankStr,
-        request: MemoryStoreRequest,
-    ) -> NotBlankStr:
-        """Publish a memory to the shared knowledge store.
-
-        Args:
-            agent_id: Publishing agent identifier.
-            request: Memory content and metadata.
-
-        Returns:
-            The backend-assigned shared memory ID.
-
-        Raises:
-            MemoryConnectionError: If the backend is not connected.
-            MemoryStoreError: If the publish operation fails.
-        """
-        client = self._require_connected()
-        self._validate_agent_id(agent_id)
-        return await publish_shared(client, agent_id, request)
-
-    async def search_shared(
-        self,
-        query: MemoryQuery,
-        *,
-        exclude_agent: NotBlankStr | None = None,
-    ) -> tuple[MemoryEntry, ...]:
-        """Search the shared knowledge store across agents.
-
-        Args:
-            query: Search parameters.
-            exclude_agent: Optional agent ID to exclude from results.
-
-        Returns:
-            Matching shared memory entries ordered by relevance.
-
-        Raises:
-            MemoryConnectionError: If the backend is not connected.
-            MemoryRetrievalError: If the search fails.
-        """
-        client = self._require_connected()
-        return await search_shared_memories(
-            client,
-            query,
-            exclude_agent=exclude_agent,
-        )
-
-    async def retract(
-        self,
-        agent_id: NotBlankStr,
-        memory_id: NotBlankStr,
-    ) -> bool:
-        """Remove a memory from the shared knowledge store.
-
-        Verifies publisher ownership before deletion.
-
-        Args:
-            agent_id: Retracting agent identifier.
-            memory_id: Shared memory identifier.
-
-        Returns:
-            ``True`` if retracted, ``False`` if not found.
-
-        Raises:
-            MemoryConnectionError: If the backend is not connected.
-            MemoryStoreError: If the retraction operation fails or
-                ownership verification fails.
-        """
-        client = self._require_connected()
-        self._validate_agent_id(agent_id)
-        return await retract_shared(client, agent_id, memory_id)
