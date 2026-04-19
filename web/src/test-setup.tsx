@@ -49,6 +49,14 @@ if (typeof document !== 'undefined') {
       if (eq === -1) return
       const name = pair.slice(0, eq).trim()
       const value = pair.slice(eq + 1).trim()
+      // Belt-and-suspenders prototype-pollution guard. The jar uses
+      // `Object.create(null)` (no prototype chain), so none of these names
+      // can actually pollute `Object.prototype` through `cookieJar[name] =
+      // value`. We still reject them so the shim never stores a key that a
+      // future refactor (spread, `Object.assign`, iteration into a
+      // prototype-carrying object) could weaponise. Diverging from RFC 6265
+      // is acceptable here because production code never emits these names
+      // as cookies.
       if (
         !name ||
         name === '__proto__' ||

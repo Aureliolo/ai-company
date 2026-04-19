@@ -142,7 +142,7 @@ SynthOrg vs [44 agent frameworks](https://synthorg.io/compare/) across 14 dimens
 |---------|-------------|
 | [User Guide](https://synthorg.io/docs/user_guide/) | Install, configure, run, customize |
 | [Guides](https://synthorg.io/docs/guides/) | Quickstart, company config, agents, budget, security, MCP tools, deployment, logging, memory |
-| [Design Specification](https://synthorg.io/docs/design/) | Agents, org structure, communication, engine, memory, operations, brand & UX, strategy (19 pages) |
+| [Design Specification](https://synthorg.io/docs/design/) | Agents, org structure, communication, engine, memory, operations, brand & UX, strategy (20 pages) |
 | [Architecture](https://synthorg.io/docs/architecture/) | System overview, tech stack, decision log |
 | [REST API](https://synthorg.io/docs/rest-api/) | Scalar/OpenAPI reference |
 | [Library Reference](https://synthorg.io/docs/api/) | Auto-generated from docstrings (14 modules) |
