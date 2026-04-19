@@ -217,7 +217,7 @@ class TestMaybeBootstrapAgents:
 
     async def test_returns_early_when_services_missing(self) -> None:
         """Returns immediately when config_resolver is not available."""
-        from synthorg.api.app import _maybe_bootstrap_agents
+        from synthorg.api.lifecycle_builder import _maybe_bootstrap_agents
 
         app_state = AsyncMock()
         app_state.has_config_resolver = False
@@ -231,7 +231,7 @@ class TestMaybeBootstrapAgents:
 
     async def test_returns_early_when_setup_not_complete(self) -> None:
         """Returns without bootstrapping when setup_complete != 'true'."""
-        from synthorg.api.app import _maybe_bootstrap_agents
+        from synthorg.api.lifecycle_builder import _maybe_bootstrap_agents
 
         app_state = AsyncMock()
         app_state.has_config_resolver = True
@@ -255,7 +255,7 @@ class TestMaybeBootstrapAgents:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Calls bootstrap_agents when setup_complete is 'true'."""
-        from synthorg.api import app as app_module
+        from synthorg.api import lifecycle_builder as app_module
 
         app_state = AsyncMock()
         app_state.has_config_resolver = True
@@ -281,7 +281,7 @@ class TestMaybeBootstrapAgents:
 
     async def test_handles_settings_read_error(self) -> None:
         """Does not crash when settings_service.get_entry raises."""
-        from synthorg.api.app import _maybe_bootstrap_agents
+        from synthorg.api.lifecycle_builder import _maybe_bootstrap_agents
 
         app_state = AsyncMock()
         app_state.has_config_resolver = True
@@ -300,7 +300,7 @@ class TestMaybeBootstrapAgents:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Does not crash when bootstrap_agents raises."""
-        from synthorg.api import app as app_module
+        from synthorg.api import lifecycle_builder as app_module
 
         app_state = AsyncMock()
         app_state.has_config_resolver = True

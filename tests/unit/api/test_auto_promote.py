@@ -4,10 +4,10 @@ from datetime import UTC, datetime
 
 import pytest
 
-from synthorg.api.app import _maybe_promote_first_owner
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.api.auth.models import OrgRole, User
 from synthorg.api.guards import HumanRole
+from synthorg.api.lifecycle_builder import _maybe_promote_first_owner
 from synthorg.api.state import AppState
 from synthorg.config.schema import RootConfig
 from tests.unit.api.fakes import FakePersistenceBackend

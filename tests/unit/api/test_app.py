@@ -682,9 +682,9 @@ class TestAutoWirePhase2:
         root_config: Any,
     ) -> None:
         """auto_wire_settings creates SettingsService on AppState."""
-        from synthorg.api.app import _build_settings_dispatcher
         from synthorg.api.approval_store import ApprovalStore
         from synthorg.api.auto_wire import auto_wire_settings
+        from synthorg.api.lifecycle_builder import _build_settings_dispatcher
 
         app_state = AppState(
             config=root_config,
@@ -718,9 +718,9 @@ class TestAutoWirePhase2:
         root_config: Any,
     ) -> None:
         """auto_wire_settings works without a message bus."""
-        from synthorg.api.app import _build_settings_dispatcher
         from synthorg.api.approval_store import ApprovalStore
         from synthorg.api.auto_wire import auto_wire_settings
+        from synthorg.api.lifecycle_builder import _build_settings_dispatcher
 
         app_state = AppState(
             config=root_config,
@@ -902,8 +902,8 @@ class TestAutoWirePhase2ErrorPaths:
         """Phase 2 failure in on_startup calls _safe_shutdown for cleanup."""
         from unittest.mock import AsyncMock
 
-        from synthorg.api.app import _build_lifecycle
         from synthorg.api.approval_store import ApprovalStore
+        from synthorg.api.lifecycle_builder import _build_lifecycle
         from tests.unit.api.conftest import (
             FakeMessageBus,
             FakePersistenceBackend,
@@ -923,7 +923,7 @@ class TestAutoWirePhase2ErrorPaths:
             raise RuntimeError(msg)
 
         monkeypatch.setattr(
-            "synthorg.api.app.auto_wire_settings",
+            "synthorg.api.auto_wire.auto_wire_settings",
             failing_auto_wire,
         )
 
@@ -944,7 +944,7 @@ class TestAutoWirePhase2ErrorPaths:
         # Mock _safe_startup so on_startup gets past Phase 1
         safe_startup_mock = AsyncMock()
         monkeypatch.setattr(
-            "synthorg.api.app._safe_startup",
+            "synthorg.api.lifecycle_builder._safe_startup",
             safe_startup_mock,
         )
 
@@ -958,9 +958,9 @@ class TestAutoWirePhase2ErrorPaths:
         fake_message_bus: Any,
     ) -> None:
         """Auto-wired dispatcher is stopped during on_shutdown."""
-        from synthorg.api.app import _build_settings_dispatcher
         from synthorg.api.approval_store import ApprovalStore
         from synthorg.api.auto_wire import auto_wire_settings
+        from synthorg.api.lifecycle_builder import _build_settings_dispatcher
 
         app_state = AppState(
             config=root_config,
@@ -1397,7 +1397,7 @@ class TestAuthIdentifierForRequest:
         request = MagicMock()
         request.scope = {}
         with patch(
-            "synthorg.api.app.get_remote_address",
+            "synthorg.api.middleware_factory.get_remote_address",
             return_value="10.0.0.1",
         ):
             assert _auth_identifier_for_request(request) == "10.0.0.1"
@@ -1410,7 +1410,7 @@ class TestAuthIdentifierForRequest:
         request = MagicMock()
         request.scope = {"user": None}
         with patch(
-            "synthorg.api.app.get_remote_address",
+            "synthorg.api.middleware_factory.get_remote_address",
             return_value="192.168.1.1",
         ):
             assert _auth_identifier_for_request(request) == "192.168.1.1"
