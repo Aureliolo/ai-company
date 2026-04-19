@@ -493,22 +493,44 @@ const handler = vi.fn()
       const ws = MockWebSocket.latest()!
       expect(ws.url).not.toContain('ticket=')
 
-      // Diagnostic: capture state before/after simulateOpen to pinpoint
-      // which of three possible causes the CI flake hits:
-      //   (a) ws.onopen is null
-      //   (b) onopen guard `socket !== thisSocket` tripped (onopen called, no send)
-      //   (c) send threw (caught and silenced)
+      // Diagnostic round 2: round-1 CI output confirmed the store guard
+      // `if (socket !== thisSocket) return` tripped inside onopen with
+      // `instances=1, latestIsSame=true` -- meaning the store's `socket`
+      // closure variable was null at the time. Since `socket = null` only
+      // happens in disconnect() or the onclose handler, either one must
+      // have run between doConnect's `socket = thisSocket` and this
+      // simulateOpen() call. Capture more state to pinpoint which.
       const diag = {
         onopenWasSet: typeof ws.onopen === 'function',
+        oncloseWasSet: typeof ws.onclose === 'function',
+        oncloseFiredPreOpen: false,
+        oncloseFiredCount: 0,
+        closeMethodCalled: false,
         onopenCalled: false,
         sendCalled: false,
         instances: MockWebSocket.instances.length,
         latestIsSame: MockWebSocket.latest() === ws,
+        wsClosedFlagPreOpen: ws.closed,
+        wsReadyStatePreOpen: ws.readyState,
+        storeConnectedPreOpen: useWebSocketStore.getState().connected,
+        storeExhaustedPreOpen: useWebSocketStore.getState().reconnectExhausted,
+        storeConnectedPostOpen: false,
       }
       const originalOnopen = ws.onopen
+      const originalOnclose = ws.onclose
+      const originalClose = ws.close.bind(ws)
       ws.onopen = () => {
         diag.onopenCalled = true
         originalOnopen?.()
+      }
+      ws.onclose = (event) => {
+        diag.oncloseFiredCount += 1
+        if (!diag.onopenCalled) diag.oncloseFiredPreOpen = true
+        originalOnclose?.(event)
+      }
+      ws.close = (code?: number, reason?: string) => {
+        diag.closeMethodCalled = true
+        originalClose(code, reason)
       }
       const originalSend = ws.send.bind(ws)
       ws.send = (data: string) => {
@@ -517,6 +539,7 @@ const handler = vi.fn()
       }
 
       ws.simulateOpen()
+      diag.storeConnectedPostOpen = useWebSocketStore.getState().connected
 
       // First message should be the auth action (exactly 1 message before subscriptions)
       if (ws.sentMessages.length !== 1) {
