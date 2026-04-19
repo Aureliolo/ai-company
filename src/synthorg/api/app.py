@@ -15,7 +15,7 @@ import time
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path, PurePath
-from typing import TYPE_CHECKING, Any, get_args
+from typing import TYPE_CHECKING, Any, cast, get_args
 from urllib.parse import unquote, urlparse
 
 from litestar import Controller, Litestar, Request, Router
@@ -1129,8 +1129,13 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
         if _training_memory_backend is not None:
             disconnect = getattr(_training_memory_backend, "disconnect", None)
             if callable(disconnect):
+                # getattr + callable narrow statically only to ``object``
+                # and "something callable", so the return type isn't
+                # inferable.  Backends that expose a ``disconnect`` method
+                # always return ``Awaitable[None]`` by contract
+                # (see ``MemoryBackend.disconnect`` in training/memory).
                 await _try_stop(
-                    disconnect(),
+                    cast("Awaitable[None]", disconnect()),
                     API_APP_SHUTDOWN,
                     "Failed to disconnect training memory backend",
                 )
@@ -2573,6 +2578,40 @@ def _auth_identifier_for_request(
     return get_remote_address(request)
 
 
+def _throttle_when_anonymous(
+    request: Request[Any, Any, Any],
+) -> bool:
+    """Throttle-gate for the anonymous tier.
+
+    The auth middleware runs before the rate-limit middleware (see
+    middleware order at the bottom of :func:`create_app`'s middleware
+    builder), so ``scope["user"]`` is authoritatively populated --
+    either the real ``AuthenticatedUser`` after JWT/API-key
+    verification, or ``None`` for auth-excluded paths
+    (``/auth/login``, ``/auth/setup`` etc.) which the auth middleware
+    skips.  A forged session cookie cannot bypass this check: if the
+    JWT didn't verify, auth either raised 401 before we got here or
+    left ``user`` unset.
+
+    Returns ``True`` when the request should count against the
+    anonymous bucket, ``False`` when the per-user (auth) tier should
+    handle it instead.
+    """
+    return request.scope.get("user") is None
+
+
+def _throttle_when_authenticated(
+    request: Request[Any, Any, Any],
+) -> bool:
+    """Throttle-gate for the authenticated tier (per user).
+
+    Mirror of :func:`_throttle_when_anonymous`.  Ensures anonymous
+    traffic on auth-excluded paths is counted by the anonymous tier
+    only, not double-counted under its fallback IP identifier.
+    """
+    return request.scope.get("user") is not None
+
+
 def _build_auth_exclude_paths(
     auth: AuthConfig,
     prefix: str,
@@ -2583,6 +2622,12 @@ def _build_auth_exclude_paths(
     """Compute auth middleware exclude paths with fail-safe defaults."""
     setup_status_path = f"^{prefix}/setup/status$"
     metrics_path = f"^{prefix}/metrics$"
+    # Logout must always bypass auth so clients can recover from
+    # stale cookie state (an app-version upgrade invalidates the
+    # session without giving the client a way to clear it).  Kept
+    # as a fail-safe even when operators override
+    # ``auth.exclude_paths`` with a custom list.
+    logout_path = f"^{prefix}/auth/logout$"
     # The OAuth provider redirects the user's browser here without a
     # session cookie, so the global auth middleware has to let it
     # through. CSRF protection is handled by the state token the
@@ -2598,6 +2643,7 @@ def _build_auth_exclude_paths(
             "^/api$",
             f"^{prefix}/auth/setup$",
             f"^{prefix}/auth/login$",
+            logout_path,
             setup_status_path,
             oauth_callback_path,
         )
@@ -2606,6 +2652,8 @@ def _build_auth_exclude_paths(
         exclude_paths = (*exclude_paths, metrics_path)
     if setup_status_path not in exclude_paths:
         exclude_paths = (*exclude_paths, setup_status_path)
+    if logout_path not in exclude_paths:
+        exclude_paths = (*exclude_paths, logout_path)
     if ws_path not in exclude_paths:
         exclude_paths = (*exclude_paths, ws_path)
     if oauth_callback_path not in exclude_paths:
@@ -2627,14 +2675,31 @@ def _build_middleware(
 ) -> list[Middleware]:
     """Build the middleware stack from configuration.
 
-    Two rate-limit tiers are stacked around the auth middleware:
+    Three rate-limit tiers surround the auth middleware:
 
-    1. **Unauth tier** (outermost) -- keyed by client IP, low budget.
+    1. **IP floor** (outermost) -- keyed by client IP, high budget,
+       un-gated.  Counts every request that reaches the app, including
+       ones the auth middleware will reject with 401.  Protects
+       against floods of forged-token traffic on protected endpoints.
     2. Auth middleware -- populates ``scope["user"]``.
-    3. Request logging.
-    4. **Auth tier** (innermost) -- keyed by user ID, high budget.
+    3. CSRF middleware -- double-submit validation for cookie
+       sessions (exempt login/setup/logout/health).
+    4. **Unauth tier** -- keyed by client IP, low budget, fires only
+       when ``scope["user"]`` is ``None`` (aggressive cap on
+       brute-force against login/setup).
+    5. Request logging.
+    6. **Auth tier** (innermost) -- keyed by user ID, high budget,
+       fires only when ``scope["user"]`` is set.  Prevents a single
+       authenticated user from abusing the API.
 
-    When ``trusted_proxies`` is configured, the unauth tier reads
+    Auth runs before both user-gated tiers so ``scope["user"]`` is
+    authoritatively populated for the ``check_throttle_handler``
+    branch: the unauth tier never double-counts authenticated
+    parallel flows (the original 429-storm on the setup wizard) and
+    the auth tier never mis-counts anonymous traffic.  The IP floor
+    runs before auth so invalid-auth floods still hit a rate cap.
+
+    When ``trusted_proxies`` is configured, IP-based tiers read
     ``X-Forwarded-For`` to extract the real client IP. Without it,
     all clients behind a proxy share one IP-based rate limit bucket.
     """
@@ -2659,16 +2724,40 @@ def _build_middleware(
         rl_exclude.append(ws_path)
 
     unauth_identifier = _build_unauth_identifier(trusted)
+    # Un-gated per-IP floor.  Runs outermost so every request is
+    # counted, including ones the auth middleware will reject with
+    # 401 -- otherwise an attacker could flood protected routes with
+    # forged tokens and burn auth-verification cycles without ever
+    # tripping a rate cap (the user-gated unauth tier below never
+    # sees auth-rejected traffic because auth runs after the floor
+    # but before the user-gated tiers).
+    ip_floor_rate_limit = LitestarRateLimitConfig(
+        rate_limit=(rl.time_unit, rl.floor_max_requests),  # type: ignore[arg-type]
+        exclude=rl_exclude,
+        identifier_for_request=unauth_identifier,
+        store="rate_limit_floor",
+    )
     unauth_rate_limit = LitestarRateLimitConfig(
         rate_limit=(rl.time_unit, rl.unauth_max_requests),  # type: ignore[arg-type]
         exclude=rl_exclude,
         identifier_for_request=unauth_identifier,
+        # Only throttle requests without an authenticated user.  The
+        # auth middleware is ordered before this tier (see the return
+        # at the end of this function), so ``scope["user"]`` is
+        # either a verified ``AuthenticatedUser`` or ``None`` for
+        # auth-excluded paths -- a forged session cookie cannot bypass
+        # this check.  Without the gate, every authenticated request
+        # would count against the 20/min/IP cap and parallel dashboard
+        # flows (e.g. setup wizard probing N presets) would hit spurious
+        # 429s.
+        check_throttle_handler=_throttle_when_anonymous,
         store="rate_limit_unauth",
     )
     auth_rate_limit = LitestarRateLimitConfig(
         rate_limit=(rl.time_unit, rl.auth_max_requests),  # type: ignore[arg-type]
         exclude=rl_exclude,
         identifier_for_request=_auth_identifier_for_request,
+        check_throttle_handler=_throttle_when_authenticated,
         store="rate_limit_auth",
     )
 
@@ -2684,11 +2773,16 @@ def _build_middleware(
     auth_middleware = create_auth_middleware_class(auth)
 
     # CSRF middleware: exempt login/setup (they set the cookie, client
-    # cannot carry a CSRF token on the first request) and health.
+    # cannot carry a CSRF token on the first request), logout (clients
+    # may need to clear a stale session whose CSRF cookie was lost --
+    # e.g. on app version upgrade; CSRF-protecting logout is low value
+    # since forcing a logout is a nuisance, not a compromise), and
+    # health.
     csrf_exempt = frozenset(
         {
             f"{prefix}/auth/login",
             f"{prefix}/auth/setup",
+            f"{prefix}/auth/logout",
             f"{prefix}/health",
         }
     )
@@ -2697,10 +2791,23 @@ def _build_middleware(
         exempt_paths=csrf_exempt,
     )
 
+    # Middleware order (outside-in, i.e. request flow):
+    #   1. ip_floor_rate_limit -- un-gated IP cap; counts every request,
+    #                             including ones auth rejects with 401
+    #   2. auth_middleware     -- resolves identity, populates scope["user"]
+    #   3. csrf_middleware     -- validates double-submit for cookie sessions
+    #   4. unauth_rate_limit   -- 20/min/IP for requests where user is None
+    #   5. RequestLoggingMiddleware
+    #   6. auth_rate_limit     -- per-user cap for authenticated requests
+    # The IP floor runs before auth so invalid-auth floods on
+    # protected routes still hit a rate cap.  Auth runs before both
+    # user-gated tiers so they can branch on scope["user"]
+    # deterministically via check_throttle_handler.
     return [
-        unauth_rate_limit.middleware,
-        csrf_middleware,
+        ip_floor_rate_limit.middleware,
         auth_middleware,
+        csrf_middleware,
+        unauth_rate_limit.middleware,
         RequestLoggingMiddleware,
         auth_rate_limit.middleware,
     ]

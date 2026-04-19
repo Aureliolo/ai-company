@@ -93,7 +93,7 @@ All Zustand store **mutation** actions (create/update/delete) MUST follow the `s
 | `AnimatedPresence` | `@/components/ui/animated-presence` | Page transition wrapper (Motion AnimatePresence keyed by route) |
 | `StaggerGroup` / `StaggerItem` | `@/components/ui/stagger-group` | Card entrance stagger container with configurable delay |
 | `Drawer` | `@/components/ui/drawer` | Slide-in panel (Base UI Drawer, `side`: left or right, default right) with overlay, CSS transitions, focus management + swipe-to-dismiss via Base UI, Escape-to-close, optional header (`title`), `ariaLabel` for accessible name (one of `title` or `ariaLabel` required), and `contentClassName` override |
-| `InputField` | `@/components/ui/input-field` | Labeled text input with error/hint display, optional multiline textarea mode |
+| `InputField` | `@/components/ui/input-field` | Labeled text input with error/hint display, optional multiline textarea mode, and optional `leadingIcon` (decorative, pointer-events-none) / `trailingElement` (interactive slot, e.g. clear button) that are positioned relative to the input box, not the labeled wrapper |
 | `SelectField` | `@/components/ui/select-field` | Labeled select dropdown with error/hint and placeholder support |
 | `SliderField` | `@/components/ui/slider-field` | Labeled range slider with custom value formatter and aria-live display |
 | `ToggleField` | `@/components/ui/toggle-field` | Labeled toggle switch (role="switch") with optional description text |

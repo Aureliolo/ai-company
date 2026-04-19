@@ -1,7 +1,9 @@
 """Tests for AuthController endpoints."""
 
 from typing import Any
+from unittest.mock import AsyncMock
 
+import jwt
 import pytest
 from litestar.testing import TestClient
 
@@ -595,3 +597,133 @@ class TestSystemUserBlocking:
             },
         )
         assert response.status_code == 201
+
+
+@pytest.mark.unit
+class TestLogoutIdempotency:
+    """The ``POST /auth/logout`` endpoint must be idempotent.
+
+    Regardless of whether the caller is authenticated -- or whether
+    the server-side session store call succeeds -- logout must always
+    return 204 and emit clear-cookie + ``Clear-Site-Data`` headers so
+    clients can recover from stale cookie state.
+    """
+
+    def _assert_clear_cookies(self, response: Any) -> None:
+        """Assert each clear-cookie header carries ``Max-Age=0``.
+
+        Checking ``max-age=0`` on the concatenated string would still
+        pass if one cookie regressed while another kept the attribute.
+        Match each expected cookie header individually so a regression
+        on any single cookie is caught.
+        """
+        set_cookies = [
+            v for k, v in response.headers.multi_items() if k == "set-cookie"
+        ]
+        for cookie_name in ("session", "csrf_token", "refresh_token"):
+            matching = [
+                c for c in set_cookies if c.lower().startswith(f"{cookie_name}=")
+            ]
+            assert matching, f"missing Set-Cookie for {cookie_name}"
+            assert "max-age=0" in matching[0].lower(), (
+                f"{cookie_name} cookie lacks Max-Age=0: {matching[0]}"
+            )
+        assert response.headers.get("Clear-Site-Data") == '"cookies"'
+
+    def test_logout_without_auth_returns_204_with_clear_cookies(
+        self,
+        bare_client: TestClient[Any],
+    ) -> None:
+        # No Authorization header, no session cookie -- the idempotent
+        # logout still has to work so clients with stale cookies can
+        # clear them.
+        response = bare_client.post("/api/v1/auth/logout")
+        assert response.status_code == 204
+        self._assert_clear_cookies(response)
+
+    def test_logout_with_invalid_bearer_still_returns_204(
+        self,
+        bare_client: TestClient[Any],
+    ) -> None:
+        response = bare_client.post(
+            "/api/v1/auth/logout",
+            headers={"Authorization": "Bearer not-a-real-token"},
+        )
+        assert response.status_code == 204
+        self._assert_clear_cookies(response)
+
+    @staticmethod
+    def _install_spy_session_store(
+        app_state: Any,
+        revoke_spy: AsyncMock,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Attach a minimal mock session store exposing ``revoke``.
+
+        The ``bare_client`` shared fixture runs against a persistence
+        backend that doesn't expose a raw DB, so ``has_session_store``
+        is ``False`` by default.  Spoof it with a namespace whose
+        ``revoke`` is the spy we want to observe.
+        """
+        from types import SimpleNamespace
+
+        monkeypatch.setattr(
+            app_state,
+            "_session_store",
+            SimpleNamespace(revoke=revoke_spy),
+        )
+
+    def test_logout_with_valid_auth_returns_204_and_revokes_session(
+        self,
+        bare_client: TestClient[Any],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        app_state = bare_client.app.state["app_state"]
+        # Spy on revoke so we can assert the server-side record
+        # was invalidated.  Because ``/auth/logout`` is in
+        # ``auth.exclude_paths`` the auth middleware does not run
+        # on this route -- the handler must therefore extract the
+        # JTI itself and call revoke directly.
+        revoke_spy = AsyncMock(return_value=None)
+        self._install_spy_session_store(app_state, revoke_spy, monkeypatch)
+
+        headers = make_auth_headers(role=HumanRole.CEO)
+        token = headers["Authorization"].removeprefix("Bearer ")
+        expected_jti = jwt.decode(
+            token,
+            _TEST_JWT_SECRET,
+            algorithms=["HS256"],
+        )["jti"]
+
+        response = bare_client.post(
+            "/api/v1/auth/logout",
+            headers=headers,
+        )
+        assert response.status_code == 204
+        self._assert_clear_cookies(response)
+        revoke_spy.assert_awaited_once_with(expected_jti)
+
+    def test_logout_still_204_when_session_store_revoke_fails(
+        self,
+        bare_client: TestClient[Any],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        app_state = bare_client.app.state["app_state"]
+        # Spy that raises -- proves the handler both *invokes*
+        # revoke AND correctly catches the failure while still
+        # returning 204 with clear cookies (idempotent contract).
+        revoke_spy = AsyncMock(
+            side_effect=RuntimeError("simulated session store failure"),
+        )
+        self._install_spy_session_store(app_state, revoke_spy, monkeypatch)
+
+        response = bare_client.post(
+            "/api/v1/auth/logout",
+            headers=make_auth_headers(role=HumanRole.CEO),
+        )
+        # Idempotent contract: the client is trying to recover from
+        # stale state, so a transient revoke failure must not mask
+        # the cookie-clear with a 500.
+        assert response.status_code == 204
+        self._assert_clear_cookies(response)
+        revoke_spy.assert_awaited_once()

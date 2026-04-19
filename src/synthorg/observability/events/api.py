@@ -103,6 +103,7 @@ API_SESSION_REVOKED: Final[str] = "api.session.revoked"
 API_SESSION_LISTED: Final[str] = "api.session.listed"
 API_SESSION_CLEANUP: Final[str] = "api.session.cleanup"
 API_SESSION_FORCE_LOGOUT: Final[str] = "api.session.force_logout"
+API_SESSION_REVOKE_FAILED: Final[str] = "api.session.revoke_failed"
 API_SESSION_LIMIT_ENFORCED: Final[str] = "api.session.limit_enforced"
 
 # CSRF

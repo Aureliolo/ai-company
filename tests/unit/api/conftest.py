@@ -286,6 +286,10 @@ def root_config() -> RootConfig:
         company_name="test-company",
         api=ApiConfig(
             rate_limit=RateLimitConfig(
+                # Floor must be >= auth_max_requests (validator);
+                # raise it in lockstep so test traffic never trips
+                # the IP floor under xdist parallelism.
+                floor_max_requests=1_000_000,
                 unauth_max_requests=1_000_000,
                 auth_max_requests=1_000_000,
             ),

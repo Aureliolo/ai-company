@@ -12,6 +12,18 @@ interface BaseFieldProps {
 interface InputProps extends BaseFieldProps, Omit<React.ComponentProps<'input'>, 'id'> {
   multiline?: false
   ref?: React.Ref<HTMLInputElement>
+  /**
+   * Decorative leading icon rendered inside the input. Positioned relative to
+   * the input box (not the label), so it stays vertically centered on the
+   * input. Receives `pointer-events-none` automatically.
+   */
+  leadingIcon?: React.ReactNode
+  /**
+   * Trailing element rendered inside the input (e.g. a clear button).
+   * Unlike `leadingIcon`, pointer events pass through -- consumers are
+   * responsible for interactivity.
+   */
+  trailingElement?: React.ReactNode
 }
 
 interface TextareaProps extends BaseFieldProps, Omit<React.ComponentProps<'textarea'>, 'id'> {
@@ -21,9 +33,28 @@ interface TextareaProps extends BaseFieldProps, Omit<React.ComponentProps<'texta
 
 export type InputFieldProps = InputProps | TextareaProps
 
-export function InputField({
-  label, error, hint, multiline, className, ref, onValueChange, onChange, ...props
-}: InputFieldProps) {
+export function InputField(props: InputFieldProps) {
+  // Single destructuring handles both variants.  ``leadingIcon`` and
+  // ``trailingElement`` only exist on ``InputProps``; destructuring them
+  // in the signature means they are **always** stripped from ``domProps``
+  // (which spreads onto the HTML element), so a future addition to
+  // ``InputProps`` cannot silently leak onto the DOM.
+  const {
+    label,
+    error,
+    hint,
+    multiline,
+    className,
+    ref,
+    onValueChange,
+    onChange,
+    leadingIcon,
+    trailingElement,
+    ...domProps
+  } = props as InputFieldProps & {
+    leadingIcon?: React.ReactNode
+    trailingElement?: React.ReactNode
+  }
   const id = useId()
   const errorId = `${id}-error`
   const hintId = `${id}-hint`
@@ -35,6 +66,8 @@ export function InputField({
     'focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent',
     'disabled:opacity-60 disabled:cursor-not-allowed',
     hasError ? 'border-danger' : 'border-border',
+    leadingIcon ? 'pl-8' : undefined,
+    trailingElement ? 'pr-8' : undefined,
     className,
   )
 
@@ -52,7 +85,9 @@ export function InputField({
     <div className="flex flex-col gap-1.5">
       <label htmlFor={id} className="text-sm font-medium text-foreground">
         {label}
-        {props.required && <span className="ml-0.5 text-danger">*</span>}
+        {Boolean((domProps as { required?: boolean }).required) && (
+          <span className="ml-0.5 text-danger">*</span>
+        )}
       </label>
       {multiline ? (
         <textarea
@@ -63,19 +98,34 @@ export function InputField({
           aria-describedby={hint && !hasError ? hintId : undefined}
           className={cn(inputClasses, 'resize-y')}
           onChange={handleTextareaChange}
-          {...(props as Omit<React.ComponentProps<'textarea'>, 'onChange'>)}
+          {...(domProps as Omit<React.ComponentProps<'textarea'>, 'id' | 'onChange'>)}
         />
       ) : (
-        <input
-          id={id}
-          ref={ref as React.Ref<HTMLInputElement>}
-          aria-invalid={hasError}
-          aria-errormessage={hasError ? errorId : undefined}
-          aria-describedby={hint && !hasError ? hintId : undefined}
-          className={inputClasses}
-          onChange={handleInputChange}
-          {...(props as Omit<React.ComponentProps<'input'>, 'onChange'>)}
-        />
+        <div className="relative">
+          {leadingIcon && (
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute left-2.5 top-1/2 flex -translate-y-1/2 items-center text-muted-foreground"
+            >
+              {leadingIcon}
+            </span>
+          )}
+          <input
+            id={id}
+            ref={ref as React.Ref<HTMLInputElement>}
+            aria-invalid={hasError}
+            aria-errormessage={hasError ? errorId : undefined}
+            aria-describedby={hint && !hasError ? hintId : undefined}
+            className={inputClasses}
+            onChange={handleInputChange}
+            {...(domProps as Omit<React.ComponentProps<'input'>, 'id' | 'onChange'>)}
+          />
+          {trailingElement && (
+            <span className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center">
+              {trailingElement}
+            </span>
+          )}
+        </div>
       )}
       {hint && !hasError && (
         <p id={hintId} className="text-xs text-muted-foreground">{hint}</p>
