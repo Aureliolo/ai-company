@@ -359,16 +359,28 @@ jobs:
             echo "::error::Vitest exited with $tests_exit -- see suite failures above."
             exit "$tests_exit"
           fi
-          # Strict parser: fail if Vitest did not emit a `Leaks N leaks` line
-          # at all (format drift or --detect-async-leaks not applied) rather
-          # than silently passing with a default of 0.
-          leaks_line=$(grep -oE 'Leaks +[0-9]+ leaks' vitest-output.log | tail -1 || true)
+          # Strict parser: fail if Vitest did not emit a `Leaks N leaks`
+          # line at all (format drift or --detect-async-leaks not applied)
+          # rather than silently passing with a default of 0.
+          #
+          # Vitest's `BaseReporter` writes the leak summary line near the
+          # very end of the run, after all test console output. Restrict
+          # the search to the last 200 lines so a test's console.log of
+          # something that looks like `Leaks 0 leaks` cannot shadow the
+          # real summary. Then parse the count with a bash regex capture
+          # group so extra digits elsewhere on the line cannot bleed in.
+          leaks_line=$(tail -n 200 vitest-output.log | grep -oE 'Leaks +[0-9]+ leaks' | tail -1 || true)
           if [ -z "$leaks_line" ]; then
-            echo "::error::Could not locate 'Leaks N leaks' line in Vitest output."
+            echo "::error::Could not locate 'Leaks N leaks' line in Vitest output tail."
             echo "::error::Either --detect-async-leaks was not applied, or Vitest changed its output format."
             exit 1
           fi
-          leaks=$(echo "$leaks_line" | grep -oE '[0-9]+' | tail -1)
+          if [[ "$leaks_line" =~ Leaks[[:space:]]+([0-9]+)[[:space:]]+leaks ]]; then
+            leaks="${BASH_REMATCH[1]}"
+          else
+            echo "::error::Failed to extract leak count from line: $leaks_line"
+            exit 1
+          fi
           echo "Detected $leaks async leaks (ceiling: $MAX_ASYNC_LEAKS)."
           if [ "$leaks" -gt "$MAX_ASYNC_LEAKS" ]; then
             echo "::error::Async-leak count $leaks exceeds ceiling $MAX_ASYNC_LEAKS. See issue #1466 and docs/design/web-http-adapter.md."

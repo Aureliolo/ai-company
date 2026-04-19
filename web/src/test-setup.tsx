@@ -13,8 +13,8 @@ import { defaultHandlers } from '@/mocks/handlers'
 // interceptor (`api/client.ts` -> `utils/csrf.ts` -> `document.cookie`) and
 // MSW 2.x's handler parsing (`getAllDocumentCookies`) -- schedules a
 // `createPromiseCallback` that Vitest's `--detect-async-leaks` treats as a
-// leaked Promise. Category `alpha` in `docs/_working/leak-stacks.md` -- 17
-// of 69 baseline leaks trace back to this path.
+// leaked Promise. 17 of the 69 pre-shim baseline leaks traced back to this
+// path; see `docs/design/web-http-adapter.md` for the full investigation.
 //
 // Replace the jsdom descriptor on `Document.prototype` (not on the
 // instance: `getCsrfToken`-style reads resolve through the prototype chain,
@@ -35,7 +35,7 @@ if (typeof document !== 'undefined') {
         .join('; '),
     set: (raw: string) => {
       if (typeof raw !== 'string') return
-      const [pair] = raw.split(';')
+      const pair = raw.split(';')[0] ?? ''
       const eq = pair.indexOf('=')
       if (eq === -1) return
       const name = pair.slice(0, eq).trim()
