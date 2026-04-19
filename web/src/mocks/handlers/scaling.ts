@@ -1,5 +1,6 @@
 import { http, HttpResponse } from 'msw'
 import type {
+  ScalingDecisionResponse,
   getScalingSignals,
   getScalingStrategies,
   triggerScalingEvaluation,
@@ -12,8 +13,11 @@ export const scalingHandlers = [
     HttpResponse.json(successFor<typeof getScalingStrategies>([])),
   ),
   http.get('/api/v1/scaling/decisions', () => {
-    const body: PaginatedResponse<never> = {
-      data: [] as never[],
+    // getScalingDecisions() collapses the paginated response to { data, total }
+    // so paginatedFor<typeof endpoint> cannot be used here. Construct the
+    // wire envelope directly, annotated for compile-time safety.
+    const body: PaginatedResponse<ScalingDecisionResponse> = {
+      data: [],
       error: null,
       error_detail: null,
       success: true,

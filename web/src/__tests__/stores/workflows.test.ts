@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { useWorkflowsStore } from '@/stores/workflows'
 import { useToastStore } from '@/stores/toast'
-import { apiError, apiSuccess, voidSuccess } from '@/mocks/handlers'
+import { apiError, apiSuccess, paginatedFor, voidSuccess } from '@/mocks/handlers'
+import type { listWorkflows } from '@/api/endpoints/workflows'
 import { server } from '@/test-setup'
 import type { WorkflowDefinition } from '@/api/types'
 
@@ -25,13 +26,12 @@ function makeWorkflow(
 }
 
 function paginated(data: WorkflowDefinition[], total?: number) {
-  return {
+  return paginatedFor<typeof listWorkflows>({
     data,
-    error: null,
-    error_detail: null,
-    success: true,
-    pagination: { total: total ?? data.length, offset: 0, limit: 200 },
-  }
+    total: total ?? data.length,
+    offset: 0,
+    limit: 200,
+  })
 }
 
 function resetStore() {
@@ -46,7 +46,7 @@ function resetStore() {
     searchQuery: '',
     workflowTypeFilter: null,
   })
-  useToastStore.setState({ toasts: [] })
+  useToastStore.getState().dismissAll()
 }
 
 beforeEach(() => {

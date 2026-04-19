@@ -2,8 +2,10 @@ import { renderHook, waitFor } from '@testing-library/react'
 import { describe, expect, it, beforeEach } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { useCommunicationEdges } from '@/hooks/useCommunicationEdges'
-import { apiError } from '@/mocks/handlers'
+import { apiError, paginatedFor } from '@/mocks/handlers'
+import type { listMessages } from '@/api/endpoints/messages'
 import { server } from '@/test-setup'
+import type { Message } from '@/api/types'
 
 type MessageSeed = { sender: string; to: string }
 
@@ -11,13 +13,16 @@ function paginated(
   data: MessageSeed[],
   meta: { total: number; offset: number; limit: number },
 ) {
-  return {
-    data,
-    error: null,
-    error_detail: null,
-    success: true,
-    pagination: meta,
-  }
+  return paginatedFor<typeof listMessages>({
+    // Seeds are minimal sender/to records; the hook only reads those two
+    // fields, but paginatedFor's type parameter demands the full Message
+    // shape. Cast through `unknown` to keep the handler focused on the
+    // fields under test.
+    data: data as unknown as Message[],
+    total: meta.total,
+    offset: meta.offset,
+    limit: meta.limit,
+  })
 }
 
 describe('useCommunicationEdges', () => {

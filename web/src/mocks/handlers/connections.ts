@@ -8,7 +8,7 @@ import type {
   updateConnection,
 } from '@/api/endpoints/connections'
 import type { Connection, ConnectionType } from '@/api/types'
-import { apiError, apiSuccess, successFor, voidSuccess } from './helpers'
+import { apiError, successFor, voidSuccess } from './helpers'
 
 const NOW = '2026-04-11T12:00:00Z'
 
@@ -92,11 +92,13 @@ const mockConnections: Connection[] = [
 ]
 
 export const connectionsList = [
-  http.get('/api/v1/connections', () => HttpResponse.json(apiSuccess(mockConnections))),
+  http.get('/api/v1/connections', () =>
+    HttpResponse.json(successFor<typeof listConnections>(mockConnections)),
+  ),
   http.get('/api/v1/connections/:name', ({ params }) => {
     const conn = mockConnections.find((c) => c.name === params.name)
     if (!conn) return HttpResponse.json(apiError('Connection not found'), { status: 404 })
-    return HttpResponse.json(apiSuccess(conn))
+    return HttpResponse.json(successFor<typeof getConnection>(conn))
   }),
   http.post('/api/v1/connections', async ({ request }) => {
     const body = (await request.json()) as Partial<Connection> & { connection_type?: string }
@@ -104,7 +106,7 @@ export const connectionsList = [
       return HttpResponse.json(apiError("Field 'name' is required"), { status: 400 })
     }
     return HttpResponse.json(
-      apiSuccess(
+      successFor<typeof createConnection>(
         buildConnection({
           id: `conn-${String(body.name)}`,
           name: body.name as string,
@@ -117,14 +119,16 @@ export const connectionsList = [
   http.patch('/api/v1/connections/:name', async ({ params }) => {
     const conn = mockConnections.find((c) => c.name === params.name)
     if (!conn) return HttpResponse.json(apiError('Connection not found'), { status: 404 })
-    return HttpResponse.json(apiSuccess({ ...conn, updated_at: NOW }))
+    return HttpResponse.json(
+      successFor<typeof updateConnection>({ ...conn, updated_at: NOW }),
+    )
   }),
-  http.delete('/api/v1/connections/:name', () => HttpResponse.json(apiSuccess(null))),
+  http.delete('/api/v1/connections/:name', () => HttpResponse.json(voidSuccess())),
   http.get('/api/v1/connections/:name/health', ({ params }) => {
     const conn = mockConnections.find((c) => c.name === params.name)
     if (!conn) return HttpResponse.json(apiError('Connection not found'), { status: 404 })
     return HttpResponse.json(
-      apiSuccess({
+      successFor<typeof checkConnectionHealth>({
         connection_name: conn.name,
         status: conn.health_status,
         latency_ms: conn.health_status === 'healthy' ? 42 : null,
@@ -136,13 +140,18 @@ export const connectionsList = [
   }),
   http.get('/api/v1/connections/:name/secrets/:field', ({ params }) =>
     HttpResponse.json(
-      apiSuccess({ field: String(params.field), value: 'revealed-secret-value' }),
+      successFor<typeof revealConnectionSecret>({
+        field: String(params.field),
+        value: 'revealed-secret-value',
+      }),
     ),
   ),
 ]
 
 export const emptyConnectionsList = [
-  http.get('/api/v1/connections', () => HttpResponse.json(apiSuccess([]))),
+  http.get('/api/v1/connections', () =>
+    HttpResponse.json(successFor<typeof listConnections>([])),
+  ),
 ]
 
 // ── Default test handlers: empty list, minimal detail lookups. ──

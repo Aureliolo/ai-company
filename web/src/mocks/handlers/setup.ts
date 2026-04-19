@@ -14,6 +14,7 @@ import type {
   updateAgentPersonality,
 } from '@/api/endpoints/setup'
 import type {
+  PersonalityPresetsListResponse,
   SetupAgentSummary,
   SetupAgentsListResponse,
   SetupStatusResponse,
@@ -153,9 +154,12 @@ export const setupHandlers = [
       ),
     )
   }),
-  http.get('/api/v1/setup/personality-presets', () =>
-    HttpResponse.json(apiSuccess({ presets: [] })),
-  ),
+  http.get('/api/v1/setup/personality-presets', () => {
+    // Endpoint unwraps `.presets`, so the wire shape is
+    // `PersonalityPresetsListResponse` rather than the endpoint's return type.
+    const result: PersonalityPresetsListResponse = { presets: [] }
+    return HttpResponse.json(apiSuccess(result))
+  }),
   http.get('/api/v1/setup/name-locales/available', () =>
     HttpResponse.json(
       successFor<typeof getAvailableLocales>({

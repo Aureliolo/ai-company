@@ -10,7 +10,7 @@ import type {
   triggerDriftCheck,
   updateEntity,
 } from '@/api/endpoints/ontology'
-import { emptyPage, paginatedFor, successFor } from './helpers'
+import { emptyPage, paginatedFor, successFor, voidSuccess } from './helpers'
 
 const NOW = '2026-04-19T00:00:00Z'
 
@@ -58,7 +58,7 @@ export const ontologyHandlers = [
     )
   }),
   http.delete('/api/v1/ontology/entities/:name', () =>
-    new HttpResponse(null, { status: 204 }),
+    HttpResponse.json(voidSuccess()),
   ),
   http.get('/api/v1/ontology/entities/:name/versions', () =>
     HttpResponse.json(paginatedFor<typeof listEntityVersions>(emptyPage())),

@@ -2,28 +2,28 @@ import { waitFor } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { useProjectsStore } from '@/stores/projects'
 import { makeProject, makeTask } from '../helpers/factories'
-import { apiError, apiSuccess } from '@/mocks/handlers'
+import { apiError, apiSuccess, paginatedFor } from '@/mocks/handlers'
+import type { listProjects } from '@/api/endpoints/projects'
+import type { listTasks } from '@/api/endpoints/tasks'
 import { server } from '@/test-setup'
 import type { Project, Task, WsEvent } from '@/api/types'
 
 function paginatedProjects(data: Project[], total?: number) {
-  return {
+  return paginatedFor<typeof listProjects>({
     data,
-    error: null,
-    error_detail: null,
-    success: true,
-    pagination: { total: total ?? data.length, offset: 0, limit: 200 },
-  }
+    total: total ?? data.length,
+    offset: 0,
+    limit: 200,
+  })
 }
 
 function paginatedTasks(data: Task[], total?: number) {
-  return {
+  return paginatedFor<typeof listTasks>({
     data,
-    error: null,
-    error_detail: null,
-    success: true,
-    pagination: { total: total ?? data.length, offset: 0, limit: 50 },
-  }
+    total: total ?? data.length,
+    offset: 0,
+    limit: 50,
+  })
 }
 
 describe('useProjectsStore', () => {

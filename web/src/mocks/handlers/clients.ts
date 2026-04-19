@@ -23,7 +23,7 @@ import type {
   TaskRequirement,
   updateClient,
 } from '@/api/endpoints/clients'
-import { apiError, emptyPage, paginatedFor, successFor } from './helpers'
+import { apiError, emptyPage, paginatedFor, successFor, voidSuccess } from './helpers'
 
 function buildProfile(overrides: Partial<ClientProfile> = {}): ClientProfile {
   return {
@@ -122,9 +122,7 @@ export const clientsHandlers = [
       ),
     )
   }),
-  http.delete('/api/v1/clients/:id', () =>
-    new HttpResponse(null, { status: 204 }),
-  ),
+  http.delete('/api/v1/clients/:id', () => HttpResponse.json(voidSuccess())),
   http.get('/api/v1/clients/:id/satisfaction', ({ params }) =>
     HttpResponse.json(
       successFor<typeof getClientSatisfaction>({

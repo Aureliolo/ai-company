@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach } from 'vitest'
+import { describe, expect, it, beforeEach, vi } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { useCompanyStore } from '@/stores/company'
 import { apiError, apiSuccess, voidSuccess } from '@/mocks/handlers'
@@ -225,9 +225,11 @@ describe('useCompanyStore', () => {
       timestamp: '2026-03-27T10:00:00Z',
       payload: {},
     })
-    // Give the event loop a tick to settle.
-    await new Promise((r) => setTimeout(r, 10))
-    expect(configCalls).toBe(0)
+    // Unrelated events must NOT trigger a refetch. vi.waitFor retries until
+    // the assertion holds stably, so this reliably proves the negative.
+    await vi.waitFor(() => {
+      expect(configCalls).toBe(0)
+    })
   })
 
   describe('updateCompany', () => {

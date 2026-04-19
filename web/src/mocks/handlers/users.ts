@@ -4,6 +4,7 @@ import type {
   listUsers,
   UserResponse,
 } from '@/api/endpoints/users'
+import type { OrgRole } from '@/api/types'
 import { successFor, voidSuccess } from './helpers'
 
 function buildUser(overrides: Partial<UserResponse> = {}): UserResponse {
@@ -25,9 +26,18 @@ export const usersHandlers = [
     HttpResponse.json(successFor<typeof listUsers>([])),
   ),
   http.post('/api/v1/users/:id/org-roles', async ({ params, request }) => {
-    await request.json()
+    const body = (await request.json()) as {
+      role?: OrgRole
+      scoped_departments?: string[]
+    }
     return HttpResponse.json(
-      successFor<typeof grantOrgRole>(buildUser({ id: String(params.id) })),
+      successFor<typeof grantOrgRole>(
+        buildUser({
+          id: String(params.id),
+          org_roles: body.role ? [body.role] : [],
+          scoped_departments: body.scoped_departments ?? [],
+        }),
+      ),
     )
   }),
   http.delete('/api/v1/users/:id/org-roles/:role', () =>

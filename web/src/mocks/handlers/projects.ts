@@ -4,10 +4,9 @@ import type {
   getProject,
   listProjects,
 } from '@/api/endpoints/projects'
-import type { PaginatedResponse, PaginationMeta, Project } from '@/api/types'
+import type { Project } from '@/api/types'
 import {
   apiError,
-  apiSuccess,
   emptyPage,
   paginatedFor,
   successFor,
@@ -53,29 +52,23 @@ const mockProjects: Project[] = [
     status: 'planning',
   }),
 ]
-const paginationStorybook: PaginationMeta = {
-  total: mockProjects.length,
-  offset: 0,
-  limit: 50,
-}
-
 export const projectsList = [
-  http.get('/api/v1/projects', () => {
-    const body: PaginatedResponse<Project> = {
-      data: mockProjects,
-      error: null,
-      error_detail: null,
-      success: true,
-      pagination: paginationStorybook,
-    }
-    return HttpResponse.json(body)
-  }),
+  http.get('/api/v1/projects', () =>
+    HttpResponse.json(
+      paginatedFor<typeof listProjects>({
+        data: mockProjects,
+        total: mockProjects.length,
+        offset: 0,
+        limit: 50,
+      }),
+    ),
+  ),
   http.get('/api/v1/projects/:id', ({ params }) => {
     const project = mockProjects.find((p) => p.id === params.id)
     if (!project) {
       return HttpResponse.json(apiError('Project not found'), { status: 404 })
     }
-    return HttpResponse.json(apiSuccess(project))
+    return HttpResponse.json(successFor<typeof getProject>(project))
   }),
 ]
 

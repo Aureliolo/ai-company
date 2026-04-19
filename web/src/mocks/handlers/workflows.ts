@@ -13,7 +13,10 @@ import type {
   validateWorkflow,
   validateWorkflowDraft,
 } from '@/api/endpoints/workflows'
-import type { WorkflowDefinition } from '@/api/types'
+import type {
+  WorkflowDefinition,
+  WorkflowDefinitionVersionSummary,
+} from '@/api/types'
 import { emptyPage, paginatedFor, successFor, voidSuccess } from './helpers'
 
 const NOW = '2026-04-19T00:00:00Z'
@@ -97,7 +100,11 @@ export const workflowsHandlers = [
     }),
   ),
   http.get('/api/v1/workflows/:id/versions', () =>
-    HttpResponse.json(paginatedFor<typeof listWorkflowVersions>(emptyPage())),
+    HttpResponse.json(
+      paginatedFor<typeof listWorkflowVersions>(
+        emptyPage<WorkflowDefinitionVersionSummary>(),
+      ),
+    ),
   ),
   http.get('/api/v1/workflows/:id/versions/:version', ({ params }) =>
     HttpResponse.json(

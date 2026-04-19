@@ -91,7 +91,7 @@ export const mcpCatalogHandlers = [
     )
   }),
   http.delete('/api/v1/integrations/mcp/catalog/install/:entryId', () =>
-    HttpResponse.json(apiSuccess(null)),
+    HttpResponse.json(voidSuccess()),
   ),
 ]
 

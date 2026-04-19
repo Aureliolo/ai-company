@@ -34,11 +34,11 @@ export function buildEscalation(
 function buildResponse(
   overrides: Partial<EscalationResponse> = {},
 ): EscalationResponse {
-  const esc = buildEscalation()
+  const esc = overrides.escalation ?? buildEscalation()
   return {
     escalation: esc,
-    conflict_id: esc.conflict.id,
-    status: esc.status,
+    conflict_id: overrides.conflict_id ?? esc.conflict.id,
+    status: overrides.status ?? esc.status,
     ...overrides,
   }
 }

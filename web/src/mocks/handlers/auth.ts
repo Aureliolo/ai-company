@@ -46,12 +46,14 @@ export const authSetupSuccess = [
 // ── Default test handlers: exhaustive coverage of every auth endpoint. ──
 
 export const authHandlers = [
-  http.post('/api/v1/auth/setup', () =>
-    HttpResponse.json(successFor<typeof setup>(mockAuthResponse)),
-  ),
-  http.post('/api/v1/auth/login', () =>
-    HttpResponse.json(successFor<typeof login>(mockAuthResponse)),
-  ),
+  http.post('/api/v1/auth/setup', () => {
+    document.cookie = 'csrf_token=mock-csrf-token; path=/api'
+    return HttpResponse.json(successFor<typeof setup>(mockAuthResponse))
+  }),
+  http.post('/api/v1/auth/login', () => {
+    document.cookie = 'csrf_token=mock-csrf-token; path=/api'
+    return HttpResponse.json(successFor<typeof login>(mockAuthResponse))
+  }),
   http.post('/api/v1/auth/logout', () => HttpResponse.json(voidSuccess())),
   http.post('/api/v1/auth/change-password', () =>
     HttpResponse.json(successFor<typeof changePassword>(buildUser())),

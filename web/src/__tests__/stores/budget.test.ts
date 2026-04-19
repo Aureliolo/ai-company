@@ -11,6 +11,7 @@ import type {
 import { apiError, apiSuccess } from '@/mocks/handlers'
 import { server } from '@/test-setup'
 import { useBudgetStore } from '@/stores/budget'
+import { DEFAULT_CURRENCY } from '@/utils/currencies'
 
 const mockOverview: OverviewMetrics = {
   total_tasks: 10,
@@ -22,7 +23,7 @@ const mockOverview: OverviewMetrics = {
   cost_7d_trend: [],
   active_agents_count: 3,
   idle_agents_count: 2,
-  currency: 'EUR',
+  currency: DEFAULT_CURRENCY,
 }
 
 const mockBudgetConfig: BudgetConfig = {
@@ -37,7 +38,7 @@ const mockBudgetConfig: BudgetConfig = {
     boundary: 'task_assignment',
   },
   reset_day: 1,
-  currency: 'EUR',
+  currency: DEFAULT_CURRENCY,
 }
 
 const mockForecast: ForecastResponse = {
@@ -47,7 +48,7 @@ const mockForecast: ForecastResponse = {
   days_until_exhausted: 20,
   confidence: 0.8,
   avg_daily_spend: 3,
-  currency: 'EUR',
+  currency: DEFAULT_CURRENCY,
 }
 
 const mockTrends: TrendsResponse = {
@@ -93,12 +94,14 @@ const mockAgent = {
   hiring_date: '2026-01-01T00:00:00Z',
 }
 
+type HandlerFn = () => Response | Promise<Response>
+
 type FixtureOverrides = Partial<{
-  overview: unknown
-  budget: unknown
-  forecast: unknown
+  overview: HandlerFn
+  budget: HandlerFn
+  forecast: HandlerFn
   records: unknown
-  trends: unknown
+  trends: HandlerFn
   agents: unknown
   activities: unknown
 }>
@@ -120,9 +123,9 @@ function installDefaults(overrides: FixtureOverrides = {}) {
             total_input_tokens: 100,
             total_output_tokens: 50,
             record_count: 1,
-            currency: 'EUR',
+            currency: DEFAULT_CURRENCY,
           },
-          currency: 'EUR',
+          currency: DEFAULT_CURRENCY,
         }
   const agentsBody =
     overrides.agents !== undefined
@@ -147,17 +150,17 @@ function installDefaults(overrides: FixtureOverrides = {}) {
   server.use(
     http.get('/api/v1/analytics/overview', () =>
       overrides.overview !== undefined
-        ? (overrides.overview as (() => Response))()
+        ? overrides.overview()
         : HttpResponse.json(apiSuccess(mockOverview)),
     ),
     http.get('/api/v1/budget/config', () =>
       overrides.budget !== undefined
-        ? (overrides.budget as (() => Response))()
+        ? overrides.budget()
         : HttpResponse.json(apiSuccess(mockBudgetConfig)),
     ),
     http.get('/api/v1/analytics/forecast', () =>
       overrides.forecast !== undefined
-        ? (overrides.forecast as (() => Response))()
+        ? overrides.forecast()
         : HttpResponse.json(apiSuccess(mockForecast)),
     ),
     http.get('/api/v1/budget/records', () =>
@@ -165,7 +168,7 @@ function installDefaults(overrides: FixtureOverrides = {}) {
     ),
     http.get('/api/v1/analytics/trends', () =>
       overrides.trends !== undefined
-        ? (overrides.trends as (() => Response))()
+        ? overrides.trends()
         : HttpResponse.json(apiSuccess(mockTrends)),
     ),
     http.get('/api/v1/activities', () => HttpResponse.json(activitiesBody)),

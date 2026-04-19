@@ -3,7 +3,8 @@ import { http, HttpResponse } from 'msw'
 import { useApprovalsStore, _resetPendingTransitions } from '@/stores/approvals'
 import { useToastStore } from '@/stores/toast'
 import { makeApproval } from '../helpers/factories'
-import { apiError, apiSuccess } from '@/mocks/handlers'
+import { apiError, apiSuccess, paginatedFor } from '@/mocks/handlers'
+import type { listApprovals } from '@/api/endpoints/approvals'
 import { server } from '@/test-setup'
 import type { ApprovalResponse, WsEvent } from '@/api/types'
 
@@ -11,17 +12,12 @@ function paginated(
   data: ApprovalResponse[],
   meta: Partial<{ total: number; offset: number; limit: number }> = {},
 ) {
-  return {
+  return paginatedFor<typeof listApprovals>({
     data,
-    error: null,
-    error_detail: null,
-    success: true,
-    pagination: {
-      total: meta.total ?? data.length,
-      offset: meta.offset ?? 0,
-      limit: meta.limit ?? 200,
-    },
-  }
+    total: meta.total ?? data.length,
+    offset: meta.offset ?? 0,
+    limit: meta.limit ?? 200,
+  })
 }
 
 function resetStore() {
@@ -40,10 +36,11 @@ function resetStore() {
 
 beforeEach(() => {
   resetStore()
-  useToastStore.setState({ toasts: [] })
+  useToastStore.getState().dismissAll()
 })
 
 afterEach(() => {
+  useToastStore.getState().dismissAll()
   vi.restoreAllMocks()
 })
 

@@ -36,7 +36,6 @@ const mockTask: Task = {
 type FetchMode =
   | { kind: 'resolve'; task: Task }
   | { kind: 'error'; message: string }
-  | { kind: 'pending'; release: () => void }
 
 const fetchState: { mode: FetchMode } = {
   mode: { kind: 'resolve', task: mockTask },
@@ -44,17 +43,8 @@ const fetchState: { mode: FetchMode } = {
 
 function installTaskHandler() {
   server.use(
-    http.get('/api/v1/tasks/:id', async () => {
+    http.get('/api/v1/tasks/:id', () => {
       const mode = fetchState.mode
-      if (mode.kind === 'pending') {
-        await new Promise<void>((resolve) => {
-          // The release() provided when install-time pending mode is set
-          // owns its own resolver; we just wait here indefinitely until
-          // the test releases.
-          fetchState.mode = { kind: 'pending', release: resolve }
-        })
-        return HttpResponse.json(apiSuccess(mockTask))
-      }
       if (mode.kind === 'error') {
         return HttpResponse.json(apiError(mode.message))
       }

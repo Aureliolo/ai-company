@@ -1,8 +1,11 @@
 import { http, HttpResponse } from 'msw'
 import { useAnalyticsStore } from '@/stores/analytics'
-import { apiError, apiSuccess } from '@/mocks/handlers'
+import { apiError, apiSuccess, paginatedFor } from '@/mocks/handlers'
+import type { listActivities } from '@/api/endpoints/activities'
+import type { listDepartments } from '@/api/endpoints/company'
 import { server } from '@/test-setup'
-import type { ActivityItem, WsEvent } from '@/api/types'
+import { DEFAULT_CURRENCY } from '@/utils/currencies'
+import type { ActivityItem, Department, WsEvent } from '@/api/types'
 
 const mockOverview = {
   total_tasks: 24,
@@ -25,7 +28,7 @@ const mockOverview = {
   cost_7d_trend: [],
   active_agents_count: 5,
   idle_agents_count: 4,
-  currency: 'EUR',
+  currency: DEFAULT_CURRENCY,
 }
 
 const mockForecast = {
@@ -35,7 +38,7 @@ const mockForecast = {
   days_until_exhausted: null,
   confidence: 0.85,
   avg_daily_spend: 6.5,
-  currency: 'EUR',
+  currency: DEFAULT_CURRENCY,
 }
 
 const mockBudgetConfig = {
@@ -50,14 +53,14 @@ const mockBudgetConfig = {
     boundary: 'task_assignment',
   },
   reset_day: 1,
-  currency: 'EUR',
+  currency: DEFAULT_CURRENCY,
 }
 
 const mockDeptHealth = {
   department_name: 'engineering',
   agent_count: 4,
   active_agent_count: 3,
-  currency: 'EUR',
+  currency: DEFAULT_CURRENCY,
   avg_performance_score: 8.0,
   department_cost_7d: 10.0,
   cost_trend: [],
@@ -65,13 +68,15 @@ const mockDeptHealth = {
   utilization_percent: 85,
 }
 
+type HandlerReturn = Response | Promise<Response>
+
 type Overrides = Partial<{
-  overview: () => Response
-  forecast: () => Response
-  budget: () => Response
-  activities: () => Response
-  departments: () => Response
-  departmentHealth: (name: string) => Response
+  overview: () => HandlerReturn
+  forecast: () => HandlerReturn
+  budget: () => HandlerReturn
+  activities: () => HandlerReturn
+  departments: () => HandlerReturn
+  departmentHealth: (name: string) => HandlerReturn
 }>
 
 function installDefaults(overrides: Overrides = {}) {
@@ -94,24 +99,26 @@ function installDefaults(overrides: Overrides = {}) {
     http.get('/api/v1/activities', () =>
       overrides.activities
         ? overrides.activities()
-        : HttpResponse.json({
-            data: [],
-            error: null,
-            error_detail: null,
-            success: true,
-            pagination: { total: 0, offset: 0, limit: 20 },
-          }),
+        : HttpResponse.json(
+            paginatedFor<typeof listActivities>({
+              data: [] as ActivityItem[],
+              total: 0,
+              offset: 0,
+              limit: 20,
+            }),
+          ),
     ),
     http.get('/api/v1/departments', () =>
       overrides.departments
         ? overrides.departments()
-        : HttpResponse.json({
-            data: [],
-            error: null,
-            error_detail: null,
-            success: true,
-            pagination: { total: 0, offset: 0, limit: 50 },
-          }),
+        : HttpResponse.json(
+            paginatedFor<typeof listDepartments>({
+              data: [] as Department[],
+              total: 0,
+              offset: 0,
+              limit: 50,
+            }),
+          ),
     ),
     http.get('/api/v1/departments/:name/health', ({ params }) =>
       overrides.departmentHealth

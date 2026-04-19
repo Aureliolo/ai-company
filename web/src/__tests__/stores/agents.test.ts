@@ -153,6 +153,7 @@ function installAgentHandlers(f: Fixture = {}) {
 }
 
 beforeEach(() => {
+  useToastStore.getState().dismissAll()
   useAgentsStore.setState({
     agents: [],
     totalAgents: 0,

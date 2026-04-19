@@ -145,7 +145,7 @@ describe('auth store', () => {
 
       await expect(
         useAuthStore.getState().login('admin', 'wrong'),
-      ).rejects.toThrow()
+      ).rejects.toThrow(/bad credentials/)
       expect(useAuthStore.getState().loading).toBe(false)
     })
   })

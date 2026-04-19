@@ -18,7 +18,7 @@ export const tunnelHandlers = [
   }),
   http.post('/api/v1/integrations/tunnel/stop', () => {
     tunnelState.url = null
-    return HttpResponse.json(apiSuccess(null))
+    return HttpResponse.json(voidSuccess())
   }),
 ]
 

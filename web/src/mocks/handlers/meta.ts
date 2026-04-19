@@ -33,8 +33,20 @@ export const metaHandlers = [
     HttpResponse.json(successFor<typeof listABTests>([])),
   ),
   http.post('/api/v1/meta/chat', async ({ request }) => {
-    const body = (await request.json()) as { question?: string }
-    if (!body.question || !body.question.trim()) {
+    let body: unknown
+    try {
+      body = await request.json()
+    } catch {
+      return HttpResponse.json(apiError('Question must not be blank'), {
+        status: 400,
+      })
+    }
+    if (
+      !body ||
+      typeof body !== 'object' ||
+      typeof (body as { question?: unknown }).question !== 'string' ||
+      !(body as { question: string }).question.trim()
+    ) {
       return HttpResponse.json(apiError('Question must not be blank'), {
         status: 400,
       })

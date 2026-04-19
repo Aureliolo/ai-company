@@ -55,7 +55,6 @@ function setupStatusResponse(overrides: Record<string, unknown> = {}) {
 
 type SetupMode =
   | { kind: 'success'; body: ReturnType<typeof setupStatusResponse> }
-  | { kind: 'pending'; release: () => void; body: ReturnType<typeof setupStatusResponse> }
   | { kind: 'error' }
 
 let setupMode: SetupMode = {
@@ -66,32 +65,11 @@ let setupMode: SetupMode = {
 function installSetupStatus(mode: SetupMode) {
   setupMode = mode
   server.use(
-    http.get('/api/v1/setup/status', async () => {
+    http.get('/api/v1/setup/status', () => {
       if (setupMode.kind === 'error') {
         return HttpResponse.json(apiError('network error'))
       }
-      if (setupMode.kind === 'pending') {
-        await new Promise<void>((resolve) => {
-          setupMode = {
-            ...setupMode,
-            release: resolve,
-          } as SetupMode
-          if (setupMode.kind === 'pending') {
-            // Chain the external resolver so callers can release.
-            const externalRelease = (setupMode as typeof setupMode).release
-            if (externalRelease !== resolve) {
-              externalRelease()
-            }
-          }
-        })
-        if (setupMode.kind === 'pending') {
-          return HttpResponse.json(apiSuccess(setupMode.body))
-        }
-      }
-      if (setupMode.kind === 'success') {
-        return HttpResponse.json(apiSuccess(setupMode.body))
-      }
-      return HttpResponse.json(apiError('unexpected'))
+      return HttpResponse.json(apiSuccess(setupMode.body))
     }),
   )
 }

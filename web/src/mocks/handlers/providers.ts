@@ -45,6 +45,12 @@ export function buildProvider(
   }
 }
 
+const DEFAULT_DISCOVERY_POLICY = {
+  host_port_allowlist: [],
+  block_private_ips: true,
+  entry_count: 0,
+} as const
+
 /** Default SSE stream emits one completion event -- suitable for tests that
  * just verify pullModel resolves. Streaming-specific tests should override. */
 function buildPullStream(): ReadableStream<Uint8Array> {
@@ -87,32 +93,18 @@ export const providersHandlers = [
     ),
   ),
   http.get('/api/v1/providers/discovery-policy', () =>
-    HttpResponse.json(
-      successFor<typeof getDiscoveryPolicy>({
-        host_port_allowlist: [],
-        block_private_ips: true,
-        entry_count: 0,
-      }),
-    ),
+    HttpResponse.json(successFor<typeof getDiscoveryPolicy>(DEFAULT_DISCOVERY_POLICY)),
   ),
   http.post('/api/v1/providers/discovery-policy/entries', async ({ request }) => {
     await request.json()
     return HttpResponse.json(
-      successFor<typeof addAllowlistEntry>({
-        host_port_allowlist: [],
-        block_private_ips: true,
-        entry_count: 0,
-      }),
+      successFor<typeof addAllowlistEntry>(DEFAULT_DISCOVERY_POLICY),
     )
   }),
   http.post('/api/v1/providers/discovery-policy/remove-entry', async ({ request }) => {
     await request.json()
     return HttpResponse.json(
-      successFor<typeof removeAllowlistEntry>({
-        host_port_allowlist: [],
-        block_private_ips: true,
-        entry_count: 0,
-      }),
+      successFor<typeof removeAllowlistEntry>(DEFAULT_DISCOVERY_POLICY),
     )
   }),
   http.get('/api/v1/providers/:name', () =>

@@ -1,22 +1,21 @@
 import { http, HttpResponse } from 'msw'
 import { useMessagesStore, _resetRequestSeqs } from '@/stores/messages'
 import { makeMessage, makeChannel } from '../helpers/factories'
-import { apiError, apiSuccess } from '@/mocks/handlers'
+import { apiError, apiSuccess, paginatedFor } from '@/mocks/handlers'
+import type { listMessages } from '@/api/endpoints/messages'
 import { server } from '@/test-setup'
 import type { Message, WsEvent } from '@/api/types'
 
-function paginated(data: Message[], meta: Partial<{ total: number; offset: number; limit: number }> = {}) {
-  return {
+function paginated(
+  data: Message[],
+  meta: Partial<{ total: number; offset: number; limit: number }> = {},
+) {
+  return paginatedFor<typeof listMessages>({
     data,
-    error: null,
-    error_detail: null,
-    success: true,
-    pagination: {
-      total: meta.total ?? data.length,
-      offset: meta.offset ?? 0,
-      limit: meta.limit ?? 50,
-    },
-  }
+    total: meta.total ?? data.length,
+    offset: meta.offset ?? 0,
+    limit: meta.limit ?? 50,
+  })
 }
 
 function resetStore() {
