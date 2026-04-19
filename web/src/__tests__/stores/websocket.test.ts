@@ -70,14 +70,29 @@ class MockWebSocket {
   }
 }
 
-// Install MockWebSocket globally
+// Install MockWebSocket globally. MSW's Node interceptor replaces
+// `globalThis.WebSocket` with a non-writable property, so we use
+// `Object.defineProperty` to force the swap and restore the original
+// descriptor after the suite finishes.
+const originalDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'WebSocket')
 const OriginalWebSocket = globalThis.WebSocket
 beforeAll(() => {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  globalThis.WebSocket = MockWebSocket as any
+  Object.defineProperty(globalThis, 'WebSocket', {
+    value: MockWebSocket,
+    writable: true,
+    configurable: true,
+  })
 })
 afterAll(() => {
-  globalThis.WebSocket = OriginalWebSocket
+  if (originalDescriptor) {
+    Object.defineProperty(globalThis, 'WebSocket', originalDescriptor)
+  } else {
+    Object.defineProperty(globalThis, 'WebSocket', {
+      value: OriginalWebSocket,
+      writable: true,
+      configurable: true,
+    })
+  }
 })
 
 function resetStore() {

@@ -1,17 +1,43 @@
 import '@testing-library/jest-dom/vitest'
 import { createElement } from 'react'
 import type { ComponentProps, ReactNode, Ref } from 'react'
-import { afterEach, vi } from 'vitest'
+import { afterAll, afterEach, beforeAll, vi } from 'vitest'
 import { MotionGlobalConfig } from 'motion/react'
+import { setupServer } from 'msw/node'
 import { useToastStore } from '@/stores/toast'
 import { cancelPendingPersist } from '@/stores/notifications'
+import { defaultHandlers } from '@/mocks/handlers'
+
+// Global MSW server: every default endpoint handler is registered up front
+// so tests that do not configure their own overrides get a predictable
+// happy-path response for any request. Requests that fall through to a
+// path with no handler fail the test loudly (`onUnhandledRequest: 'error'`)
+// so new endpoints cannot ship without a matching default handler.
+export const server = setupServer(...defaultHandlers)
+
+beforeAll(() => {
+  // The axios client attaches X-CSRF-Token on mutating requests by reading
+  // the `csrf_token` cookie. Seed it here so every POST/PUT/PATCH/DELETE
+  // test sends the header without having to log in first. MSW does not
+  // validate the value.
+  document.cookie = 'csrf_token=test-csrf-token; path=/'
+  server.listen({ onUnhandledRequest: 'error' })
+})
+
+afterEach(() => {
+  server.resetHandlers()
+})
+
+afterAll(() => {
+  server.close()
+})
 
 // AuthGuard calls `useSettingsStore.getState().fetchLocale()` from a
-// `useEffect` whenever the user becomes authenticated. Without a global
-// mock that call reaches the real axios client, returns 401 (no backend
-// in jsdom), and leaks as an UNDICI_REQUEST + PROMISE past test teardown.
-// Individual tests can still override these endpoints with their own
-// `vi.mock('@/api/endpoints/settings', ...)` call.
+// `useEffect` whenever the user becomes authenticated. The global
+// settings MSW handler now covers that path, but we keep a permissive
+// vi.mock in place as a safety net during the incremental test
+// migration. Batch D of the MSW migration (issue #1460) removes this
+// block entirely.
 vi.mock('@/api/endpoints/settings', async () => {
   const actual = await vi.importActual<typeof import('@/api/endpoints/settings')>(
     '@/api/endpoints/settings',
@@ -25,7 +51,7 @@ vi.mock('@/api/endpoints/settings', async () => {
     updateSetting: vi.fn().mockResolvedValue(undefined),
     resetSetting: vi.fn().mockResolvedValue(undefined),
     listSinks: vi.fn().mockResolvedValue([]),
-    testSinkConfig: vi.fn().mockResolvedValue({ ok: true }),
+    testSinkConfig: vi.fn().mockResolvedValue({ valid: true, error: null }),
   }
 })
 

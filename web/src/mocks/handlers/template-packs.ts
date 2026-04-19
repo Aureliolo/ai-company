@@ -1,6 +1,10 @@
 import { http, HttpResponse } from 'msw'
+import type {
+  applyTemplatePack,
+  listTemplatePacks,
+} from '@/api/endpoints/template-packs'
 import type { PackInfoResponse } from '@/api/types'
-import { apiError, apiSuccess } from './helpers'
+import { apiError, apiSuccess, successFor } from './helpers'
 
 const mockPacks: readonly PackInfoResponse[] = [
   {
@@ -50,6 +54,7 @@ const mockPacks: readonly PackInfoResponse[] = [
   },
 ]
 
+// ── Storybook-facing named export (wildcard URLs for story flexibility). ──
 export const templatePacksList = [
   http.get('*/template-packs', () => HttpResponse.json(apiSuccess(mockPacks))),
   http.post('*/template-packs/apply', async ({ request }) => {
@@ -63,6 +68,36 @@ export const templatePacksList = [
         pack_name: pack.name,
         agents_added: pack.agent_count,
         departments_added: pack.department_count,
+        budget_before: 0,
+        budget_after: 0,
+        rebalance_mode: 'none' as const,
+        scale_factor: null,
+      }),
+    )
+  }),
+]
+
+// ── Default test handlers (empty + typed apply). ──
+export const templatePacksHandlers = [
+  http.get('/api/v1/template-packs', () =>
+    HttpResponse.json(successFor<typeof listTemplatePacks>([])),
+  ),
+  http.post('/api/v1/template-packs/apply', async ({ request }) => {
+    const body = (await request.json()) as { pack_name?: string }
+    if (!body.pack_name) {
+      return HttpResponse.json(apiError("Field 'pack_name' is required"), {
+        status: 400,
+      })
+    }
+    return HttpResponse.json(
+      successFor<typeof applyTemplatePack>({
+        pack_name: body.pack_name,
+        agents_added: 0,
+        departments_added: 0,
+        budget_before: 0,
+        budget_after: 0,
+        rebalance_mode: 'none',
+        scale_factor: null,
       }),
     )
   }),

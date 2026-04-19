@@ -1,9 +1,36 @@
 import { http, HttpResponse } from 'msw'
-import { apiError, apiSuccess } from './helpers'
+import type {
+  createProject,
+  getProject,
+  listProjects,
+} from '@/api/endpoints/projects'
 import type { PaginatedResponse, PaginationMeta, Project } from '@/api/types'
+import {
+  apiError,
+  apiSuccess,
+  emptyPage,
+  paginatedFor,
+  successFor,
+} from './helpers'
 
+export function buildProject(overrides: Partial<Project> = {}): Project {
+  return {
+    id: 'project-default',
+    name: 'Default Project',
+    description: '',
+    team: [],
+    lead: null,
+    task_ids: [],
+    deadline: null,
+    budget: 0,
+    status: 'planning',
+    ...overrides,
+  }
+}
+
+// ── Storybook-facing named export (preserve existing stories). ──
 const mockProjects: Project[] = [
-  {
+  buildProject({
     id: 'proj-abc123',
     name: 'Engine Rewrite',
     description: 'Rewrite the coordination engine for v2',
@@ -13,8 +40,8 @@ const mockProjects: Project[] = [
     deadline: '2026-06-01T00:00:00Z',
     budget: 1500,
     status: 'active',
-  },
-  {
+  }),
+  buildProject({
     id: 'proj-def456',
     name: 'Documentation Sprint',
     description: 'Update all user-facing documentation',
@@ -24,10 +51,9 @@ const mockProjects: Project[] = [
     deadline: null,
     budget: 200,
     status: 'planning',
-  },
+  }),
 ]
-
-const pagination: PaginationMeta = {
+const paginationStorybook: PaginationMeta = {
   total: mockProjects.length,
   offset: 0,
   limit: 50,
@@ -40,7 +66,7 @@ export const projectsList = [
       error: null,
       error_detail: null,
       success: true,
-      pagination,
+      pagination: paginationStorybook,
     }
     return HttpResponse.json(body)
   }),
@@ -50,5 +76,39 @@ export const projectsList = [
       return HttpResponse.json(apiError('Project not found'), { status: 404 })
     }
     return HttpResponse.json(apiSuccess(project))
+  }),
+]
+
+// ── Default test handlers: empty list, generic single-project lookups. ──
+export const projectsHandlers = [
+  http.get('/api/v1/projects', () =>
+    HttpResponse.json(paginatedFor<typeof listProjects>(emptyPage<Project>())),
+  ),
+  http.get('/api/v1/projects/:id', ({ params }) =>
+    HttpResponse.json(
+      successFor<typeof getProject>(buildProject({ id: String(params.id) })),
+    ),
+  ),
+  http.post('/api/v1/projects', async ({ request }) => {
+    const body = (await request.json()) as Partial<Project>
+    if (!body.name) {
+      return HttpResponse.json(apiError("Field 'name' is required"), {
+        status: 400,
+      })
+    }
+    return HttpResponse.json(
+      successFor<typeof createProject>(
+        buildProject({
+          id: `project-${body.name}`,
+          name: body.name,
+          description: body.description ?? '',
+          team: (body.team ?? []) as string[],
+          lead: body.lead ?? null,
+          deadline: body.deadline ?? null,
+          budget: body.budget ?? 0,
+        }),
+      ),
+      { status: 201 },
+    )
   }),
 ]

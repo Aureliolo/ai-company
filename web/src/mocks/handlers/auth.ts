@@ -1,13 +1,34 @@
 import { http, HttpResponse } from 'msw'
-import type { AuthResponse } from '@/api/types'
-import { apiSuccess } from './helpers'
+import type {
+  changePassword,
+  getMe,
+  getWsTicket,
+  listSessions,
+  login,
+  setup,
+} from '@/api/endpoints/auth'
+import type { AuthResponse, UserInfoResponse } from '@/api/types'
+import { apiSuccess, successFor, voidSuccess } from './helpers'
 
 const mockAuthResponse: AuthResponse = {
   expires_in: 86400,
   must_change_password: false,
 }
 
-/** POST /api/v1/auth/login -> success with mock auth response + CSRF cookie. */
+function buildUser(overrides: Partial<UserInfoResponse> = {}): UserInfoResponse {
+  return {
+    id: 'user-default',
+    username: 'default',
+    role: 'ceo',
+    must_change_password: false,
+    org_roles: [],
+    scoped_departments: [],
+    ...overrides,
+  }
+}
+
+// ── Storybook-facing named exports (keep for existing stories). ──
+
 export const authLoginSuccess = [
   http.post('/api/v1/auth/login', () => {
     document.cookie = 'csrf_token=mock-csrf-token; path=/api'
@@ -15,10 +36,41 @@ export const authLoginSuccess = [
   }),
 ]
 
-/** POST /api/v1/auth/setup -> success with mock auth response + CSRF cookie. */
 export const authSetupSuccess = [
   http.post('/api/v1/auth/setup', () => {
     document.cookie = 'csrf_token=mock-csrf-token; path=/api'
     return HttpResponse.json(apiSuccess(mockAuthResponse))
   }),
+]
+
+// ── Default test handlers: exhaustive coverage of every auth endpoint. ──
+
+export const authHandlers = [
+  http.post('/api/v1/auth/setup', () =>
+    HttpResponse.json(successFor<typeof setup>(mockAuthResponse)),
+  ),
+  http.post('/api/v1/auth/login', () =>
+    HttpResponse.json(successFor<typeof login>(mockAuthResponse)),
+  ),
+  http.post('/api/v1/auth/logout', () => HttpResponse.json(voidSuccess())),
+  http.post('/api/v1/auth/change-password', () =>
+    HttpResponse.json(successFor<typeof changePassword>(buildUser())),
+  ),
+  http.get('/api/v1/auth/me', () =>
+    HttpResponse.json(successFor<typeof getMe>(buildUser())),
+  ),
+  http.post('/api/v1/auth/ws-ticket', () =>
+    HttpResponse.json(
+      successFor<typeof getWsTicket>({
+        ticket: 'mock-ws-ticket',
+        expires_in: 60,
+      }),
+    ),
+  ),
+  http.get('/api/v1/auth/sessions', () =>
+    HttpResponse.json(successFor<typeof listSessions>([])),
+  ),
+  http.delete('/api/v1/auth/sessions/:id', () =>
+    HttpResponse.json(voidSuccess()),
+  ),
 ]

@@ -1,0 +1,98 @@
+import { http, HttpResponse } from 'msw'
+import type {
+  getAllSettings,
+  getNamespaceSchema,
+  getNamespaceSettings,
+  getSchema,
+  listSinks,
+  testSinkConfig,
+  updateSetting,
+} from '@/api/endpoints/settings'
+import type { SettingEntry } from '@/api/types'
+import { successFor, voidSuccess } from './helpers'
+
+export function buildSettingEntry(
+  overrides: Partial<SettingEntry> = {},
+): SettingEntry {
+  const base: SettingEntry = {
+    definition: {
+      namespace: 'api',
+      key: 'default-key',
+      type: 'str',
+      default: null,
+      description: '',
+      group: 'default',
+      level: 'basic',
+      sensitive: false,
+      restart_required: false,
+      enum_values: [],
+      validator_pattern: null,
+      min_value: null,
+      max_value: null,
+      yaml_path: null,
+    },
+    value: '',
+    source: 'default',
+    updated_at: null,
+  }
+  return {
+    ...base,
+    ...overrides,
+    definition: { ...base.definition, ...overrides.definition },
+  }
+}
+
+export const settingsHandlers = [
+  http.get('/api/v1/settings/_schema', () =>
+    HttpResponse.json(successFor<typeof getSchema>([])),
+  ),
+  http.get('/api/v1/settings/_schema/:namespace', () =>
+    HttpResponse.json(successFor<typeof getNamespaceSchema>([])),
+  ),
+  http.get('/api/v1/settings', () =>
+    HttpResponse.json(successFor<typeof getAllSettings>([])),
+  ),
+  http.get('/api/v1/settings/observability/sinks', () =>
+    HttpResponse.json(successFor<typeof listSinks>([])),
+  ),
+  http.post('/api/v1/settings/observability/sinks/_test', async ({ request }) => {
+    await request.json()
+    return HttpResponse.json(
+      successFor<typeof testSinkConfig>({ valid: true, error: null }),
+    )
+  }),
+  http.get('/api/v1/settings/:namespace', () =>
+    HttpResponse.json(successFor<typeof getNamespaceSettings>([])),
+  ),
+  http.put('/api/v1/settings/:namespace/:key', async ({ params, request }) => {
+    const body = (await request.json()) as { value: string }
+    return HttpResponse.json(
+      successFor<typeof updateSetting>(
+        buildSettingEntry({
+          value: body.value,
+          definition: {
+            namespace: String(params.namespace) as SettingEntry['definition']['namespace'],
+            key: String(params.key),
+            type: 'str',
+            default: null,
+            description: '',
+            group: 'default',
+            level: 'basic',
+            sensitive: false,
+            restart_required: false,
+            enum_values: [],
+            validator_pattern: null,
+            min_value: null,
+            max_value: null,
+            yaml_path: null,
+          },
+          source: 'db',
+          updated_at: '2026-04-19T00:00:00Z',
+        }),
+      ),
+    )
+  }),
+  http.delete('/api/v1/settings/:namespace/:key', () =>
+    HttpResponse.json(voidSuccess()),
+  ),
+]
