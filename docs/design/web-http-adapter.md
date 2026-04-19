@@ -147,9 +147,10 @@ best-in-class choice for this stack as of 2026-04-19.
    from 69 to 50; strict parser fails the job if Vitest's
    `Leaks N leaks` summary line is missing (format-drift guard).
 3. `docs/design/web-http-adapter.md` (this file).
-4. Follow-up issue filed: "Replace MSW 2.x to reach 0 Vitest async
-   leaks". Scope, acceptance criteria, and rejection of the lighter
-   alternatives documented there.
+4. Follow-up issue #1468 -- "replace MSW 2.x to eliminate the
+   remaining 50 Vitest async leaks". Scope, acceptance criteria, and
+   candidate replacement layers (nock, direct axios-adapter mocks,
+   happy-dom's built-in interceptor) documented there.
 
 ## What does NOT ship (by design)
 
@@ -166,6 +167,7 @@ best-in-class choice for this stack as of 2026-04-19.
 - #1466 -- original "eliminate async leaks" issue.
 - #1467 -- "evaluate switching axios XHR adapter to fetch" (closed by
   this note).
+- #1468 -- follow-up for MSW replacement (path to 0 leaks, deferred).
 - PR #1462 -- MSW migration that gave us typed handlers and raised
   the leak count from 69 to ~85 (since ratcheted to 69, now 50).
 - `web/CLAUDE.md` -- MSW handlers contract and test teardown
