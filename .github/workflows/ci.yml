@@ -343,8 +343,13 @@ jobs:
           MAX_ASYNC_LEAKS: '69'
         run: |
           set -o pipefail
+          # Disable errexit around the test pipeline so a Vitest failure
+          # doesn't abort the step before we can read ${PIPESTATUS[0]}
+          # (GitHub Actions runs `run:` blocks with `bash -e`).
+          set +e
           npm run test -- --coverage --detect-async-leaks 2>&1 | tee vitest-output.log
           tests_exit=${PIPESTATUS[0]}
+          set -e
           if [ "$tests_exit" -ne 0 ]; then
             echo "::error::Vitest exited with $tests_exit -- see suite failures above."
             exit "$tests_exit"
