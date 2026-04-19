@@ -4,9 +4,8 @@ import type {
   getBudgetConfig,
 } from '@/api/endpoints/budget'
 import type { AgentSpending, BudgetConfig } from '@/api/types'
+import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { successFor } from './helpers'
-
-const DEFAULT_CURRENCY = 'USD'
 
 export function buildBudgetConfig(
   overrides: Partial<BudgetConfig> = {},

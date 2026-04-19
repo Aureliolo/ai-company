@@ -13,12 +13,34 @@
  *   are preserved for existing stories. New stories should prefer the
  *   per-domain `<domain>Handlers` arrays where practical.
  *
- * Usage in stories:
- *   import { setupStatusComplete } from '@/mocks/handlers'
+ * Usage in stories (pick whichever matches the story's intent):
  *
+ *   // Preferred for new stories: per-domain default array covering
+ *   // every endpoint in that module.
+ *   import { setupHandlers } from '@/mocks/handlers'
+ *   export const MyStory: Story = {
+ *     parameters: { msw: { handlers: setupHandlers } },
+ *   }
+ *
+ *   // Legacy: targeted named exports for existing stories that want
+ *   // a specific scenario (e.g. `setupStatusComplete` vs
+ *   // `setupStatusNeedsAdmin`). Backward compatible.
+ *   import { setupStatusComplete } from '@/mocks/handlers'
  *   export const MyStory: Story = {
  *     parameters: { msw: { handlers: [...setupStatusComplete] } },
  *   }
+ *
+ * Usage in tests:
+ *
+ *   import { server } from '@/test-setup'
+ *   import { http, HttpResponse } from 'msw'
+ *   import { apiSuccess } from '@/mocks/handlers'
+ *
+ *   server.use(
+ *     http.get('/api/v1/tasks/:id', () =>
+ *       HttpResponse.json(apiSuccess(myTask)),
+ *     ),
+ *   )
  */
 
 export { apiError, apiSuccess, successFor, paginatedFor, voidSuccess, emptyPage } from './helpers'

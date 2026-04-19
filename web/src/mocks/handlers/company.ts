@@ -23,10 +23,9 @@ import type {
   DepartmentName,
   TeamConfig,
 } from '@/api/types'
+import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { emptyPage, paginatedFor, successFor, voidSuccess } from './helpers'
 import { buildAgent } from './agents'
-
-const DEFAULT_CURRENCY = 'USD'
 
 export function buildDepartment(
   overrides: Partial<Department> = {},

@@ -1,8 +1,7 @@
 import { http, HttpResponse } from 'msw'
 import type { coordinateTask } from '@/api/endpoints/coordination'
+import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { successFor } from './helpers'
-
-const DEFAULT_CURRENCY = 'USD'
 
 export const coordinationHandlers = [
   http.post('/api/v1/tasks/:id/coordinate', ({ params }) =>

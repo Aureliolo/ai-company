@@ -5,9 +5,8 @@ import type {
   getTrends,
 } from '@/api/endpoints/analytics'
 import type { TrendMetric, TrendPeriod } from '@/api/types'
+import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { successFor } from './helpers'
-
-const DEFAULT_CURRENCY = 'USD'
 
 export const analyticsHandlers = [
   http.get('/api/v1/analytics/overview', () =>
