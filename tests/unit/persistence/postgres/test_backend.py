@@ -77,7 +77,7 @@ def patched_pool(
 ) -> Any:
     """Patch ``AsyncConnectionPool`` inside the postgres backend module."""
     with patch(
-        "synthorg.persistence.postgres.backend.AsyncConnectionPool",
+        "synthorg.persistence.postgres.backend_connection.AsyncConnectionPool",
         side_effect=fake_pool_factory,
     ) as patched:
         yield patched
@@ -179,7 +179,7 @@ class TestConnect:
             return pool
 
         with patch(
-            "synthorg.persistence.postgres.backend.AsyncConnectionPool",
+            "synthorg.persistence.postgres.backend_connection.AsyncConnectionPool",
             side_effect=failing_factory,
         ):
             backend = PostgresPersistenceBackend(_cfg())
@@ -369,7 +369,7 @@ class TestMigrate:
         await backend.connect()
 
         with patch(
-            "synthorg.persistence.postgres.backend.atlas.migrate_apply",
+            "synthorg.persistence.postgres.backend_migration.atlas.migrate_apply",
             new=AsyncMock(return_value=None),
         ) as migrate_apply:
             await backend.migrate()
