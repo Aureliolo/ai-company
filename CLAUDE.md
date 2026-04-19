@@ -103,7 +103,7 @@ Enforced by `scripts/check_web_design_system.py` (PostToolUse hook on every `web
 - `src/synthorg/persistence/` is the **only** place that may import `aiosqlite`, `sqlite3`, `psycopg`, or `psycopg_pool`, or emit raw SQL DDL/DML keywords in string literals.
 - Sanctioned exceptions cover the two agent-facing DB tools (`src/synthorg/tools/database/schema_inspect.py`, `src/synthorg/tools/database/sql_query.py`) plus a small set of test fixtures / conformance harnesses that also need driver primitives. The authoritative list lives in `_ALLOWLIST` inside `scripts/check_persistence_boundary.py`; any new exception must be added there with a justifying comment.
 - Every durable feature MUST define a repository Protocol in `persistence/<domain>_protocol.py`, concrete impls under `persistence/{sqlite,postgres}/`, and be exposed on `PersistenceBackend`.
-- Adding a migration: read `docs/guides/persistence-migrations.md` first. Never hand-edit SQL in `persistence/{sqlite,postgres}/revisions/`. Never edit `atlas.sum`. Never run `atlas migrate hash` post-release.
+- Adding a migration: read `docs/guides/persistence-migrations.md` first. Do not hand-edit SQL in `persistence/{sqlite,postgres}/revisions/`, and do not edit `atlas.sum`. Rehashing via `atlas migrate hash` post-release is blocked by a PreToolUse hook -- delete the in-progress migration and regenerate with `atlas migrate diff` instead.
 - Per-line opt-out: `# lint-allow: persistence-boundary -- <required justification>` as a trailing comment. Justification after `--` must be non-empty.
 - Enforced by `scripts/check_persistence_boundary.py` (pre-push hook + CI Lint job).
 

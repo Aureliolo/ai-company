@@ -66,33 +66,47 @@ class SQLiteLockoutRepository:
             return True
 
     async def load_locked(self) -> int:
-        """Restore in-memory lockout state from recent failure records."""
+        """Restore in-memory lockout state from recent failure records.
+
+        Scans attempts within ``window + duration`` so locks triggered
+        just before the window rolled forward (e.g. when
+        ``lockout_duration_minutes`` > ``lockout_window_minutes``) are
+        not silently dropped.  Counts are taken over the window
+        ending at each user's most-recent attempt, so extending the
+        scan range does not inflate the threshold check.
+        """
         now = datetime.now(UTC)
-        window_start = (now - self._window).isoformat()
+        scan_start = (now - (self._window + self._duration)).isoformat()
         cursor = await self._db.execute(
-            "SELECT username, COUNT(*) AS cnt, "
-            "MAX(attempted_at) AS max_attempted_at "
-            "FROM login_attempts "
+            "SELECT username, attempted_at FROM login_attempts "
             "WHERE attempted_at >= ? "
-            "GROUP BY username "
-            "HAVING cnt >= ?",
-            (window_start, self._threshold),
+            "ORDER BY username ASC, attempted_at DESC",
+            (scan_start,),
         )
         rows = await cursor.fetchall()
+        per_user: dict[str, list[datetime]] = {}
+        for row in rows:
+            uname = row["username"].lower()
+            per_user.setdefault(uname, []).append(
+                datetime.fromisoformat(row["attempted_at"]),
+            )
+
         mono_now = time.monotonic()
         restored = 0
         with self._locked_lock:
-            for row in rows:
-                uname = row["username"].lower()
-                if uname not in self._locked:
-                    max_at = datetime.fromisoformat(
-                        row["max_attempted_at"],
-                    )
-                    locked_until = max_at + self._duration
-                    remaining = (locked_until - now).total_seconds()
-                    if remaining > 0:
-                        self._locked[uname] = mono_now + remaining
-                        restored += 1
+            for uname, attempts in per_user.items():
+                if uname in self._locked or not attempts:
+                    continue
+                max_at = attempts[0]  # sorted DESC
+                window_floor = max_at - self._window
+                cnt_in_window = sum(1 for a in attempts if a >= window_floor)
+                if cnt_in_window < self._threshold:
+                    continue
+                locked_until = max_at + self._duration
+                remaining = (locked_until - now).total_seconds()
+                if remaining > 0:
+                    self._locked[uname] = mono_now + remaining
+                    restored += 1
         if restored:
             logger.info(
                 API_AUTH_ACCOUNT_LOCKED,

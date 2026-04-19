@@ -12,7 +12,6 @@ import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from synthorg.core.approval import ApprovalItem
 from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus, AutonomyLevel
 from synthorg.observability import get_logger
 from synthorg.observability.events.autonomy import (
@@ -588,6 +587,14 @@ class SecOpsService:
                 stripped_for_check,
                 metadata,
             )
+
+        # Local import breaks an ontology-consolidation import cycle:
+        # core.approval -> ontology.__init__ -> persistence (via A5's
+        # consolidated ontology_protocol) -> budget -> security ->
+        # security.service -> core.approval. Keeping this import
+        # function-local avoids re-entering core.approval while it is
+        # still being initialized.
+        from synthorg.core.approval import ApprovalItem  # noqa: PLC0415
 
         item = ApprovalItem(
             id=approval_id,

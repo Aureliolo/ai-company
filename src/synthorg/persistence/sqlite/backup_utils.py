@@ -26,7 +26,22 @@ def vacuum_into(source_path: str, target_path: str) -> int:
 
     Returns:
         Size of the resulting backup file in bytes.
+
+    Raises:
+        FileNotFoundError: If ``source_path`` does not exist; guards
+            against ``sqlite3.connect`` silently creating an empty DB
+            and VACUUMing that into the backup.
     """
+    if not Path(source_path).is_file():
+        logger.warning(
+            BACKUP_COMPONENT_FAILED,
+            component="sqlite_vacuum_into",
+            db_path=source_path,
+            error_type="FileNotFoundError",
+            error=f"source database not found: {source_path!r}",
+        )
+        msg = f"source database not found: {source_path!r}"
+        raise FileNotFoundError(msg)
     with contextlib.closing(sqlite3.connect(source_path)) as conn:
         conn.execute("VACUUM INTO ?", (target_path,))
     return Path(target_path).stat().st_size

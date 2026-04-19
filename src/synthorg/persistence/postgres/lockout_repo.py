@@ -73,23 +73,47 @@ class PostgresLockoutRepository:
             return True
 
     async def load_locked(self) -> int:
-        """Restore in-memory lockout state from recent failure records."""
+        """Restore in-memory lockout state from recent failure records.
+
+        Scans attempts within ``window + duration`` so locks triggered
+        just before the window rolled forward (e.g. when
+        ``lockout_duration_minutes`` > ``lockout_window_minutes``) are
+        not silently dropped.  A user is restored only when (1) at
+        least ``threshold`` failures fell inside the window ending at
+        their most-recent attempt, and (2) ``max_attempted_at +
+        duration`` is still in the future.
+        """
         dict_row = self._dict_row
 
         now = datetime.now(UTC)
-        window_start = now - self._window
+        scan_start = now - (self._window + self._duration)
         async with (
             self._pool.connection() as conn,
             conn.cursor(row_factory=dict_row) as cur,
         ):
+            # Per-user count limited to the window ending at each
+            # user's most-recent attempt, so extending the scan range
+            # for recovery does not inflate the threshold check.  The
+            # CTE decorates each row with that user's latest attempt
+            # so the outer GROUP BY can filter down to the correct
+            # window before counting.
             await cur.execute(
-                "SELECT username, COUNT(*) AS cnt, "
-                "MAX(attempted_at) AS max_attempted_at "
-                "FROM login_attempts "
-                "WHERE attempted_at >= %s "
+                "WITH user_attempts AS ("
+                "  SELECT username, attempted_at, "
+                "         MAX(attempted_at) OVER ("
+                "           PARTITION BY username"
+                "         ) AS latest "
+                "  FROM login_attempts "
+                "  WHERE attempted_at >= %s"
+                ") "
+                "SELECT username, "
+                "       MAX(attempted_at) AS max_attempted_at, "
+                "       COUNT(*) AS cnt "
+                "FROM user_attempts "
+                "WHERE attempted_at >= latest - %s "
                 "GROUP BY username "
                 "HAVING COUNT(*) >= %s",
-                (window_start, self._threshold),
+                (scan_start, self._window, self._threshold),
             )
             rows = await cur.fetchall()
 

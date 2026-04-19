@@ -6,8 +6,8 @@ and apply the configured ``TimeoutPolicy``.
 """
 
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
-from synthorg.core.approval import ApprovalItem  # noqa: TC001
 from synthorg.core.enums import ApprovalStatus, TimeoutActionType
 from synthorg.observability import get_logger
 from synthorg.observability.events.timeout import (
@@ -19,6 +19,11 @@ from synthorg.observability.events.timeout import (
 )
 from synthorg.security.timeout.models import TimeoutAction
 from synthorg.security.timeout.protocol import TimeoutPolicy  # noqa: TC001
+
+if TYPE_CHECKING:
+    # Runtime-deferred to avoid an ontology-consolidation import cycle
+    # through ``core.approval``; PEP 649 keeps this safe for annotations.
+    from synthorg.core.approval import ApprovalItem
 
 logger = get_logger(__name__)
 

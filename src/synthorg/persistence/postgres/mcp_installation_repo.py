@@ -35,8 +35,15 @@ def _import_dict_row() -> Any:
 
 
 def _ensure_tz(value: datetime) -> datetime:
-    """Guarantee UTC tzinfo on a ``TIMESTAMPTZ`` round-trip."""
-    return value if value.tzinfo else value.replace(tzinfo=UTC)
+    """Normalize a ``TIMESTAMPTZ`` round-trip to UTC.
+
+    Attaches UTC tzinfo to naive datetimes and converts aware
+    datetimes to UTC so reads are symmetric with writes (which call
+    ``.astimezone(UTC)`` before insert).
+    """
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
 
 
 def _row_to_installation(row: dict[str, Any]) -> McpInstallation:

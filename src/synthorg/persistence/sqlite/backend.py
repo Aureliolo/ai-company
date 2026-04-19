@@ -209,6 +209,10 @@ class SQLitePersistenceBackend:
         self._org_facts: SQLiteOrgFactRepository | None = None
         self._ontology_entities: SQLiteOntologyEntityRepository | None = None
         self._ontology_drift: SQLiteOntologyDriftReportRepository | None = None
+        # Cached lockout repository -- in-memory cache must survive
+        # across ``build_lockouts`` calls, otherwise ``is_locked`` is
+        # always False on a freshly-built instance.
+        self._lockouts: SQLiteLockoutRepository | None = None
         self._connections_stub = StubConnectionRepository()
         self._connection_secrets_stub = StubConnectionSecretRepository()
         self._oauth_states_stub = StubOAuthStateRepository()
@@ -257,6 +261,7 @@ class SQLitePersistenceBackend:
         self._org_facts = None
         self._ontology_entities = None
         self._ontology_drift = None
+        self._lockouts = None
 
     async def connect(self) -> None:
         """Open the SQLite database and configure WAL mode."""
@@ -814,9 +819,17 @@ class SQLitePersistenceBackend:
         )
 
     def build_lockouts(self, auth_config: AuthConfig) -> LockoutRepository:
-        """Construct a lockout repository using this backend's connection."""
-        db = self.get_db()
-        return SQLiteLockoutRepository(db, auth_config)
+        """Return the cached lockout repository (built once per connection).
+
+        The lockout repo maintains a process-local in-memory cache
+        (``_locked``) on the auth hot path.  Returning a fresh instance
+        on every call would reset that cache and silently "unlock"
+        every user.  The cache is cleared on ``disconnect`` via
+        ``_clear_state``.
+        """
+        if self._lockouts is None:
+            self._lockouts = SQLiteLockoutRepository(self.get_db(), auth_config)
+        return self._lockouts
 
     def build_escalations(
         self,
