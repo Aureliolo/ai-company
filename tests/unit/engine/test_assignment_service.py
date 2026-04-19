@@ -13,14 +13,12 @@ from synthorg.core.enums import (
 )
 from synthorg.core.role import Skill
 from synthorg.core.task import Task
+from synthorg.engine.assignment.manual import ManualAssignmentStrategy
 from synthorg.engine.assignment.models import (
     AssignmentRequest,
 )
+from synthorg.engine.assignment.role_based import RoleBasedAssignmentStrategy
 from synthorg.engine.assignment.service import TaskAssignmentService
-from synthorg.engine.assignment.strategies import (
-    ManualAssignmentStrategy,
-    RoleBasedAssignmentStrategy,
-)
 from synthorg.engine.errors import TaskAssignmentError
 from synthorg.engine.routing.scorer import AgentTaskScorer
 

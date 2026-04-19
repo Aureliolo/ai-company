@@ -5,10 +5,8 @@ import pytest
 from synthorg.communication.delegation.hierarchy import HierarchyResolver
 from synthorg.core.company import Company, Department, Team
 from synthorg.core.enums import Complexity, SeniorityLevel
+from synthorg.engine.assignment.hierarchical import HierarchicalAssignmentStrategy
 from synthorg.engine.assignment.models import AssignmentRequest
-from synthorg.engine.assignment.strategies import (
-    HierarchicalAssignmentStrategy,
-)
 from synthorg.engine.routing.scorer import AgentTaskScorer
 
 from .conftest import make_assignment_agent, make_assignment_task
