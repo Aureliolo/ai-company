@@ -1,5 +1,6 @@
 import { http, HttpResponse } from 'msw'
 import { useAnalyticsStore } from '@/stores/analytics'
+import type { DefaultBodyType, StrictResponse } from 'msw'
 import { apiError, apiSuccess, paginatedFor } from '@/mocks/handlers'
 import type { listActivities } from '@/api/endpoints/activities'
 import type { listDepartments } from '@/api/endpoints/company'
@@ -68,7 +69,9 @@ const mockDeptHealth = {
   utilization_percent: 85,
 }
 
-type HandlerReturn = Response | Promise<Response>
+type HandlerReturn =
+  | StrictResponse<DefaultBodyType>
+  | Promise<StrictResponse<DefaultBodyType>>
 
 type Overrides = Partial<{
   overview: () => HandlerReturn

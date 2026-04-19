@@ -34,11 +34,12 @@
  *
  *   import { server } from '@/test-setup'
  *   import { http, HttpResponse } from 'msw'
- *   import { apiSuccess } from '@/mocks/handlers'
+ *   import { successFor } from '@/mocks/handlers'
+ *   import type { getTask } from '@/api/endpoints/tasks'
  *
  *   server.use(
  *     http.get('/api/v1/tasks/:id', () =>
- *       HttpResponse.json(apiSuccess(myTask)),
+ *       HttpResponse.json(successFor<typeof getTask>(myTask)),
  *     ),
  *   )
  */
