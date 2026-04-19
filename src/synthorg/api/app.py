@@ -45,6 +45,7 @@ from synthorg.api.channels import (
 from synthorg.api.controllers import BASE_CONTROLLERS
 from synthorg.api.controllers.ws import ws_handler
 from synthorg.api.exception_handlers import EXCEPTION_HANDLERS
+from synthorg.api.integrations_wiring import auto_wire_integrations
 from synthorg.api.lifecycle_builder import _build_lifecycle, _build_settings_dispatcher
 from synthorg.api.middleware import security_headers_hook
 from synthorg.api.middleware_factory import _build_middleware
@@ -108,9 +109,6 @@ from synthorg.tools.invocation_tracker import ToolInvocationTracker  # noqa: TC0
 if TYPE_CHECKING:
     from litestar.channels import ChannelsPlugin
 
-    from synthorg.integrations.mcp_catalog.installations import (
-        McpInstallationRepository,
-    )
     from synthorg.settings.service import SettingsService
 
 logger = get_logger(__name__)
@@ -369,284 +367,22 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
     )
 
     # -- Integration services auto-wire ──────────────────────────────────
-    connection_catalog = None
-    oauth_token_manager = None
-    health_prober_service = None
-    tunnel_provider = None
-    webhook_event_bridge = None
-    mcp_catalog_service = None
-    mcp_installations_repo: McpInstallationRepository | None = None
-
-    # Bundled MCP catalog is stateless (loads static JSON) and has no
-    # runtime dependencies, so it is wired unconditionally.
-    try:
-        from synthorg.integrations.mcp_catalog.service import (  # noqa: PLC0415
-            CatalogService,
-        )
-
-        mcp_catalog_service = CatalogService()
-        logger.info(API_SERVICE_AUTO_WIRED, service="mcp_catalog_service")
-    except MemoryError, RecursionError:
-        raise
-    except Exception:
-        logger.warning(
-            API_APP_STARTUP,
-            error="MCP catalog auto-wire failed (non-fatal)",
-            exc_info=True,
-        )
-
-    # MCP installations repo: when a persistence backend is configured,
-    # we leave this slot empty at ``create_app`` time and let
-    # ``_init_persistence`` bind the real repo AFTER
-    # ``persistence.connect()`` completes.  When no persistence is
-    # configured at all (headless test apps, dev without a DB), fall
-    # back to the in-memory stub so install/uninstall endpoints stay
-    # callable.
-    #
-    # NB: ``create_app`` runs synchronously on every test that builds a
-    # Litestar app, so we MUST NOT call into code that raises on an
-    # unconnected backend or captures a traceback per miss -- both are
-    # hot-path regressions at suite scale.
-    try:
-        if persistence is not None and getattr(persistence, "is_connected", False):
-            # Already connected (rare; some tests pre-connect).
-            mcp_installations_repo = persistence.mcp_installations
-            logger.info(
-                API_SERVICE_AUTO_WIRED,
-                service="mcp_installations_repo",
-                backend=type(persistence).__name__,
-            )
-        elif persistence is None:
-            from synthorg.integrations.mcp_catalog.in_memory_installations import (  # noqa: PLC0415
-                InMemoryMcpInstallationRepository,
-            )
-
-            mcp_installations_repo = InMemoryMcpInstallationRepository()
-            logger.debug(
-                API_SERVICE_AUTO_WIRED,
-                service="mcp_installations_repo",
-                backend="in_memory",
-            )
-        else:
-            # Persistence configured but not yet connected: defer wiring
-            # to ``_init_persistence`` so we pick up the real repository
-            # (SQLite / Postgres) after ``persistence.connect()``.
-            mcp_installations_repo = None
-            logger.debug(
-                API_SERVICE_AUTO_WIRED,
-                service="mcp_installations_repo",
-                backend="deferred_until_persistence_connected",
-            )
-    except MemoryError, RecursionError:
-        raise
-    except Exception:
-        logger.warning(
-            API_APP_STARTUP,
-            error="MCP installations repo auto-wire failed (non-fatal)",
-            exc_info=True,
-        )
-
-    if effective_config.integrations.enabled and persistence is not None:
-        try:
-            from synthorg.integrations.connections.catalog import (  # noqa: PLC0415
-                ConnectionCatalog,
-            )
-            from synthorg.integrations.health.prober import (  # noqa: PLC0415
-                HealthProberService,
-                bind_health_check_catalog,
-            )
-            from synthorg.integrations.oauth.token_manager import (  # noqa: PLC0415
-                OAuthTokenManager,
-            )
-            from synthorg.integrations.tunnel.ngrok_adapter import (  # noqa: PLC0415
-                NgrokAdapter,
-            )
-            from synthorg.persistence.secret_backends.factory import (  # noqa: PLC0415
-                create_secret_backend,
-            )
-
-            # Prefer the active SQLite persistence path so the
-            # encrypted_sqlite secret backend lands in the same DB
-            # file as ``connections`` -- otherwise a diverging
-            # SYNTHORG_DB_PATH can orphan connection_secrets in a
-            # separate file or fail outright.
-            #
-            # Resolution order:
-            #   1. ``resolved_db_path`` -- populated when persistence
-            #      was auto-wired from ``SYNTHORG_DB_PATH``.
-            #   2. Injected persistence's SQLite config path --
-            #      picked up when ``create_app()`` was handed an
-            #      already-built ``SQLitePersistenceBackend``.
-            #   3. ``SYNTHORG_DB_PATH`` env var as a last resort.
-            #
-            # Resolve a SQLite path for the encrypted_sqlite backend.
-            # Postgres mode has no SQLite file at all, so the path stays
-            # None there -- the auto-select below promotes the default
-            # ``encrypted_sqlite`` config to ``encrypted_postgres``.
-            secret_db_path: str | None
-            postgres_mode = bool(db_url)
-            if resolved_db_path is not None:
-                secret_db_path = str(resolved_db_path)
-            elif postgres_mode:
-                secret_db_path = None
-            else:
-                secret_db_path = None
-                injected_cfg = getattr(persistence, "_config", None)
-                injected_path = getattr(injected_cfg, "path", None)
-                if (
-                    isinstance(injected_path, str)
-                    and injected_path
-                    and injected_path != ":memory:"
-                ):
-                    secret_db_path = injected_path
-                else:
-                    env_db_path = (os.environ.get("SYNTHORG_DB_PATH") or "").strip()
-                    secret_db_path = env_db_path or None
-
-            # Wire a lazy pool getter for the encrypted_postgres
-            # backend. ``persistence.connect()`` runs later in the
-            # startup lifecycle (_safe_startup), so we cannot acquire
-            # a pool during create_app itself -- ``get_db()`` would
-            # raise ``PersistenceConnectionError`` and permanently
-            # lock the secret backend into env_var for the life of
-            # the process. Passing ``persistence.get_db`` as a
-            # callable defers the lookup to the first store/retrieve,
-            # which always runs after startup has succeeded. A
-            # broken pool at first use surfaces as a normal
-            # ``SecretStorageError`` with full context.
-            pg_pool_getter = persistence.get_db if postgres_mode else None
-
-            # Auto-select the correct Fernet-backed adapter for the
-            # active persistence backend. See
-            # ``resolve_secret_backend_config`` in factory.py for the
-            # full rule table -- this call honours explicit config,
-            # promotes the default to match postgres persistence, and
-            # downgrades to env_var with an ERROR log when the master
-            # key is unset or the underlying store is unavailable.
-            from synthorg.persistence.secret_backends.factory import (  # noqa: PLC0415
-                resolve_secret_backend_config,
-            )
-
-            selection = resolve_secret_backend_config(
-                effective_config.integrations.secret_backend,
-                postgres_mode=postgres_mode,
-                pg_pool_available=pg_pool_getter is not None,
-                sqlite_db_path=secret_db_path,
-            )
-            if selection.reason:
-                log_fn = {
-                    "info": logger.info,
-                    "warning": logger.warning,
-                    "error": logger.error,
-                }.get(selection.level, logger.info)
-                log_fn(API_APP_STARTUP, note=selection.reason)
-            secret_backend = create_secret_backend(
-                selection.config,
-                db_path=secret_db_path,
-                pg_pool=pg_pool_getter,
-            )
-            connection_catalog = ConnectionCatalog(
-                repository=persistence.connections,
-                secret_backend=secret_backend,
-            )
-            bind_health_check_catalog(connection_catalog)
-            logger.info(API_SERVICE_AUTO_WIRED, service="connection_catalog")
-
-            health_cfg = effective_config.integrations.health
-            health_prober_service = HealthProberService(
-                catalog=connection_catalog,
-                interval_seconds=health_cfg.check_interval_seconds,
-                unhealthy_threshold=health_cfg.unhealthy_threshold,
-            )
-            logger.info(API_SERVICE_AUTO_WIRED, service="health_prober_service")
-
-            oauth_token_manager = OAuthTokenManager(
-                catalog=connection_catalog,
-                refresh_threshold_seconds=effective_config.integrations.oauth.auto_refresh_threshold_seconds,
-            )
-            logger.info(API_SERVICE_AUTO_WIRED, service="oauth_token_manager")
-
-            tunnel_provider = NgrokAdapter(
-                auth_token_env=effective_config.integrations.tunnel.auth_token_env,
-            )
-            logger.info(API_SERVICE_AUTO_WIRED, service="tunnel_provider")
-
-            if message_bus is not None and ceremony_scheduler is not None:
-                from synthorg.engine.workflow.webhook_bridge import (  # noqa: PLC0415
-                    WebhookEventBridge,
-                )
-
-                # config_resolver is injected in on_startup via
-                # ``WebhookEventBridge.set_config_resolver`` once the
-                # AppState (and therefore the resolver) has been built.
-                webhook_event_bridge = WebhookEventBridge(
-                    bus=message_bus,
-                    ceremony_scheduler=ceremony_scheduler,
-                )
-                logger.info(
-                    API_SERVICE_AUTO_WIRED,
-                    service="webhook_event_bridge",
-                )
-
-            if message_bus is not None:
-                from synthorg.integrations.rate_limiting.shared_state import (  # noqa: PLC0415
-                    SharedRateLimitCoordinator,
-                    set_coordinator_factory_sync,
-                )
-
-                _bus = message_bus
-                _catalog = connection_catalog
-
-                # Fallback RPM when the catalog does not carry a
-                # per-connection limiter. Resolved once at wiring time
-                # from api.max_rpm_default (restart_required=True).
-                _default_rpm = api_config.rate_limit.max_rpm_default
-
-                def _make_coordinator(
-                    name: str,
-                ) -> SharedRateLimitCoordinator:
-                    # Honour the connection's configured rate
-                    # limiter so each coordinator enforces the
-                    # correct per-connection global budget.
-                    max_rpm = _default_rpm
-                    try:
-                        conn = _catalog._cache.get(name)  # noqa: SLF001
-                        if (
-                            conn is not None
-                            and conn.rate_limiter is not None
-                            and conn.rate_limiter.max_requests_per_minute > 0
-                        ):
-                            max_rpm = conn.rate_limiter.max_requests_per_minute
-                    except Exception:
-                        logger.warning(
-                            API_SERVICE_AUTO_WIRED,
-                            service="rate_limit_coordinator_factory",
-                            note=(
-                                "could not read rate_limit_rpm from "
-                                "catalog cache; using default"
-                            ),
-                            connection_name=name,
-                            exc_info=True,
-                        )
-                    return SharedRateLimitCoordinator(
-                        bus=_bus,
-                        connection_name=name,
-                        max_rpm=max_rpm,
-                    )
-
-                set_coordinator_factory_sync(_make_coordinator)
-                logger.info(
-                    API_SERVICE_AUTO_WIRED,
-                    service="rate_limit_coordinator_factory",
-                )
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
-            logger.warning(
-                API_APP_STARTUP,
-                error="Integration services auto-wire failed (non-fatal)",
-                exc_info=True,
-            )
+    integrations = auto_wire_integrations(
+        effective_config=effective_config,
+        persistence=persistence,
+        message_bus=message_bus,
+        api_config=api_config,
+        ceremony_scheduler=ceremony_scheduler,
+        db_url=db_url,
+        resolved_db_path=resolved_db_path,
+    )
+    connection_catalog = integrations.connection_catalog
+    oauth_token_manager = integrations.oauth_token_manager
+    health_prober_service = integrations.health_prober_service
+    tunnel_provider = integrations.tunnel_provider
+    webhook_event_bridge = integrations.webhook_event_bridge
+    mcp_catalog_service = integrations.mcp_catalog_service
+    mcp_installations_repo = integrations.mcp_installations_repo
 
     # Auto-wire control-plane services when not injected.
     if audit_log is None:
