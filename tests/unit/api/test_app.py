@@ -1295,7 +1295,7 @@ class TestBuildMiddleware:
         self,
         root_config: Any,
     ) -> None:
-        from synthorg.api.app import _build_middleware
+        from synthorg.api.middleware_factory import _build_middleware
 
         mw = _build_middleware(root_config.api)
         # Six layers (outside-in): ip_floor, auth_mw, csrf_mw,
@@ -1310,7 +1310,7 @@ class TestBuildMiddleware:
             RateLimitConfig as LsRL,
         )
 
-        from synthorg.api.app import _build_middleware
+        from synthorg.api.middleware_factory import _build_middleware
 
         mw = _build_middleware(root_config.api)
         rl_configs: list[LsRL] = [
@@ -1334,7 +1334,7 @@ class TestBuildMiddleware:
             RateLimitConfig as LsRL,
         )
 
-        from synthorg.api.app import _build_middleware
+        from synthorg.api.middleware_factory import _build_middleware
 
         mw = _build_middleware(root_config.api)
 
@@ -1381,7 +1381,7 @@ class TestAuthIdentifierForRequest:
     def test_returns_user_id_when_user_in_scope(self) -> None:
         from unittest.mock import MagicMock
 
-        from synthorg.api.app import _auth_identifier_for_request
+        from synthorg.api.middleware_factory import _auth_identifier_for_request
 
         request = MagicMock()
         user = MagicMock()
@@ -1392,7 +1392,7 @@ class TestAuthIdentifierForRequest:
     def test_falls_back_to_ip_when_no_user(self) -> None:
         from unittest.mock import MagicMock, patch
 
-        from synthorg.api.app import _auth_identifier_for_request
+        from synthorg.api.middleware_factory import _auth_identifier_for_request
 
         request = MagicMock()
         request.scope = {}
@@ -1405,7 +1405,7 @@ class TestAuthIdentifierForRequest:
     def test_falls_back_to_ip_when_user_is_none(self) -> None:
         from unittest.mock import MagicMock, patch
 
-        from synthorg.api.app import _auth_identifier_for_request
+        from synthorg.api.middleware_factory import _auth_identifier_for_request
 
         request = MagicMock()
         request.scope = {"user": None}
