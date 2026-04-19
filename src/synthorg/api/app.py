@@ -46,7 +46,8 @@ from synthorg.api.controllers import BASE_CONTROLLERS
 from synthorg.api.controllers.ws import ws_handler
 from synthorg.api.exception_handlers import EXCEPTION_HANDLERS
 from synthorg.api.integrations_wiring import auto_wire_integrations
-from synthorg.api.lifecycle_builder import _build_lifecycle, _build_settings_dispatcher
+from synthorg.api.lifecycle_builder import _build_lifecycle
+from synthorg.api.lifecycle_helpers import _build_settings_dispatcher
 from synthorg.api.middleware import security_headers_hook
 from synthorg.api.middleware_factory import _build_middleware
 from synthorg.api.rate_limits import build_sliding_window_store

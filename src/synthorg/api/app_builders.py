@@ -57,7 +57,7 @@ def _bootstrap_app_logging(effective_config: RootConfig) -> RootConfig:
         },
     )
     bootstrap_logging(patched)
-    return patched  # type: ignore[return-value]
+    return patched
 
 
 def _resolve_llm_judge_strategy(

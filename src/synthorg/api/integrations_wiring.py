@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from synthorg.communication.bus_protocol import MessageBus
     from synthorg.config.schema import RootConfig
     from synthorg.engine.workflow.ceremony_scheduler import CeremonyScheduler
+    from synthorg.engine.workflow.webhook_bridge import WebhookEventBridge
     from synthorg.integrations.connections.catalog import ConnectionCatalog
     from synthorg.integrations.health.prober import HealthProberService
     from synthorg.integrations.mcp_catalog.installations import (
@@ -41,7 +42,7 @@ class IntegrationsBundle:
     oauth_token_manager: OAuthTokenManager | None = None
     health_prober_service: HealthProberService | None = None
     tunnel_provider: NgrokAdapter | None = None
-    webhook_event_bridge: object | None = None
+    webhook_event_bridge: WebhookEventBridge | None = None
     mcp_catalog_service: CatalogService | None = None
     mcp_installations_repo: McpInstallationRepository | None = None
     _unused: tuple[str, ...] = field(default_factory=tuple)
