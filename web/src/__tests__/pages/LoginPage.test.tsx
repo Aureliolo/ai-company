@@ -1,8 +1,9 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
-
-// ── Mocks ──────────────────────────────────────────────────
+import { http, HttpResponse } from 'msw'
+import { apiError, apiSuccess } from '@/mocks/handlers'
+import { server } from '@/test-setup'
 
 const mockLogin = vi.fn()
 const mockSetup = vi.fn()
@@ -12,15 +13,12 @@ const authSelector = (selector: (s: Record<string, unknown>) => unknown) =>
 
 vi.mock('@/stores/auth', () => {
   const hookName = 'useAuthStore'
-  return { [hookName]: (...args: unknown[]) => authSelector(args[0] as (s: Record<string, unknown>) => unknown) }
+  return {
+    [hookName]: (...args: unknown[]) =>
+      authSelector(args[0] as (s: Record<string, unknown>) => unknown),
+  }
 })
 
-const mockGetSetupStatus = vi.fn()
-vi.mock('@/api/endpoints/setup', () => ({
-  getSetupStatus: (...args: unknown[]) => mockGetSetupStatus(...args),
-}))
-
-// Mock login lockout with controllable state
 const mockLockout = {
   locked: false,
   checkAndClearLockout: vi.fn(() => false),
@@ -33,8 +31,6 @@ vi.mock('@/hooks/useLoginLockout', () => {
 })
 
 import LoginPage from '@/pages/LoginPage'
-
-// ── Helpers ────────────────────────────────────────────────
 
 function renderLogin() {
   return render(
@@ -57,7 +53,26 @@ function setupStatusResponse(overrides: Record<string, unknown> = {}) {
   }
 }
 
-// ── Tests ──────────────────────────────────────────────────
+type SetupMode =
+  | { kind: 'success'; body: ReturnType<typeof setupStatusResponse> }
+  | { kind: 'error' }
+
+let setupMode: SetupMode = {
+  kind: 'success',
+  body: setupStatusResponse(),
+}
+
+function installSetupStatus(mode: SetupMode) {
+  setupMode = mode
+  server.use(
+    http.get('/api/v1/setup/status', () => {
+      if (setupMode.kind === 'error') {
+        return HttpResponse.json(apiError('network error'))
+      }
+      return HttpResponse.json(apiSuccess(setupMode.body))
+    }),
+  )
+}
 
 describe('LoginPage', () => {
   beforeEach(() => {
@@ -65,25 +80,25 @@ describe('LoginPage', () => {
     mockLockout.locked = false
     mockLockout.checkAndClearLockout.mockReturnValue(false)
     mockLockout.recordFailure.mockReturnValue(null)
+    setupMode = { kind: 'success', body: setupStatusResponse() }
   })
 
   it('shows loading state on mount', async () => {
-    // Deferred promise rather than ``new Promise(() => {})`` so the
-    // ``--detect-async-leaks`` guard doesn't flag the intentionally-
-    // pending state as a leak: the assertion runs while the promise
-    // is still pending, then we resolve + await it in teardown so
-    // no promise outlives the test.
-    let resolveSetup: ((value: ReturnType<typeof setupStatusResponse>) => void) | undefined
-    const deferred = new Promise<ReturnType<typeof setupStatusResponse>>(
-      (resolve) => {
-        resolveSetup = resolve
-      },
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    server.use(
+      http.get('/api/v1/setup/status', async () => {
+        await gate
+        return HttpResponse.json(
+          apiSuccess(setupStatusResponse({ needs_admin: false })),
+        )
+      }),
     )
-    mockGetSetupStatus.mockReturnValue(deferred)
     renderLogin()
     expect(screen.getByText('Checking setup status...')).toBeInTheDocument()
-    if (!resolveSetup) throw new Error('deferred resolver was never assigned')
-    resolveSetup(setupStatusResponse({ needs_admin: false }))
+    release()
     await waitFor(() => {
       expect(
         screen.queryByText('Checking setup status...'),
@@ -92,34 +107,48 @@ describe('LoginPage', () => {
   })
 
   it('shows login form when needs_admin is false', async () => {
-    mockGetSetupStatus.mockResolvedValue(setupStatusResponse({ needs_admin: false }))
+    installSetupStatus({
+      kind: 'success',
+      body: setupStatusResponse({ needs_admin: false }),
+    })
     renderLogin()
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: 'Sign In' })).toBeInTheDocument()
+      expect(
+        screen.getByRole('heading', { name: 'Sign In' }),
+      ).toBeInTheDocument()
     })
     expect(screen.queryByLabelText('Confirm Password')).not.toBeInTheDocument()
   })
 
   it('shows admin creation form when needs_admin is true', async () => {
-    mockGetSetupStatus.mockResolvedValue(setupStatusResponse({ needs_admin: true }))
+    installSetupStatus({
+      kind: 'success',
+      body: setupStatusResponse({ needs_admin: true }),
+    })
     renderLogin()
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: 'Create Admin Account' })).toBeInTheDocument()
+      expect(
+        screen.getByRole('heading', { name: 'Create Admin Account' }),
+      ).toBeInTheDocument()
     })
     expect(screen.getByLabelText(/confirm password/i)).toBeInTheDocument()
-    expect(screen.getByText(/Set up your administrator account/)).toBeInTheDocument()
+    expect(
+      screen.getByText(/Set up your administrator account/),
+    ).toBeInTheDocument()
   })
 
   it('defaults to login mode on setup status fetch failure', async () => {
-    mockGetSetupStatus.mockRejectedValue(new Error('network error'))
+    installSetupStatus({ kind: 'error' })
     renderLogin()
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: 'Sign In' })).toBeInTheDocument()
+      expect(
+        screen.getByRole('heading', { name: 'Sign In' }),
+      ).toBeInTheDocument()
     })
   })
 
   it('renders SynthOrg wordmark', async () => {
-    mockGetSetupStatus.mockResolvedValue(setupStatusResponse())
+    installSetupStatus({ kind: 'success', body: setupStatusResponse() })
     renderLogin()
     await waitFor(() => {
       expect(screen.getByText('SynthOrg')).toBeInTheDocument()
@@ -127,13 +156,15 @@ describe('LoginPage', () => {
   })
 
   it('login form submits credentials', async () => {
-    mockGetSetupStatus.mockResolvedValue(setupStatusResponse())
+    installSetupStatus({ kind: 'success', body: setupStatusResponse() })
     mockLogin.mockResolvedValue(undefined)
     const user = userEvent.setup()
 
     renderLogin()
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: 'Sign In' })).toBeInTheDocument()
+      expect(
+        screen.getByRole('heading', { name: 'Sign In' }),
+      ).toBeInTheDocument()
     })
 
     await user.type(screen.getByLabelText('Username'), 'admin')
@@ -146,13 +177,15 @@ describe('LoginPage', () => {
   })
 
   it('login form shows error on failure', async () => {
-    mockGetSetupStatus.mockResolvedValue(setupStatusResponse())
+    installSetupStatus({ kind: 'success', body: setupStatusResponse() })
     mockLogin.mockRejectedValue(new Error('Invalid credentials'))
     const user = userEvent.setup()
 
     renderLogin()
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: 'Sign In' })).toBeInTheDocument()
+      expect(
+        screen.getByRole('heading', { name: 'Sign In' }),
+      ).toBeInTheDocument()
     })
 
     await user.type(screen.getByLabelText('Username'), 'admin')
@@ -165,12 +198,14 @@ describe('LoginPage', () => {
   })
 
   it('validates username is required for login', async () => {
-    mockGetSetupStatus.mockResolvedValue(setupStatusResponse())
+    installSetupStatus({ kind: 'success', body: setupStatusResponse() })
     const user = userEvent.setup()
 
     renderLogin()
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: 'Sign In' })).toBeInTheDocument()
+      expect(
+        screen.getByRole('heading', { name: 'Sign In' }),
+      ).toBeInTheDocument()
     })
 
     await user.type(screen.getByLabelText('Password'), 'secret123456')
@@ -183,12 +218,14 @@ describe('LoginPage', () => {
   })
 
   it('validates password is required for login', async () => {
-    mockGetSetupStatus.mockResolvedValue(setupStatusResponse())
+    installSetupStatus({ kind: 'success', body: setupStatusResponse() })
     const user = userEvent.setup()
 
     renderLogin()
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: 'Sign In' })).toBeInTheDocument()
+      expect(
+        screen.getByRole('heading', { name: 'Sign In' }),
+      ).toBeInTheDocument()
     })
 
     await user.type(screen.getByLabelText('Username'), 'admin')
@@ -201,34 +238,47 @@ describe('LoginPage', () => {
   })
 
   it('admin creation validates password match', async () => {
-    mockGetSetupStatus.mockResolvedValue(setupStatusResponse({ needs_admin: true }))
+    installSetupStatus({
+      kind: 'success',
+      body: setupStatusResponse({ needs_admin: true }),
+    })
     const user = userEvent.setup()
 
     renderLogin()
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: 'Create Admin Account' })).toBeInTheDocument()
+      expect(
+        screen.getByRole('heading', { name: 'Create Admin Account' }),
+      ).toBeInTheDocument()
     })
 
     await user.type(screen.getByLabelText('Username'), 'admin')
     await user.type(screen.getByLabelText('Password'), 'validpassword1')
-    await user.type(screen.getByLabelText(/confirm password/i), 'differentpassword')
+    await user.type(
+      screen.getByLabelText(/confirm password/i),
+      'differentpassword',
+    )
     await user.click(screen.getByRole('button', { name: 'Create Account' }))
 
     await waitFor(() => {
-      expect(screen.getByRole('alert')).toHaveTextContent('Passwords do not match')
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Passwords do not match',
+      )
     })
     expect(mockSetup).not.toHaveBeenCalled()
   })
 
   it('admin creation validates minimum password length', async () => {
-    mockGetSetupStatus.mockResolvedValue(
-      setupStatusResponse({ needs_admin: true, min_password_length: 12 }),
-    )
+    installSetupStatus({
+      kind: 'success',
+      body: setupStatusResponse({ needs_admin: true, min_password_length: 12 }),
+    })
     const user = userEvent.setup()
 
     renderLogin()
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: 'Create Admin Account' })).toBeInTheDocument()
+      expect(
+        screen.getByRole('heading', { name: 'Create Admin Account' }),
+      ).toBeInTheDocument()
     })
 
     await user.type(screen.getByLabelText('Username'), 'admin')
@@ -237,22 +287,32 @@ describe('LoginPage', () => {
     await user.click(screen.getByRole('button', { name: 'Create Account' }))
 
     await waitFor(() => {
-      expect(screen.getByRole('alert')).toHaveTextContent('at least 12 characters')
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'at least 12 characters',
+      )
     })
     expect(mockSetup).not.toHaveBeenCalled()
   })
 
   it('admin creation validates username is required', async () => {
-    mockGetSetupStatus.mockResolvedValue(setupStatusResponse({ needs_admin: true }))
+    installSetupStatus({
+      kind: 'success',
+      body: setupStatusResponse({ needs_admin: true }),
+    })
     const user = userEvent.setup()
 
     renderLogin()
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: 'Create Admin Account' })).toBeInTheDocument()
+      expect(
+        screen.getByRole('heading', { name: 'Create Admin Account' }),
+      ).toBeInTheDocument()
     })
 
     await user.type(screen.getByLabelText('Password'), 'validpassword1')
-    await user.type(screen.getByLabelText(/confirm password/i), 'validpassword1')
+    await user.type(
+      screen.getByLabelText(/confirm password/i),
+      'validpassword1',
+    )
     await user.click(screen.getByRole('button', { name: 'Create Account' }))
 
     await waitFor(() => {
@@ -262,18 +322,26 @@ describe('LoginPage', () => {
   })
 
   it('admin creation calls setup on valid input', async () => {
-    mockGetSetupStatus.mockResolvedValue(setupStatusResponse({ needs_admin: true }))
+    installSetupStatus({
+      kind: 'success',
+      body: setupStatusResponse({ needs_admin: true }),
+    })
     mockSetup.mockResolvedValue(undefined)
     const user = userEvent.setup()
 
     renderLogin()
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: 'Create Admin Account' })).toBeInTheDocument()
+      expect(
+        screen.getByRole('heading', { name: 'Create Admin Account' }),
+      ).toBeInTheDocument()
     })
 
     await user.type(screen.getByLabelText('Username'), 'admin')
     await user.type(screen.getByLabelText('Password'), 'validpassword1')
-    await user.type(screen.getByLabelText(/confirm password/i), 'validpassword1')
+    await user.type(
+      screen.getByLabelText(/confirm password/i),
+      'validpassword1',
+    )
     await user.click(screen.getByRole('button', { name: 'Create Account' }))
 
     await waitFor(() => {
@@ -282,11 +350,7 @@ describe('LoginPage', () => {
   })
 
   it('disables inputs during submission', async () => {
-    mockGetSetupStatus.mockResolvedValue(setupStatusResponse())
-    // Deferred promise rather than ``new Promise(() => {})`` so
-    // --detect-async-leaks doesn't flag the intentionally-pending
-    // submission state as a leak: we resolve it at the end of the
-    // test so the login store's promise chain settles before teardown.
+    installSetupStatus({ kind: 'success', body: setupStatusResponse() })
     let resolveLogin: (() => void) | undefined
     const loginDeferred = new Promise<void>((resolve) => {
       resolveLogin = resolve
@@ -296,7 +360,9 @@ describe('LoginPage', () => {
 
     renderLogin()
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: 'Sign In' })).toBeInTheDocument()
+      expect(
+        screen.getByRole('heading', { name: 'Sign In' }),
+      ).toBeInTheDocument()
     })
 
     await user.type(screen.getByLabelText('Username'), 'admin')
@@ -304,23 +370,25 @@ describe('LoginPage', () => {
     await user.click(screen.getByRole('button', { name: 'Sign In' }))
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Signing In...' })).toBeDisabled()
+      expect(
+        screen.getByRole('button', { name: 'Signing In...' }),
+      ).toBeDisabled()
     })
 
-    // Settle the deferred so the in-flight login promise resolves
-    // before the worker tears down.
     if (!resolveLogin) throw new Error('deferred resolver was never assigned')
     resolveLogin()
     await loginDeferred
   })
 
   it('shows lockout warning when locked', async () => {
-    mockGetSetupStatus.mockResolvedValue(setupStatusResponse())
+    installSetupStatus({ kind: 'success', body: setupStatusResponse() })
     mockLockout.locked = true
 
     renderLogin()
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: 'Sign In' })).toBeInTheDocument()
+      expect(
+        screen.getByRole('heading', { name: 'Sign In' }),
+      ).toBeInTheDocument()
     })
 
     expect(screen.getByRole('button', { name: 'Sign In' })).toBeDisabled()
@@ -328,13 +396,15 @@ describe('LoginPage', () => {
   })
 
   it('form submits on Enter key', async () => {
-    mockGetSetupStatus.mockResolvedValue(setupStatusResponse())
+    installSetupStatus({ kind: 'success', body: setupStatusResponse() })
     mockLogin.mockResolvedValue(undefined)
     const user = userEvent.setup()
 
     renderLogin()
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: 'Sign In' })).toBeInTheDocument()
+      expect(
+        screen.getByRole('heading', { name: 'Sign In' }),
+      ).toBeInTheDocument()
     })
 
     await user.type(screen.getByLabelText('Username'), 'admin')
@@ -350,38 +420,40 @@ describe('LoginPage', () => {
     const XSS_PAYLOAD = '<script>window.__xss_fired__ = true</script>'
 
     beforeEach(() => {
-      // Remove the flag in case a prior test set it.
       delete (globalThis as { __xss_fired__?: boolean }).__xss_fired__
     })
 
     it('renders username input as text, not executable HTML', async () => {
-      mockGetSetupStatus.mockResolvedValue(setupStatusResponse())
+      installSetupStatus({ kind: 'success', body: setupStatusResponse() })
       const user = userEvent.setup()
 
       renderLogin()
       await waitFor(() => {
-        expect(screen.getByRole('heading', { name: 'Sign In' })).toBeInTheDocument()
+        expect(
+          screen.getByRole('heading', { name: 'Sign In' }),
+        ).toBeInTheDocument()
       })
 
       const username = screen.getByLabelText('Username') as HTMLInputElement
       await user.type(username, XSS_PAYLOAD)
 
-      // The input `value` preserves the payload as a literal string.
       expect(username.value).toBe(XSS_PAYLOAD)
-      // No script element was added to the DOM.
       expect(document.querySelector('script[data-xss], body script')).toBeNull()
-      // The payload did not execute in the test realm.
-      expect((globalThis as { __xss_fired__?: boolean }).__xss_fired__).toBeUndefined()
+      expect(
+        (globalThis as { __xss_fired__?: boolean }).__xss_fired__,
+      ).toBeUndefined()
     })
 
     it('forwards XSS payload to the login action as a plain string', async () => {
-      mockGetSetupStatus.mockResolvedValue(setupStatusResponse())
+      installSetupStatus({ kind: 'success', body: setupStatusResponse() })
       mockLogin.mockResolvedValue(undefined)
       const user = userEvent.setup()
 
       renderLogin()
       await waitFor(() => {
-        expect(screen.getByRole('heading', { name: 'Sign In' })).toBeInTheDocument()
+        expect(
+          screen.getByRole('heading', { name: 'Sign In' }),
+        ).toBeInTheDocument()
       })
 
       await user.type(screen.getByLabelText('Username'), XSS_PAYLOAD)
@@ -392,8 +464,9 @@ describe('LoginPage', () => {
         expect(mockLogin).toHaveBeenCalledWith(XSS_PAYLOAD, 'password12345')
       })
 
-      // The payload was never executed as HTML during render.
-      expect((globalThis as { __xss_fired__?: boolean }).__xss_fired__).toBeUndefined()
+      expect(
+        (globalThis as { __xss_fired__?: boolean }).__xss_fired__,
+      ).toBeUndefined()
     })
   })
 })

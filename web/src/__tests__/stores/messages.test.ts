@@ -1,13 +1,22 @@
+import { http, HttpResponse } from 'msw'
 import { useMessagesStore, _resetRequestSeqs } from '@/stores/messages'
 import { makeMessage, makeChannel } from '../helpers/factories'
-import type { WsEvent } from '@/api/types'
+import { apiError, apiSuccess, paginatedFor } from '@/mocks/handlers'
+import type { listMessages } from '@/api/endpoints/messages'
+import { server } from '@/test-setup'
+import type { Message, WsEvent } from '@/api/types'
 
-vi.mock('@/api/endpoints/messages', () => ({
-  listMessages: vi.fn(),
-  listChannels: vi.fn(),
-}))
-
-const messagesApi = await import('@/api/endpoints/messages')
+function paginated(
+  data: Message[],
+  meta: Partial<{ total: number; offset: number; limit: number }> = {},
+) {
+  return paginatedFor<typeof listMessages>({
+    data,
+    total: meta.total ?? data.length,
+    offset: meta.offset ?? 0,
+    limit: meta.limit ?? 50,
+  })
+}
 
 function resetStore() {
   _resetRequestSeqs()
@@ -28,14 +37,17 @@ function resetStore() {
 
 describe('messagesStore', () => {
   beforeEach(() => {
-    vi.clearAllMocks()
     resetStore()
   })
 
   describe('fetchChannels', () => {
     it('fetches and sets channels', async () => {
       const channels = [makeChannel('#engineering'), makeChannel('#product')]
-      vi.mocked(messagesApi.listChannels).mockResolvedValue(channels)
+      server.use(
+        http.get('/api/v1/messages/channels', () =>
+          HttpResponse.json(apiSuccess(channels)),
+        ),
+      )
 
       await useMessagesStore.getState().fetchChannels()
 
@@ -44,7 +56,11 @@ describe('messagesStore', () => {
     })
 
     it('sets channelsError on failure', async () => {
-      vi.mocked(messagesApi.listChannels).mockRejectedValue(new Error('Network error'))
+      server.use(
+        http.get('/api/v1/messages/channels', () =>
+          HttpResponse.json(apiError('Network error')),
+        ),
+      )
 
       await useMessagesStore.getState().fetchChannels()
 
@@ -56,7 +72,11 @@ describe('messagesStore', () => {
   describe('fetchMessages', () => {
     it('fetches and sets messages for a channel', async () => {
       const msgs = [makeMessage('1'), makeMessage('2')]
-      vi.mocked(messagesApi.listMessages).mockResolvedValue({ data: msgs, total: 10, offset: 0, limit: 50 })
+      server.use(
+        http.get('/api/v1/messages', () =>
+          HttpResponse.json(paginated(msgs, { total: 10 })),
+        ),
+      )
 
       await useMessagesStore.getState().fetchMessages('#engineering')
 
@@ -65,32 +85,55 @@ describe('messagesStore', () => {
       expect(useMessagesStore.getState().loading).toBe(false)
     })
 
+    it('forwards the channel filter as a query param', async () => {
+      let capturedChannel: string | null = null
+      server.use(
+        http.get('/api/v1/messages', ({ request }) => {
+          capturedChannel = new URL(request.url).searchParams.get('channel')
+          return HttpResponse.json(paginated([]))
+        }),
+      )
+
+      await useMessagesStore.getState().fetchMessages('#engineering')
+
+      expect(capturedChannel).toBe('#engineering')
+    })
+
     it('discards stale responses on rapid channel switching', async () => {
       const slowMsgs = [makeMessage('slow')]
       const fastMsgs = [makeMessage('fast')]
 
-      let resolveFirst!: (value: unknown) => void
-      const firstCall = new Promise((r) => { resolveFirst = r })
-      vi.mocked(messagesApi.listMessages)
-        .mockImplementationOnce(() => firstCall as ReturnType<typeof messagesApi.listMessages>)
-        .mockResolvedValueOnce({ data: fastMsgs, total: 1, offset: 0, limit: 50 })
+      let release!: () => void
+      const gate = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      server.use(
+        http.get('/api/v1/messages', async ({ request }) => {
+          const channel = new URL(request.url).searchParams.get('channel')
+          if (channel === '#old-channel') {
+            await gate
+            return HttpResponse.json(paginated(slowMsgs, { total: 1 }))
+          }
+          return HttpResponse.json(paginated(fastMsgs, { total: 1 }))
+        }),
+      )
 
-      // Start first fetch (slow)
       const p1 = useMessagesStore.getState().fetchMessages('#old-channel')
-      // Start second fetch immediately (fast)
       const p2 = useMessagesStore.getState().fetchMessages('#new-channel')
       await p2
 
-      // Resolve the slow one after the fast one completed
-      resolveFirst({ data: slowMsgs, total: 1, offset: 0, limit: 50 })
+      release()
       await p1
 
-      // Store should have the fast response, not the slow one
       expect(useMessagesStore.getState().messages[0]!.id).toBe('fast')
     })
 
     it('sets error on failure', async () => {
-      vi.mocked(messagesApi.listMessages).mockRejectedValue(new Error('Server error'))
+      server.use(
+        http.get('/api/v1/messages', () =>
+          HttpResponse.json(apiError('Server error')),
+        ),
+      )
 
       await useMessagesStore.getState().fetchMessages('#engineering')
 
@@ -101,12 +144,16 @@ describe('messagesStore', () => {
   describe('fetchMoreMessages', () => {
     it('appends messages to existing list', async () => {
       useMessagesStore.setState({ messages: [makeMessage('1')], total: 5 })
-      vi.mocked(messagesApi.listMessages).mockResolvedValue({
-        data: [makeMessage('2'), makeMessage('3')],
-        total: 5,
-        offset: 1,
-        limit: 50,
-      })
+      server.use(
+        http.get('/api/v1/messages', () =>
+          HttpResponse.json(
+            paginated([makeMessage('2'), makeMessage('3')], {
+              total: 5,
+              offset: 1,
+            }),
+          ),
+        ),
+      )
 
       await useMessagesStore.getState().fetchMoreMessages('#engineering')
 
@@ -116,10 +163,17 @@ describe('messagesStore', () => {
 
     it('skips if already loading more', async () => {
       useMessagesStore.setState({ loadingMore: true })
+      let calls = 0
+      server.use(
+        http.get('/api/v1/messages', () => {
+          calls += 1
+          return HttpResponse.json(paginated([]))
+        }),
+      )
 
       await useMessagesStore.getState().fetchMoreMessages('#engineering')
 
-      expect(messagesApi.listMessages).not.toHaveBeenCalled()
+      expect(calls).toBe(0)
     })
 
     it('sets error on failure', async () => {
@@ -127,8 +181,10 @@ describe('messagesStore', () => {
         messages: [makeMessage('1')],
         total: 5,
       })
-      vi.mocked(messagesApi.listMessages).mockRejectedValue(
-        new Error('Timeout'),
+      server.use(
+        http.get('/api/v1/messages', () =>
+          HttpResponse.json(apiError('Timeout')),
+        ),
       )
 
       await useMessagesStore.getState().fetchMoreMessages('#engineering')
@@ -142,27 +198,30 @@ describe('messagesStore', () => {
         messages: [makeMessage('1')],
         total: 5,
       })
-      let resolveMore!: (value: unknown) => void
-      const moreCall = new Promise((r) => { resolveMore = r })
-      vi.mocked(messagesApi.listMessages)
-        .mockImplementationOnce(() => moreCall as ReturnType<typeof messagesApi.listMessages>)
-        .mockResolvedValueOnce({
-          data: [makeMessage('fresh')],
-          total: 1,
-          offset: 0,
-          limit: 50,
-        })
+      let release!: () => void
+      const gate = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      server.use(
+        http.get('/api/v1/messages', async ({ request }) => {
+          const url = new URL(request.url)
+          const channel = url.searchParams.get('channel')
+          const offset = url.searchParams.get('offset')
+          if (channel === '#old' && offset) {
+            await gate
+            return HttpResponse.json(
+              paginated([makeMessage('stale')], { total: 5, offset: 1 }),
+            )
+          }
+          return HttpResponse.json(
+            paginated([makeMessage('fresh')], { total: 1, offset: 0 }),
+          )
+        }),
+      )
 
       const pMore = useMessagesStore.getState().fetchMoreMessages('#old')
-      // Channel switch triggers fetchMessages which bumps seq
       await useMessagesStore.getState().fetchMessages('#new')
-      // Resolve stale fetchMoreMessages
-      resolveMore({
-        data: [makeMessage('stale')],
-        total: 5,
-        offset: 1,
-        limit: 50,
-      })
+      release()
       await pMore
 
       const { messages } = useMessagesStore.getState()
@@ -180,10 +239,18 @@ describe('messagesStore', () => {
     })
 
     it('prepends message to active channel list', () => {
-      useMessagesStore.setState({ messages: [makeMessage('existing')], total: 1 })
+      useMessagesStore.setState({
+        messages: [makeMessage('existing')],
+        total: 1,
+      })
       const newMsg = makeMessage('new', { channel: '#engineering' })
 
-      useMessagesStore.getState().handleWsEvent(makeWsEvent(newMsg as unknown as Record<string, unknown>), '#engineering')
+      useMessagesStore
+        .getState()
+        .handleWsEvent(
+          makeWsEvent(newMsg as unknown as Record<string, unknown>),
+          '#engineering',
+        )
 
       const { messages, total } = useMessagesStore.getState()
       expect(messages).toHaveLength(2)
@@ -194,7 +261,12 @@ describe('messagesStore', () => {
     it('increments unread for inactive channel', () => {
       const newMsg = makeMessage('new', { channel: '#product' })
 
-      useMessagesStore.getState().handleWsEvent(makeWsEvent(newMsg as unknown as Record<string, unknown>), '#engineering')
+      useMessagesStore
+        .getState()
+        .handleWsEvent(
+          makeWsEvent(newMsg as unknown as Record<string, unknown>),
+          '#engineering',
+        )
 
       expect(useMessagesStore.getState().unreadCounts['#product']).toBe(1)
       expect(useMessagesStore.getState().messages).toHaveLength(0)
@@ -203,10 +275,9 @@ describe('messagesStore', () => {
     it('skips malformed payloads', () => {
       const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
       try {
-        useMessagesStore.getState().handleWsEvent(
-          makeWsEvent({ bad: true }),
-          '#engineering',
-        )
+        useMessagesStore
+          .getState()
+          .handleWsEvent(makeWsEvent({ bad: true }), '#engineering')
         expect(useMessagesStore.getState().messages).toHaveLength(0)
       } finally {
         consoleSpy.mockRestore()
@@ -259,23 +330,31 @@ describe('messagesStore', () => {
   describe('toggleThread', () => {
     it('adds task_id to expanded set', () => {
       useMessagesStore.getState().toggleThread('task-1')
-      expect(useMessagesStore.getState().expandedThreads.has('task-1')).toBe(true)
+      expect(
+        useMessagesStore.getState().expandedThreads.has('task-1'),
+      ).toBe(true)
     })
 
     it('removes task_id from expanded set on second toggle', () => {
       useMessagesStore.getState().toggleThread('task-1')
       useMessagesStore.getState().toggleThread('task-1')
-      expect(useMessagesStore.getState().expandedThreads.has('task-1')).toBe(false)
+      expect(
+        useMessagesStore.getState().expandedThreads.has('task-1'),
+      ).toBe(false)
     })
   })
 
   describe('resetUnread', () => {
     it('clears unread count for a channel', () => {
-      useMessagesStore.setState({ unreadCounts: { '#engineering': 5, '#product': 3 } })
+      useMessagesStore.setState({
+        unreadCounts: { '#engineering': 5, '#product': 3 },
+      })
 
       useMessagesStore.getState().resetUnread('#engineering')
 
-      expect(useMessagesStore.getState().unreadCounts['#engineering']).toBeUndefined()
+      expect(
+        useMessagesStore.getState().unreadCounts['#engineering'],
+      ).toBeUndefined()
       expect(useMessagesStore.getState().unreadCounts['#product']).toBe(3)
     })
 

@@ -4,16 +4,12 @@ import { useAuthStore } from '@/stores/auth'
 import type { HumanRole, UserInfoResponse } from '@/api/types'
 import { WRITE_ROLES } from '@/utils/constants'
 
-vi.mock('@/api/endpoints/auth', () => ({
-  login: vi.fn(),
-  setup: vi.fn(),
-  logout: vi.fn(),
-  getMe: vi.fn(),
-  changePassword: vi.fn(),
-}))
-
 function resetStore() {
-  useAuthStore.setState({ authStatus: 'unauthenticated', user: null, loading: false })
+  useAuthStore.setState({
+    authStatus: 'unauthenticated',
+    user: null,
+    loading: false,
+  })
 }
 
 describe('useAuth', () => {
@@ -47,14 +43,30 @@ describe('useAuth', () => {
 
   describe('canWrite', () => {
     const writeRoles = WRITE_ROLES
-    const allRoles: readonly HumanRole[] = ['ceo', 'manager', 'board_member', 'pair_programmer', 'observer', 'system']
-    const readOnlyRoles = allRoles.filter((r) => !(WRITE_ROLES as readonly string[]).includes(r))
+    const allRoles: readonly HumanRole[] = [
+      'ceo',
+      'manager',
+      'board_member',
+      'pair_programmer',
+      'observer',
+      'system',
+    ]
+    const readOnlyRoles = allRoles.filter(
+      (r) => !(WRITE_ROLES as readonly string[]).includes(r),
+    )
 
     for (const role of writeRoles) {
       it(`returns canWrite=true for ${role}`, () => {
         useAuthStore.setState({
           authStatus: 'authenticated',
-          user: { id: '1', username: 'u', role, must_change_password: false, org_roles: [], scoped_departments: [] },
+          user: {
+            id: '1',
+            username: 'u',
+            role,
+            must_change_password: false,
+            org_roles: [],
+            scoped_departments: [],
+          },
         })
         const { result } = renderHook(() => useAuth())
         expect(result.current.canWrite).toBe(true)
@@ -65,7 +77,14 @@ describe('useAuth', () => {
       it(`returns canWrite=false for ${role}`, () => {
         useAuthStore.setState({
           authStatus: 'authenticated',
-          user: { id: '1', username: 'u', role, must_change_password: false, org_roles: [], scoped_departments: [] },
+          user: {
+            id: '1',
+            username: 'u',
+            role,
+            must_change_password: false,
+            org_roles: [],
+            scoped_departments: [],
+          },
         })
         const { result } = renderHook(() => useAuth())
         expect(result.current.canWrite).toBe(false)
@@ -76,7 +95,14 @@ describe('useAuth', () => {
   it('returns mustChangePassword from user', () => {
     useAuthStore.setState({
       authStatus: 'authenticated',
-      user: { id: '1', username: 'u', role: 'ceo', must_change_password: true, org_roles: [], scoped_departments: [] },
+      user: {
+        id: '1',
+        username: 'u',
+        role: 'ceo',
+        must_change_password: true,
+        org_roles: [],
+        scoped_departments: [],
+      },
     })
     const { result } = renderHook(() => useAuth())
     expect(result.current.mustChangePassword).toBe(true)

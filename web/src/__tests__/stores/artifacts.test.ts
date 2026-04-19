@@ -1,17 +1,23 @@
 import fc from 'fast-check'
+import { http, HttpResponse } from 'msw'
 import { useArtifactsStore } from '@/stores/artifacts'
 import { makeArtifact } from '../helpers/factories'
-import type { WsEvent } from '@/api/types'
+import { apiError, apiSuccess, paginatedFor, voidSuccess } from '@/mocks/handlers'
+import type { listArtifacts } from '@/api/endpoints/artifacts'
+import { server } from '@/test-setup'
+import type { Artifact, WsEvent } from '@/api/types'
 
-vi.mock('@/api/endpoints/artifacts', () => ({
-  listArtifacts: vi.fn(),
-  getArtifact: vi.fn(),
-  getArtifactContentText: vi.fn(),
-  deleteArtifact: vi.fn(),
-}))
-
-const { listArtifacts, getArtifact, getArtifactContentText, deleteArtifact } =
-  await import('@/api/endpoints/artifacts')
+function paginated(
+  data: Artifact[],
+  meta: Partial<{ total: number; offset: number; limit: number }> = {},
+) {
+  return paginatedFor<typeof listArtifacts>({
+    data,
+    total: meta.total ?? data.length,
+    offset: meta.offset ?? 0,
+    limit: meta.limit ?? 200,
+  })
+}
 
 describe('useArtifactsStore', () => {
   beforeEach(() => {
@@ -31,13 +37,16 @@ describe('useArtifactsStore', () => {
       detailLoading: false,
       detailError: null,
     })
-    vi.clearAllMocks()
   })
 
   describe('fetchArtifacts', () => {
     it('populates artifacts on success', async () => {
       const artifact = makeArtifact('artifact-001')
-      vi.mocked(listArtifacts).mockResolvedValue({ data: [artifact], total: 1, offset: 0, limit: 200 })
+      server.use(
+        http.get('/api/v1/artifacts', () =>
+          HttpResponse.json(paginated([artifact], { total: 1 })),
+        ),
+      )
 
       await useArtifactsStore.getState().fetchArtifacts()
 
@@ -48,7 +57,11 @@ describe('useArtifactsStore', () => {
     })
 
     it('sets error on failure', async () => {
-      vi.mocked(listArtifacts).mockRejectedValue(new Error('Network error'))
+      server.use(
+        http.get('/api/v1/artifacts', () =>
+          HttpResponse.json(apiError('Network error')),
+        ),
+      )
 
       await useArtifactsStore.getState().fetchArtifacts()
 
@@ -58,9 +71,20 @@ describe('useArtifactsStore', () => {
 
   describe('fetchArtifactDetail', () => {
     it('populates selected artifact', async () => {
-      const artifact = makeArtifact('artifact-001', { content_type: 'text/plain', size_bytes: 100 })
-      vi.mocked(getArtifact).mockResolvedValue(artifact)
-      vi.mocked(getArtifactContentText).mockResolvedValue('hello world')
+      const artifact = makeArtifact('artifact-001', {
+        content_type: 'text/plain',
+        size_bytes: 100,
+      })
+      server.use(
+        http.get('/api/v1/artifacts/:id', () =>
+          HttpResponse.json(apiSuccess(artifact)),
+        ),
+        http.get('/api/v1/artifacts/:id/content', () =>
+          new HttpResponse('hello world', {
+            headers: { 'Content-Type': 'text/plain' },
+          }),
+        ),
+      )
 
       await useArtifactsStore.getState().fetchArtifactDetail('artifact-001')
 
@@ -70,7 +94,11 @@ describe('useArtifactsStore', () => {
     })
 
     it('sets error when artifact not found', async () => {
-      vi.mocked(getArtifact).mockRejectedValue(new Error('Not found'))
+      server.use(
+        http.get('/api/v1/artifacts/:id', () =>
+          HttpResponse.json(apiError('Not found')),
+        ),
+      )
 
       await useArtifactsStore.getState().fetchArtifactDetail('missing')
 
@@ -78,9 +106,18 @@ describe('useArtifactsStore', () => {
     })
 
     it('handles partial content preview failure gracefully', async () => {
-      const artifact = makeArtifact('artifact-001', { content_type: 'text/plain', size_bytes: 100 })
-      vi.mocked(getArtifact).mockResolvedValue(artifact)
-      vi.mocked(getArtifactContentText).mockRejectedValue(new Error('Content unavailable'))
+      const artifact = makeArtifact('artifact-001', {
+        content_type: 'text/plain',
+        size_bytes: 100,
+      })
+      server.use(
+        http.get('/api/v1/artifacts/:id', () =>
+          HttpResponse.json(apiSuccess(artifact)),
+        ),
+        http.get('/api/v1/artifacts/:id/content', () =>
+          new HttpResponse('boom', { status: 500 }),
+        ),
+      )
 
       await useArtifactsStore.getState().fetchArtifactDetail('artifact-001')
 
@@ -96,7 +133,11 @@ describe('useArtifactsStore', () => {
       const a1 = makeArtifact('artifact-001')
       const a2 = makeArtifact('artifact-002')
       useArtifactsStore.setState({ artifacts: [a1, a2], totalArtifacts: 2 })
-      vi.mocked(deleteArtifact).mockResolvedValue()
+      server.use(
+        http.delete('/api/v1/artifacts/:id', () =>
+          HttpResponse.json(voidSuccess()),
+        ),
+      )
 
       await useArtifactsStore.getState().deleteArtifact('artifact-001')
 
@@ -107,9 +148,15 @@ describe('useArtifactsStore', () => {
     it('propagates error without modifying list', async () => {
       const a1 = makeArtifact('artifact-001')
       useArtifactsStore.setState({ artifacts: [a1], totalArtifacts: 1 })
-      vi.mocked(deleteArtifact).mockRejectedValue(new Error('Delete failed'))
+      server.use(
+        http.delete('/api/v1/artifacts/:id', () =>
+          HttpResponse.json(apiError('Delete failed')),
+        ),
+      )
 
-      await expect(useArtifactsStore.getState().deleteArtifact('artifact-001')).rejects.toThrow('Delete failed')
+      await expect(
+        useArtifactsStore.getState().deleteArtifact('artifact-001'),
+      ).rejects.toThrow('Delete failed')
 
       expect(useArtifactsStore.getState().artifacts).toEqual([a1])
       expect(useArtifactsStore.getState().totalArtifacts).toBe(1)
@@ -118,7 +165,13 @@ describe('useArtifactsStore', () => {
 
   describe('updateFromWsEvent', () => {
     it('triggers fetchArtifacts on WS event', async () => {
-      vi.mocked(listArtifacts).mockResolvedValue({ data: [], total: 0, offset: 0, limit: 200 })
+      let fetchCount = 0
+      server.use(
+        http.get('/api/v1/artifacts', () => {
+          fetchCount += 1
+          return HttpResponse.json(paginated([]))
+        }),
+      )
 
       const event: WsEvent = {
         event_type: 'artifact.created',
@@ -128,7 +181,9 @@ describe('useArtifactsStore', () => {
       }
       useArtifactsStore.getState().updateFromWsEvent(event)
 
-      expect(listArtifacts).toHaveBeenCalled()
+      // The store debounces/schedules the refetch; allow microtasks to flush.
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      expect(fetchCount).toBeGreaterThan(0)
     })
   })
 

@@ -50,6 +50,13 @@ export const apiClient = axios.create({
   headers: { 'Content-Type': 'application/json' },
   timeout: 30_000,
   withCredentials: true,
+  // Disable axios's built-in XSRF-cookie handling. We implement CSRF
+  // ourselves in a request interceptor (reads `csrf_token`, not
+  // `XSRF-TOKEN`), so axios's read of `document.cookie` on every
+  // same-origin request is dead code. In jsdom under MSW it's also
+  // the source of the `@mswjs/interceptors` + tough-cookie
+  // "PROMISE leaking" chain flagged by `--detect-async-leaks`.
+  xsrfCookieName: '',
 })
 
 /** Sentinel returned by {@link parseRetryAfterMs} when we must NOT auto-retry. */

@@ -1,19 +1,23 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { http, HttpResponse } from 'msw'
 import { useApprovalsStore, _resetPendingTransitions } from '@/stores/approvals'
 import { useToastStore } from '@/stores/toast'
 import { makeApproval } from '../helpers/factories'
+import { apiError, apiSuccess, paginatedFor } from '@/mocks/handlers'
+import type { listApprovals } from '@/api/endpoints/approvals'
+import { server } from '@/test-setup'
 import type { ApprovalResponse, WsEvent } from '@/api/types'
 
-// Mock the API module
-vi.mock('@/api/endpoints/approvals', () => ({
-  listApprovals: vi.fn(),
-  getApproval: vi.fn(),
-  approveApproval: vi.fn(),
-  rejectApproval: vi.fn(),
-}))
-
-async function importApi() {
-  return await import('@/api/endpoints/approvals')
+function paginated(
+  data: ApprovalResponse[],
+  meta: Partial<{ total: number; offset: number; limit: number }> = {},
+) {
+  return paginatedFor<typeof listApprovals>({
+    data,
+    total: meta.total ?? data.length,
+    offset: meta.offset ?? 0,
+    limit: meta.limit ?? 200,
+  })
 }
 
 function resetStore() {
@@ -32,21 +36,22 @@ function resetStore() {
 
 beforeEach(() => {
   resetStore()
-  useToastStore.setState({ toasts: [] })
-  vi.clearAllMocks()
+  useToastStore.getState().dismissAll()
 })
 
 afterEach(() => {
+  useToastStore.getState().dismissAll()
   vi.restoreAllMocks()
 })
 
-// ── fetchApprovals ──────────────────────────────────────────
-
 describe('fetchApprovals', () => {
   it('sets loading and stores results', async () => {
-    const api = await importApi()
     const items = [makeApproval('1'), makeApproval('2')]
-    vi.mocked(api.listApprovals).mockResolvedValue({ data: items, total: 2, offset: 0, limit: 200 })
+    server.use(
+      http.get('/api/v1/approvals', () =>
+        HttpResponse.json(paginated(items, { total: 2 })),
+      ),
+    )
 
     await useApprovalsStore.getState().fetchApprovals()
 
@@ -58,8 +63,11 @@ describe('fetchApprovals', () => {
   })
 
   it('sets error on failure', async () => {
-    const api = await importApi()
-    vi.mocked(api.listApprovals).mockRejectedValue(new Error('Network error'))
+    server.use(
+      http.get('/api/v1/approvals', () =>
+        HttpResponse.json(apiError('Network error')),
+      ),
+    )
 
     await useApprovalsStore.getState().fetchApprovals()
 
@@ -68,45 +76,51 @@ describe('fetchApprovals', () => {
     expect(state.error).toBe('Network error')
   })
 
-  it('passes filters to API', async () => {
-    const api = await importApi()
-    vi.mocked(api.listApprovals).mockResolvedValue({ data: [], total: 0, offset: 0, limit: 200 })
+  it('forwards filters as query params', async () => {
+    const captured: { params: URLSearchParams | null } = { params: null }
+    server.use(
+      http.get('/api/v1/approvals', ({ request }) => {
+        captured.params = new URL(request.url).searchParams
+        return HttpResponse.json(paginated([]))
+      }),
+    )
 
-    await useApprovalsStore.getState().fetchApprovals({ status: 'pending', limit: 50 })
+    await useApprovalsStore
+      .getState()
+      .fetchApprovals({ status: 'pending', limit: 50 })
 
-    expect(api.listApprovals).toHaveBeenCalledWith({ status: 'pending', limit: 50 })
+    expect(captured.params?.get('status')).toBe('pending')
+    expect(captured.params?.get('limit')).toBe('50')
   })
 
   it('preserves optimistic state for items in pendingTransitions', async () => {
-    const api = await importApi()
     const item = makeApproval('1')
     useApprovalsStore.setState({ approvals: [item] })
 
-    // Optimistic approve puts id into pendingTransitions
     useApprovalsStore.getState().optimisticApprove('1')
     expect(useApprovalsStore.getState().approvals[0]!.status).toBe('approved')
 
-    // Server returns stale pending data
-    vi.mocked(api.listApprovals).mockResolvedValueOnce({
-      data: [makeApproval('1', { status: 'pending' })],
-      total: 1,
-      offset: 0,
-      limit: 200,
-    })
+    server.use(
+      http.get('/api/v1/approvals', () =>
+        HttpResponse.json(
+          paginated([makeApproval('1', { status: 'pending' })], { total: 1 }),
+        ),
+      ),
+    )
     await useApprovalsStore.getState().fetchApprovals()
 
-    // Optimistic state should be preserved
     expect(useApprovalsStore.getState().approvals[0]!.status).toBe('approved')
   })
 })
 
-// ── fetchApproval ───────────────────────────────────────────
-
 describe('fetchApproval', () => {
   it('sets loadingDetail and stores selected approval', async () => {
-    const api = await importApi()
     const approval = makeApproval('1')
-    vi.mocked(api.getApproval).mockResolvedValue(approval)
+    server.use(
+      http.get('/api/v1/approvals/:id', () =>
+        HttpResponse.json(apiSuccess(approval)),
+      ),
+    )
 
     await useApprovalsStore.getState().fetchApproval('1')
 
@@ -116,8 +130,11 @@ describe('fetchApproval', () => {
   })
 
   it('sets error on failure', async () => {
-    const api = await importApi()
-    vi.mocked(api.getApproval).mockRejectedValue(new Error('Not found'))
+    server.use(
+      http.get('/api/v1/approvals/:id', () =>
+        HttpResponse.json(apiError('Not found')),
+      ),
+    )
 
     await useApprovalsStore.getState().fetchApproval('999')
 
@@ -126,27 +143,40 @@ describe('fetchApproval', () => {
   })
 })
 
-// ── approveOne ──────────────────────────────────────────────
-
 describe('approveOne', () => {
   it('calls API and upserts result', async () => {
-    const api = await importApi()
     const original = makeApproval('1', { status: 'pending' })
-    const approved = makeApproval('1', { status: 'approved', decided_by: 'user', decided_at: '2026-03-27T12:00:00Z' })
+    const approved = makeApproval('1', {
+      status: 'approved',
+      decided_by: 'user',
+      decided_at: '2026-03-27T12:00:00Z',
+    })
     useApprovalsStore.setState({ approvals: [original] })
-    vi.mocked(api.approveApproval).mockResolvedValue(approved)
 
-    const result = await useApprovalsStore.getState().approveOne('1', { comment: 'LGTM' })
+    let capturedBody: unknown = null
+    server.use(
+      http.post('/api/v1/approvals/:id/approve', async ({ request }) => {
+        capturedBody = await request.json()
+        return HttpResponse.json(apiSuccess(approved))
+      }),
+    )
+
+    const result = await useApprovalsStore
+      .getState()
+      .approveOne('1', { comment: 'LGTM' })
 
     expect(result).not.toBeNull()
     expect(result!.status).toBe('approved')
     expect(useApprovalsStore.getState().approvals[0]!.status).toBe('approved')
-    expect(api.approveApproval).toHaveBeenCalledWith('1', { comment: 'LGTM' })
+    expect(capturedBody).toEqual({ comment: 'LGTM' })
   })
 
   it('returns null and emits an error toast when API fails', async () => {
-    const api = await importApi()
-    vi.mocked(api.approveApproval).mockRejectedValue(new Error('Server error'))
+    server.use(
+      http.post('/api/v1/approvals/:id/approve', () =>
+        HttpResponse.json(apiError('Server error')),
+      ),
+    )
 
     const result = await useApprovalsStore.getState().approveOne('1')
     expect(result).toBeNull()
@@ -158,26 +188,38 @@ describe('approveOne', () => {
   })
 })
 
-// ── rejectOne ───────────────────────────────────────────────
-
 describe('rejectOne', () => {
   it('calls API and upserts result', async () => {
-    const api = await importApi()
     const original = makeApproval('1', { status: 'pending' })
-    const rejected = makeApproval('1', { status: 'rejected', decision_reason: 'Too risky' })
+    const rejected = makeApproval('1', {
+      status: 'rejected',
+      decision_reason: 'Too risky',
+    })
     useApprovalsStore.setState({ approvals: [original] })
-    vi.mocked(api.rejectApproval).mockResolvedValue(rejected)
 
-    const result = await useApprovalsStore.getState().rejectOne('1', { reason: 'Too risky' })
+    let capturedBody: unknown = null
+    server.use(
+      http.post('/api/v1/approvals/:id/reject', async ({ request }) => {
+        capturedBody = await request.json()
+        return HttpResponse.json(apiSuccess(rejected))
+      }),
+    )
+
+    const result = await useApprovalsStore
+      .getState()
+      .rejectOne('1', { reason: 'Too risky' })
 
     expect(result).not.toBeNull()
     expect(result!.status).toBe('rejected')
-    expect(api.rejectApproval).toHaveBeenCalledWith('1', { reason: 'Too risky' })
+    expect(capturedBody).toEqual({ reason: 'Too risky' })
   })
 
   it('returns null and emits an error toast when API fails', async () => {
-    const api = await importApi()
-    vi.mocked(api.rejectApproval).mockRejectedValue(new Error('Server error'))
+    server.use(
+      http.post('/api/v1/approvals/:id/reject', () =>
+        HttpResponse.json(apiError('Server error')),
+      ),
+    )
 
     const result = await useApprovalsStore.getState().rejectOne('1', { reason: 'x' })
     expect(result).toBeNull()
@@ -188,8 +230,6 @@ describe('rejectOne', () => {
     expect(toasts[0]!.description).toBe('Server error')
   })
 })
-
-// ── upsertApproval ──────────────────────────────────────────
 
 describe('upsertApproval', () => {
   it('prepends new approval', () => {
@@ -220,7 +260,10 @@ describe('upsertApproval', () => {
 
   it('updates selectedApproval when matching', () => {
     const approval = makeApproval('1', { status: 'pending' })
-    useApprovalsStore.setState({ approvals: [approval], selectedApproval: approval })
+    useApprovalsStore.setState({
+      approvals: [approval],
+      selectedApproval: approval,
+    })
 
     const updated = makeApproval('1', { status: 'approved' })
     useApprovalsStore.getState().upsertApproval(updated)
@@ -230,7 +273,10 @@ describe('upsertApproval', () => {
 
   it('prunes selectedIds when approval leaves pending', () => {
     const approval = makeApproval('1', { status: 'pending' })
-    useApprovalsStore.setState({ approvals: [approval], selectedIds: new Set(['1', '2']) })
+    useApprovalsStore.setState({
+      approvals: [approval],
+      selectedIds: new Set(['1', '2']),
+    })
 
     const decided = makeApproval('1', { status: 'approved' })
     useApprovalsStore.getState().upsertApproval(decided)
@@ -242,7 +288,10 @@ describe('upsertApproval', () => {
 
   it('does not update selectedApproval when not matching', () => {
     const selected = makeApproval('1')
-    useApprovalsStore.setState({ approvals: [selected], selectedApproval: selected })
+    useApprovalsStore.setState({
+      approvals: [selected],
+      selectedApproval: selected,
+    })
 
     const other = makeApproval('2')
     useApprovalsStore.getState().upsertApproval(other)
@@ -250,8 +299,6 @@ describe('upsertApproval', () => {
     expect(useApprovalsStore.getState().selectedApproval!.id).toBe('1')
   })
 })
-
-// ── optimistic approve/reject ───────────────────────────────
 
 describe('optimisticApprove', () => {
   it('optimistically updates status and returns rollback', () => {
@@ -273,7 +320,7 @@ describe('optimisticApprove', () => {
     const rollback = useApprovalsStore.getState().optimisticApprove('nonexistent')
 
     expect(typeof rollback).toBe('function')
-    rollback() // should not throw
+    rollback()
   })
 })
 
@@ -291,8 +338,6 @@ describe('optimisticReject', () => {
     expect(useApprovalsStore.getState().approvals[0]!.status).toBe('pending')
   })
 })
-
-// ── handleWsEvent ───────────────────────────────────────────
 
 describe('handleWsEvent', () => {
   function makeWsEvent(approval: Partial<ApprovalResponse>): WsEvent {
@@ -355,20 +400,15 @@ describe('handleWsEvent', () => {
     const approval = makeApproval('1', { status: 'pending' })
     useApprovalsStore.setState({ approvals: [approval] })
 
-    // Trigger optimistic which adds to pendingTransitions
     useApprovalsStore.getState().optimisticApprove('1')
     expect(useApprovalsStore.getState().approvals[0]!.status).toBe('approved')
 
-    // WS event arrives with old status -- should be skipped
     const event = makeWsEvent(makeApproval('1', { status: 'pending' }))
     useApprovalsStore.getState().handleWsEvent(event)
 
-    // Should still show optimistic status
     expect(useApprovalsStore.getState().approvals[0]!.status).toBe('approved')
   })
 })
-
-// ── batch selection ─────────────────────────────────────────
 
 describe('batch selection', () => {
   it('toggleSelection adds and removes', () => {
@@ -400,8 +440,6 @@ describe('batch selection', () => {
   })
 })
 
-// ── batch operations ────────────────────────────────────────
-
 describe('batchApprove', () => {
   it('rejects when batch size exceeds MAX_BATCH_SIZE', async () => {
     const ids = Array.from({ length: 51 }, (_, i) => `id-${i}`)
@@ -412,35 +450,56 @@ describe('batchApprove', () => {
   })
 
   it('approves all items and returns success count', async () => {
-    const api = await importApi()
     const items = [makeApproval('1'), makeApproval('2')]
-    useApprovalsStore.setState({ approvals: items, selectedIds: new Set(['1', '2']) })
+    useApprovalsStore.setState({
+      approvals: items,
+      selectedIds: new Set(['1', '2']),
+    })
 
-    vi.mocked(api.approveApproval).mockImplementation(async (id) =>
-      makeApproval(id, { status: 'approved' }),
+    server.use(
+      http.post('/api/v1/approvals/:id/approve', ({ params }) =>
+        HttpResponse.json(
+          apiSuccess(makeApproval(String(params.id), { status: 'approved' })),
+        ),
+      ),
     )
 
-    const result = await useApprovalsStore.getState().batchApprove(['1', '2'], 'Approved')
+    const result = await useApprovalsStore
+      .getState()
+      .batchApprove(['1', '2'], 'Approved')
 
     expect(result).toEqual({ succeeded: 2, failed: 0, failedReasons: [] })
     expect(useApprovalsStore.getState().selectedIds.size).toBe(0)
   })
 
   it('rolls back failed items and returns mixed counts', async () => {
-    const api = await importApi()
     const items = [makeApproval('1'), makeApproval('2')]
-    useApprovalsStore.setState({ approvals: items, selectedIds: new Set(['1', '2']) })
+    useApprovalsStore.setState({
+      approvals: items,
+      selectedIds: new Set(['1', '2']),
+    })
 
-    vi.mocked(api.approveApproval)
-      .mockResolvedValueOnce(makeApproval('1', { status: 'approved' }))
-      .mockRejectedValueOnce(new Error('Server error'))
+    server.use(
+      http.post('/api/v1/approvals/:id/approve', ({ params }) => {
+        if (params.id === '1') {
+          return HttpResponse.json(
+            apiSuccess(makeApproval('1', { status: 'approved' })),
+          )
+        }
+        return HttpResponse.json(apiError('Server error'))
+      }),
+    )
 
     const result = await useApprovalsStore.getState().batchApprove(['1', '2'])
 
-    expect(result).toEqual({ succeeded: 1, failed: 1, failedReasons: ['Server error'] })
-    // Item 2 should be rolled back to pending
-    expect(useApprovalsStore.getState().approvals.find((a) => a.id === '2')!.status).toBe('pending')
-    // Failed ID should remain selected for retry; successful ID should not
+    expect(result).toEqual({
+      succeeded: 1,
+      failed: 1,
+      failedReasons: ['Server error'],
+    })
+    expect(
+      useApprovalsStore.getState().approvals.find((a) => a.id === '2')!.status,
+    ).toBe('pending')
     const ids = useApprovalsStore.getState().selectedIds
     expect(ids.has('2')).toBe(true)
     expect(ids.has('1')).toBe(false)
@@ -449,33 +508,62 @@ describe('batchApprove', () => {
 
 describe('batchReject', () => {
   it('rejects all items and returns success count', async () => {
-    const api = await importApi()
     const items = [makeApproval('1'), makeApproval('2')]
-    useApprovalsStore.setState({ approvals: items, selectedIds: new Set(['1', '2']) })
+    useApprovalsStore.setState({
+      approvals: items,
+      selectedIds: new Set(['1', '2']),
+    })
 
-    vi.mocked(api.rejectApproval).mockImplementation(async (id) =>
-      makeApproval(id, { status: 'rejected' }),
+    const capturedBodies: unknown[] = []
+    server.use(
+      http.post('/api/v1/approvals/:id/reject', async ({ params, request }) => {
+        capturedBodies.push({ id: params.id, body: await request.json() })
+        return HttpResponse.json(
+          apiSuccess(makeApproval(String(params.id), { status: 'rejected' })),
+        )
+      }),
     )
 
-    const result = await useApprovalsStore.getState().batchReject(['1', '2'], 'Too risky')
+    const result = await useApprovalsStore
+      .getState()
+      .batchReject(['1', '2'], 'Too risky')
 
     expect(result).toEqual({ succeeded: 2, failed: 0, failedReasons: [] })
-    expect(api.rejectApproval).toHaveBeenCalledWith('1', { reason: 'Too risky' })
-    expect(api.rejectApproval).toHaveBeenCalledWith('2', { reason: 'Too risky' })
+    expect(capturedBodies).toHaveLength(2)
+    for (const entry of capturedBodies) {
+      expect((entry as { body: { reason: string } }).body.reason).toBe('Too risky')
+    }
   })
 
   it('rolls back failed items and returns mixed counts', async () => {
-    const api = await importApi()
     const items = [makeApproval('1'), makeApproval('2')]
-    useApprovalsStore.setState({ approvals: items, selectedIds: new Set(['1', '2']) })
+    useApprovalsStore.setState({
+      approvals: items,
+      selectedIds: new Set(['1', '2']),
+    })
 
-    vi.mocked(api.rejectApproval)
-      .mockResolvedValueOnce(makeApproval('1', { status: 'rejected' }))
-      .mockRejectedValueOnce(new Error('Server error'))
+    server.use(
+      http.post('/api/v1/approvals/:id/reject', ({ params }) => {
+        if (params.id === '1') {
+          return HttpResponse.json(
+            apiSuccess(makeApproval('1', { status: 'rejected' })),
+          )
+        }
+        return HttpResponse.json(apiError('Server error'))
+      }),
+    )
 
-    const result = await useApprovalsStore.getState().batchReject(['1', '2'], 'Too risky')
+    const result = await useApprovalsStore
+      .getState()
+      .batchReject(['1', '2'], 'Too risky')
 
-    expect(result).toEqual({ succeeded: 1, failed: 1, failedReasons: ['Server error'] })
-    expect(useApprovalsStore.getState().approvals.find((a) => a.id === '2')!.status).toBe('pending')
+    expect(result).toEqual({
+      succeeded: 1,
+      failed: 1,
+      failedReasons: ['Server error'],
+    })
+    expect(
+      useApprovalsStore.getState().approvals.find((a) => a.id === '2')!.status,
+    ).toBe('pending')
   })
 })

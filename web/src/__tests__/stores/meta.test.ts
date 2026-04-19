@@ -1,18 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { http, HttpResponse } from 'msw'
 import { useMetaStore } from '@/stores/meta'
 import { useToastStore } from '@/stores/toast'
-
-vi.mock('@/api/endpoints/meta', () => ({
-  getMetaConfig: vi.fn(),
-  getSignals: vi.fn(),
-  listABTests: vi.fn(),
-  listProposals: vi.fn(),
-  postChat: vi.fn(),
-}))
-
-async function importApi() {
-  return await import('@/api/endpoints/meta')
-}
+import { apiError, apiSuccess } from '@/mocks/handlers'
+import { server } from '@/test-setup'
 
 function resetStore() {
   useMetaStore.setState({
@@ -29,7 +20,6 @@ function resetStore() {
 
 beforeEach(() => {
   resetStore()
-  vi.clearAllMocks()
 })
 
 afterEach(() => {
@@ -38,9 +28,12 @@ afterEach(() => {
 
 describe('fetchProposals', () => {
   it('stores proposals and clears error on success', async () => {
-    const api = await importApi()
+    server.use(
+      http.get('/api/v1/meta/proposals', () =>
+        HttpResponse.json(apiSuccess([])),
+      ),
+    )
     useMetaStore.setState({ error: 'stale' })
-    vi.mocked(api.listProposals).mockResolvedValue([])
 
     await useMetaStore.getState().fetchProposals()
 
@@ -49,8 +42,11 @@ describe('fetchProposals', () => {
   })
 
   it('sets error state on API failure without toasting (list-read pattern)', async () => {
-    const api = await importApi()
-    vi.mocked(api.listProposals).mockRejectedValue(new Error('boom'))
+    server.use(
+      http.get('/api/v1/meta/proposals', () =>
+        HttpResponse.json(apiError('boom')),
+      ),
+    )
 
     await useMetaStore.getState().fetchProposals()
 
@@ -61,12 +57,13 @@ describe('fetchProposals', () => {
 
 describe('fetchSignals', () => {
   it('stores signals and clears error on success', async () => {
-    const api = await importApi()
-    const response = { signals: [], collected_at: '2026-04-10T00:00:00Z' }
-    useMetaStore.setState({ error: 'stale' })
-    vi.mocked(api.getSignals).mockResolvedValue(
-      response as unknown as Awaited<ReturnType<typeof api.getSignals>>,
+    const response = { enabled: true, domains: [] as unknown[] }
+    server.use(
+      http.get('/api/v1/meta/signals', () =>
+        HttpResponse.json(apiSuccess(response)),
+      ),
     )
+    useMetaStore.setState({ error: 'stale' })
 
     await useMetaStore.getState().fetchSignals()
 
@@ -76,8 +73,11 @@ describe('fetchSignals', () => {
   })
 
   it('sets error state on API failure without toasting (list-read pattern)', async () => {
-    const api = await importApi()
-    vi.mocked(api.getSignals).mockRejectedValue(new Error('boom'))
+    server.use(
+      http.get('/api/v1/meta/signals', () =>
+        HttpResponse.json(apiError('boom')),
+      ),
+    )
 
     await useMetaStore.getState().fetchSignals()
 
@@ -88,19 +88,28 @@ describe('fetchSignals', () => {
 
 describe('sendChat', () => {
   it('returns the response on success', async () => {
-    const api = await importApi()
     const response = { answer: 'hi', sources: [], confidence: 0.9 }
-    vi.mocked(api.postChat).mockResolvedValue(response)
+    const requestBodies: unknown[] = []
+    server.use(
+      http.post('/api/v1/meta/chat', async ({ request }) => {
+        requestBodies.push(await request.json())
+        return HttpResponse.json(apiSuccess(response))
+      }),
+    )
 
     const result = await useMetaStore.getState().sendChat('hello')
 
     expect(result).toEqual(response)
     expect(useMetaStore.getState().chatLoading).toBe(false)
+    expect(requestBodies[0]).toEqual({ question: 'hello' })
   })
 
   it('returns null, sets error state, and emits an error toast on API failure', async () => {
-    const api = await importApi()
-    vi.mocked(api.postChat).mockRejectedValue(new Error('boom'))
+    server.use(
+      http.post('/api/v1/meta/chat', () =>
+        HttpResponse.json(apiError('boom')),
+      ),
+    )
 
     const result = await useMetaStore.getState().sendChat('hello')
 
@@ -116,12 +125,19 @@ describe('sendChat', () => {
   })
 
   it('clears chatLoading after success and failure', async () => {
-    const api = await importApi()
-    vi.mocked(api.postChat).mockResolvedValue({ answer: 'ok', sources: [], confidence: 1 })
+    server.use(
+      http.post('/api/v1/meta/chat', () =>
+        HttpResponse.json(apiSuccess({ answer: 'ok', sources: [], confidence: 1 })),
+      ),
+    )
     await useMetaStore.getState().sendChat('q')
     expect(useMetaStore.getState().chatLoading).toBe(false)
 
-    vi.mocked(api.postChat).mockRejectedValue(new Error('nope'))
+    server.use(
+      http.post('/api/v1/meta/chat', () =>
+        HttpResponse.json(apiError('nope')),
+      ),
+    )
     await useMetaStore.getState().sendChat('q')
     expect(useMetaStore.getState().chatLoading).toBe(false)
   })

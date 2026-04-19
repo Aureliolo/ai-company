@@ -1,27 +1,8 @@
+import { http, HttpResponse } from 'msw'
 import type { Connection, HealthReport } from '@/api/types'
 import { useConnectionsStore } from '@/stores/connections'
-
-vi.mock('@/api/endpoints/connections', () => ({
-  listConnections: vi.fn(),
-  createConnection: vi.fn(),
-  updateConnection: vi.fn(),
-  deleteConnection: vi.fn(),
-  checkConnectionHealth: vi.fn(),
-}))
-
-vi.mock('@/api/endpoints/integration-health', () => ({
-  listIntegrationHealth: vi.fn(),
-}))
-
-const {
-  listConnections,
-  createConnection,
-  deleteConnection,
-  checkConnectionHealth,
-} = await import('@/api/endpoints/connections')
-const { listIntegrationHealth } = await import(
-  '@/api/endpoints/integration-health'
-)
+import { apiError, apiSuccess, voidSuccess } from '@/mocks/handlers'
+import { server } from '@/test-setup'
 
 const sampleConnection: Connection = {
   id: 'conn-primary-github',
@@ -49,12 +30,17 @@ const sampleReport: HealthReport = {
 describe('useConnectionsStore', () => {
   beforeEach(() => {
     useConnectionsStore.getState().reset()
-    vi.clearAllMocks()
   })
 
   it('fetches connections and merges health reports', async () => {
-    vi.mocked(listConnections).mockResolvedValue([sampleConnection])
-    vi.mocked(listIntegrationHealth).mockResolvedValue([sampleReport])
+    server.use(
+      http.get('/api/v1/connections', () =>
+        HttpResponse.json(apiSuccess([sampleConnection])),
+      ),
+      http.get('/api/v1/integrations/health', () =>
+        HttpResponse.json(apiSuccess([sampleReport])),
+      ),
+    )
 
     await useConnectionsStore.getState().fetchConnections()
 
@@ -65,8 +51,14 @@ describe('useConnectionsStore', () => {
   })
 
   it('records an error message when the list call fails', async () => {
-    vi.mocked(listConnections).mockRejectedValue(new Error('Network down'))
-    vi.mocked(listIntegrationHealth).mockResolvedValue([])
+    server.use(
+      http.get('/api/v1/connections', () =>
+        HttpResponse.json(apiError('Network down')),
+      ),
+      http.get('/api/v1/integrations/health', () =>
+        HttpResponse.json(apiSuccess([])),
+      ),
+    )
 
     await useConnectionsStore.getState().fetchConnections()
 
@@ -74,8 +66,14 @@ describe('useConnectionsStore', () => {
     expect(useConnectionsStore.getState().listLoading).toBe(false)
   })
 
-  it('appends a new connection on create', async () => {
-    vi.mocked(createConnection).mockResolvedValue(sampleConnection)
+  it('appends a new connection on create and forwards body', async () => {
+    let capturedBody: unknown = null
+    server.use(
+      http.post('/api/v1/connections', async ({ request }) => {
+        capturedBody = await request.json()
+        return HttpResponse.json(apiSuccess(sampleConnection), { status: 201 })
+      }),
+    )
 
     const result = await useConnectionsStore.getState().createConnection({
       name: 'primary-github',
@@ -84,12 +82,21 @@ describe('useConnectionsStore', () => {
     })
 
     expect(result).toEqual(sampleConnection)
+    expect(capturedBody).toEqual({
+      name: 'primary-github',
+      connection_type: 'github',
+      credentials: { token: 'abc' },
+    })
     expect(useConnectionsStore.getState().connections).toHaveLength(1)
   })
 
   it('optimistically removes a connection on delete and rolls back on failure', async () => {
     useConnectionsStore.setState({ connections: [sampleConnection] })
-    vi.mocked(deleteConnection).mockRejectedValue(new Error('boom'))
+    server.use(
+      http.delete('/api/v1/connections/:name', () =>
+        HttpResponse.json(apiError('boom')),
+      ),
+    )
 
     const result = await useConnectionsStore
       .getState()
@@ -99,12 +106,34 @@ describe('useConnectionsStore', () => {
     expect(useConnectionsStore.getState().connections).toHaveLength(1)
   })
 
+  it('optimistically removes and keeps removed on delete success', async () => {
+    useConnectionsStore.setState({ connections: [sampleConnection] })
+    server.use(
+      http.delete('/api/v1/connections/:name', () =>
+        HttpResponse.json(voidSuccess()),
+      ),
+    )
+
+    const result = await useConnectionsStore
+      .getState()
+      .deleteConnection('primary-github')
+
+    expect(result).toBe(true)
+    expect(useConnectionsStore.getState().connections).toHaveLength(0)
+  })
+
   it('runs a health check and stores the latest report', async () => {
-    vi.mocked(checkConnectionHealth).mockResolvedValue({
-      ...sampleReport,
-      status: 'degraded',
-      latency_ms: 900,
-    })
+    server.use(
+      http.get('/api/v1/connections/:name/health', () =>
+        HttpResponse.json(
+          apiSuccess({
+            ...sampleReport,
+            status: 'degraded',
+            latency_ms: 900,
+          }),
+        ),
+      ),
+    )
 
     await useConnectionsStore.getState().runHealthCheck('primary-github')
 

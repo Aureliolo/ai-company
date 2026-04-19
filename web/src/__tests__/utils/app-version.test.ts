@@ -1,7 +1,7 @@
 import fc from 'fast-check'
 import { http, HttpResponse } from 'msw'
-import { setupServer } from 'msw/node'
 import { ensureFreshAppState } from '@/utils/app-version'
+import { server } from '@/test-setup'
 
 const STORAGE_KEY = 'synthorg:app_build_id'
 
@@ -14,20 +14,25 @@ const STORAGE_KEY = 'synthorg:app_build_id'
 const CURRENT_BUILD_ID: string = import.meta.env.VITE_APP_BUILD_ID ?? 'dev'
 
 /**
- * Local MSW server. Once PR #1462 (the global MSW migration) lands,
- * `test-setup.tsx` will bootstrap a shared `setupServer` with the
- * default `POST /api/v1/auth/logout` handler, and this local setup
- * can be collapsed into `server.use(...)` overrides. Until then,
- * this file owns its own MSW lifecycle so the tests don't depend on
- * global state that doesn't exist yet on `main`.
+ * Per-test logout-call recorder. The global MSW server in
+ * `test-setup.tsx` already registers a default `POST /api/v1/auth/logout`
+ * handler (via `authHandlers`); each test overrides it here with
+ * `server.use(...)` so we can observe the call site without standing up
+ * a second `setupServer` (which conflicted with the global interceptor
+ * chain and caused double-invocation under `msw/node`).
  */
 const logoutCalls: Array<{ credentials?: RequestCredentials }> = []
-const server = setupServer(
-  http.post('/api/v1/auth/logout', ({ request }) => {
-    logoutCalls.push({ credentials: request.credentials })
-    return new HttpResponse(null, { status: 204 })
-  }),
-)
+
+function installLogoutRecorder(
+  responder: (() => Response) | null = null,
+): void {
+  server.use(
+    http.post('/api/v1/auth/logout', ({ request }) => {
+      logoutCalls.push({ credentials: request.credentials })
+      return responder ? responder() : new HttpResponse(null, { status: 204 })
+    }),
+  )
+}
 
 /**
  * Sentinel error thrown from the stubbed ``window.location.reload`` to
@@ -59,12 +64,7 @@ describe('ensureFreshAppState', () => {
     'location',
   )
 
-  beforeAll(() => {
-    server.listen({ onUnhandledRequest: 'error' })
-  })
-
   afterAll(() => {
-    server.close()
     if (originalLocationDescriptor) {
       Object.defineProperty(window, 'location', originalLocationDescriptor)
     }
@@ -74,6 +74,7 @@ describe('ensureFreshAppState', () => {
     localStorage.clear()
     sessionStorage.clear()
     logoutCalls.length = 0
+    installLogoutRecorder()
     reloadSpy = vi.fn(() => {
       throw new ReloadSentinel()
     })
@@ -96,12 +97,8 @@ describe('ensureFreshAppState', () => {
     if (originalLocationDescriptor) {
       Object.defineProperty(window, 'location', originalLocationDescriptor)
     }
-    server.resetHandlers(
-      http.post('/api/v1/auth/logout', ({ request }) => {
-        logoutCalls.push({ credentials: request.credentials })
-        return new HttpResponse(null, { status: 204 })
-      }),
-    )
+    // Global test-setup.tsx afterEach runs server.resetHandlers() after
+    // this, so we only need to clean up the location mock here.
   })
 
   /**
@@ -150,9 +147,7 @@ describe('ensureFreshAppState', () => {
 
   it('continues on logout fetch failure (best-effort) and still clears + reloads', async () => {
     localStorage.setItem(STORAGE_KEY, 'some-old-build')
-    server.use(
-      http.post('/api/v1/auth/logout', () => HttpResponse.error()),
-    )
+    installLogoutRecorder(() => HttpResponse.error())
 
     await runUntilReload()
 
