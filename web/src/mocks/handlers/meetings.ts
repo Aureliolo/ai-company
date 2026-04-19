@@ -45,17 +45,22 @@ export const meetingsHandlers = [
         status: 400,
       })
     }
+    const rawEventName = (body as { event_name?: unknown } | null)?.event_name
     if (
       !body ||
       typeof body !== 'object' ||
-      typeof (body as { event_name?: unknown }).event_name !== 'string' ||
-      !(body as { event_name: string }).event_name
+      typeof rawEventName !== 'string'
     ) {
       return HttpResponse.json(apiError("Field 'event_name' is required"), {
         status: 400,
       })
     }
-    const eventName = (body as { event_name: string }).event_name
+    const eventName = rawEventName.trim()
+    if (!eventName) {
+      return HttpResponse.json(apiError("Field 'event_name' is required"), {
+        status: 400,
+      })
+    }
     return HttpResponse.json(
       successFor<typeof triggerMeeting>([
         buildMeeting({

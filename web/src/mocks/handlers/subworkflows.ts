@@ -20,7 +20,10 @@ import { successFor, voidSuccess } from './helpers'
 export function buildSubworkflow(
   overrides: Partial<WorkflowDefinition> = {},
 ): WorkflowDefinition {
-  return buildDomainWorkflow({ is_subworkflow: true, ...overrides })
+  // Spread overrides first, then force is_subworkflow=true so the returned
+  // fixture always represents a subworkflow even if the caller accidentally
+  // passed `is_subworkflow: false` in the override bag.
+  return buildDomainWorkflow({ ...overrides, is_subworkflow: true })
 }
 
 export const subworkflowsHandlers = [
