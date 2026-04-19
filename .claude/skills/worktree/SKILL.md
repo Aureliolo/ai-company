@@ -236,7 +236,7 @@ Directory suffix is auto-derived from the branch name:
    ## Quality Standards (MANDATORY)
    - Build BEST IN CLASS. No shortcuts, no "good enough", no "we can improve later".
    - NEVER defer anything. If a finding says "fix X", fix X completely. No TODOs, no stubs, no "phase 2" thinking.
-   - Still alpha: breaking API/interface changes are fine, no backward compatibility shims. BUT schema changes MUST ship proper Atlas migrations (never edit an existing migration; always generate a new one via `atlas migrate diff --env <sqlite|postgres> <name>`) so migration paths stay testable.
+   - Still alpha: breaking API/interface changes are fine, no backward compatibility shims. BUT schema changes MUST ship proper Atlas migrations (never edit an existing migration; always generate a new one -- for SQLite: `atlas migrate diff <migration_name> --env sqlite`; for Postgres: `atlas migrate diff <migration_name> --env postgres`) so migration paths stay testable.
    - Every piece of work must meet the highest standard of security, UX, maintainability, and correctness.
    ~~~
 
