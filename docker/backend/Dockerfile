@@ -11,9 +11,10 @@
 # top. No setup stage needed -- the symlink fix is done in the builder itself.
 # =============================================================================
 
-# CI must provide a digest-pinned ref. No default: standalone builds without
-# an explicit --build-arg BASE_IMAGE=... fail fast instead of silently pulling
-# a mutable :latest tag (Scorecard Pinned-Dependencies).
+# CI always provides BASE_IMAGE explicitly and uses a digest-pinned ref when
+# available (otherwise a tag/local artifact tag). No default: standalone
+# builds without an explicit --build-arg BASE_IMAGE=... fail fast instead of
+# silently pulling a mutable :latest tag (Scorecard Pinned-Dependencies).
 ARG BASE_IMAGE
 
 # ---------------------------------------------------------------------------
