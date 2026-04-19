@@ -377,16 +377,17 @@ jobs:
           # line at all (format drift or --detect-async-leaks not applied)
           # rather than silently passing with a default of 0.
           #
-          # Vitest's `BaseReporter` writes the leak summary line near the
-          # very end of the run, after all test console output. Restrict
-          # the search to the last 200 lines so a test's console.log of
-          # something that looks like `Leaks 0 leaks` cannot shadow the
-          # real summary. Anchor the match to the whole line so a test
-          # that prints `Reporter: Leaks 50 leaks detected` (or any other
-          # substring containing the phrase) cannot satisfy the gate.
-          # Parse the count with a bash regex capture group so extra
+          # Vitest's `BaseReporter` writes the leak summary line after
+          # the test run finishes but BEFORE the v8 coverage table, and
+          # the coverage table comfortably exceeds 200 lines -- so a
+          # naive `tail -n 200` cuts the summary off. Anchor the match
+          # to the whole line instead: a test's `console.log('Reporter:
+          # Leaks 50 leaks detected')` (or any substring containing the
+          # phrase) will not satisfy the gate, and `tail -1` keeps the
+          # last match so repeated summaries favor the real one. The
+          # count is extracted with a bash regex capture group so extra
           # digits elsewhere on the line cannot bleed in.
-          leaks_line=$(tail -n 200 vitest-output.log | grep -E '^[[:space:]]*Leaks +[0-9]+ leaks[[:space:]]*$' | tail -1 || true)
+          leaks_line=$(grep -E '^[[:space:]]*Leaks +[0-9]+ leaks[[:space:]]*$' vitest-output.log | tail -1 || true)
           if [ -z "$leaks_line" ]; then
             echo "::error::Could not locate 'Leaks N leaks' line in Vitest output tail."
             echo "::error::Either --detect-async-leaks was not applied, or Vitest changed its output format."
