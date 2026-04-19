@@ -121,12 +121,15 @@ class RateLimitConfig(BaseModel):
             "Maximum total requests per time window (by IP) across"
             " the whole API, including requests rejected by the auth"
             " middleware.  Defense-in-depth against floods of invalid"
-            " auth attempts on protected endpoints.  Must be >="
-            " ``auth_max_requests`` -- the floor wraps the"
-            " authenticated tier, so a lower floor would silently"
-            " cap legitimate per-user traffic below its documented"
-            " budget (especially behind a shared NAT where many users"
-            " share one IP)."
+            " auth attempts on protected endpoints.  The floor wraps"
+            " both user-gated tiers in the middleware stack, so it"
+            " must be >= ``auth_max_requests`` AND >="
+            " ``unauth_max_requests`` -- a lower floor would silently"
+            " cap either the authenticated per-user budget or the"
+            " unauthenticated per-IP budget below its documented"
+            " value (especially behind a shared NAT where many users"
+            " share one IP).  Enforced by"
+            " :meth:`_validate_floor_above_user_tiers`."
         ),
     )
     unauth_max_requests: int = Field(
