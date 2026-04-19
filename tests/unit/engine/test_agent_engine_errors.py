@@ -63,7 +63,7 @@ class TestAgentEngineErrorHandling:
         engine = AgentEngine(provider=provider)
 
         with patch(
-            "synthorg.engine.agent_engine.build_system_prompt",
+            "synthorg.engine.agent_engine_context.build_system_prompt",
             side_effect=RuntimeError("template broken"),
         ):
             result = await engine.run(
@@ -90,7 +90,7 @@ class TestAgentEngineNonRecoverable:
 
         with (
             patch(
-                "synthorg.engine.agent_engine.build_system_prompt",
+                "synthorg.engine.agent_engine_context.build_system_prompt",
                 side_effect=MemoryError("out of memory"),
             ),
             pytest.raises(MemoryError),
@@ -111,7 +111,7 @@ class TestAgentEngineNonRecoverable:
 
         with (
             patch(
-                "synthorg.engine.agent_engine.build_system_prompt",
+                "synthorg.engine.agent_engine_context.build_system_prompt",
                 side_effect=RecursionError("too deep"),
             ),
             pytest.raises(RecursionError),
@@ -253,7 +253,7 @@ class TestAgentEngineFatalErrorResult:
         engine = AgentEngine(provider=provider)
 
         with patch(
-            "synthorg.engine.agent_engine.build_system_prompt",
+            "synthorg.engine.agent_engine_context.build_system_prompt",
             side_effect=RuntimeError("LLM is down"),
         ):
             result = await engine.run(
@@ -280,7 +280,7 @@ class TestAgentEngineFatalErrorResult:
         engine = AgentEngine(provider=provider)
 
         with patch(
-            "synthorg.engine.agent_engine.build_system_prompt",
+            "synthorg.engine.agent_engine_context.build_system_prompt",
             side_effect=RuntimeError(r"Failed reading C:\Users\dev\secret.key"),
         ):
             result = await engine.run(
@@ -304,11 +304,11 @@ class TestAgentEngineFatalErrorResult:
 
         with (
             patch(
-                "synthorg.engine.agent_engine.build_system_prompt",
+                "synthorg.engine.agent_engine_context.build_system_prompt",
                 side_effect=RuntimeError("original error"),
             ),
             patch(
-                "synthorg.engine.agent_engine.AgentContext.from_identity",
+                "synthorg.engine.agent_engine_errors.AgentContext.from_identity",
                 side_effect=ValueError("secondary failure"),
             ),
             pytest.raises(RuntimeError, match="original error") as exc_info,
@@ -339,11 +339,11 @@ class TestAgentEngineFatalErrorNonRecoverable:
 
         with (
             patch(
-                "synthorg.engine.agent_engine.build_system_prompt",
+                "synthorg.engine.agent_engine_context.build_system_prompt",
                 side_effect=RuntimeError("trigger fatal path"),
             ),
             patch(
-                "synthorg.engine.agent_engine.AgentContext.from_identity",
+                "synthorg.engine.agent_engine_errors.AgentContext.from_identity",
                 side_effect=MemoryError("OOM in error build"),
             ),
             pytest.raises(MemoryError, match="OOM in error build"),
@@ -377,7 +377,7 @@ class TestAgentEngineBudgetErrorSecondaryFailure:
 
         with (
             patch(
-                "synthorg.engine.agent_engine.AgentContext.from_identity",
+                "synthorg.engine.agent_engine_errors.AgentContext.from_identity",
                 side_effect=ValueError("secondary failure"),
             ),
             pytest.raises(
