@@ -53,7 +53,8 @@ export const analyticsHandlers = [
   }),
   http.get('/api/v1/analytics/forecast', ({ request }) => {
     const url = new URL(request.url)
-    const horizonDays = Number(url.searchParams.get('horizon_days') ?? 7)
+    const raw = Number(url.searchParams.get('horizon_days'))
+    const horizonDays = Number.isFinite(raw) && raw >= 0 ? Math.floor(raw) : 7
     return HttpResponse.json(
       successFor<typeof getForecast>({
         horizon_days: horizonDays,

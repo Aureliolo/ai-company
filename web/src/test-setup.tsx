@@ -1,7 +1,7 @@
 import '@testing-library/jest-dom/vitest'
 import { createElement } from 'react'
 import type { ComponentProps, ReactNode, Ref } from 'react'
-import { afterAll, afterEach, beforeAll, vi } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, vi } from 'vitest'
 import { MotionGlobalConfig } from 'motion/react'
 import { setupServer } from 'msw/node'
 import { useToastStore } from '@/stores/toast'
@@ -16,12 +16,15 @@ import { defaultHandlers } from '@/mocks/handlers'
 export const server = setupServer(...defaultHandlers)
 
 beforeAll(() => {
+  server.listen({ onUnhandledRequest: 'error' })
+})
+
+beforeEach(() => {
   // The axios client attaches X-CSRF-Token on mutating requests by reading
-  // the `csrf_token` cookie. Seed it here so every POST/PUT/PATCH/DELETE
-  // test sends the header without having to log in first. MSW does not
+  // the `csrf_token` cookie. Re-seed on every test so a test that clears
+  // or mutates cookies cannot leak into the next test. MSW does not
   // validate the value.
   document.cookie = 'csrf_token=test-csrf-token; path=/'
-  server.listen({ onUnhandledRequest: 'error' })
 })
 
 afterEach(() => {

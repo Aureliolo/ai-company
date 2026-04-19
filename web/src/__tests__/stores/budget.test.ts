@@ -8,7 +8,7 @@ import type {
   TrendsResponse,
   WsEvent,
 } from '@/api/types'
-import { apiError, apiSuccess } from '@/mocks/handlers'
+import { apiError, apiPaginatedError, apiSuccess } from '@/mocks/handlers'
 import { server } from '@/test-setup'
 import { useBudgetStore } from '@/stores/budget'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
@@ -100,53 +100,44 @@ type FixtureOverrides = Partial<{
   overview: HandlerFn
   budget: HandlerFn
   forecast: HandlerFn
-  records: unknown
+  records: HandlerFn
   trends: HandlerFn
-  agents: unknown
-  activities: unknown
+  agents: HandlerFn
+  activities: HandlerFn
 }>
 
 function installDefaults(overrides: FixtureOverrides = {}) {
-  const costRecordsBody =
-    overrides.records !== undefined
-      ? overrides.records
-      : {
-          success: true,
-          data: [mockCostRecord],
-          error: null,
-          error_detail: null,
-          pagination: { total: 1, offset: 0, limit: 500 },
-          daily_summary: [],
-          period_summary: {
-            avg_cost: 1,
-            total_cost: 1,
-            total_input_tokens: 100,
-            total_output_tokens: 50,
-            record_count: 1,
-            currency: DEFAULT_CURRENCY,
-          },
-          currency: DEFAULT_CURRENCY,
-        }
-  const agentsBody =
-    overrides.agents !== undefined
-      ? overrides.agents
-      : {
-          data: [mockAgent],
-          error: null,
-          error_detail: null,
-          success: true,
-          pagination: { total: 1, offset: 0, limit: 100 },
-        }
-  const activitiesBody =
-    overrides.activities !== undefined
-      ? overrides.activities
-      : {
-          data: [],
-          error: null,
-          error_detail: null,
-          success: true,
-          pagination: { total: 0, offset: 0, limit: 30 },
-        }
+  const defaultRecordsBody = {
+    success: true,
+    data: [mockCostRecord],
+    error: null,
+    error_detail: null,
+    pagination: { total: 1, offset: 0, limit: 500 },
+    daily_summary: [],
+    period_summary: {
+      avg_cost: 1,
+      total_cost: 1,
+      total_input_tokens: 100,
+      total_output_tokens: 50,
+      record_count: 1,
+      currency: DEFAULT_CURRENCY,
+    },
+    currency: DEFAULT_CURRENCY,
+  }
+  const defaultAgentsBody = {
+    data: [mockAgent],
+    error: null,
+    error_detail: null,
+    success: true,
+    pagination: { total: 1, offset: 0, limit: 100 },
+  }
+  const defaultActivitiesBody = {
+    data: [],
+    error: null,
+    error_detail: null,
+    success: true,
+    pagination: { total: 0, offset: 0, limit: 30 },
+  }
   server.use(
     http.get('/api/v1/analytics/overview', () =>
       overrides.overview !== undefined
@@ -164,15 +155,25 @@ function installDefaults(overrides: FixtureOverrides = {}) {
         : HttpResponse.json(apiSuccess(mockForecast)),
     ),
     http.get('/api/v1/budget/records', () =>
-      HttpResponse.json(costRecordsBody),
+      overrides.records !== undefined
+        ? overrides.records()
+        : HttpResponse.json(defaultRecordsBody),
     ),
     http.get('/api/v1/analytics/trends', () =>
       overrides.trends !== undefined
         ? overrides.trends()
         : HttpResponse.json(apiSuccess(mockTrends)),
     ),
-    http.get('/api/v1/activities', () => HttpResponse.json(activitiesBody)),
-    http.get('/api/v1/agents', () => HttpResponse.json(agentsBody)),
+    http.get('/api/v1/activities', () =>
+      overrides.activities !== undefined
+        ? overrides.activities()
+        : HttpResponse.json(defaultActivitiesBody),
+    ),
+    http.get('/api/v1/agents', () =>
+      overrides.agents !== undefined
+        ? overrides.agents()
+        : HttpResponse.json(defaultAgentsBody),
+    ),
   )
 }
 
@@ -252,21 +253,7 @@ describe('fetchBudgetData', () => {
 
   it('degrades gracefully when listCostRecords fails', async () => {
     installDefaults({
-      records: {
-        success: false,
-        data: null,
-        error: 'no records',
-        error_detail: {
-          detail: 'no records',
-          error_code: 1000,
-          error_category: 'internal',
-          retryable: false,
-          retry_after: null,
-          instance: '/storybook',
-          title: 'Error',
-          type: 'about:blank',
-        },
-      },
+      records: () => HttpResponse.json(apiError('no records')),
     })
     await useBudgetStore.getState().fetchBudgetData()
     const state = useBudgetStore.getState()
@@ -276,22 +263,7 @@ describe('fetchBudgetData', () => {
 
   it('degrades gracefully when listAgents fails', async () => {
     installDefaults({
-      agents: {
-        data: null,
-        error: 'agents down',
-        error_detail: {
-          detail: 'agents down',
-          error_code: 1000,
-          error_category: 'internal',
-          retryable: false,
-          retry_after: null,
-          instance: '/storybook',
-          title: 'Error',
-          type: 'about:blank',
-        },
-        success: false,
-        pagination: null,
-      },
+      agents: () => HttpResponse.json(apiPaginatedError('agents down')),
     })
     await useBudgetStore.getState().fetchBudgetData()
     const state = useBudgetStore.getState()

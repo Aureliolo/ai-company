@@ -21,10 +21,10 @@ export async function getBudgetConfig(): Promise<BudgetConfig> {
   return unwrap(response)
 }
 
-interface CostRecordListResponseBody {
+export interface CostRecordListResponseBody {
   success: boolean
   data: CostRecord[]
-  error?: string
+  error?: string | null
   error_detail?: ErrorDetail | null
   pagination: { total: number; offset: number; limit: number }
   daily_summary: DailySummary[]

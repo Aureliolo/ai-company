@@ -12,7 +12,7 @@ function resetStore() {
     listError: null,
     searchQuery: '',
   })
-  useToastStore.setState({ toasts: [] })
+  useToastStore.getState().dismissAll()
 }
 
 beforeEach(() => {

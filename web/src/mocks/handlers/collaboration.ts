@@ -42,14 +42,22 @@ export const collaborationHandlers = [
         status: 400,
       })
     }
+    const appliedAt = '2026-04-19T00:00:00Z'
+    const expiresAt =
+      typeof body.expires_in_days === 'number'
+        ? new Date(
+            new Date(appliedAt).getTime() +
+              body.expires_in_days * 24 * 60 * 60 * 1000,
+          ).toISOString()
+        : null
     return HttpResponse.json(
       successFor<typeof setOverride>({
         agent_id: String(params.id),
         score: body.score,
         reason: body.reason,
         applied_by: 'user-1',
-        applied_at: '2026-04-19T00:00:00Z',
-        expires_at: null,
+        applied_at: appliedAt,
+        expires_at: expiresAt,
       }),
     )
   }),

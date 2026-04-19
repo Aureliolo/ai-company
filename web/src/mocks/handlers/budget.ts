@@ -1,5 +1,6 @@
 import { http, HttpResponse } from 'msw'
 import type {
+  CostRecordListResponseBody,
   getAgentSpending,
   getBudgetConfig,
 } from '@/api/endpoints/budget'
@@ -31,8 +32,12 @@ export const budgetHandlers = [
   http.get('/api/v1/budget/config', () =>
     HttpResponse.json(successFor<typeof getBudgetConfig>(buildBudgetConfig())),
   ),
-  http.get('/api/v1/budget/records', () =>
-    HttpResponse.json({
+  http.get('/api/v1/budget/records', () => {
+    // `listCostRecords()` collapses the paginated envelope to a flat
+    // `CostRecordListResult`, so `paginatedFor<typeof endpoint>` can't
+    // represent the wire shape. Bind the body to the exported wire type
+    // instead for compile-time drift detection.
+    const body: CostRecordListResponseBody = {
       success: true,
       data: [],
       error: null,
@@ -48,8 +53,9 @@ export const budgetHandlers = [
         currency: DEFAULT_CURRENCY,
       },
       currency: DEFAULT_CURRENCY,
-    }),
-  ),
+    }
+    return HttpResponse.json(body)
+  }),
   http.get('/api/v1/budget/agents/:agentId', ({ params }) =>
     HttpResponse.json(
       successFor<typeof getAgentSpending>({

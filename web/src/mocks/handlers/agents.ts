@@ -75,6 +75,17 @@ export const agentsHandlers = [
         status: 400,
       })
     }
+    const allowed: readonly AutonomyLevel[] = [
+      'full',
+      'semi',
+      'supervised',
+      'locked',
+    ]
+    if (!(allowed as readonly string[]).includes(body.level)) {
+      return HttpResponse.json(apiError('Unsupported autonomy level'), {
+        status: 400,
+      })
+    }
     return HttpResponse.json(
       successFor<typeof setAutonomy>({
         agent_id: String(params.agentId),

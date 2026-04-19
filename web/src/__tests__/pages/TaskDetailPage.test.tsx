@@ -94,6 +94,7 @@ async function renderDetailPage() {
 
 describe('TaskDetailPage', () => {
   const pendingReleasers: Array<() => void> = []
+  const pendingHandlerPromises: Array<Promise<unknown>> = []
 
   beforeEach(() => {
     resetStore()
@@ -101,12 +102,14 @@ describe('TaskDetailPage', () => {
     installTaskHandler()
   })
 
-  afterEach(() => {
-    // Drain any pending-mode releasers so in-flight handler promises
-    // settle within the test boundary.
+  afterEach(async () => {
+    // Release any gated handlers and await their resolution so handler
+    // continuations cannot mutate `useTasksStore` after the next test's
+    // reset has already run.
     for (const release of pendingReleasers.splice(0)) {
       release()
     }
+    await Promise.all(pendingHandlerPromises.splice(0))
   })
 
   it('renders loading spinner when loadingDetail is true', async () => {
@@ -116,9 +119,13 @@ describe('TaskDetailPage', () => {
     })
     pendingReleasers.push(release)
     server.use(
-      http.get('/api/v1/tasks/:id', async () => {
-        await gate
-        return HttpResponse.json(apiSuccess(mockTask))
+      http.get('/api/v1/tasks/:id', () => {
+        const handled = (async () => {
+          await gate
+          return HttpResponse.json(apiSuccess(mockTask))
+        })()
+        pendingHandlerPromises.push(handled)
+        return handled
       }),
     )
     resetStore({ loadingDetail: true })
@@ -136,9 +143,13 @@ describe('TaskDetailPage', () => {
     })
     pendingReleasers.push(release)
     server.use(
-      http.get('/api/v1/tasks/:id', async () => {
-        await gate
-        return HttpResponse.json(apiSuccess(mockTask))
+      http.get('/api/v1/tasks/:id', () => {
+        const handled = (async () => {
+          await gate
+          return HttpResponse.json(apiSuccess(mockTask))
+        })()
+        pendingHandlerPromises.push(handled)
+        return handled
       }),
     )
     resetStore({ selectedTask: null, loadingDetail: false })

@@ -4,7 +4,7 @@ import type {
   listIntegrationHealth,
 } from '@/api/endpoints/integration-health'
 import type { HealthReport } from '@/api/types'
-import { apiSuccess, successFor } from './helpers'
+import { successFor } from './helpers'
 
 const NOW = '2026-04-11T12:00:00Z'
 
@@ -30,23 +30,24 @@ const mockHealthReports: HealthReport[] = [
 
 export const integrationHealthList = [
   http.get('/api/v1/integrations/health', () =>
-    HttpResponse.json(apiSuccess(mockHealthReports)),
+    HttpResponse.json(
+      successFor<typeof listIntegrationHealth>(mockHealthReports),
+    ),
   ),
   http.get('/api/v1/integrations/health/:name', ({ params }) => {
     const report = mockHealthReports.find((r) => r.connection_name === params.name)
-    if (!report) {
-      return HttpResponse.json(
-        apiSuccess({
+    return HttpResponse.json(
+      successFor<typeof getSingleIntegrationHealth>(
+        report ?? {
           connection_name: String(params.name),
           status: 'unknown',
           latency_ms: null,
           error_detail: null,
           checked_at: NOW,
           consecutive_failures: 0,
-        } satisfies HealthReport),
-      )
-    }
-    return HttpResponse.json(apiSuccess(report))
+        },
+      ),
+    )
   }),
 ]
 

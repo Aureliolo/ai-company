@@ -73,7 +73,7 @@ function buildDepartmentHealth(name: string): DepartmentHealth {
   }
 }
 
-function buildTeam(overrides: Partial<TeamConfig> = {}): TeamConfig {
+export function buildTeam(overrides: Partial<TeamConfig> = {}): TeamConfig {
   return {
     name: 'default-team',
     lead: 'agent-default',

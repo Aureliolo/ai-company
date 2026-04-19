@@ -1,7 +1,8 @@
 import { http, HttpResponse } from 'msw'
 import type { Task, WsEvent } from '@/api/types'
 import { useTasksStore } from '@/stores/tasks'
-import { apiError, apiSuccess, voidSuccess } from '@/mocks/handlers'
+import { apiError, apiSuccess, paginatedFor, voidSuccess } from '@/mocks/handlers'
+import type { listTasks } from '@/api/endpoints/tasks'
 import { server } from '@/test-setup'
 
 const mockTask: Task = {
@@ -40,17 +41,12 @@ function paginated(
   data: Task[],
   meta: Partial<{ total: number; offset: number; limit: number }> = {},
 ) {
-  return {
+  return paginatedFor<typeof listTasks>({
     data,
-    error: null,
-    error_detail: null,
-    success: true,
-    pagination: {
-      total: meta.total ?? data.length,
-      offset: meta.offset ?? 0,
-      limit: meta.limit ?? 200,
-    },
-  }
+    total: meta.total ?? data.length,
+    offset: meta.offset ?? 0,
+    limit: meta.limit ?? 200,
+  })
 }
 
 function resetStore() {

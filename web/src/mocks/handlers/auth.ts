@@ -8,7 +8,7 @@ import type {
   setup,
 } from '@/api/endpoints/auth'
 import type { AuthResponse, UserInfoResponse } from '@/api/types'
-import { apiSuccess, successFor, voidSuccess } from './helpers'
+import { successFor, voidSuccess } from './helpers'
 
 const mockAuthResponse: AuthResponse = {
   expires_in: 86400,
@@ -32,14 +32,14 @@ function buildUser(overrides: Partial<UserInfoResponse> = {}): UserInfoResponse 
 export const authLoginSuccess = [
   http.post('/api/v1/auth/login', () => {
     document.cookie = 'csrf_token=mock-csrf-token; path=/api'
-    return HttpResponse.json(apiSuccess(mockAuthResponse))
+    return HttpResponse.json(successFor<typeof login>(mockAuthResponse))
   }),
 ]
 
 export const authSetupSuccess = [
   http.post('/api/v1/auth/setup', () => {
     document.cookie = 'csrf_token=mock-csrf-token; path=/api'
-    return HttpResponse.json(apiSuccess(mockAuthResponse))
+    return HttpResponse.json(successFor<typeof setup>(mockAuthResponse))
   }),
 ]
 

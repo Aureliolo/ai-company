@@ -11,8 +11,12 @@ import type {
 import type { SettingEntry } from '@/api/types'
 import { successFor, voidSuccess } from './helpers'
 
+type SettingEntryOverrides = Partial<Omit<SettingEntry, 'definition'>> & {
+  definition?: Partial<SettingEntry['definition']>
+}
+
 export function buildSettingEntry(
-  overrides: Partial<SettingEntry> = {},
+  overrides: SettingEntryOverrides = {},
 ): SettingEntry {
   const base: SettingEntry = {
     definition: {
@@ -70,24 +74,14 @@ export const settingsHandlers = [
       successFor<typeof updateSetting>(
         buildSettingEntry({
           value: body.value,
-          definition: {
-            namespace: String(params.namespace) as SettingEntry['definition']['namespace'],
-            key: String(params.key),
-            type: 'str',
-            default: null,
-            description: '',
-            group: 'default',
-            level: 'basic',
-            sensitive: false,
-            restart_required: false,
-            enum_values: [],
-            validator_pattern: null,
-            min_value: null,
-            max_value: null,
-            yaml_path: null,
-          },
           source: 'db',
           updated_at: '2026-04-19T00:00:00Z',
+          definition: {
+            namespace: String(
+              params.namespace,
+            ) as SettingEntry['definition']['namespace'],
+            key: String(params.key),
+          },
         }),
       ),
     )

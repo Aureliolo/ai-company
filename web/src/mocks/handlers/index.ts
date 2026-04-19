@@ -43,7 +43,15 @@
  *   )
  */
 
-export { apiError, apiSuccess, successFor, paginatedFor, voidSuccess, emptyPage } from './helpers'
+export {
+  apiError,
+  apiPaginatedError,
+  apiSuccess,
+  emptyPage,
+  paginatedFor,
+  successFor,
+  voidSuccess,
+} from './helpers'
 
 // ── Default test handler arrays (per endpoint module). ──
 
@@ -200,7 +208,8 @@ export { buildApproval } from './approvals'
 export { buildArtifact } from './artifacts'
 export { buildBackupInfo } from './backup'
 export { buildBudgetConfig } from './budget'
-export { buildCompanyConfig, buildDepartment } from './company'
+export { buildCeremonyPolicy } from './ceremony-policy'
+export { buildCompanyConfig, buildDepartment, buildTeam } from './company'
 export { buildConnection } from './connections'
 export { buildCheckpoint } from './fine-tuning'
 export { buildCustomRule } from './custom-rules'
@@ -212,4 +221,5 @@ export { buildProject } from './projects'
 export { buildProvider } from './providers'
 export { buildSettingEntry } from './settings'
 export { buildTask } from './tasks'
+export { buildPlan as buildTrainingPlan, buildResult as buildTrainingResult } from './training'
 export { buildWorkflow } from './workflows'

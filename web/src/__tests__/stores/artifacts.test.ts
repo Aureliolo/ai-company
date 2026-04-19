@@ -2,22 +2,21 @@ import fc from 'fast-check'
 import { http, HttpResponse } from 'msw'
 import { useArtifactsStore } from '@/stores/artifacts'
 import { makeArtifact } from '../helpers/factories'
-import { apiError, apiSuccess, voidSuccess } from '@/mocks/handlers'
+import { apiError, apiSuccess, paginatedFor, voidSuccess } from '@/mocks/handlers'
+import type { listArtifacts } from '@/api/endpoints/artifacts'
 import { server } from '@/test-setup'
 import type { Artifact, WsEvent } from '@/api/types'
 
-function paginated(data: Artifact[], meta: Partial<{ total: number; offset: number; limit: number }> = {}) {
-  return {
+function paginated(
+  data: Artifact[],
+  meta: Partial<{ total: number; offset: number; limit: number }> = {},
+) {
+  return paginatedFor<typeof listArtifacts>({
     data,
-    error: null,
-    error_detail: null,
-    success: true,
-    pagination: {
-      total: meta.total ?? data.length,
-      offset: meta.offset ?? 0,
-      limit: meta.limit ?? 200,
-    },
-  }
+    total: meta.total ?? data.length,
+    offset: meta.offset ?? 0,
+    limit: meta.limit ?? 200,
+  })
 }
 
 describe('useArtifactsStore', () => {

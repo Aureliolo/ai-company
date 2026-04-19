@@ -2,6 +2,8 @@ import { renderHook, waitFor } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { useTaskBoardData } from '@/hooks/useTaskBoardData'
 import { useTasksStore } from '@/stores/tasks'
+import { paginatedFor } from '@/mocks/handlers'
+import type { listTasks } from '@/api/endpoints/tasks'
 import { server } from '@/test-setup'
 
 vi.mock('@/hooks/useWebSocket', () => ({
@@ -63,13 +65,14 @@ describe('useTaskBoardData', () => {
     server.use(
       http.get('/api/v1/tasks', ({ request }) => {
         captured.params = new URL(request.url).searchParams
-        return HttpResponse.json({
-          data: [],
-          error: null,
-          error_detail: null,
-          success: true,
-          pagination: { total: 0, offset: 0, limit: 200 },
-        })
+        return HttpResponse.json(
+          paginatedFor<typeof listTasks>({
+            data: [],
+            total: 0,
+            offset: 0,
+            limit: 200,
+          }),
+        )
       }),
     )
     renderHook(() => useTaskBoardData())

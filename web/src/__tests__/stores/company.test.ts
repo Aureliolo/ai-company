@@ -225,11 +225,11 @@ describe('useCompanyStore', () => {
       timestamp: '2026-03-27T10:00:00Z',
       payload: {},
     })
-    // Unrelated events must NOT trigger a refetch. vi.waitFor retries until
-    // the assertion holds stably, so this reliably proves the negative.
-    await vi.waitFor(() => {
-      expect(configCalls).toBe(0)
-    })
+    // Drain the microtask queue; a refetch would be scheduled on the next
+    // microtask, so asserting after a single Promise.resolve() reliably
+    // catches any unintended fetch while still being a true negative test.
+    await Promise.resolve()
+    expect(configCalls).toBe(0)
   })
 
   describe('updateCompany', () => {

@@ -2,22 +2,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { useMeetingsStore, _resetRequestSeqs } from '@/stores/meetings'
 import { makeMeeting } from '../helpers/factories'
-import { apiError, apiSuccess } from '@/mocks/handlers'
+import { apiError, apiSuccess, paginatedFor } from '@/mocks/handlers'
+import type { listMeetings } from '@/api/endpoints/meetings'
 import { server } from '@/test-setup'
 import type { MeetingResponse, WsEvent } from '@/api/types'
 
-function paginated(data: MeetingResponse[], meta: Partial<{ total: number; offset: number; limit: number }> = {}) {
-  return {
+function paginated(
+  data: MeetingResponse[],
+  meta: Partial<{ total: number; offset: number; limit: number }> = {},
+) {
+  return paginatedFor<typeof listMeetings>({
     data,
-    error: null,
-    error_detail: null,
-    success: true,
-    pagination: {
-      total: meta.total ?? data.length,
-      offset: meta.offset ?? 0,
-      limit: meta.limit ?? 100,
-    },
-  }
+    total: meta.total ?? data.length,
+    offset: meta.offset ?? 0,
+    limit: meta.limit ?? 100,
+  })
 }
 
 function resetStore() {

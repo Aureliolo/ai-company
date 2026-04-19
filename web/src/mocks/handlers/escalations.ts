@@ -36,10 +36,10 @@ function buildResponse(
 ): EscalationResponse {
   const esc = overrides.escalation ?? buildEscalation()
   return {
+    ...overrides,
     escalation: esc,
     conflict_id: overrides.conflict_id ?? esc.conflict.id,
     status: overrides.status ?? esc.status,
-    ...overrides,
   }
 }
 

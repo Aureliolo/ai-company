@@ -113,12 +113,14 @@ export const setupHandlers = [
       { status: 201 },
     )
   }),
-  http.get('/api/v1/setup/agents', () => {
-    const result: SetupAgentsListResponse = { agents: [], agent_count: 0 }
-    // The endpoint unwraps the envelope and returns `.agents`, so the
-    // handler emits the full list response directly.
-    return HttpResponse.json(apiSuccess(result))
-  }),
+  http.get('/api/v1/setup/agents', () =>
+    // `getAgents()` unwraps `.agents`, so the wire shape is
+    // `SetupAgentsListResponse` rather than the endpoint's return type.
+    // `apiSuccess<Wire>()` still binds the handler to the wire contract.
+    HttpResponse.json(
+      apiSuccess<SetupAgentsListResponse>({ agents: [], agent_count: 0 }),
+    ),
+  ),
   http.put('/api/v1/setup/agents/:index/model', async ({ request }) => {
     const body = (await request.json()) as {
       model_provider: string
@@ -154,12 +156,13 @@ export const setupHandlers = [
       ),
     )
   }),
-  http.get('/api/v1/setup/personality-presets', () => {
-    // Endpoint unwraps `.presets`, so the wire shape is
-    // `PersonalityPresetsListResponse` rather than the endpoint's return type.
-    const result: PersonalityPresetsListResponse = { presets: [] }
-    return HttpResponse.json(apiSuccess(result))
-  }),
+  http.get('/api/v1/setup/personality-presets', () =>
+    // `listPersonalityPresets()` unwraps `.presets`, so the wire shape is
+    // `PersonalityPresetsListResponse` rather than the endpoint return type.
+    HttpResponse.json(
+      apiSuccess<PersonalityPresetsListResponse>({ presets: [] }),
+    ),
+  ),
   http.get('/api/v1/setup/name-locales/available', () =>
     HttpResponse.json(
       successFor<typeof getAvailableLocales>({

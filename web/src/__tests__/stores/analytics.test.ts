@@ -212,15 +212,20 @@ describe('useAnalyticsStore', () => {
     it('populates departmentHealths when departments exist', async () => {
       installDefaults({
         departments: () =>
-          HttpResponse.json({
-            data: [
-              { name: 'engineering', display_name: 'Engineering', teams: [] },
-            ],
-            error: null,
-            error_detail: null,
-            success: true,
-            pagination: { total: 1, offset: 0, limit: 100 },
-          }),
+          HttpResponse.json(
+            paginatedFor<typeof listDepartments>({
+              data: [
+                {
+                  name: 'engineering',
+                  display_name: 'Engineering',
+                  teams: [],
+                } as Department,
+              ],
+              total: 1,
+              offset: 0,
+              limit: 100,
+            }),
+          ),
       })
 
       await useAnalyticsStore.getState().fetchDashboardData()
@@ -268,17 +273,18 @@ describe('useAnalyticsStore', () => {
     it('filters out failed individual department health fetches', async () => {
       installDefaults({
         departments: () =>
-          HttpResponse.json({
-            data: [
-              { name: 'engineering', display_name: 'Engineering', teams: [] },
-              { name: 'design', display_name: 'Design', teams: [] },
-              { name: 'operations', display_name: 'Operations', teams: [] },
-            ],
-            error: null,
-            error_detail: null,
-            success: true,
-            pagination: { total: 3, offset: 0, limit: 100 },
-          }),
+          HttpResponse.json(
+            paginatedFor<typeof listDepartments>({
+              data: [
+                { name: 'engineering', display_name: 'Engineering', teams: [] } as Department,
+                { name: 'design', display_name: 'Design', teams: [] } as Department,
+                { name: 'operations', display_name: 'Operations', teams: [] } as Department,
+              ],
+              total: 3,
+              offset: 0,
+              limit: 100,
+            }),
+          ),
         departmentHealth: (name: string) => {
           if (name === 'design') {
             return HttpResponse.json(apiError('Design health unavailable'))

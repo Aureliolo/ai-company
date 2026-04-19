@@ -6,7 +6,7 @@ import type {
   searchMcpCatalog,
 } from '@/api/endpoints/mcp-catalog'
 import type { McpCatalogEntry } from '@/api/types'
-import { apiError, apiSuccess, successFor, voidSuccess } from './helpers'
+import { apiError, successFor, voidSuccess } from './helpers'
 
 function buildEntry(overrides: Partial<McpCatalogEntry> = {}): McpCatalogEntry {
   return {
@@ -54,7 +54,7 @@ const mockCatalogEntries: McpCatalogEntry[] = [
 
 export const mcpCatalogHandlers = [
   http.get('/api/v1/integrations/mcp/catalog', () =>
-    HttpResponse.json(apiSuccess(mockCatalogEntries)),
+    HttpResponse.json(successFor<typeof browseMcpCatalog>(mockCatalogEntries)),
   ),
   http.get('/api/v1/integrations/mcp/catalog/search', ({ request }) => {
     const url = new URL(request.url)
@@ -65,12 +65,12 @@ export const mcpCatalogHandlers = [
         e.description.toLowerCase().includes(q) ||
         e.tags.some((t) => t.toLowerCase().includes(q)),
     )
-    return HttpResponse.json(apiSuccess(matches))
+    return HttpResponse.json(successFor<typeof searchMcpCatalog>(matches))
   }),
   http.get('/api/v1/integrations/mcp/catalog/:entryId', ({ params }) => {
     const entry = mockCatalogEntries.find((e) => e.id === params.entryId)
     if (!entry) return HttpResponse.json(apiError('Catalog entry not found'), { status: 404 })
-    return HttpResponse.json(apiSuccess(entry))
+    return HttpResponse.json(successFor<typeof getMcpCatalogEntry>(entry))
   }),
   http.post('/api/v1/integrations/mcp/catalog/install', async ({ request }) => {
     const body = (await request.json()) as { catalog_entry_id?: string }
@@ -82,8 +82,8 @@ export const mcpCatalogHandlers = [
     const entry = mockCatalogEntries.find((e) => e.id === body.catalog_entry_id)
     if (!entry) return HttpResponse.json(apiError('Catalog entry not found'), { status: 404 })
     return HttpResponse.json(
-      apiSuccess({
-        status: 'installed' as const,
+      successFor<typeof installMcpServer>({
+        status: 'installed',
         server_name: entry.name,
         catalog_entry_id: entry.id,
         tool_count: entry.capabilities.length,
