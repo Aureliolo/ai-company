@@ -65,13 +65,13 @@ one level up in `src/synthorg/persistence/`:
 | Protocol module                        | Concerns |
 |----------------------------------------|-----------|
 | `protocol.py` (`PersistenceBackend`)   | Backend aggregate: connect / disconnect, migrate, and accessors for every repository below |
-| `auth_protocol.py`                     | `SessionRepository`, `RefreshTokenRepository`, `LockoutRepository` (A1) |
-| `escalation_protocol.py`               | Conflict-resolution escalation queue (A6) |
-| `mcp_protocol.py`                      | MCP catalog installation repository (A3) |
-| `memory_protocol.py`                   | Org-memory fact repository with MVCC log + snapshot (A4) |
-| `ontology_protocol.py`                 | Ontology entity + drift-report repositories (A5) |
+| `auth_protocol.py`                     | `SessionRepository`, `RefreshTokenRepository`, `LockoutRepository` |
+| `escalation_protocol.py`               | Conflict-resolution escalation queue |
+| `mcp_protocol.py`                      | MCP catalog installation repository |
+| `memory_protocol.py`                   | Org-memory fact repository with MVCC log + snapshot |
+| `ontology_protocol.py`                 | Ontology entity + drift-report repositories |
 | `version_repo.py`                      | Generic version-snapshot repository reused by ontology + future versioned entities |
-| `secret_backends/protocol.py`          | `SecretBackend` protocol used by the secret-backend factory (A2) |
+| `secret_backends/protocol.py`          | `SecretBackend` protocol used by the secret-backend factory |
 
 Every concrete repository implements its matching protocol; application code
 depends on the protocol, not the implementation.  Switching backends is a

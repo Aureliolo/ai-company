@@ -12,6 +12,8 @@ name -- robust to accidental SELECT re-ordering.
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
+from psycopg.rows import dict_row
+
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.mcp_catalog.installations import McpInstallation
 from synthorg.observability import get_logger
@@ -26,13 +28,6 @@ if TYPE_CHECKING:
 
 
 logger = get_logger(__name__)
-
-
-def _import_dict_row() -> Any:
-    """Lazily resolve ``psycopg.rows.dict_row`` (boundary-friendly)."""
-    from psycopg.rows import dict_row  # noqa: PLC0415
-
-    return dict_row
 
 
 def _ensure_tz(value: datetime) -> datetime:
@@ -64,7 +59,6 @@ class PostgresMcpInstallationRepository:
 
     def __init__(self, pool: AsyncConnectionPool) -> None:
         self._pool = pool
-        self._dict_row = _import_dict_row()
 
     async def save(self, installation: McpInstallation) -> None:
         """Upsert an installation row (idempotent on catalog_entry_id)."""
@@ -110,7 +104,6 @@ class PostgresMcpInstallationRepository:
         catalog_entry_id: NotBlankStr,
     ) -> McpInstallation | None:
         """Fetch a single installation by catalog entry id."""
-        dict_row = self._dict_row
         try:
             async with (
                 self._pool.connection() as conn,
@@ -148,7 +141,6 @@ class PostgresMcpInstallationRepository:
         (restores, backfills, clock skew) are always returned in the
         same order across calls.
         """
-        dict_row = self._dict_row
         try:
             async with (
                 self._pool.connection() as conn,
