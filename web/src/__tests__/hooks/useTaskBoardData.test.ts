@@ -59,10 +59,10 @@ describe('useTaskBoardData', () => {
   })
 
   it('triggers initial fetch on mount with the configured limit', async () => {
-    let capturedParams: URLSearchParams | null = null
+    const captured: { params: URLSearchParams | null } = { params: null }
     server.use(
       http.get('/api/v1/tasks', ({ request }) => {
-        capturedParams = new URL(request.url).searchParams
+        captured.params = new URL(request.url).searchParams
         return HttpResponse.json({
           data: [],
           error: null,
@@ -74,8 +74,8 @@ describe('useTaskBoardData', () => {
     )
     renderHook(() => useTaskBoardData())
     await waitFor(() => {
-      expect(capturedParams).not.toBeNull()
+      expect(captured.params).not.toBeNull()
     })
-    expect(capturedParams?.get('limit')).toBe('200')
+    expect(captured.params?.get('limit')).toBe('200')
   })
 })

@@ -80,10 +80,10 @@ describe('fetchApprovals', () => {
   })
 
   it('forwards filters as query params', async () => {
-    let capturedParams: URLSearchParams | null = null
+    const captured: { params: URLSearchParams | null } = { params: null }
     server.use(
       http.get('/api/v1/approvals', ({ request }) => {
-        capturedParams = new URL(request.url).searchParams
+        captured.params = new URL(request.url).searchParams
         return HttpResponse.json(paginated([]))
       }),
     )
@@ -92,8 +92,8 @@ describe('fetchApprovals', () => {
       .getState()
       .fetchApprovals({ status: 'pending', limit: 50 })
 
-    expect(capturedParams?.get('status')).toBe('pending')
-    expect(capturedParams?.get('limit')).toBe('50')
+    expect(captured.params?.get('status')).toBe('pending')
+    expect(captured.params?.get('limit')).toBe('50')
   })
 
   it('preserves optimistic state for items in pendingTransitions', async () => {

@@ -32,29 +32,6 @@ afterAll(() => {
   server.close()
 })
 
-// AuthGuard calls `useSettingsStore.getState().fetchLocale()` from a
-// `useEffect` whenever the user becomes authenticated. The global
-// settings MSW handler now covers that path, but we keep a permissive
-// vi.mock in place as a safety net during the incremental test
-// migration. Batch D of the MSW migration (issue #1460) removes this
-// block entirely.
-vi.mock('@/api/endpoints/settings', async () => {
-  const actual = await vi.importActual<typeof import('@/api/endpoints/settings')>(
-    '@/api/endpoints/settings',
-  )
-  return {
-    ...actual,
-    getSchema: vi.fn().mockResolvedValue([]),
-    getNamespaceSchema: vi.fn().mockResolvedValue([]),
-    getAllSettings: vi.fn().mockResolvedValue([]),
-    getNamespaceSettings: vi.fn().mockResolvedValue([]),
-    updateSetting: vi.fn().mockResolvedValue(undefined),
-    resetSetting: vi.fn().mockResolvedValue(undefined),
-    listSinks: vi.fn().mockResolvedValue([]),
-    testSinkConfig: vi.fn().mockResolvedValue({ valid: true, error: null }),
-  }
-})
-
 // Short-circuit every Motion animation so framer-motion does not leave
 // `AnimationComplete` promise chains pending past test teardown. This is
 // the canonical test hook documented at https://motion.dev/docs/testing

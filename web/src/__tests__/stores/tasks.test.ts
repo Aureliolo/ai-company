@@ -102,18 +102,18 @@ describe('useTasksStore', () => {
     })
 
     it('forwards filters as query params', async () => {
-      let capturedParams: URLSearchParams | null = null
+      const captured: { params: URLSearchParams | null } = { params: null }
       server.use(
         http.get('/api/v1/tasks', ({ request }) => {
-          capturedParams = new URL(request.url).searchParams
+          captured.params = new URL(request.url).searchParams
           return HttpResponse.json(paginated([]))
         }),
       )
       await useTasksStore
         .getState()
         .fetchTasks({ status: 'assigned', limit: 200 })
-      expect(capturedParams?.get('status')).toBe('assigned')
-      expect(capturedParams?.get('limit')).toBe('200')
+      expect(captured.params?.get('status')).toBe('assigned')
+      expect(captured.params?.get('limit')).toBe('200')
     })
 
     it('sets error on failure', async () => {

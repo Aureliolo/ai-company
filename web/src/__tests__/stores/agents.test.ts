@@ -91,13 +91,14 @@ function makeTask(overrides: Partial<Task> = {}): Task {
   }
 }
 
+type HandlerResult = Response | Promise<Response>
 type Fixture = Partial<{
-  agentList: () => Response
-  agent: (name: string) => Response
-  performance: () => Response
-  activity: () => Response
-  history: () => Response
-  tasks: () => Response
+  agentList: () => HandlerResult
+  agent: (name: string) => HandlerResult
+  performance: () => HandlerResult
+  activity: () => HandlerResult
+  history: () => HandlerResult
+  tasks: () => HandlerResult
 }>
 
 function installAgentHandlers(f: Fixture = {}) {

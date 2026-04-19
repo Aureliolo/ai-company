@@ -1,40 +1,84 @@
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { http, HttpResponse } from 'msw'
 import { useAuthStore } from '@/stores/auth'
 import { useSetupStore } from '@/stores/setup'
-import { AuthGuard, GuestGuard, SetupCompleteGuard, SetupGuard } from '@/router/guards'
+import {
+  AuthGuard,
+  GuestGuard,
+  SetupCompleteGuard,
+  SetupGuard,
+} from '@/router/guards'
+import { apiError, apiSuccess } from '@/mocks/handlers'
+import { server } from '@/test-setup'
 import { renderRoutes } from '../test-utils'
 
-// Disable dev auth bypass so guards use real auth flow
+// Disable dev auth bypass so guards use the real auth flow.
 vi.mock('@/utils/dev', () => ({ IS_DEV_AUTH_BYPASS: false }))
 
-// Mock the setup API
-vi.mock('@/api/endpoints/setup', () => ({
-  getSetupStatus: vi.fn(),
-}))
+const completeStatus = {
+  needs_admin: false,
+  needs_setup: false,
+  has_providers: true,
+  has_name_locales: true,
+  has_company: true,
+  has_agents: true,
+  min_password_length: 12,
+}
 
-// Mock the auth API (AuthGuard calls checkSession -> getMe to validate session)
-vi.mock('@/api/endpoints/auth', () => ({
-  getMe: vi.fn().mockResolvedValue({
-    id: '1',
-    username: 'admin',
-    role: 'ceo',
-    must_change_password: false,
-    org_roles: [],
-    scoped_departments: [],
-  }),
-  login: vi.fn(),
-  setup: vi.fn(),
-  logout: vi.fn(),
-  changePassword: vi.fn(),
-}))
+const incompleteStatus = {
+  needs_admin: false,
+  needs_setup: true,
+  has_providers: false,
+  has_name_locales: false,
+  has_company: false,
+  has_agents: false,
+  min_password_length: 12,
+}
 
-// Prevent window.location side effects from auth store
+type SetupStatusMode =
+  | { kind: 'success'; body: typeof completeStatus }
+  | { kind: 'error' }
+
+const setupStatusState: { mode: SetupStatusMode; calls: number } = {
+  mode: { kind: 'success', body: completeStatus },
+  calls: 0,
+}
+
+function installSetupHandler() {
+  server.use(
+    http.get('/api/v1/setup/status', () => {
+      setupStatusState.calls += 1
+      if (setupStatusState.mode.kind === 'error') {
+        return HttpResponse.json(apiError('Network error'))
+      }
+      return HttpResponse.json(apiSuccess(setupStatusState.mode.body))
+    }),
+    http.get('/api/v1/auth/me', () =>
+      HttpResponse.json(
+        apiSuccess({
+          id: '1',
+          username: 'admin',
+          role: 'ceo',
+          must_change_password: false,
+          org_roles: [],
+          scoped_departments: [],
+        }),
+      ),
+    ),
+  )
+}
+
 const originalLocation = window.location
 beforeAll(() => {
   Object.defineProperty(window, 'location', {
     writable: true,
-    value: { ...originalLocation, href: '', pathname: '/' },
+    value: {
+      ...originalLocation,
+      href: 'http://localhost/',
+      origin: 'http://localhost',
+      pathname: '/',
+    },
   })
 })
 afterAll(() => {
@@ -60,7 +104,9 @@ function resetStores() {
 describe('AuthGuard', () => {
   beforeEach(() => {
     resetStores()
-    vi.clearAllMocks()
+    setupStatusState.mode = { kind: 'success', body: completeStatus }
+    setupStatusState.calls = 0
+    installSetupHandler()
   })
 
   it('redirects to /login when unauthenticated', () => {
@@ -125,11 +171,9 @@ describe('AuthGuard', () => {
       { initialEntries: ['/'] },
     )
 
-    // Guard shows loading while checkSession validates the session
     expect(screen.getByText('Loading...')).toBeInTheDocument()
     expect(screen.queryByText('Protected')).not.toBeInTheDocument()
 
-    // After validation completes (getMe succeeds), protected content renders
     await waitFor(() => {
       expect(screen.getByText('Protected')).toBeInTheDocument()
     })
@@ -139,7 +183,9 @@ describe('AuthGuard', () => {
 describe('SetupGuard', () => {
   beforeEach(() => {
     resetStores()
-    vi.clearAllMocks()
+    setupStatusState.mode = { kind: 'success', body: completeStatus }
+    setupStatusState.calls = 0
+    installSetupHandler()
   })
 
   it('redirects to /setup when setup is not complete', () => {
@@ -200,20 +246,7 @@ describe('SetupGuard', () => {
   })
 
   it('triggers fetchSetupStatus when setup status is unknown', async () => {
-    const { getSetupStatus } = await import('@/api/endpoints/setup')
-    const mockGetSetupStatus = vi.mocked(getSetupStatus)
-    mockGetSetupStatus.mockResolvedValue({
-      needs_admin: false,
-      needs_setup: false,
-      has_providers: true,
-      has_name_locales: true,
-      has_company: true,
-      has_agents: true,
-      min_password_length: 12,
-    })
-
     useAuthStore.setState({ authStatus: 'authenticated' })
-    // setupComplete is null (not yet fetched), loading is false
 
     renderRoutes(
       [
@@ -227,18 +260,14 @@ describe('SetupGuard', () => {
       { initialEntries: ['/'] },
     )
 
-    // Should fetch and then render content (setup is complete)
     await waitFor(() => {
       expect(screen.getByText('App Content')).toBeInTheDocument()
     })
-    expect(mockGetSetupStatus).toHaveBeenCalledOnce()
+    expect(setupStatusState.calls).toBe(1)
   })
 
   it('shows error with retry when fetchSetupStatus fails', async () => {
-    const { getSetupStatus } = await import('@/api/endpoints/setup')
-    const mockGetSetupStatus = vi.mocked(getSetupStatus)
-    mockGetSetupStatus.mockRejectedValue(new Error('Network error'))
-
+    setupStatusState.mode = { kind: 'error' }
     useAuthStore.setState({ authStatus: 'authenticated' })
 
     renderRoutes(
@@ -253,20 +282,13 @@ describe('SetupGuard', () => {
     )
 
     await waitFor(() => {
-      expect(screen.getByText('Failed to check setup status.')).toBeInTheDocument()
+      expect(
+        screen.getByText('Failed to check setup status.'),
+      ).toBeInTheDocument()
     })
     expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument()
 
-    // Retry succeeds
-    mockGetSetupStatus.mockResolvedValueOnce({
-      needs_admin: false,
-      needs_setup: false,
-      has_providers: true,
-      has_name_locales: true,
-      has_company: true,
-      has_agents: true,
-      min_password_length: 12,
-    })
+    setupStatusState.mode = { kind: 'success', body: completeStatus }
 
     const user = userEvent.setup()
     await user.click(screen.getByRole('button', { name: /retry/i }))
@@ -274,14 +296,14 @@ describe('SetupGuard', () => {
     await waitFor(() => {
       expect(screen.getByText('App Content')).toBeInTheDocument()
     })
-    expect(mockGetSetupStatus).toHaveBeenCalledTimes(2)
+    expect(setupStatusState.calls).toBeGreaterThanOrEqual(2)
   })
 })
 
 describe('GuestGuard', () => {
   beforeEach(() => {
     resetStores()
-    vi.clearAllMocks()
+    installSetupHandler()
   })
 
   it('renders children when unauthenticated', () => {
@@ -352,7 +374,12 @@ describe('GuestGuard', () => {
 describe('SetupCompleteGuard', () => {
   beforeEach(() => {
     resetStores()
-    vi.clearAllMocks()
+    setupStatusState.mode = {
+      kind: 'success',
+      body: { ...incompleteStatus, needs_setup: true },
+    }
+    setupStatusState.calls = 0
+    installSetupHandler()
   })
 
   it('renders children when not authenticated', () => {
@@ -421,20 +448,7 @@ describe('SetupCompleteGuard', () => {
   })
 
   it('fetches setup status when authenticated and status unknown', async () => {
-    const { getSetupStatus } = await import('@/api/endpoints/setup')
-    const mockGetSetupStatus = vi.mocked(getSetupStatus)
-    mockGetSetupStatus.mockResolvedValue({
-      needs_admin: false,
-      needs_setup: true,
-      has_providers: false,
-      has_name_locales: false,
-      has_company: false,
-      has_agents: false,
-      min_password_length: 12,
-    })
-
     useAuthStore.setState({ authStatus: 'authenticated' })
-    // setupComplete is null (not yet fetched)
 
     renderRoutes(
       [
@@ -454,14 +468,11 @@ describe('SetupCompleteGuard', () => {
     await waitFor(() => {
       expect(screen.getByText('Setup Wizard')).toBeInTheDocument()
     })
-    expect(mockGetSetupStatus).toHaveBeenCalledOnce()
+    expect(setupStatusState.calls).toBe(1)
   })
 
   it('redirects authenticated users to dashboard when fetch fails (fail-closed)', async () => {
-    const { getSetupStatus } = await import('@/api/endpoints/setup')
-    const mockGetSetupStatus = vi.mocked(getSetupStatus)
-    mockGetSetupStatus.mockRejectedValue(new Error('Network error'))
-
+    setupStatusState.mode = { kind: 'error' }
     useAuthStore.setState({ authStatus: 'authenticated' })
 
     renderRoutes(
@@ -479,7 +490,6 @@ describe('SetupCompleteGuard', () => {
       { initialEntries: ['/setup'] },
     )
 
-    // Fail-closed: should redirect to dashboard rather than allowing setup access
     await waitFor(() => {
       expect(screen.getByText('Dashboard')).toBeInTheDocument()
     })

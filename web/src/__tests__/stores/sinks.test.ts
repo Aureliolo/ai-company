@@ -4,12 +4,6 @@ import { useSinksStore } from '@/stores/sinks'
 import { apiError, apiSuccess } from '@/mocks/handlers'
 import { server } from '@/test-setup'
 
-// The global `vi.mock('@/api/endpoints/settings')` in test-setup.tsx
-// intercepts settings module calls before they reach MSW. Un-mock the
-// module here so the sinks store exercises the real axios client and
-// hits the MSW server we configure below.
-vi.unmock('@/api/endpoints/settings')
-
 function makeSink(overrides: Partial<SinkInfo> = {}): SinkInfo {
   return {
     identifier: '__console__',

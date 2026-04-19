@@ -73,10 +73,10 @@ describe('fetchMeetings', () => {
   })
 
   it('passes filters to API as query params', async () => {
-    let capturedParams: URLSearchParams | null = null
+    const captured: { params: URLSearchParams | null } = { params: null }
     server.use(
       http.get('/api/v1/meetings', ({ request }) => {
-        capturedParams = new URL(request.url).searchParams
+        captured.params = new URL(request.url).searchParams
         return HttpResponse.json(paginated([]))
       }),
     )
@@ -85,8 +85,8 @@ describe('fetchMeetings', () => {
       .getState()
       .fetchMeetings({ status: 'completed', limit: 50 })
 
-    expect(capturedParams?.get('status')).toBe('completed')
-    expect(capturedParams?.get('limit')).toBe('50')
+    expect(captured.params?.get('status')).toBe('completed')
+    expect(captured.params?.get('limit')).toBe('50')
   })
 
   it('syncs selectedMeeting with fresh data', async () => {
