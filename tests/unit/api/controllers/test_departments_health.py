@@ -332,22 +332,22 @@ class TestDepartmentHealth:
 @pytest.mark.unit
 class TestMeanOptional:
     def test_empty_list(self) -> None:
-        from synthorg.api.controllers.departments import _mean_optional
+        from synthorg.api.controllers._department_health import _mean_optional
 
         assert _mean_optional([]) is None
 
     def test_all_none(self) -> None:
-        from synthorg.api.controllers.departments import _mean_optional
+        from synthorg.api.controllers._department_health import _mean_optional
 
         assert _mean_optional([None, None]) is None
 
     def test_mixed_values(self) -> None:
-        from synthorg.api.controllers.departments import _mean_optional
+        from synthorg.api.controllers._department_health import _mean_optional
 
         assert _mean_optional([5.0, None, 10.0]) == 7.5
 
     def test_all_present(self) -> None:
-        from synthorg.api.controllers.departments import _mean_optional
+        from synthorg.api.controllers._department_health import _mean_optional
 
         assert _mean_optional([3.0, 6.0, 9.0]) == 6.0
 

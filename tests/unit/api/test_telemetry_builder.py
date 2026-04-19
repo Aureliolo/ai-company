@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from synthorg.api.app import _build_telemetry_collector
+from synthorg.api.app_builders import _build_telemetry_collector
 from synthorg.telemetry.collector import TelemetryCollector
 
 

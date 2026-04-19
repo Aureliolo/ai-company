@@ -7,9 +7,8 @@ lifecycle hooks (startup/shutdown).
 
 import os
 import sys
-import tempfile
 import time
-from pathlib import Path, PurePath
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from litestar import Controller, Litestar, Router
@@ -20,6 +19,12 @@ from litestar.openapi import OpenAPIConfig
 from litestar.openapi.plugins import ScalarRenderPlugin
 
 from synthorg import __version__
+from synthorg.api.app_builders import (
+    _bootstrap_app_logging,
+    _build_default_trust_service,
+    _build_performance_tracker,
+    _build_telemetry_collector,
+)
 from synthorg.api.app_helpers import (
     _make_expire_callback,
     _make_meeting_publisher,
@@ -68,21 +73,15 @@ from synthorg.communication.meeting.orchestrator import (
     MeetingOrchestrator,  # noqa: TC001
 )
 from synthorg.communication.meeting.scheduler import MeetingScheduler  # noqa: TC001
-from synthorg.config import bootstrap_logging
 from synthorg.config.schema import RootConfig
 from synthorg.engine.coordination.service import MultiAgentCoordinator  # noqa: TC001
 from synthorg.engine.review_gate import ReviewGateService
 from synthorg.engine.task_engine import TaskEngine  # noqa: TC001
-from synthorg.hr.performance.config import PerformanceConfig
-from synthorg.hr.performance.quality_protocol import (
-    QualityScoringStrategy,  # noqa: TC001
-)
-from synthorg.hr.performance.tracker import PerformanceTracker
+from synthorg.hr.performance.tracker import PerformanceTracker  # noqa: TC001
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.hr.training.service import TrainingService  # noqa: TC001
 from synthorg.notifications.factory import build_notification_dispatcher
 from synthorg.observability import get_logger
-from synthorg.observability.config import DEFAULT_SINKS, LogConfig
 from synthorg.observability.events.api import (
     API_APP_STARTUP,
     API_SERVICE_AUTO_WIRED,
@@ -99,15 +98,11 @@ from synthorg.persistence.filesystem_artifact_storage import (
     FileSystemArtifactStorage,
 )
 from synthorg.persistence.protocol import PersistenceBackend  # noqa: TC001
-from synthorg.providers.errors import DriverNotRegisteredError
 from synthorg.providers.health import ProviderHealthTracker  # noqa: TC001
 from synthorg.providers.registry import ProviderRegistry  # noqa: TC001
 from synthorg.security.audit import AuditLog
 from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler  # noqa: TC001
-from synthorg.security.trust.config import TrustConfig
-from synthorg.security.trust.disabled_strategy import DisabledTrustStrategy
-from synthorg.security.trust.service import TrustService
-from synthorg.telemetry import TelemetryCollector, TelemetryConfig
+from synthorg.security.trust.service import TrustService  # noqa: TC001
 from synthorg.tools.invocation_tracker import ToolInvocationTracker  # noqa: TC001
 
 if TYPE_CHECKING:
@@ -125,300 +120,6 @@ logger = get_logger(__name__)
 # from RootConfig.  Phase 2 (on_startup) wires SettingsService + ConfigResolver
 # for runtime-editable settings.  Litestar rate-limit middleware reads config at
 # construction; runtime DB changes only affect code calling get_api_config().
-
-
-def _bootstrap_app_logging(effective_config: RootConfig) -> RootConfig:
-    """Activate the structured logging pipeline.
-
-    Applies the ``SYNTHORG_LOG_DIR`` env var override (for Docker
-    volume paths) before calling :func:`bootstrap_logging`.
-
-    When the env var is set with an existing logging config, patches
-    ``log_dir``.  When set without a logging config, creates a
-    default config with ``DEFAULT_SINKS``.  Otherwise, delegates
-    directly to ``bootstrap_logging``.
-
-    Args:
-        effective_config: Root config (possibly without a logging
-            section).
-
-    Returns:
-        The config actually used for logging -- either the original
-        ``effective_config`` or a patched copy with the
-        ``SYNTHORG_LOG_DIR`` override applied.  Callers should use
-        the returned value so that ``AppState.config.logging``
-        reflects the active logging configuration.
-
-    Raises:
-        ValueError: If ``SYNTHORG_LOG_DIR`` contains ``..`` path
-            traversal components.
-    """
-    log_dir = os.environ.get("SYNTHORG_LOG_DIR", "").strip()
-    if not log_dir:
-        bootstrap_logging(effective_config)
-        return effective_config
-
-    # Validate before model_copy -- Pydantic validators do not run
-    # on model_copy(update=...), so we must check manually.
-    if ".." in PurePath(log_dir).parts:
-        msg = f"SYNTHORG_LOG_DIR contains '..' path traversal component: {log_dir!r}"
-        raise ValueError(msg)
-
-    base_log_cfg = effective_config.logging or LogConfig(
-        sinks=DEFAULT_SINKS,
-    )
-    patched = effective_config.model_copy(
-        update={
-            "logging": base_log_cfg.model_copy(
-                update={"log_dir": log_dir},
-            ),
-        },
-    )
-    bootstrap_logging(patched)
-    return patched
-
-
-def _resolve_llm_judge_strategy(
-    cfg: PerformanceConfig,
-    *,
-    provider_registry: ProviderRegistry,
-    cost_tracker: CostTracker | None,
-) -> QualityScoringStrategy | None:
-    """Resolve the LLM judge strategy from config.
-
-    Returns ``None`` if the judge model is not configured, the named
-    provider is not registered, or no providers are available.
-
-    Args:
-        cfg: Performance configuration.
-        provider_registry: Provider registry for LLM judge calls.
-        cost_tracker: Optional cost tracker for judge cost recording.
-
-    Returns:
-        Configured LLM judge strategy, or ``None``.
-    """
-    if cfg.quality_judge_model is None:
-        return None
-
-    judge_provider_name = cfg.quality_judge_provider
-    if judge_provider_name is not None:
-        try:
-            provider_driver = provider_registry.get(str(judge_provider_name))
-        except DriverNotRegisteredError:
-            logger.warning(
-                API_APP_STARTUP,
-                note="Quality judge provider not found, LLM judge disabled",
-                provider=str(judge_provider_name),
-            )
-            return None
-    else:
-        available = provider_registry.list_providers()
-        if not available:
-            logger.warning(
-                API_APP_STARTUP,
-                note="No providers available, LLM judge disabled",
-            )
-            return None
-        provider_driver = provider_registry.get(available[0])
-
-    from synthorg.hr.performance.llm_judge_quality_strategy import (  # noqa: PLC0415
-        LlmJudgeQualityStrategy,
-    )
-
-    logger.info(
-        API_APP_STARTUP,
-        note="Quality LLM judge configured",
-        model=str(cfg.quality_judge_model),
-    )
-    return LlmJudgeQualityStrategy(
-        provider=provider_driver,
-        model=cfg.quality_judge_model,
-        cost_tracker=cost_tracker,
-    )
-
-
-def _build_default_trust_service() -> TrustService:
-    """Build a default no-op TrustService for agent health queries."""
-    return TrustService(
-        strategy=DisabledTrustStrategy(),
-        config=TrustConfig(),
-    )
-
-
-_DEFAULT_MEMORY_DIR = Path("/data/memory")
-
-
-def _allowed_memory_dir_roots() -> tuple[str, ...]:
-    r"""Return the string roots a memory dir must begin with.
-
-    Production containers mount the data volume at ``/data``, which
-    is the only legitimate runtime base. Tests drive the builder
-    with ``tmp_path``, so :func:`tempfile.gettempdir` is also
-    admitted -- covering POSIX (``/tmp``, ``/var/tmp``) and Windows
-    (``C:\Users\...\AppData\Local\Temp``) runners without special
-    casing. Returned as plain strings so the caller can use
-    explicit :py:meth:`str.startswith` checks, which CodeQL's
-    ``py/path-injection`` query recognises as a sanitiser for
-    tainted-path dataflow (``Path.is_relative_to`` / ``.resolve``
-    do not register with the query).
-    """
-    roots: list[str] = [str(Path("/data"))]
-    try:
-        tmp_root: str | None = str(Path(tempfile.gettempdir()))
-    except OSError, RuntimeError:
-        tmp_root = None
-    if tmp_root is not None:
-        roots.append(tmp_root)
-    return tuple(roots)
-
-
-def _resolve_memory_dir() -> Path:
-    """Read and validate ``SYNTHORG_MEMORY_DIR`` for derived paths.
-
-    The value is operator-controlled (container runtime env), so it
-    is treated as untrusted input for path-injection purposes. The
-    string is stripped, rejected if empty, rejected if any path
-    segment equals ``..`` (traversal attempt), rejected if not
-    absolute, and rejected if the resulting path string does not
-    begin with one of the roots returned by
-    :func:`_allowed_memory_dir_roots`. Failures fall back to
-    :data:`_DEFAULT_MEMORY_DIR` and log the reason so
-    misconfiguration is observable, never silent.
-    """
-    raw = os.environ.get("SYNTHORG_MEMORY_DIR")
-    if raw is None:
-        return _DEFAULT_MEMORY_DIR
-    candidate = raw.strip()
-    if not candidate:
-        logger.warning(
-            API_APP_STARTUP,
-            detail="memory_dir_blank",
-            reason="empty_or_whitespace",
-        )
-        return _DEFAULT_MEMORY_DIR
-    # Explicit ``..`` guard: reject traversal attempts up front so
-    # the string-prefix check below cannot be bypassed with
-    # ``/data/../etc``-style inputs.
-    path = Path(candidate)
-    if ".." in path.parts:
-        logger.warning(
-            API_APP_STARTUP,
-            detail="memory_dir_traversal",
-            value=candidate,
-        )
-        return _DEFAULT_MEMORY_DIR
-    if not path.is_absolute():
-        logger.warning(
-            API_APP_STARTUP,
-            detail="memory_dir_not_absolute",
-            value=candidate,
-        )
-        return _DEFAULT_MEMORY_DIR
-    # String-based ``startswith`` allow-list -- the pattern CodeQL
-    # ``py/path-injection`` recognises as a sanitiser. ``normcase``
-    # lower-cases and normalises separators on Windows so the
-    # prefix check is case-insensitive there and unchanged on
-    # POSIX. The equality case (``candidate_str == root``) is
-    # deliberately NOT accepted: ``_build_telemetry_collector``
-    # derives ``memory_dir.parent / "telemetry"``, so if the env
-    # var points exactly at a root (``/data``) the telemetry dir
-    # would escape to ``/telemetry``. Requiring ``root + os.sep``
-    # means the memory dir must be a strict descendant.
-    candidate_str = os.path.normcase(str(path))
-    allowed_roots = _allowed_memory_dir_roots()
-    if not any(
-        candidate_str.startswith(os.path.normcase(root) + os.sep)
-        for root in allowed_roots
-    ):
-        logger.warning(
-            API_APP_STARTUP,
-            detail="memory_dir_outside_allowed_roots",
-            value=str(path),
-            allowed=list(allowed_roots),
-        )
-        return _DEFAULT_MEMORY_DIR
-    return path
-
-
-def _build_telemetry_collector(
-    telemetry_cfg: TelemetryConfig | None = None,
-) -> TelemetryCollector:
-    """Build the project telemetry collector.
-
-    Takes the parsed :class:`TelemetryConfig` from the app's
-    :class:`RootConfig` so config-file settings (e.g.
-    ``telemetry.backend``, ``telemetry.heartbeat_interval_hours``)
-    survive wiring -- passing ``None`` falls back to defaults
-    (``enabled=False``) for callers without a parsed config, like
-    early-boot helpers.  :class:`TelemetryCollector` reads
-    ``SYNTHORG_TELEMETRY`` inside its own ``__init__``
-    (``true``/``1``/``yes`` to enable) and overrides the config's
-    ``enabled`` flag, so the env var still wins over the config
-    file. The data directory stores the anonymous deployment ID --
-    placed under the same base as ``SYNTHORG_MEMORY_DIR`` so the
-    container volume holds it.
-    """
-    memory_dir = _resolve_memory_dir()
-    telemetry_dir = memory_dir.parent / "telemetry"
-    config = telemetry_cfg if telemetry_cfg is not None else TelemetryConfig()
-    return TelemetryCollector(config=config, data_dir=telemetry_dir)
-
-
-def _build_performance_tracker(
-    *,
-    cost_tracker: CostTracker | None = None,
-    provider_registry: ProviderRegistry | None = None,
-    perf_config: PerformanceConfig | None = None,
-) -> PerformanceTracker:
-    """Build a PerformanceTracker with composite quality strategy.
-
-    Always wires a ``QualityOverrideStore`` (human overrides are free).
-    Delegates LLM judge resolution to :func:`_resolve_llm_judge_strategy`.
-
-    Args:
-        cost_tracker: Optional cost tracker for judge cost recording.
-        provider_registry: Provider registry for LLM judge calls.
-        perf_config: Performance configuration (default config if None).
-
-    Returns:
-        Configured performance tracker.
-    """
-    from synthorg.hr.performance.ci_quality_strategy import (  # noqa: PLC0415
-        CISignalQualityStrategy,
-    )
-    from synthorg.hr.performance.composite_quality_strategy import (  # noqa: PLC0415
-        CompositeQualityStrategy,
-    )
-    from synthorg.hr.performance.quality_override_store import (  # noqa: PLC0415
-        QualityOverrideStore,
-    )
-
-    cfg = perf_config or PerformanceConfig()
-    quality_override_store = QualityOverrideStore()
-
-    llm_strategy = (
-        _resolve_llm_judge_strategy(
-            cfg,
-            provider_registry=provider_registry,
-            cost_tracker=cost_tracker,
-        )
-        if provider_registry is not None
-        else None
-    )
-
-    composite = CompositeQualityStrategy(
-        ci_strategy=CISignalQualityStrategy(),
-        llm_strategy=llm_strategy,
-        override_store=quality_override_store,
-        ci_weight=cfg.quality_ci_weight,
-        llm_weight=cfg.quality_llm_weight,
-    )
-
-    return PerformanceTracker(
-        quality_strategy=composite,
-        config=cfg,
-        quality_override_store=quality_override_store,
-    )
 
 
 def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915

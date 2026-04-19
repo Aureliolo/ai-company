@@ -1166,7 +1166,7 @@ class TestBootstrapAppLogging:
         monkeypatch.delenv("SYNTHORG_LOG_DIR", raising=False)
         calls: list[object] = []
         monkeypatch.setattr(
-            "synthorg.api.app.bootstrap_logging",
+            "synthorg.config.bootstrap_logging",
             calls.append,
         )
         config = RootConfig(company_name="test-co")
@@ -1183,7 +1183,7 @@ class TestBootstrapAppLogging:
         monkeypatch.setenv("SYNTHORG_LOG_DIR", "/custom/logs")
         calls: list[RootConfig] = []
         monkeypatch.setattr(
-            "synthorg.api.app.bootstrap_logging",
+            "synthorg.config.bootstrap_logging",
             calls.append,
         )
         config = RootConfig(
@@ -1207,7 +1207,7 @@ class TestBootstrapAppLogging:
         monkeypatch.setenv("SYNTHORG_LOG_DIR", "/data/logs")
         calls: list[RootConfig] = []
         monkeypatch.setattr(
-            "synthorg.api.app.bootstrap_logging",
+            "synthorg.config.bootstrap_logging",
             calls.append,
         )
         config = RootConfig(company_name="test-co")
@@ -1229,7 +1229,7 @@ class TestBootstrapAppLogging:
         monkeypatch.setenv("SYNTHORG_LOG_DIR", "   ")
         calls: list[object] = []
         monkeypatch.setattr(
-            "synthorg.api.app.bootstrap_logging",
+            "synthorg.config.bootstrap_logging",
             calls.append,
         )
         config = RootConfig(company_name="test-co")
@@ -1245,7 +1245,7 @@ class TestBootstrapAppLogging:
         """SYNTHORG_LOG_DIR with '..' raises ValueError."""
         monkeypatch.setenv("SYNTHORG_LOG_DIR", "../../etc")
         monkeypatch.setattr(
-            "synthorg.api.app.bootstrap_logging",
+            "synthorg.config.bootstrap_logging",
             lambda _: None,
         )
         config = RootConfig(company_name="test-co")
@@ -1275,7 +1275,7 @@ class TestBootstrapAppLogging:
         monkeypatch.setenv("SYNTHORG_LOG_DIR", "/custom/volume/logs")
         # Prevent bootstrap_logging from actually reconfiguring structlog.
         monkeypatch.setattr(
-            "synthorg.api.app.bootstrap_logging",
+            "synthorg.config.bootstrap_logging",
             lambda _config: None,
         )
         app = create_app()
