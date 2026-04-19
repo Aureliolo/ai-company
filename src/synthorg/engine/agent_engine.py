@@ -55,8 +55,8 @@ from synthorg.engine.prompt import (
     SystemPrompt,
     build_error_prompt,
     build_system_prompt,
-    format_task_instruction,
 )
+from synthorg.engine.prompt_validation import format_task_instruction
 from synthorg.engine.react_loop import ReactLoop
 from synthorg.engine.recovery import (
     FailAndReassignStrategy,
