@@ -1,10 +1,40 @@
+import { http, HttpResponse } from 'msw'
 import { useWebSocketStore } from '@/stores/websocket'
+import { apiError, apiSuccess } from '@/mocks/handlers'
+import { server } from '@/test-setup'
 import type { WsEvent } from '@/api/types'
 
-// Mock the auth API for ticket exchange
-vi.mock('@/api/endpoints/auth', () => ({
-  getWsTicket: vi.fn(),
-}))
+// Shared ticket-exchange controller: tests set `ticketMode` before
+// triggering connect() to decide whether the handler returns a
+// successful ticket, an envelope error, or an HTTP 401. `ticketCalls`
+// records how many exchanges were attempted so tests can assert on
+// request coalescing.
+type TicketMode =
+  | { kind: 'success'; ticket: string; expires_in: number }
+  | { kind: 'envelope_error'; message: string }
+  | { kind: 'http_401'; message: string }
+const ticketState = {
+  calls: 0,
+  mode: { kind: 'success', ticket: 'test-ticket', expires_in: 30 } as TicketMode,
+}
+
+function installTicketHandler() {
+  server.use(
+    http.post('/api/v1/auth/ws-ticket', () => {
+      ticketState.calls += 1
+      const mode = ticketState.mode
+      if (mode.kind === 'success') {
+        return HttpResponse.json(
+          apiSuccess({ ticket: mode.ticket, expires_in: mode.expires_in }),
+        )
+      }
+      if (mode.kind === 'envelope_error') {
+        return HttpResponse.json(apiError(mode.message))
+      }
+      return HttpResponse.json(apiError(mode.message), { status: 401 })
+    }),
+  )
+}
 
 // ── MockWebSocket ───────────────────────────────────────────
 
@@ -108,8 +138,26 @@ function resetStore() {
 describe('websocket store', () => {
   beforeEach(() => {
     resetStore()
-    vi.clearAllMocks()
-    vi.useFakeTimers()
+    ticketState.calls = 0
+    ticketState.mode = {
+      kind: 'success',
+      ticket: 'test-ticket',
+      expires_in: 30,
+    }
+    installTicketHandler()
+    // Exclude queueMicrotask so undici/MSW internals can flush their
+    // promise chains without being held by the fake scheduler.
+    vi.useFakeTimers({
+      toFake: [
+        'setTimeout',
+        'clearTimeout',
+        'setInterval',
+        'clearInterval',
+        'Date',
+        'requestAnimationFrame',
+        'cancelAnimationFrame',
+      ],
+    })
   })
 
   afterEach(() => {
@@ -118,10 +166,7 @@ describe('websocket store', () => {
 
   describe('connect', () => {
     it('fetches ticket and creates WebSocket connection without ticket in URL', async () => {
-      const authApi = await import('@/api/endpoints/auth')
-      vi.mocked(authApi.getWsTicket).mockResolvedValue({ ticket: 'test-ticket', expires_in: 30 })
-
-      const connectPromise = useWebSocketStore.getState().connect()
+const connectPromise = useWebSocketStore.getState().connect()
       await vi.runAllTimersAsync()
       await connectPromise
 
@@ -132,10 +177,7 @@ describe('websocket store', () => {
     })
 
     it('sets connected to true on open', async () => {
-      const authApi = await import('@/api/endpoints/auth')
-      vi.mocked(authApi.getWsTicket).mockResolvedValue({ ticket: 'test-ticket', expires_in: 30 })
-
-      const connectPromise = useWebSocketStore.getState().connect()
+const connectPromise = useWebSocketStore.getState().connect()
       await vi.runAllTimersAsync()
       await connectPromise
 
@@ -144,25 +186,19 @@ describe('websocket store', () => {
     })
 
     it('deduplicates concurrent connect calls', async () => {
-      const authApi = await import('@/api/endpoints/auth')
-      vi.mocked(authApi.getWsTicket).mockResolvedValue({ ticket: 'test-ticket', expires_in: 30 })
-
-      const p1 = useWebSocketStore.getState().connect()
+const p1 = useWebSocketStore.getState().connect()
       const p2 = useWebSocketStore.getState().connect()
 
       await vi.runAllTimersAsync()
       await Promise.all([p1, p2])
 
-      expect(authApi.getWsTicket).toHaveBeenCalledTimes(1)
+      expect(ticketState.calls).toBe(1)
     })
   })
 
   describe('disconnect', () => {
     it('closes socket and resets state', async () => {
-      const authApi = await import('@/api/endpoints/auth')
-      vi.mocked(authApi.getWsTicket).mockResolvedValue({ ticket: 'test-ticket', expires_in: 30 })
-
-      const connectPromise = useWebSocketStore.getState().connect()
+const connectPromise = useWebSocketStore.getState().connect()
       await vi.runAllTimersAsync()
       await connectPromise
 
@@ -179,10 +215,7 @@ describe('websocket store', () => {
 
   describe('subscribe', () => {
     it('sends subscribe message when connected', async () => {
-      const authApi = await import('@/api/endpoints/auth')
-      vi.mocked(authApi.getWsTicket).mockResolvedValue({ ticket: 'test-ticket', expires_in: 30 })
-
-      const connectPromise = useWebSocketStore.getState().connect()
+const connectPromise = useWebSocketStore.getState().connect()
       await vi.runAllTimersAsync()
       await connectPromise
 
@@ -206,10 +239,7 @@ describe('websocket store', () => {
       useWebSocketStore.getState().subscribe(['tasks'])
 
       // Now connect -- the subscription should be replayed
-      const authApi = await import('@/api/endpoints/auth')
-      vi.mocked(authApi.getWsTicket).mockResolvedValue({ ticket: 'test-ticket', expires_in: 30 })
-
-      const connectPromise = useWebSocketStore.getState().connect()
+const connectPromise = useWebSocketStore.getState().connect()
       await vi.runAllTimersAsync()
       await connectPromise
 
@@ -229,10 +259,7 @@ describe('websocket store', () => {
 
   describe('unsubscribe', () => {
     it('sends unsubscribe message when connected', async () => {
-      const authApi = await import('@/api/endpoints/auth')
-      vi.mocked(authApi.getWsTicket).mockResolvedValue({ ticket: 'test-ticket', expires_in: 30 })
-
-      const connectPromise = useWebSocketStore.getState().connect()
+const connectPromise = useWebSocketStore.getState().connect()
       await vi.runAllTimersAsync()
       await connectPromise
 
@@ -252,10 +279,7 @@ describe('websocket store', () => {
 
   describe('event dispatch', () => {
     it('dispatches events to channel handlers', async () => {
-      const authApi = await import('@/api/endpoints/auth')
-      vi.mocked(authApi.getWsTicket).mockResolvedValue({ ticket: 'test-ticket', expires_in: 30 })
-
-      const handler = vi.fn()
+const handler = vi.fn()
       useWebSocketStore.getState().onChannelEvent('tasks', handler)
 
       const connectPromise = useWebSocketStore.getState().connect()
@@ -277,10 +301,7 @@ describe('websocket store', () => {
     })
 
     it('dispatches to wildcard handlers', async () => {
-      const authApi = await import('@/api/endpoints/auth')
-      vi.mocked(authApi.getWsTicket).mockResolvedValue({ ticket: 'test-ticket', expires_in: 30 })
-
-      const wildcardHandler = vi.fn()
+const wildcardHandler = vi.fn()
       useWebSocketStore.getState().onChannelEvent('*', wildcardHandler)
 
       const connectPromise = useWebSocketStore.getState().connect()
@@ -302,10 +323,7 @@ describe('websocket store', () => {
     })
 
     it('removes handler with offChannelEvent', async () => {
-      const authApi = await import('@/api/endpoints/auth')
-      vi.mocked(authApi.getWsTicket).mockResolvedValue({ ticket: 'test-ticket', expires_in: 30 })
-
-      const handler = vi.fn()
+const handler = vi.fn()
       useWebSocketStore.getState().onChannelEvent('tasks', handler)
       useWebSocketStore.getState().offChannelEvent('tasks', handler)
 
@@ -327,10 +345,7 @@ describe('websocket store', () => {
     })
 
     it('rejects malformed messages that fail isWsEvent validation', async () => {
-      const authApi = await import('@/api/endpoints/auth')
-      vi.mocked(authApi.getWsTicket).mockResolvedValue({ ticket: 'test-ticket', expires_in: 30 })
-
-      const handler = vi.fn()
+const handler = vi.fn()
       useWebSocketStore.getState().onChannelEvent('tasks', handler)
 
       const connectPromise = useWebSocketStore.getState().connect()
@@ -366,10 +381,7 @@ describe('websocket store', () => {
 
   describe('reconnection', () => {
     it('schedules reconnect on unexpected close', async () => {
-      const authApi = await import('@/api/endpoints/auth')
-      vi.mocked(authApi.getWsTicket).mockResolvedValue({ ticket: 'test-ticket', expires_in: 30 })
-
-      const connectPromise = useWebSocketStore.getState().connect()
+const connectPromise = useWebSocketStore.getState().connect()
       await vi.runAllTimersAsync()
       await connectPromise
 
@@ -388,10 +400,7 @@ describe('websocket store', () => {
     })
 
     it('does not reconnect on intentional disconnect', async () => {
-      const authApi = await import('@/api/endpoints/auth')
-      vi.mocked(authApi.getWsTicket).mockResolvedValue({ ticket: 'test-ticket', expires_in: 30 })
-
-      const connectPromise = useWebSocketStore.getState().connect()
+const connectPromise = useWebSocketStore.getState().connect()
       await vi.runAllTimersAsync()
       await connectPromise
 
@@ -410,10 +419,7 @@ describe('websocket store', () => {
 
   describe('message size gating', () => {
     it('discards oversized messages', async () => {
-      const authApi = await import('@/api/endpoints/auth')
-      vi.mocked(authApi.getWsTicket).mockResolvedValue({ ticket: 'test-ticket', expires_in: 30 })
-
-      const handler = vi.fn()
+const handler = vi.fn()
       useWebSocketStore.getState().onChannelEvent('tasks', handler)
 
       const connectPromise = useWebSocketStore.getState().connect()
@@ -434,11 +440,10 @@ describe('websocket store', () => {
 
   describe('reconnect exhaustion', () => {
     it('sets reconnectExhausted after max attempts', async () => {
-      const authApi = await import('@/api/endpoints/auth')
-      // Ticket exchange always fails with non-401 error, triggering reconnect attempts
-      vi.mocked(authApi.getWsTicket).mockRejectedValue(new Error('connection refused'))
+      // Ticket exchange always fails with non-401 envelope error,
+      // triggering reconnect attempts.
+      ticketState.mode = { kind: 'envelope_error', message: 'connection refused' }
 
-      // connect() rejects on ticket failure -- catch immediately to avoid unhandled rejection
       await expect(
         useWebSocketStore.getState().connect(),
       ).rejects.toThrow('connection refused')
@@ -456,19 +461,15 @@ describe('websocket store', () => {
 
   describe('ticket 401 handling', () => {
     it('does not reconnect on ticket 401', async () => {
-      const { AxiosError: Ae } = await import('axios')
-      const authApi = await import('@/api/endpoints/auth')
-      vi.mocked(authApi.getWsTicket).mockRejectedValue(
-        new Ae('Unauthorized', 'ERR_BAD_RESPONSE', undefined, undefined, {
-          status: 401, data: {}, headers: {}, statusText: 'Unauthorized',
-          config: {} as import('axios').AxiosResponse['config'],
-        } as import('axios').AxiosResponse),
-      )
+      // Ticket exchange responds with HTTP 401 -- the axios interceptor
+      // rejects with AxiosError whose message is the generic
+      // "Request failed with status code 401". The store branches on
+      // err.response?.status and must not schedule a reconnect.
+      ticketState.mode = { kind: 'http_401', message: 'Unauthorized' }
 
-      // connect() rejects on ticket failure -- catch immediately to avoid unhandled rejection
       await expect(
         useWebSocketStore.getState().connect(),
-      ).rejects.toThrow('Unauthorized')
+      ).rejects.toThrow(/status code 401|Unauthorized/)
 
       // Advance time -- no reconnect should be scheduled on 401
       const instancesBefore = MockWebSocket.instances.length
@@ -479,8 +480,11 @@ describe('websocket store', () => {
 
   describe('first-message auth', () => {
     it('sends auth ticket as first message on open', async () => {
-      const authApi = await import('@/api/endpoints/auth')
-      vi.mocked(authApi.getWsTicket).mockResolvedValue({ ticket: 'my-secret-ticket', expires_in: 30 })
+      ticketState.mode = {
+        kind: 'success',
+        ticket: 'my-secret-ticket',
+        expires_in: 30,
+      }
 
       const connectPromise = useWebSocketStore.getState().connect()
       await vi.runAllTimersAsync()
@@ -501,10 +505,7 @@ describe('websocket store', () => {
 
   describe('ack messages', () => {
     it('updates subscribedChannels on ack', async () => {
-      const authApi = await import('@/api/endpoints/auth')
-      vi.mocked(authApi.getWsTicket).mockResolvedValue({ ticket: 'test-ticket', expires_in: 30 })
-
-      const connectPromise = useWebSocketStore.getState().connect()
+const connectPromise = useWebSocketStore.getState().connect()
       await vi.runAllTimersAsync()
       await connectPromise
 

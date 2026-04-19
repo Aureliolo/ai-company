@@ -1,18 +1,8 @@
+import { http, HttpResponse } from 'msw'
 import type { McpCatalogEntry } from '@/api/types'
 import { useMcpCatalogStore } from '@/stores/mcp-catalog'
-
-vi.mock('@/api/endpoints/mcp-catalog', () => ({
-  browseMcpCatalog: vi.fn(),
-  searchMcpCatalog: vi.fn(),
-  installMcpServer: vi.fn(),
-  uninstallMcpServer: vi.fn(),
-}))
-
-const {
-  browseMcpCatalog,
-  installMcpServer,
-  uninstallMcpServer,
-} = await import('@/api/endpoints/mcp-catalog')
+import { apiError, apiSuccess, voidSuccess } from '@/mocks/handlers'
+import { server } from '@/test-setup'
 
 const githubEntry: McpCatalogEntry = {
   id: 'github-mcp',
@@ -39,11 +29,14 @@ const filesystemEntry: McpCatalogEntry = {
 describe('useMcpCatalogStore', () => {
   beforeEach(() => {
     useMcpCatalogStore.getState().reset()
-    vi.clearAllMocks()
   })
 
   it('loads the catalog on fetchCatalog', async () => {
-    vi.mocked(browseMcpCatalog).mockResolvedValue([githubEntry, filesystemEntry])
+    server.use(
+      http.get('/api/v1/integrations/mcp/catalog', () =>
+        HttpResponse.json(apiSuccess([githubEntry, filesystemEntry])),
+      ),
+    )
     await useMcpCatalogStore.getState().fetchCatalog()
     expect(useMcpCatalogStore.getState().entries).toHaveLength(2)
   })
@@ -64,12 +57,18 @@ describe('useMcpCatalogStore', () => {
   it('confirmInstall transitions to done on success and remembers the entry', async () => {
     useMcpCatalogStore.setState({ entries: [filesystemEntry] })
     useMcpCatalogStore.getState().startInstall('filesystem-mcp')
-    vi.mocked(installMcpServer).mockResolvedValue({
-      status: 'installed',
-      server_name: 'Filesystem',
-      catalog_entry_id: 'filesystem-mcp',
-      tool_count: 1,
-    })
+    server.use(
+      http.post('/api/v1/integrations/mcp/catalog/install', () =>
+        HttpResponse.json(
+          apiSuccess({
+            status: 'installed',
+            server_name: 'Filesystem',
+            catalog_entry_id: 'filesystem-mcp',
+            tool_count: 1,
+          }),
+        ),
+      ),
+    )
 
     await useMcpCatalogStore.getState().confirmInstall()
 
@@ -81,7 +80,11 @@ describe('useMcpCatalogStore', () => {
   it('confirmInstall transitions to error on failure', async () => {
     useMcpCatalogStore.setState({ entries: [filesystemEntry] })
     useMcpCatalogStore.getState().startInstall('filesystem-mcp')
-    vi.mocked(installMcpServer).mockRejectedValue(new Error('no connection'))
+    server.use(
+      http.post('/api/v1/integrations/mcp/catalog/install', () =>
+        HttpResponse.json(apiError('no connection')),
+      ),
+    )
 
     await useMcpCatalogStore.getState().confirmInstall()
 
@@ -94,14 +97,20 @@ describe('useMcpCatalogStore', () => {
     useMcpCatalogStore.setState({
       installedEntryIds: new Set(['github-mcp']),
     })
-    vi.mocked(uninstallMcpServer).mockResolvedValue(undefined)
+    server.use(
+      http.delete('/api/v1/integrations/mcp/catalog/install/:id', () =>
+        HttpResponse.json(voidSuccess()),
+      ),
+    )
 
     const result = await useMcpCatalogStore
       .getState()
       .uninstall('github-mcp')
 
     expect(result).toBe(true)
-    expect(useMcpCatalogStore.getState().installedEntryIds.has('github-mcp')).toBe(false)
+    expect(
+      useMcpCatalogStore.getState().installedEntryIds.has('github-mcp'),
+    ).toBe(false)
   })
 
   it('resetInstall returns the wizard to idle', () => {

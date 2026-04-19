@@ -1,63 +1,125 @@
+import { http, HttpResponse } from 'msw'
 import { useAnalyticsStore } from '@/stores/analytics'
+import { apiError, apiSuccess } from '@/mocks/handlers'
+import { server } from '@/test-setup'
 import type { ActivityItem, WsEvent } from '@/api/types'
 
-vi.mock('@/api/endpoints/analytics', () => ({
-  getOverviewMetrics: vi.fn().mockResolvedValue({
-    total_tasks: 24,
-    tasks_by_status: {
-      created: 2, assigned: 3, in_progress: 8, in_review: 2, completed: 5,
-      blocked: 1, failed: 1, interrupted: 1, suspended: 0, cancelled: 1,
-    },
-    total_agents: 10,
-    total_cost: 42.17,
-    budget_remaining: 457.83,
-    budget_used_percent: 8.43,
-    cost_7d_trend: [],
-    active_agents_count: 5,
-    idle_agents_count: 4,
-    currency: 'EUR',
-  }),
-  getForecast: vi.fn().mockResolvedValue({
-    horizon_days: 30,
-    projected_total: 200,
-    daily_projections: [],
-    days_until_exhausted: null,
-    confidence: 0.85,
-    avg_daily_spend: 6.5,
-    currency: 'EUR',
-  }),
-}))
+const mockOverview = {
+  total_tasks: 24,
+  tasks_by_status: {
+    created: 2,
+    assigned: 3,
+    in_progress: 8,
+    in_review: 2,
+    completed: 5,
+    blocked: 1,
+    failed: 1,
+    interrupted: 1,
+    suspended: 0,
+    cancelled: 1,
+  },
+  total_agents: 10,
+  total_cost: 42.17,
+  budget_remaining: 457.83,
+  budget_used_percent: 8.43,
+  cost_7d_trend: [],
+  active_agents_count: 5,
+  idle_agents_count: 4,
+  currency: 'EUR',
+}
 
-vi.mock('@/api/endpoints/budget', () => ({
-  getBudgetConfig: vi.fn().mockResolvedValue({
-    total_monthly: 500,
-    alerts: { warn_at: 80, critical_at: 95, hard_stop_at: 100 },
-    per_task_limit: 10,
-    per_agent_daily_limit: 20,
-    auto_downgrade: { enabled: false, threshold: 90, downgrade_map: [], boundary: 'task_assignment' },
-    reset_day: 1,
-    currency: 'EUR',
-  }),
-}))
+const mockForecast = {
+  horizon_days: 30,
+  projected_total: 200,
+  daily_projections: [],
+  days_until_exhausted: null,
+  confidence: 0.85,
+  avg_daily_spend: 6.5,
+  currency: 'EUR',
+}
 
-vi.mock('@/api/endpoints/company', () => ({
-  listDepartments: vi.fn().mockResolvedValue({ data: [], total: 0, offset: 0, limit: 50 }),
-  getDepartmentHealth: vi.fn().mockResolvedValue({
-    department_name: 'engineering',
-    agent_count: 4,
-    active_agent_count: 3,
-    currency: 'EUR',
-    avg_performance_score: 8.0,
-    department_cost_7d: 10.0,
-    cost_trend: [],
-    collaboration_score: 7.0,
-    utilization_percent: 85,
-  }),
-}))
+const mockBudgetConfig = {
+  total_monthly: 500,
+  alerts: { warn_at: 80, critical_at: 95, hard_stop_at: 100 },
+  per_task_limit: 10,
+  per_agent_daily_limit: 20,
+  auto_downgrade: {
+    enabled: false,
+    threshold: 90,
+    downgrade_map: [],
+    boundary: 'task_assignment',
+  },
+  reset_day: 1,
+  currency: 'EUR',
+}
 
-vi.mock('@/api/endpoints/activities', () => ({
-  listActivities: vi.fn().mockResolvedValue({ data: [], total: 0, offset: 0, limit: 20 }),
-}))
+const mockDeptHealth = {
+  department_name: 'engineering',
+  agent_count: 4,
+  active_agent_count: 3,
+  currency: 'EUR',
+  avg_performance_score: 8.0,
+  department_cost_7d: 10.0,
+  cost_trend: [],
+  collaboration_score: 7.0,
+  utilization_percent: 85,
+}
+
+type Overrides = Partial<{
+  overview: () => Response
+  forecast: () => Response
+  budget: () => Response
+  activities: () => Response
+  departments: () => Response
+  departmentHealth: (name: string) => Response
+}>
+
+function installDefaults(overrides: Overrides = {}) {
+  server.use(
+    http.get('/api/v1/analytics/overview', () =>
+      overrides.overview
+        ? overrides.overview()
+        : HttpResponse.json(apiSuccess(mockOverview)),
+    ),
+    http.get('/api/v1/analytics/forecast', () =>
+      overrides.forecast
+        ? overrides.forecast()
+        : HttpResponse.json(apiSuccess(mockForecast)),
+    ),
+    http.get('/api/v1/budget/config', () =>
+      overrides.budget
+        ? overrides.budget()
+        : HttpResponse.json(apiSuccess(mockBudgetConfig)),
+    ),
+    http.get('/api/v1/activities', () =>
+      overrides.activities
+        ? overrides.activities()
+        : HttpResponse.json({
+            data: [],
+            error: null,
+            error_detail: null,
+            success: true,
+            pagination: { total: 0, offset: 0, limit: 20 },
+          }),
+    ),
+    http.get('/api/v1/departments', () =>
+      overrides.departments
+        ? overrides.departments()
+        : HttpResponse.json({
+            data: [],
+            error: null,
+            error_detail: null,
+            success: true,
+            pagination: { total: 0, offset: 0, limit: 50 },
+          }),
+    ),
+    http.get('/api/v1/departments/:name/health', ({ params }) =>
+      overrides.departmentHealth
+        ? overrides.departmentHealth(String(params.name))
+        : HttpResponse.json(apiSuccess(mockDeptHealth)),
+    ),
+  )
+}
 
 function resetStore() {
   useAnalyticsStore.setState({
@@ -79,12 +141,14 @@ describe('useAnalyticsStore', () => {
 
   describe('fetchDashboardData', () => {
     it('sets loading to true during fetch', async () => {
+      installDefaults()
       const promise = useAnalyticsStore.getState().fetchDashboardData()
       expect(useAnalyticsStore.getState().loading).toBe(true)
       await promise
     })
 
     it('populates overview after fetch', async () => {
+      installDefaults()
       await useAnalyticsStore.getState().fetchDashboardData()
       const state = useAnalyticsStore.getState()
       expect(state.overview).not.toBeNull()
@@ -92,29 +156,34 @@ describe('useAnalyticsStore', () => {
     })
 
     it('populates forecast after fetch', async () => {
+      installDefaults()
       await useAnalyticsStore.getState().fetchDashboardData()
       expect(useAnalyticsStore.getState().forecast).not.toBeNull()
     })
 
     it('populates budgetConfig after fetch', async () => {
+      installDefaults()
       await useAnalyticsStore.getState().fetchDashboardData()
       expect(useAnalyticsStore.getState().budgetConfig).not.toBeNull()
     })
 
     it('sets loading to false after fetch', async () => {
+      installDefaults()
       await useAnalyticsStore.getState().fetchDashboardData()
       expect(useAnalyticsStore.getState().loading).toBe(false)
     })
 
     it('sets error to null on success', async () => {
+      installDefaults()
       useAnalyticsStore.setState({ error: 'previous error' })
       await useAnalyticsStore.getState().fetchDashboardData()
       expect(useAnalyticsStore.getState().error).toBeNull()
     })
 
     it('degrades gracefully when listActivities fails', async () => {
-      const { listActivities } = await import('@/api/endpoints/activities')
-      vi.mocked(listActivities).mockRejectedValueOnce(new Error('Not found'))
+      installDefaults({
+        activities: () => HttpResponse.json(apiError('Not found')),
+      })
 
       await useAnalyticsStore.getState().fetchDashboardData()
       const state = useAnalyticsStore.getState()
@@ -123,8 +192,9 @@ describe('useAnalyticsStore', () => {
     })
 
     it('degrades gracefully when listDepartments fails', async () => {
-      const { listDepartments } = await import('@/api/endpoints/company')
-      vi.mocked(listDepartments).mockRejectedValueOnce(new Error('Not found'))
+      installDefaults({
+        departments: () => HttpResponse.json(apiError('Not found')),
+      })
 
       await useAnalyticsStore.getState().fetchDashboardData()
       const state = useAnalyticsStore.getState()
@@ -133,21 +203,17 @@ describe('useAnalyticsStore', () => {
     })
 
     it('populates departmentHealths when departments exist', async () => {
-      const { listDepartments, getDepartmentHealth } = await import('@/api/endpoints/company')
-      vi.mocked(listDepartments).mockResolvedValueOnce({
-        data: [{ name: 'engineering', display_name: 'Engineering', teams: [] }],
-        total: 1, offset: 0, limit: 100,
-      })
-      vi.mocked(getDepartmentHealth).mockResolvedValueOnce({
-        department_name: 'engineering',
-        agent_count: 4,
-        active_agent_count: 3,
-        currency: 'EUR',
-        avg_performance_score: 8.0,
-        department_cost_7d: 10.0,
-        cost_trend: [],
-        collaboration_score: 7.0,
-        utilization_percent: 85,
+      installDefaults({
+        departments: () =>
+          HttpResponse.json({
+            data: [
+              { name: 'engineering', display_name: 'Engineering', teams: [] },
+            ],
+            error: null,
+            error_detail: null,
+            success: true,
+            pagination: { total: 1, offset: 0, limit: 100 },
+          }),
       })
 
       await useAnalyticsStore.getState().fetchDashboardData()
@@ -158,8 +224,9 @@ describe('useAnalyticsStore', () => {
     })
 
     it('sets error when overview fails (critical dataset)', async () => {
-      const { getOverviewMetrics } = await import('@/api/endpoints/analytics')
-      vi.mocked(getOverviewMetrics).mockRejectedValueOnce(new Error('Network error'))
+      installDefaults({
+        overview: () => HttpResponse.json(apiError('Network error')),
+      })
 
       await useAnalyticsStore.getState().fetchDashboardData()
       const state = useAnalyticsStore.getState()
@@ -168,8 +235,9 @@ describe('useAnalyticsStore', () => {
     })
 
     it('degrades gracefully when forecast fails', async () => {
-      const { getForecast } = await import('@/api/endpoints/analytics')
-      vi.mocked(getForecast).mockRejectedValueOnce(new Error('Forecast unavailable'))
+      installDefaults({
+        forecast: () => HttpResponse.json(apiError('Forecast unavailable')),
+      })
 
       await useAnalyticsStore.getState().fetchDashboardData()
       const state = useAnalyticsStore.getState()
@@ -179,8 +247,9 @@ describe('useAnalyticsStore', () => {
     })
 
     it('degrades gracefully when budgetConfig fails', async () => {
-      const { getBudgetConfig } = await import('@/api/endpoints/budget')
-      vi.mocked(getBudgetConfig).mockRejectedValueOnce(new Error('Budget unavailable'))
+      installDefaults({
+        budget: () => HttpResponse.json(apiError('Budget unavailable')),
+      })
 
       await useAnalyticsStore.getState().fetchDashboardData()
       const state = useAnalyticsStore.getState()
@@ -190,25 +259,40 @@ describe('useAnalyticsStore', () => {
     })
 
     it('filters out failed individual department health fetches', async () => {
-      const { listDepartments, getDepartmentHealth } = await import('@/api/endpoints/company')
-      vi.mocked(listDepartments).mockResolvedValueOnce({
-        data: [
-          { name: 'engineering', display_name: 'Engineering', teams: [] },
-          { name: 'design', display_name: 'Design', teams: [] },
-          { name: 'operations', display_name: 'Operations', teams: [] },
-        ],
-        total: 3, offset: 0, limit: 100,
+      installDefaults({
+        departments: () =>
+          HttpResponse.json({
+            data: [
+              { name: 'engineering', display_name: 'Engineering', teams: [] },
+              { name: 'design', display_name: 'Design', teams: [] },
+              { name: 'operations', display_name: 'Operations', teams: [] },
+            ],
+            error: null,
+            error_detail: null,
+            success: true,
+            pagination: { total: 3, offset: 0, limit: 100 },
+          }),
+        departmentHealth: (name: string) => {
+          if (name === 'design') {
+            return HttpResponse.json(apiError('Design health unavailable'))
+          }
+          if (name === 'engineering') {
+            return HttpResponse.json(apiSuccess(mockDeptHealth))
+          }
+          return HttpResponse.json(
+            apiSuccess({
+              ...mockDeptHealth,
+              department_name: 'operations',
+              agent_count: 2,
+              active_agent_count: 1,
+              avg_performance_score: 6.0,
+              department_cost_7d: 5.0,
+              collaboration_score: null,
+              utilization_percent: 70,
+            }),
+          )
+        },
       })
-      vi.mocked(getDepartmentHealth)
-        .mockResolvedValueOnce({
-          department_name: 'engineering', agent_count: 4, active_agent_count: 3, currency: 'EUR',
-          avg_performance_score: 8.0, department_cost_7d: 10.0, cost_trend: [], collaboration_score: 7.0, utilization_percent: 85,
-        })
-        .mockRejectedValueOnce(new Error('Design health unavailable'))
-        .mockResolvedValueOnce({
-          department_name: 'operations', agent_count: 2, active_agent_count: 1, currency: 'EUR',
-          avg_performance_score: 6.0, department_cost_7d: 5.0, cost_trend: [], collaboration_score: null, utilization_percent: 70,
-        })
 
       await useAnalyticsStore.getState().fetchDashboardData()
       const state = useAnalyticsStore.getState()
@@ -219,8 +303,17 @@ describe('useAnalyticsStore', () => {
 
   describe('fetchOverview', () => {
     it('updates overview without resetting other state', async () => {
+      installDefaults()
       const existingActivities: ActivityItem[] = [
-        { id: '1', timestamp: '2026-03-26T10:00:00Z', agent_name: 'agent-a', action_type: 'task.created', description: 'test', task_id: null, department: null },
+        {
+          id: '1',
+          timestamp: '2026-03-26T10:00:00Z',
+          agent_name: 'agent-a',
+          action_type: 'task.created',
+          description: 'test',
+          task_id: null,
+          department: null,
+        },
       ]
       useAnalyticsStore.setState({ activities: existingActivities })
 
@@ -234,8 +327,13 @@ describe('useAnalyticsStore', () => {
   describe('pushActivity', () => {
     it('prepends an activity to the list', () => {
       const item: ActivityItem = {
-        id: 'new-1', timestamp: '2026-03-26T10:00:00Z', agent_name: 'agent-a',
-        action_type: 'task.created', description: 'created a task', task_id: null, department: null,
+        id: 'new-1',
+        timestamp: '2026-03-26T10:00:00Z',
+        agent_name: 'agent-a',
+        action_type: 'task.created',
+        description: 'created a task',
+        task_id: null,
+        department: null,
       }
       useAnalyticsStore.getState().pushActivity(item)
       expect(useAnalyticsStore.getState().activities[0]).toEqual(item)
@@ -243,14 +341,24 @@ describe('useAnalyticsStore', () => {
 
     it('caps activities at 50 items', () => {
       const items: ActivityItem[] = Array.from({ length: 50 }, (_, i) => ({
-        id: `existing-${i}`, timestamp: '2026-03-26T10:00:00Z', agent_name: 'agent',
-        action_type: 'task.created' as const, description: 'test', task_id: null, department: null,
+        id: `existing-${i}`,
+        timestamp: '2026-03-26T10:00:00Z',
+        agent_name: 'agent',
+        action_type: 'task.created' as const,
+        description: 'test',
+        task_id: null,
+        department: null,
       }))
       useAnalyticsStore.setState({ activities: items })
 
       const newItem: ActivityItem = {
-        id: 'new-51', timestamp: '2026-03-26T11:00:00Z', agent_name: 'agent-new',
-        action_type: 'task.updated', description: 'updated', task_id: null, department: null,
+        id: 'new-51',
+        timestamp: '2026-03-26T11:00:00Z',
+        agent_name: 'agent-new',
+        action_type: 'task.updated',
+        description: 'updated',
+        task_id: null,
+        department: null,
       }
       useAnalyticsStore.getState().pushActivity(newItem)
 

@@ -1,21 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { http, HttpResponse } from 'msw'
 import { useWorkflowsStore } from '@/stores/workflows'
 import { useToastStore } from '@/stores/toast'
+import { apiError, apiSuccess, voidSuccess } from '@/mocks/handlers'
+import { server } from '@/test-setup'
 import type { WorkflowDefinition } from '@/api/types'
 
-vi.mock('@/api/endpoints/workflows', () => ({
-  listWorkflows: vi.fn(),
-  listBlueprints: vi.fn(),
-  createWorkflow: vi.fn(),
-  createFromBlueprint: vi.fn(),
-  deleteWorkflow: vi.fn(),
-}))
-
-async function importApi() {
-  return await import('@/api/endpoints/workflows')
-}
-
-function makeWorkflow(id: string, overrides?: Partial<WorkflowDefinition>): WorkflowDefinition {
+function makeWorkflow(
+  id: string,
+  overrides?: Partial<WorkflowDefinition>,
+): WorkflowDefinition {
   return {
     id,
     name: `wf-${id}`,
@@ -28,6 +22,16 @@ function makeWorkflow(id: string, overrides?: Partial<WorkflowDefinition>): Work
     version: 1,
     ...overrides,
   } as WorkflowDefinition
+}
+
+function paginated(data: WorkflowDefinition[], total?: number) {
+  return {
+    data,
+    error: null,
+    error_detail: null,
+    success: true,
+    pagination: { total: total ?? data.length, offset: 0, limit: 200 },
+  }
 }
 
 function resetStore() {
@@ -47,7 +51,6 @@ function resetStore() {
 
 beforeEach(() => {
   resetStore()
-  vi.clearAllMocks()
 })
 
 afterEach(() => {
@@ -56,9 +59,12 @@ afterEach(() => {
 
 describe('createWorkflow', () => {
   it('upserts the result and emits a success toast', async () => {
-    const api = await importApi()
     const created = makeWorkflow('1', { name: 'Alpha' })
-    vi.mocked(api.createWorkflow).mockResolvedValue(created)
+    server.use(
+      http.post('/api/v1/workflows', () =>
+        HttpResponse.json(apiSuccess(created), { status: 201 }),
+      ),
+    )
 
     const result = await useWorkflowsStore.getState().createWorkflow({
       name: 'Alpha',
@@ -76,8 +82,11 @@ describe('createWorkflow', () => {
   })
 
   it('returns null and emits an error toast on API failure', async () => {
-    const api = await importApi()
-    vi.mocked(api.createWorkflow).mockRejectedValue(new Error('boom'))
+    server.use(
+      http.post('/api/v1/workflows', () =>
+        HttpResponse.json(apiError('boom')),
+      ),
+    )
 
     const result = await useWorkflowsStore.getState().createWorkflow({
       name: 'Alpha',
@@ -97,9 +106,12 @@ describe('createWorkflow', () => {
 
 describe('createFromBlueprint', () => {
   it('upserts the result and emits a success toast', async () => {
-    const api = await importApi()
     const created = makeWorkflow('2', { name: 'Beta' })
-    vi.mocked(api.createFromBlueprint).mockResolvedValue(created)
+    server.use(
+      http.post('/api/v1/workflows/from-blueprint', () =>
+        HttpResponse.json(apiSuccess(created), { status: 201 }),
+      ),
+    )
 
     const result = await useWorkflowsStore.getState().createFromBlueprint({
       blueprint_name: 'bp1',
@@ -113,8 +125,11 @@ describe('createFromBlueprint', () => {
   })
 
   it('returns null on API failure', async () => {
-    const api = await importApi()
-    vi.mocked(api.createFromBlueprint).mockRejectedValue(new Error('boom'))
+    server.use(
+      http.post('/api/v1/workflows/from-blueprint', () =>
+        HttpResponse.json(apiError('boom')),
+      ),
+    )
 
     const result = await useWorkflowsStore.getState().createFromBlueprint({
       blueprint_name: 'bp1',
@@ -131,10 +146,13 @@ describe('createFromBlueprint', () => {
 
 describe('deleteWorkflow', () => {
   it('optimistically removes the workflow and returns true on success', async () => {
-    const api = await importApi()
     const wf = makeWorkflow('1')
     useWorkflowsStore.setState({ workflows: [wf], totalWorkflows: 1 })
-    vi.mocked(api.deleteWorkflow).mockResolvedValue(undefined)
+    server.use(
+      http.delete('/api/v1/workflows/:id', () =>
+        HttpResponse.json(voidSuccess()),
+      ),
+    )
 
     const result = await useWorkflowsStore.getState().deleteWorkflow('1')
 
@@ -147,10 +165,13 @@ describe('deleteWorkflow', () => {
   })
 
   it('rolls back state and returns false on API failure', async () => {
-    const api = await importApi()
     const wf = makeWorkflow('1')
     useWorkflowsStore.setState({ workflows: [wf], totalWorkflows: 1 })
-    vi.mocked(api.deleteWorkflow).mockRejectedValue(new Error('boom'))
+    server.use(
+      http.delete('/api/v1/workflows/:id', () =>
+        HttpResponse.json(apiError('boom')),
+      ),
+    )
 
     const result = await useWorkflowsStore.getState().deleteWorkflow('1')
 
@@ -164,34 +185,38 @@ describe('deleteWorkflow', () => {
   })
 
   it('rollback preserves concurrent WS-triggered state updates', async () => {
-    const api = await importApi()
     const wf1 = makeWorkflow('1')
     useWorkflowsStore.setState({ workflows: [wf1], totalWorkflows: 1 })
 
-    // Simulate a WS-triggered upsert arriving during the in-flight delete:
-    // the API rejection happens AFTER a concurrent workflow has been added.
-    vi.mocked(api.deleteWorkflow).mockImplementation(async () => {
-      useWorkflowsStore.setState((s) => ({
-        workflows: [makeWorkflow('2'), ...s.workflows],
-        totalWorkflows: s.totalWorkflows + 1,
-      }))
-      throw new Error('boom')
-    })
+    server.use(
+      http.delete('/api/v1/workflows/:id', async () => {
+        // Simulate a WS-triggered upsert arriving during the in-flight
+        // delete -- the store mutation happens before the delete's
+        // rejection resolves.
+        useWorkflowsStore.setState((s) => ({
+          workflows: [makeWorkflow('2'), ...s.workflows],
+          totalWorkflows: s.totalWorkflows + 1,
+        }))
+        return HttpResponse.json(apiError('boom'))
+      }),
+    )
 
     const result = await useWorkflowsStore.getState().deleteWorkflow('1')
 
     expect(result).toBe(false)
     const state = useWorkflowsStore.getState()
-    // The concurrent WS-added wf '2' must survive the rollback
     expect(state.workflows.map((w) => w.id).sort()).toEqual(['1', '2'])
   })
 })
 
 describe('fetchWorkflows', () => {
   it('populates list and clears error on success', async () => {
-    const api = await importApi()
     const items = [makeWorkflow('1'), makeWorkflow('2')]
-    vi.mocked(api.listWorkflows).mockResolvedValue({ data: items, total: 2, offset: 0, limit: 200 })
+    server.use(
+      http.get('/api/v1/workflows', () =>
+        HttpResponse.json(paginated(items, 2)),
+      ),
+    )
 
     useWorkflowsStore.setState({ listError: 'stale' })
     await useWorkflowsStore.getState().fetchWorkflows()
@@ -205,8 +230,11 @@ describe('fetchWorkflows', () => {
   })
 
   it('sets listError on failure without toasting (list-read pattern)', async () => {
-    const api = await importApi()
-    vi.mocked(api.listWorkflows).mockRejectedValue(new Error('network down'))
+    server.use(
+      http.get('/api/v1/workflows', () =>
+        HttpResponse.json(apiError('network down')),
+      ),
+    )
 
     await useWorkflowsStore.getState().fetchWorkflows()
 

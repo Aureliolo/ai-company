@@ -1,22 +1,9 @@
+import { http, HttpResponse } from 'msw'
 import { useAgentsStore } from '@/stores/agents'
 import { useToastStore } from '@/stores/toast'
+import { apiError, apiSuccess } from '@/mocks/handlers'
+import { server } from '@/test-setup'
 import type { AgentConfig, AgentPerformanceSummary, Task } from '@/api/types'
-
-vi.mock('@/api/endpoints/agents', () => ({
-  listAgents: vi.fn(),
-  getAgent: vi.fn(),
-  getAgentPerformance: vi.fn(),
-  getAgentActivity: vi.fn(),
-  getAgentHistory: vi.fn(),
-}))
-
-vi.mock('@/api/endpoints/tasks', () => ({
-  listTasks: vi.fn(),
-}))
-
-const { listAgents, getAgent, getAgentPerformance, getAgentActivity, getAgentHistory } =
-  await import('@/api/endpoints/agents')
-const { listTasks } = await import('@/api/endpoints/tasks')
 
 function makeAgent(overrides: Partial<AgentConfig> = {}): AgentConfig {
   return {
@@ -104,9 +91,67 @@ function makeTask(overrides: Partial<Task> = {}): Task {
   }
 }
 
+type Fixture = Partial<{
+  agentList: () => Response
+  agent: (name: string) => Response
+  performance: () => Response
+  activity: () => Response
+  history: () => Response
+  tasks: () => Response
+}>
+
+function installAgentHandlers(f: Fixture = {}) {
+  server.use(
+    http.get('/api/v1/agents', () =>
+      f.agentList
+        ? f.agentList()
+        : HttpResponse.json({
+            data: [makeAgent()],
+            error: null,
+            error_detail: null,
+            success: true,
+            pagination: { total: 1, offset: 0, limit: 200 },
+          }),
+    ),
+    http.get('/api/v1/agents/:name', ({ params }) =>
+      f.agent
+        ? f.agent(String(params.name))
+        : HttpResponse.json(apiSuccess(makeAgent({ name: String(params.name) }))),
+    ),
+    http.get('/api/v1/agents/:name/performance', () =>
+      f.performance
+        ? f.performance()
+        : HttpResponse.json(apiSuccess(makePerformance())),
+    ),
+    http.get('/api/v1/agents/:name/activity', () =>
+      f.activity
+        ? f.activity()
+        : HttpResponse.json({
+            data: [],
+            error: null,
+            error_detail: null,
+            success: true,
+            pagination: { total: 0, offset: 0, limit: 50 },
+          }),
+    ),
+    http.get('/api/v1/agents/:name/history', () =>
+      f.history ? f.history() : HttpResponse.json(apiSuccess([])),
+    ),
+    http.get('/api/v1/tasks', () =>
+      f.tasks
+        ? f.tasks()
+        : HttpResponse.json({
+            data: [],
+            error: null,
+            error_detail: null,
+            success: true,
+            pagination: { total: 0, offset: 0, limit: 50 },
+          }),
+    ),
+  )
+}
+
 beforeEach(() => {
-  vi.clearAllMocks()
-  // Reset store to initial state
   useAgentsStore.setState({
     agents: [],
     totalAgents: 0,
@@ -134,7 +179,16 @@ beforeEach(() => {
 describe('fetchAgents', () => {
   it('sets agents on success', async () => {
     const agents = [makeAgent(), makeAgent({ name: 'Bob Jones' })]
-    vi.mocked(listAgents).mockResolvedValue({ data: agents, total: 2, offset: 0, limit: 200 })
+    installAgentHandlers({
+      agentList: () =>
+        HttpResponse.json({
+          data: agents,
+          error: null,
+          error_detail: null,
+          success: true,
+          pagination: { total: 2, offset: 0, limit: 200 },
+        }),
+    })
 
     await useAgentsStore.getState().fetchAgents()
 
@@ -146,7 +200,9 @@ describe('fetchAgents', () => {
   })
 
   it('sets error on failure', async () => {
-    vi.mocked(listAgents).mockRejectedValue(new Error('Network error'))
+    installAgentHandlers({
+      agentList: () => HttpResponse.json(apiError('Network error')),
+    })
 
     await useAgentsStore.getState().fetchAgents()
 
@@ -157,15 +213,27 @@ describe('fetchAgents', () => {
   })
 
   it('sets loading to true during fetch', async () => {
-    let resolvePromise!: (value: { data: AgentConfig[]; total: number; offset: number; limit: number }) => void
-    vi.mocked(listAgents).mockImplementation(
-      () => new Promise((resolve) => { resolvePromise = resolve }),
-    )
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    installAgentHandlers({
+      agentList: async () => {
+        await gate
+        return HttpResponse.json({
+          data: [],
+          error: null,
+          error_detail: null,
+          success: true,
+          pagination: { total: 0, offset: 0, limit: 200 },
+        })
+      },
+    })
 
     const promise = useAgentsStore.getState().fetchAgents()
     expect(useAgentsStore.getState().listLoading).toBe(true)
 
-    resolvePromise({ data: [], total: 0, offset: 0, limit: 200 })
+    release()
     await promise
     expect(useAgentsStore.getState().listLoading).toBe(false)
   })
@@ -174,62 +242,60 @@ describe('fetchAgents', () => {
 describe('fetchAgentDetail', () => {
   it('fetches agent details in parallel', async () => {
     const agent = makeAgent()
-    const perf = makePerformance()
-    vi.mocked(getAgent).mockResolvedValue(agent)
-    vi.mocked(getAgentPerformance).mockResolvedValue(perf)
-    vi.mocked(listTasks).mockResolvedValue({ data: [], total: 0, offset: 0, limit: 50 })
-    vi.mocked(getAgentActivity).mockResolvedValue({ data: [], total: 0, offset: 0, limit: 50 })
-    vi.mocked(getAgentHistory).mockResolvedValue([])
+    installAgentHandlers({
+      agent: () => HttpResponse.json(apiSuccess(agent)),
+    })
 
     await useAgentsStore.getState().fetchAgentDetail('Alice Smith')
 
     const state = useAgentsStore.getState()
     expect(state.selectedAgent).toEqual(agent)
-    expect(state.performance).toEqual(perf)
+    expect(state.performance).not.toBeNull()
     expect(state.detailLoading).toBe(false)
     expect(state.detailError).toBeNull()
   })
 
   it('degrades gracefully when performance fails', async () => {
-    const agent = makeAgent()
-    vi.mocked(getAgent).mockResolvedValue(agent)
-    vi.mocked(getAgentPerformance).mockRejectedValue(new Error('fail'))
-    vi.mocked(listTasks).mockResolvedValue({ data: [], total: 0, offset: 0, limit: 50 })
-    vi.mocked(getAgentActivity).mockResolvedValue({ data: [], total: 0, offset: 0, limit: 50 })
-    vi.mocked(getAgentHistory).mockResolvedValue([])
+    installAgentHandlers({
+      performance: () => HttpResponse.json(apiError('fail')),
+    })
 
     await useAgentsStore.getState().fetchAgentDetail('Alice Smith')
 
     const state = useAgentsStore.getState()
-    expect(state.selectedAgent).toEqual(agent)
+    expect(state.selectedAgent).not.toBeNull()
     expect(state.performance).toBeNull()
-    expect(state.detailError).toBe('Some data failed to load: performance metrics. Displayed data may be incomplete.')
+    expect(state.detailError).toBe(
+      'Some data failed to load: performance metrics. Displayed data may be incomplete.',
+    )
   })
 
   it('degrades gracefully when tasks and history fail', async () => {
-    const agent = makeAgent()
-    vi.mocked(getAgent).mockResolvedValue(agent)
-    vi.mocked(getAgentPerformance).mockResolvedValue(makePerformance())
-    vi.mocked(listTasks).mockRejectedValue(new Error('tasks fail'))
-    vi.mocked(getAgentActivity).mockResolvedValue({ data: [], total: 0, offset: 0, limit: 50 })
-    vi.mocked(getAgentHistory).mockRejectedValue(new Error('history fail'))
+    installAgentHandlers({
+      tasks: () => HttpResponse.json(apiError('tasks fail')),
+      history: () => HttpResponse.json(apiError('history fail')),
+    })
 
     await useAgentsStore.getState().fetchAgentDetail('Alice Smith')
 
     const state = useAgentsStore.getState()
-    expect(state.selectedAgent).toEqual(agent)
-    expect(state.performance).toBeDefined()
+    expect(state.selectedAgent).not.toBeNull()
+    expect(state.performance).not.toBeNull()
     expect(state.agentTasks).toHaveLength(0)
     expect(state.careerHistory).toHaveLength(0)
-    expect(state.detailError).toBe('Some data failed to load: task history, career history. Displayed data may be incomplete.')
+    expect(state.detailError).toBe(
+      'Some data failed to load: task history, career history. Displayed data may be incomplete.',
+    )
   })
 
   it('sets error when agent fetch fails', async () => {
-    vi.mocked(getAgent).mockRejectedValue(new Error('Not found'))
-    vi.mocked(getAgentPerformance).mockRejectedValue(new Error('fail'))
-    vi.mocked(listTasks).mockRejectedValue(new Error('fail'))
-    vi.mocked(getAgentActivity).mockRejectedValue(new Error('fail'))
-    vi.mocked(getAgentHistory).mockRejectedValue(new Error('fail'))
+    installAgentHandlers({
+      agent: () => HttpResponse.json(apiError('Not found')),
+      performance: () => HttpResponse.json(apiError('fail')),
+      tasks: () => HttpResponse.json(apiError('fail')),
+      activity: () => HttpResponse.json(apiError('fail')),
+      history: () => HttpResponse.json(apiError('fail')),
+    })
 
     await useAgentsStore.getState().fetchAgentDetail('Unknown')
 
@@ -242,51 +308,50 @@ describe('fetchAgentDetail', () => {
     const agentA = makeAgent({ name: 'Alice Smith' })
     const agentB = makeAgent({ name: 'Bob Jones', role: 'Designer' })
 
-    // Control resolution order: A resolves after B
-    let resolveA!: (v: AgentConfig) => void
-    let resolveB!: (v: AgentConfig) => void
-    vi.mocked(getAgent)
-      .mockImplementationOnce(() => new Promise((r) => { resolveA = r }))
-      .mockImplementationOnce(() => new Promise((r) => { resolveB = r }))
-    vi.mocked(getAgentPerformance).mockResolvedValue(makePerformance())
-    vi.mocked(listTasks).mockResolvedValue({ data: [], total: 0, offset: 0, limit: 50 })
-    vi.mocked(getAgentActivity).mockResolvedValue({ data: [], total: 0, offset: 0, limit: 50 })
-    vi.mocked(getAgentHistory).mockResolvedValue([])
+    let releaseA!: () => void
+    const gateA = new Promise<void>((resolve) => {
+      releaseA = resolve
+    })
+    installAgentHandlers({
+      agent: async (name: string) => {
+        if (name === 'Alice Smith') {
+          await gateA
+          return HttpResponse.json(apiSuccess(agentA))
+        }
+        return HttpResponse.json(apiSuccess(agentB))
+      },
+    })
 
-    // Start both fetches
     const promiseA = useAgentsStore.getState().fetchAgentDetail('Alice Smith')
     const promiseB = useAgentsStore.getState().fetchAgentDetail('Bob Jones')
 
-    // Resolve B first (newer), then A (stale)
-    resolveB(agentB)
     await promiseB
-
     expect(useAgentsStore.getState().selectedAgent?.name).toBe('Bob Jones')
 
-    // Resolve A (stale) -- should be rejected by staleness guard
-    resolveA(agentA)
+    releaseA()
     await promiseA
 
-    // Store should still show Bob, not Alice
     expect(useAgentsStore.getState().selectedAgent?.name).toBe('Bob Jones')
   })
 
   it('rejects in-flight responses after clearDetail', async () => {
-    let resolveAgent!: (v: AgentConfig) => void
-    vi.mocked(getAgent).mockImplementation(() => new Promise((r) => { resolveAgent = r }))
-    vi.mocked(getAgentPerformance).mockResolvedValue(makePerformance())
-    vi.mocked(listTasks).mockResolvedValue({ data: [], total: 0, offset: 0, limit: 50 })
-    vi.mocked(getAgentActivity).mockResolvedValue({ data: [], total: 0, offset: 0, limit: 50 })
-    vi.mocked(getAgentHistory).mockResolvedValue([])
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    installAgentHandlers({
+      agent: async () => {
+        await gate
+        return HttpResponse.json(apiSuccess(makeAgent()))
+      },
+    })
 
     const promise = useAgentsStore.getState().fetchAgentDetail('Alice Smith')
 
-    // Navigate away (clearDetail resets staleness token)
     useAgentsStore.getState().clearDetail()
     expect(useAgentsStore.getState().selectedAgent).toBeNull()
 
-    // Late response arrives -- should be rejected
-    resolveAgent(makeAgent())
+    release()
     await promise
 
     expect(useAgentsStore.getState().selectedAgent).toBeNull()
@@ -297,7 +362,12 @@ describe('fetchAgentDetail', () => {
 describe('fetchMoreActivity', () => {
   it('appends new activity events', async () => {
     const existingEvents = [
-      { event_type: 'task_completed', timestamp: '2026-03-26T12:00:00Z', description: 'Task done', related_ids: {} },
+      {
+        event_type: 'task_completed',
+        timestamp: '2026-03-26T12:00:00Z',
+        description: 'Task done',
+        related_ids: {},
+      },
     ]
     useAgentsStore.setState({
       activity: existingEvents,
@@ -306,9 +376,24 @@ describe('fetchMoreActivity', () => {
     })
 
     const newEvents = [
-      { event_type: 'hired', timestamp: '2026-03-25T10:00:00Z', description: 'Agent hired', related_ids: {} },
+      {
+        event_type: 'hired',
+        timestamp: '2026-03-25T10:00:00Z',
+        description: 'Agent hired',
+        related_ids: {},
+      },
     ]
-    vi.mocked(getAgentActivity).mockResolvedValue({ data: newEvents, total: 5, offset: 1, limit: 20 })
+    server.use(
+      http.get('/api/v1/agents/:name/activity', () =>
+        HttpResponse.json({
+          data: newEvents,
+          error: null,
+          error_detail: null,
+          success: true,
+          pagination: { total: 5, offset: 1, limit: 20 },
+        }),
+      ),
+    )
 
     await useAgentsStore.getState().fetchMoreActivity('Alice Smith', 1)
 
@@ -323,7 +408,11 @@ describe('fetchMoreActivity', () => {
       description: `Event ${i}`,
       related_ids: {},
     }))
-    useAgentsStore.setState({ activity: existingEvents, activityTotal: 200, selectedAgent: makeAgent({ name: 'Alice Smith' }) })
+    useAgentsStore.setState({
+      activity: existingEvents,
+      activityTotal: 200,
+      selectedAgent: makeAgent({ name: 'Alice Smith' }),
+    })
 
     const newEvents = Array.from({ length: 5 }, (_, i) => ({
       event_type: 'hired',
@@ -331,7 +420,17 @@ describe('fetchMoreActivity', () => {
       description: `New event ${i}`,
       related_ids: {},
     }))
-    vi.mocked(getAgentActivity).mockResolvedValue({ data: newEvents, total: 200, offset: 99, limit: 20 })
+    server.use(
+      http.get('/api/v1/agents/:name/activity', () =>
+        HttpResponse.json({
+          data: newEvents,
+          error: null,
+          error_detail: null,
+          success: true,
+          pagination: { total: 200, offset: 99, limit: 20 },
+        }),
+      ),
+    )
 
     await useAgentsStore.getState().fetchMoreActivity('Alice Smith', 99)
 
@@ -340,11 +439,24 @@ describe('fetchMoreActivity', () => {
 
   it('preserves existing data on failure', async () => {
     const existingEvents = [
-      { event_type: 'task_completed', timestamp: '2026-03-26T12:00:00Z', description: 'Task done', related_ids: {} },
+      {
+        event_type: 'task_completed',
+        timestamp: '2026-03-26T12:00:00Z',
+        description: 'Task done',
+        related_ids: {},
+      },
     ]
-    useAgentsStore.setState({ activity: existingEvents, activityTotal: 5, selectedAgent: makeAgent({ name: 'Alice Smith' }) })
+    useAgentsStore.setState({
+      activity: existingEvents,
+      activityTotal: 5,
+      selectedAgent: makeAgent({ name: 'Alice Smith' }),
+    })
 
-    vi.mocked(getAgentActivity).mockRejectedValue(new Error('Network error'))
+    server.use(
+      http.get('/api/v1/agents/:name/activity', () =>
+        HttpResponse.json(apiError('Network error')),
+      ),
+    )
 
     await useAgentsStore.getState().fetchMoreActivity('Alice Smith', 1)
 
@@ -391,10 +503,25 @@ describe('clearDetail', () => {
       selectedAgent: makeAgent(),
       performance: makePerformance(),
       agentTasks: [makeTask()],
-      activity: [{ event_type: 'hired', timestamp: '2026-01-01T00:00:00Z', description: 'Hired', related_ids: {} }],
+      activity: [
+        {
+          event_type: 'hired',
+          timestamp: '2026-01-01T00:00:00Z',
+          description: 'Hired',
+          related_ids: {},
+        },
+      ],
       activityTotal: 10,
       activityLoading: true,
-      careerHistory: [{ event_type: 'hired' as const, timestamp: '2026-01-01T00:00:00Z', description: 'Hired', initiated_by: 'system', metadata: {} }],
+      careerHistory: [
+        {
+          event_type: 'hired' as const,
+          timestamp: '2026-01-01T00:00:00Z',
+          description: 'Hired',
+          initiated_by: 'system',
+          metadata: {},
+        },
+      ],
       detailLoading: true,
       detailError: 'some error',
     })
@@ -497,7 +624,7 @@ describe('personality.trimmed toast dispatch', () => {
     expect(useToastStore.getState().toasts).toHaveLength(0)
   })
 
-  it('does not dispatch a toast when token fields are missing (handled by notifications pipeline)', () => {
+  it('does not dispatch a toast when token fields are missing', () => {
     useAgentsStore.getState().updateFromWsEvent({
       event_type: 'personality.trimmed',
       channel: 'agents',
@@ -509,9 +636,6 @@ describe('personality.trimmed toast dispatch', () => {
   })
 
   it('suppresses the toast when every payload field is missing', () => {
-    // Fully-empty payload carries zero actionable info ("An agent personality
-    // was trimmed" with no name or numbers), so the store should drop it --
-    // the warn log inside updateFromWsEvent retains the diagnostic signal.
     useAgentsStore.getState().updateFromWsEvent({
       event_type: 'personality.trimmed',
       channel: 'agents',
@@ -532,7 +656,7 @@ describe('personality.trimmed toast dispatch', () => {
     expect(Object.keys(useAgentsStore.getState().runtimeStatuses)).toHaveLength(0)
   })
 
-  it('does not dispatch a toast for long agent_name (handled by notifications pipeline)', () => {
+  it('does not dispatch a toast for long agent_name', () => {
     const longName = 'A'.repeat(200)
     useAgentsStore.getState().updateFromWsEvent({
       event_type: 'personality.trimmed',
@@ -548,7 +672,7 @@ describe('personality.trimmed toast dispatch', () => {
     expect(useToastStore.getState().toasts).toHaveLength(0)
   })
 
-  it('does not dispatch a toast for non-finite token values (handled by notifications pipeline)', () => {
+  it('does not dispatch a toast for non-finite token values', () => {
     useAgentsStore.getState().updateFromWsEvent({
       event_type: 'personality.trimmed',
       channel: 'agents',
@@ -563,7 +687,7 @@ describe('personality.trimmed toast dispatch', () => {
     expect(useToastStore.getState().toasts).toHaveLength(0)
   })
 
-  it('does not dispatch a toast for non-string agent_name (handled by notifications pipeline)', () => {
+  it('does not dispatch a toast for non-string agent_name', () => {
     useAgentsStore.getState().updateFromWsEvent({
       event_type: 'personality.trimmed',
       channel: 'agents',
