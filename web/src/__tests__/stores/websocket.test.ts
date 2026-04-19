@@ -105,7 +105,6 @@ class MockWebSocket {
 // `Object.defineProperty` to force the swap and restore the original
 // descriptor after the suite finishes.
 const originalDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'WebSocket')
-const OriginalWebSocket = globalThis.WebSocket
 beforeAll(() => {
   Object.defineProperty(globalThis, 'WebSocket', {
     value: MockWebSocket,
@@ -117,11 +116,11 @@ afterAll(() => {
   if (originalDescriptor) {
     Object.defineProperty(globalThis, 'WebSocket', originalDescriptor)
   } else {
-    Object.defineProperty(globalThis, 'WebSocket', {
-      value: OriginalWebSocket,
-      writable: true,
-      configurable: true,
-    })
+    // No original descriptor means `WebSocket` was not an own property
+    // of the global before this file ran. Delete the property we set so
+    // we don't leave behind a faux own-property entry that masks the
+    // prototype chain (e.g. polluting later tests that read WebSocket).
+    delete (globalThis as { WebSocket?: unknown }).WebSocket
   }
 })
 
@@ -493,58 +492,9 @@ const handler = vi.fn()
       const ws = MockWebSocket.latest()!
       expect(ws.url).not.toContain('ticket=')
 
-      // Diagnostic round 2: round-1 CI output confirmed the store guard
-      // `if (socket !== thisSocket) return` tripped inside onopen with
-      // `instances=1, latestIsSame=true` -- meaning the store's `socket`
-      // closure variable was null at the time. Since `socket = null` only
-      // happens in disconnect() or the onclose handler, either one must
-      // have run between doConnect's `socket = thisSocket` and this
-      // simulateOpen() call. Capture more state to pinpoint which.
-      const diag = {
-        onopenWasSet: typeof ws.onopen === 'function',
-        oncloseWasSet: typeof ws.onclose === 'function',
-        oncloseFiredPreOpen: false,
-        oncloseFiredCount: 0,
-        closeMethodCalled: false,
-        onopenCalled: false,
-        sendCalled: false,
-        instances: MockWebSocket.instances.length,
-        latestIsSame: MockWebSocket.latest() === ws,
-        wsClosedFlagPreOpen: ws.closed,
-        wsReadyStatePreOpen: ws.readyState,
-        storeConnectedPreOpen: useWebSocketStore.getState().connected,
-        storeExhaustedPreOpen: useWebSocketStore.getState().reconnectExhausted,
-        storeConnectedPostOpen: false,
-      }
-      const originalOnopen = ws.onopen
-      const originalOnclose = ws.onclose
-      const originalClose = ws.close.bind(ws)
-      ws.onopen = () => {
-        diag.onopenCalled = true
-        originalOnopen?.()
-      }
-      ws.onclose = (event) => {
-        diag.oncloseFiredCount += 1
-        if (!diag.onopenCalled) diag.oncloseFiredPreOpen = true
-        originalOnclose?.(event)
-      }
-      ws.close = (code?: number, reason?: string) => {
-        diag.closeMethodCalled = true
-        originalClose(code, reason)
-      }
-      const originalSend = ws.send.bind(ws)
-      ws.send = (data: string) => {
-        diag.sendCalled = true
-        originalSend(data)
-      }
-
       ws.simulateOpen()
-      diag.storeConnectedPostOpen = useWebSocketStore.getState().connected
 
       // First message should be the auth action (exactly 1 message before subscriptions)
-      if (ws.sentMessages.length !== 1) {
-        console.error('[WS_DIAG first-message-auth FAIL]', JSON.stringify(diag))
-      }
       expect(ws.sentMessages).toHaveLength(1)
       const authMsg = JSON.parse(ws.sentMessages[0]!) as { action: string; ticket: string }
       expect(authMsg.action).toBe('auth')
