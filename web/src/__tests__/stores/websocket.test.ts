@@ -493,9 +493,35 @@ const handler = vi.fn()
       const ws = MockWebSocket.latest()!
       expect(ws.url).not.toContain('ticket=')
 
+      // Diagnostic: capture state before/after simulateOpen to pinpoint
+      // which of three possible causes the CI flake hits:
+      //   (a) ws.onopen is null
+      //   (b) onopen guard `socket !== thisSocket` tripped (onopen called, no send)
+      //   (c) send threw (caught and silenced)
+      const diag = {
+        onopenWasSet: typeof ws.onopen === 'function',
+        onopenCalled: false,
+        sendCalled: false,
+        instances: MockWebSocket.instances.length,
+        latestIsSame: MockWebSocket.latest() === ws,
+      }
+      const originalOnopen = ws.onopen
+      ws.onopen = () => {
+        diag.onopenCalled = true
+        originalOnopen?.()
+      }
+      const originalSend = ws.send.bind(ws)
+      ws.send = (data: string) => {
+        diag.sendCalled = true
+        originalSend(data)
+      }
+
       ws.simulateOpen()
 
       // First message should be the auth action (exactly 1 message before subscriptions)
+      if (ws.sentMessages.length !== 1) {
+        console.error('[WS_DIAG first-message-auth FAIL]', JSON.stringify(diag))
+      }
       expect(ws.sentMessages).toHaveLength(1)
       const authMsg = JSON.parse(ws.sentMessages[0]!) as { action: string; ticket: string }
       expect(authMsg.action).toBe('auth')
