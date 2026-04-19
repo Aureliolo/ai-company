@@ -14,10 +14,14 @@
  */
 
 import { createLogger } from '@/lib/logger'
+import { sanitizeForLog } from '@/utils/logging'
 
 const log = createLogger('app-version')
 
 const STORAGE_KEY = 'synthorg:app_build_id'
+
+/** Abort deadline for the best-effort server logout call, in ms. */
+const LOGOUT_TIMEOUT_MS = 2000
 
 /** Current build id, substituted at build time by Vite `define`. */
 const CURRENT_BUILD_ID: string = import.meta.env.VITE_APP_BUILD_ID ?? 'dev'
@@ -61,10 +65,14 @@ export async function ensureFreshAppState(): Promise<void> {
     return
   }
 
-  log.warn('App build id changed; clearing stale client state', {
-    stored,
-    current: CURRENT_BUILD_ID,
-  })
+  // ``stored`` comes from localStorage and is attacker-controllable
+  // (an XSS payload could overwrite it with arbitrary text).  Route
+  // the payload through ``sanitizeForLog`` so it can't inject control
+  // characters or log-forging sequences into the output.
+  log.warn(
+    'App build id changed; clearing stale client state',
+    sanitizeForLog({ stored, current: CURRENT_BUILD_ID }),
+  )
 
   await callServerLogout()
   clearClientVisibleCookies()
@@ -87,7 +95,11 @@ export async function ensureFreshAppState(): Promise<void> {
   }
 
   // Hard reload so every module re-executes against fresh state.
-  // location.reload() ignores caches for this navigation in modern browsers.
+  // Note: the no-arg ``location.reload()`` respects HTTP caches
+  // (JS/CSS may be 304 Not Modified).  The deprecated
+  // ``location.reload(true)`` forceReload flag was removed from all
+  // major browsers; fresh assets rely on standard cache-busting
+  // (hashed filenames / server ``Cache-Control`` headers).
   window.location.reload()
   // Return a never-resolving promise so callers don't continue bootstrap
   // during the reload window (keeps the loading splash visible).
@@ -95,18 +107,28 @@ export async function ensureFreshAppState(): Promise<void> {
 }
 
 async function callServerLogout(): Promise<void> {
+  // Bound the best-effort call with an ``AbortController`` -- boot is
+  // awaiting this, and an unbounded stall would block the entire app
+  // from mounting.  Falling through to the local clear + reload is
+  // safe (HttpOnly cookies survive, but the next real API call will
+  // 401 and the login flow will overwrite them).
+  const controller = new AbortController()
+  const timeoutId = window.setTimeout(
+    () => controller.abort(),
+    LOGOUT_TIMEOUT_MS,
+  )
   try {
     await fetch('/api/v1/auth/logout', {
       method: 'POST',
       credentials: 'include',
+      signal: controller.signal,
       // No CSRF header needed: /auth/logout is CSRF-exempt so clients
       // can clear stale state even when the csrf_token cookie is gone.
     })
   } catch (err) {
-    // Network or server unavailable -- still clear what we can client
-    // side; the next real API call will 401 and the login flow will
-    // overwrite any remaining HttpOnly cookies.
     log.warn('Logout call failed during stale-state recovery', err)
+  } finally {
+    window.clearTimeout(timeoutId)
   }
 }
 

@@ -124,14 +124,18 @@ function AgentNode({
         x2={agentX}
         y2={agentY - effectiveRadius}
         className={cn('stroke-border', isHead && 'stroke-accent/50')}
-        strokeWidth={1}
+        strokeWidth="var(--so-stroke-hairline)"
       />
       <circle
         cx={agentX}
         cy={agentY}
         r={effectiveRadius}
         className={cn(fillClass, strokeClass)}
-        strokeWidth={isHead || isLeader ? 1.5 : 1}
+        strokeWidth={
+          isHead || isLeader
+            ? 'var(--so-stroke-thin)'
+            : 'var(--so-stroke-hairline)'
+        }
       >
         <title>{`${agent.name} -- ${agent.role}${titleSuffix}${isHead ? ' (head)' : ''}`}</title>
       </circle>
@@ -170,7 +174,7 @@ function DepartmentGroup({
         height={nodeHeight}
         rx={6}
         className="fill-surface stroke-border"
-        strokeWidth={1}
+        strokeWidth="var(--so-stroke-hairline)"
       />
       <text
         x={pos.x}
@@ -187,7 +191,11 @@ function DepartmentGroup({
         const centerOffset = agentIdx - (pos.dept.agents.length - 1) / 2
         const agentX = pos.x + centerOffset * agentSpacing
         const agentY = pos.y + vGap
-        const isHead = pos.dept.headAgent?.name === agent.name
+        // Object identity: ``headAgent`` is picked from the same
+        // ``agents`` array via ``pickHead``, so reference equality is
+        // safe.  Matching by name would mis-mark every agent sharing
+        // a name with the head (setup templates can repeat names).
+        const isHead = pos.dept.headAgent === agent
         return (
           <AgentNode
             // eslint-disable-next-line @eslint-react/no-array-index-key -- setup agents can share names; index as tiebreaker
@@ -286,7 +294,7 @@ export function MiniOrgChart({ agents, className }: MiniOrgChartProps) {
             x2={pos.x}
             y2={pos.y - nodeHeight / 2}
             className="stroke-border"
-            strokeWidth={1}
+            strokeWidth="var(--so-stroke-hairline)"
           />
         ))}
 

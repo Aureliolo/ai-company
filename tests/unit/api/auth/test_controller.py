@@ -1,7 +1,9 @@
 """Tests for AuthController endpoints."""
 
 from typing import Any
+from unittest.mock import AsyncMock
 
+import jwt
 import pytest
 from litestar.testing import TestClient
 
@@ -641,16 +643,56 @@ class TestLogoutIdempotency:
         assert response.status_code == 204
         self._assert_clear_cookies(response)
 
+    @staticmethod
+    def _install_spy_session_store(
+        app_state: Any,
+        revoke_spy: AsyncMock,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Attach a minimal mock session store exposing ``revoke``.
+
+        The ``bare_client`` shared fixture runs against a persistence
+        backend that doesn't expose a raw DB, so ``has_session_store``
+        is ``False`` by default.  Spoof it with a namespace whose
+        ``revoke`` is the spy we want to observe.
+        """
+        from types import SimpleNamespace
+
+        monkeypatch.setattr(
+            app_state,
+            "_session_store",
+            SimpleNamespace(revoke=revoke_spy),
+        )
+
     def test_logout_with_valid_auth_returns_204_and_revokes_session(
         self,
         bare_client: TestClient[Any],
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
+        app_state = bare_client.app.state["app_state"]
+        # Spy on revoke so we can assert the server-side record
+        # was invalidated.  Because ``/auth/logout`` is in
+        # ``auth.exclude_paths`` the auth middleware does not run
+        # on this route -- the handler must therefore extract the
+        # JTI itself and call revoke directly.
+        revoke_spy = AsyncMock(return_value=None)
+        self._install_spy_session_store(app_state, revoke_spy, monkeypatch)
+
+        headers = make_auth_headers(role=HumanRole.CEO)
+        token = headers["Authorization"].removeprefix("Bearer ")
+        expected_jti = jwt.decode(
+            token,
+            _TEST_JWT_SECRET,
+            algorithms=["HS256"],
+        )["jti"]
+
         response = bare_client.post(
             "/api/v1/auth/logout",
-            headers=make_auth_headers(role=HumanRole.CEO),
+            headers=headers,
         )
         assert response.status_code == 204
         self._assert_clear_cookies(response)
+        revoke_spy.assert_awaited_once_with(expected_jti)
 
     def test_logout_still_204_when_session_store_revoke_fails(
         self,
@@ -658,14 +700,13 @@ class TestLogoutIdempotency:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         app_state = bare_client.app.state["app_state"]
-        if not getattr(app_state, "has_session_store", False):
-            pytest.skip("No session store configured in this fixture")
-
-        async def _boom(_jti: str) -> None:
-            msg = "simulated session store failure"
-            raise RuntimeError(msg)
-
-        monkeypatch.setattr(app_state.session_store, "revoke", _boom)
+        # Spy that raises -- proves the handler both *invokes*
+        # revoke AND correctly catches the failure while still
+        # returning 204 with clear cookies (idempotent contract).
+        revoke_spy = AsyncMock(
+            side_effect=RuntimeError("simulated session store failure"),
+        )
+        self._install_spy_session_store(app_state, revoke_spy, monkeypatch)
 
         response = bare_client.post(
             "/api/v1/auth/logout",
@@ -676,3 +717,4 @@ class TestLogoutIdempotency:
         # the cookie-clear with a 500.
         assert response.status_code == 204
         self._assert_clear_cookies(response)
+        revoke_spy.assert_awaited_once()

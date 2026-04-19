@@ -83,15 +83,26 @@ class RateLimitTimeUnit(StrEnum):
 class RateLimitConfig(BaseModel):
     """API rate limiting configuration.
 
-    Supports two tiers stacked around the auth middleware:
+    Three tiers stacked around the auth middleware:
 
-    - **Unauthenticated**: applied before auth, keyed by client IP.
-    - **Authenticated**: applied after auth, keyed by user ID.
+    - **IP floor** (outermost, un-gated): keyed by client IP, applies
+      to every request -- including ones the auth middleware rejects
+      with 401.  Guards against flood attacks that burn auth-validation
+      cycles on protected endpoints with forged tokens.
+    - **Unauthenticated** (middle, only when ``scope["user"]`` is
+      ``None``): keyed by client IP, aggressive cap on brute-force
+      against login/setup/logout.
+    - **Authenticated** (innermost, only when ``scope["user"]`` is
+      set): keyed by user ID, generous cap for normal dashboard use.
 
-    This prevents multi-user deployments behind a shared gateway
-    from collectively exhausting a single per-IP budget.
+    Keying authenticated limits by user ID instead of IP prevents
+    multi-user deployments behind a shared gateway or NAT from
+    collectively exhausting a single per-IP budget.
 
     Attributes:
+        floor_max_requests: Maximum total requests per time window
+            (by IP) across the whole API.  Catches traffic that
+            auth_middleware rejects before the unauth tier sees it.
         unauth_max_requests: Maximum unauthenticated requests per
             time window (by IP).
         auth_max_requests: Maximum authenticated requests per time
@@ -103,6 +114,16 @@ class RateLimitConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
+    floor_max_requests: int = Field(
+        default=300,
+        ge=1,
+        description=(
+            "Maximum total requests per time window (by IP) across"
+            " the whole API, including requests rejected by the auth"
+            " middleware.  Defense-in-depth against floods of invalid"
+            " auth attempts on protected endpoints."
+        ),
+    )
     unauth_max_requests: int = Field(
         default=20,
         ge=1,

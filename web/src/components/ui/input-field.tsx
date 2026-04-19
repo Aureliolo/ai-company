@@ -34,18 +34,27 @@ interface TextareaProps extends BaseFieldProps, Omit<React.ComponentProps<'texta
 export type InputFieldProps = InputProps | TextareaProps
 
 export function InputField(props: InputFieldProps) {
+  // Single destructuring handles both variants.  ``leadingIcon`` and
+  // ``trailingElement`` only exist on ``InputProps``; destructuring them
+  // in the signature means they are **always** stripped from ``domProps``
+  // (which spreads onto the HTML element), so a future addition to
+  // ``InputProps`` cannot silently leak onto the DOM.
   const {
-    label, error, hint, multiline, className, ref, onValueChange, onChange,
-    ...rest
-  } = props
-  const leadingIcon = !multiline ? (props as InputProps).leadingIcon : undefined
-  const trailingElement = !multiline
-    ? (props as InputProps).trailingElement
-    : undefined
-  // Strip icon props from the spread so they don't leak onto the DOM element.
-  const domProps = rest as Record<string, unknown>
-  delete domProps.leadingIcon
-  delete domProps.trailingElement
+    label,
+    error,
+    hint,
+    multiline,
+    className,
+    ref,
+    onValueChange,
+    onChange,
+    leadingIcon,
+    trailingElement,
+    ...domProps
+  } = props as InputFieldProps & {
+    leadingIcon?: React.ReactNode
+    trailingElement?: React.ReactNode
+  }
   const id = useId()
   const errorId = `${id}-error`
   const hintId = `${id}-hint`
@@ -76,7 +85,9 @@ export function InputField(props: InputFieldProps) {
     <div className="flex flex-col gap-1.5">
       <label htmlFor={id} className="text-sm font-medium text-foreground">
         {label}
-        {props.required && <span className="ml-0.5 text-danger">*</span>}
+        {Boolean((domProps as { required?: boolean }).required) && (
+          <span className="ml-0.5 text-danger">*</span>
+        )}
       </label>
       {multiline ? (
         <textarea
@@ -87,7 +98,7 @@ export function InputField(props: InputFieldProps) {
           aria-describedby={hint && !hasError ? hintId : undefined}
           className={cn(inputClasses, 'resize-y')}
           onChange={handleTextareaChange}
-          {...(domProps as Omit<React.ComponentProps<'textarea'>, 'onChange'>)}
+          {...(domProps as Omit<React.ComponentProps<'textarea'>, 'id' | 'onChange'>)}
         />
       ) : (
         <div className="relative">
@@ -107,7 +118,7 @@ export function InputField(props: InputFieldProps) {
             aria-describedby={hint && !hasError ? hintId : undefined}
             className={inputClasses}
             onChange={handleInputChange}
-            {...(domProps as Omit<React.ComponentProps<'input'>, 'onChange'>)}
+            {...(domProps as Omit<React.ComponentProps<'input'>, 'id' | 'onChange'>)}
           />
           {trailingElement && (
             <span className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center">

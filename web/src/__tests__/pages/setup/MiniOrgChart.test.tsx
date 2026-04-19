@@ -48,8 +48,10 @@ describe('MiniOrgChart', () => {
     )
     expect(texts).toContain('Quality Assurance')
     expect(texts).toContain('Creative Marketing')
-    // No truncation ellipsis.
-    for (const t of texts) expect(t).not.toMatch(/\.\.$/)
+    // No truncation ellipsis -- covers both the ASCII `...` form
+    // and the Unicode ellipsis `\u2026`, so a regression that
+    // switches to either style would still fail.
+    for (const t of texts) expect(t).not.toMatch(/(?:\.{2,}|\u2026)$/)
   })
 
   it('marks the highest-seniority agent in each department as the head', () => {
@@ -70,7 +72,7 @@ describe('MiniOrgChart', () => {
     expect(headTitles[0]).toContain('lead')
   })
 
-  it('handles agents with null level gracefully (no crash, no head)', () => {
+  it('when all agents have null level, still picks exactly one head (first-encountered tiebreak)', () => {
     const { container } = render(
       <MiniOrgChart
         agents={[
@@ -83,8 +85,9 @@ describe('MiniOrgChart', () => {
     // Both agent titles present (rendered without level suffix).
     expect(titles.some((t) => t.startsWith('Unlevelled A'))).toBe(true)
     expect(titles.some((t) => t.startsWith('Unlevelled B'))).toBe(true)
-    // pickHead still designates one as head even when all levels are null
-    // (first encountered wins via `levelRank === -1` tie-break).
+    // ``pickHead`` still designates one agent as head even when all
+    // levels are null: the first agent encountered in the insertion
+    // order becomes the head via the ``levelRank === -1`` tiebreak.
     expect(titles.filter((t) => t.includes('(head)'))).toHaveLength(1)
   })
 

@@ -1291,16 +1291,18 @@ def _raise_runtime_error(_config: object) -> None:
 class TestBuildMiddleware:
     """Tests for the tiered rate-limit middleware stack."""
 
-    def test_middleware_stack_has_five_entries(
+    def test_middleware_stack_has_six_entries(
         self,
         root_config: Any,
     ) -> None:
         from synthorg.api.app import _build_middleware
 
         mw = _build_middleware(root_config.api)
-        assert len(mw) == 5
+        # Six layers (outside-in): ip_floor, auth_mw, csrf_mw,
+        # unauth_rl, RequestLoggingMiddleware, auth_rl.
+        assert len(mw) == 6
 
-    def test_unauth_and_auth_rate_limiters_have_distinct_stores(
+    def test_three_rate_limiters_have_distinct_stores(
         self,
         root_config: Any,
     ) -> None:
@@ -1311,24 +1313,23 @@ class TestBuildMiddleware:
         from synthorg.api.app import _build_middleware
 
         mw = _build_middleware(root_config.api)
-        # First and last entries are the rate-limit DefineMiddleware
-        # wrappers. Extract the underlying config from kwargs.
         rl_configs: list[LsRL] = [
             entry.kwargs["config"]
             for entry in mw
             if hasattr(entry, "kwargs") and isinstance(entry.kwargs.get("config"), LsRL)
         ]
         stores = [cfg.store for cfg in rl_configs]
-        assert len(stores) == 2
-        assert stores[0] != stores[1]
-        assert stores[0] == "rate_limit_unauth"
-        assert stores[1] == "rate_limit_auth"
+        assert stores == [
+            "rate_limit_floor",
+            "rate_limit_unauth",
+            "rate_limit_auth",
+        ]
 
-    def test_sandwich_ordering(
+    def test_middleware_ordering(
         self,
         root_config: Any,
     ) -> None:
-        """Unauth RL wraps auth middleware which wraps auth RL."""
+        """floor → auth → unauth → auth-rl (with csrf + logging between)."""
         from litestar.middleware.rate_limit import (
             RateLimitConfig as LsRL,
         )
@@ -1337,28 +1338,40 @@ class TestBuildMiddleware:
 
         mw = _build_middleware(root_config.api)
 
-        # Find indices of each layer.
+        floor_idx: int | None = None
         unauth_idx: int | None = None
         auth_mw_idx: int | None = None
         auth_rl_idx: int | None = None
 
         for i, entry in enumerate(mw):
-            if hasattr(entry, "kwargs"):
-                cfg = entry.kwargs.get("config")
-                if isinstance(cfg, LsRL):
-                    if cfg.store and "unauth" in cfg.store:
-                        unauth_idx = i
-                    elif cfg.store and "auth" in cfg.store:
-                        auth_rl_idx = i
-            elif isinstance(entry, type):
-                # Auth middleware is a class, not a DefineMiddleware
+            cfg = (
+                getattr(entry, "kwargs", {}).get("config")
+                if hasattr(entry, "kwargs")
+                else None
+            )
+            if isinstance(cfg, LsRL):
+                # Match by explicit store name so the substring check
+                # isn't ambiguous ("auth" is a suffix of "unauth").
+                if cfg.store == "rate_limit_floor":
+                    floor_idx = i
+                elif cfg.store == "rate_limit_unauth":
+                    unauth_idx = i
+                elif cfg.store == "rate_limit_auth":
+                    auth_rl_idx = i
+            elif isinstance(entry, type) and "Auth" in entry.__name__:
+                # Multiple middleware classes are in the stack
+                # (auth, csrf, RequestLogging); pick the one whose
+                # name contains "Auth".
                 auth_mw_idx = i
 
+        assert floor_idx is not None, "floor rate limiter not found"
         assert unauth_idx is not None, "unauth rate limiter not found"
         assert auth_mw_idx is not None, "auth middleware not found"
         assert auth_rl_idx is not None, "auth rate limiter not found"
-        # Sandwich: unauth RL < auth MW < auth RL
-        assert unauth_idx < auth_mw_idx < auth_rl_idx
+        # Floor runs first so invalid-auth floods still hit a cap;
+        # auth runs before the user-gated tiers so scope["user"] is
+        # populated for check_throttle_handler.
+        assert floor_idx < auth_mw_idx < unauth_idx < auth_rl_idx
 
 
 @pytest.mark.unit

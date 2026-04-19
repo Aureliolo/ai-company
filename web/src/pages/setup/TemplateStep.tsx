@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/ui/empty-state'
 import { InputField } from '@/components/ui/input-field'
@@ -298,14 +299,15 @@ export function TemplateStep() {
             leadingIcon={<Search className="size-3.5" />}
             trailingElement={
               searchQuery ? (
-                <button
+                <Button
                   type="button"
+                  variant="ghost"
+                  size="icon-xs"
                   onClick={() => setSearchQuery('')}
-                  className="text-muted-foreground hover:text-foreground"
                   aria-label="Clear search"
                 >
                   <X className="size-3.5" aria-hidden="true" />
-                </button>
+                </Button>
               ) : undefined
             }
           />

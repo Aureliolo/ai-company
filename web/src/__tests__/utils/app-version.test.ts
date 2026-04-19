@@ -28,6 +28,22 @@ const server = setupServer(
   }),
 )
 
+/**
+ * Sentinel error thrown from the stubbed ``window.location.reload`` to
+ * deterministically short-circuit ``ensureFreshAppState`` after it
+ * reaches the reload boundary.  Without this, the production code
+ * ``await new Promise(() => {})`` would hang the test forever -- the
+ * previous `Promise.race` + 50 ms timer approach was flaky under
+ * CI load (the assertions only held if logout + clear + reload all
+ * landed within the timeout).
+ */
+class ReloadSentinel extends Error {
+  constructor() {
+    super('ReloadSentinel')
+    this.name = 'ReloadSentinel'
+  }
+}
+
 describe('ensureFreshAppState', () => {
   let reloadSpy: ReturnType<typeof vi.fn>
 
@@ -43,7 +59,9 @@ describe('ensureFreshAppState', () => {
     localStorage.clear()
     sessionStorage.clear()
     logoutCalls.length = 0
-    reloadSpy = vi.fn()
+    reloadSpy = vi.fn(() => {
+      throw new ReloadSentinel()
+    })
     // Preserve href so MSW can resolve `/api/v1/auth/logout` against
     // a valid base URL -- jsdom's default `about:blank` breaks fetch
     // with "Invalid URL" on relative paths, which silently swallows
@@ -59,6 +77,7 @@ describe('ensureFreshAppState', () => {
   })
 
   afterEach(() => {
+    vi.restoreAllMocks()
     server.resetHandlers(
       http.post('/api/v1/auth/logout', ({ request }) => {
         logoutCalls.push({ credentials: request.credentials })
@@ -66,6 +85,19 @@ describe('ensureFreshAppState', () => {
       }),
     )
   })
+
+  /**
+   * Invoke ``ensureFreshAppState`` and swallow the ``ReloadSentinel``
+   * thrown from the stubbed ``reload``.  Anything else propagates so
+   * real failures still mark the test as failed.
+   */
+  async function runUntilReload(): Promise<void> {
+    try {
+      await ensureFreshAppState()
+    } catch (err) {
+      if (!(err instanceof ReloadSentinel)) throw err
+    }
+  }
 
   it('stamps the build id on first load and does not call logout or reload', async () => {
     await ensureFreshAppState()
@@ -88,13 +120,7 @@ describe('ensureFreshAppState', () => {
     localStorage.setItem('theme', 'dark')
     sessionStorage.setItem('tmp', 'value')
 
-    // ensureFreshAppState awaits a never-resolving promise after
-    // reload to keep the splash visible; race it with a setTimeout
-    // so we can assert side-effects without hanging the test.
-    await Promise.race([
-      ensureFreshAppState(),
-      new Promise((resolve) => setTimeout(resolve, 50)),
-    ])
+    await runUntilReload()
 
     expect(logoutCalls).toHaveLength(1)
     expect(logoutCalls[0]!.credentials).toBe('include')
@@ -110,10 +136,7 @@ describe('ensureFreshAppState', () => {
       http.post('/api/v1/auth/logout', () => HttpResponse.error()),
     )
 
-    await Promise.race([
-      ensureFreshAppState(),
-      new Promise((resolve) => setTimeout(resolve, 50)),
-    ])
+    await runUntilReload()
 
     expect(localStorage.getItem(STORAGE_KEY)).toBe(CURRENT_BUILD_ID)
     expect(reloadSpy).toHaveBeenCalledTimes(1)
