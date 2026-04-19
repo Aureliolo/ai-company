@@ -7,11 +7,18 @@
 > issue filed alongside this PR.
 >
 > **Decision (TL;DR)**: keep `axios` (XHR adapter) in production and in
-> tests. Accept a **structural ceiling of 50 async leaks** in the Vitest
-> suite and enforce it with a CI gate. The remaining 50 leaks are inside
-> MSW 2.x's own interceptor stack and cannot be eliminated without
-> replacing MSW itself, which would regress PR #1462's Storybook +
-> typed-handler ergonomics that just landed.
+> tests. Accept a **structural floor of 50 async leaks** locally and a
+> CI ceiling of 70 (CI measures ~64 on ubuntu-latest due to platform
+> event-loop timing; the +6 buffer absorbs run-to-run variance). The
+> remaining 50 local leaks are inside MSW 2.x's own interceptor stack
+> and cannot be eliminated without replacing MSW itself, which would
+> regress PR #1462's Storybook + typed-handler ergonomics that just
+> landed. This PR's other load-bearing change is the CI parser itself:
+> the prior `grep -oE 'Leaks +[0-9]+ leaks'` never matched Vitest's
+> ANSI-colored output, so the gate always reported 0 leaks via the
+> `|| echo 0` fallback. The new parser runs Vitest under `NO_COLOR=1`,
+> anchors the match to the full line, and fails closed if the summary
+> line is absent.
 
 ## Why this document exists
 
@@ -53,7 +60,7 @@ are directly comparable.
 | # | Approach | Leaks | Tests pass | Notes |
 |---|---|---:|---:|---|
 | 0 | Main branch (baseline) | 69 | 2592 / 2592 | Status quo. |
-| 1 | A1 -- sync `document.cookie` shim on `Document.prototype` in `test-setup.tsx` | **50** | 2592 / 2592 | **Shipped.** 28% reduction. Eliminates all 17 `getCsrfToken`/`getAllDocumentCookies`-path tough-cookie leaks. |
+| 1 | A1 -- sync `document.cookie` shim on `Document.prototype` in `test-setup.tsx` | **50** | 2592 / 2592 | **Shipped.** 28% reduction (69 -> 50, delta 19). Eliminates the 17 `getCsrfToken`/`getAllDocumentCookies`-path tough-cookie leaks plus 2 adjacent tough-cookie frames that the shim also short-circuits. |
 | 2 | A1 + A3 -- monkey-patch `XMLHttpRequest.prototype.send` to track pending XHRs, abort them in `afterEach` + microtask drain | 50 | 2592 / 2592 | 0 delta. The leaks are from *completed* XHRs; draining the live set does not reach them. |
 | 3 | A1 + A5 -- microtask/`setImmediate` drain in `afterEach` | 50 | 2592 / 2592 | 0 delta. Leaks survive `Promise.resolve(setImmediate)` collection. |
 | 4 | Phase B -- replace jsdom with happy-dom (`vitest.config.ts` `environment: 'happy-dom'` + `npm install happy-dom`) | 67 | 2582 / 2592 (10 fail) | **Worse.** happy-dom introduces a new leak category via `FetchBodyUtility.toReadableStream` and does not remove MSW's XHR-interceptor path. |
@@ -100,8 +107,8 @@ category. Net: worse.
 The only path to 0 that the investigation identified is **replacing
 MSW 2.x** with a mock layer that does not use
 `@mswjs/interceptors` -- e.g. `nock` (intercepts at `http.request`)
-or plain axios adapter mocks. That is rejected as out-of-scope: PR
-#1462 just landed the MSW migration and it is load-bearing for
+or plain axios adapter mocks. That is rejected as out-of-scope:
+PR `#1462` just landed the MSW migration and it is load-bearing for
 Storybook (`msw-storybook-addon`) and for the typed handler helpers
 (`successFor<typeof endpoint>`, `paginatedFor<typeof endpoint>`,
 per-domain `buildEntity()` builders) that give us compile-time drift
@@ -142,10 +149,18 @@ best-in-class choice for this stack as of 2026-04-19.
 
 ## What ships in this PR
 
-1. `web/src/test-setup.tsx` -- A1 cookie shim (already landed).
-2. `.github/workflows/ci.yml` -- `MAX_ASYNC_LEAKS` ceiling ratcheted
-   from 69 to 50; strict parser fails the job if Vitest's
-   `Leaks N leaks` summary line is missing (format-drift guard).
+1. `web/src/test-setup.tsx` -- A1 cookie shim with a module-scoped
+   `cookieJar` that is wiped and re-seeded with the CSRF token in the
+   global `afterEach`, delete-style writes (`Max-Age=0` or a past
+   `Expires=`) remove the entry so `utils/app-version.ts::
+   clearClientVisibleCookies` behaves like the browser, and prototype
+   keys (`__proto__`, `constructor`) are rejected as defense-in-depth.
+2. `.github/workflows/ci.yml` -- `MAX_ASYNC_LEAKS` ceiling set to 70
+   (CI baseline ~64 with a small buffer; the legacy parser silently
+   reported 0 because `grep -oE 'Leaks +[0-9]+ leaks'` never matched
+   ANSI-colored output); strict anchored parser fails the job if
+   Vitest's `Leaks N leaks` summary line is missing or malformed,
+   `NO_COLOR=1` is set so the line is plain ASCII.
 3. `docs/design/web-http-adapter.md` (this file).
 4. Follow-up issue #1468 -- "replace MSW 2.x to eliminate the
    remaining 50 Vitest async leaks". Scope, acceptance criteria, and
