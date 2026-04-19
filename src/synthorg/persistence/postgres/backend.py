@@ -14,6 +14,7 @@ backend: callers get Pydantic models back either way.
 """
 
 import asyncio
+import contextlib
 import math
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
@@ -369,7 +370,20 @@ class PostgresPersistenceBackend:
                 )
                 self._pool = pool
                 self._create_repositories()
+            except MemoryError, RecursionError:
+                # Fatal: still best-effort-close the pool to reclaim
+                # connections before re-raising.
+                if pool is not None:
+                    with contextlib.suppress(Exception):
+                        await pool.close()
+                self._clear_state()
+                raise
             except (psycopg.Error, OSError, TimeoutError) as exc:
+                await self._cleanup_failed_connect(exc, pool)
+            except Exception as exc:
+                # Any other failure after ``pool.open()`` (e.g. repository
+                # construction) still needs the pool closed or we leak
+                # connections until GC.
                 await self._cleanup_failed_connect(exc, pool)
 
             logger.info(

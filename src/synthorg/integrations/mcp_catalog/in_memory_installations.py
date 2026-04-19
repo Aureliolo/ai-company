@@ -20,7 +20,20 @@ logger = get_logger(__name__)
 
 
 class InMemoryMcpInstallationRepository:
-    """In-memory implementation of :class:`McpInstallationRepository`."""
+    """In-memory implementation of :class:`McpInstallationRepository`.
+
+    Process-local fallback used when no persistence backend is
+    configured (headless test apps, dev without a database).  Emits
+    the same observability events as the durable backends so audit
+    logs stay consistent regardless of which repository is wired.
+    State is lost on process exit; a persistence backend is the source
+    of truth in production.
+
+    Attributes:
+        _store: In-memory mapping from ``catalog_entry_id`` to
+            :class:`McpInstallation`; the sole backing store for this
+            repo implementation.
+    """
 
     def __init__(self) -> None:
         self._store: dict[str, McpInstallation] = {}

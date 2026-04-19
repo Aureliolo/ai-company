@@ -158,7 +158,11 @@ class PostgresLockoutRepository:
     async def record_success(self, username: str) -> None:
         """Clear failure count on successful login."""
         username = username.lower()
-        async with self._pool.connection() as conn, conn.cursor() as cur:
+        async with (
+            self._pool.connection() as conn,
+            conn.transaction(),
+            conn.cursor() as cur,
+        ):
             await cur.execute(
                 "DELETE FROM login_attempts WHERE username = %s",
                 (username,),
@@ -174,7 +178,11 @@ class PostgresLockoutRepository:
     async def cleanup_expired(self) -> int:
         """Remove old attempt records outside all windows."""
         cutoff = datetime.now(UTC) - self._window * 2
-        async with self._pool.connection() as conn, conn.cursor() as cur:
+        async with (
+            self._pool.connection() as conn,
+            conn.transaction(),
+            conn.cursor() as cur,
+        ):
             await cur.execute(
                 "DELETE FROM login_attempts WHERE attempted_at < %s",
                 (cutoff,),

@@ -112,7 +112,13 @@ class PersistenceComponentHandler:
             await asyncio.to_thread(
                 self._atomic_swap, self._db_path, source_file, bak_path
             )
-        except ComponentBackupError:
+        except ComponentBackupError as exc:
+            logger.error(
+                BACKUP_COMPONENT_FAILED,
+                component=self.component.value,
+                error=str(exc),
+                exc_info=True,
+            )
             raise
         except Exception as exc:
             logger.error(
@@ -204,12 +210,16 @@ class PersistenceComponentHandler:
                 msg = "Restored database failed integrity check"
                 raise ComponentBackupError(msg)  # noqa: TRY301
         except Exception:
-            # Rollback: restore the original
+            # Rollback: restore the original if we had one; otherwise wipe
+            # the partially-copied (invalid) file so no bad DB remains.
             if bak_path.exists():
                 if db_path.exists():
                     db_path.unlink()
                 PersistenceComponentHandler._remove_sidecars(db_path)
                 shutil.move(bak_path, db_path)
+            elif db_path.exists():
+                db_path.unlink()
+                PersistenceComponentHandler._remove_sidecars(db_path)
             raise
 
         # Cleanup .bak on success

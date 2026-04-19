@@ -4,10 +4,13 @@ Persists :class:`McpInstallation` rows in the ``mcp_installations``
 table using the shared ``AsyncConnectionPool``.  Each operation
 checks out a connection via ``async with pool.connection() as conn``;
 the context manager auto-commits on clean exit.
+
+Read paths use ``psycopg.rows.dict_row`` so row access is by column
+name -- robust to accidental SELECT re-ordering.
 """
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.mcp_catalog.installations import McpInstallation
@@ -24,9 +27,28 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
+def _import_dict_row() -> Any:
+    """Lazily resolve ``psycopg.rows.dict_row`` (boundary-friendly)."""
+    from psycopg.rows import dict_row  # noqa: PLC0415
+
+    return dict_row
+
+
 def _ensure_tz(value: datetime) -> datetime:
     """Guarantee UTC tzinfo on a ``TIMESTAMPTZ`` round-trip."""
     return value if value.tzinfo else value.replace(tzinfo=UTC)
+
+
+def _row_to_installation(row: dict[str, Any]) -> McpInstallation:
+    """Deserialize a dict row into an :class:`McpInstallation`."""
+    connection_name_raw = row["connection_name"]
+    return McpInstallation(
+        catalog_entry_id=NotBlankStr(row["catalog_entry_id"]),
+        connection_name=(
+            NotBlankStr(connection_name_raw) if connection_name_raw else None
+        ),
+        installed_at=_ensure_tz(row["installed_at"]),
+    )
 
 
 class PostgresMcpInstallationRepository:
@@ -34,6 +56,7 @@ class PostgresMcpInstallationRepository:
 
     def __init__(self, pool: AsyncConnectionPool) -> None:
         self._pool = pool
+        self._dict_row = _import_dict_row()
 
     async def save(self, installation: McpInstallation) -> None:
         """Upsert an installation row (idempotent on catalog_entry_id)."""
@@ -66,7 +89,11 @@ class PostgresMcpInstallationRepository:
         catalog_entry_id: NotBlankStr,
     ) -> McpInstallation | None:
         """Fetch a single installation by catalog entry id."""
-        async with self._pool.connection() as conn, conn.cursor() as cur:
+        dict_row = self._dict_row
+        async with (
+            self._pool.connection() as conn,
+            conn.cursor(row_factory=dict_row) as cur,
+        ):
             await cur.execute(
                 """
                 SELECT catalog_entry_id, connection_name, installed_at
@@ -78,15 +105,15 @@ class PostgresMcpInstallationRepository:
             row = await cur.fetchone()
         if row is None:
             return None
-        return McpInstallation(
-            catalog_entry_id=NotBlankStr(row[0]),
-            connection_name=(NotBlankStr(row[1]) if row[1] else None),
-            installed_at=_ensure_tz(row[2]),
-        )
+        return _row_to_installation(row)
 
     async def list_all(self) -> tuple[McpInstallation, ...]:
         """List all recorded installations, oldest-first."""
-        async with self._pool.connection() as conn, conn.cursor() as cur:
+        dict_row = self._dict_row
+        async with (
+            self._pool.connection() as conn,
+            conn.cursor(row_factory=dict_row) as cur,
+        ):
             await cur.execute(
                 """
                 SELECT catalog_entry_id, connection_name, installed_at
@@ -95,14 +122,7 @@ class PostgresMcpInstallationRepository:
                 """,
             )
             rows = await cur.fetchall()
-        return tuple(
-            McpInstallation(
-                catalog_entry_id=NotBlankStr(row[0]),
-                connection_name=(NotBlankStr(row[1]) if row[1] else None),
-                installed_at=_ensure_tz(row[2]),
-            )
-            for row in rows
-        )
+        return tuple(_row_to_installation(row) for row in rows)
 
     async def delete(self, catalog_entry_id: NotBlankStr) -> bool:
         """Delete an installation.  Returns ``True`` if a row was removed."""

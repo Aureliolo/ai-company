@@ -11,6 +11,11 @@ import contextlib
 import sqlite3
 from pathlib import Path
 
+from synthorg.observability import get_logger
+from synthorg.observability.events.backup import BACKUP_COMPONENT_FAILED
+
+logger = get_logger(__name__)
+
 
 def vacuum_into(source_path: str, target_path: str) -> int:
     """Execute ``VACUUM INTO`` to produce a consistent DB copy.
@@ -53,5 +58,12 @@ def integrity_check(db_path: str) -> bool:
             result = conn.execute("PRAGMA integrity_check").fetchone()
     except (sqlite3.Error, OSError) as exc:
         msg = f"integrity_check could not run on {db_path!r}: {exc}"
+        logger.warning(
+            BACKUP_COMPONENT_FAILED,
+            component="sqlite_integrity_check",
+            db_path=db_path,
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )
         raise IntegrityCheckError(msg) from exc
     return result is not None and result[0] == "ok"

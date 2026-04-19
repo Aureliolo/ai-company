@@ -1,6 +1,5 @@
 """Postgres-backed org fact repository with MVCC (append-only log + snapshot)."""
 
-import contextlib
 import json
 import uuid
 from datetime import UTC, datetime
@@ -351,14 +350,6 @@ class PostgresOrgFactRepository:
                         "WHERE fact_id = %s",
                         (now, version, fact_id),
                     )
-        except (ValueError, OrgMemoryQueryError) as exc:
-            logger.exception(
-                ORG_MEMORY_WRITE_FAILED,
-                fact_id=fact_id,
-                error=str(exc),
-            )
-            msg = f"Failed to delete org fact: {exc}"
-            raise OrgMemoryWriteError(msg) from exc
         except Exception as exc:
             logger.exception(
                 ORG_MEMORY_WRITE_FAILED,
@@ -495,38 +486,35 @@ WITH latest_ops AS (
                PARTITION BY fact_id ORDER BY version DESC
            ) AS rn
     FROM org_facts_operation_log
-    WHERE timestamp <= %s
+    WHERE timestamp <= %(ts)s
+),
+latest_publishes AS (
+    SELECT DISTINCT ON (fact_id)
+           fact_id, content, tags, category
+    FROM org_facts_operation_log
+    WHERE operation_type = 'PUBLISH'
+      AND timestamp <= %(ts)s
+    ORDER BY fact_id, version DESC
+),
+first_publishes AS (
+    SELECT fact_id, MIN(timestamp) AS created_at
+    FROM org_facts_operation_log
+    WHERE operation_type = 'PUBLISH'
+      AND timestamp <= %(ts)s
+    GROUP BY fact_id
 )
 SELECT lo.fact_id, lo.operation_type,
-       COALESCE(lo.content,
-           (SELECT p.content FROM org_facts_operation_log p
-            WHERE p.fact_id = lo.fact_id
-              AND p.operation_type = 'PUBLISH'
-              AND p.timestamp <= %s
-            ORDER BY p.version DESC LIMIT 1)
-       ) AS content,
-       COALESCE(lo.category,
-           (SELECT p.category FROM org_facts_operation_log p
-            WHERE p.fact_id = lo.fact_id
-              AND p.operation_type = 'PUBLISH'
-              AND p.timestamp <= %s
-            ORDER BY p.version DESC LIMIT 1)
-       ) AS category,
+       COALESCE(lo.content, lp.content) AS content,
+       COALESCE(lo.category, lp.category) AS category,
        COALESCE(
            CASE WHEN lo.operation_type = 'PUBLISH' THEN lo.tags END,
-           (SELECT p.tags FROM org_facts_operation_log p
-            WHERE p.fact_id = lo.fact_id
-              AND p.operation_type = 'PUBLISH'
-              AND p.timestamp <= %s
-            ORDER BY p.version DESC LIMIT 1)
+           lp.tags
        ) AS tags,
        lo.version, lo.timestamp,
-       (SELECT MIN(timestamp)
-        FROM org_facts_operation_log
-        WHERE fact_id = lo.fact_id
-          AND operation_type = 'PUBLISH'
-          AND timestamp <= %s) AS created_at
+       fp.created_at AS created_at
 FROM latest_ops lo
+LEFT JOIN latest_publishes lp ON lp.fact_id = lo.fact_id
+LEFT JOIN first_publishes fp ON fp.fact_id = lo.fact_id
 WHERE lo.rn = 1
 ORDER BY lo.fact_id
 """
@@ -535,10 +523,7 @@ ORDER BY lo.fact_id
                 self._pool.connection() as conn,
                 conn.cursor(row_factory=dict_row) as cur,
             ):
-                await cur.execute(
-                    sql,
-                    (timestamp, timestamp, timestamp, timestamp, timestamp),
-                )
+                await cur.execute(sql, {"ts": timestamp})
                 rows = await cur.fetchall()
         except Exception as exc:
             logger.exception(
@@ -587,5 +572,4 @@ ORDER BY lo.fact_id
             fact_id=fact_id,
             count=len(result),
         )
-        _ = contextlib  # retain import for linters
         return result

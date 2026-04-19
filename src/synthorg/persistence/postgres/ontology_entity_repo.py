@@ -9,6 +9,8 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.ontology import (
     ONTOLOGY_ENTITY_DELETED,
     ONTOLOGY_ENTITY_DESERIALIZATION_FAILED,
+    ONTOLOGY_ENTITY_DUPLICATE,
+    ONTOLOGY_ENTITY_NOT_FOUND,
     ONTOLOGY_ENTITY_REGISTERED,
     ONTOLOGY_ENTITY_UPDATED,
     ONTOLOGY_SEARCH_EXECUTED,
@@ -147,6 +149,11 @@ class PostgresOntologyEntityRepository:
                 )
         except self._unique_violation as exc:
             msg = f"Entity '{entity.name}' already exists"
+            logger.warning(
+                ONTOLOGY_ENTITY_DUPLICATE,
+                entity_name=entity.name,
+                error=str(exc),
+            )
             raise OntologyDuplicateError(msg) from exc
         logger.info(
             ONTOLOGY_ENTITY_REGISTERED,
@@ -168,6 +175,7 @@ class PostgresOntologyEntityRepository:
             row = await cur.fetchone()
         if row is None:
             msg = f"Entity '{name}' not found"
+            logger.warning(ONTOLOGY_ENTITY_NOT_FOUND, entity_name=name, op="get")
             raise OntologyNotFoundError(msg)
         return self._row_to_entity(row)
 
@@ -188,6 +196,11 @@ class PostgresOntologyEntityRepository:
             )
             if cur.rowcount == 0:
                 msg = f"Entity '{entity.name}' not found"
+                logger.warning(
+                    ONTOLOGY_ENTITY_NOT_FOUND,
+                    entity_name=entity.name,
+                    op="update",
+                )
                 raise OntologyNotFoundError(msg)
         logger.info(ONTOLOGY_ENTITY_UPDATED, entity_name=entity.name)
 
@@ -200,6 +213,11 @@ class PostgresOntologyEntityRepository:
             )
             if cur.rowcount == 0:
                 msg = f"Entity '{name}' not found"
+                logger.warning(
+                    ONTOLOGY_ENTITY_NOT_FOUND,
+                    entity_name=name,
+                    op="delete",
+                )
                 raise OntologyNotFoundError(msg)
         logger.info(ONTOLOGY_ENTITY_DELETED, entity_name=name)
 

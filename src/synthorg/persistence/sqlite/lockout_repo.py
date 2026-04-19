@@ -119,20 +119,24 @@ class SQLiteLockoutRepository:
                 (username, now.isoformat(), ip_address),
             )
             cursor = await self._db.execute(
-                "SELECT COUNT(*) FROM login_attempts "
+                "SELECT COUNT(*) AS cnt FROM login_attempts "
                 "WHERE username = ? AND attempted_at >= ?",
                 (username, window_start),
             )
             row = await cursor.fetchone()
+            count = row["cnt"] if row else 0
+            now_locked = count >= self._threshold
+            if now_locked:
+                with self._locked_lock:
+                    self._locked[username] = time.monotonic() + self._duration_seconds
             await self._db.commit()
-        except BaseException:
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
             await self._db.rollback()
             raise
-        count = row[0] if row else 0
 
-        if count >= self._threshold:
-            with self._locked_lock:
-                self._locked[username] = time.monotonic() + self._duration_seconds
+        if now_locked:
             logger.warning(
                 API_AUTH_ACCOUNT_LOCKED,
                 username=username,
@@ -146,11 +150,18 @@ class SQLiteLockoutRepository:
     async def record_success(self, username: str) -> None:
         """Clear failure count on successful login."""
         username = username.lower()
-        await self._db.execute(
-            "DELETE FROM login_attempts WHERE username = ?",
-            (username,),
-        )
-        await self._db.commit()
+        await self._db.execute("BEGIN IMMEDIATE")
+        try:
+            await self._db.execute(
+                "DELETE FROM login_attempts WHERE username = ?",
+                (username,),
+            )
+            await self._db.commit()
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            await self._db.rollback()
+            raise
         with self._locked_lock:
             was_locked = self._locked.pop(username, None) is not None
         if was_locked:
@@ -162,12 +173,19 @@ class SQLiteLockoutRepository:
     async def cleanup_expired(self) -> int:
         """Remove old attempt records outside all windows."""
         cutoff = (datetime.now(UTC) - self._window * 2).isoformat()
-        cursor = await self._db.execute(
-            "DELETE FROM login_attempts WHERE attempted_at < ?",
-            (cutoff,),
-        )
-        await self._db.commit()
-        count = cursor.rowcount
+        await self._db.execute("BEGIN IMMEDIATE")
+        try:
+            cursor = await self._db.execute(
+                "DELETE FROM login_attempts WHERE attempted_at < ?",
+                (cutoff,),
+            )
+            count = cursor.rowcount
+            await self._db.commit()
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            await self._db.rollback()
+            raise
         if count:
             logger.debug(
                 API_AUTH_LOCKOUT_CLEANUP,

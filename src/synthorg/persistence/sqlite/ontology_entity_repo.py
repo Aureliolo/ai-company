@@ -11,6 +11,8 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.ontology import (
     ONTOLOGY_ENTITY_DELETED,
     ONTOLOGY_ENTITY_DESERIALIZATION_FAILED,
+    ONTOLOGY_ENTITY_DUPLICATE,
+    ONTOLOGY_ENTITY_NOT_FOUND,
     ONTOLOGY_ENTITY_REGISTERED,
     ONTOLOGY_ENTITY_UPDATED,
     ONTOLOGY_SEARCH_EXECUTED,
@@ -112,6 +114,11 @@ class SQLiteOntologyEntityRepository:
         except sqlite3.IntegrityError as exc:
             await self._db.rollback()
             msg = f"Entity '{entity.name}' already exists"
+            logger.warning(
+                ONTOLOGY_ENTITY_DUPLICATE,
+                entity_name=entity.name,
+                error=str(exc),
+            )
             raise OntologyDuplicateError(msg) from exc
         logger.info(
             ONTOLOGY_ENTITY_REGISTERED,
@@ -128,6 +135,7 @@ class SQLiteOntologyEntityRepository:
         row = await cursor.fetchone()
         if row is None:
             msg = f"Entity '{name}' not found"
+            logger.warning(ONTOLOGY_ENTITY_NOT_FOUND, entity_name=name, op="get")
             raise OntologyNotFoundError(msg)
         return self._row_to_entity(row)
 
@@ -146,8 +154,12 @@ class SQLiteOntologyEntityRepository:
             params,
         )
         if cursor.rowcount == 0:
-            await self._db.rollback()
             msg = f"Entity '{entity.name}' not found"
+            logger.warning(
+                ONTOLOGY_ENTITY_NOT_FOUND,
+                entity_name=entity.name,
+                op="update",
+            )
             raise OntologyNotFoundError(msg)
         await self._db.commit()
         logger.info(ONTOLOGY_ENTITY_UPDATED, entity_name=entity.name)
@@ -159,8 +171,8 @@ class SQLiteOntologyEntityRepository:
             {"name": name},
         )
         if cursor.rowcount == 0:
-            await self._db.rollback()
             msg = f"Entity '{name}' not found"
+            logger.warning(ONTOLOGY_ENTITY_NOT_FOUND, entity_name=name, op="delete")
             raise OntologyNotFoundError(msg)
         await self._db.commit()
         logger.info(ONTOLOGY_ENTITY_DELETED, entity_name=name)

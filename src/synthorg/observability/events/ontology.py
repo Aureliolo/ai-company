@@ -13,6 +13,12 @@ ONTOLOGY_ENTITY_UPDATED: Final[str] = "ontology.entity.updated"
 ONTOLOGY_ENTITY_DELETED: Final[str] = "ontology.entity.deleted"
 """Entity definition deleted from the backend."""
 
+ONTOLOGY_ENTITY_NOT_FOUND: Final[str] = "ontology.entity.not_found"
+"""Entity lookup failed; no row matched the requested name."""
+
+ONTOLOGY_ENTITY_DUPLICATE: Final[str] = "ontology.entity.duplicate"
+"""Entity registration rejected because the name already exists."""
+
 # ── Bootstrap ───────────────────────────────────────────────────
 
 ONTOLOGY_BOOTSTRAP_COMPLETED: Final[str] = "ontology.bootstrap.completed"
@@ -25,6 +31,11 @@ ONTOLOGY_BOOTSTRAP_ENTITY_SKIPPED: Final[str] = "ontology.bootstrap.entity_skipp
 
 ONTOLOGY_VERSION_SNAPSHOT: Final[str] = "ontology.version.snapshot"
 """Version snapshot created for an entity definition."""
+
+ONTOLOGY_VERSION_SNAPSHOT_DESERIALIZATION_FAILED: Final[str] = (
+    "ontology.version.snapshot_deserialization_failed"
+)
+"""A stored version snapshot could not be parsed back into an EntityDefinition."""
 
 # ── Config ──────────────────────────────────────────────────────
 

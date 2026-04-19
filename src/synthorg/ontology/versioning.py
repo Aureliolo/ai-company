@@ -1,9 +1,10 @@
 """Versioning integration for the ontology subsystem.
 
-Provides a factory that composes ``VersioningService[EntityDefinition]``
-on top of the persistence layer's ``SQLiteVersionRepository``.  After
-A5 consolidation the DB handle is sourced from the shared
-:class:`PersistenceBackend` rather than a standalone ontology backend.
+Provides factories that compose ``VersioningService[EntityDefinition]``
+on top of the persistence layer's version repositories (SQLite or
+Postgres).  After A5 consolidation the DB handle is sourced from the
+shared :class:`PersistenceBackend` rather than a standalone ontology
+backend; the caller picks the right factory for the active backend.
 """
 
 import json
@@ -12,21 +13,41 @@ from typing import Any
 from pydantic import ValidationError
 
 from synthorg.observability import get_logger
+from synthorg.observability.events.ontology import (
+    ONTOLOGY_VERSION_SNAPSHOT_DESERIALIZATION_FAILED,
+)
 from synthorg.ontology.errors import OntologyError
 from synthorg.ontology.models import EntityDefinition
+from synthorg.persistence.postgres.version_repo import PostgresVersionRepository
 from synthorg.persistence.sqlite.version_repo import SQLiteVersionRepository
 from synthorg.versioning.service import VersioningService
 
 logger = get_logger(__name__)
 
 
-def _safe_deserialize_snapshot(raw: str) -> EntityDefinition:
-    """Deserialize a JSON snapshot, wrapping validation errors."""
+def _safe_deserialize_snapshot_json(raw: str) -> EntityDefinition:
+    """Deserialize a JSON text snapshot, wrapping validation errors."""
     try:
         return EntityDefinition.model_validate_json(raw)
     except ValidationError as exc:
         msg = "Corrupted entity definition version snapshot"
-        logger.warning(msg, error=str(exc))
+        logger.warning(
+            ONTOLOGY_VERSION_SNAPSHOT_DESERIALIZATION_FAILED,
+            error=str(exc),
+        )
+        raise OntologyError(msg) from exc
+
+
+def _safe_deserialize_snapshot_dict(data: object) -> EntityDefinition:
+    """Deserialize a parsed JSONB snapshot, wrapping validation errors."""
+    try:
+        return EntityDefinition.model_validate(data)
+    except ValidationError as exc:
+        msg = "Corrupted entity definition version snapshot"
+        logger.warning(
+            ONTOLOGY_VERSION_SNAPSHOT_DESERIALIZATION_FAILED,
+            error=str(exc),
+        )
         raise OntologyError(msg) from exc
 
 
@@ -51,14 +72,14 @@ def create_ontology_version_repo(
         serialize_snapshot=lambda m: json.dumps(
             m.model_dump(mode="json"),
         ),
-        deserialize_snapshot=_safe_deserialize_snapshot,
+        deserialize_snapshot=_safe_deserialize_snapshot_json,
     )
 
 
 def create_ontology_versioning(
     db: Any,
 ) -> VersioningService[EntityDefinition]:
-    """Create a VersioningService for EntityDefinition.
+    """Create a SQLite-backed VersioningService for EntityDefinition.
 
     Args:
         db: An open aiosqlite connection (see above note on the type).
@@ -67,4 +88,41 @@ def create_ontology_versioning(
         A versioning service for entity definitions.
     """
     repo = create_ontology_version_repo(db)
+    return VersioningService(repo)
+
+
+def create_postgres_ontology_version_repo(
+    pool: Any,
+) -> PostgresVersionRepository[EntityDefinition]:
+    """Create a PostgresVersionRepository for EntityDefinition.
+
+    Args:
+        pool: An open ``psycopg_pool.AsyncConnectionPool`` produced by
+            the persistence backend.  Typed as ``Any`` so this module
+            stays inside the persistence boundary linter's Python-level
+            rules; the handle is forwarded straight through.
+
+    Returns:
+        A repository targeting the ``entity_definition_versions`` table.
+    """
+    return PostgresVersionRepository(
+        pool=pool,
+        table_name="entity_definition_versions",
+        serialize_snapshot=lambda m: m.model_dump(mode="json"),
+        deserialize_snapshot=_safe_deserialize_snapshot_dict,
+    )
+
+
+def create_postgres_ontology_versioning(
+    pool: Any,
+) -> VersioningService[EntityDefinition]:
+    """Create a Postgres-backed VersioningService for EntityDefinition.
+
+    Args:
+        pool: An open psycopg async connection pool (see note above).
+
+    Returns:
+        A versioning service for entity definitions.
+    """
+    repo = create_postgres_ontology_version_repo(pool)
     return VersioningService(repo)

@@ -22,11 +22,14 @@ feature goes through a repository protocol, so swapping a backend is a config
 change, and so encrypted secret backends and test fixtures are never skipped
 by a caller that reached past the abstraction.
 
-- Sanctioned exceptions: `src/synthorg/tools/database/schema_inspect.py` and
-  `src/synthorg/tools/database/sql_query.py` (agent-facing DB introspection and
-  arbitrary-SQL tools that legitimately need driver primitives).  Any new
-  exception must be added to `_ALLOWLIST` in
-  `scripts/check_persistence_boundary.py` with a justifying comment.
+- Sanctioned exceptions are limited to two code paths: the agent-facing DB
+  introspection tools (`src/synthorg/tools/database/schema_inspect.py`,
+  `src/synthorg/tools/database/sql_query.py`).  Test fixtures and conformance
+  harnesses that also need driver primitives are allowlisted inline inside
+  `_ALLOWLIST` in `scripts/check_persistence_boundary.py` -- that file is the
+  authoritative source of every approved exception, so consult it before
+  assuming a path is (or is not) covered.  Any new exception must be added
+  there with a justifying comment.
 - Every durable feature **must** define a repository protocol in
   `persistence/<domain>_protocol.py`, ship concrete implementations under
   `persistence/{sqlite,postgres}/`, and expose them on `PersistenceBackend`.
@@ -53,11 +56,24 @@ no matter which surface they hit first.
 | Postgres | Multi-user production, high-concurrency write paths | Row-level MVCC, server-side triggers | Atlas          |
 
 Repositories live under `src/synthorg/persistence/sqlite/` and
-`src/synthorg/persistence/postgres/`.  Each concrete repository implements the
-protocol in `synthorg.persistence.repositories`; application code depends on the
-protocol, not the implementation.  This makes switching backends a
+`src/synthorg/persistence/postgres/`, behind domain-scoped protocols declared
+one level up in `src/synthorg/persistence/`:
+
+| Protocol module                        | Concerns |
+|----------------------------------------|-----------|
+| `protocol.py` (`PersistenceBackend`)   | Backend aggregate: connect / disconnect, migrate, and accessors for every repository below |
+| `auth_protocol.py`                     | `SessionRepository`, `RefreshTokenRepository`, `LockoutRepository` (A1) |
+| `escalation_protocol.py`               | Conflict-resolution escalation queue (A6) |
+| `mcp_protocol.py`                      | MCP catalog installation repository (A3) |
+| `memory_protocol.py`                   | Org-memory fact repository with MVCC log + snapshot (A4) |
+| `ontology_protocol.py`                 | Ontology entity + drift-report repositories (A5) |
+| `version_repo.py`                      | Generic version-snapshot repository reused by ontology + future versioned entities |
+| `secret_backends/protocol.py`          | `SecretBackend` protocol used by the secret-backend factory (A2) |
+
+Every concrete repository implements its matching protocol; application code
+depends on the protocol, not the implementation.  Switching backends is a
 configuration change (``PersistenceConfig.backend``) rather than a code change,
-and keeps the unit-test suite backend-free so most tests stay fast and local.
+and the unit-test suite stays backend-free so most tests remain fast and local.
 
 Postgres adds server-side integrity beyond what SQLite can express: `CONSTRAINT
 TRIGGER`s enforce "exactly one CEO" and "at least one owner" invariants across

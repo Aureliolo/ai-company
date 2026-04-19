@@ -105,7 +105,12 @@ class PostgresOntologyDriftReportRepository:
         *,
         limit: int = 10,
     ) -> tuple[DriftReport, ...]:
-        """Return most recent drift reports for an entity."""
+        """Return most recent drift reports for an entity.
+
+        Ordered by ``created_at DESC`` so the result uses the
+        ``(entity_name, created_at DESC)`` index rather than a table
+        scan on ``id``.
+        """
         dict_row = self._dict_row
         async with (
             self._pool.connection() as conn,
@@ -116,7 +121,7 @@ class PostgresOntologyDriftReportRepository:
                 "recommendation, divergent_agents "
                 "FROM drift_reports "
                 "WHERE entity_name = %s "
-                "ORDER BY id DESC LIMIT %s",
+                "ORDER BY created_at DESC LIMIT %s",
                 (entity_name, limit),
             )
             rows = await cur.fetchall()
@@ -127,20 +132,29 @@ class PostgresOntologyDriftReportRepository:
         *,
         limit: int = 100,
     ) -> tuple[DriftReport, ...]:
-        """Return the latest drift report for each entity."""
+        """Return the latest drift report for each entity.
+
+        Uses ``DISTINCT ON (entity_name)`` against the
+        ``(entity_name, created_at DESC)`` index so the per-entity
+        latest pick is O(#entities) rather than the previous
+        correlated ``MAX(id)`` subquery (O(n log n)).
+        """
         dict_row = self._dict_row
         async with (
             self._pool.connection() as conn,
             conn.cursor(row_factory=dict_row) as cur,
         ):
             await cur.execute(
-                "SELECT entity_name, divergence_score, canonical_version, "
-                "recommendation, divergent_agents "
-                "FROM drift_reports dr "
-                "WHERE id = ("
-                "  SELECT MAX(id) FROM drift_reports "
-                "  WHERE entity_name = dr.entity_name"
+                "WITH latest_per_entity AS ("
+                "  SELECT DISTINCT ON (entity_name) "
+                "    entity_name, divergence_score, canonical_version, "
+                "    recommendation, divergent_agents "
+                "  FROM drift_reports "
+                "  ORDER BY entity_name, created_at DESC"
                 ") "
+                "SELECT entity_name, divergence_score, canonical_version, "
+                "       recommendation, divergent_agents "
+                "FROM latest_per_entity "
                 "ORDER BY divergence_score DESC LIMIT %s",
                 (limit,),
             )

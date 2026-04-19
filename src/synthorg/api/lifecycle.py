@@ -213,6 +213,19 @@ async def _init_persistence(
         )
         raise
 
+    # Bind the real MCP installations repository now that persistence
+    # is connected.  ``create_app`` intentionally left this slot empty
+    # when a persistence backend was configured so the in-memory stub
+    # would not survive startup as a shadow repo.
+    if not app_state.has_mcp_installations_repo:
+        try:
+            app_state.set_mcp_installations_repo(persistence.mcp_installations)
+        except Exception:
+            logger.exception(
+                API_APP_STARTUP,
+                error="Failed to wire persistence-backed MCP installations repo",
+            )
+
 
 def _reset_if_tasks_dead(  # noqa: PLR0911
     obj: object,

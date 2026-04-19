@@ -1,2 +1,14 @@
 # Default owner for all files
 * @Aureliolo
+
+# Persistence boundary -- anything that imports aiosqlite / psycopg / sqlite3
+# or ships raw SQL must go through ``src/synthorg/persistence/``. The rules
+# below give the persistence layer and its enforcement machinery explicit
+# review guardrails per issue #1457's acceptance checklist, even while the
+# project is single-maintainer.
+src/synthorg/persistence/           @Aureliolo
+src/synthorg/**/*sqlite*            @Aureliolo
+src/synthorg/**/*postgres*          @Aureliolo
+scripts/check_persistence_boundary.py @Aureliolo
+docs/design/persistence.md          @Aureliolo
+docs/guides/persistence-migrations.md @Aureliolo

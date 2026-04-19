@@ -24,6 +24,8 @@ from synthorg.memory.org.models import (
 from synthorg.memory.org.store import OrgFactStore  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.org_memory import (
+    ORG_MEMORY_BACKEND_CONNECTED,
+    ORG_MEMORY_BACKEND_DISCONNECTED,
     ORG_MEMORY_NOT_CONNECTED,
     ORG_MEMORY_POLICIES_LISTED,
     ORG_MEMORY_QUERY_COMPLETE,
@@ -73,10 +75,18 @@ class HybridPromptRetrievalBackend:
         store here would double-close it on shutdown.
         """
         self._connected = True
+        logger.info(
+            ORG_MEMORY_BACKEND_CONNECTED,
+            backend="hybrid_prompt_retrieval",
+        )
 
     async def disconnect(self) -> None:
         """Release the backend without touching the shared store."""
         self._connected = False
+        logger.info(
+            ORG_MEMORY_BACKEND_DISCONNECTED,
+            backend="hybrid_prompt_retrieval",
+        )
 
     async def health_check(self) -> bool:
         """Return the local connection flag.

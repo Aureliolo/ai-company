@@ -182,22 +182,14 @@ tweak.
 → Expected during the squash procedure (step 2 deletes it).  Run
 step 5 to regenerate.
 
-**Pre-push `persistence-boundary` hook fires on a legitimate agent
-tool**
-→ Add the file path to `_ALLOWLIST` in
-`scripts/check_persistence_boundary.py` with a comment explaining
-why the exception is justified.  Surface the diff to a reviewer --
-the boundary is the line you are cutting.
-
-**Pre-push `persistence-boundary` hook fires on a one-off test
-fixture**
-→ Prefer the inline marker with a justification over an allowlist
-entry.  Allowlist grows silently; inline markers are per-line
-auditable.
+**Pre-push `persistence-boundary` hook fires**
+→ Legitimate agent tool: add the path to `_ALLOWLIST` in
+`scripts/check_persistence_boundary.py` with a justifying comment
+and surface the diff to a reviewer.  One-off test fixture: prefer
+the inline `# lint-allow: persistence-boundary -- <reason>` marker
+(per-line auditable) over growing the allowlist silently.
 
 ---
 
-Referenced from:
-- `CLAUDE.md` (Persistence Boundary MANDATORY)
-- `docs/design/persistence.md`
-- The header comment of every revision file added post-squash.
+Referenced from `CLAUDE.md`, `docs/design/persistence.md`, and the
+header comment of every revision file added post-squash.

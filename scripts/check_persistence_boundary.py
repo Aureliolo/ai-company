@@ -264,9 +264,36 @@ def main() -> int:
         default=["src/synthorg", "tests"],
         help="Roots to scan (relative to repo root).",
     )
+    parser.add_argument(
+        "--repo-root",
+        type=Path,
+        default=None,
+        help=(
+            "Project root to anchor path resolution against.  Defaults to "
+            "the ancestor directory of this script; pass "
+            "${{ github.workspace }} in CI to remove all ambiguity."
+        ),
+    )
     args = parser.parse_args()
 
-    project_root = Path(__file__).resolve().parent.parent
+    default_root = Path(__file__).resolve().parent.parent
+    if args.repo_root is not None:
+        try:
+            project_root = args.repo_root.resolve(strict=True)
+        except OSError as exc:
+            print(
+                f"--repo-root not accessible: {args.repo_root} ({exc})",
+                file=sys.stderr,
+            )
+            return 2
+        if not project_root.is_dir():
+            print(
+                f"--repo-root must be a directory: {project_root}",
+                file=sys.stderr,
+            )
+            return 2
+    else:
+        project_root = default_root
     roots = [Path(p) for p in args.paths]
     for root in roots:
         if _resolve_root(root, project_root) is None:

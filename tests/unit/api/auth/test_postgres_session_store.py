@@ -106,19 +106,38 @@ def test_postgres_session_store_implements_protocol() -> None:
 # -- Dispatcher ------------------------------------------------------
 
 
-def test_build_session_store_routes_async_pool_to_postgres() -> None:
-    """After A1 consolidation, dispatcher tests are obsolete.
+def test_concrete_stores_expose_protocol_shape() -> None:
+    """Sanity: both concrete stores structurally satisfy ``SessionStore``.
 
-    Backend-type selection now happens in each persistence backend's
-    ``connect()`` method (it knows its own handle type), so the
-    dispatcher triplet that previously lived in ``api/lifecycle`` has
-    been removed.  Coverage lives in the persistence conformance
-    suite against both SQLite and Postgres backends.
+    After A1 consolidation the dispatcher that used to branch on
+    handle type is gone; backend-type selection now happens inside
+    each persistence backend's ``connect()``.  Cross-backend
+    behaviour is covered by ``tests/conformance/persistence``; this
+    test just guards against the two classes drifting away from the
+    shared protocol (e.g. a renamed or dropped method).
     """
-    # Smoke check: both concrete classes still import cleanly from
-    # their new persistence-layer locations.
-    assert PostgresSessionStore is not None
-    assert SqliteSessionStore is not None
+    pg_pool = MagicMock()
+    sqlite_db = MagicMock()
+    pg_store = PostgresSessionStore(pg_pool)
+    sqlite_store = SqliteSessionStore(sqlite_db)
+    assert isinstance(pg_store, SessionStore)
+    assert isinstance(sqlite_store, SessionStore)
+    # Every SessionStore method must exist on both concretes (catches a
+    # refactor accident where one silently loses a method via alias).
+    for method_name in (
+        "load_revoked",
+        "create",
+        "get",
+        "list_by_user",
+        "list_all",
+        "revoke",
+        "revoke_all_for_user",
+        "enforce_session_limit",
+        "is_revoked",
+        "cleanup_expired",
+    ):
+        assert callable(getattr(pg_store, method_name)), method_name
+        assert callable(getattr(sqlite_store, method_name)), method_name
 
 
 # -- Happy-path SQL shape (one test per method) ----------------------

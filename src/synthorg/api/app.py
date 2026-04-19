@@ -1824,36 +1824,47 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
             exc_info=True,
         )
 
-    # MCP installations repo: SQLite-backed when persistence is
-    # already connected and exposes an aiosqlite handle, otherwise
-    # an in-memory stub that keeps install/uninstall callable (so the
-    # endpoint works in tests and dev without a database). The merged
-    # MCPConfig is stitched at bridge startup time via
-    # ``synthorg.integrations.mcp_catalog.install.merge_installed_servers``.
+    # MCP installations repo: when a persistence backend is configured,
+    # we leave this slot empty at ``create_app`` time and let
+    # ``_init_persistence`` bind the real repo AFTER
+    # ``persistence.connect()`` completes.  When no persistence is
+    # configured at all (headless test apps, dev without a DB), fall
+    # back to the in-memory stub so install/uninstall endpoints stay
+    # callable.
     #
     # NB: ``create_app`` runs synchronously on every test that builds a
     # Litestar app, so we MUST NOT call into code that raises on an
-    # unconnected backend or captures a traceback per miss. Both are
-    # hot-path regressions at suite scale. Check ``is_connected`` up
-    # front and fall through silently to in-memory otherwise.
+    # unconnected backend or captures a traceback per miss -- both are
+    # hot-path regressions at suite scale.
     try:
-        from synthorg.integrations.mcp_catalog.in_memory_installations import (  # noqa: PLC0415
-            InMemoryMcpInstallationRepository,
-        )
-
         if persistence is not None and getattr(persistence, "is_connected", False):
+            # Already connected (rare; some tests pre-connect).
             mcp_installations_repo = persistence.mcp_installations
             logger.info(
                 API_SERVICE_AUTO_WIRED,
                 service="mcp_installations_repo",
                 backend=type(persistence).__name__,
             )
-        else:
+        elif persistence is None:
+            from synthorg.integrations.mcp_catalog.in_memory_installations import (  # noqa: PLC0415
+                InMemoryMcpInstallationRepository,
+            )
+
             mcp_installations_repo = InMemoryMcpInstallationRepository()
             logger.debug(
                 API_SERVICE_AUTO_WIRED,
                 service="mcp_installations_repo",
                 backend="in_memory",
+            )
+        else:
+            # Persistence configured but not yet connected: defer wiring
+            # to ``_init_persistence`` so we pick up the real repository
+            # (SQLite / Postgres) after ``persistence.connect()``.
+            mcp_installations_repo = None
+            logger.debug(
+                API_SERVICE_AUTO_WIRED,
+                service="mcp_installations_repo",
+                backend="deferred_until_persistence_connected",
             )
     except MemoryError, RecursionError:
         raise
