@@ -200,8 +200,16 @@ class PostgresLockoutRepository:
             )
 
     async def cleanup_expired(self) -> int:
-        """Remove old attempt records outside all windows."""
-        cutoff = datetime.now(UTC) - self._window * 2
+        """Remove old attempt records outside the recovery horizon.
+
+        Retention is ``window + duration`` so
+        :meth:`load_locked`, which scans back by the same interval,
+        can always rehydrate every lock that is still active at
+        startup.  A shorter retention would silently un-lock users
+        whose lockouts are still in effect but whose attempt rows
+        were pruned.
+        """
+        cutoff = datetime.now(UTC) - (self._window + self._duration)
         async with (
             self._pool.connection() as conn,
             conn.transaction(),

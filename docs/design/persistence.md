@@ -22,14 +22,17 @@ feature goes through a repository protocol, so swapping a backend is a config
 change, and so encrypted secret backends and test fixtures are never skipped
 by a caller that reached past the abstraction.
 
-- Sanctioned exceptions are limited to two code paths: the agent-facing DB
+- Sanctioned exceptions cover three categories: (1) the two agent-facing DB
   introspection tools (`src/synthorg/tools/database/schema_inspect.py`,
-  `src/synthorg/tools/database/sql_query.py`).  Test fixtures and conformance
-  harnesses that also need driver primitives are allowlisted inline inside
-  `_ALLOWLIST` in `scripts/check_persistence_boundary.py` -- that file is the
-  authoritative source of every approved exception, so consult it before
-  assuming a path is (or is not) covered.  Any new exception must be added
-  there with a justifying comment.
+  `src/synthorg/tools/database/sql_query.py`); (2) security/scanning
+  utilities that inspect user-supplied SQL, such as
+  `src/synthorg/security/rules/destructive_op_detector.py`, whose detection
+  payload *is* DDL keyword strings; and (3) test fixtures and conformance
+  harnesses that hold driver primitives for cross-subsystem setup.  The
+  authoritative list lives in `_ALLOWLIST` inside
+  `scripts/check_persistence_boundary.py` -- consult it before assuming a
+  path is (or is not) covered.  Any new exception must be added there with
+  a justifying comment.
 - Every durable feature **must** define a repository protocol in
   `persistence/<domain>_protocol.py`, ship concrete implementations under
   `persistence/{sqlite,postgres}/`, and expose them on `PersistenceBackend`.

@@ -825,10 +825,16 @@ class SQLitePersistenceBackend:
         (``_locked``) on the auth hot path.  Returning a fresh instance
         on every call would reset that cache and silently "unlock"
         every user.  The cache is cleared on ``disconnect`` via
-        ``_clear_state``.
+        ``_clear_state``.  The shared write lock is passed through so
+        lockout transactions serialize with other repositories writing
+        to the same aiosqlite connection.
         """
         if self._lockouts is None:
-            self._lockouts = SQLiteLockoutRepository(self.get_db(), auth_config)
+            self._lockouts = SQLiteLockoutRepository(
+                self.get_db(),
+                auth_config,
+                write_lock=self._shared_write_lock,
+            )
         return self._lockouts
 
     def build_escalations(

@@ -10,6 +10,7 @@ so horizontally-scaled deployments would see per-node drift.
 Multi-instance deployments require a shared lock store.
 """
 
+import asyncio
 import threading
 import time
 from datetime import UTC, datetime, timedelta
@@ -33,12 +34,21 @@ class SQLiteLockoutRepository:
     Args:
         db: Open aiosqlite connection with ``row_factory`` set.
         config: Auth configuration with lockout thresholds.
+        write_lock: Optional shared ``asyncio.Lock`` serializing
+            multi-statement write transactions against the backend's
+            single aiosqlite connection.  The backend owns this lock
+            and passes it to every repository that emits
+            ``BEGIN IMMEDIATE``; callers that construct the repo
+            directly (e.g. one-off tests) can omit it to get a
+            per-repo lock.
     """
 
     def __init__(
         self,
         db: aiosqlite.Connection,
         config: AuthConfig,
+        *,
+        write_lock: asyncio.Lock | None = None,
     ) -> None:
         self._db = db
         self._threshold = config.lockout_threshold
@@ -47,6 +57,7 @@ class SQLiteLockoutRepository:
         self._duration_seconds = config.lockout_duration_minutes * 60
         self._locked: dict[str, float] = {}
         self._locked_lock: threading.Lock = threading.Lock()
+        self._write_lock = write_lock if write_lock is not None else asyncio.Lock()
 
     @property
     def lockout_duration_seconds(self) -> int:
@@ -124,33 +135,37 @@ class SQLiteLockoutRepository:
         username = username.lower()
         now = datetime.now(UTC)
         window_start = (now - self._window).isoformat()
-        await self._db.execute("BEGIN IMMEDIATE")
-        try:
-            await self._db.execute(
-                "INSERT INTO login_attempts "
-                "(username, attempted_at, ip_address) "
-                "VALUES (?, ?, ?)",
-                (username, now.isoformat(), ip_address),
-            )
-            cursor = await self._db.execute(
-                "SELECT COUNT(*) AS cnt FROM login_attempts "
-                "WHERE username = ? AND attempted_at >= ?",
-                (username, window_start),
-            )
-            row = await cursor.fetchone()
-            count = row["cnt"] if row else 0
-            now_locked = count >= self._threshold
-            if now_locked:
-                with self._locked_lock:
-                    self._locked[username] = time.monotonic() + self._duration_seconds
-            await self._db.commit()
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
-            await self._db.rollback()
-            raise
+        async with self._write_lock:
+            await self._db.execute("BEGIN IMMEDIATE")
+            try:
+                await self._db.execute(
+                    "INSERT INTO login_attempts "
+                    "(username, attempted_at, ip_address) "
+                    "VALUES (?, ?, ?)",
+                    (username, now.isoformat(), ip_address),
+                )
+                cursor = await self._db.execute(
+                    "SELECT COUNT(*) AS cnt FROM login_attempts "
+                    "WHERE username = ? AND attempted_at >= ?",
+                    (username, window_start),
+                )
+                row = await cursor.fetchone()
+                count = row["cnt"] if row else 0
+                now_locked = count >= self._threshold
+                await self._db.commit()
+            except MemoryError, RecursionError:
+                raise
+            except Exception:
+                await self._db.rollback()
+                raise
 
+        # Only mark the user locked after the DB commit has
+        # succeeded; otherwise a commit failure would leave the
+        # cache out of sync with persisted state and block logins
+        # for a lockout the DB does not know about.
         if now_locked:
+            with self._locked_lock:
+                self._locked[username] = time.monotonic() + self._duration_seconds
             logger.warning(
                 API_AUTH_ACCOUNT_LOCKED,
                 username=username,
@@ -164,18 +179,19 @@ class SQLiteLockoutRepository:
     async def record_success(self, username: str) -> None:
         """Clear failure count on successful login."""
         username = username.lower()
-        await self._db.execute("BEGIN IMMEDIATE")
-        try:
-            await self._db.execute(
-                "DELETE FROM login_attempts WHERE username = ?",
-                (username,),
-            )
-            await self._db.commit()
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
-            await self._db.rollback()
-            raise
+        async with self._write_lock:
+            await self._db.execute("BEGIN IMMEDIATE")
+            try:
+                await self._db.execute(
+                    "DELETE FROM login_attempts WHERE username = ?",
+                    (username,),
+                )
+                await self._db.commit()
+            except MemoryError, RecursionError:
+                raise
+            except Exception:
+                await self._db.rollback()
+                raise
         with self._locked_lock:
             was_locked = self._locked.pop(username, None) is not None
         if was_locked:
@@ -185,21 +201,31 @@ class SQLiteLockoutRepository:
             )
 
     async def cleanup_expired(self) -> int:
-        """Remove old attempt records outside all windows."""
-        cutoff = (datetime.now(UTC) - self._window * 2).isoformat()
-        await self._db.execute("BEGIN IMMEDIATE")
-        try:
-            cursor = await self._db.execute(
-                "DELETE FROM login_attempts WHERE attempted_at < ?",
-                (cutoff,),
-            )
-            count = cursor.rowcount
-            await self._db.commit()
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
-            await self._db.rollback()
-            raise
+        """Remove old attempt records outside the recovery horizon.
+
+        Retention is ``window + duration`` so
+        :meth:`load_locked`, which scans back by the same interval,
+        can always rehydrate every lock that is still active at
+        startup.  A shorter retention would silently un-lock users
+        whose lockouts are still in effect but whose attempt rows
+        were pruned.
+        """
+        retention = self._window + self._duration
+        cutoff = (datetime.now(UTC) - retention).isoformat()
+        async with self._write_lock:
+            await self._db.execute("BEGIN IMMEDIATE")
+            try:
+                cursor = await self._db.execute(
+                    "DELETE FROM login_attempts WHERE attempted_at < ?",
+                    (cutoff,),
+                )
+                count = cursor.rowcount
+                await self._db.commit()
+            except MemoryError, RecursionError:
+                raise
+            except Exception:
+                await self._db.rollback()
+                raise
         if count:
             logger.debug(
                 API_AUTH_LOCKOUT_CLEANUP,

@@ -16,6 +16,7 @@ from synthorg.core.types import NotBlankStr
 from synthorg.integrations.mcp_catalog.installations import McpInstallation
 from synthorg.observability import get_logger
 from synthorg.observability.events.integrations import (
+    MCP_SERVER_INSTALL_FAILED,
     MCP_SERVER_INSTALLED,
     MCP_SERVER_UNINSTALLED,
 )
@@ -68,22 +69,35 @@ class PostgresMcpInstallationRepository:
     async def save(self, installation: McpInstallation) -> None:
         """Upsert an installation row (idempotent on catalog_entry_id)."""
         installed_at = installation.installed_at.astimezone(UTC)
-        async with self._pool.connection() as conn, conn.cursor() as cur:
-            await cur.execute(
-                """
-                INSERT INTO mcp_installations (
-                    catalog_entry_id, connection_name, installed_at
-                ) VALUES (%s, %s, %s)
-                ON CONFLICT (catalog_entry_id) DO UPDATE SET
-                    connection_name = EXCLUDED.connection_name,
-                    installed_at = EXCLUDED.installed_at
-                """,
-                (
-                    installation.catalog_entry_id,
-                    installation.connection_name,
-                    installed_at,
-                ),
+        try:
+            async with self._pool.connection() as conn, conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    INSERT INTO mcp_installations (
+                        catalog_entry_id, connection_name, installed_at
+                    ) VALUES (%s, %s, %s)
+                    ON CONFLICT (catalog_entry_id) DO UPDATE SET
+                        connection_name = EXCLUDED.connection_name,
+                        installed_at = EXCLUDED.installed_at
+                    """,
+                    (
+                        installation.catalog_entry_id,
+                        installation.connection_name,
+                        installed_at,
+                    ),
+                )
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.exception(
+                MCP_SERVER_INSTALL_FAILED,
+                operation="upsert",
+                catalog_entry_id=installation.catalog_entry_id,
+                connection_name=installation.connection_name,
+                error=str(exc),
+                backend="postgres",
             )
+            raise
         logger.info(
             MCP_SERVER_INSTALLED,
             catalog_entry_id=installation.catalog_entry_id,
@@ -97,48 +111,89 @@ class PostgresMcpInstallationRepository:
     ) -> McpInstallation | None:
         """Fetch a single installation by catalog entry id."""
         dict_row = self._dict_row
-        async with (
-            self._pool.connection() as conn,
-            conn.cursor(row_factory=dict_row) as cur,
-        ):
-            await cur.execute(
-                """
-                SELECT catalog_entry_id, connection_name, installed_at
-                FROM mcp_installations
-                WHERE catalog_entry_id = %s
-                """,
-                (catalog_entry_id,),
+        try:
+            async with (
+                self._pool.connection() as conn,
+                conn.cursor(row_factory=dict_row) as cur,
+            ):
+                await cur.execute(
+                    """
+                    SELECT catalog_entry_id, connection_name, installed_at
+                    FROM mcp_installations
+                    WHERE catalog_entry_id = %s
+                    """,
+                    (catalog_entry_id,),
+                )
+                row = await cur.fetchone()
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.exception(
+                MCP_SERVER_INSTALL_FAILED,
+                operation="get",
+                catalog_entry_id=catalog_entry_id,
+                error=str(exc),
+                backend="postgres",
             )
-            row = await cur.fetchone()
+            raise
         if row is None:
             return None
         return _row_to_installation(row)
 
     async def list_all(self) -> tuple[McpInstallation, ...]:
-        """List all recorded installations, oldest-first."""
+        """List all recorded installations in a deterministic order.
+
+        Sorted by ``installed_at`` ascending with ``catalog_entry_id``
+        as a stable tiebreaker so rows with identical timestamps
+        (restores, backfills, clock skew) are always returned in the
+        same order across calls.
+        """
         dict_row = self._dict_row
-        async with (
-            self._pool.connection() as conn,
-            conn.cursor(row_factory=dict_row) as cur,
-        ):
-            await cur.execute(
-                """
-                SELECT catalog_entry_id, connection_name, installed_at
-                FROM mcp_installations
-                ORDER BY installed_at ASC
-                """,
+        try:
+            async with (
+                self._pool.connection() as conn,
+                conn.cursor(row_factory=dict_row) as cur,
+            ):
+                await cur.execute(
+                    """
+                    SELECT catalog_entry_id, connection_name, installed_at
+                    FROM mcp_installations
+                    ORDER BY installed_at ASC, catalog_entry_id ASC
+                    """,
+                )
+                rows = await cur.fetchall()
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.exception(
+                MCP_SERVER_INSTALL_FAILED,
+                operation="list_all",
+                error=str(exc),
+                backend="postgres",
             )
-            rows = await cur.fetchall()
+            raise
         return tuple(_row_to_installation(row) for row in rows)
 
     async def delete(self, catalog_entry_id: NotBlankStr) -> bool:
         """Delete an installation.  Returns ``True`` if a row was removed."""
-        async with self._pool.connection() as conn, conn.cursor() as cur:
-            await cur.execute(
-                "DELETE FROM mcp_installations WHERE catalog_entry_id = %s",
-                (catalog_entry_id,),
+        try:
+            async with self._pool.connection() as conn, conn.cursor() as cur:
+                await cur.execute(
+                    "DELETE FROM mcp_installations WHERE catalog_entry_id = %s",
+                    (catalog_entry_id,),
+                )
+                deleted = cur.rowcount > 0
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.exception(
+                MCP_SERVER_INSTALL_FAILED,
+                operation="delete",
+                catalog_entry_id=catalog_entry_id,
+                error=str(exc),
+                backend="postgres",
             )
-            deleted = cur.rowcount > 0
+            raise
         if deleted:
             logger.info(
                 MCP_SERVER_UNINSTALLED,
