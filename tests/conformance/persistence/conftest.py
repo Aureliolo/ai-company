@@ -101,6 +101,22 @@ def postgres_container() -> Iterator[PostgresContainer]:
         container.stop()
 
 
+def _container_host_ipv4(container: PostgresContainer) -> str:
+    """Return the container's host as an IPv4 literal.
+
+    ``PostgresContainer.get_container_host_ip()`` returns ``"localhost"``
+    on Docker Desktop (Windows / macOS).  Go's default resolver then
+    prefers IPv6 ``::1``, and Docker Desktop's vpnkit/gvisor port
+    proxy has flaky IPv6 handling right after container start, causing
+    intermittent i/o timeouts on the first ``atlas migrate apply``.
+    Forcing IPv4 sidesteps the race entirely.
+    """
+    host: str = container.get_container_host_ip()
+    if host in {"localhost", "::1", ""}:
+        return "127.0.0.1"
+    return host
+
+
 async def _create_postgres_backend(
     container: PostgresContainer,
     db_name: str,
@@ -114,9 +130,11 @@ async def _create_postgres_backend(
     ``finally``/cleanup in the outer ``backend`` fixture only runs
     once this helper has returned a successfully-created backend.
     """
+    host = _container_host_ipv4(container)
+    port = int(container.get_exposed_port(5432))
     admin_conninfo = psycopg.conninfo.make_conninfo(
-        host=container.get_container_host_ip(),
-        port=int(container.get_exposed_port(5432)),
+        host=host,
+        port=port,
         user=container.username,
         password=container.password,
         dbname=container.dbname,
@@ -129,8 +147,8 @@ async def _create_postgres_backend(
         )
 
     config = PostgresConfig(
-        host=container.get_container_host_ip(),
-        port=int(container.get_exposed_port(5432)),
+        host=host,
+        port=port,
         database=db_name,
         username=container.username,
         password=SecretStr(container.password),
@@ -159,7 +177,7 @@ async def _drop_postgres_database(
 ) -> None:
     """Terminate remaining sessions on *db_name* and drop it."""
     admin_conninfo = psycopg.conninfo.make_conninfo(
-        host=container.get_container_host_ip(),
+        host=_container_host_ipv4(container),
         port=int(container.get_exposed_port(5432)),
         user=container.username,
         password=container.password,

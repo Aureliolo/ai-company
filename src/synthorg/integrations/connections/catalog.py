@@ -18,9 +18,6 @@ from synthorg.integrations.connections.models import (
     ConnectionType,
     SecretRef,
 )
-from synthorg.integrations.connections.secret_backends.protocol import (
-    SecretBackend,  # noqa: TC001
-)
 from synthorg.integrations.connections.types import get_authenticator
 from synthorg.integrations.errors import (
     ConnectionNotFoundError,
@@ -41,6 +38,9 @@ from synthorg.observability.events.integrations import (
 )
 from synthorg.persistence.repositories_integrations import (
     ConnectionRepository,  # noqa: TC001
+)
+from synthorg.persistence.secret_backends.protocol import (
+    SecretBackend,  # noqa: TC001
 )
 
 logger = get_logger(__name__)

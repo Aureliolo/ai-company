@@ -20,12 +20,48 @@ from synthorg.communication.conflict_resolution.escalation.protocol import (
     DecisionProcessor,  # noqa: TC001
     EscalationQueueStore,  # noqa: TC001
 )
+from synthorg.observability import get_logger
+from synthorg.observability.events.api import API_APP_STARTUP
 
 if TYPE_CHECKING:
     from synthorg.communication.conflict_resolution.escalation.registry import (
         PendingFuturesRegistry,
     )
     from synthorg.persistence.protocol import PersistenceBackend
+
+
+logger = get_logger(__name__)
+
+
+def _require_persistence(
+    config_backend: str,
+    persistence: PersistenceBackend | None,
+) -> PersistenceBackend:
+    """Reject a missing or mismatched persistence backend, logging before raise."""
+    if persistence is None:
+        msg = f"{config_backend} backend requires a connected persistence backend"
+        logger.warning(
+            API_APP_STARTUP,
+            component="escalation_factory",
+            error=msg,
+            config_backend=config_backend,
+        )
+        raise ValueError(msg)
+    actual_backend = str(persistence.backend_name)
+    if actual_backend != config_backend:
+        msg = (
+            f"config.backend={config_backend!r} but persistence backend is "
+            f"{actual_backend!r}"
+        )
+        logger.warning(
+            API_APP_STARTUP,
+            component="escalation_factory",
+            error=msg,
+            config_backend=config_backend,
+            actual_backend=actual_backend,
+        )
+        raise ValueError(msg)
+    return persistence
 
 
 def build_escalation_queue_store(
@@ -44,48 +80,22 @@ def build_escalation_queue_store(
 
     Raises:
         ValueError: ``backend`` is ``sqlite`` or ``postgres`` but the
-            persistence backend is not compatible / not provided.
+            persistence backend is missing or of a mismatched type.
     """
     if config.backend == "memory":
         return InMemoryEscalationStore()
     if config.backend == "sqlite":
-        if persistence is None:
-            msg = "sqlite backend requires a SQLite persistence backend"
-            raise ValueError(msg)
-        db = getattr(persistence, "_db", None)
-        if db is None:
-            msg = (
-                "sqlite backend requires an active aiosqlite.Connection "
-                "on the persistence backend (is it connected?)"
-            )
-            raise ValueError(msg)
-        from synthorg.persistence.sqlite.escalation_repo import (  # noqa: PLC0415
-            SQLiteEscalationRepository,
-        )
-
-        return SQLiteEscalationRepository(db)
+        store_backend = _require_persistence("sqlite", persistence)
+        return store_backend.build_escalations()
     if config.backend == "postgres":
-        if persistence is None:
-            msg = "postgres backend requires a Postgres persistence backend"
-            raise ValueError(msg)
-        pool = getattr(persistence, "_pool", None)
-        if pool is None:
-            msg = (
-                "postgres backend requires an active psycopg_pool on the "
-                "persistence backend (is it connected?)"
-            )
-            raise ValueError(msg)
-        from synthorg.persistence.postgres.escalation_repo import (  # noqa: PLC0415
-            PostgresEscalationRepository,
-        )
-
+        store_backend = _require_persistence("postgres", persistence)
         # Pass the notify channel only when cross-instance notify is
         # enabled so the repo's NOTIFY publishing is a true no-op for
         # single-worker deployments.
         notify_channel: str | None = None
         if config.cross_instance_notify in {"auto", "on"}:
             notify_channel = config.notify_channel
-        return PostgresEscalationRepository(pool, notify_channel=notify_channel)
+        return store_backend.build_escalations(notify_channel=notify_channel)
     # Defensive: the Literal union is exhaustive today.
     msg = f"Unknown escalation queue backend: {config.backend!r}"  # type: ignore[unreachable]
     raise ValueError(msg)

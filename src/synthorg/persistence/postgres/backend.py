@@ -14,6 +14,7 @@ backend: callers get Pydantic models back either way.
 """
 
 import asyncio
+import contextlib
 import math
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
@@ -75,6 +76,21 @@ from synthorg.persistence.postgres.hr_repositories import (
     PostgresLifecycleEventRepository,
     PostgresTaskMetricRepository,
 )
+from synthorg.persistence.postgres.lockout_repo import (
+    PostgresLockoutRepository,
+)
+from synthorg.persistence.postgres.mcp_installation_repo import (
+    PostgresMcpInstallationRepository,
+)
+from synthorg.persistence.postgres.ontology_drift_repo import (
+    PostgresOntologyDriftReportRepository,
+)
+from synthorg.persistence.postgres.ontology_entity_repo import (
+    PostgresOntologyEntityRepository,
+)
+from synthorg.persistence.postgres.org_fact_repo import (
+    PostgresOrgFactRepository,
+)
 from synthorg.persistence.postgres.parked_context_repo import (
     PostgresParkedContextRepository,
 )
@@ -85,6 +101,9 @@ from synthorg.persistence.postgres.project_cost_aggregate_repo import (
     PostgresProjectCostAggregateRepository,
 )
 from synthorg.persistence.postgres.project_repo import PostgresProjectRepository
+from synthorg.persistence.postgres.refresh_repo import (
+    PostgresRefreshTokenRepository,
+)
 from synthorg.persistence.postgres.repositories import (
     PostgresCostRecordRepository,
     PostgresMessageRepository,
@@ -92,6 +111,9 @@ from synthorg.persistence.postgres.repositories import (
 )
 from synthorg.persistence.postgres.risk_override_repo import (
     PostgresRiskOverrideRepository,
+)
+from synthorg.persistence.postgres.session_repo import (
+    PostgresSessionRepository,
 )
 from synthorg.persistence.postgres.settings_repo import PostgresSettingsRepository
 from synthorg.persistence.postgres.ssrf_violation_repo import (
@@ -119,14 +141,17 @@ from synthorg.persistence.postgres.workflow_execution_repo import (
 )
 
 if TYPE_CHECKING:
+    from synthorg.api.auth.config import AuthConfig
     from synthorg.hr.persistence_protocol import (
         CollaborationMetricRepository,
         LifecycleEventRepository,
         TaskMetricRepository,
     )
+    from synthorg.persistence.auth_protocol import LockoutRepository
     from synthorg.persistence.circuit_breaker_repo import (
         CircuitBreakerStateRepository,
     )
+    from synthorg.persistence.escalation_protocol import EscalationQueueRepository
     from synthorg.persistence.preset_repository import PersonalityPresetRepository
     from synthorg.persistence.repositories import (
         AgentStateRepository,
@@ -237,6 +262,12 @@ class PostgresPersistenceBackend:
         self._circuit_breaker_state: CircuitBreakerStateRepository | None = None
         self._training_plans: PostgresTrainingPlanRepository | None = None
         self._training_results: PostgresTrainingResultRepository | None = None
+        self._sessions: PostgresSessionRepository | None = None
+        self._refresh_tokens: PostgresRefreshTokenRepository | None = None
+        self._mcp_installations: PostgresMcpInstallationRepository | None = None
+        self._org_facts: PostgresOrgFactRepository | None = None
+        self._ontology_entities: PostgresOntologyEntityRepository | None = None
+        self._ontology_drift: PostgresOntologyDriftReportRepository | None = None
         self._connections_stub = StubConnectionRepository()
         self._connection_secrets_stub = StubConnectionSecretRepository()
         self._oauth_states_stub = StubOAuthStateRepository()
@@ -281,6 +312,12 @@ class PostgresPersistenceBackend:
         self._project_cost_aggregates = None
         self._training_plans = None
         self._training_results = None
+        self._sessions = None
+        self._refresh_tokens = None
+        self._mcp_installations = None
+        self._org_facts = None
+        self._ontology_entities = None
+        self._ontology_drift = None
 
     async def _configure_connection(
         self,
@@ -333,7 +370,20 @@ class PostgresPersistenceBackend:
                 )
                 self._pool = pool
                 self._create_repositories()
+            except MemoryError, RecursionError:
+                # Fatal: still best-effort-close the pool to reclaim
+                # connections before re-raising.
+                if pool is not None:
+                    with contextlib.suppress(Exception):
+                        await pool.close()
+                self._clear_state()
+                raise
             except (psycopg.Error, OSError, TimeoutError) as exc:
+                await self._cleanup_failed_connect(exc, pool)
+            except Exception as exc:
+                # Any other failure after ``pool.open()`` (e.g. repository
+                # construction) still needs the pool closed or we leak
+                # connections until GC.
                 await self._cleanup_failed_connect(exc, pool)
 
             logger.info(
@@ -442,6 +492,12 @@ class PostgresPersistenceBackend:
         self._project_cost_aggregates = PostgresProjectCostAggregateRepository(pool)
         self._training_plans = PostgresTrainingPlanRepository(pool)
         self._training_results = PostgresTrainingResultRepository(pool)
+        self._sessions = PostgresSessionRepository(pool)
+        self._refresh_tokens = PostgresRefreshTokenRepository(pool)
+        self._mcp_installations = PostgresMcpInstallationRepository(pool)
+        self._org_facts = PostgresOrgFactRepository(pool)
+        self._ontology_entities = PostgresOntologyEntityRepository(pool)
+        self._ontology_drift = PostgresOntologyDriftReportRepository(pool)
 
     def get_db(self) -> AsyncConnectionPool:
         """Return the shared connection pool.
@@ -913,6 +969,70 @@ class PostgresPersistenceBackend:
             error=msg,
         )
         raise NotImplementedError(msg)
+
+    @property
+    def sessions(self) -> PostgresSessionRepository:
+        """Repository for hybrid session state (durable + in-memory cache)."""
+        return self._require_connected(self._sessions, "sessions")
+
+    @property
+    def refresh_tokens(self) -> PostgresRefreshTokenRepository:
+        """Repository for single-use refresh-token rotation."""
+        return self._require_connected(
+            self._refresh_tokens,
+            "refresh_tokens",
+        )
+
+    @property
+    def mcp_installations(self) -> PostgresMcpInstallationRepository:
+        """Repository for MCP catalog installations."""
+        return self._require_connected(
+            self._mcp_installations,
+            "mcp_installations",
+        )
+
+    @property
+    def org_facts(self) -> PostgresOrgFactRepository:
+        """Repository for organizational fact persistence (MVCC)."""
+        return self._require_connected(self._org_facts, "org_facts")
+
+    @property
+    def ontology_entities(self) -> PostgresOntologyEntityRepository:
+        """Repository for ontology entity definitions."""
+        return self._require_connected(
+            self._ontology_entities,
+            "ontology_entities",
+        )
+
+    @property
+    def ontology_drift(self) -> PostgresOntologyDriftReportRepository:
+        """Repository for ontology drift reports."""
+        return self._require_connected(
+            self._ontology_drift,
+            "ontology_drift",
+        )
+
+    def build_lockouts(self, auth_config: AuthConfig) -> LockoutRepository:
+        """Construct a lockout repository using this backend's pool."""
+        pool = self.get_db()
+        return PostgresLockoutRepository(pool, auth_config)
+
+    def build_escalations(
+        self,
+        *,
+        notify_channel: str | None = None,
+    ) -> EscalationQueueRepository:
+        """Construct an escalation queue repository on the shared pool.
+
+        ``notify_channel`` enables cross-instance pg_notify publishing
+        when the escalation subsystem has enabled it.
+        """
+        from synthorg.persistence.postgres.escalation_repo import (  # noqa: PLC0415
+            PostgresEscalationRepository,
+        )
+
+        pool = self.get_db()
+        return PostgresEscalationRepository(pool, notify_channel=notify_channel)
 
     async def get_setting(self, key: NotBlankStr) -> str | None:
         """Retrieve a setting value by key from the ``_system`` namespace.

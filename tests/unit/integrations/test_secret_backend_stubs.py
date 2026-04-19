@@ -3,7 +3,7 @@
 import pytest
 
 from synthorg.integrations.config import SecretBackendConfig
-from synthorg.integrations.connections.secret_backends.factory import (
+from synthorg.persistence.secret_backends.factory import (
     create_secret_backend,
 )
 

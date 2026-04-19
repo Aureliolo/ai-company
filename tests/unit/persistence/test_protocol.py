@@ -642,6 +642,36 @@ class _FakeBackend:
     def custom_rules(self) -> Any:
         return None
 
+    @property
+    def sessions(self) -> Any:
+        return None
+
+    @property
+    def refresh_tokens(self) -> Any:
+        return None
+
+    @property
+    def mcp_installations(self) -> Any:
+        return None
+
+    @property
+    def org_facts(self) -> Any:
+        return None
+
+    @property
+    def ontology_entities(self) -> Any:
+        return None
+
+    @property
+    def ontology_drift(self) -> Any:
+        return None
+
+    def build_lockouts(self, auth_config: Any) -> Any:
+        return None
+
+    def build_escalations(self, *, notify_channel: str | None = None) -> Any:
+        return None
+
     async def get_setting(self, key: str) -> str | None:
         return None
 

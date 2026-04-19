@@ -72,7 +72,6 @@ from synthorg.memory.org import (
     OrgMemoryConfig,
     OrgMemoryError,
     OrgMemoryQuery,
-    SQLiteOrgFactStore,
     create_org_memory_backend,
 )
 from synthorg.memory.procedural import (
@@ -156,7 +155,6 @@ __all__ = [
     "ProceduralMemoryProposer",
     "QueryReformulator",
     "RetentionEnforcer",
-    "SQLiteOrgFactStore",
     "ScoredMemory",
     # Self-editing strategy
     "SelfEditingMemoryConfig",

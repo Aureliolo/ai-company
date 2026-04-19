@@ -1,10 +1,8 @@
 """Persistence component handler -- SQLite VACUUM INTO backup."""
 
 import asyncio
-import contextlib
 import shutil
-import sqlite3
-from pathlib import Path
+from pathlib import Path  # noqa: TC003
 
 from synthorg.backup.errors import ComponentBackupError
 from synthorg.backup.models import BackupComponent
@@ -13,6 +11,11 @@ from synthorg.observability.events.backup import (
     BACKUP_COMPONENT_COMPLETED,
     BACKUP_COMPONENT_FAILED,
     BACKUP_COMPONENT_STARTED,
+)
+from synthorg.persistence.sqlite.backup_utils import (
+    IntegrityCheckError,
+    integrity_check,
+    vacuum_into,
 )
 
 logger = get_logger(__name__)
@@ -109,7 +112,13 @@ class PersistenceComponentHandler:
             await asyncio.to_thread(
                 self._atomic_swap, self._db_path, source_file, bak_path
             )
-        except ComponentBackupError:
+        except ComponentBackupError as exc:
+            logger.error(
+                BACKUP_COMPONENT_FAILED,
+                component=self.component.value,
+                error=str(exc),
+                exc_info=True,
+            )
             raise
         except Exception as exc:
             logger.error(
@@ -124,11 +133,22 @@ class PersistenceComponentHandler:
     async def validate_source(self, source_dir: Path) -> bool:
         """Validate that the backup database passes integrity check.
 
+        Returns ``False`` when the integrity check itself reports
+        corruption.  Any system-level failure (unreadable file, sqlite
+        driver error, missing WAL/SHM permissions) propagates as a
+        ``ComponentBackupError`` so callers can distinguish "the backup
+        is corrupt" from "we could not determine whether the backup
+        is corrupt".
+
         Args:
             source_dir: Directory containing the backup database.
 
         Returns:
-            ``True`` if the database is valid.
+            ``True`` if the database passed integrity check.
+
+        Raises:
+            ComponentBackupError: If the integrity check could not be
+                run (I/O error, driver error, permission denied, etc.).
         """
         source_file = source_dir / _DB_FILENAME
         if not source_file.exists():
@@ -138,36 +158,25 @@ class PersistenceComponentHandler:
                 self._check_integrity,
                 str(source_file),
             )
-        except Exception:
-            logger.warning(
+        except IntegrityCheckError as exc:
+            logger.error(
                 BACKUP_COMPONENT_FAILED,
                 component=self.component.value,
-                error="Integrity check failed",
+                error=f"Integrity check could not run: {exc}",
                 exc_info=True,
             )
-            return False
+            msg = f"Failed to run integrity check on backup: {exc}"
+            raise ComponentBackupError(msg) from exc
 
     @staticmethod
     def _vacuum_into(source_path: str, target_path: str) -> int:
-        """Execute VACUUM INTO to produce a consistent copy.
-
-        Args:
-            source_path: Path to the live database.
-            target_path: Path for the backup copy.
-
-        Returns:
-            Size of the resulting backup file in bytes.
-        """
-        with contextlib.closing(sqlite3.connect(source_path)) as conn:
-            conn.execute("VACUUM INTO ?", (target_path,))
-        return Path(target_path).stat().st_size
+        """Delegate to the persistence-layer backup primitive."""
+        return vacuum_into(source_path, target_path)
 
     @staticmethod
     def _check_integrity(db_path: str) -> bool:
-        """Run PRAGMA integrity_check on a database file."""
-        with contextlib.closing(sqlite3.connect(db_path)) as conn:
-            result = conn.execute("PRAGMA integrity_check").fetchone()
-            return result is not None and result[0] == "ok"
+        """Delegate to the persistence-layer integrity check."""
+        return integrity_check(db_path)
 
     @staticmethod
     def _remove_sidecars(db_path: Path) -> None:
@@ -196,19 +205,21 @@ class PersistenceComponentHandler:
 
         try:
             shutil.copy2(source_file, db_path)
-            # Validate the restored copy
-            with contextlib.closing(sqlite3.connect(str(db_path))) as conn:
-                result = conn.execute("PRAGMA integrity_check").fetchone()
-                if result is None or result[0] != "ok":
-                    msg = "Restored database failed integrity check"
-                    raise ComponentBackupError(msg)  # noqa: TRY301
+            # Validate the restored copy via the persistence-layer helper.
+            if not integrity_check(str(db_path)):
+                msg = "Restored database failed integrity check"
+                raise ComponentBackupError(msg)  # noqa: TRY301
         except Exception:
-            # Rollback: restore the original
+            # Rollback: restore the original if we had one; otherwise wipe
+            # the partially-copied (invalid) file so no bad DB remains.
             if bak_path.exists():
                 if db_path.exists():
                     db_path.unlink()
                 PersistenceComponentHandler._remove_sidecars(db_path)
                 shutil.move(bak_path, db_path)
+            elif db_path.exists():
+                db_path.unlink()
+                PersistenceComponentHandler._remove_sidecars(db_path)
             raise
 
         # Cleanup .bak on success

@@ -1824,51 +1824,47 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
             exc_info=True,
         )
 
-    # MCP installations repo: SQLite-backed when persistence is
-    # already connected and exposes an aiosqlite handle, otherwise
-    # an in-memory stub that keeps install/uninstall callable (so the
-    # endpoint works in tests and dev without a database). The merged
-    # MCPConfig is stitched at bridge startup time via
-    # ``synthorg.integrations.mcp_catalog.install.merge_installed_servers``.
+    # MCP installations repo: when a persistence backend is configured,
+    # we leave this slot empty at ``create_app`` time and let
+    # ``_init_persistence`` bind the real repo AFTER
+    # ``persistence.connect()`` completes.  When no persistence is
+    # configured at all (headless test apps, dev without a DB), fall
+    # back to the in-memory stub so install/uninstall endpoints stay
+    # callable.
     #
     # NB: ``create_app`` runs synchronously on every test that builds a
     # Litestar app, so we MUST NOT call into code that raises on an
-    # unconnected backend or captures a traceback per miss. Both are
-    # hot-path regressions at suite scale. Check ``is_connected`` up
-    # front and fall through silently to in-memory otherwise.
+    # unconnected backend or captures a traceback per miss -- both are
+    # hot-path regressions at suite scale.
     try:
-        from synthorg.integrations.mcp_catalog.sqlite_repo import (  # noqa: PLC0415
-            InMemoryMcpInstallationRepository,
-            SQLiteMcpInstallationRepository,
-        )
-
-        sqlite_db = None
         if persistence is not None and getattr(persistence, "is_connected", False):
-            get_db_fn = getattr(persistence, "get_db", None)
-            if callable(get_db_fn):
-                try:
-                    sqlite_db = get_db_fn()
-                except MemoryError, RecursionError:
-                    raise
-                except Exception:
-                    # Fall through to in-memory silently; the repo is a
-                    # degraded-mode fallback by design and a startup
-                    # warning here would fire on every test that builds
-                    # an app without a SQLite backend.
-                    sqlite_db = None
-        if sqlite_db is not None:
-            mcp_installations_repo = SQLiteMcpInstallationRepository(sqlite_db)
+            # Already connected (rare; some tests pre-connect).
+            mcp_installations_repo = persistence.mcp_installations
             logger.info(
                 API_SERVICE_AUTO_WIRED,
                 service="mcp_installations_repo",
-                backend="sqlite",
+                backend=type(persistence).__name__,
             )
-        else:
+        elif persistence is None:
+            from synthorg.integrations.mcp_catalog.in_memory_installations import (  # noqa: PLC0415
+                InMemoryMcpInstallationRepository,
+            )
+
             mcp_installations_repo = InMemoryMcpInstallationRepository()
             logger.debug(
                 API_SERVICE_AUTO_WIRED,
                 service="mcp_installations_repo",
                 backend="in_memory",
+            )
+        else:
+            # Persistence configured but not yet connected: defer wiring
+            # to ``_init_persistence`` so we pick up the real repository
+            # (SQLite / Postgres) after ``persistence.connect()``.
+            mcp_installations_repo = None
+            logger.debug(
+                API_SERVICE_AUTO_WIRED,
+                service="mcp_installations_repo",
+                backend="deferred_until_persistence_connected",
             )
     except MemoryError, RecursionError:
         raise
@@ -1884,9 +1880,6 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
             from synthorg.integrations.connections.catalog import (  # noqa: PLC0415
                 ConnectionCatalog,
             )
-            from synthorg.integrations.connections.secret_backends.factory import (  # noqa: PLC0415
-                create_secret_backend,
-            )
             from synthorg.integrations.health.prober import (  # noqa: PLC0415
                 HealthProberService,
                 bind_health_check_catalog,
@@ -1896,6 +1889,9 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
             )
             from synthorg.integrations.tunnel.ngrok_adapter import (  # noqa: PLC0415
                 NgrokAdapter,
+            )
+            from synthorg.persistence.secret_backends.factory import (  # noqa: PLC0415
+                create_secret_backend,
             )
 
             # Prefer the active SQLite persistence path so the
@@ -1956,7 +1952,7 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
             # promotes the default to match postgres persistence, and
             # downgrades to env_var with an ERROR log when the master
             # key is unset or the underlying store is unavailable.
-            from synthorg.integrations.connections.secret_backends.factory import (  # noqa: PLC0415
+            from synthorg.persistence.secret_backends.factory import (  # noqa: PLC0415
                 resolve_secret_backend_config,
             )
 

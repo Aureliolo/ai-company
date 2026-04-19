@@ -12,8 +12,11 @@ import aiosqlite
 import pytest
 
 from synthorg.api.auth.session import Session
-from synthorg.api.auth.session_store import SessionStore, SqliteSessionStore
 from synthorg.api.guards import HumanRole
+from synthorg.persistence.auth_protocol import SessionRepository as SessionStore
+from synthorg.persistence.sqlite.session_repo import (
+    SQLiteSessionRepository as SqliteSessionStore,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -28,7 +31,7 @@ def _patch_now() -> Iterator[None]:
     """Patch datetime.now in the session store module."""
     mock_dt = MagicMock(wraps=datetime)
     mock_dt.now.return_value = _FROZEN_NOW
-    with patch("synthorg.api.auth.session_store.datetime", mock_dt):
+    with patch("synthorg.persistence.sqlite.session_repo.datetime", mock_dt):
         yield
 
 

@@ -1,0 +1,120 @@
+"""SQLite-backed MCP installations repository.
+
+Persists :class:`McpInstallation` rows in the ``mcp_installations``
+table.  Bound to an open ``aiosqlite.Connection`` at construction;
+the persistence backend owns connection lifecycle.
+"""
+
+from datetime import UTC, datetime
+
+import aiosqlite  # noqa: TC002
+
+from synthorg.core.types import NotBlankStr
+from synthorg.integrations.mcp_catalog.installations import McpInstallation
+from synthorg.observability import get_logger
+from synthorg.observability.events.integrations import (
+    MCP_SERVER_INSTALLED,
+    MCP_SERVER_UNINSTALLED,
+)
+
+logger = get_logger(__name__)
+
+
+def _parse_timestamp(raw: str | datetime) -> datetime:
+    """Parse a stored timestamp into a timezone-aware datetime."""
+    if isinstance(raw, datetime):
+        return raw if raw.tzinfo else raw.replace(tzinfo=UTC)
+    value = datetime.fromisoformat(raw)
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value
+
+
+class SQLiteMcpInstallationRepository:
+    """SQLite implementation of :class:`McpInstallationRepository`."""
+
+    def __init__(self, db: aiosqlite.Connection) -> None:
+        self._db = db
+
+    async def save(self, installation: McpInstallation) -> None:
+        """Upsert an installation row (idempotent on catalog_entry_id)."""
+        installed_at_iso = installation.installed_at.astimezone(UTC).isoformat()
+        await self._db.execute(
+            """
+            INSERT INTO mcp_installations (
+                catalog_entry_id, connection_name, installed_at
+            ) VALUES (?, ?, ?)
+            ON CONFLICT(catalog_entry_id) DO UPDATE SET
+                connection_name = excluded.connection_name,
+                installed_at = excluded.installed_at
+            """,
+            (
+                installation.catalog_entry_id,
+                installation.connection_name,
+                installed_at_iso,
+            ),
+        )
+        await self._db.commit()
+        logger.info(
+            MCP_SERVER_INSTALLED,
+            catalog_entry_id=installation.catalog_entry_id,
+            connection_name=installation.connection_name,
+            backend="sqlite",
+        )
+
+    async def get(
+        self,
+        catalog_entry_id: NotBlankStr,
+    ) -> McpInstallation | None:
+        """Fetch a single installation by catalog entry id."""
+        async with self._db.execute(
+            """
+            SELECT catalog_entry_id, connection_name, installed_at
+            FROM mcp_installations
+            WHERE catalog_entry_id = ?
+            """,
+            (catalog_entry_id,),
+        ) as cursor:
+            row = await cursor.fetchone()
+        if row is None:
+            return None
+        return McpInstallation(
+            catalog_entry_id=NotBlankStr(row[0]),
+            connection_name=(NotBlankStr(row[1]) if row[1] else None),
+            installed_at=_parse_timestamp(row[2]),
+        )
+
+    async def list_all(self) -> tuple[McpInstallation, ...]:
+        """List all recorded installations, oldest-first."""
+        async with self._db.execute(
+            """
+            SELECT catalog_entry_id, connection_name, installed_at
+            FROM mcp_installations
+            ORDER BY installed_at ASC
+            """,
+        ) as cursor:
+            rows = await cursor.fetchall()
+        return tuple(
+            McpInstallation(
+                catalog_entry_id=NotBlankStr(row[0]),
+                connection_name=(NotBlankStr(row[1]) if row[1] else None),
+                installed_at=_parse_timestamp(row[2]),
+            )
+            for row in rows
+        )
+
+    async def delete(self, catalog_entry_id: NotBlankStr) -> bool:
+        """Delete an installation.  Returns ``True`` if a row was removed."""
+        cursor = await self._db.execute(
+            "DELETE FROM mcp_installations WHERE catalog_entry_id = ?",
+            (catalog_entry_id,),
+        )
+        deleted = cursor.rowcount > 0
+        await self._db.commit()
+        if deleted:
+            logger.info(
+                MCP_SERVER_UNINSTALLED,
+                catalog_entry_id=catalog_entry_id,
+                backend="sqlite",
+            )
+        return deleted

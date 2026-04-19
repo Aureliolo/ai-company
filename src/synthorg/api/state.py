@@ -8,11 +8,8 @@ Holds typed references to core services, injected into
 from typing import TYPE_CHECKING
 
 from synthorg.api.approval_store import ApprovalStore  # noqa: TC001
-from synthorg.api.auth.lockout_store import LockoutStore  # noqa: TC001
 from synthorg.api.auth.presence import UserPresence
-from synthorg.api.auth.refresh_store import RefreshStore  # noqa: TC001
 from synthorg.api.auth.service import AuthService  # noqa: TC001
-from synthorg.api.auth.session_store import SessionStore  # noqa: TC001
 from synthorg.api.auth.ticket_store import WsTicketStore
 from synthorg.api.errors import ServiceUnavailableError
 from synthorg.api.services.org_mutations import OrgMutationService
@@ -76,6 +73,15 @@ from synthorg.ontology.service import OntologyService  # noqa: TC001
 from synthorg.ontology.sync import OntologyOrgMemorySync  # noqa: TC001
 from synthorg.persistence.artifact_storage import (
     ArtifactStorageBackend,  # noqa: TC001
+)
+from synthorg.persistence.auth_protocol import (
+    LockoutRepository as LockoutStore,  # noqa: TC001
+)
+from synthorg.persistence.auth_protocol import (
+    RefreshTokenRepository as RefreshStore,  # noqa: TC001
+)
+from synthorg.persistence.auth_protocol import (
+    SessionRepository as SessionStore,  # noqa: TC001
 )
 from synthorg.persistence.protocol import PersistenceBackend  # noqa: TC001
 from synthorg.providers.health import ProviderHealthTracker  # noqa: TC001

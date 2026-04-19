@@ -98,6 +98,15 @@ No default may privilege a single region, currency, or locale. Every user-facing
 
 Enforced by `scripts/check_web_design_system.py` (PostToolUse hook on every `web/src/` edit) for the frontend surface, and by `scripts/check_backend_regional_defaults.py` (PostToolUse hook on every `src/synthorg/` edit) for the Python backend. Both hooks flag hardcoded currency codes, currency symbols adjacent to digits (`"$10"`, `"\u20ac50"`), identifiers ending in `_usd`, BCP 47 locale literals (`'en-US'`), and `localhost:<port>` in application code. Legitimate opt-outs use a `# lint-allow: regional-defaults` (Python) or `// lint-allow: regional-defaults` (TS) marker on or above the line. A stricter CI-gated `scripts/check_forbidden_literals.py` runs in pre-push and GitHub Actions to catch the same issues on non-Claude commits.
 
+## Persistence Boundary (MANDATORY)
+
+- `src/synthorg/persistence/` is the **only** place that may import `aiosqlite`, `sqlite3`, `psycopg`, or `psycopg_pool`, or emit raw SQL DDL/DML keywords in string literals.
+- Sanctioned exceptions cover three categories: (1) the two agent-facing DB tools (`src/synthorg/tools/database/schema_inspect.py`, `src/synthorg/tools/database/sql_query.py`), (2) security/scanning utilities that inspect user-supplied SQL (e.g. `src/synthorg/security/rules/destructive_op_detector.py`, whose detection payload *is* DDL keyword strings), and (3) test fixtures / conformance harnesses that hold driver primitives for cross-subsystem setup. The authoritative list lives in `_ALLOWLIST` inside `scripts/check_persistence_boundary.py`; any new exception must be added there with a justifying comment.
+- Every durable feature MUST define a repository Protocol in `persistence/<domain>_protocol.py`, concrete impls under `persistence/{sqlite,postgres}/`, and be exposed on `PersistenceBackend`.
+- Adding a migration: read `docs/guides/persistence-migrations.md` first. Do not hand-edit SQL in `persistence/{sqlite,postgres}/revisions/`, and do not edit `atlas.sum`. Rehashing via `atlas migrate hash` post-release is blocked by a PreToolUse hook -- delete the in-progress migration and regenerate with `atlas migrate diff` instead.
+- Per-line opt-out: `# lint-allow: persistence-boundary -- <required justification>` as a trailing comment. Justification after `--` must be non-empty.
+- Enforced by `scripts/check_persistence_boundary.py` (pre-push hook + CI Lint job).
+
 ## Shell Usage
 
 - **NEVER use `cd` in Bash commands** -- the working directory is already set to the project root. Use absolute paths or run commands directly. Do NOT prefix commands with `cd C:/Users/Aurelio/synthorg &&`. Exception: `bash -c "cd <dir> && <cmd>"` is safe (runs in a child process, no cwd side effects). Use this for tools without a `-C` flag -- e.g. `bash -c "cd web && npm install"` since `npm --prefix` is broken for bare `npm install`.

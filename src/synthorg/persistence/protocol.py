@@ -6,6 +6,7 @@ management.  Repository protocols provide entity-level access.
 
 from typing import Any, Protocol, runtime_checkable
 
+from synthorg.api.auth.config import AuthConfig  # noqa: TC001
 from synthorg.budget.config import BudgetConfig  # noqa: TC001
 from synthorg.core.agent import AgentIdentity  # noqa: TC001
 from synthorg.core.company import Company  # noqa: TC001
@@ -20,11 +21,29 @@ from synthorg.hr.persistence_protocol import (
     LifecycleEventRepository,  # noqa: TC001
     TaskMetricRepository,  # noqa: TC001
 )
+from synthorg.persistence.auth_protocol import (
+    LockoutRepository,  # noqa: TC001
+    RefreshTokenRepository,  # noqa: TC001
+    SessionRepository,  # noqa: TC001
+)
 from synthorg.persistence.circuit_breaker_repo import (
     CircuitBreakerStateRepository,  # noqa: TC001
 )
 from synthorg.persistence.custom_rule_repo import (
     CustomRuleRepository,  # noqa: TC001
+)
+from synthorg.persistence.escalation_protocol import (
+    EscalationQueueRepository,  # noqa: TC001
+)
+from synthorg.persistence.mcp_protocol import (
+    McpInstallationRepository,  # noqa: TC001
+)
+from synthorg.persistence.memory_protocol import (
+    OrgFactRepository,  # noqa: TC001
+)
+from synthorg.persistence.ontology_protocol import (
+    OntologyDriftReportRepository,  # noqa: TC001
+    OntologyEntityRepository,  # noqa: TC001
 )
 from synthorg.persistence.preset_repository import (
     PersonalityPresetRepository,  # noqa: TC001
@@ -372,6 +391,67 @@ class PersistenceBackend(Protocol):
     @property
     def custom_rules(self) -> CustomRuleRepository:
         """Repository for custom signal rule persistence."""
+        ...
+
+    @property
+    def sessions(self) -> SessionRepository:
+        """Repository for hybrid session state (durable + in-memory cache)."""
+        ...
+
+    @property
+    def refresh_tokens(self) -> RefreshTokenRepository:
+        """Repository for single-use refresh-token rotation."""
+        ...
+
+    @property
+    def mcp_installations(self) -> McpInstallationRepository:
+        """Repository for MCP catalog installation records."""
+        ...
+
+    @property
+    def org_facts(self) -> OrgFactRepository:
+        """Repository for organizational fact persistence (MVCC)."""
+        ...
+
+    @property
+    def ontology_entities(self) -> OntologyEntityRepository:
+        """Repository for ontology entity definitions."""
+        ...
+
+    @property
+    def ontology_drift(self) -> OntologyDriftReportRepository:
+        """Repository for ontology drift reports."""
+        ...
+
+    def build_lockouts(self, auth_config: AuthConfig) -> LockoutRepository:
+        """Construct a lockout repository for this backend.
+
+        Method-based rather than property because :class:`LockoutRepository`
+        needs the operator's ``AuthConfig`` (threshold, window, duration)
+        which is app-layer config, not persistence-layer.  Callers supply
+        the config at startup; the returned repo shares this backend's
+        connection / pool.
+
+        Raises:
+            PersistenceConnectionError: If the backend is not connected.
+        """
+        ...
+
+    def build_escalations(
+        self,
+        *,
+        notify_channel: str | None = None,
+    ) -> EscalationQueueRepository:
+        """Construct an escalation queue repository for this backend.
+
+        Method-based rather than property because Postgres escalations
+        accept an optional NOTIFY channel name -- cross-instance notify
+        config lives on the escalation subsystem, not on persistence.
+        ``notify_channel`` is ignored by the SQLite implementation.
+
+        Raises:
+            PersistenceConnectionError: If the backend is not connected.
+        """
         ...
 
     async def get_setting(self, key: NotBlankStr) -> str | None:

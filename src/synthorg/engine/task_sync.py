@@ -11,7 +11,6 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Final
 from uuid import uuid4
 
-from synthorg.core.approval import ApprovalItem
 from synthorg.core.enums import ApprovalRiskLevel, TaskStatus
 from synthorg.engine.errors import ExecutionStateError, TaskEngineError
 from synthorg.engine.loop_protocol import TerminationReason
@@ -308,6 +307,11 @@ async def _create_review_approval(
 
     now = datetime.now(UTC)
     approval_id = f"approval-{uuid4().hex}"
+    # Local import breaks the ontology -> persistence -> budget ->
+    # security -> engine -> core.approval cycle (see security.service
+    # for the same pattern).
+    from synthorg.core.approval import ApprovalItem  # noqa: PLC0415
+
     item = ApprovalItem(
         id=approval_id,
         action_type=_REVIEW_ACTION_TYPE,

@@ -13,16 +13,16 @@ from unittest.mock import MagicMock
 import pytest
 
 from synthorg.integrations.config import SecretBackendConfig
-from synthorg.integrations.connections.secret_backends.encrypted_postgres import (
+from synthorg.persistence.secret_backends.encrypted_postgres import (
     EncryptedPostgresSecretBackend,
 )
-from synthorg.integrations.connections.secret_backends.encrypted_sqlite import (
+from synthorg.persistence.secret_backends.encrypted_sqlite import (
     EncryptedSqliteSecretBackend,
 )
-from synthorg.integrations.connections.secret_backends.env_var import (
+from synthorg.persistence.secret_backends.env_var import (
     EnvVarSecretBackend,
 )
-from synthorg.integrations.connections.secret_backends.factory import (
+from synthorg.persistence.secret_backends.factory import (
     create_secret_backend,
     resolve_secret_backend_config,
 )

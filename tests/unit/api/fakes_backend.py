@@ -417,6 +417,15 @@ class FakePersistenceBackend:
         # The `settings` property returns `_settings_repo` (namespaced repo).
         self._settings: dict[str, str] = {}
         self._connected = False
+        # Lazy-instantiated, cached protocol stand-ins for the A1-A6
+        # consolidation repos.  Cached so repeated property access
+        # returns the same mock instance (tests assert against it).
+        self._sessions_stub: object | None = None
+        self._refresh_tokens_stub: object | None = None
+        self._mcp_installations_stub: object | None = None
+        self._org_facts_stub: object | None = None
+        self._ontology_entities_stub: object | None = None
+        self._ontology_drift_stub: object | None = None
 
     def clear(self) -> None:
         """Reset all in-memory state for test isolation.
@@ -429,12 +438,22 @@ class FakePersistenceBackend:
             if attr_name == "_connected":
                 continue
             value = getattr(self, attr_name)
+            # Skip lazily-instantiated stubs that aren't live yet and
+            # primitives (None, bool, str) which have no __dict__.
+            if value is None or isinstance(value, (bool, str, int, float)):
+                continue
             # Clear mutable containers directly.
             if isinstance(value, (dict, list, set)):
                 value.clear()
                 continue
             # Clear internal state of fake repository objects.
-            for inner_value in vars(value).values():
+            try:
+                inner_vars = vars(value)
+            except TypeError:
+                # Objects that legitimately have no ``__dict__`` (e.g.
+                # ``unittest.mock.AsyncMock`` bindings on lazy stubs).
+                continue
+            for inner_value in inner_vars.values():
                 if isinstance(inner_value, (dict, list, set)):
                     inner_value.clear()
 
@@ -616,6 +635,100 @@ class FakePersistenceBackend:
     def custom_rules(self) -> FakeCustomRuleRepository:
         """Fake custom rule repository."""
         return self._custom_rules_repo
+
+    @property
+    def sessions(self) -> Any:
+        """Cached fake session repository.
+
+        ``is_revoked`` is sync on the real protocol (auth hot-path),
+        so the cached ``AsyncMock`` has that one attribute overridden
+        with a sync ``MagicMock`` that returns ``False``.  An empty
+        ``_revoked`` set keeps membership checks honest.
+        """
+        from unittest.mock import AsyncMock, MagicMock
+
+        if self._sessions_stub is None:
+            stub = AsyncMock()
+            stub.is_revoked = MagicMock(return_value=False)
+            stub._revoked = set()
+            self._sessions_stub = stub
+        return self._sessions_stub
+
+    @property
+    def refresh_tokens(self) -> Any:
+        """Cached fake refresh-token repository."""
+        from unittest.mock import AsyncMock
+
+        if self._refresh_tokens_stub is None:
+            self._refresh_tokens_stub = AsyncMock()
+        return self._refresh_tokens_stub
+
+    @property
+    def mcp_installations(self) -> Any:
+        """Cached fake MCP installations repository."""
+        from unittest.mock import AsyncMock
+
+        if self._mcp_installations_stub is None:
+            self._mcp_installations_stub = AsyncMock()
+        return self._mcp_installations_stub
+
+    @property
+    def org_facts(self) -> Any:
+        """Cached fake org fact repository."""
+        from unittest.mock import AsyncMock
+
+        if self._org_facts_stub is None:
+            self._org_facts_stub = AsyncMock()
+        return self._org_facts_stub
+
+    @property
+    def ontology_entities(self) -> Any:
+        """Cached fake ontology entity repository."""
+        from unittest.mock import AsyncMock
+
+        if self._ontology_entities_stub is None:
+            self._ontology_entities_stub = AsyncMock()
+        return self._ontology_entities_stub
+
+    @property
+    def ontology_drift(self) -> Any:
+        """Cached fake ontology drift-report repository."""
+        from unittest.mock import AsyncMock
+
+        if self._ontology_drift_stub is None:
+            self._ontology_drift_stub = AsyncMock()
+        return self._ontology_drift_stub
+
+    def build_lockouts(self, auth_config: Any) -> Any:
+        """Fake lockout repository builder.
+
+        ``is_locked`` is sync on the real protocol (auth hot-path), so
+        the wrapped ``AsyncMock`` has that attribute replaced with a
+        sync ``MagicMock`` that returns ``False``.  ``record_failure``
+        is coerced to an async wrapper around a fixed-``False`` return
+        so invalid logins don't spuriously trip ``AccountLockedError``.
+        ``lockout_duration_seconds`` is an ``int`` so Retry-After
+        rendering never sees a ``MagicMock``.  An empty ``_locked``
+        dict keeps the conftest cache-clear helpers happy.
+        """
+        from unittest.mock import AsyncMock, MagicMock
+
+        stub = AsyncMock()
+        stub.is_locked = MagicMock(return_value=False)
+        stub.record_failure = AsyncMock(return_value=False)
+        stub.lockout_duration_seconds = 0
+        stub._locked = {}
+        return stub
+
+    def build_escalations(
+        self,
+        *,
+        notify_channel: str | None = None,
+    ) -> Any:
+        """Fake escalation repository builder."""
+        from unittest.mock import AsyncMock
+
+        return AsyncMock()
 
     async def get_setting(self, key: str) -> str | None:
         return self._settings.get(key)

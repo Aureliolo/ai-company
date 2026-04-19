@@ -19,7 +19,9 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from synthorg.api.auth.session_store import PostgresSessionStore
+from synthorg.persistence.postgres.session_repo import (
+    PostgresSessionRepository as PostgresSessionStore,
+)
 
 pytestmark = [pytest.mark.integration, pytest.mark.slow]
 
@@ -44,22 +46,20 @@ class TestFreshInstallPostgresLifecycle:
         happy path end-to-end.
         """
         from synthorg.api.auth.config import AuthConfig
-        from synthorg.api.auth.lockout_store import PostgresLockoutStore
-        from synthorg.api.auth.refresh_store import PostgresRefreshStore
-        from synthorg.api.lifecycle import (
-            _build_lockout_store,
-            _build_refresh_store,
-            _build_session_store,
+        from synthorg.persistence.postgres.lockout_repo import (
+            PostgresLockoutRepository,
+        )
+        from synthorg.persistence.postgres.refresh_repo import (
+            PostgresRefreshTokenRepository,
         )
 
-        db = postgres_backend.get_db()
-        session_store = _build_session_store(db)
-        lockout_store = _build_lockout_store(db, AuthConfig())
-        refresh_store = _build_refresh_store(db)
+        session_store = postgres_backend.sessions
+        lockout_store = postgres_backend.build_lockouts(AuthConfig())
+        refresh_store = postgres_backend.refresh_tokens
 
         assert isinstance(session_store, PostgresSessionStore)
-        assert isinstance(lockout_store, PostgresLockoutStore)
-        assert isinstance(refresh_store, PostgresRefreshStore)
+        assert isinstance(lockout_store, PostgresLockoutRepository)
+        assert isinstance(refresh_store, PostgresRefreshTokenRepository)
 
         await session_store.load_revoked()
         await lockout_store.load_locked()

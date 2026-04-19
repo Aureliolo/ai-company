@@ -8,6 +8,7 @@ import pytest
 from synthorg.backup.errors import ComponentBackupError
 from synthorg.backup.handlers.persistence import PersistenceComponentHandler
 from synthorg.backup.models import BackupComponent
+from synthorg.persistence.sqlite.backup_utils import IntegrityCheckError
 
 
 def _create_test_db(path: Path) -> None:
@@ -203,12 +204,20 @@ class TestValidateSource:
         handler = PersistenceComponentHandler(tmp_path / "unused.db")
         assert await handler.validate_source(tmp_path) is False
 
-    async def test_returns_false_for_corrupt_file(self, tmp_path: Path) -> None:
+    async def test_corrupt_file_raises_component_backup_error(
+        self, tmp_path: Path
+    ) -> None:
+        # A file that is not a SQLite database at all is a "could not
+        # run integrity check" condition, distinct from "the check
+        # itself reported corruption".  The handler surfaces this as
+        # ComponentBackupError so callers never silently treat an
+        # undeterminable backup as clean-failure.
         corrupt = tmp_path / "synthorg.db"
         _corrupt_file(corrupt)
 
         handler = PersistenceComponentHandler(tmp_path / "unused.db")
-        assert await handler.validate_source(tmp_path) is False
+        with pytest.raises(ComponentBackupError):
+            await handler.validate_source(tmp_path)
 
 
 # -- _check_integrity ----------------------------------------------------------
@@ -226,9 +235,10 @@ class TestCheckIntegrity:
     def test_corrupt_db_raises(self, tmp_path: Path) -> None:
         db_file = tmp_path / "bad.db"
         _corrupt_file(db_file)
-        # _check_integrity does not swallow sqlite3.DatabaseError --
-        # the caller (validate_source) catches all exceptions.
-        with pytest.raises(sqlite3.DatabaseError):
+        # _check_integrity now surfaces sqlite3 failures as
+        # IntegrityCheckError so callers can distinguish "could not
+        # check" from "check reported corruption".
+        with pytest.raises(IntegrityCheckError):
             PersistenceComponentHandler._check_integrity(str(db_file))
 
     def test_empty_file_is_treated_as_new_db(self, tmp_path: Path) -> None:

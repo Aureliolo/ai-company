@@ -15,13 +15,14 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from synthorg.api.auth.session import Session
-from synthorg.api.auth.session_store import (
-    PostgresSessionStore,
-    SessionStore,
-    SqliteSessionStore,
-)
 from synthorg.api.guards import HumanRole
-from synthorg.api.lifecycle import _build_session_store
+from synthorg.persistence.auth_protocol import SessionRepository as SessionStore
+from synthorg.persistence.postgres.session_repo import (
+    PostgresSessionRepository as PostgresSessionStore,
+)
+from synthorg.persistence.sqlite.session_repo import (
+    SQLiteSessionRepository as SqliteSessionStore,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -105,29 +106,38 @@ def test_postgres_session_store_implements_protocol() -> None:
 # -- Dispatcher ------------------------------------------------------
 
 
-def test_build_session_store_routes_async_pool_to_postgres() -> None:
-    """``_build_session_store`` selects Postgres for AsyncConnectionPool."""
-    # Construct a minimal class whose name matches what psycopg_pool
-    # exports. ``_build_session_store`` dispatches on ``type(db).__name__``
-    # so an explicit empty class is clearer and more honest than mutating
-    # ``MagicMock.__name__``.
-    pool = type("AsyncConnectionPool", (), {})()
-    store = _build_session_store(pool)
-    assert isinstance(store, PostgresSessionStore)
+def test_concrete_stores_expose_protocol_shape() -> None:
+    """Sanity: both concrete stores structurally satisfy ``SessionStore``.
 
-
-def test_build_session_store_routes_connection_to_sqlite() -> None:
-    """``_build_session_store`` selects SQLite for aiosqlite.Connection."""
-    conn = type("Connection", (), {})()
-    store = _build_session_store(conn)
-    assert isinstance(store, SqliteSessionStore)
-
-
-def test_build_session_store_rejects_unknown_handle() -> None:
-    """Unknown DB handle types fail fast with TypeError."""
-    handle = type("SomeOtherDB", (), {})()
-    with pytest.raises(TypeError, match="Unsupported session-store DB handle"):
-        _build_session_store(handle)
+    After A1 consolidation the dispatcher that used to branch on
+    handle type is gone; backend-type selection now happens inside
+    each persistence backend's ``connect()``.  Cross-backend
+    behaviour is covered by ``tests/conformance/persistence``; this
+    test just guards against the two classes drifting away from the
+    shared protocol (e.g. a renamed or dropped method).
+    """
+    pg_pool = MagicMock()
+    sqlite_db = MagicMock()
+    pg_store = PostgresSessionStore(pg_pool)
+    sqlite_store = SqliteSessionStore(sqlite_db)
+    assert isinstance(pg_store, SessionStore)
+    assert isinstance(sqlite_store, SessionStore)
+    # Every SessionStore method must exist on both concretes (catches a
+    # refactor accident where one silently loses a method via alias).
+    for method_name in (
+        "load_revoked",
+        "create",
+        "get",
+        "list_by_user",
+        "list_all",
+        "revoke",
+        "revoke_all_for_user",
+        "enforce_session_limit",
+        "is_revoked",
+        "cleanup_expired",
+    ):
+        assert callable(getattr(pg_store, method_name)), method_name
+        assert callable(getattr(sqlite_store, method_name)), method_name
 
 
 # -- Happy-path SQL shape (one test per method) ----------------------

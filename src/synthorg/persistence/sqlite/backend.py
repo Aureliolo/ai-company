@@ -66,6 +66,21 @@ from synthorg.persistence.sqlite.hr_repositories import (
     SQLiteLifecycleEventRepository,
     SQLiteTaskMetricRepository,
 )
+from synthorg.persistence.sqlite.lockout_repo import (
+    SQLiteLockoutRepository,
+)
+from synthorg.persistence.sqlite.mcp_installation_repo import (
+    SQLiteMcpInstallationRepository,
+)
+from synthorg.persistence.sqlite.ontology_drift_repo import (
+    SQLiteOntologyDriftReportRepository,
+)
+from synthorg.persistence.sqlite.ontology_entity_repo import (
+    SQLiteOntologyEntityRepository,
+)
+from synthorg.persistence.sqlite.org_fact_repo import (
+    SQLiteOrgFactRepository,
+)
 from synthorg.persistence.sqlite.parked_context_repo import (
     SQLiteParkedContextRepository,
 )
@@ -78,6 +93,9 @@ from synthorg.persistence.sqlite.project_cost_aggregate_repo import (
 from synthorg.persistence.sqlite.project_repo import (
     SQLiteProjectRepository,
 )
+from synthorg.persistence.sqlite.refresh_repo import (
+    SQLiteRefreshTokenRepository,
+)
 from synthorg.persistence.sqlite.repositories import (
     SQLiteCostRecordRepository,
     SQLiteMessageRepository,
@@ -85,6 +103,9 @@ from synthorg.persistence.sqlite.repositories import (
 )
 from synthorg.persistence.sqlite.risk_override_repo import (
     SQLiteRiskOverrideRepository,
+)
+from synthorg.persistence.sqlite.session_repo import (
+    SQLiteSessionRepository,
 )
 from synthorg.persistence.sqlite.settings_repo import (
     SQLiteSettingsRepository,
@@ -114,7 +135,10 @@ from synthorg.persistence.sqlite.workflow_execution_repo import (
 )
 
 if TYPE_CHECKING:
+    from synthorg.api.auth.config import AuthConfig
+    from synthorg.persistence.auth_protocol import LockoutRepository
     from synthorg.persistence.config import SQLiteConfig
+    from synthorg.persistence.escalation_protocol import EscalationQueueRepository
 
 logger = get_logger(__name__)
 
@@ -179,6 +203,16 @@ class SQLitePersistenceBackend:
         self._training_plans: SQLiteTrainingPlanRepository | None = None
         self._training_results: SQLiteTrainingResultRepository | None = None
         self._custom_rules: SQLiteCustomRuleRepository | None = None
+        self._sessions: SQLiteSessionRepository | None = None
+        self._refresh_tokens: SQLiteRefreshTokenRepository | None = None
+        self._mcp_installations: SQLiteMcpInstallationRepository | None = None
+        self._org_facts: SQLiteOrgFactRepository | None = None
+        self._ontology_entities: SQLiteOntologyEntityRepository | None = None
+        self._ontology_drift: SQLiteOntologyDriftReportRepository | None = None
+        # Cached lockout repository -- in-memory cache must survive
+        # across ``build_lockouts`` calls, otherwise ``is_locked`` is
+        # always False on a freshly-built instance.
+        self._lockouts: SQLiteLockoutRepository | None = None
         self._connections_stub = StubConnectionRepository()
         self._connection_secrets_stub = StubConnectionSecretRepository()
         self._oauth_states_stub = StubOAuthStateRepository()
@@ -221,6 +255,13 @@ class SQLitePersistenceBackend:
         self._training_plans = None
         self._training_results = None
         self._custom_rules = None
+        self._sessions = None
+        self._refresh_tokens = None
+        self._mcp_installations = None
+        self._org_facts = None
+        self._ontology_entities = None
+        self._ontology_drift = None
+        self._lockouts = None
 
     async def connect(self) -> None:
         """Open the SQLite database and configure WAL mode."""
@@ -369,6 +410,12 @@ class SQLitePersistenceBackend:
         self._training_plans = SQLiteTrainingPlanRepository(self._db)
         self._training_results = SQLiteTrainingResultRepository(self._db)
         self._custom_rules = SQLiteCustomRuleRepository(self._db)
+        self._sessions = SQLiteSessionRepository(self._db)
+        self._refresh_tokens = SQLiteRefreshTokenRepository(self._db)
+        self._mcp_installations = SQLiteMcpInstallationRepository(self._db)
+        self._org_facts = SQLiteOrgFactRepository(self._db)
+        self._ontology_entities = SQLiteOntologyEntityRepository(self._db)
+        self._ontology_drift = SQLiteOntologyDriftReportRepository(self._db)
 
     async def _cleanup_failed_connect(self, exc: sqlite3.Error | OSError) -> None:
         """Log failure, close partial connection, and raise.
@@ -728,6 +775,84 @@ class SQLitePersistenceBackend:
             self._custom_rules,
             "custom_rules",
         )
+
+    @property
+    def sessions(self) -> SQLiteSessionRepository:
+        """Repository for hybrid session state (durable + in-memory cache)."""
+        return self._require_connected(self._sessions, "sessions")
+
+    @property
+    def refresh_tokens(self) -> SQLiteRefreshTokenRepository:
+        """Repository for single-use refresh-token rotation."""
+        return self._require_connected(
+            self._refresh_tokens,
+            "refresh_tokens",
+        )
+
+    @property
+    def mcp_installations(self) -> SQLiteMcpInstallationRepository:
+        """Repository for MCP catalog installations."""
+        return self._require_connected(
+            self._mcp_installations,
+            "mcp_installations",
+        )
+
+    @property
+    def org_facts(self) -> SQLiteOrgFactRepository:
+        """Repository for organizational fact persistence (MVCC)."""
+        return self._require_connected(self._org_facts, "org_facts")
+
+    @property
+    def ontology_entities(self) -> SQLiteOntologyEntityRepository:
+        """Repository for ontology entity definitions."""
+        return self._require_connected(
+            self._ontology_entities,
+            "ontology_entities",
+        )
+
+    @property
+    def ontology_drift(self) -> SQLiteOntologyDriftReportRepository:
+        """Repository for ontology drift reports."""
+        return self._require_connected(
+            self._ontology_drift,
+            "ontology_drift",
+        )
+
+    def build_lockouts(self, auth_config: AuthConfig) -> LockoutRepository:
+        """Return the cached lockout repository (built once per connection).
+
+        The lockout repo maintains a process-local in-memory cache
+        (``_locked``) on the auth hot path.  Returning a fresh instance
+        on every call would reset that cache and silently "unlock"
+        every user.  The cache is cleared on ``disconnect`` via
+        ``_clear_state``.  The shared write lock is passed through so
+        lockout transactions serialize with other repositories writing
+        to the same aiosqlite connection.
+        """
+        if self._lockouts is None:
+            self._lockouts = SQLiteLockoutRepository(
+                self.get_db(),
+                auth_config,
+                write_lock=self._shared_write_lock,
+            )
+        return self._lockouts
+
+    def build_escalations(
+        self,
+        *,
+        notify_channel: str | None = None,  # noqa: ARG002
+    ) -> EscalationQueueRepository:
+        """Construct an escalation queue repository.
+
+        ``notify_channel`` is ignored by SQLite (no cross-instance
+        NOTIFY/LISTEN).
+        """
+        from synthorg.persistence.sqlite.escalation_repo import (  # noqa: PLC0415
+            SQLiteEscalationRepository,
+        )
+
+        db = self.get_db()
+        return SQLiteEscalationRepository(db)
 
     async def get_setting(self, key: NotBlankStr) -> str | None:
         """Retrieve a setting value by key from the ``_system`` namespace.
