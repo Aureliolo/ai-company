@@ -1,47 +1,10 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { describe, expect, it, beforeEach } from 'vitest'
+import { http, HttpResponse } from 'msw'
 import { useCompanyStore } from '@/stores/company'
-
-vi.mock('@/api/endpoints/company', () => ({
-  getCompanyConfig: vi.fn(),
-  getDepartmentHealth: vi.fn(),
-  updateCompany: vi.fn(),
-  createDepartment: vi.fn(),
-  updateDepartment: vi.fn(),
-  deleteDepartment: vi.fn(),
-  reorderDepartments: vi.fn(),
-  createAgentOrg: vi.fn(),
-  updateAgentOrg: vi.fn(),
-  deleteAgent: vi.fn(),
-  reorderAgents: vi.fn(),
-}))
-
-import {
-  getCompanyConfig,
-  getDepartmentHealth,
-  updateCompany,
-  createDepartment,
-  updateDepartment,
-  deleteDepartment,
-  reorderDepartments,
-  createAgentOrg,
-  updateAgentOrg,
-  deleteAgent,
-  reorderAgents,
-} from '@/api/endpoints/company'
+import { apiError, apiSuccess, voidSuccess } from '@/mocks/handlers'
+import { server } from '@/test-setup'
 import type { CompanyConfig, DepartmentHealth } from '@/api/types'
 import { makeAgent, makeCompanyConfig, makeDepartment } from '../helpers/factories'
-
-const mockGetCompanyConfig = vi.mocked(getCompanyConfig)
-const mockGetDepartmentHealth = vi.mocked(getDepartmentHealth)
-const mockUpdateCompany = vi.mocked(updateCompany)
-const mockCreateDepartment = vi.mocked(createDepartment)
-const mockUpdateDepartment = vi.mocked(updateDepartment)
-const mockDeleteDepartment = vi.mocked(deleteDepartment)
-const mockReorderDepartments = vi.mocked(reorderDepartments)
-const mockCreateAgent = vi.mocked(createAgentOrg)
-const mockUpdateAgent = vi.mocked(updateAgentOrg)
-const mockDeleteAgent = vi.mocked(deleteAgent)
-const mockReorderAgents = vi.mocked(reorderAgents)
 
 const mockConfig: CompanyConfig = {
   company_name: 'Test Corp',
@@ -76,7 +39,6 @@ function resetStore() {
 describe('useCompanyStore', () => {
   beforeEach(() => {
     resetStore()
-    vi.clearAllMocks()
   })
 
   it('starts with null config and empty health', () => {
@@ -91,7 +53,11 @@ describe('useCompanyStore', () => {
   })
 
   it('fetchCompanyData sets config on success', async () => {
-    mockGetCompanyConfig.mockResolvedValue(mockConfig)
+    server.use(
+      http.get('/api/v1/company', () =>
+        HttpResponse.json(apiSuccess(mockConfig)),
+      ),
+    )
     await useCompanyStore.getState().fetchCompanyData()
     const state = useCompanyStore.getState()
     expect(state.config).toEqual(mockConfig)
@@ -100,8 +66,14 @@ describe('useCompanyStore', () => {
   })
 
   it('fetchCompanyData sets error on failure and rethrows', async () => {
-    mockGetCompanyConfig.mockRejectedValue(new Error('Network error'))
-    await expect(useCompanyStore.getState().fetchCompanyData()).rejects.toThrow('Network error')
+    server.use(
+      http.get('/api/v1/company', () =>
+        HttpResponse.json(apiError('Network error')),
+      ),
+    )
+    await expect(
+      useCompanyStore.getState().fetchCompanyData(),
+    ).rejects.toThrow('Network error')
     const state = useCompanyStore.getState()
     expect(state.config).toBeNull()
     expect(state.loading).toBe(false)
@@ -110,20 +82,35 @@ describe('useCompanyStore', () => {
 
   it('fetchDepartmentHealths populates array on success', async () => {
     useCompanyStore.setState({ config: mockConfig })
-    mockGetDepartmentHealth.mockResolvedValue(mockDeptHealth)
+    server.use(
+      http.get('/api/v1/departments/:name/health', () =>
+        HttpResponse.json(apiSuccess(mockDeptHealth)),
+      ),
+    )
 
     await useCompanyStore.getState().fetchDepartmentHealths()
     expect(useCompanyStore.getState().departmentHealths).toEqual([mockDeptHealth])
   })
 
   it('fetchDepartmentHealths does nothing without config', async () => {
+    let called = false
+    server.use(
+      http.get('/api/v1/departments/:name/health', () => {
+        called = true
+        return HttpResponse.json(apiSuccess(mockDeptHealth))
+      }),
+    )
     await useCompanyStore.getState().fetchDepartmentHealths()
-    expect(mockGetDepartmentHealth).not.toHaveBeenCalled()
+    expect(called).toBe(false)
   })
 
   it('fetchDepartmentHealths sets healthError when all fetches fail', async () => {
     useCompanyStore.setState({ config: mockConfig })
-    mockGetDepartmentHealth.mockRejectedValue(new Error('Service down'))
+    server.use(
+      http.get('/api/v1/departments/:name/health', () =>
+        HttpResponse.json(apiError('Service down')),
+      ),
+    )
 
     await useCompanyStore.getState().fetchDepartmentHealths()
     const state = useCompanyStore.getState()
@@ -132,8 +119,15 @@ describe('useCompanyStore', () => {
   })
 
   it('fetchDepartmentHealths clears healthError on success', async () => {
-    useCompanyStore.setState({ config: mockConfig, healthError: 'previous error' })
-    mockGetDepartmentHealth.mockResolvedValue(mockDeptHealth)
+    useCompanyStore.setState({
+      config: mockConfig,
+      healthError: 'previous error',
+    })
+    server.use(
+      http.get('/api/v1/departments/:name/health', () =>
+        HttpResponse.json(apiSuccess(mockDeptHealth)),
+      ),
+    )
 
     await useCompanyStore.getState().fetchDepartmentHealths()
     expect(useCompanyStore.getState().healthError).toBeNull()
@@ -148,9 +142,14 @@ describe('useCompanyStore', () => {
       ],
     }
     useCompanyStore.setState({ config: configWithTwoDepts })
-    mockGetDepartmentHealth
-      .mockResolvedValueOnce(mockDeptHealth)
-      .mockRejectedValueOnce(new Error('Not found'))
+    server.use(
+      http.get('/api/v1/departments/:name/health', ({ params }) => {
+        if (params.name === 'engineering') {
+          return HttpResponse.json(apiSuccess(mockDeptHealth))
+        }
+        return HttpResponse.json(apiError('Not found'))
+      }),
+    )
 
     await useCompanyStore.getState().fetchDepartmentHealths()
     const healths = useCompanyStore.getState().departmentHealths
@@ -159,8 +158,18 @@ describe('useCompanyStore', () => {
   })
 
   it('updateFromWsEvent triggers re-fetch of config and health on agent.hired', async () => {
-    mockGetCompanyConfig.mockResolvedValue(mockConfig)
-    mockGetDepartmentHealth.mockResolvedValue(mockDeptHealth)
+    let configCalls = 0
+    let healthCalls = 0
+    server.use(
+      http.get('/api/v1/company', () => {
+        configCalls += 1
+        return HttpResponse.json(apiSuccess(mockConfig))
+      }),
+      http.get('/api/v1/departments/:name/health', () => {
+        healthCalls += 1
+        return HttpResponse.json(apiSuccess(mockDeptHealth))
+      }),
+    )
     useCompanyStore.getState().updateFromWsEvent({
       event_type: 'agent.hired',
       channel: 'agents',
@@ -168,16 +177,26 @@ describe('useCompanyStore', () => {
       payload: {},
     })
     await vi.waitFor(() => {
-      expect(mockGetCompanyConfig).toHaveBeenCalled()
+      expect(configCalls).toBeGreaterThan(0)
     })
     await vi.waitFor(() => {
-      expect(mockGetDepartmentHealth).toHaveBeenCalled()
+      expect(healthCalls).toBeGreaterThan(0)
     })
   })
 
   it('updateFromWsEvent triggers re-fetch of config and health on agent.fired', async () => {
-    mockGetCompanyConfig.mockResolvedValue(mockConfig)
-    mockGetDepartmentHealth.mockResolvedValue(mockDeptHealth)
+    let configCalls = 0
+    let healthCalls = 0
+    server.use(
+      http.get('/api/v1/company', () => {
+        configCalls += 1
+        return HttpResponse.json(apiSuccess(mockConfig))
+      }),
+      http.get('/api/v1/departments/:name/health', () => {
+        healthCalls += 1
+        return HttpResponse.json(apiSuccess(mockDeptHealth))
+      }),
+    )
     useCompanyStore.getState().updateFromWsEvent({
       event_type: 'agent.fired',
       channel: 'agents',
@@ -185,44 +204,64 @@ describe('useCompanyStore', () => {
       payload: {},
     })
     await vi.waitFor(() => {
-      expect(mockGetCompanyConfig).toHaveBeenCalled()
+      expect(configCalls).toBeGreaterThan(0)
     })
     await vi.waitFor(() => {
-      expect(mockGetDepartmentHealth).toHaveBeenCalled()
+      expect(healthCalls).toBeGreaterThan(0)
     })
   })
 
-  it('updateFromWsEvent ignores unrelated events', () => {
+  it('updateFromWsEvent ignores unrelated events', async () => {
+    let configCalls = 0
+    server.use(
+      http.get('/api/v1/company', () => {
+        configCalls += 1
+        return HttpResponse.json(apiSuccess(mockConfig))
+      }),
+    )
     useCompanyStore.getState().updateFromWsEvent({
       event_type: 'task.created',
       channel: 'tasks',
       timestamp: '2026-03-27T10:00:00Z',
       payload: {},
     })
-    expect(mockGetCompanyConfig).not.toHaveBeenCalled()
+    // Give the event loop a tick to settle.
+    await new Promise((r) => setTimeout(r, 10))
+    expect(configCalls).toBe(0)
   })
-
-  // ── Mutations ──────────────────────────────────────────────
 
   describe('updateCompany', () => {
     it('updates config on success', async () => {
       const updated = { ...mockConfig, company_name: 'New Name' }
-      mockUpdateCompany.mockResolvedValue({ company_name: 'New Name' })
-      mockGetCompanyConfig.mockResolvedValue(updated)
+      let configFetched = false
+      server.use(
+        http.patch('/api/v1/company', () =>
+          HttpResponse.json(apiSuccess({ company_name: 'New Name' })),
+        ),
+        http.get('/api/v1/company', () => {
+          configFetched = true
+          return HttpResponse.json(apiSuccess(updated))
+        }),
+      )
       useCompanyStore.setState({ config: mockConfig })
 
       await useCompanyStore.getState().updateCompany({ company_name: 'New Name' })
       expect(useCompanyStore.getState().config?.company_name).toBe('New Name')
       expect(useCompanyStore.getState().savingCount).toBe(0)
-      // updateCompany refetches full config after the API call
-      expect(mockGetCompanyConfig).toHaveBeenCalled()
+      expect(configFetched).toBe(true)
     })
 
     it('sets saveError on failure', async () => {
-      mockUpdateCompany.mockRejectedValue(new Error('Forbidden'))
+      server.use(
+        http.patch('/api/v1/company', () =>
+          HttpResponse.json(apiError('Forbidden')),
+        ),
+      )
       useCompanyStore.setState({ config: mockConfig })
 
-      await expect(useCompanyStore.getState().updateCompany({ company_name: 'X' })).rejects.toThrow('Forbidden')
+      await expect(
+        useCompanyStore.getState().updateCompany({ company_name: 'X' }),
+      ).rejects.toThrow('Forbidden')
       expect(useCompanyStore.getState().saveError).toBe('Forbidden')
       expect(useCompanyStore.getState().savingCount).toBe(0)
     })
@@ -231,18 +270,26 @@ describe('useCompanyStore', () => {
   describe('createDepartment', () => {
     it('appends new department to config', async () => {
       const newDept = makeDepartment('design')
-      mockCreateDepartment.mockResolvedValue(newDept)
+      server.use(
+        http.post('/api/v1/departments', () =>
+          HttpResponse.json(apiSuccess(newDept), { status: 201 }),
+        ),
+      )
       useCompanyStore.setState({ config: mockConfig })
 
-      const result = await useCompanyStore.getState().createDepartment({
-        name: 'design',
-      })
+      const result = await useCompanyStore
+        .getState()
+        .createDepartment({ name: 'design' })
       expect(result).toEqual(newDept)
       expect(useCompanyStore.getState().config!.departments).toHaveLength(2)
     })
 
     it('throws on failure without modifying config', async () => {
-      mockCreateDepartment.mockRejectedValue(new Error('Conflict'))
+      server.use(
+        http.post('/api/v1/departments', () =>
+          HttpResponse.json(apiError('Conflict')),
+        ),
+      )
       useCompanyStore.setState({ config: mockConfig })
 
       await expect(
@@ -254,23 +301,38 @@ describe('useCompanyStore', () => {
 
   describe('updateDepartment', () => {
     it('replaces department in config', async () => {
-      const updated = makeDepartment('engineering', { display_name: 'Eng Team', budget_percent: 50 })
-      mockUpdateDepartment.mockResolvedValue(updated)
-      useCompanyStore.setState({ config: mockConfig })
-
-      const result = await useCompanyStore.getState().updateDepartment('engineering', {
+      const updated = makeDepartment('engineering', {
+        display_name: 'Eng Team',
         budget_percent: 50,
       })
+      server.use(
+        http.patch('/api/v1/departments/:name', () =>
+          HttpResponse.json(apiSuccess(updated)),
+        ),
+      )
+      useCompanyStore.setState({ config: mockConfig })
+
+      const result = await useCompanyStore
+        .getState()
+        .updateDepartment('engineering', { budget_percent: 50 })
       expect(result.name).toBe('engineering')
       expect(result.budget_percent).toBe(50)
-      expect(useCompanyStore.getState().config!.departments[0]!.name).toBe('engineering')
-      expect(useCompanyStore.getState().config!.departments[0]!.budget_percent).toBe(50)
+      expect(useCompanyStore.getState().config!.departments[0]!.name).toBe(
+        'engineering',
+      )
+      expect(
+        useCompanyStore.getState().config!.departments[0]!.budget_percent,
+      ).toBe(50)
     })
   })
 
   describe('deleteDepartment', () => {
     it('removes department from config', async () => {
-      mockDeleteDepartment.mockResolvedValue(undefined)
+      server.use(
+        http.delete('/api/v1/departments/:name', () =>
+          HttpResponse.json(voidSuccess()),
+        ),
+      )
       useCompanyStore.setState({ config: mockConfig })
 
       await useCompanyStore.getState().deleteDepartment('engineering')
@@ -281,19 +343,33 @@ describe('useCompanyStore', () => {
   describe('reorderDepartments', () => {
     it('updates config with reordered result', async () => {
       const reordered = [makeDepartment('product'), makeDepartment('engineering')]
-      mockReorderDepartments.mockResolvedValue(reordered)
+      server.use(
+        http.post('/api/v1/company/reorder-departments', () =>
+          HttpResponse.json(apiSuccess(reordered)),
+        ),
+      )
       useCompanyStore.setState({ config: mockConfig })
 
-      await useCompanyStore.getState().reorderDepartments(['product', 'engineering'])
-      expect(useCompanyStore.getState().config!.departments[0]!.name).toBe('product')
+      await useCompanyStore
+        .getState()
+        .reorderDepartments(['product', 'engineering'])
+      expect(useCompanyStore.getState().config!.departments[0]!.name).toBe(
+        'product',
+      )
     })
 
     it('sets saveError on failure', async () => {
-      mockReorderDepartments.mockRejectedValue(new Error('Reorder denied'))
+      server.use(
+        http.post('/api/v1/company/reorder-departments', () =>
+          HttpResponse.json(apiError('Reorder denied')),
+        ),
+      )
       useCompanyStore.setState({ config: mockConfig })
 
       await expect(
-        useCompanyStore.getState().reorderDepartments(['product', 'engineering']),
+        useCompanyStore
+          .getState()
+          .reorderDepartments(['product', 'engineering']),
       ).rejects.toThrow('Reorder denied')
       expect(useCompanyStore.getState().saveError).toBe('Reorder denied')
       expect(useCompanyStore.getState().savingCount).toBe(0)
@@ -303,7 +379,11 @@ describe('useCompanyStore', () => {
   describe('createAgent', () => {
     it('appends new agent to config', async () => {
       const newAgent = makeAgent('dave')
-      mockCreateAgent.mockResolvedValue(newAgent)
+      server.use(
+        http.post('/api/v1/agents', () =>
+          HttpResponse.json(apiSuccess(newAgent), { status: 201 }),
+        ),
+      )
       useCompanyStore.setState({ config: mockConfig })
 
       const result = await useCompanyStore.getState().createAgent({
@@ -321,10 +401,18 @@ describe('useCompanyStore', () => {
     it('replaces agent in config', async () => {
       const agent = makeAgent('alice')
       const updated = { ...agent, role: 'Senior Dev' }
-      mockUpdateAgent.mockResolvedValue(updated)
-      useCompanyStore.setState({ config: { ...mockConfig, agents: [agent] } })
+      server.use(
+        http.patch('/api/v1/agents/:name', () =>
+          HttpResponse.json(apiSuccess(updated)),
+        ),
+      )
+      useCompanyStore.setState({
+        config: { ...mockConfig, agents: [agent] },
+      })
 
-      const result = await useCompanyStore.getState().updateAgent('alice', { role: 'Senior Dev' })
+      const result = await useCompanyStore
+        .getState()
+        .updateAgent('alice', { role: 'Senior Dev' })
       expect(result.role).toBe('Senior Dev')
     })
   })
@@ -332,8 +420,14 @@ describe('useCompanyStore', () => {
   describe('deleteAgent', () => {
     it('removes agent from config', async () => {
       const agent = makeAgent('alice')
-      mockDeleteAgent.mockResolvedValue(undefined)
-      useCompanyStore.setState({ config: { ...mockConfig, agents: [agent] } })
+      server.use(
+        http.delete('/api/v1/agents/:name', () =>
+          HttpResponse.json(voidSuccess()),
+        ),
+      )
+      useCompanyStore.setState({
+        config: { ...mockConfig, agents: [agent] },
+      })
 
       await useCompanyStore.getState().deleteAgent('alice')
       expect(useCompanyStore.getState().config!.agents).toHaveLength(0)
@@ -342,47 +436,73 @@ describe('useCompanyStore', () => {
 
   describe('reorderAgents', () => {
     it('calls API and clears saving flag', async () => {
-      mockReorderAgents.mockResolvedValue(mockConfig.agents)
-      mockGetCompanyConfig.mockResolvedValue(mockConfig)
+      let capturedBody: unknown = null
+      let configFetched = false
+      server.use(
+        http.post(
+          '/api/v1/departments/:name/reorder-agents',
+          async ({ request }) => {
+            capturedBody = await request.json()
+            return HttpResponse.json(apiSuccess(mockConfig.agents))
+          },
+        ),
+        http.get('/api/v1/company', () => {
+          configFetched = true
+          return HttpResponse.json(apiSuccess(mockConfig))
+        }),
+      )
       useCompanyStore.setState({ config: mockConfig })
 
-      await useCompanyStore.getState().reorderAgents('engineering', ['a-2', 'a-1'])
-      expect(mockReorderAgents).toHaveBeenCalledWith('engineering', { agent_names: ['a-2', 'a-1'] })
+      await useCompanyStore
+        .getState()
+        .reorderAgents('engineering', ['a-2', 'a-1'])
+      expect(capturedBody).toEqual({ agent_names: ['a-2', 'a-1'] })
       expect(useCompanyStore.getState().savingCount).toBe(0)
-      // reorderAgents refetches full config after the API call
-      expect(mockGetCompanyConfig).toHaveBeenCalled()
+      expect(configFetched).toBe(true)
     })
 
     it('sets saveError on failure', async () => {
-      mockReorderAgents.mockRejectedValue(new Error('Reorder failed'))
+      server.use(
+        http.post('/api/v1/departments/:name/reorder-agents', () =>
+          HttpResponse.json(apiError('Reorder failed')),
+        ),
+      )
       useCompanyStore.setState({ config: mockConfig })
 
       await expect(
-        useCompanyStore.getState().reorderAgents('engineering', ['a-2', 'a-1']),
+        useCompanyStore
+          .getState()
+          .reorderAgents('engineering', ['a-2', 'a-1']),
       ).rejects.toThrow('Reorder failed')
       expect(useCompanyStore.getState().saveError).toBe('Reorder failed')
       expect(useCompanyStore.getState().savingCount).toBe(0)
     })
   })
 
-  // ── Optimistic helpers ─────────────────────────────────────
-
   describe('optimisticReorderDepartments', () => {
     it('reorders departments and returns rollback', () => {
       const config = makeCompanyConfig()
       useCompanyStore.setState({ config })
 
-      const rollback = useCompanyStore.getState().optimisticReorderDepartments(['product', 'engineering'])
-      expect(useCompanyStore.getState().config!.departments[0]!.name).toBe('product')
+      const rollback = useCompanyStore
+        .getState()
+        .optimisticReorderDepartments(['product', 'engineering'])
+      expect(useCompanyStore.getState().config!.departments[0]!.name).toBe(
+        'product',
+      )
 
       rollback()
-      expect(useCompanyStore.getState().config!.departments[0]!.name).toBe('engineering')
+      expect(useCompanyStore.getState().config!.departments[0]!.name).toBe(
+        'engineering',
+      )
     })
 
     it('returns no-op when config is null', () => {
-      const rollback = useCompanyStore.getState().optimisticReorderDepartments(['a'])
+      const rollback = useCompanyStore
+        .getState()
+        .optimisticReorderDepartments(['a'])
       expect(rollback).toBeTypeOf('function')
-      rollback() // should not throw
+      rollback()
     })
   })
 
@@ -396,17 +516,19 @@ describe('useCompanyStore', () => {
         .map((a) => a.id ?? a.name)
         .reverse()
 
-      const rollback = useCompanyStore.getState().optimisticReorderAgents('engineering', agentIds)
+      const rollback = useCompanyStore
+        .getState()
+        .optimisticReorderAgents('engineering', agentIds)
 
-      const reordered = useCompanyStore.getState().config!.agents.filter(
-        (a) => a.department === 'engineering',
-      )
+      const reordered = useCompanyStore
+        .getState()
+        .config!.agents.filter((a) => a.department === 'engineering')
       expect(reordered.map((a) => a.id ?? a.name)).toEqual(agentIds)
 
       rollback()
-      const restored = useCompanyStore.getState().config!.agents.filter(
-        (a) => a.department === 'engineering',
-      )
+      const restored = useCompanyStore
+        .getState()
+        .config!.agents.filter((a) => a.department === 'engineering')
       expect(restored.map((a) => a.id ?? a.name)).toEqual(agentIds.toReversed())
     })
   })

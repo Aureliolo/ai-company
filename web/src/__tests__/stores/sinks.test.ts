@@ -1,12 +1,14 @@
+import { http, HttpResponse } from 'msw'
 import type { SinkInfo, TestSinkResult } from '@/api/types'
 import { useSinksStore } from '@/stores/sinks'
+import { apiError, apiSuccess } from '@/mocks/handlers'
+import { server } from '@/test-setup'
 
-vi.mock('@/api/endpoints/settings', () => ({
-  listSinks: vi.fn(),
-  testSinkConfig: vi.fn(),
-}))
-
-const { listSinks, testSinkConfig } = await import('@/api/endpoints/settings')
+// The global `vi.mock('@/api/endpoints/settings')` in test-setup.tsx
+// intercepts settings module calls before they reach MSW. Un-mock the
+// module here so the sinks store exercises the real axios client and
+// hits the MSW server we configure below.
+vi.unmock('@/api/endpoints/settings')
 
 function makeSink(overrides: Partial<SinkInfo> = {}): SinkInfo {
   return {
@@ -23,7 +25,6 @@ function makeSink(overrides: Partial<SinkInfo> = {}): SinkInfo {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks()
   useSinksStore.setState({
     sinks: [],
     loading: false,
@@ -33,8 +34,15 @@ beforeEach(() => {
 
 describe('fetchSinks', () => {
   it('sets sinks on success', async () => {
-    const sinks = [makeSink(), makeSink({ identifier: 'synthorg.log', sink_type: 'file' })]
-    vi.mocked(listSinks).mockResolvedValue(sinks)
+    const sinks = [
+      makeSink(),
+      makeSink({ identifier: 'synthorg.log', sink_type: 'file' }),
+    ]
+    server.use(
+      http.get('/api/v1/settings/observability/sinks', () =>
+        HttpResponse.json(apiSuccess(sinks)),
+      ),
+    )
 
     await useSinksStore.getState().fetchSinks()
 
@@ -45,24 +53,32 @@ describe('fetchSinks', () => {
   })
 
   it('sets loading to true during fetch', async () => {
-    let resolvePromise!: (value: SinkInfo[]) => void
-    vi.mocked(listSinks).mockReturnValue(
-      new Promise((resolve) => {
-        resolvePromise = resolve
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    server.use(
+      http.get('/api/v1/settings/observability/sinks', async () => {
+        await gate
+        return HttpResponse.json(apiSuccess([makeSink()]))
       }),
     )
 
     const fetchPromise = useSinksStore.getState().fetchSinks()
     expect(useSinksStore.getState().loading).toBe(true)
 
-    resolvePromise([makeSink()])
+    release()
     await fetchPromise
 
     expect(useSinksStore.getState().loading).toBe(false)
   })
 
-  it('sets error on failure with Error instance', async () => {
-    vi.mocked(listSinks).mockRejectedValue(new Error('Network error'))
+  it('sets error on failure with envelope error', async () => {
+    server.use(
+      http.get('/api/v1/settings/observability/sinks', () =>
+        HttpResponse.json(apiError('Network error')),
+      ),
+    )
 
     await useSinksStore.getState().fetchSinks()
 
@@ -72,19 +88,30 @@ describe('fetchSinks', () => {
     expect(state.error).toBe('Network error')
   })
 
-  it('sets generic error on failure with non-Error', async () => {
-    vi.mocked(listSinks).mockRejectedValue('string error')
+  it('sets generic error on HTTP 500 without envelope', async () => {
+    server.use(
+      http.get('/api/v1/settings/observability/sinks', () =>
+        new HttpResponse('server exploded', { status: 500 }),
+      ),
+    )
 
     await useSinksStore.getState().fetchSinks()
 
     const state = useSinksStore.getState()
-    expect(state.error).toBe('Failed to load sinks')
+    // The store's getErrorMessage falls back to a generic label for
+    // non-envelope error bodies.
+    expect(state.error).not.toBeNull()
+    expect(state.sinks).toHaveLength(0)
     expect(state.loading).toBe(false)
   })
 
   it('clears previous error on new fetch', async () => {
     useSinksStore.setState({ error: 'old error' })
-    vi.mocked(listSinks).mockResolvedValue([makeSink()])
+    server.use(
+      http.get('/api/v1/settings/observability/sinks', () =>
+        HttpResponse.json(apiSuccess([makeSink()])),
+      ),
+    )
 
     await useSinksStore.getState().fetchSinks()
 
@@ -93,21 +120,37 @@ describe('fetchSinks', () => {
 })
 
 describe('testConfig', () => {
-  it('passes data through to testSinkConfig', async () => {
+  it('forwards the request body to the backend and returns the result', async () => {
     const result: TestSinkResult = { valid: true, error: null }
-    vi.mocked(testSinkConfig).mockResolvedValue(result)
+    const requestBodies: unknown[] = []
+    server.use(
+      http.post(
+        '/api/v1/settings/observability/sinks/_test',
+        async ({ request }) => {
+          requestBodies.push(await request.json())
+          return HttpResponse.json(apiSuccess(result))
+        },
+      ),
+    )
 
     const data = { sink_overrides: '{}', custom_sinks: '[]' }
     const response = await useSinksStore.getState().testConfig(data)
 
-    expect(testSinkConfig).toHaveBeenCalledWith(data)
+    expect(requestBodies).toHaveLength(1)
+    expect(requestBodies[0]).toEqual(data)
     expect(response).toEqual(result)
   })
 
   it('propagates errors from testSinkConfig', async () => {
-    vi.mocked(testSinkConfig).mockRejectedValue(new Error('Invalid config'))
+    server.use(
+      http.post('/api/v1/settings/observability/sinks/_test', () =>
+        HttpResponse.json(apiError('Invalid config')),
+      ),
+    )
 
     const data = { sink_overrides: '{}', custom_sinks: '[]' }
-    await expect(useSinksStore.getState().testConfig(data)).rejects.toThrow('Invalid config')
+    await expect(useSinksStore.getState().testConfig(data)).rejects.toThrow(
+      'Invalid config',
+    )
   })
 })

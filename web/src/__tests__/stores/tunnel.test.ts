@@ -1,38 +1,40 @@
+import { http, HttpResponse } from 'msw'
 import { useTunnelStore } from '@/stores/tunnel'
-
-vi.mock('@/api/endpoints/tunnel', () => ({
-  getTunnelStatus: vi.fn(),
-  startTunnel: vi.fn(),
-  stopTunnel: vi.fn(),
-}))
-
-const { getTunnelStatus, startTunnel, stopTunnel } = await import(
-  '@/api/endpoints/tunnel'
-)
+import { server } from '@/test-setup'
+import { apiError, apiSuccess, voidSuccess } from '@/mocks/handlers'
 
 describe('useTunnelStore', () => {
   beforeEach(() => {
     useTunnelStore.getState().reset()
-    vi.clearAllMocks()
   })
 
   it('maps status.public_url to the running phase', async () => {
-    vi.mocked(getTunnelStatus).mockResolvedValue({
-      public_url: 'https://abc.ngrok.io',
-    })
+    server.use(
+      http.get('/api/v1/integrations/tunnel/status', () =>
+        HttpResponse.json(apiSuccess({ public_url: 'https://abc.ngrok.io' })),
+      ),
+    )
     await useTunnelStore.getState().fetchStatus()
     expect(useTunnelStore.getState().phase).toBe('on')
     expect(useTunnelStore.getState().publicUrl).toBe('https://abc.ngrok.io')
   })
 
   it('transitions to the stopped phase when no URL is returned', async () => {
-    vi.mocked(getTunnelStatus).mockResolvedValue({ public_url: null })
+    server.use(
+      http.get('/api/v1/integrations/tunnel/status', () =>
+        HttpResponse.json(apiSuccess({ public_url: null })),
+      ),
+    )
     await useTunnelStore.getState().fetchStatus()
     expect(useTunnelStore.getState().phase).toBe('stopped')
   })
 
   it('transitions to error phase when the status fetch fails', async () => {
-    vi.mocked(getTunnelStatus).mockRejectedValue(new Error('fetch boom'))
+    server.use(
+      http.get('/api/v1/integrations/tunnel/status', () =>
+        HttpResponse.json(apiError('fetch boom')),
+      ),
+    )
     await useTunnelStore.getState().fetchStatus()
     const state = useTunnelStore.getState()
     expect(state.phase).toBe('error')
@@ -41,16 +43,22 @@ describe('useTunnelStore', () => {
   })
 
   it('start transitions enabling -> on on success', async () => {
-    vi.mocked(startTunnel).mockResolvedValue({
-      public_url: 'https://new.ngrok.io',
-    })
+    server.use(
+      http.post('/api/v1/integrations/tunnel/start', () =>
+        HttpResponse.json(apiSuccess({ public_url: 'https://new.ngrok.io' })),
+      ),
+    )
     await useTunnelStore.getState().start()
     expect(useTunnelStore.getState().phase).toBe('on')
     expect(useTunnelStore.getState().publicUrl).toBe('https://new.ngrok.io')
   })
 
   it('start moves to error phase on failure', async () => {
-    vi.mocked(startTunnel).mockRejectedValue(new Error('ngrok down'))
+    server.use(
+      http.post('/api/v1/integrations/tunnel/start', () =>
+        HttpResponse.json(apiError('ngrok down')),
+      ),
+    )
     await useTunnelStore.getState().start()
     expect(useTunnelStore.getState().phase).toBe('error')
     expect(useTunnelStore.getState().error).toBe('ngrok down')
@@ -58,9 +66,26 @@ describe('useTunnelStore', () => {
 
   it('stop clears the URL on success', async () => {
     useTunnelStore.setState({ phase: 'on', publicUrl: 'https://abc.ngrok.io' })
-    vi.mocked(stopTunnel).mockResolvedValue(undefined)
+    server.use(
+      http.post('/api/v1/integrations/tunnel/stop', () =>
+        HttpResponse.json(voidSuccess()),
+      ),
+    )
     await useTunnelStore.getState().stop()
     expect(useTunnelStore.getState().phase).toBe('stopped')
     expect(useTunnelStore.getState().publicUrl).toBeNull()
+  })
+
+  it('stop moves to error phase on failure', async () => {
+    useTunnelStore.setState({ phase: 'on', publicUrl: 'https://abc.ngrok.io' })
+    server.use(
+      http.post('/api/v1/integrations/tunnel/stop', () =>
+        HttpResponse.json(apiError('tunnel stuck')),
+      ),
+    )
+    await useTunnelStore.getState().stop()
+    const state = useTunnelStore.getState()
+    expect(state.phase).toBe('error')
+    expect(state.error).toBe('tunnel stuck')
   })
 })

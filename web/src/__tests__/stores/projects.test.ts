@@ -1,21 +1,30 @@
 import { waitFor } from '@testing-library/react'
+import { http, HttpResponse } from 'msw'
 import { useProjectsStore } from '@/stores/projects'
 import { makeProject, makeTask } from '../helpers/factories'
-import type { WsEvent } from '@/api/types'
+import { apiError, apiSuccess } from '@/mocks/handlers'
+import { server } from '@/test-setup'
+import type { Project, Task, WsEvent } from '@/api/types'
 
-vi.mock('@/api/endpoints/projects', () => ({
-  listProjects: vi.fn(),
-  getProject: vi.fn(),
-  createProject: vi.fn(),
-}))
+function paginatedProjects(data: Project[], total?: number) {
+  return {
+    data,
+    error: null,
+    error_detail: null,
+    success: true,
+    pagination: { total: total ?? data.length, offset: 0, limit: 200 },
+  }
+}
 
-vi.mock('@/api/endpoints/tasks', () => ({
-  listTasks: vi.fn(),
-}))
-
-const { listProjects, getProject, createProject } =
-  await import('@/api/endpoints/projects')
-const { listTasks } = await import('@/api/endpoints/tasks')
+function paginatedTasks(data: Task[], total?: number) {
+  return {
+    data,
+    error: null,
+    error_detail: null,
+    success: true,
+    pagination: { total: total ?? data.length, offset: 0, limit: 50 },
+  }
+}
 
 describe('useProjectsStore', () => {
   beforeEach(() => {
@@ -32,13 +41,16 @@ describe('useProjectsStore', () => {
       detailLoading: false,
       detailError: null,
     })
-    vi.clearAllMocks()
   })
 
   describe('fetchProjects', () => {
     it('populates projects on success', async () => {
       const project = makeProject('proj-001')
-      vi.mocked(listProjects).mockResolvedValue({ data: [project], total: 1, offset: 0, limit: 200 })
+      server.use(
+        http.get('/api/v1/projects', () =>
+          HttpResponse.json(paginatedProjects([project], 1)),
+        ),
+      )
 
       await useProjectsStore.getState().fetchProjects()
 
@@ -49,7 +61,11 @@ describe('useProjectsStore', () => {
     })
 
     it('sets error on failure', async () => {
-      vi.mocked(listProjects).mockRejectedValue(new Error('Network error'))
+      server.use(
+        http.get('/api/v1/projects', () =>
+          HttpResponse.json(apiError('Network error')),
+        ),
+      )
 
       await useProjectsStore.getState().fetchProjects()
 
@@ -61,8 +77,14 @@ describe('useProjectsStore', () => {
     it('populates selected project and tasks', async () => {
       const project = makeProject('proj-001')
       const task = makeTask('task-001')
-      vi.mocked(getProject).mockResolvedValue(project)
-      vi.mocked(listTasks).mockResolvedValue({ data: [task], total: 1, offset: 0, limit: 50 })
+      server.use(
+        http.get('/api/v1/projects/:id', () =>
+          HttpResponse.json(apiSuccess(project)),
+        ),
+        http.get('/api/v1/tasks', () =>
+          HttpResponse.json(paginatedTasks([task], 1)),
+        ),
+      )
 
       await useProjectsStore.getState().fetchProjectDetail('proj-001')
 
@@ -72,8 +94,14 @@ describe('useProjectsStore', () => {
     })
 
     it('sets error when project not found', async () => {
-      vi.mocked(getProject).mockRejectedValue(new Error('Not found'))
-      vi.mocked(listTasks).mockRejectedValue(new Error('Not found'))
+      server.use(
+        http.get('/api/v1/projects/:id', () =>
+          HttpResponse.json(apiError('Not found')),
+        ),
+        http.get('/api/v1/tasks', () =>
+          HttpResponse.json(apiError('Not found')),
+        ),
+      )
 
       await useProjectsStore.getState().fetchProjectDetail('missing')
 
@@ -82,8 +110,14 @@ describe('useProjectsStore', () => {
 
     it('handles partial task failure gracefully', async () => {
       const project = makeProject('proj-001')
-      vi.mocked(getProject).mockResolvedValue(project)
-      vi.mocked(listTasks).mockRejectedValue(new Error('task fetch failed'))
+      server.use(
+        http.get('/api/v1/projects/:id', () =>
+          HttpResponse.json(apiSuccess(project)),
+        ),
+        http.get('/api/v1/tasks', () =>
+          HttpResponse.json(apiError('task fetch failed')),
+        ),
+      )
 
       await useProjectsStore.getState().fetchProjectDetail('proj-001')
 
@@ -97,12 +131,20 @@ describe('useProjectsStore', () => {
   describe('createProject', () => {
     it('calls API and optimistically adds to state', async () => {
       const project = makeProject('proj-new')
-      vi.mocked(createProject).mockResolvedValue(project)
+      let capturedBody: unknown = null
+      server.use(
+        http.post('/api/v1/projects', async ({ request }) => {
+          capturedBody = await request.json()
+          return HttpResponse.json(apiSuccess(project))
+        }),
+      )
 
-      const result = await useProjectsStore.getState().createProject({ name: 'New Project' })
+      const result = await useProjectsStore
+        .getState()
+        .createProject({ name: 'New Project' })
 
       expect(result).toEqual(project)
-      expect(createProject).toHaveBeenCalledWith({ name: 'New Project' })
+      expect(capturedBody).toEqual({ name: 'New Project' })
 
       const state = useProjectsStore.getState()
       expect(state.projects).toContainEqual(project)
@@ -110,9 +152,15 @@ describe('useProjectsStore', () => {
     })
 
     it('propagates error without modifying state', async () => {
-      vi.mocked(createProject).mockRejectedValue(new Error('Create failed'))
+      server.use(
+        http.post('/api/v1/projects', () =>
+          HttpResponse.json(apiError('Create failed')),
+        ),
+      )
 
-      await expect(useProjectsStore.getState().createProject({ name: 'Fail' })).rejects.toThrow('Create failed')
+      await expect(
+        useProjectsStore.getState().createProject({ name: 'Fail' }),
+      ).rejects.toThrow('Create failed')
 
       expect(useProjectsStore.getState().projects).toEqual([])
       expect(useProjectsStore.getState().totalProjects).toBe(0)
@@ -121,7 +169,13 @@ describe('useProjectsStore', () => {
 
   describe('updateFromWsEvent', () => {
     it('triggers fetchProjects on WS event', async () => {
-      vi.mocked(listProjects).mockResolvedValue({ data: [], total: 0, offset: 0, limit: 200 })
+      let fetchCount = 0
+      server.use(
+        http.get('/api/v1/projects', () => {
+          fetchCount += 1
+          return HttpResponse.json(paginatedProjects([]))
+        }),
+      )
 
       const event: WsEvent = {
         event_type: 'project.created',
@@ -132,7 +186,7 @@ describe('useProjectsStore', () => {
       useProjectsStore.getState().updateFromWsEvent(event)
 
       await waitFor(() => {
-        expect(listProjects).toHaveBeenCalled()
+        expect(fetchCount).toBeGreaterThan(0)
       })
     })
   })

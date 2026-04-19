@@ -1,17 +1,23 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { http, HttpResponse } from 'msw'
 import { useMeetingsStore, _resetRequestSeqs } from '@/stores/meetings'
 import { makeMeeting } from '../helpers/factories'
-import type { WsEvent } from '@/api/types'
+import { apiError, apiSuccess } from '@/mocks/handlers'
+import { server } from '@/test-setup'
+import type { MeetingResponse, WsEvent } from '@/api/types'
 
-// Mock the API module
-vi.mock('@/api/endpoints/meetings', () => ({
-  listMeetings: vi.fn(),
-  getMeeting: vi.fn(),
-  triggerMeeting: vi.fn(),
-}))
-
-async function importApi() {
-  return await import('@/api/endpoints/meetings')
+function paginated(data: MeetingResponse[], meta: Partial<{ total: number; offset: number; limit: number }> = {}) {
+  return {
+    data,
+    error: null,
+    error_detail: null,
+    success: true,
+    pagination: {
+      total: meta.total ?? data.length,
+      offset: meta.offset ?? 0,
+      limit: meta.limit ?? 100,
+    },
+  }
 }
 
 function resetStore() {
@@ -30,20 +36,18 @@ function resetStore() {
 
 beforeEach(() => {
   resetStore()
-  vi.clearAllMocks()
 })
 
 afterEach(() => {
   vi.restoreAllMocks()
 })
 
-// -- fetchMeetings ----------------------------------------------------------
-
 describe('fetchMeetings', () => {
   it('sets loading and stores results', async () => {
-    const api = await importApi()
     const items = [makeMeeting('1'), makeMeeting('2')]
-    vi.mocked(api.listMeetings).mockResolvedValue({ data: items, total: 2, offset: 0, limit: 100 })
+    server.use(
+      http.get('/api/v1/meetings', () => HttpResponse.json(paginated(items))),
+    )
 
     await useMeetingsStore.getState().fetchMeetings()
 
@@ -55,8 +59,11 @@ describe('fetchMeetings', () => {
   })
 
   it('sets error on failure', async () => {
-    const api = await importApi()
-    vi.mocked(api.listMeetings).mockRejectedValue(new Error('Network error'))
+    server.use(
+      http.get('/api/v1/meetings', () =>
+        HttpResponse.json(apiError('Network error')),
+      ),
+    )
 
     await useMeetingsStore.getState().fetchMeetings()
 
@@ -65,22 +72,31 @@ describe('fetchMeetings', () => {
     expect(state.error).toBe('Network error')
   })
 
-  it('passes filters to API', async () => {
-    const api = await importApi()
-    vi.mocked(api.listMeetings).mockResolvedValue({ data: [], total: 0, offset: 0, limit: 100 })
+  it('passes filters to API as query params', async () => {
+    let capturedParams: URLSearchParams | null = null
+    server.use(
+      http.get('/api/v1/meetings', ({ request }) => {
+        capturedParams = new URL(request.url).searchParams
+        return HttpResponse.json(paginated([]))
+      }),
+    )
 
-    await useMeetingsStore.getState().fetchMeetings({ status: 'completed', limit: 50 })
+    await useMeetingsStore
+      .getState()
+      .fetchMeetings({ status: 'completed', limit: 50 })
 
-    expect(api.listMeetings).toHaveBeenCalledWith({ status: 'completed', limit: 50 })
+    expect(capturedParams?.get('status')).toBe('completed')
+    expect(capturedParams?.get('limit')).toBe('50')
   })
 
   it('syncs selectedMeeting with fresh data', async () => {
-    const api = await importApi()
     const old = makeMeeting('1', { status: 'in_progress' })
     useMeetingsStore.setState({ selectedMeeting: old })
 
     const fresh = makeMeeting('1', { status: 'completed' })
-    vi.mocked(api.listMeetings).mockResolvedValue({ data: [fresh], total: 1, offset: 0, limit: 100 })
+    server.use(
+      http.get('/api/v1/meetings', () => HttpResponse.json(paginated([fresh]))),
+    )
 
     await useMeetingsStore.getState().fetchMeetings()
 
@@ -88,42 +104,47 @@ describe('fetchMeetings', () => {
   })
 
   it('rejects stale responses when a newer fetch starts', async () => {
-    const api = await importApi()
     const staleItems = [makeMeeting('stale')]
     const freshItems = [makeMeeting('fresh')]
 
-    // First call resolves slowly, second call resolves immediately
-    let resolveFirst!: (v: { data: typeof staleItems; total: number; offset: number; limit: number }) => void
-    vi.mocked(api.listMeetings)
-      .mockImplementationOnce(() => new Promise((r) => { resolveFirst = r }))
-      .mockResolvedValueOnce({ data: freshItems, total: 1, offset: 0, limit: 100 })
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    let callIndex = 0
+    server.use(
+      http.get('/api/v1/meetings', async () => {
+        const thisCall = callIndex++
+        if (thisCall === 0) {
+          await gate
+          return HttpResponse.json(paginated(staleItems))
+        }
+        return HttpResponse.json(paginated(freshItems))
+      }),
+    )
 
-    // Fire first request (slow)
     const firstPromise = useMeetingsStore.getState().fetchMeetings()
-    // Fire second request (fast) -- this increments listRequestSeq
     const secondPromise = useMeetingsStore.getState().fetchMeetings()
 
-    // Second resolves first
     await secondPromise
     expect(useMeetingsStore.getState().meetings[0]!.meeting_id).toBe('fresh')
 
-    // Now resolve the first (stale) request
-    resolveFirst({ data: staleItems, total: 1, offset: 0, limit: 100 })
+    release()
     await firstPromise
 
-    // Store should still have fresh data, not stale
     expect(useMeetingsStore.getState().meetings[0]!.meeting_id).toBe('fresh')
     expect(useMeetingsStore.getState().meetings).toHaveLength(1)
   })
 })
 
-// -- fetchMeeting -----------------------------------------------------------
-
 describe('fetchMeeting', () => {
   it('sets loadingDetail and stores result', async () => {
-    const api = await importApi()
     const meeting = makeMeeting('1')
-    vi.mocked(api.getMeeting).mockResolvedValue(meeting)
+    server.use(
+      http.get('/api/v1/meetings/:id', () =>
+        HttpResponse.json(apiSuccess(meeting)),
+      ),
+    )
 
     await useMeetingsStore.getState().fetchMeeting('1')
 
@@ -134,8 +155,11 @@ describe('fetchMeeting', () => {
   })
 
   it('sets detailError on failure', async () => {
-    const api = await importApi()
-    vi.mocked(api.getMeeting).mockRejectedValue(new Error('Not found'))
+    server.use(
+      http.get('/api/v1/meetings/:id', () =>
+        HttpResponse.json(apiError('Not found')),
+      ),
+    )
 
     await useMeetingsStore.getState().fetchMeeting('missing')
 
@@ -145,14 +169,22 @@ describe('fetchMeeting', () => {
   })
 
   it('rejects stale detail responses when a newer fetch starts', async () => {
-    const api = await importApi()
     const staleMeeting = makeMeeting('stale')
     const freshMeeting = makeMeeting('fresh')
 
-    let resolveFirst!: (v: typeof staleMeeting) => void
-    vi.mocked(api.getMeeting)
-      .mockImplementationOnce(() => new Promise((r) => { resolveFirst = r }))
-      .mockResolvedValueOnce(freshMeeting)
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    server.use(
+      http.get('/api/v1/meetings/:id', async ({ params }) => {
+        if (params.id === 'stale') {
+          await gate
+          return HttpResponse.json(apiSuccess(staleMeeting))
+        }
+        return HttpResponse.json(apiSuccess(freshMeeting))
+      }),
+    )
 
     const firstPromise = useMeetingsStore.getState().fetchMeeting('stale')
     const secondPromise = useMeetingsStore.getState().fetchMeeting('fresh')
@@ -160,27 +192,33 @@ describe('fetchMeeting', () => {
     await secondPromise
     expect(useMeetingsStore.getState().selectedMeeting?.meeting_id).toBe('fresh')
 
-    resolveFirst(staleMeeting)
+    release()
     await firstPromise
 
     expect(useMeetingsStore.getState().selectedMeeting?.meeting_id).toBe('fresh')
   })
 })
 
-// -- triggerMeeting ---------------------------------------------------------
-
 describe('triggerMeeting', () => {
   it('calls API and prepends results', async () => {
-    const api = await importApi()
     const existing = makeMeeting('old')
     useMeetingsStore.setState({ meetings: [existing], total: 1 })
 
     const triggered = [makeMeeting('new')]
-    vi.mocked(api.triggerMeeting).mockResolvedValue(triggered)
+    let requestBody: unknown = null
+    server.use(
+      http.post('/api/v1/meetings/trigger', async ({ request }) => {
+        requestBody = await request.json()
+        return HttpResponse.json(apiSuccess(triggered))
+      }),
+    )
 
-    const result = await useMeetingsStore.getState().triggerMeeting({ event_name: 'test_event' })
+    const result = await useMeetingsStore
+      .getState()
+      .triggerMeeting({ event_name: 'test_event' })
 
     expect(result).toHaveLength(1)
+    expect(requestBody).toEqual({ event_name: 'test_event' })
     const state = useMeetingsStore.getState()
     expect(state.meetings).toHaveLength(2)
     expect(state.meetings[0]!.meeting_id).toBe('new')
@@ -189,17 +227,20 @@ describe('triggerMeeting', () => {
   })
 
   it('re-throws on failure and resets triggering', async () => {
-    const api = await importApi()
-    vi.mocked(api.triggerMeeting).mockRejectedValue(new Error('Trigger failed'))
+    server.use(
+      http.post('/api/v1/meetings/trigger', () =>
+        HttpResponse.json(apiError('Trigger failed')),
+      ),
+    )
 
-    await expect(useMeetingsStore.getState().triggerMeeting({ event_name: 'bad_event' })).rejects.toThrow('Trigger failed')
+    await expect(
+      useMeetingsStore.getState().triggerMeeting({ event_name: 'bad_event' }),
+    ).rejects.toThrow('Trigger failed')
 
     const state = useMeetingsStore.getState()
     expect(state.triggering).toBe(false)
   })
 })
-
-// -- handleWsEvent ----------------------------------------------------------
 
 describe('handleWsEvent', () => {
   it('upserts meeting from valid payload', () => {
@@ -282,8 +323,6 @@ describe('handleWsEvent', () => {
   })
 })
 
-// -- upsertMeeting ----------------------------------------------------------
-
 describe('upsertMeeting', () => {
   it('inserts new meeting at the beginning', () => {
     const existing = makeMeeting('1')
@@ -313,7 +352,11 @@ describe('upsertMeeting', () => {
 
   it('syncs selectedMeeting when IDs match', () => {
     const selected = makeMeeting('1', { status: 'in_progress' })
-    useMeetingsStore.setState({ meetings: [selected], selectedMeeting: selected, total: 1 })
+    useMeetingsStore.setState({
+      meetings: [selected],
+      selectedMeeting: selected,
+      total: 1,
+    })
 
     const updated = makeMeeting('1', { status: 'completed' })
     useMeetingsStore.getState().upsertMeeting(updated)
