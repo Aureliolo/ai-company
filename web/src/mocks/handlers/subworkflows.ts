@@ -17,7 +17,7 @@ import { successFor, voidSuccess } from './helpers'
  * handlers return fixtures that still surface the boundary field that
  * distinguishes them from top-level workflows.
  */
-function buildSubworkflow(
+export function buildSubworkflow(
   overrides: Partial<WorkflowDefinition> = {},
 ): WorkflowDefinition {
   return buildDomainWorkflow({ is_subworkflow: true, ...overrides })

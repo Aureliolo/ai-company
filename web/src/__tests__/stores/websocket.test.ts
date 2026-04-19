@@ -1,6 +1,7 @@
 import { http, HttpResponse } from 'msw'
 import { useWebSocketStore } from '@/stores/websocket'
-import { apiError, apiSuccess } from '@/mocks/handlers'
+import { apiError, successFor } from '@/mocks/handlers'
+import type { getWsTicket } from '@/api/endpoints/auth'
 import { server } from '@/test-setup'
 import type { WsEvent } from '@/api/types'
 
@@ -25,7 +26,10 @@ function installTicketHandler() {
       const mode = ticketState.mode
       if (mode.kind === 'success') {
         return HttpResponse.json(
-          apiSuccess({ ticket: mode.ticket, expires_in: mode.expires_in }),
+          successFor<typeof getWsTicket>({
+            ticket: mode.ticket,
+            expires_in: mode.expires_in,
+          }),
         )
       }
       if (mode.kind === 'envelope_error') {

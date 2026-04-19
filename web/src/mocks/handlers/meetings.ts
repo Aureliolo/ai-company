@@ -41,7 +41,7 @@ export const meetingsHandlers = [
     try {
       body = await request.json()
     } catch {
-      return HttpResponse.json(apiError("Field 'event_name' is required"), {
+      return HttpResponse.json(apiError('Invalid JSON body'), {
         status: 400,
       })
     }
