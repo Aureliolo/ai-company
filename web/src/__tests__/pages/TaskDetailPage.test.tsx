@@ -1,19 +1,10 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
+import { http, HttpResponse } from 'msw'
 import { useTasksStore } from '@/stores/tasks'
+import { apiError, apiSuccess } from '@/mocks/handlers'
+import { server } from '@/test-setup'
 import type { Task } from '@/api/types'
-
-const mockGetTask = vi.fn()
-
-vi.mock('@/api/endpoints/tasks', () => ({
-  listTasks: vi.fn().mockResolvedValue({ data: [], total: 0, offset: 0, limit: 200 }),
-  getTask: (...args: unknown[]) => mockGetTask(...args),
-  createTask: vi.fn(),
-  updateTask: vi.fn(),
-  transitionTask: vi.fn(),
-  cancelTask: vi.fn(),
-  deleteTask: vi.fn(),
-}))
 
 const mockTask: Task = {
   id: 'task-1',
@@ -42,7 +33,52 @@ const mockTask: Task = {
   updated_at: '2026-03-25T14:00:00Z',
 }
 
-function resetStore(overrides: Partial<{ selectedTask: Task | null; loadingDetail: boolean; error: string | null }> = {}) {
+type FetchMode =
+  | { kind: 'resolve'; task: Task }
+  | { kind: 'error'; message: string }
+  | { kind: 'pending'; release: () => void }
+
+const fetchState: { mode: FetchMode } = {
+  mode: { kind: 'resolve', task: mockTask },
+}
+
+function installTaskHandler() {
+  server.use(
+    http.get('/api/v1/tasks/:id', async () => {
+      const mode = fetchState.mode
+      if (mode.kind === 'pending') {
+        await new Promise<void>((resolve) => {
+          // The release() provided when install-time pending mode is set
+          // owns its own resolver; we just wait here indefinitely until
+          // the test releases.
+          fetchState.mode = { kind: 'pending', release: resolve }
+        })
+        return HttpResponse.json(apiSuccess(mockTask))
+      }
+      if (mode.kind === 'error') {
+        return HttpResponse.json(apiError(mode.message))
+      }
+      return HttpResponse.json(apiSuccess(mode.task))
+    }),
+    http.get('/api/v1/tasks', () =>
+      HttpResponse.json({
+        data: [],
+        error: null,
+        error_detail: null,
+        success: true,
+        pagination: { total: 0, offset: 0, limit: 200 },
+      }),
+    ),
+  )
+}
+
+function resetStore(
+  overrides: Partial<{
+    selectedTask: Task | null
+    loadingDetail: boolean
+    error: string | null
+  }> = {},
+) {
   useTasksStore.setState({
     tasks: [],
     selectedTask: null,
@@ -67,63 +103,68 @@ async function renderDetailPage() {
 }
 
 describe('TaskDetailPage', () => {
-  // Controllable pending promises let loading-state tests simulate an
-  // in-flight fetch without leaving a never-settled promise past teardown.
-  // Each test appends its pending promise to this list; afterEach resolves
-  // every pending promise with a valid `mockTask` (never `undefined`, which
-  // would drive the real `fetchTask` continuation to set `selectedTask =
-  // undefined` and cross-test-interfere with the next test) and then awaits
-  // the microtask chain so the continuation settles before the test
-  // boundary -- --detect-async-leaks sees a clean slate either way.
-  const pendingPromises: Array<{ resolve: () => void; settled: Promise<unknown> }> = []
-  function pendingPromise<T>(resolveValue: T = mockTask as T): Promise<T> {
-    let resolveFn!: (value: T) => void
-    const p = new Promise<T>((resolve) => {
-      resolveFn = resolve
-    })
-    pendingPromises.push({ resolve: () => resolveFn(resolveValue), settled: p })
-    return p
-  }
+  const pendingReleasers: Array<() => void> = []
 
   beforeEach(() => {
     resetStore()
-    vi.clearAllMocks()
-    mockGetTask.mockResolvedValue(mockTask)
+    fetchState.mode = { kind: 'resolve', task: mockTask }
+    installTaskHandler()
   })
 
-  afterEach(async () => {
-    const outstanding = pendingPromises.splice(0, pendingPromises.length)
-    for (const { resolve } of outstanding) {
-      resolve()
+  afterEach(() => {
+    // Drain any pending-mode releasers so in-flight handler promises
+    // settle within the test boundary.
+    for (const release of pendingReleasers.splice(0)) {
+      release()
     }
-    // Await each promise so its continuation runs inside the test boundary
-    // (otherwise the microtask could land in the next test's beforeEach
-    // and briefly set invalid store state before resetStore wipes it).
-    await Promise.all(outstanding.map((p) => p.settled))
   })
 
   it('renders loading spinner when loadingDetail is true', async () => {
-    mockGetTask.mockReturnValue(pendingPromise())
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    pendingReleasers.push(release)
+    server.use(
+      http.get('/api/v1/tasks/:id', async () => {
+        await gate
+        return HttpResponse.json(apiSuccess(mockTask))
+      }),
+    )
     resetStore({ loadingDetail: true })
     await renderDetailPage()
-    // Positive assertion: the loading UI (role="status", aria-label="Loading task")
-    // must be rendered. Asserting presence -- not just absence of the loaded
-    // content -- catches regressions where the page renders nothing or an
-    // error state instead of the spinner.
-    expect(screen.getByRole('status', { name: 'Loading task' })).toBeInTheDocument()
+    expect(
+      screen.getByRole('status', { name: 'Loading task' }),
+    ).toBeInTheDocument()
     expect(screen.queryByText('Test task')).not.toBeInTheDocument()
   })
 
   it('renders loading spinner when task is null', async () => {
-    mockGetTask.mockReturnValue(pendingPromise())
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    pendingReleasers.push(release)
+    server.use(
+      http.get('/api/v1/tasks/:id', async () => {
+        await gate
+        return HttpResponse.json(apiSuccess(mockTask))
+      }),
+    )
     resetStore({ selectedTask: null, loadingDetail: false })
     await renderDetailPage()
-    expect(screen.getByRole('status', { name: 'Loading task' })).toBeInTheDocument()
+    expect(
+      screen.getByRole('status', { name: 'Loading task' }),
+    ).toBeInTheDocument()
     expect(screen.queryByText('Test task')).not.toBeInTheDocument()
   })
 
   it('renders error message when fetch fails', async () => {
-    mockGetTask.mockRejectedValue(new Error('Task not found'))
+    server.use(
+      http.get('/api/v1/tasks/:id', () =>
+        HttpResponse.json(apiError('Task not found')),
+      ),
+    )
     await renderDetailPage()
     expect(await screen.findByText('Task not found')).toBeInTheDocument()
   })
@@ -141,23 +182,35 @@ describe('TaskDetailPage', () => {
 
   it('renders transition buttons for in_progress task', async () => {
     await renderDetailPage()
-    expect(await screen.findByRole('button', { name: 'In Review' })).toBeInTheDocument()
+    expect(
+      await screen.findByRole('button', { name: 'In Review' }),
+    ).toBeInTheDocument()
   })
 
   it('renders Delete button', async () => {
     await renderDetailPage()
-    expect(await screen.findByRole('button', { name: 'Delete' })).toBeInTheDocument()
+    expect(
+      await screen.findByRole('button', { name: 'Delete' }),
+    ).toBeInTheDocument()
   })
 
   it('renders Cancel Task button for non-terminal tasks', async () => {
     await renderDetailPage()
-    expect(await screen.findByRole('button', { name: 'Cancel Task' })).toBeInTheDocument()
+    expect(
+      await screen.findByRole('button', { name: 'Cancel Task' }),
+    ).toBeInTheDocument()
   })
 
   it('does not render Cancel Task button for completed tasks', async () => {
-    mockGetTask.mockResolvedValue({ ...mockTask, status: 'completed' })
+    server.use(
+      http.get('/api/v1/tasks/:id', () =>
+        HttpResponse.json(apiSuccess({ ...mockTask, status: 'completed' })),
+      ),
+    )
     await renderDetailPage()
     await waitFor(() => expect(screen.getByText('Test task')).toBeInTheDocument())
-    expect(screen.queryByRole('button', { name: 'Cancel Task' })).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Cancel Task' }),
+    ).not.toBeInTheDocument()
   })
 })

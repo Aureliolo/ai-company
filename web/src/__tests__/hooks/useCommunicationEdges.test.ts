@@ -1,39 +1,57 @@
 import { renderHook, waitFor } from '@testing-library/react'
-import { describe, expect, it, vi, beforeEach } from 'vitest'
-
-// Mock listMessages
-const mockListMessages = vi.fn()
-
-vi.mock('@/api/endpoints/messages', () => ({
-  listMessages: (...args: unknown[]) => mockListMessages(...args),
-}))
-
-// Import after mock
+import { describe, expect, it, beforeEach } from 'vitest'
+import { http, HttpResponse } from 'msw'
 import { useCommunicationEdges } from '@/hooks/useCommunicationEdges'
+import { apiError } from '@/mocks/handlers'
+import { server } from '@/test-setup'
+
+type MessageSeed = { sender: string; to: string }
+
+function paginated(
+  data: MessageSeed[],
+  meta: { total: number; offset: number; limit: number },
+) {
+  return {
+    data,
+    error: null,
+    error_detail: null,
+    success: true,
+    pagination: meta,
+  }
+}
 
 describe('useCommunicationEdges', () => {
+  let messagesCalls: Array<{
+    offset: string | null
+    limit: string | null
+  }> = []
+
   beforeEach(() => {
-    mockListMessages.mockReset()
+    messagesCalls = []
   })
 
   it('returns empty links when disabled', () => {
     const { result } = renderHook(() => useCommunicationEdges(false))
     expect(result.current.links).toEqual([])
     expect(result.current.loading).toBe(false)
-    expect(mockListMessages).not.toHaveBeenCalled()
+    expect(messagesCalls).toHaveLength(0)
   })
 
   it('fetches and aggregates messages', async () => {
-    mockListMessages.mockResolvedValue({
-      data: [
-        { sender: 'alice', to: 'bob' },
-        { sender: 'bob', to: 'alice' },
-        { sender: 'alice', to: 'carol' },
-      ],
-      total: 3,
-      offset: 0,
-      limit: 100,
-    })
+    server.use(
+      http.get('/api/v1/messages', () =>
+        HttpResponse.json(
+          paginated(
+            [
+              { sender: 'alice', to: 'bob' },
+              { sender: 'bob', to: 'alice' },
+              { sender: 'alice', to: 'carol' },
+            ],
+            { total: 3, offset: 0, limit: 100 },
+          ),
+        ),
+      ),
+    )
 
     const { result } = renderHook(() => useCommunicationEdges(true))
 
@@ -44,31 +62,36 @@ describe('useCommunicationEdges', () => {
     })
 
     expect(result.current.links).toHaveLength(2)
-    const abLink = result.current.links.find((l) => l.source === 'alice' && l.target === 'bob')
+    const abLink = result.current.links.find(
+      (l) => l.source === 'alice' && l.target === 'bob',
+    )
     expect(abLink).toBeDefined()
     expect(abLink!.volume).toBe(2)
   })
 
   it('handles pagination across multiple pages', async () => {
-    // Simulate two full pages. Offset advances by data.length, not limit.
     const page1Data = Array.from({ length: 100 }, (_, i) => ({
       sender: `agent-${i}`,
       to: `agent-${i + 1}`,
     }))
     const page2Data = [{ sender: 'carol', to: 'dave' }]
-    mockListMessages
-      .mockResolvedValueOnce({
-        data: page1Data,
-        total: 101,
-        offset: 0,
-        limit: 100,
-      })
-      .mockResolvedValueOnce({
-        data: page2Data,
-        total: 101,
-        offset: 100,
-        limit: 100,
-      })
+    server.use(
+      http.get('/api/v1/messages', ({ request }) => {
+        const params = new URL(request.url).searchParams
+        messagesCalls.push({
+          offset: params.get('offset'),
+          limit: params.get('limit'),
+        })
+        if (params.get('offset') === '100') {
+          return HttpResponse.json(
+            paginated(page2Data, { total: 101, offset: 100, limit: 100 }),
+          )
+        }
+        return HttpResponse.json(
+          paginated(page1Data, { total: 101, offset: 0, limit: 100 }),
+        )
+      }),
+    )
 
     const { result } = renderHook(() => useCommunicationEdges(true))
 
@@ -77,13 +100,17 @@ describe('useCommunicationEdges', () => {
     })
 
     expect(result.current.links.length).toBeGreaterThan(0)
-    expect(mockListMessages).toHaveBeenCalledTimes(2)
-    expect(mockListMessages).toHaveBeenNthCalledWith(1, expect.objectContaining({ offset: 0, limit: 100 }))
-    expect(mockListMessages).toHaveBeenNthCalledWith(2, expect.objectContaining({ offset: 100, limit: 100 }))
+    expect(messagesCalls).toHaveLength(2)
+    expect(messagesCalls[0]).toEqual({ offset: '0', limit: '100' })
+    expect(messagesCalls[1]).toEqual({ offset: '100', limit: '100' })
   })
 
   it('sets error on API failure', async () => {
-    mockListMessages.mockRejectedValue(new Error('Network error'))
+    server.use(
+      http.get('/api/v1/messages', () =>
+        HttpResponse.json(apiError('Network error')),
+      ),
+    )
 
     const { result } = renderHook(() => useCommunicationEdges(true))
 
@@ -96,12 +123,11 @@ describe('useCommunicationEdges', () => {
   })
 
   it('returns empty links when no messages exist', async () => {
-    mockListMessages.mockResolvedValue({
-      data: [],
-      total: 0,
-      offset: 0,
-      limit: 100,
-    })
+    server.use(
+      http.get('/api/v1/messages', () =>
+        HttpResponse.json(paginated([], { total: 0, offset: 0, limit: 100 })),
+      ),
+    )
 
     const { result } = renderHook(() => useCommunicationEdges(true))
 

@@ -1,16 +1,8 @@
 import { renderHook, waitFor } from '@testing-library/react'
+import { http, HttpResponse } from 'msw'
 import { useTaskBoardData } from '@/hooks/useTaskBoardData'
 import { useTasksStore } from '@/stores/tasks'
-
-vi.mock('@/api/endpoints/tasks', () => ({
-  listTasks: vi.fn().mockResolvedValue({ data: [], total: 0, offset: 0, limit: 200 }),
-  getTask: vi.fn(),
-  createTask: vi.fn(),
-  updateTask: vi.fn(),
-  transitionTask: vi.fn(),
-  cancelTask: vi.fn(),
-  deleteTask: vi.fn(),
-}))
+import { server } from '@/test-setup'
 
 vi.mock('@/hooks/useWebSocket', () => ({
   useWebSocket: vi.fn().mockReturnValue({
@@ -66,10 +58,24 @@ describe('useTaskBoardData', () => {
     expect(typeof result.current.optimisticTransition).toBe('function')
   })
 
-  it('triggers initial fetch on mount', async () => {
-    const { listTasks } = await import('@/api/endpoints/tasks')
+  it('triggers initial fetch on mount with the configured limit', async () => {
+    let capturedParams: URLSearchParams | null = null
+    server.use(
+      http.get('/api/v1/tasks', ({ request }) => {
+        capturedParams = new URL(request.url).searchParams
+        return HttpResponse.json({
+          data: [],
+          error: null,
+          error_detail: null,
+          success: true,
+          pagination: { total: 0, offset: 0, limit: 200 },
+        })
+      }),
+    )
     renderHook(() => useTaskBoardData())
-    await waitFor(() => expect(listTasks).toHaveBeenCalled())
-    expect(listTasks).toHaveBeenCalledWith({ limit: 200 })
+    await waitFor(() => {
+      expect(capturedParams).not.toBeNull()
+    })
+    expect(capturedParams?.get('limit')).toBe('200')
   })
 })
