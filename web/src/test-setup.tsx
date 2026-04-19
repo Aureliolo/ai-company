@@ -8,6 +8,44 @@ import { useToastStore } from '@/stores/toast'
 import { cancelPendingPersist } from '@/stores/notifications'
 import { defaultHandlers } from '@/mocks/handlers'
 
+// jsdom's `document.cookie` is backed by `tough-cookie`'s Promise-based
+// `CookieJar`. Every get/set -- including read-only reads from our CSRF
+// interceptor (`api/client.ts` -> `utils/csrf.ts` -> `document.cookie`) and
+// MSW 2.x's handler parsing (`getAllDocumentCookies`) -- schedules a
+// `createPromiseCallback` that Vitest's `--detect-async-leaks` treats as a
+// leaked Promise. Category `alpha` in `docs/_working/leak-stacks.md` -- 17
+// of 69 baseline leaks trace back to this path.
+//
+// Replace the jsdom descriptor on `Document.prototype` (not on the
+// instance: `getCsrfToken`-style reads resolve through the prototype chain,
+// and `__tests__/utils/csrf.test.ts` layers its own `Document.prototype`
+// mocks on top -- capturing this shim's descriptor as its "original" and
+// restoring it in `afterEach`). Semantics preserved: `document.cookie`
+// stringifies the jar as `k=v; k=v`; assignment parses the first `k=v`
+// pair (ignoring `path=/`, `expires=`, etc., which the original jsdom
+// implementation also discards from the exposed value). Prod is untouched
+// -- this block only runs under Vitest.
+if (typeof document !== 'undefined') {
+  const cookieJar: Record<string, string> = {}
+  Object.defineProperty(Document.prototype, 'cookie', {
+    configurable: true,
+    get: () =>
+      Object.entries(cookieJar)
+        .map(([k, v]) => `${k}=${v}`)
+        .join('; '),
+    set: (raw: string) => {
+      if (typeof raw !== 'string') return
+      const [pair] = raw.split(';')
+      const eq = pair.indexOf('=')
+      if (eq === -1) return
+      const name = pair.slice(0, eq).trim()
+      const value = pair.slice(eq + 1).trim()
+      if (!name) return
+      cookieJar[name] = value
+    },
+  })
+}
+
 // Global MSW server: every default endpoint handler is registered up front
 // so tests that do not configure their own overrides get a predictable
 // happy-path response for any request. Requests that fall through to a
