@@ -1,0 +1,83 @@
+"""Shared types for topology dispatchers.
+
+``DispatchResult`` is the return type of every dispatcher's
+``dispatch()`` method. ``TopologyDispatcher`` is the runtime-
+checkable Protocol all dispatchers implement.
+"""
+
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
+
+from pydantic import BaseModel, ConfigDict, Field
+
+if TYPE_CHECKING:
+    from synthorg.engine.coordination.config import CoordinationConfig
+    from synthorg.engine.coordination.models import (
+        CoordinationPhaseResult,
+        CoordinationWave,
+    )
+    from synthorg.engine.decomposition.models import DecompositionResult
+    from synthorg.engine.parallel import ParallelExecutor
+    from synthorg.engine.routing.models import RoutingResult
+    from synthorg.engine.workspace.models import (
+        Workspace,
+        WorkspaceGroupResult,
+    )
+    from synthorg.engine.workspace.service import WorkspaceIsolationService
+
+
+class DispatchResult(BaseModel):
+    """Result of a topology dispatcher's execution.
+
+    Attributes:
+        waves: Executed waves with their results.
+        workspaces: Workspaces created during execution.
+        workspace_merge: Merge result if workspaces were merged.
+        phases: Phase results generated during dispatch.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    waves: tuple[CoordinationWave, ...] = Field(
+        default=(),
+        description="Executed waves",
+    )
+    workspaces: tuple[Workspace, ...] = Field(
+        default=(),
+        description="Workspaces created during execution",
+    )
+    workspace_merge: WorkspaceGroupResult | None = Field(
+        default=None,
+        description="Workspace merge result",
+    )
+    phases: tuple[CoordinationPhaseResult, ...] = Field(
+        default=(),
+        description="Phase results from dispatch",
+    )
+
+
+@runtime_checkable
+class TopologyDispatcher(Protocol):
+    """Protocol for topology-specific dispatch strategies."""
+
+    async def dispatch(
+        self,
+        *,
+        decomposition_result: DecompositionResult,
+        routing_result: RoutingResult,
+        parallel_executor: ParallelExecutor,
+        workspace_service: WorkspaceIsolationService | None,
+        config: CoordinationConfig,
+    ) -> DispatchResult:
+        """Execute subtasks according to topology-specific rules.
+
+        Args:
+            decomposition_result: Decomposition with subtasks.
+            routing_result: Routing decisions for subtasks.
+            parallel_executor: Executor for parallel agent runs.
+            workspace_service: Optional workspace isolation service.
+            config: Coordination configuration.
+
+        Returns:
+            Dispatch result with waves, workspaces, and phases.
+        """
+        ...

@@ -11,15 +11,18 @@ from synthorg.engine.coordination.attribution import (
     FailureAttribution,
     build_agent_contributions,
 )
+from synthorg.engine.coordination.centralized_dispatcher import CentralizedDispatcher
 from synthorg.engine.coordination.config import CoordinationConfig
-from synthorg.engine.coordination.dispatchers import (
-    CentralizedDispatcher,
+from synthorg.engine.coordination.context_dependent_dispatcher import (
     ContextDependentDispatcher,
+)
+from synthorg.engine.coordination.decentralized_dispatcher import (
     DecentralizedDispatcher,
+)
+from synthorg.engine.coordination.dispatcher_factory import select_dispatcher
+from synthorg.engine.coordination.dispatcher_types import (
     DispatchResult,
-    SasDispatcher,
     TopologyDispatcher,
-    select_dispatcher,
 )
 from synthorg.engine.coordination.factory import build_coordinator
 from synthorg.engine.coordination.group_builder import build_execution_waves
@@ -29,6 +32,7 @@ from synthorg.engine.coordination.models import (
     CoordinationResult,
     CoordinationWave,
 )
+from synthorg.engine.coordination.sas_dispatcher import SasDispatcher
 from synthorg.engine.coordination.section_config import CoordinationSectionConfig
 from synthorg.engine.coordination.service import MultiAgentCoordinator
 

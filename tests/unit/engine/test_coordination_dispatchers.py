@@ -7,16 +7,20 @@ from unittest.mock import AsyncMock
 import pytest
 
 from synthorg.core.enums import CoordinationTopology, TaskStructure
+from synthorg.engine.coordination.centralized_dispatcher import CentralizedDispatcher
 from synthorg.engine.coordination.config import CoordinationConfig
-from synthorg.engine.coordination.dispatchers import (
-    CentralizedDispatcher,
+from synthorg.engine.coordination.context_dependent_dispatcher import (
     ContextDependentDispatcher,
-    DecentralizedDispatcher,
-    DispatchResult,
-    SasDispatcher,
-    TopologyDispatcher,
-    select_dispatcher,
 )
+from synthorg.engine.coordination.decentralized_dispatcher import (
+    DecentralizedDispatcher,
+)
+from synthorg.engine.coordination.dispatcher_factory import select_dispatcher
+from synthorg.engine.coordination.dispatcher_types import (
+    DispatchResult,
+    TopologyDispatcher,
+)
+from synthorg.engine.coordination.sas_dispatcher import SasDispatcher
 from synthorg.engine.workspace.models import (
     MergeResult,
     Workspace,
