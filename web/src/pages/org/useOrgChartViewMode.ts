@@ -1,4 +1,4 @@
-import { useLayoutEffect, useReducer, useRef, useState } from 'react'
+import { useLayoutEffect, useReducer, useRef } from 'react'
 import type { Edge, Node } from '@xyflow/react'
 import { createLogger } from '@/lib/logger'
 import { prefersReducedMotion, TRANSITION_SLOW_MS } from '@/lib/motion'
@@ -69,20 +69,25 @@ function transitionReducer(state: TransitionState, action: TransitionAction): Tr
 }
 
 export interface OrgChartViewModeResult {
-  viewMode: ViewMode
-  setViewMode: (mode: ViewMode) => void
   displayNodes: Node[]
   displayEdges: Edge[]
   transitioning: boolean
 }
 
 /**
- * Owns the view mode (hierarchy/force) selector and the animated transition
- * between node layouts when switching modes. Uses a reducer + layout effect
- * so the first paint never shows a mid-transition state.
+ * Animates the transition between node layouts when the page's view mode
+ * changes. The page owns the `ViewMode` state (it is read before fetch, and
+ * again after fetched nodes/edges arrive) -- this hook is controlled: it
+ * only re-runs the animation when `nodes`/`edges` change. Uses a reducer +
+ * layout effect so the first paint never shows a mid-transition state.
+ *
+ * The `_viewMode` parameter is accepted for API symmetry and to let
+ * callers make the re-animation trigger explicit; it is not read, but
+ * changing it updates the effect dependency list without adding a
+ * separate prop.
  */
-export function useOrgChartViewMode(nodes: Node[], edges: Edge[]): OrgChartViewModeResult {
-  const [viewMode, setViewMode] = useState<ViewMode>('hierarchy')
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- viewMode is part of the controlled API surface
+export function useOrgChartViewMode(nodes: Node[], edges: Edge[], _viewMode: ViewMode): OrgChartViewModeResult {
   const [transition, dispatch] = useReducer(transitionReducer, {
     displayNodes: [],
     displayEdges: [],
@@ -145,8 +150,6 @@ export function useOrgChartViewMode(nodes: Node[], edges: Edge[]): OrgChartViewM
   }, [nodes.length, edges.length, transition.displayNodes.length, transition.transitioning])
 
   return {
-    viewMode,
-    setViewMode,
     displayNodes: transition.displayNodes,
     displayEdges: transition.displayEdges,
     transitioning: transition.transitioning,

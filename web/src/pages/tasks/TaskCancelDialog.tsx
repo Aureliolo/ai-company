@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { InputField } from '@/components/ui/input-field'
 
 interface TaskCancelDialogProps {
   open: boolean
@@ -32,13 +33,16 @@ export function TaskCancelDialog({ open, onOpenChange, onConfirm }: TaskCancelDi
       variant="destructive"
       onConfirm={handleConfirm}
     >
-      <textarea
-        value={reason}
-        onChange={(e) => setReason(e.target.value)}
-        placeholder="Reason for cancellation..."
-        className="mt-2 w-full rounded-md border border-border bg-surface px-2 py-1.5 text-sm text-foreground outline-none resize-y focus:ring-2 focus:ring-accent min-h-[60px]"
-        aria-label="Cancellation reason"
-      />
+      <div className="mt-2">
+        <InputField
+          multiline
+          label="Cancellation reason"
+          value={reason}
+          onValueChange={setReason}
+          placeholder="Reason for cancellation..."
+          rows={3}
+        />
+      </div>
     </ConfirmDialog>
   )
 }

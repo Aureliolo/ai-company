@@ -1,5 +1,6 @@
 import { Avatar } from '@/components/ui/avatar'
 import { InlineEdit } from '@/components/ui/inline-edit'
+import { SelectField, type SelectOption } from '@/components/ui/select-field'
 import { cn } from '@/lib/utils'
 import { useTasksStore } from '@/stores/tasks'
 import { useToastStore } from '@/stores/toast'
@@ -11,6 +12,11 @@ import { formatCurrency, formatDate } from '@/utils/format'
 import { getPriorityLabel, getTaskTypeLabel } from '@/utils/tasks'
 
 const PRIORITIES: readonly Priority[] = ['critical', 'high', 'medium', 'low']
+
+const PRIORITY_OPTIONS: readonly SelectOption[] = PRIORITIES.map((p) => ({
+  value: p,
+  label: getPriorityLabel(p),
+}))
 
 interface TaskDetailMetadataProps {
   task: Task
@@ -46,37 +52,25 @@ export function TaskDetailMetadata({ task }: TaskDetailMetadataProps) {
       </div>
 
       {/* Priority selector */}
-      <div>
-        <label className="text-[11px] font-semibold uppercase tracking-wider text-text-muted">
-          Priority
-        </label>
-        <div className="mt-1">
-          <select
-            value={task.priority}
-            onChange={async (e) => {
-              try {
-                await useTasksStore.getState().updateTask(task.id, {
-                  priority: e.target.value as Priority,
-                  expected_version: task.version,
-                })
-              } catch (err) {
-                useToastStore.getState().add({
-                  variant: 'error',
-                  title: 'Failed to update priority',
-                  description: getErrorMessage(err),
-                })
-              }
-            }}
-            className="h-8 rounded-md border border-border bg-surface px-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-accent"
-          >
-            {PRIORITIES.map((p) => (
-              <option key={p} value={p}>
-                {getPriorityLabel(p)}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
+      <SelectField
+        label="Priority"
+        options={PRIORITY_OPTIONS}
+        value={task.priority}
+        onChange={async (value) => {
+          try {
+            await useTasksStore.getState().updateTask(task.id, {
+              priority: value as Priority,
+              expected_version: task.version,
+            })
+          } catch (err) {
+            useToastStore.getState().add({
+              variant: 'error',
+              title: 'Failed to update priority',
+              description: getErrorMessage(err),
+            })
+          }
+        }}
+      />
 
       {/* Assignee */}
       <div className="flex items-center gap-2">

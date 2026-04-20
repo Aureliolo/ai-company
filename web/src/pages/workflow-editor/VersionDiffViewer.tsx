@@ -44,7 +44,7 @@ export interface MetadataChangeRowProps {
 
 export function MetadataChangeRow({ change }: MetadataChangeRowProps) {
   return (
-    <div className="rounded-md bg-card p-2 text-sm">
+    <div className="rounded-md bg-card p-card text-sm">
       <span className="font-medium text-foreground">{change.field}</span>
       :{' '}
       <span className="text-danger line-through">{change.old_value}</span>{' '}
@@ -63,7 +63,7 @@ export function NodeChangeRow({ change }: NodeChangeRowProps) {
   const label = change.change_type.replace(/_/g, ' ')
 
   return (
-    <div className="flex items-center gap-2 rounded-md bg-card p-2 text-sm">
+    <div className="flex items-center gap-2 rounded-md bg-card p-card text-sm">
       <Icon className={cn('size-3.5', color)} />
       <span className="font-medium text-foreground">{change.node_id}</span>
       <span className={cn('text-xs', color)}>{label}</span>
@@ -80,7 +80,7 @@ export function EdgeChangeRow({ change }: EdgeChangeRowProps) {
   const label = change.change_type.replace(/_/g, ' ')
 
   return (
-    <div className="flex items-center gap-2 rounded-md bg-card p-2 text-sm">
+    <div className="flex items-center gap-2 rounded-md bg-card p-card text-sm">
       <span className="font-medium text-foreground">{change.edge_id}</span>
       <span className={cn('text-xs', color)}>{label}</span>
     </div>

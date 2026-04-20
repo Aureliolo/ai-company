@@ -45,6 +45,7 @@ export function VersionCard({ v, currentVersion, saving, onCompare, onRestore }:
           onClick={() => onCompare(v)}
           disabled={isCurrent}
           title="Compare with current"
+          aria-label={`Compare version ${v.version} with current`}
         >
           <GitCompare className="size-3.5" />
           <span className="ml-1">Compare</span>
@@ -55,6 +56,7 @@ export function VersionCard({ v, currentVersion, saving, onCompare, onRestore }:
           onClick={() => onRestore(v.version)}
           disabled={isCurrent || saving}
           title="Restore this version"
+          aria-label={`Restore version ${v.version}`}
         >
           <RotateCcw className="size-3.5" />
           <span className="ml-1">Restore</span>

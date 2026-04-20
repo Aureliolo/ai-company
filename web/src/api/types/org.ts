@@ -104,15 +104,6 @@ export interface ReorderTeamsRequest {
   readonly team_names: readonly string[]
 }
 
-export interface CreateAgentOrgRequest {
-  name: string
-  role: string
-  department: DepartmentName
-  level: SeniorityLevel
-  model_provider?: string
-  model_id?: string
-}
-
 /**
  * Optional pair of (provider, model id) used by agent mutation DTOs.
  * Either both fields are present as non-empty strings, or both are
@@ -123,6 +114,20 @@ export interface CreateAgentOrgRequest {
 export type AgentModelSelector =
   | { model_provider: string; model_id: string }
   | { model_provider?: undefined; model_id?: undefined }
+
+/**
+ * Create payload for an agent. Mirrors
+ * `synthorg.api.dto_org.CreateAgentOrgRequest`.
+ *
+ * Backend validator requires `model_provider` and `model_id` to be
+ * either both set or both omitted. See {@link AgentModelSelector}.
+ */
+export type CreateAgentOrgRequest = {
+  name: string
+  role: string
+  department: DepartmentName
+  level: SeniorityLevel
+} & AgentModelSelector
 
 /**
  * Partial update for an agent. Mirrors

@@ -1,31 +1,9 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { useWorkflowEditorStore } from '@/stores/workflow-editor'
+import type { WorkflowDiff } from '@/api/types/workflows'
 
 function resetStore() {
-  useWorkflowEditorStore.setState({
-    nodes: [],
-    edges: [],
-    selectedNodeId: null,
-    dirty: false,
-    yamlPreview: '',
-    undoStack: [],
-    redoStack: [],
-    validationResult: null,
-    validating: false,
-    clipboard: null,
-    definition: null,
-    saving: false,
-    loading: false,
-    error: null,
-    versionHistoryOpen: false,
-    versions: [],
-    versionsLoading: false,
-    versionsHasMore: false,
-    diffResult: null,
-    diffLoading: false,
-    _versionsRequestId: 0,
-    _diffRequestId: 0,
-  })
+  useWorkflowEditorStore.getState().reset()
 }
 
 describe('workflow-editor composed store', () => {
@@ -115,6 +93,45 @@ describe('workflow-editor composed store', () => {
       expect(state.redoStack).toEqual([])
     })
 
+    it('undo on an empty stack is a no-op', () => {
+      const snapshotBefore = useWorkflowEditorStore.getState()
+      expect(snapshotBefore.undoStack).toEqual([])
+      expect(snapshotBefore.nodes).toEqual([])
+
+      useWorkflowEditorStore.getState().undo()
+
+      const state = useWorkflowEditorStore.getState()
+      expect(state.nodes).toEqual([])
+      expect(state.redoStack).toEqual([])
+      expect(state.undoStack).toEqual([])
+    })
+
+    it('redo on an empty stack is a no-op', () => {
+      useWorkflowEditorStore.getState().addNode('task', { x: 0, y: 0 })
+      const snapshotBefore = useWorkflowEditorStore.getState()
+      expect(snapshotBefore.redoStack).toEqual([])
+
+      useWorkflowEditorStore.getState().redo()
+
+      const state = useWorkflowEditorStore.getState()
+      expect(state.nodes).toHaveLength(1)
+      expect(state.redoStack).toEqual([])
+    })
+
+    it('a new action after undo clears the redo stack', () => {
+      const store = useWorkflowEditorStore.getState()
+      store.addNode('task', { x: 0, y: 0 })
+      store.addNode('agent_assignment', { x: 50, y: 0 })
+      useWorkflowEditorStore.getState().undo()
+      expect(useWorkflowEditorStore.getState().redoStack).toHaveLength(1)
+
+      useWorkflowEditorStore.getState().addNode('task', { x: 200, y: 200 })
+
+      const state = useWorkflowEditorStore.getState()
+      expect(state.nodes).toHaveLength(2)
+      expect(state.redoStack).toEqual([])
+    })
+
     it('removeNode clears selectedNodeId when the removed node was selected', () => {
       const store = useWorkflowEditorStore.getState()
       store.addNode('task', { x: 0, y: 0 })
@@ -130,6 +147,19 @@ describe('workflow-editor composed store', () => {
     })
   })
 
+  describe('clipboard slice', () => {
+    it('pasteNodes is a no-op when clipboard is empty', () => {
+      expect(useWorkflowEditorStore.getState().clipboard).toBeNull()
+
+      useWorkflowEditorStore.getState().pasteNodes()
+
+      const state = useWorkflowEditorStore.getState()
+      expect(state.nodes).toEqual([])
+      expect(state.undoStack).toEqual([])
+      expect(state.dirty).toBe(false)
+    })
+  })
+
   describe('versions slice', () => {
     it('toggleVersionHistory flips the open flag', () => {
       expect(useWorkflowEditorStore.getState().versionHistoryOpen).toBe(false)
@@ -142,12 +172,17 @@ describe('workflow-editor composed store', () => {
     })
 
     it('clearDiff resets diffResult without other state', () => {
+      const diffResult: WorkflowDiff = {
+        definition_id: 'test-def',
+        from_version: 1,
+        to_version: 2,
+        node_changes: [],
+        edge_changes: [],
+        metadata_changes: [],
+        summary: 'A test diff',
+      }
       useWorkflowEditorStore.setState({
-        diffResult: {
-          from_version: 1,
-          to_version: 2,
-          changes: [],
-        } as never,
+        diffResult,
         diffLoading: false,
       })
 

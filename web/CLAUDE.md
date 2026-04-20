@@ -26,14 +26,14 @@ npm --prefix web run storybook:build       # Storybook production build
 
 ```text
 web/src/
-  api/            # Axios client, endpoint modules (38 domains), shared types
+  api/            # Axios client (`client.ts`), endpoint modules (`endpoints/`, 38 domains), and narrow-domain types under `types/` (27 files, no barrel `index.ts` -- consumers import directly from `@/api/types/<domain>`)
   components/     # React components: ui/ (shadcn primitives + SynthOrg core components), layout/ (app shell, sidebar with external link support, status bar); feature dirs added as pages are built
   hooks/          # React hooks (auth, login lockout, WebSocket, polling, optimistic updates, command palette, flash effects, status transitions, page data composition, count animation, auto-scroll, roving tabindex, breakpoint detection, update tracking, animation presets, settings dirty state, settings keyboard shortcuts, communication edges, artifact/project data composition, useWorkflowsData)
   lib/            # Utilities (cn() class merging, semantic color mappers), Motion presets, CSP nonce reader, structured logger factory
   mocks/          # MSW request handlers (handlers/) shared between Storybook stories and the Vitest suite; test-setup.tsx bootstraps them via setupServer(...defaultHandlers)
   pages/          # Lazy-loaded page components (one per route); page-scoped sub-components in pages/<page-name>/ subdirs (e.g. tasks/, org-edit/, settings/, workflows/, fine-tuning/, training/)
   router/         # React Router config, route constants (incl. DOCUMENTATION -- external, not SPA-routed), auth/setup guards
-  stores/         # Zustand stores (auth, WebSocket, toast, analytics, setup wizard, company, agents, approvals, budget, meetings, messages, tasks, settings, sinks, providers (split into providers/ sub-modules), artifacts, projects, theme, workflow-editor, workflows, fine-tuning, ceremony-policy, setup, training, and per-domain stores for each page)
+  stores/         # Zustand stores (auth, WebSocket, toast, analytics, company, agents, approvals, budget, meetings, messages, tasks, settings, sinks, artifacts, projects, theme, workflows, fine-tuning, ceremony-policy, setup, training, per-domain stores). Stores over ~600 lines are sliced into packages: `setup-wizard/` (navigation, template, company, providers, agents, theme, completion), `workflow-editor/` (graph, undo-redo, validation, clipboard, persistence, versions, yaml), `providers/` (crud-actions, list-actions, local-model-actions), `connections/` (crud-actions, list-actions), `mcp-catalog/` (list-actions, install-actions) -- each package has a `types.ts` + composed `index.ts` aggregator.
   styles/         # Design tokens (--so-* CSS custom properties, single source of truth) and Tailwind theme bridge
   utils/          # Constants, error handling, formatting, logging
   __tests__/      # Vitest unit + property tests (mirrors src/ structure)

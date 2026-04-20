@@ -30,6 +30,7 @@ import { OrgChartToolbar } from './org/OrgChartToolbar'
 import { OrgChartSkeleton } from './org/OrgChartSkeleton'
 import { NodeContextMenu } from './org/NodeContextMenu'
 import { useOrgChartDragDrop } from './org/useOrgChartDragDrop'
+import { useOrgChartEdgeInteraction } from './org/OrgChartEdgeInteraction'
 import { useOrgChartFilter } from './org/OrgChartFilter'
 import { useOrgChartSelection } from './org/useOrgChartSelection'
 import { useOrgChartViewMode } from './org/useOrgChartViewMode'
@@ -121,16 +122,13 @@ function OrgChartInner() {
     wsSetupError,
   } = useOrgChartData(viewMode, collapsedDepts)
 
-  const view = useOrgChartViewMode(nodes, edges)
-  // Keep our local viewMode in sync with the hook's internal state when the
-  // user switches modes via the toolbar.
-  const handleViewModeChange = useCallback(
-    (mode: 'hierarchy' | 'force') => {
-      setViewMode(mode)
-      view.setViewMode(mode)
-    },
-    [view],
-  )
+  const view = useOrgChartViewMode(nodes, edges, viewMode)
+  // Page owns viewMode as the single source of truth: useOrgChartData
+  // reads it before fetch, and useOrgChartViewMode re-animates when it
+  // changes (via the effect's nodes/edges dependency list).
+  const handleViewModeChange = useCallback((mode: 'hierarchy' | 'force') => {
+    setViewMode(mode)
+  }, [])
 
   const { dragOverDeptId, handleNodeDragStart, handleNodeDrag, handleNodeDragStop } =
     useOrgChartDragDrop({ viewMode, displayNodes: view.displayNodes, announce })
@@ -196,7 +194,7 @@ function OrgChartInner() {
     })
   }, [sourceNodes, dragOverDeptId, filter.highlightedNodeIds, toggleDeptCollapsed, viewMode])
 
-  const renderedEdges = useMemo(() => {
+  const edgesWithParticles = useMemo(() => {
     return view.displayEdges.map((e) => {
       const particlesVisible =
         particleFlowMode === 'always'
@@ -207,6 +205,13 @@ function OrgChartInner() {
       return { ...e, data: { ...(e.data as object), particlesVisible } }
     })
   }, [view.displayEdges, particleFlowMode, liveActiveEdgeIds])
+
+  const {
+    edgesWithHoverState: renderedEdges,
+    onEdgeMouseEnter,
+    onEdgeMouseLeave,
+    onEdgeClick,
+  } = useOrgChartEdgeInteraction({ edges: edgesWithParticles })
 
   if (loading && nodes.length === 0) {
     return <OrgChartSkeleton />
@@ -278,6 +283,9 @@ function OrgChartInner() {
           onMoveEnd={handleMoveEnd}
           onNodeClick={selection.handleNodeClick}
           onNodeContextMenu={selection.handleNodeContextMenu}
+          onEdgeMouseEnter={onEdgeMouseEnter}
+          onEdgeMouseLeave={onEdgeMouseLeave}
+          onEdgeClick={onEdgeClick}
           onNodeDragStart={viewMode === 'hierarchy' ? handleNodeDragStart : undefined}
           onNodeDrag={viewMode === 'hierarchy' ? handleNodeDrag : undefined}
           onNodeDragStop={viewMode === 'hierarchy' ? handleNodeDragStop : undefined}

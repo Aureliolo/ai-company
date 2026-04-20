@@ -1,6 +1,33 @@
 import { useWorkflowEditorStore } from '@/stores/workflow-editor'
+import type {
+  GraphSlice,
+  PersistenceSlice,
+  UndoRedoSlice,
+  ValidationSlice,
+  VersionsSlice,
+} from '@/stores/workflow-editor/types'
 
-export function useWorkflowEditorState() {
+export type WorkflowEditorStateResult =
+  & Pick<
+    GraphSlice,
+    | 'nodes'
+    | 'edges'
+    | 'selectedNodeId'
+    | 'dirty'
+    | 'yamlPreview'
+    | 'addNode'
+    | 'updateNodeConfig'
+    | 'onConnect'
+    | 'onNodesChange'
+    | 'onEdgesChange'
+    | 'selectNode'
+  >
+  & Pick<PersistenceSlice, 'definition' | 'saving' | 'loading' | 'error' | 'loadDefinition' | 'createDefinition' | 'saveDefinition' | 'exportYaml'>
+  & Pick<UndoRedoSlice, 'undoStack' | 'redoStack' | 'undo' | 'redo'>
+  & Pick<ValidationSlice, 'validationResult' | 'validating' | 'validate'>
+  & Pick<VersionsSlice, 'versionHistoryOpen' | 'toggleVersionHistory'>
+
+export function useWorkflowEditorState(): WorkflowEditorStateResult {
   const nodes = useWorkflowEditorStore((s) => s.nodes)
   const edges = useWorkflowEditorStore((s) => s.edges)
   const definition = useWorkflowEditorStore((s) => s.definition)

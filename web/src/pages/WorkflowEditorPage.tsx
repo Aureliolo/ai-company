@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ReactFlowProvider } from '@xyflow/react'
+import { ReactFlowProvider, type Node } from '@xyflow/react'
 import { Workflow } from 'lucide-react'
 import { useSearchParams } from 'react-router'
 import { createLogger } from '@/lib/logger'
@@ -74,6 +74,29 @@ function loadViewport(): { x: number; y: number; zoom: number } | undefined {
   return undefined
 }
 
+interface SelectedNodeDetails {
+  readonly node: Node
+  readonly type: WorkflowNodeType | null
+  readonly label: string
+  readonly config: Record<string, unknown>
+}
+
+/** Resolve the currently-selected node and its display props in one place,
+ *  so the sidebar receives a validated shape rather than raw inline casts. */
+function getSelectedNodeDetails(
+  nodes: readonly Node[],
+  selectedNodeId: string | null,
+): SelectedNodeDetails | null {
+  if (!selectedNodeId) return null
+  const node = nodes.find((n) => n.id === selectedNodeId)
+  if (!node) return null
+  const data = (node.data ?? {}) as { label?: unknown; config?: unknown }
+  const label = typeof data.label === 'string' ? data.label : 'Node'
+  const config = (data.config && typeof data.config === 'object' ? data.config : {}) as Record<string, unknown>
+  const type = typeof node.type === 'string' ? (node.type as WorkflowNodeType) : null
+  return { node, type, label, config }
+}
+
 function WorkflowEditorInner() {
   const state = useWorkflowEditorState()
   const [editorMode, setEditorMode] = useState<'visual' | 'yaml'>('visual')
@@ -104,9 +127,7 @@ function WorkflowEditorInner() {
     }
   }, [defId, loadDefinition, createDefinition])
 
-  const selectedNode = state.selectedNodeId
-    ? state.nodes.find((n) => n.id === state.selectedNodeId) ?? null
-    : null
+  const selectedNodeDetails = getSelectedNodeDetails(state.nodes, state.selectedNodeId)
 
   if (state.loading) return <WorkflowEditorSkeleton />
 
@@ -175,12 +196,12 @@ function WorkflowEditorInner() {
       )}
 
       <WorkflowEditorSidebar
-        nodeDrawerOpen={editorMode === 'visual' && selectedNode !== null && !state.versionHistoryOpen}
+        nodeDrawerOpen={editorMode === 'visual' && selectedNodeDetails !== null && !state.versionHistoryOpen}
         onNodeDrawerClose={callbacks.handleDrawerClose}
         selectedNodeId={state.selectedNodeId}
-        selectedNodeType={(selectedNode?.type as WorkflowNodeType) ?? null}
-        selectedNodeLabel={String((selectedNode?.data as Record<string, unknown>)?.label ?? 'Node')}
-        selectedNodeConfig={((selectedNode?.data as Record<string, unknown>)?.config as Record<string, unknown>) ?? {}}
+        selectedNodeType={selectedNodeDetails?.type ?? null}
+        selectedNodeLabel={selectedNodeDetails?.label ?? 'Node'}
+        selectedNodeConfig={selectedNodeDetails?.config ?? {}}
         onConfigChange={callbacks.handleConfigChange}
         versionHistoryOpen={state.versionHistoryOpen}
         onVersionHistoryClose={state.toggleVersionHistory}

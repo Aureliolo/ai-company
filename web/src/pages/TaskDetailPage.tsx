@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { ArrowLeft, Loader2 } from 'lucide-react'
+import type { TaskStatus } from '@/api/types/enums'
 import { Button } from '@/components/ui/button'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { useTasksStore } from '@/stores/tasks'
@@ -10,6 +11,9 @@ import { TaskDeleteDialog } from './tasks/TaskDeleteDialog'
 import { TaskDetailActions } from './tasks/TaskDetailActions'
 import { TaskDetailHeader } from './tasks/TaskDetailHeader'
 import { TaskDetailMetadata } from './tasks/TaskDetailMetadata'
+import { TaskDetailTimeline } from './tasks/TaskDetailTimeline'
+import { TaskTransitionDialog } from './tasks/TaskTransitionDialog'
+import { requiresTransitionConfirmation } from './tasks/transition-confirmation'
 import { useTaskActionHandlers } from './tasks/useTaskActionHandlers'
 import { useTaskWebSocketUpdates } from './tasks/useTaskWebSocketUpdates'
 
@@ -22,6 +26,7 @@ export default function TaskDetailPage() {
 
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [cancelOpen, setCancelOpen] = useState(false)
+  const [pendingTransition, setPendingTransition] = useState<TaskStatus | null>(null)
 
   const { setupError: wsSetupError } = useTaskWebSocketUpdates()
 
@@ -33,6 +38,24 @@ export default function TaskDetailPage() {
 
   const task = selectedTask?.id === taskId ? selectedTask : undefined
   const { transitioning, transitionTo, deleteTask, cancelTask } = useTaskActionHandlers(task)
+
+  const handleTransitionRequest = useCallback(
+    (target: TaskStatus) => {
+      if (requiresTransitionConfirmation(target)) {
+        setPendingTransition(target)
+      } else {
+        void transitionTo(target)
+      }
+    },
+    [transitionTo],
+  )
+
+  const handleTransitionConfirm = useCallback(async () => {
+    if (!pendingTransition) return
+    const target = pendingTransition
+    await transitionTo(target)
+    setPendingTransition(null)
+  }, [pendingTransition, transitionTo])
 
   if (error && !task) {
     return <div className="py-20 text-center text-sm text-danger">{error}</div>
@@ -64,13 +87,14 @@ export default function TaskDetailPage() {
       )}
 
       <ErrorBoundary level="section">
-        <div className="rounded-lg border border-border bg-card p-6 space-y-6">
+        <div className="rounded-lg border border-border bg-card p-6 space-y-section-gap">
           <TaskDetailHeader task={task} />
           <TaskDetailMetadata task={task} />
+          <TaskDetailTimeline task={task} />
           <TaskDetailActions
             task={task}
             transitioning={transitioning}
-            onTransition={transitionTo}
+            onTransition={handleTransitionRequest}
             onRequestCancel={() => setCancelOpen(true)}
             onRequestDelete={() => setDeleteOpen(true)}
           />
@@ -79,6 +103,15 @@ export default function TaskDetailPage() {
 
       <TaskCancelDialog open={cancelOpen} onOpenChange={setCancelOpen} onConfirm={cancelTask} />
       <TaskDeleteDialog open={deleteOpen} onOpenChange={setDeleteOpen} onConfirm={deleteTask} />
+      <TaskTransitionDialog
+        open={pendingTransition !== null}
+        targetStatus={pendingTransition}
+        transitioning={transitioning}
+        onOpenChange={(next) => {
+          if (!next) setPendingTransition(null)
+        }}
+        onConfirm={handleTransitionConfirm}
+      />
     </div>
   )
 }
