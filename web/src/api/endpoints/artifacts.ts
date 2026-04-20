@@ -1,11 +1,6 @@
 import { apiClient, unwrap, unwrapPaginated, unwrapVoid, type PaginatedResult } from '../client'
-import type {
-  ApiResponse,
-  Artifact,
-  ArtifactFilters,
-  CreateArtifactRequest,
-  PaginatedResponse,
-} from '../types'
+import type { Artifact, ArtifactFilters, CreateArtifactRequest } from '../types/artifacts'
+import type { ApiResponse, PaginatedResponse } from '../types/http'
 
 export async function listArtifacts(filters?: ArtifactFilters): Promise<PaginatedResult<Artifact>> {
   const response = await apiClient.get<PaginatedResponse<Artifact>>('/artifacts', { params: filters })

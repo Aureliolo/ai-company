@@ -1,5 +1,6 @@
 import { apiClient, unwrap, unwrapVoid } from '../client'
-import type { ApiResponse, OverrideResponse, SetOverrideRequest } from '../types'
+import type { OverrideResponse, SetOverrideRequest } from '../types/collaboration'
+import type { ApiResponse } from '../types/http'
 
 const basePath = (agentId: string) =>
   `/agents/${encodeURIComponent(agentId)}/quality`

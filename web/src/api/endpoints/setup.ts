@@ -1,6 +1,6 @@
 import { apiClient, unwrap } from '../client'
+import type { ApiResponse } from '../types/http'
 import type {
-  ApiResponse,
   AvailableLocalesResponse,
   PersonalityPresetInfo,
   PersonalityPresetsListResponse,
@@ -17,7 +17,7 @@ import type {
   UpdateAgentModelRequest,
   UpdateAgentNameRequest,
   UpdateAgentPersonalityRequest,
-} from '../types'
+} from '../types/setup'
 
 export async function getSetupStatus(): Promise<SetupStatusResponse> {
   const response = await apiClient.get<ApiResponse<SetupStatusResponse>>('/setup/status')

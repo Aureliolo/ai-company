@@ -15,13 +15,12 @@ import {
   type PaginatedResult,
 } from '../client'
 import type {
-  ApiResponse,
   CancelEscalationRequest,
   EscalationResponse,
   EscalationStatus,
-  PaginatedResponse,
   SubmitDecisionRequest,
-} from '../types'
+} from '../types/escalations'
+import type { ApiResponse, PaginatedResponse } from '../types/http'
 
 const BASE = '/conflicts/escalations'
 

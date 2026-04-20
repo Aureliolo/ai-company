@@ -1,11 +1,10 @@
 import { apiClient, unwrap, unwrapPaginated, type PaginatedResult } from '../client'
+import type { ApiResponse, PaginatedResponse } from '../types/http'
 import type {
-  ApiResponse,
   MeetingFilters,
   MeetingResponse,
-  PaginatedResponse,
   TriggerMeetingRequest,
-} from '../types'
+} from '../types/meetings'
 
 export async function listMeetings(filters?: MeetingFilters): Promise<PaginatedResult<MeetingResponse>> {
   const response = await apiClient.get<PaginatedResponse<MeetingResponse>>('/meetings', {

@@ -1,10 +1,10 @@
 import { apiClient, unwrap, unwrapVoid } from '../client'
+import type { ApiResponse } from '../types/http'
 import type {
-  ApiResponse,
   McpCatalogEntry,
   McpInstallRequest,
   McpInstallResponse,
-} from '../types'
+} from '../types/integrations'
 
 export async function browseMcpCatalog(): Promise<readonly McpCatalogEntry[]> {
   const response = await apiClient.get<ApiResponse<readonly McpCatalogEntry[]>>(

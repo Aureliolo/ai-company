@@ -1,5 +1,6 @@
 import { apiClient, unwrap } from '../client'
-import type { ApiResponse, ForecastResponse, OverviewMetrics, TrendMetric, TrendPeriod, TrendsResponse } from '../types'
+import type { ForecastResponse, OverviewMetrics, TrendMetric, TrendPeriod, TrendsResponse } from '../types/analytics'
+import type { ApiResponse } from '../types/http'
 
 export async function getOverviewMetrics(): Promise<OverviewMetrics> {
   const response = await apiClient.get<ApiResponse<OverviewMetrics>>('/analytics/overview')

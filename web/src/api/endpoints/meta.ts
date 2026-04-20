@@ -5,7 +5,7 @@
  * A/B tests, configuration, and Chief of Staff chat.
  */
 
-import type { ApiResponse } from '../types'
+import type { ApiResponse } from '../types/http'
 import { apiClient, unwrap } from '../client'
 
 // -- Types -------------------------------------------------------------------

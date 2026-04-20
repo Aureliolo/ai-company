@@ -1,17 +1,16 @@
 import { apiClient, unwrap, unwrapPaginated, unwrapVoid, type PaginatedResult } from '../client'
+import type { ApiResponse, PaginatedResponse } from '../types/http'
 import type {
-  ApiResponse,
   BlueprintInfo,
   CreateFromBlueprintRequest,
   CreateWorkflowDefinitionRequest,
-  PaginatedResponse,
   RollbackWorkflowRequest,
   UpdateWorkflowDefinitionRequest,
   WorkflowDefinition,
   WorkflowDefinitionVersionSummary,
   WorkflowDiff,
   WorkflowValidationResult,
-} from '../types'
+} from '../types/workflows'
 
 export async function listWorkflows(filters?: {
   workflow_type?: string

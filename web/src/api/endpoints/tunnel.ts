@@ -1,5 +1,6 @@
 import { apiClient, unwrap, unwrapVoid } from '../client'
-import type { ApiResponse, TunnelStatus } from '../types'
+import type { ApiResponse } from '../types/http'
+import type { TunnelStatus } from '../types/integrations'
 
 export async function getTunnelStatus(): Promise<TunnelStatus> {
   const response = await apiClient.get<ApiResponse<TunnelStatus>>(

@@ -1,15 +1,13 @@
 import { apiClient, unwrap, unwrapPaginated, unwrapVoid, type PaginatedResult } from '../client'
+import type { AgentConfig } from '../types/agents'
+import type { DepartmentHealth } from '../types/analytics'
+import type { ApiResponse, PaginatedResponse, PaginationParams } from '../types/http'
 import type {
-  AgentConfig,
-  ApiResponse,
   CompanyConfig,
   CreateAgentOrgRequest,
   CreateDepartmentRequest,
   CreateTeamRequest,
   Department,
-  DepartmentHealth,
-  PaginatedResponse,
-  PaginationParams,
   ReorderAgentsRequest,
   ReorderDepartmentsRequest,
   ReorderTeamsRequest,
@@ -18,7 +16,7 @@ import type {
   UpdateCompanyRequest,
   UpdateDepartmentRequest,
   UpdateTeamRequest,
-} from '../types'
+} from '../types/org'
 
 export async function getCompanyConfig(): Promise<CompanyConfig> {
   const response = await apiClient.get<ApiResponse<CompanyConfig>>('/company')

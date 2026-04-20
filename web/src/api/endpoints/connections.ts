@@ -1,12 +1,12 @@
 import { apiClient, unwrap, unwrapVoid } from '../client'
+import type { ApiResponse } from '../types/http'
 import type {
-  ApiResponse,
   Connection,
   CreateConnectionRequest,
   HealthReport,
   RevealSecretResponse,
   UpdateConnectionRequest,
-} from '../types'
+} from '../types/integrations'
 
 export async function listConnections(): Promise<readonly Connection[]> {
   const response = await apiClient.get<ApiResponse<readonly Connection[]>>('/connections')

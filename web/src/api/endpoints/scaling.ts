@@ -1,5 +1,5 @@
 import { apiClient, unwrap } from '../client'
-import type { ApiResponse, PaginatedResponse } from '../types'
+import type { ApiResponse, PaginatedResponse } from '../types/http'
 
 // -- Response types ----------------------------------------------------------
 

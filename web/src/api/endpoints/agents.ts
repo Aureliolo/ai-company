@@ -3,13 +3,10 @@ import type {
   AgentActivityEvent,
   AgentConfig,
   AgentPerformanceSummary,
-  ApiResponse,
-  AutonomyLevelRequest,
-  AutonomyLevelResponse,
   CareerEvent,
-  PaginatedResponse,
-  PaginationParams,
-} from '../types'
+} from '../types/agents'
+import type { ApiResponse, PaginatedResponse, PaginationParams } from '../types/http'
+import type { AutonomyLevelRequest, AutonomyLevelResponse } from '../types/system'
 
 export async function listAgents(params?: PaginationParams): Promise<PaginatedResult<AgentConfig>> {
   const response = await apiClient.get<PaginatedResponse<AgentConfig>>('/agents', { params })

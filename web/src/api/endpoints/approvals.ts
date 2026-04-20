@@ -1,13 +1,12 @@
 import { apiClient, unwrap, unwrapPaginated, type PaginatedResult } from '../client'
 import type {
-  ApiResponse,
   ApprovalFilters,
   ApprovalResponse,
   ApproveRequest,
   CreateApprovalRequest,
-  PaginatedResponse,
   RejectRequest,
-} from '../types'
+} from '../types/approvals'
+import type { ApiResponse, PaginatedResponse } from '../types/http'
 
 export async function listApprovals(filters?: ApprovalFilters): Promise<PaginatedResult<ApprovalResponse>> {
   const response = await apiClient.get<PaginatedResponse<ApprovalResponse>>('/approvals', { params: filters })

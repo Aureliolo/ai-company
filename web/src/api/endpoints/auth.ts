@@ -1,6 +1,5 @@
 import { apiClient, unwrap, unwrapVoid } from '../client'
 import type {
-  ApiResponse,
   AuthResponse,
   ChangePasswordRequest,
   LoginRequest,
@@ -8,7 +7,8 @@ import type {
   SetupRequest,
   UserInfoResponse,
   WsTicketResponse,
-} from '../types'
+} from '../types/auth'
+import type { ApiResponse } from '../types/http'
 
 export async function setup(data: SetupRequest): Promise<AuthResponse> {
   const response = await apiClient.post<ApiResponse<AuthResponse>>('/auth/setup', data)

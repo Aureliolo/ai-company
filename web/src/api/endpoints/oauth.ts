@@ -1,10 +1,10 @@
 import { apiClient, unwrap } from '../client'
+import type { ApiResponse } from '../types/http'
 import type {
-  ApiResponse,
   OauthInitiateRequest,
   OauthInitiateResponse,
   OauthTokenStatus,
-} from '../types'
+} from '../types/integrations'
 
 export async function initiateOauth(
   data: OauthInitiateRequest,

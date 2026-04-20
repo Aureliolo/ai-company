@@ -2,9 +2,9 @@ import { createLogger } from '@/lib/logger'
 import { getCsrfToken } from '@/utils/csrf'
 import { IS_DEV_AUTH_BYPASS } from '@/utils/dev'
 import { apiClient, unwrap, unwrapVoid } from '../client'
+import type { ApiResponse } from '../types/http'
 import type {
   AddAllowlistEntryRequest,
-  ApiResponse,
   CreateFromPresetRequest,
   CreateProviderRequest,
   DiscoverModelsResponse,
@@ -13,16 +13,16 @@ import type {
   ProbePresetResponse,
   ProviderConfig,
   ProviderHealthSummary,
-  PullModelRequest,
-  UpdateModelConfigRequest,
   ProviderModelResponse,
   ProviderPreset,
+  PullModelRequest,
   PullProgressEvent,
   RemoveAllowlistEntryRequest,
   TestConnectionRequest,
   TestConnectionResponse,
+  UpdateModelConfigRequest,
   UpdateProviderRequest,
-} from '../types'
+} from '../types/providers'
 
 const log = createLogger('providers-api')
 

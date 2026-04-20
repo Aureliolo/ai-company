@@ -1,5 +1,6 @@
 import { apiClient, unwrap, unwrapVoid } from '../client'
-import type { ApiResponse, BackupInfo, BackupManifest, RestoreRequest, RestoreResponse } from '../types'
+import type { BackupInfo, BackupManifest, RestoreRequest, RestoreResponse } from '../types/backup'
+import type { ApiResponse } from '../types/http'
 
 export async function createBackup(): Promise<BackupManifest> {
   const response = await apiClient.post<ApiResponse<BackupManifest>>('/admin/backups')

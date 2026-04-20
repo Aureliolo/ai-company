@@ -1,5 +1,6 @@
 import { apiClient, unwrap } from '../client'
-import type { ApiResponse, CoordinateTaskRequest, CoordinationResultResponse } from '../types'
+import type { CoordinateTaskRequest, CoordinationResultResponse } from '../types/coordination'
+import type { ApiResponse } from '../types/http'
 
 export async function coordinateTask(
   taskId: string,

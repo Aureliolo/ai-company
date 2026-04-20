@@ -1,10 +1,10 @@
 import { apiClient, unwrap } from '../client'
+import type { ApiResponse } from '../types/http'
 import type {
-  ApiResponse,
   ApplyTemplatePackRequest,
   ApplyTemplatePackResponse,
   PackInfoResponse,
-} from '../types'
+} from '../types/templates'
 
 export async function listTemplatePacks(): Promise<readonly PackInfoResponse[]> {
   const response = await apiClient.get<ApiResponse<readonly PackInfoResponse[]>>(

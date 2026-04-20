@@ -1,11 +1,11 @@
 import { apiClient, unwrap, unwrapVoid } from '../client'
 import type {
-  ApiResponse,
   CalibrationSummaryResponse,
   CollaborationScoreResult,
   OverrideResponse,
   SetOverrideRequest,
-} from '../types'
+} from '../types/collaboration'
+import type { ApiResponse } from '../types/http'
 
 const basePath = (agentId: string) =>
   `/agents/${encodeURIComponent(agentId)}/collaboration`

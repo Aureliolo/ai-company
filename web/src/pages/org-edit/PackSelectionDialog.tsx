@@ -13,7 +13,7 @@ import { getErrorMessage } from '@/utils/errors'
 import type { PackInfoResponse, RebalanceMode } from '@/api/types/templates'
 import { PackApplyPreviewDialog } from './PackApplyPreviewDialog'
 
-const EMPTY_DEPTS: readonly import('@/api/types').Department[] = []
+const EMPTY_DEPTS: readonly import('@/api/types/org').Department[] = []
 
 export interface PackSelectionDialogProps {
   open: boolean

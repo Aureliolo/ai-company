@@ -1,10 +1,10 @@
 import { apiClient, unwrap, unwrapVoid } from '../client'
 import type {
   ActiveCeremonyStrategy,
-  ApiResponse,
   CeremonyPolicyConfig,
   ResolvedCeremonyPolicyResponse,
-} from '../types'
+} from '../types/ceremony-policy'
+import type { ApiResponse } from '../types/http'
 
 export async function getCeremonyPolicy(): Promise<CeremonyPolicyConfig> {
   const response = await apiClient.get<ApiResponse<CeremonyPolicyConfig>>(

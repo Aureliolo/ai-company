@@ -1,11 +1,6 @@
 import { apiClient, unwrap, unwrapPaginated, type PaginatedResult } from '../client'
-import type {
-  ApiResponse,
-  CreateProjectRequest,
-  PaginatedResponse,
-  Project,
-  ProjectFilters,
-} from '../types'
+import type { ApiResponse, PaginatedResponse } from '../types/http'
+import type { CreateProjectRequest, Project, ProjectFilters } from '../types/projects'
 
 export async function listProjects(filters?: ProjectFilters): Promise<PaginatedResult<Project>> {
   const response = await apiClient.get<PaginatedResponse<Project>>('/projects', { params: filters })

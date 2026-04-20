@@ -1,5 +1,6 @@
 import { apiClient, unwrap, unwrapVoid } from '../client'
-import type { ApiResponse, SettingDefinition, SettingEntry, SettingNamespace, SinkInfo, TestSinkResult, UpdateSettingRequest } from '../types'
+import type { ApiResponse } from '../types/http'
+import type { SettingDefinition, SettingEntry, SettingNamespace, SinkInfo, TestSinkResult, UpdateSettingRequest } from '../types/settings'
 
 export async function getSchema(): Promise<SettingDefinition[]> {
   const response = await apiClient.get<ApiResponse<SettingDefinition[]>>('/settings/_schema')

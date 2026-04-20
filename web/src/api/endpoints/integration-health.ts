@@ -1,5 +1,6 @@
 import { apiClient, unwrap } from '../client'
-import type { ApiResponse, HealthReport } from '../types'
+import type { ApiResponse } from '../types/http'
+import type { HealthReport } from '../types/integrations'
 
 export async function listIntegrationHealth(): Promise<readonly HealthReport[]> {
   const response = await apiClient.get<ApiResponse<readonly HealthReport[]>>(

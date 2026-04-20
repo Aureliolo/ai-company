@@ -1,5 +1,5 @@
 import { apiClient, unwrap } from '../client'
-import type { ApiResponse } from '../types'
+import type { ApiResponse } from '../types/http'
 
 // -- Types -----------------------------------------------------------
 

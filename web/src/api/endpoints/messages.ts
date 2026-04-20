@@ -1,5 +1,6 @@
 import { apiClient, unwrap, unwrapPaginated, type PaginatedResult } from '../client'
-import type { ApiResponse, Channel, Message, PaginatedResponse, PaginationParams } from '../types'
+import type { ApiResponse, PaginatedResponse, PaginationParams } from '../types/http'
+import type { Channel, Message } from '../types/messages'
 
 export async function listMessages(params?: PaginationParams & { channel?: string; signal?: AbortSignal }): Promise<PaginatedResult<Message>> {
   const { signal, ...queryParams } = params ?? {}

@@ -1,5 +1,7 @@
 import { apiClient, unwrapPaginated, type PaginatedResult } from '../client'
-import type { ActivityEvent, ActivityEventType, ActivityItem, PaginatedResponse, PaginationParams } from '../types'
+import type { ActivityEventType } from '../types/agents'
+import type { ActivityEvent, ActivityItem } from '../types/analytics'
+import type { PaginatedResponse, PaginationParams } from '../types/http'
 
 export interface ActivityFilterParams extends PaginationParams {
   type?: ActivityEventType

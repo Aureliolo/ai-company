@@ -1,14 +1,13 @@
 import { apiClient, unwrap, unwrapPaginated, unwrapVoid, type PaginatedResult } from '../client'
+import type { ApiResponse, PaginatedResponse } from '../types/http'
 import type {
-  ApiResponse,
   CancelTaskRequest,
   CreateTaskRequest,
-  PaginatedResponse,
   Task,
   TaskFilters,
   TransitionTaskRequest,
   UpdateTaskRequest,
-} from '../types'
+} from '../types/tasks'
 
 export async function listTasks(filters?: TaskFilters): Promise<PaginatedResult<Task>> {
   const response = await apiClient.get<PaginatedResponse<Task>>('/tasks', { params: filters })

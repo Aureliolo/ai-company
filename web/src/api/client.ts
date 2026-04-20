@@ -11,7 +11,8 @@ import axios, {
 import { createLogger } from '@/lib/logger'
 import { IS_DEV_AUTH_BYPASS } from '@/utils/dev'
 import { getCsrfToken } from '@/utils/csrf'
-import type { ApiResponse, ErrorDetail, PaginatedResponse } from './types'
+import type { ErrorDetail } from './types/errors'
+import type { ApiResponse, PaginatedResponse } from './types/http'
 
 const log = createLogger('api-client')
 

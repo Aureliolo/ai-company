@@ -1,11 +1,11 @@
 import { apiClient, unwrap, unwrapVoid } from '../client'
+import type { ApiResponse } from '../types/http'
 import type {
-  ApiResponse,
   CreateSubworkflowRequest,
   ParentReference,
   SubworkflowSummary,
   WorkflowDefinition,
-} from '../types'
+} from '../types/workflows'
 
 export async function listSubworkflows(): Promise<readonly SubworkflowSummary[]> {
   const response = await apiClient.get<ApiResponse<readonly SubworkflowSummary[]>>(

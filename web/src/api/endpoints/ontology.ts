@@ -2,7 +2,7 @@
  * Ontology API endpoints -- entity CRUD, versioning, drift.
  */
 import { apiClient, unwrap, unwrapPaginated, type PaginatedResult } from '../client'
-import type { ApiResponse, PaginatedResponse } from '../types'
+import type { ApiResponse, PaginatedResponse } from '../types/http'
 
 // ── Types ─────────────────────────────────────────────────────
 

@@ -1,5 +1,6 @@
 import { apiClient, unwrap, unwrapVoid } from '../client'
-import type { ApiResponse, HumanRole, OrgRole } from '../types'
+import type { HumanRole, OrgRole } from '../types/enums'
+import type { ApiResponse } from '../types/http'
 
 export interface UserResponse {
   id: string

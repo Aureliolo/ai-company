@@ -1,14 +1,13 @@
 import { apiClient, unwrap, type PaginatedResult, ApiRequestError } from '../client'
 import type {
   AgentSpending,
-  ApiResponse,
   BudgetConfig,
   CostRecord,
   DailySummary,
-  ErrorDetail,
-  PaginationParams,
   PeriodSummary,
-} from '../types'
+} from '../types/budget'
+import type { ErrorDetail } from '../types/errors'
+import type { ApiResponse, PaginationParams } from '../types/http'
 
 export interface CostRecordListResult extends PaginatedResult<CostRecord> {
   daily_summary: DailySummary[]
