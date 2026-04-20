@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { ProviderCard } from './ProviderCard'
 import type { ProviderWithName } from '@/utils/providers'
-import type { ProviderHealthSummary } from '@/api/types'
+import type { ProviderHealthSummary } from '@/api/types/providers'
 
 const baseProvider: ProviderWithName = {
   name: 'anthropic',

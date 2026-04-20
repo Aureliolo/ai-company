@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { MeetingAgendaSection } from './MeetingAgendaSection'
-import type { MeetingAgenda } from '@/api/types'
+import type { MeetingAgenda } from '@/api/types/meetings'
 
 const meta = {
   title: 'Meetings/MeetingAgendaSection',

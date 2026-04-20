@@ -3,7 +3,7 @@ import { Avatar } from '@/components/ui/avatar'
 import { SectionCard } from '@/components/ui/section-card'
 import { PriorityBadge } from '@/components/ui/task-status-indicator'
 import { formatLabel } from '@/utils/format'
-import type { ActionItem } from '@/api/types'
+import type { ActionItem } from '@/api/types/meetings'
 
 interface MeetingActionItemsProps {
   actionItems: readonly ActionItem[]

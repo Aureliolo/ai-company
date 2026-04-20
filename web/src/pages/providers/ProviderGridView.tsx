@@ -4,7 +4,7 @@ import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ROUTES } from '@/router/routes'
 import { Server } from 'lucide-react'
-import type { ProviderHealthSummary } from '@/api/types'
+import type { ProviderHealthSummary } from '@/api/types/providers'
 import type { ProviderWithName } from '@/utils/providers'
 
 interface ProviderGridItemProps {

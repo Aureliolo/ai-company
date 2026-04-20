@@ -12,7 +12,7 @@ import {
   STATUS_BADGE_CLASSES,
 } from '@/utils/meetings'
 import { ROUTES } from '@/router/routes'
-import type { MeetingResponse } from '@/api/types'
+import type { MeetingResponse } from '@/api/types/meetings'
 
 interface MeetingDetailHeaderProps {
   meeting: MeetingResponse

@@ -7,7 +7,7 @@ import { PriorityBadge } from '@/components/ui/task-status-indicator'
 import { useFlash } from '@/hooks/useFlash'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { formatRelativeTime, formatCurrency } from '@/utils/format'
-import type { Task } from '@/api/types'
+import type { Task } from '@/api/types/tasks'
 
 export interface TaskCardProps {
   task: Task

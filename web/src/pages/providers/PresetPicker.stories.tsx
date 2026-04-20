@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { PresetPicker } from './PresetPicker'
-import type { ProviderPreset } from '@/api/types'
+import type { ProviderPreset } from '@/api/types/providers'
 import { useState } from 'react'
 
 const samplePresets: ProviderPreset[] = [

@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { fn } from 'storybook/test'
-import type { Connection, HealthReport } from '@/api/types'
+import type { Connection, HealthReport } from '@/api/types/integrations'
 import { ConnectionCard } from './ConnectionCard'
 
 const baseConnection: Connection = {

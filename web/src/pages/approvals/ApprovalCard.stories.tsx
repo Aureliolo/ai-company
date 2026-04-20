@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { fn } from 'storybook/test'
 import { ApprovalCard } from './ApprovalCard'
-import type { ApprovalResponse } from '@/api/types'
+import type { ApprovalResponse } from '@/api/types/approvals'
 
 const base: ApprovalResponse = {
   id: 'apr-1',

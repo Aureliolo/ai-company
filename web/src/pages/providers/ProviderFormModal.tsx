@@ -9,7 +9,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { PresetPicker } from './PresetPicker'
 import { useProvidersStore } from '@/stores/providers'
 import { cn } from '@/lib/utils'
-import type { AuthType, CreateFromPresetRequest, CreateProviderRequest, ProviderConfig, ProviderPreset, UpdateProviderRequest } from '@/api/types'
+import type { AuthType, CreateFromPresetRequest, CreateProviderRequest, ProviderConfig, ProviderPreset, UpdateProviderRequest } from '@/api/types/providers'
 import type { ProviderWithName } from '@/utils/providers'
 
 const log = createLogger('providers')

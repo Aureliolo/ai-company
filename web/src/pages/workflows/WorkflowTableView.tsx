@@ -6,7 +6,7 @@ import { ROUTES } from '@/router/routes'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { formatDateTime } from '@/utils/format'
-import type { WorkflowDefinition } from '@/api/types'
+import type { WorkflowDefinition } from '@/api/types/workflows'
 
 interface WorkflowTableViewProps {
   workflows: readonly WorkflowDefinition[]

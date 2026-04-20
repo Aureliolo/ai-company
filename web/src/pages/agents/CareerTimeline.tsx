@@ -3,7 +3,7 @@ import { SectionCard } from '@/components/ui/section-card'
 import { EmptyState } from '@/components/ui/empty-state'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { CareerTimelineEvent } from './CareerTimelineEvent'
-import type { CareerEvent } from '@/api/types'
+import type { CareerEvent } from '@/api/types/agents'
 
 interface CareerTimelineProps {
   events: readonly CareerEvent[]

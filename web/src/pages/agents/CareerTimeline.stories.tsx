@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { CareerTimeline } from './CareerTimeline'
-import type { CareerEvent } from '@/api/types'
+import type { CareerEvent } from '@/api/types/agents'
 
 const FIXED_BASE = new Date('2026-03-26T12:00:00.000Z')
 

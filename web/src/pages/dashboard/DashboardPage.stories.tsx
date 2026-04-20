@@ -2,7 +2,8 @@ import type { Meta, StoryObj } from '@storybook/react'
 import { MemoryRouter } from 'react-router'
 import { useAnalyticsStore } from '@/stores/analytics'
 import DashboardPage from '../DashboardPage'
-import type { ActivityItem, DepartmentHealth, OverviewMetrics, BudgetConfig, ForecastResponse } from '@/api/types'
+import type { ActivityItem, DepartmentHealth, ForecastResponse, OverviewMetrics } from '@/api/types/analytics'
+import type { BudgetConfig } from '@/api/types/budget'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
 
 const mockOverview: OverviewMetrics = {

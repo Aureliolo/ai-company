@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { MemoryRouter } from 'react-router'
 import { CfoActivityFeed } from './CfoActivityFeed'
-import type { ActivityItem } from '@/api/types'
+import type { ActivityItem } from '@/api/types/analytics'
 
 const mockEvents: ActivityItem[] = [
   {

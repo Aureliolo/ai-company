@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { TaskListView } from './TaskListView'
-import type { Task } from '@/api/types'
+import type { Task } from '@/api/types/tasks'
 
 function makeTask(id: string, title: string, overrides: Partial<Task> = {}): Task {
   return {

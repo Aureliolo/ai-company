@@ -3,12 +3,12 @@ import { Search } from 'lucide-react'
 import { useAgentsStore } from '@/stores/agents'
 import { useCompanyStore } from '@/stores/company'
 import {
-  SENIORITY_LEVEL_VALUES,
   AGENT_STATUS_VALUES,
+  SENIORITY_LEVEL_VALUES,
+  type AgentStatus,
   type DepartmentName,
   type SeniorityLevel,
-  type AgentStatus,
-} from '@/api/types'
+} from '@/api/types/enums'
 import { formatLabel } from '@/utils/format'
 import { cn } from '@/lib/utils'
 import type { AgentSortKey } from '@/utils/agents'

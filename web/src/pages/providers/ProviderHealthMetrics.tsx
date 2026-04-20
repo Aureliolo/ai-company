@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { MetricCard } from '@/components/ui/metric-card'
 import { formatDateTime, formatNumber } from '@/utils/format'
 import { formatLatency, formatErrorRate, formatTokenCount, formatCost } from '@/utils/providers'
-import type { ProviderHealthSummary } from '@/api/types'
+import type { ProviderHealthSummary } from '@/api/types/providers'
 
 interface ProviderHealthMetricsProps {
   health: ProviderHealthSummary

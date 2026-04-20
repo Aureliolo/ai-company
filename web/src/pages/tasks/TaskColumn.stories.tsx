@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react'
 import { DndContext } from '@dnd-kit/core'
 import { TaskColumn } from './TaskColumn'
 import { KANBAN_COLUMNS } from '@/utils/tasks'
-import type { Task } from '@/api/types'
+import type { Task } from '@/api/types/tasks'
 
 function makeTask(id: string, title: string, overrides: Partial<Task> = {}): Task {
   return {

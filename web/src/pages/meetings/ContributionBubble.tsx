@@ -2,7 +2,7 @@ import { Avatar } from '@/components/ui/avatar'
 import { cn } from '@/lib/utils'
 import { formatLabel, formatTokenCount } from '@/utils/format'
 import { getPhaseColor, getPhaseLabel, STATUS_BADGE_CLASSES } from '@/utils/meetings'
-import type { MeetingContribution } from '@/api/types'
+import type { MeetingContribution } from '@/api/types/meetings'
 
 interface ContributionBubbleProps {
   contribution: MeetingContribution

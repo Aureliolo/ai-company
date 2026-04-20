@@ -15,7 +15,7 @@ import {
 import { formatDate } from '@/utils/format'
 import { useToastStore } from '@/stores/toast'
 import { getErrorMessage } from '@/utils/errors'
-import type { ApprovalResponse, ApproveRequest, RejectRequest } from '@/api/types'
+import type { ApprovalResponse, ApproveRequest, RejectRequest } from '@/api/types/approvals'
 
 export interface ApprovalDetailDrawerProps {
   approval: ApprovalResponse | null

@@ -1,7 +1,7 @@
 import { Server } from 'lucide-react'
 import { ProviderHealthBadge } from '@/components/ui/provider-health-badge'
 import { cn } from '@/lib/utils'
-import type { ProviderHealthSummary } from '@/api/types'
+import type { ProviderHealthSummary } from '@/api/types/providers'
 import type { ProviderWithName } from '@/utils/providers'
 import { formatTokenCount, formatCost } from '@/utils/providers'
 

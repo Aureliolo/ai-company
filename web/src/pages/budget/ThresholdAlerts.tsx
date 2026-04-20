@@ -1,7 +1,8 @@
 import { AlertTriangle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { ThresholdZone } from '@/utils/budget'
-import type { BudgetConfig, OverviewMetrics } from '@/api/types'
+import type { OverviewMetrics } from '@/api/types/analytics'
+import type { BudgetConfig } from '@/api/types/budget'
 
 export interface ThresholdAlertsProps {
   zone: ThresholdZone

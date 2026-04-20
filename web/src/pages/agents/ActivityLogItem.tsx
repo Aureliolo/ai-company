@@ -1,6 +1,6 @@
 import { getActivityEventIcon } from '@/utils/agents'
 import { formatRelativeTime } from '@/utils/format'
-import type { AgentActivityEvent } from '@/api/types'
+import type { AgentActivityEvent } from '@/api/types/agents'
 
 interface ActivityLogItemProps {
   event: AgentActivityEvent

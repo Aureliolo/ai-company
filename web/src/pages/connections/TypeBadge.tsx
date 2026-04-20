@@ -1,4 +1,4 @@
-import type { ConnectionType } from '@/api/types'
+import type { ConnectionType } from '@/api/types/integrations'
 import { cn } from '@/lib/utils'
 import { CONNECTION_TYPE_FIELDS } from './connection-type-fields'
 

@@ -4,7 +4,7 @@ import { SectionCard } from '@/components/ui/section-card'
 import { TokenUsageBar } from '@/components/ui/token-usage-bar'
 import { formatLabel, formatTokenCount } from '@/utils/format'
 import { computeTokenUsagePercent, getParticipantTokenShare } from '@/utils/meetings'
-import type { MeetingResponse } from '@/api/types'
+import type { MeetingResponse } from '@/api/types/meetings'
 
 interface MeetingTokenBreakdownProps {
   meeting: MeetingResponse

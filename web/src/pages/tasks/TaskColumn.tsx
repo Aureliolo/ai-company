@@ -7,7 +7,7 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { TaskCard } from './TaskCard'
 import type { KanbanColumn } from '@/utils/tasks'
-import type { Task } from '@/api/types'
+import type { Task } from '@/api/types/tasks'
 
 const COLOR_CLASSES: Record<SemanticColor | 'text-secondary', string> = {
   success: 'bg-success',

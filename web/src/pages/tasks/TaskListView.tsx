@@ -9,7 +9,7 @@ import { getTaskTypeLabel } from '@/utils/tasks'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { formatRelativeTime, formatCurrency } from '@/utils/format'
 import { ArrowDown, ArrowUp, Inbox } from 'lucide-react'
-import type { Task } from '@/api/types'
+import type { Task } from '@/api/types/tasks'
 
 type SortKey = 'status' | 'title' | 'assignee' | 'priority' | 'type' | 'deadline' | 'cost'
 type SortDirection = 'asc' | 'desc'

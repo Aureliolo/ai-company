@@ -1,11 +1,11 @@
 import { useMemo, useRef, useState } from 'react'
 import { ArrowLeft } from 'lucide-react'
-import type {
-  Connection,
-  ConnectionType,
-  CreateConnectionRequest,
-} from '@/api/types'
-import { CONNECTION_TYPE_VALUES } from '@/api/types'
+import {
+  CONNECTION_TYPE_VALUES,
+  type Connection,
+  type ConnectionType,
+  type CreateConnectionRequest,
+} from '@/api/types/integrations'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,

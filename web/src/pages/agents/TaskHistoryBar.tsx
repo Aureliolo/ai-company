@@ -1,6 +1,7 @@
 import { formatLabel } from '@/utils/format'
 import { cn } from '@/lib/utils'
-import type { Task, TaskType } from '@/api/types'
+import type { TaskType } from '@/api/types/enums'
+import type { Task } from '@/api/types/tasks'
 
 interface TaskHistoryBarProps {
   task: Task

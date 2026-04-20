@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { ReactFlow, Background, Controls, type Node, type Edge, MarkerType, Position } from '@xyflow/react'
 // @xyflow CSS is imported globally in styles/global.css
 import { getTaskStatusColor, getTaskStatusLabel } from '@/utils/tasks'
-import type { Task } from '@/api/types'
+import type { Task } from '@/api/types/tasks'
 
 export interface TaskDependencyGraphProps {
   tasks: Task[]

@@ -1,7 +1,7 @@
 import { useProvidersStore } from '@/stores/providers'
 import { InputField } from '@/components/ui/input-field'
 import { SelectField } from '@/components/ui/select-field'
-import type { ProviderHealthStatus } from '@/api/types'
+import type { ProviderHealthStatus } from '@/api/types/providers'
 import type { ProviderSortKey } from '@/utils/providers'
 
 const HEALTH_OPTIONS: { value: string; label: string }[] = [

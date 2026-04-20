@@ -3,7 +3,7 @@ import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { cn } from '@/lib/utils'
 import { formatTokenCount } from '@/utils/format'
 import { countByStatus, totalTokensUsed } from '@/utils/meetings'
-import type { MeetingResponse } from '@/api/types'
+import type { MeetingResponse } from '@/api/types/meetings'
 
 interface MeetingMetricCardsProps {
   meetings: readonly MeetingResponse[]

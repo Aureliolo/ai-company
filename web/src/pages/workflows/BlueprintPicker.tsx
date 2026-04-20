@@ -7,7 +7,7 @@ import { useWorkflowsStore } from '@/stores/workflows'
 import { cardEntrance, staggerChildren } from '@/lib/motion'
 import { formatLabel } from '@/utils/format'
 import { cn } from '@/lib/utils'
-import type { BlueprintInfo } from '@/api/types'
+import type { BlueprintInfo } from '@/api/types/workflows'
 
 export interface BlueprintPickerProps {
   selectedBlueprint: string | null

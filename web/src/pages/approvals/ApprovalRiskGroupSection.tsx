@@ -3,7 +3,8 @@ import { SectionCard } from '@/components/ui/section-card'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { getRiskLevelIcon, getRiskLevelLabel } from '@/utils/approvals'
 import { ApprovalCard } from './ApprovalCard'
-import type { ApprovalResponse, ApprovalRiskLevel } from '@/api/types'
+import type { ApprovalResponse } from '@/api/types/approvals'
+import type { ApprovalRiskLevel } from '@/api/types/enums'
 
 export interface ApprovalRiskGroupSectionProps {
   riskLevel: ApprovalRiskLevel

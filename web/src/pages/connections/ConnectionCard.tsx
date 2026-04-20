@@ -1,5 +1,5 @@
 import { MoreVertical, Plug, RefreshCw } from 'lucide-react'
-import type { Connection, HealthReport } from '@/api/types'
+import type { Connection, HealthReport } from '@/api/types/integrations'
 import { Button } from '@/components/ui/button'
 import { ConnectionHealthBadge } from '@/components/ui/connection-health-badge'
 import { cn } from '@/lib/utils'

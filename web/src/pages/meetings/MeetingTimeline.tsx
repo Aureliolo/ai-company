@@ -1,7 +1,7 @@
 import { cn } from '@/lib/utils'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { MeetingTimelineNode } from './MeetingTimelineNode'
-import type { MeetingResponse } from '@/api/types'
+import type { MeetingResponse } from '@/api/types/meetings'
 
 interface MeetingTimelineProps {
   meetings: readonly MeetingResponse[]

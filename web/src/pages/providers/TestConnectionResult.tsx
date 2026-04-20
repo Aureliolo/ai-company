@@ -1,7 +1,7 @@
 import { CheckCircle2, XCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { formatLatency } from '@/utils/providers'
-import type { TestConnectionResponse } from '@/api/types'
+import type { TestConnectionResponse } from '@/api/types/providers'
 
 interface TestConnectionResultProps {
   result: TestConnectionResponse

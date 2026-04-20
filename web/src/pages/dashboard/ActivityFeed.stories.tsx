@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { MemoryRouter } from 'react-router'
 import { ActivityFeed } from './ActivityFeed'
-import type { ActivityItem } from '@/api/types'
+import type { ActivityItem } from '@/api/types/analytics'
 
 const FIXED_BASE = new Date('2026-03-26T12:00:00.000Z')
 

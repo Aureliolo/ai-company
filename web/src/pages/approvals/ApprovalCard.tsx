@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { useFlash } from '@/hooks/useFlash'
 import { DOT_COLOR_CLASSES, URGENCY_BADGE_CLASSES, formatUrgency, getRiskLevelColor, getRiskLevelLabel, getUrgencyColor } from '@/utils/approvals'
-import type { ApprovalResponse } from '@/api/types'
+import type { ApprovalResponse } from '@/api/types/approvals'
 
 export interface ApprovalCardProps {
   approval: ApprovalResponse

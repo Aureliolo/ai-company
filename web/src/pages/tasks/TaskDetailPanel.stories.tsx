@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { TaskDetailPanel } from './TaskDetailPanel'
-import type { Task } from '@/api/types'
+import type { Task } from '@/api/types/tasks'
 
 const mockTask: Task = {
   id: 'task-1',

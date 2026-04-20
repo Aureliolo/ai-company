@@ -1,5 +1,5 @@
 import { useArtifactsStore } from '@/stores/artifacts'
-import { ARTIFACT_TYPE_VALUES, type ArtifactType } from '@/api/types'
+import { ARTIFACT_TYPE_VALUES, type ArtifactType } from '@/api/types/enums'
 import { formatLabel } from '@/utils/format'
 
 const CONTENT_TYPE_OPTIONS = [

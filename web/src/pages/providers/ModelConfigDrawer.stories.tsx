@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { ModelConfigDrawer } from './ModelConfigDrawer'
 import { useProvidersStore } from '@/stores/providers'
-import type { ProviderModelResponse } from '@/api/types'
+import type { ProviderModelResponse } from '@/api/types/providers'
 
 const baseModel: ProviderModelResponse = {
   id: 'test-local-7b',

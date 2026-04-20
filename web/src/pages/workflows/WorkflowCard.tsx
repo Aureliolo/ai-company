@@ -6,7 +6,7 @@ import { ROUTES } from '@/router/routes'
 import { StatPill } from '@/components/ui/stat-pill'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { formatRelativeTime, formatLabel } from '@/utils/format'
-import type { WorkflowDefinition } from '@/api/types'
+import type { WorkflowDefinition } from '@/api/types/workflows'
 
 interface WorkflowCardProps {
   workflow: WorkflowDefinition

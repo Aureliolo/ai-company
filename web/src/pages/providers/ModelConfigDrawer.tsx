@@ -3,7 +3,7 @@ import { Drawer } from '@/components/ui/drawer'
 import { InputField } from '@/components/ui/input-field'
 import { Button } from '@/components/ui/button'
 import { useProvidersStore } from '@/stores/providers'
-import type { LocalModelParams, ProviderModelResponse } from '@/api/types'
+import type { LocalModelParams, ProviderModelResponse } from '@/api/types/providers'
 
 interface ModelConfigDrawerProps {
   providerName: string

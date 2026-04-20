@@ -2,7 +2,7 @@ import { Workflow } from 'lucide-react'
 import { EmptyState } from '@/components/ui/empty-state'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { WorkflowCard } from './WorkflowCard'
-import type { WorkflowDefinition } from '@/api/types'
+import type { WorkflowDefinition } from '@/api/types/workflows'
 
 interface WorkflowGridViewProps {
   workflows: readonly WorkflowDefinition[]

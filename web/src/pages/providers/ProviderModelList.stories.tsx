@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { fn } from 'storybook/test'
 import { ProviderModelList } from './ProviderModelList'
-import type { ProviderModelResponse } from '@/api/types'
+import type { ProviderModelResponse } from '@/api/types/providers'
 
 const models: ProviderModelResponse[] = [
   {

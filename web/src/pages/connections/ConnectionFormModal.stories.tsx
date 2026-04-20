@@ -1,7 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { fn } from 'storybook/test'
-import type { ConnectionType } from '@/api/types'
-import { CONNECTION_TYPE_VALUES } from '@/api/types'
+import { CONNECTION_TYPE_VALUES, type ConnectionType } from '@/api/types/integrations'
 import { connectionsList } from '@/mocks/handlers/integrations'
 import { ConnectionFormModal } from './ConnectionFormModal'
 

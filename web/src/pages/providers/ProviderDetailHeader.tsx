@@ -3,7 +3,7 @@ import { Link } from 'react-router'
 import { ProviderHealthBadge } from '@/components/ui/provider-health-badge'
 import { Button } from '@/components/ui/button'
 import { ROUTES } from '@/router/routes'
-import type { ProviderHealthSummary } from '@/api/types'
+import type { ProviderHealthSummary } from '@/api/types/providers'
 import type { ProviderWithName } from '@/utils/providers'
 
 interface ProviderDetailHeaderProps {

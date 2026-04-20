@@ -5,7 +5,7 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { useAutoScroll } from '@/hooks/useAutoScroll'
 import { ActivityFeedItem } from './ActivityFeedItem'
-import type { ActivityItem } from '@/api/types'
+import type { ActivityItem } from '@/api/types/analytics'
 
 const MAX_VISIBLE = 10
 

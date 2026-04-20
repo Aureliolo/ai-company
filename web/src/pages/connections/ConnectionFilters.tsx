@@ -1,8 +1,8 @@
-import type {
-  ConnectionHealthStatus,
-  ConnectionType,
-} from '@/api/types'
-import { CONNECTION_TYPE_VALUES } from '@/api/types'
+import {
+  CONNECTION_TYPE_VALUES,
+  type ConnectionHealthStatus,
+  type ConnectionType,
+} from '@/api/types/integrations'
 import { InputField } from '@/components/ui/input-field'
 import { SelectField } from '@/components/ui/select-field'
 import { useConnectionsStore } from '@/stores/connections'

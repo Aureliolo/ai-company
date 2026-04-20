@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { MemoryRouter } from 'react-router'
 import { AgentGridView } from './AgentGridView'
-import type { AgentConfig } from '@/api/types'
+import type { AgentConfig } from '@/api/types/agents'
 
 function makeAgent(overrides: Partial<AgentConfig>): AgentConfig {
   return {

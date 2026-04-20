@@ -3,7 +3,7 @@ import { cn } from '@/lib/utils'
 import { formatLabel, formatRelativeTime } from '@/utils/format'
 import { getMeetingStatusColor, STATUS_DOT_CLASSES } from '@/utils/meetings'
 import { ROUTES } from '@/router/routes'
-import type { MeetingResponse } from '@/api/types'
+import type { MeetingResponse } from '@/api/types/meetings'
 
 interface MeetingTimelineNodeProps {
   meeting: MeetingResponse

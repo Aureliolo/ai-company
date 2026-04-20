@@ -5,7 +5,7 @@ import { ProgressGauge } from '@/components/ui/progress-gauge'
 import { EmptyState } from '@/components/ui/empty-state'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { formatCurrency, formatLabel } from '@/utils/format'
-import type { DepartmentHealth } from '@/api/types'
+import type { DepartmentHealth } from '@/api/types/analytics'
 
 interface OrgHealthSectionProps {
   departments: readonly DepartmentHealth[]

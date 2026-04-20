@@ -7,7 +7,7 @@ import { toRuntimeStatus } from '@/utils/agents'
 import { formatRelativeTime } from '@/utils/format'
 import { ROUTES } from '@/router/routes'
 import { cn } from '@/lib/utils'
-import type { AgentConfig } from '@/api/types'
+import type { AgentConfig } from '@/api/types/agents'
 
 interface AgentGridViewProps {
   agents: readonly AgentConfig[]

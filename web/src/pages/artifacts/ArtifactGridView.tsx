@@ -2,7 +2,7 @@ import { Package } from 'lucide-react'
 import { EmptyState } from '@/components/ui/empty-state'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { ArtifactCard } from './ArtifactCard'
-import type { Artifact } from '@/api/types'
+import type { Artifact } from '@/api/types/artifacts'
 
 interface ArtifactGridViewProps {
   artifacts: readonly Artifact[]

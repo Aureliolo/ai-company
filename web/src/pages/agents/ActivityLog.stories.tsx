@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { ActivityLog } from './ActivityLog'
-import type { AgentActivityEvent } from '@/api/types'
+import type { AgentActivityEvent } from '@/api/types/agents'
 
 const FIXED_BASE = new Date('2026-03-26T12:00:00.000Z')
 

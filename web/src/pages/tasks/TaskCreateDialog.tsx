@@ -4,7 +4,8 @@ import { Loader2, X } from 'lucide-react'
 import { cn, FOCUS_RING } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { getErrorMessage } from '@/utils/errors'
-import type { CreateTaskRequest, Priority, TaskType, Complexity } from '@/api/types'
+import type { Complexity, Priority, TaskType } from '@/api/types/enums'
+import type { CreateTaskRequest } from '@/api/types/tasks'
 
 export interface TaskCreateDialogProps {
   open: boolean

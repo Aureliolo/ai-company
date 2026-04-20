@@ -4,7 +4,7 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { Button } from '@/components/ui/button'
 import { ActivityLogItem } from './ActivityLogItem'
-import type { AgentActivityEvent } from '@/api/types'
+import type { AgentActivityEvent } from '@/api/types/agents'
 
 interface ActivityLogProps {
   events: readonly AgentActivityEvent[]

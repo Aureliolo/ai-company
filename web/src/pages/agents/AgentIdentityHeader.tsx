@@ -4,7 +4,7 @@ import { StatPill } from '@/components/ui/stat-pill'
 import { toRuntimeStatus } from '@/utils/agents'
 import { formatLabel, formatDate } from '@/utils/format'
 import { cn } from '@/lib/utils'
-import type { AgentConfig } from '@/api/types'
+import type { AgentConfig } from '@/api/types/agents'
 
 interface AgentIdentityHeaderProps {
   agent: AgentConfig

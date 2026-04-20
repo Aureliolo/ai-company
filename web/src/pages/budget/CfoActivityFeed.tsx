@@ -3,7 +3,7 @@ import { SectionCard } from '@/components/ui/section-card'
 import { EmptyState } from '@/components/ui/empty-state'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { ActivityFeedItem } from '@/pages/dashboard/ActivityFeedItem'
-import type { ActivityItem } from '@/api/types'
+import type { ActivityItem } from '@/api/types/analytics'
 
 const MAX_VISIBLE = 10
 

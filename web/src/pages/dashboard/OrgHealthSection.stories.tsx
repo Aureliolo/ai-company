@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { OrgHealthSection } from './OrgHealthSection'
-import type { DepartmentHealth, DepartmentName } from '@/api/types'
+import type { DepartmentHealth } from '@/api/types/analytics'
+import type { DepartmentName } from '@/api/types/enums'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
 
 function makeDepts(configs: Array<{ name: DepartmentName; health: number }>): DepartmentHealth[] {

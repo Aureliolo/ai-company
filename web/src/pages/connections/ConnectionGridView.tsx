@@ -1,5 +1,5 @@
 import { Plug } from 'lucide-react'
-import type { Connection, HealthReport } from '@/api/types'
+import type { Connection, HealthReport } from '@/api/types/integrations'
 import { EmptyState } from '@/components/ui/empty-state'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { ConnectionCard } from './ConnectionCard'

@@ -2,7 +2,9 @@ import { Link } from 'react-router'
 import { Avatar } from '@/components/ui/avatar'
 import { cn } from '@/lib/utils'
 import { formatRelativeTime } from '@/utils/format'
-import type { ActivityEventType, ActivityItem, WsEventType } from '@/api/types'
+import type { ActivityEventType } from '@/api/types/agents'
+import type { ActivityItem } from '@/api/types/analytics'
+import type { WsEventType } from '@/api/types/websocket'
 
 interface ActivityFeedItemProps {
   activity: ActivityItem

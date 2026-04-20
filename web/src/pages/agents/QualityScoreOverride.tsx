@@ -15,7 +15,7 @@ import {
 } from '@/api/endpoints/quality'
 import { getErrorMessage } from '@/utils/errors'
 import { formatDateOnly } from '@/utils/format'
-import type { OverrideResponse } from '@/api/types'
+import type { OverrideResponse } from '@/api/types/collaboration'
 import type { AxiosError } from 'axios'
 
 const OVERRIDE_ROLES = ['ceo', 'manager'] as const

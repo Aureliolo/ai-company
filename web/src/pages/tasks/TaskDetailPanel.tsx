@@ -14,7 +14,8 @@ import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { formatDate, formatCurrency } from '@/utils/format'
 import { useToastStore } from '@/stores/toast'
 import { getErrorMessage } from '@/utils/errors'
-import type { Task, Priority, UpdateTaskRequest, TransitionTaskRequest, CancelTaskRequest, TaskStatus } from '@/api/types'
+import type { Priority, TaskStatus } from '@/api/types/enums'
+import type { CancelTaskRequest, Task, TransitionTaskRequest, UpdateTaskRequest } from '@/api/types/tasks'
 
 export interface TaskDetailPanelProps {
   task: Task

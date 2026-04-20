@@ -7,7 +7,7 @@ import { LazyCodeMirrorEditor } from '@/components/ui/lazy-code-mirror-editor'
 import { downloadArtifactContent } from '@/api/endpoints/artifacts'
 import { downloadArtifactFile } from '@/utils/download'
 import { getErrorMessage } from '@/utils/errors'
-import type { Artifact } from '@/api/types'
+import type { Artifact } from '@/api/types/artifacts'
 
 interface ArtifactContentPreviewProps {
   artifact: Artifact

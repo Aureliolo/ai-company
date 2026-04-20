@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { AgentIdentityHeader } from './AgentIdentityHeader'
-import type { AgentConfig } from '@/api/types'
+import type { AgentConfig } from '@/api/types/agents'
 
 function makeAgent(overrides: Partial<AgentConfig> = {}): AgentConfig {
   return {

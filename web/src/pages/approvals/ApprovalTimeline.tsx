@@ -1,7 +1,7 @@
 import { cn } from '@/lib/utils'
 import { getApprovalStatusColor, getApprovalStatusLabel } from '@/utils/approvals'
 import { formatDate } from '@/utils/format'
-import type { ApprovalResponse } from '@/api/types'
+import type { ApprovalResponse } from '@/api/types/approvals'
 
 export interface ApprovalTimelineProps {
   approval: ApprovalResponse

@@ -2,12 +2,11 @@ import type { Meta, StoryObj } from '@storybook/react'
 import { MemoryRouter } from 'react-router'
 import { useBudgetStore } from '@/stores/budget'
 import type {
-  BudgetConfig,
-  CostRecord,
   ForecastResponse,
   OverviewMetrics,
   TrendDataPoint,
-} from '@/api/types'
+} from '@/api/types/analytics'
+import type { BudgetConfig, CostRecord } from '@/api/types/budget'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import BudgetPage from '@/pages/BudgetPage'
 

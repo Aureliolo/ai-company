@@ -12,7 +12,7 @@ import { getErrorMessage } from '@/utils/errors'
 import { downloadArtifactFile } from '@/utils/download'
 import { formatFileSize, formatDate, formatLabel } from '@/utils/format'
 import { ROUTES } from '@/router/routes'
-import type { Artifact } from '@/api/types'
+import type { Artifact } from '@/api/types/artifacts'
 
 interface ArtifactMetadataProps {
   artifact: Artifact

@@ -1,7 +1,7 @@
 import { ListOrdered } from 'lucide-react'
 import { SectionCard } from '@/components/ui/section-card'
 import { formatLabel } from '@/utils/format'
-import type { MeetingAgenda } from '@/api/types'
+import type { MeetingAgenda } from '@/api/types/meetings'
 
 interface MeetingAgendaSectionProps {
   agenda: MeetingAgenda

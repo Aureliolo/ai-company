@@ -4,7 +4,7 @@ import { ContentTypeBadge } from '@/components/ui/content-type-badge'
 import { StatPill } from '@/components/ui/stat-pill'
 import { formatFileSize } from '@/utils/format'
 import { formatRelativeTime, formatLabel } from '@/utils/format'
-import type { Artifact } from '@/api/types'
+import type { Artifact } from '@/api/types/artifacts'
 
 interface ArtifactCardProps {
   artifact: Artifact

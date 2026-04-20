@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { TaskHistory } from './TaskHistory'
-import type { Task } from '@/api/types'
+import type { Task } from '@/api/types/tasks'
 
 const FIXED_BASE = new Date('2026-03-26T12:00:00.000Z')
 

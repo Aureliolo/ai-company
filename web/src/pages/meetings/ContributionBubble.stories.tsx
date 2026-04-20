@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { ContributionBubble } from './ContributionBubble'
-import type { MeetingContribution } from '@/api/types'
+import type { MeetingContribution } from '@/api/types/meetings'
 
 const meta = {
   title: 'Meetings/ContributionBubble',

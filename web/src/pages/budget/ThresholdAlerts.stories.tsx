@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { ThresholdAlerts } from './ThresholdAlerts'
-import type { BudgetConfig, OverviewMetrics } from '@/api/types'
+import type { OverviewMetrics } from '@/api/types/analytics'
+import type { BudgetConfig } from '@/api/types/budget'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
 
 const baseBudgetConfig: BudgetConfig = {

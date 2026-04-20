@@ -1,7 +1,7 @@
 import { getCareerEventColor } from '@/utils/agents'
 import { formatDate, formatLabel } from '@/utils/format'
 import { cn } from '@/lib/utils'
-import type { CareerEvent } from '@/api/types'
+import type { CareerEvent } from '@/api/types/agents'
 
 interface CareerTimelineEventProps {
   event: CareerEvent

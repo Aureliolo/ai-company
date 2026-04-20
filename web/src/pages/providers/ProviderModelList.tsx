@@ -3,7 +3,7 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { Boxes, Settings2, Trash2 } from 'lucide-react'
-import type { ProviderModelResponse } from '@/api/types'
+import type { ProviderModelResponse } from '@/api/types/providers'
 
 interface ProviderModelRowProps {
   model: ProviderModelResponse

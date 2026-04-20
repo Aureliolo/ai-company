@@ -3,7 +3,7 @@ import { SectionCard } from '@/components/ui/section-card'
 import { EmptyState } from '@/components/ui/empty-state'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { TaskHistoryBar } from './TaskHistoryBar'
-import type { Task } from '@/api/types'
+import type { Task } from '@/api/types/tasks'
 
 interface TaskHistoryProps {
   tasks: readonly Task[]

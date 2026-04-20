@@ -1,6 +1,6 @@
 import { Server } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import type { ProviderPreset } from '@/api/types'
+import type { ProviderPreset } from '@/api/types/providers'
 
 interface PresetOptionCardProps {
   name: string

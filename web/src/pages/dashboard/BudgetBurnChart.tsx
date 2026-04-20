@@ -18,7 +18,7 @@ import {
   formatDayLabel as formatDayLabelHelper,
   formatTodayLabel,
 } from '@/utils/format'
-import type { ForecastResponse, TrendDataPoint } from '@/api/types'
+import type { ForecastResponse, TrendDataPoint } from '@/api/types/analytics'
 
 interface BudgetBurnChartProps {
   trendData: readonly TrendDataPoint[]

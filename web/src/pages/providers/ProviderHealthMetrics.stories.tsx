@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { ProviderHealthMetrics } from './ProviderHealthMetrics'
-import type { ProviderHealthSummary } from '@/api/types'
+import type { ProviderHealthSummary } from '@/api/types/providers'
 
 const baseHealth: ProviderHealthSummary = {
   last_check_timestamp: '2026-03-27T12:00:00Z',

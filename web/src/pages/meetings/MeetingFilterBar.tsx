@@ -1,7 +1,7 @@
 import { SelectField } from '@/components/ui/select-field'
 import { formatLabel } from '@/utils/format'
 import { getMeetingStatusLabel, type MeetingPageFilters } from '@/utils/meetings'
-import { MEETING_STATUS_VALUES } from '@/api/types'
+import { MEETING_STATUS_VALUES } from '@/api/types/meetings'
 
 interface MeetingFilterBarProps {
   filters: MeetingPageFilters

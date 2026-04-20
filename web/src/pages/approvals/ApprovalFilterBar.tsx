@@ -1,6 +1,6 @@
 import { X } from 'lucide-react'
 import { getRiskLevelLabel, getApprovalStatusLabel, type ApprovalPageFilters } from '@/utils/approvals'
-import type { ApprovalRiskLevel, ApprovalStatus } from '@/api/types'
+import type { ApprovalRiskLevel, ApprovalStatus } from '@/api/types/enums'
 
 const STATUSES = ['pending', 'approved', 'rejected', 'expired'] as const satisfies readonly ApprovalStatus[]
 const RISK_LEVELS = ['critical', 'high', 'medium', 'low'] as const satisfies readonly ApprovalRiskLevel[]

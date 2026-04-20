@@ -3,7 +3,7 @@ import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { MessageSquare } from 'lucide-react'
 import { getPhaseLabel } from '@/utils/meetings'
 import { ContributionBubble } from './ContributionBubble'
-import type { MeetingContribution, MeetingPhase } from '@/api/types'
+import type { MeetingContribution, MeetingPhase } from '@/api/types/meetings'
 
 interface MeetingContributionsProps {
   contributions: readonly MeetingContribution[]

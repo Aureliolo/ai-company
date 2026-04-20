@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { MeetingContributions } from './MeetingContributions'
-import type { MeetingContribution } from '@/api/types'
+import type { MeetingContribution } from '@/api/types/meetings'
 
 const meta = {
   title: 'Meetings/MeetingContributions',

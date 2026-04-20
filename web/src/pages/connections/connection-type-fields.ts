@@ -1,4 +1,4 @@
-import type { ConnectionType } from '@/api/types'
+import type { ConnectionType } from '@/api/types/integrations'
 
 export interface ConnectionFieldSpec {
   readonly key: string
