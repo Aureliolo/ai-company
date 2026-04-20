@@ -9,10 +9,7 @@ on version conflict.
 
 import json
 import math
-from collections.abc import Sequence  # noqa: TC003
 from typing import TYPE_CHECKING, Any
-
-from pydantic import BaseModel  # noqa: TC002
 
 from synthorg.api.concurrency import check_if_match, compute_etag
 from synthorg.api.dto_org import (  # noqa: TC001
@@ -50,14 +47,6 @@ _BUDGET_PERCENT_CAP = 100.0
 
 # Maximum CAS retry attempts for read-modify-write mutations.
 _MAX_CAS_ATTEMPTS = 2
-
-
-def _json_dump_models(models: Sequence[BaseModel]) -> str:
-    """Serialize a sequence of Pydantic models to compact JSON."""
-    return json.dumps(
-        [m.model_dump(mode="json") for m in models],
-        separators=(",", ":"),
-    )
 
 
 class OrgMutationService(OrgAgentMutationsMixin, OrgDepartmentMutationsMixin):

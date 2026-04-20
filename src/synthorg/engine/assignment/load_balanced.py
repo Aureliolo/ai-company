@@ -7,7 +7,11 @@ from synthorg.engine.assignment._shared import (
     build_subtask_definition,
     score_and_filter_candidates,
 )
-from synthorg.engine.assignment.models import AssignmentRequest, AssignmentResult
+from synthorg.engine.assignment.models import (
+    AssignmentCandidate,
+    AssignmentRequest,
+    AssignmentResult,
+)
 from synthorg.observability import get_logger
 from synthorg.observability.events.task_assignment import (
     TASK_ASSIGNMENT_CAPABILITY_FALLBACK,
@@ -41,48 +45,49 @@ class LoadBalancedAssignmentStrategy:
         return STRATEGY_NAME_LOAD_BALANCED
 
     def assign(self, request: AssignmentRequest) -> AssignmentResult:
-        """Score, filter by workload, and select the least-loaded agent.
-
-        Returns ``selected=None`` when no candidates meet threshold.
-
-        Args:
-            request: The assignment request.
-
-        Returns:
-            Assignment result with the least-loaded eligible agent.
-        """
+        """Score, filter by workload, and select the least-loaded agent."""
         subtask = build_subtask_definition(request)
-        candidates = score_and_filter_candidates(
-            self._scorer,
+        candidates = score_and_filter_candidates(self._scorer, request, subtask)
+        if not candidates:
+            return self._no_eligible_result(request)
+
+        ranked, has_complete_data = self._rank_candidates_by_workload(
             request,
-            subtask,
+            candidates,
+        )
+        return self._build_result(request, ranked, has_complete_data=has_complete_data)
+
+    def _no_eligible_result(self, request: AssignmentRequest) -> AssignmentResult:
+        """Log and return an empty result when no candidates scored."""
+        logger.warning(
+            TASK_ASSIGNMENT_NO_ELIGIBLE,
+            task_id=request.task.id,
+            strategy=self.name,
+            agent_count=len(request.available_agents),
+            min_score=request.min_score,
+        )
+        return AssignmentResult(
+            task_id=request.task.id,
+            strategy_used=self.name,
+            reason=(
+                f"No agents scored above threshold "
+                f"{request.min_score} for task {request.task.id!r}"
+            ),
         )
 
-        if not candidates:
-            logger.warning(
-                TASK_ASSIGNMENT_NO_ELIGIBLE,
-                task_id=request.task.id,
-                strategy=self.name,
-                agent_count=len(request.available_agents),
-                min_score=request.min_score,
-            )
-            return AssignmentResult(
-                task_id=request.task.id,
-                strategy_used=self.name,
-                reason=(
-                    f"No agents scored above threshold "
-                    f"{request.min_score} for task {request.task.id!r}"
-                ),
-            )
-
+    def _rank_candidates_by_workload(
+        self,
+        request: AssignmentRequest,
+        candidates: list[AssignmentCandidate],
+    ) -> tuple[list[AssignmentCandidate], bool]:
+        """Sort candidates by workload + score; return the used-workload flag."""
         workload_map: dict[str, int] = {
             w.agent_id: w.active_task_count for w in request.workloads
         }
         candidate_ids = {str(c.agent_identity.id) for c in candidates}
         has_complete_data = bool(workload_map) and candidate_ids <= workload_map.keys()
-
         if has_complete_data:
-            candidates = sorted(
+            ranked = sorted(
                 candidates,
                 key=lambda c: (
                     workload_map[str(c.agent_identity.id)],
@@ -92,20 +97,28 @@ class LoadBalancedAssignmentStrategy:
             logger.debug(
                 TASK_ASSIGNMENT_WORKLOAD_BALANCED,
                 task_id=request.task.id,
-                agent_name=candidates[0].agent_identity.name,
-                workload=workload_map[str(candidates[0].agent_identity.id)],
+                agent_name=ranked[0].agent_identity.name,
+                workload=workload_map[str(ranked[0].agent_identity.id)],
             )
-        else:
-            logger.warning(
-                TASK_ASSIGNMENT_CAPABILITY_FALLBACK,
-                task_id=request.task.id,
-                strategy=self.name,
-                partial_data=bool(workload_map),
-            )
+            return ranked, True
+        logger.warning(
+            TASK_ASSIGNMENT_CAPABILITY_FALLBACK,
+            task_id=request.task.id,
+            strategy=self.name,
+            partial_data=bool(workload_map),
+        )
+        return candidates, False
 
-        selected = candidates[0]
-        alternatives = tuple(candidates[1:])
-
+    def _build_result(
+        self,
+        request: AssignmentRequest,
+        ranked: list[AssignmentCandidate],
+        *,
+        has_complete_data: bool,
+    ) -> AssignmentResult:
+        """Build the final ``AssignmentResult`` from ranked candidates."""
+        selected = ranked[0]
+        alternatives = tuple(ranked[1:])
         reason = (
             f"Least loaded: {selected.agent_identity.name!r} "
             f"(score={selected.score:.2f})"
@@ -114,7 +127,6 @@ class LoadBalancedAssignmentStrategy:
             f"{selected.agent_identity.name!r} "
             f"(score={selected.score:.2f})"
         )
-
         return AssignmentResult(
             task_id=request.task.id,
             strategy_used=self.name,

@@ -69,6 +69,8 @@ class ProviderUsageSummary(NamedTuple):
     total_cost: float
 
 
+# Imported after ProviderUsageSummary: tracker_summary imports that symbol from
+# this module, so the mixin must be loaded after its dependencies are defined.
 from synthorg.budget.tracker_summary import CostTrackerSummaryMixin  # noqa: E402
 
 

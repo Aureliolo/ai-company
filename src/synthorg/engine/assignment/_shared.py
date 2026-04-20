@@ -1,7 +1,7 @@
 """Shared helpers and constants for task assignment strategies.
 
 ``STRATEGY_NAME_*`` constants identify each strategy.
-``_build_subtask_definition`` and ``_score_and_filter_candidates``
+``build_subtask_definition`` and ``score_and_filter_candidates``
 are shared by all scorer-based strategies.
 """
 
@@ -16,6 +16,7 @@ from synthorg.engine.decomposition.models import SubtaskDefinition
 from synthorg.observability import get_logger
 from synthorg.observability.events.task_assignment import (
     TASK_ASSIGNMENT_AGENT_SCORED,
+    TASK_ASSIGNMENT_WORKLOAD_MISSING,
 )
 
 if TYPE_CHECKING:
@@ -90,11 +91,9 @@ def score_and_filter_candidates(
             agent_id_str = str(agent.id)
             if agent_id_str not in workload_map:
                 logger.debug(
-                    TASK_ASSIGNMENT_AGENT_SCORED,
+                    TASK_ASSIGNMENT_WORKLOAD_MISSING,
                     task_id=request.task.id,
                     agent_name=agent.name,
-                    score=0.0,
-                    reason="missing_workload_data",
                 )
             active = workload_map.get(agent_id_str, 0)
             if active >= request.max_concurrent_tasks:

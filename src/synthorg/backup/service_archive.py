@@ -40,15 +40,15 @@ class BackupServiceArchiveMixin:
 
     async def list_backups(self) -> tuple[BackupInfo, ...]:
         """List all available backups."""
-        if not self._backup_path.exists():
+        entries = await asyncio.to_thread(self._scan_backup_entries)
+        if entries is None:
             logger.debug(BACKUP_LISTED, count=0)
             return ()
 
         infos: list[BackupInfo] = []
-
-        for entry in self._backup_path.iterdir():
-            if entry.is_dir():
-                info = self._try_load_dir_info(entry)
+        for entry, is_dir in entries:
+            if is_dir:
+                info = await asyncio.to_thread(self._try_load_dir_info, entry)
                 if info is not None:
                     infos.append(info)
             elif entry.name.endswith(".tar.gz"):
@@ -59,6 +59,14 @@ class BackupServiceArchiveMixin:
         infos.sort(key=lambda i: i.timestamp, reverse=True)
         logger.debug(BACKUP_LISTED, count=len(infos))
         return tuple(infos)
+
+    def _scan_backup_entries(
+        self,
+    ) -> list[tuple[Path, bool]] | None:
+        """Return ``(entry, is_dir)`` pairs or ``None`` if the dir is absent."""
+        if not self._backup_path.exists():
+            return None
+        return [(entry, entry.is_dir()) for entry in self._backup_path.iterdir()]
 
     def _try_load_dir_info(
         self,
@@ -79,6 +87,27 @@ class BackupServiceArchiveMixin:
                 exc_info=True,
             )
             return None
+
+    def _load_dir_manifest_matching(
+        self,
+        entry: Path,
+        backup_id: str,
+    ) -> BackupManifest | None:
+        """Load and validate a directory manifest matching ``backup_id``."""
+        manifest_path = entry / "manifest.json"
+        if not manifest_path.exists():
+            return None
+        try:
+            data = json.loads(manifest_path.read_text(encoding="utf-8"))
+            m = BackupManifest.model_validate(data)
+        except Exception as exc:
+            logger.warning(
+                BACKUP_MANIFEST_INVALID,
+                path=str(manifest_path),
+                error=str(exc),
+            )
+            return None
+        return m if m.backup_id == backup_id else None
 
     async def _try_load_archive_info(
         self,
@@ -157,9 +186,14 @@ class BackupServiceArchiveMixin:
 
     async def _load_manifest(self, backup_id: str) -> BackupManifest:
         """Load manifest for a given backup ID."""
-        if self._backup_path.exists():
-            for entry in self._backup_path.iterdir():
-                result = await self._try_load_entry_manifest(entry, backup_id)
+        entries = await asyncio.to_thread(self._scan_backup_entries)
+        if entries is not None:
+            for entry, is_dir in entries:
+                result = await self._try_load_entry_manifest(
+                    entry,
+                    backup_id,
+                    is_dir=is_dir,
+                )
                 if result is not None:
                     return result
 
@@ -171,23 +205,17 @@ class BackupServiceArchiveMixin:
         self,
         entry: Path,
         backup_id: str,
+        *,
+        is_dir: bool,
     ) -> BackupManifest | None:
         """Try to load a manifest matching backup_id."""
-        if entry.is_dir():  # noqa: ASYNC240
-            manifest_path = entry / "manifest.json"
-            if manifest_path.exists():
-                try:
-                    data = json.loads(manifest_path.read_text(encoding="utf-8"))
-                    m = BackupManifest.model_validate(data)
-                    if m.backup_id == backup_id:
-                        return m
-                except Exception as exc:
-                    logger.warning(
-                        BACKUP_MANIFEST_INVALID,
-                        path=str(manifest_path),
-                        error=str(exc),
-                    )
-        elif entry.name.endswith(".tar.gz"):
+        if is_dir:
+            return await asyncio.to_thread(
+                self._load_dir_manifest_matching,
+                entry,
+                backup_id,
+            )
+        if entry.name.endswith(".tar.gz"):
             try:
                 archive_manifest = await asyncio.to_thread(
                     self._read_manifest_from_archive,
@@ -206,8 +234,12 @@ class BackupServiceArchiveMixin:
                 )
         return None
 
-    def _find_backup_dir(self, backup_id: str) -> Path | None:
+    async def _find_backup_dir(self, backup_id: str) -> Path | None:
         """Find uncompressed backup directory by ID."""
+        return await asyncio.to_thread(self._find_backup_dir_sync, backup_id)
+
+    def _find_backup_dir_sync(self, backup_id: str) -> Path | None:
+        """Synchronous filesystem scan for the backup directory."""
         if not self._backup_path.exists():
             return None
         for entry in self._backup_path.iterdir():
@@ -219,12 +251,18 @@ class BackupServiceArchiveMixin:
 
     async def _extract_archive(self, backup_id: str) -> Path | None:
         """Extract a compressed backup archive to a temp directory."""
-        if not self._backup_path.exists():
+        entries = await asyncio.to_thread(self._scan_backup_entries)
+        if entries is None:
             return None
-        for entry in self._backup_path.iterdir():
+        for entry, _is_dir in entries:
             if not entry.name.endswith(".tar.gz"):
                 continue
-            if not self._archive_matches_backup(entry, backup_id):
+            matches = await asyncio.to_thread(
+                self._archive_matches_backup,
+                entry,
+                backup_id,
+            )
+            if not matches:
                 continue
 
             temp_dir = self._backup_path / f"_restore_{backup_id}"
@@ -243,7 +281,7 @@ class BackupServiceArchiveMixin:
                     error="Failed to extract archive",
                     exc_info=True,
                 )
-                if temp_dir.exists():
+                if await asyncio.to_thread(temp_dir.exists):
                     await asyncio.to_thread(shutil.rmtree, temp_dir)
                 msg = f"Failed to extract archive for backup: {backup_id}"
                 raise ManifestError(msg) from None
@@ -328,8 +366,8 @@ class BackupServiceArchiveMixin:
                 f = tar.extractfile(member)
                 if f is None:
                     return None
-                raw = f.read(_MANIFEST_MAX_SIZE)
-                if len(raw) == _MANIFEST_MAX_SIZE:
+                raw = f.read(_MANIFEST_MAX_SIZE + 1)
+                if len(raw) > _MANIFEST_MAX_SIZE:
                     logger.warning(
                         BACKUP_MANIFEST_INVALID,
                         path=str(archive_path),

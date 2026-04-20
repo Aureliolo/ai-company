@@ -21,6 +21,7 @@ TASK_ASSIGNMENT_DELEGATOR_RESOLVED: Final[str] = "task_assignment.delegator.reso
 TASK_ASSIGNMENT_HIERARCHY_TRANSITIVE: Final[str] = (
     "task_assignment.hierarchy.transitive_fallback"
 )
+TASK_ASSIGNMENT_WORKLOAD_MISSING: Final[str] = "task_assignment.agent.workload_missing"
 
 # -- Project team filtering events --
 TASK_ASSIGNMENT_PROJECT_FILTERED: Final[str] = "task_assignment.project.filtered"

@@ -173,12 +173,20 @@ def _resolve_artifact_dir_env() -> str:
     artifact_dir_str = os.environ.get("SYNTHORG_ARTIFACT_DIR", "").strip()
     if not artifact_dir_str:
         return "/data"
-    if not Path(artifact_dir_str).is_absolute():
+    artifact_path = Path(artifact_dir_str)
+    if not artifact_path.is_absolute():
         msg = (
             f"SYNTHORG_ARTIFACT_DIR={artifact_dir_str!r} must be an absolute "
             f"path to avoid writing artifacts to the process working directory"
         )
         logger.warning(API_APP_STARTUP, error=msg, reason="non_absolute_artifact_dir")
+        raise ValueError(msg)
+    if ".." in artifact_path.parts:
+        msg = (
+            f"SYNTHORG_ARTIFACT_DIR={artifact_dir_str!r} must not contain '..' "
+            f"path traversal segments"
+        )
+        logger.warning(API_APP_STARTUP, error=msg, reason="artifact_dir_traversal")
         raise ValueError(msg)
     return artifact_dir_str
 

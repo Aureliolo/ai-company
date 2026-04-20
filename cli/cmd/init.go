@@ -121,8 +121,17 @@ func runInitInteractive(cmd *cobra.Command, out *ui.UI) error {
 		if oldState.MasterKey != "" {
 			state.MasterKey = oldState.MasterKey
 		}
-		if err := preservePostgresFromOldState(cmd, &state, oldState); err != nil {
-			return fmt.Errorf("preserving postgres settings: %w", err)
+		// Only reuse Postgres settings from the old state when the user did
+		// not switch backends or change the Postgres port interactively.
+		// Otherwise the TUI choice would be silently reverted.
+		userChangedBackend := result.answers.persistenceBackend != oldState.PersistenceBackend
+		userChangedPostgresPort := result.answers.persistenceBackend == "postgres" &&
+			result.answers.postgresPort != 0 &&
+			result.answers.postgresPort != oldState.PostgresPort
+		if !userChangedBackend && !userChangedPostgresPort {
+			if err := preservePostgresFromOldState(cmd, &state, oldState); err != nil {
+				return fmt.Errorf("preserving postgres settings: %w", err)
+			}
 		}
 	}
 

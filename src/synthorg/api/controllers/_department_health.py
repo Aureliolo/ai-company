@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Self
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from synthorg.api.errors import ServiceUnavailableError
-from synthorg.budget.currency import DEFAULT_CURRENCY
+from synthorg.budget.currency import DEFAULT_CURRENCY, CurrencyCode
 from synthorg.budget.trends import BucketSize, TrendDataPoint, bucket_cost_records
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
 from synthorg.core.enums import AgentStatus
@@ -50,11 +50,8 @@ class DepartmentHealth(BaseModel):
     department_name: NotBlankStr = Field(description="Department name")
     agent_count: int = Field(ge=0, description="Total agents")
     active_agent_count: int = Field(ge=0, description="Active agents")
-    currency: str = Field(
+    currency: CurrencyCode = Field(
         default=DEFAULT_CURRENCY,
-        min_length=3,
-        max_length=3,
-        pattern=r"^[A-Z]{3}$",
         description="ISO 4217 currency code",
     )
     avg_performance_score: float | None = Field(
@@ -145,6 +142,13 @@ async def _resolve_snapshots(
         except MemoryError, RecursionError:
             raise
         except ServiceUnavailableError:
+            logger.warning(
+                API_REQUEST_ERROR,
+                endpoint="departments.health.snapshot",
+                agent_id=aid,
+                error="performance_tracker_unavailable",
+                exc_info=True,
+            )
             raise
         except Exception:
             logger.warning(
@@ -235,7 +239,7 @@ def _build_degraded_health(
     agent_count: int,
     now: datetime,
     *,
-    currency: str = DEFAULT_CURRENCY,
+    currency: CurrencyCode = DEFAULT_CURRENCY,
 ) -> DepartmentHealth:
     """Build a minimal DepartmentHealth for when queries fail."""
     return DepartmentHealth(
@@ -262,7 +266,7 @@ def _build_health_from_data(  # noqa: PLR0913
     snapshots: tuple[AgentPerformanceSnapshot, ...],
     now: datetime,
     *,
-    currency: str = DEFAULT_CURRENCY,
+    currency: CurrencyCode = DEFAULT_CURRENCY,
 ) -> DepartmentHealth:
     """Build DepartmentHealth from resolved query results."""
     agent_id_set = frozenset(agent_ids)
@@ -292,7 +296,7 @@ async def assemble_department_health(
     dept_name: str,
     dept_agents: tuple[AgentConfig, ...],
     *,
-    currency: str = DEFAULT_CURRENCY,
+    currency: CurrencyCode = DEFAULT_CURRENCY,
 ) -> DepartmentHealth:
     """Aggregate all data sources into a DepartmentHealth response.
 

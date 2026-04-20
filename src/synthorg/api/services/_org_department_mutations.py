@@ -260,8 +260,8 @@ class OrgDepartmentMutationsMixin:
         saved_by: str,
     ) -> None:
         """One TOCTOU-safe attempt: CAS on BOTH departments and agents."""
-        from synthorg.api.services.org_mutations import (  # noqa: PLC0415
-            _json_dump_models,
+        from synthorg.api.services._org_serialization import (  # noqa: PLC0415
+            json_dump_models as _json_dump_models,
         )
 
         _, dept_version = await self._read_setting_versioned("company", "departments")

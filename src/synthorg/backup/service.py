@@ -300,7 +300,7 @@ class BackupService(BackupServiceArchiveMixin):
         manifest = await self._load_manifest(backup_id)
         restore_components = components or manifest.components
 
-        backup_dir = self._find_backup_dir(backup_id)
+        backup_dir = await self._find_backup_dir(backup_id)
         temp_extracted = False
         if backup_dir is None:
             backup_dir = await self._extract_archive(backup_id)

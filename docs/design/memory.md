@@ -1059,7 +1059,7 @@ the agent during execution.
       in the `ContextInjectionStrategy` pipeline, not in the tool-based handler.
 
     **ToolRegistry integration**: `SearchMemoryTool` and `RecallMemoryTool` are `BaseTool`
-    subclasses (`memory/tools.py`) that delegate execution to
+    subclasses (defined in the `memory/tools/` package) that delegate execution to
     `ToolBasedInjectionStrategy.handle_tool_call()`.  The `registry_with_memory_tools()`
     factory augments a `ToolRegistry` with these tools when the strategy is
     `ToolBasedInjectionStrategy`.  `AgentEngine` accepts an optional

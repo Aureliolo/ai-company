@@ -7,6 +7,7 @@ from synthorg.engine.coordination._dispatch_helpers import (
     merge_workspaces,
     rebuild_group_with_workspaces,
     teardown_workspaces,
+    validate_routing_against_decomposition,
 )
 from synthorg.engine.coordination.dispatcher_types import DispatchResult
 from synthorg.engine.coordination.group_builder import build_execution_waves
@@ -56,6 +57,7 @@ class ContextDependentDispatcher:
         config: CoordinationConfig,
     ) -> DispatchResult:
         """Execute waves with conditional workspace isolation."""
+        validate_routing_against_decomposition(decomposition_result, routing_result)
         groups = build_execution_waves(
             decomposition_result=decomposition_result,
             routing_result=routing_result,

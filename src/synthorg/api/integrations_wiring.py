@@ -152,7 +152,7 @@ def _wire_rate_limit_coordinator_factory(
     def _make_coordinator(name: str) -> SharedRateLimitCoordinator:
         max_rpm = _default_rpm
         try:
-            conn = _catalog._cache.get(name)  # noqa: SLF001
+            conn = _catalog.get_cached(name)
             if (
                 conn is not None
                 and conn.rate_limiter is not None

@@ -187,6 +187,7 @@ class BudgetEnforcerRiskMixin:
             logger.exception(
                 RISK_BUDGET_RECORD_FAILED,
                 agent_id=agent_id,
+                task_id=task_id,
                 action_type=action_type,
             )
             return None

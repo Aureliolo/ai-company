@@ -5,6 +5,7 @@ the Litestar route handlers.
 """
 
 import asyncio
+import copy
 import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
@@ -70,85 +71,76 @@ async def run_subworkflow_validation(
     return tuple(io_result.errors) + tuple(graph_result.errors)
 
 
-def build_update_fields(  # noqa: C901, PLR0912
+def _scalar_updates(
+    data: UpdateWorkflowDefinitionRequest,
+) -> dict[str, object]:
+    """Extract simple scalar field updates from the request."""
+    updates: dict[str, object] = {"updated_at": datetime.now(UTC)}
+    for field in ("name", "description", "workflow_type", "version", "is_subworkflow"):
+        value = getattr(data, field)
+        if value is not None:
+            updates[field] = value
+    return updates
+
+
+def _validate_collection(
+    items: object,
+    model_cls: type,
+    *,
+    field_name: str,
+    invalid_message: str,
+) -> tuple[object, ...] | Response[ApiResponse[WorkflowDefinition]]:
+    """Validate an iterable of dict items against ``model_cls``."""
+    try:
+        return tuple(model_cls.model_validate(i) for i in items)  # type: ignore[attr-defined]
+    except (ValueError, ValidationError) as exc:
+        logger.warning(
+            WORKFLOW_DEF_INVALID_REQUEST,
+            field=field_name,
+            error=str(exc),
+        )
+        return Response(
+            content=ApiResponse[WorkflowDefinition](
+                error=invalid_message.format(exc=exc),
+            ),
+            status_code=422,
+        )
+
+
+def build_update_fields(
     data: UpdateWorkflowDefinitionRequest,
 ) -> dict[str, object] | Response[ApiResponse[WorkflowDefinition]]:
     """Build the update dict from the request, or return error."""
-    updates: dict[str, object] = {"updated_at": datetime.now(UTC)}
-    if data.name is not None:
-        updates["name"] = data.name
-    if data.description is not None:
-        updates["description"] = data.description
-    if data.workflow_type is not None:
-        updates["workflow_type"] = data.workflow_type
-    if data.version is not None:
-        updates["version"] = data.version
-    if data.is_subworkflow is not None:
-        updates["is_subworkflow"] = data.is_subworkflow
-    if data.inputs is not None:
-        try:
-            updates["inputs"] = tuple(
-                WorkflowIODeclaration.model_validate(i) for i in data.inputs
-            )
-        except (ValueError, ValidationError) as exc:
-            logger.warning(
-                WORKFLOW_DEF_INVALID_REQUEST,
-                field="inputs",
-                error=str(exc),
-            )
-            return Response(
-                content=ApiResponse[WorkflowDefinition](
-                    error="Invalid 'inputs' field in request.",
-                ),
-                status_code=422,
-            )
-    if data.outputs is not None:
-        try:
-            updates["outputs"] = tuple(
-                WorkflowIODeclaration.model_validate(o) for o in data.outputs
-            )
-        except (ValueError, ValidationError) as exc:
-            logger.warning(
-                WORKFLOW_DEF_INVALID_REQUEST,
-                field="outputs",
-                error=str(exc),
-            )
-            return Response(
-                content=ApiResponse[WorkflowDefinition](
-                    error="Invalid 'outputs' field in request.",
-                ),
-                status_code=422,
-            )
-    if data.nodes is not None:
-        try:
-            updates["nodes"] = tuple(WorkflowNode.model_validate(n) for n in data.nodes)
-        except (ValueError, ValidationError) as exc:
-            logger.warning(
-                WORKFLOW_DEF_INVALID_REQUEST,
-                field="nodes",
-                error=str(exc),
-            )
-            return Response(
-                content=ApiResponse[WorkflowDefinition](
-                    error=f"Invalid nodes: {exc}",
-                ),
-                status_code=422,
-            )
-    if data.edges is not None:
-        try:
-            updates["edges"] = tuple(WorkflowEdge.model_validate(e) for e in data.edges)
-        except (ValueError, ValidationError) as exc:
-            logger.warning(
-                WORKFLOW_DEF_INVALID_REQUEST,
-                field="edges",
-                error=str(exc),
-            )
-            return Response(
-                content=ApiResponse[WorkflowDefinition](
-                    error=f"Invalid edges: {exc}",
-                ),
-                status_code=422,
-            )
+    updates = _scalar_updates(data)
+
+    collection_specs: tuple[tuple[str, object, type, str], ...] = (
+        (
+            "inputs",
+            data.inputs,
+            WorkflowIODeclaration,
+            "Invalid 'inputs' field in request.",
+        ),
+        (
+            "outputs",
+            data.outputs,
+            WorkflowIODeclaration,
+            "Invalid 'outputs' field in request.",
+        ),
+        ("nodes", data.nodes, WorkflowNode, "Invalid nodes: {exc}"),
+        ("edges", data.edges, WorkflowEdge, "Invalid edges: {exc}"),
+    )
+    for field_name, items, model_cls, message in collection_specs:
+        if items is None:
+            continue
+        validated = _validate_collection(
+            items,
+            model_cls,
+            field_name=field_name,
+            invalid_message=message,
+        )
+        if isinstance(validated, Response):
+            return validated
+        updates[field_name] = validated
     return updates
 
 
@@ -163,7 +155,7 @@ def _nodes_from_blueprint(
             label=n.label,
             position_x=n.position_x,
             position_y=n.position_y,
-            config=dict(n.config),
+            config=copy.deepcopy(n.config),
         )
         for n in bp.nodes
     )

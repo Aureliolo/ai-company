@@ -207,6 +207,8 @@ func verifyAndPullStartImages(cmd *cobra.Command, ctx context.Context, info dock
 				errOut.Warn(fmt.Sprintf("Could not cache DHI verification results: %v", err))
 			}
 		}
+	} else {
+		errOut.Warn("Image verification skipped (--skip-verify). Containers are NOT verified.")
 	}
 
 	out.Blank()

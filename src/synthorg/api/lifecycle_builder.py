@@ -399,7 +399,7 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
                     exc_info=True,
                 )
 
-    async def on_shutdown() -> None:  # noqa: C901, PLR0912
+    async def on_shutdown() -> None:  # noqa: C901, PLR0912, PLR0915
         nonlocal _ticket_cleanup_task, _auto_wired_dispatcher
         nonlocal _health_prober, _training_memory_backend
         # Disconnect training memory backend if auto-wired.
@@ -487,6 +487,8 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
             )
 
             await _rate_limit_shared_state.set_coordinator_factory(None)
+        except MemoryError, RecursionError:
+            raise
         except Exception:
             logger.warning(
                 API_APP_SHUTDOWN,
@@ -523,6 +525,8 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
             a2a_client_obj = app_state._a2a_client  # noqa: SLF001
             if a2a_client_obj is not None and hasattr(a2a_client_obj, "aclose"):
                 await a2a_client_obj.aclose()
+        except MemoryError, RecursionError:
+            raise
         except Exception:
             logger.warning(
                 API_APP_SHUTDOWN,

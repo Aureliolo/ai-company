@@ -97,14 +97,11 @@ class AgentEnginePostExecMixin:
         recovery_result: RecoveryResult | None = None
         failed_result: ExecutionResult | None = None
         if execution_result.termination_reason == TerminationReason.ERROR:
-            failed_result = execution_result
-            pre_recovery_ctx = execution_result.context
-            pre_recovery_status = (
-                pre_recovery_ctx.task_execution.status
-                if pre_recovery_ctx.task_execution is not None
-                else None
-            )
-            execution_result, recovery_result = await self._apply_recovery(
+            (
+                execution_result,
+                recovery_result,
+                failed_result,
+            ) = await self._handle_error_recovery(
                 execution_result,
                 identity,
                 agent_id,
@@ -114,51 +111,6 @@ class AgentEnginePostExecMixin:
                 provider=provider,
                 project_id=project_id,
             )
-            if recovery_result is not None:
-                logger.info(
-                    EXECUTION_RECOVERY_DIAGNOSIS,
-                    agent_id=agent_id,
-                    task_id=task_id,
-                    failure_category=recovery_result.failure_category.value,
-                    criteria_failed_count=len(recovery_result.criteria_failed),
-                )
-            ctx = execution_result.context
-            if (
-                ctx.task_execution is not None
-                and pre_recovery_status is not None
-                and ctx.task_execution.status != pre_recovery_status
-            ):
-                logger.info(
-                    EXECUTION_ENGINE_TASK_TRANSITION,
-                    agent_id=agent_id,
-                    task_id=task_id,
-                    from_status=pre_recovery_status.value,
-                    to_status=ctx.task_execution.status.value,
-                )
-                assert recovery_result is not None  # noqa: S101
-                category = recovery_result.failure_category.value
-                criteria_suffix = ""
-                if recovery_result.criteria_failed:
-                    capped = recovery_result.criteria_failed[
-                        :_TRANSITION_REASON_CRITERIA_CAP
-                    ]
-                    sanitized = "; ".join(sanitize_message(c) for c in capped)
-                    overflow = (
-                        len(recovery_result.criteria_failed)
-                        - _TRANSITION_REASON_CRITERIA_CAP
-                    )
-                    more = f" +{overflow} more" if overflow > 0 else ""
-                    criteria_suffix = f", unmet_criteria={sanitized}{more}"
-                await sync_to_task_engine(
-                    self._task_engine,
-                    target_status=ctx.task_execution.status,
-                    task_id=task_id,
-                    agent_id=agent_id,
-                    reason=(
-                        f"Post-recovery status: {ctx.task_execution.status.value} "
-                        f"(failure_category={category}{criteria_suffix})"
-                    ),
-                )
         if execution_result.termination_reason != TerminationReason.ERROR:
             exec_id = execution_result.context.execution_id
             if self._recovery_strategy is not None:
@@ -203,6 +155,103 @@ class AgentEnginePostExecMixin:
             task_id,
         )
         return execution_result
+
+    async def _handle_error_recovery(  # noqa: PLR0913
+        self,
+        execution_result: ExecutionResult,
+        identity: AgentIdentity,
+        agent_id: str,
+        task_id: str,
+        *,
+        completion_config: CompletionConfig | None,
+        effective_autonomy: EffectiveAutonomy | None,
+        provider: CompletionProvider | None,
+        project_id: str | None,
+    ) -> tuple[ExecutionResult, RecoveryResult | None, ExecutionResult]:
+        """Run recovery for an ERROR termination.
+
+        Returns the post-recovery ``execution_result``, the optional
+        ``recovery_result`` diagnosis, and the original failed result
+        (for downstream hooks like procedural-memory capture).
+        """
+        failed_result = execution_result
+        pre_recovery_ctx = execution_result.context
+        pre_recovery_status = (
+            pre_recovery_ctx.task_execution.status
+            if pre_recovery_ctx.task_execution is not None
+            else None
+        )
+        execution_result, recovery_result = await self._apply_recovery(
+            execution_result,
+            identity,
+            agent_id,
+            task_id,
+            completion_config=completion_config,
+            effective_autonomy=effective_autonomy,
+            provider=provider,
+            project_id=project_id,
+        )
+        if recovery_result is not None:
+            logger.info(
+                EXECUTION_RECOVERY_DIAGNOSIS,
+                agent_id=agent_id,
+                task_id=task_id,
+                failure_category=recovery_result.failure_category.value,
+                criteria_failed_count=len(recovery_result.criteria_failed),
+            )
+        ctx = execution_result.context
+        if (
+            recovery_result is not None
+            and ctx.task_execution is not None
+            and pre_recovery_status is not None
+            and ctx.task_execution.status != pre_recovery_status
+        ):
+            await self._log_post_recovery_transition(
+                recovery_result,
+                agent_id=agent_id,
+                task_id=task_id,
+                from_status=pre_recovery_status,
+                to_status=ctx.task_execution.status,
+            )
+        return execution_result, recovery_result, failed_result
+
+    async def _log_post_recovery_transition(
+        self,
+        recovery_result: RecoveryResult,
+        *,
+        agent_id: str,
+        task_id: str,
+        from_status: Any,
+        to_status: Any,
+    ) -> None:
+        """Log the post-recovery task-status transition + sync to task engine."""
+        logger.info(
+            EXECUTION_ENGINE_TASK_TRANSITION,
+            agent_id=agent_id,
+            task_id=task_id,
+            from_status=from_status.value,
+            to_status=to_status.value,
+        )
+        category = recovery_result.failure_category.value
+        criteria_suffix = ""
+        if recovery_result.criteria_failed:
+            capped = recovery_result.criteria_failed[:_TRANSITION_REASON_CRITERIA_CAP]
+            sanitized = "; ".join(sanitize_message(c) for c in capped)
+            overflow = (
+                len(recovery_result.criteria_failed) - _TRANSITION_REASON_CRITERIA_CAP
+            )
+            more = f" +{overflow} more" if overflow > 0 else ""
+            criteria_suffix = f", unmet_criteria={sanitized}{more}"
+        await sync_to_task_engine(
+            self._task_engine,
+            target_status=to_status,
+            task_id=task_id,
+            agent_id=agent_id,
+            reason=(
+                f"Post-recovery status: {to_status.value} "
+                f"(failure_category={category}{criteria_suffix})"
+            ),
+        )
 
     async def _try_capture_distillation(
         self,

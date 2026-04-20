@@ -12,7 +12,7 @@ from synthorg.api.auth.config import AuthConfig
 from synthorg.api.guards import HumanRole  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 
-_MIN_PASSWORD_LENGTH: int = AuthConfig.model_fields["min_password_length"].default
+_MIN_PASSWORD_LENGTH: int = AuthConfig().min_password_length
 
 
 def _check_password_length(password: str) -> str:
@@ -123,8 +123,8 @@ class UserInfoResponse(BaseModel):
     username: NotBlankStr
     role: HumanRole
     must_change_password: bool
-    org_roles: tuple[str, ...] = ()
-    scoped_departments: tuple[str, ...] = ()
+    org_roles: tuple[NotBlankStr, ...] = ()
+    scoped_departments: tuple[NotBlankStr, ...] = ()
 
 
 class WsTicketResponse(BaseModel):

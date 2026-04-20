@@ -1,6 +1,10 @@
 """Manual task assignment strategy.
 
-Assigns a task to its pre-designated agent (``task.assigned_to``).
+Assigns a task to its pre-designated agent identified by
+``task.assigned_to``. The field may carry either the agent's UUID
+(canonical, as populated by API callers) or the agent's declarative
+``name`` (as populated by workflow AGENT_ASSIGNMENT nodes); both
+forms are accepted.
 """
 
 from typing import TYPE_CHECKING
@@ -70,11 +74,20 @@ class ManualAssignmentStrategy:
             )
             raise TaskAssignmentError(msg)
 
+        # Accept either the agent's UUID (API-authored tasks) or the agent's
+        # ``name`` (workflow AGENT_ASSIGNMENT nodes store the declarative
+        # name rather than the opaque UUID). UUID matching is preferred when
+        # present; name matching is the fallback for workflow-sourced tasks.
         agent: AgentIdentity | None = None
         for available in request.available_agents:
             if str(available.id) == task.assigned_to:
                 agent = available
                 break
+        if agent is None:
+            for available in request.available_agents:
+                if available.name == task.assigned_to:
+                    agent = available
+                    break
 
         if agent is None:
             msg = (
