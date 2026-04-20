@@ -23,7 +23,7 @@ import {
   DEFAULT_PREFERENCES,
   SEVERITY_TO_TOAST_VARIANT,
 } from '@/types/notifications'
-import type { WsEvent } from '@/api/types'
+import type { WsEvent } from '@/api/types/websocket'
 import { sanitizeForLog } from '@/utils/logging'
 
 const log = createLogger('notifications-store')

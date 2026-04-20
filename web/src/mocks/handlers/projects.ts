@@ -4,7 +4,7 @@ import type {
   getProject,
   listProjects,
 } from '@/api/endpoints/projects'
-import type { Project } from '@/api/types'
+import type { Project } from '@/api/types/projects'
 import {
   apiError,
   emptyPage,

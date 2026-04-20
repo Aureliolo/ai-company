@@ -5,7 +5,7 @@ import type {
   installMcpServer,
   searchMcpCatalog,
 } from '@/api/endpoints/mcp-catalog'
-import type { McpCatalogEntry } from '@/api/types'
+import type { McpCatalogEntry } from '@/api/types/integrations'
 import { apiError, successFor, voidSuccess } from './helpers'
 
 export function buildMcpCatalogEntry(

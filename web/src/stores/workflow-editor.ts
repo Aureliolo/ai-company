@@ -13,9 +13,9 @@ import type {
   WorkflowDefinition,
   WorkflowDefinitionVersionSummary,
   WorkflowDiff,
-  WorkflowValidationResult,
   WorkflowNodeType,
-} from '@/api/types'
+  WorkflowValidationResult,
+} from '@/api/types/workflows'
 
 import {
   getWorkflow,

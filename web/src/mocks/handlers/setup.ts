@@ -18,7 +18,7 @@ import type {
   SetupAgentSummary,
   SetupAgentsListResponse,
   SetupStatusResponse,
-} from '@/api/types'
+} from '@/api/types/setup'
 import { apiSuccess, successFor } from './helpers'
 
 export function buildAgentSummary(

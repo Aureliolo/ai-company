@@ -7,7 +7,7 @@ import type {
   listVersions,
   searchSubworkflows,
 } from '@/api/endpoints/subworkflows'
-import type { WorkflowDefinition } from '@/api/types'
+import type { WorkflowDefinition } from '@/api/types/workflows'
 import { buildWorkflow as buildDomainWorkflow } from './workflows'
 import { apiError, successFor, voidSuccess } from './helpers'
 

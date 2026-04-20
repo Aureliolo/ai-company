@@ -8,9 +8,9 @@ import type {
   AgentConfig,
   AgentPerformanceSummary,
   CareerEvent,
-  Task,
-  WsChannel,
-} from '@/api/types'
+} from '@/api/types/agents'
+import type { Task } from '@/api/types/tasks'
+import type { WsChannel } from '@/api/types/websocket'
 import type { MetricCardProps } from '@/components/ui/metric-card'
 
 const DETAIL_POLL_INTERVAL = 30_000

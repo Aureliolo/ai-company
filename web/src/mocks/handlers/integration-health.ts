@@ -3,7 +3,7 @@ import type {
   getSingleIntegrationHealth,
   listIntegrationHealth,
 } from '@/api/endpoints/integration-health'
-import type { HealthReport } from '@/api/types'
+import type { HealthReport } from '@/api/types/integrations'
 import { successFor } from './helpers'
 
 const NOW = '2026-04-11T12:00:00Z'

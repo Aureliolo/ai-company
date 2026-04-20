@@ -5,7 +5,7 @@ import type {
   ProviderHealthSummary,
   ProviderModelResponse,
   TestConnectionResponse,
-} from '@/api/types'
+} from '@/api/types/providers'
 import type { ProviderWithName } from '@/utils/providers'
 
 const DETAIL_POLL_INTERVAL = 30_000

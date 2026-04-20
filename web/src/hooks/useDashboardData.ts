@@ -4,12 +4,12 @@ import { useWebSocket, type ChannelBinding } from '@/hooks/useWebSocket'
 import { usePolling } from '@/hooks/usePolling'
 import type {
   ActivityItem,
-  BudgetConfig,
   DepartmentHealth,
   ForecastResponse,
   OverviewMetrics,
-  WsChannel,
-} from '@/api/types'
+} from '@/api/types/analytics'
+import type { BudgetConfig } from '@/api/types/budget'
+import type { WsChannel } from '@/api/types/websocket'
 
 const DASHBOARD_POLL_INTERVAL = 30_000
 const DASHBOARD_CHANNELS = ['tasks', 'agents', 'budget', 'system', 'approvals'] as const satisfies readonly WsChannel[]

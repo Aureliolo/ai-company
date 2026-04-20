@@ -7,7 +7,7 @@ import type {
   login,
   setup,
 } from '@/api/endpoints/auth'
-import type { AuthResponse, UserInfoResponse } from '@/api/types'
+import type { AuthResponse, UserInfoResponse } from '@/api/types/auth'
 import { successFor, voidSuccess } from './helpers'
 
 const mockAuthResponse: AuthResponse = {

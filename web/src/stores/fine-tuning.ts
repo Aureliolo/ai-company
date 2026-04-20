@@ -19,7 +19,7 @@ import type {
   PreflightResult,
   StartFineTuneRequest,
 } from '@/api/endpoints/fine-tuning'
-import type { WsEvent } from '@/api/types'
+import type { WsEvent } from '@/api/types/websocket'
 import { createLogger } from '@/lib/logger'
 
 /** All valid fine-tune stage values for runtime validation of WS payloads. */

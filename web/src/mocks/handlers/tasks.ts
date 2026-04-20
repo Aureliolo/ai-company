@@ -7,7 +7,8 @@ import type {
   transitionTask,
   updateTask,
 } from '@/api/endpoints/tasks'
-import type { Priority, Task } from '@/api/types'
+import type { Priority } from '@/api/types/enums'
+import type { Task } from '@/api/types/tasks'
 import { apiError, emptyPage, paginatedFor, successFor, voidSuccess } from './helpers'
 
 export function buildTask(overrides: Partial<Task> = {}): Task {

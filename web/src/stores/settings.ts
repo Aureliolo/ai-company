@@ -1,7 +1,8 @@
 import { create } from 'zustand'
 
 import * as settingsApi from '@/api/endpoints/settings'
-import type { SettingDefinition, SettingEntry, SettingNamespace, WsEvent } from '@/api/types'
+import type { SettingDefinition, SettingEntry, SettingNamespace } from '@/api/types/settings'
+import type { WsEvent } from '@/api/types/websocket'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { getErrorMessage } from '@/utils/errors'
 import { createLogger } from '@/lib/logger'

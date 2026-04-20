@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from 'react'
-import type { McpCatalogEntry } from '@/api/types'
+import type { McpCatalogEntry } from '@/api/types/integrations'
 import { useMcpCatalogStore } from '@/stores/mcp-catalog'
 
 export interface UseMcpCatalogDataReturn {

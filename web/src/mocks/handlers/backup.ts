@@ -5,7 +5,7 @@ import type {
   listBackups,
   restoreBackup,
 } from '@/api/endpoints/backup'
-import type { BackupInfo, BackupManifest } from '@/api/types'
+import type { BackupInfo, BackupManifest } from '@/api/types/backup'
 import { successFor, voidSuccess } from './helpers'
 
 export function buildManifest(overrides: Partial<BackupManifest> = {}): BackupManifest {

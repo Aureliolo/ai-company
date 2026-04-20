@@ -15,7 +15,7 @@ import type {
   TestConnectionRequest,
   TestConnectionResponse,
   UpdateProviderRequest,
-} from '@/api/types'
+} from '@/api/types/providers'
 import { useToastStore } from '@/stores/toast'
 import type { ProvidersSet, ProvidersGet } from './types'
 

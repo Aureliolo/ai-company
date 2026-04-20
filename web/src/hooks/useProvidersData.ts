@@ -3,7 +3,7 @@ import { useProvidersStore } from '@/stores/providers'
 import { usePolling } from '@/hooks/usePolling'
 import { filterProviders, sortProviders } from '@/utils/providers'
 import type { ProviderWithName } from '@/utils/providers'
-import type { ProviderHealthSummary } from '@/api/types'
+import type { ProviderHealthSummary } from '@/api/types/providers'
 
 const PROVIDERS_POLL_INTERVAL = 30_000
 

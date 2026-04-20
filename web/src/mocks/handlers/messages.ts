@@ -1,6 +1,6 @@
 import { http, HttpResponse } from 'msw'
 import type { listChannels, listMessages } from '@/api/endpoints/messages'
-import type { Channel, Message } from '@/api/types'
+import type { Channel, Message } from '@/api/types/messages'
 import { emptyPage, paginatedFor, successFor } from './helpers'
 
 export function buildMessage(overrides: Partial<Message> = {}): Message {

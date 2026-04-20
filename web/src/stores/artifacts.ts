@@ -1,7 +1,9 @@
 import { create } from 'zustand'
 import { listArtifacts, getArtifact, getArtifactContentText, deleteArtifact as deleteArtifactApi } from '@/api/endpoints/artifacts'
 import { getErrorMessage } from '@/utils/errors'
-import type { Artifact, ArtifactType, WsEvent } from '@/api/types'
+import type { Artifact } from '@/api/types/artifacts'
+import type { ArtifactType } from '@/api/types/enums'
+import type { WsEvent } from '@/api/types/websocket'
 
 /** Content types eligible for inline text preview: text/*, application/json, and YAML. */
 function isPreviewableText(contentType: string): boolean {

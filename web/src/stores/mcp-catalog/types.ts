@@ -1,5 +1,5 @@
 import type { StoreApi } from 'zustand'
-import type { McpCatalogEntry, McpInstallResponse } from '@/api/types'
+import type { McpCatalogEntry, McpInstallResponse } from '@/api/types/integrations'
 
 export type InstallFlowState =
   | 'idle'

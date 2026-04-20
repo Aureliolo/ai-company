@@ -2,15 +2,17 @@
 
 import { create } from 'zustand'
 import type {
+  ProbePresetResponse,
   ProviderConfig,
   ProviderPreset,
-  ProbePresetResponse,
+  TestConnectionResponse,
+} from '@/api/types/providers'
+import type {
+  PersonalityPresetInfo,
   SetupAgentSummary,
   SetupCompanyResponse,
   TemplateInfoResponse,
-  TestConnectionResponse,
-  PersonalityPresetInfo,
-} from '@/api/types'
+} from '@/api/types/setup'
 import {
   listTemplates,
   createCompany,
@@ -32,7 +34,7 @@ import {
   discoverModels,
   getProvider,
 } from '@/api/endpoints/providers'
-import type { CreateFromPresetRequest, CreateProviderRequest } from '@/api/types'
+import type { CreateFromPresetRequest, CreateProviderRequest } from '@/api/types/providers'
 import { getErrorMessage } from '@/utils/errors'
 import { createLogger } from '@/lib/logger'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'

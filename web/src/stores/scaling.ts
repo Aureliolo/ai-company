@@ -11,7 +11,7 @@ import {
 } from '@/api/endpoints/scaling'
 import { createLogger } from '@/lib/logger'
 import { getErrorMessage } from '@/utils/errors'
-import type { WsEvent } from '@/api/types'
+import type { WsEvent } from '@/api/types/websocket'
 
 const log = createLogger('scaling')
 

@@ -3,7 +3,8 @@ import { useAgentsStore } from '@/stores/agents'
 import { useWebSocket, type ChannelBinding } from '@/hooks/useWebSocket'
 import { usePolling } from '@/hooks/usePolling'
 import { filterAgents, sortAgents } from '@/utils/agents'
-import type { AgentConfig, WsChannel } from '@/api/types'
+import type { AgentConfig } from '@/api/types/agents'
+import type { WsChannel } from '@/api/types/websocket'
 
 const AGENTS_POLL_INTERVAL = 30_000
 /** Shared across agent hooks -- change both if tuning. See useAgentDetailData.ts. */

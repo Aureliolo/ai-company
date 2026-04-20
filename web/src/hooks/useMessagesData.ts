@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useMessagesStore } from '@/stores/messages'
 import { useWebSocket, type ChannelBinding } from '@/hooks/useWebSocket'
 import { usePolling } from '@/hooks/usePolling'
-import type { Channel, Message, WsChannel } from '@/api/types'
+import type { Channel, Message } from '@/api/types/messages'
+import type { WsChannel } from '@/api/types/websocket'
 
 const MESSAGES_POLL_INTERVAL = 30_000
 const MESSAGES_WS_CHANNELS = ['messages'] as const satisfies readonly WsChannel[]

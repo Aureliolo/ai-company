@@ -11,7 +11,8 @@ import * as authApi from '@/api/endpoints/auth'
 import { getErrorMessage, isAxiosError } from '@/utils/errors'
 import { IS_DEV_AUTH_BYPASS } from '@/utils/dev'
 import { createLogger } from '@/lib/logger'
-import type { HumanRole, UserInfoResponse } from '@/api/types'
+import type { UserInfoResponse } from '@/api/types/auth'
+import type { HumanRole } from '@/api/types/enums'
 
 const log = createLogger('auth')
 

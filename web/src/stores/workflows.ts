@@ -15,7 +15,7 @@ import type {
   CreateFromBlueprintRequest,
   CreateWorkflowDefinitionRequest,
   WorkflowDefinition,
-} from '@/api/types'
+} from '@/api/types/workflows'
 
 const log = createLogger('workflows')
 

@@ -8,7 +8,7 @@ import type {
   testSinkConfig,
   updateSetting,
 } from '@/api/endpoints/settings'
-import type { SettingEntry } from '@/api/types'
+import type { SettingEntry } from '@/api/types/settings'
 import { successFor, voidSuccess } from './helpers'
 
 type SettingEntryOverrides = Partial<Omit<SettingEntry, 'definition'>> & {

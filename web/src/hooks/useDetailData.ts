@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useWebSocket, type ChannelBinding } from '@/hooks/useWebSocket'
 import { usePolling } from '@/hooks/usePolling'
-import type { WsChannel } from '@/api/types'
+import type { WsChannel } from '@/api/types/websocket'
 
 const DETAIL_POLL_INTERVAL = 30_000
 const WS_DEBOUNCE_MS = 300

@@ -3,7 +3,7 @@ import {
   listConnections,
 } from '@/api/endpoints/connections'
 import { listIntegrationHealth } from '@/api/endpoints/integration-health'
-import type { HealthReport } from '@/api/types'
+import type { HealthReport } from '@/api/types/integrations'
 import { createLogger } from '@/lib/logger'
 import { getErrorMessage } from '@/utils/errors'
 import type {

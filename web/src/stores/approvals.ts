@@ -9,8 +9,8 @@ import type {
   ApprovalResponse,
   ApproveRequest,
   RejectRequest,
-  WsEvent,
-} from '@/api/types'
+} from '@/api/types/approvals'
+import type { WsEvent } from '@/api/types/websocket'
 
 const log = createLogger('approvals')
 

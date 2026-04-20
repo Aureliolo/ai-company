@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useCallback } from 'react'
 import { useSubworkflowsStore } from '@/stores/subworkflows'
 import { usePolling } from '@/hooks/usePolling'
-import type { SubworkflowSummary } from '@/api/types'
+import type { SubworkflowSummary } from '@/api/types/workflows'
 
 const SUBWORKFLOWS_POLL_INTERVAL = 30_000
 

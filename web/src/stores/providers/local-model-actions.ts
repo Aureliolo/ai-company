@@ -5,7 +5,7 @@ import {
 } from '@/api/endpoints/providers'
 import { getErrorMessage } from '@/utils/errors'
 import { createLogger } from '@/lib/logger'
-import type { LocalModelParams } from '@/api/types'
+import type { LocalModelParams } from '@/api/types/providers'
 import { useToastStore } from '@/stores/toast'
 import type { ProvidersSet, ProvidersGet } from './types'
 

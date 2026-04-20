@@ -3,7 +3,7 @@ import type {
   applyTemplatePack,
   listTemplatePacks,
 } from '@/api/endpoints/template-packs'
-import type { PackInfoResponse } from '@/api/types'
+import type { PackInfoResponse } from '@/api/types/templates'
 import { apiError, apiSuccess, successFor } from './helpers'
 
 const mockPacks: readonly PackInfoResponse[] = [

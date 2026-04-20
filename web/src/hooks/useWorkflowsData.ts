@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useCallback } from 'react'
 import { useWorkflowsStore } from '@/stores/workflows'
 import { usePolling } from '@/hooks/usePolling'
-import type { WorkflowDefinition } from '@/api/types'
+import type { WorkflowDefinition } from '@/api/types/workflows'
 
 const WORKFLOWS_POLL_INTERVAL = 30_000
 

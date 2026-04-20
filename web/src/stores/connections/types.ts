@@ -6,7 +6,7 @@ import type {
   CreateConnectionRequest,
   HealthReport,
   UpdateConnectionRequest,
-} from '@/api/types'
+} from '@/api/types/integrations'
 
 export type ConnectionSortKey = 'name' | 'type' | 'health' | 'created_at'
 

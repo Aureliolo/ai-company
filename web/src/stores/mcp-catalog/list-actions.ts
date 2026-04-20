@@ -2,7 +2,7 @@ import {
   browseMcpCatalog,
   searchMcpCatalog,
 } from '@/api/endpoints/mcp-catalog'
-import type { McpCatalogEntry } from '@/api/types'
+import type { McpCatalogEntry } from '@/api/types/integrations'
 import { createLogger } from '@/lib/logger'
 import { getErrorMessage } from '@/utils/errors'
 import type { McpCatalogSet, McpCatalogState } from './types'

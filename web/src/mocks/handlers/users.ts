@@ -4,7 +4,7 @@ import type {
   listUsers,
   UserResponse,
 } from '@/api/endpoints/users'
-import type { OrgRole } from '@/api/types'
+import type { OrgRole } from '@/api/types/enums'
 import { successFor, voidSuccess } from './helpers'
 
 export function buildUser(overrides: Partial<UserResponse> = {}): UserResponse {

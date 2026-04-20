@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo } from 'react'
 
-import type { WsChannel } from '@/api/types'
+import type { WsChannel } from '@/api/types/websocket'
 import { usePolling } from '@/hooks/usePolling'
 import { useWebSocket, type ChannelBinding } from '@/hooks/useWebSocket'
 import { useScalingStore } from '@/stores/scaling'

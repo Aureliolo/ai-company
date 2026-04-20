@@ -2,21 +2,21 @@ import { useCallback, useEffect, useMemo } from 'react'
 import { useCompanyStore } from '@/stores/company'
 import { useWebSocket, type ChannelBinding } from '@/hooks/useWebSocket'
 import { usePolling } from '@/hooks/usePolling'
+import type { AgentConfig } from '@/api/types/agents'
+import type { DepartmentHealth } from '@/api/types/analytics'
 import type {
-  AgentConfig,
   CompanyConfig,
   CreateAgentOrgRequest,
   CreateDepartmentRequest,
   CreateTeamRequest,
   Department,
-  DepartmentHealth,
   TeamConfig,
   UpdateAgentOrgRequest,
   UpdateCompanyRequest,
   UpdateDepartmentRequest,
   UpdateTeamRequest,
-  WsChannel,
-} from '@/api/types'
+} from '@/api/types/org'
+import type { WsChannel } from '@/api/types/websocket'
 
 const ORG_EDIT_POLL_INTERVAL = 30_000
 const ORG_EDIT_CHANNELS = ['agents'] as const satisfies readonly WsChannel[]

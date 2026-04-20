@@ -5,7 +5,7 @@ import {
 import { getErrorMessage } from '@/utils/errors'
 import { createLogger } from '@/lib/logger'
 import { normalizeProviders } from '@/utils/providers'
-import type { ProviderHealthStatus, ProviderHealthSummary } from '@/api/types'
+import type { ProviderHealthStatus, ProviderHealthSummary } from '@/api/types/providers'
 import type { ProviderSortKey } from '@/utils/providers'
 import type { ProvidersSet } from './types'
 

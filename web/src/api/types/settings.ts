@@ -1,6 +1,7 @@
 /** Settings registry, sink configuration and parsed company-config entries. */
 
 import type { AutonomyLevel, SeniorityLevel } from './enums'
+import type { DepartmentReportingLine } from './org'
 
 export type SettingNamespace =
   | 'api'
@@ -91,13 +92,6 @@ export interface DepartmentTeam {
   readonly name: string
   readonly lead?: string
   readonly members?: readonly string[]
-}
-
-export interface DepartmentReportingLine {
-  readonly subordinate: string
-  readonly supervisor: string
-  readonly subordinate_id?: string | null
-  readonly supervisor_id?: string | null
 }
 
 export interface DepartmentEntry {

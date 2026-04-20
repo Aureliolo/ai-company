@@ -9,15 +9,17 @@ import { createLogger } from '@/lib/logger'
 import { aggregateWeekly, type AggregationPeriod } from '@/utils/budget'
 import type {
   ActivityItem,
+  ForecastResponse,
+  OverviewMetrics,
+  TrendsResponse,
+} from '@/api/types/analytics'
+import type {
   BudgetConfig,
   CostRecord,
   DailySummary,
-  ForecastResponse,
-  OverviewMetrics,
   PeriodSummary,
-  TrendsResponse,
-  WsEvent,
-} from '@/api/types'
+} from '@/api/types/budget'
+import type { WsEvent } from '@/api/types/websocket'
 
 const log = createLogger('budget')
 

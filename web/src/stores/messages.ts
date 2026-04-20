@@ -3,7 +3,8 @@ import * as messagesApi from '@/api/endpoints/messages'
 import { getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 import { createLogger } from '@/lib/logger'
-import type { Channel, Message, WsEvent } from '@/api/types'
+import type { Channel, Message } from '@/api/types/messages'
+import type { WsEvent } from '@/api/types/websocket'
 
 const log = createLogger('messages')
 

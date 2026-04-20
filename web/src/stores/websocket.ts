@@ -7,8 +7,8 @@
 
 import { create } from 'zustand'
 import { AxiosError } from 'axios'
-import { WS_CHANNELS } from '@/api/types'
-import type { WsChannel, WsEvent, WsEventHandler, WsSubscriptionFilters } from '@/api/types'
+import { WS_CHANNELS } from '@/api/types/websocket'
+import type { WsChannel, WsEvent, WsEventHandler, WsSubscriptionFilters } from '@/api/types/websocket'
 import { getWsTicket } from '@/api/endpoints/auth'
 import { WS_RECONNECT_BASE_DELAY, WS_RECONNECT_MAX_DELAY, WS_MAX_RECONNECT_ATTEMPTS, WS_MAX_MESSAGE_SIZE } from '@/utils/constants'
 import { sanitizeForLog } from '@/utils/logging'

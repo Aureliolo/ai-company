@@ -5,7 +5,7 @@ import type {
   listEscalations,
   submitEscalationDecision,
 } from '@/api/endpoints/escalations'
-import type { Escalation, EscalationResponse } from '@/api/types'
+import type { Escalation, EscalationResponse } from '@/api/types/escalations'
 import { emptyPage, paginatedFor, successFor } from './helpers'
 
 export function buildEscalation(

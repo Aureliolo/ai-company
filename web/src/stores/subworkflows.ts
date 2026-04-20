@@ -8,7 +8,7 @@ import { createLogger } from '@/lib/logger'
 import { useToastStore } from '@/stores/toast'
 import { getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
-import type { SubworkflowSummary } from '@/api/types'
+import type { SubworkflowSummary } from '@/api/types/workflows'
 
 const log = createLogger('subworkflows')
 

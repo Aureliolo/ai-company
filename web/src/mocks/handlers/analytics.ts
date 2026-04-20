@@ -4,7 +4,7 @@ import type {
   getOverviewMetrics,
   getTrends,
 } from '@/api/endpoints/analytics'
-import type { TrendMetric, TrendPeriod } from '@/api/types'
+import type { TrendMetric, TrendPeriod } from '@/api/types/analytics'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { successFor } from './helpers'
 

@@ -4,7 +4,7 @@ import type {
   listMeetings,
   triggerMeeting,
 } from '@/api/endpoints/meetings'
-import type { MeetingResponse } from '@/api/types'
+import type { MeetingResponse } from '@/api/types/meetings'
 import { apiError, emptyPage, paginatedFor, successFor } from './helpers'
 
 export function buildMeeting(

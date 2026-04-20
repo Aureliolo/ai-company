@@ -4,7 +4,8 @@ import type {
   getArtifact,
   listArtifacts,
 } from '@/api/endpoints/artifacts'
-import type { Artifact, PaginatedResponse, PaginationMeta } from '@/api/types'
+import type { Artifact } from '@/api/types/artifacts'
+import type { PaginatedResponse, PaginationMeta } from '@/api/types/http'
 import {
   apiError,
   apiSuccess,

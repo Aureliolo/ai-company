@@ -7,7 +7,7 @@ import type {
   revealConnectionSecret,
   updateConnection,
 } from '@/api/endpoints/connections'
-import type { Connection, ConnectionType } from '@/api/types'
+import type { Connection, ConnectionType } from '@/api/types/integrations'
 import { apiError, successFor, voidSuccess } from './helpers'
 
 const NOW = '2026-04-11T12:00:00Z'

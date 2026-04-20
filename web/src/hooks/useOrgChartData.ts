@@ -14,7 +14,7 @@ import { computeForceLayout } from '@/pages/org/force-layout'
 import type { CommunicationLink } from '@/pages/org/aggregate-messages'
 import type { CommunicationEdgeData } from '@/pages/org/CommunicationEdge'
 import type { ViewMode } from '@/pages/org/OrgChartToolbar'
-import type { WsChannel } from '@/api/types'
+import type { WsChannel } from '@/api/types/websocket'
 
 const log = createLogger('useOrgChartData')
 

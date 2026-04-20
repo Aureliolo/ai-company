@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo } from 'react'
 import { useSettingsStore } from '@/stores/settings'
 import { useWebSocket, type ChannelBinding } from '@/hooks/useWebSocket'
 import { usePolling } from '@/hooks/usePolling'
-import type { SettingDefinition, SettingEntry, SettingNamespace, WsChannel } from '@/api/types'
+import type { SettingDefinition, SettingEntry, SettingNamespace } from '@/api/types/settings'
+import type { WsChannel } from '@/api/types/websocket'
 import { SETTINGS_POLL_INTERVAL } from '@/utils/constants'
 
 const SETTINGS_CHANNELS = ['system'] as const satisfies readonly WsChannel[]

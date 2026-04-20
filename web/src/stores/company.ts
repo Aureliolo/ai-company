@@ -18,22 +18,22 @@ import {
 } from '@/api/endpoints/company'
 import { getErrorMessage } from '@/utils/errors'
 import { createLogger } from '@/lib/logger'
+import type { AgentConfig } from '@/api/types/agents'
+import type { DepartmentHealth } from '@/api/types/analytics'
+import type { DepartmentName } from '@/api/types/enums'
 import type {
-  AgentConfig,
   CompanyConfig,
   CreateAgentOrgRequest,
   CreateDepartmentRequest,
   CreateTeamRequest,
   Department,
-  DepartmentHealth,
-  DepartmentName,
   TeamConfig,
   UpdateAgentOrgRequest,
   UpdateCompanyRequest,
   UpdateDepartmentRequest,
   UpdateTeamRequest,
-  WsEvent,
-} from '@/api/types'
+} from '@/api/types/org'
+import type { WsEvent } from '@/api/types/websocket'
 
 const log = createLogger('company')
 

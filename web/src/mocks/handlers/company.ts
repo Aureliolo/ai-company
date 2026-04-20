@@ -15,14 +15,10 @@ import type {
   updateDepartment,
   updateTeam,
 } from '@/api/endpoints/company'
-import type {
-  AgentConfig,
-  CompanyConfig,
-  Department,
-  DepartmentHealth,
-  DepartmentName,
-  TeamConfig,
-} from '@/api/types'
+import type { AgentConfig } from '@/api/types/agents'
+import type { DepartmentHealth } from '@/api/types/analytics'
+import type { DepartmentName } from '@/api/types/enums'
+import type { CompanyConfig, Department, TeamConfig } from '@/api/types/org'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { emptyPage, paginatedFor, successFor, voidSuccess } from './helpers'
 import { buildAgent } from './agents'

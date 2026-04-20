@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { createLogger } from '@/lib/logger'
-import type { SettingEntry, SettingNamespace } from '@/api/types'
+import type { SettingEntry, SettingNamespace } from '@/api/types/settings'
 import { useToastStore } from '@/stores/toast'
 import { saveSettingsBatch } from '@/pages/settings/utils'
 

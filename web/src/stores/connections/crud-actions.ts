@@ -7,7 +7,7 @@ import type {
   Connection,
   CreateConnectionRequest,
   UpdateConnectionRequest,
-} from '@/api/types'
+} from '@/api/types/integrations'
 import { createLogger } from '@/lib/logger'
 import { useToastStore } from '@/stores/toast'
 import { getErrorMessage } from '@/utils/errors'

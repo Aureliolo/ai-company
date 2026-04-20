@@ -8,7 +8,8 @@ import type {
   listAgents,
   setAutonomy,
 } from '@/api/endpoints/agents'
-import type { AgentConfig, AgentPerformanceSummary, AutonomyLevel } from '@/api/types'
+import type { AgentConfig, AgentPerformanceSummary } from '@/api/types/agents'
+import type { AutonomyLevel } from '@/api/types/enums'
 import { apiError, emptyPage, paginatedFor, successFor } from './helpers'
 
 /** Minimal AgentConfig stub used when tests do not override. */

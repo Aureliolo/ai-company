@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useProjectsStore } from '@/stores/projects'
 import { useWebSocket, type ChannelBinding } from '@/hooks/useWebSocket'
 import { usePolling } from '@/hooks/usePolling'
-import type { Project, WsChannel } from '@/api/types'
+import type { Project } from '@/api/types/projects'
+import type { WsChannel } from '@/api/types/websocket'
 
 const PROJECTS_POLL_INTERVAL = 30_000
 const WS_DEBOUNCE_MS = 300

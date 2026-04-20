@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useArtifactsStore } from '@/stores/artifacts'
 import { useWebSocket, type ChannelBinding } from '@/hooks/useWebSocket'
 import { usePolling } from '@/hooks/usePolling'
-import type { Artifact, WsChannel } from '@/api/types'
+import type { Artifact } from '@/api/types/artifacts'
+import type { WsChannel } from '@/api/types/websocket'
 
 const ARTIFACTS_POLL_INTERVAL = 30_000
 const WS_DEBOUNCE_MS = 300

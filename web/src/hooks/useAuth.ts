@@ -1,7 +1,8 @@
 import { useMemo } from 'react'
 import { useAuthStore, useIsAuthenticated, useUserRole, useMustChangePassword } from '@/stores/auth'
 import { WRITE_ROLES } from '@/utils/constants'
-import type { HumanRole, UserInfoResponse } from '@/api/types'
+import type { UserInfoResponse } from '@/api/types/auth'
+import type { HumanRole } from '@/api/types/enums'
 
 /** Stable user selector to avoid inline function reference per render. */
 const selectUser = (s: { user: UserInfoResponse | null }) => s.user

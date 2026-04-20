@@ -8,12 +8,12 @@ import { getErrorMessage } from '@/utils/errors'
 import { createLogger } from '@/lib/logger'
 import type {
   ActivityItem,
-  BudgetConfig,
   DepartmentHealth,
   ForecastResponse,
   OverviewMetrics,
-  WsEvent,
-} from '@/api/types'
+} from '@/api/types/analytics'
+import type { BudgetConfig } from '@/api/types/budget'
+import type { WsEvent } from '@/api/types/websocket'
 
 const log = createLogger('analytics')
 

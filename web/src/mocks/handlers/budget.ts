@@ -4,7 +4,7 @@ import type {
   getAgentSpending,
   getBudgetConfig,
 } from '@/api/endpoints/budget'
-import type { AgentSpending, BudgetConfig } from '@/api/types'
+import type { AgentSpending, BudgetConfig } from '@/api/types/budget'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { successFor } from './helpers'
 

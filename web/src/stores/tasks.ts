@@ -3,16 +3,16 @@ import * as tasksApi from '@/api/endpoints/tasks'
 import { getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 import { createLogger } from '@/lib/logger'
+import type { TaskStatus } from '@/api/types/enums'
 import type {
   CancelTaskRequest,
   CreateTaskRequest,
   Task,
   TaskFilters,
-  TaskStatus,
   TransitionTaskRequest,
   UpdateTaskRequest,
-  WsEvent,
-} from '@/api/types'
+} from '@/api/types/tasks'
+import type { WsEvent } from '@/api/types/websocket'
 
 const log = createLogger('tasks')
 

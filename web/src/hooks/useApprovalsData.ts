@@ -6,8 +6,8 @@ import type {
   ApprovalResponse,
   ApproveRequest,
   RejectRequest,
-  WsChannel,
-} from '@/api/types'
+} from '@/api/types/approvals'
+import type { WsChannel } from '@/api/types/websocket'
 
 const APPROVAL_FETCH_LIMIT = 200
 const APPROVAL_POLL_INTERVAL = 30_000

@@ -16,7 +16,7 @@ import type {
   updateModelConfig,
   updateProvider,
 } from '@/api/endpoints/providers'
-import type { ProviderConfig } from '@/api/types'
+import type { ProviderConfig } from '@/api/types/providers'
 import { successFor, voidSuccess } from './helpers'
 
 export function buildProvider(

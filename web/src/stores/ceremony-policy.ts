@@ -5,7 +5,7 @@ import type {
   ActiveCeremonyStrategy,
   CeremonyPolicyConfig,
   ResolvedCeremonyPolicyResponse,
-} from '@/api/types'
+} from '@/api/types/ceremony-policy'
 import { getErrorMessage } from '@/utils/errors'
 
 interface CeremonyPolicyState {

@@ -2,15 +2,15 @@ import { useCallback, useEffect, useMemo } from 'react'
 import { useTasksStore } from '@/stores/tasks'
 import { useWebSocket, type ChannelBinding } from '@/hooks/useWebSocket'
 import { usePolling } from '@/hooks/usePolling'
+import type { TaskStatus } from '@/api/types/enums'
 import type {
   CancelTaskRequest,
   CreateTaskRequest,
   Task,
-  TaskStatus,
   TransitionTaskRequest,
   UpdateTaskRequest,
-  WsChannel,
-} from '@/api/types'
+} from '@/api/types/tasks'
+import type { WsChannel } from '@/api/types/websocket'
 
 const TASK_POLL_INTERVAL = 30_000
 const TASK_CHANNELS = ['tasks'] as const satisfies readonly WsChannel[]

@@ -2,7 +2,10 @@ import { create } from 'zustand'
 import { listProjects, getProject, createProject as createProjectApi } from '@/api/endpoints/projects'
 import { listTasks } from '@/api/endpoints/tasks'
 import { getErrorMessage } from '@/utils/errors'
-import type { CreateProjectRequest, Project, ProjectStatus, Task, WsEvent } from '@/api/types'
+import type { ProjectStatus } from '@/api/types/enums'
+import type { CreateProjectRequest, Project } from '@/api/types/projects'
+import type { Task } from '@/api/types/tasks'
+import type { WsEvent } from '@/api/types/websocket'
 
 interface ProjectsState {
   // List page

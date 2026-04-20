@@ -1,7 +1,8 @@
 import { useCallback } from 'react'
 import { useArtifactsStore } from '@/stores/artifacts'
 import { useDetailData } from '@/hooks/useDetailData'
-import type { Artifact, WsChannel } from '@/api/types'
+import type { Artifact } from '@/api/types/artifacts'
+import type { WsChannel } from '@/api/types/websocket'
 
 const DETAIL_CHANNELS = ['artifacts'] as const satisfies readonly WsChannel[]
 

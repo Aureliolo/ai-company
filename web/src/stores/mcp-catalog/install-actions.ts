@@ -2,7 +2,7 @@ import {
   installMcpServer,
   uninstallMcpServer,
 } from '@/api/endpoints/mcp-catalog'
-import type { McpInstallResponse } from '@/api/types'
+import type { McpInstallResponse } from '@/api/types/integrations'
 import { createLogger } from '@/lib/logger'
 import { useToastStore } from '@/stores/toast'
 import { getErrorMessage } from '@/utils/errors'

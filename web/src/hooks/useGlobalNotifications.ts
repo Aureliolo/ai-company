@@ -4,7 +4,7 @@ import { useAgentsStore } from '@/stores/agents'
 import { useNotificationsStore } from '@/stores/notifications'
 import { createLogger } from '@/lib/logger'
 import { sanitizeForLog } from '@/utils/logging'
-import type { WsChannel } from '@/api/types'
+import type { WsChannel } from '@/api/types/websocket'
 
 const log = createLogger('useGlobalNotifications')
 

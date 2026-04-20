@@ -7,8 +7,8 @@ import type {
   MeetingFilters,
   MeetingResponse,
   TriggerMeetingRequest,
-  WsEvent,
-} from '@/api/types'
+} from '@/api/types/meetings'
+import type { WsEvent } from '@/api/types/websocket'
 
 const log = createLogger('meetings')
 

@@ -6,7 +6,7 @@ import type {
   getResolvedPolicy,
   updateDepartmentCeremonyPolicy,
 } from '@/api/endpoints/ceremony-policy'
-import type { CeremonyPolicyConfig } from '@/api/types'
+import type { CeremonyPolicyConfig } from '@/api/types/ceremony-policy'
 import { successFor, voidSuccess } from './helpers'
 
 const defaultPolicy: CeremonyPolicyConfig = {

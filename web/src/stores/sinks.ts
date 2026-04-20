@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { SinkInfo, TestSinkResult } from '@/api/types'
+import type { SinkInfo, TestSinkResult } from '@/api/types/settings'
 import { getNamespaceSettings, listSinks, testSinkConfig, updateSetting } from '@/api/endpoints/settings'
 
 interface SinksState {

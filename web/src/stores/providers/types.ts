@@ -13,7 +13,7 @@ import type {
   TestConnectionRequest,
   TestConnectionResponse,
   UpdateProviderRequest,
-} from '@/api/types'
+} from '@/api/types/providers'
 import type { ProviderWithName, ProviderSortKey } from '@/utils/providers'
 
 export interface ProvidersState {

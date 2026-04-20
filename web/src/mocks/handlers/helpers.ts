@@ -1,9 +1,9 @@
+import type { ErrorDetail } from '@/api/types/errors'
 import type {
   ApiResponse,
-  ErrorDetail,
   PaginatedResponse,
   PaginationMeta,
-} from '@/api/types'
+} from '@/api/types/http'
 import type { PaginatedResult } from '@/api/client'
 
 /** Build a successful ApiResponse<T> envelope for MSW handlers. */

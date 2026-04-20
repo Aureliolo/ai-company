@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useWebSocketStore } from '@/stores/websocket'
 import { useAuthStore } from '@/stores/auth'
 import { createLogger } from '@/lib/logger'
-import type { WsChannel, WsEventHandler, WsSubscriptionFilters } from '@/api/types'
+import type { WsChannel, WsEventHandler, WsSubscriptionFilters } from '@/api/types/websocket'
 
 const log = createLogger('useWebSocket')
 

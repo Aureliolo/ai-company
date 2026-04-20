@@ -3,7 +3,7 @@ import type {
   Connection,
   ConnectionHealthStatus,
   HealthReport,
-} from '@/api/types'
+} from '@/api/types/integrations'
 import { usePolling } from '@/hooks/usePolling'
 import { useConnectionsStore } from '@/stores/connections'
 import type { ConnectionSortKey } from '@/stores/connections/types'

@@ -4,14 +4,12 @@ import { useWebSocket, type ChannelBinding } from '@/hooks/useWebSocket'
 import { usePolling } from '@/hooks/usePolling'
 import type {
   ActivityItem,
-  BudgetConfig,
-  CostRecord,
   ForecastResponse,
   OverviewMetrics,
   TrendsResponse,
-  WsChannel,
-  WsEvent,
-} from '@/api/types'
+} from '@/api/types/analytics'
+import type { BudgetConfig, CostRecord } from '@/api/types/budget'
+import type { WsChannel, WsEvent } from '@/api/types/websocket'
 import type { AggregationPeriod } from '@/utils/budget'
 
 const BUDGET_POLL_INTERVAL = 30_000

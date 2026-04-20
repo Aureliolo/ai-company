@@ -16,7 +16,7 @@ import type {
 import type {
   WorkflowDefinition,
   WorkflowDefinitionVersionSummary,
-} from '@/api/types'
+} from '@/api/types/workflows'
 import { emptyPage, paginatedFor, successFor, voidSuccess } from './helpers'
 
 const NOW = '2026-04-19T00:00:00Z'

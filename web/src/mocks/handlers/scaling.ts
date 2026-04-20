@@ -5,7 +5,7 @@ import type {
   getScalingStrategies,
   triggerScalingEvaluation,
 } from '@/api/endpoints/scaling'
-import type { PaginatedResponse } from '@/api/types'
+import type { PaginatedResponse } from '@/api/types/http'
 import { successFor } from './helpers'
 
 export const scalingHandlers = [

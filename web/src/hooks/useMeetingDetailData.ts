@@ -1,7 +1,8 @@
 import { useEffect, useMemo } from 'react'
 import { useMeetingsStore } from '@/stores/meetings'
 import { useWebSocket, type ChannelBinding } from '@/hooks/useWebSocket'
-import type { MeetingResponse, WsChannel } from '@/api/types'
+import type { MeetingResponse } from '@/api/types/meetings'
+import type { WsChannel } from '@/api/types/websocket'
 
 const DETAIL_CHANNELS = ['meetings'] as const satisfies readonly WsChannel[]
 

@@ -1,7 +1,9 @@
 import { useCallback } from 'react'
 import { useProjectsStore } from '@/stores/projects'
 import { useDetailData } from '@/hooks/useDetailData'
-import type { Project, Task, WsChannel } from '@/api/types'
+import type { Project } from '@/api/types/projects'
+import type { Task } from '@/api/types/tasks'
+import type { WsChannel } from '@/api/types/websocket'
 
 const DETAIL_CHANNELS = ['projects', 'tasks'] as const satisfies readonly WsChannel[]
 
