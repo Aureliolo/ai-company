@@ -6,7 +6,7 @@ import { groupMessagesByDate, groupMessagesByThread, getDateGroupLabel } from '@
 import { TimestampDivider } from './TimestampDivider'
 import { MessageThread } from './MessageThread'
 import { MessageBubble } from './MessageBubble'
-import type { Message } from '@/api/types'
+import type { Message } from '@/api/types/messages'
 
 interface MessageListProps {
   messages: Message[]

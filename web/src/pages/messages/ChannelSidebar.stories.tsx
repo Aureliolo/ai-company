@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { fn } from 'storybook/test'
 import { ChannelSidebar } from './ChannelSidebar'
-import type { Channel } from '@/api/types'
+import type { Channel } from '@/api/types/messages'
 
 const channels: Channel[] = [
   { name: '#engineering', type: 'topic', subscribers: [] },

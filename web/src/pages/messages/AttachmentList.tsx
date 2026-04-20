@@ -1,5 +1,5 @@
 import { Link, Package, Paperclip } from 'lucide-react'
-import type { Attachment, AttachmentType } from '@/api/types'
+import type { Attachment, AttachmentType } from '@/api/types/messages'
 
 const ATTACHMENT_ICONS: Record<AttachmentType, typeof Paperclip> = {
   file: Paperclip,

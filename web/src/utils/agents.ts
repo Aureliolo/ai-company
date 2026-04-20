@@ -19,11 +19,9 @@ import type {
   ActivityEventType,
   AgentConfig,
   AgentPerformanceSummary,
-  AgentStatus,
   CareerEventType,
-  DepartmentName,
-  SeniorityLevel,
-} from '@/api/types'
+} from '@/api/types/agents'
+import type { AgentStatus, DepartmentName, SeniorityLevel } from '@/api/types/enums'
 import type { MetricCardProps } from '@/components/ui/metric-card'
 import type { AgentRuntimeStatus, SemanticColor } from '@/lib/utils'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'

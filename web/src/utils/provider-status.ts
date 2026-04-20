@@ -1,5 +1,5 @@
 import type { AgentRuntimeStatus } from '@/lib/utils'
-import type { AuthType, ProviderConfig } from '@/api/types'
+import type { AuthType, ProviderConfig } from '@/api/types/providers'
 
 /** Derive provider status from auth type and credential indicators. */
 export function getProviderStatus(config: ProviderConfig): AgentRuntimeStatus {

@@ -1,5 +1,5 @@
 import YAML from 'js-yaml'
-import type { CompanyConfig } from '@/api/types'
+import type { CompanyConfig } from '@/api/types/org'
 
 /**
  * Serialize a CompanyConfig to a YAML string for the code editor.

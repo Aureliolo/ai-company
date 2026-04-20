@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { ProjectStatusBadge } from './project-status-badge'
-import type { ProjectStatus } from '@/api/types'
+import type { ProjectStatus } from '@/api/types/enums'
 
 const meta = {
   title: 'UI/ProjectStatusBadge',

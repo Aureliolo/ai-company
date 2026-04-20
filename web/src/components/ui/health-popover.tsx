@@ -21,7 +21,7 @@ import { createLogger } from '@/lib/logger'
 import { formatTime } from '@/utils/format'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
-import type { HealthStatus } from '@/api/types'
+import type { HealthStatus } from '@/api/types/system'
 
 const log = createLogger('HealthDialog')
 

@@ -1,6 +1,6 @@
 import { cn } from '@/lib/utils'
 import { getMessageTypeLabel } from '@/utils/messages'
-import type { MessageType } from '@/api/types'
+import type { MessageType } from '@/api/types/messages'
 
 interface MessageTypeBadgeProps {
   type: MessageType

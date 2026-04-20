@@ -3,7 +3,7 @@ import { ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { springGentle, tweenFast } from '@/lib/motion'
 import { MessageBubble } from './MessageBubble'
-import type { Message } from '@/api/types'
+import type { Message } from '@/api/types/messages'
 
 interface MessageThreadProps {
   messages: readonly Message[]

@@ -1,5 +1,5 @@
 import { cn } from '@/lib/utils'
-import type { PolicyFieldSource } from '@/api/types'
+import type { PolicyFieldSource } from '@/api/types/ceremony-policy'
 
 const SOURCE_STYLES: Record<PolicyFieldSource, string> = {
   project: 'bg-accent/10 text-accent',

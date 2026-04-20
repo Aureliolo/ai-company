@@ -1,6 +1,8 @@
 /** Application-wide constants. */
 
-import type { CeremonyStrategyType, SettingNamespace, TaskStatus, VelocityCalcType } from '@/api/types'
+import type { CeremonyStrategyType, VelocityCalcType } from '@/api/types/ceremony-policy'
+import type { TaskStatus } from '@/api/types/enums'
+import type { SettingNamespace } from '@/api/types/settings'
 
 export const APP_NAME = 'SynthOrg'
 

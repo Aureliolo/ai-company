@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { MessageTypeBadge } from './MessageTypeBadge'
-import type { MessageType } from '@/api/types'
+import type { MessageType } from '@/api/types/messages'
 
 const meta: Meta<typeof MessageTypeBadge> = {
   title: 'Pages/Messages/MessageTypeBadge',

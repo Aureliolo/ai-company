@@ -2,7 +2,7 @@
 
 import axios, { type AxiosError } from 'axios'
 import { createLogger } from '@/lib/logger'
-import type { ErrorDetail } from '@/api/types'
+import type { ErrorDetail } from '@/api/types/errors'
 
 const log = createLogger('errors')
 

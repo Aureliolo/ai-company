@@ -1,6 +1,6 @@
 import { cn, type SemanticColor } from '@/lib/utils'
 import { getTaskStatusColor, getTaskStatusLabel, getPriorityColor, getPriorityLabel } from '@/utils/tasks'
-import type { Priority, TaskStatus } from '@/api/types'
+import type { Priority, TaskStatus } from '@/api/types/enums'
 
 // ── Dot color classes ───────────────────────────────────────
 

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import type { Meta, StoryObj } from '@storybook/react'
 import { fn } from 'storybook/test'
 import { MessageList } from './MessageList'
-import type { Message, MessageMetadata } from '@/api/types'
+import type { Message, MessageMetadata } from '@/api/types/messages'
 
 const baseMeta: MessageMetadata = { task_id: null, project_id: null, tokens_used: null, cost: null, extra: [] }
 const threadMeta: MessageMetadata = { task_id: 'task-42', project_id: null, tokens_used: 500, cost: 0.01, extra: [] }

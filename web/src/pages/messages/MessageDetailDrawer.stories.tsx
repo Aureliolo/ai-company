@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { fn } from 'storybook/test'
 import { MessageDetailDrawer } from './MessageDetailDrawer'
-import type { Message } from '@/api/types'
+import type { Message } from '@/api/types/messages'
 
 const fullMessage: Message = {
   id: 'msg-1',

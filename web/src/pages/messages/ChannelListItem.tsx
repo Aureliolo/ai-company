@@ -1,6 +1,6 @@
 import { Hash, Megaphone, Users } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import type { Channel } from '@/api/types'
+import type { Channel } from '@/api/types/messages'
 
 const CHANNEL_ICONS = {
   topic: Hash,

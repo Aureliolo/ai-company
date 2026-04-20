@@ -1,4 +1,5 @@
-import type { ConnectionHealthStatus, ProviderHealthStatus } from '@/api/types'
+import type { ConnectionHealthStatus } from '@/api/types/integrations'
+import type { ProviderHealthStatus } from '@/api/types/providers'
 import { ProviderHealthBadge } from './provider-health-badge'
 
 const CONNECTION_TO_PROVIDER: Record<

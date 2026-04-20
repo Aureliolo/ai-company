@@ -6,7 +6,7 @@ import { MessageTypeBadge } from './MessageTypeBadge'
 import { AttachmentList } from './AttachmentList'
 import { getMessagePriorityColor, getPriorityDotClass, getPriorityBadgeClasses } from '@/utils/messages'
 import { cn } from '@/lib/utils'
-import type { Message } from '@/api/types'
+import type { Message } from '@/api/types/messages'
 
 interface MessageDetailDrawerProps {
   message: Message | null

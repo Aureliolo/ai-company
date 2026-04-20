@@ -6,7 +6,7 @@ import { formatRelativeTime } from '@/utils/format'
 import { getMessagePriorityColor, getPriorityDotClass } from '@/utils/messages'
 import { MessageTypeBadge } from './MessageTypeBadge'
 import { AttachmentList } from './AttachmentList'
-import type { Message } from '@/api/types'
+import type { Message } from '@/api/types/messages'
 
 interface MessageBubbleProps {
   message: Message

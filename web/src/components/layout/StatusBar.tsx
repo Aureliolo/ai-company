@@ -10,7 +10,7 @@ import { HEALTH_POLL_INTERVAL } from '@/utils/constants'
 import { ThemeToggle } from '@/components/ui/theme-toggle'
 import { HealthPopover } from '@/components/ui/health-popover'
 import { useWebSocketStore } from '@/stores/websocket'
-import type { HealthStatus } from '@/api/types'
+import type { HealthStatus } from '@/api/types/system'
 
 type SystemStatus = 'unknown' | 'ok' | 'degraded' | 'down'
 

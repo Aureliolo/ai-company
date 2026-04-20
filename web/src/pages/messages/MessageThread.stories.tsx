@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { fn } from 'storybook/test'
 import { MessageThread } from './MessageThread'
-import type { Message, MessageMetadata } from '@/api/types'
+import type { Message, MessageMetadata } from '@/api/types/messages'
 
 const sampleMetadata: MessageMetadata = {
   task_id: 'task-42',

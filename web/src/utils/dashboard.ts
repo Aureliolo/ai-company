@@ -1,17 +1,14 @@
-import {
-  DEPARTMENT_NAME_VALUES,
-} from '@/api/types'
+import { DEPARTMENT_NAME_VALUES } from '@/api/types/enums'
 import { createLogger } from '@/lib/logger'
 import type {
   ActivityItem,
-  BudgetConfig,
   DepartmentHealth,
-  DepartmentName,
   OverviewMetrics,
   TrendDataPoint,
-  WsEvent,
-  WsEventType,
-} from '@/api/types'
+} from '@/api/types/analytics'
+import type { BudgetConfig } from '@/api/types/budget'
+import type { DepartmentName } from '@/api/types/enums'
+import type { WsEvent, WsEventType } from '@/api/types/websocket'
 import type { MetricCardProps } from '@/components/ui/metric-card'
 import { formatCurrency } from '@/utils/format'
 

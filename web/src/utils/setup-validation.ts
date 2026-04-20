@@ -1,6 +1,7 @@
 /** Per-step validation rules for the setup wizard. */
 
-import type { SetupAgentSummary, SetupCompanyResponse, ProviderConfig } from '@/api/types'
+import type { ProviderConfig } from '@/api/types/providers'
+import type { SetupAgentSummary, SetupCompanyResponse } from '@/api/types/setup'
 
 export interface StepValidationResult {
   readonly valid: boolean

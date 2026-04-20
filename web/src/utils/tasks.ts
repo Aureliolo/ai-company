@@ -1,4 +1,5 @@
-import type { Priority, Task, TaskStatus, TaskType } from '@/api/types'
+import type { Priority, TaskStatus, TaskType } from '@/api/types/enums'
+import type { Task } from '@/api/types/tasks'
 import type { SemanticColor } from '@/lib/utils'
 
 // ── Status color mapping ────────────────────────────────────

@@ -4,7 +4,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ChannelListItem } from './ChannelListItem'
 import { getChannelTypeLabel } from '@/utils/messages'
-import type { Channel, ChannelType } from '@/api/types'
+import type { Channel, ChannelType } from '@/api/types/messages'
 
 const TYPE_ORDER: ChannelType[] = [
   'topic',

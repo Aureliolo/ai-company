@@ -1,5 +1,5 @@
 import { cn } from '@/lib/utils'
-import type { ProjectStatus } from '@/api/types'
+import type { ProjectStatus } from '@/api/types/enums'
 
 const STATUS_LABELS: Record<ProjectStatus, string> = {
   planning: 'Planning',

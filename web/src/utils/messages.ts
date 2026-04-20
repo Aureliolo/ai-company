@@ -1,4 +1,4 @@
-import type { Message, MessagePriority, MessageType, ChannelType } from '@/api/types'
+import type { ChannelType, Message, MessagePriority, MessageType } from '@/api/types/messages'
 import type { SemanticColor } from '@/lib/utils'
 import { formatDateOnly } from '@/utils/format'
 

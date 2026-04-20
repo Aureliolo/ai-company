@@ -1,4 +1,4 @@
-import type { MeetingPhase, MeetingProtocolType, MeetingResponse, MeetingStatus } from '@/api/types'
+import type { MeetingPhase, MeetingProtocolType, MeetingResponse, MeetingStatus } from '@/api/types/meetings'
 import type { SemanticColor } from '@/lib/utils'
 import { formatUptime } from '@/utils/format'
 

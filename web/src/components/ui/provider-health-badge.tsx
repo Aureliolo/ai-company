@@ -1,5 +1,5 @@
 import { cn } from '@/lib/utils'
-import type { ProviderHealthStatus } from '@/api/types'
+import type { ProviderHealthStatus } from '@/api/types/providers'
 import { getProviderHealthColor } from '@/utils/providers'
 import type { SemanticColor } from '@/lib/utils'
 

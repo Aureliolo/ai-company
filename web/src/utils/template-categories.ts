@@ -1,6 +1,6 @@
 /** Template categorization for the setup wizard. */
 
-import type { TemplateInfoResponse } from '@/api/types'
+import type { TemplateInfoResponse } from '@/api/types/setup'
 
 /**
  * Direct mapping from template tag to canonical category key.

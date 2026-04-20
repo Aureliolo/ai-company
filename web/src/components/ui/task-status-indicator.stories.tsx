@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { TaskStatusIndicator, PriorityBadge } from './task-status-indicator'
-import type { Priority, TaskStatus } from '@/api/types'
+import type { Priority, TaskStatus } from '@/api/types/enums'
 
 // ── TaskStatusIndicator ─────────────────────────────────────
 

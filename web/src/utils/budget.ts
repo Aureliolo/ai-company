@@ -5,13 +5,15 @@ import { formatCurrency, formatDateOnly } from '@/utils/format'
 import type { MetricCardProps } from '@/components/ui/metric-card'
 import type {
   ActivityItem,
-  BudgetAlertConfig,
-  BudgetConfig,
-  CostRecord,
   ForecastResponse,
   OverviewMetrics,
   TrendDataPoint,
-} from '@/api/types'
+} from '@/api/types/analytics'
+import type {
+  BudgetAlertConfig,
+  BudgetConfig,
+  CostRecord,
+} from '@/api/types/budget'
 
 // ── Types ──────────────────────────────────────────────────
 

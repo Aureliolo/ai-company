@@ -3,7 +3,7 @@ import { Search, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { getMessageTypeLabel } from '@/utils/messages'
 import type { MessagePageFilters } from '@/utils/messages'
-import type { MessagePriority, MessageType } from '@/api/types'
+import type { MessagePriority, MessageType } from '@/api/types/messages'
 
 const MESSAGE_TYPES: MessageType[] = [
   'task_update', 'question', 'announcement', 'review_request', 'approval',
