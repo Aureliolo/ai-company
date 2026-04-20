@@ -344,23 +344,23 @@ jobs:
           # always reported 0 leaks regardless of reality. Vitest honors
           # `NO_COLOR` via chalk.
           NO_COLOR: '1'
-          # Structural ceiling: the post-shim leak count measured
-          # 2026-04-19 is ~50 locally and ~64 in CI. The delta is
-          # platform-level event-loop timing (CI is ubuntu-latest on
-          # GitHub runners; contributors run jsdom under Windows/macOS).
-          # The ceiling is 70 -- the CI baseline plus a small run-to-run
-          # variance buffer -- so the gate actually fires on regressions
-          # instead of silently reporting 0 like the legacy parser did.
-          # The structural 50-leak floor is still the local target and
-          # comes from MSW 2.x's own CookieStore (tough-cookie),
-          # the MSW XHR interceptor's `queueMicrotask` dispatch, and
-          # axios's internal interceptor `promise.then` chain -- none
-          # reachable from `test-setup.tsx`. Further reduction requires
-          # replacing MSW (out of scope per PR #1462's typed handlers +
-          # Storybook integration). See docs/design/web-http-adapter.md
-          # for the full investigation and follow-up plan. Never raise
-          # this ceiling; only lower it.
-          MAX_ASYNC_LEAKS: '70'
+          # Structural ceiling: post-M4 leak count measured 2026-04-20 is
+          # 49 locally. CI previously measured ~64 on ubuntu-latest against
+          # the 50-leak local floor (platform-level event-loop timing); M4
+          # shaves off one of those so the CI baseline drops to ~63. The
+          # ceiling is 66 -- the expected new CI baseline plus a 3-leak
+          # run-to-run variance buffer -- so the gate actually fires on
+          # regressions instead of silently reporting 0 like the legacy
+          # parser did. The structural 49-leak local floor comes from MSW
+          # 2.x's own CookieStore (tough-cookie), the MSW XHR interceptor's
+          # `queueMicrotask` dispatch, and the axios response interceptor
+          # chain -- none reachable from `test-setup.tsx`. Further reduction
+          # requires replacing MSW's matching layer (out of scope per PR
+          # #1462's typed handlers + Storybook integration; follow-up
+          # tracked by #1468). See docs/design/web-http-adapter.md for the
+          # full investigation including the 2026-04-20 M1/M4/Option C
+          # research round. Never raise this ceiling; only lower it.
+          MAX_ASYNC_LEAKS: '66'
         run: |
           set -o pipefail
           # Disable errexit around the test pipeline so a Vitest failure

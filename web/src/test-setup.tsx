@@ -94,8 +94,8 @@ beforeAll(() => {
   // `beforeAll` (not `beforeEach`) is deliberate: every `document.cookie`
   // assignment in jsdom flows through tough-cookie's Promise-based API,
   // and doing it 2574 times inflates `--detect-async-leaks` counts (this
-  // was the cause of the round-2 14-leak regression). MSW does not
-  // validate the value.
+  // was the cause of the round-2 14-leak regression). The test dispatcher
+  // does not validate the value.
   document.cookie = `csrf_token=${CSRF_SEED_VALUE}; path=/`
   server.listen({ onUnhandledRequest: 'error' })
 })
