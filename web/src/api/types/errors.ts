@@ -1,0 +1,32 @@
+/** RFC 9457 structured error types mirroring backend `synthorg.api.errors`. */
+
+export type ErrorCategory =
+  | 'auth'
+  | 'validation'
+  | 'not_found'
+  | 'conflict'
+  | 'rate_limit'
+  | 'budget_exhausted'
+  | 'provider_error'
+  | 'internal'
+
+export type ErrorCode =
+  | 1000 | 1001 | 1002 | 1003 | 1004 | 1005 | 1006 | 1007
+  | 2000 | 2001 | 2002 | 2003
+  | 3000 | 3001 | 3002 | 3003 | 3004 | 3005 | 3006 | 3007 | 3008 | 3009 | 3010 | 3011 | 3012
+  | 4000 | 4001 | 4002 | 4003 | 4004 | 4005 | 4006
+  | 5000 | 5001
+  | 6000 | 6001 | 6002 | 6003 | 6004
+  | 7000 | 7001 | 7002 | 7003 | 7004 | 7005 | 7006 | 7007 | 7008 | 7009
+  | 8000 | 8001 | 8002 | 8003 | 8004 | 8005 | 8006 | 8007 | 8008
+
+export interface ErrorDetail {
+  detail: string
+  error_code: ErrorCode
+  error_category: ErrorCategory
+  retryable: boolean
+  retry_after: number | null
+  instance: string
+  title: string
+  type: string
+}
