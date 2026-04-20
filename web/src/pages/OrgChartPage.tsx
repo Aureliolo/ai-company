@@ -113,10 +113,16 @@ function OrgChartInner() {
     })
   }, [])
 
-  // Drag/drop and reassignment hooks push messages through `setAnnouncement`
-  // so screen readers hear lifecycle changes. The shared `<LiveRegion>`
-  // component (rendered below) debounces and announces the latest value.
-  const [announcement, setAnnouncement] = useState('')
+  // Drag/drop and reassignment hooks call `announce(text)` to push messages
+  // to the shared `<LiveRegion>`. The state carries an incrementing `id`
+  // alongside the text so identical consecutive messages still re-fire the
+  // aria-live region (React skips re-renders when a bare string state is
+  // set to the same value; a fresh object + keyed span inside LiveRegion
+  // force a DOM swap that screen readers announce).
+  const [announcement, setAnnouncement] = useState<{ id: number; text: string } | null>(null)
+  const announce = useCallback((text: string) => {
+    setAnnouncement((prev) => ({ id: (prev?.id ?? 0) + 1, text }))
+  }, [])
 
   const { fitView, zoomIn, zoomOut } = useReactFlow()
   const navigate = useNavigate()
@@ -158,7 +164,7 @@ function OrgChartInner() {
   const sourceNodes = view.displayNodes.length > 0 ? view.displayNodes : nodes
 
   const { dragOverDeptId, handleNodeDragStart, handleNodeDrag, handleNodeDragStop } =
-    useOrgChartDragDrop({ viewMode, displayNodes: sourceNodes, announce: setAnnouncement })
+    useOrgChartDragDrop({ viewMode, displayNodes: sourceNodes, announce })
 
   const selection = useOrgChartSelection(sourceNodes)
   const filter = useOrgChartFilter(allNodes)
@@ -237,7 +243,7 @@ function OrgChartInner() {
     onEdgeMouseEnter,
     onEdgeMouseLeave,
     onEdgeClick,
-  } = useOrgChartEdgeInteraction({ edges: edgesWithParticles })
+  } = useOrgChartEdgeInteraction<OrgChartEdgeData>({ edges: edgesWithParticles })
 
   if (loading && nodes.length === 0) {
     return <OrgChartSkeleton />
@@ -355,7 +361,9 @@ function OrgChartInner() {
 
         {filter.overlay}
 
-        <LiveRegion politeness="assertive" className="sr-only">{announcement}</LiveRegion>
+        <LiveRegion politeness="assertive" className="sr-only">
+          {announcement ? <span key={announcement.id}>{announcement.text}</span> : null}
+        </LiveRegion>
 
         {selection.contextMenu && (
           <NodeContextMenu
