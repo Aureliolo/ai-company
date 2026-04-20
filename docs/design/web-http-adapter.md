@@ -2,9 +2,11 @@
 
 > **Spec topic**: web dashboard HTTP layer.
 >
-> **Status**: 2026-04-20. Closes #1467 (evaluated, no change) and resolves
-> the ratchet-down plan tracked by #1466. Follow-up "reach 0 leaks"
-> (#1468) remains open as a research candidate.
+> **Status**: 2026-04-20. Closes #1467 (evaluated, no change). For #1466
+> the CI gate + anchored parser + ratchet-down approach ship; the
+> zero-leak target from that issue's acceptance criteria is structurally
+> unreachable without replacing MSW's matching layer and is explicitly
+> re-scoped into #1468, which remains open as a research candidate.
 >
 > **Decision (TL;DR)**: keep `axios` (XHR adapter) in production and in
 > tests. Accept a **structural floor of 49 async leaks** locally and a
@@ -74,14 +76,13 @@ are directly comparable.
 | 7 | M4 (2026-04-20) -- `apiClient.interceptors.request.use(..., { synchronous: true })` so `Axios.prototype._request` skips the `.then(chain[i++], ...)` loop at `Axios.js:196` | **49** | 2592 / 2592 | **Shipped.** Eliminates the 15 "Axios._request :196" top-frame leaks at the cost of shifting 14 of them to MSW's XHR interceptor (net -1). Cheap production change -- the CSRF interceptor was already synchronous, we just annotated it. |
 | 8 | Option C (2026-04-20) -- custom `axios.defaults.adapter` in `test-setup.tsx` that dispatches directly to MSW's `handler.run({ request, requestId })` and bypasses `@mswjs/interceptors` + jsdom's XMLHttpRequest entirely (kept `setupServer` for `fetch()` paths) | 76 | 2592 / 2592 | **Reverted.** Did eliminate the 32 MSW XHR interceptor leaks (beta bucket), but `handler.run` itself reads cookies via `getAllRequestCookies` per call -- the tough-cookie `createPromiseCallback` leak (alpha residual) scales linearly with the number of handlers tried per request, and MSW's internal `HttpHandler.cloneRequestOrGetFromCache` + `ClientRequest` interceptor (still installed by `setupServer`) added another ~23 leaks of their own. Method + path-prefix pre-filtering of the handler list brought only ~3 leaks back. Net: structural Promise allocation inside MSW's handler pipeline is not reachable from user-space without replacing MSW's matching layer wholesale. |
 
-Only approaches #1 and #7 improved over the baseline. Approaches #4,
-#5, #6, and #8 made things strictly worse or failed to improve. Approaches
-#2 and #3 had no effect. Current floor: **49 local leaks** (A1 + M4).
+Only approaches `#1` and `#7` improved over the baseline. Approaches `#4`, `#5`, `#6`, and `#8` made things strictly worse or failed to improve. Approaches `#2` and `#3` had no effect. Current floor: **49 local leaks** (A1 + M4).
 
 ## Why none of the other paths work
 
-The remaining 50 leaks after A1 fall into three categories (counts
-from the post-A1 measurement):
+The remaining 49 leaks after A1 + M4 fall into three categories (counts
+from the post-M4 measurement on 2026-04-20; the pre-M4 split was 32 beta +
+17 gamma + 1 alpha, post-M4 is 32 beta + 16 gamma + 1 alpha):
 
 1. **alpha-residual (1 leak)**: MSW 2.x's own
    `CookieStore.getCookies` (`node_modules/msw/lib/core/utils/cookieStore.mjs`)
@@ -164,15 +165,23 @@ best-in-class choice for this stack as of 2026-04-19.
    `Expires=`) remove the entry so `utils/app-version.ts::
    clearClientVisibleCookies` behaves like the browser, and prototype
    keys (`__proto__`, `constructor`) are rejected as defense-in-depth.
-2. `.github/workflows/ci.yml` -- `MAX_ASYNC_LEAKS` ceiling set to 70
-   (CI baseline ~64 with a small buffer; the legacy parser silently
-   reported 0 because `grep -oE 'Leaks +[0-9]+ leaks'` never matched
-   ANSI-colored output); strict anchored parser fails the job if
-   Vitest's `Leaks N leaks` summary line is missing or malformed,
-   `NO_COLOR=1` is set so the line is plain ASCII.
-3. `docs/design/web-http-adapter.md` (this file).
-4. Follow-up issue #1468 -- "replace MSW 2.x to eliminate the
-   remaining 50 Vitest async leaks". Scope, acceptance criteria, and
+2. `.github/workflows/ci.yml` -- `MAX_ASYNC_LEAKS` ceiling set to 66
+   (post-M4 CI baseline ~63 with a 3-leak variance buffer; the legacy
+   parser silently reported 0 because `grep -oE 'Leaks +[0-9]+ leaks'`
+   never matched ANSI-colored output); strict anchored parser fails the
+   job if Vitest's `Leaks N leaks` summary line is missing or malformed,
+   `NO_COLOR=1` is set so the line is plain ASCII. The ceiling was 70
+   before the 2026-04-20 ratchet.
+3. `web/src/api/client.ts` -- M4: pass `{ synchronous: true }` as the
+   third argument to `apiClient.interceptors.request.use(...)` so axios
+   skips the `.then(chain[i++], ...)` loop at
+   `node_modules/axios/lib/core/Axios.js:196`. Removes 15 of the baseline
+   "Axios._request :196" top-frame leaks; 14 re-attribute to MSW's XHR
+   interceptor, net -1 (50 -> 49 local). See approach #7 in the
+   evaluation matrix.
+4. `docs/design/web-http-adapter.md` (this file).
+5. Follow-up issue #1468 -- "replace MSW 2.x to eliminate the
+   remaining 49 Vitest async leaks". Scope, acceptance criteria, and
    candidate replacement layers (nock, direct axios-adapter mocks,
    happy-dom's built-in interceptor) documented there.
 
