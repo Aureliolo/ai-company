@@ -152,8 +152,34 @@ runs:
         DIGEST=$(docker manifest push "${REPO}:${TAG}")
         echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
 
-    - name: Install cosign
+    # GitHub releases occasionally 5xx; cosign-installer's internal retry (3
+    # attempts in ~7s) is not enough to ride out a longer outage. Wrap the
+    # install in two continue-on-error attempts with backoff before the final
+    # fail-hard attempt, so a single 10-20s burst of 500s doesn't kill the run.
+    - name: Install cosign (attempt 1)
       if: github.event_name != 'pull_request'
+      id: cosign_1
+      continue-on-error: true
+      uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
+
+    - name: Back off before cosign retry 1
+      if: github.event_name != 'pull_request' && steps.cosign_1.outcome == 'failure'
+      shell: bash
+      run: sleep 15
+
+    - name: Install cosign (attempt 2)
+      if: github.event_name != 'pull_request' && steps.cosign_1.outcome == 'failure'
+      id: cosign_2
+      continue-on-error: true
+      uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
+
+    - name: Back off before cosign retry 2
+      if: github.event_name != 'pull_request' && steps.cosign_1.outcome == 'failure' && steps.cosign_2.outcome == 'failure'
+      shell: bash
+      run: sleep 30
+
+    - name: Install cosign (final attempt)
+      if: github.event_name != 'pull_request' && steps.cosign_1.outcome == 'failure' && steps.cosign_2.outcome == 'failure'
       uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
 
     - name: Sign image
