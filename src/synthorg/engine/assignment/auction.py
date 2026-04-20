@@ -136,11 +136,15 @@ class AuctionAssignmentStrategy:
         the shared ``AssignmentResult`` contract stays consistent for
         callers that treat it as a generic fallback list.
         """
-        bids.sort(key=lambda x: (x[1], x[0].score), reverse=True)
-        selected = bids[0][0]
+        ranked_bids = sorted(
+            bids,
+            key=lambda item: (item[1], item[0].score),
+            reverse=True,
+        )
+        selected = ranked_bids[0][0]
         alternatives = tuple(
             sorted(
-                (b[0] for b in bids[1:]),
+                (b[0] for b in ranked_bids[1:]),
                 key=lambda c: c.score,
                 reverse=True,
             ),
@@ -149,7 +153,7 @@ class AuctionAssignmentStrategy:
             TASK_ASSIGNMENT_AUCTION_WON,
             task_id=request.task.id,
             agent_name=selected.agent_identity.name,
-            winning_bid=bids[0][1],
+            winning_bid=ranked_bids[0][1],
         )
         return AssignmentResult(
             task_id=request.task.id,
@@ -157,5 +161,5 @@ class AuctionAssignmentStrategy:
             selected=selected,
             alternatives=alternatives,
             reason=f"Auction winner: {selected.agent_identity.name!r} "
-            f"(bid={bids[0][1]:.4f})",
+            f"(bid={ranked_bids[0][1]:.4f})",
         )

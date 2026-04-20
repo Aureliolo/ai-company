@@ -68,14 +68,20 @@ class ManualAssignmentStrategy:
             )
             raise TaskAssignmentError(msg)
 
+        # UUID matching takes precedence over name matching: a single
+        # combined predicate could return an earlier name match even when
+        # a later agent has the exact UUID, silently selecting the wrong
+        # agent on name/UUID collisions.
+        designated = task.assigned_to
         agent = next(
-            (
-                a
-                for a in request.available_agents
-                if str(a.id) == task.assigned_to or a.name == task.assigned_to
-            ),
+            (a for a in request.available_agents if str(a.id) == designated),
             None,
         )
+        if agent is None:
+            agent = next(
+                (a for a in request.available_agents if a.name == designated),
+                None,
+            )
         if agent is None:
             msg = f"Designated agent {task.assigned_to!r} not found (task {task.id!r})"
             logger.warning(
@@ -128,7 +134,7 @@ class ManualAssignmentStrategy:
             reason="Manually assigned",
         )
 
-        logger.debug(
+        logger.info(
             TASK_ASSIGNMENT_MANUAL_VALIDATED,
             task_id=task.id,
             agent_name=agent.name,

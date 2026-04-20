@@ -517,13 +517,13 @@ type interactiveResult struct {
 	natsPort int // override for NATS port from TUI
 }
 
-func runInteractiveInit(_ *cobra.Command, opts *GlobalOpts) (*interactiveResult, error) {
-	defaults := config.DefaultState()
+// buildTUIModel assembles the TUI model with CLI flag overrides applied and
+// the re-init phase configured when existing state is detected.
+func buildTUIModel(opts *GlobalOpts, defaults config.State) setupTUI {
 	dir := defaults.DataDir
 	if opts.DataDir != "" {
 		dir = opts.DataDir
 	}
-
 	backendPort := fmt.Sprintf("%d", defaults.BackendPort)
 	if initBackendPort > 0 {
 		backendPort = fmt.Sprintf("%d", initBackendPort)
@@ -536,16 +536,21 @@ func runInteractiveInit(_ *cobra.Command, opts *GlobalOpts) (*interactiveResult,
 	if initSandbox != "" {
 		sandbox = initSandbox == "true"
 	}
+	model := newSetupTUI(dir, backendPort, webPort, version.Version, sandbox)
+	applyFlagOverridesToModel(&model)
+	if existing := config.StatePath(dir); fileExists(existing) {
+		model.needReinit = true
+		model.reinitPath = existing
+		model.phase = phaseReinit
+		model.focus = fReinitOverwrite
+	}
+	return model
+}
 
-	model := newSetupTUI(
-		dir,
-		backendPort,
-		webPort,
-		version.Version,
-		sandbox,
-	)
-
-	// Apply additional flag overrides to the TUI model.
+// applyFlagOverridesToModel applies CLI flag overrides to the TUI model so
+// flags like “--persistence-backend“ and “--encrypt-secrets“ are not
+// silently dropped on confirmation.
+func applyFlagOverridesToModel(model *setupTUI) {
 	switch initBusBackend {
 	case "nats":
 		model.busBackend = 1
@@ -561,78 +566,59 @@ func runInteractiveInit(_ *cobra.Command, opts *GlobalOpts) (*interactiveResult,
 	if initPostgresPort > 0 {
 		model.postgresPort.SetValue(fmt.Sprintf("%d", initPostgresPort))
 	}
-	// Honour --encrypt-secrets in the TUI path. Without this the
-	// toggle renders the default and the user's flag is silently
-	// dropped on confirmation.
 	if initEncryptSecrets != "" {
 		model.encryptSecrets = initEncryptSecrets == "true"
 	}
+}
 
-	// Check if re-init is needed.
-	if existing := config.StatePath(dir); fileExists(existing) {
-		model.needReinit = true
-		model.reinitPath = existing
-		model.phase = phaseReinit
-		model.focus = fReinitOverwrite
+// parsePortFromTUI validates an optional port entered in the TUI. Returns
+// “0“ when the field is blank so callers can fall back to defaults.
+func parsePortFromTUI(raw, name string) (int, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return 0, nil
 	}
-
-	result, err := tea.NewProgram(model).Run()
+	p, err := strconv.Atoi(trimmed)
 	if err != nil {
-		return nil, fmt.Errorf("setup: %w", err)
+		return 0, fmt.Errorf("invalid %s port %q: %w", name, trimmed, err)
 	}
-	final, ok := result.(setupTUI)
-	if !ok {
-		return nil, fmt.Errorf("unexpected model type from TUI: %T", result)
+	if p < 1 || p > 65535 {
+		return 0, fmt.Errorf("invalid %s port %d: must be 1-65535", name, p)
 	}
-	if final.cancelled {
-		return nil, nil
-	}
+	return p, nil
+}
 
+// buildInteractiveResult converts the finished TUI state into the
+// “setupAnswers“ + follow-up fields consumed by the init driver.
+func buildInteractiveResult(final setupTUI, defaults config.State) (*interactiveResult, error) {
 	busBackends := []string{"internal", "nats"}
 	bus := "internal"
 	if final.busBackend >= 0 && final.busBackend < len(busBackends) {
 		bus = busBackends[final.busBackend]
 	}
-
 	persist := "sqlite"
 	if final.persistence == 1 {
 		persist = "postgres"
 	}
-
-	var pgPort int
+	pgPort := 0
 	if persist == "postgres" {
-		raw := strings.TrimSpace(final.postgresPort.Value())
-		if raw != "" {
-			p, err := strconv.Atoi(raw)
-			if err != nil {
-				return nil, fmt.Errorf("invalid postgres port %q: %w", raw, err)
-			}
-			if p < 1 || p > 65535 {
-				return nil, fmt.Errorf("invalid postgres port %d: must be 1-65535", p)
-			}
-			pgPort = p
+		p, err := parsePortFromTUI(final.postgresPort.Value(), "postgres")
+		if err != nil {
+			return nil, err
 		}
+		pgPort = p
 		if pgPort == 0 {
 			pgPort = defaults.PostgresPort
 		}
 	}
-
-	// Override NATS port in state after build if user changed it.
-	var natsPort int
+	natsPort := 0
 	if bus == "nats" {
-		raw := strings.TrimSpace(final.natsPort.Value())
-		if raw != "" {
-			p, err := strconv.Atoi(raw)
-			if err != nil {
-				return nil, fmt.Errorf("invalid nats port %q: %w", raw, err)
-			}
-			if p < 1 || p > 65535 {
-				return nil, fmt.Errorf("invalid nats port %d: must be 1-65535", p)
-			}
-			natsPort = p
+		p, err := parsePortFromTUI(final.natsPort.Value(), "nats")
+		if err != nil {
+			return nil, err
 		}
+		natsPort = p
 	}
-
 	return &interactiveResult{
 		answers: setupAnswers{
 			dir:                final.dataDir.Value(),
@@ -656,6 +642,76 @@ func runInteractiveInit(_ *cobra.Command, opts *GlobalOpts) (*interactiveResult,
 	}, nil
 }
 
+func runInteractiveInit(_ *cobra.Command, opts *GlobalOpts) (*interactiveResult, error) {
+	defaults := config.DefaultState()
+	model := buildTUIModel(opts, defaults)
+
+	result, err := tea.NewProgram(model).Run()
+	if err != nil {
+		return nil, fmt.Errorf("setup: %w", err)
+	}
+	final, ok := result.(setupTUI)
+	if !ok {
+		return nil, fmt.Errorf("unexpected model type from TUI: %T", result)
+	}
+	if final.cancelled {
+		return nil, nil
+	}
+	return buildInteractiveResult(final, defaults)
+}
+
+// setupDockerSockConfig validates the host Docker socket path and captures
+// the owning GID so the compose template can render “group_add“ for the
+// backend. Returns “-1“ for the GID when detection is not applicable
+// (Windows named pipe, socket missing).
+func setupDockerSockConfig(sandbox bool, dockerSock string) (string, int, error) {
+	sock := strings.TrimSpace(dockerSock)
+	if !sandbox {
+		return sock, -1, nil
+	}
+	if err := validateDockerSock(sock); err != nil {
+		return "", -1, err
+	}
+	gid := -1
+	if detected, ok := config.DetectDockerSockGID(sock); ok {
+		gid = detected
+	}
+	return sock, gid, nil
+}
+
+// setupPostgresConfig validates Postgres port collisions and generates
+// a random password when the selected backend is “postgres“. Returns
+// “(0, "", nil)“ for non-postgres backends so the State zero values
+// are serialized cleanly.
+func setupPostgresConfig(a setupAnswers, backendPort, webPort int) (int, string, error) {
+	if a.persistenceBackend != "postgres" {
+		return 0, "", nil
+	}
+	port := a.postgresPort
+	if port == 0 {
+		port = config.DefaultState().PostgresPort
+	}
+	// Validate the RESOLVED port against backend/web ports. The CLI-flag
+	// check in validateInitFlags only fires when --postgres-port is
+	// explicit; the default 3002 can still collide if the user set
+	// --backend-port 3002 (or similar).
+	if port == backendPort {
+		return 0, "", fmt.Errorf(
+			"postgres port %d conflicts with backend port %d", port, backendPort,
+		)
+	}
+	if port == webPort {
+		return 0, "", fmt.Errorf(
+			"postgres port %d conflicts with web port %d", port, webPort,
+		)
+	}
+	pw, err := compose.GeneratePassword(32)
+	if err != nil {
+		return 0, "", fmt.Errorf("generating postgres password: %w", err)
+	}
+	return port, pw, nil
+}
+
 func buildState(a setupAnswers) (config.State, error) {
 	dir := strings.TrimSpace(a.dir)
 	if !filepath.IsAbs(dir) {
@@ -671,21 +727,9 @@ func buildState(a setupAnswers) (config.State, error) {
 		return config.State{}, err
 	}
 
-	dockerSock := strings.TrimSpace(a.dockerSock)
-	dockerSockGID := -1
-	if a.sandbox {
-		if err := validateDockerSock(dockerSock); err != nil {
-			return config.State{}, err
-		}
-		// The backend container runs as an unprivileged user; without
-		// supplementary group membership, it cannot read/write the host
-		// Docker socket (typically mode 660 root:docker on Linux). Stat
-		// the socket to capture the owning GID so the compose template
-		// can render `group_add: [<gid>]` on the backend service.
-		// -1 means detection failed (Windows named pipe, socket missing).
-		if gid, ok := config.DetectDockerSockGID(dockerSock); ok {
-			dockerSockGID = gid
-		}
+	dockerSock, dockerSockGID, err := setupDockerSockConfig(a.sandbox, a.dockerSock)
+	if err != nil {
+		return config.State{}, err
 	}
 
 	jwtSecret, settingsKey, masterKey, err := generateInitSecrets()
@@ -704,38 +748,9 @@ func buildState(a setupAnswers) (config.State, error) {
 		busBackend = "internal"
 	}
 
-	// Postgres-only fields stay at zero values for other backends so
-	// sqlite configs don't serialize postgres_port / postgres_password.
-	var (
-		postgresPort     int
-		postgresPassword string
-	)
-	if a.persistenceBackend == "postgres" {
-		postgresPort = a.postgresPort
-		if postgresPort == 0 {
-			postgresPort = config.DefaultState().PostgresPort
-		}
-		// Validate the RESOLVED port against backend/web ports. The CLI-flag
-		// check in validateInitFlags only fires when --postgres-port is
-		// explicit; the default 3002 can still collide if the user set
-		// --backend-port 3002 (or similar).
-		if postgresPort == backendPort {
-			return config.State{}, fmt.Errorf(
-				"postgres port %d conflicts with backend port %d",
-				postgresPort, backendPort,
-			)
-		}
-		if postgresPort == webPort {
-			return config.State{}, fmt.Errorf(
-				"postgres port %d conflicts with web port %d",
-				postgresPort, webPort,
-			)
-		}
-		pw, err := compose.GeneratePassword(32)
-		if err != nil {
-			return config.State{}, fmt.Errorf("generating postgres password: %w", err)
-		}
-		postgresPassword = pw
+	postgresPort, postgresPassword, err := setupPostgresConfig(a, backendPort, webPort)
+	if err != nil {
+		return config.State{}, err
 	}
 
 	return config.State{

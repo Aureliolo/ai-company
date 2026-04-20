@@ -117,6 +117,11 @@ class ContextDependentDispatcher:
 
         if workspace_service is None:
             msg = "workspace_service required when isolation is enabled"
+            logger.warning(
+                COORDINATION_PHASE_FAILED,
+                phase="workspace_setup",
+                error=msg,
+            )
             raise CoordinationError(msg)
 
         wave_requests = tuple(

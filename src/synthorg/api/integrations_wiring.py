@@ -76,23 +76,25 @@ def _wire_mcp_installations_repo(
     """Wire the MCP installations repo if persistence is already connected."""
     try:
         if persistence is not None and getattr(persistence, "is_connected", False):
+            repo = persistence.mcp_installations
             logger.info(
                 API_SERVICE_AUTO_WIRED,
                 service="mcp_installations_repo",
                 backend=type(persistence).__name__,
             )
-            return persistence.mcp_installations
+            return repo
         if persistence is None:
             from synthorg.integrations.mcp_catalog.in_memory_installations import (  # noqa: PLC0415
                 InMemoryMcpInstallationRepository,
             )
 
+            repo = InMemoryMcpInstallationRepository()
             logger.debug(
                 API_SERVICE_AUTO_WIRED,
                 service="mcp_installations_repo",
                 backend="in_memory",
             )
-            return InMemoryMcpInstallationRepository()
+            return repo
         logger.debug(
             API_SERVICE_AUTO_WIRED,
             service="mcp_installations_repo",

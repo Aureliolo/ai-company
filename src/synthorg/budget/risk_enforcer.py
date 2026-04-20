@@ -19,12 +19,8 @@ from synthorg.observability.events.risk_budget import (
 
 if TYPE_CHECKING:
     from synthorg.budget.config import BudgetConfig
-    from synthorg.budget.project_cost_aggregate import (
-        ProjectCostAggregateRepository,
-    )
     from synthorg.budget.risk_record import RiskRecord
     from synthorg.budget.risk_tracker import RiskTracker
-    from synthorg.budget.tracker import CostTracker
     from synthorg.security.risk_scorer import RiskScorer
 
 logger = get_logger(__name__)
@@ -36,8 +32,6 @@ class BudgetEnforcerRiskMixin:
     _budget_config: BudgetConfig
     _risk_tracker: RiskTracker | None
     _risk_scorer: RiskScorer | None
-    _cost_tracker: CostTracker
-    _project_cost_repo: ProjectCostAggregateRepository | None
 
     async def check_risk_budget(
         self,

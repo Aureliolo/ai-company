@@ -11,7 +11,7 @@ import os
 from collections.abc import Callable  # noqa: TC003
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, get_args
+from typing import TYPE_CHECKING, Any, NoReturn, get_args
 from urllib.parse import unquote, urlparse
 
 from pydantic import SecretStr
@@ -110,60 +110,62 @@ def _postgres_config_from_url(db_url: str) -> PostgresConfig:
     backend talks to Postgres over an internal network without TLS,
     callers can override via ``SYNTHORG_POSTGRES_SSL_MODE`` env var.
     """
+
+    def _fail(msg: str, reason: str, cause: Exception | None = None) -> NoReturn:
+        logger.warning(API_APP_STARTUP, error=msg, reason=reason)
+        raise ValueError(msg) from cause
+
     try:
         parsed = urlparse(db_url)
     except ValueError as exc:
-        msg = f"SYNTHORG_DATABASE_URL could not be parsed: {exc}"
-        logger.warning(API_APP_STARTUP, error=msg, reason="url_parse_failed")
-        raise ValueError(msg) from exc
-    if parsed.scheme not in {"postgres", "postgresql"}:
-        msg = (
-            f"SYNTHORG_DATABASE_URL scheme {parsed.scheme!r} is not "
-            f"supported; expected 'postgresql://...'"
+        _fail(
+            f"SYNTHORG_DATABASE_URL could not be parsed: {exc}",
+            "url_parse_failed",
+            exc,
         )
-        logger.warning(API_APP_STARTUP, error=msg, reason="invalid_scheme")
-        raise ValueError(msg)
+    if parsed.scheme not in {"postgres", "postgresql"}:
+        _fail(
+            f"SYNTHORG_DATABASE_URL scheme {parsed.scheme!r} is not "
+            f"supported; expected 'postgresql://...'",
+            "invalid_scheme",
+        )
     try:
         hostname = parsed.hostname
         parsed_port = parsed.port
     except ValueError as exc:
-        # urlparse defers port validation to the ``.port`` property, which
-        # raises ``ValueError`` for non-numeric ports or malformed
-        # bracketed IPv6 literals. Surface that as a configuration error.
-        msg = f"SYNTHORG_DATABASE_URL has an invalid host/port: {exc}"
-        logger.warning(API_APP_STARTUP, error=msg, reason="invalid_host_port")
-        raise ValueError(msg) from exc
-    if not hostname:
-        msg = "SYNTHORG_DATABASE_URL is missing a host component"
-        logger.warning(API_APP_STARTUP, error=msg, reason="missing_host")
-        raise ValueError(msg)
-    if not parsed.username or not parsed.password:
-        msg = (
-            "SYNTHORG_DATABASE_URL must include a username and password "
-            "(postgresql://user:pass@host:port/db)"
+        # ``.port`` raises ``ValueError`` for non-numeric ports or malformed
+        # bracketed IPv6 literals; surface that as a configuration error.
+        _fail(
+            f"SYNTHORG_DATABASE_URL has an invalid host/port: {exc}",
+            "invalid_host_port",
+            exc,
         )
-        logger.warning(API_APP_STARTUP, error=msg, reason="missing_credentials")
-        raise ValueError(msg)
+    if not hostname:
+        _fail("SYNTHORG_DATABASE_URL is missing a host component", "missing_host")
+    if not parsed.username or not parsed.password:
+        _fail(
+            "SYNTHORG_DATABASE_URL must include a username and password "
+            "(postgresql://user:pass@host:port/db)",
+            "missing_credentials",
+        )
     database = parsed.path.lstrip("/")
     if not database:
-        msg = (
+        _fail(
             "SYNTHORG_DATABASE_URL must include a database name in the "
-            "path (postgresql://user:pass@host:port/db)"
+            "path (postgresql://user:pass@host:port/db)",
+            "missing_database",
         )
-        logger.warning(API_APP_STARTUP, error=msg, reason="missing_database")
-        raise ValueError(msg)
 
     ssl_override = (os.environ.get("SYNTHORG_POSTGRES_SSL_MODE") or "").strip()
     ssl_kwargs: dict[str, Any] = {}
     if ssl_override:
         valid_modes = set(get_args(PostgresSslMode))
         if ssl_override not in valid_modes:
-            msg = (
+            _fail(
                 f"SYNTHORG_POSTGRES_SSL_MODE={ssl_override!r} is invalid; "
-                f"must be one of: {sorted(valid_modes)}"
+                f"must be one of: {sorted(valid_modes)}",
+                "invalid_ssl_mode",
             )
-            logger.warning(API_APP_STARTUP, error=msg, reason="invalid_ssl_mode")
-            raise ValueError(msg)
         ssl_kwargs["ssl_mode"] = ssl_override
 
     return PostgresConfig(
