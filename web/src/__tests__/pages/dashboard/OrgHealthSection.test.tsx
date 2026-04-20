@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import { OrgHealthSection } from '@/pages/dashboard/OrgHealthSection'
 import { formatCurrency } from '@/utils/format'
-import type { DepartmentHealth } from '@/api/types'
+import type { DepartmentHealth } from '@/api/types/analytics'
 
 function makeDepts(count: number): DepartmentHealth[] {
   const names = ['engineering', 'design', 'product', 'operations', 'security'] as const

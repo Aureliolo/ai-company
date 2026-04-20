@@ -2,7 +2,7 @@ import { http, HttpResponse } from 'msw'
 import { useAuthStore } from '@/stores/auth'
 import { apiError, apiSuccess, voidSuccess } from '@/mocks/handlers'
 import { server } from '@/test-setup'
-import type { AuthResponse, UserInfoResponse } from '@/api/types'
+import type { AuthResponse, UserInfoResponse } from '@/api/types/auth'
 
 // Disable dev auth bypass so the store uses the real auth flow.
 vi.mock('@/utils/dev', () => ({ IS_DEV_AUTH_BYPASS: false }))

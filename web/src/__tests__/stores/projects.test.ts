@@ -6,7 +6,9 @@ import { apiError, apiSuccess, paginatedFor } from '@/mocks/handlers'
 import type { listProjects } from '@/api/endpoints/projects'
 import type { listTasks } from '@/api/endpoints/tasks'
 import { server } from '@/test-setup'
-import type { Project, Task, WsEvent } from '@/api/types'
+import type { Project } from '@/api/types/projects'
+import type { Task } from '@/api/types/tasks'
+import type { WsEvent } from '@/api/types/websocket'
 
 function paginatedProjects(data: Project[], total?: number) {
   return paginatedFor<typeof listProjects>({

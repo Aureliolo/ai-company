@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { ActivityItem, BudgetAlertConfig, BudgetConfig, CostRecord, ForecastResponse, OverviewMetrics, TrendDataPoint } from '@/api/types'
+import type { ActivityItem, ForecastResponse, OverviewMetrics, TrendDataPoint } from '@/api/types/analytics'
+import type { BudgetAlertConfig, BudgetConfig, CostRecord } from '@/api/types/budget'
 import {
   aggregateWeekly,
   computeAgentSpending,

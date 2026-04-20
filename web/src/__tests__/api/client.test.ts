@@ -6,7 +6,8 @@ import { vi } from 'vitest'
 vi.mock('@/utils/dev', () => ({ IS_DEV_AUTH_BYPASS: false }))
 
 import { ApiRequestError, unwrap, unwrapPaginated, unwrapVoid, apiClient } from '@/api/client'
-import type { ApiResponse, ErrorDetail, PaginatedResponse } from '@/api/types'
+import type { ErrorDetail } from '@/api/types/errors'
+import type { ApiResponse, PaginatedResponse } from '@/api/types/http'
 
 function mockResponse<T>(data: T): AxiosResponse<T> {
   return { data, status: 200, statusText: 'OK', headers: {}, config: {} as AxiosResponse['config'] }

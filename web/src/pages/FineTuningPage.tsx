@@ -3,7 +3,7 @@ import { Activity, Clock, Database, Settings } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
 
 import { ACTIVE_STAGES } from '@/api/endpoints/fine-tuning'
-import type { WsEvent } from '@/api/types'
+import type { WsEvent } from '@/api/types/websocket'
 import { SectionCard } from '@/components/ui/section-card'
 import { useFineTuningStore } from '@/stores/fine-tuning'
 import { useWebSocketStore } from '@/stores/websocket'

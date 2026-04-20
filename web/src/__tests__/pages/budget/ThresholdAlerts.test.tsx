@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import { ThresholdAlerts } from '@/pages/budget/ThresholdAlerts'
-import type { BudgetConfig, OverviewMetrics } from '@/api/types'
+import type { OverviewMetrics } from '@/api/types/analytics'
+import type { BudgetConfig } from '@/api/types/budget'
 import type { ThresholdZone } from '@/utils/budget'
 
 const mockBudgetConfig: BudgetConfig = {

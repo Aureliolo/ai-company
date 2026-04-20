@@ -5,7 +5,7 @@ import { useSubworkflowsStore } from '@/stores/subworkflows'
 import { EmptyState } from '@/components/ui/empty-state'
 import { InputField } from '@/components/ui/input-field'
 import { Skeleton } from '@/components/ui/skeleton'
-import type { SubworkflowSummary } from '@/api/types'
+import type { SubworkflowSummary } from '@/api/types/workflows'
 import { SubworkflowCard } from './subworkflows/SubworkflowCard'
 import { SubworkflowDetailDrawer } from './subworkflows/SubworkflowDetailDrawer'
 

@@ -9,21 +9,21 @@ import {
   formatCostPerTask,
   getCareerEventColor,
 } from '@/utils/agents'
-import {
-  CAREER_EVENT_TYPE_VALUES,
-  DEPARTMENT_NAME_VALUES,
-  SENIORITY_LEVEL_VALUES,
-  AGENT_STATUS_VALUES,
-} from '@/api/types'
 import type {
   AgentConfig,
   AgentPerformanceSummary,
-  AgentStatus,
-  DepartmentName,
-  SeniorityLevel,
-  WindowMetrics,
   TrendResult,
-} from '@/api/types'
+  WindowMetrics,
+} from '@/api/types/agents'
+import { CAREER_EVENT_TYPE_VALUES } from '@/api/types/agents'
+import {
+  AGENT_STATUS_VALUES,
+  DEPARTMENT_NAME_VALUES,
+  SENIORITY_LEVEL_VALUES,
+  type AgentStatus,
+  type DepartmentName,
+  type SeniorityLevel,
+} from '@/api/types/enums'
 
 const DEPARTMENTS = [...DEPARTMENT_NAME_VALUES]
 const LEVELS = [...SENIORITY_LEVEL_VALUES]

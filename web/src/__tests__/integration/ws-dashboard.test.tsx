@@ -5,7 +5,7 @@
  * state including activity feed items.
  */
 import { useAnalyticsStore } from '@/stores/analytics'
-import type { WsEvent } from '@/api/types'
+import type { WsEvent } from '@/api/types/websocket'
 
 describe('WS Dashboard Integration', () => {
   beforeEach(() => {

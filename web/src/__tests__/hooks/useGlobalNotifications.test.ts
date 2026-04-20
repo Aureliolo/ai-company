@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useGlobalNotifications } from '@/hooks/useGlobalNotifications'
 import { useAgentsStore } from '@/stores/agents'
 import { useToastStore } from '@/stores/toast'
-import type { WsEvent } from '@/api/types'
+import type { WsEvent } from '@/api/types/websocket'
 
 // Mock the useWebSocket hook so we can control connection state and capture
 // the bindings that useGlobalNotifications subscribes with.

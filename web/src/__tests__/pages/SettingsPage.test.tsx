@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import type { UseSettingsDataReturn } from '@/hooks/useSettingsData'
-import type { SettingEntry } from '@/api/types'
+import type { SettingEntry } from '@/api/types/settings'
 
 function makeSetting(overrides: Partial<SettingEntry['definition']> & { value?: string; source?: SettingEntry['source'] } = {}): SettingEntry {
   const {

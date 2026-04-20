@@ -5,7 +5,10 @@ import type {
   DepartmentGroupData,
   OwnerInfo,
 } from '@/pages/org/build-org-tree'
-import type { AgentConfig, CompanyConfig, DepartmentHealth, DepartmentName } from '@/api/types'
+import type { AgentConfig } from '@/api/types/agents'
+import type { DepartmentHealth } from '@/api/types/analytics'
+import type { DepartmentName } from '@/api/types/enums'
+import type { CompanyConfig } from '@/api/types/org'
 
 // ── Test helpers ────────────────────────────────────────────
 

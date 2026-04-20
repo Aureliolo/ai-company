@@ -12,9 +12,9 @@ import {
 import type {
   AgentConfig,
   AgentPerformanceSummary,
-  AgentStatus,
   CareerEventType,
-} from '@/api/types'
+} from '@/api/types/agents'
+import type { AgentStatus } from '@/api/types/enums'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { formatCurrency } from '@/utils/format'
 

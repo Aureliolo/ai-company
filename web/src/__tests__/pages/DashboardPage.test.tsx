@@ -1,7 +1,8 @@
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import type { UseDashboardDataReturn } from '@/hooks/useDashboardData'
-import type { OverviewMetrics, BudgetConfig } from '@/api/types'
+import type { OverviewMetrics } from '@/api/types/analytics'
+import type { BudgetConfig } from '@/api/types/budget'
 
 function makeTasksByStatus(overrides: Partial<OverviewMetrics['tasks_by_status']> = {}): OverviewMetrics['tasks_by_status'] {
   return {

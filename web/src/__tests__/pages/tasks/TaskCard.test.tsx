@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { TaskCard } from '@/pages/tasks/TaskCard'
-import type { Task } from '@/api/types'
+import type { Task } from '@/api/types/tasks'
 import { makeTask as makeTaskFactory } from '../../helpers/factories'
 
 function makeTask(overrides: Partial<Task> = {}): Task {

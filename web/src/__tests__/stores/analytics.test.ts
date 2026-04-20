@@ -6,7 +6,9 @@ import type { listActivities } from '@/api/endpoints/activities'
 import type { listDepartments } from '@/api/endpoints/company'
 import { server } from '@/test-setup'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
-import type { ActivityItem, Department, WsEvent } from '@/api/types'
+import type { ActivityItem } from '@/api/types/analytics'
+import type { Department } from '@/api/types/org'
+import type { WsEvent } from '@/api/types/websocket'
 
 const mockOverview = {
   total_tasks: 24,

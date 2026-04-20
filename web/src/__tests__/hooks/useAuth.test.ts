@@ -1,7 +1,8 @@
 import { renderHook } from '@testing-library/react'
 import { useAuth } from '@/hooks/useAuth'
 import { useAuthStore } from '@/stores/auth'
-import type { HumanRole, UserInfoResponse } from '@/api/types'
+import type { UserInfoResponse } from '@/api/types/auth'
+import type { HumanRole } from '@/api/types/enums'
 import { WRITE_ROLES } from '@/utils/constants'
 
 function resetStore() {

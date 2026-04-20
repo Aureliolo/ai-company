@@ -3,7 +3,8 @@ import { http, HttpResponse } from 'msw'
 import { useCompanyStore } from '@/stores/company'
 import { apiError, apiSuccess, voidSuccess } from '@/mocks/handlers'
 import { server } from '@/test-setup'
-import type { CompanyConfig, DepartmentHealth } from '@/api/types'
+import type { DepartmentHealth } from '@/api/types/analytics'
+import type { CompanyConfig } from '@/api/types/org'
 import { makeAgent, makeCompanyConfig, makeDepartment } from '../helpers/factories'
 
 const mockConfig: CompanyConfig = {

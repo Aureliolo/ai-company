@@ -5,7 +5,7 @@ import { useCommunicationEdges } from '@/hooks/useCommunicationEdges'
 import { apiError, paginatedFor } from '@/mocks/handlers'
 import type { listMessages } from '@/api/endpoints/messages'
 import { server } from '@/test-setup'
-import type { Message } from '@/api/types'
+import type { Message } from '@/api/types/messages'
 
 type MessageSeed = { sender: string; to: string }
 

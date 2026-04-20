@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { renderHook } from '@testing-library/react'
-import type { OverviewMetrics } from '@/api/types'
+import type { OverviewMetrics } from '@/api/types/analytics'
 import { useBudgetStore } from '@/stores/budget'
 
 const mockFetchBudgetData = vi.fn()

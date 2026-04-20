@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import type { SinkInfo } from '@/api/types'
+import type { SinkInfo } from '@/api/types/settings'
 import { SinkCard } from '@/pages/settings/sinks/SinkCard'
 
 function makeSink(overrides: Partial<SinkInfo> = {}): SinkInfo {

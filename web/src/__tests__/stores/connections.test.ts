@@ -1,5 +1,5 @@
 import { http, HttpResponse } from 'msw'
-import type { Connection, HealthReport } from '@/api/types'
+import type { Connection, HealthReport } from '@/api/types/integrations'
 import { useConnectionsStore } from '@/stores/connections'
 import { apiError, apiSuccess, voidSuccess } from '@/mocks/handlers'
 import { server } from '@/test-setup'

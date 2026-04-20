@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Plug, Plus } from 'lucide-react'
-import type { Connection } from '@/api/types'
+import type { Connection } from '@/api/types/integrations'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { ErrorBoundary } from '@/components/ui/error-boundary'

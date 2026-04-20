@@ -12,7 +12,7 @@ import { MessageFilterBar } from './messages/MessageFilterBar'
 import { MessageList } from './messages/MessageList'
 import { MessageDetailDrawer } from './messages/MessageDetailDrawer'
 import { MessagesSkeleton } from './messages/MessagesSkeleton'
-import type { MessagePriority, MessageType } from '@/api/types'
+import type { MessagePriority, MessageType } from '@/api/types/messages'
 
 const VALID_TYPES: ReadonlySet<string> = new Set([
   'task_update', 'question', 'announcement', 'review_request', 'approval',

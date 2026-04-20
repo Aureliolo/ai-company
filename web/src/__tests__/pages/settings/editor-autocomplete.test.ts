@@ -7,7 +7,7 @@
  */
 
 import { settingsAutocompleteExtension } from '@/pages/settings/editor-autocomplete'
-import type { SettingEntry } from '@/api/types'
+import type { SettingEntry } from '@/api/types/settings'
 import type { Extension } from '@codemirror/state'
 
 function makeEntry(

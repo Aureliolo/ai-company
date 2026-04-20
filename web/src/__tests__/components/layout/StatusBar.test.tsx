@@ -6,7 +6,7 @@ import { formatCurrency } from '@/utils/format'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { apiError } from '@/mocks/handlers'
 import { server } from '@/test-setup'
-import type { OverviewMetrics } from '@/api/types'
+import type { OverviewMetrics } from '@/api/types/analytics'
 
 function makeOverview(overrides: Partial<OverviewMetrics> = {}): OverviewMetrics {
   return {

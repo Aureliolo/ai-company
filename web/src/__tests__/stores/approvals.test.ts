@@ -6,7 +6,8 @@ import { makeApproval } from '../helpers/factories'
 import { apiError, apiSuccess, paginatedFor } from '@/mocks/handlers'
 import type { listApprovals } from '@/api/endpoints/approvals'
 import { server } from '@/test-setup'
-import type { ApprovalResponse, WsEvent } from '@/api/types'
+import type { ApprovalResponse } from '@/api/types/approvals'
+import type { WsEvent } from '@/api/types/websocket'
 
 function paginated(
   data: ApprovalResponse[],

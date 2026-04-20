@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import fc from 'fast-check'
 import { parseYaml, serializeToYaml, validateCompanyYaml } from '@/utils/yaml'
 import { makeCompanyConfig } from '../helpers/factories'
-import type { CompanyConfig } from '@/api/types'
+import type { CompanyConfig } from '@/api/types/org'
 
 describe('serializeToYaml', () => {
   it('serializes a CompanyConfig to valid YAML', () => {

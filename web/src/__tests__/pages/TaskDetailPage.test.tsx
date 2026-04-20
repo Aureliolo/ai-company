@@ -4,7 +4,7 @@ import { http, HttpResponse } from 'msw'
 import { useTasksStore } from '@/stores/tasks'
 import { apiError, apiSuccess } from '@/mocks/handlers'
 import { server } from '@/test-setup'
-import type { Task } from '@/api/types'
+import type { Task } from '@/api/types/tasks'
 
 const mockTask: Task = {
   id: 'task-1',

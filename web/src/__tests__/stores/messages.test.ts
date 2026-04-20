@@ -4,7 +4,8 @@ import { makeMessage, makeChannel } from '../helpers/factories'
 import { apiError, apiSuccess, paginatedFor } from '@/mocks/handlers'
 import type { listMessages } from '@/api/endpoints/messages'
 import { server } from '@/test-setup'
-import type { Message, WsEvent } from '@/api/types'
+import type { Message } from '@/api/types/messages'
+import type { WsEvent } from '@/api/types/websocket'
 
 function paginated(
   data: Message[],

@@ -3,7 +3,7 @@ import { useWebSocketStore } from '@/stores/websocket'
 import { apiError, successFor } from '@/mocks/handlers'
 import type { getWsTicket } from '@/api/endpoints/auth'
 import { server } from '@/test-setup'
-import type { WsEvent } from '@/api/types'
+import type { WsEvent } from '@/api/types/websocket'
 
 // Shared ticket-exchange controller: tests set `ticketMode` before
 // triggering connect() to decide whether the handler returns a

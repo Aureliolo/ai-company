@@ -5,11 +5,10 @@ import {
   describeEvent,
   wsEventToActivityItem,
 } from '@/utils/dashboard'
-import {
-  WS_EVENT_TYPE_VALUES,
-  DEPARTMENT_NAME_VALUES,
-} from '@/api/types'
-import type { BudgetConfig, DepartmentHealth, OverviewMetrics, TrendDataPoint, WsEvent } from '@/api/types'
+import type { DepartmentHealth, OverviewMetrics, TrendDataPoint } from '@/api/types/analytics'
+import type { BudgetConfig } from '@/api/types/budget'
+import { DEPARTMENT_NAME_VALUES } from '@/api/types/enums'
+import { WS_EVENT_TYPE_VALUES, type WsEvent } from '@/api/types/websocket'
 
 const WS_EVENT_TYPES = [...WS_EVENT_TYPE_VALUES]
 const DEPT_NAMES = [...DEPARTMENT_NAME_VALUES]

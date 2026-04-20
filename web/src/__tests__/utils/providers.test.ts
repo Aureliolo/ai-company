@@ -8,7 +8,7 @@ import {
   formatTokenCount,
   formatCost,
 } from '@/utils/providers'
-import type { ProviderConfig, ProviderHealthSummary } from '@/api/types'
+import type { ProviderConfig, ProviderHealthSummary } from '@/api/types/providers'
 import type { ProviderWithName } from '@/utils/providers'
 
 // ── Factories ──────────────────────────────────────────────

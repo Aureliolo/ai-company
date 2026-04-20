@@ -5,7 +5,8 @@ import { makeArtifact } from '../helpers/factories'
 import { apiError, apiSuccess, paginatedFor, voidSuccess } from '@/mocks/handlers'
 import type { listArtifacts } from '@/api/endpoints/artifacts'
 import { server } from '@/test-setup'
-import type { Artifact, WsEvent } from '@/api/types'
+import type { Artifact } from '@/api/types/artifacts'
+import type { WsEvent } from '@/api/types/websocket'
 
 function paginated(
   data: Artifact[],

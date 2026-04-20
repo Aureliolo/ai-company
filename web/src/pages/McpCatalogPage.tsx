@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Package } from 'lucide-react'
-import type { ConnectionType, McpCatalogEntry } from '@/api/types'
+import type { ConnectionType, McpCatalogEntry } from '@/api/types/integrations'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { useConnectionsData } from '@/hooks/useConnectionsData'
 import { useMcpCatalogData } from '@/hooks/useMcpCatalogData'

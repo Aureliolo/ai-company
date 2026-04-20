@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import fc from 'fast-check'
-import type { Priority, Task, TaskStatus, TaskType } from '@/api/types'
+import type { Priority, TaskStatus, TaskType } from '@/api/types/enums'
+import type { Task } from '@/api/types/tasks'
 import {
   type TaskBoardFilters,
   KANBAN_COLUMNS,

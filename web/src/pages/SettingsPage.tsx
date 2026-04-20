@@ -13,7 +13,7 @@ import {
   Wallet,
   WifiOff,
 } from 'lucide-react'
-import type { SettingEntry, SettingNamespace } from '@/api/types'
+import type { SettingEntry, SettingNamespace } from '@/api/types/settings'
 import { createLogger } from '@/lib/logger'
 import { cn } from '@/lib/utils'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'

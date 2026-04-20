@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { ActivityFeedItem } from '@/pages/dashboard/ActivityFeedItem'
-import type { ActivityItem } from '@/api/types'
+import type { ActivityItem } from '@/api/types/analytics'
 
 function makeActivity(overrides: Partial<ActivityItem> = {}): ActivityItem {
   return {

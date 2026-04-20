@@ -1,7 +1,7 @@
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { TaskDetailPanel } from '@/pages/tasks/TaskDetailPanel'
-import type { Task } from '@/api/types'
+import type { Task } from '@/api/types/tasks'
 
 const mockTask: Task = {
   id: 'task-1',

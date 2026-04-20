@@ -1,5 +1,6 @@
 import { http, HttpResponse } from 'msw'
-import type { Task, WsEvent } from '@/api/types'
+import type { Task } from '@/api/types/tasks'
+import type { WsEvent } from '@/api/types/websocket'
 import { useTasksStore } from '@/stores/tasks'
 import { apiError, apiSuccess, paginatedFor, voidSuccess } from '@/mocks/handlers'
 import type { listTasks } from '@/api/endpoints/tasks'

@@ -32,7 +32,8 @@ import { TaskFilterBar } from './tasks/TaskFilterBar'
 import { TaskListView } from './tasks/TaskListView'
 import { TaskDetailPanel } from './tasks/TaskDetailPanel'
 import { TaskCreateDialog } from './tasks/TaskCreateDialog'
-import type { Priority, Task, TaskStatus, TaskType } from '@/api/types'
+import type { Priority, TaskStatus, TaskType } from '@/api/types/enums'
+import type { Task } from '@/api/types/tasks'
 
 const TaskDependencyGraph = lazy(() => import('./tasks/TaskDependencyGraph').then((m) => ({ default: m.TaskDependencyGraph })))
 

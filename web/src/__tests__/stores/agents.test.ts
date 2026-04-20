@@ -3,7 +3,8 @@ import { useAgentsStore } from '@/stores/agents'
 import { useToastStore } from '@/stores/toast'
 import { apiError, apiSuccess } from '@/mocks/handlers'
 import { server } from '@/test-setup'
-import type { AgentConfig, AgentPerformanceSummary, Task } from '@/api/types'
+import type { AgentConfig, AgentPerformanceSummary } from '@/api/types/agents'
+import type { Task } from '@/api/types/tasks'
 
 function makeAgent(overrides: Partial<AgentConfig> = {}): AgentConfig {
   return {

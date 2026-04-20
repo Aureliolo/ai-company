@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { KeyRound, Plus } from 'lucide-react'
 import { initiateOauth } from '@/api/endpoints/oauth'
-import type { Connection } from '@/api/types'
+import type { Connection } from '@/api/types/integrations'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { EmptyState } from '@/components/ui/empty-state'

@@ -2,18 +2,16 @@ import type {
   AgentActivityEvent,
   AgentConfig,
   AgentPerformanceSummary,
-  ApprovalResponse,
-  Artifact,
   CareerEvent,
-  Channel,
-  CompanyConfig,
-  Department,
-  DepartmentHealth,
-  MeetingResponse,
-  Message,
-  Project,
-  Task,
-} from '@/api/types'
+} from '@/api/types/agents'
+import type { DepartmentHealth } from '@/api/types/analytics'
+import type { ApprovalResponse } from '@/api/types/approvals'
+import type { Artifact } from '@/api/types/artifacts'
+import type { MeetingResponse } from '@/api/types/meetings'
+import type { Channel, Message } from '@/api/types/messages'
+import type { CompanyConfig, Department } from '@/api/types/org'
+import type { Project } from '@/api/types/projects'
+import type { Task } from '@/api/types/tasks'
 
 export function makeTask(id: string, overrides?: Partial<Task>): Task
 export function makeTask(id: string, title: string, overrides?: Partial<Task>): Task

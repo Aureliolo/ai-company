@@ -1,5 +1,5 @@
 import { http, HttpResponse } from 'msw'
-import type { McpCatalogEntry } from '@/api/types'
+import type { McpCatalogEntry } from '@/api/types/integrations'
 import { useMcpCatalogStore } from '@/stores/mcp-catalog'
 import { apiError, apiSuccess, voidSuccess } from '@/mocks/handlers'
 import { server } from '@/test-setup'

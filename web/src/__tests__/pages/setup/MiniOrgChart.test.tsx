@@ -1,6 +1,6 @@
 import { render } from '@testing-library/react'
 import { MiniOrgChart } from '@/pages/setup/MiniOrgChart'
-import type { SetupAgentSummary } from '@/api/types'
+import type { SetupAgentSummary } from '@/api/types/setup'
 
 function agent(overrides: Partial<SetupAgentSummary>): SetupAgentSummary {
   return {

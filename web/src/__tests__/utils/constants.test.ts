@@ -1,4 +1,4 @@
-import type { TaskStatus } from '@/api/types'
+import type { TaskStatus } from '@/api/types/enums'
 import {
   TASK_STATUS_ORDER,
   TERMINAL_STATUSES,

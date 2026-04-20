@@ -1,13 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { http, HttpResponse } from 'msw'
-import type {
-  BudgetConfig,
-  CostRecord,
-  ForecastResponse,
-  OverviewMetrics,
-  TrendsResponse,
-  WsEvent,
-} from '@/api/types'
+import type { ForecastResponse, OverviewMetrics, TrendsResponse } from '@/api/types/analytics'
+import type { BudgetConfig, CostRecord } from '@/api/types/budget'
+import type { WsEvent } from '@/api/types/websocket'
 import { apiError, apiPaginatedError, apiSuccess } from '@/mocks/handlers'
 import { server } from '@/test-setup'
 import { useBudgetStore } from '@/stores/budget'

@@ -3,7 +3,7 @@ import {
   getCategoryLabel,
   CATEGORY_ORDER,
 } from '@/utils/template-categories'
-import type { TemplateInfoResponse } from '@/api/types'
+import type { TemplateInfoResponse } from '@/api/types/setup'
 
 const makeTemplate = (
   overrides: Partial<TemplateInfoResponse> = {},

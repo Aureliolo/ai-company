@@ -1,5 +1,5 @@
 import { render, screen } from '@testing-library/react'
-import type { Priority, TaskStatus } from '@/api/types'
+import type { Priority, TaskStatus } from '@/api/types/enums'
 import { TaskStatusIndicator, PriorityBadge } from '@/components/ui/task-status-indicator'
 import { getTaskStatusLabel } from '@/utils/tasks'
 

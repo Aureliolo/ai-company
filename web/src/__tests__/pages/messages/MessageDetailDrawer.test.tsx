@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import { MessageDetailDrawer } from '@/pages/messages/MessageDetailDrawer'
 import { makeMessage } from '../../helpers/factories'
-import type { Message } from '@/api/types'
+import type { Message } from '@/api/types/messages'
 
 describe('MessageDetailDrawer', () => {
   const fullMessage: Message = makeMessage('msg-1', {

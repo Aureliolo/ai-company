@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { UseProviderDetailDataReturn } from '@/hooks/useProviderDetailData'
-import type { ProviderModelResponse } from '@/api/types'
+import type { ProviderModelResponse } from '@/api/types/providers'
 import type { ProviderWithName } from '@/utils/providers'
 
 let hookReturn: UseProviderDetailDataReturn

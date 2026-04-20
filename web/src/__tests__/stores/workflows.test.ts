@@ -5,7 +5,7 @@ import { useToastStore } from '@/stores/toast'
 import { apiError, apiSuccess, paginatedFor, voidSuccess } from '@/mocks/handlers'
 import type { listWorkflows } from '@/api/endpoints/workflows'
 import { server } from '@/test-setup'
-import type { WorkflowDefinition } from '@/api/types'
+import type { WorkflowDefinition } from '@/api/types/workflows'
 
 function makeWorkflow(
   id: string,

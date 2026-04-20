@@ -6,7 +6,7 @@
  */
 import { useTasksStore } from '@/stores/tasks'
 import { makeTask } from '../helpers/factories'
-import type { WsEvent } from '@/api/types'
+import type { WsEvent } from '@/api/types/websocket'
 
 describe('WS Tasks Integration', () => {
   afterEach(() => {

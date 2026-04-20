@@ -1,6 +1,6 @@
 import { AxiosError, type AxiosResponse } from 'axios'
 import { getErrorMessage, getErrorDetail, isAxiosError } from '@/utils/errors'
-import type { ErrorDetail } from '@/api/types'
+import type { ErrorDetail } from '@/api/types/errors'
 
 function makeAxiosError(
   status: number | undefined,

@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import * as fc from 'fast-check'
 import { CfoActivityFeed } from '@/pages/budget/CfoActivityFeed'
-import type { ActivityItem } from '@/api/types'
+import type { ActivityItem } from '@/api/types/analytics'
 
 function makeEvents(count: number): ActivityItem[] {
   return Array.from({ length: count }, (_, i) => ({

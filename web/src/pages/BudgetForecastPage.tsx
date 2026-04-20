@@ -12,7 +12,7 @@ import { ROUTES } from '@/router/routes'
 import { formatCurrency } from '@/utils/format'
 import { computeExhaustionDate, type BudgetMetricCardData } from '@/utils/budget'
 import { SpendBurnChart } from './budget/SpendBurnChart'
-import type { ForecastPoint } from '@/api/types'
+import type { ForecastPoint } from '@/api/types/analytics'
 
 function ProjectionRow({ point, cumulative, currency, totalMonthly }: {
   point: ForecastPoint

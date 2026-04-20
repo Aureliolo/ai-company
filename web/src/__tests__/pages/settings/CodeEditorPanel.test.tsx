@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import type { SettingEntry } from '@/api/types'
+import type { SettingEntry } from '@/api/types/settings'
 
 function MockCodeMirrorEditor({ value, onChange, language, readOnly, 'aria-label': ariaLabel }: {
   value: string

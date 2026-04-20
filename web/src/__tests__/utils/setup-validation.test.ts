@@ -6,7 +6,8 @@ import {
   validateProvidersStep,
   validateThemeStep,
 } from '@/utils/setup-validation'
-import type { SetupAgentSummary, SetupCompanyResponse, ProviderConfig } from '@/api/types'
+import type { ProviderConfig } from '@/api/types/providers'
+import type { SetupAgentSummary, SetupCompanyResponse } from '@/api/types/setup'
 
 const makeAgent = (overrides: Partial<SetupAgentSummary> = {}): SetupAgentSummary => ({
   name: 'Test Agent',

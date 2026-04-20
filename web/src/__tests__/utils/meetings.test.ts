@@ -13,7 +13,7 @@ import {
   totalTokensUsed,
   type MeetingPageFilters,
 } from '@/utils/meetings'
-import type { MeetingPhase, MeetingProtocolType, MeetingStatus } from '@/api/types'
+import type { MeetingPhase, MeetingProtocolType, MeetingStatus } from '@/api/types/meetings'
 import { makeMeeting } from '@/__tests__/helpers/factories'
 
 // -- Meeting status color mapping -------------------------------------------

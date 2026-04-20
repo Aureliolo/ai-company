@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useParams, Link } from 'react-router'
 import { AlertTriangle, ArrowLeft, Settings, WifiOff } from 'lucide-react'
-import type { SettingNamespace } from '@/api/types'
+import type { SettingNamespace } from '@/api/types/settings'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'

@@ -5,7 +5,9 @@ import {
   describeEvent,
   wsEventToActivityItem,
 } from '@/utils/dashboard'
-import type { BudgetConfig, DepartmentHealth, OverviewMetrics, WsEvent } from '@/api/types'
+import type { DepartmentHealth, OverviewMetrics } from '@/api/types/analytics'
+import type { BudgetConfig } from '@/api/types/budget'
+import type { WsEvent } from '@/api/types/websocket'
 
 function makeOverview(overrides: Partial<OverviewMetrics> = {}): OverviewMetrics {
   return {

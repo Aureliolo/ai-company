@@ -23,7 +23,7 @@ import { ApprovalRiskGroupSection } from './approvals/ApprovalRiskGroupSection'
 import { ApprovalDetailDrawer } from './approvals/ApprovalDetailDrawer'
 import { BatchActionBar } from './approvals/BatchActionBar'
 import { ApprovalsSkeleton } from './approvals/ApprovalsSkeleton'
-import type { ApprovalRiskLevel } from '@/api/types'
+import type { ApprovalRiskLevel } from '@/api/types/enums'
 
 const VALID_STATUSES: ReadonlySet<string> = new Set(['pending', 'approved', 'rejected', 'expired'])
 const VALID_RISK_LEVELS: ReadonlySet<string> = new Set(['critical', 'high', 'medium', 'low'])

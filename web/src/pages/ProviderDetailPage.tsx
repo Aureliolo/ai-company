@@ -15,7 +15,7 @@ import { TestConnectionResult } from './providers/TestConnectionResult'
 import { ModelPullDialog } from './providers/ModelPullDialog'
 import { ModelConfigDrawer } from './providers/ModelConfigDrawer'
 import { Server } from 'lucide-react'
-import type { ProviderModelResponse } from '@/api/types'
+import type { ProviderModelResponse } from '@/api/types/providers'
 
 export default function ProviderDetailPage() {
   const { providerName } = useParams<{ providerName: string }>()

@@ -1,4 +1,4 @@
-import type { SettingEntry } from '@/api/types'
+import type { SettingEntry } from '@/api/types/settings'
 import {
   entriesToObject,
   serializeEntries,

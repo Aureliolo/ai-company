@@ -2,7 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import type { UseBudgetDataReturn } from '@/hooks/useBudgetData'
-import type { OverviewMetrics, BudgetConfig, ForecastResponse, TrendDataPoint } from '@/api/types'
+import type { ForecastResponse, OverviewMetrics, TrendDataPoint } from '@/api/types/analytics'
+import type { BudgetConfig } from '@/api/types/budget'
 
 // ── Mock data ──────────────────────────────────────────────
 

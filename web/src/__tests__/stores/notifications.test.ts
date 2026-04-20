@@ -1,5 +1,5 @@
 import { useNotificationsStore, cancelPendingPersist } from '@/stores/notifications'
-import type { WsEvent } from '@/api/types'
+import type { WsEvent } from '@/api/types/websocket'
 
 /**
  * Focused unit tests for the module-level `cancelPendingPersist` helper.

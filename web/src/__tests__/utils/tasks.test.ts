@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import type { Priority, Task, TaskStatus } from '@/api/types'
+import type { Priority, TaskStatus } from '@/api/types/enums'
+import type { Task } from '@/api/types/tasks'
 import {
   KANBAN_COLUMNS,
   OFF_BOARD_STATUSES,

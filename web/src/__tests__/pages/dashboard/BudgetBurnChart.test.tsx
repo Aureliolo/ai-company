@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import { BudgetBurnChart } from '@/pages/dashboard/BudgetBurnChart'
-import type { ForecastResponse, TrendDataPoint } from '@/api/types'
+import type { ForecastResponse, TrendDataPoint } from '@/api/types/analytics'
 
 const SAMPLE_TREND: TrendDataPoint[] = [
   { timestamp: '2026-03-20', value: 5 },

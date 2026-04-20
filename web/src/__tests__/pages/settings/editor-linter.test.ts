@@ -1,5 +1,5 @@
 import { buildSchemaInfo, validateSchema } from '@/pages/settings/editor-linter'
-import type { SettingEntry } from '@/api/types'
+import type { SettingEntry } from '@/api/types/settings'
 
 function makeEntry(
   namespace: string,

@@ -3,7 +3,7 @@ import { useSetupWizardStore } from '@/stores/setup-wizard'
 import { apiError, apiSuccess } from '@/mocks/handlers'
 import { server } from '@/test-setup'
 import { CURRENCY_OPTIONS, DEFAULT_CURRENCY } from '@/utils/currencies'
-import type { SeniorityLevel } from '@/api/types'
+import type { SeniorityLevel } from '@/api/types/enums'
 
 const _NON_DEFAULT = CURRENCY_OPTIONS.find((c) => c.value !== DEFAULT_CURRENCY)
 if (!_NON_DEFAULT) {

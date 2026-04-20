@@ -1,5 +1,5 @@
 import { http, HttpResponse } from 'msw'
-import type { SinkInfo, TestSinkResult } from '@/api/types'
+import type { SinkInfo, TestSinkResult } from '@/api/types/settings'
 import { useSinksStore } from '@/stores/sinks'
 import { apiError, apiSuccess } from '@/mocks/handlers'
 import { server } from '@/test-setup'

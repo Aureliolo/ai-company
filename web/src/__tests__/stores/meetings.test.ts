@@ -5,7 +5,8 @@ import { makeMeeting } from '../helpers/factories'
 import { apiError, apiSuccess, paginatedFor } from '@/mocks/handlers'
 import type { listMeetings } from '@/api/endpoints/meetings'
 import { server } from '@/test-setup'
-import type { MeetingResponse, WsEvent } from '@/api/types'
+import type { MeetingResponse } from '@/api/types/meetings'
+import type { WsEvent } from '@/api/types/websocket'
 
 function paginated(
   data: MeetingResponse[],

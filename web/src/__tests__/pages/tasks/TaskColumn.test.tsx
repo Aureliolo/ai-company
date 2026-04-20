@@ -3,7 +3,7 @@ import { DndContext } from '@dnd-kit/core'
 import { TaskColumn } from '@/pages/tasks/TaskColumn'
 import { KANBAN_COLUMNS, type KanbanColumn } from '@/utils/tasks'
 import { makeTask } from '../../helpers/factories'
-import type { Task } from '@/api/types'
+import type { Task } from '@/api/types/tasks'
 
 const inProgressColumn: KanbanColumn = KANBAN_COLUMNS.find((c) => c.id === 'in_progress')!
 if (!inProgressColumn) throw new Error('Missing in_progress column in KANBAN_COLUMNS')

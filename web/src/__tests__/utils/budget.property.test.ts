@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import fc from 'fast-check'
-import type { BudgetAlertConfig, CostRecord } from '@/api/types'
+import type { BudgetAlertConfig, CostRecord } from '@/api/types/budget'
 import {
   computeAgentSpending,
   computeCategoryBreakdown,

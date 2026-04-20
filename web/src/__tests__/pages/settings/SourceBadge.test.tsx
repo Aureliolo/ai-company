@@ -1,5 +1,5 @@
 import { render, screen } from '@testing-library/react'
-import type { SettingSource } from '@/api/types'
+import type { SettingSource } from '@/api/types/settings'
 import { SourceBadge } from '@/pages/settings/SourceBadge'
 
 describe('SourceBadge', () => {

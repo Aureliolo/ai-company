@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import { AgentsTab, type AgentsTabProps } from '@/pages/org-edit/AgentsTab'
-import type { CompanyConfig } from '@/api/types'
+import type { CompanyConfig } from '@/api/types/org'
 import { makeAgent, makeDepartment } from '../../helpers/factories'
 
 const noopAsync = vi.fn().mockResolvedValue(undefined)

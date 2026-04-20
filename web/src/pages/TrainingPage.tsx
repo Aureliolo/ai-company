@@ -8,7 +8,7 @@ import { SkeletonTable } from '@/components/ui/skeleton'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { createLogger } from '@/lib/logger'
 import { useTrainingStore } from '@/stores/training'
-import type { AgentConfig } from '@/api/types'
+import type { AgentConfig } from '@/api/types/agents'
 import { getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 import {

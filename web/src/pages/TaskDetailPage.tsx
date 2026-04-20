@@ -17,7 +17,8 @@ import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { formatDate, formatCurrency } from '@/utils/format'
 import { getErrorMessage } from '@/utils/errors'
 import { ROUTES } from '@/router/routes'
-import type { Priority, TaskStatus, WsEvent } from '@/api/types'
+import type { Priority, TaskStatus } from '@/api/types/enums'
+import type { WsEvent } from '@/api/types/websocket'
 
 const PRIORITIES: Priority[] = ['critical', 'high', 'medium', 'low']
 

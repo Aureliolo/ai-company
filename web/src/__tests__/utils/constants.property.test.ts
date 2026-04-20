@@ -1,5 +1,5 @@
 import fc from 'fast-check'
-import type { TaskStatus } from '@/api/types'
+import type { TaskStatus } from '@/api/types/enums'
 import { TASK_STATUS_ORDER, VALID_TRANSITIONS, TERMINAL_STATUSES } from '@/utils/constants'
 
 describe('constants property tests', () => {
