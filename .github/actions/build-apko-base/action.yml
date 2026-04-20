@@ -174,12 +174,12 @@ runs:
       uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
 
     - name: Back off before cosign retry 2
-      if: github.event_name != 'pull_request' && steps.cosign_1.outcome == 'failure' && steps.cosign_2.outcome == 'failure'
+      if: github.event_name != 'pull_request' && steps.cosign_2.outcome == 'failure'
       shell: bash
       run: sleep 30
 
     - name: Install cosign (final attempt)
-      if: github.event_name != 'pull_request' && steps.cosign_1.outcome == 'failure' && steps.cosign_2.outcome == 'failure'
+      if: github.event_name != 'pull_request' && steps.cosign_2.outcome == 'failure'
       uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
 
     - name: Sign image

@@ -34,7 +34,7 @@ jobs:
           cp docker/.env.example docker/.env
           echo "SYNTHORG_JWT_SECRET=$(python3 -c 'import secrets; print(secrets.token_urlsafe(48))')" >> docker/.env
           echo "SYNTHORG_SETTINGS_KEY=$(python3 -c 'import base64, os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())')" >> docker/.env
-          echo "POSTGRES_PASSWORD=$(python3 -c 'import secrets; print(secrets.token_urlsafe(24))')" >> docker/.env
+          echo "POSTGRES_PASSWORD=$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')" >> docker/.env
 
       # Build backend image locally (no push, no registry credentials)
       - name: Build backend image
