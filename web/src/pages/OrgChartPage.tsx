@@ -5,6 +5,7 @@ import {
   ReactFlow,
   ReactFlowProvider,
   useReactFlow,
+  type Edge,
   type Node,
 } from '@xyflow/react'
 import { AlertTriangle, GitBranch, Loader2 } from 'lucide-react'
@@ -62,6 +63,13 @@ interface ViewportState {
   x: number
   y: number
   zoom: number
+}
+
+/** Shared edge-data shape for the org chart. Narrower than xyflow's default
+ *  `Record<string, unknown>` so edge data merges stay type-safe. */
+interface OrgChartEdgeData extends Record<string, unknown> {
+  particlesVisible?: boolean
+  hovered?: boolean
 }
 
 function saveViewport(viewport: ViewportState) {
@@ -211,7 +219,7 @@ function OrgChartInner() {
     })
   }, [sourceNodes, dragOverDeptId, filter.highlightedNodeIds, toggleDeptCollapsed, viewMode])
 
-  const edgesWithParticles = useMemo(() => {
+  const edgesWithParticles = useMemo<Edge<OrgChartEdgeData>[]>(() => {
     return view.displayEdges.map((e) => {
       const particlesVisible =
         particleFlowMode === 'always'
@@ -219,7 +227,8 @@ function OrgChartInner() {
           : particleFlowMode === 'live'
             ? liveActiveEdgeIds.has(e.id)
             : false
-      return { ...e, data: { ...(e.data as object), particlesVisible } }
+      const existing = (e.data ?? {}) as OrgChartEdgeData
+      return { ...e, data: { ...existing, particlesVisible } }
     })
   }, [view.displayEdges, particleFlowMode, liveActiveEdgeIds])
 
