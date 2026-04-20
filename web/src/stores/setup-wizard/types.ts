@@ -1,0 +1,141 @@
+import type { StateCreator } from 'zustand'
+import type {
+  CreateFromPresetRequest,
+  CreateProviderRequest,
+  ProbePresetResponse,
+  ProviderConfig,
+  ProviderPreset,
+  TestConnectionResponse,
+} from '@/api/types/providers'
+import type {
+  PersonalityPresetInfo,
+  SetupAgentSummary,
+  SetupCompanyResponse,
+  TemplateInfoResponse,
+} from '@/api/types/setup'
+import type { CurrencyCode } from '@/utils/currencies'
+
+export type WizardStep =
+  | 'account'
+  | 'mode'
+  | 'template'
+  | 'company'
+  | 'providers'
+  | 'agents'
+  | 'theme'
+  | 'complete'
+
+export type WizardMode = 'guided' | 'quick'
+
+export type ThemeSettings = {
+  palette: 'warm-ops' | 'ice-station' | 'stealth' | 'signal' | 'neon'
+  density: 'dense' | 'balanced' | 'sparse'
+  animation: 'minimal' | 'status-driven' | 'spring' | 'instant'
+  sidebar: 'rail' | 'collapsible' | 'hidden' | 'compact'
+  typography: 'default'
+}
+
+export interface NavigationSlice {
+  currentStep: WizardStep
+  stepOrder: readonly WizardStep[]
+  stepsCompleted: Record<WizardStep, boolean>
+  direction: 'forward' | 'backward'
+  needsAdmin: boolean
+  accountCreated: boolean
+  wizardMode: WizardMode
+  setStep: (step: WizardStep) => void
+  markStepComplete: (step: WizardStep) => void
+  markStepIncomplete: (step: WizardStep) => void
+  canNavigateTo: (step: WizardStep) => boolean
+  setNeedsAdmin: (needsAdmin: boolean) => void
+  setAccountCreated: (created: boolean) => void
+  setWizardMode: (mode: WizardMode) => void
+}
+
+export interface TemplateSlice {
+  templates: TemplateInfoResponse[]
+  templatesLoading: boolean
+  templatesError: string | null
+  selectedTemplate: string | null
+  comparedTemplates: string[]
+  templateVariables: Record<string, string | number | boolean>
+  fetchTemplates: () => Promise<void>
+  selectTemplate: (name: string) => void
+  toggleCompare: (name: string) => boolean
+  clearComparison: () => void
+  setTemplateVariable: (key: string, value: string | number | boolean) => void
+}
+
+export interface CompanySlice {
+  companyName: string
+  companyDescription: string
+  currency: CurrencyCode
+  budgetCapEnabled: boolean
+  budgetCap: number | null
+  companyResponse: SetupCompanyResponse | null
+  companyLoading: boolean
+  companyError: string | null
+  setCompanyName: (name: string) => void
+  setCompanyDescription: (desc: string) => void
+  setCurrency: (currency: CurrencyCode) => void
+  setBudgetCapEnabled: (enabled: boolean) => void
+  setBudgetCap: (cap: number | null) => void
+  submitCompany: () => Promise<void>
+}
+
+export interface AgentsSlice {
+  agents: SetupAgentSummary[]
+  agentsLoading: boolean
+  agentsError: string | null
+  personalityPresets: PersonalityPresetInfo[]
+  personalityPresetsLoading: boolean
+  personalityPresetsError: string | null
+  fetchAgents: () => Promise<void>
+  updateAgentModel: (index: number, provider: string, modelId: string) => Promise<void>
+  updateAgentName: (index: number, name: string) => Promise<void>
+  randomizeAgentName: (index: number) => Promise<void>
+  updateAgentPersonality: (index: number, preset: string) => Promise<void>
+  fetchPersonalityPresets: () => Promise<void>
+}
+
+export interface ProvidersSlice {
+  providers: Record<string, ProviderConfig>
+  presets: ProviderPreset[]
+  presetsLoading: boolean
+  presetsError: string | null
+  probeResults: Record<string, ProbePresetResponse>
+  probing: boolean
+  providersLoading: boolean
+  providersError: string | null
+  fetchProviders: () => Promise<void>
+  fetchPresets: () => Promise<void>
+  createProviderFromPreset: (presetName: string, name: string, apiKey?: string, baseUrl?: string) => Promise<void>
+  createProviderFromPresetFull: (data: CreateFromPresetRequest) => Promise<ProviderConfig | null>
+  createProviderCustom: (data: CreateProviderRequest) => Promise<ProviderConfig | null>
+  testProviderConnection: (name: string) => Promise<TestConnectionResponse>
+  probeAllPresets: () => Promise<void>
+  reprobePresets: () => Promise<void>
+}
+
+export interface ThemeSlice {
+  themeSettings: ThemeSettings
+  setThemeSetting: <K extends keyof ThemeSettings>(key: K, value: ThemeSettings[K]) => void
+}
+
+export interface CompletionSlice {
+  completing: boolean
+  completionError: string | null
+  completeSetup: () => Promise<void>
+  reset: () => void
+}
+
+export type SetupWizardState =
+  & NavigationSlice
+  & TemplateSlice
+  & CompanySlice
+  & AgentsSlice
+  & ProvidersSlice
+  & ThemeSlice
+  & CompletionSlice
+
+export type SliceCreator<T> = StateCreator<SetupWizardState, [], [], T>
