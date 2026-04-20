@@ -130,10 +130,21 @@ class AuctionAssignmentStrategy:
         request: AssignmentRequest,
         bids: list[tuple[AssignmentCandidate, float]],
     ) -> AssignmentResult:
-        """Pick the highest-bidding candidate and build the result."""
+        """Pick the highest-bidding candidate and build the result.
+
+        ``alternatives`` are returned score-ranked (not bid-ranked) so
+        the shared ``AssignmentResult`` contract stays consistent for
+        callers that treat it as a generic fallback list.
+        """
         bids.sort(key=lambda x: (x[1], x[0].score), reverse=True)
         selected = bids[0][0]
-        alternatives = tuple(b[0] for b in bids[1:])
+        alternatives = tuple(
+            sorted(
+                (b[0] for b in bids[1:]),
+                key=lambda c: c.score,
+                reverse=True,
+            ),
+        )
         logger.debug(
             TASK_ASSIGNMENT_AUCTION_WON,
             task_id=request.task.id,

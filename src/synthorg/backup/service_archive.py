@@ -12,12 +12,17 @@ import tarfile
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from synthorg.backup.errors import BackupNotFoundError, ManifestError
+from synthorg.backup.errors import (
+    BackupInProgressError,
+    BackupNotFoundError,
+    ManifestError,
+)
 from synthorg.backup.models import BackupInfo, BackupManifest
 from synthorg.observability import get_logger
 from synthorg.observability.events.backup import (
     BACKUP_DELETED,
     BACKUP_FAILED,
+    BACKUP_IN_PROGRESS,
     BACKUP_LISTED,
     BACKUP_MANIFEST_INVALID,
     BACKUP_NOT_FOUND,
@@ -36,6 +41,7 @@ class BackupServiceArchiveMixin:
     """Mixin providing archive/manifest/listing helpers."""
 
     _backup_path: Path
+    _backup_lock: asyncio.Lock
     _config: BackupConfig
 
     async def list_backups(self) -> tuple[BackupInfo, ...]:
@@ -137,11 +143,22 @@ class BackupServiceArchiveMixin:
         return await self._load_manifest(backup_id)
 
     async def delete_backup(self, backup_id: str) -> None:
-        """Delete a backup by ID."""
+        """Delete a backup by ID.
+
+        Serialized via ``_backup_lock`` so a concurrent create/restore
+        cannot observe a half-deleted directory or archive.
+        """
         from synthorg.backup.service import _validate_backup_id  # noqa: PLC0415
 
         _validate_backup_id(backup_id)
-        deleted = await asyncio.to_thread(self._try_delete_backup, backup_id)
+
+        if self._backup_lock.locked():
+            logger.warning(BACKUP_IN_PROGRESS, backup_id=backup_id)
+            msg = "A backup or restore is already in progress"
+            raise BackupInProgressError(msg)
+
+        async with self._backup_lock:
+            deleted = await asyncio.to_thread(self._try_delete_backup, backup_id)
 
         if not deleted:
             logger.warning(BACKUP_NOT_FOUND, backup_id=backup_id)

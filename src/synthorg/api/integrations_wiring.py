@@ -159,6 +159,8 @@ def _wire_rate_limit_coordinator_factory(
                 and conn.rate_limiter.max_requests_per_minute > 0
             ):
                 max_rpm = conn.rate_limiter.max_requests_per_minute
+        except MemoryError, RecursionError:
+            raise
         except Exception:
             logger.warning(
                 API_SERVICE_AUTO_WIRED,

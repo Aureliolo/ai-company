@@ -109,15 +109,13 @@ class ContextDependentDispatcher:
         or ``None`` if setup failed.
         """
         needs_isolation = (
-            len(group.assignments) > 1
-            and workspace_service is not None
-            and config.enable_workspace_isolation
+            len(group.assignments) > 1 and config.enable_workspace_isolation
         )
 
         if not needs_isolation:
             return (), group
 
-        if workspace_service is None:  # pragma: no cover
+        if workspace_service is None:
             msg = "workspace_service required when isolation is enabled"
             raise CoordinationError(msg)
 

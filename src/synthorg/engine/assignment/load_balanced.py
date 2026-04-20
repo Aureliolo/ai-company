@@ -118,7 +118,12 @@ class LoadBalancedAssignmentStrategy:
     ) -> AssignmentResult:
         """Build the final ``AssignmentResult`` from ranked candidates."""
         selected = ranked[0]
-        alternatives = tuple(ranked[1:])
+        # Alternatives are score-ranked (not workload-ranked) so the
+        # shared ``AssignmentResult`` contract stays consistent for
+        # callers that treat them as a generic fallback list.
+        alternatives = tuple(
+            sorted(ranked[1:], key=lambda c: c.score, reverse=True),
+        )
         reason = (
             f"Least loaded: {selected.agent_identity.name!r} "
             f"(score={selected.score:.2f})"

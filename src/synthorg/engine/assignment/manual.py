@@ -49,23 +49,17 @@ class ManualAssignmentStrategy:
     ) -> AgentIdentity:
         """Find and validate the designated agent in the pool.
 
-        Args:
-            request: The assignment request.
-
-        Returns:
-            The validated, ACTIVE designated agent.
+        ``task.assigned_to`` may carry either the agent's UUID
+        (API path) or declarative ``name`` (workflow path); both
+        forms are accepted.
 
         Raises:
             TaskAssignmentError: If ``task.assigned_to`` is None.
-            NoEligibleAgentError: If the designated agent is not in
-                the pool or is not ACTIVE.
+            NoEligibleAgentError: If not in the pool or not ACTIVE.
         """
         task = request.task
         if task.assigned_to is None:
-            msg = (
-                f"Manual assignment requires task.assigned_to to be set "
-                f"for task {task.id!r}"
-            )
+            msg = f"Manual assignment requires task.assigned_to (task {task.id!r})"
             logger.warning(
                 TASK_ASSIGNMENT_FAILED,
                 task_id=task.id,
@@ -74,26 +68,16 @@ class ManualAssignmentStrategy:
             )
             raise TaskAssignmentError(msg)
 
-        # Accept either the agent's UUID (API-authored tasks) or the agent's
-        # ``name`` (workflow AGENT_ASSIGNMENT nodes store the declarative
-        # name rather than the opaque UUID). UUID matching is preferred when
-        # present; name matching is the fallback for workflow-sourced tasks.
-        agent: AgentIdentity | None = None
-        for available in request.available_agents:
-            if str(available.id) == task.assigned_to:
-                agent = available
-                break
+        agent = next(
+            (
+                a
+                for a in request.available_agents
+                if str(a.id) == task.assigned_to or a.name == task.assigned_to
+            ),
+            None,
+        )
         if agent is None:
-            for available in request.available_agents:
-                if available.name == task.assigned_to:
-                    agent = available
-                    break
-
-        if agent is None:
-            msg = (
-                f"Designated agent {task.assigned_to!r} not found "
-                f"in available agents for task {task.id!r}"
-            )
+            msg = f"Designated agent {task.assigned_to!r} not found (task {task.id!r})"
             logger.warning(
                 TASK_ASSIGNMENT_FAILED,
                 task_id=task.id,
@@ -105,9 +89,8 @@ class ManualAssignmentStrategy:
 
         if agent.status != AgentStatus.ACTIVE:
             msg = (
-                f"Designated agent {agent.name!r} has status "
-                f"{agent.status.value!r}, expected 'active' "
-                f"for task {task.id!r}"
+                f"Designated agent {agent.name!r} is {agent.status.value!r}, "
+                f"expected 'active' (task {task.id!r})"
             )
             logger.warning(
                 TASK_ASSIGNMENT_FAILED,

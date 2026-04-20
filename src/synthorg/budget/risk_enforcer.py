@@ -114,6 +114,7 @@ class BudgetEnforcerRiskMixin:
                 RISK_BUDGET_ENFORCEMENT_CHECK,
                 agent_id=agent_id,
                 task_id=task_id,
+                action_type=action_type,
                 reason="risk_check_error",
             )
 

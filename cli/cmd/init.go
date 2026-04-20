@@ -132,6 +132,11 @@ func runInitInteractive(cmd *cobra.Command, out *ui.UI) error {
 			if err := preservePostgresFromOldState(cmd, &state, oldState); err != nil {
 				return fmt.Errorf("preserving postgres settings: %w", err)
 			}
+		} else if state.PersistenceBackend == "postgres" && oldState.PostgresPassword != "" {
+			// When the user changed only the Postgres port (not the backend),
+			// keep the existing password so the running container can still
+			// authenticate against persisted data.
+			state.PostgresPassword = oldState.PostgresPassword
 		}
 	}
 

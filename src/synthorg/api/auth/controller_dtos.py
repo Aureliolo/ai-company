@@ -38,7 +38,7 @@ class SetupRequest(BaseModel):
 
     Attributes:
         username: Admin login username.
-        password: Admin password (min 12 chars).
+        password: Admin password (minimum configured length).
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -72,7 +72,7 @@ class ChangePasswordRequest(BaseModel):
 
     Attributes:
         current_password: Current password for verification.
-        new_password: New password (min 12 chars).
+        new_password: New password (minimum configured length).
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)

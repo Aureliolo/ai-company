@@ -338,7 +338,23 @@ async def assemble_department_health(
         )
         return _build_degraded_health(dept_name, agent_count, now, currency=currency)
 
-    snapshots = await _resolve_snapshots(app_state, t_ids.result())
+    try:
+        snapshots = await _resolve_snapshots(app_state, t_ids.result())
+    except ExceptionGroup as eg:
+        fatal = eg.subgroup((MemoryError, RecursionError))
+        if fatal is not None:
+            raise fatal from eg
+        # Performance snapshots are optional (``avg_performance_score``
+        # is nullable) -- log and fall back to an empty tuple so callers
+        # still get costs + active-agent counts.
+        logger.warning(
+            API_REQUEST_ERROR,
+            endpoint="departments.health.snapshots",
+            department=dept_name,
+            error_count=len(eg.exceptions),
+            exc_info=True,
+        )
+        snapshots = ()
 
     return _build_health_from_data(
         dept_name=dept_name,

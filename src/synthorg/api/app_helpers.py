@@ -110,7 +110,12 @@ def _postgres_config_from_url(db_url: str) -> PostgresConfig:
     backend talks to Postgres over an internal network without TLS,
     callers can override via ``SYNTHORG_POSTGRES_SSL_MODE`` env var.
     """
-    parsed = urlparse(db_url)
+    try:
+        parsed = urlparse(db_url)
+    except ValueError as exc:
+        msg = f"SYNTHORG_DATABASE_URL could not be parsed: {exc}"
+        logger.warning(API_APP_STARTUP, error=msg, reason="url_parse_failed")
+        raise ValueError(msg) from exc
     if parsed.scheme not in {"postgres", "postgresql"}:
         msg = (
             f"SYNTHORG_DATABASE_URL scheme {parsed.scheme!r} is not "
@@ -118,7 +123,17 @@ def _postgres_config_from_url(db_url: str) -> PostgresConfig:
         )
         logger.warning(API_APP_STARTUP, error=msg, reason="invalid_scheme")
         raise ValueError(msg)
-    if not parsed.hostname:
+    try:
+        hostname = parsed.hostname
+        parsed_port = parsed.port
+    except ValueError as exc:
+        # urlparse defers port validation to the ``.port`` property, which
+        # raises ``ValueError`` for non-numeric ports or malformed
+        # bracketed IPv6 literals. Surface that as a configuration error.
+        msg = f"SYNTHORG_DATABASE_URL has an invalid host/port: {exc}"
+        logger.warning(API_APP_STARTUP, error=msg, reason="invalid_host_port")
+        raise ValueError(msg) from exc
+    if not hostname:
         msg = "SYNTHORG_DATABASE_URL is missing a host component"
         logger.warning(API_APP_STARTUP, error=msg, reason="missing_host")
         raise ValueError(msg)
@@ -152,8 +167,8 @@ def _postgres_config_from_url(db_url: str) -> PostgresConfig:
         ssl_kwargs["ssl_mode"] = ssl_override
 
     return PostgresConfig(
-        host=unquote(parsed.hostname),
-        port=parsed.port or 5432,
+        host=unquote(hostname),
+        port=parsed_port or 5432,
         database=unquote(database),
         username=unquote(parsed.username),
         password=SecretStr(unquote(parsed.password)),
