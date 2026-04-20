@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import {
   Background,
   MiniMap,
@@ -16,6 +16,7 @@ import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { LiveRegion } from '@/components/ui/live-region'
 import { useOrgChartPrefs } from '@/stores/org-chart-prefs'
 import { useLiveEdgeActivity } from '@/hooks/useLiveEdgeActivity'
 import { AgentNode } from './org/AgentNode'
@@ -104,10 +105,10 @@ function OrgChartInner() {
     })
   }, [])
 
-  const announceRef = useRef<HTMLDivElement>(null)
-  const announce = useCallback((msg: string) => {
-    if (announceRef.current) announceRef.current.textContent = msg
-  }, [])
+  // Drag/drop and reassignment hooks push messages through `setAnnouncement`
+  // so screen readers hear lifecycle changes. The shared `<LiveRegion>`
+  // component (rendered below) debounces and announces the latest value.
+  const [announcement, setAnnouncement] = useState('')
 
   const { fitView, zoomIn, zoomOut } = useReactFlow()
   const navigate = useNavigate()
@@ -115,10 +116,9 @@ function OrgChartInner() {
   const particleFlowMode = useOrgChartPrefs((s) => s.particleFlowMode)
   const showMinimap = useOrgChartPrefs((s) => s.showMinimap)
 
-  // View mode state needs to exist before we fetch data (the fetch uses it);
-  // view mode transitions need the fetched nodes/edges to animate between
-  // them. Call useOrgChartData with the viewMode owned by the view-mode
-  // hook, then re-pass the resolved arrays back into it via a second call.
+  // Page owns viewMode as the single source of truth: it is read by
+  // `useOrgChartData` before the fetch and re-read by `useOrgChartViewMode`
+  // to drive the transition animation.
   const [viewMode, setViewMode] = useState<'hierarchy' | 'force'>('hierarchy')
 
   const {
@@ -150,7 +150,7 @@ function OrgChartInner() {
   const sourceNodes = view.displayNodes.length > 0 ? view.displayNodes : nodes
 
   const { dragOverDeptId, handleNodeDragStart, handleNodeDrag, handleNodeDragStop } =
-    useOrgChartDragDrop({ viewMode, displayNodes: sourceNodes, announce })
+    useOrgChartDragDrop({ viewMode, displayNodes: sourceNodes, announce: setAnnouncement })
 
   const selection = useOrgChartSelection(sourceNodes)
   const filter = useOrgChartFilter(allNodes)
@@ -346,7 +346,7 @@ function OrgChartInner() {
 
         {filter.overlay}
 
-        <div ref={announceRef} className="sr-only" aria-live="assertive" />
+        <LiveRegion politeness="assertive" className="sr-only">{announcement}</LiveRegion>
 
         {selection.contextMenu && (
           <NodeContextMenu
