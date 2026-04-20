@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { ReactFlowProvider, type Node } from '@xyflow/react'
 import { Workflow } from 'lucide-react'
 import { useSearchParams } from 'react-router'
@@ -38,6 +38,10 @@ const nodeTypes = {
   parallel_join: ParallelJoinNode,
   subworkflow: SubworkflowNode,
 }
+
+const SUPPORTED_NODE_TYPES: ReadonlySet<WorkflowNodeType> = new Set(
+  Object.keys(nodeTypes) as WorkflowNodeType[],
+)
 
 const edgeTypes = {
   sequential: SequentialEdge,
@@ -82,7 +86,10 @@ interface SelectedNodeDetails {
 }
 
 /** Resolve the currently-selected node and its display props in one place,
- *  so the sidebar receives a validated shape rather than raw inline casts. */
+ *  so the sidebar receives a validated shape rather than raw inline casts.
+ *  `type` is validated against {@link SUPPORTED_NODE_TYPES}; unknown types
+ *  resolve to `null` so the sidebar never renders a config UI for a type
+ *  it cannot handle. */
 function getSelectedNodeDetails(
   nodes: readonly Node[],
   selectedNodeId: string | null,
@@ -93,13 +100,17 @@ function getSelectedNodeDetails(
   const data = (node.data ?? {}) as { label?: unknown; config?: unknown }
   const label = typeof data.label === 'string' ? data.label : 'Node'
   const config = (data.config && typeof data.config === 'object' ? data.config : {}) as Record<string, unknown>
-  const type = typeof node.type === 'string' ? (node.type as WorkflowNodeType) : null
+  const type =
+    typeof node.type === 'string' && SUPPORTED_NODE_TYPES.has(node.type as WorkflowNodeType)
+      ? (node.type as WorkflowNodeType)
+      : null
   return { node, type, label, config }
 }
 
 function WorkflowEditorInner() {
   const state = useWorkflowEditorState()
   const [editorMode, setEditorMode] = useState<'visual' | 'yaml'>('visual')
+  const createdInitialDraftRef = useRef(false)
   const [searchParams] = useSearchParams()
   const defId = searchParams.get('id')
 
@@ -122,9 +133,13 @@ function WorkflowEditorInner() {
   useEffect(() => {
     if (defId) {
       loadDefinition(defId)
-    } else {
-      createDefinition('New Workflow', 'sequential_pipeline')
+      return
     }
+    // React 19 Strict Mode replays mount effects -- without this guard we
+    // would POST two empty draft workflows on the first visit to the editor.
+    if (createdInitialDraftRef.current) return
+    createdInitialDraftRef.current = true
+    createDefinition('New Workflow', 'sequential_pipeline')
   }, [defId, loadDefinition, createDefinition])
 
   const selectedNodeDetails = getSelectedNodeDetails(state.nodes, state.selectedNodeId)

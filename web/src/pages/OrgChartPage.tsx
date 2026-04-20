@@ -51,6 +51,12 @@ const edgeTypes = { hierarchy: HierarchyEdge, communication: CommunicationEdge }
 const VIEWPORT_KEY = 'synthorg:orgchart:viewport'
 const COLLAPSED_DEPTS_KEY = 'synthorg:orgchart:collapsed-depts'
 
+// xyflow MiniMap props are typed as `number` and reject CSS vars --
+// numeric constants with a comment pointing to the corresponding design
+// token prevent theme drift (see web/CLAUDE.md Design Token Rules).
+const MINIMAP_STROKE_WIDTH = 1.5 // var(--so-stroke-thin)
+const MINIMAP_NODE_BORDER_RADIUS = 4 // var(--so-radius-sm)
+
 interface ViewportState {
   x: number
   y: number
@@ -68,7 +74,13 @@ function saveViewport(viewport: ViewportState) {
 function loadCollapsedDepts(): Set<string> {
   try {
     const stored = localStorage.getItem(COLLAPSED_DEPTS_KEY)
-    if (stored) return new Set<string>(JSON.parse(stored))
+    if (!stored) return new Set()
+    const parsed: unknown = JSON.parse(stored)
+    if (!Array.isArray(parsed) || !parsed.every((entry): entry is string => typeof entry === 'string')) {
+      log.warn('Discarding malformed collapsed-depts storage payload', { type: typeof parsed })
+      return new Set()
+    }
+    return new Set<string>(parsed)
   } catch (err) {
     log.warn('Failed to load collapsed depts from localStorage:', err)
   }
@@ -305,7 +317,7 @@ function OrgChartInner() {
               bgColor="var(--so-minimap-bg)"
               maskColor="var(--so-minimap-mask)"
               maskStrokeColor="var(--so-minimap-stroke)"
-              maskStrokeWidth={1.5}
+              maskStrokeWidth={MINIMAP_STROKE_WIDTH}
               style={{
                 width: 260,
                 height: 200,
@@ -321,8 +333,8 @@ function OrgChartInner() {
                 return 'var(--so-minimap-node-agent)'
               }}
               nodeStrokeColor={(n: Node) => (n.type === 'department' ? 'var(--so-minimap-stroke)' : 'transparent')}
-              nodeStrokeWidth={1.5}
-              nodeBorderRadius={4}
+              nodeStrokeWidth={MINIMAP_STROKE_WIDTH}
+              nodeBorderRadius={MINIMAP_NODE_BORDER_RADIUS}
             />
           )}
         </ReactFlow>

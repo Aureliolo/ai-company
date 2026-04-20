@@ -209,5 +209,35 @@ describe('workflow-editor composed store', () => {
       expect(state.undoStack).toEqual([])
       expect(state.redoStack).toEqual([])
     })
+
+    it('reset also clears versions-slice state', () => {
+      const diffResult: WorkflowDiff = {
+        definition_id: 'test-def',
+        from_version: 1,
+        to_version: 2,
+        node_changes: [],
+        edge_changes: [],
+        metadata_changes: [],
+        summary: 'reset coverage',
+      }
+      useWorkflowEditorStore.setState({
+        versionHistoryOpen: true,
+        diffResult,
+        diffLoading: true,
+        versionsHasMore: true,
+      })
+      expect(useWorkflowEditorStore.getState().versionHistoryOpen).toBe(true)
+      expect(useWorkflowEditorStore.getState().diffResult).not.toBeNull()
+
+      useWorkflowEditorStore.getState().reset()
+
+      const state = useWorkflowEditorStore.getState()
+      expect(state.versionHistoryOpen).toBe(false)
+      expect(state.diffResult).toBeNull()
+      expect(state.diffLoading).toBe(false)
+      expect(state.versions).toEqual([])
+      expect(state.versionsLoading).toBe(false)
+      expect(state.versionsHasMore).toBe(false)
+    })
   })
 })
