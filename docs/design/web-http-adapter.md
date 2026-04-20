@@ -2,23 +2,30 @@
 
 > **Spec topic**: web dashboard HTTP layer.
 >
-> **Status**: 2026-04-19. Closes #1467 (evaluated, no change). Feeds the
-> ratchet-down plan tracked by #1466 and the follow-up "reach 0 leaks"
-> issue filed alongside this PR.
+> **Status**: 2026-04-20. Closes #1467 (evaluated, no change). For #1466
+> the CI gate + anchored parser + ratchet-down approach ship; the
+> zero-leak target from that issue's acceptance criteria is structurally
+> unreachable without replacing MSW's matching layer and is explicitly
+> re-scoped into #1468, which remains open as a research candidate.
 >
 > **Decision (TL;DR)**: keep `axios` (XHR adapter) in production and in
-> tests. Accept a **structural floor of 50 async leaks** locally and a
-> CI ceiling of 70 (CI measures ~64 on ubuntu-latest due to platform
-> event-loop timing; the +6 buffer absorbs run-to-run variance). The
-> remaining 50 local leaks are inside MSW 2.x's own interceptor stack
-> and cannot be eliminated without replacing MSW itself, which would
-> regress PR #1462's Storybook + typed-handler ergonomics that just
-> landed. This PR's other load-bearing change is the CI parser itself:
-> the prior `grep -oE 'Leaks +[0-9]+ leaks'` never matched Vitest's
-> ANSI-colored output, so the gate always reported 0 leaks via the
-> `|| echo 0` fallback. The new parser runs Vitest under `NO_COLOR=1`,
-> anchors the match to the full line, and fails closed if the summary
-> line is absent.
+> tests. Accept a **structural floor of 49 async leaks** locally and a
+> CI ceiling of 66 (CI measures ~63 on ubuntu-latest after M4; the +3
+> buffer absorbs run-to-run variance). The remaining 49 local leaks are
+> inside MSW 2.x's own interceptor stack and cannot be eliminated without
+> replacing MSW itself, which would regress PR #1462's Storybook + typed-
+> handler ergonomics that just landed. The 2026-04-20 round of research
+> (#1466 ∪ #1468) measured three additional approaches -- M1 (sync
+> `queueMicrotask`) went to 114 and was reverted; M4 (`synchronous: true`
+> on the request interceptor) shaved 1 leak and shipped; Option C (custom
+> `axios.defaults.adapter` that dispatches via `handler.run()`) added new
+> leaks inside MSW's handler pipeline and was reverted. See approaches #6,
+> #7, #8 in the evaluation matrix below. This PR's other load-bearing
+> change is the CI parser itself: the prior `grep -oE 'Leaks +[0-9]+ leaks'`
+> never matched Vitest's ANSI-colored output, so the gate always reported 0
+> leaks via the `|| echo 0` fallback. The new parser runs Vitest under
+> `NO_COLOR=1`, anchors the match to the full line, and fails closed if the
+> summary line is absent.
 
 ## Why this document exists
 
@@ -65,14 +72,17 @@ are directly comparable.
 | 3 | A1 + A5 -- microtask/`setImmediate` drain in `afterEach` | 50 | 2592 / 2592 | 0 delta. Leaks survive `Promise.resolve(setImmediate)` collection. |
 | 4 | Phase B -- replace jsdom with happy-dom (`vitest.config.ts` `environment: 'happy-dom'` + `npm install happy-dom`) | 67 | 2582 / 2592 (10 fail) | **Worse.** happy-dom introduces a new leak category via `FetchBodyUtility.toReadableStream` and does not remove MSW's XHR-interceptor path. |
 | 5 | Phase C -- `apiClient.defaults.adapter = 'fetch'` + `apiClient.defaults.baseURL = 'http://localhost:3000/api/v1'` in `test-setup.tsx` | 146 | 2577 / 2592 (15 fail) | **Much worse.** MSW's fetch interceptor (`InterceptorHttpNetworkFrame.resolve`, `Object.respondWith`, `HttpHandler.cloneRequestOrGetFromCache`, `CookieStore.getCookies` via tough-cookie) generates more Promise chains than its XHR interceptor. |
+| 6 | M1 (2026-04-20) -- replace `globalThis.queueMicrotask` with a sync wrapper so MSW's XHR interceptor dispatch runs in-line | 114 | 2592 / 2592 | **Much worse.** Reverted. Confirms approaches #2/#3's finding that timing of microtask settle-point does not affect what `async_hooks` tracks -- running it synchronously just creates more Promise identity shifts for the tracker to flag. |
+| 7 | M4 (2026-04-20) -- `apiClient.interceptors.request.use(..., { synchronous: true })` so `Axios.prototype._request` skips the `.then(chain[i++], ...)` loop at `Axios.js:196` | **49** | 2592 / 2592 | **Shipped.** Eliminates the 15 "Axios._request :196" top-frame leaks at the cost of shifting 14 of them to MSW's XHR interceptor (net -1). Cheap production change -- the CSRF interceptor was already synchronous, we just annotated it. |
+| 8 | Option C (2026-04-20) -- custom `axios.defaults.adapter` in `test-setup.tsx` that dispatches directly to MSW's `handler.run({ request, requestId })` and bypasses `@mswjs/interceptors` + jsdom's XMLHttpRequest entirely (kept `setupServer` for `fetch()` paths) | 76 | 2592 / 2592 | **Reverted.** Did eliminate the 32 MSW XHR interceptor leaks (beta bucket), but `handler.run` itself reads cookies via `getAllRequestCookies` per call -- the tough-cookie `createPromiseCallback` leak (alpha residual) scales linearly with the number of handlers tried per request, and MSW's internal `HttpHandler.cloneRequestOrGetFromCache` + `ClientRequest` interceptor (still installed by `setupServer`) added another ~23 leaks of their own. Method + path-prefix pre-filtering of the handler list brought only ~3 leaks back. Net: structural Promise allocation inside MSW's handler pipeline is not reachable from user-space without replacing MSW's matching layer wholesale. |
 
-Only approach #1 improved over the baseline. Approaches #4 and #5
-made things strictly worse. Approaches #2 and #3 had no effect.
+Only approaches `#1` and `#7` improved over the baseline. Approaches `#4`, `#5`, `#6`, and `#8` made things strictly worse or failed to improve. Approaches `#2` and `#3` had no effect. Current floor: **49 local leaks** (A1 + M4).
 
 ## Why none of the other paths work
 
-The remaining 50 leaks after A1 fall into three categories (counts
-from the post-A1 measurement):
+The remaining 49 leaks after A1 + M4 fall into three categories (counts
+from the post-M4 measurement on 2026-04-20; the pre-M4 split was 32 beta +
+17 gamma + 1 alpha, post-M4 is 32 beta + 16 gamma + 1 alpha):
 
 1. **alpha-residual (1 leak)**: MSW 2.x's own
    `CookieStore.getCookies` (`node_modules/msw/lib/core/utils/cookieStore.mjs`)
@@ -155,15 +165,23 @@ best-in-class choice for this stack as of 2026-04-19.
    `Expires=`) remove the entry so `utils/app-version.ts::
    clearClientVisibleCookies` behaves like the browser, and prototype
    keys (`__proto__`, `constructor`) are rejected as defense-in-depth.
-2. `.github/workflows/ci.yml` -- `MAX_ASYNC_LEAKS` ceiling set to 70
-   (CI baseline ~64 with a small buffer; the legacy parser silently
-   reported 0 because `grep -oE 'Leaks +[0-9]+ leaks'` never matched
-   ANSI-colored output); strict anchored parser fails the job if
-   Vitest's `Leaks N leaks` summary line is missing or malformed,
-   `NO_COLOR=1` is set so the line is plain ASCII.
-3. `docs/design/web-http-adapter.md` (this file).
-4. Follow-up issue #1468 -- "replace MSW 2.x to eliminate the
-   remaining 50 Vitest async leaks". Scope, acceptance criteria, and
+2. `.github/workflows/ci.yml` -- `MAX_ASYNC_LEAKS` ceiling set to 66
+   (post-M4 CI baseline ~63 with a 3-leak variance buffer; the legacy
+   parser silently reported 0 because `grep -oE 'Leaks +[0-9]+ leaks'`
+   never matched ANSI-colored output); strict anchored parser fails the
+   job if Vitest's `Leaks N leaks` summary line is missing or malformed,
+   `NO_COLOR=1` is set so the line is plain ASCII. The ceiling was 70
+   before the 2026-04-20 ratchet.
+3. `web/src/api/client.ts` -- M4: pass `{ synchronous: true }` as the
+   third argument to `apiClient.interceptors.request.use(...)` so axios
+   skips the `.then(chain[i++], ...)` loop at
+   `node_modules/axios/lib/core/Axios.js:196`. Removes 15 of the baseline
+   "Axios._request :196" top-frame leaks; 14 re-attribute to MSW's XHR
+   interceptor, net -1 (50 -> 49 local). See approach #7 in the
+   evaluation matrix.
+4. `docs/design/web-http-adapter.md` (this file).
+5. Follow-up issue #1468 -- "replace MSW 2.x to eliminate the
+   remaining 49 Vitest async leaks". Scope, acceptance criteria, and
    candidate replacement layers (nock, direct axios-adapter mocks,
    happy-dom's built-in interceptor) documented there.
 

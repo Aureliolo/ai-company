@@ -107,16 +107,32 @@ async function sleep(ms: number): Promise<void> {
 // This eliminates the XSS token-theft attack surface that existed with
 // sessionStorage-based JWT management.
 
-apiClient.interceptors.request.use((config) => {
-  const method = (config.method ?? '').toLowerCase()
-  if (CSRF_METHODS.has(method)) {
-    const csrfToken = getCsrfToken()
-    if (csrfToken) {
-      config.headers['X-CSRF-Token'] = csrfToken
+// `synchronous: true` tells axios this request interceptor runs
+// synchronously and must not return a Promise (header mutation is fine --
+// the option is about execution mode, not purity). That lets
+// `Axios.prototype._request` skip the `.then(chain[i++], chain[i++])` loop
+// at `node_modules/axios/lib/core/Axios.js:196` and call `dispatchRequest`
+// in-line. That loop creates a tracked Promise per chain entry that Node's
+// `async_hooks` flags under Vitest's `--detect-async-leaks`; skipping it
+// removes the 15 "Axios._request :196" top-frame entries from the leak
+// report, though 14 re-attribute to MSW's XHR interceptor (net -1). The
+// interceptor is synchronous as required: read a cookie, set a header,
+// return the config -- no awaits, no Promise allocation. See
+// `docs/design/web-http-adapter.md`.
+apiClient.interceptors.request.use(
+  (config) => {
+    const method = (config.method ?? '').toLowerCase()
+    if (CSRF_METHODS.has(method)) {
+      const csrfToken = getCsrfToken()
+      if (csrfToken) {
+        config.headers['X-CSRF-Token'] = csrfToken
+      }
     }
-  }
-  return config
-})
+    return config
+  },
+  undefined,
+  { synchronous: true },
+)
 
 // ── Response interceptor: 401 redirect + error passthrough ──
 
