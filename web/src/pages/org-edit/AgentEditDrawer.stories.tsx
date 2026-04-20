@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { AgentEditDrawer } from './AgentEditDrawer'
-import type { AgentConfig, Department } from '@/api/types'
+import type { AgentConfig } from '@/api/types/agents'
+import type { Department } from '@/api/types/org'
 
 const mockAgent: AgentConfig = {
   id: 'agent-alice',

@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from 'react'
 import { createLogger } from '@/lib/logger'
-import type { SettingDefinition } from '@/api/types'
+import type { SettingDefinition } from '@/api/types/settings'
 import { InputField } from '@/components/ui/input-field'
 import { SelectField, type SelectOption } from '@/components/ui/select-field'
 import { TagInput } from '@/components/ui/tag-input'

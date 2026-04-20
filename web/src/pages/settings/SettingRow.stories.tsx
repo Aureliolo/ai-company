@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react'
-import type { SettingEntry } from '@/api/types'
+import type { SettingEntry } from '@/api/types/settings'
 import { SettingRow } from './SettingRow'
 
 const meta: Meta<typeof SettingRow> = {

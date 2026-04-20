@@ -11,7 +11,7 @@ import {
   type CompletionResult,
 } from '@codemirror/autocomplete'
 import type { Extension } from '@codemirror/state'
-import type { SettingEntry, SettingNamespace, SettingType } from '@/api/types'
+import type { SettingEntry, SettingNamespace, SettingType } from '@/api/types/settings'
 
 // ── Completion schema ─────────────────────────────────────────
 

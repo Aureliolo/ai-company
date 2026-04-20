@@ -1,4 +1,4 @@
-import type { ResolvedCeremonyPolicyResponse, VelocityCalcType } from '@/api/types'
+import type { ResolvedCeremonyPolicyResponse, VelocityCalcType } from '@/api/types/ceremony-policy'
 import { InputField } from '@/components/ui/input-field'
 import { SelectField } from '@/components/ui/select-field'
 import { ToggleField } from '@/components/ui/toggle-field'

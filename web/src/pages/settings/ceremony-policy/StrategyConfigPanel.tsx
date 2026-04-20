@@ -1,4 +1,4 @@
-import type { CeremonyStrategyType } from '@/api/types'
+import type { CeremonyStrategyType } from '@/api/types/ceremony-policy'
 import { TaskDrivenConfig } from './strategies/TaskDrivenConfig'
 import { CalendarConfig } from './strategies/CalendarConfig'
 import { HybridConfig } from './strategies/HybridConfig'

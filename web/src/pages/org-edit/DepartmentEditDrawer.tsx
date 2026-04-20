@@ -1,15 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Loader2, Trash2, Users } from 'lucide-react'
+import type { DepartmentHealth } from '@/api/types/analytics'
+import type { CeremonyPolicyConfig } from '@/api/types/ceremony-policy'
 import type {
-  CeremonyPolicyConfig,
   CompanyConfig,
   CreateTeamRequest,
   Department,
-  DepartmentHealth,
   TeamConfig,
   UpdateDepartmentRequest,
   UpdateTeamRequest,
-} from '@/api/types'
+} from '@/api/types/org'
 import { Drawer } from '@/components/ui/drawer'
 import { InputField } from '@/components/ui/input-field'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'

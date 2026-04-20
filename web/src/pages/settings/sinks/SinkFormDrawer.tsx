@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react'
 import { createLogger } from '@/lib/logger'
-import type { LogLevel, SinkInfo, TestSinkResult } from '@/api/types'
+import type { LogLevel, SinkInfo, TestSinkResult } from '@/api/types/settings'
 import { Button } from '@/components/ui/button'
 import { Drawer } from '@/components/ui/drawer'
 import { InputField } from '@/components/ui/input-field'

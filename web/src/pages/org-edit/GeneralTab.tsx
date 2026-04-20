@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from 'react'
 import { Loader2, Settings } from 'lucide-react'
-import type { AutonomyLevel, CompanyConfig, UpdateCompanyRequest } from '@/api/types'
+import type { AutonomyLevel } from '@/api/types/enums'
+import type { CompanyConfig, UpdateCompanyRequest } from '@/api/types/org'
 import { SectionCard } from '@/components/ui/section-card'
 import { EmptyState } from '@/components/ui/empty-state'
 import { InputField } from '@/components/ui/input-field'

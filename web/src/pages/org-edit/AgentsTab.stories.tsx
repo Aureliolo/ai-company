@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { AgentsTab } from './AgentsTab'
-import type { AgentConfig, CompanyConfig } from '@/api/types'
+import type { AgentConfig } from '@/api/types/agents'
+import type { CompanyConfig } from '@/api/types/org'
 
 const mockAgents: AgentConfig[] = [
   {

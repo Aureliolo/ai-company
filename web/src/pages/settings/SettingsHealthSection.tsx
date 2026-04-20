@@ -1,6 +1,6 @@
 import { useCallback, useRef } from 'react'
 
-import type { SettingNamespace } from '@/api/types'
+import type { SettingNamespace } from '@/api/types/settings'
 import { cn } from '@/lib/utils'
 import { NAMESPACE_DISPLAY_NAMES } from '@/utils/constants'
 

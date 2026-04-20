@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { cn } from '@/lib/utils'
-import type { SettingEntry } from '@/api/types'
+import type { SettingEntry } from '@/api/types/settings'
 import { useFlash } from '@/hooks/useFlash'
 import { SECURITY_SENSITIVE_SETTINGS } from '@/utils/constants'
 import { SourceBadge } from './SourceBadge'

@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react'
-import type { CompanyConfig } from '@/api/types'
+import type { CompanyConfig } from '@/api/types/org'
 import { Button } from '@/components/ui/button'
 import { serializeToYaml, parseYaml, validateCompanyYaml } from '@/utils/yaml'
 

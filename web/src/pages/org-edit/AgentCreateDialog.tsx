@@ -6,8 +6,9 @@ import { Button } from '@/components/ui/button'
 import { InputField } from '@/components/ui/input-field'
 import { SelectField } from '@/components/ui/select-field'
 import { getErrorMessage } from '@/utils/errors'
-import type { AgentConfig, CreateAgentOrgRequest, Department, SeniorityLevel } from '@/api/types'
-import { SENIORITY_LEVEL_VALUES } from '@/api/types'
+import type { AgentConfig } from '@/api/types/agents'
+import { SENIORITY_LEVEL_VALUES, type SeniorityLevel } from '@/api/types/enums'
+import type { CreateAgentOrgRequest, Department } from '@/api/types/org'
 
 export interface AgentCreateDialogProps {
   open: boolean

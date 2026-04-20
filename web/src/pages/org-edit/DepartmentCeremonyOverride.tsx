@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react'
-import type { CeremonyPolicyConfig, CeremonyStrategyType, VelocityCalcType } from '@/api/types'
+import type { CeremonyPolicyConfig, CeremonyStrategyType, VelocityCalcType } from '@/api/types/ceremony-policy'
 import { InheritToggle } from '@/components/ui/inherit-toggle'
 import { SelectField } from '@/components/ui/select-field'
 import { ToggleField } from '@/components/ui/toggle-field'

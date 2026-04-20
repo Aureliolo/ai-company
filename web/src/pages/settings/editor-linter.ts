@@ -9,7 +9,7 @@ import { type Extension } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 import { linter, type Diagnostic } from '@codemirror/lint'
 import YAML from 'js-yaml'
-import type { SettingEntry, SettingType } from '@/api/types'
+import type { SettingEntry, SettingType } from '@/api/types/settings'
 
 // ── Schema info ───────────────────────────────────────────────
 

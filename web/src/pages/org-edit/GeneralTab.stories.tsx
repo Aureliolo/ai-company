@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { GeneralTab } from './GeneralTab'
-import type { CompanyConfig } from '@/api/types'
+import type { CompanyConfig } from '@/api/types/org'
 
 const mockConfig: CompanyConfig = {
   company_name: 'Acme Corp',

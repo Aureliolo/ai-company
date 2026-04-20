@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { InputField } from '@/components/ui/input-field'
 import { getErrorMessage } from '@/utils/errors'
-import type { CreateDepartmentRequest, Department } from '@/api/types'
+import type { CreateDepartmentRequest, Department } from '@/api/types/org'
 
 export interface DepartmentCreateDialogProps {
   open: boolean

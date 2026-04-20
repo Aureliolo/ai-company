@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { http, HttpResponse } from 'msw'
 import { PackSelectionDialog } from './PackSelectionDialog'
-import type { PackInfoResponse } from '@/api/types'
+import type { PackInfoResponse } from '@/api/types/templates'
 
 const mockPacks: readonly PackInfoResponse[] = [
   {

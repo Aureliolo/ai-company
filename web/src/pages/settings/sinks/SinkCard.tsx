@@ -1,5 +1,5 @@
 import { FileText, Monitor, Pencil } from 'lucide-react'
-import type { SinkInfo } from '@/api/types'
+import type { SinkInfo } from '@/api/types/settings'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 

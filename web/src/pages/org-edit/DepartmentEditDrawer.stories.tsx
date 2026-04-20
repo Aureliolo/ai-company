@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { DepartmentEditDrawer } from './DepartmentEditDrawer'
-import type { CompanyConfig, Department, DepartmentHealth } from '@/api/types'
+import type { DepartmentHealth } from '@/api/types/analytics'
+import type { CompanyConfig, Department } from '@/api/types/org'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
 
 const mockDept: Department = {

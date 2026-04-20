@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { Meta, StoryObj } from '@storybook/react'
-import type { SettingEntry } from '@/api/types'
+import type { SettingEntry } from '@/api/types/settings'
 import { CodeEditorPanel } from './CodeEditorPanel'
 
 function makeSetting(

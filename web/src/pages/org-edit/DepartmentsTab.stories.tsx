@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { DepartmentsTab } from './DepartmentsTab'
-import type { CompanyConfig, DepartmentHealth } from '@/api/types'
+import type { DepartmentHealth } from '@/api/types/analytics'
+import type { CompanyConfig } from '@/api/types/org'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
 
 const mockConfig: CompanyConfig = {

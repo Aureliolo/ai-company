@@ -17,7 +17,7 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { GripVertical, Pencil, Plus, Trash2, Users } from 'lucide-react'
-import type { CreateTeamRequest, TeamConfig, UpdateTeamRequest } from '@/api/types'
+import type { CreateTeamRequest, TeamConfig, UpdateTeamRequest } from '@/api/types/org'
 import { Button } from '@/components/ui/button'
 import { createLogger } from '@/lib/logger'
 import { StatPill } from '@/components/ui/stat-pill'

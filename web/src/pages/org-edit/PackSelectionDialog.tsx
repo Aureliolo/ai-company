@@ -10,7 +10,7 @@ import { listTemplatePacks, applyTemplatePack } from '@/api/endpoints/template-p
 import { useToastStore } from '@/stores/toast'
 import { useCompanyStore } from '@/stores/company'
 import { getErrorMessage } from '@/utils/errors'
-import type { PackInfoResponse, RebalanceMode } from '@/api/types'
+import type { PackInfoResponse, RebalanceMode } from '@/api/types/templates'
 import { PackApplyPreviewDialog } from './PackApplyPreviewDialog'
 
 const EMPTY_DEPTS: readonly import('@/api/types').Department[] = []

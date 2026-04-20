@@ -1,4 +1,4 @@
-import type { CeremonyStrategyType } from '@/api/types'
+import type { CeremonyStrategyType } from '@/api/types/ceremony-policy'
 import { SelectField } from '@/components/ui/select-field'
 import {
   CEREMONY_STRATEGY_DESCRIPTIONS,

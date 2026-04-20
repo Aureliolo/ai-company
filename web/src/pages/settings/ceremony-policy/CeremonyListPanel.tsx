@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react'
 import { ChevronDown, ChevronRight, List } from 'lucide-react'
-import type { CeremonyPolicyConfig, CeremonyStrategyType } from '@/api/types'
+import type { CeremonyPolicyConfig, CeremonyStrategyType } from '@/api/types/ceremony-policy'
 import { InheritToggle } from '@/components/ui/inherit-toggle'
 import { SectionCard } from '@/components/ui/section-card'
 import { CEREMONY_STRATEGY_LABELS, STRATEGY_DEFAULT_VELOCITY_CALC } from '@/utils/constants'

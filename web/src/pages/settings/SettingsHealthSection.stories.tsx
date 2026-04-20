@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { Meta, StoryObj } from '@storybook/react'
-import type { SettingNamespace } from '@/api/types'
+import type { SettingNamespace } from '@/api/types/settings'
 import { NamespaceTabBar } from './SettingsHealthSection'
 
 const meta: Meta<typeof NamespaceTabBar> = {

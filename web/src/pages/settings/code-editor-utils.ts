@@ -9,7 +9,7 @@
  */
 
 import YAML from 'js-yaml'
-import type { SettingEntry } from '@/api/types'
+import type { SettingEntry } from '@/api/types/settings'
 import type { CodeMirrorEditorProps } from '@/components/ui/code-mirror-editor'
 import { createLogger } from '@/lib/logger'
 

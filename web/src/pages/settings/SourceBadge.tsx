@@ -1,5 +1,5 @@
 import { cn } from '@/lib/utils'
-import type { SettingSource } from '@/api/types'
+import type { SettingSource } from '@/api/types/settings'
 
 const SOURCE_STYLES: Record<SettingSource, string> = {
   db: 'bg-accent/10 text-accent',

@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react'
-import type { SinkInfo } from '@/api/types'
+import type { SinkInfo } from '@/api/types/settings'
 import { SinkCard } from './SinkCard'
 
 const meta: Meta<typeof SinkCard> = {

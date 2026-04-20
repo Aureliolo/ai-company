@@ -1,4 +1,4 @@
-import type { CeremonyStrategyType, VelocityCalcType } from '@/api/types'
+import type { CeremonyStrategyType, VelocityCalcType } from '@/api/types/ceremony-policy'
 import { STRATEGY_DEFAULT_VELOCITY_CALC, VELOCITY_UNIT_LABELS } from '@/utils/constants'
 
 export interface VelocityUnitIndicatorProps {

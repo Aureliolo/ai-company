@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Building2, ChevronDown, ChevronRight } from 'lucide-react'
-import type { CeremonyPolicyConfig, CeremonyStrategyType, Department } from '@/api/types'
+import type { CeremonyPolicyConfig, CeremonyStrategyType } from '@/api/types/ceremony-policy'
+import type { Department } from '@/api/types/org'
 import { InheritToggle } from '@/components/ui/inherit-toggle'
 import { SectionCard } from '@/components/ui/section-card'
 import { useCeremonyPolicyStore } from '@/stores/ceremony-policy'

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { Dialog } from '@base-ui/react/dialog'
-import type { CreateTeamRequest, UpdateTeamRequest, TeamConfig } from '@/api/types'
+import type { CreateTeamRequest, TeamConfig, UpdateTeamRequest } from '@/api/types/org'
 import { Button } from '@/components/ui/button'
 import { InputField } from '@/components/ui/input-field'
 import { TagInput } from '@/components/ui/tag-input'

@@ -13,12 +13,12 @@ import {
 import { SortableContext, useSortable, verticalListSortingStrategy, sortableKeyboardCoordinates, arrayMove } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { Plus, Users } from 'lucide-react'
+import type { AgentConfig } from '@/api/types/agents'
 import type {
-  AgentConfig,
   CompanyConfig,
   CreateAgentOrgRequest,
   UpdateAgentOrgRequest,
-} from '@/api/types'
+} from '@/api/types/org'
 import { toRuntimeStatus } from '@/utils/agents'
 import { useToastStore } from '@/stores/toast'
 import { AgentCard } from '@/components/ui/agent-card'

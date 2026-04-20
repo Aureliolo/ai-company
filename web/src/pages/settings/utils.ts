@@ -1,4 +1,4 @@
-import type { SettingEntry, SettingNamespace } from '@/api/types'
+import type { SettingEntry, SettingNamespace } from '@/api/types/settings'
 import { createLogger } from '@/lib/logger'
 import { SETTING_DEPENDENCIES } from '@/utils/constants'
 

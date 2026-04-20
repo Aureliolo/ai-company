@@ -14,16 +14,16 @@ import { SortableContext, useSortable, rectSortingStrategy, sortableKeyboardCoor
 import { CSS } from '@dnd-kit/utilities'
 import { AlertTriangle, Building2, PackagePlus, Plus, Users } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import type { DepartmentHealth } from '@/api/types/analytics'
 import type {
   CompanyConfig,
   CreateDepartmentRequest,
   CreateTeamRequest,
   Department,
-  DepartmentHealth,
   TeamConfig,
   UpdateDepartmentRequest,
   UpdateTeamRequest,
-} from '@/api/types'
+} from '@/api/types/org'
 import { SectionCard } from '@/components/ui/section-card'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Button } from '@/components/ui/button'

@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react'
-import type { Department } from '@/api/types'
+import type { Department } from '@/api/types/org'
 import { DepartmentCreateDialog } from './DepartmentCreateDialog'
 
 const MOCK_DEPARTMENT: Department = {

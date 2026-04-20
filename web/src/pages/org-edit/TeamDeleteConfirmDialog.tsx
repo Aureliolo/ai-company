@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { TeamConfig } from '@/api/types'
+import type { TeamConfig } from '@/api/types/org'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { SelectField } from '@/components/ui/select-field'
 
