@@ -6,7 +6,6 @@ budget.
 """
 
 import asyncio
-import functools
 import os
 from collections.abc import Callable  # noqa: TC003
 from datetime import UTC, datetime
@@ -260,11 +259,9 @@ def make_personality_trim_notifier(
         )
         try:
             await asyncio.to_thread(
-                functools.partial(
-                    channels_plugin.publish,
-                    event.model_dump_json(),
-                    channels=[CHANNEL_AGENTS],
-                ),
+                channels_plugin.publish,
+                event.model_dump_json(),
+                channels=[CHANNEL_AGENTS],
             )
         except MemoryError, RecursionError:
             raise

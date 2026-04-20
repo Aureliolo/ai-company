@@ -27,6 +27,10 @@ from synthorg.observability.events.coordination import (
     COORDINATION_WAVE_COMPLETED,
     COORDINATION_WAVE_STARTED,
 )
+from synthorg.observability.events.workspace import (
+    WORKSPACE_SETUP_COMPLETE,
+    WORKSPACE_SETUP_START,
+)
 
 if TYPE_CHECKING:
     from synthorg.engine.coordination.config import CoordinationConfig
@@ -132,6 +136,11 @@ class ContextDependentDispatcher:
             )
             for a in group.assignments
         )
+        logger.info(
+            WORKSPACE_SETUP_START,
+            wave_index=wave_idx,
+            request_count=len(wave_requests),
+        )
         ws_start = time.monotonic()
         try:
             wave_workspaces = await workspace_service.setup_group(
@@ -159,6 +168,12 @@ class ContextDependentDispatcher:
 
         all_workspaces.extend(wave_workspaces)
         ws_elapsed = time.monotonic() - ws_start
+        logger.info(
+            WORKSPACE_SETUP_COMPLETE,
+            wave_index=wave_idx,
+            workspace_count=len(wave_workspaces),
+            duration_seconds=ws_elapsed,
+        )
         all_phases.append(
             CoordinationPhaseResult(
                 phase=f"workspace_setup_wave_{wave_idx}",
