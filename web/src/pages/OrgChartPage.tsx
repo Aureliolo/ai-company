@@ -142,10 +142,17 @@ function OrgChartInner() {
     setViewMode(mode)
   }, [])
 
-  const { dragOverDeptId, handleNodeDragStart, handleNodeDrag, handleNodeDragStop } =
-    useOrgChartDragDrop({ viewMode, displayNodes: view.displayNodes, announce })
+  // Pre-render source list: transition reducer publishes `displayNodes` only
+  // after the first animation frame, so before any layout change settles we
+  // fall back to the raw `nodes` array. The drag/selection hooks and the
+  // rendered node list both read from this single source so a drag hit-test
+  // and the visible node it targets always refer to the same positions.
+  const sourceNodes = view.displayNodes.length > 0 ? view.displayNodes : nodes
 
-  const selection = useOrgChartSelection(view.displayNodes)
+  const { dragOverDeptId, handleNodeDragStart, handleNodeDrag, handleNodeDragStop } =
+    useOrgChartDragDrop({ viewMode, displayNodes: sourceNodes, announce })
+
+  const selection = useOrgChartSelection(sourceNodes)
   const filter = useOrgChartFilter(allNodes)
 
   const edgeIdByAgentPair = useMemo(() => {
@@ -179,8 +186,6 @@ function OrgChartInner() {
   const handleMoveEnd = useCallback((_event: unknown, viewport: ViewportState) => {
     saveViewport(viewport)
   }, [])
-
-  const sourceNodes = view.displayNodes.length > 0 ? view.displayNodes : nodes
 
   const renderedNodes = useMemo(() => {
     return sourceNodes.map((n) => {
