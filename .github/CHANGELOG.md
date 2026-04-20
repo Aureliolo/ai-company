@@ -1,5 +1,49 @@
 # Changelog
 
+## [0.7.1](https://github.com/Aureliolo/synthorg/compare/v0.7.0...v0.7.1) (2026-04-20)
+
+
+### Features
+
+* **budget:** persist currency on every cost row + Postgres/SQLite parity slice ([#1454](https://github.com/Aureliolo/synthorg/issues/1454)) ([3f2b9f7](https://github.com/Aureliolo/synthorg/commit/3f2b9f7e0b55b6df5281d64c79f6fec1f7b26424))
+* **telemetry:** deployment environment tagging + Docker /info enrichment + silence Logfire introspection ([#1459](https://github.com/Aureliolo/synthorg/issues/1459)) ([7981bf6](https://github.com/Aureliolo/synthorg/commit/7981bf66b3c714e0903870221fd14945cbeeea4c))
+* wire project telemetry, live NATS health probe, web healthcheck ([#1453](https://github.com/Aureliolo/synthorg/issues/1453)) ([eeb9492](https://github.com/Aureliolo/synthorg/commit/eeb9492e5e23d4bfe3d371ae3b3bd0cef3cf87d9))
+* **wizard:** fix setup-wizard UX issues and stale-cookie recovery ([#1463](https://github.com/Aureliolo/synthorg/issues/1463)) ([6ff9874](https://github.com/Aureliolo/synthorg/commit/6ff98746cbadd3776db9962efa83f4b7ad20afc7))
+
+
+### Bug Fixes
+
+* **docker:** drop ':latest' default on backend BASE_IMAGE ARG ([#1465](https://github.com/Aureliolo/synthorg/issues/1465)) ([254f043](https://github.com/Aureliolo/synthorg/commit/254f043f68a5e255c1bfac07269cfc00bfa66ba2)), closes [#1464](https://github.com/Aureliolo/synthorg/issues/1464)
+* split remaining TypeScript files + full verification ([#1481](https://github.com/Aureliolo/synthorg/issues/1481)) ([4338a74](https://github.com/Aureliolo/synthorg/commit/4338a748be6a35b31e6e64837012111005d75a2f))
+* **web:** mark axios request interceptor synchronous + ratchet async-leak ceiling 70→66 ([#1480](https://github.com/Aureliolo/synthorg/issues/1480)) ([3cddefe](https://github.com/Aureliolo/synthorg/commit/3cddefe083a34bc2a4d68aa251f0572e59fc6277))
+
+
+### Refactoring
+
+* split oversize Python files + Go functions to comply with size limits ([#1473](https://github.com/Aureliolo/synthorg/issues/1473)) ([5c17c76](https://github.com/Aureliolo/synthorg/commit/5c17c762ea3cbdf372dc442b8568fbeb8e6e69a8))
+
+
+### Tests
+
+* **web:** ratchet async-leak ceiling to 50 and close [#1467](https://github.com/Aureliolo/synthorg/issues/1467) with design note ([#1469](https://github.com/Aureliolo/synthorg/issues/1469)) ([8405f99](https://github.com/Aureliolo/synthorg/commit/8405f9960f48a9349f018f90a8f14168dc85b9af))
+
+
+### CI/CD
+
+* fix DAST POSTGRES_PASSWORD + cosign install flake retry ([#1479](https://github.com/Aureliolo/synthorg/issues/1479)) ([21443f3](https://github.com/Aureliolo/synthorg/commit/21443f35509ddbd9b2c660e522c43bd769c5cf46))
+* Update CI tool dependencies ([#1476](https://github.com/Aureliolo/synthorg/issues/1476)) ([eaf7e91](https://github.com/Aureliolo/synthorg/commit/eaf7e9141949e9e18e66c4c6ebd1c707af9a709a))
+
+
+### Maintenance
+
+* **ci:** audit PR-gated workflows + fix 282 web async leaks ([#1458](https://github.com/Aureliolo/synthorg/issues/1458)) ([6eb381a](https://github.com/Aureliolo/synthorg/commit/6eb381afae19a2d69f768f40db2bdf7aff9b2b81))
+* consolidate Renovate lock-file PRs and delete orphan root package-lock.json ([#1482](https://github.com/Aureliolo/synthorg/issues/1482)) ([5b22810](https://github.com/Aureliolo/synthorg/commit/5b22810b23f22801701626284930af31dcd5838b))
+* Lock file maintenance ([#1478](https://github.com/Aureliolo/synthorg/issues/1478)) ([7e69dce](https://github.com/Aureliolo/synthorg/commit/7e69dceb7bfca0a60ad7c5ae6b6ca0bdde656a11))
+* **persistence:** consolidate 6 SQL subsystems, squash Atlas history, add boundary enforcement ([#1461](https://github.com/Aureliolo/synthorg/issues/1461)) ([28ab58a](https://github.com/Aureliolo/synthorg/commit/28ab58a18e7e94103510dd68fe3ad1ce96a9382d))
+* skills audit, async-leak gate hardening, web HTTP adapter design spec ([#1471](https://github.com/Aureliolo/synthorg/issues/1471)) ([f94ed4d](https://github.com/Aureliolo/synthorg/commit/f94ed4dfaf33967aad5ee9c2c19f43970292b61a))
+* Update Container dependencies ([#1474](https://github.com/Aureliolo/synthorg/issues/1474)) ([7c56453](https://github.com/Aureliolo/synthorg/commit/7c5645301ddd5903ddce4958bc2f3db34fc09ca8))
+* Update Python dependencies ([#1451](https://github.com/Aureliolo/synthorg/issues/1451)) ([188b900](https://github.com/Aureliolo/synthorg/commit/188b900dff82feb165b2b3771b6703ec0d295e4b))
+
 ## [0.7.0](https://github.com/Aureliolo/synthorg/compare/v0.6.9...v0.7.0) (2026-04-18)
 
 
