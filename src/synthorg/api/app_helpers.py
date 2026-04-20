@@ -92,7 +92,7 @@ def _make_expire_callback(
     return _on_expire
 
 
-def _postgres_config_from_url(db_url: str) -> PostgresConfig:
+def _postgres_config_from_url(db_url: str) -> PostgresConfig:  # noqa: C901
     """Build a PostgresConfig from a libpq-style URL.
 
     Accepts the canonical form the CLI compose template emits:
@@ -121,6 +121,15 @@ def _postgres_config_from_url(db_url: str) -> PostgresConfig:
             f"SYNTHORG_DATABASE_URL could not be parsed: {exc}",
             "url_parse_failed",
             exc,
+        )
+    if parsed.query:
+        # Silently dropping query options (``?sslmode=disable`` etc.) would
+        # let startup proceed with a different connection config than the
+        # operator supplied. Route ssl_mode through the env var instead.
+        _fail(
+            "SYNTHORG_DATABASE_URL must not include query parameters; use "
+            "SYNTHORG_POSTGRES_SSL_MODE for ssl_mode overrides",
+            "unsupported_query_params",
         )
     if parsed.scheme not in {"postgres", "postgresql"}:
         _fail(
@@ -216,13 +225,17 @@ def _make_meeting_publisher(
         event_name: str,
         payload: dict[str, Any],
     ) -> None:
-        event = WsEvent(
-            event_type=WsEventType(event_name),
-            channel=CHANNEL_MEETINGS,
-            timestamp=datetime.now(UTC),
-            payload=payload,
-        )
+        # Construct the WsEvent inside the guarded block: an unknown
+        # ``event_name`` raises ``ValueError`` from the enum lookup and
+        # must never abort the meeting-path caller. Failures are logged
+        # at WARNING and swallowed.
         try:
+            event = WsEvent(
+                event_type=WsEventType(event_name),
+                channel=CHANNEL_MEETINGS,
+                timestamp=datetime.now(UTC),
+                payload=payload,
+            )
             channels_plugin.publish(
                 event.model_dump_json(),
                 channels=[CHANNEL_MEETINGS],
