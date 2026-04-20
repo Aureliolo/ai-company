@@ -1,6 +1,6 @@
 import { Layers, GitBranch, ArrowRightLeft } from 'lucide-react'
 import { SectionCard } from '@/components/ui/section-card'
-import type { SubworkflowSummary } from '@/api/types'
+import type { SubworkflowSummary } from '@/api/types/workflows'
 
 interface SubworkflowCardProps {
   subworkflow: SubworkflowSummary

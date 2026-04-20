@@ -2,7 +2,7 @@ import { cn } from '@/lib/utils'
 import { Drawer } from '@/components/ui/drawer'
 import { Button } from '@/components/ui/button'
 import { StatPill } from '@/components/ui/stat-pill'
-import type { TemplateInfoResponse } from '@/api/types'
+import type { TemplateInfoResponse } from '@/api/types/setup'
 import { deriveCategoryFromTags, getCategoryLabel } from '@/utils/template-categories'
 
 export interface TemplateCompareDrawerProps {

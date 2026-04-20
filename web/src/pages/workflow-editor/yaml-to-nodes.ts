@@ -11,7 +11,7 @@
 
 import yaml from 'js-yaml'
 import type { Node, Edge } from '@xyflow/react'
-import type { WorkflowEdgeType } from '@/api/types'
+import type { WorkflowEdgeType } from '@/api/types/workflows'
 
 export interface ParseResult {
   nodes: Node[]

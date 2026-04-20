@@ -2,7 +2,7 @@ import { SectionCard } from '@/components/ui/section-card'
 import { ProjectStatusBadge } from '@/components/ui/project-status-badge'
 import { MetadataGrid } from '@/components/ui/metadata-grid'
 import { formatCurrency, formatDate } from '@/utils/format'
-import type { Project } from '@/api/types'
+import type { Project } from '@/api/types/projects'
 
 interface ProjectHeaderProps {
   project: Project

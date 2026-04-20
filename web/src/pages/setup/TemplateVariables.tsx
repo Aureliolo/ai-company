@@ -1,6 +1,6 @@
 import { SliderField } from '@/components/ui/slider-field'
 import { ToggleField } from '@/components/ui/toggle-field'
-import type { TemplateVariable } from '@/api/types'
+import type { TemplateVariable } from '@/api/types/setup'
 
 export interface TemplateVariablesProps {
   variables: readonly TemplateVariable[]

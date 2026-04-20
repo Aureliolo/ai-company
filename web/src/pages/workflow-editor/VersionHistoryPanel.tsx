@@ -6,7 +6,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useWorkflowEditorStore } from '@/stores/workflow-editor'
 import { useState } from 'react'
 import { formatRelativeTime } from '@/utils/format'
-import type { WorkflowDefinitionVersionSummary } from '@/api/types'
+import type { WorkflowDefinitionVersionSummary } from '@/api/types/workflows'
 
 export interface VersionCardProps {
   v: WorkflowDefinitionVersionSummary

@@ -1,7 +1,7 @@
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { StatPill } from '@/components/ui/stat-pill'
-import type { TemplateInfoResponse } from '@/api/types'
+import type { TemplateInfoResponse } from '@/api/types/setup'
 import { deriveCategoryFromTags, getCategoryLabel } from '@/utils/template-categories'
 import { Users, Building2, Shield, GitBranch } from 'lucide-react'
 

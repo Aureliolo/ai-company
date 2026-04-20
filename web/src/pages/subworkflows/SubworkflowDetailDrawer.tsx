@@ -11,7 +11,7 @@ import { useToastStore } from '@/stores/toast'
 import { getErrorMessage } from '@/utils/errors'
 import { createLogger } from '@/lib/logger'
 import { sanitizeForLog } from '@/utils/logging'
-import type { SubworkflowSummary, ParentReference } from '@/api/types'
+import type { ParentReference, SubworkflowSummary } from '@/api/types/workflows'
 
 const log = createLogger('SubworkflowDetailDrawer')
 

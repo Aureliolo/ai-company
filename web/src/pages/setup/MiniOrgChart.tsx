@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
-import type { SeniorityLevel, SetupAgentSummary } from '@/api/types'
+import type { SeniorityLevel } from '@/api/types/enums'
+import type { SetupAgentSummary } from '@/api/types/setup'
 import { cn } from '@/lib/utils'
 import { seniorityRank } from '@/utils/agents'
 

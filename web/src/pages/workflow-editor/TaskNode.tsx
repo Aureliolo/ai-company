@@ -3,7 +3,7 @@ import { Handle, Position, type NodeProps, type Node } from '@xyflow/react'
 import { ClipboardList } from 'lucide-react'
 import { PriorityBadge } from '@/components/ui/task-status-indicator'
 import { cn } from '@/lib/utils'
-import type { Priority } from '@/api/types'
+import type { Priority } from '@/api/types/enums'
 
 export interface TaskNodeData extends Record<string, unknown> {
   label: string

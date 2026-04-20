@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { SelectField } from '@/components/ui/select-field'
 import type { SelectOption } from '@/components/ui/select-field'
-import type { ProviderConfig } from '@/api/types'
+import type { ProviderConfig } from '@/api/types/providers'
 
 export interface AgentModelPickerProps {
   currentProvider: string

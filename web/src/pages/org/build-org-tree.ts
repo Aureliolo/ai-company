@@ -1,5 +1,8 @@
 import type { Node, Edge } from '@xyflow/react'
-import type { AgentConfig, CompanyConfig, Department, DepartmentHealth, DepartmentName, SeniorityLevel } from '@/api/types'
+import type { AgentConfig } from '@/api/types/agents'
+import type { DepartmentHealth } from '@/api/types/analytics'
+import type { DepartmentName, SeniorityLevel } from '@/api/types/enums'
+import type { CompanyConfig, Department } from '@/api/types/org'
 import type { AgentRuntimeStatus } from '@/lib/utils'
 import { resolveRuntimeStatus } from './status-mapping'
 

@@ -4,7 +4,7 @@ import { ROUTES } from '@/router/routes'
 import { ProjectStatusBadge } from '@/components/ui/project-status-badge'
 import { StatPill } from '@/components/ui/stat-pill'
 import { formatCurrency, formatRelativeTime } from '@/utils/format'
-import type { Project } from '@/api/types'
+import type { Project } from '@/api/types/projects'
 
 interface ProjectCardProps {
   project: Project

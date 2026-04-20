@@ -1,5 +1,5 @@
 import { Package } from 'lucide-react'
-import type { McpCatalogEntry } from '@/api/types'
+import type { McpCatalogEntry } from '@/api/types/integrations'
 import { EmptyState } from '@/components/ui/empty-state'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { CatalogEntryCard } from './CatalogEntryCard'

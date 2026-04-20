@@ -1,4 +1,4 @@
-import type { AgentStatus } from '@/api/types'
+import type { AgentStatus } from '@/api/types/enums'
 import type { AgentRuntimeStatus } from '@/lib/utils'
 
 /**

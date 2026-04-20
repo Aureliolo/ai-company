@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { AlertCircle, CheckCircle2, Loader2 } from 'lucide-react'
-import type { Connection, McpCatalogEntry } from '@/api/types'
+import type { Connection, McpCatalogEntry } from '@/api/types/integrations'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,

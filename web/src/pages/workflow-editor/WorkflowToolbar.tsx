@@ -19,7 +19,7 @@ import {
 import { useReactFlow } from '@xyflow/react'
 import { Button } from '@/components/ui/button'
 import { SegmentedControl } from '@/components/ui/segmented-control'
-import type { WorkflowNodeType } from '@/api/types'
+import type { WorkflowNodeType } from '@/api/types/workflows'
 import { WorkflowSelector } from './WorkflowSelector'
 
 interface NodePaletteItem {

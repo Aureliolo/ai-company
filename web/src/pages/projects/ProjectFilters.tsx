@@ -1,5 +1,5 @@
 import { useProjectsStore } from '@/stores/projects'
-import { PROJECT_STATUS_VALUES, type ProjectStatus } from '@/api/types'
+import { PROJECT_STATUS_VALUES, type ProjectStatus } from '@/api/types/enums'
 import { formatLabel } from '@/utils/format'
 
 export function ProjectFilters() {

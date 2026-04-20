@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { createLogger } from '@/lib/logger'
 import { Check, X, Loader2, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import type { ProviderPreset, ProbePresetResponse, ProviderConfig } from '@/api/types'
+import type { ProbePresetResponse, ProviderConfig, ProviderPreset } from '@/api/types/providers'
 
 const log = createLogger('setup')
 

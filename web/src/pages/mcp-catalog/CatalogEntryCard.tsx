@@ -1,4 +1,4 @@
-import type { McpCatalogEntry } from '@/api/types'
+import type { McpCatalogEntry } from '@/api/types/integrations'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { getCatalogEntryIcon } from './catalog-icons'

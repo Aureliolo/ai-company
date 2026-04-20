@@ -2,7 +2,7 @@
  * Per-node-type configuration field definitions for the property drawer.
  */
 
-import type { WorkflowNodeType } from '@/api/types'
+import type { WorkflowNodeType } from '@/api/types/workflows'
 
 export interface ConfigField {
   key: string

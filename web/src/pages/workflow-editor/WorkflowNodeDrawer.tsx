@@ -4,7 +4,7 @@ import { InputField } from '@/components/ui/input-field'
 import { SelectField } from '@/components/ui/select-field'
 import { NODE_CONFIG_SCHEMAS, type ConfigField } from './node-config-schemas'
 import { ConditionExpressionBuilder } from './ConditionExpressionBuilder'
-import type { WorkflowNodeType } from '@/api/types'
+import type { WorkflowNodeType } from '@/api/types/workflows'
 
 interface FieldRendererProps {
   field: ConfigField

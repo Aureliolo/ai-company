@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { fn } from 'storybook/test'
-import type { McpCatalogEntry } from '@/api/types'
+import type { McpCatalogEntry } from '@/api/types/integrations'
 import { integrationsHandlers } from '@/mocks/handlers/integrations'
 import { useConnectionsStore } from '@/stores/connections'
 import { useMcpCatalogStore } from '@/stores/mcp-catalog'

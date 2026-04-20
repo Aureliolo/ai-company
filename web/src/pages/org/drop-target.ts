@@ -5,7 +5,7 @@
  * based on point-in-rectangle hit testing.
  */
 
-import type { DepartmentName } from '@/api/types'
+import type { DepartmentName } from '@/api/types/enums'
 
 export interface DepartmentBounds {
   departmentName: DepartmentName

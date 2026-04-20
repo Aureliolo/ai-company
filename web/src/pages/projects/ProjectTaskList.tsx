@@ -4,7 +4,7 @@ import { SectionCard } from '@/components/ui/section-card'
 import { TaskStatusIndicator } from '@/components/ui/task-status-indicator'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ROUTES } from '@/router/routes'
-import type { Task } from '@/api/types'
+import type { Task } from '@/api/types/tasks'
 
 interface ProjectTaskListProps {
   tasks: readonly Task[]

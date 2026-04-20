@@ -2,7 +2,7 @@ import { FolderKanban } from 'lucide-react'
 import { EmptyState } from '@/components/ui/empty-state'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { ProjectCard } from './ProjectCard'
-import type { Project } from '@/api/types'
+import type { Project } from '@/api/types/projects'
 
 interface ProjectGridViewProps {
   projects: readonly Project[]

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Eye, EyeOff, KeyRound, MoreVertical } from 'lucide-react'
 import { revealConnectionSecret } from '@/api/endpoints/connections'
-import type { Connection } from '@/api/types'
+import type { Connection } from '@/api/types/integrations'
 import { Button } from '@/components/ui/button'
 import { createLogger } from '@/lib/logger'
 import { cn } from '@/lib/utils'

@@ -4,7 +4,7 @@ import { SectionCard } from '@/components/ui/section-card'
 import { Avatar } from '@/components/ui/avatar'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ROUTES } from '@/router/routes'
-import type { Project } from '@/api/types'
+import type { Project } from '@/api/types/projects'
 
 interface ProjectTeamSectionProps {
   project: Project

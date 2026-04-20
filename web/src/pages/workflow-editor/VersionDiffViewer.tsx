@@ -10,7 +10,7 @@ import {
 } from '@/components/ui/dialog'
 import { useWorkflowEditorStore } from '@/stores/workflow-editor'
 import { cn } from '@/lib/utils'
-import type { NodeChange as NodeChangeType, EdgeChange as EdgeChangeType, MetadataChange } from '@/api/types'
+import type { EdgeChange as EdgeChangeType, MetadataChange, NodeChange as NodeChangeType } from '@/api/types/workflows'
 
 const NODE_CHANGE_ICONS: Record<string, typeof Plus> = {
   added: Plus,

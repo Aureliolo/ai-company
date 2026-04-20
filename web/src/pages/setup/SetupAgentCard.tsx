@@ -5,7 +5,8 @@ import { InlineEdit } from '@/components/ui/inline-edit'
 import { SelectField } from '@/components/ui/select-field'
 import { StatPill } from '@/components/ui/stat-pill'
 import { Button } from '@/components/ui/button'
-import type { SetupAgentSummary, ProviderConfig, PersonalityPresetInfo } from '@/api/types'
+import type { ProviderConfig } from '@/api/types/providers'
+import type { PersonalityPresetInfo, SetupAgentSummary } from '@/api/types/setup'
 import { AgentModelPicker } from './AgentModelPicker'
 
 export interface SetupAgentCardProps {

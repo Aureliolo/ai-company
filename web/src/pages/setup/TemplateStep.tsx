@@ -10,7 +10,7 @@ import { useToastStore } from '@/stores/toast'
 import { TemplateCard } from './TemplateCard'
 import { TemplateCompareDrawer } from './TemplateCompareDrawer'
 import { LayoutGrid, Search, X } from 'lucide-react'
-import type { TemplateInfoResponse } from '@/api/types'
+import type { TemplateInfoResponse } from '@/api/types/setup'
 import {
   CATEGORY_ORDER,
   deriveCategoryFromTags,

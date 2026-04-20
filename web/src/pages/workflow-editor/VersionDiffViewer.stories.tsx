@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { useWorkflowEditorStore } from '@/stores/workflow-editor'
 import { VersionDiffViewer } from './VersionDiffViewer'
-import type { WorkflowDiff } from '@/api/types'
+import type { WorkflowDiff } from '@/api/types/workflows'
 
 const MOCK_DIFF_WITH_CHANGES: WorkflowDiff = {
   definition_id: 'def-001',

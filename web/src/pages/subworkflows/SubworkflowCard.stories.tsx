@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { SubworkflowCard } from './SubworkflowCard'
-import type { SubworkflowSummary } from '@/api/types'
+import type { SubworkflowSummary } from '@/api/types/workflows'
 import { fn } from 'storybook/test'
 
 const meta: Meta<typeof SubworkflowCard> = {

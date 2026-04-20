@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { fn } from 'storybook/test'
-import type { McpCatalogEntry } from '@/api/types'
+import type { McpCatalogEntry } from '@/api/types/integrations'
 import { CatalogDetailDrawer } from './CatalogDetailDrawer'
 
 const githubEntry: McpCatalogEntry = {
