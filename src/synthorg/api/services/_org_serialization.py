@@ -1,0 +1,17 @@
+"""Shared JSON serialization helpers for org mutation services."""
+
+import json
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from pydantic import BaseModel
+
+
+def json_dump_models(models: Sequence[BaseModel]) -> str:
+    """Serialize a sequence of Pydantic models to compact JSON."""
+    return json.dumps(
+        [m.model_dump(mode="json") for m in models],
+        separators=(",", ":"),
+    )

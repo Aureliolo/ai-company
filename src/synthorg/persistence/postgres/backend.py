@@ -14,15 +14,10 @@ backend: callers get Pydantic models back either way.
 """
 
 import asyncio
-import contextlib
-import math
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-import psycopg
-from psycopg import sql
 from psycopg.rows import dict_row
-from psycopg_pool import AsyncConnectionPool
 from pydantic import BaseModel
 
 from synthorg.budget.config import BudgetConfig
@@ -34,20 +29,8 @@ from synthorg.engine.workflow.definition import WorkflowDefinition
 from synthorg.hr.evaluation.config import EvaluationConfig
 from synthorg.observability import get_logger
 from synthorg.observability.events.persistence import (
-    PERSISTENCE_BACKEND_ALREADY_CONNECTED,
-    PERSISTENCE_BACKEND_CONNECTED,
-    PERSISTENCE_BACKEND_CONNECTING,
-    PERSISTENCE_BACKEND_CONNECTION_FAILED,
-    PERSISTENCE_BACKEND_DISCONNECT_ERROR,
-    PERSISTENCE_BACKEND_DISCONNECTED,
-    PERSISTENCE_BACKEND_DISCONNECTING,
-    PERSISTENCE_BACKEND_HEALTH_CHECK,
     PERSISTENCE_BACKEND_NOT_CONNECTED,
-    PERSISTENCE_TIMESCALEDB_HYPERTABLE_CREATED,
-    PERSISTENCE_TIMESCALEDB_SETUP_FAILED,
-    PERSISTENCE_TIMESCALEDB_UNAVAILABLE,
 )
-from synthorg.persistence import atlas
 from synthorg.persistence.config import PostgresConfig  # noqa: TC001
 from synthorg.persistence.errors import PersistenceConnectionError
 from synthorg.persistence.integration_stubs import (
@@ -61,6 +44,8 @@ from synthorg.persistence.postgres.agent_state_repo import (
 )
 from synthorg.persistence.postgres.artifact_repo import PostgresArtifactRepository
 from synthorg.persistence.postgres.audit_repository import PostgresAuditRepository
+from synthorg.persistence.postgres.backend_connection import PostgresConnectionMixin
+from synthorg.persistence.postgres.backend_migration import PostgresMigrationMixin
 from synthorg.persistence.postgres.checkpoint_repo import (
     PostgresCheckpointRepository,
 )
@@ -141,6 +126,8 @@ from synthorg.persistence.postgres.workflow_execution_repo import (
 )
 
 if TYPE_CHECKING:
+    from psycopg_pool import AsyncConnectionPool
+
     from synthorg.api.auth.config import AuthConfig
     from synthorg.hr.persistence_protocol import (
         CollaborationMetricRepository,
@@ -183,33 +170,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-def _build_conninfo(config: PostgresConfig) -> str:
-    """Build a libpq conninfo string from a ``PostgresConfig``.
-
-    Uses ``psycopg.conninfo.make_conninfo`` for correct escaping of
-    special characters (spaces, backslashes, equals signs) inside
-    credentials and identifiers.
-
-    ``connect_timeout`` is rounded up to a whole number of seconds
-    because libpq accepts only integer seconds (with a minimum of 2);
-    truncating a sub-second value via ``int()`` would round 0.5 down
-    to 0 which libpq interprets as "wait indefinitely", silently
-    turning a short configured timeout into no timeout at all.
-    """
-    connect_timeout = max(2, math.ceil(config.connect_timeout_seconds))
-    return psycopg.conninfo.make_conninfo(
-        host=config.host,
-        port=config.port,
-        dbname=config.database,
-        user=config.username,
-        password=config.password.get_secret_value(),
-        sslmode=config.ssl_mode,
-        application_name=config.application_name,
-        connect_timeout=connect_timeout,
-    )
-
-
-class PostgresPersistenceBackend:
+class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin):
     """Postgres implementation of the ``PersistenceBackend`` protocol.
 
     Uses a ``psycopg_pool.AsyncConnectionPool`` for connection
@@ -319,110 +280,6 @@ class PostgresPersistenceBackend:
         self._ontology_entities = None
         self._ontology_drift = None
 
-    async def _configure_connection(
-        self,
-        conn: psycopg.AsyncConnection[object],
-    ) -> None:
-        """Apply per-connection session parameters.
-
-        Called by the pool for every new connection it creates.  Sets
-        ``statement_timeout`` to the configured limit so runaway
-        queries are killed server-side.  ``SET`` opens an implicit
-        transaction in Postgres, so we commit before returning the
-        connection to the pool -- psycopg's configure callback
-        contract requires the connection be idle on return.
-        """
-        if self._config.statement_timeout_ms > 0:
-            await conn.execute(
-                sql.SQL("SET SESSION statement_timeout = {}").format(
-                    sql.Literal(self._config.statement_timeout_ms)
-                )
-            )
-            await conn.commit()
-
-    async def connect(self) -> None:
-        """Open the pool and instantiate repositories."""
-        async with self._lifecycle_lock:
-            if self._pool is not None:
-                logger.debug(PERSISTENCE_BACKEND_ALREADY_CONNECTED)
-                return
-
-            logger.info(
-                PERSISTENCE_BACKEND_CONNECTING,
-                host=self._config.host,
-                port=self._config.port,
-                database=self._config.database,
-            )
-
-            pool: AsyncConnectionPool | None = None
-            try:
-                conninfo = _build_conninfo(self._config)
-                pool = AsyncConnectionPool(
-                    conninfo,
-                    min_size=self._config.pool_min_size,
-                    max_size=self._config.pool_max_size,
-                    open=False,
-                    configure=self._configure_connection,
-                )
-                await pool.open(
-                    wait=True,
-                    timeout=self._config.pool_timeout_seconds,
-                )
-                self._pool = pool
-                self._create_repositories()
-            except MemoryError, RecursionError:
-                # Fatal: still best-effort-close the pool to reclaim
-                # connections before re-raising.
-                if pool is not None:
-                    with contextlib.suppress(Exception):
-                        await pool.close()
-                self._clear_state()
-                raise
-            except (psycopg.Error, OSError, TimeoutError) as exc:
-                await self._cleanup_failed_connect(exc, pool)
-            except Exception as exc:
-                # Any other failure after ``pool.open()`` (e.g. repository
-                # construction) still needs the pool closed or we leak
-                # connections until GC.
-                await self._cleanup_failed_connect(exc, pool)
-
-            logger.info(
-                PERSISTENCE_BACKEND_CONNECTED,
-                host=self._config.host,
-                database=self._config.database,
-            )
-
-    async def _cleanup_failed_connect(
-        self,
-        exc: BaseException,
-        pool: AsyncConnectionPool | None,
-    ) -> None:
-        """Log failure, close partial pool, and raise.
-
-        Raises:
-            PersistenceConnectionError: Always.
-        """
-        logger.exception(
-            PERSISTENCE_BACKEND_CONNECTION_FAILED,
-            host=self._config.host,
-            database=self._config.database,
-            error=str(exc),
-        )
-        if pool is not None:
-            try:
-                await pool.close()
-            except (psycopg.Error, OSError) as cleanup_exc:
-                logger.warning(
-                    PERSISTENCE_BACKEND_DISCONNECT_ERROR,
-                    host=self._config.host,
-                    error=str(cleanup_exc),
-                    error_type=type(cleanup_exc).__name__,
-                    context="cleanup_after_connect_failure",
-                )
-        self._clear_state()
-        msg = "Failed to connect to postgres backend"
-        raise PersistenceConnectionError(msg) from exc
-
     def _create_repositories(self) -> None:
         """Instantiate all repository objects from the active pool."""
         assert self._pool is not None  # noqa: S101
@@ -510,203 +367,6 @@ class PostgresPersistenceBackend:
             logger.warning(PERSISTENCE_BACKEND_NOT_CONNECTED, error=msg)
             raise PersistenceConnectionError(msg)
         return self._pool
-
-    async def disconnect(self) -> None:
-        """Close the connection pool."""
-        async with self._lifecycle_lock:
-            if self._pool is None:
-                return
-
-            logger.info(
-                PERSISTENCE_BACKEND_DISCONNECTING,
-                host=self._config.host,
-                database=self._config.database,
-            )
-            try:
-                await self._pool.close()
-                logger.info(
-                    PERSISTENCE_BACKEND_DISCONNECTED,
-                    host=self._config.host,
-                    database=self._config.database,
-                )
-            except (psycopg.Error, OSError) as exc:
-                logger.warning(
-                    PERSISTENCE_BACKEND_DISCONNECT_ERROR,
-                    host=self._config.host,
-                    error=str(exc),
-                    error_type=type(exc).__name__,
-                )
-            finally:
-                self._clear_state()
-
-    async def health_check(self) -> bool:
-        """Check database connectivity via ``SELECT 1``.
-
-        Bounded by ``pool_timeout_seconds`` so the probe cannot hang
-        indefinitely when the pool is exhausted or the server is
-        unreachable -- a stuck health check would otherwise block
-        orchestration loops that poll backend readiness.  The timeout
-        covers the full probe: waiting for a pool connection checkout
-        AND executing the query, whichever takes longer.
-
-        Pool state is captured into a local reference while holding
-        ``_lifecycle_lock`` so ``disconnect()`` cannot close the pool
-        out from under us after the ``None`` check passes.
-        """
-        async with self._lifecycle_lock:
-            pool = self._pool
-        if pool is None:
-            return False
-        try:
-            async with asyncio.timeout(self._config.pool_timeout_seconds):
-                async with (
-                    pool.connection() as conn,
-                    conn.cursor() as cur,
-                ):
-                    await cur.execute("SELECT 1")
-                    row = await cur.fetchone()
-                    healthy = row is not None
-        except (psycopg.Error, OSError, TimeoutError) as exc:
-            logger.warning(
-                PERSISTENCE_BACKEND_HEALTH_CHECK,
-                healthy=False,
-                error=str(exc),
-                error_type=type(exc).__name__,
-            )
-            return False
-        logger.debug(PERSISTENCE_BACKEND_HEALTH_CHECK, healthy=healthy)
-        return healthy
-
-    async def migrate(self) -> None:
-        """Apply pending schema migrations via Atlas CLI.
-
-        If migration fails, the pool is closed and backend state is
-        cleared so callers cannot continue against a backend whose
-        schema is in an indeterminate state (partially applied, or
-        rolled back by Atlas).  They must reconnect explicitly.
-
-        When ``config.enable_timescaledb`` is true, the Atlas
-        migrations run first, then the hypertable conversion runs as
-        a separate post-migration step against the same pool.  The
-        hypertable conversion is idempotent (``if_not_exists => TRUE``)
-        so repeated runs are safe.
-
-        Raises:
-            PersistenceConnectionError: If not connected.
-            MigrationError: If migration application fails.
-        """
-        async with self._lifecycle_lock:
-            if self._pool is None:
-                msg = "Cannot migrate: postgres backend not connected"
-                logger.warning(PERSISTENCE_BACKEND_NOT_CONNECTED, error=msg)
-                raise PersistenceConnectionError(msg)
-            db_url = atlas.to_postgres_url(self._config)
-            try:
-                await atlas.migrate_apply(db_url, backend="postgres")
-                if self._config.enable_timescaledb:
-                    await self._apply_timescaledb_setup()
-            except BaseException:
-                pool = self._pool
-                if pool is not None:
-                    try:
-                        await pool.close()
-                    except (psycopg.Error, OSError) as cleanup_exc:
-                        logger.warning(
-                            PERSISTENCE_BACKEND_DISCONNECT_ERROR,
-                            host=self._config.host,
-                            error=str(cleanup_exc),
-                            error_type=type(cleanup_exc).__name__,
-                            context="cleanup_after_migration_failure",
-                        )
-                self._clear_state()
-                raise
-
-    async def _apply_timescaledb_setup(self) -> None:
-        """Convert append-only time-series tables to hypertables.
-
-        Scope: converts ``cost_records`` and ``audit_entries`` to
-        hypertables.  ``heartbeats`` is deliberately excluded because
-        it is update-heavy (one row per execution_id, bumped per
-        pulse) and hypertables optimise for immutable append-only
-        data.  Gated on ``config.enable_timescaledb``.  Called at
-        the end of ``migrate`` so Atlas has already created the base
-        tables with composite primary keys that include the
-        partitioning column.  Uses only Apache-2.0 licensed
-        TimescaleDB features: ``create_hypertable`` is Apache;
-        retention policies and compression are under the Timescale
-        License and are NOT used here.  A missing extension is
-        treated as a warning (not an error) so operators running
-        vanilla Postgres can leave ``enable_timescaledb=True`` in
-        their config without breaking the migration.  Rollback of
-        any psycopg error is handled by the enclosing ``migrate``
-        method (pool close + state clear); this method's try/except
-        only exists to tag the log event.
-        """
-        assert self._pool is not None  # noqa: S101 -- checked in migrate()
-        try:
-            async with (
-                self._pool.connection() as conn,
-                conn.cursor() as cur,
-            ):
-                await cur.execute(
-                    "SELECT 1 FROM pg_available_extensions WHERE name = 'timescaledb'",
-                )
-                if await cur.fetchone() is None:
-                    logger.warning(
-                        PERSISTENCE_TIMESCALEDB_UNAVAILABLE,
-                        host=self._config.host,
-                    )
-                    await conn.commit()
-                    return
-
-                await cur.execute("SET LOCAL statement_timeout = 0")
-                await cur.execute("CREATE EXTENSION IF NOT EXISTS timescaledb")
-                await self._create_hypertable(
-                    cur,
-                    "cost_records",
-                    self._config.cost_records_chunk_interval,
-                )
-                await self._create_hypertable(
-                    cur,
-                    "audit_entries",
-                    self._config.audit_entries_chunk_interval,
-                )
-                await conn.commit()
-        except psycopg.Error as exc:
-            logger.exception(
-                PERSISTENCE_TIMESCALEDB_SETUP_FAILED,
-                error=str(exc),
-                error_type=type(exc).__name__,
-            )
-            raise
-
-    async def _create_hypertable(
-        self,
-        cur: psycopg.AsyncCursor[Any],
-        table: str,
-        chunk_interval: str,
-    ) -> None:
-        """Convert a single append-only table to a TimescaleDB hypertable.
-
-        Idempotent via ``if_not_exists => TRUE`` -- a table that is
-        already a hypertable is a no-op.  ``migrate_data => TRUE``
-        moves existing rows into chunks on first run; this is a
-        full-table rewrite and can be slow on large production
-        tables.  Operators should test on a staging clone first.
-        """
-        await cur.execute(
-            "SELECT create_hypertable("
-            "%s, 'timestamp', "
-            "chunk_time_interval => CAST(%s AS INTERVAL), "
-            "if_not_exists => TRUE, "
-            "migrate_data => TRUE)",
-            (table, chunk_interval),
-        )
-        logger.info(
-            PERSISTENCE_TIMESCALEDB_HYPERTABLE_CREATED,
-            table=table,
-            chunk_interval=chunk_interval,
-        )
 
     @property
     def is_connected(self) -> bool:

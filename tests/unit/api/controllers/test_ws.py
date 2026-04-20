@@ -270,8 +270,8 @@ class TestWsTicketAuth:
 
     def test_ws_endpoint_excluded_from_auth_middleware(self) -> None:
         """The /ws path must be in the auto-derived auth exclude list."""
-        from synthorg.api.app import _build_middleware
         from synthorg.api.config import ApiConfig
+        from synthorg.api.middleware_factory import _build_middleware
 
         api_config = ApiConfig()
         middleware = _build_middleware(api_config)
@@ -394,8 +394,8 @@ class TestWsTicketAuth:
         from litestar import Litestar
         from litestar.enums import ScopeType
 
-        from synthorg.api.app import _build_middleware
         from synthorg.api.config import ApiConfig
+        from synthorg.api.middleware_factory import _build_middleware
 
         api_config = ApiConfig()
         middleware = _build_middleware(api_config)
@@ -421,8 +421,8 @@ class TestWsTicketAuth:
             RateLimitConfig as LitestarRateLimitConfig,
         )
 
-        from synthorg.api.app import _build_middleware
         from synthorg.api.config import ApiConfig
+        from synthorg.api.middleware_factory import _build_middleware
 
         api_config = ApiConfig()
         middleware = _build_middleware(api_config)
@@ -489,7 +489,7 @@ class TestWsTicketAuth:
         """
         from unittest.mock import MagicMock
 
-        from synthorg.api.auth.controller import require_password_changed
+        from synthorg.api.auth.controller_helpers import require_password_changed
 
         connection = MagicMock()
         connection.url.path = "/api/v1/ws"

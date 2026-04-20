@@ -15,10 +15,7 @@ from synthorg.engine.coordination.attribution import (
     CoordinationResultWithAttribution,
     build_agent_contributions,
 )
-from synthorg.engine.coordination.dispatchers import (
-    DispatchResult,
-    select_dispatcher,
-)
+from synthorg.engine.coordination.dispatcher_factory import select_dispatcher
 from synthorg.engine.coordination.models import (
     CoordinationPhaseResult,
     CoordinationResult,
@@ -38,6 +35,7 @@ from synthorg.observability.events.coordination import (
 )
 
 if TYPE_CHECKING:
+    from synthorg.engine.coordination.dispatcher_types import DispatchResult
     from synthorg.engine.coordination.models import CoordinationContext
     from synthorg.engine.decomposition.models import (
         DecompositionResult,

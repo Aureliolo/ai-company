@@ -5,7 +5,6 @@ import json as _json
 from collections.abc import (
     Mapping,  # noqa: TC003  # Litestar inspects runtime return-type annotation
 )
-from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Annotated
 
 if TYPE_CHECKING:
@@ -17,6 +16,7 @@ from litestar.params import Parameter
 from litestar.response import ServerSentEvent
 from litestar.status_codes import HTTP_204_NO_CONTENT
 
+from synthorg.api.controllers._provider_helpers import enrich_with_usage, sse_error
 from synthorg.api.dto import (
     ApiResponse,
     CreateFromPresetRequest,
@@ -57,7 +57,6 @@ from synthorg.observability.events.api import (
     API_MODEL_CAPABILITIES_LOOKUP_FAILED,
     API_MODEL_OPERATION_FAILED,
     API_PROVIDER_HEALTH_QUERIED,
-    API_PROVIDER_USAGE_ENRICHMENT_FAILED,
     API_RESOURCE_CONFLICT,
     API_RESOURCE_NOT_FOUND,
     API_SSE_PULL_MODEL_FAILED,
@@ -73,60 +72,6 @@ from synthorg.providers.presets import ProviderPreset, get_preset, list_presets
 from synthorg.providers.probing import probe_preset_urls
 
 logger = get_logger(__name__)
-
-
-def _sse_error(msg: str) -> dict[str, object]:
-    """Build a PullProgressEvent-shaped error dict for SSE."""
-    return {
-        "status": msg,
-        "progress_percent": None,
-        "total_bytes": None,
-        "completed_bytes": None,
-        "error": msg,
-        "done": True,
-    }
-
-
-async def _enrich_with_usage(
-    summary: ProviderHealthSummary,
-    app_state: AppState,
-    name: str,
-) -> ProviderHealthSummary:
-    """Enrich a health summary with token/cost data from CostTracker.
-
-    Args:
-        summary: Base health summary from the health tracker.
-        app_state: Application state.
-        name: Provider name.
-
-    Returns:
-        Enriched summary (or unchanged if enrichment is unavailable).
-    """
-    if not app_state.has_cost_tracker:
-        return summary
-    try:
-        now = datetime.now(UTC)
-        usage = await app_state.cost_tracker.get_provider_usage(
-            name,
-            start=now - timedelta(hours=24),
-            end=now,
-        )
-        return summary.model_copy(
-            update={
-                "total_tokens_24h": usage.total_tokens,
-                "total_cost_24h": usage.total_cost,
-            },
-        )
-    except MemoryError, RecursionError:
-        raise
-    except Exception as exc:
-        logger.warning(
-            API_PROVIDER_USAGE_ENRICHMENT_FAILED,
-            provider=name,
-            error=str(exc),
-            error_type=type(exc).__qualname__,
-        )
-        return summary
 
 
 class ProviderController(Controller):
@@ -287,7 +232,7 @@ class ProviderController(Controller):
             logger.warning(API_RESOURCE_NOT_FOUND, resource="provider", name=name)
             raise NotFoundError(msg)
         summary = await app_state.provider_health_tracker.get_summary(name)
-        summary = await _enrich_with_usage(summary, app_state, name)
+        summary = await enrich_with_usage(summary, app_state, name)
         logger.debug(
             API_PROVIDER_HEALTH_QUERIED,
             provider=name,
@@ -680,13 +625,13 @@ class ProviderController(Controller):
                 yield {
                     "event": "error",
                     "data": _json.dumps(
-                        _sse_error(f"Provider {name!r} not found"),
+                        sse_error(f"Provider {name!r} not found"),
                     ),
                 }
             except ProviderValidationError as exc:
                 yield {
                     "event": "error",
-                    "data": _json.dumps(_sse_error(str(exc))),
+                    "data": _json.dumps(sse_error(str(exc))),
                 }
             except asyncio.CancelledError:
                 raise
@@ -703,7 +648,7 @@ class ProviderController(Controller):
                 yield {
                     "event": "error",
                     "data": _json.dumps(
-                        _sse_error(
+                        sse_error(
                             f"Internal error: {type(exc).__name__}",
                         ),
                     ),

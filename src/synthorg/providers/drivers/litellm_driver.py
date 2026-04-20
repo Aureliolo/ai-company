@@ -5,7 +5,6 @@ contract, mapping between domain models and LiteLLM's chat-completion
 API.
 """
 
-import json
 import time
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
@@ -54,18 +53,19 @@ from synthorg.observability.events.provider import (
     PROVIDER_RETRY_AFTER_PARSE_FAILED,
     PROVIDER_STREAM_CHUNK_NO_DELTA,
     PROVIDER_STREAM_DONE,
-    PROVIDER_TOOL_CALL_ARGUMENTS_PARSE_FAILED,
-    PROVIDER_TOOL_CALL_ARGUMENTS_TRUNCATED,
-    PROVIDER_TOOL_CALL_INCOMPLETE,
 )
 from synthorg.providers import errors
 from synthorg.providers.base import BaseCompletionProvider
 from synthorg.providers.capabilities import ModelCapabilities
+from synthorg.providers.drivers.litellm_tool_accumulator import (
+    _ToolCallAccumulator,
+    accumulate_tool_call_deltas,
+    emit_pending_tool_calls,
+)
 from synthorg.providers.enums import AuthType, StreamEventType
 from synthorg.providers.models import (
     CompletionResponse,
     StreamChunk,
-    ToolCall,
 )
 from synthorg.providers.resilience.rate_limiter import RateLimiter
 from synthorg.providers.resilience.retry import RetryHandler
@@ -525,7 +525,7 @@ class LiteLLMDriver(BaseCompletionProvider):
                 )
                 raise handle_exc(exc, model) from exc
 
-            for sc in _emit_pending_tool_calls(pending):
+            for sc in emit_pending_tool_calls(pending):
                 yield sc
             logger.debug(
                 PROVIDER_STREAM_DONE,
@@ -570,7 +570,7 @@ class LiteLLMDriver(BaseCompletionProvider):
 
         raw_tc = getattr(delta, "tool_calls", None)
         if raw_tc:
-            _accumulate_tool_call_deltas(raw_tc, pending)
+            accumulate_tool_call_deltas(raw_tc, pending)
 
         usage_obj = getattr(chunk, "usage", None)
         if usage_obj is not None:
@@ -725,108 +725,3 @@ def _apply_completion_config(
     if config.timeout is not None:
         extra["timeout"] = config.timeout
     return {**kwargs, **extra}
-
-
-def _accumulate_tool_call_deltas(
-    raw_deltas: list[Any],
-    pending: dict[int, _ToolCallAccumulator],
-) -> None:
-    """Merge streaming tool call deltas into accumulators."""
-    for tc_delta in raw_deltas:
-        idx: int = getattr(tc_delta, "index", 0)
-        if idx not in pending:
-            pending[idx] = _ToolCallAccumulator()
-        pending[idx].update(tc_delta)
-
-
-def _emit_pending_tool_calls(
-    pending: dict[int, _ToolCallAccumulator],
-) -> list[StreamChunk]:
-    """Build ``TOOL_CALL_DELTA`` chunks from accumulated data.
-
-    Although the event type is ``TOOL_CALL_DELTA``, each chunk contains
-    a fully assembled ``ToolCall`` (not a partial delta).  The stream
-    protocol reuses the delta event type for final tool call delivery.
-    """
-    result: list[StreamChunk] = []
-    for idx in sorted(pending):
-        tc = pending[idx].build()
-        if tc is not None:
-            result.append(
-                StreamChunk(
-                    event_type=StreamEventType.TOOL_CALL_DELTA,
-                    tool_call_delta=tc,
-                )
-            )
-    return result
-
-
-class _ToolCallAccumulator:
-    """Accumulates streaming tool call deltas into a ``ToolCall``."""
-
-    #: Maximum total length of accumulated argument bytes (1 MiB).
-    _MAX_ARGUMENTS_LEN: int = 1_048_576
-
-    id: str
-    name: str
-    arguments: str
-    _truncated: bool
-
-    def __init__(self) -> None:
-        self.id = ""
-        self.name = ""
-        self.arguments = ""
-        self._truncated = False
-
-    def update(self, delta: Any) -> None:
-        """Merge a single tool call delta."""
-        call_id = getattr(delta, "id", None)
-        if call_id:
-            self.id = str(call_id)
-        func = getattr(delta, "function", None)
-        if func is not None:
-            name = getattr(func, "name", None)
-            if name:
-                self.name = str(name)
-            args = getattr(func, "arguments", None)
-            if args:
-                if self._truncated:
-                    return
-                fragment = str(args)
-                if len(self.arguments) + len(fragment) > self._MAX_ARGUMENTS_LEN:
-                    logger.warning(
-                        PROVIDER_TOOL_CALL_ARGUMENTS_TRUNCATED,
-                        max_bytes=self._MAX_ARGUMENTS_LEN,
-                    )
-                    self._truncated = True
-                    return
-                self.arguments += fragment
-
-    def build(self) -> ToolCall | None:
-        """Build a ``ToolCall`` if enough data accumulated.
-
-        Returns ``None`` if either ``id`` or ``name`` is still empty
-        (malformed/incomplete streaming deltas), or if the argument JSON
-        could not be parsed.
-        """
-        if not self.id or not self.name:
-            if self.arguments:
-                logger.warning(
-                    PROVIDER_TOOL_CALL_INCOMPLETE,
-                    tool_id=self.id,
-                    tool_name=self.name,
-                    args_len=len(self.arguments),
-                )
-            return None
-        try:
-            parsed = json.loads(self.arguments) if self.arguments else {}
-        except json.JSONDecodeError, ValueError:
-            logger.warning(
-                PROVIDER_TOOL_CALL_ARGUMENTS_PARSE_FAILED,
-                tool_name=self.name,
-                tool_id=self.id,
-                args_length=len(self.arguments) if self.arguments else 0,
-            )
-            return None
-        args: dict[str, Any] = parsed if isinstance(parsed, dict) else {}
-        return ToolCall(id=self.id, name=self.name, arguments=args)

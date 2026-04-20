@@ -12,7 +12,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from synthorg.api.app import make_personality_trim_notifier
+from synthorg.api.app_helpers import make_personality_trim_notifier
 from synthorg.api.channels import CHANNEL_AGENTS
 from synthorg.api.ws_models import WsEvent, WsEventType
 from synthorg.engine.agent_engine import PersonalityTrimPayload

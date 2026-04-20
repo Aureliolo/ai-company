@@ -1,0 +1,224 @@
+"""Tool-call execution helpers for execution loops.
+
+Extracted from :mod:`synthorg.engine.loop_helpers` to keep the main
+helpers module under the project size limit.
+"""
+
+from typing import TYPE_CHECKING
+
+from synthorg.engine.loop_protocol import (
+    ExecutionResult,
+    TerminationReason,
+    TurnRecord,
+)
+from synthorg.observability import get_logger
+from synthorg.observability.events.approval_gate import (
+    APPROVAL_GATE_PARK_TASKLESS,
+)
+from synthorg.observability.events.execution import (
+    EXECUTION_LOOP_ERROR,
+    EXECUTION_LOOP_TOOL_CALLS,
+)
+from synthorg.observability.events.tool import TOOL_L2_LOADED, TOOL_L3_FETCHED
+from synthorg.providers.enums import MessageRole
+from synthorg.providers.models import ChatMessage
+
+if TYPE_CHECKING:
+    from synthorg.engine.approval_gate import ApprovalGate
+    from synthorg.engine.approval_gate_models import EscalationInfo
+    from synthorg.engine.context import AgentContext
+    from synthorg.providers.models import CompletionResponse
+    from synthorg.tools.invoker import ToolInvoker
+
+logger = get_logger(__name__)
+
+
+def _build_error_result(
+    ctx: AgentContext,
+    turns: list[TurnRecord],
+    error_message: str,
+    *,
+    metadata: dict[str, object] | None = None,
+) -> ExecutionResult:
+    """Inline build_result helper avoiding a circular import."""
+    from synthorg.engine.loop_helpers import build_result  # noqa: PLC0415
+
+    return build_result(
+        ctx,
+        TerminationReason.ERROR,
+        turns,
+        error_message=error_message,
+        metadata=metadata or {},
+    )
+
+
+def clear_last_turn_tool_calls(turns: list[TurnRecord]) -> None:
+    """Clear tool_calls_made on the last TurnRecord.
+
+    Used when shutdown fires between recording a turn and executing
+    tools -- the turn should not overstate what happened.
+    """
+    if turns:
+        last = turns[-1]
+        turns[-1] = last.model_copy(
+            update={"tool_calls_made": (), "tool_call_fingerprints": ()},
+        )
+
+
+async def _park_for_approval(
+    ctx: AgentContext,
+    escalation: EscalationInfo,
+    approval_gate: ApprovalGate,
+    turns: list[TurnRecord],
+) -> ExecutionResult:
+    """Park the context for approval and return a PARKED or ERROR result."""
+    from synthorg.engine.loop_helpers import build_result  # noqa: PLC0415
+
+    agent_id = str(ctx.identity.id)
+    task_id: str | None = None
+    if ctx.task_execution is not None:
+        task_id = ctx.task_execution.task.id
+    else:
+        logger.debug(
+            APPROVAL_GATE_PARK_TASKLESS,
+            approval_id=escalation.approval_id,
+            agent_id=agent_id,
+            note="No task_execution on context -- task_id will be None",
+        )
+
+    try:
+        await approval_gate.park_context(
+            escalation=escalation,
+            context=ctx,
+            agent_id=agent_id,
+            task_id=task_id,
+        )
+    except MemoryError, RecursionError:
+        raise
+    except Exception:
+        return build_result(
+            ctx,
+            TerminationReason.ERROR,
+            turns,
+            error_message=(
+                f"Approval escalation detected (id={escalation.approval_id}) "
+                f"but context parking failed -- cannot resume"
+            ),
+            metadata={
+                "approval_id": escalation.approval_id,
+                "parking_failed": True,
+            },
+        )
+
+    return build_result(
+        ctx,
+        TerminationReason.PARKED,
+        turns,
+        metadata={
+            "approval_id": escalation.approval_id,
+            "parking_failed": False,
+        },
+    )
+
+
+async def execute_tool_calls(  # noqa: PLR0913, C901
+    ctx: AgentContext,
+    tool_invoker: ToolInvoker | None,
+    response: CompletionResponse,
+    turn_number: int,
+    turns: list[TurnRecord],
+    *,
+    approval_gate: ApprovalGate | None = None,
+) -> AgentContext | ExecutionResult:
+    """Execute tool calls and append results to context."""
+    if tool_invoker is None:
+        error_msg = (
+            f"LLM requested {len(response.tool_calls)} tool "
+            f"call(s) but no tool invoker is available"
+        )
+        logger.error(
+            EXECUTION_LOOP_ERROR,
+            execution_id=ctx.execution_id,
+            turn=turn_number,
+            error=error_msg,
+        )
+        clear_last_turn_tool_calls(turns)
+        return _build_error_result(ctx, turns, error_msg)
+
+    tool_names = [tc.name for tc in response.tool_calls]
+    logger.info(
+        EXECUTION_LOOP_TOOL_CALLS,
+        execution_id=ctx.execution_id,
+        turn=turn_number,
+        tools=tool_names,
+    )
+
+    try:
+        results = await tool_invoker.invoke_all(
+            response.tool_calls,
+        )
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        error_msg = (
+            f"Tool execution failed on turn {turn_number}: {type(exc).__name__}: {exc}"
+        )
+        logger.exception(
+            EXECUTION_LOOP_ERROR,
+            execution_id=ctx.execution_id,
+            turn=turn_number,
+            error=error_msg,
+            tools=tool_names,
+        )
+        return _build_error_result(ctx, turns, error_msg)
+
+    for result in results:
+        tool_msg = ChatMessage(
+            role=MessageRole.TOOL,
+            tool_result=result,
+        )
+        ctx = ctx.with_message(tool_msg)
+
+    for tc, result in zip(response.tool_calls, results, strict=True):
+        if result.is_error:
+            continue
+        if tc.name == "load_tool":
+            t_name = tc.arguments.get("tool_name")
+            if isinstance(t_name, str) and t_name not in ctx.loaded_tools:
+                ctx = ctx.with_tool_loaded(t_name)
+                logger.info(
+                    TOOL_L2_LOADED,
+                    execution_id=ctx.execution_id,
+                    tool_name=t_name,
+                    turn=turn_number,
+                )
+        elif tc.name == "load_tool_resource":
+            t_name = tc.arguments.get("tool_name")
+            r_id = tc.arguments.get("resource_id")
+            if (
+                isinstance(t_name, str)
+                and isinstance(r_id, str)
+                and (t_name, r_id) not in ctx.loaded_resources
+            ):
+                ctx = ctx.with_resource_loaded(t_name, r_id)
+                logger.info(
+                    TOOL_L3_FETCHED,
+                    execution_id=ctx.execution_id,
+                    tool_name=t_name,
+                    resource_id=r_id,
+                    turn=turn_number,
+                )
+
+    if approval_gate is not None:
+        escalation = approval_gate.should_park(
+            tool_invoker.pending_escalations,
+        )
+        if escalation is not None:
+            return await _park_for_approval(
+                ctx,
+                escalation,
+                approval_gate,
+                turns,
+            )
+
+    return ctx

@@ -905,7 +905,7 @@ class TestAgentEngineClassification:
         )
 
         with patch(
-            "synthorg.engine.agent_engine.classify_execution_errors",
+            "synthorg.engine.agent_engine_post_exec.classify_execution_errors",
         ) as mock_classify:
             result = await engine.run(
                 identity=sample_agent_with_personality,
@@ -931,7 +931,7 @@ class TestAgentEngineClassification:
         )
 
         with patch(
-            "synthorg.engine.agent_engine.classify_execution_errors",
+            "synthorg.engine.agent_engine_post_exec.classify_execution_errors",
             new_callable=AsyncMock,
             return_value=None,
         ) as mock_classify:
@@ -960,7 +960,7 @@ class TestAgentEngineClassification:
 
         with (
             patch(
-                "synthorg.engine.agent_engine.classify_execution_errors",
+                "synthorg.engine.agent_engine_post_exec.classify_execution_errors",
                 new_callable=AsyncMock,
                 side_effect=MemoryError,
             ),
@@ -1029,7 +1029,7 @@ class TestAgentEnginePromptTokenRatioWarning:
 
         with (
             patch(
-                "synthorg.engine.agent_engine.build_system_prompt",
+                "synthorg.engine.agent_engine_context.build_system_prompt",
                 return_value=fixed_prompt,
             ),
             structlog.testing.capture_logs() as logs,

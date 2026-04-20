@@ -20,8 +20,6 @@ Example::
 
 from typing import TYPE_CHECKING, Any
 
-from jinja2 import TemplateError as Jinja2TemplateError
-from jinja2 import TemplateSyntaxError
 from jinja2.sandbox import SandboxedEnvironment
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -51,6 +49,15 @@ from synthorg.engine.prompt_template import (
     DEFAULT_TEMPLATE,
     PROMPT_TEMPLATE_VERSION,
 )
+from synthorg.engine.prompt_validation import (
+    inject_async_task_section,
+    log_prompt_build_success,
+    log_trim_results,
+    render_template,
+    resolve_template,
+    validate_max_tokens,
+    validate_org_policies,
+)
 from synthorg.engine.sanitization import sanitize_message
 from synthorg.engine.token_estimation import (
     DefaultTokenEstimator,
@@ -58,13 +65,8 @@ from synthorg.engine.token_estimation import (
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.prompt import (
-    PROMPT_BUILD_BUDGET_EXCEEDED,
     PROMPT_BUILD_ERROR,
     PROMPT_BUILD_START,
-    PROMPT_BUILD_SUCCESS,
-    PROMPT_BUILD_TOKEN_TRIMMED,
-    PROMPT_CUSTOM_TEMPLATE_FAILED,
-    PROMPT_CUSTOM_TEMPLATE_LOADED,
     PROMPT_POLICY_VALIDATION_FAILED,
     PROMPT_PROFILE_SELECTED,
 )
@@ -201,8 +203,8 @@ def build_system_prompt(  # noqa: PLR0913, C901, PLR0912
     Raises:
         PromptBuildError: If prompt construction fails.
     """
-    _validate_max_tokens(agent, max_tokens)
-    _validate_org_policies(agent, org_policies)
+    validate_max_tokens(agent, max_tokens)
+    validate_org_policies(agent, org_policies)
 
     if l1_summaries:
         logger.info(
@@ -258,7 +260,7 @@ def build_system_prompt(  # noqa: PLR0913, C901, PLR0912
 
     try:
         estimator = token_estimator or DefaultTokenEstimator()
-        template_str = _resolve_template(custom_template)
+        template_str = resolve_template(custom_template)
 
         result = _render_with_trimming(
             template_str=template_str,
@@ -334,74 +336,19 @@ def _inject_async_task_section(
 
     This section is appended after trimming so it is never trimmed away.
     Recomputes ``estimated_tokens`` to reflect the injected content.
-
-    Args:
-        prompt: The rendered system prompt.
-        state: Async task state channel with records.
-        estimator: Token estimator for recomputing the count.
-
-    Returns:
-        Updated ``SystemPrompt`` with the async tasks section appended.
     """
-    lines = [
-        "\n\n## Active Async Tasks\n",
-        *(
-            f"- **{r.task_id}** ({r.agent_name}): "
-            f"{r.status.value} "
-            f"(started {r.created_at.isoformat()}, "
-            f"updated {r.updated_at.isoformat()})"
-            for r in state.records
-        ),
-    ]
-    section = "\n".join(lines)
-    new_content = prompt.content + section
+    new_content, new_tokens = inject_async_task_section(
+        content=prompt.content,
+        state=state,
+        estimator=estimator,
+    )
     return prompt.model_copy(
         update={
             "content": new_content,
-            "estimated_tokens": estimator.estimate_tokens(new_content),
+            "estimated_tokens": new_tokens,
             "sections": (*prompt.sections, "async_tasks"),
         },
     )
-
-
-def _validate_max_tokens(
-    agent: AgentIdentity,
-    max_tokens: int | None,
-) -> None:
-    """Raise ``PromptBuildError`` if ``max_tokens`` is non-positive."""
-    if max_tokens is not None and max_tokens <= 0:
-        msg = f"max_tokens must be > 0, got {max_tokens}"
-        logger.error(
-            PROMPT_BUILD_ERROR,
-            agent_id=str(agent.id),
-            agent_name=agent.name,
-            max_tokens=max_tokens,
-        )
-        raise PromptBuildError(msg)
-
-
-def _validate_org_policies(
-    agent: AgentIdentity,
-    org_policies: tuple[str, ...],
-) -> None:
-    """Raise ``PromptBuildError`` on blank or non-string policy entries.
-
-    Args:
-        agent: Agent identity for error context.
-        org_policies: Policy texts to validate.
-
-    Raises:
-        PromptBuildError: If any policy entry is empty or whitespace-only.
-    """
-    for index, policy in enumerate(org_policies):
-        if not isinstance(policy, str) or not policy.strip():
-            msg = f"org_policies[{index}] must be a non-empty string"
-            logger.error(
-                PROMPT_BUILD_ERROR,
-                agent_id=str(agent.id),
-                error=msg,
-            )
-            raise PromptBuildError(msg)
 
 
 def _log_and_return(
@@ -409,9 +356,8 @@ def _log_and_return(
     result: SystemPrompt,
 ) -> SystemPrompt:
     """Log prompt build success and return the result."""
-    logger.info(
-        PROMPT_BUILD_SUCCESS,
-        agent_id=str(agent.id),
+    log_prompt_build_success(
+        agent,
         sections=result.sections,
         estimated_tokens=result.estimated_tokens,
         template_version=result.template_version,
@@ -420,38 +366,6 @@ def _log_and_return(
 
 
 # ── Private helpers ──────────────────────────────────────────────
-
-
-def _resolve_template(custom_template: str | None) -> str:
-    """Resolve the template string to use for rendering.
-
-    Args:
-        custom_template: Optional user-provided template string.
-
-    Returns:
-        The template string to render.
-
-    Raises:
-        PromptBuildError: If custom template syntax is invalid.
-    """
-    if custom_template is None:
-        return DEFAULT_TEMPLATE
-
-    # Early-fail: validate syntax before building the template context.
-    # from_string() in _render_template would also catch this, but failing
-    # here produces a more specific "invalid syntax" error message.
-    try:
-        _SANDBOX_ENV.parse(custom_template)
-    except TemplateSyntaxError as exc:
-        logger.exception(
-            PROMPT_CUSTOM_TEMPLATE_FAILED,
-            error=str(exc),
-        )
-        msg = f"Custom template has invalid Jinja2 syntax: {exc}"
-        raise PromptBuildError(msg) from exc
-
-    logger.debug(PROMPT_CUSTOM_TEMPLATE_LOADED)
-    return custom_template
 
 
 def _build_template_context(  # noqa: PLR0913
@@ -562,28 +476,6 @@ def _build_template_context(  # noqa: PLR0913
     return context, trim_info
 
 
-def _render_template(template_str: str, context: dict[str, Any]) -> str:
-    """Render a Jinja2 template string with the given context.
-
-    Args:
-        template_str: Jinja2 template text.
-        context: Template variables.
-
-    Returns:
-        Rendered prompt text.
-
-    Raises:
-        PromptBuildError: If rendering fails.
-    """
-    try:
-        template = _SANDBOX_ENV.from_string(template_str)
-        return template.render(**context)
-    except Jinja2TemplateError as exc:
-        logger.exception(PROMPT_BUILD_ERROR, error=str(exc))
-        msg = f"System prompt rendering failed: {exc}"
-        raise PromptBuildError(msg) from exc
-
-
 def _trim_sections(  # noqa: PLR0913
     *,
     template_str: str,
@@ -678,33 +570,9 @@ def _trim_sections(  # noqa: PLR0913
             strategy_config=strategy_config,
         )
 
-    _log_trim_results(agent, max_tokens, estimated, trimmed_sections)
+    log_trim_results(agent, max_tokens, estimated, trimmed_sections)
 
     return content, estimated, task, company, org_policies, strategy_config
-
-
-def _log_trim_results(
-    agent: AgentIdentity,
-    max_tokens: int,
-    estimated: int,
-    trimmed_sections: list[str],
-) -> None:
-    """Log warnings for trimmed sections and/or budget-exceeded state."""
-    if trimmed_sections:
-        logger.warning(
-            PROMPT_BUILD_TOKEN_TRIMMED,
-            agent_id=str(agent.id),
-            max_tokens=max_tokens,
-            estimated_tokens=estimated,
-            trimmed_sections=trimmed_sections,
-        )
-    if estimated > max_tokens:
-        logger.warning(
-            PROMPT_BUILD_BUDGET_EXCEEDED,
-            agent_id=str(agent.id),
-            max_tokens=max_tokens,
-            estimated_tokens=estimated,
-        )
 
 
 def _render_with_trimming(  # noqa: PLR0913
@@ -883,7 +751,7 @@ def _render_and_estimate(  # noqa: PLR0913
         estimator=estimator,
         strategy_config=strategy_config,
     )
-    content = _render_template(template_str, context)
+    content = render_template(template_str, context)
     return content, estimator.estimate_tokens(content), trim_info
 
 
@@ -915,35 +783,3 @@ def build_error_prompt(
         sections=(),
         metadata=metadata,
     )
-
-
-def format_task_instruction(
-    task: Task,
-    *,
-    currency: CurrencyCode = DEFAULT_CURRENCY,
-) -> str:
-    """Format a task into a user message for the initial conversation.
-
-    Args:
-        task: Task to format.
-        currency: ISO 4217 currency code for budget display.
-
-    Returns:
-        Markdown-formatted task instruction string.
-    """
-    parts = [f"# Task: {task.title}", "", task.description]
-
-    if task.acceptance_criteria:
-        parts.append("")
-        parts.append("## Acceptance Criteria")
-        parts.extend(f"- {c.description}" for c in task.acceptance_criteria)
-
-    if task.budget_limit > 0:
-        parts.append("")
-        parts.append(f"**Budget limit:** {format_cost(task.budget_limit, currency)}")
-
-    if task.deadline:
-        parts.append("")
-        parts.append(f"**Deadline:** {task.deadline}")
-
-    return "\n".join(parts)

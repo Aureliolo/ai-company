@@ -3,16 +3,14 @@
 import pytest
 
 from synthorg.core.enums import AgentStatus, Complexity, SeniorityLevel
+from synthorg.engine.assignment.cost_optimized import CostOptimizedAssignmentStrategy
+from synthorg.engine.assignment.load_balanced import LoadBalancedAssignmentStrategy
+from synthorg.engine.assignment.manual import ManualAssignmentStrategy
 from synthorg.engine.assignment.models import (
     AgentWorkload,
     AssignmentRequest,
 )
-from synthorg.engine.assignment.strategies import (
-    CostOptimizedAssignmentStrategy,
-    LoadBalancedAssignmentStrategy,
-    ManualAssignmentStrategy,
-    RoleBasedAssignmentStrategy,
-)
+from synthorg.engine.assignment.role_based import RoleBasedAssignmentStrategy
 from synthorg.engine.errors import NoEligibleAgentError, TaskAssignmentError
 from synthorg.engine.routing.scorer import AgentTaskScorer
 

@@ -7,8 +7,8 @@ import pytest
 from synthorg.core.enums import ApprovalRiskLevel
 from synthorg.engine.approval_gate import ApprovalGate
 from synthorg.engine.approval_gate_models import EscalationInfo
-from synthorg.engine.loop_helpers import execute_tool_calls
 from synthorg.engine.loop_protocol import ExecutionResult, TerminationReason
+from synthorg.engine.loop_tool_execution import execute_tool_calls
 from synthorg.providers.enums import FinishReason
 from synthorg.providers.models import (
     ZERO_TOKEN_USAGE,

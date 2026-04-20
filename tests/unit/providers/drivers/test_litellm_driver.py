@@ -450,7 +450,9 @@ class TestDoStream:
 
     async def test_tool_call_arguments_length_limit(self) -> None:
         """Tool call arguments exceeding 1 MiB are truncated."""
-        from synthorg.providers.drivers.litellm_driver import _ToolCallAccumulator
+        from synthorg.providers.drivers.litellm_tool_accumulator import (
+            _ToolCallAccumulator,
+        )
 
         acc = _ToolCallAccumulator()
         acc.id = "call_001"

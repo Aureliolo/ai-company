@@ -332,22 +332,22 @@ class TestDepartmentHealth:
 @pytest.mark.unit
 class TestMeanOptional:
     def test_empty_list(self) -> None:
-        from synthorg.api.controllers.departments import _mean_optional
+        from synthorg.api.controllers._department_health import _mean_optional
 
         assert _mean_optional([]) is None
 
     def test_all_none(self) -> None:
-        from synthorg.api.controllers.departments import _mean_optional
+        from synthorg.api.controllers._department_health import _mean_optional
 
         assert _mean_optional([None, None]) is None
 
     def test_mixed_values(self) -> None:
-        from synthorg.api.controllers.departments import _mean_optional
+        from synthorg.api.controllers._department_health import _mean_optional
 
         assert _mean_optional([5.0, None, 10.0]) == 7.5
 
     def test_all_present(self) -> None:
-        from synthorg.api.controllers.departments import _mean_optional
+        from synthorg.api.controllers._department_health import _mean_optional
 
         assert _mean_optional([3.0, 6.0, 9.0]) == 6.0
 
@@ -358,7 +358,7 @@ class TestMeanOptional:
 @pytest.mark.unit
 class TestDepartmentHealthModel:
     def test_active_exceeds_total_rejected(self) -> None:
-        from synthorg.api.controllers.departments import DepartmentHealth
+        from synthorg.api.controllers._department_health import DepartmentHealth
 
         with pytest.raises(ValueError, match="exceeds agent_count"):
             DepartmentHealth(
@@ -370,7 +370,7 @@ class TestDepartmentHealthModel:
             )
 
     def test_utilization_percent_computed(self) -> None:
-        from synthorg.api.controllers.departments import DepartmentHealth
+        from synthorg.api.controllers._department_health import DepartmentHealth
 
         health = DepartmentHealth(
             department_name="eng",
@@ -382,7 +382,7 @@ class TestDepartmentHealthModel:
         assert health.utilization_percent == 50.0
 
     def test_utilization_percent_zero_agents(self) -> None:
-        from synthorg.api.controllers.departments import DepartmentHealth
+        from synthorg.api.controllers._department_health import DepartmentHealth
 
         health = DepartmentHealth(
             department_name="eng",

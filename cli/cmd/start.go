@@ -143,57 +143,7 @@ func startContainers(cmd *cobra.Command, ctx context.Context, state config.State
 	}
 
 	if !startNoPull {
-		skipVerify := GetGlobalOpts(ctx).SkipVerify
-
-		if !skipVerify {
-			// SynthOrg images: check cache independently.
-			if hasSynthOrgDigests(state) {
-				renderCachedSynthOrgBox(out, state)
-			} else {
-				if err := verifyAndPinImages(ctx, cmd, state, safeDir, out, errOut); err != nil {
-					return err
-				}
-				// Reload state since verifyAndPinImages saved it.
-				reloaded, reloadErr := config.Load(GetGlobalOpts(ctx).DataDir)
-				if reloadErr != nil {
-					return fmt.Errorf("reloading config after verification: %w", reloadErr)
-				}
-				state = reloaded
-			}
-
-			// DHI images: check cache independently.
-			if hasDHIDigests(state) {
-				renderCachedDHIBox(out, state)
-			} else {
-				results, err := verifyDHIImages(ctx, info, state, out, errOut)
-				if err != nil {
-					return fmt.Errorf("DHI image verification failed: %w", err)
-				}
-				if state.VerifiedDigests == nil {
-					state.VerifiedDigests = make(map[string]string)
-				}
-				for _, r := range results {
-					if indexDigest, ok := verify.DHIPinnedIndexDigest(r.Image); ok {
-						state.VerifiedDigests["dhi:"+r.Image] = indexDigest
-					}
-					if r.Digest != "" {
-						state.VerifiedDigests["dhi:"+r.Image+":platform"] = r.Digest
-					}
-					if r.AttDigest != "" {
-						state.VerifiedDigests["dhi:"+r.Image+":attestation"] = r.AttDigest
-					}
-					if r.SigDigest != "" {
-						state.VerifiedDigests["dhi:"+r.Image+":signature"] = r.SigDigest
-					}
-				}
-				if err := config.Save(state); err != nil {
-					errOut.Warn(fmt.Sprintf("Could not cache DHI verification results: %v", err))
-				}
-			}
-		}
-
-		out.Blank()
-		refreshed, err := pullAllImages(ctx, info, safeDir, state, out)
+		refreshed, err := verifyAndPullStartImages(cmd, ctx, info, state, safeDir, out, errOut)
 		if err != nil {
 			return err
 		}
@@ -207,6 +157,66 @@ func startContainers(cmd *cobra.Command, ctx context.Context, state config.State
 	}
 
 	return startDetached(ctx, info, safeDir, state, out, errOut, healthTimeout)
+}
+
+func verifyAndPullStartImages(cmd *cobra.Command, ctx context.Context, info docker.Info, state config.State, safeDir string, out, errOut *ui.UI) (config.State, error) {
+	skipVerify := GetGlobalOpts(ctx).SkipVerify
+
+	if !skipVerify {
+		// SynthOrg images: check cache independently.
+		if hasSynthOrgDigests(state) {
+			renderCachedSynthOrgBox(out, state)
+		} else {
+			if err := verifyAndPinImages(ctx, cmd, state, safeDir, out, errOut); err != nil {
+				return state, err
+			}
+			// Reload state since verifyAndPinImages saved it.
+			reloaded, reloadErr := config.Load(GetGlobalOpts(ctx).DataDir)
+			if reloadErr != nil {
+				return state, fmt.Errorf("reloading config after verification: %w", reloadErr)
+			}
+			state = reloaded
+		}
+
+		// DHI images: check cache independently.
+		if hasDHIDigests(state) {
+			renderCachedDHIBox(out, state)
+		} else {
+			results, err := verifyDHIImages(ctx, info, state, out, errOut)
+			if err != nil {
+				return state, fmt.Errorf("DHI image verification failed: %w", err)
+			}
+			if state.VerifiedDigests == nil {
+				state.VerifiedDigests = make(map[string]string)
+			}
+			for _, r := range results {
+				if indexDigest, ok := verify.DHIPinnedIndexDigest(r.Image); ok {
+					state.VerifiedDigests["dhi:"+r.Image] = indexDigest
+				}
+				if r.Digest != "" {
+					state.VerifiedDigests["dhi:"+r.Image+":platform"] = r.Digest
+				}
+				if r.AttDigest != "" {
+					state.VerifiedDigests["dhi:"+r.Image+":attestation"] = r.AttDigest
+				}
+				if r.SigDigest != "" {
+					state.VerifiedDigests["dhi:"+r.Image+":signature"] = r.SigDigest
+				}
+			}
+			if err := config.Save(state); err != nil {
+				errOut.Warn(fmt.Sprintf("Could not cache DHI verification results: %v", err))
+			}
+		}
+	} else {
+		errOut.Warn("Image verification skipped (--skip-verify). Containers are NOT verified.")
+	}
+
+	out.Blank()
+	refreshed, err := pullAllImages(ctx, info, safeDir, state, out)
+	if err != nil {
+		return state, err
+	}
+	return refreshed, nil
 }
 
 func startDetached(ctx context.Context, info docker.Info, safeDir string, state config.State, out, errOut *ui.UI, healthTimeout time.Duration) error {

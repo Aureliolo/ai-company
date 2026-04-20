@@ -7,11 +7,11 @@ import pytest
 from litestar import Litestar
 from litestar.testing import TestClient
 
-from synthorg.api.app import (
-    _bootstrap_app_logging,
+from synthorg.api.app import create_app
+from synthorg.api.app_builders import _bootstrap_app_logging
+from synthorg.api.app_helpers import (
     _postgres_config_from_url,
     _resolve_artifact_dir_env,
-    create_app,
 )
 from synthorg.api.middleware import _SECURITY_HEADERS
 from synthorg.api.state import AppState
@@ -682,9 +682,9 @@ class TestAutoWirePhase2:
         root_config: Any,
     ) -> None:
         """auto_wire_settings creates SettingsService on AppState."""
-        from synthorg.api.app import _build_settings_dispatcher
         from synthorg.api.approval_store import ApprovalStore
         from synthorg.api.auto_wire import auto_wire_settings
+        from synthorg.api.lifecycle_helpers import _build_settings_dispatcher
 
         app_state = AppState(
             config=root_config,
@@ -718,9 +718,9 @@ class TestAutoWirePhase2:
         root_config: Any,
     ) -> None:
         """auto_wire_settings works without a message bus."""
-        from synthorg.api.app import _build_settings_dispatcher
         from synthorg.api.approval_store import ApprovalStore
         from synthorg.api.auto_wire import auto_wire_settings
+        from synthorg.api.lifecycle_helpers import _build_settings_dispatcher
 
         app_state = AppState(
             config=root_config,
@@ -902,8 +902,8 @@ class TestAutoWirePhase2ErrorPaths:
         """Phase 2 failure in on_startup calls _safe_shutdown for cleanup."""
         from unittest.mock import AsyncMock
 
-        from synthorg.api.app import _build_lifecycle
         from synthorg.api.approval_store import ApprovalStore
+        from synthorg.api.lifecycle_builder import _build_lifecycle
         from tests.unit.api.conftest import (
             FakeMessageBus,
             FakePersistenceBackend,
@@ -923,7 +923,7 @@ class TestAutoWirePhase2ErrorPaths:
             raise RuntimeError(msg)
 
         monkeypatch.setattr(
-            "synthorg.api.app.auto_wire_settings",
+            "synthorg.api.auto_wire.auto_wire_settings",
             failing_auto_wire,
         )
 
@@ -944,7 +944,7 @@ class TestAutoWirePhase2ErrorPaths:
         # Mock _safe_startup so on_startup gets past Phase 1
         safe_startup_mock = AsyncMock()
         monkeypatch.setattr(
-            "synthorg.api.app._safe_startup",
+            "synthorg.api.lifecycle_builder._safe_startup",
             safe_startup_mock,
         )
 
@@ -958,9 +958,9 @@ class TestAutoWirePhase2ErrorPaths:
         fake_message_bus: Any,
     ) -> None:
         """Auto-wired dispatcher is stopped during on_shutdown."""
-        from synthorg.api.app import _build_settings_dispatcher
         from synthorg.api.approval_store import ApprovalStore
         from synthorg.api.auto_wire import auto_wire_settings
+        from synthorg.api.lifecycle_helpers import _build_settings_dispatcher
 
         app_state = AppState(
             config=root_config,
@@ -1164,7 +1164,7 @@ class TestBootstrapAppLogging:
         monkeypatch.delenv("SYNTHORG_LOG_DIR", raising=False)
         calls: list[object] = []
         monkeypatch.setattr(
-            "synthorg.api.app.bootstrap_logging",
+            "synthorg.config.bootstrap_logging",
             calls.append,
         )
         config = RootConfig(company_name="test-co")
@@ -1181,7 +1181,7 @@ class TestBootstrapAppLogging:
         monkeypatch.setenv("SYNTHORG_LOG_DIR", "/custom/logs")
         calls: list[RootConfig] = []
         monkeypatch.setattr(
-            "synthorg.api.app.bootstrap_logging",
+            "synthorg.config.bootstrap_logging",
             calls.append,
         )
         config = RootConfig(
@@ -1205,7 +1205,7 @@ class TestBootstrapAppLogging:
         monkeypatch.setenv("SYNTHORG_LOG_DIR", "/data/logs")
         calls: list[RootConfig] = []
         monkeypatch.setattr(
-            "synthorg.api.app.bootstrap_logging",
+            "synthorg.config.bootstrap_logging",
             calls.append,
         )
         config = RootConfig(company_name="test-co")
@@ -1227,7 +1227,7 @@ class TestBootstrapAppLogging:
         monkeypatch.setenv("SYNTHORG_LOG_DIR", "   ")
         calls: list[object] = []
         monkeypatch.setattr(
-            "synthorg.api.app.bootstrap_logging",
+            "synthorg.config.bootstrap_logging",
             calls.append,
         )
         config = RootConfig(company_name="test-co")
@@ -1243,7 +1243,7 @@ class TestBootstrapAppLogging:
         """SYNTHORG_LOG_DIR with '..' raises ValueError."""
         monkeypatch.setenv("SYNTHORG_LOG_DIR", "../../etc")
         monkeypatch.setattr(
-            "synthorg.api.app.bootstrap_logging",
+            "synthorg.config.bootstrap_logging",
             lambda _: None,
         )
         config = RootConfig(company_name="test-co")
@@ -1273,7 +1273,7 @@ class TestBootstrapAppLogging:
         monkeypatch.setenv("SYNTHORG_LOG_DIR", "/custom/volume/logs")
         # Prevent bootstrap_logging from actually reconfiguring structlog.
         monkeypatch.setattr(
-            "synthorg.api.app.bootstrap_logging",
+            "synthorg.config.bootstrap_logging",
             lambda _config: None,
         )
         app = create_app()
@@ -1295,7 +1295,7 @@ class TestBuildMiddleware:
         self,
         root_config: Any,
     ) -> None:
-        from synthorg.api.app import _build_middleware
+        from synthorg.api.middleware_factory import _build_middleware
 
         mw = _build_middleware(root_config.api)
         # Six layers (outside-in): ip_floor, auth_mw, csrf_mw,
@@ -1310,7 +1310,7 @@ class TestBuildMiddleware:
             RateLimitConfig as LsRL,
         )
 
-        from synthorg.api.app import _build_middleware
+        from synthorg.api.middleware_factory import _build_middleware
 
         mw = _build_middleware(root_config.api)
         rl_configs: list[LsRL] = [
@@ -1334,7 +1334,7 @@ class TestBuildMiddleware:
             RateLimitConfig as LsRL,
         )
 
-        from synthorg.api.app import _build_middleware
+        from synthorg.api.middleware_factory import _build_middleware
 
         mw = _build_middleware(root_config.api)
 
@@ -1381,7 +1381,7 @@ class TestAuthIdentifierForRequest:
     def test_returns_user_id_when_user_in_scope(self) -> None:
         from unittest.mock import MagicMock
 
-        from synthorg.api.app import _auth_identifier_for_request
+        from synthorg.api.middleware_factory import _auth_identifier_for_request
 
         request = MagicMock()
         user = MagicMock()
@@ -1392,12 +1392,12 @@ class TestAuthIdentifierForRequest:
     def test_falls_back_to_ip_when_no_user(self) -> None:
         from unittest.mock import MagicMock, patch
 
-        from synthorg.api.app import _auth_identifier_for_request
+        from synthorg.api.middleware_factory import _auth_identifier_for_request
 
         request = MagicMock()
         request.scope = {}
         with patch(
-            "synthorg.api.app.get_remote_address",
+            "synthorg.api.middleware_factory.get_remote_address",
             return_value="10.0.0.1",
         ):
             assert _auth_identifier_for_request(request) == "10.0.0.1"
@@ -1405,12 +1405,12 @@ class TestAuthIdentifierForRequest:
     def test_falls_back_to_ip_when_user_is_none(self) -> None:
         from unittest.mock import MagicMock, patch
 
-        from synthorg.api.app import _auth_identifier_for_request
+        from synthorg.api.middleware_factory import _auth_identifier_for_request
 
         request = MagicMock()
         request.scope = {"user": None}
         with patch(
-            "synthorg.api.app.get_remote_address",
+            "synthorg.api.middleware_factory.get_remote_address",
             return_value="192.168.1.1",
         ):
             assert _auth_identifier_for_request(request) == "192.168.1.1"

@@ -10,7 +10,8 @@ from synthorg.memory.injection import InjectionStrategy, MemoryInjectionStrategy
 from synthorg.memory.models import MemoryEntry, MemoryMetadata
 from synthorg.memory.protocol import MemoryBackend
 from synthorg.memory.retrieval_config import MemoryRetrievalConfig
-from synthorg.memory.tool_retriever import ToolBasedInjectionStrategy, merge_results
+from synthorg.memory.tool_retriever import ToolBasedInjectionStrategy
+from synthorg.memory.tool_retriever_helpers import merge_results
 
 
 def _make_entry(

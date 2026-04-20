@@ -6,7 +6,6 @@ order, creating concrete tasks for TASK nodes, and wiring
 upstream task dependencies from the graph edges.
 """
 
-from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from types import MappingProxyType
 from typing import TYPE_CHECKING
@@ -36,6 +35,11 @@ from synthorg.engine.workflow.execution_models import (
     ExecutionFrame,
     WorkflowExecution,
     WorkflowNodeExecution,
+)
+from synthorg.engine.workflow.execution_walk_state import (
+    WalkState,
+    collect_terminal_task_ids,
+    qualify_id,
 )
 from synthorg.engine.workflow.graph_utils import (
     build_adjacency_maps,
@@ -80,80 +84,7 @@ if TYPE_CHECKING:
     )
 
 
-_QUALIFIED_ID_SEPARATOR = "::"
-
-
-def _qualify_id(prefix: str, node_id: str) -> str:
-    """Build a qualified node ID ``{prefix}::{node_id}`` or return *node_id*.
-
-    When *prefix* is empty the node ID is returned unchanged so that
-    top-level graphs keep their existing unqualified IDs.
-    """
-    if not prefix:
-        return node_id
-    return f"{prefix}{_QUALIFIED_ID_SEPARATOR}{node_id}"
-
-
-@dataclass
-class _WalkState:
-    """Mutable accumulators shared across all frames in a single activation."""
-
-    node_exec_map: dict[str, WorkflowNodeExecution] = field(
-        default_factory=dict,
-    )
-    node_task_ids: dict[str, str | tuple[str, ...]] = field(default_factory=dict)
-    ordered_keys: list[str] = field(default_factory=list)
-
-
 logger = get_logger(__name__)
-
-
-def _collect_terminal_task_ids(
-    child_definition: WorkflowDefinition,
-    child_prefix: str,
-    state: _WalkState,
-) -> tuple[str, ...]:
-    """Collect task IDs from a child graph's terminal executable nodes.
-
-    A terminal node is one whose only successors are END nodes or
-    that has no successors at all.  Both TASK and SUBWORKFLOW nodes
-    are considered -- SUBWORKFLOW entries may store a tuple of child
-    terminal task IDs that must be flattened.
-
-    Returns:
-        A tuple of task IDs (possibly empty when the child graph
-        had no executable nodes or all were skipped).
-    """
-    adjacency, _, _ = build_adjacency_maps(child_definition)
-    node_map = {n.id: n for n in child_definition.nodes}
-    terminal_task_ids: list[str] = []
-    for node in child_definition.nodes:
-        if node.type not in (
-            WorkflowNodeType.TASK,
-            WorkflowNodeType.SUBWORKFLOW,
-        ):
-            continue
-        qualified = _qualify_id(child_prefix, node.id)
-        successors = adjacency.get(node.id, [])
-        is_terminal = (
-            all(node_map[s].type is WorkflowNodeType.END for s in successors)
-            or not successors
-        )
-        if not is_terminal:
-            continue
-        if node.type is WorkflowNodeType.TASK:
-            task_id = state.node_task_ids.get(qualified)
-            if isinstance(task_id, str):
-                terminal_task_ids.append(task_id)
-        else:
-            # SUBWORKFLOW entries may contain a tuple of child
-            # terminal task IDs -- flatten them.
-            entry = state.node_task_ids.get(qualified)
-            if isinstance(entry, tuple):
-                terminal_task_ids.extend(entry)
-            elif isinstance(entry, str):
-                terminal_task_ids.append(entry)
-    return tuple(terminal_task_ids)
 
 
 class WorkflowExecutionService:
@@ -222,7 +153,7 @@ class WorkflowExecutionService:
         # 2. Walk nodes in topological order, starting from the root frame.
         execution_id = f"wfexec-{uuid4().hex[:12]}"
         now = datetime.now(UTC)
-        state = _WalkState()
+        state = WalkState()
         root_frame = ExecutionFrame(
             workflow_id=definition.id,
             workflow_version=definition.version,
@@ -312,7 +243,7 @@ class WorkflowExecutionService:
         definition: WorkflowDefinition,
         frame: ExecutionFrame,
         qualifier_prefix: str,
-        state: _WalkState,
+        state: WalkState,
         execution_id: str,
         project: str,
         activated_by: str,
@@ -352,7 +283,7 @@ class WorkflowExecutionService:
         frame_ctx: dict[str, object] = dict(frame.variables)
 
         for nid in sorted_ids:
-            qualified = _qualify_id(qualifier_prefix, nid)
+            qualified = qualify_id(qualifier_prefix, nid)
             node = node_map[nid]
 
             if nid in skipped_nodes:
@@ -398,7 +329,7 @@ class WorkflowExecutionService:
 
     def _record_node(
         self,
-        state: _WalkState,
+        state: WalkState,
         qualified_id: str,
         node_execution: WorkflowNodeExecution,
     ) -> None:
@@ -426,7 +357,7 @@ class WorkflowExecutionService:
         node_map: dict[str, WorkflowNode],
         frame_node_task_ids: dict[str, str | tuple[str, ...]],
         qualifier_prefix: str,
-        state: _WalkState,
+        state: WalkState,
         skipped_nodes: set[str],
         pending_assignments: dict[str, str],
     ) -> WorkflowNodeExecution:
@@ -563,7 +494,7 @@ class WorkflowExecutionService:
         node_map: dict[str, WorkflowNode],
         frame_node_task_ids: dict[str, str | tuple[str, ...]],
         qualifier_prefix: str,  # noqa: ARG002
-        state: _WalkState,  # noqa: ARG002
+        state: WalkState,  # noqa: ARG002
         skipped_nodes: set[str],
         pending_assignments: dict[str, str],
         project: str,
@@ -602,7 +533,7 @@ class WorkflowExecutionService:
         frame: ExecutionFrame,
         frame_ctx: dict[str, object],
         frame_node_task_ids: dict[str, str | tuple[str, ...]],
-        state: _WalkState,
+        state: WalkState,
         execution_id: str,
         project: str,
         activated_by: str,
@@ -717,7 +648,7 @@ class WorkflowExecutionService:
         # Record the child's terminal task IDs so that downstream
         # TASK nodes in the parent frame depend on the subworkflow's
         # final tasks (rather than having no dependency link at all).
-        terminal_ids = _collect_terminal_task_ids(
+        terminal_ids = collect_terminal_task_ids(
             child_definition,
             child_prefix,
             state,

@@ -1,0 +1,179 @@
+"""Parameter-validation helpers for ``ToolInvoker``.
+
+Owns ``_validate_params``, ``_schema_error_result``,
+``_param_error_result``, ``_unexpected_validation_result``, and
+``_safe_deepcopy_args``.  These are pure helpers that don't depend
+on invoker state beyond the tool/arguments being validated.
+"""
+
+import copy
+from typing import TYPE_CHECKING
+
+import jsonschema
+from referencing import Registry as JsonSchemaRegistry
+from referencing.exceptions import NoSuchResource
+
+from synthorg.observability import get_logger
+from synthorg.observability.events.tool import (
+    TOOL_INVOKE_DEEPCOPY_ERROR,
+    TOOL_INVOKE_NON_RECOVERABLE,
+    TOOL_INVOKE_PARAMETER_ERROR,
+    TOOL_INVOKE_SCHEMA_ERROR,
+    TOOL_INVOKE_VALIDATION_UNEXPECTED,
+)
+from synthorg.providers.models import ToolCall, ToolResult
+from synthorg.tools.errors import ToolParameterError
+
+if TYPE_CHECKING:
+    from typing import Never
+
+    from synthorg.tools.base import BaseTool
+
+logger = get_logger(__name__)
+
+
+def _no_remote_retrieve(uri: str) -> Never:
+    """Block remote ``$ref`` resolution to prevent SSRF."""
+    raise NoSuchResource(uri)
+
+
+SAFE_REGISTRY: JsonSchemaRegistry = JsonSchemaRegistry(  # type: ignore[call-arg]
+    retrieve=_no_remote_retrieve,
+)
+
+
+class ToolInvokerValidationMixin:
+    """Parameter-validation helpers for ``ToolInvoker``."""
+
+    def _validate_params(
+        self,
+        tool: BaseTool,
+        tool_call: ToolCall,
+    ) -> ToolResult | None:
+        """Validate tool call arguments against JSON Schema.
+
+        Returns ``None`` on success or a ``ToolResult`` on failure.
+        """
+        schema = tool.parameters_schema
+        if schema is None:
+            return None
+        try:
+            jsonschema.validate(
+                instance=dict(tool_call.arguments),
+                schema=schema,
+                registry=SAFE_REGISTRY,
+            )
+        except jsonschema.SchemaError as exc:
+            return self._schema_error_result(tool_call, exc.message)
+        except jsonschema.ValidationError as exc:
+            return self._param_error_result(tool_call, exc.message)
+        except (MemoryError, RecursionError) as exc:
+            logger.exception(
+                TOOL_INVOKE_NON_RECOVERABLE,
+                tool_call_id=tool_call.id,
+                tool_name=tool_call.name,
+                error=f"{type(exc).__name__}: {exc}",
+            )
+            raise
+        except Exception as exc:
+            error_msg = str(exc) or f"{type(exc).__name__} (no message)"
+            return self._unexpected_validation_result(tool_call, error_msg)
+        return None
+
+    def _schema_error_result(
+        self,
+        tool_call: ToolCall,
+        error_msg: str,
+    ) -> ToolResult:
+        """Build an error result for an invalid tool schema."""
+        logger.error(
+            TOOL_INVOKE_SCHEMA_ERROR,
+            tool_call_id=tool_call.id,
+            tool_name=tool_call.name,
+            error=error_msg,
+        )
+        return ToolResult(
+            tool_call_id=tool_call.id,
+            content=(
+                f"Tool {tool_call.name!r} has an invalid parameter schema: {error_msg}"
+            ),
+            is_error=True,
+        )
+
+    def _param_error_result(
+        self,
+        tool_call: ToolCall,
+        error_msg: str,
+    ) -> ToolResult:
+        """Build an error result for failed parameter validation."""
+        logger.warning(
+            TOOL_INVOKE_PARAMETER_ERROR,
+            tool_call_id=tool_call.id,
+            tool_name=tool_call.name,
+            error=error_msg,
+        )
+        param_err = ToolParameterError(
+            error_msg,
+            context={"tool": tool_call.name},
+        )
+        return ToolResult(
+            tool_call_id=tool_call.id,
+            content=str(param_err),
+            is_error=True,
+        )
+
+    def _unexpected_validation_result(
+        self,
+        tool_call: ToolCall,
+        error_msg: str,
+    ) -> ToolResult:
+        """Build an error result for unexpected validation failures."""
+        logger.exception(
+            TOOL_INVOKE_VALIDATION_UNEXPECTED,
+            tool_call_id=tool_call.id,
+            tool_name=tool_call.name,
+            error=error_msg,
+        )
+        return ToolResult(
+            tool_call_id=tool_call.id,
+            content=(
+                f"Tool {tool_call.name!r} parameter validation failed: {error_msg}"
+            ),
+            is_error=True,
+        )
+
+    def _safe_deepcopy_args(
+        self,
+        tool_call: ToolCall,
+    ) -> dict[str, object] | ToolResult:
+        """Deep-copy tool call arguments for isolation.
+
+        Returns the copied dict on success, or a ``ToolResult`` on
+        failure.  Non-recoverable errors propagate after logging.
+        """
+        try:
+            return copy.deepcopy(tool_call.arguments)
+        except (MemoryError, RecursionError) as exc:
+            logger.exception(
+                TOOL_INVOKE_NON_RECOVERABLE,
+                tool_call_id=tool_call.id,
+                tool_name=tool_call.name,
+                error=f"{type(exc).__name__}: {exc}",
+            )
+            raise
+        except Exception as exc:
+            error_msg = str(exc) or f"{type(exc).__name__} (no message)"
+            logger.exception(
+                TOOL_INVOKE_DEEPCOPY_ERROR,
+                tool_call_id=tool_call.id,
+                tool_name=tool_call.name,
+                error=f"Failed to deep-copy arguments: {error_msg}",
+            )
+            return ToolResult(
+                tool_call_id=tool_call.id,
+                content=(
+                    f"Tool {tool_call.name!r} arguments could not be "
+                    f"safely copied: {error_msg}"
+                ),
+                is_error=True,
+            )

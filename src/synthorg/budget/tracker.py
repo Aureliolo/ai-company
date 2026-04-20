@@ -17,44 +17,29 @@ from typing import TYPE_CHECKING, NamedTuple
 
 from synthorg.budget._tracker_helpers import (
     _aggregate,
-    _build_agent_spendings,
     _filter_records,
     _validate_time_range,
-)
-from synthorg.budget.call_category import OrchestrationAlertLevel
-from synthorg.budget.category_analytics import (
-    CategoryBreakdown,
-    OrchestrationRatio,
-    build_category_breakdown,
-    compute_orchestration_ratio,
 )
 from synthorg.budget.enums import BudgetAlertLevel
 from synthorg.budget.errors import MixedCurrencyAggregationError
 from synthorg.budget.spending_summary import (
     AgentSpending,
     DepartmentSpending,
-    PeriodSpending,
-    SpendingSummary,
 )
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
 from synthorg.observability import get_logger
 from synthorg.observability.events.budget import (
     BUDGET_AGENT_COST_QUERIED,
-    BUDGET_CATEGORY_BREAKDOWN_QUERIED,
     BUDGET_DEPARTMENT_RESOLVE_FAILED,
-    BUDGET_ORCHESTRATION_RATIO_ALERT,
-    BUDGET_ORCHESTRATION_RATIO_QUERIED,
     BUDGET_PROJECT_COST_AGGREGATED,
     BUDGET_PROJECT_COST_AGGREGATION_FAILED,
     BUDGET_PROJECT_COST_QUERIED,
     BUDGET_PROJECT_RECORDS_QUERIED,
     BUDGET_PROVIDER_USAGE_QUERIED,
-    BUDGET_QUERY_EXCEEDS_RETENTION,
     BUDGET_RECORD_ADDED,
     BUDGET_RECORDS_AUTO_PRUNED,
     BUDGET_RECORDS_PRUNED,
     BUDGET_RECORDS_QUERIED,
-    BUDGET_SUMMARY_BUILT,
     BUDGET_TOTAL_COST_QUERIED,
     BUDGET_TRACKER_CLEARED,
     BUDGET_TRACKER_CREATED,
@@ -64,9 +49,6 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from synthorg.budget.config import BudgetConfig
-    from synthorg.budget.coordination_config import (
-        OrchestrationAlertThresholds,
-    )
     from synthorg.budget.cost_record import CostRecord
     from synthorg.budget.project_cost_aggregate import (
         ProjectCostAggregateRepository,
@@ -87,7 +69,12 @@ class ProviderUsageSummary(NamedTuple):
     total_cost: float
 
 
-class CostTracker:
+# Imported after ProviderUsageSummary: tracker_summary imports that symbol from
+# this module, so the mixin must be loaded after its dependencies are defined.
+from synthorg.budget.tracker_summary import CostTrackerSummaryMixin  # noqa: E402
+
+
+class CostTracker(CostTrackerSummaryMixin):
     """In-memory cost tracking service with TTL-based eviction.
 
     Records :class:`CostRecord` entries from LLM API calls and provides
@@ -490,164 +477,6 @@ class CostTracker:
             total_tokens=agg.input_tokens + agg.output_tokens,
             total_cost=agg.cost,
         )
-
-    async def build_summary(
-        self,
-        *,
-        start: datetime,
-        end: datetime,
-    ) -> SpendingSummary:
-        """Build a spending summary for the given period.
-
-        Args:
-            start: Inclusive period start.
-            end: Exclusive period end.
-
-        Returns:
-            Aggregated spending summary with breakdowns and alert level.
-
-        Raises:
-            ValueError: If ``start >= end``.
-        """
-        _validate_time_range(start, end)
-        retention_cutoff = datetime.now(UTC) - timedelta(
-            hours=_COST_WINDOW_HOURS,
-        )
-        if start < retention_cutoff:
-            logger.warning(
-                BUDGET_QUERY_EXCEEDS_RETENTION,
-                requested_start=start.isoformat(),
-                retention_cutoff=retention_cutoff.isoformat(),
-                retention_hours=_COST_WINDOW_HOURS,
-            )
-        snapshot = await self._snapshot()
-        filtered = _filter_records(snapshot, start=start, end=end)
-        totals = _aggregate(filtered)
-
-        agent_spendings = _build_agent_spendings(filtered)
-        dept_spendings = self._build_dept_spendings(agent_spendings)
-        budget_monthly, used_pct, alert = self._build_budget_context(
-            totals.cost,
-        )
-
-        summary = SpendingSummary(
-            period=PeriodSpending(
-                start=start,
-                end=end,
-                total_cost=totals.cost,
-                currency=totals.currency,
-                total_input_tokens=totals.input_tokens,
-                total_output_tokens=totals.output_tokens,
-                record_count=totals.record_count,
-            ),
-            by_agent=tuple(agent_spendings),
-            by_department=tuple(dept_spendings),
-            budget_total_monthly=budget_monthly,
-            budget_used_percent=used_pct,
-            alert_level=alert,
-        )
-
-        logger.info(
-            BUDGET_SUMMARY_BUILT,
-            total_cost=totals.cost,
-            record_count=totals.record_count,
-            agent_count=len(agent_spendings),
-            department_count=len(dept_spendings),
-            alert_level=alert.value,
-        )
-
-        return summary
-
-    async def get_category_breakdown(
-        self,
-        *,
-        agent_id: str | None = None,
-        task_id: str | None = None,
-        start: datetime | None = None,
-        end: datetime | None = None,
-    ) -> CategoryBreakdown:
-        """Build a per-category cost breakdown.
-
-        Args:
-            agent_id: Filter by agent.
-            task_id: Filter by task.
-            start: Inclusive lower bound on timestamp.
-            end: Exclusive upper bound on timestamp.
-
-        Returns:
-            Category breakdown of cost, tokens, and call counts.
-
-        Raises:
-            ValueError: If ``start >= end``.
-        """
-        _validate_time_range(start, end)
-        logger.debug(
-            BUDGET_CATEGORY_BREAKDOWN_QUERIED,
-            agent_id=agent_id,
-            task_id=task_id,
-            start=start,
-            end=end,
-        )
-        snapshot = await self._snapshot()
-        filtered = _filter_records(
-            snapshot,
-            agent_id=agent_id,
-            task_id=task_id,
-            start=start,
-            end=end,
-        )
-        return build_category_breakdown(filtered)
-
-    async def get_orchestration_ratio(
-        self,
-        *,
-        agent_id: str | None = None,
-        task_id: str | None = None,
-        start: datetime | None = None,
-        end: datetime | None = None,
-        thresholds: OrchestrationAlertThresholds | None = None,
-    ) -> OrchestrationRatio:
-        """Compute the orchestration overhead ratio.
-
-        Args:
-            agent_id: Filter by agent.
-            task_id: Filter by task.
-            start: Inclusive lower bound on timestamp.
-            end: Exclusive upper bound on timestamp.
-            thresholds: Optional custom alert thresholds.
-
-        Returns:
-            Orchestration ratio with alert level.
-
-        Raises:
-            ValueError: If ``start >= end``.
-        """
-        breakdown = await self.get_category_breakdown(
-            agent_id=agent_id,
-            task_id=task_id,
-            start=start,
-            end=end,
-        )
-        result = compute_orchestration_ratio(
-            breakdown,
-            thresholds=thresholds,
-        )
-        logger.debug(
-            BUDGET_ORCHESTRATION_RATIO_QUERIED,
-            agent_id=agent_id,
-            task_id=task_id,
-            ratio=result.ratio,
-            alert_level=result.alert_level.value,
-        )
-        if result.alert_level != OrchestrationAlertLevel.NORMAL:
-            logger.warning(
-                BUDGET_ORCHESTRATION_RATIO_ALERT,
-                agent_id=agent_id,
-                task_id=task_id,
-                ratio=result.ratio,
-                alert_level=result.alert_level.value,
-            )
-        return result
 
     def clear(self) -> None:
         """Reset all recorded cost data for test isolation.

@@ -41,15 +41,13 @@ from synthorg.core.enums import (
 from synthorg.core.role import Authority, Skill
 from synthorg.core.task import Task
 from synthorg.engine.agent_engine import AgentEngine
+from synthorg.engine.assignment.load_balanced import LoadBalancedAssignmentStrategy
 from synthorg.engine.assignment.models import (
     AgentWorkload,
     AssignmentRequest,
 )
+from synthorg.engine.assignment.role_based import RoleBasedAssignmentStrategy
 from synthorg.engine.assignment.service import TaskAssignmentService
-from synthorg.engine.assignment.strategies import (
-    LoadBalancedAssignmentStrategy,
-    RoleBasedAssignmentStrategy,
-)
 from synthorg.engine.decomposition.classifier import TaskStructureClassifier
 from synthorg.engine.decomposition.manual import ManualDecompositionStrategy
 from synthorg.engine.decomposition.models import (

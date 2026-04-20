@@ -11,9 +11,6 @@ import json
 from typing import TYPE_CHECKING
 
 from synthorg.observability import get_logger
-from synthorg.observability.events.approval_gate import (
-    APPROVAL_GATE_PARK_TASKLESS,
-)
 from synthorg.observability.events.context_budget import (
     CONTEXT_BUDGET_COMPACTION_FAILED,
 )
@@ -21,16 +18,11 @@ from synthorg.observability.events.execution import (
     EXECUTION_LOOP_BUDGET_EXHAUSTED,
     EXECUTION_LOOP_ERROR,
     EXECUTION_LOOP_SHUTDOWN,
-    EXECUTION_LOOP_TOOL_CALLS,
     EXECUTION_LOOP_TURN_START,
 )
 from synthorg.observability.events.stagnation import (
     STAGNATION_CORRECTION_INJECTED,
     STAGNATION_TERMINATED,
-)
-from synthorg.observability.events.tool import (
-    TOOL_L2_LOADED,
-    TOOL_L3_FETCHED,
 )
 from synthorg.observability.events.tracing import SPAN_ATTRIBUTE_WRITE_FAILED
 from synthorg.observability.tracing import llm_span
@@ -57,8 +49,6 @@ from .stagnation.models import StagnationResult, StagnationVerdict
 
 if TYPE_CHECKING:
     from synthorg.budget.call_category import LLMCallCategory
-    from synthorg.engine.approval_gate import ApprovalGate
-    from synthorg.engine.approval_gate_models import EscalationInfo
     from synthorg.engine.compaction.protocol import CompactionCallback
     from synthorg.engine.context import AgentContext
     from synthorg.engine.stagnation.protocol import StagnationDetector
@@ -294,228 +284,6 @@ def check_response_errors(
         turns,
         error_message=error_msg,
     )
-
-
-async def execute_tool_calls(  # noqa: PLR0913, C901
-    ctx: AgentContext,
-    tool_invoker: ToolInvoker | None,
-    response: CompletionResponse,
-    turn_number: int,
-    turns: list[TurnRecord],
-    *,
-    approval_gate: ApprovalGate | None = None,
-) -> AgentContext | ExecutionResult:
-    """Execute tool calls and append results to context.
-
-    When an ``approval_gate`` is provided and the invoker reports
-    pending escalations, the context is parked and a PARKED result
-    is returned.
-
-    Args:
-        ctx: Current agent context.
-        tool_invoker: Tool invoker (``None`` causes an error result).
-        response: Provider response containing tool calls.
-        turn_number: Current turn number (1-indexed).
-        turns: Accumulated turn records.
-        approval_gate: Optional approval gate for escalation parking.
-
-    Returns:
-        Updated ``AgentContext`` on success, or ``ExecutionResult`` on error.
-
-    Raises:
-        MemoryError: Re-raised unconditionally.
-        RecursionError: Re-raised unconditionally.
-    """
-    if tool_invoker is None:
-        error_msg = (
-            f"LLM requested {len(response.tool_calls)} tool "
-            f"call(s) but no tool invoker is available"
-        )
-        logger.error(
-            EXECUTION_LOOP_ERROR,
-            execution_id=ctx.execution_id,
-            turn=turn_number,
-            error=error_msg,
-        )
-        # Clear tool_calls on the turn record -- tools were never executed
-        clear_last_turn_tool_calls(turns)
-        return build_result(
-            ctx,
-            TerminationReason.ERROR,
-            turns,
-            error_message=error_msg,
-        )
-
-    tool_names = [tc.name for tc in response.tool_calls]
-    logger.info(
-        EXECUTION_LOOP_TOOL_CALLS,
-        execution_id=ctx.execution_id,
-        turn=turn_number,
-        tools=tool_names,
-    )
-
-    try:
-        results = await tool_invoker.invoke_all(
-            response.tool_calls,
-        )
-    except MemoryError, RecursionError:
-        raise
-    except Exception as exc:
-        error_msg = (
-            f"Tool execution failed on turn {turn_number}: {type(exc).__name__}: {exc}"
-        )
-        logger.exception(
-            EXECUTION_LOOP_ERROR,
-            execution_id=ctx.execution_id,
-            turn=turn_number,
-            error=error_msg,
-            tools=tool_names,
-        )
-        return build_result(
-            ctx,
-            TerminationReason.ERROR,
-            turns,
-            error_message=error_msg,
-        )
-
-    for result in results:
-        tool_msg = ChatMessage(
-            role=MessageRole.TOOL,
-            tool_result=result,
-        )
-        ctx = ctx.with_message(tool_msg)
-
-    # Update disclosure state from discovery tool calls
-    for tc, result in zip(response.tool_calls, results, strict=True):
-        if result.is_error:
-            continue
-        if tc.name == "load_tool":
-            t_name = tc.arguments.get("tool_name")
-            if isinstance(t_name, str) and t_name not in ctx.loaded_tools:
-                ctx = ctx.with_tool_loaded(t_name)
-                logger.info(
-                    TOOL_L2_LOADED,
-                    execution_id=ctx.execution_id,
-                    tool_name=t_name,
-                    turn=turn_number,
-                )
-        elif tc.name == "load_tool_resource":
-            t_name = tc.arguments.get("tool_name")
-            r_id = tc.arguments.get("resource_id")
-            if (
-                isinstance(t_name, str)
-                and isinstance(r_id, str)
-                and (t_name, r_id) not in ctx.loaded_resources
-            ):
-                ctx = ctx.with_resource_loaded(t_name, r_id)
-                logger.info(
-                    TOOL_L3_FETCHED,
-                    execution_id=ctx.execution_id,
-                    tool_name=t_name,
-                    resource_id=r_id,
-                    turn=turn_number,
-                )
-
-    # Check for escalations requiring parking.
-    if approval_gate is not None:
-        escalation = approval_gate.should_park(
-            tool_invoker.pending_escalations,
-        )
-        if escalation is not None:
-            return await _park_for_approval(
-                ctx,
-                escalation,
-                approval_gate,
-                turns,
-            )
-
-    return ctx
-
-
-async def _park_for_approval(
-    ctx: AgentContext,
-    escalation: EscalationInfo,
-    approval_gate: ApprovalGate,
-    turns: list[TurnRecord],
-) -> ExecutionResult:
-    """Park the context for approval and return a PARKED or ERROR result.
-
-    On success, returns PARKED with the approval_id in metadata.
-    On failure (serialization/persistence error), returns ERROR -- the
-    agent should not continue, and the caller should treat this as a
-    non-resumable failure.
-
-    Args:
-        ctx: Current agent context.
-        escalation: The escalation that triggered parking.
-        approval_gate: The approval gate service.
-        turns: Accumulated turn records.
-
-    Returns:
-        An ``ExecutionResult`` with PARKED or ERROR termination reason.
-    """
-    agent_id = str(ctx.identity.id)
-    task_id: str | None = None
-    if ctx.task_execution is not None:
-        task_id = ctx.task_execution.task.id
-    else:
-        logger.debug(
-            APPROVAL_GATE_PARK_TASKLESS,
-            approval_id=escalation.approval_id,
-            agent_id=agent_id,
-            note="No task_execution on context -- task_id will be None",
-        )
-
-    try:
-        await approval_gate.park_context(
-            escalation=escalation,
-            context=ctx,
-            agent_id=agent_id,
-            task_id=task_id,
-        )
-    except MemoryError, RecursionError:
-        raise
-    except Exception:
-        # ApprovalGate already logs APPROVAL_GATE_CONTEXT_PARK_FAILED
-        return build_result(
-            ctx,
-            TerminationReason.ERROR,
-            turns,
-            error_message=(
-                f"Approval escalation detected (id={escalation.approval_id}) "
-                f"but context parking failed -- cannot resume"
-            ),
-            metadata={
-                "approval_id": escalation.approval_id,
-                "parking_failed": True,
-            },
-        )
-
-    return build_result(
-        ctx,
-        TerminationReason.PARKED,
-        turns,
-        metadata={
-            "approval_id": escalation.approval_id,
-            "parking_failed": False,
-        },
-    )
-
-
-def clear_last_turn_tool_calls(turns: list[TurnRecord]) -> None:
-    """Clear tool_calls_made on the last TurnRecord.
-
-    Used when shutdown fires between recording a turn and executing
-    tools -- the turn should not overstate what happened.
-
-    Args:
-        turns: Mutable list of turn records (modified in-place).
-    """
-    if turns:
-        last = turns[-1]
-        turns[-1] = last.model_copy(
-            update={"tool_calls_made": (), "tool_call_fingerprints": ()},
-        )
 
 
 def get_tool_definitions(

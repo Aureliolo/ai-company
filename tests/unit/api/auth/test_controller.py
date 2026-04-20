@@ -266,7 +266,7 @@ class TestRequirePasswordChanged:
 
         from litestar.exceptions import PermissionDeniedException
 
-        from synthorg.api.auth.controller import require_password_changed
+        from synthorg.api.auth.controller_helpers import require_password_changed
         from synthorg.api.auth.models import AuthenticatedUser, AuthMethod
 
         user = AuthenticatedUser(
@@ -287,7 +287,7 @@ class TestRequirePasswordChanged:
         """Guard passes when must_change_password is False."""
         from unittest.mock import MagicMock
 
-        from synthorg.api.auth.controller import require_password_changed
+        from synthorg.api.auth.controller_helpers import require_password_changed
         from synthorg.api.auth.models import AuthenticatedUser, AuthMethod
 
         user = AuthenticatedUser(
@@ -308,7 +308,7 @@ class TestRequirePasswordChanged:
         """Guard passes when no user is in scope (pre-auth)."""
         from unittest.mock import MagicMock
 
-        from synthorg.api.auth.controller import require_password_changed
+        from synthorg.api.auth.controller_helpers import require_password_changed
 
         connection = MagicMock()
         connection.scope = {}
@@ -331,7 +331,7 @@ class TestRequirePasswordChanged:
         """Guard allows must_change_password users on exempt paths."""
         from unittest.mock import MagicMock
 
-        from synthorg.api.auth.controller import require_password_changed
+        from synthorg.api.auth.controller_helpers import require_password_changed
         from synthorg.api.auth.models import AuthenticatedUser, AuthMethod
 
         user = AuthenticatedUser(
@@ -354,7 +354,7 @@ class TestRequirePasswordChanged:
 
         from litestar.exceptions import PermissionDeniedException
 
-        from synthorg.api.auth.controller import require_password_changed
+        from synthorg.api.auth.controller_helpers import require_password_changed
 
         connection = MagicMock()
         connection.scope = {"user": "not-an-auth-user"}

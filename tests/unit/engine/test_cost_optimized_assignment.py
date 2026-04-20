@@ -3,12 +3,10 @@
 import pytest
 
 from synthorg.core.enums import Complexity, SeniorityLevel
+from synthorg.engine.assignment.cost_optimized import CostOptimizedAssignmentStrategy
 from synthorg.engine.assignment.models import (
     AgentWorkload,
     AssignmentRequest,
-)
-from synthorg.engine.assignment.strategies import (
-    CostOptimizedAssignmentStrategy,
 )
 from synthorg.engine.routing.scorer import AgentTaskScorer
 

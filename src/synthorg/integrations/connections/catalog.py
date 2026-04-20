@@ -91,6 +91,18 @@ class ConnectionCatalog:
     def _invalidate_cache(self) -> None:
         self._cache_valid = False
 
+    def get_cached(self, name: str) -> Connection | None:
+        """Return the cached connection for ``name`` without populating.
+
+        Synchronous peek into the in-memory cache; returns ``None`` when
+        the cache has not been primed yet or the name is unknown. Use
+        when callers prefer a best-effort read over forcing a
+        repository fetch (e.g. boot-time rate-limit coordinators).
+        """
+        if not self._cache_valid:
+            return None
+        return self._cache.get(name)
+
     async def _lock_for(self, name: str) -> asyncio.Lock:
         """Return (or create) the mutation lock for a connection name."""
         async with self._name_locks_lock:
