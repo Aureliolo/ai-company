@@ -18,7 +18,7 @@ from synthorg.budget.currency import (
 from synthorg.engine.errors import PromptBuildError
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 from synthorg.engine.prompt_template import DEFAULT_TEMPLATE
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.prompt import (
     PROMPT_BUILD_BUDGET_EXCEEDED,
     PROMPT_BUILD_ERROR,
@@ -138,7 +138,16 @@ def format_task_instruction(
 
     if task.deadline:
         parts.append("")
-        parts.append(f"**Deadline:** {task.deadline}")
+        # SEC-1: even though ``task.deadline`` passes strict
+        # ``datetime.fromisoformat()`` validation upstream, it still
+        # originates from an API request payload -- the coding
+        # guideline is unambiguous that any string-typed
+        # attacker-controllable value interpolated into an LLM prompt
+        # must be wrapped.  Budget limit stays unwrapped because it is
+        # a numeric type, not a string.
+        parts.append(
+            f"**Deadline:** {wrap_untrusted(TAG_TASK_DATA, str(task.deadline))}",
+        )
 
     return "\n".join(parts)
 
@@ -172,11 +181,15 @@ def resolve_template(custom_template: str | None) -> str:
     try:
         _SANDBOX_ENV.parse(custom_template)
     except TemplateSyntaxError as exc:
-        logger.exception(
+        # SEC-1: syntax errors from an operator-supplied custom
+        # template can echo fragments of the attacker-controlled input;
+        # scrub + drop traceback.
+        logger.warning(
             PROMPT_CUSTOM_TEMPLATE_FAILED,
-            error=str(exc),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
-        msg = f"Custom template has invalid Jinja2 syntax: {exc}"
+        msg = f"Custom template has invalid Jinja2 syntax: {type(exc).__name__}"
         raise PromptBuildError(msg) from exc
 
     logger.debug(PROMPT_CUSTOM_TEMPLATE_LOADED)
@@ -193,8 +206,14 @@ def render_template(template_str: str, context: dict[str, Any]) -> str:
         template = _SANDBOX_ENV.from_string(template_str)
         return template.render(**context)
     except Jinja2TemplateError as exc:
-        logger.exception(PROMPT_BUILD_ERROR, error=str(exc))
-        msg = f"System prompt rendering failed: {exc}"
+        # Use the SEC-1 scrubbed pattern: a template-rendering error
+        # may carry user-supplied template fragments in its message.
+        logger.warning(
+            PROMPT_BUILD_ERROR,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        msg = f"System prompt rendering failed: {type(exc).__name__}"
         raise PromptBuildError(msg) from exc
 
 

@@ -100,7 +100,15 @@ class NgrokAdapter:
         return self._public_url
 
     async def stop(self) -> None:
-        """Stop the ngrok tunnel."""
+        """Stop the ngrok tunnel.
+
+        The local ``_tunnel`` / ``_public_url`` references are only
+        cleared on a *successful* disconnect.  If ``ngrok.disconnect()``
+        raises, the tunnel may still be live upstream, so we keep the
+        retry handle and re-raise ``TunnelError`` -- reporting
+        ``TUNNEL_STOPPED`` in that case would lie about the system
+        state to operators.
+        """
         if self._tunnel is None:
             return
         try:
@@ -114,6 +122,8 @@ class NgrokAdapter:
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
+            msg = f"Failed to stop ngrok tunnel: {type(exc).__name__}"
+            raise TunnelError(msg) from exc
         self._tunnel = None
         self._public_url = None
         logger.info(TUNNEL_STOPPED)

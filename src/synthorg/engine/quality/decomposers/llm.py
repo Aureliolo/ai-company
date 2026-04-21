@@ -19,7 +19,7 @@ from typing import Any, Final, NoReturn
 from synthorg.core.task import AcceptanceCriterion  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.prompt_safety import (
-    TAG_TASK_DATA,
+    TAG_CRITERIA_JSON,
     untrusted_content_directive,
     wrap_untrusted,
 )
@@ -75,7 +75,7 @@ _DECOMPOSER_SYSTEM_PROMPT: Final[str] = (
     "whose answer can be determined by inspecting the produced artifact.  "
     "Favor multiple specific probes over one vague probe.  Do not invent "
     "new requirements; every probe must trace to a given criterion.\n\n"
-    + untrusted_content_directive((TAG_TASK_DATA,))
+    + untrusted_content_directive((TAG_CRITERIA_JSON,))
 )
 _MAX_PROMPT_CRITERIA_CHARS: Final[int] = 8_000
 _MIN_CRITERION_DESC_CHARS: Final[int] = 16
@@ -105,8 +105,12 @@ def _encode_decomposer_payload(
 ) -> str:
     """Serialize the decomposer payload as a JSON string.
 
-    Each criterion description is wrapped in a ``<task-data>`` fence
-    before JSON encoding (SEC-1 / audit finding 92, item #8). A
+    Each criterion description is wrapped in a ``<criteria-json>``
+    fence before JSON encoding (SEC-1 / audit finding 92, item #8).
+    This is the tag explicitly reserved for the decomposer-criteria
+    surface in ``synthorg.engine.prompt_safety`` -- using the
+    site-specific tag (rather than the generic ``<task-data>``) keeps
+    the untrusted-content inventory unambiguous for the model.  A
     description that contains structural JSON metacharacters
     (``{"description": "...","injected":"true"}``) still serialises
     cleanly through ``json.dumps``, but the fence means the model sees
@@ -116,7 +120,7 @@ def _encode_decomposer_payload(
     """
     payload = {
         "criteria": [
-            {"index": i, "description": wrap_untrusted(TAG_TASK_DATA, d)}
+            {"index": i, "description": wrap_untrusted(TAG_CRITERIA_JSON, d)}
             for i, d in enumerate(descriptions)
         ],
         "max_probes_per_criterion": max_probes,

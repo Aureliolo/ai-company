@@ -198,7 +198,7 @@ async def _try_jwt_auth(
         logger.warning(
             API_AUTH_FAILED,
             reason="jwt_invalid",
-            error_type=type(exc).__qualname__,
+            error_type=type(exc).__name__,
             error=safe_error_description(exc),
             path=path,
         )

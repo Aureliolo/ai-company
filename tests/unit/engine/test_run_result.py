@@ -210,21 +210,26 @@ class TestFormatTaskInstruction:
     def test_basic_format(self, sample_task_with_criteria: Task) -> None:
         result = format_task_instruction(sample_task_with_criteria)
 
-        # SEC-1: user-controlled task fields are wrapped in a
+        # SEC-1: user-controlled task fields must be wrapped in a
         # ``<task-data>`` fence; the ``# Task`` heading is trusted
-        # framing, with the title rendered inside the fence.
+        # framing.  Assert ordering so a formatter regression that
+        # moves any user-controlled string outside the fence fails the
+        # test, rather than silently passing on substring presence.
         assert "# Task" in result
-        assert "<task-data>" in result
-        assert "Title: Implement authentication module" in result
-        assert "JWT-based authentication" in result
-        assert "Acceptance Criteria:" in result
-        assert "- Login endpoint returns JWT token" in result
-        assert "</task-data>" in result
+        open_idx = result.index("<task-data>")
+        close_idx = result.index("</task-data>")
+        for fragment in (
+            "Title: Implement authentication module",
+            "JWT-based authentication",
+            "Acceptance Criteria:",
+            "- Login endpoint returns JWT token",
+        ):
+            assert open_idx < result.index(fragment) < close_idx
         assert "$5.00" in result
 
     def test_deadline_included(self, sample_task_with_criteria: Task) -> None:
         result = format_task_instruction(sample_task_with_criteria)
-        assert "**Deadline:** 2026-04-01T00:00:00" in result
+        assert "**Deadline:** <task-data>\n2026-04-01T00:00:00\n</task-data>" in result
 
     def test_deadline_has_blank_line_separator(
         self,

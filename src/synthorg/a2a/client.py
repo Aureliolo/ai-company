@@ -143,7 +143,7 @@ class A2AClient:
             {"id": task_id},
         )
 
-    async def _call_method(  # noqa: C901
+    async def _call_method(  # noqa: C901, PLR0912, PLR0915
         self,
         peer_name: str,
         method: str,
@@ -192,6 +192,8 @@ class A2AClient:
                 raise A2AClientError(msg, peer_name=peer_name)
             try:
                 await validate_url_host(url_str, self._network_validator)
+            except MemoryError, RecursionError:
+                raise
             except Exception as ssrf_exc:
                 logger.warning(
                     A2A_OUTBOUND_SSRF_BLOCKED,
@@ -382,6 +384,7 @@ def _parse_rpc_response(
             A2A_OUTBOUND_FAILED,
             peer_name=peer_name,
             reason="response_json_decode_error",
+            error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
         msg = f"Peer '{peer_name}' returned invalid JSON"
@@ -396,6 +399,7 @@ def _parse_rpc_response(
             A2A_OUTBOUND_FAILED,
             peer_name=peer_name,
             reason="response_validation_error",
+            error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
         msg = f"Peer '{peer_name}' returned invalid JSON-RPC"

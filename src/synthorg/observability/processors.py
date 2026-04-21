@@ -135,6 +135,12 @@ def scrub_event_fields(
     """
     try:
         return {key: _scrub_value(value) for key, value in event_dict.items()}
+    except MemoryError, RecursionError:
+        # Interpreter-fatal errors must propagate per project convention
+        # -- swallowing them here would hide exactly the class of failures
+        # the rest of the codebase relies on for surfacing catastrophic
+        # state.
+        raise
     except Exception as exc:
         # Fail open: pass the event through unscrubbed rather than drop
         # the log line entirely.  Still safer than crashing the log
