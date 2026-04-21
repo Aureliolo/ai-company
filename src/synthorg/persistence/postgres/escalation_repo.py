@@ -7,9 +7,13 @@ all timestamps -- mirrors the Postgres sibling pattern from
 ``parked_context_repo.py``.
 """
 
+import contextlib
 import json
+import re
+from collections.abc import AsyncIterator  # noqa: TC003
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 import psycopg
 from psycopg.rows import dict_row
@@ -36,6 +40,13 @@ logger = get_logger(__name__)
 
 _DEFAULT_LIMIT = 50
 _DEFAULT_OFFSET = 0
+
+# Postgres unquoted identifier regex (defence-in-depth for LISTEN /
+# UNLISTEN arg interpolation in ``subscribe_notifications``).
+_SAFE_IDENTIFIER_PATTERN: Final[re.Pattern[str]] = re.compile(
+    r"^[A-Za-z_][A-Za-z0-9_]*$",
+)
+_MAX_IDENTIFIER_LEN: Final[int] = 63
 
 _decision_adapter: TypeAdapter[EscalationDecision] = TypeAdapter(EscalationDecision)
 
@@ -400,6 +411,58 @@ INSERT INTO conflict_escalations (
             raise QueryError(msg) from exc
         await self._publish_notify(escalation_id, new_status.value)
         return _row_to_escalation(updated_row)
+
+    @asynccontextmanager
+    async def subscribe_notifications(
+        self,
+        channel: str,
+    ) -> AsyncIterator[AsyncIterator[str]]:
+        """Subscribe to Postgres LISTEN/NOTIFY on *channel*.
+
+        Holds a dedicated pool connection for the lifetime of the
+        subscription (LISTEN is session-level state). Operators
+        enabling cross-instance notify MUST size ``pool_min_size`` to
+        reserve at least one slot per API worker so LISTEN does not
+        starve other borrowers.
+
+        Raises:
+            ValueError: If *channel* is not a safe Postgres unquoted
+                identifier. Defence-in-depth -- config + caller already
+                validate, but the repo re-checks so a stray caller
+                cannot inject SQL via ``LISTEN "<channel>"``.
+        """
+        if (
+            not channel
+            or len(channel) > _MAX_IDENTIFIER_LEN
+            or _SAFE_IDENTIFIER_PATTERN.fullmatch(channel) is None
+        ):
+            msg = (
+                f"notify channel {channel!r} is not a safe Postgres "
+                "identifier (must match ^[A-Za-z_][A-Za-z0-9_]*$, "
+                f"max {_MAX_IDENTIFIER_LEN} chars)"
+            )
+            raise ValueError(msg)
+
+        async with self._pool.connection() as conn:
+            original_autocommit = getattr(conn, "autocommit", False)
+            await conn.set_autocommit(True)
+            try:
+                await conn.execute(f'LISTEN "{channel}"')
+                notifies_gen = conn.notifies()
+
+                async def _payloads() -> AsyncIterator[str]:
+                    async for notify in notifies_gen:
+                        yield notify.payload
+
+                try:
+                    yield _payloads()
+                finally:
+                    await notifies_gen.aclose()
+            finally:
+                with contextlib.suppress(Exception):
+                    await conn.execute(f'UNLISTEN "{channel}"')
+                with contextlib.suppress(Exception):
+                    await conn.set_autocommit(bool(original_autocommit))
 
     async def _publish_notify(self, escalation_id: str, status: str) -> None:
         """Publish ``<id>:<status>`` on the configured NOTIFY channel.

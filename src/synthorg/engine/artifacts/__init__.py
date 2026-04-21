@@ -1,0 +1,1 @@
+"""Artifact domain service layer."""

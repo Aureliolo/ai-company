@@ -11,21 +11,18 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 from synthorg.api.auth.config import AuthConfig
 from synthorg.api.auth.models import AuthenticatedUser, OrgRole, User
+from synthorg.api.auth.user_service import UserService
 from synthorg.api.dto import ApiResponse
 from synthorg.api.errors import ApiValidationError, ConflictError, NotFoundError
 from synthorg.api.guards import HumanRole, require_ceo
 from synthorg.api.path_params import PathId  # noqa: TC001
 from synthorg.api.state import AppState  # noqa: TC001
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_RESOURCE_CONFLICT,
     API_RESOURCE_NOT_FOUND,
-    API_USER_CREATED,
-    API_USER_DELETED,
-    API_USER_LISTED,
     API_USER_SAVE_FAILED,
-    API_USER_UPDATED,
     API_VALIDATION_FAILED,
 )
 from synthorg.persistence.constraint_tokens import (
@@ -37,6 +34,12 @@ from synthorg.persistence.constraint_tokens import (
 from synthorg.persistence.errors import ConstraintViolationError, QueryError
 
 logger = get_logger(__name__)
+
+
+def _service(state: State) -> UserService:
+    """Build the per-request :class:`UserService`."""
+    return UserService(repo=state.app_state.persistence.users)
+
 
 # Derive from AuthConfig default to prevent silent divergence.
 _MIN_PASSWORD_LENGTH: int = AuthConfig.model_fields["min_password_length"].default
@@ -116,11 +119,11 @@ def _validate_assignable_role(role: HumanRole) -> None:
 
 
 async def _get_user_or_404(
-    app_state: AppState,
+    service: UserService,
     user_id: str,
 ) -> User:
     """Fetch a user by ID, raising NotFoundError if missing."""
-    user = await app_state.persistence.users.get(user_id)
+    user = await service.get(NotBlankStr(user_id))
     if user is None:
         msg = f"User not found: {user_id}"
         logger.warning(API_RESOURCE_NOT_FOUND, reason=msg)
@@ -185,7 +188,7 @@ class UserController(Controller):
             updated_at=now,
         )
         try:
-            await app_state.persistence.users.save(user)
+            await _service(state).create(user)
         except ConstraintViolationError as exc:
             if exc.constraint == USERS_USERNAME_UNIQUE:
                 msg = f"Username already taken: {data.username}"
@@ -211,11 +214,6 @@ class UserController(Controller):
             )
             raise
 
-        logger.info(
-            API_USER_CREATED,
-            user_id=user.id,
-            role=user.role.value,
-        )
         return ApiResponse(data=_to_response(user))
 
     @get()
@@ -231,9 +229,7 @@ class UserController(Controller):
         Returns:
             Tuple of user responses.
         """
-        app_state: AppState = state.app_state
-        users = await app_state.persistence.users.list_users()
-        logger.debug(API_USER_LISTED, count=len(users))
+        users = await _service(state).list_users()
         return ApiResponse(
             data=tuple(_to_response(u) for u in users),
         )
@@ -256,8 +252,7 @@ class UserController(Controller):
         Raises:
             NotFoundError: If the user is not found.
         """
-        app_state: AppState = state.app_state
-        user = await _get_user_or_404(app_state, user_id)
+        user = await _get_user_or_404(_service(state), user_id)
         return ApiResponse(data=_to_response(user))
 
     @patch("/{user_id:str}")
@@ -284,10 +279,10 @@ class UserController(Controller):
                 changing the only CEO's role, or assigning a
                 second CEO.
         """
-        app_state: AppState = state.app_state
+        service = _service(state)
 
         _validate_assignable_role(data.role)
-        user = await _get_user_or_404(app_state, user_id)
+        user = await _get_user_or_404(service, user_id)
 
         if user.role == HumanRole.SYSTEM:
             msg = "Cannot modify the system user"
@@ -299,7 +294,12 @@ class UserController(Controller):
             update={"role": data.role, "updated_at": now},
         )
         try:
-            await app_state.persistence.users.save(updated)
+            await service.save_update(
+                updated,
+                intent="update_user_role",
+                old_role=user.role.value,
+                new_role=data.role.value,
+            )
         except ConstraintViolationError as exc:
             if exc.constraint == LAST_CEO_TRIGGER:
                 msg = "Cannot change the only CEO's role"
@@ -325,12 +325,6 @@ class UserController(Controller):
             )
             raise
 
-        logger.info(
-            API_USER_UPDATED,
-            user_id=user.id,
-            old_role=user.role.value,
-            new_role=data.role.value,
-        )
         return ApiResponse(data=_to_response(updated))
 
     @delete("/{user_id:str}", status_code=HTTP_204_NO_CONTENT)
@@ -352,10 +346,10 @@ class UserController(Controller):
             ConflictError: If attempting to delete your own account,
                 the system user, or the CEO.
         """
-        app_state: AppState = state.app_state
+        service = _service(state)
         auth_user: AuthenticatedUser = request.scope["user"]
 
-        user = await _get_user_or_404(app_state, user_id)
+        user = await _get_user_or_404(service, user_id)
 
         if user.id == auth_user.user_id:
             msg = "Cannot delete your own account"
@@ -373,7 +367,10 @@ class UserController(Controller):
             raise ConflictError(msg)
 
         try:
-            deleted = await app_state.persistence.users.delete(user_id)
+            deleted = await service.delete(
+                NotBlankStr(user_id),
+                deleted_by_user_id=NotBlankStr(auth_user.user_id),
+            )
         except ConstraintViolationError as exc:
             if exc.constraint == LAST_OWNER_TRIGGER:
                 msg = "Cannot delete the last owner"
@@ -403,12 +400,6 @@ class UserController(Controller):
             logger.warning(API_RESOURCE_NOT_FOUND, reason=msg)
             raise NotFoundError(msg)
 
-        logger.info(
-            API_USER_DELETED,
-            user_id=user.id,
-            deleted_by_user_id=auth_user.user_id,
-        )
-
     # -- Org role grant/revoke -------------------------------------------
 
     @post("/{user_id:str}/org-roles", status_code=201)
@@ -433,8 +424,8 @@ class UserController(Controller):
             ConflictError: If the user already has the role.
             ApiValidationError: If department_admin without departments.
         """
-        app_state: AppState = state.app_state
-        user = await _get_user_or_404(app_state, user_id)
+        service = _service(state)
+        user = await _get_user_or_404(service, user_id)
 
         if user.role == HumanRole.SYSTEM:
             msg = "Cannot assign org roles to the system user"
@@ -475,7 +466,11 @@ class UserController(Controller):
             },
         )
         try:
-            await app_state.persistence.users.save(updated)
+            await service.save_update(
+                updated,
+                intent="grant_org_role",
+                granted_org_role=data.role.value,
+            )
         except ConstraintViolationError as exc:
             if exc.constraint == LAST_OWNER_TRIGGER:
                 msg = "Cannot modify the last owner"
@@ -499,11 +494,6 @@ class UserController(Controller):
                 exc_info=True,
             )
             raise
-        logger.info(
-            API_USER_UPDATED,
-            user_id=user.id,
-            granted_org_role=data.role.value,
-        )
         return ApiResponse(data=_to_response(updated))
 
     @delete(
@@ -528,7 +518,7 @@ class UserController(Controller):
             ApiValidationError: If the role value is invalid.
             ConflictError: If revoking the last owner.
         """
-        app_state: AppState = state.app_state
+        service = _service(state)
         try:
             org_role = OrgRole(role)
         except ValueError:
@@ -536,7 +526,7 @@ class UserController(Controller):
             logger.warning(API_VALIDATION_FAILED, reason=msg)
             raise ApiValidationError(msg) from None
 
-        user = await _get_user_or_404(app_state, user_id)
+        user = await _get_user_or_404(service, user_id)
 
         if org_role not in user.org_roles:
             msg = f"User does not have role: {role}"
@@ -555,7 +545,11 @@ class UserController(Controller):
             },
         )
         try:
-            await app_state.persistence.users.save(updated)
+            await service.save_update(
+                updated,
+                intent="revoke_org_role",
+                revoked_org_role=role,
+            )
         except ConstraintViolationError as exc:
             if exc.constraint == LAST_OWNER_TRIGGER:
                 msg = "Cannot revoke the last owner role"
@@ -579,8 +573,3 @@ class UserController(Controller):
                 exc_info=True,
             )
             raise
-        logger.info(
-            API_USER_UPDATED,
-            user_id=user.id,
-            revoked_org_role=role,
-        )

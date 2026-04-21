@@ -6,8 +6,11 @@ structured logging.  Stores the :class:`Conflict` snapshot and the
 optional decision payload as JSON TEXT columns for schema simplicity.
 """
 
+import asyncio
 import json
 import sqlite3
+from collections.abc import AsyncIterator  # noqa: TC003
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 
 import aiosqlite
@@ -279,6 +282,39 @@ class SQLiteEscalationRepository(EscalationQueueStore):
     async def close(self) -> None:
         """No-op: the connection is owned by the persistence backend."""
         return
+
+    @asynccontextmanager
+    async def subscribe_notifications(
+        self,
+        channel: str,  # noqa: ARG002
+    ) -> AsyncIterator[AsyncIterator[str]]:
+        """Return an iterator that blocks until cancelled (no-op).
+
+        SQLite is single-process by design; there is no cross-instance
+        signalling channel for this backend. The subscriber contract
+        still needs an async context manager + iterator, so we yield
+        an iterator that awaits an :class:`asyncio.Event` that is never
+        set and exits cleanly on cancellation. Callers get a valid
+        iterator they can iterate over with ``async for`` -- the body
+        just never runs until the task is cancelled.
+        """
+        stop = asyncio.Event()
+
+        async def _never() -> AsyncIterator[str]:
+            # The type system needs at least one ``yield`` to see this
+            # as an async generator; put one behind an always-false
+            # gate so it is never actually emitted.  The outer ``await``
+            # blocks until ``stop`` is set on context-manager exit.
+            while not stop.is_set():
+                await stop.wait()
+                if stop.is_set():
+                    return
+                yield ""  # pragma: no cover - unreachable in normal flow
+
+        try:
+            yield _never()
+        finally:
+            stop.set()
 
     async def _update_terminal(  # noqa: PLR0913
         self,

@@ -1,6 +1,6 @@
 """Protocols for the escalation queue backend and decision processor (#1418)."""
 
-from typing import Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from synthorg.communication.conflict_resolution.escalation.models import (
     Escalation,
@@ -12,6 +12,10 @@ from synthorg.communication.conflict_resolution.models import (  # noqa: TC001
     ConflictResolution,
     DissentRecord,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+    from contextlib import AbstractAsyncContextManager
 
 _DEFAULT_LIMIT = 50
 _DEFAULT_OFFSET = 0
@@ -103,6 +107,35 @@ class EscalationQueueStore(Protocol):
 
     async def close(self) -> None:
         """Release any background resources."""
+        ...
+
+    def subscribe_notifications(
+        self,
+        channel: str,
+    ) -> AbstractAsyncContextManager[AsyncIterator[str]]:
+        """Subscribe to backend-native notifications on *channel*.
+
+        Postgres implementations use LISTEN/NOTIFY with a dedicated
+        pool connection. Single-process backends (SQLite/in-memory)
+        return an iterator that blocks on cancellation without
+        yielding -- correct for deployments without cross-instance
+        signalling.
+
+        Use as:
+
+            async with repo.subscribe_notifications("my-channel") as gen:
+                async for payload in gen:
+                    await handle(payload)
+
+        Args:
+            channel: Channel identifier (backend-specific, validated
+                by the caller; Postgres requires a safe SQL
+                identifier).
+
+        Yields:
+            An async iterator of payload strings. The iterator
+            terminates when the async context exits.
+        """
         ...
 
 

@@ -15,7 +15,6 @@ factory returns a :class:`NoopEscalationNotifySubscriber`.
 """
 
 import asyncio
-import contextlib
 import re
 from typing import TYPE_CHECKING, Final, Protocol, runtime_checkable
 
@@ -215,41 +214,18 @@ class PostgresEscalationNotifySubscriber:
     async def _listen_once(self) -> None:
         """Open a dedicated connection, LISTEN, and dispatch notifies.
 
-        IMPORTANT: this subscriber **holds a dedicated pool connection
-        for the lifetime of the subscription** -- LISTEN is a session-
-        level state that the connection must retain.  Operators enabling
-        cross-instance notify MUST size the Postgres connection pool to
-        reserve at least one additional slot above the application's
-        normal working set (``pool_min_size`` / ``max_size`` in the
-        persistence config) to avoid starving other clients.  As a rule
-        of thumb, raise ``pool_min_size`` by ``(number_of_workers)``
-        when enabling this feature; each worker runs one subscriber and
-        pins one connection.
+        The actual LISTEN / UNLISTEN / autocommit plumbing lives in
+        :meth:`PostgresEscalationRepository.subscribe_notifications`;
+        this method just iterates the payload stream and forwards each
+        notification to the in-process registry. The dedicated pool
+        connection is still held for the subscription lifetime -- pool
+        sizing guidance in the class docstring remains accurate.
         """
-        pool = self._repo.pool
-        async with pool.connection() as conn:
-            # Capture the pool's original autocommit state and restore
-            # it before the connection goes back, so long-lived LISTEN
-            # mode doesn't leak to future borrowers of the same
-            # connection.  (psycopg pools typically reset connections,
-            # but we don't rely on that implementation detail.)
-            original_autocommit = getattr(conn, "autocommit", False)
-            await conn.set_autocommit(True)
-            try:
-                await conn.execute(f'LISTEN "{self._channel}"')
-                gen = conn.notifies()
-                try:
-                    async for notify in gen:
-                        if self._stop_event is None or self._stop_event.is_set():
-                            break
-                        await self._dispatch_payload(notify.payload)
-                finally:
-                    await gen.aclose()
-            finally:
-                with contextlib.suppress(Exception):
-                    await conn.execute(f'UNLISTEN "{self._channel}"')
-                with contextlib.suppress(Exception):
-                    await conn.set_autocommit(bool(original_autocommit))
+        async with self._repo.subscribe_notifications(self._channel) as payloads:
+            async for payload in payloads:
+                if self._stop_event is None or self._stop_event.is_set():
+                    break
+                await self._dispatch_payload(payload)
 
     async def _dispatch_payload(self, payload: str) -> None:
         """Interpret a NOTIFY payload and wake the local future."""
