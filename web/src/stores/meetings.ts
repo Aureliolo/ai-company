@@ -72,16 +72,29 @@ function isMeetingShape(
  * Return a sanitized copy of a ``MeetingResponse`` with every
  * untrusted string field validated by ``isMeetingShape`` routed
  * through ``sanitizeWsString`` so bidi overrides and control chars
- * never reach the rendered UI. ``contribution_rank`` is a string[]
- * of agent ids that renders directly in the UI, so each entry gets
- * the same sanitization treatment.
+ * never reach the rendered UI. This covers every WS-origin string
+ * the store persists: the identifier (``meeting_id``), the enum-
+ * typed display strings, the nullable ``error_message``, the
+ * ``contribution_rank`` agent ids, and the participant-id keys of
+ * ``token_usage_by_participant``.
  */
 function sanitizeMeeting(c: MeetingResponse): MeetingResponse {
+  const tokenUsage: Record<string, number> = {}
+  for (const [participantId, count] of Object.entries(c.token_usage_by_participant)) {
+    const safeId = sanitizeWsString(participantId, 128)
+    if (safeId && safeId.length > 0) {
+      tokenUsage[safeId] = count
+    }
+  }
   return {
     ...c,
+    meeting_id: sanitizeWsString(c.meeting_id, 128) ?? '',
     meeting_type_name: sanitizeWsString(c.meeting_type_name, 128) ?? '',
     status: (sanitizeWsString(c.status, 64) ?? '') as MeetingResponse['status'],
     protocol_type: (sanitizeWsString(c.protocol_type, 64) ?? '') as MeetingResponse['protocol_type'],
+    error_message:
+      c.error_message === null ? null : sanitizeWsString(c.error_message, 512) ?? '',
+    token_usage_by_participant: tokenUsage,
     contribution_rank: c.contribution_rank
       .map((agentId) => sanitizeWsString(agentId, 128) ?? '')
       .filter((agentId) => agentId.length > 0),
