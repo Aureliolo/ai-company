@@ -23,7 +23,7 @@
 #   "partial" - self-hosting available but with reduced features vs cloud
 
 meta:
-  last_updated: "2026-04-02"
+  last_updated: "2026-04-21"
 
 dimensions:
   - key: org_structure
@@ -104,19 +104,19 @@ competitors:
     is_synthorg: true
     features:
       org_structure: { support: full, note: "Departments, hierarchy, 8 seniority levels, reporting lines, HR" }
-      multi_agent: { support: planned, note: "6 assignment strategies, conflict resolution; working toward multi-project support and formal coordination models" }
+      multi_agent: { support: planned, note: "6 assignment strategies, 4 coordination dispatchers, conflict resolution shipped; multi-project support and formal coordination models in progress" }
       task_delegation: { support: full, note: "DAG decomposition, 6 assignment strategies, delegation chains" }
-      memory: { support: planned, note: "Pluggable architecture with sole Mem0 backend; 5 memory types; working toward composite backends and alternative storage engines" }
-      tool_use: { support: planned, note: "MCP protocol, sandbox isolation, invocation tracking; 5 built-in tool types; working toward web, DB, terminal, email, analytics, design, deployment tools" }
-      human_in_loop: { support: planned, note: "Approval gates, review workflows, 4 autonomy tiers; working toward two-stage safety classifier" }
-      budget_tracking: { support: planned, note: "Per-token, per-agent, hierarchical cascades, CFO optimization; working toward risk-unit action budgets" }
-      security_model: { support: planned, note: "Rule engine + LLM evaluator, progressive trust, audit trail; working toward hallucination detection and self-healing SSRF" }
-      observability: { support: planned, note: "Structured logging, correlation tracking, log shipping, redaction; working toward notification sink for operator alerts" }
-      web_dashboard: { support: planned, note: "React 19 dashboard with org chart, tasks, budgets; working toward visual workflow editor and ceremony policy UI" }
+      memory: { support: full, note: "Pluggable architecture with 3 backends (Mem0, composite, in-memory); 5 memory types (working, episodic, semantic, procedural, social); hybrid retrieval (dense + BM25 sparse with RRF fusion)" }
+      tool_use: { support: full, note: "MCP protocol, sandbox isolation, invocation tracking; 12 built-in tool categories (analytics, communication, context, database, design, file system, MCP, sandbox, terminal, web, examples)" }
+      human_in_loop: { support: full, note: "Approval gates, review workflows, 4 autonomy tiers (FULL, SEMI, SUPERVISED, LOCKED), two-stage safety classifier, LLM fallback evaluator" }
+      budget_tracking: { support: planned, note: "Per-token, per-agent, hierarchical cascades, CFO optimization, automatic model downgrade shipped; risk-unit action budgets in progress" }
+      security_model: { support: planned, note: "Rule engine + LLM evaluator, progressive trust, audit trail, output scanning, hallucination detection shipped; self-healing SSRF in progress" }
+      observability: { support: full, note: "Structured logging, correlation tracking, log shipping, redaction, Prometheus metrics, OTLP" }
+      web_dashboard: { support: full, note: "React 19 dashboard with org chart, tasks, budgets, workflow editor, setup wizard, WebSocket + SSE resilience" }
       cli: { support: partial, note: "Go binary for container management and verification; not used for agent orchestration" }
-      production_ready: { support: planned, note: "Docker + CI/CD + cosign + SLSA provenance; pre-alpha, API unstable; working toward PostgreSQL persistence backend" }
-      workflow_types: { support: planned, note: "Sequential, parallel, Kanban, Agile sprints, velocity tracking; working toward throughput-adaptive and milestone-driven strategies" }
-      template_system: { support: full, note: "9 company templates, 23 personality presets, 5 team packs, locale-aware name generation" }
+      production_ready: { support: partial, note: "Docker + CI/CD + cosign + SLSA L3 provenance; stable REST API; SQLite GA; PostgreSQL backend in progress" }
+      workflow_types: { support: planned, note: "Sequential, parallel, Kanban, Agile sprints, velocity tracking, ceremony scheduling shipped; throughput-adaptive and milestone-driven strategies in progress" }
+      template_system: { support: full, note: "9 company templates, 23 personality presets, locale-aware name generation" }
 
   - name: "CrewAI"
     slug: crewai

@@ -1,56 +1,57 @@
 # Future Vision
 
-These features represent the longer-term direction for SynthOrg beyond the current development cycle.
+The longer-term direction for SynthOrg. Items here are either **planned** (scheduled or under active design) or **backlog** (candidates for research, not yet scheduled).
 
-## Planned Features
+## Planned
 
-| Feature | Version | Status |
-|---------|---------|--------|
-| Plugin system | v0.7 | Planned |
-| Multi-project support | v0.8 | Planned |
-| Benchmarking suite | v0.7 | Planned |
-| Community template marketplace | v0.7 | Research |
-| Agent evolution (learning from feedback) | v0.7 | Planned |
-| Training mode (learn from senior agents) | v0.7 | Planned |
-| Client simulation | v0.7 | Planned |
-| Inter-company communication | v0.7 | Planned |
-| A2A protocol compatibility | v0.7 | Research |
-| Dynamic company scaling | v0.8 | Planned |
-| Self-improving company | v0.8 | Planned |
-| Distributed message bus | v0.8 | Planned |
-| Distributed task queue | v0.8 | Planned |
-| PostgreSQL persistence backend | v0.8 | Planned |
-| Shift system for agents | v0.8 | Planned |
+| Feature | Status |
+|---------|--------|
+| PostgreSQL persistence backend | Planned |
+| Distributed message bus (NATS JetStream) | Planned |
+| Distributed task queue | Planned |
+| Multi-project support with project-scoped teams and isolated budgets | Planned |
+| Dynamic company scaling across clusters | Planned |
+| Plugin system | Planned |
+| Benchmarking suite | Planned |
+| REST API and dashboard UI for agent evolution | Planned |
+| Notification sink MVP (Slack, ntfy, HTTP-relay) | Planned |
+| OpenAPI TypeScript codegen for the dashboard | Planned |
 
-## Recently Shipped (formerly "Future")
+## Backlog (Research Candidates)
 
-These features were previously listed as future work and have since been implemented:
-
-- **Visual workflow editor** -- shipped in v0.5.9 (PR #1018)
-- **Network hosting / multi-user access** -- shipped in v0.5.9 (PR #1032)
-- **Workflow execution from graph definitions** -- shipped in v0.6.0 (PR #1040)
-- **Local model management** (Ollama/LM Studio) -- shipped in v0.6.0 (PR #1037)
-- **Ceremony scheduling** (8 strategies) -- shipped across v0.5.5--v0.5.7
-- **Agent promotions** -- core promotion/demotion system shipped in v0.5.0
+| Feature | Status |
+|---------|--------|
+| Community template marketplace | Research |
+| Inter-company communication beyond A2A | Research |
+| Shift system for agents | Research |
+| Self-improving company (meta-loop signal aggregation, staged rollout) | Research |
+| Advanced memory architecture (GraphRAG, consistency protocols, RL consolidation) | Research |
+| Kubernetes sandbox backend | Research |
+| Training mode (learn from senior agents) | Research |
 
 ## Scaling Path
 
 SynthOrg is designed to scale incrementally from a local single-process deployment to a hosted platform.
 
-```text
-Phase 1: Local Single-Process (current)
-  -- Async runtime, SQLite, in-memory bus, 1-10 agents
+```mermaid
+flowchart LR
+    P1["Local single-process<br/>async runtime, SQLite,<br/>in-memory bus, 1-10 agents"]
+    P2["Local multi-process<br/>external bus, production DB,<br/>sandboxed execution, 10-30 agents"]
+    P3["Network / server<br/>distributed agents,<br/>multi-user auth, 30-100 agents"]
+    P4["Cloud / hosted<br/>container orchestration,<br/>horizontal scaling, 100+ agents"]
 
-Phase 2: Local Multi-Process (v0.7-v0.8)
-  -- External message bus, production DB, sandboxed execution, 10-30 agents
-  -- See the [Distributed Runtime](../design/distributed-runtime.md) page for
-     the NATS JetStream backend and distributed task queue
+    P1 --> P2 --> P3 --> P4
 
-Phase 3: Network/Server (v0.8+)
-  -- Full API with multi-user auth, distributed agents, 30-100 agents
+    P1:::shipped
+    P2:::planned
+    P3:::planned
+    P4:::backlog
 
-Phase 4: Cloud/Hosted (future)
-  -- Container orchestration, horizontal scaling, marketplace, 100+ agents
+    classDef shipped fill:#1e3a2e,stroke:#22c55e,color:#e2e8f0
+    classDef planned fill:#3a2e1e,stroke:#f59e0b,color:#e2e8f0
+    classDef backlog fill:#2e2e3a,stroke:#8b5cf6,color:#e2e8f0
 ```
+
+See the [Distributed Runtime](../design/distributed-runtime.md) page for the NATS JetStream backend and distributed task queue design.
 
 Each phase builds on the previous one. The pluggable protocol interfaces throughout the codebase (persistence, memory, message bus, sandbox) are designed to make these transitions configuration changes rather than rewrites.
