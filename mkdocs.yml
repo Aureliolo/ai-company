@@ -117,6 +117,10 @@ nav:
       - Deployment (Docker): guides/deployment.md
       - Centralized Logging: guides/centralized-logging.md
       - Memory Configuration: guides/memory.md
+      - Settings Reference: guides/settings-reference.md
+      - Notifications & Events: guides/notifications-and-events.md
+      - Workflow API Tutorial: guides/workflow-api.md
+      - Agent Management: guides/agent-management.md
       - Human Interaction & API: guides/human-interaction.md
       - Contributing: guides/contributing.md
   - Design:
@@ -140,6 +144,7 @@ nav:
       - Backup & Restore: design/backup.md
       - Deployment: design/deployment.md
       - Persistence: design/persistence.md
+      - A2A Protocol: design/a2a-protocol.md
       - Brand Identity & UX: design/brand-and-ux.md
       - Page Structure & IA: design/page-structure.md
       - UX Guidelines: design/ux-guidelines.md

@@ -1,0 +1,151 @@
+---
+title: Settings Reference
+description: How SynthOrg settings resolve, the 17 runtime-editable namespaces, how to view and change settings at runtime, and which changes require a restart.
+---
+
+# Settings Reference
+
+SynthOrg has ~100 individually-resolved settings across 17 namespaces. Each setting is typed (`STRING`, `INTEGER`, `FLOAT`, `BOOLEAN`, `ENUM`, `JSON`) and has a clearly-documented default. This guide covers how resolution works, which namespaces are user-facing vs operator-only, and how to edit settings at runtime.
+
+---
+
+## Resolution Order
+
+Settings resolve through four layers, in priority order (first wins):
+
+1. **Database** -- values set via the REST API or dashboard persist here
+2. **Environment variables** (`SYNTHORG_<NAMESPACE>_<KEY>`)
+3. **YAML config file** (`synthorg-config.yaml` at boot)
+4. **Code defaults** (the `SettingDefinition.default` field)
+
+DB-backed changes take effect without restart unless the setting is marked `restart_required=True`.
+
+## Setting Types
+
+| Type | Example | Validation |
+|------|---------|------------|
+| `STRING` | `api.base_url` | Length bounds, regex |
+| `INTEGER` | `api.rate_limit.auth_max_requests` | `min`/`max` bounds |
+| `FLOAT` | `budget.risk_budget.per_task_risk_limit` | `gt`/`ge`/`lt`/`le` |
+| `BOOLEAN` | `notifications.min_severity.enabled` | true/false |
+| `ENUM` | `observability.root_log_level` | Validated against `enum_values` |
+| `JSON` | `providers.configs` | Pydantic schema |
+
+Values marked `sensitive=True` (API keys, webhook URLs, passwords) are Fernet-encrypted at rest and returned from GET responses as `"***"` placeholders.
+
+## Namespaces
+
+### User-facing (visible in the dashboard)
+
+| Namespace | What it configures |
+|-----------|---------------------|
+| `api` | Rate limits, CORS, request timeouts, auth cookie settings |
+| `company` | Company name, autonomy level, monthly budget, communication pattern |
+| `providers` | LLM provider CRUD, routing strategy, SSRF discovery allowlist |
+| `memory` | Memory backend, retention, embedding model, consolidation policy |
+| `budget` | Monthly budget, currency, alerts, auto-downgrade, risk budget |
+| `security` | Autonomy levels, approval policies, output scanner, trust strategy, policy engine |
+| `coordination` | Coordination metrics, error taxonomy, orchestration ratio alerts |
+| `observability` | Log level, correlation tracking, sink overrides, custom sinks |
+| `backup` | Enabled, schedule, compression, retention count/age |
+
+### Operator-only (operator-tunable, hidden from the basic UI)
+
+These surface previously-hardcoded timeouts, batch sizes, and resource limits. All default to the `ADVANCED` level.
+
+| Namespace | What it configures |
+|-----------|---------------------|
+| `engine` | Prompt profiles, stagnation detection, context compaction, evolution, crash recovery |
+| `communication` | Message bus configuration, delegation policies, meeting protocol timeouts |
+| `a2a` | A2A gateway auth, allowlist, agent card verification, webhook security |
+| `integrations` | Secret backend, OAuth manager, health prober interval, webhook dedup window |
+| `meta` | Self-improvement signal aggregation, rollout strategies, proposer model |
+| `notifications` | Sink registry, dispatcher timeout, severity threshold |
+| `tools` | Sandbox backends, tool access levels, progressive disclosure thresholds |
+| `settings` | Dispatcher polling interval, change-notification channel |
+
+## REST API
+
+All namespaces expose the same endpoint pattern:
+
+```bash
+# List all settings in a namespace with current values
+curl http://localhost:3001/api/v1/settings/api \
+  -H "Cookie: session=${TOKEN}"
+
+# Get a single setting's schema (type, default, bounds, description)
+curl http://localhost:3001/api/v1/settings/api/rate_limit.auth_max_requests/schema \
+  -H "Cookie: session=${TOKEN}"
+
+# Update a single setting
+curl -X PUT http://localhost:3001/api/v1/settings/api/rate_limit.auth_max_requests \
+  -H "Content-Type: application/json" \
+  -H "Cookie: session=${TOKEN}" \
+  -d '{"value": 12000}'
+
+# Reset a setting to its default
+curl -X DELETE http://localhost:3001/api/v1/settings/api/rate_limit.auth_max_requests \
+  -H "Cookie: session=${TOKEN}"
+```
+
+Security policy settings can be exported and re-imported as a bundle:
+
+```bash
+# Export all registered security settings
+curl http://localhost:3001/api/v1/settings/security/export \
+  -H "Cookie: session=${TOKEN}" > security-policy.json
+
+# Import into another deployment
+curl -X POST http://localhost:3001/api/v1/settings/security/import \
+  -H "Content-Type: application/json" \
+  -H "Cookie: session=${TOKEN}" \
+  -d @security-policy.json
+```
+
+## Restart-Required Settings
+
+Some settings are bootstrap-only and cannot be hot-reloaded safely. They are marked with `restart_required=True` in the schema. Common examples:
+
+- `api.rate_limit.floor_max_requests` / `unauth_max_requests` / `auth_max_requests` (the three-tier rate limiter builds at startup)
+- `api.cors.allowed_origins` (Litestar CORS plugin registers at construction)
+- `backup.path` (backup scheduler's output directory)
+- `observability.ws_ticket_max_pending_per_user` (ticket store is constructed once)
+
+Changing a restart-required setting writes the new value to the database but the running process continues using the old value. Restart the backend to pick up the change.
+
+## Hot-reloaded Settings
+
+The `SettingsChangeDispatcher` polls the `#settings` message bus channel and routes change events to registered `SettingsSubscriber` implementations. Concrete subscribers today:
+
+- `ProviderSettingsSubscriber` -- rebuilds `ModelRouter` on `routing_strategy` change via `AppState.swap_model_router()`
+- `MemorySettingsSubscriber` -- advisory logging for non-restart memory settings
+- `BackupSettingsSubscriber` -- toggles `BackupScheduler` on `enabled` change, reschedules on `schedule_hours` change
+
+Settings resolved via `ConfigResolver` bridge configs (e.g. `get_communication_bridge_config()`) are re-fetched at the top of each polling iteration in their consumers -- operator changes take effect within one poll cycle without restart.
+
+## Common Configuration Patterns
+
+### Switch LLM providers
+
+Add or update a provider via `/api/v1/providers`, set `routing.strategy` via `/api/v1/settings/providers/routing_strategy` to `smart` (or the strategy of your choice). The model router rebuilds immediately.
+
+### Enable agent sandbox
+
+Set `tools.sandboxing.default_backend` to `docker` in the `tools` namespace. Pull the sandbox image once via `synthorg start --sandbox true`. The backend spawns ephemeral sandbox containers per tool invocation.
+
+### Adjust ceremony strategy
+
+Edit `coordination.ceremony.strategy` in the `coordination` namespace. See [Ceremony Scheduling](../design/ceremony-scheduling.md) for the available strategies.
+
+### Swap log sinks
+
+Use `observability.custom_sinks` (JSON-typed) to add HTTP / syslog / OTLP shipping. See [Centralized Logging](centralized-logging.md) for examples.
+
+---
+
+## See Also
+
+- [Company Configuration](company-config.md) -- YAML bootstrap config reference
+- [Security & Trust Policies](security.md) -- autonomy, approvals, trust
+- [Centralized Logging](centralized-logging.md) -- log sink configuration
+- [Design: Observability](../design/observability.md) -- architecture and event taxonomy

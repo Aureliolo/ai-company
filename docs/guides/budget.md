@@ -243,8 +243,82 @@ budget:
 
 ---
 
+## Budget API
+
+Query spending, stream cost records, and integrate budget alerts into external dashboards.
+
+### Current budget status
+
+```bash
+curl http://localhost:3001/api/v1/budget/status \
+  -H "Cookie: ${SESSION}" | jq
+```
+
+Returns current period spending, limits, remaining, and alert level (`info` / `warn` / `critical` / `hard_stop`).
+
+### List cost records
+
+```bash
+# All records for the current month
+curl "http://localhost:3001/api/v1/budget/records?limit=100" \
+  -H "Cookie: ${SESSION}" | jq
+
+# Filter by agent
+curl "http://localhost:3001/api/v1/budget/records?agent_id=${AGENT_ID}&limit=50" \
+  -H "Cookie: ${SESSION}" | jq
+
+# Filter by date range
+curl "http://localhost:3001/api/v1/budget/records?since=2026-04-01T00:00:00Z&until=2026-04-21T00:00:00Z" \
+  -H "Cookie: ${SESSION}" | jq
+
+# Filter by provider and tag
+curl "http://localhost:3001/api/v1/budget/records?provider=openrouter&tag=productive" \
+  -H "Cookie: ${SESSION}" | jq
+```
+
+The response includes `data` (paginated records), `daily_summary` (per-day totals aggregated across ALL matching records, not just the page), and `period_summary` (overall totals + computed `avg_cost`).
+
+Supported filters: `agent_id`, `provider`, `model`, `tag` (`productive` / `coordination` / `system` / `embedding`), `project_id`, `since`, `until`, `limit`, `offset`.
+
+### On-demand reports
+
+```bash
+# Generate a weekly comprehensive report
+curl -X POST http://localhost:3001/api/v1/reports/generate \
+  -H "Content-Type: application/json" \
+  -H "Cookie: ${SESSION}" \
+  -d '{"period": "weekly", "template": "comprehensive"}' | jq
+
+# Spending summary only
+curl -X POST http://localhost:3001/api/v1/reports/generate \
+  -H "Content-Type: application/json" \
+  -H "Cookie: ${SESSION}" \
+  -d '{"period": "daily", "template": "spending_summary"}' | jq
+```
+
+Available periods: `daily`, `weekly`, `monthly`. Templates: `spending_summary`, `performance_metrics`, `task_completion`, `risk_trends`, `comprehensive`.
+
+### Budget alert webhook integration
+
+Budget thresholds emit notifications through `NotificationDispatcher` (Slack, ntfy, email, HTTP). To route them to a custom webhook, add an HTTP sink (see [Notifications & Events](notifications-and-events.md)) and filter by `event_type` starting with `BUDGET_`.
+
+Alternatively, subscribe to the `budget` WebSocket channel for real-time threshold events:
+
+```javascript
+ws.send(JSON.stringify({ action: 'subscribe', channel: 'budget' }))
+```
+
+Events: `BudgetThresholdWarn`, `BudgetThresholdCritical`, `BudgetThresholdHardStop`, `PerAgentDailyLimitExhausted`.
+
+### Risk budget queries
+
+If `risk_budget.enabled: true`, parallel endpoints mirror the cost API at `/api/v1/budget/risk/records` and `/api/v1/budget/risk/status`. Risk is measured in `risk_units`, not currency.
+
+---
+
 ## See Also
 
 - [Company Configuration](company-config.md) -- full configuration reference
 - [Agent Roles & Hierarchy](agents.md) -- per-agent model assignment
 - [Design: Budget & Cost](../design/budget.md) -- budget architecture in the design spec
+- [Notifications & Events](notifications-and-events.md) -- budget alert routing

@@ -346,6 +346,72 @@ security:
 
 ---
 
+## Autonomy & Permissions (Runtime Operations)
+
+This section covers runtime operations on the autonomy and tool-permission surface -- promoting an agent, setting a department-level override, granting or revoking tool categories per-agent, and querying the audit trail.
+
+### Promote or demote an agent's autonomy
+
+Human-only. No agent (not even the CEO) can escalate privileges programmatically.
+
+```bash
+curl -X PATCH http://localhost:3001/api/v1/agents/${AGENT_NAME} \
+  -H "Content-Type: application/json" \
+  -H "Cookie: ${SESSION}" \
+  -d '{"autonomy_level": "semi"}'
+```
+
+Valid values: `full`, `semi`, `supervised`, `locked`. Promotion to `full` is rejected for Juniors / Interns (see [Seniority levels](../design/hr-lifecycle.md#seniority--authority-levels)).
+
+Automatic demotions happen on: sustained high error rate (one level down), budget exhausted (`supervised`), security incident (`locked`). Recovery from auto-downgrade is human-only.
+
+### Set a department-level override
+
+Resolution chain: per-agent > per-department > company default. To set a department-wide override:
+
+```bash
+curl -X PATCH http://localhost:3001/api/v1/departments/${DEPT_NAME} \
+  -H "Content-Type: application/json" \
+  -H "Cookie: ${SESSION}" \
+  -d '{"autonomy_level": "supervised"}'
+```
+
+Clear with `{"autonomy_level": null}` to fall back to the company default.
+
+### Tool permission management
+
+Per-agent tool permissions are managed via the agent's `tools.allowed` / `tools.denied` lists:
+
+```bash
+# Grant a category
+curl -X PATCH http://localhost:3001/api/v1/agents/${AGENT_NAME} \
+  -H "Content-Type: application/json" \
+  -H "Cookie: ${SESSION}" \
+  -d '{"tools": {"allowed": ["file_system", "git", "web"], "denied": ["deployment"]}}'
+```
+
+Resolution precedence: `denied` > `allowed` > access-level default > deny.
+
+### Audit log queries
+
+```bash
+# Last 24h of security evaluations
+curl "http://localhost:3001/api/v1/security/audit?since=$(date -u -d '24 hours ago' +%s)" \
+  -H "Cookie: ${SESSION}" | jq
+
+# Filter by agent + action type
+curl "http://localhost:3001/api/v1/security/audit?agent_id=${AGENT_ID}&action_type=code:create" \
+  -H "Cookie: ${SESSION}" | jq
+
+# Filter by verdict
+curl "http://localhost:3001/api/v1/security/audit?verdict=DENY" \
+  -H "Cookie: ${SESSION}" | jq '.data[] | {agent_id, action_type, tool_name, reason, timestamp}'
+```
+
+Supported filters: `agent_id`, `tool_name`, `verdict` (`ALLOW`, `DENY`, `ESCALATE`), `action_type`, `since`, `until`.
+
+---
+
 ## See Also
 
 - [Company Configuration](company-config.md) -- full configuration reference

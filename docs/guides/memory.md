@@ -315,6 +315,82 @@ org_memory:
 
 ---
 
+## Memory Admin API
+
+Operators can query and manage agent memory at runtime through `/admin/memory` endpoints. These are gated by the `admin` role.
+
+### List checkpoints
+
+```bash
+curl http://localhost:3001/api/v1/admin/memory/checkpoints \
+  -H "Cookie: ${SESSION}" | jq '.data[] | {agent_id, checkpoint_id, created_at, memory_count}'
+```
+
+### Trigger manual consolidation
+
+Consolidation merges redundant memories and promotes high-value items to longer-term storage. Normally it runs on a schedule; trigger it on demand:
+
+```bash
+curl -X POST http://localhost:3001/api/v1/admin/memory/consolidate \
+  -H "Content-Type: application/json" \
+  -H "Cookie: ${SESSION}" \
+  -d '{"agent_id": "sarah_chen", "strategy": "llm_merge"}' | jq
+```
+
+Strategies: `llm_merge` (LLM synthesises redundant memories into a single canonical entry), `search_and_ask` (semantic dedup via embeddings + LLM confirmation). See [design/memory.md](../design/memory.md#consolidation).
+
+### Reindex embeddings
+
+If you change the embedding model or migrate backends, reindex to regenerate vectors:
+
+```bash
+curl -X POST http://localhost:3001/api/v1/admin/memory/reindex \
+  -H "Content-Type: application/json" \
+  -H "Cookie: ${SESSION}" \
+  -d '{"agent_id": "sarah_chen"}' | jq
+```
+
+### Query retrieval statistics
+
+```bash
+curl "http://localhost:3001/api/v1/admin/memory/stats?agent_id=sarah_chen" \
+  -H "Cookie: ${SESSION}" | jq
+```
+
+Returns retrieval hit rate, average retrieval latency, total memory count, procedural skill count, and consolidation history.
+
+### Procedural skill management
+
+Agents auto-generate `PROCEDURAL` memories from task failures. List and manage them:
+
+```bash
+# List an agent's procedural skills
+curl "http://localhost:3001/api/v1/admin/memory/procedural?agent_id=sarah_chen" \
+  -H "Cookie: ${SESSION}" | jq
+
+# Delete a stale skill
+curl -X DELETE "http://localhost:3001/api/v1/admin/memory/procedural/${SKILL_ID}" \
+  -H "Cookie: ${SESSION}"
+```
+
+### Organization memory (shared knowledge)
+
+Org memory is shared across agents via `OrgMemoryBackend`. Only agents with sufficient role can write.
+
+```bash
+# Read org memory
+curl "http://localhost:3001/api/v1/admin/memory/org?query=deployment+procedure" \
+  -H "Cookie: ${SESSION}" | jq
+
+# Promote an agent memory to org scope (human action)
+curl -X POST http://localhost:3001/api/v1/admin/memory/org/promote \
+  -H "Content-Type: application/json" \
+  -H "Cookie: ${SESSION}" \
+  -d '{"agent_id": "sarah_chen", "memory_id": "mem_01j..."}' | jq
+```
+
+---
+
 ## See Also
 
 - [Company Configuration](company-config.md) -- full configuration reference

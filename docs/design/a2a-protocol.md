@@ -1,0 +1,129 @@
+---
+title: A2A Protocol
+description: Agent-to-Agent protocol integration -- status, architecture, implemented capabilities, Agent Card projection, and federation with external agent systems.
+---
+
+# A2A Protocol
+
+The [A2A (Agent-to-Agent) protocol](https://agent-protocol.ai) is a standard for heterogeneous agent communication. SynthOrg exposes an A2A gateway that lets external agent systems discover, invoke, and receive updates from the internal roster -- without either side needing to understand the other's internal shape.
+
+This page is the status-and-architecture reference: what ships today, how it maps onto SynthOrg's internal model, and what's next.
+
+---
+
+## Status
+
+| Capability | Status |
+|------------|--------|
+| A2A gateway (`src/synthorg/a2a/gateway.py`) | Shipped |
+| Agent Card serving (`GET /.well-known/agent-card.json`) | Shipped |
+| JSON-RPC task submission + SSE streaming | Shipped |
+| Agent Card projection from internal `AgentIdentity` | Shipped |
+| Push notification subscription + webhook delivery | Shipped |
+| Auth schemes: `apiKey`, `oauth2`, `bearer`, `mTLS`, `none` | Shipped |
+| Allowlist-based inbound authorisation | Shipped |
+| Optional JWS Agent Card signature verification | Shipped |
+| Webhook HMAC signature verification + replay protection | Shipped |
+| SSRF validation on outbound webhooks | Shipped |
+| Delegation guard on inbound requests (loop prevention) | Shipped |
+| Quadratic communication enforcement strategies | Planned (detection ships today; enforcement is opt-in behind `alert_only`) |
+| Full A2A skill negotiation workflow | Planned |
+| Inter-org federation patterns (delegation across organisations) | Planned |
+
+A2A is **disabled by default**. Enable via `a2a.enabled: true` in company YAML and configure auth + allowlist per deployment.
+
+## Architecture
+
+```mermaid
+flowchart LR
+    ExtAgent[External agent]
+    Gateway[A2A Gateway]
+    DelegGuard[DelegationGuard]
+    InternalBus[Internal MessageBus]
+    Hub[EventStreamHub]
+    Projection[A2A Projection]
+    WebhookRX[WebhookReceiver]
+
+    ExtAgent -->|JSON-RPC / SSE| Gateway
+    Gateway -->|auth + allowlist + signature| DelegGuard
+    DelegGuard --> InternalBus
+    Hub --> Projection
+    Projection -->|SSE or webhook| ExtAgent
+    ExtAgent -->|Push notification| WebhookRX
+    WebhookRX -->|HMAC verify + replay dedup| InternalBus
+```
+
+The gateway is a thin translation layer: inbound A2A requests become internal `MessageBus` messages after passing the delegation guard and A2A-specific security checks. Outbound state is served through a per-consumer projection over the shared `EventStreamHub` -- no duplicate event source.
+
+See [Security & Approval -> A2A Security](security.md#a2a-security) for the full auth, trust, webhook, and SSRF enforcement reference.
+
+## Agent Card Projection
+
+SynthOrg projects its internal `AgentIdentity` model to the A2A Agent Card format at `GET /.well-known/agent-card.json`. Every structured skill on an agent (`SkillSet.primary` + `SkillSet.secondary`) maps to an A2A `AgentSkill`:
+
+| SynthOrg field | A2A AgentSkill | Purpose |
+|----------------|----------------|---------|
+| `Skill.id` | `id` | Unique skill identifier |
+| `Skill.name` | `name` | Human-readable display name |
+| `Skill.description` | `description` | Capability description for semantic matching |
+| `Skill.tags` | `tags` | Searchable tags for multi-faceted routing |
+| `Skill.input_modes` | `inputModes` | MIME types accepted |
+| `Skill.output_modes` | `outputModes` | MIME types produced |
+| `Skill.proficiency` | -- | SynthOrg-specific; not projected (no A2A field yet) |
+
+See [Agents -> Skill Model](agents.md#skill-model) for the skill structure.
+
+## Loop Prevention
+
+External agents are treated as delegation sources. The same five `DelegationGuard` mechanisms that protect internal delegation chains also apply to A2A inbound requests:
+
+1. **Depth cap** -- max delegation chain length
+2. **Ancestry check** -- reject cycles in the delegation graph
+3. **Per-pair rate limit** -- throttle repeated delegations between the same agents
+4. **Structural circuit breaker** -- detect rapid oscillation
+5. **Budget guard** -- reject when the delegation chain has consumed too much
+
+See [Communication -> Loop Prevention](communication.md#loop-prevention) for implementation.
+
+## Quadratic Communication Detection
+
+`MessageOverhead.is_quadratic` flags configurations where pairwise agent-to-agent messaging approaches `O(n^2)`. External agent federation can amplify this (every external connection potentially talks to every internal agent).
+
+Four enforcement strategies are defined behind `QuadraticEnforcementStrategy`:
+
+| Strategy | Behaviour |
+|----------|-----------|
+| `alert_only` (default) | Detect and emit `NotificationDispatcher` warnings |
+| `soft_throttle` | Auto-tighten rate limiter on the affected agent group |
+| `hard_block` | Reject new connections when `max_agent_connections` exceeded |
+| `disabled` | No detection or enforcement |
+
+Only `alert_only` ships today; the other three are defined in config but not yet implemented. See [Security -> Quadratic Communication Enforcement](security.md#quadratic-communication-enforcement).
+
+## Configuration Summary
+
+The full A2A config is documented in [Security -> A2AConfig](security.md#a2aconfig). The minimum viable production setup:
+
+```yaml
+a2a:
+  enabled: true
+  auth:
+    inbound: apiKey
+    outbound: bearer
+    api_key: "${A2A_API_KEY}"
+    outbound_token: "${A2A_OUTBOUND_TOKEN}"
+  allowed_agents:
+    - "https://partner.example.com/.well-known/agent-card.json"
+  max_request_body_bytes: 1048576
+```
+
+`none` inbound auth is rejected for production deployments. Agent Card signature verification (`agent_card_verification.require_signatures: true`) is recommended when peers are untrusted.
+
+---
+
+## See Also
+
+- [Security & Approval](security.md#a2a-security) -- authentication, trust, webhook, SSRF details
+- [Communication](communication.md#a2a-external-gateway) -- gateway architecture, loop prevention
+- [Agents](agents.md#skill-model) -- internal skill shape that gets projected to A2A Agent Card
+- [Reference: Standards](../reference/standards.md) -- protocol compliance table
