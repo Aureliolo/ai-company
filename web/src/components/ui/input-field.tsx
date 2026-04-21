@@ -183,7 +183,7 @@ function InputVariant(props: InputProps) {
           id={id}
           ref={ref}
           {...domProps}
-          aria-invalid={hasError ? true : domProps['aria-invalid']}
+          aria-invalid={hasError ? true : (domProps['aria-invalid'] ?? false)}
           aria-errormessage={mergeAriaToken(
             domProps['aria-errormessage'],
             hasError ? errorId : undefined,
@@ -247,7 +247,7 @@ function TextareaVariant(props: TextareaProps) {
         id={id}
         ref={ref}
         {...domProps}
-        aria-invalid={hasError ? true : domProps['aria-invalid']}
+        aria-invalid={hasError ? true : (domProps['aria-invalid'] ?? false)}
         aria-errormessage={mergeAriaToken(
           domProps['aria-errormessage'],
           hasError ? errorId : undefined,

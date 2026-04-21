@@ -180,6 +180,22 @@ def _validate_ws_fields(
     if raw_filters is not None:
         if not isinstance(raw_filters, dict):
             return json.dumps({"error": "filters must be an object"})
+        # ``filters`` is typed as ``dict[str, str]`` in the server's
+        # in-memory subscription map; reject non-string keys/values at
+        # the protocol boundary so the wire contract matches the
+        # stored shape. Without this a malformed frame like
+        # ``{"task_id": null}`` or ``{"task_id": 42}`` would be stored
+        # verbatim and could never match any real event.
+        if not all(
+            isinstance(k, str) and isinstance(v, str) for k, v in raw_filters.items()
+        ):
+            logger.warning(
+                API_WS_INVALID_MESSAGE,
+                reason="filters_not_str_to_str",
+            )
+            return json.dumps(
+                {"error": "filters must be an object of string->string"},
+            )
         client_filters = raw_filters
 
     if not isinstance(channels, list) or not all(isinstance(c, str) for c in channels):
@@ -270,7 +286,10 @@ def _handle_subscribe(
                 filters[c] = dict(client_filters)
             else:
                 filters.pop(c, None)
-    logger.debug(
+    # Subscribe is a state transition ("channel added to active set"),
+    # so log at INFO per project logging rules so operators can see
+    # per-connection subscription churn in normal dashboards.
+    logger.info(
         API_WS_SUBSCRIBE,
         channels=valid,
         active=sorted(subscribed),
@@ -287,7 +306,8 @@ def _handle_unsubscribe(
     subscribed -= set(channels)
     for c in channels:
         filters.pop(c, None)
-    logger.debug(
+    # Mirror subscribe: unsubscribe is also a state transition.
+    logger.info(
         API_WS_UNSUBSCRIBE,
         channels=channels,
         active=sorted(subscribed),

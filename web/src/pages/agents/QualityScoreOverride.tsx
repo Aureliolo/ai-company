@@ -39,16 +39,27 @@ export function QualityScoreOverride({
   const [reasonError, setReasonError] = useState<string | undefined>()
   const [expiresInDays, setExpiresInDays] = useState<number | null>(null)
 
-  // Guard against stale responses when agentId changes. The ref must
-  // be bumped synchronously the instant the prop changes -- if we
-  // only updated it inside fetchOverride, a request started for agent
-  // A could still resolve after the component re-rendered with agent
-  // B but before the new fetchOverride effect fired, slipping past
-  // the identity check and overwriting B's state.
+  // Guard against stale responses when agentId changes. The ref is
+  // updated synchronously during render so any async callback that
+  // re-reads it sees the current prop even before ``useEffect``
+  // commit-phase fires -- React guarantees the ref itself is stable
+  // across renders, and writing to ``.current`` during render is
+  // safe for this "track the latest prop" pattern. The sibling
+  // ``prevAgentIdRef`` detects the prop *change* so we can reset
+  // transient UI flags (spinners, open dialogs, validation errors)
+  // directly during render -- React's documented "reset state when
+  // props change" idiom -- instead of deferring to an effect that
+  // would leave the previous agent's state visible for one frame.
   const activeAgentRef = useRef(agentId)
-  useEffect(() => {
-    activeAgentRef.current = agentId
-  }, [agentId])
+  activeAgentRef.current = agentId
+  const prevAgentIdRef = useRef(agentId)
+  if (prevAgentIdRef.current !== agentId) {
+    prevAgentIdRef.current = agentId
+    setSubmitting(false)
+    setClearing(false)
+    setClearDialogOpen(false)
+    setReasonError(undefined)
+  }
 
   const fetchOverride = useCallback(async () => {
     setLoading(true)

@@ -485,6 +485,56 @@ async def _setup_connection(
     return channels_plugin, subscriber
 
 
+async def _teardown_connection(
+    socket: WebSocket[Any, Any, Any],
+    user: AuthenticatedUser,
+    channels_plugin: ChannelsPlugin,
+    subscriber: Any,
+    consumer_task: asyncio.Task[None],
+) -> None:
+    """Cancel the consumer, unsubscribe, disconnect, and log.
+
+    Extracted from ``ws_handler``'s ``finally`` block to keep the
+    handler under the project's cyclomatic-complexity cap. The flow
+    is: cancel the outbound consumer; if the *outer* handler task was
+    cancelled (server shutdown / client-bound timeout), defer the
+    re-raise until after unsubscribe + user_presence cleanup + the
+    ``API_WS_DISCONNECTED`` log have run, so subscriber/presence
+    state stays consistent with the socket actually closing.
+    """
+    outer_cancelled_exc: asyncio.CancelledError | None = None
+    consumer_task.cancel()
+    try:
+        await consumer_task
+    except asyncio.CancelledError as exc:
+        current = asyncio.current_task()
+        if current is not None and current.cancelling() > 0:
+            outer_cancelled_exc = exc
+    except WebSocketDisconnect:
+        pass
+    except Exception:
+        logger.error(
+            API_WS_TRANSPORT_ERROR,
+            reason="outbound_consumer_failed",
+            client=str(socket.client),
+            exc_info=True,
+        )
+    try:
+        await channels_plugin.unsubscribe(subscriber)
+    except Exception:
+        logger.error(
+            API_WS_TRANSPORT_ERROR,
+            error="Failed to unsubscribe",
+            client=str(socket.client),
+            exc_info=True,
+        )
+    app_state = socket.app.state["app_state"]
+    app_state.user_presence.disconnect(user.user_id)
+    logger.info(API_WS_DISCONNECTED, client=str(socket.client))
+    if outer_cancelled_exc is not None:
+        raise outer_cancelled_exc
+
+
 # Defense-in-depth: opt signals Litestar's auth middleware to skip
 # this handler.  The middleware is already HTTP-only (ScopeType.HTTP)
 # and the WS path is regex-excluded, so this is a tertiary safeguard.
@@ -550,45 +600,13 @@ async def ws_handler(
                 outbound_queue,
             )
     finally:
-        consumer_task.cancel()
-        try:
-            await consumer_task
-        except asyncio.CancelledError:
-            # Distinguish "our own cancel of the child" from "outer
-            # cancellation of this handler task" (server shutdown,
-            # client-bound timeout, etc.). ``cancelling()`` counts
-            # outstanding cancel() calls on the *current* task, so a
-            # non-zero value means the parent is being torn down and
-            # we must re-raise rather than swallow. Swallowing both
-            # would defer shutdown to later awaits (unsubscribe) and
-            # mask cancellation in the narrow window where that await
-            # succeeds.
-            current = asyncio.current_task()
-            if current is not None and current.cancelling() > 0:
-                raise
-        except WebSocketDisconnect:
-            # Client-initiated disconnect; consumer saw it first and
-            # propagated. Normal teardown, safe to swallow.
-            pass
-        except Exception:
-            logger.error(
-                API_WS_TRANSPORT_ERROR,
-                reason="outbound_consumer_failed",
-                client=str(socket.client),
-                exc_info=True,
-            )
-        try:
-            await channels_plugin.unsubscribe(subscriber)
-        except Exception:
-            logger.error(
-                API_WS_TRANSPORT_ERROR,
-                error="Failed to unsubscribe",
-                client=str(socket.client),
-                exc_info=True,
-            )
-        app_state = socket.app.state["app_state"]
-        app_state.user_presence.disconnect(user.user_id)
-        logger.info(API_WS_DISCONNECTED, client=str(socket.client))
+        await _teardown_connection(
+            socket,
+            user,
+            channels_plugin,
+            subscriber,
+            consumer_task,
+        )
 
 
 async def _receive_loop(

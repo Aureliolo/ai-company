@@ -130,13 +130,24 @@ function sanitizeTask(c: Task): Task {
     ids
       .map((id) => sanitizeWsString(id, 128) ?? '')
       .filter((id) => id.length > 0)
-  const sanitizeNullable = (value: string | null, cap: number): string | null =>
-    value === null ? null : sanitizeWsString(value, cap) ?? ''
+  // ``sanitizeNullable`` / ``sanitizeOptional`` preserve the null/
+  // undefined signal when the raw value sanitizes to an empty string
+  // -- a bidi-override-only payload for an optional timestamp should
+  // come out as ``null`` (or ``undefined``), not an empty string the
+  // UI would try to format.
+  const sanitizeNullable = (value: string | null, cap: number): string | null => {
+    if (value === null) return null
+    const cleaned = sanitizeWsString(value, cap)
+    return cleaned && cleaned.length > 0 ? cleaned : null
+  }
   const sanitizeOptional = (
     value: string | undefined,
     cap: number,
-  ): string | undefined =>
-    value === undefined ? undefined : sanitizeWsString(value, cap) ?? ''
+  ): string | undefined => {
+    if (value === undefined) return undefined
+    const cleaned = sanitizeWsString(value, cap)
+    return cleaned && cleaned.length > 0 ? cleaned : undefined
+  }
   return {
     id: sanitizeWsString(c.id, 128) ?? '',
     title: sanitizeWsString(c.title, 256) ?? '',
@@ -389,6 +400,11 @@ export const useTasksStore = create<TasksState>()((set, get) => ({
     try {
       await tasksApi.deleteTask(taskId)
       get().removeTask(taskId)
+      // Clear the dangling selection so a detail drawer doesn't
+      // keep showing a task the store has already removed.
+      if (get().selectedTask?.id === taskId) {
+        set({ selectedTask: null })
+      }
       useToastStore.getState().add({
         variant: 'success',
         title: 'Task deleted',

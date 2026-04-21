@@ -67,14 +67,19 @@ function isAgendaItemShape(value: unknown): boolean {
 function isContributionShape(value: unknown): boolean {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
   const v = value as Record<string, unknown>
+  // Counters must be non-negative integers: a negative or fractional
+  // ``turn_number`` would corrupt contribution ordering, and negative
+  // token counts would poison the meeting totals the UI surfaces.
+  const isNonNegInt = (n: unknown): n is number =>
+    typeof n === 'number' && Number.isInteger(n) && n >= 0
   return (
     typeof v.agent_id === 'string' &&
     typeof v.content === 'string' &&
     typeof v.phase === 'string' &&
     MEETING_PHASE_SET.has(v.phase) &&
-    Number.isFinite(v.turn_number) &&
-    Number.isFinite(v.input_tokens) &&
-    Number.isFinite(v.output_tokens) &&
+    isNonNegInt(v.turn_number) &&
+    isNonNegInt(v.input_tokens) &&
+    isNonNegInt(v.output_tokens) &&
     typeof v.timestamp === 'string'
   )
 }
@@ -149,9 +154,11 @@ function isMeetingMinutesShape(value: unknown): boolean {
     return false
   }
   if (typeof m.conflicts_detected !== 'boolean') return false
-  if (!Number.isFinite(m.total_input_tokens)) return false
-  if (!Number.isFinite(m.total_output_tokens)) return false
-  if (!Number.isFinite(m.total_tokens)) return false
+  const isNonNegInt = (n: unknown): n is number =>
+    typeof n === 'number' && Number.isInteger(n) && n >= 0
+  if (!isNonNegInt(m.total_input_tokens)) return false
+  if (!isNonNegInt(m.total_output_tokens)) return false
+  if (!isNonNegInt(m.total_tokens)) return false
   if (typeof m.started_at !== 'string') return false
   if (typeof m.ended_at !== 'string') return false
   return true

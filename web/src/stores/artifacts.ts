@@ -145,19 +145,28 @@ export const useArtifactsStore = create<ArtifactsState>()((set) => ({
       // ``selectedArtifact`` before awaiting, so ``isSelected`` alone
       // cannot invalidate it.
       _listRequestToken++
-      if (_pendingDetailId === id) {
+      const invalidatesPendingDetail = _pendingDetailId === id
+      if (invalidatesPendingDetail) {
         _detailRequestToken++
         _pendingDetailId = null
       }
       set((state) => {
         const isSelected = state.selectedArtifact?.id === id
-        if (isSelected) _detailRequestToken++
+        // Bump the detail token for the selected-path too, but skip
+        // it if the pending-detail branch above already bumped it --
+        // double-bumping would just waste a token generation.
+        if (isSelected && !invalidatesPendingDetail) _detailRequestToken++
+        const invalidatesDetail = isSelected || invalidatesPendingDetail
         return {
           artifacts: state.artifacts.filter((a) => a.id !== id),
           totalArtifacts: Math.max(0, state.totalArtifacts - 1),
-          selectedArtifact: isSelected ? null : state.selectedArtifact,
-          contentPreview: isSelected ? null : state.contentPreview,
-          detailError: isSelected ? null : state.detailError,
+          selectedArtifact: invalidatesDetail ? null : state.selectedArtifact,
+          contentPreview: invalidatesDetail ? null : state.contentPreview,
+          // Clear ``detailLoading`` whenever we invalidate a pending
+          // or selected detail fetch -- otherwise the detail pane
+          // stays stuck on its spinner after the artifact is gone.
+          detailLoading: invalidatesDetail ? false : state.detailLoading,
+          detailError: invalidatesDetail ? null : state.detailError,
         }
       })
       useToastStore.getState().add({
