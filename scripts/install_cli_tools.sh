@@ -24,11 +24,34 @@ if ! command -v go >/dev/null 2>&1; then
   exit 1
 fi
 
-echo "Installing golangci-lint..."
+# The `go install ...@vX.Y.Z` literal below is the single source of truth --
+# Renovate's regex manager (see renovate.json) bumps the version here, and
+# .github/workflows/cli.yml mirrors it via golangci/golangci-lint-action.
+GOLANGCI_LINT_VERSION=$(
+  grep -oE 'golangci-lint@v[0-9]+\.[0-9]+\.[0-9]+' "$0" \
+    | head -n1 | sed 's/.*@//'
+)
+
+# Skip the reinstall if the pinned version is already on PATH -- repeated runs
+# of this script during onboarding should be cheap.
+if command -v golangci-lint >/dev/null 2>&1; then
+  current=$(golangci-lint --version 2>&1 | head -n1 | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' || true)
+  if [ "${current:-}" = "${GOLANGCI_LINT_VERSION}" ]; then
+    echo "golangci-lint ${GOLANGCI_LINT_VERSION} already installed, skipping"
+    exit 0
+  fi
+fi
+
+echo "Installing golangci-lint ${GOLANGCI_LINT_VERSION}..."
 go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.11.4
 
 if ! command -v golangci-lint >/dev/null 2>&1; then
-  echo "error: golangci-lint installed but not on PATH -- ensure \$(go env GOPATH)/bin is on PATH" >&2
+  # `go install` writes to GOBIN if set, otherwise GOPATH/bin. Report the
+  # actual target so users can extend PATH correctly on unusual setups.
+  gobin=$(go env GOBIN 2>/dev/null || true)
+  gopath=$(go env GOPATH 2>/dev/null || true)
+  install_dir="${gobin:-${gopath}/bin}"
+  echo "error: golangci-lint installed but not on PATH -- ensure ${install_dir} is on PATH (GOBIN='${gobin}', GOPATH='${gopath}')" >&2
   exit 1
 fi
 

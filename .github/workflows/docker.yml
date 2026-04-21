@@ -266,6 +266,7 @@ jobs:
           image-name: backend
           tag: ${{ needs.build-backend-base.outputs.tag }}
           artifact-name: ${{ needs.build-backend-base.outputs.artifact-name }}
+          tarball-name: ${{ needs.build-backend-base.outputs.tarball-name }}
           ghcr-token: ${{ secrets.GITHUB_TOKEN }}
 
   build-sandbox-base:
@@ -320,6 +321,7 @@ jobs:
           image-name: sandbox
           tag: ${{ needs.build-sandbox-base.outputs.tag }}
           artifact-name: ${{ needs.build-sandbox-base.outputs.artifact-name }}
+          tarball-name: ${{ needs.build-sandbox-base.outputs.tarball-name }}
           ghcr-token: ${{ secrets.GITHUB_TOKEN }}
 
   build-sidecar-base:
@@ -374,6 +376,7 @@ jobs:
           image-name: sidecar
           tag: ${{ needs.build-sidecar-base.outputs.tag }}
           artifact-name: ${{ needs.build-sidecar-base.outputs.artifact-name }}
+          tarball-name: ${{ needs.build-sidecar-base.outputs.tarball-name }}
           ghcr-token: ${{ secrets.GITHUB_TOKEN }}
 
   build-fine-tune-base:
@@ -428,6 +431,7 @@ jobs:
           image-name: fine-tune
           tag: ${{ needs.build-fine-tune-base.outputs.tag }}
           artifact-name: ${{ needs.build-fine-tune-base.outputs.artifact-name }}
+          tarball-name: ${{ needs.build-fine-tune-base.outputs.tarball-name }}
           architectures: "amd64"
           ghcr-token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -608,7 +612,7 @@ jobs:
             echo "::error::Push step did not produce a digest -- cannot sign image"
             exit 1
           fi
-          set -o pipefail
+          set -euo pipefail
           if ! cosign sign --yes ghcr.io/aureliolo/synthorg-backend@${DIGEST} 2>&1 | tee /tmp/cosign-out; then
             if grep -q 'createLogEntryConflict' /tmp/cosign-out; then
               echo "::notice::Image already signed in transparency log -- skipping"
@@ -885,7 +889,7 @@ jobs:
           DIGEST: ${{ steps.push.outputs.digest }}
         run: |
           if [ -z "$DIGEST" ]; then echo "::error::No digest"; exit 1; fi
-          set -o pipefail
+          set -euo pipefail
           if ! cosign sign --yes ghcr.io/aureliolo/synthorg-web@${DIGEST} 2>&1 | tee /tmp/cosign-out; then
             if grep -q 'createLogEntryConflict' /tmp/cosign-out; then
               echo "::notice::Image already signed -- skipping"
@@ -1088,7 +1092,7 @@ jobs:
             echo "::error::Push step did not produce a digest -- cannot sign image"
             exit 1
           fi
-          set -o pipefail
+          set -euo pipefail
           if ! cosign sign --yes ghcr.io/aureliolo/synthorg-sandbox@${DIGEST} 2>&1 | tee /tmp/cosign-out; then
             if grep -q 'createLogEntryConflict' /tmp/cosign-out; then
               echo "::notice::Image already signed in transparency log -- skipping"
@@ -1288,7 +1292,7 @@ jobs:
             echo "::error::Push step did not produce a digest -- cannot sign image"
             exit 1
           fi
-          set -o pipefail
+          set -euo pipefail
           if ! cosign sign --yes ghcr.io/aureliolo/synthorg-sidecar@${DIGEST} 2>&1 | tee /tmp/cosign-out; then
             if grep -q 'createLogEntryConflict' /tmp/cosign-out; then
               echo "::notice::Image already signed in transparency log -- skipping"
@@ -1513,7 +1517,7 @@ jobs:
             echo "::error::Push step did not produce a digest -- cannot sign image"
             exit 1
           fi
-          set -o pipefail
+          set -euo pipefail
           if ! cosign sign --yes "${IMAGE}@${DIGEST}" 2>&1 | tee /tmp/cosign-out; then
             if grep -q 'createLogEntryConflict' /tmp/cosign-out; then
               echo "::notice::Image already signed in transparency log -- skipping"

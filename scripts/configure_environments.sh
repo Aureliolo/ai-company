@@ -108,8 +108,11 @@ ensure_environment() {
 list_branch_policies() {
   local env_name="$1"
   if [ "$MODE" = "apply" ]; then
+    # Propagate real failures instead of masking them with `|| echo ""`; the
+    # caller treats an empty output as "no policies", which would silently drive
+    # incorrect behaviour if the API call fails for an unrelated reason.
     gh api "repos/${REPO}/environments/${env_name}/deployment-branch-policies" \
-      --jq '.branch_policies[].name' 2>/dev/null || echo ""
+      --jq '.branch_policies[].name'
   else
     # In dry-run we pretend no policies exist so every pattern shows as "to add".
     echo ""
@@ -120,7 +123,10 @@ add_branch_policy() {
   local env_name="$1"
   local pattern="$2"
   local existing verb
-  existing=$(list_branch_policies "$env_name")
+  if ! existing=$(list_branch_policies "$env_name"); then
+    echo "error: failed to list branch policies for '${env_name}'" >&2
+    return 1
+  fi
   if echo "$existing" | grep -qxF -- "$pattern"; then
     echo "  policy '${pattern}' already present"
     return 0

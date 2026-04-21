@@ -16,6 +16,12 @@ inputs:
   artifact-name:
     description: "Artifact name for the base image tarball produced by build-apko-base"
     required: true
+  tarball-name:
+    description: >-
+      Filename of the tarball inside the downloaded artifact. Must match the
+      `tarball-name` output of build-apko-base; making it an explicit input
+      removes the implicit `${image-name}-base.tar` coupling.
+    required: true
   architectures:
     description: "Comma-separated list of architectures to push (e.g. amd64,arm64)"
     required: false
@@ -51,9 +57,13 @@ runs:
     - name: Load image from tarball
       shell: bash
       env:
-        IMAGE_NAME: ${{ inputs.image-name }}
+        TARBALL_NAME: ${{ inputs.tarball-name }}
       run: |
-        docker load -i "${IMAGE_NAME}-base.tar"
+        if [ ! -f "${TARBALL_NAME}" ]; then
+          echo "::error::Tarball '${TARBALL_NAME}' not found in downloaded artifact"
+          exit 1
+        fi
+        docker load -i "${TARBALL_NAME}"
 
     - name: Push base image (multi-arch manifest)
       id: push
@@ -112,8 +122,8 @@ runs:
         IMAGE_NAME: ${{ inputs.image-name }}
         DIGEST: ${{ steps.push.outputs.digest }}
       run: |
+        set -euo pipefail
         if [ -z "$DIGEST" ]; then echo "::error::No digest"; exit 1; fi
-        set -o pipefail
         if ! cosign sign --yes "ghcr.io/aureliolo/synthorg-${IMAGE_NAME}-base@${DIGEST}" 2>&1 | tee /tmp/cosign-out; then
           if grep -q 'createLogEntryConflict' /tmp/cosign-out; then
             echo "::notice::Image already signed -- skipping"

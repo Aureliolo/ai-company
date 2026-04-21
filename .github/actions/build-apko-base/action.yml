@@ -28,6 +28,9 @@ outputs:
   artifact-name:
     description: "Name of the uploaded base image tarball artifact"
     value: ${{ inputs.image-name }}-base-image
+  tarball-name:
+    description: "Filename of the uploaded tarball inside the artifact"
+    value: ${{ inputs.image-name }}-base.tar
 
 runs:
   using: composite
