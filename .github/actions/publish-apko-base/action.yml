@@ -70,7 +70,10 @@ runs:
           docker push "${REPO}:${TAG}-${arch}"
           MANIFEST_ARGS+=("${REPO}:${TAG}-${arch}")
         done
-        docker manifest create "${REPO}:${TAG}" "${MANIFEST_ARGS[@]}"
+        # --amend keeps re-runs on the same SHA safe: a successful push on a
+        # prior run leaves the manifest list present, and a plain `create` would
+        # fail with "manifest already exists" before the idempotent push below.
+        docker manifest create --amend "${REPO}:${TAG}" "${MANIFEST_ARGS[@]}"
         DIGEST=$(docker manifest push "${REPO}:${TAG}")
         echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
 

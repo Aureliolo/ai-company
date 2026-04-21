@@ -29,7 +29,13 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --dry-run) MODE="dry-run"; shift ;;
     --apply) MODE="apply"; shift ;;
-    --repo) REPO="$2"; shift 2 ;;
+    --repo)
+      # Guard $2 access so `--repo` with no value does not crash on set -u.
+      if [ $# -lt 2 ] || [ -z "${2-}" ]; then
+        echo "error: --repo requires owner/name" >&2
+        exit 2
+      fi
+      REPO="$2"; shift 2 ;;
     -h|--help)
       sed -n '2,22p' "$0"
       exit 0
@@ -71,6 +77,25 @@ run_gh() {
   fi
 }
 
+# Like run_gh, but tolerates HTTP 422 (conflict on an existing resource) as a
+# no-op success. Used for endpoints where the idempotent path is "POST already
+# exists => swallow the error". Captures stderr so we can inspect the status.
+run_gh_allow_422() {
+  if [ "$MODE" = "apply" ]; then
+    local err
+    err=$(gh api "$@" 2>&1 >/dev/null) && return 0
+    if printf '%s' "$err" | grep -q 'HTTP 422'; then
+      return 0
+    fi
+    printf '%s\n' "$err" >&2
+    return 1
+  else
+    printf '  [dry-run] gh api'
+    for arg in "$@"; do printf ' %q' "$arg"; done
+    printf '\n'
+  fi
+}
+
 ensure_environment() {
   local env_name="$1"
   echo "==> ${env_name}"
@@ -96,11 +121,14 @@ add_branch_policy() {
   local pattern="$2"
   local existing verb
   existing=$(list_branch_policies "$env_name")
-  if echo "$existing" | grep -qxF "$pattern"; then
+  if echo "$existing" | grep -qxF -- "$pattern"; then
     echo "  policy '${pattern}' already present"
     return 0
   fi
-  run_gh --method POST "repos/${REPO}/environments/${env_name}/deployment-branch-policies" \
+  # A racing concurrent run (or a stale cache in list_branch_policies) can leave
+  # the POST returning 422 "already exists"; treat that as idempotent success
+  # rather than a hard failure -- the header doc promises re-runs are safe.
+  run_gh_allow_422 --method POST "repos/${REPO}/environments/${env_name}/deployment-branch-policies" \
     -f "name=${pattern}" -f "type=branch"
   if [ "$MODE" = "apply" ]; then verb="added"; else verb="to add"; fi
   echo "  policy '${pattern}' ${verb}"

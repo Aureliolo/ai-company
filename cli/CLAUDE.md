@@ -1,6 +1,6 @@
 # CLI (Go Binary)
 
-Go tooling requires the module root as cwd. Use `go -C cli` which changes directory internally without affecting the shell. Never use `cd cli` -- it poisons the cwd for all subsequent Bash calls. `golangci-lint` is installed as an **external** binary (not a Go `tool` directive) to keep `cli/go.mod` free of GPL-3.0 transitive deps -- run `scripts/install_cli_tools.sh` once to install it locally (CI uses `golangci/golangci-lint-action` directly).
+Go tooling requires the module root as cwd. Use `go -C cli` which changes directory internally without affecting the shell. **Never use a bare `cd cli`** in the Bash tool -- it poisons the cwd for every subsequent Bash call in the session. A short-lived subshell `cd` (`bash -c "cd cli && <cmd>"` or `(cd cli && <cmd>)`) is acceptable and is the sanctioned escape hatch for external tools that lack a `-C` flag -- see the Shell Usage section in the root `CLAUDE.md`. `golangci-lint` is installed as an **external** binary (not a Go `tool` directive) to keep `cli/go.mod` free of GPL-3.0 transitive deps -- run `scripts/install_cli_tools.sh` once to install it locally (CI uses `golangci/golangci-lint-action` directly).
 
 ## Quick Commands
 
@@ -8,7 +8,7 @@ Go tooling requires the module root as cwd. Use `go -C cli` which changes direct
 go -C cli build -o synthorg ./main.go                                  # build CLI
 go -C cli test ./...                                                   # run tests (fuzz targets run seed corpus only without -fuzz flag)
 go -C cli vet ./...                                                    # vet
-bash -c "cd cli && golangci-lint run"                                  # lint (requires scripts/install_cli_tools.sh)
+bash -c "cd cli && golangci-lint run"                                  # lint (subshell cd; golangci-lint has no -C flag -- requires scripts/install_cli_tools.sh)
 go -C cli test -fuzz=FuzzYamlStr -fuzztime=30s ./internal/compose/     # fuzz example
 ```
 

@@ -239,8 +239,12 @@ jobs:
   build-backend-base-publish:
     name: Publish Backend Base (apko)
     needs: [version, build-backend-base]
+    # Restricted to main pushes and v-tags: `github.event_name != 'pull_request'`
+    # alone would also admit workflow_dispatch from an arbitrary feature branch,
+    # letting unmerged code push, sign, and attest base images.
     if: >-
-      !cancelled() && github.event_name != 'pull_request' &&
+      !cancelled() &&
+      (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) &&
       needs.build-backend-base.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -293,7 +297,8 @@ jobs:
     name: Publish Sandbox Base (apko)
     needs: [version, build-sandbox-base]
     if: >-
-      !cancelled() && github.event_name != 'pull_request' &&
+      !cancelled() &&
+      (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) &&
       needs.build-sandbox-base.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -346,7 +351,8 @@ jobs:
     name: Publish Sidecar Base (apko)
     needs: [version, build-sidecar-base]
     if: >-
-      !cancelled() && github.event_name != 'pull_request' &&
+      !cancelled() &&
+      (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) &&
       needs.build-sidecar-base.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -399,7 +405,8 @@ jobs:
     name: Publish Fine-Tune Base (apko)
     needs: [version, build-fine-tune-base]
     if: >-
-      !cancelled() && github.event_name != 'pull_request' &&
+      !cancelled() &&
+      (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) &&
       needs.build-fine-tune-base.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -466,7 +473,7 @@ jobs:
         if: github.event_name == 'pull_request'
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
-          name: backend-base-image
+          name: ${{ needs.build-backend-base.outputs.artifact-name }}
           path: /tmp
 
       - name: Load base image (PR only)
@@ -852,10 +859,13 @@ jobs:
             fi
           done
 
-          # Create and push multi-arch manifest for each tag
+          # Create and push multi-arch manifest for each tag. --amend keeps
+          # re-runs on the same SHA safe: a prior successful push leaves the
+          # manifest list present, and a plain `create` would fail with
+          # "manifest already exists" on retry.
           DIGEST=""
           for t in "${MANIFEST_TAGS[@]}"; do
-            docker manifest create "${REPO}:${t}" \
+            docker manifest create --amend "${REPO}:${t}" \
               "${REPO}:${SHA_TAG}-amd64" \
               "${REPO}:${SHA_TAG}-arm64"
             PUSH_OUT=$(docker manifest push "${REPO}:${t}")
@@ -945,7 +955,7 @@ jobs:
         if: github.event_name == 'pull_request'
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
-          name: sandbox-base-image
+          name: ${{ needs.build-sandbox-base.outputs.artifact-name }}
           path: /tmp
 
       - name: Load base image (PR only)
@@ -1151,7 +1161,7 @@ jobs:
         if: github.event_name == 'pull_request'
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
-          name: sidecar-base-image
+          name: ${{ needs.build-sidecar-base.outputs.artifact-name }}
           path: /tmp
 
       - name: Load base image (PR only)
@@ -1373,7 +1383,7 @@ jobs:
         if: github.event_name == 'pull_request'
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
-          name: fine-tune-base-image
+          name: ${{ needs.build-fine-tune-base.outputs.artifact-name }}
           path: /tmp
 
       - name: Load base image (PR only)

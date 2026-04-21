@@ -10,6 +10,12 @@
 # (.github/workflows/cli.yml uses golangci/golangci-lint-action). Local developers
 # run this script once per machine. Renovate tracks the pinned version via the
 # "go install binary versions" custom regex manager in renovate.json.
+#
+# Trust model: `go install` verifies each downloaded module against the public
+# Go checksum database (sum.golang.org) by default, so the resulting binary is
+# cryptographically bound to the module proxy's recorded hash. Users who have
+# disabled the sum database (`GOFLAGS=-insecure` or `GOSUMDB=off`) lose this
+# guarantee -- re-enable it before running this script.
 
 set -euo pipefail
 
