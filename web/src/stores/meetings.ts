@@ -47,14 +47,17 @@ function isMeetingShape(
 }
 
 /**
- * Return a sanitised copy of a ``MeetingResponse`` with every
- * untrusted string field routed through ``sanitizeWsString`` so bidi
- * overrides and control chars never reach the rendered UI.
+ * Return a sanitized copy of a ``MeetingResponse`` with every
+ * untrusted string field validated by ``isMeetingShape`` routed
+ * through ``sanitizeWsString`` so bidi overrides and control chars
+ * never reach the rendered UI.
  */
-function sanitiseMeeting(c: MeetingResponse): MeetingResponse {
+function sanitizeMeeting(c: MeetingResponse): MeetingResponse {
   return {
     ...c,
     meeting_type_name: sanitizeWsString(c.meeting_type_name, 128) ?? '',
+    status: (sanitizeWsString(c.status, 64) ?? '') as MeetingResponse['status'],
+    protocol_type: (sanitizeWsString(c.protocol_type, 64) ?? '') as MeetingResponse['protocol_type'],
   }
 }
 
@@ -174,7 +177,7 @@ export const useMeetingsStore = create<MeetingsState>()((set, get) => ({
     }
     const candidate = payload.meeting as Record<string, unknown>
     if (isMeetingShape(candidate)) {
-      get().upsertMeeting(sanitiseMeeting(candidate))
+      get().upsertMeeting(sanitizeMeeting(candidate))
     } else {
       log.error('Received malformed meeting WS payload, skipping upsert', {
         meeting_id: sanitizeForLog(candidate.meeting_id),

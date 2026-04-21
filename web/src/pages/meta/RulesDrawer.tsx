@@ -81,41 +81,28 @@ export function RulesDrawer({
   const handleToggle = useCallback(
     async (_name: string, id?: string) => {
       if (!id) return
-      try {
-        await toggleRule(id)
+      // Sentinel-return contract: the store owns success/error toasts.
+      // Only null-check to decide whether to refresh the list.
+      const toggled = await toggleRule(id)
+      if (toggled) {
         await onRefresh()
-      } catch (err) {
-        addToast({
-          variant: 'error',
-          title: 'Failed to toggle rule',
-          description: getErrorMessage(err),
-        })
       }
     },
-    [toggleRule, onRefresh, addToast],
+    [toggleRule, onRefresh],
   )
 
   const handleDeleteConfirm = useCallback(async () => {
     if (!deleteTarget) return
     setDeleting(true)
-    try {
-      await deleteRule(deleteTarget)
+    // Sentinel-return contract: the store emits both the success and
+    // error toast. Caller only decides whether to refresh + close.
+    const ok = await deleteRule(deleteTarget)
+    setDeleting(false)
+    setDeleteTarget(null)
+    if (ok) {
       await onRefresh()
-      addToast({
-        variant: 'success',
-        title: 'Rule deleted',
-      })
-    } catch (err) {
-      addToast({
-        variant: 'error',
-        title: 'Failed to delete rule',
-        description: getErrorMessage(err),
-      })
-    } finally {
-      setDeleting(false)
-      setDeleteTarget(null)
     }
-  }, [deleteTarget, deleteRule, onRefresh, addToast])
+  }, [deleteTarget, deleteRule, onRefresh])
 
   const handleDrawerClose = useCallback(() => {
     setView('list')

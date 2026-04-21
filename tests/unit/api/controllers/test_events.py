@@ -97,21 +97,47 @@ class TestEventStreamSSE:
             params={"session_id": good_id},
             headers=_READ_HEADERS,
         )
-        assert resp.status_code != 400, (
-            f"session_id={good_id!r} should be accepted, "
+        # Lock the success path explicitly -- asserting != 400 would
+        # happily accept a 500 or 422.
+        assert resp.status_code == 200, (
+            f"session_id={good_id!r} should return 200, "
             f"got {resp.status_code}: {resp.text[:200]}"
         )
 
+    @pytest.mark.parametrize(
+        "bad_id",
+        [
+            "../etc/passwd",
+            "session id",
+            "session/with/slash",
+            "session\nbreak",
+            "x" * 129,
+            "s$dollar",
+        ],
+        ids=[
+            "path_traversal",
+            "whitespace",
+            "slash",
+            "newline",
+            "too_long",
+            "special_char",
+        ],
+    )
     def test_interrupts_rejects_malformed_session_id(
         self,
         test_client: TestClient[Any],
+        bad_id: str,
     ) -> None:
+        # Parametrized to mirror the coverage of the streams variant:
+        # the regex gate must apply identically to both endpoints.
         resp = test_client.get(
             "/api/v1/interrupts",
-            params={"session_id": "../etc/passwd"},
+            params={"session_id": bad_id},
             headers=_READ_HEADERS,
         )
-        assert resp.status_code == 400
+        assert resp.status_code == 400, (
+            f"session_id={bad_id!r} should be rejected, got {resp.status_code}"
+        )
 
 
 @pytest.mark.unit

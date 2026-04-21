@@ -60,13 +60,13 @@ function isApprovalShape(
 }
 
 /**
- * Return a sanitised copy of an ``ApprovalResponse`` with every
+ * Return a sanitized copy of an ``ApprovalResponse`` with every
  * untrusted string field (and every metadata entry) routed through
  * ``sanitizeWsString``. Structurally required fields fall back to
- * ``''`` if sanitisation drops them; the shape guard above has already
+ * ``''`` if sanitization drops them; the shape guard above has already
  * verified they are non-empty strings at ingress time.
  */
-function sanitiseApproval(c: ApprovalResponse): ApprovalResponse {
+function sanitizeApproval(c: ApprovalResponse): ApprovalResponse {
   const metadata: Record<string, string> = {}
   for (const [key, value] of Object.entries(c.metadata)) {
     const safeKey = sanitizeWsString(key, 64) ?? ''
@@ -239,7 +239,7 @@ export const useApprovalsStore = create<ApprovalsState>()((set, get) => ({
       const candidate = payload.approval as Record<string, unknown>
       if (isApprovalShape(candidate)) {
         if (pendingTransitions.has(candidate.id)) return
-        get().upsertApproval(sanitiseApproval(candidate))
+        get().upsertApproval(sanitizeApproval(candidate))
       } else {
         log.error('Received malformed approval payload, skipping upsert', {
           id: sanitizeForLog(candidate.id),

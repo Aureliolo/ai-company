@@ -1,4 +1,4 @@
-import { DEPARTMENT_NAME_VALUES } from '@/api/types/enums'
+import { isDepartmentName } from '@/api/types/enums'
 import { createLogger } from '@/lib/logger'
 import type {
   ActivityItem,
@@ -7,7 +7,6 @@ import type {
   TrendDataPoint,
 } from '@/api/types/analytics'
 import type { BudgetConfig } from '@/api/types/budget'
-import type { DepartmentName } from '@/api/types/enums'
 import type { WsEvent, WsEventType } from '@/api/types/websocket'
 import type { MetricCardProps } from '@/components/ui/metric-card'
 import { formatCurrency } from '@/utils/format'
@@ -15,8 +14,6 @@ import { formatCurrency } from '@/utils/format'
 const log = createLogger('dashboard')
 
 export type DashboardMetricCardData = Omit<MetricCardProps, 'className'>
-
-const VALID_DEPARTMENT_NAMES: ReadonlySet<string> = new Set<string>(DEPARTMENT_NAME_VALUES)
 
 const EVENT_DESCRIPTIONS: Partial<Record<WsEventType, string>> = {
   'task.created': 'created a task',
@@ -123,8 +120,8 @@ export function wsEventToActivityItem(event: WsEvent): ActivityItem {
   const taskId =
     typeof payload.task_id === 'string' ? payload.task_id : null
   const department =
-    typeof payload.department === 'string' && VALID_DEPARTMENT_NAMES.has(payload.department)
-      ? (payload.department as DepartmentName)
+    typeof payload.department === 'string' && isDepartmentName(payload.department)
+      ? payload.department
       : null
 
   const description =

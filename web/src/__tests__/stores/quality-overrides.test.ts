@@ -19,7 +19,11 @@ describe('useQualityOverridesStore', () => {
         .getState()
         .getOverride('agent-1')
 
-      expect(result?.agent_id).toBe('agent-1')
+      // Assert non-null explicitly before inspecting properties so a
+      // regression that drops the override surfaces a clear failure
+      // message instead of an optional-chain silently hiding it.
+      expect(result).not.toBeNull()
+      expect(result!.agent_id).toBe('agent-1')
       expect(useToastStore.getState().toasts).toHaveLength(0)
     })
 
@@ -64,10 +68,12 @@ describe('useQualityOverridesStore', () => {
         .getState()
         .setOverride('agent-1', { score: 8, reason: 'good agent', expires_in_days: null })
 
-      expect(result?.score).toBe(8)
+      expect(result).not.toBeNull()
+      expect(result!.score).toBe(8)
       const toasts = useToastStore.getState().toasts
       expect(toasts).toHaveLength(1)
       expect(toasts[0]!.variant).toBe('success')
+      expect(toasts[0]!.title).toBe('Quality override applied')
     })
 
     it('returns null + error toast on failure', async () => {
@@ -99,6 +105,7 @@ describe('useQualityOverridesStore', () => {
       const toasts = useToastStore.getState().toasts
       expect(toasts).toHaveLength(1)
       expect(toasts[0]!.variant).toBe('success')
+      expect(toasts[0]!.title).toBe('Quality override cleared')
     })
 
     it('returns false + error toast on failure', async () => {

@@ -3,6 +3,7 @@ import * as tasksApi from '@/api/endpoints/tasks'
 import { getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 import { createLogger } from '@/lib/logger'
+import { sanitizeWsString } from '@/stores/notifications'
 import { useToastStore } from '@/stores/toast'
 import {
   PRIORITY_VALUES,
@@ -76,6 +77,29 @@ const pendingTransitions = new Set<string>()
  * intentionally not checked here -- the server is the source of truth
  * for those and the guard stays focused on the fields the store reads.
  */
+/**
+ * Return a sanitized copy of a ``Task`` with every untrusted string
+ * field routed through ``sanitizeWsString`` so control chars and
+ * bidi overrides never reach the rendered UI. ``dependencies`` is a
+ * string array; ``acceptance_criteria`` is an array of objects whose
+ * ``description`` is the only freeform string field (``met`` is a
+ * boolean validated by the shape guard already).
+ */
+function sanitizeTask(c: Task): Task {
+  return {
+    ...c,
+    title: sanitizeWsString(c.title, 256) ?? '',
+    description: sanitizeWsString(c.description, 4096) ?? '',
+    dependencies: c.dependencies
+      .map((dep) => sanitizeWsString(dep, 128) ?? '')
+      .filter((dep) => dep.length > 0),
+    acceptance_criteria: c.acceptance_criteria.map((ac) => ({
+      ...ac,
+      description: sanitizeWsString(ac.description, 512) ?? '',
+    })),
+  }
+}
+
 function isTaskShape(c: Record<string, unknown>): c is Record<string, unknown> & Task {
   return (
     typeof c.id === 'string' &&
@@ -226,7 +250,7 @@ export const useTasksStore = create<TasksState>()((set, get) => ({
       const candidate = payload.task as Record<string, unknown>
       if (isTaskShape(candidate)) {
         if (pendingTransitions.has(candidate.id)) return
-        get().upsertTask(candidate)
+        get().upsertTask(sanitizeTask(candidate))
       } else {
         log.error('Received malformed task WS payload, skipping upsert', {
           id: sanitizeForLog(candidate.id),
