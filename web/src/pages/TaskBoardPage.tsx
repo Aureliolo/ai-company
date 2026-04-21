@@ -12,7 +12,6 @@ import {
   type DragStartEvent,
 } from '@dnd-kit/core'
 import { AnimatePresence } from 'motion/react'
-import { getErrorMessage } from '@/utils/errors'
 import { AlertTriangle, WifiOff } from 'lucide-react'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { useTaskBoardData } from '@/hooks/useTaskBoardData'
@@ -210,15 +209,12 @@ export default function TaskBoardPage() {
     }
   }, [tasks, optimisticTransition, transitionTask, executeOptimistic])
 
-  // Create task
+  // Create task. ``createTask`` is sentinel-returning (never throws)
+  // and owns both the success (``Task <title> created``) and error
+  // toast; the dialog closes on resolution, and a ``null`` return
+  // simply signals the store already surfaced the failure.
   const handleCreateTask = useCallback(async (data: Parameters<typeof createTask>[0]) => {
-    try {
-      await createTask(data)
-      useToastStore.getState().add({ variant: 'success', title: 'Task created' })
-    } catch (err) {
-      useToastStore.getState().add({ variant: 'error', title: 'Failed to create task', description: getErrorMessage(err) })
-      throw err
-    }
+    await createTask(data)
   }, [createTask])
 
   // Skeleton on initial load

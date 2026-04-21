@@ -4,6 +4,7 @@ import { listTasks } from '@/api/endpoints/tasks'
 import { getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 import { createLogger } from '@/lib/logger'
+import { sanitizeWsString } from '@/stores/notifications'
 import type {
   AgentActivityEvent,
   AgentConfig,
@@ -243,11 +244,17 @@ export const useAgentsStore = create<AgentsState>()((set, get) => ({
     }
     if (event.event_type === 'agent.status_changed') {
       const payload = event.payload as Record<string, unknown>
-      const agentId = payload.agent_id
+      // Run the wire agent_id through the canonical WS sanitizer so
+      // it can't carry control/bidi chars into ``runtimeStatuses`` as
+      // a key -- a malformed frame would otherwise create an unusable
+      // map entry that callers can't address by the real agent id.
+      const rawAgentId = payload.agent_id
+      const sanitizedAgentId =
+        typeof rawAgentId === 'string' ? sanitizeWsString(rawAgentId) : undefined
       const status = payload.status
-      if (typeof agentId !== 'string' || !agentId.trim() || typeof status !== 'string' || !status.trim()) {
+      if (!sanitizedAgentId || typeof status !== 'string' || !status.trim()) {
         log.warn('agent.status_changed payload missing required fields', {
-          hasAgentId: typeof agentId === 'string',
+          hasAgentId: typeof rawAgentId === 'string',
           hasStatus: typeof status === 'string',
         })
         return
@@ -264,7 +271,7 @@ export const useAgentsStore = create<AgentsState>()((set, get) => ({
       set((state) => ({
         runtimeStatuses: {
           ...state.runtimeStatuses,
-          [agentId]: status as AgentRuntimeStatus,
+          [sanitizedAgentId]: status as AgentRuntimeStatus,
         },
       }))
       return

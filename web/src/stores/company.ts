@@ -155,17 +155,14 @@ export const useCompanyStore = create<CompanyState>()((set, get) => ({
   // ── Mutations ──────────────────────────────────────────────
 
   updateCompany: async (data) => {
+    // Split the two phases so a successful PATCH never gets reported
+    // as a failed save just because the follow-up refresh threw: the
+    // update has already committed on the server, and treating the
+    // refresh error as a mutation failure would leave the form dirty
+    // and invite duplicate retries of the same change.
     set((s) => ({ savingCount: s.savingCount + 1, saveError: null }))
     try {
       await apiUpdateCompany(data)
-      // Refetch full config to reflect partial-update response
-      await get().fetchCompanyData()
-      set((s) => ({ savingCount: Math.max(0, s.savingCount - 1) }))
-      useToastStore.getState().add({
-        variant: 'success',
-        title: 'Company updated',
-      })
-      return true
     } catch (err) {
       log.error('Update company failed:', sanitizeForLog(err))
       set((s) => ({
@@ -179,6 +176,21 @@ export const useCompanyStore = create<CompanyState>()((set, get) => ({
       })
       return false
     }
+    // PATCH succeeded. Attempt to refetch the canonical config so the
+    // UI reflects the server's post-update view, but do not undo the
+    // success signal if the refetch itself fails -- ``fetchCompanyData``
+    // already sets its own error state that page-level banners consume.
+    try {
+      await get().fetchCompanyData()
+    } catch (refreshErr) {
+      log.warn('Company updated but refresh failed:', sanitizeForLog(refreshErr))
+    }
+    set((s) => ({ savingCount: Math.max(0, s.savingCount - 1) }))
+    useToastStore.getState().add({
+      variant: 'success',
+      title: 'Company updated',
+    })
+    return true
   },
 
   createDepartment: async (data) => {

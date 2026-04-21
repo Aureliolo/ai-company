@@ -308,8 +308,13 @@ function sanitizeMeeting(c: MeetingResponse): MeetingResponse {
     protocol_type: (sanitizeWsString(c.protocol_type, 64) ?? '') as MeetingResponse['protocol_type'],
     status: (sanitizeWsString(c.status, 64) ?? '') as MeetingResponse['status'],
     minutes: sanitizeMeetingMinutes(c.minutes),
+    // Preserve the ``string | null`` contract: if sanitization strips
+    // a non-null error_message down to empty, report ``null`` rather
+    // than an empty string the UI would treat as a real error.
     error_message:
-      c.error_message === null ? null : sanitizeWsString(c.error_message, 512) ?? '',
+      c.error_message === null
+        ? null
+        : sanitizeWsString(c.error_message, 512) || null,
     token_budget: c.token_budget,
     token_usage_by_participant: tokenUsage,
     contribution_rank: c.contribution_rank

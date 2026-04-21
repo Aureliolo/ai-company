@@ -454,15 +454,18 @@ const handler = vi.fn()
       const ws = MockWebSocket.latest()!
       ws.simulateOpen()
 
-      // Build a syntactically valid JSON frame whose encoded byte
-      // length exceeds the 32 KiB inbound cap. Using valid JSON makes
-      // the test exercise the size gate specifically; raw 'x'*N would
-      // also trip the JSON parser and the assertion could pass for
+      // Build a full, valid WsEvent envelope (event_type/channel/
+      // timestamp/payload/version) whose encoded byte length exceeds
+      // the 32 KiB inbound cap. If the test used a trimmed-down shape
+      // the store could drop the frame for failing ``isWsEvent``
+      // instead of the size gate, and the assertion would pass for
       // the wrong reason.
       const oversized = JSON.stringify({
-        type: 'task_update',
+        version: 1,
+        event_type: 'task.created',
         channel: 'tasks',
-        payload: { text: 'x'.repeat(33_000) },
+        timestamp: '2026-04-21T00:00:00Z',
+        payload: { task_id: 'stub', text: 'x'.repeat(33_000) },
       })
       expect(new TextEncoder().encode(oversized).byteLength).toBeGreaterThan(
         32_768,

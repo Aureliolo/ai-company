@@ -13,7 +13,6 @@ import { getTaskStatusLabel, getTaskTypeLabel, getAvailableTransitions, getPrior
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { formatDate, formatCurrency } from '@/utils/format'
 import { useToastStore } from '@/stores/toast'
-import { getErrorMessage } from '@/utils/errors'
 import type { Priority, TaskStatus } from '@/api/types/enums'
 import type { CancelTaskRequest, Task, TransitionTaskRequest, UpdateTaskRequest } from '@/api/types/tasks'
 
@@ -63,12 +62,16 @@ export function TaskDetailPanel({
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [onClose])
 
+  // The ``onTransition`` / ``onCancel`` / ``onDelete`` / ``onUpdate``
+  // callbacks are thin wrappers around the tasks store's sentinel-
+  // returning mutations (see ``TaskBoardPage``), which already emit
+  // both the success and error toast. No try/catch here -- the
+  // wrappers don't throw, and adding a caller-side error toast
+  // would double up with the store's.
   const handleTransition = useCallback(async (targetStatus: TaskStatus) => {
     setTransitioning(targetStatus)
     try {
       await onTransition(task.id, { target_status: targetStatus, expected_version: task.version })
-    } catch {
-      useToastStore.getState().add({ variant: 'error', title: 'Transition failed' })
     } finally {
       setTransitioning(null)
     }
@@ -79,25 +82,15 @@ export function TaskDetailPanel({
       useToastStore.getState().add({ variant: 'error', title: 'Please provide a cancellation reason' })
       return false
     }
-    try {
-      await onCancel(task.id, { reason: cancelReason.trim() })
-      setCancelReason('')
-      return true
-    } catch {
-      useToastStore.getState().add({ variant: 'error', title: 'Failed to cancel task' })
-      return false
-    }
+    await onCancel(task.id, { reason: cancelReason.trim() })
+    setCancelReason('')
+    return true
   }, [task.id, cancelReason, onCancel])
 
   const handleDelete = useCallback(async (): Promise<boolean> => {
-    try {
-      await onDelete(task.id)
-      onClose()
-      return true
-    } catch {
-      useToastStore.getState().add({ variant: 'error', title: 'Failed to delete task' })
-      return false
-    }
+    await onDelete(task.id)
+    onClose()
+    return true
   }, [task.id, onDelete, onClose])
 
   return (
@@ -146,12 +139,7 @@ export function TaskDetailPanel({
               <InlineEdit
                 value={task.title}
                 onSave={async (value) => {
-                  try {
-                    await onUpdate(task.id, { title: value, expected_version: task.version })
-                  } catch (err) {
-                    useToastStore.getState().add({ variant: 'error', title: 'Failed to save title', description: getErrorMessage(err) })
-                    throw err
-                  }
+                  await onUpdate(task.id, { title: value, expected_version: task.version })
                 }}
                 validate={(v) => v.trim().length === 0 ? 'Title is required' : null}
                 className="text-lg font-semibold"
@@ -163,12 +151,7 @@ export function TaskDetailPanel({
                 <InlineEdit
                   value={task.description}
                   onSave={async (value) => {
-                    try {
-                      await onUpdate(task.id, { description: value, expected_version: task.version })
-                    } catch (err) {
-                      useToastStore.getState().add({ variant: 'error', title: 'Failed to save description', description: getErrorMessage(err) })
-                      throw err
-                    }
+                    await onUpdate(task.id, { description: value, expected_version: task.version })
                   }}
                   className="mt-1 text-sm text-text-secondary"
                 />
@@ -182,11 +165,7 @@ export function TaskDetailPanel({
                   <select
                     value={task.priority}
                     onChange={async (e) => {
-                      try {
-                        await onUpdate(task.id, { priority: e.target.value as Priority, expected_version: task.version })
-                      } catch (err) {
-                        useToastStore.getState().add({ variant: 'error', title: 'Failed to update priority', description: getErrorMessage(err) })
-                      }
+                      await onUpdate(task.id, { priority: e.target.value as Priority, expected_version: task.version })
                     }}
                     className="h-7 rounded border border-border bg-surface px-1.5 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-accent"
                     aria-label="Change priority"
@@ -209,12 +188,7 @@ export function TaskDetailPanel({
                   <InlineEdit
                     value={task.assigned_to ?? ''}
                     onSave={async (value) => {
-                      try {
-                        await onUpdate(task.id, { assigned_to: value.trim() || undefined, expected_version: task.version })
-                      } catch (err) {
-                        useToastStore.getState().add({ variant: 'error', title: 'Failed to update assignee', description: getErrorMessage(err) })
-                        throw err
-                      }
+                      await onUpdate(task.id, { assigned_to: value.trim() || undefined, expected_version: task.version })
                     }}
                     className="text-sm"
                     placeholder="Unassigned"

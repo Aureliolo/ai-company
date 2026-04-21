@@ -175,8 +175,17 @@ export const useArtifactsStore = create<ArtifactsState>()((set) => ({
       return true
     } catch (err) {
       // Restore the pre-delete slice so the list/detail view reflects
-      // the server's truth after the failed mutation.
-      set(previous)
+      // the server's truth after the failed mutation. ``detailLoading``
+      // is forced to ``false`` when the delete had invalidated a
+      // pending detail fetch via the token bump -- we can't un-bump
+      // the tokens now, so the in-flight fetch will be ignored, and
+      // leaving ``detailLoading=true`` would otherwise strand the
+      // detail pane on its spinner until the user navigates away.
+      set(
+        invalidatesDetail
+          ? { ...previous, detailLoading: false }
+          : previous,
+      )
       log.error(
         'Delete artifact failed:',
         sanitizeForLog({ artifactId: id, error: err }),

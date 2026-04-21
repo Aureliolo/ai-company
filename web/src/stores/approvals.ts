@@ -228,8 +228,11 @@ function sanitizeApproval(c: ApprovalResponse): ApprovalResponse {
     const safeValue = sanitizeWsString(value, 512) ?? ''
     if (safeKey) metadata[safeKey] = safeValue
   }
+  // Preserve the ``string | null`` contract: if sanitization strips a
+  // non-null value down to empty, report ``null`` rather than an
+  // empty string the UI would treat as a real value.
   const sanitizeNullable = (value: string | null, cap: number): string | null =>
-    value === null ? null : sanitizeWsString(value, cap) ?? ''
+    value === null ? null : sanitizeWsString(value, cap) || null
   // Build the returned ``ApprovalResponse`` explicitly rather than
   // spreading ``c``: a spread would pass through the deeply-nested
   // ``evidence_package`` (plus any future string fields) with raw,

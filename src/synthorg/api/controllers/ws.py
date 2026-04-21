@@ -479,18 +479,19 @@ async def _setup_connection(
 
     # Now that subscriptions + presence are established, send the
     # auth acknowledgement so the client can flip ``connected=true``
-    # knowing the server is ready to receive and broadcast.
+    # knowing the server is ready to receive and broadcast. If the
+    # send fails for *any* reason (clean disconnect or an unexpected
+    # error) we tear down the subscription + presence state so they
+    # don't leak past a half-open connection.
     try:
         await _send_auth_ok(socket)
-    except WebSocketDisconnect:
-        # Unsubscribe + clear presence since the outer handler won't
-        # see this setup as "established".
+    except Exception:
         try:
             await channels_plugin.unsubscribe(subscriber)
         except Exception:
             logger.error(
                 API_WS_TRANSPORT_ERROR,
-                reason="unsubscribe_after_auth_ok_disconnect_failed",
+                reason="unsubscribe_after_auth_ok_failure",
                 client=str(socket.client),
                 exc_info=True,
             )

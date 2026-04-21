@@ -179,6 +179,11 @@ def _validate_ws_fields(
     client_filters: dict[str, Any] | None = None
     if raw_filters is not None:
         if not isinstance(raw_filters, dict):
+            logger.warning(
+                API_WS_INVALID_MESSAGE,
+                reason="filters_not_object",
+                filters_type=type(raw_filters).__name__,
+            )
             return json.dumps({"error": "filters must be an object"})
         # ``filters`` is typed as ``dict[str, str]`` in the server's
         # in-memory subscription map; reject non-string keys/values at
@@ -199,6 +204,11 @@ def _validate_ws_fields(
         client_filters = raw_filters
 
     if not isinstance(channels, list) or not all(isinstance(c, str) for c in channels):
+        logger.warning(
+            API_WS_INVALID_MESSAGE,
+            reason="channels_not_list_of_strings",
+            channels_type=type(channels).__name__,
+        )
         return json.dumps({"error": "channels must be a list of strings"})
 
     return (action, channels, client_filters)
