@@ -121,8 +121,10 @@ function InputVariant(props: InputProps) {
     onChange,
     leadingIcon,
     trailingElement,
+    multiline: _multiline,
     ...domProps
   } = props
+  void _multiline
   const id = useId()
   const errorId = `${id}-error`
   const hintId = `${id}-hint`
@@ -186,8 +188,10 @@ function TextareaVariant(props: TextareaProps) {
     ref,
     onValueChange,
     onChange,
+    multiline: _multiline,
     ...domProps
   } = props
+  void _multiline
   const id = useId()
   const errorId = `${id}-error`
   const hintId = `${id}-hint`

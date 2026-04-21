@@ -167,12 +167,15 @@ export function RuleBuilderForm({ editRule, metrics, onClose }: RuleBuilderFormP
     }
 
     setSubmitting(true)
-    const result = isEdit && editRule
-      ? await updateRule(editRule.id, data)
-      : await createRule(data)
-    setSubmitting(false)
-    if (result) {
-      onClose()
+    try {
+      const result = isEdit && editRule
+        ? await updateRule(editRule.id, data)
+        : await createRule(data)
+      if (result) {
+        onClose()
+      }
+    } finally {
+      setSubmitting(false)
     }
   }
 

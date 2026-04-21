@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { createLogger } from '@/lib/logger'
+import { asObjectRecord } from '@/utils/parse'
 
 const log = createLogger('theme')
 
@@ -81,12 +82,6 @@ function getDefaultPreferences(): ThemePreferences {
 
 function isValid<T extends string>(value: unknown, allowed: readonly T[]): value is T {
   return typeof value === 'string' && (allowed as readonly string[]).includes(value)
-}
-
-/** Narrow a JSON-parsed value to a plain object record, or null if not one. */
-function asObjectRecord(value: unknown): Record<string, unknown> | null {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null
-  return value as Record<string, unknown>
 }
 
 /** Exported for testing only -- the store already calls this at creation time. */

@@ -18,6 +18,13 @@ from pydantic import (
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 
+#: Current WebSocket wire-protocol version. Clients on older versions
+#: are expected to ignore unknown-version events (see
+#: ``web/src/stores/websocket.ts`` for the matching client-side check
+#: against ``WS_PROTOCOL_VERSION`` in ``web/src/utils/constants.ts``).
+#: Bump only when introducing a breaking change to ``WsEvent``.
+WS_PROTOCOL_VERSION: int = 1
+
 
 class WsEventType(StrEnum):
     """Types of real-time WebSocket events."""
@@ -129,7 +136,7 @@ class WsEvent(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     version: int = Field(
-        default=1,
+        default=WS_PROTOCOL_VERSION,
         ge=1,
         description="WS wire-protocol version (clients ignore unknown)",
     )

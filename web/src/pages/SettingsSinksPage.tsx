@@ -56,10 +56,14 @@ export default function SettingsSinksPage() {
   }, [])
 
   const handleSave = useCallback(async (sink: SinkInfo) => {
-    await saveSink(sink)
-    setDrawerOpen(false)
-    setEditSinkId(null)
-    setIsNewSink(false)
+    const ok = await saveSink(sink)
+    // Per the sentinel contract, keep the drawer open on failure so the
+    // user can retry; the store already emitted an error toast.
+    if (ok) {
+      setDrawerOpen(false)
+      setEditSinkId(null)
+      setIsNewSink(false)
+    }
   }, [saveSink])
 
   return (

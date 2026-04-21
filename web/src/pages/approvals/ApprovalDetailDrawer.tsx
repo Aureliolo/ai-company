@@ -264,7 +264,7 @@ export function ApprovalDetailDrawer({
 
               {/* Safety warning banner */}
               {approval.metadata.safety_classification === 'blocked' && (
-                <div className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2">
+                <div className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/10 p-card">
                   <AlertTriangle className="size-4 text-danger shrink-0" aria-hidden="true" />
                   <span className="text-sm text-danger">
                     This action was classified as blocked by the safety classifier.
@@ -272,7 +272,7 @@ export function ApprovalDetailDrawer({
                 </div>
               )}
               {approval.metadata.safety_classification === 'suspicious' && (
-                <div className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2">
+                <div className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/10 p-card">
                   <AlertTriangle className="size-4 text-warning shrink-0" aria-hidden="true" />
                   <span className="text-sm text-warning">
                     This action has been flagged as suspicious by the safety classifier.

@@ -1,4 +1,5 @@
 import { http, HttpResponse } from 'msw'
+import { afterEach, beforeEach, describe } from 'vitest'
 import { useQualityOverridesStore } from '@/stores/quality-overrides'
 import { useToastStore } from '@/stores/toast'
 import { apiError } from '@/mocks/handlers'
@@ -6,6 +7,12 @@ import { server } from '@/test-setup'
 
 describe('useQualityOverridesStore', () => {
   beforeEach(() => {
+    useToastStore.getState().dismissAll()
+  })
+
+  afterEach(() => {
+    // Defensive: clear toast timers in teardown so a test that fails
+    // before its own cleanup runs cannot leak into the next test.
     useToastStore.getState().dismissAll()
   })
 

@@ -10,10 +10,15 @@ from synthorg.api.auth.models import AuthenticatedUser, AuthMethod
 from synthorg.api.controllers.ws import (
     _WS_CLOSE_AUTH_FAILED,
     _WS_CLOSE_FORBIDDEN,
-    _channel_allowed,
-    _handle_message,
 )
+from synthorg.api.controllers.ws_protocol import channel_allowed, handle_message
 from synthorg.api.guards import _READ_ROLES, HumanRole
+
+# Preserve the pre-split names so the (many) test bodies below read
+# naturally -- matches the legacy identifiers used before the protocol
+# helpers moved into ``ws_protocol``.
+_channel_allowed = channel_allowed
+_handle_message = handle_message
 
 _TEST_USER = AuthenticatedUser(
     user_id="test-user",
@@ -703,6 +708,42 @@ class TestOutboundPipeline:
                 await task
 
         assert socket.send_text.await_count == 2
+
+    async def test_outbound_consumer_closes_socket_on_send_error(self) -> None:
+        """A non-disconnect send failure triggers a 1011 close and exits.
+
+        Ensures arbitrary transport errors on ``socket.send_text`` do
+        not surface as silently dropped events: the consumer must log,
+        close the socket, and stop draining (which in turn unwinds the
+        subscription via the surrounding ``run_in_background``).
+        """
+        import asyncio
+        import contextlib
+        from unittest.mock import AsyncMock
+
+        from synthorg.api.controllers.ws import _outbound_consumer
+
+        socket = AsyncMock()
+        # Simulate a transient transport error (not a WebSocketDisconnect
+        # -- the consumer treats those as a normal shutdown).
+        socket.send_text.side_effect = RuntimeError("socket fell over")
+        queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=8)
+        await queue.put(b'{"channel":"tasks","payload":{"a":1}}')
+
+        task = asyncio.create_task(_outbound_consumer(socket, queue))
+        try:
+            await asyncio.wait_for(task, timeout=1.0)
+        finally:
+            if not task.done():
+                task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
+
+        socket.send_text.assert_awaited_once()
+        socket.close.assert_awaited_once_with(
+            code=1011,
+            reason="Internal error",
+        )
 
 
 @pytest.mark.unit

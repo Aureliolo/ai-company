@@ -4,7 +4,6 @@ import { useAgentsStore } from '@/stores/agents'
 import { useCompanyStore } from '@/stores/company'
 import {
   AGENT_STATUS_VALUES,
-  isDepartmentName,
   SENIORITY_LEVEL_VALUES,
   type AgentStatus,
   type DepartmentName,
@@ -71,8 +70,14 @@ export function AgentFilters({ className }: { className?: string }) {
         value={departmentFilter ?? ''}
         onChange={(e) => {
           const v = e.target.value
+          // Departments come from the LIVE company config (see the
+          // useMemo above), so only validate against that set --
+          // the static `DepartmentName` enum doesn't cover
+          // user-created departments from setup wizard / packs.
           setDepartmentFilter(
-            isDepartmentName(v) && validDepartmentNames.has(v) ? v : null,
+            validDepartmentNames.has(v as DepartmentName)
+              ? (v as DepartmentName)
+              : null,
           )
         }}
         className="h-9 rounded-lg border border-border bg-card px-3 text-sm text-foreground focus:border-accent focus:outline-none"

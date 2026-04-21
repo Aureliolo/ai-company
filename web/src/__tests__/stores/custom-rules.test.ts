@@ -1,5 +1,7 @@
 import { http, HttpResponse } from 'msw'
+import { afterEach, beforeEach, describe } from 'vitest'
 import { useCustomRulesStore } from '@/stores/custom-rules'
+import { cancelPendingPersist } from '@/stores/notifications'
 import { useToastStore } from '@/stores/toast'
 import { apiError, buildCustomRule, successFor } from '@/mocks/handlers'
 import type {
@@ -16,7 +18,14 @@ describe('useCustomRulesStore mutations', () => {
       submitting: false,
       error: null,
     })
+  })
+
+  afterEach(() => {
+    // Toast + notifications cleanup belongs in teardown so an early-
+    // failing test cannot leave timers running and trip async-leak
+    // detection in later tests.
     useToastStore.getState().dismissAll()
+    cancelPendingPersist()
   })
 
   describe('createRule', () => {

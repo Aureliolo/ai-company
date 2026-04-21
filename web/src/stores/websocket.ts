@@ -11,6 +11,7 @@ import { WS_CHANNELS } from '@/api/types/websocket'
 import type { WsChannel, WsEvent, WsEventHandler, WsSubscriptionFilters } from '@/api/types/websocket'
 import { getWsTicket } from '@/api/endpoints/auth'
 import {
+  LOG_SANITIZE_MAX_LENGTH,
   WS_HEARTBEAT_INTERVAL_MS,
   WS_MAX_MESSAGE_SIZE,
   WS_MAX_RECONNECT_ATTEMPTS,
@@ -20,6 +21,7 @@ import {
   WS_RECONNECT_MAX_DELAY,
 } from '@/utils/constants'
 import { sanitizeForLog } from '@/utils/logging'
+import { asObjectRecord } from '@/utils/parse'
 import { createLogger } from '@/lib/logger'
 
 const log = createLogger('ws')
@@ -105,18 +107,6 @@ function isWsEvent(msg: Record<string, unknown>): msg is Record<string, unknown>
  */
 function eventVersion(msg: Record<string, unknown>): number {
   return typeof msg.version === 'number' ? msg.version : 1
-}
-
-/**
- * Narrow an unknown JSON value to a plain object record. Returns
- * ``null`` for primitives, arrays, and ``null`` so downstream message
- * handlers do not need a cast to read object fields.
- */
-function asObjectRecord(data: unknown): Record<string, unknown> | null {
-  if (typeof data !== 'object' || data === null || Array.isArray(data)) {
-    return null
-  }
-  return data as Record<string, unknown>
 }
 
 /** Validate that a channels array from a server ack contains only known channel strings. */
@@ -321,7 +311,7 @@ export const useWebSocketStore = create<WebSocketState>()((set) => {
 
       if (msg.error) {
         // Truncate attacker-controlled error value for log injection mitigation
-        log.error('Server error:', sanitizeForLog(msg.error, 200))
+        log.error('Server error:', sanitizeForLog(msg.error, LOG_SANITIZE_MAX_LENGTH))
         return
       }
 
@@ -356,7 +346,7 @@ export const useWebSocketStore = create<WebSocketState>()((set) => {
 
       // Auth failures (4001/4003): do not reconnect -- surface error
       if (WS_AUTH_FAILURE_CODES.has(event.code)) {
-        log.error(`Auth failed (code ${event.code}):`, sanitizeForLog(event.reason, 200))
+        log.error(`Auth failed (code ${event.code}):`, sanitizeForLog(event.reason, LOG_SANITIZE_MAX_LENGTH))
         set({ reconnectExhausted: true })
         return
       }

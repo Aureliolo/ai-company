@@ -63,6 +63,45 @@ class TestEventStreamSSE:
             f"session_id={bad_id!r} should be rejected, got {resp.status_code}"
         )
 
+    @pytest.mark.parametrize(
+        "good_id",
+        [
+            "s-1",
+            "session_id_123",
+            "A-Z_0-9abc",
+            "x" * 128,  # exact length cap
+            "single",
+        ],
+        ids=[
+            "short_dash",
+            "underscore_digits",
+            "mixed_case",
+            "exact_cap",
+            "single_word",
+        ],
+    )
+    def test_interrupts_accepts_valid_session_id(
+        self,
+        test_client: TestClient[Any],
+        good_id: str,
+    ) -> None:
+        """The regex happy path must *not* reject well-formed session ids.
+
+        Tested via ``/api/v1/interrupts`` (a non-streaming GET) rather
+        than ``/events/stream`` so the request unblocks promptly -- the
+        SSE stream holds the connection open indefinitely once the
+        validator admits the id.
+        """
+        resp = test_client.get(
+            "/api/v1/interrupts",
+            params={"session_id": good_id},
+            headers=_READ_HEADERS,
+        )
+        assert resp.status_code != 400, (
+            f"session_id={good_id!r} should be accepted, "
+            f"got {resp.status_code}: {resp.text[:200]}"
+        )
+
     def test_interrupts_rejects_malformed_session_id(
         self,
         test_client: TestClient[Any],

@@ -41,14 +41,15 @@ export function ArtifactMetadata({ artifact }: ArtifactMetadataProps) {
     downloadArtifactFile(artifact.id, artifact.path.split('/').pop() || artifact.id)
   }
 
-  async function handleDelete() {
+  async function handleDelete(): Promise<boolean> {
     setDeleting(true)
     const ok = await useArtifactsStore.getState().deleteArtifact(artifact.id)
     setDeleting(false)
-    setDeleteOpen(false)
     if (ok) {
+      setDeleteOpen(false)
       navigate(ROUTES.ARTIFACTS)
     }
+    return ok
   }
 
   return (

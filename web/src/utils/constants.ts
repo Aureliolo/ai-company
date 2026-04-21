@@ -29,6 +29,14 @@ export const WS_PONG_TIMEOUT_MS = 10_000
  */
 export const WS_PROTOCOL_VERSION = 1
 
+/**
+ * Max characters kept when sanitizing untrusted strings (server error
+ * reasons, WS disconnect codes, etc.) for logging. Tighter than display
+ * caps because log lines get truncated by aggregators and the control
+ * chars / bidi overrides already get stripped by `sanitizeForLog`.
+ */
+export const LOG_SANITIZE_MAX_LENGTH = 200
+
 export const HEALTH_POLL_INTERVAL = 15000
 
 export const DEFAULT_PAGE_SIZE = 50

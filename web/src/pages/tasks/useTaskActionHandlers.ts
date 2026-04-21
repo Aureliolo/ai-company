@@ -31,6 +31,10 @@ export function useTaskActionHandlers(task: Task | null | undefined): TaskAction
       if (!task) return
       setTransitioning(targetStatus)
       try {
+        // Sentinel (null) return is intentionally discarded: the store
+        // already emits the error toast and the board row re-subscribes
+        // to the WS event that would restore the old status if the
+        // transition failed, so there's nothing page-level to unwind.
         await useTasksStore.getState().transitionTask(task.id, {
           target_status: targetStatus,
           expected_version: task.version,

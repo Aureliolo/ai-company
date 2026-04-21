@@ -10,14 +10,25 @@ import type {
   ApproveRequest,
   RejectRequest,
 } from '@/api/types/approvals'
+import type { ApprovalRiskLevel, ApprovalStatus } from '@/api/types/enums'
 import type { WsEvent } from '@/api/types/websocket'
 
 const log = createLogger('approvals')
 
+const APPROVAL_STATUS_VALUES: ReadonlySet<string> = new Set<ApprovalStatus>([
+  'pending', 'approved', 'rejected', 'expired',
+])
+
+const APPROVAL_RISK_LEVEL_VALUES: ReadonlySet<string> = new Set<ApprovalRiskLevel>([
+  'low', 'medium', 'high', 'critical',
+])
+
 /**
  * Type predicate: a WS payload object satisfies the {@link ApprovalResponse}
  * shape so consumers can use it without a cast. ``metadata`` is optional
- * so we accept ``undefined`` / ``null`` / a plain object there.
+ * so we accept ``undefined`` / ``null`` / a plain object there. Enum-typed
+ * fields (``status``, ``risk_level``) are validated against their declared
+ * unions so malformed payloads can't smuggle illegal values into the store.
  */
 function isApprovalShape(
   c: Record<string, unknown>,
@@ -25,8 +36,10 @@ function isApprovalShape(
   return (
     typeof c.id === 'string' &&
     typeof c.status === 'string' &&
+    APPROVAL_STATUS_VALUES.has(c.status) &&
     typeof c.title === 'string' &&
     typeof c.risk_level === 'string' &&
+    APPROVAL_RISK_LEVEL_VALUES.has(c.risk_level) &&
     typeof c.action_type === 'string' &&
     typeof c.description === 'string' &&
     typeof c.requested_by === 'string' &&

@@ -208,7 +208,7 @@ const MAX_STRING_LEN = 128
  * Returns `undefined` for non-strings so callers can pass the result
  * directly into an optional field without widening the type.
  */
-function sanitizeWsString(value: unknown, maxLen: number = MAX_STRING_LEN): string | undefined {
+export function sanitizeWsString(value: unknown, maxLen: number = MAX_STRING_LEN): string | undefined {
   if (typeof value !== 'string') return undefined
   const stripped = value
     // eslint-disable-next-line no-control-regex

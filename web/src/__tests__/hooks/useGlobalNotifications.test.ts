@@ -2,6 +2,7 @@ import { renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useGlobalNotifications } from '@/hooks/useGlobalNotifications'
 import { useAgentsStore } from '@/stores/agents'
+import { cancelPendingPersist } from '@/stores/notifications'
 import { useToastStore } from '@/stores/toast'
 import { useWebSocketStore } from '@/stores/websocket'
 import type { WsEvent } from '@/api/types/websocket'
@@ -22,10 +23,15 @@ describe('useGlobalNotifications', () => {
       setupError: null,
     })
     useAgentsStore.setState({ runtimeStatuses: {} })
-    useToastStore.getState().dismissAll()
   })
 
   afterEach(() => {
+    // Run toast + notifications cleanup in teardown (not beforeEach) so
+    // async-leak detection can't see timers leftover from an early-failing
+    // test. Mirrors the global afterEach pattern enforced by
+    // web/CLAUDE.md for all suites touching timer-producing stores.
+    useToastStore.getState().dismissAll()
+    cancelPendingPersist()
     // Restore any vi.spyOn spies created during the test.  If a test
     // fails before its inline `.mockRestore()` call runs, the spy would
     // leak into subsequent tests; this unconditional restore keeps the

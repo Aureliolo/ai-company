@@ -4,7 +4,21 @@ import { getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 import { createLogger } from '@/lib/logger'
 import { useToastStore } from '@/stores/toast'
-import type { TaskStatus } from '@/api/types/enums'
+import type { Priority, TaskStatus, TaskType } from '@/api/types/enums'
+
+const TASK_STATUS_VALUES: ReadonlySet<string> = new Set<TaskStatus>([
+  'created', 'assigned', 'in_progress', 'in_review', 'completed',
+  'blocked', 'failed', 'interrupted', 'suspended', 'cancelled',
+  'rejected', 'auth_required',
+])
+
+const TASK_PRIORITY_VALUES: ReadonlySet<string> = new Set<Priority>([
+  'critical', 'high', 'medium', 'low',
+])
+
+const TASK_TYPE_VALUES: ReadonlySet<string> = new Set<TaskType>([
+  'development', 'design', 'research', 'review', 'meeting', 'admin',
+])
 import type {
   CancelTaskRequest,
   CreateTaskRequest,
@@ -55,16 +69,21 @@ const pendingTransitions = new Set<string>()
 /**
  * Type predicate verifying that a WS payload object carries every
  * field on the {@link Task} interface so consumers can use it without
- * a cast. The check is intentionally structural and does not validate
- * enum values -- those live in deeper validators upstream.
+ * a cast. Validates structural shape AND that enum-typed fields
+ * (``status``, ``priority``, ``type``) carry values from their declared
+ * unions so a malformed payload can't smuggle an illegal status into
+ * the store.
  */
 function isTaskShape(c: Record<string, unknown>): c is Record<string, unknown> & Task {
   return (
     typeof c.id === 'string' &&
     typeof c.status === 'string' &&
+    TASK_STATUS_VALUES.has(c.status) &&
     typeof c.title === 'string' &&
     typeof c.priority === 'string' &&
+    TASK_PRIORITY_VALUES.has(c.priority) &&
     typeof c.type === 'string' &&
+    TASK_TYPE_VALUES.has(c.type) &&
     Array.isArray(c.dependencies) &&
     Array.isArray(c.acceptance_criteria)
   )

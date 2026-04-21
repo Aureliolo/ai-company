@@ -3,6 +3,7 @@ import * as messagesApi from '@/api/endpoints/messages'
 import { getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 import { createLogger } from '@/lib/logger'
+import { sanitizeWsString } from '@/stores/notifications'
 import type { Channel, Message } from '@/api/types/messages'
 import type { WsEvent } from '@/api/types/websocket'
 
@@ -34,7 +35,13 @@ function isMessageShape(
   )
 }
 
-/** Validate a WS payload and return a typed Message, or null if malformed. */
+/**
+ * Validate a WS payload and return a typed Message with all untrusted
+ * string fields sanitized, or null if malformed. Sanitization strips
+ * control characters and bidi-overrides and caps length so rendered
+ * messages cannot smuggle control chars through the UI. (Unsanitized
+ * fields are dropped by the shape check above.)
+ */
 function parseWsMessage(
   payload: WsEvent['payload'],
 ): Message | null {
@@ -57,7 +64,17 @@ function parseWsMessage(
     return null
   }
 
-  return c
+  // Sanitize untrusted string fields before the Message escapes to
+  // stores/UI. isMessageShape already guarantees `string` types, so
+  // `sanitizeWsString` always returns a string here; we coerce with
+  // `?? ''` to keep TS happy.
+  return {
+    ...c,
+    sender: sanitizeWsString(c.sender) ?? '',
+    to: sanitizeWsString(c.to) ?? '',
+    channel: sanitizeWsString(c.channel) ?? '',
+    content: sanitizeWsString(c.content, 4096) ?? '',
+  }
 }
 
 interface MessagesState {

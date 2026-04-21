@@ -1,5 +1,4 @@
 import { useCallback, useState } from 'react'
-import { createLogger } from '@/lib/logger'
 import type { LogLevel, SinkInfo, TestSinkResult } from '@/api/types/settings'
 import { Button } from '@/components/ui/button'
 import { Drawer } from '@/components/ui/drawer'
@@ -7,8 +6,6 @@ import { InputField } from '@/components/ui/input-field'
 import { SelectField } from '@/components/ui/select-field'
 import { TagInput } from '@/components/ui/tag-input'
 import { ToggleField } from '@/components/ui/toggle-field'
-
-const log = createLogger('sinks')
 
 const LOG_LEVELS = [
   { value: 'DEBUG', label: 'Debug' },
@@ -29,7 +26,7 @@ export interface SinkFormDrawerProps {
   onClose: () => void
   sink: SinkInfo | null
   isNew?: boolean
-  onTest: (data: { sink_overrides: string; custom_sinks: string }) => Promise<TestSinkResult>
+  onTest: (data: { sink_overrides: string; custom_sinks: string }) => Promise<TestSinkResult | null>
   onSave: (sink: SinkInfo) => void
 }
 
@@ -97,11 +94,10 @@ export function SinkFormDrawer({ open, onClose, sink, isNew, onTest, onSave }: S
     setTestResult(null)
     try {
       const result = await onTest(payload)
+      // onTest uses the sentinel contract -- null means the store
+      // already logged + toasted. Leave testResult cleared so the
+      // caller sees no stale success banner.
       setTestResult(result)
-    } catch (err) {
-      log.error('Test config failed:', err)
-      const message = err instanceof Error ? err.message : 'Test request failed'
-      setTestResult({ valid: false, error: message })
     } finally {
       setTesting(false)
     }
