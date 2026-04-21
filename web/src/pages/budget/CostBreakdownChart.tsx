@@ -91,7 +91,7 @@ export function CostBreakdownChart({
         />
       ) : (
         <div className="flex flex-col items-center gap-4">
-          <div className="h-[200px] w-full" data-testid="cost-breakdown-chart" role="img" aria-label="Cost breakdown pie chart">
+          <div className="aspect-square w-full md:aspect-[2/1] lg:aspect-[3/1]" data-testid="cost-breakdown-chart" role="img" aria-label="Cost breakdown pie chart">
             {/* `initialDimension` silences recharts' first-paint
                 "width(-1) height(-1)" warning -- see BudgetBurnChart.tsx
                 for the full explanation. */}

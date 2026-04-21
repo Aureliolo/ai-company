@@ -37,6 +37,7 @@ export function ToggleField({
         )}
       >
         <span
+          aria-hidden="true"
           className={cn(
             'block h-4 w-4 rounded-full bg-foreground transition-transform',
             checked ? 'translate-x-4' : 'translate-x-0.5',

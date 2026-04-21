@@ -53,9 +53,18 @@ export function TaskColumn({ column, tasks, onSelectTask }: TaskColumnProps) {
 
   const taskIds = tasks.map((t) => t.id)
 
+  // Rough workload estimate based on complexity. Not a replacement for
+  // per-task duration -- just a signal of column load for operators triaging
+  // the board.
+  const COMPLEXITY_HOURS = { simple: 1, medium: 3, complex: 8, epic: 24 } as const
+  const estimatedHours = tasks.reduce(
+    (sum, t) => sum + COMPLEXITY_HOURS[t.estimated_complexity],
+    0,
+  )
+
   return (
     <section
-      className="flex w-72 shrink-0 flex-col"
+      className="flex w-72 shrink-0 snap-start flex-col"
       data-column-id={column.id}
       aria-labelledby={`task-column-${column.id}-label`}
     >
@@ -77,6 +86,15 @@ export function TaskColumn({ column, tasks, onSelectTask }: TaskColumnProps) {
         >
           {tasks.length}
         </span>
+        {estimatedHours > 0 && (
+          <span
+            className="ml-auto text-[10px] font-mono text-text-muted"
+            aria-label={`Estimated workload: approximately ${estimatedHours} hours`}
+            title="Rough workload based on task complexity (simple=1h, medium=3h, complex=8h, epic=24h)"
+          >
+            ~{estimatedHours}h
+          </span>
+        )}
       </div>
 
       {/* Droppable zone */}

@@ -1,7 +1,9 @@
 import { useState } from 'react'
-import { AlertTriangle, Plus, WifiOff } from 'lucide-react'
+import { Plus } from 'lucide-react'
 import { useProjectsData } from '@/hooks/useProjectsData'
 import { Button } from '@/components/ui/button'
+import { ErrorBanner } from '@/components/ui/error-banner'
+import { ListHeader } from '@/components/ui/list-header'
 import { ProjectsSkeleton } from './projects/ProjectsSkeleton'
 import { ProjectFilters } from './projects/ProjectFilters'
 import { ProjectGridView } from './projects/ProjectGridView'
@@ -24,39 +26,28 @@ export default function ProjectsPage() {
 
   return (
     <div className="space-y-section-gap">
-      <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-foreground">Projects</h1>
-        <div className="flex items-center gap-3">
-          <span className="text-sm text-muted-foreground">
-            {filteredProjects.length} of {totalProjects}
-          </span>
+      <ListHeader
+        title="Projects"
+        count={filteredProjects.length}
+        countLabel={filteredProjects.length === totalProjects ? undefined : `${filteredProjects.length} of ${totalProjects}`}
+        primaryAction={
           <Button size="sm" onClick={() => setCreateOpen(true)}>
-            <Plus className="mr-1 size-4" />
-            Create Project
+            <Plus aria-hidden="true" />
+            New project
           </Button>
-        </div>
-      </div>
+        }
+      />
 
       {error && (
-        <div
-          role="alert"
-          aria-live="assertive"
-          className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/5 p-card text-sm text-danger"
-        >
-          <AlertTriangle className="size-4 shrink-0" />
-          {error}
-        </div>
+        <ErrorBanner severity="error" title="Could not load projects" description={error} />
       )}
 
       {!wsConnected && !loading && (
-        <div
-          role="status"
-          aria-live="polite"
-          className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/5 p-card text-sm text-warning"
-        >
-          <WifiOff className="size-4 shrink-0" />
-          {wsSetupError ?? 'Real-time updates disconnected. Data may be stale.'}
-        </div>
+        <ErrorBanner
+          variant="offline"
+          title="Real-time updates disconnected"
+          description={wsSetupError ?? 'Data may be stale until the connection recovers.'}
+        />
       )}
 
       <ProjectFilters />

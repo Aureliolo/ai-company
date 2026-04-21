@@ -25,7 +25,8 @@ export function AgentCard({
   flashStyle,
 }: AgentCardProps) {
   return (
-    <div
+    <article
+      aria-label={`Agent ${name}${role ? `, ${role}` : ''}`}
       className={cn(
         'rounded-lg border border-border bg-card p-card',
         'transition-all duration-200',
@@ -66,6 +67,6 @@ export function AgentCard({
           </div>
         )}
       </div>
-    </div>
+    </article>
   )
 }

@@ -7,6 +7,7 @@ import { usePolling } from '@/hooks/usePolling'
 import { getHealth } from '@/api/endpoints/health'
 import { formatCurrency } from '@/utils/format'
 import { HEALTH_POLL_INTERVAL } from '@/utils/constants'
+import { LiveRegion } from '@/components/ui/live-region'
 import { ThemeToggle } from '@/components/ui/theme-toggle'
 import { HealthPopover } from '@/components/ui/health-popover'
 import { useWebSocketStore } from '@/stores/websocket'
@@ -141,25 +142,27 @@ export function StatusBar({ onHamburgerClick, sidebarOverlayOpen = false }: Stat
         </button>
       )}
 
-      <StatusItem>
-        <Dot color="bg-accent" />
-        <span>{dataLoaded ? `${totalAgents} agents` : '--'}</span>
-      </StatusItem>
+      <LiveRegion debounceMs={1500} politeness="polite" className="contents">
+        <StatusItem>
+          <Dot color="bg-accent" />
+          <span>{dataLoaded ? `${totalAgents} agents` : '--'}</span>
+        </StatusItem>
 
-      <StatusItem>
-        <Dot color="bg-success" />
-        <span>{dataLoaded ? `${activeAgents} active` : '--'}</span>
-      </StatusItem>
+        <StatusItem>
+          <Dot color="bg-success" />
+          <span>{dataLoaded ? `${activeAgents} active` : '--'}</span>
+        </StatusItem>
 
-      <StatusItem>
-        <Dot color="bg-muted-foreground" />
-        <span>{dataLoaded ? `${idleAgents} idle` : '--'}</span>
-      </StatusItem>
+        <StatusItem>
+          <Dot color="bg-muted-foreground" />
+          <span>{dataLoaded ? `${idleAgents} idle` : '--'}</span>
+        </StatusItem>
 
-      <StatusItem>
-        <Dot color="bg-warning" />
-        <span>{dataLoaded ? `${totalTasks} tasks` : '--'}</span>
-      </StatusItem>
+        <StatusItem>
+          <Dot color="bg-warning" />
+          <span>{dataLoaded ? `${totalTasks} tasks` : '--'}</span>
+        </StatusItem>
+      </LiveRegion>
 
       <Divider />
 

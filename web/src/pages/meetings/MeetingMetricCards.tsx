@@ -17,7 +17,7 @@ export function MeetingMetricCards({ meetings, className }: MeetingMetricCardsPr
   const tokens = totalTokensUsed(meetings)
 
   return (
-    <StaggerGroup className={cn('grid grid-cols-2 gap-grid-gap lg:grid-cols-4', className)}>
+    <StaggerGroup className={cn('grid grid-cols-2 gap-grid-gap md:grid-cols-3 lg:grid-cols-4', className)}>
       <StaggerItem>
         <MetricCard label="TOTAL MEETINGS" value={total} />
       </StaggerItem>

@@ -297,7 +297,8 @@ export default function TaskBoardPage() {
             onDragStart={handleDragStart}
             onDragEnd={handleDragEnd}
           >
-            <div className="flex gap-4 overflow-x-auto pb-4">
+            <div className="flex snap-x snap-mandatory gap-4 overflow-x-auto pb-4 md:snap-none">
+              {/* Each column is min-width-280 so narrow viewports scroll horizontally; keeps drag-drop working at every breakpoint. */}
               {visibleColumns.map((col) => (
                 <TaskColumn
                   key={col.id}

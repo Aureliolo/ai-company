@@ -76,9 +76,9 @@ export function TaskDetailTimeline({ task }: TaskDetailTimelineProps) {
 
   return (
     <div>
-      <span className="text-[11px] font-semibold uppercase tracking-wider text-text-muted">
+      <h3 className="text-[11px] font-semibold uppercase tracking-wider text-text-muted">
         Timeline
-      </span>
+      </h3>
       <TaskStatusIndicator status={task.status} className="sr-only" />
       <ol className="mt-2 space-y-2" aria-label="Task lifecycle timeline">
         {entries.map((entry, idx) => {

@@ -15,7 +15,7 @@ export function ProviderHealthMetrics({ health }: ProviderHealthMetricsProps) {
   )
 
   return (
-    <div className="grid grid-cols-6 gap-grid-gap max-[1279px]:grid-cols-3 max-[767px]:grid-cols-2">
+    <div className="grid grid-cols-2 gap-grid-gap md:grid-cols-3 lg:grid-cols-6">
       <MetricCard
         label="Calls (24h)"
         value={formatNumber(health.calls_last_24h)}
