@@ -1,0 +1,63 @@
+import type { ReactNode } from 'react'
+import { cn } from '@/lib/utils'
+import { formatNumber } from '@/utils/format'
+
+export interface ListHeaderProps {
+  title: string
+  /** Total item count shown in subtle muted text next to the title (e.g. "Tasks (42)"). */
+  count?: number
+  /** Override the count label when the default parenthesised format isn't right. */
+  countLabel?: string
+  description?: string
+  /** Primary action slot (typically a single `<Button>`), rendered top-right. */
+  primaryAction?: ReactNode
+  /** Secondary slot for search/filter/sort controls rendered below the title row on narrow viewports, inline on wide ones. */
+  secondaryActions?: ReactNode
+  className?: string
+}
+
+/**
+ * Standardised header for list / index pages.
+ *
+ * Layout: title + count on the left, primary action on the right, optional
+ * secondary controls wrap below on narrow viewports. Keeps the primary action
+ * placement consistent across the dashboard so operators don't have to hunt
+ * for "New X" between pages.
+ */
+export function ListHeader({
+  title,
+  count,
+  countLabel,
+  description,
+  primaryAction,
+  secondaryActions,
+  className,
+}: ListHeaderProps) {
+  const countText =
+    countLabel ??
+    (count !== undefined ? `(${formatNumber(count)})` : undefined)
+
+  return (
+    <header className={cn('flex flex-col gap-3', className)}>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-baseline gap-2">
+            <h1 className="truncate text-lg font-semibold text-foreground">{title}</h1>
+            {countText && (
+              <span aria-label={count !== undefined ? `${count} items` : undefined} className="shrink-0 font-mono text-sm text-muted-foreground">
+                {countText}
+              </span>
+            )}
+          </div>
+          {description && (
+            <p className="mt-1 text-xs text-muted-foreground">{description}</p>
+          )}
+        </div>
+        {primaryAction && <div className="shrink-0">{primaryAction}</div>}
+      </div>
+      {secondaryActions && (
+        <div className="flex flex-wrap items-center gap-2">{secondaryActions}</div>
+      )}
+    </header>
+  )
+}

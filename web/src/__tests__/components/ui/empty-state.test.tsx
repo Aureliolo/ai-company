@@ -66,4 +66,47 @@ describe('EmptyState', () => {
     const { container } = render(<EmptyState title="Empty" />)
     expect(container.firstChild).toHaveClass('flex', 'items-center', 'justify-center')
   })
+
+  it('renders learnMore link with default label', () => {
+    render(
+      <EmptyState
+        title="No rules"
+        learnMore={{ href: 'https://example.com/docs' }}
+      />,
+    )
+    expect(screen.getByRole('link', { name: /Learn more/i })).toHaveAttribute('href', 'https://example.com/docs')
+  })
+
+  it('learnMore respects custom label', () => {
+    render(
+      <EmptyState
+        title="No rules"
+        learnMore={{ label: 'See the guide', href: 'https://example.com/guide' }}
+      />,
+    )
+    expect(screen.getByRole('link', { name: 'See the guide' })).toBeInTheDocument()
+  })
+
+  it('external learnMore opens in new tab', () => {
+    render(
+      <EmptyState
+        title="Empty"
+        learnMore={{ href: 'https://example.com', external: true }}
+      />,
+    )
+    const link = screen.getByRole('link')
+    expect(link).toHaveAttribute('target', '_blank')
+    expect(link).toHaveAttribute('rel', expect.stringContaining('noopener'))
+  })
+
+  it('internal learnMore does not set target=_blank', () => {
+    render(
+      <EmptyState
+        title="Empty"
+        learnMore={{ href: '/docs/custom-rules' }}
+      />,
+    )
+    const link = screen.getByRole('link')
+    expect(link).not.toHaveAttribute('target')
+  })
 })
