@@ -1,19 +1,9 @@
 import { http, HttpResponse } from 'msw'
-import { beforeEach } from 'vitest'
 import type { SinkInfo, TestSinkResult } from '@/api/types/settings'
 import { useSinksStore } from '@/stores/sinks'
 import { useToastStore } from '@/stores/toast'
 import { apiError, apiSuccess } from '@/mocks/handlers'
 import { server } from '@/test-setup'
-
-// Sinks-store-specific per-test state reset. Global afterEach in
-// test-setup.tsx already clears toasts + notifications persistence,
-// so we only reset the store itself here (and keep a defensive toast
-// clear in case a prior test bypassed the global hook).
-beforeEach(() => {
-  useSinksStore.setState({ sinks: [], loading: false, error: null })
-  useToastStore.getState().dismissAll()
-})
 
 function makeSink(overrides: Partial<SinkInfo> = {}): SinkInfo {
   return {

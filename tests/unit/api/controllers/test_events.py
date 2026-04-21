@@ -38,7 +38,7 @@ class TestEventStreamSSE:
             "session/with/slash",
             "session\nbreak",  # control chars
             "x" * 129,  # over length cap
-            "s$emi-colon",  # special char outside [A-Za-z0-9_-]
+            "s$dollar",  # dollar sign is outside the allowed character class
         ],
         ids=[
             "path_traversal",

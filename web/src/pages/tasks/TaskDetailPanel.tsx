@@ -74,27 +74,29 @@ export function TaskDetailPanel({
     }
   }, [task.id, task.version, onTransition])
 
-  const handleCancel = useCallback(async () => {
+  const handleCancel = useCallback(async (): Promise<boolean> => {
     if (!cancelReason.trim()) {
       useToastStore.getState().add({ variant: 'error', title: 'Please provide a cancellation reason' })
-      return
+      return false
     }
     try {
       await onCancel(task.id, { reason: cancelReason.trim() })
-      setCancelOpen(false)
       setCancelReason('')
+      return true
     } catch {
       useToastStore.getState().add({ variant: 'error', title: 'Failed to cancel task' })
+      return false
     }
   }, [task.id, cancelReason, onCancel])
 
-  const handleDelete = useCallback(async () => {
+  const handleDelete = useCallback(async (): Promise<boolean> => {
     try {
       await onDelete(task.id)
-      setDeleteOpen(false)
       onClose()
+      return true
     } catch {
       useToastStore.getState().add({ variant: 'error', title: 'Failed to delete task' })
+      return false
     }
   }, [task.id, onDelete, onClose])
 

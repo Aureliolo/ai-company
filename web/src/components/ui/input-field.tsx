@@ -33,6 +33,27 @@ interface TextareaProps extends BaseFieldProps, Omit<React.ComponentProps<'texta
 
 export type InputFieldProps = InputProps | TextareaProps
 
+/**
+ * Merge a caller-supplied ARIA id token list with a component-managed
+ * token, preserving both. Prevents caller overrides via ``...domProps``
+ * from silently dropping the component's ``hintId``/``errorId`` so
+ * screen readers continue to receive the validation text.
+ */
+function mergeAriaToken(
+  incoming: string | undefined,
+  managed: string | undefined,
+): string | undefined {
+  const tokens = new Set<string>()
+  if (incoming) {
+    for (const token of incoming.split(/\s+/)) {
+      if (token) tokens.add(token)
+    }
+  }
+  if (managed) tokens.add(managed)
+  if (tokens.size === 0) return undefined
+  return [...tokens].join(' ')
+}
+
 function buildInputClasses({
   hasError,
   hasLeadingIcon,
@@ -161,12 +182,18 @@ function InputVariant(props: InputProps) {
         <input
           id={id}
           ref={ref}
+          {...domProps}
           aria-invalid={hasError}
-          aria-errormessage={hasError ? errorId : undefined}
-          aria-describedby={hint && !hasError ? hintId : undefined}
+          aria-errormessage={mergeAriaToken(
+            domProps['aria-errormessage'],
+            hasError ? errorId : undefined,
+          )}
+          aria-describedby={mergeAriaToken(
+            domProps['aria-describedby'],
+            hint && !hasError ? hintId : undefined,
+          )}
           className={inputClasses}
           onChange={handleChange}
-          {...domProps}
         />
         {trailingElement && (
           <span className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center">
@@ -219,12 +246,18 @@ function TextareaVariant(props: TextareaProps) {
       <textarea
         id={id}
         ref={ref}
+        {...domProps}
         aria-invalid={hasError}
-        aria-errormessage={hasError ? errorId : undefined}
-        aria-describedby={hint && !hasError ? hintId : undefined}
+        aria-errormessage={mergeAriaToken(
+          domProps['aria-errormessage'],
+          hasError ? errorId : undefined,
+        )}
+        aria-describedby={mergeAriaToken(
+          domProps['aria-describedby'],
+          hint && !hasError ? hintId : undefined,
+        )}
         className={cn(inputClasses, 'resize-y')}
         onChange={handleChange}
-        {...domProps}
       />
       <FieldHelp hintId={hintId} errorId={errorId} hint={hint} error={error} />
     </div>

@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import * as approvalsApi from '@/api/endpoints/approvals'
+import { sanitizeWsString } from '@/stores/notifications'
 import { useToastStore } from '@/stores/toast'
 import { getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
@@ -23,12 +24,22 @@ const APPROVAL_RISK_LEVEL_VALUES: ReadonlySet<string> = new Set<ApprovalRiskLeve
   'low', 'medium', 'high', 'critical',
 ])
 
+/** All metadata keys and values must be plain strings. */
+function isStringStringRecord(value: unknown): value is Record<string, string> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
+  for (const [k, v] of Object.entries(value)) {
+    if (typeof k !== 'string' || typeof v !== 'string') return false
+  }
+  return true
+}
+
 /**
  * Type predicate: a WS payload object satisfies the {@link ApprovalResponse}
- * shape so consumers can use it without a cast. ``metadata`` is optional
- * so we accept ``undefined`` / ``null`` / a plain object there. Enum-typed
- * fields (``status``, ``risk_level``) are validated against their declared
- * unions so malformed payloads can't smuggle illegal values into the store.
+ * shape so consumers can use it without a cast. Enum-typed fields
+ * (``status``, ``risk_level``) are validated against their declared
+ * unions, and ``metadata`` must be a plain ``Record<string, string>``
+ * (the contract on ``ApprovalResponse``) so malformed payloads can't
+ * smuggle illegal values or non-string entries into the store.
  */
 function isApprovalShape(
   c: Record<string, unknown>,
@@ -44,10 +55,31 @@ function isApprovalShape(
     typeof c.description === 'string' &&
     typeof c.requested_by === 'string' &&
     typeof c.created_at === 'string' &&
-    (c.metadata === undefined ||
-      c.metadata === null ||
-      (typeof c.metadata === 'object' && !Array.isArray(c.metadata)))
+    isStringStringRecord(c.metadata)
   )
+}
+
+/**
+ * Return a sanitised copy of an ``ApprovalResponse`` with every
+ * untrusted string field (and every metadata entry) routed through
+ * ``sanitizeWsString``. Structurally required fields fall back to
+ * ``''`` if sanitisation drops them; the shape guard above has already
+ * verified they are non-empty strings at ingress time.
+ */
+function sanitiseApproval(c: ApprovalResponse): ApprovalResponse {
+  const metadata: Record<string, string> = {}
+  for (const [key, value] of Object.entries(c.metadata)) {
+    const safeKey = sanitizeWsString(key, 64) ?? ''
+    const safeValue = sanitizeWsString(value, 512) ?? ''
+    if (safeKey) metadata[safeKey] = safeValue
+  }
+  return {
+    ...c,
+    title: sanitizeWsString(c.title, 256) ?? '',
+    description: sanitizeWsString(c.description, 2048) ?? '',
+    requested_by: sanitizeWsString(c.requested_by, 128) ?? '',
+    metadata,
+  }
 }
 
 interface ApprovalsState {
@@ -207,7 +239,7 @@ export const useApprovalsStore = create<ApprovalsState>()((set, get) => ({
       const candidate = payload.approval as Record<string, unknown>
       if (isApprovalShape(candidate)) {
         if (pendingTransitions.has(candidate.id)) return
-        get().upsertApproval(candidate)
+        get().upsertApproval(sanitiseApproval(candidate))
       } else {
         log.error('Received malformed approval payload, skipping upsert', {
           id: sanitizeForLog(candidate.id),

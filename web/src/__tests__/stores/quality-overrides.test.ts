@@ -84,6 +84,7 @@ describe('useQualityOverridesStore', () => {
       expect(result).toBeNull()
       const toasts = useToastStore.getState().toasts
       expect(toasts).toHaveLength(1)
+      expect(toasts[0]!.variant).toBe('error')
       expect(toasts[0]!.title).toBe('Failed to apply quality override')
     })
   })
@@ -114,6 +115,7 @@ describe('useQualityOverridesStore', () => {
       expect(result).toBe(false)
       const toasts = useToastStore.getState().toasts
       expect(toasts).toHaveLength(1)
+      expect(toasts[0]!.variant).toBe('error')
       expect(toasts[0]!.title).toBe('Failed to clear quality override')
     })
   })

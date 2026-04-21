@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import * as meetingsApi from '@/api/endpoints/meetings'
+import { sanitizeWsString } from '@/stores/notifications'
 import { getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 import { createLogger } from '@/lib/logger'
@@ -12,9 +13,23 @@ import type { WsEvent } from '@/api/types/websocket'
 
 const log = createLogger('meetings')
 
+/** Validate that a ``token_usage_by_participant`` map is a plain ``Record<string, number>``. */
+function isTokenUsageMap(value: unknown): value is Record<string, number> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
+  for (const [key, count] of Object.entries(value)) {
+    if (typeof key !== 'string' || typeof count !== 'number') return false
+  }
+  return true
+}
+
 /**
  * Type predicate: a WS payload object satisfies the {@link MeetingResponse}
- * shape so consumers can use it without a cast.
+ * shape so consumers can use it without a cast. ``contribution_rank``
+ * must be a plain string array of agent ids (matching the declared
+ * ``readonly string[]``) and ``token_usage_by_participant`` must be a
+ * plain ``Record<string, number>`` -- accepting non-string ranks or
+ * array-shaped usage maps would let malformed payloads smuggle bad
+ * values into the store.
  */
 function isMeetingShape(
   c: Record<string, unknown>,
@@ -26,9 +41,21 @@ function isMeetingShape(
     typeof c.protocol_type === 'string' &&
     typeof c.token_budget === 'number' &&
     Array.isArray(c.contribution_rank) &&
-    typeof c.token_usage_by_participant === 'object' &&
-    c.token_usage_by_participant !== null
+    c.contribution_rank.every((entry) => typeof entry === 'string') &&
+    isTokenUsageMap(c.token_usage_by_participant)
   )
+}
+
+/**
+ * Return a sanitised copy of a ``MeetingResponse`` with every
+ * untrusted string field routed through ``sanitizeWsString`` so bidi
+ * overrides and control chars never reach the rendered UI.
+ */
+function sanitiseMeeting(c: MeetingResponse): MeetingResponse {
+  return {
+    ...c,
+    meeting_type_name: sanitizeWsString(c.meeting_type_name, 128) ?? '',
+  }
 }
 
 export interface MeetingsState {
@@ -147,7 +174,7 @@ export const useMeetingsStore = create<MeetingsState>()((set, get) => ({
     }
     const candidate = payload.meeting as Record<string, unknown>
     if (isMeetingShape(candidate)) {
-      get().upsertMeeting(candidate)
+      get().upsertMeeting(sanitiseMeeting(candidate))
     } else {
       log.error('Received malformed meeting WS payload, skipping upsert', {
         meeting_id: sanitizeForLog(candidate.meeting_id),

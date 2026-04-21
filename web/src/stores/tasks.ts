@@ -4,21 +4,21 @@ import { getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 import { createLogger } from '@/lib/logger'
 import { useToastStore } from '@/stores/toast'
-import type { Priority, TaskStatus, TaskType } from '@/api/types/enums'
+import {
+  PRIORITY_VALUES,
+  TASK_STATUS_VALUES as TASK_STATUS_VALUES_TUPLE,
+  TASK_TYPE_VALUES as TASK_TYPE_VALUES_TUPLE,
+} from '@/api/types/enums'
+import type { TaskStatus } from '@/api/types/enums'
 
-const TASK_STATUS_VALUES: ReadonlySet<string> = new Set<TaskStatus>([
-  'created', 'assigned', 'in_progress', 'in_review', 'completed',
-  'blocked', 'failed', 'interrupted', 'suspended', 'cancelled',
-  'rejected', 'auth_required',
-])
-
-const TASK_PRIORITY_VALUES: ReadonlySet<string> = new Set<Priority>([
-  'critical', 'high', 'medium', 'low',
-])
-
-const TASK_TYPE_VALUES: ReadonlySet<string> = new Set<TaskType>([
-  'development', 'design', 'research', 'review', 'meeting', 'admin',
-])
+// Runtime-check sets derived from the canonical enum tuples in
+// `@/api/types/enums`. Building them here (rather than re-declaring the
+// literal list) keeps the validator in lockstep with the type union
+// -- drift between the runtime check and the declared enum is caught
+// at compile time.
+const TASK_STATUS_SET: ReadonlySet<string> = new Set<string>(TASK_STATUS_VALUES_TUPLE)
+const TASK_PRIORITY_SET: ReadonlySet<string> = new Set<string>(PRIORITY_VALUES)
+const TASK_TYPE_SET: ReadonlySet<string> = new Set<string>(TASK_TYPE_VALUES_TUPLE)
 import type {
   CancelTaskRequest,
   CreateTaskRequest,
@@ -67,23 +67,25 @@ interface TasksState {
 const pendingTransitions = new Set<string>()
 
 /**
- * Type predicate verifying that a WS payload object carries every
- * field on the {@link Task} interface so consumers can use it without
- * a cast. Validates structural shape AND that enum-typed fields
- * (``status``, ``priority``, ``type``) carry values from their declared
- * unions so a malformed payload can't smuggle an illegal status into
- * the store.
+ * Minimum structural check for a ``Task``-shaped WS payload. Validates
+ * the required identifier + enum-typed fields (``status``, ``priority``,
+ * ``type`` -- each checked against the canonical enum tuple so illegal
+ * values cannot be smuggled in) and the two required array fields
+ * (``dependencies``, ``acceptance_criteria``). Additional ``Task``
+ * fields (``created_at``, ``updated_at``, ``assigned_to``, ...) are
+ * intentionally not checked here -- the server is the source of truth
+ * for those and the guard stays focused on the fields the store reads.
  */
 function isTaskShape(c: Record<string, unknown>): c is Record<string, unknown> & Task {
   return (
     typeof c.id === 'string' &&
     typeof c.status === 'string' &&
-    TASK_STATUS_VALUES.has(c.status) &&
+    TASK_STATUS_SET.has(c.status) &&
     typeof c.title === 'string' &&
     typeof c.priority === 'string' &&
-    TASK_PRIORITY_VALUES.has(c.priority) &&
+    TASK_PRIORITY_SET.has(c.priority) &&
     typeof c.type === 'string' &&
-    TASK_TYPE_VALUES.has(c.type) &&
+    TASK_TYPE_SET.has(c.type) &&
     Array.isArray(c.dependencies) &&
     Array.isArray(c.acceptance_criteria)
   )

@@ -112,6 +112,13 @@ describe('useCustomRulesStore mutations', () => {
 
       expect(result?.description).toBe('new')
       expect(useCustomRulesStore.getState().rules).toEqual([updated])
+      const successToasts = useToastStore
+        .getState()
+        .toasts.filter((t) => t.variant === 'success')
+      expect(successToasts).toHaveLength(1)
+      // Format: `Rule <name> updated` -- lock the suffix only so the
+      // assertion stays robust to fixture renaming.
+      expect(successToasts[0]!.title).toMatch(/ updated$/)
     })
   })
 
@@ -138,6 +145,11 @@ describe('useCustomRulesStore mutations', () => {
 
       expect(result).toBe(true)
       expect(useCustomRulesStore.getState().rules).toEqual([])
+      const successToasts = useToastStore
+        .getState()
+        .toasts.filter((t) => t.variant === 'success')
+      expect(successToasts).toHaveLength(1)
+      expect(successToasts[0]!.title).toBe('Rule deleted')
     })
   })
 
@@ -171,6 +183,12 @@ describe('useCustomRulesStore mutations', () => {
 
       expect(result?.enabled).toBe(false)
       expect(useCustomRulesStore.getState().rules).toEqual([toggled])
+      const successToasts = useToastStore
+        .getState()
+        .toasts.filter((t) => t.variant === 'success')
+      expect(successToasts).toHaveLength(1)
+      // Store reports the resulting state, not a generic "toggled".
+      expect(successToasts[0]!.title).toBe('Rule disabled')
     })
   })
 })

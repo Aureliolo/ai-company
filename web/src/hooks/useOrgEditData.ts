@@ -32,7 +32,8 @@ export interface UseOrgEditDataReturn {
   wsSetupError: string | null
 
   // Mirrors the canonical store contract: resolves to `false` on
-  // failure. Callers must null-check rather than try/catch.
+  // failure. Callers must check the boolean result rather than
+  // try/catch.
   updateCompany: (data: UpdateCompanyRequest) => Promise<boolean>
   createDepartment: (data: CreateDepartmentRequest) => Promise<Department>
   updateDepartment: (name: string, data: UpdateDepartmentRequest) => Promise<Department>

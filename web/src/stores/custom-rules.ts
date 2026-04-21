@@ -52,6 +52,15 @@ interface CustomRulesState {
   ) => Promise<CustomRule | null>
   deleteRule: (id: string) => Promise<boolean>
   toggleRule: (id: string) => Promise<CustomRule | null>
+  /**
+   * Run the server-side preview evaluator. Intentionally re-throws on
+   * error rather than adopting the sentinel-null contract the CRUD
+   * mutations use: the caller surface
+   * (``RulePreviewPanel``) displays the error *inline* next to the
+   * preview controls rather than via a toast, so it needs the raw
+   * error message and owns the ``try/catch`` boundary. Keep that
+   * exception here; do not normalise it to ``null``.
+   */
   previewRule: (data: PreviewRequest) => Promise<PreviewResult>
 }
 

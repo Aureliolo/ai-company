@@ -10,7 +10,7 @@ import type {
   AgentPerformanceSummary,
   CareerEvent,
 } from '@/api/types/agents'
-import type { AgentStatus, DepartmentName, SeniorityLevel } from '@/api/types/enums'
+import type { AgentStatus, SeniorityLevel } from '@/api/types/enums'
 import type { Task } from '@/api/types/tasks'
 import type { WsEvent } from '@/api/types/websocket'
 import type { AgentRuntimeStatus } from '@/lib/utils'
@@ -31,9 +31,14 @@ interface AgentsState {
   listLoading: boolean
   listError: string | null
 
-  // Filters
+  // Filters. ``departmentFilter`` is ``string | null`` (not
+  // ``DepartmentName | null``) because departments are sourced from
+  // live company config -- user-created department names are valid
+  // filter values but aren't members of the static ``DepartmentName``
+  // union. Consumers validate against the runtime list of configured
+  // departments before applying.
   searchQuery: string
-  departmentFilter: DepartmentName | null
+  departmentFilter: string | null
   levelFilter: SeniorityLevel | null
   statusFilter: AgentStatus | null
   sortBy: AgentSortKey
@@ -58,7 +63,7 @@ interface AgentsState {
   fetchAgentDetail: (name: string) => Promise<void>
   fetchMoreActivity: (name: string, offset: number) => Promise<void>
   setSearchQuery: (q: string) => void
-  setDepartmentFilter: (d: DepartmentName | null) => void
+  setDepartmentFilter: (d: string | null) => void
   setLevelFilter: (l: SeniorityLevel | null) => void
   setStatusFilter: (s: AgentStatus | null) => void
   setSortBy: (key: AgentSortKey) => void

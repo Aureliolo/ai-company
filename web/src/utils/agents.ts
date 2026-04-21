@@ -21,7 +21,7 @@ import type {
   AgentPerformanceSummary,
   CareerEventType,
 } from '@/api/types/agents'
-import type { AgentStatus, DepartmentName, SeniorityLevel } from '@/api/types/enums'
+import type { AgentStatus, SeniorityLevel } from '@/api/types/enums'
 import type { MetricCardProps } from '@/components/ui/metric-card'
 import type { AgentRuntimeStatus, SemanticColor } from '@/lib/utils'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
@@ -31,7 +31,10 @@ import { formatCurrency } from '@/utils/format'
 
 export interface AgentFilters {
   search?: string
-  department?: DepartmentName
+  // ``department`` is ``string`` (not ``DepartmentName``) so live-config
+  // departments created via the setup wizard are accepted -- the static
+  // enum only covers the built-in set.
+  department?: string
   level?: SeniorityLevel
   status?: AgentStatus
 }

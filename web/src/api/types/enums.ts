@@ -54,6 +54,20 @@ export const AGENT_STATUS_VALUES = [
   'active', 'onboarding', 'on_leave', 'terminated',
 ] as const satisfies readonly AgentStatus[]
 
+export const TASK_STATUS_VALUES = [
+  'created', 'assigned', 'in_progress', 'in_review', 'completed',
+  'blocked', 'failed', 'interrupted', 'suspended', 'cancelled',
+  'rejected', 'auth_required',
+] as const satisfies readonly TaskStatus[]
+
+export const TASK_TYPE_VALUES = [
+  'development', 'design', 'research', 'review', 'meeting', 'admin',
+] as const satisfies readonly TaskType[]
+
+export const PRIORITY_VALUES = [
+  'critical', 'high', 'medium', 'low',
+] as const satisfies readonly Priority[]
+
 export type AutonomyLevel = 'full' | 'semi' | 'supervised' | 'locked'
 
 export type OrgRole = 'owner' | 'department_admin' | 'editor' | 'viewer'
