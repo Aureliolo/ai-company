@@ -342,10 +342,21 @@ class MemoryAdminController(Controller):
         state: State,
         checkpoint_id: str,
     ) -> ApiResponse[None]:
-        """Delete a checkpoint (rejects active checkpoint)."""
+        """Delete a checkpoint (rejects active checkpoint).
+
+        Exception mapping mirrors deploy/rollback so all checkpoint
+        endpoints share the same contract:
+
+        - ``CheckpointNotFoundError`` -> HTTP 404
+        - ``QueryError`` (e.g. attempt to delete the active checkpoint)
+          -> HTTP 409
+        - anything else propagates as HTTP 500
+        """
         service = _build_memory_service(state.app_state)
         try:
             await service.delete_checkpoint(NotBlankStr(checkpoint_id))
+        except CheckpointNotFoundError as exc:
+            raise NotFoundException(detail=str(exc)) from exc
         except QueryError as exc:
             raise ClientException(
                 detail=str(exc),

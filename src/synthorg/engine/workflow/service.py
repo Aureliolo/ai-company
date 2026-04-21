@@ -16,7 +16,9 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workflow_definition import (
     WORKFLOW_DEF_CREATED,
     WORKFLOW_DEF_DELETED,
+    WORKFLOW_DEF_NOT_FOUND,
     WORKFLOW_DEF_UPDATED,
+    WORKFLOW_DEF_VERSION_CONFLICT,
 )
 from synthorg.observability.events.workflow_version import (
     WORKFLOW_VERSION_SNAPSHOT_FAILED,
@@ -109,9 +111,20 @@ class WorkflowService:
         """
         existing = await self._definitions.get(definition_id)
         if existing is None:
+            logger.warning(
+                WORKFLOW_DEF_NOT_FOUND,
+                definition_id=str(definition_id),
+                operation="fetch_for_update",
+            )
             msg = f"Workflow definition {definition_id!r} not found"
             raise WorkflowDefinitionNotFoundError(msg)
         if expected_revision is not None and expected_revision != existing.revision:
+            logger.warning(
+                WORKFLOW_DEF_VERSION_CONFLICT,
+                definition_id=str(definition_id),
+                expected_revision=expected_revision,
+                stored_revision=existing.revision,
+            )
             msg = (
                 f"Workflow definition {definition_id!r} revision conflict: "
                 f"expected {expected_revision}, stored {existing.revision}"

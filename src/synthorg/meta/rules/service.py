@@ -17,6 +17,7 @@ from synthorg.observability.events.meta import (
     META_CUSTOM_RULE_DELETED,
     META_CUSTOM_RULE_FETCH_FAILED,
     META_CUSTOM_RULE_TOGGLED,
+    META_CUSTOM_RULE_UPDATE_REJECTED,
     META_CUSTOM_RULE_UPDATED,
 )
 
@@ -82,6 +83,12 @@ class CustomRulesService:
         """
         forbidden = _IMMUTABLE_RULE_FIELDS.intersection(updates)
         if forbidden:
+            logger.warning(
+                META_CUSTOM_RULE_UPDATE_REJECTED,
+                rule_id=str(rule_id),
+                forbidden_fields=sorted(forbidden),
+                reason="immutable_field_override",
+            )
             msg = f"Immutable custom-rule fields cannot be updated: {sorted(forbidden)}"
             raise ValueError(msg)
         existing = await self._repo.get(rule_id)

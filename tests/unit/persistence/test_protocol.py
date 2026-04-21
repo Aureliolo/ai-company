@@ -668,7 +668,11 @@ class _FakeBackend:
 
     @property
     def project_cost_aggregates(self) -> Any:
-        return None
+        # Same contract as the real backends: raise rather than silently
+        # returning ``None`` so misuse of this fake fails at the
+        # protocol boundary instead of deep inside a service.
+        msg = "project_cost_aggregates not supported by the protocol-compliance fake"
+        raise NotImplementedError(msg)
 
     @property
     def fine_tune_checkpoints(self) -> Any:

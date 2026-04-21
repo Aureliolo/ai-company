@@ -206,11 +206,23 @@ class MemoryService:
     async def delete_checkpoint(self, checkpoint_id: NotBlankStr) -> None:
         """Delete a checkpoint by id.
 
-        The underlying repository raises (typically ``ValueError`` via
-        ``pydantic.ValidationError`` or a domain error) when the target
-        checkpoint is currently active; callers must rollback or
-        deactivate first.
+        The underlying repository is a silent no-op when the target
+        does not exist, so we pre-check and surface
+        :class:`CheckpointNotFoundError` here. The controller maps that
+        to HTTP 404, keeping the contract identical across
+        deploy / rollback / delete endpoints (all three surface 404 for
+        missing checkpoints and 409 for a ``QueryError`` such as
+        attempting to delete the currently-active checkpoint).
+
+        Raises:
+            CheckpointNotFoundError: If the id does not exist.
+            QueryError: On unrecoverable persistence faults (including
+                the domain rule "cannot delete the active checkpoint").
         """
+        existing = await self._checkpoints.get_checkpoint(checkpoint_id)
+        if existing is None:
+            msg = f"Checkpoint {checkpoint_id} not found"
+            raise CheckpointNotFoundError(msg)
         await self._checkpoints.delete_checkpoint(checkpoint_id)
 
     async def list_runs(
