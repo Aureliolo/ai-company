@@ -193,12 +193,18 @@ def safe_error_description(exc: BaseException) -> str:
     # (e.g., custom exceptions that recurse or call a method that
     # itself raises). Fall back to ``repr(exc)`` and, if that also
     # fails, to the type name alone. We never let the log helper
-    # crash the caller.
+    # crash the caller -- except for catastrophic interpreter state
+    # (``MemoryError`` / ``RecursionError``), which must propagate per
+    # project convention so the process can surface the failure.
     try:
         message = str(exc)
+    except MemoryError, RecursionError:
+        raise
     except Exception:  # pragma: no cover - defensive
         try:
             message = repr(exc)
+        except MemoryError, RecursionError:
+            raise
         except Exception:  # pragma: no cover - defensive
             return type_name
     if not message:

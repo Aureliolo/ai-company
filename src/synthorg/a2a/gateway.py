@@ -360,12 +360,19 @@ async def _dispatch_method(
         )
     except MemoryError, RecursionError:
         raise
-    except Exception:
-        logger.exception(
+    except Exception as exc:
+        # A2A is a credential-bearing path: a traceback attached via
+        # ``logger.exception`` would serialise frame-local values from
+        # the validated ``rpc_request`` (peer payloads, auth tokens).
+        # ``warning`` + ``safe_error_description`` keeps operator
+        # triage detail without the stack walk.
+        logger.warning(
             A2A_INBOUND_REJECTED,
             method=method,
             peer_name=peer_name,
             reason="unhandled exception",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         return Response(
             content=_error_response(

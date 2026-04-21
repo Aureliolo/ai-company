@@ -198,7 +198,7 @@ class A2AClient:
                     peer_name=peer_name,
                     url=url_str,
                     error_type=type(ssrf_exc).__name__,
-                    reason=safe_error_description(ssrf_exc),
+                    error=safe_error_description(ssrf_exc),
                 )
                 msg = f"SSRF: blocked outbound URL for peer '{peer_name}'"
                 raise A2AClientError(

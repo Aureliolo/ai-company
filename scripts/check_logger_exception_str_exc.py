@@ -178,6 +178,9 @@ def _scan_file(path: Path) -> list[tuple[int, int]]:
     try:
         source = path.read_text(encoding="utf-8")
     except (UnicodeDecodeError, OSError) as exc:
+        # PEP 758's no-parens form is only valid *without* an ``as``
+        # binding; mixing ``as exc`` with the comma list is a grammar
+        # error under Python 3.14, so the parens are required here.
         msg = f"failed to read {path}: {type(exc).__name__}: {exc}"
         raise InspectionError(msg) from exc
     try:
