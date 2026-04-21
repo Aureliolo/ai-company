@@ -82,6 +82,17 @@ export const DEPARTMENT_NAME_VALUES = [
   'data_analytics', 'operations', 'creative_marketing', 'security',
 ] as const satisfies readonly DepartmentName[]
 
+const DEPARTMENT_NAME_SET: ReadonlySet<string> = new Set(DEPARTMENT_NAME_VALUES)
+
+/**
+ * Type guard for {@link DepartmentName}. Lets callers narrow a raw
+ * string (e.g. from a select element's value) to the strict union
+ * without a cast.
+ */
+export function isDepartmentName(value: string): value is DepartmentName {
+  return DEPARTMENT_NAME_SET.has(value)
+}
+
 export type ProjectStatus =
   | 'planning'
   | 'active'

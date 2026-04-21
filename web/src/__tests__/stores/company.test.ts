@@ -254,19 +254,27 @@ describe('useCompanyStore', () => {
       expect(configFetched).toBe(true)
     })
 
-    it('sets saveError on failure', async () => {
+    it('returns false sentinel + emits error toast on failure', async () => {
+      const { useToastStore } = await import('@/stores/toast')
+      useToastStore.getState().dismissAll()
       server.use(
         http.patch('/api/v1/company', () =>
-          HttpResponse.json(apiError('Forbidden')),
+          HttpResponse.json(apiError('Forbidden'), { status: 403 }),
         ),
       )
       useCompanyStore.setState({ config: mockConfig })
 
-      await expect(
-        useCompanyStore.getState().updateCompany({ company_name: 'X' }),
-      ).rejects.toThrow('Forbidden')
-      expect(useCompanyStore.getState().saveError).toBe('Forbidden')
+      const result = await useCompanyStore
+        .getState()
+        .updateCompany({ company_name: 'X' })
+
+      expect(result).toBe(false)
+      expect(useCompanyStore.getState().saveError).toContain('Forbidden')
       expect(useCompanyStore.getState().savingCount).toBe(0)
+      const toasts = useToastStore.getState().toasts
+      expect(toasts).toHaveLength(1)
+      expect(toasts[0]!.variant).toBe('error')
+      expect(toasts[0]!.title).toBe('Failed to update company')
     })
   })
 

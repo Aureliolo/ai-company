@@ -11,6 +11,23 @@ interface SinksState {
   testConfig: (data: { sink_overrides: string; custom_sinks: string }) => Promise<TestSinkResult>
 }
 
+/** Narrow a JSON.parse result to an object record, returning null for non-objects. */
+function parseAsObjectRecord(value: unknown): Record<string, unknown> | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null
+  return value as Record<string, unknown>
+}
+
+/** Narrow a JSON.parse result to an array of object records (skipping any non-objects). */
+function parseAsObjectRecordArray(value: unknown): Record<string, unknown>[] {
+  if (!Array.isArray(value)) return []
+  const out: Record<string, unknown>[] = []
+  for (const item of value) {
+    const narrowed = parseAsObjectRecord(item)
+    if (narrowed) out.push(narrowed)
+  }
+  return out
+}
+
 function buildOverrideForSink(sink: SinkInfo): Record<string, unknown> {
   const override: Record<string, unknown> = { level: sink.level, json_format: sink.json_format, enabled: sink.enabled }
   if (sink.rotation) {
@@ -48,7 +65,8 @@ export const useSinksStore = create<SinksState>((set, get) => ({
         const overrideEntry = settings.find((s) => s.definition.key === 'sink_overrides')
         if (overrideEntry?.value) {
           const parsed: unknown = JSON.parse(overrideEntry.value)
-          if (parsed && typeof parsed === 'object') existingOverrides = parsed as Record<string, unknown>
+          const narrowed = parseAsObjectRecord(parsed)
+          if (narrowed) existingOverrides = narrowed
         }
         existingOverrides[sink.identifier] = buildOverrideForSink(sink)
         await updateSetting('observability', 'sink_overrides', { value: JSON.stringify(existingOverrides) })
@@ -63,7 +81,7 @@ export const useSinksStore = create<SinksState>((set, get) => ({
         const customEntry = customSettings.find((s) => s.definition.key === 'custom_sinks')
         if (customEntry?.value) {
           const parsed: unknown = JSON.parse(customEntry.value)
-          if (Array.isArray(parsed)) existing = parsed as Record<string, unknown>[]
+          existing = parseAsObjectRecordArray(parsed)
         }
         const merged = existing.filter((s) => s.file_path !== sink.identifier)
         merged.push(custom)

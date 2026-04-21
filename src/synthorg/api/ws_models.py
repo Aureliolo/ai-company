@@ -115,6 +115,11 @@ class WsEvent(BaseModel):
     -- the dict is a mutable reference inside a frozen model.
 
     Attributes:
+        version: Wire-protocol version. Clients MUST ignore events whose
+            version they do not understand. Bump only when introducing a
+            breaking change to ``WsEvent`` -- coordinate with the
+            ``WS_PROTOCOL_VERSION`` constant in
+            ``web/src/utils/constants.ts``.
         event_type: Classification of the event.
         channel: Target channel name.
         timestamp: When the event occurred.
@@ -123,6 +128,11 @@ class WsEvent(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
+    version: int = Field(
+        default=1,
+        ge=1,
+        description="WS wire-protocol version (clients ignore unknown)",
+    )
     event_type: WsEventType = Field(
         description="Event classification",
     )

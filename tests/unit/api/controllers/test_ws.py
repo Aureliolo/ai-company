@@ -205,6 +205,30 @@ class TestWsHandleMessage:
         data = json.loads(result)
         assert data["error"] == "Expected JSON object"
 
+    def test_ping_returns_pong(self) -> None:
+        subscribed: set[str] = set()
+        filters: dict[str, dict[str, str]] = {}
+        result = _handle_message(
+            json.dumps({"action": "ping"}),
+            subscribed,
+            filters,
+            _TEST_USER,
+        )
+        data = json.loads(result)
+        assert data == {"action": "pong"}
+
+    def test_ping_does_not_mutate_subscriptions(self) -> None:
+        subscribed: set[str] = {"tasks"}
+        filters: dict[str, dict[str, str]] = {"tasks": {"agent_id": "a1"}}
+        _handle_message(
+            json.dumps({"action": "ping"}),
+            subscribed,
+            filters,
+            _TEST_USER,
+        )
+        assert subscribed == {"tasks"}
+        assert filters == {"tasks": {"agent_id": "a1"}}
+
 
 @pytest.mark.unit
 class TestWsTicketAuth:
@@ -362,7 +386,11 @@ class TestWsTicketAuth:
         self,
         test_client: TestClient[Any],
     ) -> None:
-        """WS connection with a valid ticket is accepted."""
+        """WS connection with a valid ticket is accepted.
+
+        The server first sends ``{"action": "auth_ok"}`` so the client
+        can transition to ``connected=true`` only after auth completes.
+        """
         from synthorg.api.auth.models import AuthenticatedUser, AuthMethod
 
         app_state = test_client.app.state["app_state"]
@@ -378,12 +406,65 @@ class TestWsTicketAuth:
         with test_client.websocket_connect(
             f"/api/v1/ws?ticket={ticket}",
         ) as ws:
+            ack = json.loads(ws.receive_text())
+            assert ack == {"action": "auth_ok"}
             ws.send_text(
                 json.dumps({"action": "subscribe", "channels": ["tasks"]}),
             )
             resp = json.loads(ws.receive_text())
             assert resp["action"] == "subscribed"
             assert "tasks" in resp["channels"]
+
+    def test_ws_first_message_auth_sends_auth_ok(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        """First-message-auth path sends ``auth_ok`` after ticket validation.
+
+        Closes the flash gap where ``connected=true`` was set client-side
+        before the server validated the ticket.
+        """
+        from synthorg.api.auth.models import AuthenticatedUser, AuthMethod
+
+        app_state = test_client.app.state["app_state"]
+        user = AuthenticatedUser(
+            user_id="test-ws-user-fm",
+            username="test-ceo",
+            role=HumanRole.CEO,
+            auth_method=AuthMethod.WS_TICKET,
+            must_change_password=False,
+        )
+        ticket = app_state.ticket_store.create(user)
+
+        with test_client.websocket_connect("/api/v1/ws") as ws:
+            ws.send_text(json.dumps({"action": "auth", "ticket": ticket}))
+            ack = json.loads(ws.receive_text())
+            assert ack == {"action": "auth_ok"}
+
+    def test_ws_ping_pong_round_trip(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        """Client ping receives a server pong without affecting state."""
+        from synthorg.api.auth.models import AuthenticatedUser, AuthMethod
+
+        app_state = test_client.app.state["app_state"]
+        user = AuthenticatedUser(
+            user_id="test-ws-ping",
+            username="test-ceo",
+            role=HumanRole.CEO,
+            auth_method=AuthMethod.WS_TICKET,
+            must_change_password=False,
+        )
+        ticket = app_state.ticket_store.create(user)
+
+        with test_client.websocket_connect(
+            f"/api/v1/ws?ticket={ticket}",
+        ) as ws:
+            assert json.loads(ws.receive_text())["action"] == "auth_ok"
+            ws.send_text(json.dumps({"action": "ping"}))
+            resp = json.loads(ws.receive_text())
+            assert resp == {"action": "pong"}
 
     def test_ws_auth_middleware_scopes_http_only(self) -> None:
         """Auth middleware must use HTTP-only scopes.
@@ -500,6 +581,128 @@ class TestWsTicketAuth:
         require_password_changed(connection, MagicMock())
         # Reaching here without PermissionDeniedException confirms
         # the guard passes through for WS scope with no user.
+
+
+@pytest.mark.unit
+class TestOutboundPipeline:
+    """Tests for outbound event size cap + per-client backpressure queue."""
+
+    async def test_oversized_event_dropped_without_close(self) -> None:
+        """Events whose JSON exceeds 32 KiB are dropped, socket stays open."""
+        import asyncio
+        from unittest.mock import AsyncMock
+
+        from synthorg.api.controllers.ws import (
+            _MAX_OUTBOUND_EVENT_BYTES,
+            _on_event,
+        )
+
+        socket = AsyncMock()
+        queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=64)
+        big_payload = "x" * (_MAX_OUTBOUND_EVENT_BYTES + 1)
+        event_data = json.dumps(
+            {
+                "channel": "tasks",
+                "event_type": "task.created",
+                "timestamp": "2026-04-21T00:00:00+00:00",
+                "payload": {"data": big_payload},
+            },
+        ).encode()
+
+        await _on_event(
+            event_data,
+            {"tasks"},
+            {},
+            queue,
+            _TEST_USER,
+        )
+
+        assert queue.empty()
+        socket.send_text.assert_not_called()
+        socket.close.assert_not_called()
+
+    async def test_within_size_event_enqueued(self) -> None:
+        """Events under the size cap are enqueued for the consumer."""
+        import asyncio
+
+        from synthorg.api.controllers.ws import _on_event
+
+        queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=64)
+        event_data = json.dumps(
+            {
+                "channel": "tasks",
+                "event_type": "task.created",
+                "timestamp": "2026-04-21T00:00:00+00:00",
+                "payload": {"task_id": "t-1"},
+            },
+        ).encode()
+
+        await _on_event(
+            event_data,
+            {"tasks"},
+            {},
+            queue,
+            _TEST_USER,
+        )
+
+        assert queue.qsize() == 1
+        assert queue.get_nowait() == event_data
+
+    async def test_backpressure_drops_when_queue_full(self) -> None:
+        """When the per-client queue is full, additional events are dropped.
+
+        The queue does not grow beyond its bound, the socket is not
+        closed, and the established events remain readable.
+        """
+        import asyncio
+
+        from synthorg.api.controllers.ws import _on_event
+
+        queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=2)
+
+        def make_event(idx: int) -> bytes:
+            return json.dumps(
+                {
+                    "channel": "tasks",
+                    "event_type": "task.created",
+                    "timestamp": "2026-04-21T00:00:00+00:00",
+                    "payload": {"task_id": f"t-{idx}"},
+                },
+            ).encode()
+
+        for idx in range(5):
+            await _on_event(
+                make_event(idx),
+                {"tasks"},
+                {},
+                queue,
+                _TEST_USER,
+            )
+
+        assert queue.qsize() == 2
+
+    async def test_outbound_consumer_drains_queue(self) -> None:
+        """The consumer task forwards every queued event to the socket."""
+        import asyncio
+        import contextlib
+        from unittest.mock import AsyncMock
+
+        from synthorg.api.controllers.ws import _outbound_consumer
+
+        socket = AsyncMock()
+        queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=8)
+        await queue.put(b'{"channel":"tasks","payload":{"a":1}}')
+        await queue.put(b'{"channel":"tasks","payload":{"a":2}}')
+
+        task = asyncio.create_task(_outbound_consumer(socket, queue))
+        try:
+            await asyncio.wait_for(queue.join(), timeout=1.0)
+        finally:
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+
+        assert socket.send_text.await_count == 2
 
 
 @pytest.mark.unit

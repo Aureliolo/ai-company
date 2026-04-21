@@ -3,6 +3,7 @@ import * as tasksApi from '@/api/endpoints/tasks'
 import { getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 import { createLogger } from '@/lib/logger'
+import { useToastStore } from '@/stores/toast'
 import type { TaskStatus } from '@/api/types/enums'
 import type {
   CancelTaskRequest,
@@ -27,14 +28,17 @@ interface TasksState {
   loadingDetail: boolean
   error: string | null
 
-  // Actions
+  // Actions. Mutations follow the canonical store error contract: on
+  // failure they log + emit an error toast + return a sentinel
+  // (`null` for entity-returning ops, `false` for delete). Callers MUST
+  // NOT wrap these in try/catch; check the sentinel and branch on it.
   fetchTasks: (filters?: TaskFilters) => Promise<void>
   fetchTask: (taskId: string) => Promise<void>
-  createTask: (data: CreateTaskRequest) => Promise<Task>
-  updateTask: (taskId: string, data: UpdateTaskRequest) => Promise<Task>
-  transitionTask: (taskId: string, data: TransitionTaskRequest) => Promise<Task>
-  cancelTask: (taskId: string, data: CancelTaskRequest) => Promise<Task>
-  deleteTask: (taskId: string) => Promise<void>
+  createTask: (data: CreateTaskRequest) => Promise<Task | null>
+  updateTask: (taskId: string, data: UpdateTaskRequest) => Promise<Task | null>
+  transitionTask: (taskId: string, data: TransitionTaskRequest) => Promise<Task | null>
+  cancelTask: (taskId: string, data: CancelTaskRequest) => Promise<Task | null>
+  deleteTask: (taskId: string) => Promise<boolean>
 
   // Real-time
   handleWsEvent: (event: WsEvent) => void
@@ -47,6 +51,24 @@ interface TasksState {
 }
 
 const pendingTransitions = new Set<string>()
+
+/**
+ * Type predicate verifying that a WS payload object carries every
+ * field on the {@link Task} interface so consumers can use it without
+ * a cast. The check is intentionally structural and does not validate
+ * enum values -- those live in deeper validators upstream.
+ */
+function isTaskShape(c: Record<string, unknown>): c is Record<string, unknown> & Task {
+  return (
+    typeof c.id === 'string' &&
+    typeof c.status === 'string' &&
+    typeof c.title === 'string' &&
+    typeof c.priority === 'string' &&
+    typeof c.type === 'string' &&
+    Array.isArray(c.dependencies) &&
+    Array.isArray(c.acceptance_criteria)
+  )
+}
 
 export const useTasksStore = create<TasksState>()((set, get) => ({
   tasks: [],
@@ -78,49 +100,112 @@ export const useTasksStore = create<TasksState>()((set, get) => ({
   },
 
   createTask: async (data) => {
-    const task = await tasksApi.createTask(data)
-    set((s) => ({ tasks: [task, ...s.tasks], total: s.total + 1 }))
-    return task
+    try {
+      const task = await tasksApi.createTask(data)
+      set((s) => ({ tasks: [task, ...s.tasks], total: s.total + 1 }))
+      useToastStore.getState().add({
+        variant: 'success',
+        title: `Task ${task.title} created`,
+      })
+      return task
+    } catch (err) {
+      log.error('Create task failed:', sanitizeForLog(err))
+      useToastStore.getState().add({
+        variant: 'error',
+        title: 'Failed to create task',
+        description: getErrorMessage(err),
+      })
+      return null
+    }
   },
 
   updateTask: async (taskId, data) => {
-    const task = await tasksApi.updateTask(taskId, data)
-    get().upsertTask(task)
-    return task
+    try {
+      const task = await tasksApi.updateTask(taskId, data)
+      get().upsertTask(task)
+      useToastStore.getState().add({
+        variant: 'success',
+        title: `Task ${task.title} updated`,
+      })
+      return task
+    } catch (err) {
+      log.error('Update task failed:', sanitizeForLog(err))
+      useToastStore.getState().add({
+        variant: 'error',
+        title: 'Failed to update task',
+        description: getErrorMessage(err),
+      })
+      return null
+    }
   },
 
   transitionTask: async (taskId, data) => {
-    const task = await tasksApi.transitionTask(taskId, data)
-    get().upsertTask(task)
-    return task
+    try {
+      const task = await tasksApi.transitionTask(taskId, data)
+      get().upsertTask(task)
+      useToastStore.getState().add({
+        variant: 'success',
+        title: `Task ${task.title} -> ${task.status}`,
+      })
+      return task
+    } catch (err) {
+      log.error('Transition task failed:', sanitizeForLog(err))
+      useToastStore.getState().add({
+        variant: 'error',
+        title: 'Failed to transition task',
+        description: getErrorMessage(err),
+      })
+      return null
+    }
   },
 
   cancelTask: async (taskId, data) => {
-    const task = await tasksApi.cancelTask(taskId, data)
-    get().upsertTask(task)
-    return task
+    try {
+      const task = await tasksApi.cancelTask(taskId, data)
+      get().upsertTask(task)
+      useToastStore.getState().add({
+        variant: 'success',
+        title: `Task ${task.title} cancelled`,
+      })
+      return task
+    } catch (err) {
+      log.error('Cancel task failed:', sanitizeForLog(err))
+      useToastStore.getState().add({
+        variant: 'error',
+        title: 'Failed to cancel task',
+        description: getErrorMessage(err),
+      })
+      return null
+    }
   },
 
   deleteTask: async (taskId) => {
-    await tasksApi.deleteTask(taskId)
-    get().removeTask(taskId)
+    try {
+      await tasksApi.deleteTask(taskId)
+      get().removeTask(taskId)
+      useToastStore.getState().add({
+        variant: 'success',
+        title: 'Task deleted',
+      })
+      return true
+    } catch (err) {
+      log.error('Delete task failed:', sanitizeForLog(err))
+      useToastStore.getState().add({
+        variant: 'error',
+        title: 'Failed to delete task',
+        description: getErrorMessage(err),
+      })
+      return false
+    }
   },
 
   handleWsEvent: (event) => {
     const { payload } = event
     if (payload.task && typeof payload.task === 'object' && !Array.isArray(payload.task)) {
       const candidate = payload.task as Record<string, unknown>
-      if (
-        typeof candidate.id === 'string' &&
-        typeof candidate.status === 'string' &&
-        typeof candidate.title === 'string' &&
-        typeof candidate.priority === 'string' &&
-        typeof candidate.type === 'string' &&
-        Array.isArray(candidate.dependencies) &&
-        Array.isArray(candidate.acceptance_criteria)
-      ) {
-        if (pendingTransitions.has(candidate.id as string)) return
-        get().upsertTask(candidate as unknown as Task)
+      if (isTaskShape(candidate)) {
+        if (pendingTransitions.has(candidate.id)) return
+        get().upsertTask(candidate)
       } else {
         log.error('Received malformed task WS payload, skipping upsert', {
           id: sanitizeForLog(candidate.id),

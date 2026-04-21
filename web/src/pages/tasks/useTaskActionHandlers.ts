@@ -5,7 +5,6 @@ import { useTasksStore } from '@/stores/tasks'
 import { useToastStore } from '@/stores/toast'
 import type { TaskStatus } from '@/api/types/enums'
 import type { Task } from '@/api/types/tasks'
-import { getTaskStatusLabel } from '@/utils/tasks'
 
 export interface TaskActionHandlers {
   transitioning: TaskStatus | null
@@ -14,6 +13,15 @@ export interface TaskActionHandlers {
   cancelTask: (reason: string) => Promise<boolean>
 }
 
+/**
+ * Page-level orchestration around the canonical task store mutations.
+ *
+ * The store owns the success/error toast UX -- this hook only adds
+ * page-specific concerns (UI spinner state, navigation on delete,
+ * input validation for cancellation reason). It deliberately does NOT
+ * wrap the store mutations in try/catch; instead it null-checks the
+ * sentinel returns to decide whether to navigate / unwind.
+ */
 export function useTaskActionHandlers(task: Task | null | undefined): TaskActionHandlers {
   const navigate = useNavigate()
   const [transitioning, setTransitioning] = useState<TaskStatus | null>(null)
@@ -27,12 +35,6 @@ export function useTaskActionHandlers(task: Task | null | undefined): TaskAction
           target_status: targetStatus,
           expected_version: task.version,
         })
-        useToastStore.getState().add({
-          variant: 'success',
-          title: `Task moved to ${getTaskStatusLabel(targetStatus)}`,
-        })
-      } catch {
-        useToastStore.getState().add({ variant: 'error', title: 'Transition failed' })
       } finally {
         setTransitioning(null)
       }
@@ -42,11 +44,9 @@ export function useTaskActionHandlers(task: Task | null | undefined): TaskAction
 
   const deleteTask = useCallback(async () => {
     if (!task) return
-    try {
-      await useTasksStore.getState().deleteTask(task.id)
+    const ok = await useTasksStore.getState().deleteTask(task.id)
+    if (ok) {
       navigate(ROUTES.TASKS)
-    } catch {
-      useToastStore.getState().add({ variant: 'error', title: 'Failed to delete task' })
     }
   }, [task, navigate])
 
@@ -61,13 +61,10 @@ export function useTaskActionHandlers(task: Task | null | undefined): TaskAction
         })
         return false
       }
-      try {
-        await useTasksStore.getState().cancelTask(task.id, { reason: trimmed })
-        return true
-      } catch {
-        useToastStore.getState().add({ variant: 'error', title: 'Failed to cancel task' })
-        return false
-      }
+      const result = await useTasksStore
+        .getState()
+        .cancelTask(task.id, { reason: trimmed })
+      return result !== null
     },
     [task],
   )

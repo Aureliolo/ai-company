@@ -1,9 +1,14 @@
 import { create } from 'zustand'
 import { listArtifacts, getArtifact, getArtifactContentText, deleteArtifact as deleteArtifactApi } from '@/api/endpoints/artifacts'
 import { getErrorMessage } from '@/utils/errors'
+import { sanitizeForLog } from '@/utils/logging'
+import { createLogger } from '@/lib/logger'
+import { useToastStore } from '@/stores/toast'
 import type { Artifact } from '@/api/types/artifacts'
 import type { ArtifactType } from '@/api/types/enums'
 import type { WsEvent } from '@/api/types/websocket'
+
+const log = createLogger('artifacts')
 
 /** Content types eligible for inline text preview: text/*, application/json, and YAML. */
 function isPreviewableText(contentType: string): boolean {
@@ -36,10 +41,12 @@ interface ArtifactsState {
   detailLoading: boolean
   detailError: string | null
 
-  // Actions
+  // Actions. Mutations follow the canonical store error contract:
+  // log + error toast + return sentinel (`false`) on failure. Callers
+  // MUST NOT wrap these in try/catch.
   fetchArtifacts: () => Promise<void>
   fetchArtifactDetail: (id: string) => Promise<void>
-  deleteArtifact: (id: string) => Promise<void>
+  deleteArtifact: (id: string) => Promise<boolean>
   setSearchQuery: (q: string) => void
   setTypeFilter: (t: ArtifactType | null) => void
   setCreatedByFilter: (c: string | null) => void
@@ -117,17 +124,32 @@ export const useArtifactsStore = create<ArtifactsState>()((set) => ({
   },
 
   deleteArtifact: async (id: string) => {
-    await deleteArtifactApi(id)
-    set((state) => {
-      const isSelected = state.selectedArtifact?.id === id
-      return {
-        artifacts: state.artifacts.filter((a) => a.id !== id),
-        totalArtifacts: Math.max(0, state.totalArtifacts - 1),
-        selectedArtifact: isSelected ? null : state.selectedArtifact,
-        contentPreview: isSelected ? null : state.contentPreview,
-        detailError: isSelected ? null : state.detailError,
-      }
-    })
+    try {
+      await deleteArtifactApi(id)
+      set((state) => {
+        const isSelected = state.selectedArtifact?.id === id
+        return {
+          artifacts: state.artifacts.filter((a) => a.id !== id),
+          totalArtifacts: Math.max(0, state.totalArtifacts - 1),
+          selectedArtifact: isSelected ? null : state.selectedArtifact,
+          contentPreview: isSelected ? null : state.contentPreview,
+          detailError: isSelected ? null : state.detailError,
+        }
+      })
+      useToastStore.getState().add({
+        variant: 'success',
+        title: 'Artifact deleted',
+      })
+      return true
+    } catch (err) {
+      log.error('Delete artifact failed:', sanitizeForLog(err))
+      useToastStore.getState().add({
+        variant: 'error',
+        title: 'Failed to delete artifact',
+        description: getErrorMessage(err),
+      })
+      return false
+    }
   },
 
   setSearchQuery: (q) => set({ searchQuery: q }),

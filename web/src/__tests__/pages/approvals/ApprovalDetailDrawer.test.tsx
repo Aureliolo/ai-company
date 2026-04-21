@@ -51,10 +51,10 @@ vi.mock('motion/react', async () => {
 function makeHandlers() {
   return {
     onClose: vi.fn(),
-    onApprove: vi.fn<(id: string, data?: { comment?: string }) => Promise<void>>()
-      .mockResolvedValue(undefined),
-    onReject: vi.fn<(id: string, data: { reason: string }) => Promise<void>>()
-      .mockResolvedValue(undefined),
+    onApprove: vi.fn<(id: string, data?: { comment?: string }) => Promise<boolean>>()
+      .mockResolvedValue(true),
+    onReject: vi.fn<(id: string, data: { reason: string }) => Promise<boolean>>()
+      .mockResolvedValue(true),
   }
 }
 
@@ -191,7 +191,11 @@ describe('ApprovalDetailDrawer', () => {
       decided_at: '2026-03-27T15:00:00Z',
       decision_reason: 'All checks passed',
       task_id: 'task-42',
-      metadata: { region: 'eu-west', nested: { deep: true } as unknown as string },
+      // The drawer's metadata renderer falls through to JSON.stringify
+      // for non-string values; the type forbids non-string values, so we
+      // deliberately violate it to exercise that branch.
+      // @ts-expect-error -- intentional: exercise non-string metadata branch
+      metadata: { region: 'eu-west', nested: { deep: true } },
     })
     expect(screen.getByText('Decided By')).toBeInTheDocument()
     expect(screen.getByText('admin-user')).toBeInTheDocument()
@@ -203,27 +207,34 @@ describe('ApprovalDetailDrawer', () => {
     expect(screen.getByText('{"deep":true}')).toBeInTheDocument()
   })
 
-  it('shows error toast when approve fails', async () => {
+  it('keeps the approve dialog open and preserves the comment when onApprove returns false', async () => {
     const user = userEvent.setup()
-    defaultHandlers.onApprove.mockRejectedValueOnce(new Error('Permission denied'))
+    defaultHandlers.onApprove.mockResolvedValueOnce(false)
     renderDrawer()
     await user.click(screen.getByRole('button', { name: /approve/i }))
+    await user.type(screen.getByLabelText('Approval comment'), 'Looks good')
     const approveDialog = screen.getByRole('alertdialog')
     await user.click(within(approveDialog).getByRole('button', { name: /approve/i }))
-    const toasts = useToastStore.getState().toasts
-    expect(toasts.some((t) => t.title === 'Failed to approve')).toBe(true)
+    // Drawer must NOT close the dialog; the underlying store has already
+    // surfaced the error toast.
+    expect(screen.getByRole('alertdialog')).toBeInTheDocument()
+    expect(
+      (screen.getByLabelText('Approval comment') as HTMLTextAreaElement).value,
+    ).toBe('Looks good')
   })
 
-  it('shows error toast when reject fails', async () => {
+  it('keeps the reject dialog open and preserves the reason when onReject returns false', async () => {
     const user = userEvent.setup()
-    defaultHandlers.onReject.mockRejectedValueOnce(new Error('Server error'))
+    defaultHandlers.onReject.mockResolvedValueOnce(false)
     renderDrawer()
     await user.click(screen.getByRole('button', { name: /reject/i }))
-    await user.type(screen.getByLabelText('Rejection reason'), 'Not needed')
+    await user.type(screen.getByLabelText('Rejection reason'), 'Missing context')
     const rejectDialog = screen.getByRole('alertdialog')
     await user.click(within(rejectDialog).getByRole('button', { name: /reject/i }))
-    const toasts = useToastStore.getState().toasts
-    expect(toasts.some((t) => t.title === 'Failed to reject')).toBe(true)
+    expect(screen.getByRole('alertdialog')).toBeInTheDocument()
+    expect(
+      (screen.getByLabelText('Rejection reason') as HTMLTextAreaElement).value,
+    ).toBe('Missing context')
   })
 
   it('successful approve submits with comment', async () => {

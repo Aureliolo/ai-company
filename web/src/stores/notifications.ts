@@ -56,6 +56,12 @@ export interface EnqueueParams {
   readonly href?: string
   readonly entityId?: string
   readonly severity?: NotificationSeverity
+  /**
+   * Optional inline action label + handler forwarded to the toast
+   * fan-out (so e.g. a "Retry" button can sit on a connection-lost
+   * notification). Drawer / browser routes ignore this field today.
+   */
+  readonly toastAction?: { label: string; onClick: () => void }
 }
 
 // ---------------------------------------------------------------------------
@@ -304,6 +310,7 @@ export const useNotificationsStore = create<NotificationsState>()((set, get) => 
           variant: SEVERITY_TO_TOAST_VARIANT[severity],
           title: params.title,
           description: params.description,
+          action: params.toastAction,
         })
       }
 

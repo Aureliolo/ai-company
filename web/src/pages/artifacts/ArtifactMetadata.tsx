@@ -7,8 +7,6 @@ import { ContentTypeBadge } from '@/components/ui/content-type-badge'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useArtifactsStore } from '@/stores/artifacts'
-import { useToastStore } from '@/stores/toast'
-import { getErrorMessage } from '@/utils/errors'
 import { downloadArtifactFile } from '@/utils/download'
 import { formatFileSize, formatDate, formatLabel } from '@/utils/format'
 import { ROUTES } from '@/router/routes'
@@ -45,19 +43,11 @@ export function ArtifactMetadata({ artifact }: ArtifactMetadataProps) {
 
   async function handleDelete() {
     setDeleting(true)
-    try {
-      await useArtifactsStore.getState().deleteArtifact(artifact.id)
-      useToastStore.getState().add({ variant: 'success', title: 'Artifact deleted' })
+    const ok = await useArtifactsStore.getState().deleteArtifact(artifact.id)
+    setDeleting(false)
+    setDeleteOpen(false)
+    if (ok) {
       navigate(ROUTES.ARTIFACTS)
-    } catch (err) {
-      useToastStore.getState().add({
-        variant: 'error',
-        title: 'Delete failed',
-        description: getErrorMessage(err),
-      })
-    } finally {
-      setDeleting(false)
-      setDeleteOpen(false)
     }
   }
 

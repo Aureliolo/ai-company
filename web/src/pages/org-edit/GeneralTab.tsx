@@ -10,7 +10,13 @@ import { Button } from '@/components/ui/button'
 
 export interface GeneralTabProps {
   config: CompanyConfig | null
-  onUpdate: (data: UpdateCompanyRequest) => Promise<void>
+  /**
+   * Sentinel-returning save handler from {@link useOrgEditData}: resolves
+   * to ``true`` on success and ``false`` when the underlying store
+   * mutation failed and already surfaced an error toast. The component
+   * uses the boolean to clear its dirty flag.
+   */
+  onUpdate: (data: UpdateCompanyRequest) => Promise<boolean>
   saving: boolean
 }
 
@@ -54,7 +60,6 @@ export function GeneralTab({ config, onUpdate, saving }: GeneralTabProps) {
     communication_pattern: 'hybrid',
   })
   const [dirty, setDirty] = useState(false)
-  const [submitError, setSubmitError] = useState<string | null>(null)
 
   const prevConfigRef = useRef<typeof config | undefined>(undefined)
   if (config !== prevConfigRef.current) {
@@ -77,18 +82,13 @@ export function GeneralTab({ config, onUpdate, saving }: GeneralTabProps) {
   }, [])
 
   const handleSave = useCallback(async () => {
-    setSubmitError(null)
-    try {
-      await onUpdate({
-        company_name: form.company_name.trim() || undefined,
-        autonomy_level: form.autonomy_level,
-        budget_monthly: form.budget_monthly,
-        communication_pattern: form.communication_pattern.trim() || undefined,
-      })
-      setDirty(false)
-    } catch (err) {
-      setSubmitError(err instanceof Error ? err.message : 'Failed to save')
-    }
+    const ok = await onUpdate({
+      company_name: form.company_name.trim() || undefined,
+      autonomy_level: form.autonomy_level,
+      budget_monthly: form.budget_monthly,
+      communication_pattern: form.communication_pattern.trim() || undefined,
+    })
+    if (ok) setDirty(false)
   }, [form, onUpdate])
 
   if (!config) {
@@ -150,10 +150,6 @@ export function GeneralTab({ config, onUpdate, saving }: GeneralTabProps) {
             if (VALID_COMM_PATTERNS.has(value)) updateForm('communication_pattern', value)
           }}
         />
-
-        {submitError && (
-          <p role="alert" className="text-xs text-danger">{submitError}</p>
-        )}
 
         <Button
           onClick={handleSave}

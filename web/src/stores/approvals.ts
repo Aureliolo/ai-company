@@ -14,6 +14,29 @@ import type { WsEvent } from '@/api/types/websocket'
 
 const log = createLogger('approvals')
 
+/**
+ * Type predicate: a WS payload object satisfies the {@link ApprovalResponse}
+ * shape so consumers can use it without a cast. ``metadata`` is optional
+ * so we accept ``undefined`` / ``null`` / a plain object there.
+ */
+function isApprovalShape(
+  c: Record<string, unknown>,
+): c is Record<string, unknown> & ApprovalResponse {
+  return (
+    typeof c.id === 'string' &&
+    typeof c.status === 'string' &&
+    typeof c.title === 'string' &&
+    typeof c.risk_level === 'string' &&
+    typeof c.action_type === 'string' &&
+    typeof c.description === 'string' &&
+    typeof c.requested_by === 'string' &&
+    typeof c.created_at === 'string' &&
+    (c.metadata === undefined ||
+      c.metadata === null ||
+      (typeof c.metadata === 'object' && !Array.isArray(c.metadata)))
+  )
+}
+
 interface ApprovalsState {
   // Data
   approvals: ApprovalResponse[]
@@ -169,19 +192,9 @@ export const useApprovalsStore = create<ApprovalsState>()((set, get) => ({
     const { payload } = event
     if (payload.approval && typeof payload.approval === 'object' && !Array.isArray(payload.approval)) {
       const candidate = payload.approval as Record<string, unknown>
-      if (
-        typeof candidate.id === 'string' &&
-        typeof candidate.status === 'string' &&
-        typeof candidate.title === 'string' &&
-        typeof candidate.risk_level === 'string' &&
-        typeof candidate.action_type === 'string' &&
-        typeof candidate.description === 'string' &&
-        typeof candidate.requested_by === 'string' &&
-        typeof candidate.created_at === 'string' &&
-        (candidate.metadata === undefined || candidate.metadata === null || (typeof candidate.metadata === 'object' && !Array.isArray(candidate.metadata)))
-      ) {
+      if (isApprovalShape(candidate)) {
         if (pendingTransitions.has(candidate.id)) return
-        get().upsertApproval(candidate as unknown as ApprovalResponse)
+        get().upsertApproval(candidate)
       } else {
         log.error('Received malformed approval payload, skipping upsert', {
           id: sanitizeForLog(candidate.id),

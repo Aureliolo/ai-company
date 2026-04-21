@@ -5,17 +5,35 @@ import { useNavigate } from 'react-router'
 import { useToastStore } from '@/stores/toast'
 import type { AgentNodeData, DepartmentGroupData, OwnerNodeData } from './build-org-tree'
 
-const VALID_NODE_TYPES = new Set(['agent', 'ceo', 'department'])
+type NodeType = ContextMenuState['nodeType']
+
+const VALID_NODE_TYPES = new Set<NodeType>(['agent', 'ceo', 'department'])
+
+function isValidNodeType(value: string | undefined): value is NodeType {
+  return value !== undefined && (VALID_NODE_TYPES as ReadonlySet<string>).has(value)
+}
+
+function isAgentNodeData(data: unknown): data is AgentNodeData {
+  return typeof data === 'object' && data !== null && typeof (data as { name?: unknown }).name === 'string'
+}
+
+function isDepartmentGroupData(data: unknown): data is DepartmentGroupData {
+  return typeof data === 'object' && data !== null && typeof (data as { displayName?: unknown }).displayName === 'string'
+}
+
+function isOwnerNodeData(data: unknown): data is OwnerNodeData {
+  return typeof data === 'object' && data !== null && typeof (data as { displayName?: unknown }).displayName === 'string'
+}
 
 function getNodeLabel(node: Node): string {
   switch (node.type) {
     case 'agent':
     case 'ceo':
-      return (node.data as AgentNodeData).name
+      return isAgentNodeData(node.data) ? node.data.name : node.id
     case 'department':
-      return (node.data as DepartmentGroupData).displayName
+      return isDepartmentGroupData(node.data) ? node.data.displayName : node.id
     case 'owner':
-      return (node.data as OwnerNodeData).displayName
+      return isOwnerNodeData(node.data) ? node.data.displayName : node.id
     default:
       return node.id
   }
@@ -50,10 +68,10 @@ export function useOrgChartSelection(displayNodes: Node[]): OrgChartSelectionRes
   const handleNodeContextMenu = useCallback(
     (event: ReactMouseEvent, node: Node) => {
       event.preventDefault()
-      if (!VALID_NODE_TYPES.has(node.type ?? '')) return
+      if (!isValidNodeType(node.type)) return
       setContextMenu({
         nodeId: node.id,
-        nodeType: node.type as ContextMenuState['nodeType'],
+        nodeType: node.type,
         position: { x: event.clientX, y: event.clientY },
       })
     },

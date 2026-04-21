@@ -37,10 +37,14 @@ from synthorg.api.channels import (
 from synthorg.api.guards import _READ_ROLES, HumanRole
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
+    API_WS_AUTH_OK,
     API_WS_AUTH_STAGE,
+    API_WS_BACKPRESSURE_DROPPED,
     API_WS_CONNECTED,
     API_WS_DISCONNECTED,
+    API_WS_EVENT_DROPPED,
     API_WS_INVALID_MESSAGE,
+    API_WS_PING,
     API_WS_SEND_FAILED,
     API_WS_SUBSCRIBE,
     API_WS_TICKET_INVALID,
@@ -55,7 +59,22 @@ logger = get_logger(__name__)
 _ALL_CHANNELS_SET: frozenset[str] = frozenset(ALL_CHANNELS)
 _MAX_FILTER_KEYS: int = 10
 _MAX_FILTER_VALUE_LEN: int = 256
+# Inbound (client -> server) control-message size cap. Subscribe/unsubscribe
+# /auth/ping payloads max out around 3 KiB even at full filter limits, so 4
+# KiB is a tight DoS guard with deliberate headroom. Keep this in sync with
+# ``WS_MAX_INBOUND_BYTES_DEFAULT`` if/when added to client config.
 _MAX_WS_MESSAGE_BYTES: int = 4096
+# Outbound (server -> client) per-event size cap. Largest realistic event
+# today is COMPANY_UPDATED at ~25-30 KB for a 15+ dept org. 32 KiB covers
+# all current emitters with headroom; oversized events are dropped without
+# closing the socket so a single producer cannot nuke the channel for
+# every subscriber. Mirror in ``web/src/utils/constants.ts`` as
+# ``WS_MAX_MESSAGE_SIZE``.
+_MAX_OUTBOUND_EVENT_BYTES: int = 32_768
+# Per-client outbound queue depth before backpressure drops kick in. Sized
+# generously (~64 events) so a brief stall doesn't drop legitimate traffic
+# while still bounding memory at ~2 MB worst case (64 * 32 KiB).
+_OUTBOUND_QUEUE_DEPTH: int = 64
 
 # Application-layer WS close codes (RFC 6455 §7.4.2: 4000-4999).
 _WS_CLOSE_AUTH_FAILED: int = 4001
@@ -286,14 +305,8 @@ def _channel_allowed(
     return True
 
 
-async def _on_event(
-    event_data: bytes,
-    subscribed: set[str],
-    filters: dict[str, dict[str, str]],
-    socket: WebSocket[Any, Any, Any],
-    conn_user: AuthenticatedUser,
-) -> None:
-    """Filter and forward a single channel event to the client."""
+def _parse_event_payload(event_data: bytes) -> dict[str, Any] | None:
+    """Decode the raw channel payload into a dict, logging+dropping on errors."""
     try:
         event = json.loads(event_data)
     except json.JSONDecodeError:
@@ -302,7 +315,7 @@ async def _on_event(
             data_preview=str(event_data)[:100],
             source="channels_backend",
         )
-        return
+        return None
     except TypeError:
         logger.error(
             API_WS_INVALID_MESSAGE,
@@ -311,7 +324,7 @@ async def _on_event(
             source="channels_backend",
             exc_info=True,
         )
-        return
+        return None
 
     if not isinstance(event, dict):
         logger.warning(
@@ -319,6 +332,30 @@ async def _on_event(
             data_preview=str(event_data)[:100],
             reason="not_a_dict",
         )
+        return None
+    return event
+
+
+async def _on_event(
+    event_data: bytes,
+    subscribed: set[str],
+    filters: dict[str, dict[str, str]],
+    queue: asyncio.Queue[bytes],
+    conn_user: AuthenticatedUser,
+) -> None:
+    """Filter a channel event and enqueue it for the outbound consumer.
+
+    Applies the same subscription + access-control + filter checks as
+    before, then additionally enforces ``_MAX_OUTBOUND_EVENT_BYTES`` and
+    per-client backpressure. Events that pass all checks are enqueued
+    onto the client's bounded outbound queue. Oversized events are
+    dropped with ``API_WS_EVENT_DROPPED``; events that arrive while the
+    queue is full are dropped with ``API_WS_BACKPRESSURE_DROPPED``. In
+    neither case is the socket closed -- a single slow consumer or one
+    oversized emitter must not nuke the channel for everyone.
+    """
+    event = _parse_event_payload(event_data)
+    if event is None:
         return
 
     channel = event.get("channel", "")
@@ -335,13 +372,71 @@ async def _on_event(
     ):
         return
 
+    event_type = event.get("event_type", "")
+    size_bytes = len(event_data)
+    if size_bytes > _MAX_OUTBOUND_EVENT_BYTES:
+        logger.warning(
+            API_WS_EVENT_DROPPED,
+            channel=channel,
+            event_type=str(event_type),
+            size_bytes=size_bytes,
+            max_bytes=_MAX_OUTBOUND_EVENT_BYTES,
+        )
+        return
+
     try:
-        await socket.send_text(event_data.decode("utf-8"))
+        queue.put_nowait(event_data)
+    except asyncio.QueueFull:
+        logger.warning(
+            API_WS_BACKPRESSURE_DROPPED,
+            channel=channel,
+            event_type=str(event_type),
+            queue_depth=queue.qsize(),
+            max_depth=_OUTBOUND_QUEUE_DEPTH,
+        )
+
+
+async def _outbound_consumer(
+    socket: WebSocket[Any, Any, Any],
+    queue: asyncio.Queue[bytes],
+) -> None:
+    """Drain the per-client outbound queue and forward to the socket.
+
+    Runs for the lifetime of the connection. ``WebSocketDisconnect`` is
+    treated as a normal shutdown. Any other transport failure closes
+    the socket with code 1011 and exits; the surrounding
+    ``run_in_background`` context tears the subscription down.
+    """
+    while True:
+        event_data = await queue.get()
+        try:
+            try:
+                await socket.send_text(event_data.decode("utf-8"))
+            except WebSocketDisconnect:
+                logger.debug(API_WS_SEND_FAILED, reason="client_disconnected")
+                return
+            except Exception:
+                logger.error(API_WS_SEND_FAILED, exc_info=True)
+                await socket.close(code=1011, reason="Internal error")
+                return
+        finally:
+            queue.task_done()
+
+
+async def _send_auth_ok(socket: WebSocket[Any, Any, Any]) -> None:
+    """Send the ``auth_ok`` acknowledgement after ticket validation.
+
+    Closes the client-side auth-state flash: clients SHOULD only set
+    ``connected=true`` once this message arrives. Failing to send is
+    treated as a disconnect in progress; the outer handler will clean
+    up.
+    """
+    try:
+        await socket.send_text(json.dumps({"action": "auth_ok"}))
     except WebSocketDisconnect:
-        logger.debug(API_WS_SEND_FAILED, reason="client_disconnected")
-    except Exception:
-        logger.error(API_WS_SEND_FAILED, exc_info=True)
-        await socket.close(code=1011, reason="Internal error")
+        logger.debug(API_WS_SEND_FAILED, reason="disconnect_before_auth_ok")
+        raise
+    logger.debug(API_WS_AUTH_OK)
 
 
 async def _authenticate_ws(
@@ -413,6 +508,16 @@ async def _setup_connection(
     if not already_accepted:
         await socket.accept()
 
+    # Send the auth acknowledgement before any other server frame so
+    # clients can transition to ``connected=true`` only after the server
+    # has validated the ticket. Both auth paths use this -- query-param
+    # auth validates pre-accept, but emitting the same ack keeps the
+    # client-side wire protocol uniform across paths.
+    try:
+        await _send_auth_ok(socket)
+    except WebSocketDisconnect:
+        return None
+
     # Subscribe to all shared channels + the user's private channel.
     user_ch = user_channel(user.user_id)
     all_subs = [*ALL_CHANNELS, user_ch]
@@ -477,15 +582,25 @@ async def ws_handler(
     subscribed: set[str] = {user_ch}
     filters: dict[str, dict[str, str]] = {}
 
+    # Per-client outbound queue isolates a single slow consumer from the
+    # broadcast pipeline. The consumer task drains it and writes to the
+    # socket; the channel callback enqueues with backpressure-aware drop.
+    outbound_queue: asyncio.Queue[bytes] = asyncio.Queue(
+        maxsize=_OUTBOUND_QUEUE_DEPTH,
+    )
+
     async def _event_callback(event_data: bytes) -> None:
         await _on_event(
             event_data,
             subscribed,
             filters,
-            socket,
+            outbound_queue,
             user,
         )
 
+    consumer_task = asyncio.create_task(
+        _outbound_consumer(socket, outbound_queue),
+    )
     try:
         async with subscriber.run_in_background(_event_callback):
             await _receive_loop(
@@ -495,6 +610,18 @@ async def ws_handler(
                 user,
             )
     finally:
+        consumer_task.cancel()
+        try:
+            await consumer_task
+        except asyncio.CancelledError, WebSocketDisconnect:
+            pass
+        except Exception:
+            logger.error(
+                API_WS_TRANSPORT_ERROR,
+                reason="outbound_consumer_failed",
+                client=str(socket.client),
+                exc_info=True,
+            )
         try:
             await channels_plugin.unsubscribe(subscriber)
         except Exception:
@@ -605,6 +732,13 @@ def _handle_message(
     parsed = _parse_ws_message(data)
     if isinstance(parsed, str):
         return parsed
+
+    # Ping is dispatched before generic field validation because it has
+    # no ``channels`` field; running it through ``_validate_ws_fields``
+    # would force callers to send a meaningless empty array.
+    if isinstance(parsed, dict) and parsed.get("action") == "ping":
+        logger.debug(API_WS_PING)
+        return json.dumps({"action": "pong"})
 
     fields = _validate_ws_fields(parsed)
     if isinstance(fields, str):

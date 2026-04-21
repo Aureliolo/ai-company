@@ -69,6 +69,10 @@ API_WS_TICKET_EXPIRED: Final[str] = "api.ws.ticket_expired"
 API_WS_TICKET_INVALID: Final[str] = "api.ws.ticket_invalid"
 API_WS_TICKET_CLEANUP: Final[str] = "api.ws.ticket_cleanup"
 API_WS_AUTH_STAGE: Final[str] = "api.ws.auth_stage"
+API_WS_AUTH_OK: Final[str] = "api.ws.auth_ok"
+API_WS_PING: Final[str] = "api.ws.ping"
+API_WS_EVENT_DROPPED: Final[str] = "api.ws.event_dropped"
+API_WS_BACKPRESSURE_DROPPED: Final[str] = "api.ws.backpressure_dropped"
 
 # SSE streaming
 API_SSE_PULL_MODEL_FAILED: Final[str] = "api.sse.pull_model_failed"

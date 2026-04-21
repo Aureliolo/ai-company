@@ -9,8 +9,25 @@ export const APP_NAME = 'SynthOrg'
 export const WS_RECONNECT_BASE_DELAY = 1000
 export const WS_RECONNECT_MAX_DELAY = 30000
 export const WS_MAX_RECONNECT_ATTEMPTS = 20
-/** Max incoming WS message size (bytes). Distinct from backend's 4 KiB client-message cap. */
-export const WS_MAX_MESSAGE_SIZE = 131072
+/**
+ * Max incoming WS event size (bytes). Mirrors the server's
+ * `_MAX_OUTBOUND_EVENT_BYTES` in `src/synthorg/api/controllers/ws.py`.
+ * The 4 KiB cap on outbound (client → server) control messages is
+ * enforced server-side and is intentionally tighter than this inbound cap.
+ */
+export const WS_MAX_MESSAGE_SIZE = 32_768
+/** Heartbeat interval. 20s sits comfortably under the typical 60s proxy idle close. */
+export const WS_HEARTBEAT_INTERVAL_MS = 20_000
+/** Max wait for a pong reply before treating the socket as dead and reconnecting. */
+export const WS_PONG_TIMEOUT_MS = 10_000
+/**
+ * Wire-protocol version that this client understands. Events whose
+ * `version` is absent are treated as `1`. Events whose `version` differs
+ * are logged + discarded so a future server roll-out can ship breaking
+ * changes without crashing older clients. Mirrors `WsEvent.version` in
+ * `src/synthorg/api/ws_models.py`.
+ */
+export const WS_PROTOCOL_VERSION = 1
 
 export const HEALTH_POLL_INTERVAL = 15000
 

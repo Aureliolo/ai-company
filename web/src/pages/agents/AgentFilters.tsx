@@ -4,6 +4,7 @@ import { useAgentsStore } from '@/stores/agents'
 import { useCompanyStore } from '@/stores/company'
 import {
   AGENT_STATUS_VALUES,
+  isDepartmentName,
   SENIORITY_LEVEL_VALUES,
   type AgentStatus,
   type DepartmentName,
@@ -69,8 +70,10 @@ export function AgentFilters({ className }: { className?: string }) {
       <select
         value={departmentFilter ?? ''}
         onChange={(e) => {
-          const v = e.target.value as DepartmentName
-          setDepartmentFilter(v && validDepartmentNames.has(v) ? v : null)
+          const v = e.target.value
+          setDepartmentFilter(
+            isDepartmentName(v) && validDepartmentNames.has(v) ? v : null,
+          )
         }}
         className="h-9 rounded-lg border border-border bg-card px-3 text-sm text-foreground focus:border-accent focus:outline-none"
         aria-label="Filter by department"

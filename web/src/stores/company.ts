@@ -17,7 +17,9 @@ import {
   reorderTeams as apiReorderTeams,
 } from '@/api/endpoints/company'
 import { getErrorMessage } from '@/utils/errors'
+import { sanitizeForLog } from '@/utils/logging'
 import { createLogger } from '@/lib/logger'
+import { useToastStore } from '@/stores/toast'
 import type { AgentConfig } from '@/api/types/agents'
 import type { DepartmentHealth } from '@/api/types/analytics'
 import type { DepartmentName } from '@/api/types/enums'
@@ -52,7 +54,12 @@ interface CompanyState {
   fetchDepartmentHealths: () => Promise<void>
   updateFromWsEvent: (event: WsEvent) => void
 
-  updateCompany: (data: UpdateCompanyRequest) => Promise<void>
+  /**
+   * Update top-level company config. Follows the canonical store error
+   * contract: log + error toast + return `false` on failure. Callers
+   * MUST NOT wrap in try/catch.
+   */
+  updateCompany: (data: UpdateCompanyRequest) => Promise<boolean>
   createDepartment: (data: CreateDepartmentRequest) => Promise<Department>
   updateDepartment: (name: string, data: UpdateDepartmentRequest) => Promise<Department>
   deleteDepartment: (name: string) => Promise<void>
@@ -154,9 +161,23 @@ export const useCompanyStore = create<CompanyState>()((set, get) => ({
       // Refetch full config to reflect partial-update response
       await get().fetchCompanyData()
       set((s) => ({ savingCount: Math.max(0, s.savingCount - 1) }))
+      useToastStore.getState().add({
+        variant: 'success',
+        title: 'Company updated',
+      })
+      return true
     } catch (err) {
-      set((s) => ({ savingCount: Math.max(0, s.savingCount - 1), saveError: getErrorMessage(err) }))
-      throw err
+      log.error('Update company failed:', sanitizeForLog(err))
+      set((s) => ({
+        savingCount: Math.max(0, s.savingCount - 1),
+        saveError: getErrorMessage(err),
+      }))
+      useToastStore.getState().add({
+        variant: 'error',
+        title: 'Failed to update company',
+        description: getErrorMessage(err),
+      })
+      return false
     }
   },
 

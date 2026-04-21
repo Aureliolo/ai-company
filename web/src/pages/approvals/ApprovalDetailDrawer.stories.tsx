@@ -32,8 +32,8 @@ const meta: Meta<typeof ApprovalDetailDrawer> = {
   args: {
     open: true,
     onClose: fn(),
-    onApprove: fn().mockResolvedValue(undefined),
-    onReject: fn().mockResolvedValue(undefined),
+    onApprove: fn().mockResolvedValue(true),
+    onReject: fn().mockResolvedValue(true),
   },
 }
 export default meta
@@ -85,7 +85,7 @@ export const Error: Story = {
     loading: false,
     error: 'Failed to load approval details',
     onClose: fn(),
-    onApprove: fn(),
-    onReject: fn(),
+    onApprove: fn().mockResolvedValue(true),
+    onReject: fn().mockResolvedValue(true),
   },
 }

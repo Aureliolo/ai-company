@@ -7,8 +7,6 @@ import { SelectField } from '@/components/ui/select-field'
 import { SegmentedControl } from '@/components/ui/segmented-control'
 import { SliderField } from '@/components/ui/slider-field'
 import { useCustomRulesStore } from '@/stores/custom-rules'
-import { useToastStore } from '@/stores/toast'
-import { getErrorMessage } from '@/utils/errors'
 import type {
   Comparator,
   CreateCustomRuleRequest,
@@ -108,12 +106,10 @@ interface RuleBuilderFormProps {
 
 export function RuleBuilderForm({ editRule, metrics, onClose }: RuleBuilderFormProps) {
   const isEdit = editRule !== null
-  const addToast = useToastStore((s) => s.add)
   const [form, setForm] = useState<FormState>(
     () => (editRule ? formFromRule(editRule) : INITIAL_FORM),
   )
   const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({})
-  const [submitError, setSubmitError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
   const createRule = useCustomRulesStore((s) => s.createRule)
@@ -122,7 +118,6 @@ export function RuleBuilderForm({ editRule, metrics, onClose }: RuleBuilderFormP
   function updateField<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((prev) => ({ ...prev, [key]: value }))
     setErrors((prev) => ({ ...prev, [key]: undefined }))
-    setSubmitError(null)
   }
 
   const selectedMetric = useMemo(
@@ -172,25 +167,12 @@ export function RuleBuilderForm({ editRule, metrics, onClose }: RuleBuilderFormP
     }
 
     setSubmitting(true)
-    try {
-      if (isEdit && editRule) {
-        await updateRule(editRule.id, data)
-        addToast({
-          variant: 'success',
-          title: 'Rule updated',
-        })
-      } else {
-        await createRule(data)
-        addToast({
-          variant: 'success',
-          title: 'Rule created',
-        })
-      }
+    const result = isEdit && editRule
+      ? await updateRule(editRule.id, data)
+      : await createRule(data)
+    setSubmitting(false)
+    if (result) {
       onClose()
-    } catch (err) {
-      setSubmitError(getErrorMessage(err))
-    } finally {
-      setSubmitting(false)
     }
   }
 
@@ -303,10 +285,6 @@ export function RuleBuilderForm({ editRule, metrics, onClose }: RuleBuilderFormP
         threshold={thresholdNum}
         metricLabel={selectedMetric?.label}
       />
-
-      {submitError && (
-        <p className="text-sm text-danger">{submitError}</p>
-      )}
 
       <div className="flex gap-2">
         <Button variant="ghost" onClick={onClose} disabled={submitting}>

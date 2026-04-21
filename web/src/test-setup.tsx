@@ -210,9 +210,14 @@ if (typeof window !== 'undefined') {
       callback(performance.now())
     }, 0)
     timers.add(handle)
+    // type-cast: cross-env timer ID -- @types/node says setTimeout returns
+    // Timeout, the DOM rAF contract says it returns number. There is no
+    // shared base type, and jsdom's setTimeout produces a number at
+    // runtime, so the cast is the bridge.
     return handle as unknown as number
   }
   window.cancelAnimationFrame = (handle: number) => {
+    // type-cast: cross-env timer ID (see requestAnimationFrame above).
     clearTimeout(handle as unknown as ReturnType<typeof setTimeout>)
     timers.delete(handle as unknown as ReturnType<typeof setTimeout>)
   }

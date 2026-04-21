@@ -10,6 +10,30 @@ const log = createLogger('messages')
 
 const MESSAGES_FETCH_LIMIT = 50
 
+/**
+ * Type predicate verifying that ``c`` carries every field on the
+ * ``Message`` interface. Once it returns true the consumer can use
+ * ``c`` as a ``Message`` without a cast.
+ */
+function isMessageShape(
+  c: Record<string, unknown>,
+): c is Record<string, unknown> & Message {
+  return (
+    typeof c.id === 'string' &&
+    typeof c.timestamp === 'string' &&
+    typeof c.sender === 'string' &&
+    typeof c.to === 'string' &&
+    typeof c.channel === 'string' &&
+    typeof c.content === 'string' &&
+    typeof c.type === 'string' &&
+    typeof c.priority === 'string' &&
+    Array.isArray(c.attachments) &&
+    !!c.metadata &&
+    typeof c.metadata === 'object' &&
+    !Array.isArray(c.metadata)
+  )
+}
+
 /** Validate a WS payload and return a typed Message, or null if malformed. */
 function parseWsMessage(
   payload: WsEvent['payload'],
@@ -21,20 +45,7 @@ function parseWsMessage(
   ) return null
 
   const c = payload.message as Record<string, unknown>
-  if (
-    typeof c.id !== 'string' ||
-    typeof c.timestamp !== 'string' ||
-    typeof c.sender !== 'string' ||
-    typeof c.to !== 'string' ||
-    typeof c.channel !== 'string' ||
-    typeof c.content !== 'string' ||
-    typeof c.type !== 'string' ||
-    typeof c.priority !== 'string' ||
-    !Array.isArray(c.attachments) ||
-    !c.metadata ||
-    typeof c.metadata !== 'object' ||
-    Array.isArray(c.metadata)
-  ) {
+  if (!isMessageShape(c)) {
     log.error(
       'Malformed WS payload, skipping',
       {
@@ -46,7 +57,7 @@ function parseWsMessage(
     return null
   }
 
-  return c as unknown as Message
+  return c
 }
 
 interface MessagesState {

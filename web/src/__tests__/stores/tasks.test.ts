@@ -192,21 +192,29 @@ describe('useTasksStore', () => {
       expect(useTasksStore.getState().total).toBe(2)
     })
 
-    it('propagates errors', async () => {
+    it('returns null sentinel + emits error toast on failure', async () => {
+      const { useToastStore } = await import('@/stores/toast')
+      useToastStore.getState().dismissAll()
       server.use(
         http.post('/api/v1/tasks', () =>
-          HttpResponse.json(apiError('Validation failed')),
+          HttpResponse.json(apiError('Validation failed'), { status: 400 }),
         ),
       )
-      await expect(
-        useTasksStore.getState().createTask({
-          title: 'T',
-          description: 'D',
-          type: 'development',
-          project: 'p',
-          created_by: 'a',
-        }),
-      ).rejects.toThrow('Validation failed')
+
+      const result = await useTasksStore.getState().createTask({
+        title: 'T',
+        description: 'D',
+        type: 'development',
+        project: 'p',
+        created_by: 'a',
+      })
+
+      expect(result).toBeNull()
+      const toasts = useToastStore.getState().toasts
+      expect(toasts).toHaveLength(1)
+      expect(toasts[0]!.variant).toBe('error')
+      expect(toasts[0]!.title).toBe('Failed to create task')
+      expect(toasts[0]!.description).toContain('Validation failed')
     })
   })
 
@@ -222,7 +230,7 @@ describe('useTasksStore', () => {
       const result = await useTasksStore
         .getState()
         .updateTask('task-1', { title: 'Updated title' })
-      expect(result.title).toBe('Updated title')
+      expect(result?.title).toBe('Updated title')
       expect(useTasksStore.getState().tasks[0]!.title).toBe('Updated title')
     })
   })
@@ -239,7 +247,7 @@ describe('useTasksStore', () => {
       const result = await useTasksStore
         .getState()
         .transitionTask('task-1', { target_status: 'in_progress' })
-      expect(result.status).toBe('in_progress')
+      expect(result?.status).toBe('in_progress')
       expect(useTasksStore.getState().tasks[0]!.status).toBe('in_progress')
     })
   })
@@ -256,7 +264,7 @@ describe('useTasksStore', () => {
       const result = await useTasksStore
         .getState()
         .cancelTask('task-1', { reason: 'No longer needed' })
-      expect(result.status).toBe('cancelled')
+      expect(result?.status).toBe('cancelled')
     })
   })
 

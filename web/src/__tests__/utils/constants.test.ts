@@ -23,7 +23,10 @@ describe('constants', () => {
       expect(WS_RECONNECT_BASE_DELAY).toBe(1000)
       expect(WS_RECONNECT_MAX_DELAY).toBe(30000)
       expect(WS_MAX_RECONNECT_ATTEMPTS).toBe(20)
-      expect(WS_MAX_MESSAGE_SIZE).toBe(131072)
+      // 32 KiB matches the server's _MAX_OUTBOUND_EVENT_BYTES; the
+      // pre-WEB-1 value of 128 KiB was 4x larger than any realistic
+      // event payload and decoupled from the server-side cap.
+      expect(WS_MAX_MESSAGE_SIZE).toBe(32_768)
     })
   })
 

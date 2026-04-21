@@ -308,10 +308,12 @@ export default function ApprovalsPage() {
             onApprove={async (id, data) => {
               const result = await approveOne(id, data)
               if (result) handleCloseDrawer()
+              return result !== null
             }}
             onReject={async (id, data) => {
               const result = await rejectOne(id, data)
               if (result) handleCloseDrawer()
+              return result !== null
             }}
             loading={loadingDetail}
             error={detailError}

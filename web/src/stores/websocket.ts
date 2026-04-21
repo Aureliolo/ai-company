@@ -10,7 +10,15 @@ import { AxiosError } from 'axios'
 import { WS_CHANNELS } from '@/api/types/websocket'
 import type { WsChannel, WsEvent, WsEventHandler, WsSubscriptionFilters } from '@/api/types/websocket'
 import { getWsTicket } from '@/api/endpoints/auth'
-import { WS_RECONNECT_BASE_DELAY, WS_RECONNECT_MAX_DELAY, WS_MAX_RECONNECT_ATTEMPTS, WS_MAX_MESSAGE_SIZE } from '@/utils/constants'
+import {
+  WS_HEARTBEAT_INTERVAL_MS,
+  WS_MAX_MESSAGE_SIZE,
+  WS_MAX_RECONNECT_ATTEMPTS,
+  WS_PONG_TIMEOUT_MS,
+  WS_PROTOCOL_VERSION,
+  WS_RECONNECT_BASE_DELAY,
+  WS_RECONNECT_MAX_DELAY,
+} from '@/utils/constants'
 import { sanitizeForLog } from '@/utils/logging'
 import { createLogger } from '@/lib/logger'
 
@@ -33,6 +41,8 @@ function subscriptionKey(channels: WsChannel[], filters?: Record<string, string>
 let socket: WebSocket | null = null
 let reconnectAttempts = 0
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+let heartbeatTimer: ReturnType<typeof setInterval> | null = null
+let pongTimer: ReturnType<typeof setTimeout> | null = null
 let intentionalClose = false
 let shouldBeConnected = false
 let connectPromise: Promise<void> | null = null
@@ -50,6 +60,12 @@ interface WebSocketState {
 
   connect: () => Promise<void>
   disconnect: () => void
+  /**
+   * Reset reconnect bookkeeping after the user explicitly asks for a
+   * fresh attempt -- usually wired to a "Retry" button surfaced on the
+   * reconnect-exhausted toast/badge.
+   */
+  retry: () => Promise<void>
   subscribe: (channels: WsChannel[], filters?: WsSubscriptionFilters) => void
   unsubscribe: (channels: WsChannel[]) => void
   onChannelEvent: (channel: WsChannel | '*', handler: WsEventHandler) => void
@@ -82,6 +98,27 @@ function isWsEvent(msg: Record<string, unknown>): msg is Record<string, unknown>
   )
 }
 
+/**
+ * Resolve the wire-protocol version of an incoming event. Absent
+ * ``version`` is treated as ``1`` for backwards compatibility with
+ * pre-versioning servers.
+ */
+function eventVersion(msg: Record<string, unknown>): number {
+  return typeof msg.version === 'number' ? msg.version : 1
+}
+
+/**
+ * Narrow an unknown JSON value to a plain object record. Returns
+ * ``null`` for primitives, arrays, and ``null`` so downstream message
+ * handlers do not need a cast to read object fields.
+ */
+function asObjectRecord(data: unknown): Record<string, unknown> | null {
+  if (typeof data !== 'object' || data === null || Array.isArray(data)) {
+    return null
+  }
+  return data as Record<string, unknown>
+}
+
 /** Validate that a channels array from a server ack contains only known channel strings. */
 function isWsChannelArray(arr: unknown): arr is WsChannel[] {
   return Array.isArray(arr) && arr.every((c) => typeof c === 'string' && VALID_WS_CHANNELS.has(c))
@@ -107,6 +144,55 @@ function dispatchEvent(event: WsEvent) {
 }
 
 // ── Store ───────────────────────────────────────────────────
+
+/**
+ * Stop any in-flight heartbeat / pong-timeout timers. Idempotent and
+ * safe to call from any teardown path (reconnect, disconnect, close).
+ */
+function stopHeartbeat() {
+  if (heartbeatTimer) {
+    clearInterval(heartbeatTimer)
+    heartbeatTimer = null
+  }
+  if (pongTimer) {
+    clearTimeout(pongTimer)
+    pongTimer = null
+  }
+}
+
+/**
+ * Begin sending pings every {@link WS_HEARTBEAT_INTERVAL_MS}. Each
+ * ping arms a {@link WS_PONG_TIMEOUT_MS} timer; if the matching pong
+ * doesn't arrive in time the socket is closed which triggers the
+ * normal reconnect path.
+ *
+ * The heartbeat is bound to a specific socket so a stale generation
+ * cannot survive a reconnect.
+ */
+function startHeartbeat(target: WebSocket) {
+  stopHeartbeat()
+  heartbeatTimer = setInterval(() => {
+    if (socket !== target || target.readyState !== WebSocket.OPEN) {
+      stopHeartbeat()
+      return
+    }
+    try {
+      target.send(JSON.stringify({ action: 'ping' }))
+    } catch (err) {
+      log.warn('Heartbeat ping send failed:', err)
+      target.close()
+      return
+    }
+    if (pongTimer) clearTimeout(pongTimer)
+    pongTimer = setTimeout(() => {
+      log.warn('Pong timeout reached, closing socket to trigger reconnect')
+      pongTimer = null
+      if (socket === target) {
+        target.close()
+      }
+    }, WS_PONG_TIMEOUT_MS)
+  }, WS_HEARTBEAT_INTERVAL_MS)
+}
 
 export const useWebSocketStore = create<WebSocketState>()((set) => {
   function scheduleReconnect() {
@@ -162,7 +248,11 @@ export const useWebSocketStore = create<WebSocketState>()((set) => {
       // Guard: if a newer connection replaced us, bail out
       if (socket !== thisSocket) return
 
-      // Send auth ticket as first message (keeps ticket out of URL/logs/history)
+      // Send auth ticket as first message (keeps ticket out of URL/logs/history).
+      // ``connected`` deliberately stays ``false`` until the server confirms
+      // the ticket via ``{ action: "auth_ok" }`` -- this closes the
+      // pre-existing flash where the UI announced connectivity before the
+      // server had validated the ticket.
       try {
         thisSocket.send(JSON.stringify({ action: 'auth', ticket }))
       } catch (err) {
@@ -171,12 +261,10 @@ export const useWebSocketStore = create<WebSocketState>()((set) => {
         return
       }
 
-      // Note: connected is set before the server confirms the auth ticket.
-      // If auth fails, onclose fires immediately with code 4001/4003 and
-      // clears connected.  The brief true-then-false flash is inherent to
-      // first-message auth (server must accept the upgrade to read the ticket).
-      set({ connected: true })
-      reconnectAttempts = 0
+      // Replay any active subscriptions. The server processes them after
+      // auth completes, so the order on the wire is auth -> subscribe(s),
+      // and the server's auth_ok frame can land before or after the
+      // subscribe ack -- both orderings are safe.
       pendingSubscriptions = []
       for (const sub of activeSubscriptions) {
         try {
@@ -201,12 +289,28 @@ export const useWebSocketStore = create<WebSocketState>()((set) => {
         return
       }
 
-      if (typeof data !== 'object' || data === null || Array.isArray(data)) {
+      const msg = asObjectRecord(data)
+      if (!msg) {
         log.error('Message is not a JSON object, discarding')
         return
       }
 
-      const msg = data as Record<string, unknown>
+      if (msg.action === 'auth_ok') {
+        // Server has validated the ticket. NOW we can flip connected
+        // and start the heartbeat -- this closes the pre-existing flash.
+        set({ connected: true })
+        reconnectAttempts = 0
+        startHeartbeat(thisSocket)
+        return
+      }
+
+      if (msg.action === 'pong') {
+        if (pongTimer) {
+          clearTimeout(pongTimer)
+          pongTimer = null
+        }
+        return
+      }
 
       if (msg.action === 'subscribed' || msg.action === 'unsubscribed') {
         if (isWsChannelArray(msg.channels)) {
@@ -222,6 +326,16 @@ export const useWebSocketStore = create<WebSocketState>()((set) => {
       }
 
       if (isWsEvent(msg)) {
+        const version = eventVersion(msg)
+        if (version !== WS_PROTOCOL_VERSION) {
+          log.warn('Discarding event with unsupported wire version:', {
+            received: version,
+            supported: WS_PROTOCOL_VERSION,
+            event_type: msg.event_type,
+            channel: msg.channel,
+          })
+          return
+        }
         dispatchEvent(msg)
       } else {
         log.warn('Message failed WsEvent validation, discarding:', {
@@ -236,6 +350,7 @@ export const useWebSocketStore = create<WebSocketState>()((set) => {
     thisSocket.onclose = (event: CloseEvent) => {
       // Guard: only act on our own socket, not a stale reference
       if (socket !== thisSocket) return
+      stopHeartbeat()
       set({ connected: false })
       socket = null
 
@@ -285,6 +400,7 @@ export const useWebSocketStore = create<WebSocketState>()((set) => {
         clearTimeout(reconnectTimer)
         reconnectTimer = null
       }
+      stopHeartbeat()
       if (socket) {
         socket.close()
         socket = null
@@ -293,6 +409,20 @@ export const useWebSocketStore = create<WebSocketState>()((set) => {
       pendingSubscriptions = []
       activeSubscriptions.length = 0
       channelHandlers.clear()
+    },
+
+    async retry() {
+      // Wired to the "Retry" action surfaced on reconnect-exhausted
+      // toasts and badges. Resets the failure budget and asks the
+      // store to attempt a fresh connect; the regular reconnect /
+      // auth_ok / heartbeat path takes over from there.
+      reconnectAttempts = 0
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer)
+        reconnectTimer = null
+      }
+      set({ reconnectExhausted: false })
+      await useWebSocketStore.getState().connect()
     },
 
     subscribe(channels: WsChannel[], filters?: WsSubscriptionFilters) {

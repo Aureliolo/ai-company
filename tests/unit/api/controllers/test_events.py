@@ -30,6 +30,50 @@ class TestEventStreamSSE:
         # Missing required session_id query param -> 400
         assert resp.status_code == 400
 
+    @pytest.mark.parametrize(
+        "bad_id",
+        [
+            "../etc/passwd",  # path traversal shape
+            "session id",  # whitespace
+            "session/with/slash",
+            "session\nbreak",  # control chars
+            "x" * 129,  # over length cap
+            "s$emi-colon",  # special char outside [A-Za-z0-9_-]
+        ],
+        ids=[
+            "path_traversal",
+            "whitespace",
+            "slash",
+            "newline",
+            "too_long",
+            "special_char",
+        ],
+    )
+    def test_stream_rejects_malformed_session_id(
+        self,
+        test_client: TestClient[Any],
+        bad_id: str,
+    ) -> None:
+        resp = test_client.get(
+            "/api/v1/events/stream",
+            params={"session_id": bad_id},
+            headers=_READ_HEADERS,
+        )
+        assert resp.status_code == 400, (
+            f"session_id={bad_id!r} should be rejected, got {resp.status_code}"
+        )
+
+    def test_interrupts_rejects_malformed_session_id(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        resp = test_client.get(
+            "/api/v1/interrupts",
+            params={"session_id": "../etc/passwd"},
+            headers=_READ_HEADERS,
+        )
+        assert resp.status_code == 400
+
 
 @pytest.mark.unit
 class TestEventStreamResume:

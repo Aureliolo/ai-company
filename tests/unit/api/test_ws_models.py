@@ -47,3 +47,40 @@ class TestWsModels:
         )
         with pytest.raises(ValidationError):
             event.channel = "other"  # type: ignore[misc]
+
+    def test_ws_event_version_defaults_to_one(self) -> None:
+        event = WsEvent(
+            event_type=WsEventType.TASK_CREATED,
+            channel="tasks",
+            timestamp=datetime(2026, 3, 1, tzinfo=UTC),
+        )
+        assert event.version == 1
+
+    def test_ws_event_version_round_trips_in_json(self) -> None:
+        event = WsEvent(
+            event_type=WsEventType.TASK_CREATED,
+            channel="tasks",
+            timestamp=datetime(2026, 3, 1, tzinfo=UTC),
+        )
+        restored = WsEvent.model_validate_json(event.model_dump_json())
+        assert restored.version == 1
+
+    def test_ws_event_explicit_version_accepted(self) -> None:
+        event = WsEvent(
+            event_type=WsEventType.TASK_CREATED,
+            channel="tasks",
+            timestamp=datetime(2026, 3, 1, tzinfo=UTC),
+            version=2,
+        )
+        assert event.version == 2
+
+    def test_ws_event_version_zero_rejected(self) -> None:
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError):
+            WsEvent(
+                event_type=WsEventType.TASK_CREATED,
+                channel="tasks",
+                timestamp=datetime(2026, 3, 1, tzinfo=UTC),
+                version=0,
+            )

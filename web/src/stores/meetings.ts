@@ -12,6 +12,25 @@ import type { WsEvent } from '@/api/types/websocket'
 
 const log = createLogger('meetings')
 
+/**
+ * Type predicate: a WS payload object satisfies the {@link MeetingResponse}
+ * shape so consumers can use it without a cast.
+ */
+function isMeetingShape(
+  c: Record<string, unknown>,
+): c is Record<string, unknown> & MeetingResponse {
+  return (
+    typeof c.meeting_id === 'string' &&
+    typeof c.status === 'string' &&
+    typeof c.meeting_type_name === 'string' &&
+    typeof c.protocol_type === 'string' &&
+    typeof c.token_budget === 'number' &&
+    Array.isArray(c.contribution_rank) &&
+    typeof c.token_usage_by_participant === 'object' &&
+    c.token_usage_by_participant !== null
+  )
+}
+
 export interface MeetingsState {
   // Data
   meetings: MeetingResponse[]
@@ -127,17 +146,8 @@ export const useMeetingsStore = create<MeetingsState>()((set, get) => ({
       return
     }
     const candidate = payload.meeting as Record<string, unknown>
-    if (
-      typeof candidate.meeting_id === 'string' &&
-      typeof candidate.status === 'string' &&
-      typeof candidate.meeting_type_name === 'string' &&
-      typeof candidate.protocol_type === 'string' &&
-      typeof candidate.token_budget === 'number' &&
-      Array.isArray(candidate.contribution_rank) &&
-      typeof candidate.token_usage_by_participant === 'object' &&
-      candidate.token_usage_by_participant !== null
-    ) {
-      get().upsertMeeting(candidate as unknown as MeetingResponse)
+    if (isMeetingShape(candidate)) {
+      get().upsertMeeting(candidate)
     } else {
       log.error('Received malformed meeting WS payload, skipping upsert', {
         meeting_id: sanitizeForLog(candidate.meeting_id),

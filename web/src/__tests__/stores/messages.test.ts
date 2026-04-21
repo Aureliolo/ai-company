@@ -232,11 +232,17 @@ describe('messagesStore', () => {
   })
 
   describe('handleWsEvent', () => {
-    const makeWsEvent = (message: Record<string, unknown>): WsEvent => ({
+    /**
+     * Builds a WS event whose payload carries the message verbatim. The
+     * helper accepts ``unknown`` so tests can pass either a typed
+     * ``Message`` or a deliberately malformed object without juggling
+     * casts at every call site.
+     */
+    const makeWsEvent = (message: unknown): WsEvent => ({
       event_type: 'message.sent',
       channel: 'messages',
       timestamp: new Date().toISOString(),
-      payload: { message },
+      payload: { message: message as WsEvent['payload']['message'] },
     })
 
     it('prepends message to active channel list', () => {
@@ -249,7 +255,7 @@ describe('messagesStore', () => {
       useMessagesStore
         .getState()
         .handleWsEvent(
-          makeWsEvent(newMsg as unknown as Record<string, unknown>),
+          makeWsEvent(newMsg),
           '#engineering',
         )
 
@@ -265,7 +271,7 @@ describe('messagesStore', () => {
       useMessagesStore
         .getState()
         .handleWsEvent(
-          makeWsEvent(newMsg as unknown as Record<string, unknown>),
+          makeWsEvent(newMsg),
           '#engineering',
         )
 
@@ -306,7 +312,7 @@ describe('messagesStore', () => {
       })
 
       useMessagesStore.getState().handleWsEvent(
-        makeWsEvent(msg as unknown as Record<string, unknown>),
+        makeWsEvent(msg),
         '#eng',
       )
 

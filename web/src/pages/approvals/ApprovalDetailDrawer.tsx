@@ -14,15 +14,21 @@ import {
 } from '@/utils/approvals'
 import { formatDate } from '@/utils/format'
 import { useToastStore } from '@/stores/toast'
-import { getErrorMessage } from '@/utils/errors'
 import type { ApprovalResponse, ApproveRequest, RejectRequest } from '@/api/types/approvals'
 
 export interface ApprovalDetailDrawerProps {
   approval: ApprovalResponse | null
   open: boolean
   onClose: () => void
-  onApprove: (id: string, data?: ApproveRequest) => Promise<void>
-  onReject: (id: string, data: RejectRequest) => Promise<void>
+  /**
+   * Resolve to ``true`` on success, ``false`` on failure. The drawer
+   * uses the boolean to decide whether to close the confirmation
+   * dialog and reset its inputs. Failure UX (toast / banner) is owned
+   * by the caller's underlying store mutation -- the drawer does NOT
+   * try/catch.
+   */
+  onApprove: (id: string, data?: ApproveRequest) => Promise<boolean>
+  onReject: (id: string, data: RejectRequest) => Promise<boolean>
   loading?: boolean
   error?: string | null
 }
@@ -150,36 +156,37 @@ export function ApprovalDetailDrawer({
     return () => document.removeEventListener('keydown', handleTab)
   }, [open, loading, approval])
 
-  const handleApprove = useCallback(async () => {
+  const handleApprove = useCallback(async (): Promise<boolean | void> => {
     if (!approval || approval.status !== 'pending') return
     setSubmitting(true)
-    try {
-      await onApprove(approval.id, comment.trim() ? { comment: comment.trim() } : undefined)
-      setApproveOpen(false)
+    const ok = await onApprove(
+      approval.id,
+      comment.trim() ? { comment: comment.trim() } : undefined,
+    )
+    setSubmitting(false)
+    if (ok) {
+      // Inputs reset before ConfirmDialog closes itself.
       setComment('')
-    } catch (err) {
-      useToastStore.getState().add({ variant: 'error', title: 'Failed to approve', description: getErrorMessage(err) })
-    } finally {
-      setSubmitting(false)
+      return true
     }
+    // Returning false keeps the ConfirmDialog open so the user can retry.
+    return false
   }, [approval, comment, onApprove])
 
-  const handleReject = useCallback(async () => {
+  const handleReject = useCallback(async (): Promise<boolean | void> => {
     if (!approval || approval.status !== 'pending') return
     if (!reason.trim()) {
       useToastStore.getState().add({ variant: 'error', title: 'Please provide a rejection reason' })
-      return
+      return false
     }
     setSubmitting(true)
-    try {
-      await onReject(approval.id, { reason: reason.trim() })
-      setRejectOpen(false)
+    const ok = await onReject(approval.id, { reason: reason.trim() })
+    setSubmitting(false)
+    if (ok) {
       setReason('')
-    } catch (err) {
-      useToastStore.getState().add({ variant: 'error', title: 'Failed to reject', description: getErrorMessage(err) })
-    } finally {
-      setSubmitting(false)
+      return true
     }
+    return false
   }, [approval, reason, onReject])
 
   if (!open) return null

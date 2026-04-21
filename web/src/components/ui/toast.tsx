@@ -47,6 +47,19 @@ export function Toast({ toast, onDismiss }: ToastProps) {
         {toast.description && (
           <p className="text-xs text-muted-foreground">{toast.description}</p>
         )}
+        {toast.action && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="mt-1 h-6 px-2 text-xs text-accent hover:text-accent"
+            onClick={() => {
+              toast.action?.onClick()
+              onDismiss(toast.id)
+            }}
+          >
+            {toast.action.label}
+          </Button>
+        )}
       </div>
       {toast.dismissible !== false && (
         <Button

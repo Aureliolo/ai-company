@@ -1,22 +1,15 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
-import { AlertCircle, Shield, Trash2 } from 'lucide-react'
+import { Shield, Trash2 } from 'lucide-react'
 import { SectionCard } from '@/components/ui/section-card'
 import { Button } from '@/components/ui/button'
 import { InputField } from '@/components/ui/input-field'
 import { SliderField } from '@/components/ui/slider-field'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { StatPill } from '@/components/ui/stat-pill'
-import { useToastStore } from '@/stores/toast'
 import { useAuth } from '@/hooks/useAuth'
-import {
-  getQualityOverride,
-  setQualityOverride,
-  clearQualityOverride,
-} from '@/api/endpoints/quality'
-import { getErrorMessage } from '@/utils/errors'
+import { useQualityOverridesStore } from '@/stores/quality-overrides'
 import { formatDateOnly } from '@/utils/format'
 import type { OverrideResponse } from '@/api/types/collaboration'
-import type { AxiosError } from 'axios'
 
 const OVERRIDE_ROLES = ['ceo', 'manager'] as const
 
@@ -31,11 +24,9 @@ export function QualityScoreOverride({
 }: QualityScoreOverrideProps) {
   const [override, setOverride] = useState<OverrideResponse | null>(null)
   const [loading, setLoading] = useState(true)
-  const [fetchError, setFetchError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [clearDialogOpen, setClearDialogOpen] = useState(false)
   const [clearing, setClearing] = useState(false)
-  const addToast = useToastStore((s) => s.add)
   const { userRole } = useAuth()
   const canManageOverrides =
     userRole !== null &&
@@ -54,24 +45,10 @@ export function QualityScoreOverride({
     activeAgentRef.current = agentId
     setLoading(true)
     setOverride(null)
-    setFetchError(null)
-    try {
-      const data = await getQualityOverride(agentId)
-      if (activeAgentRef.current !== agentId) return
-      setOverride(data)
-    } catch (err) {
-      if (activeAgentRef.current !== agentId) return
-      const status = (err as AxiosError)?.response?.status
-      if (status === 404) {
-        setOverride(null)
-      } else {
-        setFetchError(getErrorMessage(err))
-      }
-    } finally {
-      if (activeAgentRef.current === agentId) {
-        setLoading(false)
-      }
-    }
+    const data = await useQualityOverridesStore.getState().getOverride(agentId)
+    if (activeAgentRef.current !== agentId) return
+    setOverride(data)
+    setLoading(false)
   }, [agentId])
 
   useEffect(() => {
@@ -85,37 +62,29 @@ export function QualityScoreOverride({
     }
     setReasonError(undefined)
     setSubmitting(true)
-    try {
-      const data = await setQualityOverride(agentId, {
-        score,
-        reason: reason.trim(),
-        expires_in_days: expiresInDays,
-      })
+    const data = await useQualityOverridesStore.getState().setOverride(agentId, {
+      score,
+      reason: reason.trim(),
+      expires_in_days: expiresInDays,
+    })
+    setSubmitting(false)
+    if (data) {
       setOverride(data)
       setScore(5.0)
       setReason('')
       setExpiresInDays(null)
-      addToast({ variant: 'success', title: 'Quality override applied' })
-    } catch (err) {
-      addToast({ variant: 'error', title: getErrorMessage(err) })
-    } finally {
-      setSubmitting(false)
     }
-  }, [agentId, score, reason, expiresInDays, addToast])
+  }, [agentId, score, reason, expiresInDays])
 
   const handleClear = useCallback(async () => {
     setClearing(true)
-    try {
-      await clearQualityOverride(agentId)
+    const ok = await useQualityOverridesStore.getState().clearOverride(agentId)
+    setClearing(false)
+    if (ok) {
       setOverride(null)
       setClearDialogOpen(false)
-      addToast({ variant: 'success', title: 'Quality override cleared' })
-    } catch (err) {
-      addToast({ variant: 'error', title: getErrorMessage(err) })
-    } finally {
-      setClearing(false)
     }
-  }, [agentId, addToast])
+  }, [agentId])
 
   if (loading) return null
 
@@ -138,12 +107,7 @@ export function QualityScoreOverride({
         ) : undefined
       }
     >
-      {fetchError ? (
-        <div className="flex items-center gap-2 text-sm text-danger">
-          <AlertCircle className="size-4" />
-          <span>{fetchError}</span>
-        </div>
-      ) : override ? (
+      {override ? (
         <div className="space-y-2">
           <div className="flex flex-wrap gap-grid-gap">
             <StatPill label="Score" value={override.score.toFixed(1)} />
