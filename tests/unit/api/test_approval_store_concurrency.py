@@ -87,13 +87,32 @@ class GatedRepo:
 class TestSaveConcurrency:
     """save() must guarantee first-writer-wins under concurrent callers."""
 
-    async def test_concurrent_save_first_writer_wins(self) -> None:
+    @pytest.mark.parametrize(
+        "warm_cache",
+        [
+            pytest.param(True, id="warm-cache"),
+            pytest.param(False, id="cold-cache"),
+        ],
+    )
+    async def test_concurrent_save_first_writer_wins(
+        self,
+        warm_cache: bool,
+    ) -> None:
+        """FWW contract holds regardless of cache state.
+
+        When the cache is warm, both callers hit the cache branch in
+        ``save()``.  When the cache is cold, both must fall through
+        to ``repo.get`` under the lock -- the in-flight marker must
+        still reject the second caller in either case.
+        """
         repo = GatedRepo()
         initial = _make_item()
         repo.items[initial.id] = initial
         store = ApprovalStore(repo=repo)  # type: ignore[arg-type]
-        # Populate cache to avoid repo.get during save.
-        await store.get(initial.id)
+        if warm_cache:
+            # Pre-warm the cache; without this, both saves fall through
+            # to ``repo.get`` under the lock.
+            await store.get(initial.id)
 
         updated_a = initial.model_copy(update={"decision_reason": "reason_a"})
         updated_b = initial.model_copy(update={"decision_reason": "reason_b"})
@@ -161,45 +180,6 @@ class TestSaveConcurrency:
         stored = await store.get(initial.id)
         assert stored is not None
         assert stored.decision_reason == "second"
-
-    async def test_concurrent_save_first_writer_wins_cold_cache(self) -> None:
-        """FWW still holds when the store starts with a cold cache.
-
-        Both callers must pass through ``repo.get`` under the lock; the
-        second must still detect the in-flight marker and return None.
-        """
-        repo = GatedRepo()
-        initial = _make_item()
-        repo.items[initial.id] = initial
-        store = ApprovalStore(repo=repo)  # type: ignore[arg-type]
-        # Do NOT pre-warm the cache -- both saves must load from repo.
-
-        updated_a = initial.model_copy(update={"decision_reason": "a"})
-        updated_b = initial.model_copy(update={"decision_reason": "b"})
-
-        with patch("synthorg.api.approval_store.logger") as mock_logger:
-            task_a = asyncio.create_task(store.save(updated_a))
-            await repo.first_entered.wait()
-            # Same deterministic pattern as the warm-cache variant:
-            # A is parked in repo.save, B runs synchronously here,
-            # hits the in-flight marker, returns None without blocking.
-            result_b = await store.save(updated_b)
-            repo.gate.set()
-            result_a = await task_a
-
-            winners = [r for r in (result_a, result_b) if r is not None]
-            rejections = [r for r in (result_a, result_b) if r is None]
-            assert len(winners) == 1
-            assert len(rejections) == 1
-            assert result_a is not None
-            assert result_b is None
-            assert repo.save_calls == 1
-            conflict_calls = [
-                call
-                for call in mock_logger.warning.call_args_list
-                if call.kwargs.get("error") == "concurrent_save"
-            ]
-            assert len(conflict_calls) == 1
 
     async def test_save_in_flight_cleared_on_repo_error(self) -> None:
         """An exception in repo.save must clear in-flight so retries work."""
