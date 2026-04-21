@@ -1,0 +1,89 @@
+"""Conformance tests for ``ProjectRepository`` (SQLite + Postgres)."""
+
+import pytest
+
+from synthorg.core.enums import ProjectStatus
+from synthorg.core.project import Project
+from synthorg.core.types import NotBlankStr
+from synthorg.persistence.protocol import PersistenceBackend
+
+pytestmark = pytest.mark.integration
+
+
+def _project(
+    *,
+    project_id: str = "proj-001",
+    name: str = "Test Project",
+    status: ProjectStatus = ProjectStatus.PLANNING,
+    lead: str | None = None,
+) -> Project:
+    return Project(
+        id=NotBlankStr(project_id),
+        name=NotBlankStr(name),
+        description="A test project",
+        lead=NotBlankStr(lead) if lead else None,
+        status=status,
+    )
+
+
+class TestProjectRepository:
+    async def test_save_and_get(self, backend: PersistenceBackend) -> None:
+        await backend.projects.save(_project())
+
+        fetched = await backend.projects.get(NotBlankStr("proj-001"))
+        assert fetched is not None
+        assert fetched.id == "proj-001"
+        assert fetched.name == "Test Project"
+        assert fetched.status is ProjectStatus.PLANNING
+
+    async def test_get_missing_returns_none(self, backend: PersistenceBackend) -> None:
+        assert await backend.projects.get(NotBlankStr("ghost")) is None
+
+    async def test_save_upsert(self, backend: PersistenceBackend) -> None:
+        p = _project()
+        await backend.projects.save(p)
+
+        updated = p.model_copy(update={"name": NotBlankStr("Renamed")})
+        await backend.projects.save(updated)
+
+        fetched = await backend.projects.get(NotBlankStr("proj-001"))
+        assert fetched is not None
+        assert fetched.name == "Renamed"
+
+    async def test_list_all(self, backend: PersistenceBackend) -> None:
+        await backend.projects.save(_project(project_id="p1"))
+        await backend.projects.save(_project(project_id="p2"))
+
+        rows = await backend.projects.list_projects()
+        ids = {r.id for r in rows}
+        assert {"p1", "p2"} <= ids
+
+    async def test_list_filter_by_status(self, backend: PersistenceBackend) -> None:
+        await backend.projects.save(
+            _project(project_id="active", status=ProjectStatus.ACTIVE),
+        )
+        await backend.projects.save(
+            _project(project_id="planning", status=ProjectStatus.PLANNING),
+        )
+
+        rows = await backend.projects.list_projects(status=ProjectStatus.ACTIVE)
+        ids = {r.id for r in rows}
+        assert "active" in ids
+        assert "planning" not in ids
+
+    async def test_list_filter_by_lead(self, backend: PersistenceBackend) -> None:
+        await backend.projects.save(_project(project_id="alpha", lead="alice"))
+        await backend.projects.save(_project(project_id="beta", lead="bob"))
+
+        rows = await backend.projects.list_projects(lead=NotBlankStr("alice"))
+        assert [r.id for r in rows] == ["alpha"]
+
+    async def test_delete_existing(self, backend: PersistenceBackend) -> None:
+        await backend.projects.save(_project())
+
+        deleted = await backend.projects.delete(NotBlankStr("proj-001"))
+        assert deleted is True
+        assert await backend.projects.get(NotBlankStr("proj-001")) is None
+
+    async def test_delete_missing(self, backend: PersistenceBackend) -> None:
+        assert await backend.projects.delete(NotBlankStr("ghost")) is False

@@ -51,6 +51,7 @@ CREATE TABLE cost_records (
 
 CREATE INDEX idx_cost_records_agent_id ON cost_records(agent_id);
 CREATE INDEX idx_cost_records_task_id ON cost_records(task_id);
+CREATE INDEX idx_cost_records_timestamp ON cost_records(timestamp DESC);
 
 -- ── Messages ──────────────────────────────────────────────────
 CREATE TABLE messages (
@@ -68,6 +69,8 @@ CREATE TABLE messages (
 
 CREATE INDEX idx_messages_channel ON messages(channel);
 CREATE INDEX idx_messages_timestamp ON messages(timestamp);
+CREATE INDEX idx_messages_sender ON messages(sender);
+CREATE INDEX idx_messages_to ON messages("to");
 
 -- ── Lifecycle events ──────────────────────────────────────────
 CREATE TABLE lifecycle_events (
@@ -961,6 +964,7 @@ CREATE TABLE custom_rules (
     )
 );
 CREATE UNIQUE INDEX custom_rules_name ON custom_rules (name);
+CREATE INDEX idx_custom_rules_enabled ON custom_rules(enabled);
 
 -- Approvals (meta-loop human review queue)
 CREATE TABLE approvals (
@@ -1000,6 +1004,8 @@ CREATE TABLE approvals (
 CREATE INDEX idx_approvals_status ON approvals(status);
 CREATE INDEX idx_approvals_action_type ON approvals(action_type);
 CREATE INDEX idx_approvals_risk_level ON approvals(risk_level);
+CREATE INDEX idx_approvals_requested_by_status ON approvals(requested_by, status);
+CREATE INDEX idx_approvals_status_expires_at ON approvals(status, expires_at);
 
 -- Conflict escalations (#1418: human escalation approval queue).
 -- Persists one row per conflict awaiting a human decision so the

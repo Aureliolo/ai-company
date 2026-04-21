@@ -699,6 +699,15 @@ class FakePersistenceBackend:
             self._ontology_drift_stub = AsyncMock()
         return self._ontology_drift_stub
 
+    @property
+    def project_cost_aggregates(self) -> Any:
+        """Cached fake project cost aggregate repository."""
+        from unittest.mock import AsyncMock
+
+        if not hasattr(self, "_project_cost_aggregates_stub"):
+            self._project_cost_aggregates_stub: Any = AsyncMock()
+        return self._project_cost_aggregates_stub
+
     def build_lockouts(self, auth_config: Any) -> Any:
         """Fake lockout repository builder.
 

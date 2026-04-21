@@ -20,6 +20,7 @@ from synthorg.engine.errors import (
     WorkspaceMergeError,
     WorkspaceSetupError,
 )
+from synthorg.engine.workspace._git_subprocess import run_git_subprocess
 from synthorg.engine.workspace.config import PlannerWorktreesConfig  # noqa: TC001
 from synthorg.engine.workspace.models import (
     MergeConflict,
@@ -137,47 +138,23 @@ class PlannerWorktreeStrategy:
     ) -> tuple[int, str, str]:
         """Run a git command in the repository root.
 
+        Thin wrapper around :func:`run_git_subprocess` so this class
+        stays focused on workflow orchestration rather than subprocess
+        plumbing.
+
         Args:
             *args: Git command arguments.
             cmd_timeout: Maximum seconds to wait for the command.
             log_event: Event constant for timeout error logging.
-                Callers in merge/teardown contexts should pass the
-                appropriate event.
 
         Returns:
             Tuple of (return_code, stdout, stderr).
         """
-        proc = await asyncio.create_subprocess_exec(
-            "git",
+        return await run_git_subprocess(
+            self._repo_root,
             *args,
-            cwd=str(self._repo_root),
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        try:
-            stdout_bytes, stderr_bytes = await asyncio.wait_for(
-                proc.communicate(),
-                timeout=cmd_timeout,
-            )
-        except TimeoutError:
-            proc.kill()
-            await proc.wait()
-            msg = f"git {args[0] if args else ''} timed out after {cmd_timeout}s"
-            logger.exception(
-                log_event,
-                error=msg,
-                args=args,
-            )
-            return (-1, "", msg)
-        except asyncio.CancelledError:
-            proc.kill()
-            await proc.wait()
-            raise
-        rc = proc.returncode if proc.returncode is not None else -1
-        return (
-            rc,
-            stdout_bytes.decode("utf-8", errors="replace").strip(),
-            stderr_bytes.decode("utf-8", errors="replace").strip(),
+            cmd_timeout=cmd_timeout,
+            log_event=log_event,
         )
 
     async def setup_workspace(

@@ -15,7 +15,7 @@ from pydantic import ValidationError
 
 from synthorg.budget.project_cost_aggregate import ProjectCostAggregate
 from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_PROJECT_COST_AGG_DESERIALIZE_FAILED,
     PERSISTENCE_PROJECT_COST_AGG_FETCH_FAILED,
@@ -36,10 +36,12 @@ INSERT INTO project_cost_aggregates
      total_output_tokens, record_count, last_updated)
 VALUES (%s, %s, %s, %s, 1, %s)
 ON CONFLICT(project_id) DO UPDATE SET
-    total_cost = total_cost + EXCLUDED.total_cost,
-    total_input_tokens = total_input_tokens + EXCLUDED.total_input_tokens,
-    total_output_tokens = total_output_tokens + EXCLUDED.total_output_tokens,
-    record_count = record_count + 1,
+    total_cost = project_cost_aggregates.total_cost + EXCLUDED.total_cost,
+    total_input_tokens = project_cost_aggregates.total_input_tokens
+        + EXCLUDED.total_input_tokens,
+    total_output_tokens = project_cost_aggregates.total_output_tokens
+        + EXCLUDED.total_output_tokens,
+    record_count = project_cost_aggregates.record_count + 1,
     last_updated = EXCLUDED.last_updated
 RETURNING project_id, total_cost, total_input_tokens,
           total_output_tokens, record_count, last_updated
@@ -92,10 +94,11 @@ class PostgresProjectCostAggregateRepository:
         try:
             return ProjectCostAggregate.model_validate(row)
         except ValidationError as exc:
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_PROJECT_COST_AGG_DESERIALIZE_FAILED,
                 project_id=project_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             suffix = f" {context}" if context else ""
             msg = (
@@ -127,10 +130,11 @@ class PostgresProjectCostAggregateRepository:
                 await cur.execute(_SELECT_SQL, (project_id,))
                 row = await cur.fetchone()
         except psycopg.Error as exc:
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_PROJECT_COST_AGG_FETCH_FAILED,
                 project_id=project_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             msg = f"Failed to fetch project cost aggregate for {project_id!r}: {exc}"
             raise QueryError(msg) from exc
@@ -225,11 +229,12 @@ class PostgresProjectCostAggregateRepository:
                 )
                 await conn.commit()
         except psycopg.Error as exc:
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_PROJECT_COST_AGG_INCREMENT_FAILED,
                 project_id=project_id,
                 cost=cost,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             msg = (
                 f"Failed to increment project cost aggregate for {project_id!r}: {exc}"

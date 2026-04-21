@@ -1,15 +1,21 @@
 """Postgres implementation of the PresetRepository protocol.
 
 This is the Postgres sibling of src/synthorg/persistence/sqlite/preset_repo.py.
-Postgres stores config_json as native JSONB column.
+Postgres stores config_json as native JSONB column; the protocol's
+``PresetRow`` / ``PresetListRow`` contracts expose it as ``str`` (JSON
+source text) and ISO 8601 strings for timestamps, so the Postgres impl
+normalises ``dict`` -> ``json.dumps`` and ``datetime`` -> ``.isoformat()``
+before returning rows to the caller.
 """
 
-from typing import TYPE_CHECKING
+import json
+from datetime import datetime
+from typing import TYPE_CHECKING, Any
 
 import psycopg
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.preset import (
     PRESET_CUSTOM_COUNT_FAILED,
     PRESET_CUSTOM_DELETE_FAILED,
@@ -28,6 +34,25 @@ if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool
 
 logger = get_logger(__name__)
+
+
+def _normalize_config_json(value: Any) -> str:
+    """Serialize a JSONB dict back to a JSON string for protocol parity.
+
+    SQLite's ``config_json`` is stored verbatim as TEXT, so the protocol
+    exposes ``str``. Postgres returns JSONB as a Python ``dict``; we
+    re-serialise to match.
+    """
+    if isinstance(value, str):
+        return value
+    return json.dumps(value)
+
+
+def _normalize_timestamp(value: Any) -> str:
+    """Return an ISO 8601 string from a ``datetime`` or passthrough ``str``."""
+    if isinstance(value, datetime):
+        return value.isoformat()
+    return str(value)
 
 
 class PostgresPersonalityPresetRepository:
@@ -79,10 +104,11 @@ ON CONFLICT(name) DO UPDATE SET
                 await conn.commit()
         except psycopg.Error as exc:
             msg = f"Failed to save custom preset {name!r}"
-            logger.exception(
+            logger.warning(
                 PRESET_CUSTOM_SAVE_FAILED,
                 preset_name=name,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         logger.info(PRESET_CUSTOM_SAVED, preset_name=name)
@@ -112,10 +138,11 @@ ON CONFLICT(name) DO UPDATE SET
                 row = await cur.fetchone()
         except psycopg.Error as exc:
             msg = f"Failed to fetch custom preset {name!r}"
-            logger.exception(
+            logger.warning(
                 PRESET_CUSTOM_FETCH_FAILED,
                 preset_name=name,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -128,7 +155,12 @@ ON CONFLICT(name) DO UPDATE SET
             return None
 
         logger.debug(PRESET_CUSTOM_FETCHED, preset_name=name, found=True)
-        return PresetRow(row[0], row[1], row[2], row[3])
+        return PresetRow(
+            _normalize_config_json(row[0]),
+            row[1],
+            _normalize_timestamp(row[2]),
+            _normalize_timestamp(row[3]),
+        )
 
     async def list_all(
         self,
@@ -150,11 +182,22 @@ ON CONFLICT(name) DO UPDATE SET
                 rows = await cur.fetchall()
         except psycopg.Error as exc:
             msg = "Failed to list custom presets"
-            logger.exception(PRESET_CUSTOM_LIST_FAILED, error=str(exc))
+            logger.warning(
+                PRESET_CUSTOM_LIST_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             raise QueryError(msg) from exc
 
         result = tuple(
-            PresetListRow(row[0], row[1], row[2], row[3], row[4]) for row in rows
+            PresetListRow(
+                row[0],
+                _normalize_config_json(row[1]),
+                row[2],
+                _normalize_timestamp(row[3]),
+                _normalize_timestamp(row[4]),
+            )
+            for row in rows
         )
         logger.debug(PRESET_CUSTOM_LISTED, count=len(result))
         return result
@@ -181,10 +224,11 @@ ON CONFLICT(name) DO UPDATE SET
                 await conn.commit()
         except psycopg.Error as exc:
             msg = f"Failed to delete custom preset {name!r}"
-            logger.exception(
+            logger.warning(
                 PRESET_CUSTOM_DELETE_FAILED,
                 preset_name=name,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -209,7 +253,11 @@ ON CONFLICT(name) DO UPDATE SET
                 row = await cur.fetchone()
         except psycopg.Error as exc:
             msg = "Failed to count custom presets"
-            logger.exception(PRESET_CUSTOM_COUNT_FAILED, error=str(exc))
+            logger.warning(
+                PRESET_CUSTOM_COUNT_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             raise QueryError(msg) from exc
 
         if row is None:

@@ -8,6 +8,9 @@ from typing import Any, Protocol, runtime_checkable
 
 from synthorg.api.auth.config import AuthConfig  # noqa: TC001
 from synthorg.budget.config import BudgetConfig  # noqa: TC001
+from synthorg.budget.project_cost_aggregate import (
+    ProjectCostAggregateRepository,  # noqa: TC001
+)
 from synthorg.core.agent import AgentIdentity  # noqa: TC001
 from synthorg.core.company import Company  # noqa: TC001
 from synthorg.core.role import Role  # noqa: TC001
@@ -421,6 +424,11 @@ class PersistenceBackend(Protocol):
     @property
     def ontology_drift(self) -> OntologyDriftReportRepository:
         """Repository for ontology drift reports."""
+        ...
+
+    @property
+    def project_cost_aggregates(self) -> ProjectCostAggregateRepository:
+        """Repository for durable per-project cost aggregates."""
         ...
 
     def build_lockouts(self, auth_config: AuthConfig) -> LockoutRepository:
