@@ -19,6 +19,10 @@ export type MeetingProtocolType =
   | 'position_papers'
   | 'structured_phases'
 
+export const MEETING_PROTOCOL_TYPE_VALUES = [
+  'round_robin', 'position_papers', 'structured_phases',
+] as const satisfies readonly MeetingProtocolType[]
+
 export interface MeetingAgendaItem {
   title: string
   description: string

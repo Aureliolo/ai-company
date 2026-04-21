@@ -1,5 +1,9 @@
 import { create } from 'zustand'
 import * as meetingsApi from '@/api/endpoints/meetings'
+import {
+  MEETING_PROTOCOL_TYPE_VALUES,
+  MEETING_STATUS_VALUES,
+} from '@/api/types/meetings'
 import { sanitizeWsString } from '@/stores/notifications'
 import { getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
@@ -12,6 +16,11 @@ import type {
 import type { WsEvent } from '@/api/types/websocket'
 
 const log = createLogger('meetings')
+
+// Runtime sets derived from the canonical enum tuples -- any drift
+// between validator and union is caught at compile time.
+const MEETING_STATUS_SET: ReadonlySet<string> = new Set<string>(MEETING_STATUS_VALUES)
+const MEETING_PROTOCOL_TYPE_SET: ReadonlySet<string> = new Set<string>(MEETING_PROTOCOL_TYPE_VALUES)
 
 /** Validate that a ``token_usage_by_participant`` map is a plain ``Record<string, number>``. */
 function isTokenUsageMap(value: unknown): value is Record<string, number> {
@@ -37,8 +46,10 @@ function isMeetingShape(
   return (
     typeof c.meeting_id === 'string' &&
     typeof c.status === 'string' &&
+    MEETING_STATUS_SET.has(c.status) &&
     typeof c.meeting_type_name === 'string' &&
     typeof c.protocol_type === 'string' &&
+    MEETING_PROTOCOL_TYPE_SET.has(c.protocol_type) &&
     typeof c.token_budget === 'number' &&
     Array.isArray(c.contribution_rank) &&
     c.contribution_rank.every((entry) => typeof entry === 'string') &&
