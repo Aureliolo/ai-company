@@ -849,7 +849,7 @@ async run(
       ``TypeError``, ``AttributeError``) are deliberately NOT caught --
       they propagate loudly so schema drift surfaces in dev/CI instead
       of being masked as silent audit loss.  See the "Review Gate
-      Invariants" section of ``docs/design/operations.md`` for the
+      Invariants" section of ``docs/design/security.md`` for the
       full three-layer enforcement model (service preflight, Pydantic
       validator, SQL CHECK constraint).
 
@@ -1854,7 +1854,7 @@ Credentials never enter the brain or session planes.  Three enforcement points:
 2. **Sandbox credential manager** (`tools/sandbox/credential_manager.py`) -- strips credential-like environment variables before they enter sandbox containers.
 3. **Auth proxy** (`tools/sandbox/auth_proxy.py`) -- injects authentication headers at tool execution time via a local HTTP proxy, so credentials never transit through the agent context.
 
-See also: [Operations > Security > Credential Isolation Boundary](operations.md#credential-isolation-boundary).
+See also: [Security > Credential Isolation Boundary](security.md#credential-isolation-boundary).
 
 ---
 

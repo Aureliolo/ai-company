@@ -117,6 +117,7 @@ nav:
       - Deployment (Docker): guides/deployment.md
       - Centralized Logging: guides/centralized-logging.md
       - Memory Configuration: guides/memory.md
+      - Human Interaction & API: guides/human-interaction.md
       - Contributing: guides/contributing.md
   - Design:
       - design/index.md
@@ -126,7 +127,15 @@ nav:
       - Engine: design/engine.md
       - Distributed Runtime: design/distributed-runtime.md
       - Memory: design/memory.md
-      - Operations: design/operations.md
+      - Providers: design/providers.md
+      - Budget & Cost: design/budget.md
+      - Tools & Capabilities: design/tools.md
+      - Security & Approval: design/security.md
+      - Observability: design/observability.md
+      - Notifications: design/notifications.md
+      - Backup & Restore: design/backup.md
+      - Deployment: design/deployment.md
+      - Persistence: design/persistence.md
       - Brand Identity & UX: design/brand-and-ux.md
       - Page Structure & IA: design/page-structure.md
       - UX Guidelines: design/ux-guidelines.md

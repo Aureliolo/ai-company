@@ -204,12 +204,17 @@ Queue: Hiring Queue
     Shared entity vocabulary, versioned definitions, drift detection, and context
     injection for inter-agent semantic alignment.
 
--   [**Operations**](operations.md)
+-   [**Providers**](providers.md) / [**Budget**](budget.md) / [**Tools**](tools.md) / [**Security**](security.md)
 
     ---
 
-    Budget enforcement, security, progressive trust, autonomy levels, and approval
-    workflows.
+    LLM provider abstraction, budget enforcement, tool sandboxing, progressive trust, autonomy levels, and approval workflows.
+
+-   [**Observability**](observability.md) / [**Notifications**](notifications.md) / [**Backup**](backup.md) / [**Deployment**](deployment.md)
+
+    ---
+
+    Structured logging, correlation tracking, operator alerts, backup and restore, container runtime.
 
 -   [**Integrations**](integrations.md)
 

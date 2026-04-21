@@ -350,4 +350,4 @@ security:
 
 - [Company Configuration](company-config.md) -- full configuration reference
 - [Security](../security.md) -- security architecture reference
-- [Design: Operations](../design/operations.md) -- security design specification
+- [Design: Security & Approval](../design/security.md) -- security design specification

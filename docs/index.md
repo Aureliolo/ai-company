@@ -97,13 +97,13 @@ The design spec covers the full architecture of SynthOrg -- from agent identity 
 
     [:octicons-arrow-right-24: Memory](design/memory.md)
 
--   **Operations**
+-   **Providers & Cost**
 
     ---
 
-    LLM providers, budget, tools, security, human interaction.
+    LLM providers, budget, tools, security.
 
-    [:octicons-arrow-right-24: Operations](design/operations.md)
+    [:octicons-arrow-right-24: Providers](design/providers.md)
 
 </div>
 

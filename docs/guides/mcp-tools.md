@@ -218,4 +218,4 @@ To restrict MCP tool access to specific agents, configure tool access levels and
 
 - [Company Configuration](company-config.md) -- full configuration reference
 - [Security & Trust Policies](security.md) -- tool access levels and security policies
-- [Design: Operations](../design/operations.md) -- tool architecture in the design spec
+- [Design: Tools](../design/tools.md) -- tool architecture in the design spec

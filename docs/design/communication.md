@@ -142,7 +142,7 @@ Inbound (external -> internal)
 :   External A2A clients discover SynthOrg agents via Agent Cards, create tasks via
     JSON-RPC, and receive updates via SSE. The gateway translates A2A requests into
     internal MessageBus messages and applies [DelegationGuard](#loop-prevention) +
-    [A2A-specific security checks](operations.md#a2a-security) before admission.
+    [A2A-specific security checks](security.md#a2a-security) before admission.
 
 Outbound (internal -> external)
 :   SynthOrg agents can delegate tasks to external A2A agents. The A2A client discovers
@@ -254,7 +254,7 @@ SynthOrg agents can delegate tasks to external A2A agents through the outbound c
 5. **State mapping**: Map external A2A task states back to internal states (see table above)
 
 The outbound client authenticates using the `a2a.auth.outbound` configuration (see
-[A2A Security](operations.md#a2a-security)). Outbound delegations pass through the
+[A2A Security](security.md#a2a-security)). Outbound delegations pass through the
 [DelegationGuard](#loop-prevention) for loop-prevention checks (ancestry, depth,
 deduplication, rate limiting, circuit breaker) before dispatch.
 
@@ -453,7 +453,7 @@ department, or per conflict type.
 
     All genuine conflicts go to the human approval queue with both positions
     summarized. The agent(s) park the conflicting task and work on other tasks
-    while waiting (see [Approval Timeout](operations.md#approval-timeout-policy)).
+    while waiting (see [Approval Timeout](security.md#approval-timeout-policy)).
 
     ```yaml
     conflict_resolution:
@@ -896,7 +896,7 @@ approval paths can adopt incrementally.
 
 **Quantum-safe signing**: High-risk `EvidencePackage` approvals
 (`risk_level >= HIGH`) use m-of-n threshold signing via the
-[Quantum-Safe Audit Trail](operations.md#quantum-safe-audit-trail).
+[Quantum-Safe Audit Trail](security.md#quantum-safe-audit-trail).
 `EvidencePackageSignature` carries ML-DSA-65 signatures; the
 `is_fully_signed` computed field checks the threshold.
 See `src/synthorg/observability/audit_chain/` for the signing

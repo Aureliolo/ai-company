@@ -545,7 +545,7 @@ How this page structure supports the 10 design principles from #762:
 | Winning prototype (Mission Control) | `research/762-ux-mockups` branch, `mockups/direction-cd/` |
 | WebSocket channel definitions | `src/synthorg/api/channels.py` |
 | API controller registry | `src/synthorg/api/controllers/__init__.py` |
-| Operations design spec (API surface) | [Operations](operations.md) |
+| API surface | [Human Interaction Layer](../guides/human-interaction.md) |
 | Parent UX overhaul issue | [#762](https://github.com/Aureliolo/synthorg/issues/762) |
 | Design exploration issue | [#765](https://github.com/Aureliolo/synthorg/issues/765) |
 | Page structure issue | [#766](https://github.com/Aureliolo/synthorg/issues/766) |

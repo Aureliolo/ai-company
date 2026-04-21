@@ -247,4 +247,4 @@ budget:
 
 - [Company Configuration](company-config.md) -- full configuration reference
 - [Agent Roles & Hierarchy](agents.md) -- per-agent model assignment
-- [Design: Operations](../design/operations.md) -- budget architecture in the design spec
+- [Design: Budget & Cost](../design/budget.md) -- budget architecture in the design spec

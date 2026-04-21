@@ -363,7 +363,9 @@ Points to resolve during Phase 1 review. Each becomes a decision the Phase 2 imp
 
 - [Communication](communication.md) -- `MessageBus` protocol, message format, channel types
 - [Engine](engine.md) -- `TaskEngine` single-writer mutation queue, task lifecycle
-- [Operations](operations.md) -- deployment, observability, notifications
+- [Deployment](deployment.md) -- container runtime, image verification
+- [Observability](observability.md) -- structured logging, correlation, sinks
+- [Notifications](notifications.md) -- notification dispatcher and sinks
 - [Architecture: Tech Stack](../architecture/tech-stack.md) -- Message Bus row in the stack table
 - [Roadmap: Scaling Path](../roadmap/future-vision.md#scaling-path) -- Phase 2 Local Multi-Process constraints
 - [Issue #236](https://github.com/Aureliolo/synthorg/issues/236) -- distributed/persistent message bus backend

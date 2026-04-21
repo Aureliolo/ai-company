@@ -858,8 +858,8 @@ Agents can move between seniority levels based on performance:
 
 - **Promotion criteria:** Sustained high quality scores, task complexity handled, peer feedback
 - **Demotion criteria:** Repeated failures, quality drops, cost inefficiency
-- Promotions can unlock higher [tool access levels](operations.md#tool-access-levels)
-- Model upgrades/downgrades may accompany level changes (configurable, see [auto-downgrade](operations.md#cost-controls))
+- Promotions can unlock higher [tool access levels](tools.md#tool-access-levels)
+- Model upgrades/downgrades may accompany level changes (configurable, see [auto-downgrade](budget.md#cost-controls))
 
 !!! info "Design decisions ([Decision Log](../architecture/decisions.md) D13, D14, D15)"
 
@@ -875,7 +875,7 @@ Agents can move between seniority levels based on performance:
     - **D15 -- Model Mapping:** Pluggable `ModelMappingStrategy` protocol. Initial strategy:
       default ON (`hr.promotions.model_follows_seniority: true`). Model changes at task
       boundaries only (never mid-execution, consistent with
-      [auto-downgrade](operations.md)). Per-agent `preferred_model` overrides seniority
+      [auto-downgrade](budget.md#cost-controls)). Per-agent `preferred_model` overrides seniority
       default. Smart routing still uses cheap models for simple tasks regardless of seniority.
 
 ---
