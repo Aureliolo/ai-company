@@ -174,7 +174,7 @@ class TestAgentRegistryService:
 
         names = tuple(f"agent-{i}" for i in range(MAX_BATCH_NAMES_LOOKUP + 1))
         with pytest.raises(ValueError, match="exceeds"):
-            await registry.get_by_names(names)  # type: ignore[arg-type]
+            await registry.get_by_names(names)
 
     async def test_list_active_filters_status(
         self,
