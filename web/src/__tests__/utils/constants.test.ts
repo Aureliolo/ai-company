@@ -28,6 +28,23 @@ describe('constants', () => {
       // event payload and decoupled from the server-side cap.
       expect(WS_MAX_MESSAGE_SIZE).toBe(32_768)
     })
+
+    /**
+     * Cross-language coordination lock: the version + heartbeat values
+     * are duplicated between this file and `src/synthorg/api/`. If
+     * someone bumps either side without the other, this test fails
+     * loudly and forces a coordinated change. Backend defaults live at:
+     *   - WsEvent.version default (src/synthorg/api/ws_models.py)
+     *   - heartbeat tolerance (the server has no explicit timeout but
+     *     the channels plugin's send window is well above 30s)
+     */
+    it('locks heartbeat + protocol version constants', async () => {
+      const { WS_HEARTBEAT_INTERVAL_MS, WS_PONG_TIMEOUT_MS, WS_PROTOCOL_VERSION } =
+        await import('@/utils/constants')
+      expect(WS_HEARTBEAT_INTERVAL_MS).toBe(20_000)
+      expect(WS_PONG_TIMEOUT_MS).toBe(10_000)
+      expect(WS_PROTOCOL_VERSION).toBe(1)
+    })
   })
 
   describe('pagination constants', () => {
