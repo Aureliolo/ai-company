@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { TaskCreateDialog } from '@/pages/tasks/TaskCreateDialog'
+import { makeTask } from '../../helpers/factories'
 import type { Task } from '@/api/types/tasks'
 
 // onCreate now returns ``Task | null`` per the sentinel-return
@@ -40,7 +41,7 @@ describe('TaskCreateDialog', () => {
 
   it('calls onCreate with form data on valid submission', async () => {
     const user = userEvent.setup()
-    const onCreate = vi.fn().mockResolvedValue({ id: 'ok' } as unknown as Task)
+    const onCreate = vi.fn().mockResolvedValue(makeTask('ok'))
     render(<TaskCreateDialog open={true} onOpenChange={() => {}} onCreate={onCreate} />)
 
     await user.type(screen.getByPlaceholderText('Task title'), 'My task')
@@ -83,7 +84,7 @@ describe('TaskCreateDialog', () => {
   it('calls onOpenChange(false) on successful creation', async () => {
     const user = userEvent.setup()
     const onOpenChange = vi.fn()
-    const onCreate = vi.fn().mockResolvedValue({ id: 'ok' } as unknown as Task)
+    const onCreate = vi.fn().mockResolvedValue(makeTask('ok'))
     render(<TaskCreateDialog open={true} onOpenChange={onOpenChange} onCreate={onCreate} />)
 
     await user.type(screen.getByPlaceholderText('Task title'), 'My task')

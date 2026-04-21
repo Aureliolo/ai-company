@@ -52,6 +52,11 @@ function isRecommendedActionShape(value: unknown): boolean {
   )
 }
 
+/** Finite, non-negative integer (no NaN, no Infinity, no fractions, no negatives). */
+function isNonNegInt(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0
+}
+
 /** Every signature entry must have id + algo + base64 bytes + timestamp + position. */
 function isSignatureShape(value: unknown): boolean {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
@@ -61,7 +66,10 @@ function isSignatureShape(value: unknown): boolean {
     typeof v.algorithm === 'string' &&
     typeof v.signature_bytes === 'string' &&
     typeof v.signed_at === 'string' &&
-    typeof v.chain_position === 'number'
+    // ``chain_position`` must be a finite, non-negative integer --
+    // reject NaN / Infinity / fractional / negative values that
+    // ``typeof === 'number'`` would otherwise accept.
+    isNonNegInt(v.chain_position)
   )
 }
 
@@ -100,7 +108,11 @@ function isEvidencePackageShape(value: unknown): boolean {
   // only. Validate that shape here so ``sanitizeEvidencePackage``
   // can trust the values when it calls ``sanitizeWsString`` on them.
   if (!isStringStringRecord(v.metadata)) return false
-  if (typeof v.signature_threshold !== 'number') return false
+  // ``signature_threshold`` is the minimum number of valid signatures
+  // required; a fractional, negative, NaN, or Infinity value would
+  // misgate ``is_fully_signed`` downstream and poison any UI comparing
+  // against ``signatures.length``.
+  if (!isNonNegInt(v.signature_threshold)) return false
   if (
     !Array.isArray(v.signatures) ||
     !v.signatures.every(isSignatureShape)

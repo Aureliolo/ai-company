@@ -535,6 +535,84 @@ describe('handleWsEvent', () => {
     expect(useApprovalsStore.getState().approvals).toHaveLength(0)
     errorSpy.mockRestore()
   })
+
+  it.each([
+    ['NaN', Number.NaN],
+    ['Infinity', Number.POSITIVE_INFINITY],
+    ['negative', -1],
+    ['fractional', 0.5],
+  ])(
+    'rejects evidence signature with %s chain_position',
+    (_label, bad) => {
+      useApprovalsStore.setState({ approvals: [] })
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const event = makeWsEvent(
+        makeApproval('bad-chain-pos', {
+          evidence_package: {
+            id: 'ev-cp',
+            title: 't',
+            narrative: 'n',
+            reasoning_trace: [],
+            recommended_actions: [],
+            source_agent_id: 'agent-eng',
+            task_id: null,
+            risk_level: 'medium',
+            metadata: {},
+            signature_threshold: 1,
+            signatures: [
+              {
+                approver_id: 'agent-cto',
+                algorithm: 'ed25519',
+                signature_bytes: 'aGVsbG8=',
+                signed_at: '2026-04-21T00:00:00Z',
+                chain_position: bad,
+              },
+            ],
+            is_fully_signed: false,
+            created_at: '2026-04-21T00:00:00Z',
+          },
+        }),
+      )
+      useApprovalsStore.getState().handleWsEvent(event)
+      expect(useApprovalsStore.getState().approvals).toHaveLength(0)
+      errorSpy.mockRestore()
+    },
+  )
+
+  it.each([
+    ['NaN', Number.NaN],
+    ['Infinity', Number.POSITIVE_INFINITY],
+    ['negative', -1],
+    ['fractional', 0.5],
+  ])(
+    'rejects evidence with %s signature_threshold',
+    (_label, bad) => {
+      useApprovalsStore.setState({ approvals: [] })
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const event = makeWsEvent(
+        makeApproval('bad-threshold', {
+          evidence_package: {
+            id: 'ev-th',
+            title: 't',
+            narrative: 'n',
+            reasoning_trace: [],
+            recommended_actions: [],
+            source_agent_id: 'agent-eng',
+            task_id: null,
+            risk_level: 'medium',
+            metadata: {},
+            signature_threshold: bad,
+            signatures: [],
+            is_fully_signed: false,
+            created_at: '2026-04-21T00:00:00Z',
+          },
+        }),
+      )
+      useApprovalsStore.getState().handleWsEvent(event)
+      expect(useApprovalsStore.getState().approvals).toHaveLength(0)
+      errorSpy.mockRestore()
+    },
+  )
 })
 
 describe('batch selection', () => {
