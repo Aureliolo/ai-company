@@ -1536,16 +1536,7 @@ Severity: high.
 
 ### Wave 19: Test Quality (4 agents)
 
-**Agent 98 -- tests-without-assertions** (sonnet)
-File: `_audit/findings/98-tests-without-assertions.md`
-
-```text
-Find test functions in tests/ (Python) and web/src/__tests__/ (TS) that have
-no assert / expect / raises call. These "tests" pass regardless of behavior
-and give false coverage confidence.
-
-Severity: high.
-```
+**Agent 98 -- tests-without-assertions** [RETIRED 2026-04-20 -- moved to retirement table below; regex-based detection produced ~93% false positives against Python test patterns (helper-function assertions, pytest guards that raise, Pydantic model construction). Keep the slot reserved to preserve numbering.]
 
 **Agent 99 -- tests-with-sleeps** (haiku)
 File: `_audit/findings/99-tests-with-sleeps.md`
@@ -1874,6 +1865,7 @@ These concerns are already enforced by hooks, linters, or external tooling today
 | go-resource-leaks | `golangci-lint` + `go vet` pre-commit + CI |
 | changelog-release-notes | `release-please` (automated) |
 | changelog-releases-parity | `release-please` (automated) |
+| tests-without-assertions (slot 98) | Retired 2026-04-20. Regex-based detection cannot distinguish helper-function assertions, `pytest.raises`/guard-raises patterns, or Pydantic validation-raises from truly empty tests. Produced ~93% false positives in validation (14/15 sampled findings were valid tests). Rely on coverage + mutation testing for vacuous-test detection instead. |
 
 ### Planned Retirements
 
