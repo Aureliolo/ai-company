@@ -251,7 +251,7 @@ describe('triggerMeeting', () => {
     const toasts = useToastStore.getState().toasts
     expect(toasts).toHaveLength(1)
     expect(toasts[0]!.variant).toBe('error')
-    expect(toasts[0]!.title).toBe('Failed to trigger meeting')
+    expect(toasts[0]!.title).toBe('Could not trigger meeting')
   })
 })
 

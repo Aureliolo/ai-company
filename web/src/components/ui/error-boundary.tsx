@@ -92,7 +92,9 @@ function DefaultErrorFallback({
       >
         <AlertTriangle className="size-12 text-danger" strokeWidth={1.5} aria-hidden="true" />
         <div className="space-y-1 text-center">
-          <h2 className="text-lg font-semibold text-foreground">Something went wrong</h2>
+          <h2 className="text-lg font-semibold text-foreground">
+            The page encountered an error. Try refreshing or navigating elsewhere.
+          </h2>
           <p className="max-w-md text-sm text-muted-foreground">{message}</p>
         </div>
         <Button onClick={resetErrorBoundary}>Try Again</Button>
@@ -127,7 +129,9 @@ function DefaultErrorFallback({
     >
       <AlertTriangle className="size-8 text-danger" strokeWidth={1.5} aria-hidden="true" />
       <div className="space-y-1 text-center">
-        <p className="text-sm font-medium text-foreground">Something went wrong</p>
+        <p className="text-sm font-medium text-foreground">
+          Unable to load this section. Try refreshing the page.
+        </p>
         <p className="text-xs text-muted-foreground">{message}</p>
       </div>
       <Button size="sm" onClick={resetErrorBoundary}>

@@ -177,7 +177,12 @@ export function AgentsTab({
         await onReorderAgents(draggedAgent.department, orderedIds)
       } catch {
         rollback()
-        useToastStore.getState().add({ variant: 'error', title: 'Failed to reorder agents' })
+        useToastStore.getState().add({
+          variant: 'error',
+          title: 'Could not reorder agents',
+          description:
+            'The order may have changed. Refresh the page and try again.',
+        })
       }
     },
     [config, agentsByDept, optimisticReorderAgents, onReorderAgents],

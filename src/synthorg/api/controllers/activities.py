@@ -171,7 +171,7 @@ async def _run_async_fetchers(
             logger.error(
                 API_REQUEST_ERROR,
                 endpoint="activities",
-                detail="fatal error in async fetchers",
+                detail="Unable to fetch activity data at this time.",
                 exc_info=True,
             )
             raise fatal.exceptions[0] from eg
@@ -180,7 +180,9 @@ async def _run_async_fetchers(
             logger.warning(
                 API_REQUEST_ERROR,
                 endpoint="activities",
-                detail="service unavailable in async fetchers",
+                detail=(
+                    "Activity data service is currently unavailable. Please try again."
+                ),
                 exc_info=True,
             )
             raise svc.exceptions[0] from eg
@@ -252,7 +254,7 @@ async def _resolve_currency(
             API_REQUEST_ERROR,
             endpoint="activities",
             source=_SRC_BUDGET_CONFIG,
-            detail="fatal error",
+            detail="Could not load budget configuration. Using default currency.",
             exc_info=True,
         )
         raise

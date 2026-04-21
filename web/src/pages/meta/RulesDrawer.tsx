@@ -8,7 +8,6 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { useCustomRulesStore } from '@/stores/custom-rules'
 import { useToastStore } from '@/stores/toast'
-import { getErrorMessage } from '@/utils/errors'
 import type {
   CustomRule,
   MetricDescriptor,
@@ -67,15 +66,15 @@ export function RulesDrawer({
   const safeRefresh = useCallback(async () => {
     try {
       await onRefresh()
-    } catch (err) {
+    } catch {
       // onRefresh typically loads the rule list from a parent page;
       // a transient failure there shouldn't swallow the mutation's
       // success but the user still needs to know the list may be
       // stale.
       addToast({
         variant: 'error',
-        title: 'Failed to refresh rules',
-        description: getErrorMessage(err),
+        title: 'Could not refresh',
+        description: 'Try again in a moment.',
       })
     }
   }, [onRefresh, addToast])

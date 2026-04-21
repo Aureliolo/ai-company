@@ -13,7 +13,6 @@ import {
   groupByRiskLevel,
   type ApprovalPageFilters,
 } from '@/utils/approvals'
-import { getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 import { createLogger } from '@/lib/logger'
 
@@ -163,7 +162,11 @@ export default function ApprovalsPage() {
       }
     } catch (err) {
       log.error('Batch approve failed', sanitizeForLog(err))
-      useToastStore.getState().add({ variant: 'error', title: 'Batch approve failed', description: getErrorMessage(err) })
+      useToastStore.getState().add({
+        variant: 'error',
+        title: 'Could not approve all items',
+        description: 'Review the details below and retry.',
+      })
     } finally {
       setBatchLoading(false)
     }
@@ -191,7 +194,11 @@ export default function ApprovalsPage() {
       }
     } catch (err) {
       log.error('Batch reject failed', sanitizeForLog(err))
-      useToastStore.getState().add({ variant: 'error', title: 'Batch reject failed', description: getErrorMessage(err) })
+      useToastStore.getState().add({
+        variant: 'error',
+        title: 'Could not reject all items',
+        description: 'Review the details below and retry.',
+      })
     } finally {
       setBatchLoading(false)
     }

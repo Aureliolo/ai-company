@@ -102,7 +102,9 @@ export function useSettingsDirtyState(
       )
       useToastStore.getState().add({
         variant: 'error',
-        title: 'Failed to save settings',
+        title: 'Could not save settings',
+        description:
+          'Refresh the page and try again, or check the setting value for validation errors.',
       })
     } finally {
       isSavingRef.current = false

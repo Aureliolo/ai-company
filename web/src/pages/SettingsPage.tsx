@@ -229,7 +229,12 @@ export default function SettingsPage() {
         return failedKeys
       } catch (err) {
         log.error('Unexpected error in handleCodeSave:', err)
-        useToastStore.getState().add({ variant: 'error', title: 'Failed to save settings' })
+        useToastStore.getState().add({
+          variant: 'error',
+          title: 'Could not save settings',
+          description:
+            'Refresh the page and try again, or check the setting value for validation errors.',
+        })
         return new Set(changes.keys())
       }
     },

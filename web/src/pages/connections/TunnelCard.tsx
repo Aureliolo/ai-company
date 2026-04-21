@@ -87,7 +87,8 @@ export function TunnelCard() {
       log.warn('Failed to copy tunnel URL', err)
       useToastStore.getState().add({
         variant: 'error',
-        title: 'Failed to copy URL',
+        title: 'Could not copy URL',
+        description: 'Try copying the URL manually from the dialog.',
       })
     }
   }

@@ -402,8 +402,9 @@ export const useApprovalsStore = create<ApprovalsState>()((set, get) => ({
       log.error('Approve approval failed', sanitizeForLog(err))
       useToastStore.getState().add({
         variant: 'error',
-        title: 'Failed to approve',
-        description: getErrorMessage(err),
+        title: 'Could not approve',
+        description:
+          'Check that the approval is still pending and you have the required permissions.',
       })
       return null
     }
@@ -422,8 +423,9 @@ export const useApprovalsStore = create<ApprovalsState>()((set, get) => ({
       log.error('Reject approval failed', sanitizeForLog(err))
       useToastStore.getState().add({
         variant: 'error',
-        title: 'Failed to reject',
-        description: getErrorMessage(err),
+        title: 'Could not reject',
+        description:
+          'Check that the approval is still pending and you have the required permissions.',
       })
       return null
     }

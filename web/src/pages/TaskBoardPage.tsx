@@ -205,7 +205,11 @@ export default function TaskBoardPage() {
       () => transitionTask(taskId, { target_status: targetStatus, expected_version: sourceTask.version }),
     )
     if (result === null) {
-      useToastStore.getState().add({ variant: 'error', title: 'Transition failed', description: 'The task could not be moved. It has been reverted.' })
+      useToastStore.getState().add({
+        variant: 'error',
+        title: 'Could not move task',
+        description: 'It may have changed status. Refresh and try again.',
+      })
     }
   }, [tasks, optimisticTransition, transitionTask, executeOptimistic])
 

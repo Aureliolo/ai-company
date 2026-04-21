@@ -71,7 +71,7 @@ export function getErrorMessage(error: unknown): string {
       return msg
     }
     log.warn('Error message suppressed (too long or JSON-shaped):', msg?.slice(0, 300))
-    return 'An unexpected error occurred.'
+    return 'An unexpected error occurred. Please refresh the page or contact support if this persists.'
   }
 
   return 'An unexpected error occurred.'
