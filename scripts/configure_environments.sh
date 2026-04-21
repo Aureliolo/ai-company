@@ -120,12 +120,12 @@ list_branch_policies() {
   # real picture of which policies would be added or removed. A missing
   # environment (first run) comes back as HTTP 404; translate that to "no
   # policies exist yet" rather than aborting. --jq filters inside gh so we do
-  # not shell out to a separate jq dependency.
-  local out rc
-  out=$(gh api "repos/${REPO}/environments/${env_name}/deployment-branch-policies" \
-    --jq '.branch_policies[] | "\(.name)\t\(.id)"' 2>&1)
-  rc=$?
-  if [ "$rc" -ne 0 ]; then
+  # not shell out to a separate jq dependency. The `if !` form disables errexit
+  # for this single command so `rc=$?` logic is actually reached on failure --
+  # a bare `out=$(...)` + `rc=$?` would exit before the handler runs.
+  local out
+  if ! out=$(gh api "repos/${REPO}/environments/${env_name}/deployment-branch-policies" \
+    --jq '.branch_policies[] | "\(.name)\t\(.id)"' 2>&1); then
     if printf '%s' "$out" | grep -q 'HTTP 404'; then
       return 0
     fi
@@ -141,10 +141,14 @@ add_branch_policy() {
   local rc
   # A racing concurrent run (or a stale list) can make the POST return 422
   # "already exists"; treat that as idempotent success via run_gh_allow_422's
-  # exit-2 signal.
-  run_gh_allow_422 --method POST "repos/${REPO}/environments/${env_name}/deployment-branch-policies" \
-    -f "name=${pattern}" -f "type=branch"
-  rc=$?
+  # exit-2 signal. Wrap the call in an `if` so errexit does not fire before
+  # we can inspect $?.
+  if run_gh_allow_422 --method POST "repos/${REPO}/environments/${env_name}/deployment-branch-policies" \
+    -f "name=${pattern}" -f "type=branch"; then
+    rc=0
+  else
+    rc=$?
+  fi
   case "$rc:$MODE" in
     0:apply) echo "  policy '${pattern}' added" ;;
     2:apply) echo "  policy '${pattern}' already present (422 no-op)" ;;
