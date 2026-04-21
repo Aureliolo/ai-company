@@ -10,6 +10,7 @@ import type {
   ApprovalResponse,
   ApproveRequest,
   EvidencePackage,
+  EvidencePackageSignature,
   RejectRequest,
 } from '@/api/types/approvals'
 import {
@@ -115,6 +116,16 @@ function isEvidencePackageShape(value: unknown): boolean {
  * (the contract on ``ApprovalResponse``) so malformed payloads can't
  * smuggle illegal values or non-string entries into the store.
  */
+/** Either ``null`` or a string -- used for the nullable decision/timing fields. */
+function isNullableString(value: unknown): boolean {
+  return value === null || typeof value === 'string'
+}
+
+/** Either ``null`` or a finite number -- ``seconds_remaining`` can be null on non-expiring approvals. */
+function isNullableFiniteNumber(value: unknown): boolean {
+  return value === null || Number.isFinite(value)
+}
+
 function isApprovalShape(
   c: Record<string, unknown>,
 ): c is Record<string, unknown> & ApprovalResponse {
@@ -131,6 +142,17 @@ function isApprovalShape(
     typeof c.requested_by === 'string' &&
     typeof c.created_at === 'string' &&
     isStringStringRecord(c.metadata) &&
+    // Nullable decision + timing fields: sanitizeApproval dereferences
+    // each with sanitizeWsString, which needs a guaranteed ``string |
+    // null`` -- otherwise an ``undefined`` on the wire would widen the
+    // return type and the store would persist missing-vs-null as the
+    // same thing.
+    isNullableString(c.task_id) &&
+    isNullableString(c.decided_by) &&
+    isNullableString(c.decision_reason) &&
+    isNullableString(c.decided_at) &&
+    isNullableString(c.expires_at) &&
+    isNullableFiniteNumber(c.seconds_remaining) &&
     isEvidencePackageShape(c.evidence_package)
   )
 }
@@ -171,12 +193,14 @@ function sanitizeEvidencePackage(
     source_agent_id: sanitizeWsString(pkg.source_agent_id, 128) ?? '',
     task_id:
       pkg.task_id === null ? null : sanitizeWsString(pkg.task_id, 128) ?? '',
-    risk_level: pkg.risk_level,
+    risk_level:
+      (sanitizeWsString(pkg.risk_level, 64) ?? '') as EvidencePackage['risk_level'],
     metadata: pkgMetadata,
     signature_threshold: pkg.signature_threshold,
     signatures: pkg.signatures.map((s) => ({
       approver_id: sanitizeWsString(s.approver_id, 128) ?? '',
-      algorithm: s.algorithm,
+      algorithm:
+        (sanitizeWsString(s.algorithm, 64) ?? '') as EvidencePackageSignature['algorithm'],
       signature_bytes: sanitizeWsString(s.signature_bytes, 2048) ?? '',
       signed_at: sanitizeWsString(s.signed_at, 64) ?? '',
       chain_position: s.chain_position,

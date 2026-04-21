@@ -186,10 +186,17 @@ function sanitizeAgenda(agenda: MeetingAgenda): MeetingAgenda {
 }
 
 function sanitizeContribution(c: MeetingContribution): MeetingContribution {
+  // Rebuild explicitly rather than spreading ``...c``: a spread would
+  // preserve any unvetted enumerable props that happen to ride along
+  // on the WS payload (attacker-reachable), even though the type
+  // system believes they cannot exist.
   return {
-    ...c,
     agent_id: sanitizeWsString(c.agent_id, 128) ?? '',
     content: sanitizeWsString(c.content, 4096) ?? '',
+    phase: c.phase,
+    turn_number: c.turn_number,
+    input_tokens: c.input_tokens,
+    output_tokens: c.output_tokens,
     timestamp: sanitizeWsString(c.timestamp, 64) ?? '',
   }
 }
@@ -198,8 +205,10 @@ function sanitizeMeetingMinutes(
   minutes: MeetingMinutes | null,
 ): MeetingMinutes | null {
   if (minutes === null) return null
+  // No spread: list every allowed MeetingMinutes field explicitly so
+  // any future string key added on the wire but missing from this
+  // construction is dropped rather than silently persisted raw.
   return {
-    ...minutes,
     meeting_id: sanitizeWsString(minutes.meeting_id, 128) ?? '',
     protocol_type:
       (sanitizeWsString(minutes.protocol_type, 64) ?? '') as MeetingMinutes['protocol_type'],
@@ -221,6 +230,10 @@ function sanitizeMeetingMinutes(
           : sanitizeWsString(ai.assignee_id, 128) ?? '',
       priority: ai.priority,
     })),
+    conflicts_detected: minutes.conflicts_detected,
+    total_input_tokens: minutes.total_input_tokens,
+    total_output_tokens: minutes.total_output_tokens,
+    total_tokens: minutes.total_tokens,
     started_at: sanitizeWsString(minutes.started_at, 64) ?? '',
     ended_at: sanitizeWsString(minutes.ended_at, 64) ?? '',
   }
@@ -234,19 +247,22 @@ function sanitizeMeeting(c: MeetingResponse): MeetingResponse {
       tokenUsage[safeId] = count
     }
   }
+  // No spread: list every allowed MeetingResponse field so unknown
+  // wire props cannot reach the store.
   return {
-    ...c,
     meeting_id: sanitizeWsString(c.meeting_id, 128) ?? '',
     meeting_type_name: sanitizeWsString(c.meeting_type_name, 128) ?? '',
-    status: (sanitizeWsString(c.status, 64) ?? '') as MeetingResponse['status'],
     protocol_type: (sanitizeWsString(c.protocol_type, 64) ?? '') as MeetingResponse['protocol_type'],
+    status: (sanitizeWsString(c.status, 64) ?? '') as MeetingResponse['status'],
+    minutes: sanitizeMeetingMinutes(c.minutes),
     error_message:
       c.error_message === null ? null : sanitizeWsString(c.error_message, 512) ?? '',
-    minutes: sanitizeMeetingMinutes(c.minutes),
+    token_budget: c.token_budget,
     token_usage_by_participant: tokenUsage,
     contribution_rank: c.contribution_rank
       .map((agentId) => sanitizeWsString(agentId, 128) ?? '')
       .filter((agentId) => agentId.length > 0),
+    meeting_duration_seconds: c.meeting_duration_seconds,
   }
 }
 

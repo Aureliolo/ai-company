@@ -178,6 +178,16 @@ function isAcceptanceCriteriaShape(
   })
 }
 
+/** Nullable string -- used for optional identifiers / timestamps. */
+function isNullableString(value: unknown): boolean {
+  return value === null || typeof value === 'string'
+}
+
+/** Either ``undefined`` or a string -- used for the two optional timestamp fields. */
+function isOptionalString(value: unknown): boolean {
+  return value === undefined || typeof value === 'string'
+}
+
 function isTaskShape(c: Record<string, unknown>): c is Record<string, unknown> & Task {
   return (
     typeof c.id === 'string' &&
@@ -196,7 +206,18 @@ function isTaskShape(c: Record<string, unknown>): c is Record<string, unknown> &
     isStringArray(c.dependencies) &&
     isStringArray(c.delegation_chain) &&
     isArtifactsExpectedShape(c.artifacts_expected) &&
-    isAcceptanceCriteriaShape(c.acceptance_criteria)
+    isAcceptanceCriteriaShape(c.acceptance_criteria) &&
+    // Nullable / optional fields consumed by ``sanitizeTask``. Without
+    // these checks a payload like ``deadline: {}`` or ``source: 7``
+    // would pass the guard and reach ``sanitizeWsString`` with a
+    // non-string, breaking its length/bidi invariants.
+    isNullableString(c.deadline) &&
+    isNullableString(c.parent_task_id) &&
+    (c.source === undefined ||
+      c.source === null ||
+      typeof c.source === 'string') &&
+    isOptionalString(c.created_at) &&
+    isOptionalString(c.updated_at)
   )
 }
 
