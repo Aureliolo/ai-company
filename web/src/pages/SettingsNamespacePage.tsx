@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react'
 import { useParams, Link } from 'react-router'
-import { AlertTriangle, ArrowLeft, Settings, WifiOff } from 'lucide-react'
+import { ArrowLeft, Settings } from 'lucide-react'
 import type { SettingNamespace } from '@/api/types/settings'
-import { cn } from '@/lib/utils'
+import { ErrorBanner } from '@/components/ui/error-banner'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
@@ -103,25 +103,15 @@ export default function SettingsNamespacePage() {
       </div>
 
       {error && (
-        <div className={cn(
-          'flex items-center gap-2 rounded-lg',
-          'border border-danger/30 bg-danger/5',
-          'p-card text-sm text-danger',
-        )}>
-          <AlertTriangle className="size-4 shrink-0" />
-          {error}
-        </div>
+        <ErrorBanner severity="error" title="Could not load settings namespace" description={error} />
       )}
 
       {!wsConnected && !loading && (
-        <div className={cn(
-          'flex items-center gap-2 rounded-lg',
-          'border border-warning/30 bg-warning/5',
-          'p-card text-sm text-warning',
-        )}>
-          <WifiOff className="size-4 shrink-0" />
-          {wsSetupError ?? 'Real-time updates disconnected. Data may be stale.'}
-        </div>
+        <ErrorBanner
+          variant="offline"
+          title="Real-time updates disconnected"
+          description={wsSetupError ?? 'Data may be stale until the connection recovers.'}
+        />
       )}
 
       {filteredEntries.length === 0 ? (

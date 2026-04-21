@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useParams } from 'react-router'
 import {
-  AlertTriangle,
   CheckCircle,
   MinusCircle,
   ShieldCheck,
@@ -16,6 +15,7 @@ import {
   type StageVerdict,
 } from '@/api/endpoints/clients'
 import { Button } from '@/components/ui/button'
+import { ErrorBanner } from '@/components/ui/error-banner'
 import { SectionCard } from '@/components/ui/section-card'
 import { SkeletonCard } from '@/components/ui/skeleton'
 import { createLogger } from '@/lib/logger'
@@ -125,14 +125,7 @@ export default function ReviewPipelinePage() {
         <h1 className="text-lg font-semibold text-foreground">
           Review Pipeline
         </h1>
-        <div
-          role="alert"
-          aria-live="assertive"
-          className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/5 p-card text-sm text-danger"
-        >
-          <AlertTriangle className="size-4 shrink-0" />
-          {error ?? 'Pipeline result not available.'}
-        </div>
+        <ErrorBanner severity="error" title="Pipeline result not available" description={error ?? undefined} />
       </div>
     )
   }
@@ -160,12 +153,8 @@ export default function ReviewPipelinePage() {
 
       <SectionCard title="Stage breakdown" icon={ShieldCheck}>
         {actionError && (
-          <div
-            role="alert"
-            aria-live="assertive"
-            className="mb-card rounded-md border border-danger/30 bg-danger/5 p-card text-sm text-danger"
-          >
-            {actionError}
+          <div className="mb-card">
+            <ErrorBanner variant="section" severity="error" title="Stage action failed" description={actionError} />
           </div>
         )}
         {decisionNotice && (

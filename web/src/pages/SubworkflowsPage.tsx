@@ -1,8 +1,9 @@
 import { useCallback, useState } from 'react'
-import { AlertTriangle, Search } from 'lucide-react'
+import { Search } from 'lucide-react'
 import { useSubworkflowsData } from '@/hooks/useSubworkflowsData'
 import { useSubworkflowsStore } from '@/stores/subworkflows'
 import { EmptyState } from '@/components/ui/empty-state'
+import { ErrorBanner } from '@/components/ui/error-banner'
 import { InputField } from '@/components/ui/input-field'
 import { Skeleton } from '@/components/ui/skeleton'
 import type { SubworkflowSummary } from '@/api/types/workflows'
@@ -49,14 +50,7 @@ export default function SubworkflowsPage() {
       </div>
 
       {error && (
-        <div
-          role="alert"
-          aria-live="assertive"
-          className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/5 p-card text-sm text-danger"
-        >
-          <AlertTriangle className="size-4 shrink-0" />
-          {error}
-        </div>
+        <ErrorBanner severity="error" title="Could not load subworkflows" description={error} />
       )}
 
       <div className="max-w-sm">

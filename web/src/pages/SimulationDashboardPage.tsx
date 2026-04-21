@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Activity, AlertTriangle } from 'lucide-react'
+import { Activity } from 'lucide-react'
+import { ErrorBanner } from '@/components/ui/error-banner'
 
 import {
   cancelSimulation,
@@ -106,14 +107,7 @@ export default function SimulationDashboardPage() {
       </div>
 
       {error && (
-        <div
-          role="alert"
-          aria-live="assertive"
-          className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/5 p-card text-sm text-danger"
-        >
-          <AlertTriangle className="size-4 shrink-0" />
-          {error}
-        </div>
+        <ErrorBanner severity="error" title="Could not load simulation data" description={error} />
       )}
 
       <div className="grid grid-cols-1 gap-grid-gap md:grid-cols-4">
