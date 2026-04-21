@@ -1,5 +1,5 @@
-import { AlertTriangle } from 'lucide-react'
 import { MetricCard } from '@/components/ui/metric-card'
+import { ErrorBanner } from '@/components/ui/error-banner'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { useDashboardData } from '@/hooks/useDashboardData'
@@ -32,13 +32,10 @@ export default function DashboardPage() {
       <h1 className="text-lg font-semibold text-foreground">Overview</h1>
 
       {error && (
-        <div className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/5 p-card text-sm text-danger">
-          <AlertTriangle className="size-4 shrink-0" />
-          {error}
-        </div>
+        <ErrorBanner severity="error" title="Could not load dashboard" description={error} />
       )}
 
-      <StaggerGroup className="grid grid-cols-4 gap-grid-gap max-[1023px]:grid-cols-2">
+      <StaggerGroup className="grid grid-cols-1 gap-grid-gap sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
         {metricCards.map((card) => (
           <StaggerItem key={card.label}>
             <MetricCard {...card} />

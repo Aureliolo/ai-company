@@ -1,7 +1,7 @@
-import { useParams, useNavigate } from 'react-router'
-import { AlertTriangle, ArrowLeft, WifiOff } from 'lucide-react'
+import { useParams } from 'react-router'
 import { useArtifactDetailData } from '@/hooks/useArtifactDetailData'
-import { Button } from '@/components/ui/button'
+import { Breadcrumbs } from '@/components/ui/breadcrumbs'
+import { ErrorBanner } from '@/components/ui/error-banner'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { ROUTES } from '@/router/routes'
 import { ArtifactDetailSkeleton } from './artifacts/ArtifactDetailSkeleton'
@@ -10,7 +10,6 @@ import { ArtifactContentPreview } from './artifacts/ArtifactContentPreview'
 
 export default function ArtifactDetailPage() {
   const { artifactId } = useParams<{ artifactId: string }>()
-  const navigate = useNavigate()
   const {
     artifact,
     contentPreview,
@@ -27,48 +26,26 @@ export default function ArtifactDetailPage() {
   if (!artifact) {
     return (
       <div className="space-y-section-gap">
-        <Button variant="ghost" size="sm" onClick={() => navigate(ROUTES.ARTIFACTS)}>
-          <ArrowLeft className="mr-1 size-4" />
-          Back to Artifacts
-        </Button>
-        <div
-          role="alert"
-          className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/5 p-card text-sm text-danger"
-        >
-          <AlertTriangle className="size-4 shrink-0" />
-          {error ?? 'Artifact not found.'}
-        </div>
+        <Breadcrumbs items={[{ label: 'Artifacts', to: ROUTES.ARTIFACTS }, { label: 'Unknown artifact' }]} />
+        <ErrorBanner severity="error" title="Artifact not found" description={error ?? undefined} />
       </div>
     )
   }
 
   return (
     <div className="space-y-section-gap">
-      <Button variant="ghost" size="sm" onClick={() => navigate(ROUTES.ARTIFACTS)}>
-        <ArrowLeft className="mr-1 size-4" />
-        Back to Artifacts
-      </Button>
+      <Breadcrumbs items={[{ label: 'Artifacts', to: ROUTES.ARTIFACTS }, { label: artifact.id }]} />
 
       {error && (
-        <div
-          role="alert"
-          aria-live="assertive"
-          className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/5 p-card text-sm text-danger"
-        >
-          <AlertTriangle className="size-4 shrink-0" />
-          {error}
-        </div>
+        <ErrorBanner severity="error" title="Could not load artifact" description={error} />
       )}
 
       {!wsConnected && !loading && (
-        <div
-          role="status"
-          aria-live="polite"
-          className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/5 p-card text-sm text-warning"
-        >
-          <WifiOff className="size-4 shrink-0" />
-          {wsSetupError ?? 'Real-time updates disconnected. Data may be stale.'}
-        </div>
+        <ErrorBanner
+          variant="offline"
+          title="Real-time updates disconnected"
+          description={wsSetupError ?? 'Data may be stale until the connection recovers.'}
+        />
       )}
 
       <ErrorBoundary level="section">

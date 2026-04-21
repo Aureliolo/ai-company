@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
-import { useNavigate, useParams } from 'react-router'
-import { ArrowLeft, Loader2 } from 'lucide-react'
+import { useParams } from 'react-router'
+import { Loader2 } from 'lucide-react'
 import type { TaskStatus } from '@/api/types/enums'
-import { Button } from '@/components/ui/button'
+import { Breadcrumbs } from '@/components/ui/breadcrumbs'
+import { ErrorBanner } from '@/components/ui/error-banner'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { useTasksStore } from '@/stores/tasks'
 import { ROUTES } from '@/router/routes'
@@ -19,7 +20,6 @@ import { useTaskWebSocketUpdates } from './tasks/useTaskWebSocketUpdates'
 
 export default function TaskDetailPage() {
   const { taskId } = useParams<{ taskId: string }>()
-  const navigate = useNavigate()
   const selectedTask = useTasksStore((s) => s.selectedTask)
   const loadingDetail = useTasksStore((s) => s.loadingDetail)
   const error = useTasksStore((s) => s.error)
@@ -58,7 +58,12 @@ export default function TaskDetailPage() {
   }, [pendingTransition, transitionTo])
 
   if (error && !task) {
-    return <div className="py-20 text-center text-sm text-danger">{error}</div>
+    return (
+      <div className="mx-auto max-w-3xl space-y-section-gap">
+        <Breadcrumbs items={[{ label: 'Tasks', to: ROUTES.TASKS }, { label: taskId ?? 'Unknown task' }]} />
+        <ErrorBanner severity="error" title="Could not load task" description={error} />
+      </div>
+    )
   }
 
   if (loadingDetail || !task) {
@@ -75,15 +80,15 @@ export default function TaskDetailPage() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-section-gap">
-      <Button variant="ghost" size="sm" onClick={() => navigate(ROUTES.TASKS)}>
-        <ArrowLeft className="mr-1 size-4" />
-        Back to Board
-      </Button>
+      <Breadcrumbs items={[{ label: 'Tasks', to: ROUTES.TASKS }, { label: task.title ?? task.id }]} />
 
       {wsSetupError && (
-        <div className="rounded-md border border-warning/30 bg-warning/10 p-card text-sm text-warning">
-          Real-time updates unavailable: {wsSetupError}
-        </div>
+        <ErrorBanner
+          variant="inline"
+          severity="warning"
+          title="Real-time updates unavailable"
+          description={wsSetupError}
+        />
       )}
 
       <ErrorBoundary level="section">

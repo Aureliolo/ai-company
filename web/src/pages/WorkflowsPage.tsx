@@ -1,10 +1,12 @@
 import { useCallback, useState } from 'react'
-import { AlertTriangle, Plus } from 'lucide-react'
+import { Plus } from 'lucide-react'
 import { useNavigate } from 'react-router'
 import { ROUTES } from '@/router/routes'
 import { useWorkflowsData } from '@/hooks/useWorkflowsData'
 import { useWorkflowsStore } from '@/stores/workflows'
 import { Button } from '@/components/ui/button'
+import { ErrorBanner } from '@/components/ui/error-banner'
+import { ListHeader } from '@/components/ui/list-header'
 import { SegmentedControl } from '@/components/ui/segmented-control'
 import { WorkflowsSkeleton } from './workflows/WorkflowsSkeleton'
 import { WorkflowFilters } from './workflows/WorkflowFilters'
@@ -61,35 +63,29 @@ export default function WorkflowsPage() {
 
   return (
     <div className="space-y-section-gap">
-      <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-foreground">Workflows</h1>
-        <div className="flex items-center gap-3">
-          <span className="text-sm text-muted-foreground">
-            {filteredWorkflows.length} of {totalWorkflows}
-          </span>
-          <SegmentedControl
-            label="View mode"
-            value={viewMode}
-            onChange={setViewMode}
-            options={VIEW_MODE_OPTIONS}
-            size="sm"
-          />
-          <Button size="sm" onClick={() => setCreateOpen(true)}>
-            <Plus className="mr-1 size-4" />
-            Create Workflow
-          </Button>
-        </div>
-      </div>
+      <ListHeader
+        title="Workflows"
+        count={filteredWorkflows.length}
+        countLabel={filteredWorkflows.length === totalWorkflows ? undefined : `${filteredWorkflows.length} of ${totalWorkflows}`}
+        primaryAction={
+          <div className="flex items-center gap-2">
+            <SegmentedControl
+              label="View mode"
+              value={viewMode}
+              onChange={setViewMode}
+              options={VIEW_MODE_OPTIONS}
+              size="sm"
+            />
+            <Button size="sm" onClick={() => setCreateOpen(true)}>
+              <Plus aria-hidden="true" />
+              New workflow
+            </Button>
+          </div>
+        }
+      />
 
       {error && (
-        <div
-          role="alert"
-          aria-live="assertive"
-          className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/5 p-card text-sm text-danger"
-        >
-          <AlertTriangle className="size-4 shrink-0" />
-          {error}
-        </div>
+        <ErrorBanner severity="error" title="Could not load workflows" description={error} />
       )}
 
       <WorkflowFilters />

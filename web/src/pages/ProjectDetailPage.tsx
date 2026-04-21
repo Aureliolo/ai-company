@@ -1,7 +1,7 @@
-import { useParams, useNavigate } from 'react-router'
-import { AlertTriangle, ArrowLeft, WifiOff } from 'lucide-react'
+import { useParams } from 'react-router'
 import { useProjectDetailData } from '@/hooks/useProjectDetailData'
-import { Button } from '@/components/ui/button'
+import { Breadcrumbs } from '@/components/ui/breadcrumbs'
+import { ErrorBanner } from '@/components/ui/error-banner'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { ROUTES } from '@/router/routes'
 import { ProjectDetailSkeleton } from './projects/ProjectDetailSkeleton'
@@ -11,7 +11,6 @@ import { ProjectTaskList } from './projects/ProjectTaskList'
 
 export default function ProjectDetailPage() {
   const { projectId } = useParams<{ projectId: string }>()
-  const navigate = useNavigate()
   const {
     project,
     projectTasks,
@@ -28,48 +27,26 @@ export default function ProjectDetailPage() {
   if (!project) {
     return (
       <div className="space-y-section-gap">
-        <Button variant="ghost" size="sm" onClick={() => navigate(ROUTES.PROJECTS)}>
-          <ArrowLeft className="mr-1 size-4" />
-          Back to Projects
-        </Button>
-        <div
-          role="alert"
-          className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/5 p-card text-sm text-danger"
-        >
-          <AlertTriangle className="size-4 shrink-0" />
-          {error ?? 'Project not found.'}
-        </div>
+        <Breadcrumbs items={[{ label: 'Projects', to: ROUTES.PROJECTS }, { label: 'Unknown project' }]} />
+        <ErrorBanner severity="error" title="Project not found" description={error ?? undefined} />
       </div>
     )
   }
 
   return (
     <div className="space-y-section-gap">
-      <Button variant="ghost" size="sm" onClick={() => navigate(ROUTES.PROJECTS)}>
-        <ArrowLeft className="mr-1 size-4" />
-        Back to Projects
-      </Button>
+      <Breadcrumbs items={[{ label: 'Projects', to: ROUTES.PROJECTS }, { label: project.name }]} />
 
       {error && (
-        <div
-          role="alert"
-          aria-live="assertive"
-          className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/5 p-card text-sm text-danger"
-        >
-          <AlertTriangle className="size-4 shrink-0" />
-          {error}
-        </div>
+        <ErrorBanner severity="error" title="Could not load project" description={error} />
       )}
 
       {!wsConnected && !loading && (
-        <div
-          role="status"
-          aria-live="polite"
-          className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/5 p-card text-sm text-warning"
-        >
-          <WifiOff className="size-4 shrink-0" />
-          {wsSetupError ?? 'Real-time updates disconnected. Data may be stale.'}
-        </div>
+        <ErrorBanner
+          variant="offline"
+          title="Real-time updates disconnected"
+          description={wsSetupError ?? 'Data may be stale until the connection recovers.'}
+        />
       )}
 
       <ErrorBoundary level="section">
