@@ -258,6 +258,14 @@ class InMemoryEscalationStore(EscalationQueueStore):
         no cross-process signal to wait on. The context manager yields
         an iterator that parks on an ``asyncio.Event`` that is only
         set when the caller exits the ``async with`` block.
+
+        Note on typing: the ``@asynccontextmanager`` decorator turns
+        this generator (which yields an ``AsyncIterator[str]``) into a
+        callable returning an
+        ``AbstractAsyncContextManager[AsyncIterator[str]]`` at the call
+        site, matching :class:`EscalationQueueStore`'s protocol. The
+        decorated function's own annotation stays ``AsyncIterator[...]``
+        because that is what the underlying async generator produces.
         """
         stop = asyncio.Event()
 

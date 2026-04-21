@@ -24,6 +24,12 @@ class TestPersonalityPresetRepository:
         assert row is not None
         assert row.config_json == '{"tone": "measured"}'
         assert row.description == "A calm analyst"
+        # Lock in the timestamp-normalisation contract: the Postgres impl
+        # converts ``datetime`` columns back to ISO 8601 strings for
+        # protocol parity, so the round-trip must preserve the exact
+        # ISO string the caller provided.
+        assert row.created_at == _NOW_ISO
+        assert row.updated_at == _NOW_ISO
 
     async def test_get_missing_returns_none(self, backend: PersistenceBackend) -> None:
         assert await backend.custom_presets.get(NotBlankStr("ghost")) is None
@@ -48,6 +54,9 @@ class TestPersonalityPresetRepository:
         assert row is not None
         assert row.config_json == '{"v": 2}'
         assert row.description == "v2"
+        # Upsert preserves ``created_at`` but advances ``updated_at``.
+        assert row.created_at == _NOW_ISO
+        assert row.updated_at == "2026-03-15T11:00:00+00:00"
 
     async def test_list_all(self, backend: PersistenceBackend) -> None:
         await backend.custom_presets.save(

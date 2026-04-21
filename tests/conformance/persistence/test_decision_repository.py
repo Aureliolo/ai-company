@@ -15,7 +15,7 @@ _NOW = datetime(2026, 3, 15, 10, 0, 0, tzinfo=UTC)
 
 
 async def _seed_task(backend: PersistenceBackend, task_id: str) -> None:
-    """Satisfy the ``approvals.task_id`` FK by persisting a minimal task row."""
+    """Satisfy the ``decision_records.task_id`` FK by persisting a minimal task row."""
     await backend.tasks.save(
         Task(
             id=NotBlankStr(task_id),
@@ -134,5 +134,15 @@ class TestDecisionRepository:
             NotBlankStr("alice"),
             role="reviewer",
         )
+        # Positive assertion: bob is recorded as the reviewer on the same
+        # row, so the reviewer-role path must return exactly one match.
+        # Without this the test only proved empty-results path; a broken
+        # role filter that silently returned zero for both roles would
+        # also pass.
+        bob_as_rev = await backend.decision_records.list_by_agent(
+            NotBlankStr("bob"),
+            role="reviewer",
+        )
         assert len(as_exec) == 1
         assert len(as_rev) == 0
+        assert len(bob_as_rev) == 1

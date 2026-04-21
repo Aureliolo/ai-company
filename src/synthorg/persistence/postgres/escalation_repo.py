@@ -283,7 +283,7 @@ INSERT INTO conflict_escalations (
                 logger.warning(
                     API_REQUEST_ERROR,
                     error_type="escalation_row_corrupt_skipped",
-                    error=str(exc),
+                    error=safe_error_description(exc),
                 )
         return tuple(page_items), total
 
@@ -451,6 +451,11 @@ INSERT INTO conflict_escalations (
         async with self._pool.connection() as conn:
             original_autocommit = getattr(conn, "autocommit", False)
             await conn.set_autocommit(True)
+            # Track whether session state was left in a non-pristine state:
+            # if UNLISTEN or autocommit restore fails, this connection must
+            # not be returned to the pool with altered state (silent reuse
+            # would strand LISTEN registrations on other operators' backs).
+            session_tainted = False
             try:
                 await conn.execute(f'LISTEN "{channel}"')
                 notifies_gen = conn.notifies()
@@ -464,10 +469,32 @@ INSERT INTO conflict_escalations (
                 finally:
                     await notifies_gen.aclose()
             finally:
-                with contextlib.suppress(Exception):
+                try:
                     await conn.execute(f'UNLISTEN "{channel}"')
-                with contextlib.suppress(Exception):
+                except Exception as exc:
+                    session_tainted = True
+                    logger.warning(
+                        API_REQUEST_ERROR,
+                        error_type="escalation_unlisten_failed",
+                        error=safe_error_description(exc),
+                        channel=channel,
+                    )
+                try:
                     await conn.set_autocommit(bool(original_autocommit))
+                except Exception as exc:
+                    session_tainted = True
+                    logger.warning(
+                        API_REQUEST_ERROR,
+                        error_type="escalation_autocommit_restore_failed",
+                        error=safe_error_description(exc),
+                        channel=channel,
+                    )
+                if session_tainted:
+                    # Close the physical connection so the pool discards it
+                    # rather than handing altered session state to the next
+                    # borrower.
+                    with contextlib.suppress(Exception):
+                        await conn.close()
 
     async def _publish_notify(self, escalation_id: str, status: str) -> None:
         """Publish ``<id>:<status>`` on the configured NOTIFY channel.

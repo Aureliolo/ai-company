@@ -74,12 +74,14 @@ class ArtifactService:
     ) -> Artifact:
         """Persist a new artifact with a server-generated id.
 
-        The id has the shape ``"artifact-<12-hex>"`` and the
-        ``created_at`` timestamp is set to the current UTC time;
-        callers do not provide either.
+        The id has the shape ``"artifact-<uuid4-hex>"`` (full 32 hex
+        chars, 128 bits of entropy) and the ``created_at`` timestamp is
+        set to the current UTC time; callers do not provide either.
+        Truncating the UUID shrinks entropy enough for collisions to
+        become a real risk at scale, so the full hex is retained.
         """
         artifact = Artifact(
-            id=NotBlankStr(f"artifact-{uuid.uuid4().hex[:12]}"),
+            id=NotBlankStr(f"artifact-{uuid.uuid4().hex}"),
             type=artifact_type,
             path=path,
             task_id=task_id,

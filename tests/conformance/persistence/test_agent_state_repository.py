@@ -105,8 +105,14 @@ class TestAgentStateRepository:
             _executing(agent_id="middle", last_activity_at=_T1),
         )
 
+        # Scope the assertion to the three agent_ids created by this test.
+        # ``get_active`` returns every active state in the shared backend,
+        # so a sibling test that happens to persist another active state
+        # would make the global ordering flaky; filter to the rows we own
+        # and assert their relative order instead.
         active = await backend.agent_states.get_active()
-        ordered_ids = [s.agent_id for s in active]
+        scoped_ids = {"older", "middle", "newer"}
+        ordered_ids = [s.agent_id for s in active if s.agent_id in scoped_ids]
         assert ordered_ids == ["newer", "middle", "older"]
 
     async def test_delete_existing(self, backend: PersistenceBackend) -> None:

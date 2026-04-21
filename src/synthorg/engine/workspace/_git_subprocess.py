@@ -40,13 +40,28 @@ async def run_git_subprocess(
     Raises:
         asyncio.CancelledError: Propagated (process is killed first).
     """
-    proc = await asyncio.create_subprocess_exec(
-        "git",
-        *args,
-        cwd=str(repo_root),
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
+    # ``create_subprocess_exec`` can raise ``OSError`` before the process
+    # ever starts (missing ``git`` binary, bad ``cwd``, resource limits,
+    # ...). Returning the normal contract as ``(-1, "", <message>)``
+    # keeps every caller simple -- they already handle the non-zero rc
+    # branch and do not have to special-case a thrown exception.
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "git",
+            *args,
+            cwd=str(repo_root),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+    except OSError as exc:
+        msg = f"failed to spawn git subprocess: {exc.__class__.__name__}"
+        logger.warning(
+            log_event,
+            error_type=exc.__class__.__name__,
+            error=msg,
+            args=args,
+        )
+        return (-1, "", msg)
     try:
         stdout_bytes, stderr_bytes = await asyncio.wait_for(
             proc.communicate(),

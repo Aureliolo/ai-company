@@ -9,7 +9,7 @@ from typing import Final
 
 from litestar import Controller, delete, get, post
 from litestar.datastructures import State  # noqa: TC002
-from litestar.exceptions import ClientException
+from litestar.exceptions import ClientException, NotFoundException
 from litestar.status_codes import HTTP_409_CONFLICT
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -41,10 +41,6 @@ from synthorg.observability.events.memory import (
     MEMORY_FINE_TUNE_REQUESTED,
 )
 from synthorg.persistence.errors import QueryError
-from synthorg.persistence.sqlite.fine_tune_repo import (
-    SQLiteFineTuneCheckpointRepository,
-    SQLiteFineTuneRunRepository,
-)
 
 logger = get_logger(__name__)
 
@@ -59,12 +55,16 @@ def _build_memory_service(app_state: AppState) -> MemoryService:
 
     Kept on the controller module rather than :class:`AppState` so the
     service layer depends on AppState (and not vice-versa) and the
-    AppState slot inventory stays stable.
+    AppState slot inventory stays stable. Resolves the fine-tune
+    repositories through :class:`PersistenceBackend` so the controller
+    does not hard-wire the SQLite implementation; backends that do not
+    support fine-tuning raise ``NotImplementedError`` at accessor-call
+    time rather than silently returning a mismatched repo.
     """
-    db = app_state.persistence.get_db()
+    backend = app_state.persistence
     return MemoryService(
-        checkpoint_repo=SQLiteFineTuneCheckpointRepository(db),
-        run_repo=SQLiteFineTuneRunRepository(db),
+        checkpoint_repo=backend.fine_tune_checkpoints,
+        run_repo=backend.fine_tune_runs,
         settings_service=(
             app_state.settings_service if app_state.has_settings_service else None
         ),
@@ -269,13 +269,23 @@ class MemoryAdminController(Controller):
         state: State,
         checkpoint_id: str,
     ) -> ApiResponse[CheckpointRecord]:
-        """Deploy a specific checkpoint."""
+        """Deploy a specific checkpoint.
+
+        Exception mapping:
+
+        - ``CheckpointNotFoundError`` -> HTTP 404
+        - ``QueryError`` (persistence-level failure during activation
+          or re-read) -> HTTP 409 with a safe message
+        - Any other exception propagates so unexpected server bugs
+          surface as HTTP 500 instead of being silenced as 409
+          "conflict".
+        """
         service = _build_memory_service(state.app_state)
         try:
             updated = await service.deploy_checkpoint(NotBlankStr(checkpoint_id))
         except CheckpointNotFoundError as exc:
-            raise ClientException(detail=str(exc)) from exc
-        except Exception as exc:
+            raise NotFoundException(detail=str(exc)) from exc
+        except QueryError as exc:
             raise ClientException(
                 detail="Failed to update embedder settings",
                 status_code=HTTP_409_CONFLICT,
@@ -288,12 +298,21 @@ class MemoryAdminController(Controller):
         state: State,
         checkpoint_id: str,
     ) -> ApiResponse[CheckpointRecord]:
-        """Rollback: restore pre-deployment config from backup."""
+        """Rollback: restore pre-deployment config from backup.
+
+        Exception mapping:
+
+        - ``CheckpointNotFoundError`` -> HTTP 404
+        - ``CheckpointRollbackUnavailableError``,
+          ``CheckpointRollbackCorruptError`` -> HTTP 400 via
+          ``ClientException`` (operator error / corrupt backup)
+        - Any other exception propagates as HTTP 500
+        """
         service = _build_memory_service(state.app_state)
         try:
             updated = await service.rollback_checkpoint(NotBlankStr(checkpoint_id))
         except CheckpointNotFoundError as exc:
-            raise ClientException(detail=str(exc)) from exc
+            raise NotFoundException(detail=str(exc)) from exc
         except CheckpointRollbackUnavailableError as exc:
             raise ClientException(detail=str(exc)) from exc
         except CheckpointRollbackCorruptError as exc:

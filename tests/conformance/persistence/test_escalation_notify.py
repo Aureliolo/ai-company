@@ -65,9 +65,15 @@ class TestEscalationNotifyConformance:
             pytest.skip("SQLite-only: single-process noop subscription")
 
         repo = backend.build_escalations()
+        # Deterministic readiness signal: the consumer sets this once the
+        # context manager has actually entered. Using ``asyncio.sleep`` as
+        # a readiness check was scheduler-dependent under ``-n 8`` and
+        # could race the assertion on busy workers.
+        entered = asyncio.Event()
 
         async def _consume() -> None:
             async with repo.subscribe_notifications("conformance_channel") as gen:
+                entered.set()
                 async for _ in gen:
                     # Should never yield on SQLite.
                     msg = "sqlite subscribe_notifications yielded unexpectedly"
@@ -75,8 +81,7 @@ class TestEscalationNotifyConformance:
 
         consumer = asyncio.create_task(_consume())
         try:
-            # Give the context manager a tick to enter, then cancel.
-            await asyncio.sleep(0.05)
+            await asyncio.wait_for(entered.wait(), timeout=5.0)
             assert not consumer.done()
         finally:
             consumer.cancel()

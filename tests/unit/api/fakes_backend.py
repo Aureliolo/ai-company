@@ -426,6 +426,9 @@ class FakePersistenceBackend:
         self._org_facts_stub: object | None = None
         self._ontology_entities_stub: object | None = None
         self._ontology_drift_stub: object | None = None
+        self._project_cost_aggregates_stub: object | None = None
+        self._fine_tune_checkpoints_stub: object | None = None
+        self._fine_tune_runs_stub: object | None = None
 
     def clear(self) -> None:
         """Reset all in-memory state for test isolation.
@@ -704,9 +707,27 @@ class FakePersistenceBackend:
         """Cached fake project cost aggregate repository."""
         from unittest.mock import AsyncMock
 
-        if not hasattr(self, "_project_cost_aggregates_stub"):
-            self._project_cost_aggregates_stub: Any = AsyncMock()
+        if self._project_cost_aggregates_stub is None:
+            self._project_cost_aggregates_stub = AsyncMock()
         return self._project_cost_aggregates_stub
+
+    @property
+    def fine_tune_checkpoints(self) -> Any:
+        """Cached fake fine-tune checkpoint repository."""
+        from unittest.mock import AsyncMock
+
+        if self._fine_tune_checkpoints_stub is None:
+            self._fine_tune_checkpoints_stub = AsyncMock()
+        return self._fine_tune_checkpoints_stub
+
+    @property
+    def fine_tune_runs(self) -> Any:
+        """Cached fake fine-tune run repository."""
+        from unittest.mock import AsyncMock
+
+        if self._fine_tune_runs_stub is None:
+            self._fine_tune_runs_stub = AsyncMock()
+        return self._fine_tune_runs_stub
 
     def build_lockouts(self, auth_config: Any) -> Any:
         """Fake lockout repository builder.

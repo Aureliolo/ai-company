@@ -10,9 +10,13 @@ from datetime import UTC, datetime
 
 import pytest
 
-from synthorg.core.enums import WorkflowNodeType, WorkflowType
+from synthorg.core.enums import WorkflowNodeType, WorkflowType, WorkflowValueType
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.workflow.definition import WorkflowDefinition, WorkflowNode
+from synthorg.engine.workflow.definition import (
+    WorkflowDefinition,
+    WorkflowIODeclaration,
+    WorkflowNode,
+)
 from synthorg.engine.workflow.service import WorkflowService
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.versioning.hashing import compute_content_hash
@@ -38,6 +42,9 @@ def _definition(
     *,
     definition_id: str = "wf-cascade",
     revision: int = 1,
+    inputs: tuple[WorkflowIODeclaration, ...] = (),
+    outputs: tuple[WorkflowIODeclaration, ...] = (),
+    is_subworkflow: bool = False,
 ) -> WorkflowDefinition:
     return WorkflowDefinition(
         id=NotBlankStr(definition_id),
@@ -45,6 +52,9 @@ def _definition(
         description="",
         workflow_type=WorkflowType.SEQUENTIAL_PIPELINE,
         version=NotBlankStr("1.0.0"),
+        inputs=inputs,
+        outputs=outputs,
+        is_subworkflow=is_subworkflow,
         nodes=(_START, _END),
         edges=(),
         created_by=NotBlankStr("alice"),
@@ -124,8 +134,35 @@ class TestWorkflowServiceCascade:
         assert await service.get_definition(NotBlankStr("wf-no-versions")) is None
 
     async def test_list_and_get_round_trip(self, backend: PersistenceBackend) -> None:
+        # Seed non-default inputs / outputs / is_subworkflow so a backend
+        # that silently drops any of the PST-1 columns fails this test
+        # instead of passing because every value matched the column
+        # default. Each decl uses STRING with ``required=False`` +
+        # ``default=""`` so the validator accepts the optional case.
         service = _service(backend)
-        await service.create_definition(_definition(definition_id="wf-a"))
+        inputs_a = (
+            WorkflowIODeclaration(
+                name=NotBlankStr("topic"),
+                type=WorkflowValueType.STRING,
+                required=False,
+                default="",
+            ),
+        )
+        outputs_a = (
+            WorkflowIODeclaration(
+                name=NotBlankStr("summary"),
+                type=WorkflowValueType.STRING,
+                required=True,
+            ),
+        )
+        await service.create_definition(
+            _definition(
+                definition_id="wf-a",
+                inputs=inputs_a,
+                outputs=outputs_a,
+                is_subworkflow=True,
+            ),
+        )
         await service.create_definition(_definition(definition_id="wf-b"))
 
         listed = await service.list_definitions()
@@ -135,3 +172,6 @@ class TestWorkflowServiceCascade:
         fetched = await service.get_definition(NotBlankStr("wf-a"))
         assert fetched is not None
         assert fetched.id == "wf-a"
+        assert fetched.inputs == inputs_a
+        assert fetched.outputs == outputs_a
+        assert fetched.is_subworkflow is True

@@ -138,6 +138,36 @@ class TestCustomRulesServiceUpdate:
                 {"metric_path": "does.not.exist"},
             )
 
+    @pytest.mark.parametrize(
+        "immutable_field",
+        ["id", "created_at"],
+    )
+    async def test_update_rejects_immutable_fields(
+        self,
+        immutable_field: str,
+    ) -> None:
+        """Callers cannot rewrite ``id`` / ``created_at`` via ``update``.
+
+        Merging the caller payload verbatim into the persistence row
+        would let an update turn into an identity change or an audit-
+        history rewrite; the service must reject the request before any
+        persistence call fires.
+        """
+        service = CustomRulesService(repo=_FakeCustomRuleRepository())
+        rule = _rule()
+        await service.create(rule)
+
+        override = {
+            "id": "00000000-0000-0000-0000-000000000099",
+            "created_at": datetime(2020, 1, 1, tzinfo=UTC),
+        }[immutable_field]
+
+        with pytest.raises(ValueError, match=immutable_field):
+            await service.update(
+                NotBlankStr(str(rule.id)),
+                {immutable_field: override},
+            )
+
 
 class TestCustomRulesServiceToggle:
     async def test_toggle_flips_enabled(self) -> None:

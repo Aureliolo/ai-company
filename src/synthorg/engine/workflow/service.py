@@ -31,6 +31,31 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
+class WorkflowDefinitionExistsError(Exception):
+    """Raised when ``create_definition`` targets an id that already exists."""
+
+
+class WorkflowDefinitionNotFoundError(Exception):
+    """Raised when ``fetch_for_update`` / update targets a missing id."""
+
+
+class WorkflowDefinitionRevisionMismatchError(Exception):
+    """Raised when an optimistic-concurrency revision check fails."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        definition_id: str,
+        expected: int,
+        actual: int,
+    ) -> None:
+        super().__init__(message)
+        self.definition_id = definition_id
+        self.expected = expected
+        self.actual = actual
+
+
 class WorkflowService:
     """Service for workflow definition CRUD + version cascade."""
 
@@ -62,11 +87,66 @@ class WorkflowService:
         """Fetch a single definition by id."""
         return await self._definitions.get(definition_id)
 
+    async def fetch_for_update(
+        self,
+        definition_id: NotBlankStr,
+        expected_revision: int | None,
+    ) -> WorkflowDefinition:
+        """Return the definition for an optimistic-concurrency update.
+
+        Enforces the same preconditions the controller previously ran
+        inline against the repository so all persistence access flows
+        through the service layer:
+
+        * the definition exists;
+        * when *expected_revision* is supplied, the stored revision
+          matches it.
+
+        Raises:
+            WorkflowDefinitionNotFoundError: The id does not exist.
+            WorkflowDefinitionRevisionMismatchError: The stored revision
+                differs from *expected_revision*.
+        """
+        existing = await self._definitions.get(definition_id)
+        if existing is None:
+            msg = f"Workflow definition {definition_id!r} not found"
+            raise WorkflowDefinitionNotFoundError(msg)
+        if expected_revision is not None and expected_revision != existing.revision:
+            msg = (
+                f"Workflow definition {definition_id!r} revision conflict: "
+                f"expected {expected_revision}, stored {existing.revision}"
+            )
+            raise WorkflowDefinitionRevisionMismatchError(
+                msg,
+                definition_id=str(definition_id),
+                expected=expected_revision,
+                actual=existing.revision,
+            )
+        return existing
+
     async def create_definition(
         self,
         definition: WorkflowDefinition,
     ) -> WorkflowDefinition:
-        """Persist a new definition with audit log."""
+        """Persist a new definition with audit log.
+
+        The underlying repository's ``save`` is upsert, so a duplicate
+        id would silently overwrite an existing definition and emit a
+        misleading ``WORKFLOW_DEF_CREATED`` event. We pre-check
+        existence and raise ``WorkflowDefinitionExistsError`` so
+        create/update intent is explicit in the audit trail.
+
+        Raises:
+            WorkflowDefinitionExistsError: ``definition.id`` already
+                exists -- caller should use ``update_definition``.
+        """
+        existing = await self._definitions.get(definition.id)
+        if existing is not None:
+            msg = (
+                f"Workflow definition {definition.id!r} already exists; "
+                "use update_definition to modify it"
+            )
+            raise WorkflowDefinitionExistsError(msg)
         await self._definitions.save(definition)
         logger.info(WORKFLOW_DEF_CREATED, definition_id=definition.id)
         return definition
@@ -75,7 +155,14 @@ class WorkflowService:
         self,
         definition: WorkflowDefinition,
     ) -> WorkflowDefinition:
-        """Upsert an existing definition with audit log."""
+        """Upsert an existing definition with audit log.
+
+        Intentionally does NOT pre-check existence so optimistic
+        concurrency retries (create-or-update from the controller's
+        ``fetch_existing_for_update`` flow) continue to work without
+        an extra round-trip; the controller already checks existence
+        before invoking ``update``.
+        """
         await self._definitions.save(definition)
         logger.info(WORKFLOW_DEF_UPDATED, definition_id=definition.id)
         return definition

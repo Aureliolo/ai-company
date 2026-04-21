@@ -215,7 +215,7 @@ class SQLiteEscalationRepository(EscalationQueueStore):
                 logger.warning(
                     API_REQUEST_ERROR,
                     error_type="escalation_row_corrupt_skipped",
-                    error=str(exc),
+                    error=safe_error_description(exc),
                 )
         return tuple(page_items), total
 
@@ -274,11 +274,11 @@ class SQLiteEscalationRepository(EscalationQueueStore):
             rows = await cursor.fetchall()
             await self._db.commit()
         except (sqlite3.Error, aiosqlite.Error) as exc:
-            msg = f"Failed to mark escalations expired: {exc}"
+            msg = "Failed to mark escalations expired"
             logger.warning(
                 API_REQUEST_ERROR,
                 error_type="escalation_mark_expired_failed",
-                error=str(exc),
+                error=safe_error_description(exc),
             )
             await self._db.rollback()
             raise QueryError(msg) from exc
@@ -293,6 +293,11 @@ class SQLiteEscalationRepository(EscalationQueueStore):
         self,
         channel: str,  # noqa: ARG002
     ) -> AsyncIterator[AsyncIterator[str]]:
+        # The `@asynccontextmanager` decorator turns this generator into a
+        # callable returning an `AbstractAsyncContextManager[AsyncIterator[str]]`
+        # which matches the protocol declared on `EscalationQueueStore`;
+        # the generator itself must be annotated with the inner iterator
+        # type because that is what the `yield` statement produces.
         """Return an iterator that blocks until cancelled (no-op).
 
         SQLite is single-process by design; there is no cross-instance

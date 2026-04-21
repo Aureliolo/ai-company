@@ -66,12 +66,17 @@ class TestSubworkflowRepository:
         assert fetched is None
 
     async def test_list_versions_orders_desc(self, backend: PersistenceBackend) -> None:
+        # Mix lex-identical and lex-divergent pairs so a backend that
+        # orders TEXT lexicographically (e.g. ``"1.10.0" < "1.2.0"``
+        # under string sort) cannot pass; forces proper semver ordering.
         await backend.subworkflows.save(_subworkflow(version="1.0.0"))
         await backend.subworkflows.save(_subworkflow(version="1.1.0"))
+        await backend.subworkflows.save(_subworkflow(version="1.2.0"))
+        await backend.subworkflows.save(_subworkflow(version="1.10.0"))
         await backend.subworkflows.save(_subworkflow(version="2.0.0"))
 
         versions = await backend.subworkflows.list_versions(NotBlankStr("sub-001"))
-        assert versions == ("2.0.0", "1.1.0", "1.0.0")
+        assert versions == ("2.0.0", "1.10.0", "1.2.0", "1.1.0", "1.0.0")
 
     async def test_list_versions_empty_for_unknown(
         self, backend: PersistenceBackend

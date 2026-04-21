@@ -670,6 +670,14 @@ class _FakeBackend:
     def project_cost_aggregates(self) -> Any:
         return None
 
+    @property
+    def fine_tune_checkpoints(self) -> Any:
+        return None
+
+    @property
+    def fine_tune_runs(self) -> Any:
+        return None
+
     def build_lockouts(self, auth_config: Any) -> Any:
         return None
 

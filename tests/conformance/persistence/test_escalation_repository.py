@@ -23,6 +23,7 @@ from synthorg.communication.conflict_resolution.models import (
 )
 from synthorg.communication.enums import ConflictType
 from synthorg.core.enums import SeniorityLevel
+from synthorg.core.types import NotBlankStr
 from synthorg.persistence.protocol import PersistenceBackend
 
 pytestmark = pytest.mark.integration
@@ -76,14 +77,14 @@ class TestEscalationQueueRepository:
         repo = backend.build_escalations()
         await repo.create(_escalation())
 
-        fetched = await repo.get("esc-001")
+        fetched = await repo.get(NotBlankStr("esc-001"))
         assert fetched is not None
         assert fetched.id == "esc-001"
         assert fetched.status is EscalationStatus.PENDING
 
     async def test_get_missing_returns_none(self, backend: PersistenceBackend) -> None:
         repo = backend.build_escalations()
-        assert await repo.get("ghost") is None
+        assert await repo.get(NotBlankStr("ghost")) is None
 
     async def test_list_items_filters_by_status(
         self, backend: PersistenceBackend
@@ -107,12 +108,12 @@ class TestEscalationQueueRepository:
         await repo.create(_escalation(escalation_id="win"))
 
         updated = await repo.apply_decision(
-            "win",
+            NotBlankStr("win"),
             decision=WinnerDecision(
                 winning_agent_id="agent-a",
                 reasoning="strong consistency",
             ),
-            decided_by="human:op-1",
+            decided_by=NotBlankStr("human:op-1"),
         )
         assert updated.status is EscalationStatus.DECIDED
         assert updated.decided_by == "human:op-1"
@@ -122,9 +123,9 @@ class TestEscalationQueueRepository:
         await repo.create(_escalation(escalation_id="rej"))
 
         updated = await repo.apply_decision(
-            "rej",
+            NotBlankStr("rej"),
             decision=RejectDecision(reasoning="both off-strategy"),
-            decided_by="human:op-2",
+            decided_by=NotBlankStr("human:op-2"),
         )
         assert updated.status is EscalationStatus.DECIDED
 
@@ -134,19 +135,22 @@ class TestEscalationQueueRepository:
         repo = backend.build_escalations()
         with pytest.raises(KeyError):
             await repo.apply_decision(
-                "ghost",
+                NotBlankStr("ghost"),
                 decision=WinnerDecision(
                     winning_agent_id="agent-a",
                     reasoning="agent-a has stronger reasoning",
                 ),
-                decided_by="human:op-1",
+                decided_by=NotBlankStr("human:op-1"),
             )
 
     async def test_cancel(self, backend: PersistenceBackend) -> None:
         repo = backend.build_escalations()
         await repo.create(_escalation(escalation_id="cxl"))
 
-        cancelled = await repo.cancel("cxl", cancelled_by="human:op-3")
+        cancelled = await repo.cancel(
+            NotBlankStr("cxl"),
+            cancelled_by=NotBlankStr("human:op-3"),
+        )
         assert cancelled.status is EscalationStatus.CANCELLED
 
     async def test_mark_expired(self, backend: PersistenceBackend) -> None:
@@ -164,6 +168,6 @@ class TestEscalationQueueRepository:
         expired = await repo.mark_expired(future_iso)
         assert "exp" in expired
 
-        fetched = await repo.get("exp")
+        fetched = await repo.get(NotBlankStr("exp"))
         assert fetched is not None
         assert fetched.status is EscalationStatus.EXPIRED

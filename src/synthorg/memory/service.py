@@ -28,12 +28,12 @@ from synthorg.observability.events.memory import (
     MEMORY_EMBEDDER_SETTINGS_READ_FAILED,
 )
 from synthorg.persistence.errors import QueryError
+from synthorg.persistence.fine_tune_protocol import (
+    FineTuneCheckpointRepository,  # noqa: TC001
+    FineTuneRunRepository,  # noqa: TC001
+)
 
 if TYPE_CHECKING:
-    from synthorg.persistence.sqlite.fine_tune_repo import (
-        SQLiteFineTuneCheckpointRepository,
-        SQLiteFineTuneRunRepository,
-    )
     from synthorg.settings.service import SettingsService
 
 logger = get_logger(__name__)
@@ -64,8 +64,8 @@ class MemoryService:
     def __init__(
         self,
         *,
-        checkpoint_repo: SQLiteFineTuneCheckpointRepository,
-        run_repo: SQLiteFineTuneRunRepository,
+        checkpoint_repo: FineTuneCheckpointRepository,
+        run_repo: FineTuneRunRepository,
         settings_service: SettingsService | None,
     ) -> None:
         """Initialise with repository + settings dependencies.
@@ -164,7 +164,7 @@ class MemoryService:
 
         if self._settings is not None:
             try:
-                backup: dict[str, Any] = json.loads(cp.backup_config_json)
+                parsed: Any = json.loads(cp.backup_config_json)
             except (json.JSONDecodeError, TypeError) as exc:
                 logger.warning(
                     MEMORY_CHECKPOINT_ROLLBACK_FAILED,
@@ -173,6 +173,22 @@ class MemoryService:
                 )
                 msg = "Backup config is corrupt and cannot be restored"
                 raise CheckpointRollbackCorruptError(msg) from exc
+            if not isinstance(parsed, dict):
+                # ``json.loads`` happily returns ``list``, ``None``, ``str``,
+                # etc.; the rollback loop assumes a mapping and would crash
+                # with ``AttributeError`` on ``backup.items()``. Fail closed
+                # with the dedicated corruption error instead.
+                logger.warning(
+                    MEMORY_CHECKPOINT_ROLLBACK_FAILED,
+                    checkpoint_id=checkpoint_id,
+                    error_type="BackupConfigNotMapping",
+                    parsed_type=type(parsed).__name__,
+                )
+                msg = (
+                    f"Backup config must be a JSON object; got {type(parsed).__name__}"
+                )
+                raise CheckpointRollbackCorruptError(msg)
+            backup: dict[str, Any] = parsed
             for key, value in backup.items():
                 await self._settings.set("memory", key, str(value))
 
@@ -222,8 +238,12 @@ class MemoryService:
         """
         assert self._settings is not None  # noqa: S101 - guarded by caller
 
-        prior_model = await self._read_setting("embedder_model")
-        prior_provider = await self._read_setting("embedder_provider")
+        prior_model_value, prior_model_exists = await self._read_setting(
+            "embedder_model",
+        )
+        prior_provider_value, prior_provider_exists = await self._read_setting(
+            "embedder_provider",
+        )
 
         try:
             await self._settings.set("memory", "embedder_model", model_path)
@@ -241,26 +261,23 @@ class MemoryService:
                     checkpoint_id=checkpoint_id,
                     step="deactivate_all_checkpoints",
                 )
-            if prior_model is not None:
-                await self._rollback_step(
-                    self._settings.set(
-                        "memory",
-                        "embedder_model",
-                        prior_model,
-                    ),
-                    checkpoint_id=checkpoint_id,
-                    step="restore_embedder_model",
-                )
-            if prior_provider is not None:
-                await self._rollback_step(
-                    self._settings.set(
-                        "memory",
-                        "embedder_provider",
-                        prior_provider,
-                    ),
-                    checkpoint_id=checkpoint_id,
-                    step="restore_embedder_provider",
-                )
+            # Restore or explicitly delete each setting based on whether a
+            # prior value existed. Collapsing "did not exist" and
+            # "couldn't read" into a single ``None`` would leave a freshly
+            # written setting behind on failure whenever the read was
+            # simply noisy, so the two cases are tracked separately.
+            await self._restore_or_delete(
+                "embedder_model",
+                prior_model_value,
+                prior_model_exists,
+                checkpoint_id,
+            )
+            await self._restore_or_delete(
+                "embedder_provider",
+                prior_provider_value,
+                prior_provider_exists,
+                checkpoint_id,
+            )
             logger.warning(
                 MEMORY_CHECKPOINT_DEPLOY_FAILED,
                 checkpoint_id=checkpoint_id,
@@ -268,14 +285,57 @@ class MemoryService:
             )
             raise
 
-    async def _read_setting(self, key: str) -> str | None:
+    async def _restore_or_delete(
+        self,
+        key: str,
+        prior_value: str | None,
+        prior_exists: bool,  # noqa: FBT001 -- internal helper, not a public API
+        checkpoint_id: str,
+    ) -> None:
+        """Restore *prior_value* or delete the key when there was no prior.
+
+        ``prior_exists`` distinguishes "was unset before" (delete) from
+        "failed to read before" (restore if we have a value to restore,
+        otherwise leave alone to avoid losing the newly-written setting).
+        """
+        assert self._settings is not None  # noqa: S101 - guarded by caller
+        if prior_exists and prior_value is not None:
+            await self._rollback_step(
+                self._settings.set("memory", key, prior_value),
+                checkpoint_id=checkpoint_id,
+                step=f"restore_{key}",
+            )
+        elif prior_exists and prior_value is None:
+            # Existed but resolved to ``None`` -- treat as "was unset".
+            await self._rollback_step(
+                self._settings.delete("memory", key),
+                checkpoint_id=checkpoint_id,
+                step=f"delete_{key}",
+            )
+        elif not prior_exists and prior_value is None:
+            # Key was genuinely absent before the deploy: remove the newly
+            # written value so rollback returns to a pristine state.
+            await self._rollback_step(
+                self._settings.delete("memory", key),
+                checkpoint_id=checkpoint_id,
+                step=f"delete_{key}",
+            )
+        # prior_exists=False + prior_value is not None cannot happen.
+
+    async def _read_setting(self, key: str) -> tuple[str | None, bool]:
         """Best-effort read of a ``memory.<key>`` setting for rollback.
 
-        Logs at DEBUG when the read fails so the rollback path's silent
-        degradation (no prior value to restore) has an audit trail.
+        Returns ``(value, exists)`` so callers can distinguish three
+        cases cleanly: "was set" (``exists=True``), "was genuinely
+        unset" (``exists=False, value=None``) and "failed to read"
+        (``exists=False, value=None``). All three feed the rollback
+        path -- any ``exists=False`` branch asks the caller to delete
+        the newly-written setting so rollback never leaves a residue,
+        and the DEBUG log distinguishes the read-error sub-case for
+        operator audit.
         """
         if self._settings is None:
-            return None
+            return None, False
         try:
             value = await self._settings.get("memory", key)
         except Exception as exc:
@@ -285,8 +345,11 @@ class MemoryService:
                 error_type=type(exc).__name__,
                 reason="read_for_rollback",
             )
-            return None
-        return value.value if value is not None else None
+            # Any exception (missing, storage glitch, ...) collapses to
+            # exists=False so rollback will explicitly delete the
+            # newly-written setting instead of leaving it in place.
+            return None, False
+        return value.value, True
 
     @staticmethod
     async def _rollback_step(
@@ -300,13 +363,15 @@ class MemoryService:
         Rollback failures must never shadow the original deploy error
         (which is already being raised up the call stack), but they
         must be audit-visible so operators know the config may be in
-        an inconsistent state.
+        an inconsistent state. Uses the rollback-specific event so
+        alerting can distinguish primary deploy failures from partial
+        rollback conditions.
         """
         try:
             await coro
         except Exception as exc:
             logger.warning(
-                MEMORY_CHECKPOINT_DEPLOY_FAILED,
+                MEMORY_CHECKPOINT_ROLLBACK_FAILED,
                 checkpoint_id=checkpoint_id,
                 error_type=type(exc).__name__,
                 stage="rollback",

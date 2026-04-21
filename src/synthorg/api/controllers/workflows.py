@@ -14,7 +14,6 @@ from pydantic import ValidationError
 from synthorg.api.controllers._workflow_builders import (
     apply_update,
     build_definition_from_blueprint,
-    fetch_existing_for_update,
     load_blueprint_or_error,
     run_subworkflow_validation,
     wf_versioning,
@@ -41,7 +40,11 @@ from synthorg.engine.workflow.definition import (
     WorkflowIODeclaration,
     WorkflowNode,
 )
-from synthorg.engine.workflow.service import WorkflowService
+from synthorg.engine.workflow.service import (
+    WorkflowDefinitionNotFoundError,
+    WorkflowDefinitionRevisionMismatchError,
+    WorkflowService,
+)
 from synthorg.engine.workflow.validation import WorkflowValidationResult
 from synthorg.engine.workflow.validation import (
     validate_workflow as run_workflow_validation,
@@ -318,14 +321,37 @@ class WorkflowController(Controller):
     ) -> Response[ApiResponse[WorkflowDefinition]]:
         """Update an existing workflow definition."""
         service = _service(state)
-        fetch_result = await fetch_existing_for_update(
-            state.app_state.persistence.workflow_definitions,
-            workflow_id,
-            data.expected_revision,
-        )
-        if isinstance(fetch_result, Response):
-            return fetch_result
-        existing = fetch_result
+        try:
+            existing = await service.fetch_for_update(
+                workflow_id,
+                data.expected_revision,
+            )
+        except WorkflowDefinitionNotFoundError as exc:
+            logger.warning(
+                WORKFLOW_DEF_NOT_FOUND,
+                definition_id=workflow_id,
+            )
+            return Response(
+                content=ApiResponse[WorkflowDefinition](
+                    error=str(exc),
+                ),
+                status_code=404,
+            )
+        except WorkflowDefinitionRevisionMismatchError as exc:
+            logger.warning(
+                WORKFLOW_DEF_VERSION_CONFLICT,
+                definition_id=workflow_id,
+                expected=exc.expected,
+                actual=exc.actual,
+            )
+            return Response(
+                content=ApiResponse[WorkflowDefinition](
+                    error=(
+                        "Version conflict: the workflow was modified. Reload and retry."
+                    ),
+                ),
+                status_code=409,
+            )
 
         update_result = apply_update(existing, data)
         if isinstance(update_result, Response):

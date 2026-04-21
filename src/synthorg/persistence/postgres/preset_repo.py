@@ -40,19 +40,40 @@ def _normalize_config_json(value: Any) -> str:
     """Serialize a JSONB dict back to a JSON string for protocol parity.
 
     SQLite's ``config_json`` is stored verbatim as TEXT, so the protocol
-    exposes ``str``. Postgres returns JSONB as a Python ``dict``; we
-    re-serialise to match.
+    exposes ``str``. Postgres returns JSONB as a Python ``dict`` or
+    ``list``; we re-serialise to match. Unexpected types (``int``,
+    ``bytes``, ...) indicate schema drift or a broken adapter and must
+    fail loudly rather than round-tripping through ``str(value)``.
+
+    Raises:
+        QueryError: If *value* is not ``str``/``dict``/``list``.
     """
     if isinstance(value, str):
         return value
-    return json.dumps(value)
+    if isinstance(value, dict | list):
+        return json.dumps(value)
+    msg = (
+        "preset config_json from Postgres has unexpected type "
+        f"{type(value).__name__}; expected str, dict, or list"
+    )
+    raise QueryError(msg)
 
 
 def _normalize_timestamp(value: Any) -> str:
-    """Return an ISO 8601 string from a ``datetime`` or passthrough ``str``."""
+    """Return an ISO 8601 string from a ``datetime`` or passthrough ``str``.
+
+    Raises:
+        QueryError: If *value* is neither ``datetime`` nor ``str``.
+    """
+    if isinstance(value, str):
+        return value
     if isinstance(value, datetime):
         return value.isoformat()
-    return str(value)
+    msg = (
+        "preset timestamp from Postgres has unexpected type "
+        f"{type(value).__name__}; expected datetime or str"
+    )
+    raise QueryError(msg)
 
 
 class PostgresPersonalityPresetRepository:
