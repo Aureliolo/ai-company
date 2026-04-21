@@ -9,7 +9,7 @@ import os
 
 from cryptography.fernet import Fernet, InvalidToken
 
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.settings import SETTINGS_ENCRYPTION_ERROR
 from synthorg.settings.errors import SettingsEncryptionError
 
@@ -48,7 +48,7 @@ class SettingsEncryptor:
             logger.exception(
                 SETTINGS_ENCRYPTION_ERROR,
                 operation="encrypt",
-                error=str(exc),
+                error=safe_error_description(exc),
             )
             msg = "Failed to encrypt setting value"
             raise SettingsEncryptionError(msg) from exc
@@ -82,7 +82,7 @@ class SettingsEncryptor:
             logger.exception(
                 SETTINGS_ENCRYPTION_ERROR,
                 operation="decrypt",
-                error=str(exc),
+                error=safe_error_description(exc),
             )
             msg = "Failed to decrypt setting value"
             raise SettingsEncryptionError(msg) from exc
@@ -134,7 +134,7 @@ class SettingsEncryptor:
             logger.exception(
                 SETTINGS_ENCRYPTION_ERROR,
                 operation="from_env",
-                error=str(exc),
+                error=safe_error_description(exc),
             )
             msg = f"Invalid Fernet key in {_ENV_VAR}"
             raise SettingsEncryptionError(msg) from exc

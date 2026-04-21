@@ -30,7 +30,7 @@ from synthorg.a2a.models import (
 from synthorg.a2a.security import validate_peer
 from synthorg.a2a.task_mapper import to_a2a
 from synthorg.api.rate_limits.guard import per_op_rate_limit
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.a2a import (
     A2A_INBOUND_AUTH_FAILED,
     A2A_INBOUND_DISPATCHED,
@@ -274,7 +274,7 @@ def _parse_jsonrpc(body: bytes) -> JsonRpcRequest | None:
         logger.warning(
             A2A_JSONRPC_PARSE_ERROR,
             reason="json_decode_error",
-            error=str(exc),
+            error=safe_error_description(exc),
         )
         return None
     except MemoryError, RecursionError:
@@ -283,7 +283,7 @@ def _parse_jsonrpc(body: bytes) -> JsonRpcRequest | None:
         logger.warning(
             A2A_JSONRPC_PARSE_ERROR,
             reason="validation_error",
-            error=str(exc),
+            error=safe_error_description(exc),
             exc_info=True,
         )
         return None

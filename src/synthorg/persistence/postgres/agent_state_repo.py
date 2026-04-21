@@ -9,7 +9,7 @@ from pydantic import ValidationError
 from synthorg.core.enums import ExecutionStatus
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.agent_state import AgentRuntimeState
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_AGENT_STATE_ACTIVE_QUERIED,
     PERSISTENCE_AGENT_STATE_ACTIVE_QUERY_FAILED,
@@ -81,7 +81,7 @@ ON CONFLICT (agent_id) DO UPDATE SET
             logger.exception(
                 PERSISTENCE_AGENT_STATE_SAVE_FAILED,
                 agent_id=state.agent_id,
-                error=str(exc),
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         logger.info(
@@ -110,7 +110,7 @@ ON CONFLICT (agent_id) DO UPDATE SET
             logger.exception(
                 PERSISTENCE_AGENT_STATE_FETCH_FAILED,
                 agent_id=agent_id,
-                error=str(exc),
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -149,7 +149,7 @@ ON CONFLICT (agent_id) DO UPDATE SET
             msg = "Failed to query active agent states"
             logger.exception(
                 PERSISTENCE_AGENT_STATE_ACTIVE_QUERY_FAILED,
-                error=str(exc),
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -175,7 +175,7 @@ ON CONFLICT (agent_id) DO UPDATE SET
             logger.exception(
                 PERSISTENCE_AGENT_STATE_DELETE_FAILED,
                 agent_id=agent_id,
-                error=str(exc),
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         if deleted:
@@ -203,6 +203,6 @@ ON CONFLICT (agent_id) DO UPDATE SET
             logger.exception(
                 PERSISTENCE_AGENT_STATE_DESERIALIZE_FAILED,
                 agent_id=row.get("agent_id"),
-                error=str(exc),
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc

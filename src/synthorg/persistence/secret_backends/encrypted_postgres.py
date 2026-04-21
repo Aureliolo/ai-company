@@ -28,7 +28,7 @@ from synthorg.integrations.errors import (
     SecretRotationError,
     SecretStorageError,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.integrations import (
     SECRET_BACKEND_UNAVAILABLE,
     SECRET_DELETE_FAILED,
@@ -153,7 +153,7 @@ class EncryptedPostgresSecretBackend:
             logger.exception(
                 SECRET_STORAGE_FAILED,
                 secret_id=secret_id,
-                error=str(exc),
+                error=safe_error_description(exc),
             )
             msg = f"Failed to store secret {secret_id}"
             raise SecretStorageError(msg) from exc
@@ -173,7 +173,7 @@ class EncryptedPostgresSecretBackend:
             logger.exception(
                 SECRET_RETRIEVAL_FAILED,
                 secret_id=secret_id,
-                error=str(exc),
+                error=safe_error_description(exc),
             )
             msg = f"Failed to retrieve secret {secret_id}"
             raise SecretRetrievalError(msg) from exc
@@ -219,7 +219,7 @@ class EncryptedPostgresSecretBackend:
             logger.exception(
                 SECRET_DELETE_FAILED,
                 secret_id=secret_id,
-                error=str(exc),
+                error=safe_error_description(exc),
             )
             msg = f"Failed to delete secret {secret_id}"
             raise SecretStorageError(msg) from exc

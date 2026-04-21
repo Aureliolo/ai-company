@@ -15,7 +15,7 @@ from synthorg.a2a.models import (
     JsonRpcRequest,
     JsonRpcResponse,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.a2a import (
     A2A_OUTBOUND_FAILED,
     A2A_OUTBOUND_SENT,
@@ -294,7 +294,7 @@ class A2AClient:
                 peer_name=peer_name,
                 method=method,
                 error_type=type(exc).__name__,
-                error=str(exc),
+                error=safe_error_description(exc),
                 transient=True,
             )
             msg = f"Connection to peer '{peer_name}' failed"
@@ -380,7 +380,7 @@ def _parse_rpc_response(
             A2A_OUTBOUND_FAILED,
             peer_name=peer_name,
             reason="response_json_decode_error",
-            error=str(exc),
+            error=safe_error_description(exc),
         )
         msg = f"Peer '{peer_name}' returned invalid JSON"
         raise A2AClientError(msg, peer_name=peer_name) from exc
@@ -394,7 +394,7 @@ def _parse_rpc_response(
             A2A_OUTBOUND_FAILED,
             peer_name=peer_name,
             reason="response_validation_error",
-            error=str(exc),
+            error=safe_error_description(exc),
         )
         msg = f"Peer '{peer_name}' returned invalid JSON-RPC"
         raise A2AClientError(msg, peer_name=peer_name) from exc
