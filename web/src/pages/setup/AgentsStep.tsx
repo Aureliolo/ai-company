@@ -1,12 +1,12 @@
 import { useCallback, useEffect } from 'react'
 import { EmptyState } from '@/components/ui/empty-state'
+import { ErrorBanner } from '@/components/ui/error-banner'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useSetupWizardStore } from '@/stores/setup-wizard'
 import { validateAgentsStep } from '@/utils/setup-validation'
 import { MiniOrgChart } from './MiniOrgChart'
 import { SetupAgentCard } from './SetupAgentCard'
-import { Button } from '@/components/ui/button'
 import { Users } from 'lucide-react'
 
 export function AgentsStep() {
@@ -100,14 +100,11 @@ export function AgentsStep() {
 
   if (agents.length === 0 && agentsError) {
     return (
-      <div className="space-y-4">
-        <div role="alert" className="rounded-md border border-danger/30 bg-danger/5 p-card text-sm text-danger">
-          {agentsError}
-        </div>
-        <Button variant="outline" size="sm" onClick={() => void fetchAgents()}>
-          Retry
-        </Button>
-      </div>
+      <ErrorBanner
+        title="Could not load agents"
+        description={agentsError}
+        onRetry={() => void fetchAgents()}
+      />
     )
   }
 
@@ -131,24 +128,20 @@ export function AgentsStep() {
       </div>
 
       {agentsError && (
-        <div role="alert" className="rounded-md border border-danger/30 bg-danger/5 p-card text-sm text-danger">
-          {agentsError}
-        </div>
+        <ErrorBanner
+          title="Could not update agent"
+          description={agentsError}
+          onRetry={() => void fetchAgents()}
+        />
       )}
 
       {personalityPresetsError && (
-        <div className="space-y-2">
-          <div className="rounded-md border border-warning/30 bg-warning/5 p-card text-sm text-warning">
-            Failed to load personality presets. Agents can still be configured without them.
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => void fetchPersonalityPresets()}
-          >
-            Retry Presets
-          </Button>
-        </div>
+        <ErrorBanner
+          severity="warning"
+          title="Could not load personality presets"
+          description="Agents can still be configured without them."
+          onRetry={() => void fetchPersonalityPresets()}
+        />
       )}
 
       {/* Mini org chart */}

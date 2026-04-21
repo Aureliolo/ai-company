@@ -5,6 +5,7 @@ import { SectionCard } from '@/components/ui/section-card'
 import { StatPill } from '@/components/ui/stat-pill'
 import { MetricCard } from '@/components/ui/metric-card'
 import { Button } from '@/components/ui/button'
+import { ErrorBanner } from '@/components/ui/error-banner'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { useSetupWizardStore } from '@/stores/setup-wizard'
 import { validateCompanyStep } from '@/utils/setup-validation'
@@ -56,6 +57,18 @@ export function CompanyStep() {
   const handleApplyTemplate = useCallback(async () => {
     await submitCompany()
   }, [submitCompany])
+
+  // Blocking errors are every validation error OTHER than the "apply the
+  // template to continue" sentinel (which is the very action this button
+  // performs). The button disables only when at least one blocking error
+  // remains or the submit is in flight.
+  const applyDisabled = useMemo(
+    () =>
+      validation.errors.some(
+        (e) => e !== 'Apply the template to continue',
+      ) || companyLoading,
+    [validation.errors, companyLoading],
+  )
 
   return (
     <div className="space-y-section-gap">
@@ -130,13 +143,11 @@ export function CompanyStep() {
         currency={currency}
       />
 
-      {/* Apply template button */}
+      {/* Apply template button. */}
       {!companyResponse && (
         <Button
           onClick={handleApplyTemplate}
-          disabled={validation.errors.some(
-            (e) => e !== 'Apply the template to continue',
-          ) || companyLoading}
+          disabled={applyDisabled}
           className="w-full"
         >
           {companyLoading ? 'Applying Template...' : 'Apply Template'}
@@ -144,9 +155,13 @@ export function CompanyStep() {
       )}
 
       {companyError && (
-        <div role="alert" className="rounded-md border border-danger/30 bg-danger/5 p-card text-sm text-danger">
-          {companyError}
-        </div>
+        <ErrorBanner
+          variant="section"
+          severity="error"
+          title="Could not apply template"
+          description={companyError}
+          onRetry={() => void handleApplyTemplate()}
+        />
       )}
 
       {/* Preview after applying */}

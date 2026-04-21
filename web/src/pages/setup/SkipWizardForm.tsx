@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { InputField } from '@/components/ui/input-field'
 import { Button } from '@/components/ui/button'
+import { ErrorBanner } from '@/components/ui/error-banner'
 import { useSetupWizardStore } from '@/stores/setup-wizard'
 import { useSetupStore } from '@/stores/setup'
 import { useToastStore } from '@/stores/toast'
@@ -64,9 +65,7 @@ export function SkipWizardForm() {
         />
 
         {error && (
-          <div role="alert" className="rounded-md border border-danger/30 bg-danger/5 p-card text-sm text-danger">
-            {error}
-          </div>
+          <ErrorBanner variant="section" severity="error" title="Could not skip the wizard" description={error} />
         )}
 
         <Button type="submit" disabled={loading} className="w-full">
