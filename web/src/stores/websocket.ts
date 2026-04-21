@@ -266,6 +266,12 @@ export const useWebSocketStore = create<WebSocketState>()((set) => {
     }
 
     thisSocket.onmessage = (event: MessageEvent) => {
+      // Drop frames arriving on a socket that has already been
+      // superseded by a reconnect -- a late ``auth_ok`` / ``pong`` /
+      // ``subscribed`` from the old connection could otherwise flip
+      // ``connected`` back to true, clear the new pong timer, or
+      // stomp the new subscribed-channels set.
+      if (socket !== thisSocket) return
       if (typeof event.data !== 'string') return
       if (estimateByteLength(event.data) > WS_MAX_MESSAGE_SIZE) {
         log.error('Message exceeds max size, discarding')
@@ -321,8 +327,11 @@ export const useWebSocketStore = create<WebSocketState>()((set) => {
           log.warn('Discarding event with unsupported wire version:', {
             received: version,
             supported: WS_PROTOCOL_VERSION,
-            event_type: msg.event_type,
-            channel: msg.channel,
+            // event_type + channel are attacker-reachable via the
+            // WS payload; scrub before embedding in the log to close
+            // the log-injection vector.
+            event_type: sanitizeForLog(msg.event_type),
+            channel: sanitizeForLog(msg.channel),
           })
           return
         }

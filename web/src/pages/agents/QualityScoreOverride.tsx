@@ -39,11 +39,18 @@ export function QualityScoreOverride({
   const [reasonError, setReasonError] = useState<string | undefined>()
   const [expiresInDays, setExpiresInDays] = useState<number | null>(null)
 
-  // Guard against stale responses when agentId changes.
+  // Guard against stale responses when agentId changes. The ref must
+  // be bumped synchronously the instant the prop changes -- if we
+  // only updated it inside fetchOverride, a request started for agent
+  // A could still resolve after the component re-rendered with agent
+  // B but before the new fetchOverride effect fired, slipping past
+  // the identity check and overwriting B's state.
   const activeAgentRef = useRef(agentId)
+  useEffect(() => {
+    activeAgentRef.current = agentId
+  }, [agentId])
 
   const fetchOverride = useCallback(async () => {
-    activeAgentRef.current = agentId
     setLoading(true)
     setOverride(null)
     setLoadError(false)

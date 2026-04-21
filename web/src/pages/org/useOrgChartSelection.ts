@@ -35,7 +35,11 @@ function makeStringFieldGuard<T>(
     if (!isObjectRecord(data)) return false
     for (const key of requiredStringFields) {
       const value = (data as Record<string, unknown>)[key]
-      if (typeof value !== 'string' || value.length === 0) return false
+      // Reject whitespace-only strings as well as empty ones -- a
+      // label like ``'   '`` would otherwise pass this guard and
+      // surface as a blank name / role / id in the UI instead of
+      // falling back to ``node.id`` via the outer code path.
+      if (typeof value !== 'string' || value.trim().length === 0) return false
     }
     return true
   }

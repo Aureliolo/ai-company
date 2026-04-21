@@ -614,6 +614,14 @@ async def _receive_loop(
     try:
         while True:
             data = await socket.receive_text()
+            # Snapshot ``subscribed`` / ``filters`` before applying the
+            # handler so that if the ack cannot be enqueued (queue full)
+            # we can roll back the mutation. Without the rollback,
+            # server and client subscription state would diverge -- the
+            # server thinks the client is on the channel but the client
+            # never saw the ack, so subsequent unsubscribes get lost.
+            subscribed_snapshot = set(subscribed)
+            filters_snapshot = {k: dict(v) for k, v in filters.items()}
             response = handle_message(
                 data,
                 subscribed,
@@ -623,6 +631,12 @@ async def _receive_loop(
             try:
                 outbound_queue.put_nowait(response.encode("utf-8"))
             except asyncio.QueueFull:
+                # Restore pre-handler state so client and server stay
+                # in sync; the drop is logged for backpressure metrics.
+                subscribed.clear()
+                subscribed.update(subscribed_snapshot)
+                filters.clear()
+                filters.update(filters_snapshot)
                 logger.warning(
                     API_WS_BACKPRESSURE_DROPPED,
                     reason="control_reply_queue_full",

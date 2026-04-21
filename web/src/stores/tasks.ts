@@ -10,7 +10,13 @@ import {
   TASK_STATUS_VALUES as TASK_STATUS_VALUES_TUPLE,
   TASK_TYPE_VALUES as TASK_TYPE_VALUES_TUPLE,
 } from '@/api/types/enums'
-import type { TaskStatus } from '@/api/types/enums'
+import type {
+  Complexity,
+  CoordinationTopology,
+  TaskSource,
+  TaskStatus,
+  TaskStructure,
+} from '@/api/types/enums'
 import type {
   CancelTaskRequest,
   CreateTaskRequest,
@@ -29,6 +35,34 @@ import type { WsEvent } from '@/api/types/websocket'
 const TASK_STATUS_SET: ReadonlySet<string> = new Set<string>(TASK_STATUS_VALUES_TUPLE)
 const TASK_PRIORITY_SET: ReadonlySet<string> = new Set<string>(PRIORITY_VALUES)
 const TASK_TYPE_SET: ReadonlySet<string> = new Set<string>(TASK_TYPE_VALUES_TUPLE)
+
+// Enum sets for the remaining scalar/enum fields that ``sanitizeTask``
+// previously copied through unchecked. Declared here so the validator
+// and the TS union stay in lockstep via the ``as const satisfies``
+// tuples these are derived from.
+const COMPLEXITY_SET: ReadonlySet<string> = new Set<string>([
+  'simple',
+  'medium',
+  'complex',
+  'epic',
+] satisfies readonly Complexity[])
+const TASK_STRUCTURE_SET: ReadonlySet<string> = new Set<string>([
+  'sequential',
+  'parallel',
+  'mixed',
+] satisfies readonly TaskStructure[])
+const COORDINATION_TOPOLOGY_SET: ReadonlySet<string> = new Set<string>([
+  'sas',
+  'centralized',
+  'decentralized',
+  'context_dependent',
+  'auto',
+] satisfies readonly CoordinationTopology[])
+const TASK_SOURCE_SET: ReadonlySet<string> = new Set<string>([
+  'internal',
+  'client',
+  'simulation',
+] satisfies readonly TaskSource[])
 
 const log = createLogger('tasks')
 
@@ -221,7 +255,24 @@ function isTaskShape(c: Record<string, unknown>): c is Record<string, unknown> &
     // ``version`` is ``number | undefined``; without this guard a
     // malformed payload could smuggle a non-numeric value through
     // ``sanitizeTask`` and break optimistic-concurrency downstream.
-    (c.version === undefined || Number.isFinite(c.version))
+    (c.version === undefined || Number.isFinite(c.version)) &&
+    // Numeric scalars: reject NaN/Infinity (``typeof === 'number'``
+    // alone accepts both) so downstream budget math cannot be poisoned.
+    Number.isFinite(c.budget_limit) &&
+    (c.cost === undefined || Number.isFinite(c.cost)) &&
+    Number.isFinite(c.max_retries) &&
+    // Enum scalars: validate against the canonical tuples so a
+    // malformed frame cannot inject an unsupported value.
+    typeof c.estimated_complexity === 'string' &&
+    COMPLEXITY_SET.has(c.estimated_complexity) &&
+    (c.task_structure === null ||
+      (typeof c.task_structure === 'string' &&
+        TASK_STRUCTURE_SET.has(c.task_structure))) &&
+    typeof c.coordination_topology === 'string' &&
+    COORDINATION_TOPOLOGY_SET.has(c.coordination_topology) &&
+    (c.source === undefined ||
+      c.source === null ||
+      (typeof c.source === 'string' && TASK_SOURCE_SET.has(c.source)))
   )
 }
 

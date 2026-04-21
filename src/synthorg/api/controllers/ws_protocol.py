@@ -47,7 +47,15 @@ def matches_filters(
     channel: str,
     channel_filters: dict[str, str],
 ) -> bool:
-    """Check whether the event payload matches the active channel filters."""
+    """Check whether the event payload matches the active channel filters.
+
+    A filter key absent from the payload is a mismatch. ``payload.get``
+    returns ``None`` for a missing key, so comparing directly against
+    the filter value would incorrectly let clients widen subscriptions
+    by sending ``{"task_id": null}`` as the filter: payloads without
+    that key would match. Use explicit ``in``-checks instead so a
+    missing payload key always fails the filter.
+    """
     payload = event.get("payload", {})
     if not isinstance(payload, dict):
         logger.warning(
@@ -57,7 +65,12 @@ def matches_filters(
             payload_type=type(payload).__name__,
         )
         return False
-    return all(payload.get(k) == v for k, v in channel_filters.items())
+    for key, expected in channel_filters.items():
+        if key not in payload:
+            return False
+        if payload[key] != expected:
+            return False
+    return True
 
 
 def channel_allowed(
@@ -141,6 +154,11 @@ def _parse_ws_message(data: str) -> dict[str, Any] | str:
         return json.dumps({"error": "Invalid JSON"})
 
     if not isinstance(msg, dict):
+        logger.warning(
+            API_WS_INVALID_MESSAGE,
+            reason="not_a_dict",
+            message_type=type(msg).__name__,
+        )
         return json.dumps({"error": "Expected JSON object"})
 
     return msg

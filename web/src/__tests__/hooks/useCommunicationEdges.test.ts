@@ -17,7 +17,11 @@ function paginated(
   // fields. ``paginatedFor`` demands the full Message shape, so we
   // build a minimum-viable Message per seed.
   const messages: Message[] = data.map((seed, idx) => ({
-    id: `msg-${idx}`,
+    // Make ids globally unique across paginated pages so the
+    // hook's de-dup logic sees distinct messages instead of
+    // collapsing them -- ``idx`` alone resets per page and would
+    // produce collisions (page 0 ``msg-0`` == page 1 ``msg-0``).
+    id: `msg-${meta.offset + idx}`,
     timestamp: '2026-04-21T00:00:00Z',
     sender: seed.sender,
     to: seed.to,

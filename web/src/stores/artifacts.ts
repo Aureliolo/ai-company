@@ -65,6 +65,14 @@ let _listRequestToken = 0
 /** True when a newer list request has superseded this one. */
 function isStaleListRequest(token: number): boolean { return _listRequestToken !== token }
 
+// Id of the artifact whose detail fetch is currently in-flight.
+// ``fetchArtifactDetail`` clears ``selectedArtifact`` *before* awaiting
+// the API, so an ``isSelected`` check alone can't invalidate a pending
+// detail load when the same artifact is deleted mid-flight. Tracking
+// the pending id lets ``deleteArtifact`` bump ``_detailRequestToken``
+// and keep stale responses from repopulating deleted data.
+let _pendingDetailId: string | null = null
+
 export const useArtifactsStore = create<ArtifactsState>()((set) => ({
   artifacts: [],
   totalArtifacts: 0,
@@ -98,6 +106,7 @@ export const useArtifactsStore = create<ArtifactsState>()((set) => ({
 
   fetchArtifactDetail: async (id: string) => {
     const token = ++_detailRequestToken
+    _pendingDetailId = id
     set({ detailLoading: true, detailError: null, selectedArtifact: null, contentPreview: null })
     try {
       const artifact = await getArtifact(id)
@@ -120,6 +129,8 @@ export const useArtifactsStore = create<ArtifactsState>()((set) => ({
     } catch (err) {
       if (isStaleDetailRequest(token)) return
       set({ detailLoading: false, detailError: getErrorMessage(err), selectedArtifact: null, contentPreview: null })
+    } finally {
+      if (_pendingDetailId === id) _pendingDetailId = null
     }
   },
 
@@ -129,8 +140,15 @@ export const useArtifactsStore = create<ArtifactsState>()((set) => ({
       // Advance both request tokens *before* mutating state so any
       // in-flight fetchArtifacts/fetchArtifactDetail response that
       // resolves after this call returns is treated as stale and
-      // cannot reintroduce the deleted artifact.
+      // cannot reintroduce the deleted artifact. ``_pendingDetailId``
+      // catches the case where ``fetchArtifactDetail`` cleared
+      // ``selectedArtifact`` before awaiting, so ``isSelected`` alone
+      // cannot invalidate it.
       _listRequestToken++
+      if (_pendingDetailId === id) {
+        _detailRequestToken++
+        _pendingDetailId = null
+      }
       set((state) => {
         const isSelected = state.selectedArtifact?.id === id
         if (isSelected) _detailRequestToken++

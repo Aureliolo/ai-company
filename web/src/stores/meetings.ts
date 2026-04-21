@@ -4,6 +4,7 @@ import {
   MEETING_PROTOCOL_TYPE_VALUES,
   MEETING_STATUS_VALUES,
 } from '@/api/types/meetings'
+import { PRIORITY_VALUES } from '@/api/types/enums'
 import { sanitizeWsString } from '@/stores/notifications'
 import { useToastStore } from '@/stores/toast'
 import { getErrorMessage } from '@/utils/errors'
@@ -25,6 +26,16 @@ const log = createLogger('meetings')
 // between validator and union is caught at compile time.
 const MEETING_STATUS_SET: ReadonlySet<string> = new Set<string>(MEETING_STATUS_VALUES)
 const MEETING_PROTOCOL_TYPE_SET: ReadonlySet<string> = new Set<string>(MEETING_PROTOCOL_TYPE_VALUES)
+const PRIORITY_SET: ReadonlySet<string> = new Set<string>(PRIORITY_VALUES)
+const MEETING_PHASE_SET: ReadonlySet<string> = new Set<string>([
+  'agenda_broadcast',
+  'round_robin_turn',
+  'position_paper',
+  'input_gathering',
+  'discussion',
+  'synthesis',
+  'summary',
+])
 
 /** Validate that a ``token_usage_by_participant`` map is a plain ``Record<string, number>``. */
 function isTokenUsageMap(value: unknown): value is Record<string, number> {
@@ -46,24 +57,40 @@ function isAgendaItemShape(value: unknown): boolean {
   )
 }
 
-/** Every contribution must have the fields ``sanitizeContribution`` reads. */
+/**
+ * Every contribution must carry every field ``sanitizeContribution``
+ * persists: the WS-origin strings and the numeric / enum scalars it
+ * copies verbatim. Without the enum check an out-of-range ``phase``
+ * would reach the UI, and without the finite-number checks ``NaN`` /
+ * ``Infinity`` in the token counters could corrupt meeting totals.
+ */
 function isContributionShape(value: unknown): boolean {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
   const v = value as Record<string, unknown>
   return (
     typeof v.agent_id === 'string' &&
     typeof v.content === 'string' &&
+    typeof v.phase === 'string' &&
+    MEETING_PHASE_SET.has(v.phase) &&
+    Number.isFinite(v.turn_number) &&
+    Number.isFinite(v.input_tokens) &&
+    Number.isFinite(v.output_tokens) &&
     typeof v.timestamp === 'string'
   )
 }
 
-/** Every action item must have ``description`` + nullable ``assignee_id``. */
+/**
+ * Every action item must have ``description`` + nullable
+ * ``assignee_id`` + a ``priority`` drawn from the canonical enum.
+ */
 function isActionItemShape(value: unknown): boolean {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
   const v = value as Record<string, unknown>
   return (
     typeof v.description === 'string' &&
-    (v.assignee_id === null || typeof v.assignee_id === 'string')
+    (v.assignee_id === null || typeof v.assignee_id === 'string') &&
+    typeof v.priority === 'string' &&
+    PRIORITY_SET.has(v.priority)
   )
 }
 
@@ -83,7 +110,9 @@ function isMeetingMinutesShape(value: unknown): boolean {
   if (typeof value !== 'object' || Array.isArray(value)) return false
   const m = value as Record<string, unknown>
   if (typeof m.meeting_id !== 'string') return false
-  if (typeof m.protocol_type !== 'string') return false
+  if (typeof m.protocol_type !== 'string' || !MEETING_PROTOCOL_TYPE_SET.has(m.protocol_type)) {
+    return false
+  }
   if (typeof m.leader_id !== 'string') return false
   if (
     !Array.isArray(m.participant_ids) ||
@@ -119,6 +148,10 @@ function isMeetingMinutesShape(value: unknown): boolean {
   ) {
     return false
   }
+  if (typeof m.conflicts_detected !== 'boolean') return false
+  if (!Number.isFinite(m.total_input_tokens)) return false
+  if (!Number.isFinite(m.total_output_tokens)) return false
+  if (!Number.isFinite(m.total_tokens)) return false
   if (typeof m.started_at !== 'string') return false
   if (typeof m.ended_at !== 'string') return false
   return true

@@ -159,18 +159,23 @@ export function ApprovalDetailDrawer({
   const handleApprove = useCallback(async (): Promise<boolean | void> => {
     if (!approval || approval.status !== 'pending') return
     setSubmitting(true)
-    const ok = await onApprove(
-      approval.id,
-      comment.trim() ? { comment: comment.trim() } : undefined,
-    )
-    setSubmitting(false)
-    if (ok) {
-      // Inputs reset before ConfirmDialog closes itself.
-      setComment('')
-      return true
+    try {
+      const ok = await onApprove(
+        approval.id,
+        comment.trim() ? { comment: comment.trim() } : undefined,
+      )
+      if (ok) {
+        // Inputs reset before ConfirmDialog closes itself.
+        setComment('')
+        return true
+      }
+      // Returning false keeps the ConfirmDialog open so the user can retry.
+      return false
+    } finally {
+      // Always clear the in-flight flag so the button doesn't stay
+      // stuck spinning if the sentinel contract ever surfaces a throw.
+      setSubmitting(false)
     }
-    // Returning false keeps the ConfirmDialog open so the user can retry.
-    return false
   }, [approval, comment, onApprove])
 
   const handleReject = useCallback(async (): Promise<boolean | void> => {
@@ -180,13 +185,16 @@ export function ApprovalDetailDrawer({
       return false
     }
     setSubmitting(true)
-    const ok = await onReject(approval.id, { reason: reason.trim() })
-    setSubmitting(false)
-    if (ok) {
-      setReason('')
-      return true
+    try {
+      const ok = await onReject(approval.id, { reason: reason.trim() })
+      if (ok) {
+        setReason('')
+        return true
+      }
+      return false
+    } finally {
+      setSubmitting(false)
     }
-    return false
   }, [approval, reason, onReject])
 
   if (!open) return null
