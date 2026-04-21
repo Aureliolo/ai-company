@@ -11,7 +11,6 @@ abstraction is ready to grow a Postgres sibling without touching the
 controller.
 """
 
-import contextlib
 import json
 from typing import TYPE_CHECKING, Any
 
@@ -26,6 +25,7 @@ from synthorg.observability.events.memory import (
     MEMORY_CHECKPOINT_DEPLOYED,
     MEMORY_CHECKPOINT_ROLLBACK,
     MEMORY_CHECKPOINT_ROLLBACK_FAILED,
+    MEMORY_EMBEDDER_SETTINGS_READ_FAILED,
 )
 from synthorg.persistence.errors import QueryError
 
@@ -188,7 +188,13 @@ class MemoryService:
         return updated
 
     async def delete_checkpoint(self, checkpoint_id: NotBlankStr) -> None:
-        """Delete a checkpoint (repo rejects active checkpoint)."""
+        """Delete a checkpoint by id.
+
+        The underlying repository raises (typically ``ValueError`` via
+        ``pydantic.ValidationError`` or a domain error) when the target
+        checkpoint is currently active; callers must rollback or
+        deactivate first.
+        """
         await self._checkpoints.delete_checkpoint(checkpoint_id)
 
     async def list_runs(
@@ -224,25 +230,37 @@ class MemoryService:
             await self._settings.set("memory", "embedder_provider", "local")
         except Exception as exc:
             if prior is not None:
-                with contextlib.suppress(Exception):
-                    await self._checkpoints.set_active(prior.id)
+                await self._rollback_step(
+                    self._checkpoints.set_active(prior.id),
+                    checkpoint_id=checkpoint_id,
+                    step="reactivate_prior_checkpoint",
+                )
             else:
-                with contextlib.suppress(Exception):
-                    await self._checkpoints.deactivate_all()
+                await self._rollback_step(
+                    self._checkpoints.deactivate_all(),
+                    checkpoint_id=checkpoint_id,
+                    step="deactivate_all_checkpoints",
+                )
             if prior_model is not None:
-                with contextlib.suppress(Exception):
-                    await self._settings.set(
+                await self._rollback_step(
+                    self._settings.set(
                         "memory",
                         "embedder_model",
                         prior_model,
-                    )
+                    ),
+                    checkpoint_id=checkpoint_id,
+                    step="restore_embedder_model",
+                )
             if prior_provider is not None:
-                with contextlib.suppress(Exception):
-                    await self._settings.set(
+                await self._rollback_step(
+                    self._settings.set(
                         "memory",
                         "embedder_provider",
                         prior_provider,
-                    )
+                    ),
+                    checkpoint_id=checkpoint_id,
+                    step="restore_embedder_provider",
+                )
             logger.warning(
                 MEMORY_CHECKPOINT_DEPLOY_FAILED,
                 checkpoint_id=checkpoint_id,
@@ -251,11 +269,46 @@ class MemoryService:
             raise
 
     async def _read_setting(self, key: str) -> str | None:
-        """Best-effort read of a ``memory.<key>`` setting for rollback."""
+        """Best-effort read of a ``memory.<key>`` setting for rollback.
+
+        Logs at DEBUG when the read fails so the rollback path's silent
+        degradation (no prior value to restore) has an audit trail.
+        """
         if self._settings is None:
             return None
         try:
             value = await self._settings.get("memory", key)
-        except Exception:
+        except Exception as exc:
+            logger.debug(
+                MEMORY_EMBEDDER_SETTINGS_READ_FAILED,
+                setting=key,
+                error_type=type(exc).__name__,
+                reason="read_for_rollback",
+            )
             return None
         return value.value if value is not None else None
+
+    @staticmethod
+    async def _rollback_step(
+        coro: Any,
+        *,
+        checkpoint_id: str,
+        step: str,
+    ) -> None:
+        """Run *coro* in a rollback path, logging any failure at WARNING.
+
+        Rollback failures must never shadow the original deploy error
+        (which is already being raised up the call stack), but they
+        must be audit-visible so operators know the config may be in
+        an inconsistent state.
+        """
+        try:
+            await coro
+        except Exception as exc:
+            logger.warning(
+                MEMORY_CHECKPOINT_DEPLOY_FAILED,
+                checkpoint_id=checkpoint_id,
+                error_type=type(exc).__name__,
+                stage="rollback",
+                step=step,
+            )

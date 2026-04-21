@@ -18,9 +18,8 @@ import asyncio
 import re
 from typing import TYPE_CHECKING, Final, Protocol, runtime_checkable
 
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.conflict import (
-    CONFLICT_ESCALATION_RESOLVED,
     CONFLICT_ESCALATION_SUBSCRIBER_FAILED,
     CONFLICT_ESCALATION_SUBSCRIBER_STARTED,
     CONFLICT_ESCALATION_SUBSCRIBER_STOPPED,
@@ -176,7 +175,7 @@ class PostgresEscalationNotifySubscriber:
             logger.warning(
                 CONFLICT_ESCALATION_SUBSCRIBER_FAILED,
                 error_type=type(exc).__name__,
-                error=str(exc),
+                error=safe_error_description(exc),
                 note="shutdown",
             )
         finally:
@@ -199,7 +198,7 @@ class PostgresEscalationNotifySubscriber:
                     CONFLICT_ESCALATION_SUBSCRIBER_FAILED,
                     channel=self._channel,
                     error_type=type(exc).__name__,
-                    error=str(exc),
+                    error=safe_error_description(exc),
                 )
             try:
                 await asyncio.wait_for(
@@ -262,9 +261,9 @@ class PostgresEscalationNotifySubscriber:
             raise
         except Exception as exc:
             logger.warning(
-                CONFLICT_ESCALATION_RESOLVED,
+                CONFLICT_ESCALATION_SUBSCRIBER_FAILED,
                 escalation_id=escalation_id,
                 error_type=type(exc).__name__,
-                error=str(exc),
+                error=safe_error_description(exc),
                 note="notify_dispatch_failed",
             )

@@ -29,7 +29,7 @@ from synthorg.communication.conflict_resolution.escalation.protocol import (
     EscalationQueueStore,
 )
 from synthorg.communication.conflict_resolution.models import Conflict
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_REQUEST_ERROR
 from synthorg.persistence.errors import ConstraintViolationError, QueryError
 
@@ -83,8 +83,13 @@ def _row_to_escalation(row: dict[str, Any]) -> Escalation:
         )
     except (json.JSONDecodeError, ValueError, TypeError, KeyError) as exc:
         row_id = str(row.get("id", "<unknown>"))
-        msg = f"Failed to parse escalation row {row_id!r}: {exc}"
-        logger.exception(API_REQUEST_ERROR, row_id=row_id, error=msg)
+        logger.warning(
+            API_REQUEST_ERROR,
+            row_id=row_id,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        msg = f"Failed to parse escalation row {row_id!r}"
         raise QueryError(msg) from exc
 
 
@@ -180,7 +185,7 @@ INSERT INTO conflict_escalations (
                 escalation_id=escalation.id,
                 conflict_id=escalation.conflict.id,
                 constraint=constraint_name or None,
-                error=str(exc),
+                error=safe_error_description(exc),
             )
             raise ConstraintViolationError(
                 msg,
@@ -193,7 +198,7 @@ INSERT INTO conflict_escalations (
                 error_type="escalation_create_failed",
                 escalation_id=escalation.id,
                 conflict_id=escalation.conflict.id,
-                error=str(exc),
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -216,7 +221,7 @@ INSERT INTO conflict_escalations (
                 API_REQUEST_ERROR,
                 error_type="escalation_get_failed",
                 escalation_id=escalation_id,
-                error=str(exc),
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         if row is None:
@@ -266,7 +271,7 @@ INSERT INTO conflict_escalations (
             logger.warning(
                 API_REQUEST_ERROR,
                 error_type="escalation_list_failed",
-                error=str(exc),
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         # Corrupt-row resilience: skip + log instead of failing the whole page.
@@ -336,7 +341,7 @@ INSERT INTO conflict_escalations (
             logger.warning(
                 API_REQUEST_ERROR,
                 error_type="escalation_mark_expired_failed",
-                error=str(exc),
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         ids = tuple(str(r[0]) for r in rows)
@@ -406,7 +411,7 @@ INSERT INTO conflict_escalations (
                 error_type="escalation_update_failed",
                 escalation_id=escalation_id,
                 target_status=new_status.value,
-                error=str(exc),
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         await self._publish_notify(escalation_id, new_status.value)
@@ -490,5 +495,5 @@ INSERT INTO conflict_escalations (
                 error_type="escalation_notify_failed",
                 escalation_id=escalation_id,
                 channel=channel,
-                error=str(exc),
+                error=safe_error_description(exc),
             )

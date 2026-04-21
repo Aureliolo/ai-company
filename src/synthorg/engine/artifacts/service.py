@@ -46,7 +46,11 @@ class ArtifactService:
         created_by: NotBlankStr | None = None,
         artifact_type: ArtifactType | None = None,
     ) -> tuple[Artifact, ...]:
-        """List artifacts with the same filter contract as the repo."""
+        """List artifacts, optionally filtered by one or more facets.
+
+        All three filters are AND-combined when provided; passing
+        ``None`` for a filter omits it from the query.
+        """
         return await self._repo.list_artifacts(
             task_id=task_id,
             created_by=created_by,
@@ -68,7 +72,12 @@ class ArtifactService:
         content_type: str = "",
         project_id: NotBlankStr | None = None,
     ) -> Artifact:
-        """Persist a new artifact with a server-generated id."""
+        """Persist a new artifact with a server-generated id.
+
+        The id has the shape ``"artifact-<12-hex>"`` and the
+        ``created_at`` timestamp is set to the current UTC time;
+        callers do not provide either.
+        """
         artifact = Artifact(
             id=NotBlankStr(f"artifact-{uuid.uuid4().hex[:12]}"),
             type=artifact_type,

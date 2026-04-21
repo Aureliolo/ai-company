@@ -21,6 +21,8 @@ from synthorg.observability.events.meta import (
 if TYPE_CHECKING:
     from synthorg.persistence.custom_rule_repo import CustomRuleRepository
 
+logger = get_logger(__name__)
+
 
 class CustomRuleNotFoundError(Exception):
     """Raised when an id-targeted update/toggle/delete misses."""
@@ -29,11 +31,10 @@ class CustomRuleNotFoundError(Exception):
 class CustomRulesService:
     """CRUD + toggle orchestration with uniform audit logging."""
 
-    __slots__ = ("_logger", "_repo")
+    __slots__ = ("_repo",)
 
     def __init__(self, *, repo: CustomRuleRepository) -> None:
         self._repo = repo
-        self._logger = get_logger(__name__)
 
     async def list_rules(self) -> tuple[CustomRuleDefinition, ...]:
         """List all custom rules."""
@@ -46,7 +47,7 @@ class CustomRulesService:
     async def create(self, definition: CustomRuleDefinition) -> CustomRuleDefinition:
         """Persist a new rule and emit an audit log."""
         await self._repo.save(definition)
-        self._logger.info(
+        logger.info(
             META_CUSTOM_RULE_CREATED,
             rule_id=str(definition.id),
             rule_name=definition.name,
@@ -74,7 +75,7 @@ class CustomRulesService:
         }
         updated = CustomRuleDefinition.model_validate(payload)
         await self._repo.save(updated)
-        self._logger.info(
+        logger.info(
             META_CUSTOM_RULE_UPDATED,
             rule_id=str(rule_id),
             rule_name=updated.name,
@@ -82,15 +83,23 @@ class CustomRulesService:
         return updated
 
     async def delete(self, rule_id: NotBlankStr) -> None:
-        """Delete a rule; raises when the id does not exist."""
+        """Delete a rule by id.
+
+        Raises:
+            CustomRuleNotFoundError: If no rule with *rule_id* exists.
+        """
         deleted = await self._repo.delete(rule_id)
         if not deleted:
             msg = f"Custom rule {rule_id} not found"
             raise CustomRuleNotFoundError(msg)
-        self._logger.info(META_CUSTOM_RULE_DELETED, rule_id=str(rule_id))
+        logger.info(META_CUSTOM_RULE_DELETED, rule_id=str(rule_id))
 
     async def toggle(self, rule_id: NotBlankStr) -> CustomRuleDefinition:
-        """Flip the ``enabled`` flag on the rule with *rule_id*."""
+        """Flip the ``enabled`` flag on the rule with *rule_id*.
+
+        Raises:
+            CustomRuleNotFoundError: If no rule with *rule_id* exists.
+        """
         existing = await self._repo.get(rule_id)
         if existing is None:
             msg = f"Custom rule {rule_id} not found"
@@ -102,7 +111,7 @@ class CustomRulesService:
             },
         )
         await self._repo.save(toggled)
-        self._logger.info(
+        logger.info(
             META_CUSTOM_RULE_TOGGLED,
             rule_id=str(rule_id),
             enabled=toggled.enabled,

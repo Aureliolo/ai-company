@@ -56,7 +56,12 @@ async def run_git_subprocess(
         proc.kill()
         await proc.wait()
         msg = f"git {args[0] if args else ''} timed out after {cmd_timeout}s"
-        logger.exception(log_event, error=msg, args=args)
+        logger.warning(
+            log_event,
+            error_type="TimeoutError",
+            error=msg,
+            args=args,
+        )
         return (-1, "", msg)
     except asyncio.CancelledError:
         proc.kill()

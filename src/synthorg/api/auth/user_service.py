@@ -22,6 +22,8 @@ from synthorg.observability.events.api import (
 if TYPE_CHECKING:
     from synthorg.persistence.repositories import UserRepository
 
+logger = get_logger(__name__)
+
 
 class UserService:
     """Wraps :class:`UserRepository` with uniform audit logging.
@@ -31,26 +33,25 @@ class UserService:
     to the appropriate HTTP response.
     """
 
-    __slots__ = ("_logger", "_repo")
+    __slots__ = ("_repo",)
 
     def __init__(self, *, repo: UserRepository) -> None:
         self._repo = repo
-        self._logger = get_logger(__name__)
 
     async def get(self, user_id: NotBlankStr) -> User | None:
-        """Fetch a user by id."""
+        """Fetch a user by id, or ``None`` when no row matches."""
         return await self._repo.get(user_id)
 
     async def list_users(self) -> tuple[User, ...]:
         """List all users (sans system user)."""
         users = await self._repo.list_users()
-        self._logger.debug(API_USER_LISTED, count=len(users))
+        logger.debug(API_USER_LISTED, count=len(users))
         return users
 
     async def create(self, user: User) -> User:
         """Persist a freshly-constructed user."""
         await self._repo.save(user)
-        self._logger.info(
+        logger.info(
             API_USER_CREATED,
             user_id=user.id,
             role=user.role.value,
@@ -71,7 +72,7 @@ class UserService:
         forwarded into the ``API_USER_UPDATED`` event verbatim.
         """
         await self._repo.save(user)
-        self._logger.info(
+        logger.info(
             API_USER_UPDATED,
             user_id=user.id,
             intent=intent,
@@ -88,7 +89,7 @@ class UserService:
         """Delete a user; returns ``True`` when a row was removed."""
         deleted = await self._repo.delete(user_id)
         if deleted:
-            self._logger.info(
+            logger.info(
                 API_USER_DELETED,
                 user_id=user_id,
                 deleted_by_user_id=deleted_by_user_id,

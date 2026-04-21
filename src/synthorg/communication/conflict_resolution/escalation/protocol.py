@@ -12,6 +12,7 @@ from synthorg.communication.conflict_resolution.models import (  # noqa: TC001
     ConflictResolution,
     DissentRecord,
 )
+from synthorg.core.types import NotBlankStr  # noqa: TC001
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -41,7 +42,7 @@ class EscalationQueueStore(Protocol):
         """
         ...
 
-    async def get(self, escalation_id: str) -> Escalation | None:
+    async def get(self, escalation_id: NotBlankStr) -> Escalation | None:
         """Return the escalation by ID, or ``None`` if missing."""
         ...
 
@@ -67,10 +68,10 @@ class EscalationQueueStore(Protocol):
 
     async def apply_decision(
         self,
-        escalation_id: str,
+        escalation_id: NotBlankStr,
         *,
         decision: EscalationDecision,
-        decided_by: str,
+        decided_by: NotBlankStr,
     ) -> Escalation:
         """Transition a PENDING escalation to DECIDED with ``decision``.
 
@@ -89,7 +90,12 @@ class EscalationQueueStore(Protocol):
         """
         ...
 
-    async def cancel(self, escalation_id: str, *, cancelled_by: str) -> Escalation:
+    async def cancel(
+        self,
+        escalation_id: NotBlankStr,
+        *,
+        cancelled_by: NotBlankStr,
+    ) -> Escalation:
         """Transition a PENDING escalation to CANCELLED."""
         ...
 
@@ -156,7 +162,7 @@ class DecisionProcessor(Protocol):
         conflict: Conflict,
         decision: EscalationDecision,
         *,
-        decided_by: str,
+        decided_by: NotBlankStr,
     ) -> ConflictResolution:
         """Build a :class:`ConflictResolution` from a decision.
 

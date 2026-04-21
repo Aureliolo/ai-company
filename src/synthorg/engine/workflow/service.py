@@ -28,11 +28,13 @@ if TYPE_CHECKING:
         WorkflowDefinitionRepository,
     )
 
+logger = get_logger(__name__)
+
 
 class WorkflowService:
     """Service for workflow definition CRUD + version cascade."""
 
-    __slots__ = ("_definitions", "_logger", "_versions")
+    __slots__ = ("_definitions", "_versions")
 
     def __init__(
         self,
@@ -42,7 +44,6 @@ class WorkflowService:
     ) -> None:
         self._definitions = definition_repo
         self._versions = version_repo
-        self._logger = get_logger(__name__)
 
     async def list_definitions(
         self,
@@ -67,7 +68,7 @@ class WorkflowService:
     ) -> WorkflowDefinition:
         """Persist a new definition with audit log."""
         await self._definitions.save(definition)
-        self._logger.info(WORKFLOW_DEF_CREATED, definition_id=definition.id)
+        logger.info(WORKFLOW_DEF_CREATED, definition_id=definition.id)
         return definition
 
     async def update_definition(
@@ -76,7 +77,7 @@ class WorkflowService:
     ) -> WorkflowDefinition:
         """Upsert an existing definition with audit log."""
         await self._definitions.save(definition)
-        self._logger.info(WORKFLOW_DEF_UPDATED, definition_id=definition.id)
+        logger.info(WORKFLOW_DEF_UPDATED, definition_id=definition.id)
         return definition
 
     async def delete_definition(
@@ -85,10 +86,12 @@ class WorkflowService:
     ) -> bool:
         """Delete a definition and its version snapshots.
 
-        The version-snapshot cleanup is best-effort: a failure there is
-        logged with :data:`WORKFLOW_VERSION_SNAPSHOT_FAILED` but does
-        not block the overall delete (the rows are orphans at worst).
-        Returns ``True`` when the definition row was removed.
+        Returns ``True`` when the definition row was removed, ``False``
+        when no row matched. The version-snapshot cleanup is best-effort:
+        a failure there is logged with
+        :data:`WORKFLOW_VERSION_SNAPSHOT_FAILED` but does not block the
+        overall delete (orphaned snapshots are tolerable and
+        periodically swept).
         """
         deleted = await self._definitions.delete(definition_id)
         if not deleted:
@@ -97,12 +100,12 @@ class WorkflowService:
         try:
             await self._versions.delete_versions_for_entity(definition_id)
         except Exception as exc:
-            self._logger.warning(
+            logger.warning(
                 WORKFLOW_VERSION_SNAPSHOT_FAILED,
                 definition_id=definition_id,
                 error_type=type(exc).__name__,
                 stage="cascade_delete",
             )
 
-        self._logger.info(WORKFLOW_DEF_DELETED, definition_id=definition_id)
+        logger.info(WORKFLOW_DEF_DELETED, definition_id=definition_id)
         return True

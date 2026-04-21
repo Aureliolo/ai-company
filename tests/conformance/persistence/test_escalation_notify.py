@@ -28,9 +28,13 @@ class TestEscalationNotifyConformance:
         repo = backend.build_escalations(notify_channel="conformance_channel")
         payload_queue: asyncio.Queue[str] = asyncio.Queue()
         received_first = asyncio.Event()
+        listener_ready = asyncio.Event()
 
         async def _listen() -> None:
             async with repo.subscribe_notifications("conformance_channel") as gen:
+                # LISTEN has registered by the time the context manager
+                # yields; signal the producer to fire the NOTIFY.
+                listener_ready.set()
                 async for payload in gen:
                     await payload_queue.put(payload)
                     received_first.set()
@@ -38,8 +42,7 @@ class TestEscalationNotifyConformance:
 
         listener = asyncio.create_task(_listen())
         try:
-            # Give the LISTEN enough time to register before the NOTIFY fires.
-            await asyncio.sleep(0.2)
+            await asyncio.wait_for(listener_ready.wait(), timeout=5.0)
             pool = repo.pool  # type: ignore[attr-defined]
             async with pool.connection() as conn, conn.cursor() as cur:
                 await conn.set_autocommit(True)

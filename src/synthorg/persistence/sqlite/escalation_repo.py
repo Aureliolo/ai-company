@@ -26,7 +26,7 @@ from synthorg.communication.conflict_resolution.escalation.protocol import (
     EscalationQueueStore,
 )
 from synthorg.communication.conflict_resolution.models import Conflict
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_REQUEST_ERROR
 from synthorg.persistence.errors import ConstraintViolationError, QueryError
 
@@ -83,8 +83,13 @@ def _row_to_escalation(row: Row) -> Escalation:
             row_id = str(row["id"]) if row else "<unknown>"
         except TypeError, KeyError:
             row_id = "<unknown>"
-        msg = f"Failed to parse escalation row {row_id!r}: {exc}"
-        logger.exception(API_REQUEST_ERROR, row_id=row_id, error=msg)
+        logger.warning(
+            API_REQUEST_ERROR,
+            row_id=row_id,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        msg = f"Failed to parse escalation row {row_id!r}"
         raise QueryError(msg) from exc
 
 
@@ -127,7 +132,7 @@ class SQLiteEscalationRepository(EscalationQueueStore):
                 error_type="escalation_create_duplicate",
                 escalation_id=escalation.id,
                 conflict_id=escalation.conflict.id,
-                error=str(exc),
+                error=safe_error_description(exc),
             )
             await self._db.rollback()
             raise ConstraintViolationError(msg, constraint=str(exc)) from exc
@@ -138,7 +143,7 @@ class SQLiteEscalationRepository(EscalationQueueStore):
                 error_type="escalation_create_failed",
                 escalation_id=escalation.id,
                 conflict_id=escalation.conflict.id,
-                error=str(exc),
+                error=safe_error_description(exc),
             )
             await self._db.rollback()
             raise QueryError(msg) from exc
@@ -155,7 +160,7 @@ class SQLiteEscalationRepository(EscalationQueueStore):
                 API_REQUEST_ERROR,
                 error_type="escalation_get_failed",
                 escalation_id=escalation_id,
-                error=str(exc),
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         if row is None:
@@ -197,7 +202,7 @@ class SQLiteEscalationRepository(EscalationQueueStore):
             logger.warning(
                 API_REQUEST_ERROR,
                 error_type="escalation_list_failed",
-                error=str(exc),
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         # A single corrupt row must not poison the entire page -- log and
@@ -355,7 +360,7 @@ class SQLiteEscalationRepository(EscalationQueueStore):
                 error_type="escalation_update_failed",
                 escalation_id=escalation_id,
                 target_status=new_status.value,
-                error=str(exc),
+                error=safe_error_description(exc),
             )
             await self._db.rollback()
             raise QueryError(msg) from exc
