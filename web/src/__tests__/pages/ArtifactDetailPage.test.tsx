@@ -61,7 +61,7 @@ describe('ArtifactDetailPage', () => {
   it('renders not found when no artifact and not loading', () => {
     hookReturn = { ...defaultHookReturn, artifact: null }
     renderPage()
-    expect(screen.getByText('Artifact not found.')).toBeInTheDocument()
+    expect(screen.getByText('Artifact not found')).toBeInTheDocument()
   })
 
   it('renders metadata and content preview when artifact loaded', () => {
@@ -76,9 +76,9 @@ describe('ArtifactDetailPage', () => {
     expect(screen.getByText('Failed to load')).toBeInTheDocument()
   })
 
-  it('renders back button', () => {
+  it('renders breadcrumb link to artifacts', () => {
     renderPage()
-    expect(screen.getByText('Back to Artifacts')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Artifacts' })).toBeInTheDocument()
   })
 
   describe('property-based state transitions', () => {
@@ -104,7 +104,7 @@ describe('ArtifactDetailPage', () => {
         fc.property(fc.boolean(), (loading) => {
           hookReturn = { ...defaultHookReturn, artifact: null, loading }
           const { unmount } = renderPage()
-          const hasNotFound = screen.queryByText('Artifact not found.') !== null
+          const hasNotFound = screen.queryByText('Artifact not found') !== null
           unmount()
           return hasNotFound === !loading
         }),

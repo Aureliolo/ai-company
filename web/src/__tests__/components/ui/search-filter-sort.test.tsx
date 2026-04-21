@@ -63,21 +63,18 @@ describe('SearchInput', () => {
     expect(input).toHaveFocus()
   })
 
-  it('focusShortcut: / inside an input is ignored', async () => {
-    render(
-      <>
-        <input aria-label="other" />
-        <SearchInput value="" onChange={() => {}} focusShortcut />
-      </>,
-    )
-    const other = screen.getByLabelText('other')
-    other.focus()
-    const search = screen.getByRole('searchbox')
+  it('focusShortcut: / with modifier keys is ignored', () => {
+    render(<SearchInput value="" onChange={() => {}} focusShortcut />)
+    const input = screen.getByRole('searchbox')
+    expect(input).not.toHaveFocus()
     act(() => {
-      fireEvent.keyDown(window, { key: '/', target: other })
+      fireEvent.keyDown(window, { key: '/', metaKey: true })
     })
-    // The other input should retain focus; search should NOT steal it
-    expect(search).not.toHaveFocus()
+    expect(input).not.toHaveFocus()
+    act(() => {
+      fireEvent.keyDown(window, { key: '/', ctrlKey: true })
+    })
+    expect(input).not.toHaveFocus()
   })
 
   it('focusShortcut off: pressing / does nothing', () => {

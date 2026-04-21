@@ -98,7 +98,7 @@ describe('AgentDetailPage', () => {
   it('renders not-found message when no agent and not loading', () => {
     hookReturn = { ...defaultHookReturn, agent: null }
     renderDetail()
-    expect(screen.getByText('Agent not found.')).toBeInTheDocument()
+    expect(screen.getByText('Agent not found')).toBeInTheDocument()
   })
 
   it('renders error message from hook when no agent', () => {
@@ -153,7 +153,8 @@ describe('AgentDetailPage', () => {
   it('renders agent identity header section', () => {
     renderDetail()
     expect(screen.getByTestId('identity-header')).toBeInTheDocument()
-    expect(screen.getByText('alice')).toBeInTheDocument()
+    // `alice` appears in both the breadcrumb and the identity header; accept either.
+    expect(screen.getAllByText('alice').length).toBeGreaterThanOrEqual(1)
   })
 
   it('renders activity log section', () => {

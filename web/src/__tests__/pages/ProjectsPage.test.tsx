@@ -64,7 +64,8 @@ describe('ProjectsPage', () => {
 
   it('renders project count', () => {
     renderPage()
-    expect(screen.getByText('1 of 1')).toBeInTheDocument()
+    // ListHeader shows (count) when filtered count matches total; falls back to "X of Y" when different.
+    expect(screen.getByText('(1)')).toBeInTheDocument()
   })
 
   it('shows error banner when error is set', () => {
@@ -76,7 +77,7 @@ describe('ProjectsPage', () => {
 
   it('renders create project button', () => {
     renderPage()
-    expect(screen.getByText('Create Project')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /New project/i })).toBeInTheDocument()
   })
 
   it('shows WebSocket disconnect warning when not connected', () => {
