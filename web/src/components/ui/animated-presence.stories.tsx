@@ -62,3 +62,81 @@ export const Default: Story = {
   args: { routeKey: '/', children: null },
   render: () => <TransitionDemo />,
 }
+
+function StaticContent() {
+  return (
+    <AnimatedPresence routeKey="/static">
+      <PageContent label="Static" color="bg-card" />
+    </AnimatedPresence>
+  )
+}
+
+export const StaticRoute: Story = {
+  args: { routeKey: '/static', children: null },
+  render: () => <StaticContent />,
+}
+
+function ReducedMotionDemo() {
+  const [index, setIndex] = useState(0)
+  const pages = [
+    { key: '/a', label: 'Route A', color: 'bg-card' },
+    { key: '/b', label: 'Route B', color: 'bg-surface' },
+  ]
+  const current = pages[index] ?? pages[0]!
+  return (
+    <div className="space-y-4">
+      <p className="text-xs text-muted-foreground">
+        Motion obeys <code>prefers-reduced-motion</code>. Toggle the OS setting (or emulate in devtools) to see the difference between the slide transitions and the reduced-motion fallback.
+      </p>
+      <button
+        type="button"
+        onClick={() => setIndex((i) => (i + 1) % pages.length)}
+        className="rounded-md bg-accent px-3 py-1.5 text-sm text-accent-foreground"
+      >
+        Toggle route
+      </button>
+      <AnimatedPresence routeKey={current.key}>
+        <PageContent label={current.label} color={current.color} />
+      </AnimatedPresence>
+    </div>
+  )
+}
+
+export const ReducedMotion: Story = {
+  args: { routeKey: '/', children: null },
+  render: () => <ReducedMotionDemo />,
+  parameters: {
+    a11y: {
+      config: {
+        rules: [{ id: 'meta-viewport', enabled: false }],
+      },
+    },
+  },
+}
+
+function RapidNavigationDemo() {
+  const pages = ['/a', '/b', '/c', '/d']
+  const [index, setIndex] = useState(0)
+  const current = pages[index % pages.length] ?? pages[0]!
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={() => setIndex((i) => i + 1)}
+          className="rounded-md bg-accent px-3 py-1.5 text-sm text-accent-foreground"
+        >
+          Next route (simulate rapid nav)
+        </button>
+      </div>
+      <AnimatedPresence routeKey={current}>
+        <PageContent label={`Route ${current}`} color="bg-card" />
+      </AnimatedPresence>
+    </div>
+  )
+}
+
+export const RapidNavigation: Story = {
+  args: { routeKey: '/', children: null },
+  render: () => <RapidNavigationDemo />,
+}
