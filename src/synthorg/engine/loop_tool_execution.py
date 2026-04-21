@@ -4,13 +4,15 @@ Extracted from :mod:`synthorg.engine.loop_helpers` to keep the main
 helpers module under the project size limit.
 """
 
-from typing import TYPE_CHECKING
+import re
+from typing import TYPE_CHECKING, Final
 
 from synthorg.engine.loop_protocol import (
     ExecutionResult,
     TerminationReason,
     TurnRecord,
 )
+from synthorg.engine.prompt_safety import TAG_TOOL_RESULT, wrap_untrusted
 from synthorg.observability import get_logger
 from synthorg.observability.events.approval_gate import (
     APPROVAL_GATE_PARK_TASKLESS,
@@ -19,9 +21,13 @@ from synthorg.observability.events.execution import (
     EXECUTION_LOOP_ERROR,
     EXECUTION_LOOP_TOOL_CALLS,
 )
-from synthorg.observability.events.tool import TOOL_L2_LOADED, TOOL_L3_FETCHED
+from synthorg.observability.events.tool import (
+    TOOL_INJECTION_PATTERN_DETECTED,
+    TOOL_L2_LOADED,
+    TOOL_L3_FETCHED,
+)
 from synthorg.providers.enums import MessageRole
-from synthorg.providers.models import ChatMessage
+from synthorg.providers.models import ChatMessage, ToolResult
 
 if TYPE_CHECKING:
     from synthorg.engine.approval_gate import ApprovalGate
@@ -31,6 +37,48 @@ if TYPE_CHECKING:
     from synthorg.tools.invoker import ToolInvoker
 
 logger = get_logger(__name__)
+
+
+# SEC-1 / audit finding 92: common prompt-injection patterns that a
+# tool might return in an attempt to take over the next LLM turn.
+# Matches are flagged via ``TOOL_INJECTION_PATTERN_DETECTED`` for
+# telemetry; the tool result is still wrapped in the fence, not
+# rejected (rejection would break legitimate tools that echo user
+# text in responses).
+_INJECTION_PATTERNS: Final[tuple[re.Pattern[str], ...]] = (
+    re.compile(r"ignore\s+(all|previous|prior)\s+instructions?", re.IGNORECASE),
+    re.compile(r"disregard\s+(all|previous|prior)", re.IGNORECASE),
+    re.compile(r"you\s+are\s+now", re.IGNORECASE),
+    re.compile(r"system\s*:\s*you", re.IGNORECASE),
+    re.compile(r"</task-data>", re.IGNORECASE),
+    re.compile(r"</tool-result>", re.IGNORECASE),
+    re.compile(r"</untrusted-artifact>", re.IGNORECASE),
+)
+
+
+def _wrap_tool_result(result: ToolResult) -> ToolResult:
+    """Return *result* with its ``content`` wrapped in ``<tool-result>``.
+
+    Also emits ``TOOL_INJECTION_PATTERN_DETECTED`` when the raw
+    content matches a known injection pattern (see
+    :data:`_INJECTION_PATTERNS`). Detection is advisory; the wrap
+    happens unconditionally so a malicious tool cannot escape the
+    fence even if no pattern matches.
+    """
+    raw = result.content
+    for pattern in _INJECTION_PATTERNS:
+        match = pattern.search(raw)
+        if match is not None:
+            logger.warning(
+                TOOL_INJECTION_PATTERN_DETECTED,
+                tool_call_id=result.tool_call_id,
+                pattern=pattern.pattern,
+                sample=raw[: min(200, len(raw))],
+            )
+            break
+    return result.model_copy(
+        update={"content": wrap_untrusted(TAG_TOOL_RESULT, raw)},
+    )
 
 
 def _build_error_result(
@@ -173,9 +221,12 @@ async def execute_tool_calls(  # noqa: PLR0913, C901
         return _build_error_result(ctx, turns, error_msg)
 
     for result in results:
+        # SEC-1: fence the tool output before it enters context so the
+        # next LLM turn cannot mistake tool content for instructions.
+        wrapped = _wrap_tool_result(result)
         tool_msg = ChatMessage(
             role=MessageRole.TOOL,
-            tool_result=result,
+            tool_result=wrapped,
         )
         ctx = ctx.with_message(tool_msg)
 

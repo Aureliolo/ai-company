@@ -22,6 +22,7 @@ from synthorg.engine.middleware.models import (
     ProgressLedger,
     TaskLedger,
 )
+from synthorg.engine.prompt_safety import TAG_TASK_FACT, wrap_untrusted
 from synthorg.observability import get_logger
 from synthorg.observability.events.middleware import (
     COORDINATION_REPLAN,
@@ -72,12 +73,16 @@ class TaskLedgerMiddleware(BaseCoordinationMiddleware):
             )
             return ctx
 
-        # Extract known facts from task description + criteria
+        # Extract known facts from task description + criteria.  Each
+        # fact is user-controllable content, so we wrap it in a
+        # ``<task-fact>`` fence (SEC-1 / audit finding 92): downstream
+        # prompts that render the ledger treat each fact as untrusted
+        # data, not instructions.
         known_facts: list[str] = []
         if task.description:
-            known_facts.append(task.description)
+            known_facts.append(wrap_untrusted(TAG_TASK_FACT, task.description))
         known_facts.extend(
-            c.description
+            wrap_untrusted(TAG_TASK_FACT, c.description)
             for c in task.acceptance_criteria
             if c.description and c.description.strip()
         )

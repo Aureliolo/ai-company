@@ -9,6 +9,11 @@ import re
 from typing import Any
 
 from synthorg.core.enums import ConflictType
+from synthorg.engine.prompt_safety import (
+    TAG_CODE_DIFF,
+    untrusted_content_directive,
+    wrap_untrusted,
+)
 from synthorg.engine.workspace.models import MergeConflict
 from synthorg.observability import get_logger
 from synthorg.observability.events.workspace import (
@@ -86,6 +91,11 @@ def build_semantic_review_tool() -> ToolDefinition:
 def build_system_message() -> ChatMessage:
     """Build the system prompt for semantic review.
 
+    The system prompt carries an explicit directive that
+    ``<code-diff>`` fences wrap untrusted code content so the LLM
+    does not execute instructions embedded in reviewed source
+    (SEC-1 / audit finding 92).
+
     Returns:
         System message with review instructions.
     """
@@ -107,7 +117,8 @@ def build_system_message() -> ChatMessage:
             "Only report REAL conflicts that would cause runtime "
             "errors or incorrect behavior. Do NOT report style issues, "
             "naming conventions, or potential improvements.\n\n"
-            "Use the submit_semantic_review tool to report your findings."
+            "Use the submit_semantic_review tool to report your findings.\n\n"
+            + untrusted_content_directive((TAG_CODE_DIFF,))
         ),
     )
 
@@ -134,7 +145,13 @@ def build_review_message(
     ]
 
     for path, content in changed_files.items():
-        parts.append(f"\n### {path}\n```python\n{content}\n```\n")
+        # SEC-1: wrap each file's content in a ``<code-diff>`` fence so
+        # code that includes model-like instructions cannot hijack the
+        # review pass.  The outer markdown heading stays as trusted
+        # framing.
+        parts.append(f"\n### {path}\n")
+        parts.append(wrap_untrusted(TAG_CODE_DIFF, content))
+        parts.append("\n")
 
     return ChatMessage(
         role=MessageRole.USER,

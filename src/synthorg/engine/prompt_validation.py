@@ -16,6 +16,7 @@ from synthorg.budget.currency import (
     format_cost,
 )
 from synthorg.engine.errors import PromptBuildError
+from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 from synthorg.engine.prompt_template import DEFAULT_TEMPLATE
 from synthorg.observability import get_logger
 from synthorg.observability.events.prompt import (
@@ -109,19 +110,27 @@ def format_task_instruction(
 ) -> str:
     """Format a task into a user message for the initial conversation.
 
+    User-controllable fields (title, description, acceptance criteria)
+    are wrapped in a ``<task-data>`` fence so the system prompt can
+    instruct the model that their content is untrusted input (SEC-1 /
+    audit finding 92). The budget and deadline markers live outside
+    the fence because they are system-set values, not user input.
+
     Args:
         task: Task to format.
         currency: ISO 4217 currency code for budget display.
 
     Returns:
-        Markdown-formatted task instruction string.
+        Markdown-formatted task instruction string with untrusted
+        fields fenced.
     """
-    parts = [f"# Task: {task.title}", "", task.description]
-
+    inner: list[str] = [f"Title: {task.title}", "", task.description]
     if task.acceptance_criteria:
-        parts.append("")
-        parts.append("## Acceptance Criteria")
-        parts.extend(f"- {c.description}" for c in task.acceptance_criteria)
+        inner.append("")
+        inner.append("Acceptance Criteria:")
+        inner.extend(f"- {c.description}" for c in task.acceptance_criteria)
+
+    parts = ["# Task", "", wrap_untrusted(TAG_TASK_DATA, "\n".join(inner))]
 
     if task.budget_limit > 0:
         parts.append("")

@@ -79,6 +79,10 @@ TOOL_DISCLOSURE_TOKEN_SAVINGS: Final[str] = "tool.disclosure.token_savings"  # n
 # ── HTML parse guard events ────────────────────────────────────────
 TOOL_HTML_PARSE_GAP_DETECTED: Final[str] = "tool.html_parse.gap_detected"
 TOOL_HTML_PARSE_ERROR: Final[str] = "tool.html_parse.error"
+TOOL_HTML_PARSE_XXE_DETECTED: Final[str] = "tool.html_parse.xxe_detected"
+
+# ── Prompt-injection detection events (SEC-1) ─────────────────────
+TOOL_INJECTION_PATTERN_DETECTED: Final[str] = "tool.injection_pattern.detected"
 
 # ── Registry integrity check events ──────────────────────────────
 TOOL_REGISTRY_INTEGRITY_CHECK_START: Final[str] = "tool.registry.integrity.start"

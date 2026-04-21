@@ -7,6 +7,11 @@ into agent system prompts when strategy configuration is active.
 from typing import TYPE_CHECKING
 
 from synthorg.core.enums import SeniorityLevel
+from synthorg.engine.prompt_safety import (
+    TAG_CONFIG_VALUE,
+    untrusted_content_directive,
+    wrap_untrusted,
+)
 from synthorg.engine.strategy.lenses import get_lens_definitions
 from synthorg.engine.strategy.output import build_output_instructions
 from synthorg.observability import get_logger
@@ -82,10 +87,20 @@ def build_strategic_prompt_sections(
     # Strategic context section.
     # Phase 1: reads context directly from config fields. Phase 2 will
     # wire build_context() to support memory/composite context providers.
+    # SEC-1 / audit finding 92: the context fields are admin-set but may
+    # carry per-tenant content in a multi-tenant deployment, so we wrap
+    # each value in a ``<config-value>`` fence and append a directive
+    # below telling the model those fences contain data, not commands.
+    industry = wrap_untrusted(TAG_CONFIG_VALUE, config.context.industry)
+    maturity = wrap_untrusted(TAG_CONFIG_VALUE, config.context.maturity_stage)
+    position = wrap_untrusted(
+        TAG_CONFIG_VALUE,
+        config.context.competitive_position,
+    )
     context_text = (
-        f"You operate in the **{config.context.industry}** industry "
-        f"at the **{config.context.maturity_stage}** stage. "
-        f"Competitive position: **{config.context.competitive_position}**."
+        f"You operate in the industry {industry} at the stage "
+        f"{maturity}. Competitive position: {position}.\n\n"
+        + untrusted_content_directive((TAG_CONFIG_VALUE,))
     )
 
     # Constitutional principles section.

@@ -18,6 +18,11 @@ from typing import Any, Final, NoReturn
 
 from synthorg.core.task import AcceptanceCriterion  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.engine.prompt_safety import (
+    TAG_TASK_DATA,
+    untrusted_content_directive,
+    wrap_untrusted,
+)
 from synthorg.engine.quality.verification import AtomicProbe
 from synthorg.observability import get_logger
 from synthorg.observability.events.verification import (
@@ -69,7 +74,8 @@ _DECOMPOSER_SYSTEM_PROMPT: Final[str] = (
     "criteria into atomic binary probes -- each a single yes/no question "
     "whose answer can be determined by inspecting the produced artifact.  "
     "Favor multiple specific probes over one vague probe.  Do not invent "
-    "new requirements; every probe must trace to a given criterion."
+    "new requirements; every probe must trace to a given criterion.\n\n"
+    + untrusted_content_directive((TAG_TASK_DATA,))
 )
 _MAX_PROMPT_CRITERIA_CHARS: Final[int] = 8_000
 _MIN_CRITERION_DESC_CHARS: Final[int] = 16
@@ -97,10 +103,21 @@ def _encode_decomposer_payload(
     max_probes: int,
     instructions: str,
 ) -> str:
-    """Serialize the decomposer payload as a JSON string."""
+    """Serialize the decomposer payload as a JSON string.
+
+    Each criterion description is wrapped in a ``<task-data>`` fence
+    before JSON encoding (SEC-1 / audit finding 92, item #8). A
+    description that contains structural JSON metacharacters
+    (``{"description": "...","injected":"true"}``) still serialises
+    cleanly through ``json.dumps``, but the fence means the model sees
+    an explicit boundary between trusted envelope and untrusted
+    criterion text, so a well-crafted breakout string cannot read as
+    plausible schema content.
+    """
     payload = {
         "criteria": [
-            {"index": i, "description": d} for i, d in enumerate(descriptions)
+            {"index": i, "description": wrap_untrusted(TAG_TASK_DATA, d)}
+            for i, d in enumerate(descriptions)
         ],
         "max_probes_per_criterion": max_probes,
         "instructions": instructions,

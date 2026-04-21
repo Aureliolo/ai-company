@@ -20,6 +20,11 @@ from datetime import UTC, datetime
 from typing import Any, Final
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.engine.prompt_safety import (
+    TAG_UNTRUSTED_ARTIFACT,
+    untrusted_content_directive,
+    wrap_untrusted,
+)
 from synthorg.engine.quality.verification import (
     AtomicProbe,
     VerificationResult,
@@ -83,7 +88,8 @@ _GRADER_SYSTEM_PROMPT: Final[str] = (
     "You are a calibrated verification evaluator.  Grade the artifact "
     "strictly against the rubric criteria using the calibration "
     "examples (when given) as anchor points.  Prefer REFER when the "
-    "artifact is insufficient to decide."
+    "artifact is insufficient to decide.\n\n"
+    + untrusted_content_directive((TAG_UNTRUSTED_ARTIFACT,))
 )
 _MAX_PAYLOAD_CHARS: Final[int] = 16_000
 _DEFAULT_MAX_TOKENS: Final[int] = 2048
@@ -556,9 +562,14 @@ class LLMRubricGrader:
         artifact: HandoffArtifact,
         rubric: VerificationRubric,
     ) -> tuple[str, bool, int]:
-        """Serialize + truncate the artifact payload; log when truncation fires."""
-        payload_text = json.dumps(dict(artifact.payload), ensure_ascii=False)
-        original_len = len(payload_text)
+        """Serialize + truncate the artifact payload; log when truncation fires.
+
+        The serialized payload is wrapped in an ``<untrusted-artifact>``
+        fence (SEC-1 / audit finding 92) so the model cannot mistake
+        attacker-controlled artifact content for instructions.
+        """
+        raw_payload = json.dumps(dict(artifact.payload), ensure_ascii=False)
+        original_len = len(raw_payload)
         payload_truncated = original_len > _MAX_PAYLOAD_CHARS
         if payload_truncated:
             logger.warning(
@@ -568,7 +579,8 @@ class LLMRubricGrader:
                 original_chars=original_len,
                 truncated_chars=_MAX_PAYLOAD_CHARS,
             )
-            payload_text = payload_text[:_MAX_PAYLOAD_CHARS]
+            raw_payload = raw_payload[:_MAX_PAYLOAD_CHARS]
+        payload_text = wrap_untrusted(TAG_UNTRUSTED_ARTIFACT, raw_payload)
         return payload_text, payload_truncated, original_len
 
     def _parse_tool_arguments(  # noqa: PLR0911
