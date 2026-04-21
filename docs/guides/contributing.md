@@ -114,7 +114,7 @@ npm --prefix web run test                   # Vitest unit tests
 
 ```bash
 go -C cli vet ./...                         # go vet
-go -C cli tool golangci-lint run            # linter
+bash -c "cd cli && golangci-lint run"       # linter (first run: bash scripts/install_cli_tools.sh)
 go -C cli test ./...                        # tests
 ```
 
