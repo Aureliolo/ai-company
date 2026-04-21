@@ -79,6 +79,54 @@ Practical guides for configuring, operating, and extending your synthetic organi
 
     [:octicons-arrow-right-24: Memory](memory.md)
 
+-   :material-file-chart:{ .lg .middle } **Centralized Logging**
+
+    ---
+
+    Route structured logs to syslog, HTTP, OTLP, or external log aggregators.
+
+    [:octicons-arrow-right-24: Centralized Logging](centralized-logging.md)
+
+-   :material-cog-outline:{ .lg .middle } **Settings Reference**
+
+    ---
+
+    Resolve, view, and edit the 17 settings namespaces at runtime.
+
+    [:octicons-arrow-right-24: Settings Reference](settings-reference.md)
+
+-   :material-bell-ring:{ .lg .middle } **Notifications & Events**
+
+    ---
+
+    Configure notification sinks and subscribe to WebSocket event channels.
+
+    [:octicons-arrow-right-24: Notifications & Events](notifications-and-events.md)
+
+-   :material-source-branch:{ .lg .middle } **Workflow API Tutorial**
+
+    ---
+
+    curl tutorials for creating, versioning, activating, and executing workflows.
+
+    [:octicons-arrow-right-24: Workflow API](workflow-api.md)
+
+-   :material-account-cog:{ .lg .middle } **Agent Management**
+
+    ---
+
+    Hire, fire, promote, and customise agents through the REST API.
+
+    [:octicons-arrow-right-24: Agent Management](agent-management.md)
+
+-   :material-web:{ .lg .middle } **Human Interaction & API**
+
+    ---
+
+    REST + WebSocket API surface, rate limiting, RFC 9457 errors, Web UI features.
+
+    [:octicons-arrow-right-24: Human Interaction](human-interaction.md)
+
 -   :material-source-pull:{ .lg .middle } **Contributing**
 
     ---

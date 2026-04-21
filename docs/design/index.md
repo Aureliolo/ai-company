@@ -165,12 +165,13 @@ Queue: Hiring Queue
 
 <div class="grid cards" markdown>
 
--   [**Agents & HR**](agents.md)
+-   [**Agents**](agents.md) / [**HR & Agent Lifecycle**](hr-lifecycle.md)
 
     ---
 
-    Agent identity, seniority levels, role catalog, hiring, firing, performance tracking,
-    evaluation, and promotions.
+    Agent identity (personality, skills, identity versioning) plus the full
+    HR lifecycle: seniority, role catalog, hiring, firing, performance tracking,
+    evaluation, promotions, and evolution.
 
 -   [**Organization & Templates**](organization.md)
 

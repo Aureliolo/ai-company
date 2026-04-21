@@ -145,6 +145,12 @@ nav:
       - Deployment: design/deployment.md
       - Persistence: design/persistence.md
       - A2A Protocol: design/a2a-protocol.md
+      - Integrations: design/integrations.md
+      - Memory Consistency: design/memory-consistency.md
+      - Ontology: design/ontology.md
+      - Client Simulation: design/client-simulation.md
+      - Strategy & Trendslop Mitigation: design/strategy.md
+      - Self-Improvement: design/self-improvement.md
       - Brand Identity & UX: design/brand-and-ux.md
       - Page Structure & IA: design/page-structure.md
       - UX Guidelines: design/ux-guidelines.md
@@ -179,7 +185,7 @@ nav:
       - Budget: api/budget.md
       - HR: api/hr.md
       - Tools: api/tools.md
-      - API Layer: api/api.md
+      - API Layer: api/layer.md
       - Config: api/config.md
       - Templates: api/templates.md
       - Persistence: api/persistence.md

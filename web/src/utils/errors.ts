@@ -74,7 +74,7 @@ export function getErrorMessage(error: unknown): string {
     return 'An unexpected error occurred. Please refresh the page or contact support if this persists.'
   }
 
-  return 'An unexpected error occurred.'
+  return 'An unexpected error occurred. Please refresh the page or contact support if this persists.'
 }
 
 /**

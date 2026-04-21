@@ -107,17 +107,17 @@ describe('getErrorMessage', () => {
 
   it('returns generic message for Error with long message', () => {
     const longMsg = 'x'.repeat(201)
-    expect(getErrorMessage(new Error(longMsg))).toBe('An unexpected error occurred.')
+    expect(getErrorMessage(new Error(longMsg))).toBe('An unexpected error occurred. Please refresh the page or contact support if this persists.')
   })
 
   it('returns generic message for Error starting with {', () => {
-    expect(getErrorMessage(new Error('{"internal":"data"}'))).toBe('An unexpected error occurred.')
+    expect(getErrorMessage(new Error('{"internal":"data"}'))).toBe('An unexpected error occurred. Please refresh the page or contact support if this persists.')
   })
 
   it('returns generic message for non-error values', () => {
-    expect(getErrorMessage('string')).toBe('An unexpected error occurred.')
-    expect(getErrorMessage(42)).toBe('An unexpected error occurred.')
-    expect(getErrorMessage(null)).toBe('An unexpected error occurred.')
+    expect(getErrorMessage('string')).toBe('An unexpected error occurred. Please refresh the page or contact support if this persists.')
+    expect(getErrorMessage(42)).toBe('An unexpected error occurred. Please refresh the page or contact support if this persists.')
+    expect(getErrorMessage(null)).toBe('An unexpected error occurred. Please refresh the page or contact support if this persists.')
   })
 })
 
