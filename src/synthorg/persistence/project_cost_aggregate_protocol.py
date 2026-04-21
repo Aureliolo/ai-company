@@ -6,6 +6,15 @@ Protocol in ``persistence/<domain>_protocol.py`` per project convention.
 
 The value object (:class:`ProjectCostAggregate`) stays in
 ``budget/project_cost_aggregate`` because budget code consumes it.
+
+The currency-aware invariant described in CLAUDE.md (cost-bearing
+aggregations must reject mixed-currency increments via
+``MixedCurrencyAggregationError``) is a separate follow-up: it requires
+a schema column migration, a model field, and caller updates in
+``CostTracker`` / ``BudgetEnforcer``. This protocol tracks the current
+non-currency-aware surface; once the follow-up lands, a ``currency``
+parameter will be added to ``increment`` here and the schema column
+will be enforced at the repo boundary.
 """
 
 from typing import Protocol, runtime_checkable
@@ -21,9 +30,7 @@ class ProjectCostAggregateRepository(Protocol):
     """Repository for durable per-project cost aggregates.
 
     Implementations must provide atomic increment semantics so
-    concurrent cost recordings do not lose updates, and enforce the
-    same-currency invariant so a project's totals cannot silently mix
-    currencies.
+    concurrent cost recordings do not lose updates.
     """
 
     async def get(
@@ -43,18 +50,13 @@ class ProjectCostAggregateRepository(Protocol):
         cost: float,
         input_tokens: int,
         output_tokens: int,
-        *,
-        currency: NotBlankStr,
     ) -> ProjectCostAggregate:
         """Atomically increment the project's cost aggregate.
 
         Creates a new aggregate row on the first call for a project.
-        Subsequent calls increment the existing totals. Implementations
-        MUST raise ``MixedCurrencyAggregationError`` when *currency*
-        differs from the aggregate's persisted currency.
+        Subsequent calls increment the existing totals.
 
-        Raises:
-            MixedCurrencyAggregationError: If *currency* differs from
-                the aggregate's existing currency.
+        Returns:
+            The updated aggregate after the increment.
         """
         ...

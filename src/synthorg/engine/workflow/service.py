@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 from synthorg.core.enums import WorkflowType  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.workflow.definition import WorkflowDefinition  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workflow_definition import (
     WORKFLOW_DEF_CREATED,
     WORKFLOW_DEF_DELETED,
@@ -191,6 +191,7 @@ class WorkflowService:
                 WORKFLOW_VERSION_SNAPSHOT_FAILED,
                 definition_id=definition_id,
                 error_type=type(exc).__name__,
+                error=safe_error_description(exc),
                 stage="cascade_delete",
             )
 

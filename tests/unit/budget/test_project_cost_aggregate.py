@@ -5,8 +5,8 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
-from synthorg.budget.project_cost_aggregate import (
-    ProjectCostAggregate,
+from synthorg.budget.project_cost_aggregate import ProjectCostAggregate
+from synthorg.persistence.project_cost_aggregate_protocol import (
     ProjectCostAggregateRepository,
 )
 

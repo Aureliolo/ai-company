@@ -68,9 +68,13 @@ class CustomRulesService:
     ) -> CustomRuleDefinition:
         """Apply a partial update to the rule with *rule_id*.
 
-        Rejects overrides of immutable fields (``id``, ``created_at``,
-        ``created_by``) so callers cannot accidentally rewrite identity
-        or audit history by including those keys in ``updates``.
+        Rejects overrides of immutable fields (``id``, ``created_at``)
+        so callers cannot accidentally rewrite identity or audit
+        history by including those keys in ``updates``. The exact set
+        lives in :data:`_IMMUTABLE_RULE_FIELDS`; it intentionally tracks
+        only the fields that actually exist on
+        :class:`CustomRuleDefinition` (the model does not carry a
+        ``created_by`` attribute).
 
         Raises:
             CustomRuleNotFoundError: If the target id does not exist.

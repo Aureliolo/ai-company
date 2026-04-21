@@ -471,7 +471,7 @@ class SQLitePersistenceBackend:
                 logger.warning(
                     PERSISTENCE_BACKEND_DISCONNECT_ERROR,
                     path=self._config.path,
-                    error=str(exc),
+                    error=safe_error_description(exc),
                     error_type=type(exc).__name__,
                 )
             finally:
@@ -489,7 +489,7 @@ class SQLitePersistenceBackend:
             logger.warning(
                 PERSISTENCE_BACKEND_HEALTH_CHECK,
                 healthy=False,
-                error=str(exc),
+                error=safe_error_description(exc),
                 error_type=type(exc).__name__,
             )
             return False

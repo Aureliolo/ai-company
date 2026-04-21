@@ -672,11 +672,17 @@ class _FakeBackend:
 
     @property
     def fine_tune_checkpoints(self) -> Any:
-        return None
+        # Match the contract of the real backends: if the backend does
+        # not implement fine-tune persistence it must raise, not silently
+        # hand back ``None`` that would fail later with a NoneType error
+        # somewhere deep in a service call.
+        msg = "fine_tune_checkpoints not supported by the protocol-compliance fake"
+        raise NotImplementedError(msg)
 
     @property
     def fine_tune_runs(self) -> Any:
-        return None
+        msg = "fine_tune_runs not supported by the protocol-compliance fake"
+        raise NotImplementedError(msg)
 
     def build_lockouts(self, auth_config: Any) -> Any:
         return None

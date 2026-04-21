@@ -10,7 +10,7 @@ from typing import Final
 from litestar import Controller, delete, get, post
 from litestar.datastructures import State  # noqa: TC002
 from litestar.exceptions import ClientException, NotFoundException
-from litestar.status_codes import HTTP_409_CONFLICT
+from litestar.status_codes import HTTP_409_CONFLICT, HTTP_501_NOT_IMPLEMENTED
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.api.dto import ApiResponse
@@ -59,12 +59,29 @@ def _build_memory_service(app_state: AppState) -> MemoryService:
     repositories through :class:`PersistenceBackend` so the controller
     does not hard-wire the SQLite implementation; backends that do not
     support fine-tuning raise ``NotImplementedError`` at accessor-call
-    time rather than silently returning a mismatched repo.
+    time, which we translate to HTTP 501 here so operators get a clean
+    "unsupported backend" response instead of a 500 traceback.
+
+    Raises:
+        ClientException: When the backend does not implement the
+            fine-tune repositories (HTTP 501). The only such backend
+            today is Postgres; SQLite always exposes both repos.
     """
     backend = app_state.persistence
+    try:
+        checkpoint_repo = backend.fine_tune_checkpoints
+        run_repo = backend.fine_tune_runs
+    except NotImplementedError as exc:
+        raise ClientException(
+            detail=(
+                "Fine-tune admin endpoints require an SQLite persistence "
+                "backend; the current backend does not implement them."
+            ),
+            status_code=HTTP_501_NOT_IMPLEMENTED,
+        ) from exc
     return MemoryService(
-        checkpoint_repo=backend.fine_tune_checkpoints,
-        run_repo=backend.fine_tune_runs,
+        checkpoint_repo=checkpoint_repo,
+        run_repo=run_repo,
         settings_service=(
             app_state.settings_service if app_state.has_settings_service else None
         ),

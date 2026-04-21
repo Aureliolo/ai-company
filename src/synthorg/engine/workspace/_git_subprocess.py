@@ -9,12 +9,14 @@ PST-1 so the subprocess lifecycle lives in one focused place.
 """
 
 import asyncio
-from typing import TYPE_CHECKING
+
+# ``Path`` is imported at runtime (not under TYPE_CHECKING) because it is used
+# in a runtime-evaluated annotation on ``run_git_subprocess``; under PEP 649
+# lazy annotations ``inspect.get_annotations`` resolves these in module globals,
+# so a TYPE_CHECKING-only import would raise ``NameError`` at introspection time.
+from pathlib import Path  # noqa: TC003
 
 from synthorg.observability import get_logger
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 logger = get_logger(__name__)
 
@@ -81,6 +83,12 @@ async def run_git_subprocess(
     except asyncio.CancelledError:
         proc.kill()
         await proc.wait()
+        logger.warning(
+            log_event,
+            error_type="CancelledError",
+            error="git subprocess cancelled by caller",
+            args=args,
+        )
         raise
 
     rc = proc.returncode if proc.returncode is not None else -1

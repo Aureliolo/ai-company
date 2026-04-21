@@ -176,12 +176,27 @@ ON CONFLICT(name) DO UPDATE SET
             return None
 
         logger.debug(PRESET_CUSTOM_FETCHED, preset_name=name, found=True)
-        return PresetRow(
-            _normalize_config_json(row[0]),
-            row[1],
-            _normalize_timestamp(row[2]),
-            _normalize_timestamp(row[3]),
-        )
+        # ``_normalize_*`` now fails loudly when a Postgres row ships an
+        # unexpected type (schema drift / adapter bug). Catch the resulting
+        # ``QueryError`` here so operators see the same structured
+        # ``PRESET_CUSTOM_FETCH_FAILED`` log as other fetch failures,
+        # then re-raise without swallowing.
+        try:
+            return PresetRow(
+                _normalize_config_json(row[0]),
+                row[1],
+                _normalize_timestamp(row[2]),
+                _normalize_timestamp(row[3]),
+            )
+        except QueryError as exc:
+            logger.warning(
+                PRESET_CUSTOM_FETCH_FAILED,
+                preset_name=name,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                stage="row_normalization",
+            )
+            raise
 
     async def list_all(
         self,
@@ -210,16 +225,25 @@ ON CONFLICT(name) DO UPDATE SET
             )
             raise QueryError(msg) from exc
 
-        result = tuple(
-            PresetListRow(
-                row[0],
-                _normalize_config_json(row[1]),
-                row[2],
-                _normalize_timestamp(row[3]),
-                _normalize_timestamp(row[4]),
+        try:
+            result = tuple(
+                PresetListRow(
+                    row[0],
+                    _normalize_config_json(row[1]),
+                    row[2],
+                    _normalize_timestamp(row[3]),
+                    _normalize_timestamp(row[4]),
+                )
+                for row in rows
             )
-            for row in rows
-        )
+        except QueryError as exc:
+            logger.warning(
+                PRESET_CUSTOM_LIST_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                stage="row_normalization",
+            )
+            raise
         logger.debug(PRESET_CUSTOM_LISTED, count=len(result))
         return result
 

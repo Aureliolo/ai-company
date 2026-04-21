@@ -99,7 +99,6 @@ from synthorg.budget.optimizer_models import (
 )
 from synthorg.budget.project_cost_aggregate import (
     ProjectCostAggregate,
-    ProjectCostAggregateRepository,
 )
 from synthorg.budget.quota import (
     DegradationAction,
@@ -150,6 +149,9 @@ from synthorg.budget.spending_summary import (
     SpendingSummary,
 )
 from synthorg.budget.tracker import CostTracker
+from synthorg.persistence.project_cost_aggregate_protocol import (
+    ProjectCostAggregateRepository,
+)
 
 __all__ = [
     "BUILTIN_TIERS",

@@ -8,9 +8,6 @@ from typing import Any, Protocol, runtime_checkable
 
 from synthorg.api.auth.config import AuthConfig  # noqa: TC001
 from synthorg.budget.config import BudgetConfig  # noqa: TC001
-from synthorg.budget.project_cost_aggregate import (
-    ProjectCostAggregateRepository,  # noqa: TC001
-)
 from synthorg.core.agent import AgentIdentity  # noqa: TC001
 from synthorg.core.company import Company  # noqa: TC001
 from synthorg.core.role import Role  # noqa: TC001
@@ -54,6 +51,9 @@ from synthorg.persistence.ontology_protocol import (
 )
 from synthorg.persistence.preset_repository import (
     PersonalityPresetRepository,  # noqa: TC001
+)
+from synthorg.persistence.project_cost_aggregate_protocol import (
+    ProjectCostAggregateRepository,  # noqa: TC001
 )
 from synthorg.persistence.repositories import (
     AgentStateRepository,  # noqa: TC001
