@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { useMeetingsStore, _resetRequestSeqs } from '@/stores/meetings'
+import { useToastStore } from '@/stores/toast'
 import { makeMeeting } from '../helpers/factories'
 import { apiError, apiSuccess, paginatedFor } from '@/mocks/handlers'
 import type { listMeetings } from '@/api/endpoints/meetings'
@@ -226,19 +227,24 @@ describe('triggerMeeting', () => {
     expect(state.triggering).toBe(false)
   })
 
-  it('re-throws on failure and resets triggering', async () => {
+  it('returns [] sentinel + emits error toast on failure and resets triggering', async () => {
     server.use(
       http.post('/api/v1/meetings/trigger', () =>
         HttpResponse.json(apiError('Trigger failed')),
       ),
     )
 
-    await expect(
-      useMeetingsStore.getState().triggerMeeting({ event_name: 'bad_event' }),
-    ).rejects.toThrow('Trigger failed')
+    const result = await useMeetingsStore
+      .getState()
+      .triggerMeeting({ event_name: 'bad_event' })
 
+    expect(result).toEqual([])
     const state = useMeetingsStore.getState()
     expect(state.triggering).toBe(false)
+    const toasts = useToastStore.getState().toasts
+    expect(toasts).toHaveLength(1)
+    expect(toasts[0]!.variant).toBe('error')
+    expect(toasts[0]!.title).toBe('Failed to trigger meeting')
   })
 })
 

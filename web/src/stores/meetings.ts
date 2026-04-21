@@ -5,6 +5,7 @@ import {
   MEETING_STATUS_VALUES,
 } from '@/api/types/meetings'
 import { sanitizeWsString } from '@/stores/notifications'
+import { useToastStore } from '@/stores/toast'
 import { getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 import { createLogger } from '@/lib/logger'
@@ -358,6 +359,12 @@ export const useMeetingsStore = create<MeetingsState>()((set, get) => ({
   },
 
   triggerMeeting: async (data) => {
+    // Canonical store mutation contract: on failure, log + toast +
+    // return sentinel (empty array here -- semantically "no meetings
+    // were triggered") so callers never need try/catch. The dialog
+    // closes on success (non-empty result) and stays open on failure
+    // (empty result), consistent with the ConfirmDialog
+    // boolean/undefined-closes / false-stays-open convention.
     set({ triggering: true })
     try {
       const meetings = await meetingsApi.triggerMeeting(data)
@@ -366,11 +373,20 @@ export const useMeetingsStore = create<MeetingsState>()((set, get) => ({
         meetings: [...meetings, ...s.meetings],
         total: s.total + meetings.length,
       }))
+      useToastStore.getState().add({
+        variant: 'success',
+        title: `Triggered ${meetings.length} meeting(s)`,
+      })
       return meetings
     } catch (err) {
       log.error('triggerMeeting failed:', getErrorMessage(err))
       set({ triggering: false })
-      throw err
+      useToastStore.getState().add({
+        variant: 'error',
+        title: 'Failed to trigger meeting',
+        description: getErrorMessage(err),
+      })
+      return []
     }
   },
 

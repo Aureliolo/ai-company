@@ -6,8 +6,6 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { useMeetingsData } from '@/hooks/useMeetingsData'
-import { useToastStore } from '@/stores/toast'
-import { getErrorMessage } from '@/utils/errors'
 import { filterMeetings, type MeetingPageFilters } from '@/utils/meetings'
 import { MEETING_STATUS_VALUES, type MeetingStatus } from '@/api/types/meetings'
 import { MeetingMetricCards } from './meetings/MeetingMetricCards'
@@ -57,15 +55,15 @@ export default function MeetingsPage() {
     })
   }, [setSearchParams])
 
-  const handleTrigger = useCallback(async (eventName: string) => {
-    try {
-      await triggerMeeting({ event_name: eventName })
-      setTriggerOpen(false)
-      useToastStore.getState().add({ variant: 'success', title: 'Meeting triggered' })
-    } catch (err) {
-      useToastStore.getState().add({ variant: 'error', title: 'Failed to trigger meeting', description: getErrorMessage(err) })
-      throw err // Let ConfirmDialog keep dialog open on failure
-    }
+  const handleTrigger = useCallback(async (eventName: string): Promise<boolean> => {
+    // Sentinel-return contract: the store owns success/error toasts.
+    // Returning ``false`` on failure tells ConfirmDialog to keep the
+    // dialog open so the user can retry without losing their input;
+    // any other return value (true here) closes it.
+    const triggered = await triggerMeeting({ event_name: eventName })
+    if (triggered.length === 0) return false
+    setTriggerOpen(false)
+    return true
   }, [triggerMeeting])
 
   // Derived data

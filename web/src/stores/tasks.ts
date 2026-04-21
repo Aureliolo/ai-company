@@ -11,15 +11,6 @@ import {
   TASK_TYPE_VALUES as TASK_TYPE_VALUES_TUPLE,
 } from '@/api/types/enums'
 import type { TaskStatus } from '@/api/types/enums'
-
-// Runtime-check sets derived from the canonical enum tuples in
-// `@/api/types/enums`. Building them here (rather than re-declaring the
-// literal list) keeps the validator in lockstep with the type union
-// -- drift between the runtime check and the declared enum is caught
-// at compile time.
-const TASK_STATUS_SET: ReadonlySet<string> = new Set<string>(TASK_STATUS_VALUES_TUPLE)
-const TASK_PRIORITY_SET: ReadonlySet<string> = new Set<string>(PRIORITY_VALUES)
-const TASK_TYPE_SET: ReadonlySet<string> = new Set<string>(TASK_TYPE_VALUES_TUPLE)
 import type {
   CancelTaskRequest,
   CreateTaskRequest,
@@ -29,6 +20,15 @@ import type {
   UpdateTaskRequest,
 } from '@/api/types/tasks'
 import type { WsEvent } from '@/api/types/websocket'
+
+// Runtime-check sets derived from the canonical enum tuples in
+// `@/api/types/enums`. Building them here (rather than re-declaring the
+// literal list) keeps the validator in lockstep with the type union
+// -- drift between the runtime check and the declared enum is caught
+// at compile time.
+const TASK_STATUS_SET: ReadonlySet<string> = new Set<string>(TASK_STATUS_VALUES_TUPLE)
+const TASK_PRIORITY_SET: ReadonlySet<string> = new Set<string>(PRIORITY_VALUES)
+const TASK_TYPE_SET: ReadonlySet<string> = new Set<string>(TASK_TYPE_VALUES_TUPLE)
 
 const log = createLogger('tasks')
 
@@ -217,7 +217,11 @@ function isTaskShape(c: Record<string, unknown>): c is Record<string, unknown> &
       c.source === null ||
       typeof c.source === 'string') &&
     isOptionalString(c.created_at) &&
-    isOptionalString(c.updated_at)
+    isOptionalString(c.updated_at) &&
+    // ``version`` is ``number | undefined``; without this guard a
+    // malformed payload could smuggle a non-numeric value through
+    // ``sanitizeTask`` and break optimistic-concurrency downstream.
+    (c.version === undefined || Number.isFinite(c.version))
   )
 }
 
