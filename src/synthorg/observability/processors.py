@@ -2,12 +2,13 @@
 
 import re
 import sys
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
 from synthorg.observability.redaction import scrub_secret_tokens
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, MutableMapping
+    from collections.abc import MutableMapping
 
 _SENSITIVE_PATTERN: re.Pattern[str] = re.compile(
     r"(password|secret|token|api_key|api_secret|authorization"
@@ -76,9 +77,15 @@ def sanitize_sensitive_fields(
 def _scrub_value(value: Any) -> Any:
     """Recursively scrub credential patterns out of string values.
 
-    Traverses nested ``dict`` / ``list`` / ``tuple`` structures, applying
+    Traverses nested mapping / list / tuple structures, applying
     :func:`synthorg.observability.redaction.scrub_secret_tokens` to every
     string leaf.  Non-string leaves are returned unchanged.
+
+    The mapping branch uses :class:`collections.abc.Mapping` so
+    immutable wrappers like :class:`types.MappingProxyType` (used by
+    the registry/``BaseTool`` immutability convention) are recursed
+    into as well, and a fresh ``dict`` is returned so the original
+    structure is never mutated.
 
     Args:
         value: The value to scrub.
@@ -88,7 +95,7 @@ def _scrub_value(value: Any) -> Any:
     """
     if isinstance(value, str):
         return scrub_secret_tokens(value)
-    if isinstance(value, dict):
+    if isinstance(value, Mapping):
         return {k: _scrub_value(v) for k, v in value.items()}
     if isinstance(value, list):
         return [_scrub_value(item) for item in value]

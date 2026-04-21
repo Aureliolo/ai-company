@@ -73,7 +73,9 @@ Usage::
 import argparse
 import ast
 import json
+import subprocess
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -227,8 +229,77 @@ def _load_baseline() -> dict[str, set[tuple[int, int]]]:
     return result
 
 
+def _validate_baseline_payload(
+    locations: dict[str, list[tuple[int, int]]],
+) -> list[str]:
+    """Return validation errors for *locations* (empty = valid).
+
+    Checks:
+    1. Every key resolves to an existing ``.py`` file under ``_REPO_ROOT``.
+    2. No key has a duplicate ``(lineno, col_offset)`` pair -- the AST
+       walker emits each node at most once, so duplicates indicate a
+       generator bug or hand-edit.
+    3. All ``lineno`` / ``col_offset`` values are non-negative integers
+       and ``lineno`` is at least 1 (lines are 1-indexed).
+    """
+    errors: list[str] = []
+    for key, entries in locations.items():
+        abs_path = (_REPO_ROOT / key).resolve()
+        if not abs_path.exists() or abs_path.suffix != ".py":
+            errors.append(f"baseline key does not resolve to a .py file: {key}")
+            continue
+        seen: set[tuple[int, int]] = set()
+        for lineno, col in entries:
+            if lineno < 1 or col < 0:
+                errors.append(f"invalid coordinates in {key}: line={lineno} col={col}")
+            if (lineno, col) in seen:
+                errors.append(
+                    f"duplicate baseline entry in {key}: line={lineno} col={col}"
+                )
+            seen.add((lineno, col))
+    return errors
+
+
+def _current_commit_sha() -> str:
+    """Return the short HEAD SHA, or ``"unknown"`` if git is unavailable."""
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=True,
+            cwd=str(_REPO_ROOT),
+        )
+    except subprocess.CalledProcessError, FileNotFoundError, OSError:
+        return "unknown"
+    return result.stdout.strip() or "unknown"
+
+
 def _save_baseline(locations: dict[str, list[tuple[int, int]]]) -> None:
-    """Write a refreshed baseline snapshot in location-list form."""
+    """Write a refreshed baseline snapshot in location-list form.
+
+    Enforces stable sort order (file keys alphabetical, entries sorted
+    by ``(lineno, col_offset)``) so baselines diff cleanly. Validates
+    the payload against :func:`_validate_baseline_payload` and aborts
+    -- with an informative error -- if validation fails, rather than
+    persisting a malformed snapshot. Also embeds staleness-tracking
+    metadata (``generated_at`` in UTC, short ``commit`` SHA) so
+    reviewers can see when the baseline was last refreshed.
+    """
+    sorted_locations = {
+        key: [[lineno, col] for lineno, col in sorted(entries)]
+        for key, entries in sorted(locations.items())
+    }
+    canonical_tuples = {
+        key: [(lineno, col) for lineno, col in entries]
+        for key, entries in locations.items()
+    }
+    errors = _validate_baseline_payload(canonical_tuples)
+    if errors:
+        for err in errors:
+            print(f"baseline-validation-error: {err}", file=sys.stderr)
+        msg = "baseline payload failed validation; refusing to write"
+        raise RuntimeError(msg)
     payload = {
         "description": (
             "SEC-1 baseline: list of `logger.exception(..., error=str(exc))`"
@@ -237,10 +308,10 @@ def _save_baseline(locations: dict[str, list[tuple[int, int]]]) -> None:
             " scripts/check_logger_exception_str_exc.py --refresh-baseline."
             " Do not hand-edit."
         ),
-        "locations": {
-            key: [[lineno, col] for lineno, col in sorted(entries)]
-            for key, entries in sorted(locations.items())
-        },
+        "generated_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "commit": _current_commit_sha(),
+        "remediation_issue": "https://github.com/Aureliolo/synthorg/issues/1488",
+        "locations": sorted_locations,
     }
     with _BASELINE_PATH.open("w", encoding="utf-8", newline="\n") as f:
         json.dump(payload, f, indent=2)

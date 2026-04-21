@@ -110,11 +110,15 @@ def format_task_instruction(
 ) -> str:
     """Format a task into a user message for the initial conversation.
 
-    User-controllable fields (title, description, acceptance criteria)
-    are wrapped in a ``<task-data>`` fence so the system prompt can
-    instruct the model that their content is untrusted input (SEC-1 /
-    audit finding 92). The budget and deadline markers live outside
-    the fence because they are system-set values, not user input.
+    User-controllable fields (title, description, acceptance criteria,
+    and the deadline string) are wrapped via ``wrap_untrusted()`` with
+    the ``<task-data>`` fence so the system prompt can instruct the
+    model that their content is untrusted input (SEC-1 / audit finding
+    92). The budget marker stays outside the fence because it is a
+    numeric, non-string value -- strings are the only values the fence
+    protects against breakout for. The deadline is ISO-8601 validated
+    upstream but originates from an API payload, so it too lives
+    inside the fence.
 
     Args:
         task: Task to format.
