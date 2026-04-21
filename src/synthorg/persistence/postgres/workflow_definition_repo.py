@@ -107,6 +107,57 @@ class PostgresWorkflowDefinitionRepository:
     def __init__(self, pool: AsyncConnectionPool) -> None:
         self._pool = pool
 
+    async def create_if_absent(self, definition: WorkflowDefinition) -> bool:
+        """Atomic create-or-skip via ``INSERT ... ON CONFLICT DO NOTHING``.
+
+        See :meth:`WorkflowDefinitionRepository.create_if_absent`.
+        """
+        nodes_jsonb = Jsonb([n.model_dump(mode="json") for n in definition.nodes])
+        edges_jsonb = Jsonb([e.model_dump(mode="json") for e in definition.edges])
+        inputs_jsonb = Jsonb([i.model_dump(mode="json") for i in definition.inputs])
+        outputs_jsonb = Jsonb([o.model_dump(mode="json") for o in definition.outputs])
+        try:
+            async with self._pool.connection() as conn, conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    INSERT INTO workflow_definitions
+                        (id, name, description, workflow_type, version,
+                         inputs, outputs, is_subworkflow, nodes, edges,
+                         created_by, created_at, updated_at, revision)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                            %s, %s, %s, %s)
+                    ON CONFLICT(id) DO NOTHING
+                    """,
+                    (
+                        definition.id,
+                        definition.name,
+                        definition.description,
+                        definition.workflow_type.value,
+                        definition.version,
+                        inputs_jsonb,
+                        outputs_jsonb,
+                        definition.is_subworkflow,
+                        nodes_jsonb,
+                        edges_jsonb,
+                        definition.created_by,
+                        definition.created_at,
+                        definition.updated_at,
+                        definition.revision,
+                    ),
+                )
+                inserted = cur.rowcount > 0
+                await conn.commit()
+        except psycopg.Error as exc:
+            msg = f"Failed to create workflow definition {definition.id!r}"
+            logger.warning(
+                PERSISTENCE_WORKFLOW_DEF_SAVE_FAILED,
+                definition_id=definition.id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        return inserted
+
     async def save(self, definition: WorkflowDefinition) -> None:
         """Persist a workflow definition via upsert.
 

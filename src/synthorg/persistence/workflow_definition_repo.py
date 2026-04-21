@@ -26,6 +26,28 @@ class WorkflowDefinitionRepository(Protocol):
         """
         ...
 
+    async def create_if_absent(self, definition: WorkflowDefinition) -> bool:
+        """Atomically insert a definition iff no row with the same id exists.
+
+        Implementations MUST rely on backend-native conflict semantics
+        (``INSERT ... ON CONFLICT DO NOTHING`` or equivalent) so two
+        concurrent callers cannot both see "not found" and then both
+        insert. The check-then-save pattern at the service layer is
+        vulnerable to TOCTOU; this atomic path closes that window.
+
+        Args:
+            definition: The workflow definition to insert.
+
+        Returns:
+            ``True`` when the row was inserted, ``False`` when an
+            existing row with ``definition.id`` already existed and
+            the insert was skipped.
+
+        Raises:
+            PersistenceError: If the operation fails.
+        """
+        ...
+
     async def get(self, definition_id: NotBlankStr) -> WorkflowDefinition | None:
         """Retrieve a workflow definition by its ID.
 

@@ -14,6 +14,7 @@ from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.workflow.definition import WorkflowDefinition  # noqa: TC001
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workflow_definition import (
+    WORKFLOW_DEF_CREATE_CONFLICT,
     WORKFLOW_DEF_CREATED,
     WORKFLOW_DEF_DELETED,
     WORKFLOW_DEF_NOT_FOUND,
@@ -143,24 +144,28 @@ class WorkflowService:
     ) -> WorkflowDefinition:
         """Persist a new definition with audit log.
 
-        The underlying repository's ``save`` is upsert, so a duplicate
-        id would silently overwrite an existing definition and emit a
-        misleading ``WORKFLOW_DEF_CREATED`` event. We pre-check
-        existence and raise ``WorkflowDefinitionExistsError`` so
-        create/update intent is explicit in the audit trail.
+        Uses the repository's atomic ``create_if_absent`` so two
+        concurrent callers with the same ``definition.id`` cannot both
+        observe "not found" and then both upsert via ``save`` -- that
+        check-then-save pattern has a TOCTOU window the backend's
+        ``INSERT ... ON CONFLICT DO NOTHING`` closes at the SQL level.
 
         Raises:
             WorkflowDefinitionExistsError: ``definition.id`` already
                 exists -- caller should use ``update_definition``.
         """
-        existing = await self._definitions.get(definition.id)
-        if existing is not None:
+        inserted = await self._definitions.create_if_absent(definition)
+        if not inserted:
+            logger.warning(
+                WORKFLOW_DEF_CREATE_CONFLICT,
+                definition_id=str(definition.id),
+                reason="duplicate_id",
+            )
             msg = (
                 f"Workflow definition {definition.id!r} already exists; "
                 "use update_definition to modify it"
             )
             raise WorkflowDefinitionExistsError(msg)
-        await self._definitions.save(definition)
         logger.info(WORKFLOW_DEF_CREATED, definition_id=definition.id)
         return definition
 

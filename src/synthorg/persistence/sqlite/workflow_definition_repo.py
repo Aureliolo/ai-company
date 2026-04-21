@@ -18,7 +18,7 @@ from synthorg.engine.workflow.definition import (
     WorkflowIODeclaration,
     WorkflowNode,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_WORKFLOW_DEF_DELETE_FAILED,
     PERSISTENCE_WORKFLOW_DEF_DELETED,
@@ -106,6 +106,61 @@ class SQLiteWorkflowDefinitionRepository:
 
     def __init__(self, db: aiosqlite.Connection) -> None:
         self._db = db
+
+    async def create_if_absent(self, definition: WorkflowDefinition) -> bool:
+        """Atomic create-or-skip via ``INSERT ... ON CONFLICT DO NOTHING``.
+
+        See :meth:`WorkflowDefinitionRepository.create_if_absent`.
+        """
+        nodes_json = json.dumps(
+            [n.model_dump(mode="json") for n in definition.nodes],
+        )
+        edges_json = json.dumps(
+            [e.model_dump(mode="json") for e in definition.edges],
+        )
+        inputs_json = json.dumps(
+            [i.model_dump(mode="json") for i in definition.inputs],
+        )
+        outputs_json = json.dumps(
+            [o.model_dump(mode="json") for o in definition.outputs],
+        )
+        try:
+            cursor = await self._db.execute(
+                """\
+INSERT INTO workflow_definitions
+    (id, name, description, workflow_type, version, inputs, outputs,
+     is_subworkflow, nodes, edges, created_by, created_at, updated_at,
+     revision)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(id) DO NOTHING""",
+                (
+                    definition.id,
+                    definition.name,
+                    definition.description,
+                    definition.workflow_type.value,
+                    definition.version,
+                    inputs_json,
+                    outputs_json,
+                    1 if definition.is_subworkflow else 0,
+                    nodes_json,
+                    edges_json,
+                    definition.created_by,
+                    definition.created_at.astimezone(UTC).isoformat(),
+                    definition.updated_at.astimezone(UTC).isoformat(),
+                    definition.revision,
+                ),
+            )
+            await self._db.commit()
+        except sqlite3.Error as exc:
+            msg = f"Failed to create workflow definition {definition.id!r}"
+            logger.warning(
+                PERSISTENCE_WORKFLOW_DEF_SAVE_FAILED,
+                definition_id=definition.id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        return cursor.rowcount > 0
 
     async def save(self, definition: WorkflowDefinition) -> None:
         """Persist a workflow definition via upsert.
@@ -196,10 +251,11 @@ WHERE workflow_definitions.revision = excluded.revision - 1""",
             await self._db.commit()
         except sqlite3.Error as exc:
             msg = f"Failed to save workflow definition {definition.id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_WORKFLOW_DEF_SAVE_FAILED,
                 definition_id=definition.id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         logger.info(
@@ -230,10 +286,11 @@ WHERE workflow_definitions.revision = excluded.revision - 1""",
             row = await cursor.fetchone()
         except sqlite3.Error as exc:
             msg = f"Failed to fetch workflow definition {definition_id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_WORKFLOW_DEF_FETCH_FAILED,
                 definition_id=definition_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -286,9 +343,10 @@ WHERE workflow_definitions.revision = excluded.revision - 1""",
             rows = await cursor.fetchall()
         except sqlite3.Error as exc:
             msg = "Failed to list workflow definitions"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_WORKFLOW_DEF_LIST_FAILED,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -321,10 +379,11 @@ WHERE workflow_definitions.revision = excluded.revision - 1""",
             await self._db.commit()
         except sqlite3.Error as exc:
             msg = f"Failed to delete workflow definition {definition_id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_WORKFLOW_DEF_DELETE_FAILED,
                 definition_id=definition_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 

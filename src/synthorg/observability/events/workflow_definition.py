@@ -11,6 +11,9 @@ from typing import Final
 WORKFLOW_DEF_CREATED: Final[str] = "workflow.definition.created"
 """New workflow definition created."""
 
+WORKFLOW_DEF_CREATE_CONFLICT: Final[str] = "workflow.definition.create_conflict"
+"""Create rejected because an existing definition has the same id."""
+
 WORKFLOW_DEF_UPDATED: Final[str] = "workflow.definition.updated"
 """Existing workflow definition updated."""
 
