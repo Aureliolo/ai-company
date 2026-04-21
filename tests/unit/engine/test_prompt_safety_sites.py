@@ -42,9 +42,10 @@ class TestFormatTaskInstructionFence:
     def test_fences_user_fields(self) -> None:
         from synthorg.engine.prompt_validation import format_task_instruction
 
+        description = "Run schema migrations."
         task = _task(
             title="Migrate DB",
-            description="Run ALTER TABLE statements.",
+            description=description,
             criteria=(
                 AcceptanceCriterion(description="No data loss"),
                 AcceptanceCriterion(description="Rollback tested"),
@@ -54,7 +55,7 @@ class TestFormatTaskInstructionFence:
         assert "<task-data>" in out
         assert "</task-data>" in out
         assert "Title: Migrate DB" in out
-        assert "Run ALTER TABLE statements." in out
+        assert description in out
         assert "No data loss" in out
 
     def test_breakout_attempt_is_escaped(self) -> None:
