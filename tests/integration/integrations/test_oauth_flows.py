@@ -463,7 +463,7 @@ class TestOAuthLogRedaction:
         async def _exit(_self: Any, *_args: Any) -> None:
             return None
 
-        check_raised_message = False
+        raised_message: str | None = None
 
         with patch(mock_path) as client_cls:
             client_cls.return_value.__aenter__ = _enter
@@ -479,12 +479,11 @@ class TestOAuthLogRedaction:
                     redirect_uri="https://app.example.com/cb",
                     expires_at=datetime.now(UTC) + timedelta(hours=1),
                 )
-                check_raised_message = True
                 with (
                     structlog.testing.capture_logs() as events,
                     pytest.raises(
                         TokenExchangeFailedError,
-                    ) as exc_info,
+                    ) as exchange_exc,
                 ):
                     await flow.exchange_code(
                         token_url="https://idp.example.com/oauth/token",
@@ -494,13 +493,14 @@ class TestOAuthLogRedaction:
                         code="auth-code",
                         redirect_uri="https://app.example.com/cb",
                     )
+                raised_message = str(exchange_exc.value)
             elif scenario == "authorization_code_refresh":
                 flow = AuthorizationCodeFlow()
                 with (
                     structlog.testing.capture_logs() as events,
                     pytest.raises(
                         TokenRefreshFailedError,
-                    ) as exc_info,
+                    ),
                 ):
                     await flow.refresh_token(
                         token_url="https://idp.example.com/oauth/token",
@@ -514,7 +514,7 @@ class TestOAuthLogRedaction:
                     structlog.testing.capture_logs() as events,
                     pytest.raises(
                         TokenExchangeFailedError,
-                    ) as exc_info,
+                    ),
                 ):
                     await flow_cc.exchange(
                         token_url="https://idp.example.com/oauth/token",
@@ -525,12 +525,11 @@ class TestOAuthLogRedaction:
         _leak_free(events)
         # Taxonomy preserved for operators across every scenario.
         assert any(e.get("error_type") == "HTTPStatusError" for e in events), events
-        if check_raised_message:
+        if raised_message is not None:
             # The exchange path surfaces the raised exception message to
             # callers; make sure it too carries no sentinel material.
-            raised_msg = str(exc_info.value)
             for sentinel in (_SENTINEL_CS, _SENTINEL_CV, _SENTINEL_RT):
-                assert sentinel not in raised_msg
+                assert sentinel not in raised_message
 
     async def test_exchange_failure_does_not_emit_traceback_exc_info(
         self,
