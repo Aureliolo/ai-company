@@ -15,10 +15,26 @@ class UpdateCompanyRequest(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    company_name: NotBlankStr | None = None
-    autonomy_level: AutonomyLevel | None = None
-    budget_monthly: float | None = Field(default=None, gt=0)
-    communication_pattern: NotBlankStr | None = None
+    company_name: NotBlankStr | None = Field(
+        default=None,
+        description="Display name of the company.",
+    )
+    autonomy_level: AutonomyLevel | None = Field(
+        default=None,
+        description="Org-wide autonomy level (full, semi, supervised, locked).",
+    )
+    budget_monthly: float | None = Field(
+        default=None,
+        gt=0,
+        description=(
+            "Monthly budget cap for the company in the operator's configured "
+            "currency (must be strictly positive)."
+        ),
+    )
+    communication_pattern: NotBlankStr | None = Field(
+        default=None,
+        description="Communication strategy or pattern identifier.",
+    )
 
 
 # -- Departments -------------------------------------------------------

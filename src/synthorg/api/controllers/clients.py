@@ -33,8 +33,16 @@ class CreateClientRequest(BaseModel):
     client_id: NotBlankStr = Field(description="Unique client identifier")
     name: NotBlankStr = Field(description="Human-readable name")
     persona: NotBlankStr = Field(description="Persona description")
-    expertise_domains: tuple[NotBlankStr, ...] = Field(default=())
-    strictness_level: float = Field(default=0.5, ge=0.0, le=1.0)
+    expertise_domains: tuple[NotBlankStr, ...] = Field(
+        default=(),
+        description="Domains of expertise for the simulated client.",
+    )
+    strictness_level: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="Scoring strictness multiplier (0.0-1.0).",
+    )
 
 
 class UpdateClientRequest(BaseModel):
@@ -42,10 +50,20 @@ class UpdateClientRequest(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    name: NotBlankStr | None = Field(default=None)
-    persona: NotBlankStr | None = Field(default=None)
-    expertise_domains: tuple[NotBlankStr, ...] | None = Field(default=None)
-    strictness_level: float | None = Field(default=None, ge=0.0, le=1.0)
+    name: NotBlankStr | None = Field(default=None, description="Human-readable name.")
+    persona: NotBlankStr | None = Field(
+        default=None, description="Persona description."
+    )
+    expertise_domains: tuple[NotBlankStr, ...] | None = Field(
+        default=None,
+        description="Domains of expertise for the simulated client.",
+    )
+    strictness_level: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Scoring strictness multiplier (0.0-1.0).",
+    )
 
 
 class SatisfactionPoint(BaseModel):
@@ -70,10 +88,24 @@ class SatisfactionHistory(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     client_id: NotBlankStr = Field(description="Client identifier")
-    total_reviews: int = Field(ge=0)
-    acceptance_rate: float = Field(ge=0.0, le=1.0)
-    average_score: float = Field(ge=0.0, le=1.0)
-    history: tuple[SatisfactionPoint, ...] = Field(default=())
+    total_reviews: int = Field(
+        ge=0,
+        description="Total number of feedback reviews.",
+    )
+    acceptance_rate: float = Field(
+        ge=0.0,
+        le=1.0,
+        description="Fraction of reviewed tasks accepted (0.0-1.0).",
+    )
+    average_score: float = Field(
+        ge=0.0,
+        le=1.0,
+        description="Mean satisfaction score across reviews (0.0-1.0).",
+    )
+    history: tuple[SatisfactionPoint, ...] = Field(
+        default=(),
+        description="Chronological satisfaction data points.",
+    )
 
 
 def _score_from_feedback(

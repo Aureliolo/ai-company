@@ -66,13 +66,31 @@ class CreateCustomRuleRequest(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    name: NotBlankStr
-    description: NotBlankStr
-    metric_path: NotBlankStr
-    comparator: Comparator
-    threshold: float
-    severity: RuleSeverity
-    target_altitudes: tuple[ProposalAltitude, ...] = Field(min_length=1)
+    name: NotBlankStr = Field(
+        description="Human-readable rule name (unique per organisation).",
+    )
+    description: NotBlankStr = Field(
+        description="What pattern this rule detects and why it matters.",
+    )
+    metric_path: NotBlankStr = Field(
+        description=(
+            "Dot-notation path into `OrgSignalSnapshot` identifying the metric "
+            "to evaluate (e.g. `budget.used_percent`)."
+        ),
+    )
+    comparator: Comparator = Field(
+        description="Comparison operator (gt, gte, lt, lte, eq, ne).",
+    )
+    threshold: float = Field(
+        description="Threshold value compared against the resolved metric.",
+    )
+    severity: RuleSeverity = Field(
+        description="Severity assigned to matches for downstream routing.",
+    )
+    target_altitudes: tuple[ProposalAltitude, ...] = Field(
+        min_length=1,
+        description="Strategies to trigger when the rule matches.",
+    )
 
 
 class UpdateCustomRuleRequest(BaseModel):
