@@ -73,13 +73,16 @@ _JSON_PATTERN: Final[re.Pattern[str]] = re.compile(
     re.IGNORECASE,
 )
 
-# URI userinfo: ``<scheme>://<user>:<password>@<host>``.  Connection
-# strings routinely surface in exception messages ("connection refused:
+# URI userinfo: ``<scheme>://<userinfo>@<host>``.  Connection strings
+# routinely surface in exception messages ("connection refused:
 # postgres://user:hunter2@host/db") and would otherwise leak the
-# password portion.  We mask the password field (``hunter2`` -> ``***``)
-# while keeping scheme/user/host for operator triage.
+# password portion.  We mask the *entire* userinfo segment -- not just
+# the ``<password>`` half -- so credential-only forms like
+# ``https://ghp_xxx@github.com`` and percent-encoded socket URIs like
+# ``redis://%2Fsecret.sock@host`` are also redacted.  Keeping scheme +
+# host (the non-secret framing) preserves operator triage.
 _URL_USERINFO_PATTERN: Final[re.Pattern[str]] = re.compile(
-    r"([a-z][a-z0-9+.\-]*://)([^\s/:@]+):([^\s/@]+)@",
+    r"([a-z][a-z0-9+.\-]*://)([^/\s@]+)@",
     re.IGNORECASE,
 )
 
@@ -144,10 +147,7 @@ def scrub_secret_tokens(text: str) -> str:
             lambda m: f'"{m.group(1)}"{m.group(2)}"***"',
             scrubbed,
         )
-        scrubbed = _URL_USERINFO_PATTERN.sub(
-            lambda m: f"{m.group(1)}{m.group(2)}:***@",
-            scrubbed,
-        )
+        scrubbed = _URL_USERINFO_PATTERN.sub(r"\1***@", scrubbed)
         scrubbed = _AUTH_HEADER_PATTERN.sub(
             lambda m: f"{m.group(1)}{m.group(2)} ***",
             scrubbed,

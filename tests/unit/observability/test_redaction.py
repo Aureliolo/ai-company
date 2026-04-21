@@ -128,6 +128,66 @@ class TestScrubSecretTokensAuthHeader:
 
 
 @pytest.mark.unit
+class TestScrubSecretTokensUriUserinfo:
+    """URI ``<scheme>://<userinfo>@<host>`` credential leaks.
+
+    Connection strings routinely surface in exception messages; the
+    scrubber masks the whole userinfo segment so neither the
+    ``user:password`` form nor the credential-only ``token@host`` form
+    can slip through.
+    """
+
+    @pytest.mark.parametrize(
+        ("raw", "sentinels"),
+        [
+            (
+                "connection refused: postgres://user:hunter2@host/db",
+                ("hunter2", "user:hunter2"),
+            ),
+            (
+                "redis://:supersecret@host:6379/0 refused",
+                ("supersecret", ":supersecret"),
+            ),
+            (
+                "auth failed for https://ghp_deadbeef@github.com/owner/repo",
+                ("ghp_deadbeef",),
+            ),
+            (
+                "unix socket stall: redis://%2Fsecret.sock@host",
+                ("%2Fsecret.sock", "secret.sock"),
+            ),
+            (
+                "mysql+pymysql://admin:p%40ss@db.internal:3306/app",
+                ("admin:p%40ss", "p%40ss"),
+            ),
+        ],
+    )
+    def test_masks_userinfo_segment(
+        self,
+        raw: str,
+        sentinels: tuple[str, ...],
+    ) -> None:
+        scrubbed = scrub_secret_tokens(raw)
+        for sentinel in sentinels:
+            assert sentinel not in scrubbed, (raw, scrubbed)
+        assert "***@" in scrubbed
+
+    def test_preserves_scheme_and_host(self) -> None:
+        # Non-secret framing (scheme + host) must survive so operators
+        # can still identify which connection failed.
+        raw = "connection refused: postgres://user:hunter2@db.internal:5432/app"
+        scrubbed = scrub_secret_tokens(raw)
+        assert "postgres://" in scrubbed
+        assert "db.internal:5432/app" in scrubbed
+
+    def test_does_not_touch_userinfoless_urls(self) -> None:
+        # A URL without ``userinfo@`` must not be altered -- scheme +
+        # host are routing metadata, not credentials.
+        raw = "timeout contacting https://idp.example.com/oauth/token"
+        assert scrub_secret_tokens(raw) == raw
+
+
+@pytest.mark.unit
 class TestScrubSecretTokensFernet:
     """Fernet ciphertext leaks (defence in depth for encrypted_sqlite)."""
 

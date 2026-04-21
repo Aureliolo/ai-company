@@ -448,12 +448,18 @@ async def _verify_peer_credentials(  # noqa: PLR0911
         # mTLS/none: no header-level check needed
     except MemoryError, RecursionError:
         raise
-    except Exception:
-        logger.error(
+    except Exception as exc:
+        # Credential verification sits alongside ``request``,
+        # ``credentials``, and raw auth headers in the local frame --
+        # attaching ``exc_info=True`` would have structlog serialise
+        # those into the event and reintroduce the SEC-1 leak. Log
+        # the scrubbed type+message only.
+        logger.warning(
             A2A_INBOUND_AUTH_FAILED,
             peer_name=peer_name,
             reason="credential verification failed",
-            exc_info=True,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         return False
 

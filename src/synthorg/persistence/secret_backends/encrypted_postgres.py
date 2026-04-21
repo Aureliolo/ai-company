@@ -321,8 +321,12 @@ class EncryptedPostgresSecretBackend:
             # SEC-1: wrap the scrub + return-string construction so a
             # broken ``__str__`` on the rollback error cannot crash the
             # rotation path silently (finding from silent-failure-hunter).
+            # Re-raise catastrophic interpreter state (``MemoryError`` /
+            # ``RecursionError``) so the process surfaces the failure.
             try:
                 scrubbed = safe_error_description(rb_exc)
+            except MemoryError, RecursionError:
+                raise
             except Exception:  # pragma: no cover - defensive
                 scrubbed = type(rb_exc).__name__
             logger.warning(

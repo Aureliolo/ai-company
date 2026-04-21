@@ -110,6 +110,8 @@ class EncryptedSqliteSecretBackend:
             logger.debug(SECRET_STORED, secret_id=secret_id)
         except MasterKeyError:
             raise
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             # ``warning`` + scrubbed description: driver exceptions may
             # embed connection URIs or raw Fernet ciphertext bytes.
@@ -136,6 +138,8 @@ class EncryptedSqliteSecretBackend:
                     (secret_id,),
                 )
                 row = await cursor.fetchone()
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             # ``warning`` + scrubbed description: same rationale as
             # ``store()`` above. A DB driver failure may embed the row's
@@ -168,6 +172,8 @@ class EncryptedSqliteSecretBackend:
             )
             msg = f"Failed to decrypt secret {secret_id}"
             raise SecretRetrievalError(msg) from exc
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             # Catch-all so any residual decrypt failure (malformed
             # row data, driver bug, etc.) still surfaces through
@@ -192,6 +198,8 @@ class EncryptedSqliteSecretBackend:
                 )
                 await db.commit()
                 deleted = cursor.rowcount > 0
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             # Driver exceptions may embed connection URIs with
             # credentials; scrub + drop traceback.  Use the
@@ -228,6 +236,8 @@ class EncryptedSqliteSecretBackend:
         new_id = str(uuid4())
         try:
             await self.store(new_id, new_value)
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             # Carry the scrubbed description as context; the underlying
             # exception stays in the chain via ``raise ... from exc``.
@@ -242,6 +252,8 @@ class EncryptedSqliteSecretBackend:
 
         try:
             deleted = await self.delete(old_id)
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             logger.warning(
                 SECRET_BACKEND_UNAVAILABLE,
@@ -278,6 +290,8 @@ class EncryptedSqliteSecretBackend:
         """Attempt to delete *new_id* after a failed rotation."""
         try:
             await self.delete(new_id)
+        except MemoryError, RecursionError:
+            raise
         except Exception as rb_exc:
             # SEC-1: wrap the scrub so a broken ``__str__`` on the
             # rollback error cannot crash the rotation path silently

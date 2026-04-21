@@ -90,13 +90,15 @@ class TestEncryptedSqliteLogRedaction:
             ),
         ):
             await backend.store(NotBlankStr("sec-1"), b"value")
-        # The raw message is unscrubbable for bare `password-in-URL`
-        # form (we scrub key=value shape, not URLs). What MUST be true:
-        # * no `exc_info` field from `logger.exception` (we demoted to
-        #   `warning`, which does not attach traceback).
-        # * error_type carries the taxonomy for triage.
+        # SEC-1 leak guards for the driver-error path:
+        # * no `exc_info` field (we demoted ``logger.exception`` to
+        #   ``warning`` everywhere).
+        # * the ``hunter2`` password embedded in the connection URI is
+        #   scrubbed by the URI userinfo pattern in `safe_error_description`.
+        # * `error_type` carries the taxonomy for triage.
         for event in events:
             assert "exc_info" not in event
+        _leak_free(events, ("hunter2",))
         assert any(e.get("error_type") == "RuntimeError" for e in events), events
 
     async def test_retrieve_invalid_token_no_ciphertext_in_log(
