@@ -60,10 +60,14 @@ describe('TaskCreateDialog', () => {
     )
   })
 
-  it('shows error message on submission failure', async () => {
+  it('keeps dialog open and preserves form state on sentinel-null failure', async () => {
+    // Store-owned error UX: on failure the store emits a toast and
+    // returns ``null``. The dialog MUST keep itself open and preserve
+    // the user's inputs so they can retry without re-typing.
     const user = userEvent.setup()
-    const onCreate = vi.fn().mockRejectedValue(new Error('Server error'))
-    render(<TaskCreateDialog open={true} onOpenChange={() => {}} onCreate={onCreate} />)
+    const onOpenChange = vi.fn()
+    const onCreate = vi.fn().mockResolvedValue(null)
+    render(<TaskCreateDialog open={true} onOpenChange={onOpenChange} onCreate={onCreate} />)
 
     await user.type(screen.getByPlaceholderText('Task title'), 'My task')
     await user.type(screen.getByPlaceholderText('Describe the task...'), 'Desc')
@@ -71,7 +75,9 @@ describe('TaskCreateDialog', () => {
     await user.type(screen.getByPlaceholderText('Agent or user'), 'agent')
 
     await user.click(screen.getByText('Create Task'))
-    expect(screen.getByText('Server error')).toBeInTheDocument()
+    expect(onCreate).toHaveBeenCalled()
+    expect(onOpenChange).not.toHaveBeenCalledWith(false)
+    expect((screen.getByPlaceholderText('Task title') as HTMLInputElement).value).toBe('My task')
   })
 
   it('calls onOpenChange(false) on successful creation', async () => {

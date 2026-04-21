@@ -76,6 +76,10 @@ export const APPROVAL_RISK_LEVEL_VALUES = [
   'low', 'medium', 'high', 'critical',
 ] as const satisfies readonly ApprovalRiskLevel[]
 
+export const URGENCY_LEVEL_VALUES = [
+  'critical', 'high', 'normal', 'no_expiry',
+] as const satisfies readonly UrgencyLevel[]
+
 export type AutonomyLevel = 'full' | 'semi' | 'supervised' | 'locked'
 
 export type OrgRole = 'owner' | 'department_admin' | 'editor' | 'viewer'

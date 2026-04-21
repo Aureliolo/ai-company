@@ -16,6 +16,7 @@ import type {
 import {
   APPROVAL_RISK_LEVEL_VALUES,
   APPROVAL_STATUS_VALUES,
+  URGENCY_LEVEL_VALUES,
 } from '@/api/types/enums'
 import type { WsEvent } from '@/api/types/websocket'
 
@@ -28,6 +29,7 @@ const log = createLogger('approvals')
 // at compile time.
 const APPROVAL_STATUS_SET: ReadonlySet<string> = new Set<string>(APPROVAL_STATUS_VALUES)
 const APPROVAL_RISK_LEVEL_SET: ReadonlySet<string> = new Set<string>(APPROVAL_RISK_LEVEL_VALUES)
+const APPROVAL_URGENCY_LEVEL_SET: ReadonlySet<string> = new Set<string>(URGENCY_LEVEL_VALUES)
 
 /** All metadata keys and values must be plain strings. */
 function isStringStringRecord(value: unknown): value is Record<string, string> {
@@ -92,7 +94,7 @@ function isEvidencePackageShape(value: unknown): boolean {
   }
   if (typeof v.source_agent_id !== 'string') return false
   if (v.task_id !== null && typeof v.task_id !== 'string') return false
-  if (typeof v.risk_level !== 'string') return false
+  if (typeof v.risk_level !== 'string' || !APPROVAL_RISK_LEVEL_SET.has(v.risk_level)) return false
   // ``EvidencePackage.metadata`` is a string->unknown map on the
   // declared TS side, but the server emits it with string values
   // only. Validate that shape here so ``sanitizeEvidencePackage``
@@ -139,6 +141,7 @@ function isApprovalShape(
     typeof c.risk_level === 'string' &&
     APPROVAL_RISK_LEVEL_SET.has(c.risk_level) &&
     typeof c.urgency_level === 'string' &&
+    APPROVAL_URGENCY_LEVEL_SET.has(c.urgency_level) &&
     typeof c.action_type === 'string' &&
     typeof c.description === 'string' &&
     typeof c.requested_by === 'string' &&
@@ -170,14 +173,15 @@ function sanitizeEvidencePackage(
   pkg: EvidencePackage | null,
 ): EvidencePackage | null {
   if (pkg === null) return null
-  const pkgMetadata: Record<string, unknown> = {}
+  // ``isEvidencePackageShape`` has already enforced
+  // ``Record<string, string>`` via ``isStringStringRecord``, so every
+  // ``value`` below is guaranteed to be a string -- no non-string
+  // branch required.
+  const pkgMetadata: Record<string, string> = {}
   for (const [key, value] of Object.entries(pkg.metadata)) {
     const safeKey = sanitizeWsString(key, 64) ?? ''
     if (!safeKey) continue
-    pkgMetadata[safeKey] =
-      typeof value === 'string'
-        ? sanitizeWsString(value, 512) ?? ''
-        : value
+    pkgMetadata[safeKey] = sanitizeWsString(value, 512) ?? ''
   }
   return {
     id: sanitizeWsString(pkg.id, 128) ?? '',
