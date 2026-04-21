@@ -69,14 +69,18 @@ def _validate_tag(tag: str) -> None:
 
 
 def _escape_closing_tag(tag: str, content: str) -> str:
-    """Replace any literal ``</tag>`` (case-insensitive) inside *content*.
+    r"""Replace any literal ``</tag>`` (case-insensitive) inside *content*.
 
     The replacement inserts a backslash between the ``<`` and ``/`` so
     the resulting sequence is not re-recognised as a closing tag by
     any lenient parser while still being human-readable in the prompt.
+
+    Optional whitespace between the tag name and the closing ``>`` is
+    accepted and preserved, so lenient XML/HTML-style closing forms
+    like ``</tag >`` or ``</tag\t>`` cannot slip past the escape.
     """
-    pattern = re.compile(rf"</({re.escape(tag)})>", re.IGNORECASE)
-    return pattern.sub(r"<\\/\1>", content)
+    pattern = re.compile(rf"</({re.escape(tag)})(\s*)>", re.IGNORECASE)
+    return pattern.sub(r"<\\/\1\2>", content)
 
 
 def wrap_untrusted(tag: str, content: str) -> str:

@@ -14,7 +14,7 @@ from typing import Any, Final
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.tool import (
     TOOL_HTML_PARSE_ERROR,
     TOOL_HTML_PARSE_GAP_DETECTED,
@@ -224,13 +224,27 @@ class HTMLParseGuard:
             return self._sanitize_html(raw)
         except MemoryError, RecursionError:
             raise
+        except XXEDetectedError:
+            # XXE rejection was already logged via
+            # ``TOOL_HTML_PARSE_XXE_DETECTED`` inside the pre-scan; do
+            # not double-emit a generic parse-error event with a
+            # traceback attached to the attacker-controlled payload.
+            return HTMLSanitizeResult(
+                cleaned="",
+                gap_detected=True,
+                gap_ratio=1.0,
+                stripped_element_count=0,
+            )
         except Exception as exc:
+            # Parse failure on untrusted HTML: scrub the exception
+            # description and drop ``exc_info`` so the raw payload (or
+            # any credentials it carried) is not serialized via the
+            # traceback frame locals.
             logger.warning(
                 TOOL_HTML_PARSE_ERROR,
-                error=str(exc),
                 error_type=type(exc).__name__,
+                error=safe_error_description(exc),
                 content_length=len(raw),
-                exc_info=True,
             )
             # Return safe empty result instead of raw attacker-
             # controlled content.
@@ -357,10 +371,13 @@ def _parse_html_safely(raw: str) -> Any:
        :class:`XXEDetectedError`. Callers catch this via the ``except
        Exception`` branch in :meth:`HTMLParseGuard.sanitize` which
        returns a safe-empty result.
-    3. Parse with a module-scope ``HTMLParser`` configured with
-       ``no_network=True``, ``resolve_entities=False``,
-       ``load_dtd=False``, ``huge_tree=False`` -- belt-and-braces in
-       case a novel payload slips past the pre-scan.
+    3. Parse with a module-scope :class:`lxml.html.HTMLParser`
+       configured with ``no_network=True``, ``recover=True``,
+       ``remove_blank_text=True``, and ``huge_tree=False`` --
+       belt-and-braces in case a novel payload slips past the
+       pre-scan.  (``resolve_entities`` and ``load_dtd`` are
+       ``XMLParser``-only knobs; see :func:`_build_safe_parser` for
+       the rationale.)
 
     Args:
         raw: Raw (potentially attacker-controlled) HTML string.

@@ -50,9 +50,17 @@ _INJECTION_PATTERNS: Final[tuple[re.Pattern[str], ...]] = (
     re.compile(r"disregard\s+(all|previous|prior)", re.IGNORECASE),
     re.compile(r"you\s+are\s+now", re.IGNORECASE),
     re.compile(r"system\s*:\s*you", re.IGNORECASE),
-    re.compile(r"</task-data>", re.IGNORECASE),
-    re.compile(r"</tool-result>", re.IGNORECASE),
-    re.compile(r"</untrusted-artifact>", re.IGNORECASE),
+    # Closing-tag look-alikes for every untrusted-content fence defined
+    # in ``synthorg.engine.prompt_safety``. Optional whitespace before
+    # ``>`` mirrors ``_escape_closing_tag`` so lenient variants still
+    # trip the advisory detector.
+    re.compile(r"</task-data\s*>", re.IGNORECASE),
+    re.compile(r"</task-fact\s*>", re.IGNORECASE),
+    re.compile(r"</tool-result\s*>", re.IGNORECASE),
+    re.compile(r"</untrusted-artifact\s*>", re.IGNORECASE),
+    re.compile(r"</code-diff\s*>", re.IGNORECASE),
+    re.compile(r"</config-value\s*>", re.IGNORECASE),
+    re.compile(r"</criteria-json\s*>", re.IGNORECASE),
 )
 
 

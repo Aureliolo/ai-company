@@ -13,17 +13,43 @@ audit finding 90):
   POST body or response body, which carries the credentials that
   triggered the failure.
 
-This gate walks each file's AST and refuses any new site.  The existing
-population at the time of SEC-1 landing is recorded in
-``scripts/_logger_exception_baseline.json`` as a per-file count so that
-already-grandfathered callers don't block every unrelated commit.  The
-gate fires when:
+This gate walks each file's AST and refuses any new site.  The
+grandfathered population at SEC-1 landing is recorded in
+``scripts/_logger_exception_baseline.json`` as a per-file *list of
+stable locations* (``lineno``, ``col_offset``) so already-grandfathered
+callers don't block unrelated commits, while a developer swapping one
+grandfathered site for a new one elsewhere in the same file is still
+caught: the new ``(lineno, col_offset)`` is absent from the baseline.
 
-* A pre-existing file exceeds its baseline count (new instance added).
-* A new file introduces the pattern (no baseline entry, count > 0).
+What we match
+-------------
 
-To convert a grandfathered site, replace ``logger.exception(EVENT,
-..., error=str(exc))`` with::
+The matcher is deliberately broader than ``logger.exception`` to cover
+every idiom seen in the tree:
+
+* ``logger.exception(..., error=str(exc))``
+* ``self._logger.exception(..., error=str(exc))``
+* ``audit_logger.exception(..., error=str(exc))``
+* ``error=str(exc.args[0])`` / ``error=str(self._inner)``
+
+Specifically, we flag a call when *all* of the following hold:
+
+1. The callee is an ``Attribute`` whose terminal attribute is
+   ``exception`` (i.e. ``<anything>.exception(...)``).
+2. The receiver is either a bare ``Name`` whose identifier contains
+   ``logger``, *or* an ``Attribute`` whose terminal attribute contains
+   ``logger`` (the typical ``self._logger`` / ``self.audit_logger``
+   shape).
+3. One keyword argument has ``arg == "error"`` and ``value`` is a
+   ``Call`` to the builtin ``str`` with a single positional argument
+   that is a ``Name``, ``Attribute``, or ``Subscript`` (covering
+   ``str(exc)``, ``str(self._inner)``, ``str(exc.args[0])``).
+
+To convert a grandfathered site, replace::
+
+    logger.exception(EVENT, ..., error=str(exc))
+
+with::
 
     logger.warning(
         EVENT,
@@ -59,17 +85,34 @@ _SRC_ROOT = _REPO_ROOT / "src"
 _BASELINE_PATH = Path(__file__).resolve().parent / "_logger_exception_baseline.json"
 
 _LOGGER_METHODS: frozenset[str] = frozenset({"exception"})
-"""Which ``logger.<method>(...)`` names are covered by this gate.
+"""Which ``<receiver>.<method>(...)`` names are covered by this gate.
 
-We only gate ``logger.exception`` because it is the only log method
-that attaches a Python traceback by default. ``logger.warning`` /
+We only gate ``exception`` because it is the only log method that
+attaches a Python traceback by default. ``logger.warning`` /
 ``logger.error`` do not attach traceback, so ``error=str(exc)`` in
 those calls is a less severe concern handled at each callsite.
 """
 
+_BASELINE_ENTRY_LEN = 2
+"""Length of each on-disk ``[lineno, col_offset]`` baseline entry."""
+
+
+def _is_logger_receiver(value: ast.expr) -> bool:
+    """Return ``True`` if *value* looks like a logger binding.
+
+    Matches bare names (``logger``, ``audit_logger``) as well as
+    attribute chains whose terminal attribute contains ``logger``
+    (``self._logger``, ``self.audit_logger``, ``cls.logger``, ...).
+    """
+    if isinstance(value, ast.Name):
+        return "logger" in value.id
+    if isinstance(value, ast.Attribute):
+        return "logger" in value.attr
+    return False
+
 
 class _LoggerExceptionFinder(ast.NodeVisitor):
-    """Locate ``logger.<method>(..., error=str(exc))`` call sites.
+    """Locate ``<logger>.<method>(..., error=str(exc_like))`` call sites.
 
     Attributes:
         hits: Tuples of ``(lineno, col_offset)`` for each match.
@@ -79,13 +122,12 @@ class _LoggerExceptionFinder(ast.NodeVisitor):
         self.hits: list[tuple[int, int]] = []
 
     def visit_Call(self, node: ast.Call) -> None:
-        """Match ``logger.<method>(...)`` calls with ``error=str(exc)``."""
+        """Match ``<logger>.<method>(...)`` calls with ``error=str(exc_like)``."""
         func = node.func
         if (
             isinstance(func, ast.Attribute)
-            and isinstance(func.value, ast.Name)
-            and func.value.id == "logger"
             and func.attr in _LOGGER_METHODS
+            and _is_logger_receiver(func.value)
             and _has_error_str_exc_kwarg(node.keywords)
         ):
             self.hits.append((node.lineno, node.col_offset))
@@ -93,7 +135,12 @@ class _LoggerExceptionFinder(ast.NodeVisitor):
 
 
 def _has_error_str_exc_kwarg(keywords: Iterable[ast.keyword]) -> bool:
-    """Return ``True`` if any keyword is ``error=str(exc_like)``."""
+    """Return ``True`` if any keyword is ``error=str(<exc_like>)``.
+
+    ``<exc_like>`` is ``ast.Name`` (``str(exc)``), ``ast.Attribute``
+    (``str(self._inner)``), or ``ast.Subscript`` (``str(exc.args[0])``)
+    -- all forms that could carry credential material through ``str``.
+    """
     for kw in keywords:
         if kw.arg != "error":
             continue
@@ -105,33 +152,24 @@ def _has_error_str_exc_kwarg(keywords: Iterable[ast.keyword]) -> bool:
         if len(value.args) != 1:
             continue
         arg = value.args[0]
-        if isinstance(arg, ast.Name):
+        if isinstance(arg, (ast.Name, ast.Attribute, ast.Subscript)):
             return True
     return False
 
 
-def _count_hits(path: Path) -> int:
-    """Return the number of ``logger.exception(..., error=str(exc))`` hits."""
+def _scan_file(path: Path) -> list[tuple[int, int]]:
+    """Return the sorted list of ``(lineno, col_offset)`` hits in *path*."""
     try:
         source = path.read_text(encoding="utf-8")
     except UnicodeDecodeError, OSError:
-        return 0
+        return []
     try:
         tree = ast.parse(source, filename=str(path))
     except SyntaxError:
-        return 0
+        return []
     finder = _LoggerExceptionFinder()
     finder.visit(tree)
-    return len(finder.hits)
-
-
-def _scan_file(path: Path) -> tuple[int, list[tuple[int, int]]]:
-    """Return ``(count, locations)`` for a single file."""
-    source = path.read_text(encoding="utf-8")
-    tree = ast.parse(source, filename=str(path))
-    finder = _LoggerExceptionFinder()
-    finder.visit(tree)
-    return len(finder.hits), finder.hits
+    return sorted(finder.hits)
 
 
 def _iter_source_files() -> Iterable[Path]:
@@ -139,28 +177,49 @@ def _iter_source_files() -> Iterable[Path]:
     yield from sorted(_SRC_ROOT.rglob("*.py"))
 
 
-def _load_baseline() -> dict[str, int]:
-    """Load the per-file baseline count map."""
+def _load_baseline() -> dict[str, set[tuple[int, int]]]:
+    """Load the per-file baseline location map.
+
+    The on-disk format is ``{"locations": {<rel-path>: [[lineno, col], ...]}}``.
+    Older count-only baselines are silently treated as empty so the
+    transition to location-based tracking fails closed (any existing
+    hit becomes a violation, prompting a ``--refresh-baseline`` that
+    re-captures the tree). Historic count payloads without
+    ``locations`` intentionally read as no baseline at all.
+    """
     if not _BASELINE_PATH.exists():
         return {}
     with _BASELINE_PATH.open(encoding="utf-8") as f:
         data = json.load(f)
-    counts = data.get("counts", {})
-    if not isinstance(counts, dict):
+    locations = data.get("locations", {})
+    if not isinstance(locations, dict):
         return {}
-    return {str(k): int(v) for k, v in counts.items()}
+    result: dict[str, set[tuple[int, int]]] = {}
+    for key, entries in locations.items():
+        if not isinstance(entries, list):
+            continue
+        result[str(key)] = {
+            (int(entry[0]), int(entry[1]))
+            for entry in entries
+            if isinstance(entry, list) and len(entry) == _BASELINE_ENTRY_LEN
+        }
+    return result
 
 
-def _save_baseline(counts: dict[str, int]) -> None:
-    """Write a refreshed baseline snapshot."""
+def _save_baseline(locations: dict[str, list[tuple[int, int]]]) -> None:
+    """Write a refreshed baseline snapshot in location-list form."""
     payload = {
         "description": (
-            "SEC-1 baseline: count of `logger.exception(..., error=str(exc))`"
-            " sites per file. Generated by"
+            "SEC-1 baseline: list of `logger.exception(..., error=str(exc))`"
+            " site locations per file as [lineno, col_offset] pairs."
+            " Generated by"
             " scripts/check_logger_exception_str_exc.py --refresh-baseline."
             " Do not hand-edit."
         ),
-        "counts": dict(sorted(counts.items())),
+        "locations": {
+            key: [[lineno, col] for lineno, col in sorted(entries)]
+            for key, entries in sorted(locations.items())
+        },
     }
     with _BASELINE_PATH.open("w", encoding="utf-8", newline="\n") as f:
         json.dump(payload, f, indent=2)
@@ -174,68 +233,34 @@ def _rel(path: Path) -> str:
 
 def cmd_refresh_baseline() -> int:
     """Recompute the baseline from current source state."""
-    counts: dict[str, int] = {}
+    locations: dict[str, list[tuple[int, int]]] = {}
     for src_path in _iter_source_files():
-        count = _count_hits(src_path)
-        if count > 0:
-            counts[_rel(src_path)] = count
-    _save_baseline(counts)
-    total = sum(counts.values())
+        hits = _scan_file(src_path)
+        if hits:
+            locations[_rel(src_path)] = list(hits)
+    _save_baseline(locations)
+    total = sum(len(v) for v in locations.values())
     print(
-        f"Baseline refreshed: {total} sites across {len(counts)} files "
+        f"Baseline refreshed: {total} sites across {len(locations)} files "
         f"-> {_BASELINE_PATH.relative_to(_REPO_ROOT).as_posix()}",
     )
     return 0
 
 
-class _AnyLoggerExceptionFinder(ast.NodeVisitor):
-    """Count ``logger.exception(...)`` calls regardless of kwargs."""
-
-    def __init__(self) -> None:
-        self.total = 0
-
-    def visit_Call(self, node: ast.Call) -> None:
-        """Count any ``logger.exception(...)`` call."""
-        func = node.func
-        if (
-            isinstance(func, ast.Attribute)
-            and isinstance(func.value, ast.Name)
-            and func.value.id == "logger"
-            and func.attr == "exception"
-        ):
-            self.total += 1
-        self.generic_visit(node)
-
-
-def cmd_classify() -> int:
-    """Print per-file classification: ``all|mixed|none`` for SEC-1 sweep.
-
-    Useful during the SEC-1 sweep to know which files can use
-    ``replace_all=True`` on ``logger.exception`` -> ``logger.warning``
-    safely (``all``) versus which need per-site handling (``mixed``).
-    """
-    for src_path in _iter_source_files():
-        try:
-            source = src_path.read_text(encoding="utf-8")
-            tree = ast.parse(source, filename=str(src_path))
-        except UnicodeDecodeError, OSError, SyntaxError:
-            continue
-        str_exc = _LoggerExceptionFinder()
-        any_exc = _AnyLoggerExceptionFinder()
-        str_exc.visit(tree)
-        any_exc.visit(tree)
-        total = any_exc.total
-        hits = len(str_exc.hits)
-        if total == 0:
-            continue
-        if hits == 0:
-            classification = "none"
-        elif hits == total:
-            classification = "all"
-        else:
-            classification = "mixed"
-        print(f"{classification}\t{hits}\t{total}\t{_rel(src_path)}")
-    return 0
+def _scan_and_compare(
+    src_path: Path, baseline: dict[str, set[tuple[int, int]]]
+) -> list[str]:
+    """Return violation lines for *src_path* versus its baseline entry."""
+    hits = _scan_file(src_path)
+    if not hits:
+        return []
+    key = _rel(src_path)
+    allowed = baseline.get(key, set())
+    return [
+        f"{key}:{lineno}:{col}: new logger.exception(..., error=str(exc)) site"
+        for lineno, col in hits
+        if (lineno, col) not in allowed
+    ]
 
 
 def cmd_scan_all() -> int:
@@ -243,15 +268,7 @@ def cmd_scan_all() -> int:
     baseline = _load_baseline()
     violations: list[str] = []
     for src_path in _iter_source_files():
-        count = _count_hits(src_path)
-        key = _rel(src_path)
-        allowed = baseline.get(key, 0)
-        if count > allowed:
-            _, locations = _scan_file(src_path)
-            for lineno, col in locations[allowed:]:
-                violations.append(
-                    f"{key}:{lineno}:{col}: new logger.exception(..., error=str(exc)) site"
-                )
+        violations.extend(_scan_and_compare(src_path, baseline))
     return _report(violations)
 
 
@@ -265,18 +282,7 @@ def cmd_scan_paths(paths: Iterable[str]) -> int:
             continue
         if not path.exists() or path.suffix != ".py":
             continue
-        try:
-            count, locations = _scan_file(path)
-        except SyntaxError as exc:
-            print(f"WARNING: skipping {p}: {exc}", file=sys.stderr)
-            continue
-        key = _rel(path)
-        allowed = baseline.get(key, 0)
-        if count > allowed:
-            for lineno, col in locations[allowed:]:
-                violations.append(
-                    f"{key}:{lineno}:{col}: new logger.exception(..., error=str(exc)) site"
-                )
+        violations.extend(_scan_and_compare(path, baseline))
     return _report(violations)
 
 
@@ -326,20 +332,10 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Rewrite _logger_exception_baseline.json from current state.",
     )
-    parser.add_argument(
-        "--classify",
-        action="store_true",
-        help=(
-            "Print per-file classification (all|mixed|none) to help the "
-            "SEC-1 sweep know where replace_all is safe."
-        ),
-    )
     args = parser.parse_args(argv)
 
     if args.refresh_baseline:
         return cmd_refresh_baseline()
-    if args.classify:
-        return cmd_classify()
     if args.scan_all:
         return cmd_scan_all()
     return cmd_scan_paths(args.paths)

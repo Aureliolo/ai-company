@@ -203,10 +203,12 @@ async def _try_jwt_auth(
             path=path,
         )
         return None
-    except SecretNotConfiguredError:
-        logger.exception(
+    except SecretNotConfiguredError as exc:
+        logger.warning(
             API_AUTH_FAILED,
             reason="jwt_secret_not_configured",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
             path=path,
         )
         return None
@@ -331,10 +333,12 @@ async def _try_api_key_auth(
     """
     try:
         key_hash = auth_service.hash_api_key(token)
-    except SecretNotConfiguredError:
-        logger.exception(
+    except SecretNotConfiguredError as exc:
+        logger.warning(
             API_AUTH_FAILED,
             reason="api_key_hash_failed_secret_not_configured",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
             path=path,
         )
         return None

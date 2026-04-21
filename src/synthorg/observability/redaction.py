@@ -46,24 +46,29 @@ _TRUNCATION_MARKER: Final[str] = "...[truncated]"
 
 # URL-encoded form field: ``<key>=<value>`` where ``<key>`` is one of the
 # known credential names.  Stops at unescaped whitespace / ``&`` / quotes
-# / closing brackets; percent-encoded triplets (``%HH``) are included in
-# the value so ``client_secret=%2A%26%2A`` is masked whole, not truncated
-# at the first embedded (encoded) ``&``.
+# / closing brackets. Any other character -- including a literal ``%``
+# that happens not to be followed by two hex digits -- is part of the
+# masked value, so pathological cases like ``api_key=100%raw_secret``
+# are redacted wholesale rather than truncating at the stray ``%``.
 _URL_FORM_PATTERN: Final[re.Pattern[str]] = re.compile(
     r"(client_secret|client_id|refresh_token|access_token|code_verifier"
     r"|api_key|api_secret|id_token|assertion|password|bearer|authorization"
     r"|code)="
-    r"(?:[^\s&'\"\]\}%]|%[0-9A-Fa-f]{2})+",
+    r"[^\s&'\"\]\}]+",
     re.IGNORECASE,
 )
 
 # JSON string value: ``"<key>"<sep>:<sep>"<value>"`` where ``<key>`` is a
 # known credential name.  We keep the key and open/close quotes so the
-# JSON stays structurally valid after scrubbing.
+# JSON stays structurally valid after scrubbing.  The value body accepts
+# any ``\\<char>`` escape pair (covering ``\\"``) or any non-quote
+# non-backslash character, so secrets containing escaped quotes (e.g.
+# ``{"client_secret":"abc\\"def"}``) are masked end-to-end instead of
+# being truncated at the first ``\\"``.
 _JSON_PATTERN: Final[re.Pattern[str]] = re.compile(
     r'"(access_token|refresh_token|client_secret|code_verifier|api_key'
     r'|api_secret|authorization|bearer|id_token|assertion|password)"'
-    r'(\s*:\s*)"[^"]*"',
+    r'(\s*:\s*)"(?:\\.|[^"\\])*"',
     re.IGNORECASE,
 )
 

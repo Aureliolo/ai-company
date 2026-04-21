@@ -180,7 +180,12 @@ class TestSafeErrorDescriptionBasics:
         assert "code_verifier=***" in out
         # The useful non-secret parts survive for operator debugging.
         assert "400" in out
-        assert "idp.example.com" in out
+        # Assert on the full fixture URL rather than a bare host
+        # substring so CodeQL's "incomplete URL substring sanitization"
+        # heuristic stays quiet (the rule would otherwise flag
+        # ``"idp.example.com" in out`` as a partial URL check, which
+        # is a false positive in an assertion on our own log output).
+        assert "https://idp.example.com/oauth/token" in out
 
     def test_scrubs_json_body_in_error_message(self) -> None:
         exc = RuntimeError(

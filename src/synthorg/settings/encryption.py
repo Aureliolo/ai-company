@@ -45,9 +45,10 @@ class SettingsEncryptor:
                 plaintext.encode("utf-8"),
             ).decode("ascii")
         except (ValueError, TypeError, UnicodeEncodeError) as exc:
-            logger.exception(
+            logger.warning(
                 SETTINGS_ENCRYPTION_ERROR,
                 operation="encrypt",
+                error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
             msg = "Failed to encrypt setting value"
@@ -71,17 +72,19 @@ class SettingsEncryptor:
                 ciphertext.encode("ascii"),
             ).decode("utf-8")
         except InvalidToken as exc:
-            logger.exception(
+            logger.warning(
                 SETTINGS_ENCRYPTION_ERROR,
                 operation="decrypt",
+                error_type=type(exc).__name__,
                 error="invalid token or wrong key",
             )
             msg = "Failed to decrypt setting value -- wrong key or corrupted data"
             raise SettingsEncryptionError(msg) from exc
         except (ValueError, TypeError, UnicodeDecodeError) as exc:
-            logger.exception(
+            logger.warning(
                 SETTINGS_ENCRYPTION_ERROR,
                 operation="decrypt",
+                error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
             msg = "Failed to decrypt setting value"
@@ -131,9 +134,10 @@ class SettingsEncryptor:
         try:
             return cls(raw.encode("ascii"))
         except (ValueError, TypeError, UnicodeEncodeError) as exc:
-            logger.exception(
+            logger.warning(
                 SETTINGS_ENCRYPTION_ERROR,
                 operation="from_env",
+                error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
             msg = f"Invalid Fernet key in {_ENV_VAR}"

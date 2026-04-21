@@ -254,8 +254,13 @@ class TestFormatTaskInstruction:
         result = format_task_instruction(task)
 
         assert "# Task" in result
-        assert "Title: Simple task" in result
-        assert "Do the thing." in result
+        # SEC-1: title/description must be fenced in <task-data> so a
+        # prompt-injection regression that moved content outside the
+        # fence would fail here instead of silently degrading.
+        open_idx = result.index("<task-data>")
+        close_idx = result.index("</task-data>")
+        assert open_idx < result.index("Title: Simple task") < close_idx
+        assert open_idx < result.index("Do the thing.") < close_idx
         assert "Acceptance Criteria" not in result
         assert "Budget" not in result
 

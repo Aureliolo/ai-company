@@ -1,6 +1,7 @@
 """Custom structlog processors for the observability pipeline."""
 
 import re
+import sys
 from typing import TYPE_CHECKING, Any
 
 from synthorg.observability.redaction import scrub_secret_tokens
@@ -134,9 +135,19 @@ def scrub_event_fields(
     """
     try:
         return {key: _scrub_value(value) for key, value in event_dict.items()}
-    except Exception:
+    except Exception as exc:
         # Fail open: pass the event through unscrubbed rather than drop
         # the log line entirely.  Still safer than crashing the log
         # pipeline -- ``sanitize_sensitive_fields`` (which ran just
         # before us) has already redacted known-sensitive *field names*.
+        # We print to stderr (never ``logger``) so operators notice the
+        # scrub regression without triggering recursive log-through-logger
+        # failure, mirroring the pattern used by ``_handle_sink_failure``
+        # in ``setup.py``.
+        print(  # noqa: T201 - observability-internal stderr surface
+            f"WARNING: scrub_event_fields failed; event passed unscrubbed: "
+            f"{type(exc).__name__}",
+            file=sys.stderr,
+            flush=True,
+        )
         return event_dict

@@ -309,11 +309,12 @@ class A2AClient:
             msg = f"Peer '{peer_name}' returned {exc.response.status_code}"
             raise A2AClientError(msg, peer_name=peer_name) from exc
         except httpx.HTTPError as exc:
-            logger.exception(
+            logger.warning(
                 A2A_OUTBOUND_FAILED,
                 peer_name=peer_name,
                 method=method,
                 error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             msg = f"Request to peer '{peer_name}' failed"
             raise A2AClientError(msg, peer_name=peer_name) from exc

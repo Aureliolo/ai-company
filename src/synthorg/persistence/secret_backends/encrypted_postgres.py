@@ -302,7 +302,7 @@ class EncryptedPostgresSecretBackend:
 
         if not deleted:
             rollback_note = await self._rollback_new(new_id)
-            logger.error(
+            logger.warning(
                 SECRET_BACKEND_UNAVAILABLE,
                 old_id=old_id,
                 new_id=new_id,

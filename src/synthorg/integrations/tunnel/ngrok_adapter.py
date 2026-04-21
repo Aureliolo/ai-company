@@ -111,8 +111,9 @@ class NgrokAdapter:
         except Exception as exc:
             logger.warning(
                 TUNNEL_ERROR,
+                phase="disconnect",
                 error_type=type(exc).__name__,
-                error=f"failed to disconnect: {safe_error_description(exc)}",
+                error=safe_error_description(exc),
             )
         self._tunnel = None
         self._public_url = None
