@@ -203,12 +203,18 @@ class TestAgentEngineToolCallIntegration:
         assert result.total_cost > 0
         assert result.duration_seconds > 0
 
-        # Verify the tool was actually called (result in conversation)
+        # Verify the tool was actually called (result in conversation).
+        # SEC-1: tool result content is wrapped in a ``<tool-result>``
+        # fence before entering the conversation so the model cannot
+        # mistake tool output for instructions.
         conversation = result.execution_result.context.conversation
         tool_results = [m for m in conversation if m.tool_result is not None]
         assert len(tool_results) == 1
         assert tool_results[0].tool_result is not None
-        assert tool_results[0].tool_result.content == "HELLO WORLD"
+        wrapped = tool_results[0].tool_result.content
+        assert wrapped.startswith("<tool-result>\n")
+        assert wrapped.endswith("\n</tool-result>")
+        assert "HELLO WORLD" in wrapped
 
         # Verify task parks at IN_REVIEW: ASSIGNED -> IP -> IR
         te = result.execution_result.context.task_execution

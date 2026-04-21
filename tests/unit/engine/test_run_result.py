@@ -210,10 +210,16 @@ class TestFormatTaskInstruction:
     def test_basic_format(self, sample_task_with_criteria: Task) -> None:
         result = format_task_instruction(sample_task_with_criteria)
 
-        assert "# Task: Implement authentication module" in result
+        # SEC-1: user-controlled task fields are wrapped in a
+        # ``<task-data>`` fence; the ``# Task`` heading is trusted
+        # framing, with the title rendered inside the fence.
+        assert "# Task" in result
+        assert "<task-data>" in result
+        assert "Title: Implement authentication module" in result
         assert "JWT-based authentication" in result
-        assert "## Acceptance Criteria" in result
+        assert "Acceptance Criteria:" in result
         assert "- Login endpoint returns JWT token" in result
+        assert "</task-data>" in result
         assert "$5.00" in result
 
     def test_deadline_included(self, sample_task_with_criteria: Task) -> None:
@@ -247,7 +253,8 @@ class TestFormatTaskInstruction:
         )
         result = format_task_instruction(task)
 
-        assert "# Task: Simple task" in result
+        assert "# Task" in result
+        assert "Title: Simple task" in result
         assert "Do the thing." in result
         assert "Acceptance Criteria" not in result
         assert "Budget" not in result

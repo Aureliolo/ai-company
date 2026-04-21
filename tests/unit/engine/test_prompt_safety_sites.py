@@ -9,6 +9,7 @@ neutralised.
 
 import json
 from datetime import UTC, datetime
+from typing import Any
 
 import pytest
 
@@ -91,14 +92,14 @@ class TestCoordinationConstraintsFacts:
         # present so TaskLedgerMiddleware actually runs.
         from unittest.mock import MagicMock
 
-        ctx = MagicMock()
+        ctx: Any = MagicMock()
         ctx.decomposition_result = "decomposition plan text"
         ctx.coordination_context = MagicMock()
         ctx.coordination_context.task = task
         ctx.task_ledger = None
-        ctx.model_copy = lambda update: update  # type: ignore[assignment,misc]
+        ctx.model_copy = lambda update: update
 
-        updates = await middleware.before_dispatch(ctx)  # type: ignore[arg-type]
+        updates: Any = await middleware.before_dispatch(ctx)
         ledger = updates["task_ledger"]
         for fact in ledger.known_facts:
             assert fact.startswith("<task-fact>\n")
@@ -227,6 +228,7 @@ class TestSemanticLlmCodeDiffFence:
         )
 
         sys_msg = build_system_message()
+        assert sys_msg.content is not None
         assert "<code-diff>" in sys_msg.content
         assert "untrusted" in sys_msg.content.lower()
 
@@ -238,6 +240,7 @@ class TestSemanticLlmCodeDiffFence:
         )
         # Each file is in exactly one <code-diff> fence; breakout is
         # neutralised.
+        assert msg.content is not None
         assert msg.content.count("<code-diff>") == 1
         assert msg.content.count("</code-diff>") == 1
         assert "<\\/code-diff>" in msg.content
