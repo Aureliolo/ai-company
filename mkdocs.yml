@@ -125,6 +125,9 @@ nav:
       - Organization: design/organization.md
       - Communication: design/communication.md
       - Engine: design/engine.md
+      - Agent Execution: design/agent-execution.md
+      - Coordination & Resilience: design/coordination.md
+      - Verification & Quality: design/verification-quality.md
       - Distributed Runtime: design/distributed-runtime.md
       - Memory: design/memory.md
       - Providers: design/providers.md

@@ -429,7 +429,7 @@ department, or per conflict type.
         prompt injection, and logs all detections for audit. Coordination-level
         analog scans rollup summaries before parent-task updates. See
         [S1 Multi-Agent Architecture Decision §3](../research/s1-multi-agent-decision.md#section-3--risk-mitigation-register-15-emergent-risks-from-paper-1),
-        [Engine Design -- Harness Middleware Layer](engine.md#harness-middleware-layer),
+        [Verification & Quality -- Harness Middleware Layer](verification-quality.md#harness-middleware-layer),
         and [#1260](https://github.com/Aureliolo/synthorg/issues/1260).
 
 === "Strategy 2: Structured Debate + Judge"

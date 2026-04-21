@@ -15,7 +15,10 @@ The design specification has been split into focused documentation pages for bet
 | [Organization & Templates](design/organization.md) | Company Structure, Templates | Company types, hierarchy, departments, template system |
 | [Communication](design/communication.md) | Communication Architecture | Message bus, delegation, conflict resolution, meetings |
 | [Distributed Runtime](design/distributed-runtime.md) | Transport Evaluation, Bus Backend, Task Queue, Migration | Pluggable distributed backend design, NATS JetStream first implementation, distributed task queue hook into TaskEngine |
-| [Task & Workflow Engine](design/engine.md) | Task Engine | Task lifecycle, execution loops, routing, recovery, shutdown, workflow definitions, blueprints, versioning, workflow execution |
+| [Task & Workflow Engine](design/engine.md) | Task Engine Core | Task lifecycle, routing, workflow types and definitions, TaskEngine centralized state coordination |
+| [Agent Execution](design/agent-execution.md) | Execution Loops | Execution status, ReAct/Plan-Execute/Hybrid loops, prompt profiles, stagnation detection, context budget, brain/hands/session |
+| [Coordination & Resilience](design/coordination.md) | Multi-agent + Recovery | Crash recovery, graceful shutdown, workspace isolation, task decomposability, coordination topology |
+| [Verification & Quality](design/verification-quality.md) | Quality Pipeline | Verification stage, harness middleware, review pipeline, intake engine |
 | [Memory](design/memory.md) | Memory | Memory types, backends, retrieval, consolidation, procedural generation |
 | [Persistence](design/persistence.md) | Persistence | Repository protocol, SQLite/Postgres backends, time-series tables, TimescaleDB, migrations |
 | [Multi-Agent Memory Consistency](design/memory-consistency.md) | Consistency Model | Append-only writes, MVCC snapshot reads, conflict handling, deployment rollout |
