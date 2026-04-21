@@ -363,12 +363,22 @@ class TestAddConcurrency:
         item_a = _make_item()
         item_b = _make_item()  # same id, same payload
 
-        results = await asyncio.gather(
-            store.add(item_a),
-            store.add(item_b),
-            return_exceptions=True,
-        )
-        # One succeeds (returns None), the other raises ConflictError.
+        # Capture ConflictError inside the task body so ``TaskGroup``
+        # does not cancel its sibling when one of the adds loses the
+        # race; the outer assertions need both outcomes.
+        async def try_add(item: ApprovalItem) -> ConflictError | None:
+            try:
+                await store.add(item)
+            except ConflictError as exc:
+                return exc
+            return None
+
+        async with asyncio.TaskGroup() as tg:
+            t_a = tg.create_task(try_add(item_a))
+            t_b = tg.create_task(try_add(item_b))
+        results = (t_a.result(), t_b.result())
+
+        # One succeeds (returns None), the other returns ConflictError.
         successes = [r for r in results if r is None]
         conflicts = [r for r in results if isinstance(r, ConflictError)]
         assert len(successes) == 1
