@@ -447,12 +447,13 @@ class TestExpirationConcurrency:
         get_result = get_task.result()
         save_result = save_task.result()
 
-        # After serialisation exactly one of these is true:
-        #   (a) expiration won: get returns EXPIRED, save_if_pending returns None.
-        #   (b) save won: get returns APPROVED (not expired), save returns APPROVED.
+        # ``expires_at`` is in the past, so ``_check_expiration_locked``
+        # deterministically transitions the item to ``EXPIRED`` before
+        # either caller can act on it.  ``save_if_pending`` therefore
+        # always returns ``None`` (status no longer ``PENDING``) and
+        # ``get`` always returns the ``EXPIRED`` item -- even if the
+        # two callers interleave, the lock serialisation guarantees a
+        # single, consistent outcome.
+        assert save_result is None
         assert get_result is not None
-        if save_result is None:
-            assert get_result.status == ApprovalStatus.EXPIRED
-        else:
-            assert save_result.status == ApprovalStatus.APPROVED
-            assert get_result.status == ApprovalStatus.APPROVED
+        assert get_result.status == ApprovalStatus.EXPIRED

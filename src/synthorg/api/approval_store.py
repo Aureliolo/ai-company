@@ -94,12 +94,20 @@ class ApprovalStore:
         # another.
         self._saves_in_flight: set[str] = set()
 
-    def clear(self) -> None:
-        """Reset all approval items for test isolation."""
-        cleared_count = len(self._items)
-        self._items.clear()
-        self._saves_in_flight.clear()
-        logger.info(API_APPROVAL_STORE_CLEARED, cleared_count=cleared_count)
+    async def clear(self) -> None:
+        """Reset all approval items, acquiring the store lock first.
+
+        Primary use case is test isolation, but the lock acquisition
+        makes it safe to call in any async context -- concurrent
+        ``save`` / ``get`` / ``list_items`` calls will observe the
+        cleared state atomically rather than racing with partial
+        reset state.
+        """
+        async with self._lock:
+            cleared_count = len(self._items)
+            self._items.clear()
+            self._saves_in_flight.clear()
+            logger.info(API_APPROVAL_STORE_CLEARED, cleared_count=cleared_count)
 
     async def add(self, item: ApprovalItem) -> None:
         """Add a new approval item.
