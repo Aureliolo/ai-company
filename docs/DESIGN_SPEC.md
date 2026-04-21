@@ -35,7 +35,7 @@ The design specification has been split into focused documentation pages for bet
 | [Web HTTP Adapter](design/web-http-adapter.md) | HTTP Transport, Async Leaks, CI Gate | Axios XHR vs fetch, MSW interceptor async-leak investigation, test teardown contract, CI leak-gate ceiling |
 | [Brand Identity & UX](design/brand-and-ux.md) | Brand, Themes, Colors, Typography, Density, Animation | Visual identity, semantic color system, theme architecture |
 | [Page Structure & IA](design/page-structure.md) | Pages, Navigation, Routing, WebSocket, Responsive | Page list, sidebar hierarchy, URL routing map, WS subscriptions |
-| [UX Design Guidelines](design/ux-guidelines.md) | Color System, Components, Interaction, Animation, Accessibility, Responsive | Implementable specs for all v0.5.0 dashboard pages |
+| [UX Design Guidelines](design/ux-guidelines.md) | Color System, Components, Interaction, Animation, Accessibility, Responsive | Implementable specs for the web dashboard |
 | [UX Research](design/ux-research.md) | Framework Decision, Migration | Vue-to-React evaluation, decision rationale, migration timeline |
 | [Ceremony Scheduling](design/ceremony-scheduling.md) | Strategies, Protocols, Velocity | Pluggable ceremony scheduling, 8 strategies, velocity calculation |
 | [Client Simulation](design/client-simulation.md) | Client Types, Intake, Review Pipeline, Simulation | Synthetic client framework for workload generation and evaluation |

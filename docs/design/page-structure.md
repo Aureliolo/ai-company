@@ -1,15 +1,15 @@
 ---
 title: Page Structure & Information Architecture
-description: Validated page list, navigation hierarchy, URL routing map, WebSocket subscriptions, and responsive scope for the v0.5.0 web dashboard.
+description: Validated page list, navigation hierarchy, URL routing map, WebSocket subscriptions, and responsive scope for the web dashboard.
 ---
 
 # Page Structure & Information Architecture
 
 ## Overview
 
-This document defines the information architecture for the v0.5.0 web dashboard rebuild. It was validated against the backend API surface (32 controllers, 9 WebSocket channels) and the design decisions from #762 (Mission Control direction, 4 differentiators) and #765 (Warm Ops identity).
+This document defines the information architecture for the web dashboard. It was validated against the backend API surface (32 controllers, 9 WebSocket channels) and the design decisions from #762 (Mission Control direction, 4 differentiators) and #765 (Warm Ops identity).
 
-**Guiding principle**: every page maps to a real backend domain with live data. No user-facing placeholder pages or "Coming Soon" stubs. ProjectController and ArtifactController have full persistence backends (v0.5.3, #612) and dashboard pages (v0.5.4, #946).
+**Guiding principle**: every page maps to a real backend domain with live data. No user-facing placeholder pages or "Coming Soon" stubs. ProjectController and ArtifactController have full persistence backends (#612) and dashboard pages (#946).
 
 ---
 
@@ -44,7 +44,7 @@ Click agent nodes to open Agent Detail panel.
 
 Kanban view (default) and list view toggle. Filter by status, assignee, department. Task cards show title, assignee, status, priority. Click opens task detail with full context, state transition buttons, and "Coordinate" action (triggers multi-agent coordination via `/tasks/{id}/coordinate`).
 
-Project filter dropdown available. Dedicated Projects page added in v0.5.4 (#946).
+Project filter dropdown available. Dedicated Projects page shipped (#946).
 
 **API endpoints**: `GET /tasks`, `GET /tasks/{id}`, `POST /tasks`, `PATCH /tasks/{id}`, `POST /tasks/{id}/transition`, `POST /tasks/{id}/cancel`, `DELETE /tasks/{id}`, `POST /tasks/{id}/coordinate`
 **WS channels**: `tasks`
@@ -442,7 +442,7 @@ Single WebSocket connection per session, established after login. Each page subs
 
 ## Responsive Scope
 
-Desktop-first with minimal tablet support. No mobile layout for v0.5.0.
+Desktop-first with minimal tablet support. Mobile layout is not currently in scope.
 
 | Breakpoint | Sidebar | Content | Rationale |
 |------------|---------|---------|-----------|
@@ -500,8 +500,8 @@ Every backend controller has a home in the page structure. No orphans.
 | ApprovalsController | Approvals, Dashboard |
 | SettingsController | Settings |
 | BackupController | Settings (backup namespace) |
-| AutonomyController | Agent Detail page (deferred -- not in v0.5.0 initial) |
-| CollaborationController | Agent Detail page (deferred -- not in v0.5.0 initial) |
+| AutonomyController | Agent Detail page (planned) |
+| CollaborationController | Agent Detail page (planned) |
 | CoordinationController | Task Board (task detail action) |
 | CoordinationMetricsController | Settings (coordination namespace) |
 | AuditController | Settings (security namespace) |

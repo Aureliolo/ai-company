@@ -11,7 +11,7 @@ Numbers are stable identifiers -- resolved questions are removed without renumbe
 | 1 | How deep should agent personality affect output? | Medium | Too deep leads to inconsistency; too shallow makes all agents feel the same. Capability-aware prompt profiles (#805) will add tier-based personality condensation. |
 | 4 | Should agents be able to create/modify other agents? | Medium | For example, a CTO "hires" a developer by creating a new agent config. |
 | 6 | What metrics define "good" agent performance? | Medium | Five-pillar evaluation framework (#1017) provides structure; quality scoring Layers 2+3 (#230) will add LLM judge and human override. |
-| 8 | Optimal message bus for local-first architecture? | Medium | asyncio queues for Phase 1; distributed backend (Redis, NATS) planned for Phase 2 (v0.8). |
+| 8 | Optimal message bus for local-first architecture? | Medium | asyncio queues for Phase 1; distributed backend (Redis, NATS) planned for Phase 2. |
 
 ---
 
@@ -38,4 +38,4 @@ Numbers are stable identifiers -- resolved questions are removed without renumbe
 | Agent execution bottlenecks | Medium | Async execution, parallel agent processing, queue-based architecture. TaskGroup for structured concurrency. |
 | Data loss on crash | Medium | WAL mode SQLite, checkpoint recovery, backup/restore with scheduled retention. |
 | Orchestration overhead exceeds productive work | Medium | LLM call analytics with proxy metrics implemented. Call categorization and orchestration ratio alerts planned. |
-| SQLite contention under concurrent access | Low | Single-writer with WAL mode handles read concurrency well. PostgreSQL backend planned for v0.8 for write-heavy workloads. |
+| SQLite contention under concurrent access | Low | Single-writer with WAL mode handles read concurrency well. PostgreSQL backend planned for write-heavy workloads. |

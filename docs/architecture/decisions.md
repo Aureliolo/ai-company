@@ -126,7 +126,7 @@ All significant design and architecture decisions, organized by domain. Each ent
 
 **SynthOrg JetStream usage** (verified in `bus/nats.py` facade and `workers/claim.py`): `SYNTHORG_BUS` stream (LimitsPolicy, `_nats_connection`), `SYNTHORG_TASKS` stream (WorkQueuePolicy, `claim.py`), `SYNTHORG_BUS_CHANNELS` KV bucket (`_nats_kv`), durable pull consumers with `ConsumerConfig` (`_nats_consumers`), stream management via `stream_info`/`add_stream`/`update_stream` (`_nats_connection`), history scanning with ephemeral consumers using `DeliverPolicy.ALL`/`AckPolicy.NONE` (`_nats_history`), connection lifecycle callbacks (`_nats_connection`).
 
-**Mitigation plan:** (1) File upstream PR against `nats-io/nats.py` with the one-line `inspect.iscoroutinefunction` fix (TODO: pending -- link back here once filed). (2) Keep scoped `filterwarnings` in `pyproject.toml` as workaround. (3) If upstream is unresponsive after 60 days, maintain a local monkey-patch in `bus/_nats_compat.py`. (4) Monitor `nats-core` for future JetStream support.
+**Mitigation plan:** (1) File upstream PR against `nats-io/nats.py` with the one-line `inspect.iscoroutinefunction` fix -- upstream PR status is tracked in the project issue queue (search `nats-py` label); the scoped `filterwarnings` entry in `pyproject.toml` remains the active workaround until a fixed upstream release is available. (2) If upstream is unresponsive after 60 days, maintain a local monkey-patch in `bus/_nats_compat.py`. (3) Monitor `nats-core` for future JetStream support.
 
 ## Overarching Pattern
 

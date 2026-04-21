@@ -58,6 +58,7 @@ atlas schema diff --env postgres           # drift detection for Postgres (schem
 bash scripts/squash_migrations.sh          # squash old migrations (release-time)
 uv run python scripts/export_openapi.py    # export OpenAPI schema (needed before docs build)
 uv run python scripts/generate_comparison.py  # generate comparison page (needed before docs build)
+uv sync --group docs                        # install zensical + docs plugins (required before zensical commands on first clone)
 PYTHONPATH=. uv run zensical build          # build docs (output: _site/docs/) -- PYTHONPATH=. enables d2_fence.py for D2 rendering
 PYTHONPATH=. uv run zensical serve          # local docs preview (http://127.0.0.1:8000)
 ```

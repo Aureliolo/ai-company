@@ -567,8 +567,8 @@ Application Code: {
 
   Impls: |
     SQLitePersistenceBackend (implemented)
-    PostgresPersistenceBackend (implemented -- v0.6.5)
-    MariaDBPersistenceBackend (future)
+    PostgresPersistenceBackend (implemented)
+    MariaDBPersistenceBackend (planned)
   |
 
   Repos -> Backend -> Impls
@@ -641,7 +641,7 @@ persistence:
     path: "/data/synthorg.db"       # database file path (mounted volume in Docker)
     wal_mode: true                    # WAL for concurrent read performance
     journal_size_limit: 67108864      # 64 MB WAL journal limit
-  postgres:                           # v0.6.5 -- requires `synthorg[postgres]` extra
+  postgres:                           # requires `synthorg[postgres]` extra
     host: "db.internal"
     port: 5432
     database: "synthorg"

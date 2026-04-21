@@ -1,11 +1,11 @@
 ---
 title: UX Research & Framework Decision
-description: Research, evaluation, and rationale behind the Vue 3 to React 19 migration for the SynthOrg v0.5.0 web dashboard.
+description: Research, evaluation, and rationale behind the Vue 3 to React 19 migration for the SynthOrg web dashboard.
 ---
 
 # UX Research & Framework Decision
 
-This document records the framework evaluation and migration decision that shaped the v0.5.0 web dashboard rebuild.
+This document records the framework evaluation and migration decision that shaped the web dashboard rebuild.
 
 ## Background
 
@@ -28,7 +28,7 @@ Rather than incrementally fixing each page within the Vue stack, the team evalua
 
 ## Decision
 
-**React 19 + shadcn/ui + Zustand** was chosen for the v0.5.0 dashboard rebuild (#762).
+**React 19 + shadcn/ui + Zustand** was chosen for the dashboard rebuild (#762).
 
 The deciding factors were:
 
@@ -46,7 +46,7 @@ See also: [Tech Stack decisions table](../architecture/tech-stack.md) (Web UI ro
 
 ## Migration Timeline
 
-The migration was executed as part of the v0.5.0 UX overhaul (#762):
+The migration was executed as part of the UX overhaul (#762):
 
 | Phase | Issues | Scope |
 |-------|--------|-------|

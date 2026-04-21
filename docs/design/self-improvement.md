@@ -250,4 +250,4 @@ self_improvement:
 2. ~~Product-level improvement~~ -- completed via #1340 (CODE_MODIFICATION altitude, LLM code gen, CI validation, draft PR creation)
 3. ~~Cross-deployment analytics~~ -- completed via #1341 (opt-in anonymized telemetry, pattern aggregation, threshold recommendations; see `docs/cross-deployment-privacy.md`)
 4. ~~Chief of Staff advanced capabilities~~ -- completed via #1342 (outcome learning, proactive alerts, NL chat)
-5. ~~Custom rule authoring UI (visual rule builder)~~ -- shipped in v0.6.5 (#1343 / PR #1355)
+5. ~~Custom rule authoring UI (visual rule builder)~~ -- shipped (#1343 / PR #1355)

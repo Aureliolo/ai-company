@@ -171,23 +171,25 @@ Single LLM review call. If the winner matches a participant, auto-resolves. On a
 
 ### Complete Fallback Chain
 
-```text
-HybridResolver
-  └─ clear winner found  ─────────────────────────────→ RESOLVED_BY_HYBRID
-  └─ ambiguous + escalate_on_ambiguity=True  ──────────→ ESCALATED_TO_HUMAN (stub)
-  └─ ambiguous + escalate_on_ambiguity=False ──────────→ AuthorityResolver
-       └─ RESOLVED_BY_AUTHORITY
+```mermaid
+flowchart TD
+    HR[HybridResolver]
+    HR -->|clear winner| RH[RESOLVED_BY_HYBRID]
+    HR -->|ambiguous + escalate_on_ambiguity=True| EH1[ESCALATED_TO_HUMAN stub]
+    HR -->|ambiguous + escalate_on_ambiguity=False| AR1[AuthorityResolver]
+    AR1 --> RA1[RESOLVED_BY_AUTHORITY]
 
-DebateResolver
-  └─ judge returns winner  ───────────────────────────→ RESOLVED_BY_DEBATE
-  └─ no JudgeEvaluator configured  ───────────────────→ AuthorityResolver
-  └─ evaluator raises  ───────────────────────────────→ exception propagates (no fallback)
+    DR[DebateResolver]
+    DR -->|judge returns winner| RD[RESOLVED_BY_DEBATE]
+    DR -->|no JudgeEvaluator configured| AR2[AuthorityResolver]
+    DR -->|evaluator raises| EXC[exception propagates: no fallback]
+    AR2 --> RA2[RESOLVED_BY_AUTHORITY]
 
-HumanEscalationResolver ─────────────────────────────→ ESCALATED_TO_HUMAN (stub, immediate)
+    HE[HumanEscalationResolver] --> EH2[ESCALATED_TO_HUMAN stub - immediate]
 
-AuthorityResolver
-  └─ common manager found  ───────────────────────────→ RESOLVED_BY_AUTHORITY
-  └─ no common manager (cross-dept)  ─────────────────→ ConflictHierarchyError
+    AR[AuthorityResolver]
+    AR -->|common manager found| RA3[RESOLVED_BY_AUTHORITY]
+    AR -->|no common manager cross-dept| CHE[ConflictHierarchyError]
 ```
 
 All paths terminate. No infinite loops. The weakest path is the `DebateResolver` evaluator

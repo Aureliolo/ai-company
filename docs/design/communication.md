@@ -237,7 +237,7 @@ The dashboard also uses SSE for observability and the HITL interrupt/resume prot
 | External A2A client | SSE | `tasks/sendSubscribe` | Task progress streaming |
 
 The `EventStreamHub` is the single event source for all SSE consumers (hub-driven
-architecture). Both the AG-UI dashboard and the future A2A gateway (#1164) subscribe
+architecture). Both the AG-UI dashboard and the A2A gateway subscribe
 to the hub and apply per-consumer projection layers. The gateway applies an A2A
 projection that filters to task-related events for explicitly subscribed tasks and
 formats payloads per the A2A specification -- no internal channel traffic leaks to
@@ -855,7 +855,7 @@ response. Each SSE event has:
 ```
 
 The `EventStreamHub` (`communication/event_stream/stream.py`) is the single
-pub/sub source. Both the AG-UI dashboard and the future A2A gateway consume
+pub/sub source. Both the AG-UI dashboard and the A2A gateway consume
 from this hub, each applying their own projection layer.
 
 ### Interrupt / Resume Protocol
@@ -914,11 +914,10 @@ a conflict is resolved:
 
 ### A2A Projection Consolidation
 
-The `EventStreamHub` is designed as the single event source for all
-consumers. The existing A2A gateway (design-only, not yet implemented)
-will subscribe to the same hub and apply A2A-specific state mapping
-(see [A2A External Gateway](#a2a-external-gateway) above) as a separate
-projection layer. No second SSE backend is needed.
+The `EventStreamHub` is the single event source for all consumers. The
+A2A gateway subscribes to the same hub and applies A2A-specific state
+mapping (see [A2A External Gateway](#a2a-external-gateway) above) as a
+separate projection layer. No second SSE backend is needed.
 
 ## Async Delegation
 

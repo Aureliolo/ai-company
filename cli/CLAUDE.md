@@ -147,7 +147,7 @@ Overriding any of `registry_host`, `image_repo_prefix`, `dhi_registry`, `postgre
 
 | Command | Flags |
 |---------|-------|
-| `init` | `--backend-port`, `--web-port`, `--sandbox`, `--log-level` (required for non-interactive mode); optional: `--image-tag`, `--channel`, `--bus-backend`, `--persistence-backend`, `--postgres-port` |
+| `init` | `--backend-port`, `--web-port`, `--sandbox`, `--log-level` (required for non-interactive mode); optional: `--image-tag`, `--channel`, `--bus-backend`, `--persistence-backend`, `--postgres-port`, `--encrypt-secrets` ("true" or "false", default "true" -- encrypt connection secrets at rest via Fernet) |
 | `start` | `--no-wait`, `--timeout`, `--no-pull`, `--dry-run`, `--no-detach`, `--no-verify` |
 | `stop` | `--timeout`/`-t`, `--volumes` |
 | `status` | `--watch`/`-w`, `--interval`, `--wide`, `--no-trunc`, `--services`, `--check` |
@@ -156,7 +156,9 @@ Overriding any of `registry_host`, `image_repo_prefix`, `dhi_registry`, `postgre
 | `cleanup` | `--dry-run`, `--all`, `--keep N` |
 | `backup create` | `--output`/`-o`, `--timeout` |
 | `backup list` | `--limit`/`-n`, `--sort` |
-| `backup restore` | `--confirm`, `--dry-run`, `--no-restart`, `--timeout` |
+| `backup restore` | `--confirm` (required), `--dry-run`, `--no-restart`, `--timeout` |
+| `completion` | `[bash \| zsh \| fish \| powershell]` -- emit shell autocompletion script (Cobra built-in; use `completion-install` to write it into your shell startup) |
+| `worker start` | `--workers` (int, default 4), `--nats-url`, `--stream-prefix`, `--container` (default `synthorg-backend`) -- runs the distributed task-queue worker pool |
 | `wipe` | `--dry-run`, `--no-backup`, `--keep-images` |
 | `doctor` | `--checks`, `--fix` |
 | `version` | `--short` |

@@ -1,11 +1,11 @@
 ---
 title: UX Design Guidelines
-description: Authoritative design guidelines for the SynthOrg v0.5.0 web dashboard -- color system, component patterns, interaction design, animation language, accessibility, and responsive breakpoints.
+description: Authoritative design guidelines for the SynthOrg web dashboard -- color system, component patterns, interaction design, animation language, accessibility, and responsive breakpoints.
 ---
 
 # UX Design Guidelines
 
-This document is the single source of truth for all v0.5.0 dashboard page implementations. It codifies the decisions from the design exploration (#765, Warm Ops winner) and page structure (#766) into concrete, implementable specifications.
+This document is the single source of truth for all dashboard page implementations. It codifies the decisions from the design exploration (#765, Warm Ops winner) and page structure (#766) into concrete, implementable specifications.
 
 **Prerequisite reading**: [Brand Identity & UX Design System](brand-and-ux.md) for rationale behind each decision. This document covers the *what*; brand-and-ux.md covers the *why*.
 
