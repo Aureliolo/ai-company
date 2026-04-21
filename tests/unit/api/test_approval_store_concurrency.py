@@ -238,11 +238,19 @@ class TestSaveConcurrency:
         class CommittingThenCancellingRepo(GatedRepo):
             """Simulate a repo whose commit lands before cancellation."""
 
+            def __init__(self) -> None:
+                super().__init__()
+                # Set AFTER the repo has committed the new value;
+                # the test awaits this to guarantee we cancel the
+                # save task only once cancellation will land
+                # post-commit (that is the race window we are
+                # exercising).
+                self.committed = asyncio.Event()
+
             async def save(self, item: ApprovalItem) -> None:
-                # Commit first (the race window), then yield and let
-                # the outer cancellation be delivered here.
                 self.save_calls += 1
                 self.items[item.id] = item
+                self.committed.set()
                 await self.gate.wait()
 
         repo = CommittingThenCancellingRepo()
@@ -253,7 +261,7 @@ class TestSaveConcurrency:
 
         updated = initial.model_copy(update={"decision_reason": "cancelled"})
         task = asyncio.create_task(store.save(updated))
-        await asyncio.sleep(0)  # let task enter repo.save and commit
+        await repo.committed.wait()  # deterministic: commit has landed
         task.cancel()
         with pytest.raises(asyncio.CancelledError):
             await task
@@ -307,6 +315,63 @@ class TestSaveIfPendingConcurrency:
         stored = await store.get(item.id)
         assert stored is not None
         assert stored.status == winners[0].status
+
+    async def test_save_if_pending_rejected_while_save_in_flight(
+        self,
+    ) -> None:
+        """``save_if_pending`` must observe ``_saves_in_flight`` too.
+
+        Without this guard, ``save()`` releasing the store lock for
+        repo I/O lets ``save_if_pending()`` enter, read the stale
+        cached ``PENDING`` item, and persist a competing decision --
+        reopening the lost-update race that FWW is meant to close.
+        """
+        repo = GatedRepo()
+        initial = _make_item()
+        repo.items[initial.id] = initial
+        store = ApprovalStore(repo=repo)  # type: ignore[arg-type]
+        await store.get(initial.id)  # warm cache
+
+        updated_a = initial.model_copy(
+            update={
+                "status": ApprovalStatus.APPROVED,
+                "decided_at": _now(),
+                "decided_by": "alice",
+                "decision_reason": "ok",
+            },
+        )
+        competing = initial.model_copy(
+            update={
+                "status": ApprovalStatus.REJECTED,
+                "decided_at": _now(),
+                "decided_by": "bob",
+                "decision_reason": "no",
+            },
+        )
+
+        with patch("synthorg.api.approval_store.logger") as mock_logger:
+            task = asyncio.create_task(store.save(updated_a))
+            await repo.first_entered.wait()
+            # Task A is parked inside ``repo.save`` with the store
+            # lock released; ``save_if_pending`` must now see the
+            # in-flight marker and refuse to proceed.
+            result = await store.save_if_pending(competing)
+            repo.gate.set()
+            await task
+
+        assert result is None
+        conflict_calls = [
+            call
+            for call in mock_logger.warning.call_args_list
+            if call.kwargs.get("error") == "concurrent_save"
+        ]
+        assert len(conflict_calls) == 1
+        assert conflict_calls[0].kwargs["approval_id"] == initial.id
+
+        stored = await store.get(initial.id)
+        assert stored is not None
+        assert stored.status == ApprovalStatus.APPROVED
+        assert stored.decision_reason == "ok"
 
 
 @pytest.mark.unit

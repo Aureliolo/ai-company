@@ -298,11 +298,28 @@ class ApprovalStore:
             The saved item on success, or ``None`` if:
 
             * no item with the given ID exists in the store,
-            * the stored item has expired, or
+            * the stored item has expired,
             * the stored item is no longer ``PENDING`` (e.g. a
-              concurrent decision was made).
+              concurrent decision was made), or
+            * a concurrent ``save()`` on the same id is mid-flight
+              (its outcome is still committing, so the cached status
+              may be stale).
         """
         async with self._lock:
+            # Mirror the FWW guard from ``save()``: ``save()`` releases
+            # ``self._lock`` while it awaits the repo write, so a
+            # naive ``save_if_pending()`` entering that window would
+            # see the stale cached ``PENDING`` item and persist a
+            # second decision, reopening the lost-update race.
+            # Abort early so the caller can retry once the in-flight
+            # save finishes.
+            if item.id in self._saves_in_flight:
+                logger.warning(
+                    API_APPROVAL_CONFLICT,
+                    error="concurrent_save",
+                    approval_id=item.id,
+                )
+                return None
             current = self._items.get(item.id)
             if current is None and self._repo is not None:
                 current = await self._repo.get(item.id)
