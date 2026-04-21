@@ -35,6 +35,39 @@ function isTokenUsageMap(value: unknown): value is Record<string, number> {
 }
 
 /**
+ * Structural check for the nested ``MeetingMinutes`` payload the
+ * server emits on ``completed`` meetings. Accepts ``null`` (meeting
+ * still in-progress or failed) and otherwise verifies each field
+ * the sanitizer dereferences -- without this, a malformed frame that
+ * merely passed the outer "object, not array" test could throw inside
+ * ``sanitizeMeetingMinutes`` when e.g. ``minutes.agenda.items.map`` is
+ * called on a missing agenda.
+ */
+function isMeetingMinutesShape(value: unknown): boolean {
+  if (value === null) return true
+  if (typeof value !== 'object' || Array.isArray(value)) return false
+  const m = value as Record<string, unknown>
+  if (typeof m.meeting_id !== 'string') return false
+  if (typeof m.protocol_type !== 'string') return false
+  if (typeof m.leader_id !== 'string') return false
+  if (!Array.isArray(m.participant_ids)) return false
+  if (typeof m.agenda !== 'object' || m.agenda === null || Array.isArray(m.agenda)) {
+    return false
+  }
+  const agenda = m.agenda as Record<string, unknown>
+  if (typeof agenda.title !== 'string') return false
+  if (typeof agenda.context !== 'string') return false
+  if (!Array.isArray(agenda.items)) return false
+  if (!Array.isArray(m.contributions)) return false
+  if (typeof m.summary !== 'string') return false
+  if (!Array.isArray(m.decisions)) return false
+  if (!Array.isArray(m.action_items)) return false
+  if (typeof m.started_at !== 'string') return false
+  if (typeof m.ended_at !== 'string') return false
+  return true
+}
+
+/**
  * Type predicate: a WS payload object satisfies the {@link MeetingResponse}
  * shape so consumers can use it without a cast. ``contribution_rank``
  * must be a plain string array of agent ids (matching the declared
@@ -64,7 +97,7 @@ function isMeetingShape(
     // in-progress and becomes a number once ended. Accepting null
     // for all three matches the declared types and keeps the guard
     // aligned with the asserted ``MeetingResponse`` shape.
-    (c.minutes === null || (typeof c.minutes === 'object' && !Array.isArray(c.minutes))) &&
+    isMeetingMinutesShape(c.minutes) &&
     (c.error_message === null || typeof c.error_message === 'string') &&
     (c.meeting_duration_seconds === null ||
       typeof c.meeting_duration_seconds === 'number')

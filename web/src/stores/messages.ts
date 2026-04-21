@@ -12,11 +12,52 @@ const log = createLogger('messages')
 const MESSAGES_FETCH_LIMIT = 50
 
 /**
+ * Each ``attachments`` entry must be a plain ``{type, ref}`` pair with
+ * string fields -- without this check, a wire payload like
+ * ``[null]`` or ``[{type: 42, ref: undefined}]`` would slip past the
+ * ``Array.isArray`` gate and then blow up in the sanitizer when it
+ * called ``sanitizeWsString(att.ref, ...)``.
+ */
+function isAttachmentsShape(value: unknown): boolean {
+  if (!Array.isArray(value)) return false
+  return value.every((att) => {
+    if (typeof att !== 'object' || att === null || Array.isArray(att)) return false
+    const entry = att as { type?: unknown; ref?: unknown }
+    return typeof entry.type === 'string' && typeof entry.ref === 'string'
+  })
+}
+
+/**
+ * ``MessageMetadata`` carries nullable id pointers, numeric usage
+ * fields, and an ``extra`` array of ``[string, string]`` tuples. The
+ * sanitizer dereferences every one of those, so we need to validate
+ * their types here -- a missing/mistyped ``extra`` would otherwise
+ * throw inside ``metadata.extra.map`` during sanitization.
+ */
+function isMessageMetadataShape(value: unknown): boolean {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
+  const m = value as Record<string, unknown>
+  if (m.task_id !== null && typeof m.task_id !== 'string') return false
+  if (m.project_id !== null && typeof m.project_id !== 'string') return false
+  if (m.tokens_used !== null && typeof m.tokens_used !== 'number') return false
+  if (m.cost !== null && typeof m.cost !== 'number') return false
+  if (!Array.isArray(m.extra)) return false
+  return m.extra.every(
+    (entry) =>
+      Array.isArray(entry) &&
+      entry.length === 2 &&
+      typeof entry[0] === 'string' &&
+      typeof entry[1] === 'string',
+  )
+}
+
+/**
  * Shallow structural check: every ``Message`` string field is a
- * ``string`` on the wire and ``attachments`` / ``metadata`` have the
- * right container shape. Actual sanitization + non-empty enforcement
- * happens in ``parseWsMessage`` -- this guard only rejects payloads
- * whose fields are the wrong *type* before we attempt to sanitize.
+ * ``string`` on the wire and ``attachments`` / ``metadata`` carry
+ * well-formed nested shapes. Actual sanitization + non-empty
+ * enforcement happens in ``parseWsMessage`` -- this guard only
+ * rejects payloads whose fields are the wrong *type* before we
+ * attempt to sanitize.
  */
 function isMessageShape(
   c: Record<string, unknown>,
@@ -30,10 +71,8 @@ function isMessageShape(
     typeof c.content === 'string' &&
     typeof c.type === 'string' &&
     typeof c.priority === 'string' &&
-    Array.isArray(c.attachments) &&
-    !!c.metadata &&
-    typeof c.metadata === 'object' &&
-    !Array.isArray(c.metadata)
+    isAttachmentsShape(c.attachments) &&
+    isMessageMetadataShape(c.metadata)
   )
 }
 

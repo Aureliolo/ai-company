@@ -86,21 +86,59 @@ const pendingTransitions = new Set<string>()
  * boolean validated by the shape guard already).
  */
 function sanitizeTask(c: Task): Task {
+  // Build the returned Task explicitly rather than spreading ``c``:
+  // any future string field added to ``Task`` must be wired through
+  // ``sanitizeWsString`` here, and a spread would silently bypass
+  // sanitization for fields the author didn't remember to remap
+  // (``created_at``, ``updated_at``, ``assigned_to``, ``project``,
+  // nested ``artifacts_expected`` names, and so on).
+  const sanitizeIds = (ids: readonly string[]) =>
+    ids
+      .map((id) => sanitizeWsString(id, 128) ?? '')
+      .filter((id) => id.length > 0)
+  const sanitizeNullable = (value: string | null, cap: number): string | null =>
+    value === null ? null : sanitizeWsString(value, cap) ?? ''
+  const sanitizeOptional = (
+    value: string | undefined,
+    cap: number,
+  ): string | undefined =>
+    value === undefined ? undefined : sanitizeWsString(value, cap) ?? ''
   return {
-    ...c,
     id: sanitizeWsString(c.id, 128) ?? '',
-    status: (sanitizeWsString(c.status, 64) ?? '') as Task['status'],
-    priority: (sanitizeWsString(c.priority, 64) ?? '') as Task['priority'],
-    type: (sanitizeWsString(c.type, 64) ?? '') as Task['type'],
     title: sanitizeWsString(c.title, 256) ?? '',
     description: sanitizeWsString(c.description, 4096) ?? '',
-    dependencies: c.dependencies
-      .map((dep) => sanitizeWsString(dep, 128) ?? '')
-      .filter((dep) => dep.length > 0),
-    acceptance_criteria: c.acceptance_criteria.map((ac) => ({
-      ...ac,
-      description: sanitizeWsString(ac.description, 512) ?? '',
+    type: (sanitizeWsString(c.type, 64) ?? '') as Task['type'],
+    status: (sanitizeWsString(c.status, 64) ?? '') as Task['status'],
+    priority: (sanitizeWsString(c.priority, 64) ?? '') as Task['priority'],
+    project: sanitizeWsString(c.project, 128) ?? '',
+    created_by: sanitizeWsString(c.created_by, 128) ?? '',
+    assigned_to: sanitizeNullable(c.assigned_to, 128),
+    reviewers: sanitizeIds(c.reviewers),
+    dependencies: sanitizeIds(c.dependencies),
+    artifacts_expected: c.artifacts_expected.map((a) => ({
+      name: sanitizeWsString(a.name, 256) ?? '',
+      type: sanitizeWsString(a.type, 64) ?? '',
     })),
+    acceptance_criteria: c.acceptance_criteria.map((ac) => ({
+      description: sanitizeWsString(ac.description, 512) ?? '',
+      met: ac.met,
+    })),
+    estimated_complexity: c.estimated_complexity,
+    budget_limit: c.budget_limit,
+    cost: c.cost,
+    deadline: sanitizeNullable(c.deadline, 64),
+    max_retries: c.max_retries,
+    parent_task_id: sanitizeNullable(c.parent_task_id, 128),
+    delegation_chain: sanitizeIds(c.delegation_chain),
+    task_structure: c.task_structure,
+    coordination_topology: c.coordination_topology,
+    source:
+      c.source === undefined || c.source === null
+        ? c.source
+        : ((sanitizeWsString(c.source, 64) ?? '') as Task['source']),
+    version: c.version,
+    created_at: sanitizeOptional(c.created_at, 64),
+    updated_at: sanitizeOptional(c.updated_at, 64),
   }
 }
 

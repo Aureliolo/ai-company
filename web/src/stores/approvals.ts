@@ -9,6 +9,7 @@ import type {
   ApprovalFilters,
   ApprovalResponse,
   ApproveRequest,
+  EvidencePackage,
   RejectRequest,
 } from '@/api/types/approvals'
 import {
@@ -64,6 +65,57 @@ function isApprovalShape(
 }
 
 /**
+ * Recursively sanitize an ``EvidencePackage`` -- title, narrative,
+ * reasoning-trace lines, recommended-action fields, signature
+ * entries, and nested id/timestamp fields all arrive over the wire
+ * and must be scrubbed before reaching the store. Returns ``null``
+ * unchanged (an approval without structured evidence).
+ */
+function sanitizeEvidencePackage(
+  pkg: EvidencePackage | null,
+): EvidencePackage | null {
+  if (pkg === null) return null
+  const pkgMetadata: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(pkg.metadata)) {
+    const safeKey = sanitizeWsString(key, 64) ?? ''
+    if (!safeKey) continue
+    pkgMetadata[safeKey] =
+      typeof value === 'string'
+        ? sanitizeWsString(value, 512) ?? ''
+        : value
+  }
+  return {
+    id: sanitizeWsString(pkg.id, 128) ?? '',
+    title: sanitizeWsString(pkg.title, 256) ?? '',
+    narrative: sanitizeWsString(pkg.narrative, 4096) ?? '',
+    reasoning_trace: pkg.reasoning_trace
+      .map((line) => sanitizeWsString(line, 2048) ?? '')
+      .filter((line) => line.length > 0),
+    recommended_actions: pkg.recommended_actions.map((a) => ({
+      action_type: sanitizeWsString(a.action_type, 128) ?? '',
+      label: sanitizeWsString(a.label, 128) ?? '',
+      description: sanitizeWsString(a.description, 1024) ?? '',
+      confirmation_required: a.confirmation_required,
+    })),
+    source_agent_id: sanitizeWsString(pkg.source_agent_id, 128) ?? '',
+    task_id:
+      pkg.task_id === null ? null : sanitizeWsString(pkg.task_id, 128) ?? '',
+    risk_level: pkg.risk_level,
+    metadata: pkgMetadata,
+    signature_threshold: pkg.signature_threshold,
+    signatures: pkg.signatures.map((s) => ({
+      approver_id: sanitizeWsString(s.approver_id, 128) ?? '',
+      algorithm: s.algorithm,
+      signature_bytes: sanitizeWsString(s.signature_bytes, 2048) ?? '',
+      signed_at: sanitizeWsString(s.signed_at, 64) ?? '',
+      chain_position: s.chain_position,
+    })),
+    is_fully_signed: pkg.is_fully_signed,
+    created_at: sanitizeWsString(pkg.created_at, 64) ?? '',
+  }
+}
+
+/**
  * Return a sanitized copy of an ``ApprovalResponse`` with every
  * untrusted WS-origin string field (identifier, action type,
  * enum-typed labels, timestamps, decision fields, and every metadata
@@ -83,25 +135,30 @@ function sanitizeApproval(c: ApprovalResponse): ApprovalResponse {
   }
   const sanitizeNullable = (value: string | null, cap: number): string | null =>
     value === null ? null : sanitizeWsString(value, cap) ?? ''
+  // Build the returned ``ApprovalResponse`` explicitly rather than
+  // spreading ``c``: a spread would pass through the deeply-nested
+  // ``evidence_package`` (plus any future string fields) with raw,
+  // unsanitized WS content reaching the store.
   return {
-    ...c,
     id: sanitizeWsString(c.id, 128) ?? '',
-    status: (sanitizeWsString(c.status, 64) ?? '') as ApprovalResponse['status'],
-    title: sanitizeWsString(c.title, 256) ?? '',
-    risk_level:
-      (sanitizeWsString(c.risk_level, 64) ?? '') as ApprovalResponse['risk_level'],
-    urgency_level:
-      (sanitizeWsString(c.urgency_level, 64) ?? '') as ApprovalResponse['urgency_level'],
     action_type: sanitizeWsString(c.action_type, 128) ?? '',
+    title: sanitizeWsString(c.title, 256) ?? '',
     description: sanitizeWsString(c.description, 2048) ?? '',
     requested_by: sanitizeWsString(c.requested_by, 128) ?? '',
-    created_at: sanitizeWsString(c.created_at, 64) ?? '',
-    expires_at: sanitizeNullable(c.expires_at, 64),
-    decided_by: sanitizeNullable(c.decided_by, 128),
-    decided_at: sanitizeNullable(c.decided_at, 64),
-    decision_reason: sanitizeNullable(c.decision_reason, 2048),
+    risk_level:
+      (sanitizeWsString(c.risk_level, 64) ?? '') as ApprovalResponse['risk_level'],
+    status: (sanitizeWsString(c.status, 64) ?? '') as ApprovalResponse['status'],
     task_id: sanitizeNullable(c.task_id, 128),
     metadata,
+    decided_by: sanitizeNullable(c.decided_by, 128),
+    decision_reason: sanitizeNullable(c.decision_reason, 2048),
+    created_at: sanitizeWsString(c.created_at, 64) ?? '',
+    decided_at: sanitizeNullable(c.decided_at, 64),
+    expires_at: sanitizeNullable(c.expires_at, 64),
+    evidence_package: sanitizeEvidencePackage(c.evidence_package),
+    seconds_remaining: c.seconds_remaining,
+    urgency_level:
+      (sanitizeWsString(c.urgency_level, 64) ?? '') as ApprovalResponse['urgency_level'],
   }
 }
 
