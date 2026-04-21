@@ -68,7 +68,9 @@ class TestResolveAgentIdsBatch:
 
         assert mock_registry.get_by_names.await_count == 1
         assert mock_registry.get_by_name.await_count == 0
-        assert set(result) == {str(alice.id), str(bob.id)}
+        # Batch helpers are order-preserving; pin that contract with
+        # an ordered tuple comparison rather than a set.
+        assert result == (str(alice.id), str(bob.id))
 
     async def test_filters_missing_names(self) -> None:
         alice = _make_identity(
@@ -122,9 +124,12 @@ class TestResolveSnapshotsBatch:
 
         assert mock_tracker.get_snapshots.await_count == 1
         assert mock_tracker.get_snapshot.await_count == 0
-        assert len(result) == 2
-        ids = {str(s.agent_id) for s in result}
-        assert ids == {"agent-a", "agent-b"}
+        # Batch helpers are order-preserving; pin that contract with
+        # an ordered comparison rather than a set.
+        assert tuple(str(s.agent_id) for s in result) == (
+            "agent-a",
+            "agent-b",
+        )
 
     async def test_filters_none_snapshots(self) -> None:
         snap_a = make_performance_snapshot(agent_id="agent-a")

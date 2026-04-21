@@ -165,6 +165,17 @@ class TestAgentRegistryService:
         assert isinstance(real_lock, asyncio.Lock)
         assert not real_lock.locked()
 
+    async def test_get_by_names_rejects_oversized_batch(
+        self,
+        registry: AgentRegistryService,
+    ) -> None:
+        """Exceeding ``MAX_BATCH_NAMES_LOOKUP`` must raise ``ValueError``."""
+        from synthorg.hr.registry import MAX_BATCH_NAMES_LOOKUP
+
+        names = tuple(f"agent-{i}" for i in range(MAX_BATCH_NAMES_LOOKUP + 1))
+        with pytest.raises(ValueError, match="exceeds"):
+            await registry.get_by_names(names)  # type: ignore[arg-type]
+
     async def test_list_active_filters_status(
         self,
         registry: AgentRegistryService,

@@ -140,3 +140,16 @@ class TestGetSnapshotsFaultIsolation:
     async def test_empty_input_returns_empty_tuple(self) -> None:
         tracker = PerformanceTracker()
         assert await tracker.get_snapshots(()) == ()
+
+    async def test_rejects_oversized_batch(self) -> None:
+        """Exceeding ``MAX_BATCH_SNAPSHOTS_LOOKUP`` must raise ``ValueError``."""
+        from synthorg.hr.performance.tracker import (
+            MAX_BATCH_SNAPSHOTS_LOOKUP,
+        )
+
+        tracker = PerformanceTracker()
+        agent_ids = tuple(
+            NotBlankStr(f"agent-{i}") for i in range(MAX_BATCH_SNAPSHOTS_LOOKUP + 1)
+        )
+        with pytest.raises(ValueError, match="exceeds"):
+            await tracker.get_snapshots(agent_ids)

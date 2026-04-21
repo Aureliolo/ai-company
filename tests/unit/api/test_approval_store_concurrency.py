@@ -226,6 +226,47 @@ class TestSaveConcurrency:
         retry_result = await store.save(updated)
         assert retry_result is not None
 
+    async def test_save_cancelled_after_repo_commit_invalidates_cache(
+        self,
+    ) -> None:
+        """Cancellation after a committed repo write must evict the cache.
+
+        Otherwise the next reader would serve the stale cached copy
+        instead of the freshly committed repository state.
+        """
+
+        class CommittingThenCancellingRepo(GatedRepo):
+            """Simulate a repo whose commit lands before cancellation."""
+
+            async def save(self, item: ApprovalItem) -> None:
+                # Commit first (the race window), then yield and let
+                # the outer cancellation be delivered here.
+                self.save_calls += 1
+                self.items[item.id] = item
+                await self.gate.wait()
+
+        repo = CommittingThenCancellingRepo()
+        initial = _make_item()
+        repo.items[initial.id] = initial
+        store = ApprovalStore(repo=repo)  # type: ignore[arg-type]
+        await store.get(initial.id)  # warm the cache
+
+        updated = initial.model_copy(update={"decision_reason": "cancelled"})
+        task = asyncio.create_task(store.save(updated))
+        await asyncio.sleep(0)  # let task enter repo.save and commit
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+        # Repo has the new value; cache entry must have been evicted
+        # so the next ``get`` reloads from the repository.
+        assert repo.items[initial.id].decision_reason == "cancelled"
+        assert initial.id not in store._items
+
+        refreshed = await store.get(initial.id)
+        assert refreshed is not None
+        assert refreshed.decision_reason == "cancelled"
+
 
 @pytest.mark.unit
 class TestSaveIfPendingConcurrency:

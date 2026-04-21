@@ -263,7 +263,19 @@ class ApprovalStore:
             self._saves_in_flight.add(item.id)
         try:
             if self._repo is not None:
-                await self._repo.save(item)
+                try:
+                    await self._repo.save(item)
+                except asyncio.CancelledError:
+                    # The repo commit may have landed before
+                    # cancellation was delivered to us; evict the
+                    # cache entry so the next reader falls through
+                    # to the repository and observes the committed
+                    # state instead of the stale cached copy.
+                    # ``shield`` protects the eviction from a second
+                    # cancellation arriving while we acquire the
+                    # lock.
+                    await asyncio.shield(self._invalidate_cache(item.id))
+                    raise
             async with self._lock:
                 self._items[item.id] = item
             return item
@@ -303,9 +315,33 @@ class ApprovalStore:
             if current.status != ApprovalStatus.PENDING:
                 return None
             if self._repo is not None:
-                await self._repo.save(item)
+                try:
+                    await self._repo.save(item)
+                except asyncio.CancelledError:
+                    # The lock is still held here (we are still inside
+                    # the outer ``async with``); evict the cache entry
+                    # so the next reader reloads the committed state
+                    # from the repo instead of the stale ``PENDING``
+                    # cached copy.
+                    self._items.pop(item.id, None)
+                    raise
             self._items[item.id] = item
             return item
+
+    async def _invalidate_cache(self, approval_id: str) -> None:
+        """Evict a cache entry, acquiring the lock first.
+
+        Invoked from ``save()`` under ``asyncio.shield`` when a repo
+        write is cancelled: the commit may have landed already, and
+        the cached copy would otherwise serve stale data to the next
+        reader.  Dropping the entry forces the next ``get`` / ``list``
+        to fall through to the repository and repopulate from truth.
+
+        Args:
+            approval_id: Identifier of the cache entry to evict.
+        """
+        async with self._lock:
+            self._items.pop(approval_id, None)
 
     async def _check_expiration_locked(
         self,
