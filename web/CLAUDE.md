@@ -128,6 +128,15 @@ All Zustand store **mutation** actions (create/update/delete) MUST follow the `s
 | `ContentTypeBadge` | `@/components/ui/content-type-badge` | MIME content type pill badge with semantic colors (JSON, PDF, Image, Text, etc.) |
 | `PolicySourceBadge` | `@/components/ui/policy-source-badge` | Ceremony policy field source indicator (project/department/default origin pill) |
 | `InheritToggle` | `@/components/ui/inherit-toggle` | Toggle for inheriting vs. overriding a policy field from the parent level |
+| `ErrorBanner` | `@/components/ui/error-banner` | Error / warning / info banner for list-fetch failures, offline state, onboarding retry guidance. `severity` maps to `role=alert` (error) or `role=status` (warning/info). `variant='offline'` forces warning + WifiOff icon. Optional `onRetry` / `onDismiss` / `action` slots. Use this for every page-level or form-level error surface; use toasts for mutation outcomes instead. |
+| `Breadcrumbs` | `@/components/ui/breadcrumbs` | Breadcrumb navigation for deep detail pages. `<nav aria-label="Breadcrumb">` + `<ol>` + `aria-current="page"` on terminal item. React Router 7 `<Link>` for ancestors. Collapses middle items with ellipsis when exceeding `maxItems` (default 4). |
+| `Pagination` | `@/components/ui/pagination` | List-page pagination control (client-side slice now; props-compatible for OPS-1 cursor mode). Keyboard shortcuts: Home / End / ArrowLeft / ArrowRight / PageUp / PageDown. `total=undefined` signals cursor mode (Next enabled, Last disabled). Pair with `useListPagination` hook for URL-persisted state. |
+| `ListHeader` | `@/components/ui/list-header` | Standardised list-page header: title + count (formatted via `formatNumber`) on the left, `primaryAction` on the right, optional `secondaryActions` wrap below. Replaces ad-hoc `<div>` headers on list pages. |
+| `SearchFilterSort` | `@/components/ui/search-filter-sort` | Layout wrapper for list-page controls (search + filters + sort). Named `search`, `filters`, `sort`, `trailing` slots. Pairs with `SearchInput` for the search slot. |
+| `SearchInput` | `@/components/ui/search-input` | Search box with optional `/` global focus shortcut (`focusShortcut`), clear button, imperative `focus()` / `clear()` via React 19 `ref` prop. |
+| `ProgressIndicator` | `@/components/ui/progress-indicator` | Long-running operation progress. Variants: `determinate` (labelled bar + percentage), `indeterminate` (shimmer), `stages` (multi-step list with done / running / pending / failed). Use for fine-tuning pipelines, setup flows, provider probes. |
+| `KeyboardShortcutHint` | `@/components/ui/keyboard-shortcut-hint` | Inline `<kbd>` pills for tooltip / button hints. Example: `<KeyboardShortcutHint keys={['Ctrl', 'K']} label="palette" />`. |
+| `CommandCheatsheet` | `@/components/ui/command-cheatsheet` | Full-screen overlay triggered by `?` showing all registered shortcuts grouped by section. Reads from `useShortcutRegistry`. Mount once in AppLayout. |
 
 ### Design Token Rules
 

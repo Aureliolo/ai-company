@@ -49,7 +49,9 @@ export function Pagination({
   className,
 }: PaginationProps) {
   const knownTotal = total !== undefined
-  const totalPages = knownTotal && total > 0 ? Math.max(1, Math.ceil(total / pageSize)) : 1
+  // Defensive clamp: pageSize must be positive to avoid division-by-zero in totalPages.
+  const safePageSize = pageSize > 0 ? pageSize : DEFAULT_PAGE_SIZE_OPTIONS[0]!
+  const totalPages = knownTotal && total > 0 ? Math.max(1, Math.ceil(total / safePageSize)) : 1
   // In cursor mode (total unknown) we cannot determine totalPages, so don't clamp down to 1.
   const safePage = knownTotal ? Math.min(Math.max(1, page), totalPages) : Math.max(1, page)
   const isFirst = safePage <= 1
@@ -95,8 +97,8 @@ export function Pagination({
     [isFirst, isNextDisabled, isLastJumpDisabled, onPageChange, safePage, totalPages],
   )
 
-  const rangeStart = total === undefined ? undefined : total === 0 ? 0 : (safePage - 1) * pageSize + 1
-  const rangeEnd = total === undefined ? undefined : Math.min(safePage * pageSize, total)
+  const rangeStart = total === undefined ? undefined : total === 0 ? 0 : (safePage - 1) * safePageSize + 1
+  const rangeEnd = total === undefined ? undefined : Math.min(safePage * safePageSize, total)
   const selectId = useId()
 
   return (
