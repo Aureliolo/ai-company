@@ -352,14 +352,24 @@ async def _send_auth_ok(socket: WebSocket[Any, Any, Any]) -> None:
     """Send the ``auth_ok`` acknowledgement after ticket validation.
 
     Closes the client-side auth-state flash: clients SHOULD only set
-    ``connected=true`` once this message arrives. Failing to send is
-    treated as a disconnect in progress; the outer handler will clean
-    up.
+    ``connected=true`` once this message arrives. Transport failures
+    (clean disconnect or an unexpected ``send_text`` error) are
+    treated as fatal: the socket is closed with 1011 on the generic
+    path, mirroring ``_outbound_consumer``'s failure handling, and
+    the exception is re-raised so the outer handler runs its cleanup.
     """
     try:
         await socket.send_text(json.dumps({"action": "auth_ok"}))
     except WebSocketDisconnect:
         logger.debug(API_WS_SEND_FAILED, reason="disconnect_before_auth_ok")
+        raise
+    except Exception:
+        logger.error(
+            API_WS_SEND_FAILED,
+            reason="send_error_auth_ok",
+            exc_info=True,
+        )
+        await socket.close(code=1011, reason="Internal error")
         raise
     logger.debug(API_WS_AUTH_OK, client=str(socket.client))
 
@@ -584,10 +594,12 @@ async def _receive_loop(
     routed through the outbound queue rather than written to the socket
     directly so ``_outbound_consumer`` remains the single writer and
     control frames cannot interleave with broadcast events mid-frame.
-    ``await queue.put(...)`` back-pressures the receive loop if the
-    consumer is slow -- acceptable because both streams target the
-    same client anyway, and a blocked consumer already implies the
-    client cannot accept new frames.
+    The non-blocking ``put_nowait`` enqueue protects the receive loop
+    from wedging on a full queue -- if ``_outbound_consumer`` has
+    exited or cannot keep up, the control reply is dropped (logged
+    via ``API_WS_BACKPRESSURE_DROPPED``) and the socket continues to
+    accept new inbound frames rather than hanging forever on an
+    unbounded ``await queue.put``.
     """
     try:
         while True:
@@ -598,7 +610,15 @@ async def _receive_loop(
                 filters,
                 conn_user,
             )
-            await outbound_queue.put(response.encode("utf-8"))
+            try:
+                outbound_queue.put_nowait(response.encode("utf-8"))
+            except asyncio.QueueFull:
+                logger.warning(
+                    API_WS_BACKPRESSURE_DROPPED,
+                    reason="control_reply_queue_full",
+                    user_id=conn_user.user_id,
+                    client=str(socket.client),
+                )
     except WebSocketDisconnect:
         logger.debug(API_WS_DISCONNECTED, reason="client_disconnect")
     except Exception:

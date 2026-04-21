@@ -24,6 +24,7 @@ export function QualityScoreOverride({
 }: QualityScoreOverrideProps) {
   const [override, setOverride] = useState<OverrideResponse | null>(null)
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [clearDialogOpen, setClearDialogOpen] = useState(false)
   const [clearing, setClearing] = useState(false)
@@ -45,9 +46,14 @@ export function QualityScoreOverride({
     activeAgentRef.current = agentId
     setLoading(true)
     setOverride(null)
-    const data = await useQualityOverridesStore.getState().getOverride(agentId)
+    setLoadError(false)
+    const result = await useQualityOverridesStore.getState().getOverride(agentId)
     if (activeAgentRef.current !== agentId) return
-    setOverride(data)
+    if (result.kind === 'ok') {
+      setOverride(result.data)
+    } else if (result.kind === 'error') {
+      setLoadError(true)
+    }
     setLoading(false)
   }, [agentId])
 
@@ -62,11 +68,16 @@ export function QualityScoreOverride({
     }
     setReasonError(undefined)
     setSubmitting(true)
-    const data = await useQualityOverridesStore.getState().setOverride(agentId, {
+    // Capture the agent identity at request start so a late resolve
+    // for a previous agent can't overwrite state that now belongs to
+    // a different one -- matches the staleness guard in fetchOverride.
+    const requestAgent = agentId
+    const data = await useQualityOverridesStore.getState().setOverride(requestAgent, {
       score,
       reason: reason.trim(),
       expires_in_days: expiresInDays,
     })
+    if (activeAgentRef.current !== requestAgent) return
     setSubmitting(false)
     if (data) {
       setOverride(data)
@@ -76,14 +87,22 @@ export function QualityScoreOverride({
     }
   }, [agentId, score, reason, expiresInDays])
 
-  const handleClear = useCallback(async () => {
+  const handleClear = useCallback(async (): Promise<boolean> => {
     setClearing(true)
-    const ok = await useQualityOverridesStore.getState().clearOverride(agentId)
-    setClearing(false)
-    if (ok) {
-      setOverride(null)
-      setClearDialogOpen(false)
+    const requestAgent = agentId
+    const ok = await useQualityOverridesStore.getState().clearOverride(requestAgent)
+    if (activeAgentRef.current !== requestAgent) {
+      // Stale agent -- keep the dialog open so ConfirmDialog's sentinel
+      // behaviour doesn't close something that now belongs to a
+      // different view. `clearing` is intentionally left set until a
+      // fresh fetch resets it via the next `handleClear` invocation.
+      return false
     }
+    setClearing(false)
+    if (!ok) return false
+    setOverride(null)
+    setClearDialogOpen(false)
+    return true
   }, [agentId])
 
   if (loading) return null
@@ -107,7 +126,21 @@ export function QualityScoreOverride({
         ) : undefined
       }
     >
-      {override ? (
+      {loadError ? (
+        <div className="space-y-2">
+          <p className="text-sm text-danger">
+            Failed to load quality override. The existing override (if
+            any) is unknown -- retry before applying a new one.
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void fetchOverride()}
+          >
+            Retry
+          </Button>
+        </div>
+      ) : override ? (
         <div className="space-y-2">
           <div className="flex flex-wrap gap-grid-gap">
             <StatPill label="Score" value={override.score.toFixed(1)} />

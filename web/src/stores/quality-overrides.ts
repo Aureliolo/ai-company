@@ -25,13 +25,27 @@ import type { OverrideResponse, SetOverrideRequest } from '@/api/types/collabora
 
 const log = createLogger('quality-overrides')
 
+/**
+ * Discriminated result for `getOverride`. The three cases are
+ * semantically distinct -- an override present, a 404 (steady-state
+ * for most agents, not an error), and a non-404 load failure -- and
+ * collapsing them onto `null` caused the page to render the "no active
+ * override" form after a 500, inviting the user to overwrite an
+ * override that merely failed to load.
+ */
+export type GetOverrideResult =
+  | { kind: 'ok'; data: OverrideResponse }
+  | { kind: 'missing' }
+  | { kind: 'error' }
+
 interface QualityOverridesState {
   /**
-   * Fetch the active override for an agent. A 404 is normal (no active
-   * override) and resolves to `null` without toasting. Any other
-   * failure (network, 500) toasts an error and returns `null`.
+   * Fetch the active override for an agent. Returns a discriminated
+   * result so the component can tell "no override" apart from "load
+   * failed". A 404 resolves to `{ kind: 'missing' }` without toasting;
+   * any other failure toasts an error and returns `{ kind: 'error' }`.
    */
-  getOverride: (agentId: string) => Promise<OverrideResponse | null>
+  getOverride: (agentId: string) => Promise<GetOverrideResult>
   setOverride: (
     agentId: string,
     data: SetOverrideRequest,
@@ -42,10 +56,11 @@ interface QualityOverridesState {
 export const useQualityOverridesStore = create<QualityOverridesState>()(() => ({
   getOverride: async (agentId) => {
     try {
-      return await apiGet(agentId)
+      const data = await apiGet(agentId)
+      return { kind: 'ok', data }
     } catch (err) {
       if (isAxiosError(err) && err.response?.status === 404) {
-        return null
+        return { kind: 'missing' }
       }
       log.error('Get quality override failed:', sanitizeForLog(err))
       useToastStore.getState().add({
@@ -53,7 +68,7 @@ export const useQualityOverridesStore = create<QualityOverridesState>()(() => ({
         title: 'Failed to load quality override',
         description: getErrorMessage(err),
       })
-      return null
+      return { kind: 'error' }
     }
   },
 

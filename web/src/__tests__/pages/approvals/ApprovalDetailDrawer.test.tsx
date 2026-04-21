@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ApprovalDetailDrawer } from '@/pages/approvals/ApprovalDetailDrawer'
 import { makeApproval } from '../../helpers/factories'
@@ -215,6 +215,12 @@ describe('ApprovalDetailDrawer', () => {
     await user.type(screen.getByLabelText('Approval comment'), 'Looks good')
     const approveDialog = screen.getByRole('alertdialog')
     await user.click(within(approveDialog).getByRole('button', { name: /approve/i }))
+    // Wait for the async onApprove to resolve before asserting the
+    // dialog is still mounted -- otherwise we could be reading DOM
+    // state from before the handler had a chance to return false.
+    await waitFor(() => {
+      expect(defaultHandlers.onApprove).toHaveBeenCalledOnce()
+    })
     // Drawer must NOT close the dialog; the underlying store has already
     // surfaced the error toast.
     expect(screen.getByRole('alertdialog')).toBeInTheDocument()
@@ -231,6 +237,9 @@ describe('ApprovalDetailDrawer', () => {
     await user.type(screen.getByLabelText('Rejection reason'), 'Missing context')
     const rejectDialog = screen.getByRole('alertdialog')
     await user.click(within(rejectDialog).getByRole('button', { name: /reject/i }))
+    await waitFor(() => {
+      expect(defaultHandlers.onReject).toHaveBeenCalledOnce()
+    })
     expect(screen.getByRole('alertdialog')).toBeInTheDocument()
     expect(
       (screen.getByLabelText('Rejection reason') as HTMLTextAreaElement).value,

@@ -14,20 +14,18 @@ describe('useQualityOverridesStore', () => {
   })
 
   describe('getOverride', () => {
-    it('returns the override when present', async () => {
+    it('returns { kind: "ok", data } when the override is present', async () => {
       const result = await useQualityOverridesStore
         .getState()
         .getOverride('agent-1')
 
-      // Assert non-null explicitly before inspecting properties so a
-      // regression that drops the override surfaces a clear failure
-      // message instead of an optional-chain silently hiding it.
-      expect(result).not.toBeNull()
-      expect(result!.agent_id).toBe('agent-1')
+      expect(result.kind).toBe('ok')
+      if (result.kind !== 'ok') throw new Error('unreachable')
+      expect(result.data.agent_id).toBe('agent-1')
       expect(useToastStore.getState().toasts).toHaveLength(0)
     })
 
-    it('returns null silently on 404 (no active override)', async () => {
+    it('returns { kind: "missing" } silently on 404 (no active override)', async () => {
       server.use(
         http.get('/api/v1/agents/:id/quality/override', () =>
           HttpResponse.json(apiError('not found'), { status: 404 }),
@@ -38,12 +36,12 @@ describe('useQualityOverridesStore', () => {
         .getState()
         .getOverride('agent-1')
 
-      expect(result).toBeNull()
+      expect(result.kind).toBe('missing')
       // 404 is steady-state for most agents; don't shout about it.
       expect(useToastStore.getState().toasts).toHaveLength(0)
     })
 
-    it('toasts on non-404 failures and returns null', async () => {
+    it('toasts on non-404 failures and returns { kind: "error" }', async () => {
       server.use(
         http.get('/api/v1/agents/:id/quality/override', () =>
           HttpResponse.json(apiError('boom'), { status: 500 }),
@@ -54,7 +52,7 @@ describe('useQualityOverridesStore', () => {
         .getState()
         .getOverride('agent-1')
 
-      expect(result).toBeNull()
+      expect(result.kind).toBe('error')
       const toasts = useToastStore.getState().toasts
       expect(toasts).toHaveLength(1)
       expect(toasts[0]!.variant).toBe('error')

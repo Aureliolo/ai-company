@@ -142,7 +142,10 @@ export const useArtifactsStore = create<ArtifactsState>()((set) => ({
       })
       return true
     } catch (err) {
-      log.error('Delete artifact failed:', sanitizeForLog(err))
+      log.error(
+        'Delete artifact failed:',
+        sanitizeForLog({ artifactId: id, error: err }),
+      )
       useToastStore.getState().add({
         variant: 'error',
         title: 'Failed to delete artifact',

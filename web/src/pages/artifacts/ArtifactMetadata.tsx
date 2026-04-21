@@ -43,13 +43,19 @@ export function ArtifactMetadata({ artifact }: ArtifactMetadataProps) {
 
   async function handleDelete(): Promise<boolean> {
     setDeleting(true)
-    const ok = await useArtifactsStore.getState().deleteArtifact(artifact.id)
-    setDeleting(false)
-    if (ok) {
-      setDeleteOpen(false)
-      navigate(ROUTES.ARTIFACTS)
+    try {
+      const ok = await useArtifactsStore.getState().deleteArtifact(artifact.id)
+      if (ok) {
+        setDeleteOpen(false)
+        navigate(ROUTES.ARTIFACTS)
+      }
+      return ok
+    } finally {
+      // Always clear the in-flight flag so the UI stays responsive even
+      // if the store ever throws (the sentinel contract says it should
+      // not, but the finally keeps the primitive honest).
+      setDeleting(false)
     }
-    return ok
   }
 
   return (

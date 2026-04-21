@@ -64,10 +64,14 @@ function isApprovalShape(
 
 /**
  * Return a sanitized copy of an ``ApprovalResponse`` with every
- * untrusted string field (and every metadata entry) routed through
- * ``sanitizeWsString``. Structurally required fields fall back to
- * ``''`` if sanitization drops them; the shape guard above has already
- * verified they are non-empty strings at ingress time.
+ * untrusted WS-origin string field (identifier, action type,
+ * enum-typed labels, timestamps, decision fields, and every metadata
+ * entry) routed through ``sanitizeWsString``. The shape guard above
+ * has already verified the required fields are non-empty strings at
+ * ingress time; structurally required fields fall back to ``''`` if
+ * sanitization drops them. Optional string fields preserve their
+ * ``null``/``undefined`` signal so downstream code can still branch
+ * on presence.
  */
 function sanitizeApproval(c: ApprovalResponse): ApprovalResponse {
   const metadata: Record<string, string> = {}
@@ -76,11 +80,26 @@ function sanitizeApproval(c: ApprovalResponse): ApprovalResponse {
     const safeValue = sanitizeWsString(value, 512) ?? ''
     if (safeKey) metadata[safeKey] = safeValue
   }
+  const sanitizeNullable = (value: string | null, cap: number): string | null =>
+    value === null ? null : sanitizeWsString(value, cap) ?? ''
   return {
     ...c,
+    id: sanitizeWsString(c.id, 128) ?? '',
+    status: (sanitizeWsString(c.status, 64) ?? '') as ApprovalResponse['status'],
     title: sanitizeWsString(c.title, 256) ?? '',
+    risk_level:
+      (sanitizeWsString(c.risk_level, 64) ?? '') as ApprovalResponse['risk_level'],
+    urgency_level:
+      (sanitizeWsString(c.urgency_level, 64) ?? '') as ApprovalResponse['urgency_level'],
+    action_type: sanitizeWsString(c.action_type, 128) ?? '',
     description: sanitizeWsString(c.description, 2048) ?? '',
     requested_by: sanitizeWsString(c.requested_by, 128) ?? '',
+    created_at: sanitizeWsString(c.created_at, 64) ?? '',
+    expires_at: sanitizeNullable(c.expires_at, 64),
+    decided_by: sanitizeNullable(c.decided_by, 128),
+    decided_at: sanitizeNullable(c.decided_at, 64),
+    decision_reason: sanitizeNullable(c.decision_reason, 2048),
+    task_id: sanitizeNullable(c.task_id, 128),
     metadata,
   }
 }

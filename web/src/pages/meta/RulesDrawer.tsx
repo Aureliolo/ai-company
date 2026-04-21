@@ -92,16 +92,19 @@ export function RulesDrawer({
   )
 
   const handleDeleteConfirm = useCallback(async () => {
-    if (!deleteTarget) return
+    if (!deleteTarget) return false
     setDeleting(true)
     // Sentinel-return contract: the store emits both the success and
-    // error toast. Caller only decides whether to refresh + close.
+    // error toast. On success, refresh + close the dialog by clearing
+    // deleteTarget; on failure, leave the dialog open so the user can
+    // retry without losing their place (returning false tells the
+    // ConfirmDialog primitive not to auto-close).
     const ok = await deleteRule(deleteTarget)
     setDeleting(false)
+    if (!ok) return false
     setDeleteTarget(null)
-    if (ok) {
-      await onRefresh()
-    }
+    await onRefresh()
+    return true
   }, [deleteTarget, deleteRule, onRefresh])
 
   const handleDrawerClose = useCallback(() => {

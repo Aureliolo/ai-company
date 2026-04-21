@@ -12,9 +12,11 @@ const log = createLogger('messages')
 const MESSAGES_FETCH_LIMIT = 50
 
 /**
- * Type predicate verifying that ``c`` carries every field on the
- * ``Message`` interface. Once it returns true the consumer can use
- * ``c`` as a ``Message`` without a cast.
+ * Shallow structural check: every ``Message`` string field is a
+ * ``string`` on the wire and ``attachments`` / ``metadata`` have the
+ * right container shape. Actual sanitization + non-empty enforcement
+ * happens in ``parseWsMessage`` -- this guard only rejects payloads
+ * whose fields are the wrong *type* before we attempt to sanitize.
  */
 function isMessageShape(
   c: Record<string, unknown>,
@@ -36,11 +38,14 @@ function isMessageShape(
 }
 
 /**
- * Validate a WS payload and return a typed Message with all untrusted
- * string fields sanitized, or null if malformed. Sanitization strips
- * control characters and bidi-overrides and caps length so rendered
- * messages cannot smuggle control chars through the UI. (Unsanitized
- * fields are dropped by the shape check above.)
+ * Validate a WS payload and return a typed Message with every
+ * untrusted string field sanitized, or null if malformed. All string
+ * fields (``id``, ``timestamp``, ``sender``, ``to``, ``channel``,
+ * ``content``, ``type``, ``priority``) go through ``sanitizeWsString``
+ * to strip control chars and bidi-overrides and cap length. A required
+ * string that sanitizes to empty causes the whole payload to be
+ * rejected -- a message with no stable id or with a blank channel
+ * cannot be displayed correctly, so there is no safe fallback.
  */
 function parseWsMessage(
   payload: WsEvent['payload'],
@@ -64,16 +69,34 @@ function parseWsMessage(
     return null
   }
 
-  // Sanitize untrusted string fields before the Message escapes to
-  // stores/UI. isMessageShape already guarantees `string` types, so
-  // `sanitizeWsString` always returns a string here; we coerce with
-  // `?? ''` to keep TS happy.
+  const id = sanitizeWsString(c.id, 128) ?? ''
+  const timestamp = sanitizeWsString(c.timestamp, 64) ?? ''
+  const sender = sanitizeWsString(c.sender) ?? ''
+  const to = sanitizeWsString(c.to) ?? ''
+  const channel = sanitizeWsString(c.channel) ?? ''
+  const content = sanitizeWsString(c.content, 4096) ?? ''
+  const type = sanitizeWsString(c.type, 64) ?? ''
+  const priority = sanitizeWsString(c.priority, 64) ?? ''
+
+  if (!id || !timestamp || !sender || !channel || !type || !priority) {
+    log.error('WS message blanked by sanitization, skipping', {
+      id: sanitizeForLog(c.id),
+      hasBlankId: id.length === 0,
+      hasBlankChannel: channel.length === 0,
+    })
+    return null
+  }
+
   return {
     ...c,
-    sender: sanitizeWsString(c.sender) ?? '',
-    to: sanitizeWsString(c.to) ?? '',
-    channel: sanitizeWsString(c.channel) ?? '',
-    content: sanitizeWsString(c.content, 4096) ?? '',
+    id,
+    timestamp,
+    sender,
+    to,
+    channel,
+    content,
+    type: type as Message['type'],
+    priority: priority as Message['priority'],
   }
 }
 

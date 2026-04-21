@@ -558,6 +558,12 @@ const connectPromise = useWebSocketStore.getState().connect()
       const ws = MockWebSocket.latest()!
       ws.simulateOpen()
       ws.simulateMessage({ action: 'auth_ok' })
+      // Lock in the helper's contract: every test in this describe
+      // block assumes the store has finished the auth handshake before
+      // it starts asserting timer behaviour. If a regression stops
+      // flipping `connected` after auth_ok, fail here with a clear
+      // message rather than in a downstream heartbeat assertion.
+      expect(useWebSocketStore.getState().connected).toBe(true)
       return ws
     }
 

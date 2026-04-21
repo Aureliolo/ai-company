@@ -107,17 +107,20 @@ function isDependenciesShape(value: unknown): value is string[] {
 
 /**
  * Each ``acceptance_criteria`` entry must be a non-null object with a
- * string ``description`` (the only field ``sanitizeTask`` reads). A
- * bare shape check here keeps ``sanitizeTask.ac.description`` safe
- * from malformed payloads smuggling non-string values.
+ * string ``description`` AND a boolean ``met`` flag. Both fields are
+ * part of the declared ``Task.acceptance_criteria`` shape; asserting
+ * only ``description`` would let a malformed payload build a ``Task``
+ * with ``criterion.met`` typed as something other than ``boolean``
+ * and break every downstream consumer that branches on it.
  */
 function isAcceptanceCriteriaShape(
   value: unknown,
-): value is Array<{ description: string }> {
+): value is Array<{ description: string; met: boolean }> {
   if (!Array.isArray(value)) return false
   return value.every((ac) => {
     if (typeof ac !== 'object' || ac === null || Array.isArray(ac)) return false
-    return typeof (ac as { description?: unknown }).description === 'string'
+    const entry = ac as { description?: unknown; met?: unknown }
+    return typeof entry.description === 'string' && typeof entry.met === 'boolean'
   })
 }
 
