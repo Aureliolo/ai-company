@@ -279,6 +279,20 @@ async def _on_event(
     neither case is the socket closed -- a single slow consumer or one
     oversized emitter must not nuke the channel for everyone.
     """
+    # Size-gate before parsing: a 30-MiB malformed frame should not
+    # consume the JSON parser at all. We don't have channel/event_type
+    # until after parse, but the DoS signal is the byte count itself,
+    # and an oversized drop doesn't need the metadata to be useful.
+    size_bytes = len(event_data)
+    if size_bytes > _MAX_OUTBOUND_EVENT_BYTES:
+        logger.warning(
+            API_WS_EVENT_DROPPED,
+            size_bytes=size_bytes,
+            max_bytes=_MAX_OUTBOUND_EVENT_BYTES,
+            reason="oversized_pre_parse",
+        )
+        return
+
     event = parse_event_payload(event_data)
     if event is None:
         return
@@ -298,16 +312,6 @@ async def _on_event(
         return
 
     event_type = event.get("event_type", "")
-    size_bytes = len(event_data)
-    if size_bytes > _MAX_OUTBOUND_EVENT_BYTES:
-        logger.warning(
-            API_WS_EVENT_DROPPED,
-            channel=channel,
-            event_type=str(event_type),
-            size_bytes=size_bytes,
-            max_bytes=_MAX_OUTBOUND_EVENT_BYTES,
-        )
-        return
 
     try:
         queue.put_nowait(event_data)

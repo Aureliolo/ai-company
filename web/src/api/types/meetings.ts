@@ -44,6 +44,16 @@ export type MeetingPhase =
   | 'synthesis'
   | 'summary'
 
+export const MEETING_PHASE_VALUES = [
+  'agenda_broadcast',
+  'round_robin_turn',
+  'position_paper',
+  'input_gathering',
+  'discussion',
+  'synthesis',
+  'summary',
+] as const satisfies readonly MeetingPhase[]
+
 export interface MeetingContribution {
   agent_id: string
   content: string

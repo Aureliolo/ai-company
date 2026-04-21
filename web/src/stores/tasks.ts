@@ -102,16 +102,6 @@ interface TasksState {
 const pendingTransitions = new Set<string>()
 
 /**
- * Minimum structural check for a ``Task``-shaped WS payload. Validates
- * the required identifier + enum-typed fields (``status``, ``priority``,
- * ``type`` -- each checked against the canonical enum tuple so illegal
- * values cannot be smuggled in) and the two required array fields
- * (``dependencies``, ``acceptance_criteria``). Additional ``Task``
- * fields (``created_at``, ``updated_at``, ``assigned_to``, ...) are
- * intentionally not checked here -- the server is the source of truth
- * for those and the guard stays focused on the fields the store reads.
- */
-/**
  * Return a sanitized copy of a ``Task`` with every untrusted string
  * field routed through ``sanitizeWsString`` so control chars and
  * bidi overrides never reach the rendered UI. ``dependencies`` is a
@@ -233,6 +223,15 @@ function isOptionalString(value: unknown): boolean {
   return value === undefined || typeof value === 'string'
 }
 
+/**
+ * Minimum structural check for a ``Task``-shaped WS payload. Validates
+ * the required identifier + enum-typed fields (``status``, ``priority``,
+ * ``type``, ``estimated_complexity``, ``coordination_topology`` -- each
+ * checked against the canonical enum tuple so illegal values cannot be
+ * smuggled in), the array fields (``reviewers``, ``dependencies``,
+ * ``delegation_chain``, ``artifacts_expected``, ``acceptance_criteria``),
+ * and the nullable / optional scalars that ``sanitizeTask`` reads.
+ */
 function isTaskShape(c: Record<string, unknown>): c is Record<string, unknown> & Task {
   return (
     typeof c.id === 'string' &&
@@ -426,17 +425,36 @@ export const useTasksStore = create<TasksState>()((set, get) => ({
     if (payload.task && typeof payload.task === 'object' && !Array.isArray(payload.task)) {
       const candidate = payload.task as Record<string, unknown>
       if (isTaskShape(candidate)) {
-        if (pendingTransitions.has(candidate.id)) return
+        // Sanitize identifier fields *before* the pendingTransitions
+        // check so a frame whose id carries an embedded bidi override
+        // or control character can't bypass the optimistic-transition
+        // gate (which keys off the raw id) and then sanitize down to
+        // the plain id to overwrite the real task. We also reject
+        // when sanitization *mutates* an id -- that means the wire
+        // value carried control/bidi chars and we can't trust it to
+        // point at the intended record.
         const sanitized = sanitizeTask(candidate)
-        if (!sanitized.id) {
-          // Whitespace-only / all-control-char id sanitizes to '';
-          // upserting under '' would collide unrelated tasks.
+        const idsMutated =
+          sanitized.id !== candidate.id ||
+          sanitized.project !== candidate.project ||
+          sanitized.created_by !== candidate.created_by
+        if (
+          !sanitized.id ||
+          !sanitized.project ||
+          !sanitized.created_by ||
+          idsMutated
+        ) {
           log.error(
-            'Task payload has empty id after sanitization, skipping upsert',
-            { id: sanitizeForLog(candidate.id) },
+            'Task payload lost or mutated required identifiers during sanitization, skipping upsert',
+            sanitizeForLog({
+              id: candidate.id,
+              project: candidate.project,
+              created_by: candidate.created_by,
+            }),
           )
           return
         }
+        if (pendingTransitions.has(sanitized.id)) return
         get().upsertTask(sanitized)
       } else {
         log.error('Received malformed task WS payload, skipping upsert', {

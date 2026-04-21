@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import * as meetingsApi from '@/api/endpoints/meetings'
 import {
+  MEETING_PHASE_VALUES,
   MEETING_PROTOCOL_TYPE_VALUES,
   MEETING_STATUS_VALUES,
 } from '@/api/types/meetings'
@@ -27,15 +28,7 @@ const log = createLogger('meetings')
 const MEETING_STATUS_SET: ReadonlySet<string> = new Set<string>(MEETING_STATUS_VALUES)
 const MEETING_PROTOCOL_TYPE_SET: ReadonlySet<string> = new Set<string>(MEETING_PROTOCOL_TYPE_VALUES)
 const PRIORITY_SET: ReadonlySet<string> = new Set<string>(PRIORITY_VALUES)
-const MEETING_PHASE_SET: ReadonlySet<string> = new Set<string>([
-  'agenda_broadcast',
-  'round_robin_turn',
-  'position_paper',
-  'input_gathering',
-  'discussion',
-  'synthesis',
-  'summary',
-])
+const MEETING_PHASE_SET: ReadonlySet<string> = new Set<string>(MEETING_PHASE_VALUES)
 
 /** Validate that a ``token_usage_by_participant`` map is a plain ``Record<string, number>``. */
 function isTokenUsageMap(value: unknown): value is Record<string, number> {
