@@ -454,9 +454,19 @@ const handler = vi.fn()
       const ws = MockWebSocket.latest()!
       ws.simulateOpen()
 
-      // Simulate oversized raw message (> 32_768 bytes).
-      // Uses ASCII 'x' so char count == byte count (estimateByteLength uses TextEncoder).
-      const oversized = 'x'.repeat(32_769)
+      // Build a syntactically valid JSON frame whose encoded byte
+      // length exceeds the 32 KiB inbound cap. Using valid JSON makes
+      // the test exercise the size gate specifically; raw 'x'*N would
+      // also trip the JSON parser and the assertion could pass for
+      // the wrong reason.
+      const oversized = JSON.stringify({
+        type: 'task_update',
+        channel: 'tasks',
+        payload: { text: 'x'.repeat(33_000) },
+      })
+      expect(new TextEncoder().encode(oversized).byteLength).toBeGreaterThan(
+        32_768,
+      )
       ws.onmessage?.({ data: oversized })
 
       expect(handler).not.toHaveBeenCalled()

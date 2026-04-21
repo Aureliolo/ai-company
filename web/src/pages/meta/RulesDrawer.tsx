@@ -64,12 +64,14 @@ export function RulesDrawer({
     [customRules],
   )
 
-  const handleBuilderClose = useCallback(async () => {
-    setView('list')
-    setEditRule(null)
+  const safeRefresh = useCallback(async () => {
     try {
       await onRefresh()
     } catch (err) {
+      // onRefresh typically loads the rule list from a parent page;
+      // a transient failure there shouldn't swallow the mutation's
+      // success but the user still needs to know the list may be
+      // stale.
       addToast({
         variant: 'error',
         title: 'Failed to refresh rules',
@@ -78,6 +80,12 @@ export function RulesDrawer({
     }
   }, [onRefresh, addToast])
 
+  const handleBuilderClose = useCallback(async () => {
+    setView('list')
+    setEditRule(null)
+    await safeRefresh()
+  }, [safeRefresh])
+
   const handleToggle = useCallback(
     async (_name: string, id?: string) => {
       if (!id) return
@@ -85,10 +93,10 @@ export function RulesDrawer({
       // Only null-check to decide whether to refresh the list.
       const toggled = await toggleRule(id)
       if (toggled) {
-        await onRefresh()
+        await safeRefresh()
       }
     },
-    [toggleRule, onRefresh],
+    [toggleRule, safeRefresh],
   )
 
   const handleDeleteConfirm = useCallback(async () => {
@@ -103,9 +111,9 @@ export function RulesDrawer({
     setDeleting(false)
     if (!ok) return false
     setDeleteTarget(null)
-    await onRefresh()
+    await safeRefresh()
     return true
-  }, [deleteTarget, deleteRule, onRefresh])
+  }, [deleteTarget, deleteRule, safeRefresh])
 
   const handleDrawerClose = useCallback(() => {
     setView('list')

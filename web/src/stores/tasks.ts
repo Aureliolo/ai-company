@@ -88,6 +88,10 @@ const pendingTransitions = new Set<string>()
 function sanitizeTask(c: Task): Task {
   return {
     ...c,
+    id: sanitizeWsString(c.id, 128) ?? '',
+    status: (sanitizeWsString(c.status, 64) ?? '') as Task['status'],
+    priority: (sanitizeWsString(c.priority, 64) ?? '') as Task['priority'],
+    type: (sanitizeWsString(c.type, 64) ?? '') as Task['type'],
     title: sanitizeWsString(c.title, 256) ?? '',
     description: sanitizeWsString(c.description, 4096) ?? '',
     dependencies: c.dependencies
@@ -130,6 +134,7 @@ function isTaskShape(c: Record<string, unknown>): c is Record<string, unknown> &
     typeof c.status === 'string' &&
     TASK_STATUS_SET.has(c.status) &&
     typeof c.title === 'string' &&
+    typeof c.description === 'string' &&
     typeof c.priority === 'string' &&
     TASK_PRIORITY_SET.has(c.priority) &&
     typeof c.type === 'string' &&
@@ -274,7 +279,17 @@ export const useTasksStore = create<TasksState>()((set, get) => ({
       const candidate = payload.task as Record<string, unknown>
       if (isTaskShape(candidate)) {
         if (pendingTransitions.has(candidate.id)) return
-        get().upsertTask(sanitizeTask(candidate))
+        const sanitized = sanitizeTask(candidate)
+        if (!sanitized.id) {
+          // Whitespace-only / all-control-char id sanitizes to '';
+          // upserting under '' would collide unrelated tasks.
+          log.error(
+            'Task payload has empty id after sanitization, skipping upsert',
+            { id: sanitizeForLog(candidate.id) },
+          )
+          return
+        }
+        get().upsertTask(sanitized)
       } else {
         log.error('Received malformed task WS payload, skipping upsert', {
           id: sanitizeForLog(candidate.id),

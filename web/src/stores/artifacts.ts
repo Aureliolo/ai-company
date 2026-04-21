@@ -126,8 +126,14 @@ export const useArtifactsStore = create<ArtifactsState>()((set) => ({
   deleteArtifact: async (id: string) => {
     try {
       await deleteArtifactApi(id)
+      // Advance both request tokens *before* mutating state so any
+      // in-flight fetchArtifacts/fetchArtifactDetail response that
+      // resolves after this call returns is treated as stale and
+      // cannot reintroduce the deleted artifact.
+      _listRequestToken++
       set((state) => {
         const isSelected = state.selectedArtifact?.id === id
+        if (isSelected) _detailRequestToken++
         return {
           artifacts: state.artifacts.filter((a) => a.id !== id),
           totalArtifacts: Math.max(0, state.totalArtifacts - 1),

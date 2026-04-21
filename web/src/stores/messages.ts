@@ -87,6 +87,33 @@ function parseWsMessage(
     return null
   }
 
+  // Sanitize nested structures: attachment.ref is a WS-origin string,
+  // and metadata.extra is an array of [string, string] tuples whose
+  // keys and values come straight off the wire.
+  const attachments = c.attachments.map((att) => ({
+    type: att.type,
+    ref: sanitizeWsString(att.ref, 512) ?? '',
+  }))
+  const metadata = {
+    task_id:
+      c.metadata.task_id === null
+        ? null
+        : sanitizeWsString(c.metadata.task_id, 128) ?? '',
+    project_id:
+      c.metadata.project_id === null
+        ? null
+        : sanitizeWsString(c.metadata.project_id, 128) ?? '',
+    tokens_used: c.metadata.tokens_used,
+    cost: c.metadata.cost,
+    extra: c.metadata.extra.map(
+      ([k, v]) =>
+        [
+          sanitizeWsString(k, 64) ?? '',
+          sanitizeWsString(v, 512) ?? '',
+        ] as [string, string],
+    ),
+  }
+
   return {
     ...c,
     id,
@@ -97,6 +124,8 @@ function parseWsMessage(
     content,
     type: type as Message['type'],
     priority: priority as Message['priority'],
+    attachments,
+    metadata,
   }
 }
 

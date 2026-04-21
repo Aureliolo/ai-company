@@ -54,6 +54,7 @@ function isApprovalShape(
     typeof c.title === 'string' &&
     typeof c.risk_level === 'string' &&
     APPROVAL_RISK_LEVEL_SET.has(c.risk_level) &&
+    typeof c.urgency_level === 'string' &&
     typeof c.action_type === 'string' &&
     typeof c.description === 'string' &&
     typeof c.requested_by === 'string' &&
@@ -261,7 +262,18 @@ export const useApprovalsStore = create<ApprovalsState>()((set, get) => ({
       const candidate = payload.approval as Record<string, unknown>
       if (isApprovalShape(candidate)) {
         if (pendingTransitions.has(candidate.id)) return
-        get().upsertApproval(sanitizeApproval(candidate))
+        const sanitized = sanitizeApproval(candidate)
+        if (!sanitized.id) {
+          // Whitespace-only / all-control-char id passes the shape
+          // guard but sanitizes to ''; upserting under '' would
+          // collide unrelated approvals.
+          log.error(
+            'Approval payload has empty id after sanitization, skipping upsert',
+            { id: sanitizeForLog(candidate.id) },
+          )
+          return
+        }
+        get().upsertApproval(sanitized)
       } else {
         log.error('Received malformed approval payload, skipping upsert', {
           id: sanitizeForLog(candidate.id),

@@ -371,7 +371,11 @@ async def _send_auth_ok(socket: WebSocket[Any, Any, Any]) -> None:
         )
         await socket.close(code=1011, reason="Internal error")
         raise
-    logger.debug(API_WS_AUTH_OK, client=str(socket.client))
+    # auth_ok is the handshake state transition: "authenticated" ->
+    # "ready to serve". Logging rules require state transitions at
+    # INFO so operational dashboards can see the connection lifecycle
+    # without turning on DEBUG-level noise.
+    logger.info(API_WS_AUTH_OK, client=str(socket.client))
 
 
 async def _authenticate_ws(
@@ -549,16 +553,22 @@ async def ws_handler(
         consumer_task.cancel()
         try:
             await consumer_task
-        except asyncio.CancelledError, WebSocketDisconnect:
-            # Swallow: the CancelledError is raised by our own
-            # ``consumer_task.cancel()`` above, not by an outer
-            # cancellation. Litestar's WS handler runs each connection
-            # in its own Task; an outer server-shutdown CancelledError
-            # would interrupt this ``await`` the same way, but the
-            # surrounding ``async with`` and the framework's task
-            # manager will re-raise shutdown via subsequent awaits
-            # (e.g. ``unsubscribe`` below). Catching here does not
-            # eat shutdown.
+        except asyncio.CancelledError:
+            # Distinguish "our own cancel of the child" from "outer
+            # cancellation of this handler task" (server shutdown,
+            # client-bound timeout, etc.). ``cancelling()`` counts
+            # outstanding cancel() calls on the *current* task, so a
+            # non-zero value means the parent is being torn down and
+            # we must re-raise rather than swallow. Swallowing both
+            # would defer shutdown to later awaits (unsubscribe) and
+            # mask cancellation in the narrow window where that await
+            # succeeds.
+            current = asyncio.current_task()
+            if current is not None and current.cancelling() > 0:
+                raise
+        except WebSocketDisconnect:
+            # Client-initiated disconnect; consumer saw it first and
+            # propagated. Normal teardown, safe to swallow.
             pass
         except Exception:
             logger.error(

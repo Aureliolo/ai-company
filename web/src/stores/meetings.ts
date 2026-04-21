@@ -9,7 +9,10 @@ import { getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 import { createLogger } from '@/lib/logger'
 import type {
+  MeetingAgenda,
+  MeetingContribution,
   MeetingFilters,
+  MeetingMinutes,
   MeetingResponse,
   TriggerMeetingRequest,
 } from '@/api/types/meetings'
@@ -78,6 +81,62 @@ function isMeetingShape(
  * ``contribution_rank`` agent ids, and the participant-id keys of
  * ``token_usage_by_participant``.
  */
+function sanitizeAgenda(agenda: MeetingAgenda): MeetingAgenda {
+  return {
+    title: sanitizeWsString(agenda.title, 256) ?? '',
+    context: sanitizeWsString(agenda.context, 2048) ?? '',
+    items: agenda.items.map((item) => ({
+      title: sanitizeWsString(item.title, 256) ?? '',
+      description: sanitizeWsString(item.description, 1024) ?? '',
+      presenter_id:
+        item.presenter_id === null
+          ? null
+          : sanitizeWsString(item.presenter_id, 128) ?? '',
+    })),
+  }
+}
+
+function sanitizeContribution(c: MeetingContribution): MeetingContribution {
+  return {
+    ...c,
+    agent_id: sanitizeWsString(c.agent_id, 128) ?? '',
+    content: sanitizeWsString(c.content, 4096) ?? '',
+    timestamp: sanitizeWsString(c.timestamp, 64) ?? '',
+  }
+}
+
+function sanitizeMeetingMinutes(
+  minutes: MeetingMinutes | null,
+): MeetingMinutes | null {
+  if (minutes === null) return null
+  return {
+    ...minutes,
+    meeting_id: sanitizeWsString(minutes.meeting_id, 128) ?? '',
+    protocol_type:
+      (sanitizeWsString(minutes.protocol_type, 64) ?? '') as MeetingMinutes['protocol_type'],
+    leader_id: sanitizeWsString(minutes.leader_id, 128) ?? '',
+    participant_ids: minutes.participant_ids
+      .map((id) => sanitizeWsString(id, 128) ?? '')
+      .filter((id) => id.length > 0),
+    agenda: sanitizeAgenda(minutes.agenda),
+    contributions: minutes.contributions.map(sanitizeContribution),
+    summary: sanitizeWsString(minutes.summary, 4096) ?? '',
+    decisions: minutes.decisions
+      .map((d) => sanitizeWsString(d, 1024) ?? '')
+      .filter((d) => d.length > 0),
+    action_items: minutes.action_items.map((ai) => ({
+      description: sanitizeWsString(ai.description, 1024) ?? '',
+      assignee_id:
+        ai.assignee_id === null
+          ? null
+          : sanitizeWsString(ai.assignee_id, 128) ?? '',
+      priority: ai.priority,
+    })),
+    started_at: sanitizeWsString(minutes.started_at, 64) ?? '',
+    ended_at: sanitizeWsString(minutes.ended_at, 64) ?? '',
+  }
+}
+
 function sanitizeMeeting(c: MeetingResponse): MeetingResponse {
   const tokenUsage: Record<string, number> = {}
   for (const [participantId, count] of Object.entries(c.token_usage_by_participant)) {
@@ -94,6 +153,7 @@ function sanitizeMeeting(c: MeetingResponse): MeetingResponse {
     protocol_type: (sanitizeWsString(c.protocol_type, 64) ?? '') as MeetingResponse['protocol_type'],
     error_message:
       c.error_message === null ? null : sanitizeWsString(c.error_message, 512) ?? '',
+    minutes: sanitizeMeetingMinutes(c.minutes),
     token_usage_by_participant: tokenUsage,
     contribution_rank: c.contribution_rank
       .map((agentId) => sanitizeWsString(agentId, 128) ?? '')
@@ -217,7 +277,19 @@ export const useMeetingsStore = create<MeetingsState>()((set, get) => ({
     }
     const candidate = payload.meeting as Record<string, unknown>
     if (isMeetingShape(candidate)) {
-      get().upsertMeeting(sanitizeMeeting(candidate))
+      const sanitized = sanitizeMeeting(candidate)
+      if (!sanitized.meeting_id) {
+        // sanitizeWsString can return '' for a whitespace-only or
+        // all-control-char id that isMeetingShape accepted as a
+        // string. Upserting under '' would collapse unrelated meetings
+        // into the same slot -- skip and log instead.
+        log.error(
+          'Meeting payload has empty id after sanitization, skipping upsert',
+          { meeting_id: sanitizeForLog(candidate.meeting_id) },
+        )
+        return
+      }
+      get().upsertMeeting(sanitized)
     } else {
       log.error('Received malformed meeting WS payload, skipping upsert', {
         meeting_id: sanitizeForLog(candidate.meeting_id),

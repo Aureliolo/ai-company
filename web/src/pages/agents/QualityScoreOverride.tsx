@@ -77,7 +77,13 @@ export function QualityScoreOverride({
       reason: reason.trim(),
       expires_in_days: expiresInDays,
     })
-    if (activeAgentRef.current !== requestAgent) return
+    if (activeAgentRef.current !== requestAgent) {
+      // Stale agent: clear the submit flag so the new agent's form
+      // isn't stuck with a spinning button, but don't touch score /
+      // reason / override state which now belong to the new view.
+      setSubmitting(false)
+      return
+    }
     setSubmitting(false)
     if (data) {
       setOverride(data)
@@ -92,10 +98,10 @@ export function QualityScoreOverride({
     const requestAgent = agentId
     const ok = await useQualityOverridesStore.getState().clearOverride(requestAgent)
     if (activeAgentRef.current !== requestAgent) {
-      // Stale agent -- keep the dialog open so ConfirmDialog's sentinel
-      // behaviour doesn't close something that now belongs to a
-      // different view. `clearing` is intentionally left set until a
-      // fresh fetch resets it via the next `handleClear` invocation.
+      // Stale agent: reset the busy flag so the UI for the new agent
+      // isn't stuck with a spinning button, then bail out without
+      // touching any state that now belongs to a different view.
+      setClearing(false)
       return false
     }
     setClearing(false)
