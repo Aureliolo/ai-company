@@ -3,6 +3,8 @@
 import re
 from typing import TYPE_CHECKING, Any
 
+from synthorg.observability.redaction import scrub_secret_tokens
+
 if TYPE_CHECKING:
     from collections.abc import Mapping, MutableMapping
 
@@ -68,3 +70,57 @@ def sanitize_sensitive_fields(
         )
         for key, value in event_dict.items()
     }
+
+
+def _scrub_value(value: Any) -> Any:
+    """Recursively scrub credential patterns out of string values.
+
+    Traverses nested ``dict`` / ``list`` / ``tuple`` structures, applying
+    :func:`synthorg.observability.redaction.scrub_secret_tokens` to every
+    string leaf.  Non-string leaves are returned unchanged.
+
+    Args:
+        value: The value to scrub.
+
+    Returns:
+        A new structure with every string leaf scrubbed.
+    """
+    if isinstance(value, str):
+        return scrub_secret_tokens(value)
+    if isinstance(value, dict):
+        return {k: _scrub_value(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_scrub_value(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_scrub_value(item) for item in value)
+    return value
+
+
+def scrub_event_fields(
+    logger: Any,  # noqa: ARG001
+    method_name: str,  # noqa: ARG001
+    event_dict: MutableMapping[str, Any],
+) -> Mapping[str, Any]:
+    """Deep-scrub credential patterns out of every string value.
+
+    Belt-and-braces defence against the ``error=str(exc)`` leak vector
+    (SEC-1 / audit finding 90): even when a caller embeds a stringified
+    exception (or response body) that carries ``client_secret=...``,
+    ``"access_token":"..."``, ``Authorization: Bearer ...``, or raw
+    Fernet ciphertext, this processor rewrites the string so those
+    substrings are masked before the renderer sees them.
+
+    Runs *after* ``sanitize_sensitive_fields`` so keys that the
+    field-name scrubber already replaced with ``**REDACTED**`` stay
+    redacted.
+
+    Args:
+        logger: The wrapped logger object (unused, required by structlog).
+        method_name: The name of the log method called (unused).
+        event_dict: The event dictionary to process.
+
+    Returns:
+        A new event dict with every string value scrubbed via
+        :func:`synthorg.observability.redaction.scrub_secret_tokens`.
+    """
+    return {key: _scrub_value(value) for key, value in event_dict.items()}

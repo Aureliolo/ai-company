@@ -19,6 +19,7 @@ from synthorg.observability.events.integrations import (
     OAUTH_DEVICE_FLOW_TIMEOUT,
     OAUTH_TOKEN_EXCHANGE_FAILED,
 )
+from synthorg.observability.redaction import safe_error_description
 
 logger = get_logger(__name__)
 
@@ -131,11 +132,15 @@ class DeviceFlow:
                 resp.raise_for_status()
                 data = resp.json()
         except (httpx.HTTPError, json.JSONDecodeError) as exc:
-            logger.exception(
+            # Scrubbed + no traceback: the POST body may carry
+            # ``client_id`` / scopes and some providers echo it back
+            # in error responses.
+            logger.warning(
                 OAUTH_TOKEN_EXCHANGE_FAILED,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
-            msg = f"Device code request failed: {exc}"
+            msg = f"Device code request failed: {type(exc).__name__}"
             raise TokenExchangeFailedError(msg) from exc
 
         # Validate the response shape before indexing / coercing:
@@ -260,11 +265,14 @@ class DeviceFlow:
                     status_code = resp.status_code
                     data = resp.json()
             except (httpx.HTTPError, json.JSONDecodeError) as exc:
-                logger.exception(
+                # The polling POST body carries the ``device_code``
+                # which is a credential until the user authorizes.
+                logger.warning(
                     OAUTH_TOKEN_EXCHANGE_FAILED,
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
-                msg = f"Device flow polling failed: {exc}"
+                msg = f"Device flow polling failed: {type(exc).__name__}"
                 raise TokenExchangeFailedError(msg) from exc
 
             if not isinstance(data, dict):

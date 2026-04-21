@@ -14,6 +14,7 @@ from synthorg.observability.events.integrations import (
     TUNNEL_STARTED,
     TUNNEL_STOPPED,
 )
+from synthorg.observability.redaction import safe_error_description
 
 logger = get_logger(__name__)
 
@@ -81,8 +82,14 @@ class NgrokAdapter:
             self._tunnel = tunnel
             self._public_url = str(tunnel.public_url)
         except Exception as exc:
-            logger.exception(TUNNEL_ERROR, error=str(exc))
-            msg = f"Failed to start ngrok tunnel: {exc}"
+            # ngrok auth token env var may be echoed in exception
+            # messages; scrub + drop traceback.
+            logger.warning(
+                TUNNEL_ERROR,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            msg = f"Failed to start ngrok tunnel: {type(exc).__name__}"
             raise TunnelError(msg) from exc
 
         logger.info(
@@ -102,10 +109,10 @@ class NgrokAdapter:
 
             await asyncio.to_thread(ngrok.disconnect, self._public_url)
         except Exception as exc:
-            logger.exception(
+            logger.warning(
                 TUNNEL_ERROR,
-                error=f"failed to disconnect: {exc}",
-                exc_type=type(exc).__name__,
+                error_type=type(exc).__name__,
+                error=f"failed to disconnect: {safe_error_description(exc)}",
             )
         self._tunnel = None
         self._public_url = None
