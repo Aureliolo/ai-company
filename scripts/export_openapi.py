@@ -13,6 +13,7 @@ API reference page (see Quick Commands in CLAUDE.md).
 """
 
 import json
+import os
 import sys
 import traceback
 from pathlib import Path
@@ -22,6 +23,13 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 OUTPUT_DIR = REPO_ROOT / "docs" / "openapi"
 SCHEMA_FILE = OUTPUT_DIR / "openapi.json"
 HTML_FILE = OUTPUT_DIR / "reference.html"
+
+# Deterministic export: without a persistence backend the app skips
+# integrations / OAuth / tunnel / webhook / connection controllers,
+# producing a partial schema that differs between environments.  Using an
+# in-memory SQLite fixture wires the full public API surface while
+# remaining ephemeral.  ``setdefault`` respects any operator override.
+os.environ.setdefault("SYNTHORG_DB_PATH", ":memory:")
 
 # Pinned for stability; update after testing newer releases in local preview.
 # When bumping SCALAR_VERSION, recompute SCALAR_SRI:

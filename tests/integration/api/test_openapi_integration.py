@@ -4,11 +4,27 @@ Exercises :func:`inject_rfc9457_responses` against the real
 Litestar-generated schema end-to-end.
 """
 
+import os
 from typing import Any
 
 import pytest
 
 from synthorg.api.openapi import inject_rfc9457_responses
+
+# Mirrors ``scripts/check_openapi_liveness.py``.  Duplicated (not imported)
+# so the test is self-contained and the canary set can evolve
+# independently of the CI gate if needed.
+_MIN_PATH_COUNT = 200
+_CANARY_PATHS = frozenset(
+    {
+        "/api/v1/health",
+        "/api/v1/agents",
+        "/api/v1/clients",
+        "/api/v1/workflows",
+        "/api/v1/budget/config",
+        "/api/v1/departments",
+    }
+)
 
 _EXPECTED_RESPONSE_KEYS = frozenset(
     {
@@ -100,4 +116,37 @@ def test_no_oneof_with_null_after_processing() -> None:
     violations = _find_oneof_with_null(result)
     assert violations == [], (
         f"oneOf-with-null found after post-processing: {violations}"
+    )
+
+
+@pytest.mark.integration
+def test_openapi_export_is_live_and_complete() -> None:
+    """Export produces a full schema under the CI determinism contract.
+
+    Mirrors ``scripts/check_openapi_liveness.py``: guards against the
+    ``SYNTHORG_DB_PATH``-unset regression that caused audit #79 to
+    report 107 missing endpoints.  If a future change removes the
+    ``setdefault`` in ``scripts/export_openapi.py`` or breaks wiring so
+    controllers silently skip registration, the export still succeeds
+    but the schema is partial; this test fails loudly in that case.
+    """
+    os.environ.setdefault("SYNTHORG_DB_PATH", ":memory:")
+
+    from synthorg.api.app import create_app
+
+    app = create_app()
+    schema = inject_rfc9457_responses(app.openapi_schema.to_schema())
+    paths = schema.get("paths") or {}
+
+    assert len(paths) >= _MIN_PATH_COUNT, (
+        f"Schema has {len(paths)} paths; expected at least {_MIN_PATH_COUNT}. "
+        "Check SYNTHORG_DB_PATH handling in scripts/export_openapi.py "
+        "and any controller wiring that depends on persistence."
+    )
+
+    missing_canary = sorted(_CANARY_PATHS - paths.keys())
+    assert not missing_canary, (
+        f"Canary endpoints missing from schema: {missing_canary}. "
+        "Either the route was removed (update _CANARY_PATHS) or wiring "
+        "regressed (fix the underlying controller)."
     )
