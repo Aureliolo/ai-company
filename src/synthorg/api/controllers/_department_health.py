@@ -11,12 +11,11 @@ from typing import TYPE_CHECKING, Self
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
-from synthorg.api.errors import ServiceUnavailableError
 from synthorg.budget.currency import DEFAULT_CURRENCY, CurrencyCode
 from synthorg.budget.trends import BucketSize, TrendDataPoint, bucket_cost_records
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
 from synthorg.core.enums import AgentStatus
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_REQUEST_ERROR
 
@@ -131,69 +130,45 @@ async def _resolve_snapshots(
     app_state: AppState,
     agent_ids: tuple[str, ...],
 ) -> tuple[AgentPerformanceSnapshot, ...]:
-    """Fetch performance snapshots for the given agent IDs."""
-    results: list[AgentPerformanceSnapshot | None] = [None] * len(agent_ids)
+    """Fetch performance snapshots for the given agent IDs.
 
-    async def _fetch(idx: int, aid: str) -> None:
-        try:
-            results[idx] = await app_state.performance_tracker.get_snapshot(
-                aid,
-            )
-        except MemoryError, RecursionError:
-            raise
-        except ServiceUnavailableError:
-            logger.warning(
-                API_REQUEST_ERROR,
-                endpoint="departments.health.snapshot",
-                agent_id=aid,
-                error="performance_tracker_unavailable",
-                exc_info=True,
-            )
-            raise
-        except Exception:
-            logger.warning(
-                API_REQUEST_ERROR,
-                endpoint="departments.health.snapshot",
-                agent_id=aid,
-                exc_info=True,
-            )
-
-    async with asyncio.TaskGroup() as tg:
-        for i, aid in enumerate(agent_ids):
-            tg.create_task(_fetch(i, aid))
-
-    return tuple(r for r in results if r is not None)
+    Delegates to ``PerformanceTracker.get_snapshots`` which computes
+    snapshots in a single batch and returns ``None`` for any agent
+    whose snapshot cannot be computed (insufficient data, strategy
+    errors).  Missing snapshots are filtered out here so callers see
+    only the successfully computed ones.
+    """
+    if not agent_ids:
+        return ()
+    snapshots = await app_state.performance_tracker.get_snapshots(
+        tuple(NotBlankStr(a) for a in agent_ids),
+    )
+    return tuple(s for s in snapshots if s is not None)
 
 
 async def _resolve_agent_ids(
     app_state: AppState,
     agent_names: tuple[str, ...],
 ) -> tuple[str, ...]:
-    """Map agent names to IDs via the registry."""
+    """Map agent names to IDs via the registry in a single batch call."""
     if not app_state.has_agent_registry:
         return ()
-    results: list[str | None] = [None] * len(agent_names)
-
-    async def _lookup(idx: int, name: str) -> None:
-        try:
-            identity = await app_state.agent_registry.get_by_name(name)
-            if identity is not None:
-                results[idx] = str(identity.id)
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
-            logger.warning(
-                API_REQUEST_ERROR,
-                endpoint="departments.health.resolve_id",
-                agent_name=name,
-                exc_info=True,
-            )
-
-    async with asyncio.TaskGroup() as tg:
-        for i, name in enumerate(agent_names):
-            tg.create_task(_lookup(i, name))
-
-    return tuple(r for r in results if r is not None)
+    if not agent_names:
+        return ()
+    try:
+        identities = await app_state.agent_registry.get_by_names(
+            tuple(NotBlankStr(n) for n in agent_names),
+        )
+    except MemoryError, RecursionError:
+        raise
+    except Exception:
+        logger.warning(
+            API_REQUEST_ERROR,
+            endpoint="departments.health.resolve_id",
+            exc_info=True,
+        )
+        return ()
+    return tuple(str(i.id) for i in identities if i is not None)
 
 
 def _mean_optional(values: list[float | None]) -> float | None:

@@ -319,8 +319,8 @@ class TestPruningCycle:
         )
 
         # Pin wall-clock to NOW so the lazy-expiration check inside
-        # ApprovalStore._check_expiration sees the same time as the
-        # pruning cycle.  Without this, real datetime.now(UTC) may
+        # ApprovalStore._check_expiration_locked sees the same time as
+        # the pruning cycle.  Without this, real datetime.now(UTC) may
         # exceed expires_at and silently expire the first approval.
         with patch(
             "synthorg.api.approval_store.datetime",

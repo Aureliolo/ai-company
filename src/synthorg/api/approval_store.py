@@ -4,8 +4,23 @@ Provides async CRUD operations for ``ApprovalItem`` instances.
 Designed to be attached to ``AppState``.  When a
 ``SQLiteApprovalRepository`` is provided, mutations are persisted
 to the database while the in-memory dict serves as a read cache.
+
+Concurrency model
+-----------------
+All mutation paths (``add``, ``save``, ``save_if_pending``,
+``_check_expiration`` write-back, and ``list_items``/``get`` cache
+populate) acquire a single instance-level ``asyncio.Lock`` so the
+check-fetch-save-cache-update region cannot interleave across
+concurrent callers.
+
+``save()`` additionally tracks in-flight saves per approval id.  When
+two concurrent callers target the same id, the second sees the
+in-flight marker and returns ``None`` (first-writer-wins).  Sequential
+saves on the same id work normally -- the in-flight set is only
+populated while a save is actively running.
 """
 
+import asyncio
 from collections.abc import Callable  # noqa: TC003
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
@@ -36,8 +51,10 @@ logger = get_logger(__name__)
 class ApprovalStore:
     """Approval store with in-memory cache and optional SQLite persistence.
 
-    Uses a plain ``dict`` for O(1) lookups by ID.  Thread-safety is
-    not needed because Litestar runs on a single event loop.
+    Uses a plain ``dict`` for O(1) lookups by ID.  A single instance
+    ``asyncio.Lock`` serialises all mutation paths so read-then-write
+    sequences (cache check + repo fetch + repo save + cache update)
+    are atomic w.r.t. concurrent callers.
 
     When ``repo`` is provided, all mutations are persisted to the
     database.  The in-memory dict serves as a read-through cache.
@@ -56,11 +73,17 @@ class ApprovalStore:
         self._items: dict[str, ApprovalItem] = {}
         self._on_expire = on_expire
         self._repo = repo
+        self._lock = asyncio.Lock()
+        # Approval ids whose ``save()`` is currently mid-flight.  A
+        # second concurrent ``save(same_id)`` observes the marker and
+        # returns ``None`` (first-writer-wins).
+        self._saves_in_flight: set[str] = set()
 
     def clear(self) -> None:
         """Reset all approval items for test isolation."""
         cleared_count = len(self._items)
         self._items.clear()
+        self._saves_in_flight.clear()
         logger.info(API_APPROVAL_STORE_CLEARED, cleared_count=cleared_count)
 
     async def add(self, item: ApprovalItem) -> None:
@@ -76,36 +99,37 @@ class ApprovalStore:
         Raises:
             ConflictError: If an item with the same ID already exists.
         """
-        if item.id in self._items:
-            msg = f"Approval {item.id!r} already exists"
-            logger.warning(
-                API_APPROVAL_CONFLICT,
-                error="duplicate",
-                approval_id=item.id,
-            )
-            raise ConflictError(msg)
-        if self._repo is not None:
-            existing = await self._repo.get(item.id)
-            if existing is not None:
-                self._items[existing.id] = existing
+        async with self._lock:
+            if item.id in self._items:
                 msg = f"Approval {item.id!r} already exists"
                 logger.warning(
                     API_APPROVAL_CONFLICT,
-                    error="duplicate_in_repo",
+                    error="duplicate",
                     approval_id=item.id,
                 )
                 raise ConflictError(msg)
-            try:
-                await self._repo.save(item)
-            except ConstraintViolationError:
-                msg = f"Approval {item.id!r} already exists"
-                logger.warning(
-                    API_APPROVAL_CONFLICT,
-                    error="constraint_violation",
-                    approval_id=item.id,
-                )
-                raise ConflictError(msg) from None
-        self._items[item.id] = item
+            if self._repo is not None:
+                existing = await self._repo.get(item.id)
+                if existing is not None:
+                    self._items[existing.id] = existing
+                    msg = f"Approval {item.id!r} already exists"
+                    logger.warning(
+                        API_APPROVAL_CONFLICT,
+                        error="duplicate_in_repo",
+                        approval_id=item.id,
+                    )
+                    raise ConflictError(msg)
+                try:
+                    await self._repo.save(item)
+                except ConstraintViolationError:
+                    msg = f"Approval {item.id!r} already exists"
+                    logger.warning(
+                        API_APPROVAL_CONFLICT,
+                        error="constraint_violation",
+                        approval_id=item.id,
+                    )
+                    raise ConflictError(msg) from None
+            self._items[item.id] = item
 
     async def get(self, approval_id: str) -> ApprovalItem | None:
         """Get an approval item by ID, applying lazy expiration.
@@ -119,14 +143,15 @@ class ApprovalStore:
         Returns:
             The approval item, or ``None`` if not found.
         """
-        item = self._items.get(approval_id)
-        if item is None and self._repo is not None:
-            item = await self._repo.get(approval_id)
-            if item is not None:
-                self._items[item.id] = item
-        if item is None:
-            return None
-        return await self._check_expiration(item)
+        async with self._lock:
+            item = self._items.get(approval_id)
+            if item is None and self._repo is not None:
+                item = await self._repo.get(approval_id)
+                if item is not None:
+                    self._items[item.id] = item
+            if item is None:
+                return None
+            return await self._check_expiration_locked(item)
 
     async def list_items(
         self,
@@ -151,65 +176,85 @@ class ApprovalStore:
         Returns:
             Tuple of matching approval items.
         """
-        if self._repo is not None:
-            repo_items = await self._repo.list_items(
-                status=status,
-                risk_level=risk_level,
-                action_type=action_type,
-            )
-            for item in repo_items:
-                self._items[item.id] = item
-            # Re-filter after expiration: _check_expiration may
-            # transition PENDING -> EXPIRED, invalidating the
-            # original status filter from the repo query.
-            result: list[ApprovalItem] = []
-            for item in repo_items:
-                checked = await self._check_expiration(item)
+        async with self._lock:
+            if self._repo is not None:
+                repo_items = await self._repo.list_items(
+                    status=status,
+                    risk_level=risk_level,
+                    action_type=action_type,
+                )
+                for item in repo_items:
+                    self._items[item.id] = item
+                # Re-filter after expiration: _check_expiration may
+                # transition PENDING -> EXPIRED, invalidating the
+                # original status filter from the repo query.
+                result: list[ApprovalItem] = []
+                for item in repo_items:
+                    checked = await self._check_expiration_locked(item)
+                    if status is not None and checked.status != status:
+                        continue
+                    if risk_level is not None and checked.risk_level != risk_level:
+                        continue
+                    result.append(checked)
+                return tuple(result)
+            checked_items: list[ApprovalItem] = []
+            for stored in list(self._items.values()):
+                checked = await self._check_expiration_locked(stored)
                 if status is not None and checked.status != status:
                     continue
                 if risk_level is not None and checked.risk_level != risk_level:
                     continue
-                result.append(checked)
-            return tuple(result)
-        checked_items: list[ApprovalItem] = []
-        for stored in list(self._items.values()):
-            checked = await self._check_expiration(stored)
-            if status is not None and checked.status != status:
-                continue
-            if risk_level is not None and checked.risk_level != risk_level:
-                continue
-            if action_type is not None and checked.action_type != action_type:
-                continue
-            checked_items.append(checked)
-        return tuple(checked_items)
+                if action_type is not None and checked.action_type != action_type:
+                    continue
+                checked_items.append(checked)
+            return tuple(checked_items)
 
     async def save(self, item: ApprovalItem) -> ApprovalItem | None:
-        """Update an existing approval item.
+        """Update an existing approval item (first-writer-wins).
 
-        Falls through to the repository on cache miss when a repo
-        is configured.
+        Two concurrent ``save(same_id)`` calls are resolved so that
+        exactly one writes: the first caller claims an in-flight slot
+        under the lock and proceeds; the second caller observes the
+        slot and returns ``None``.  Sequential saves on the same id
+        proceed normally because the slot is released after each
+        write.
 
         Args:
             item: The updated approval item.
 
         Returns:
-            The saved item, or ``None`` if the ID was not found.
+            The saved item, or ``None`` if the ID was not found or a
+            concurrent save already claimed it.
         """
-        if item.id not in self._items and self._repo is not None:
-            existing = await self._repo.get(item.id)
-            if existing is not None:
-                self._items[existing.id] = existing
-        if item.id not in self._items:
-            logger.warning(
-                API_RESOURCE_NOT_FOUND,
-                resource="approval",
-                approval_id=item.id,
-            )
-            return None
-        if self._repo is not None:
-            await self._repo.save(item)
-        self._items[item.id] = item
-        return item
+        async with self._lock:
+            if item.id not in self._items and self._repo is not None:
+                existing = await self._repo.get(item.id)
+                if existing is not None:
+                    self._items[existing.id] = existing
+            if item.id not in self._items:
+                logger.warning(
+                    API_RESOURCE_NOT_FOUND,
+                    resource="approval",
+                    approval_id=item.id,
+                )
+                return None
+            if item.id in self._saves_in_flight:
+                logger.warning(
+                    API_APPROVAL_CONFLICT,
+                    error="concurrent_save",
+                    approval_id=item.id,
+                )
+                return None
+            self._saves_in_flight.add(item.id)
+        try:
+            if self._repo is not None:
+                await self._repo.save(item)
+            async with self._lock:
+                self._items[item.id] = item
+            return item
+        finally:
+            async with self._lock:
+                self._saves_in_flight.discard(item.id)
 
     async def save_if_pending(
         self,
@@ -230,27 +275,33 @@ class ApprovalStore:
             * the stored item is no longer ``PENDING`` (e.g. a
               concurrent decision was made).
         """
-        current = self._items.get(item.id)
-        if current is None and self._repo is not None:
-            current = await self._repo.get(item.id)
-            if current is not None:
-                self._items[current.id] = current
-        if current is None:
-            return None
-        # Apply lazy expiration check before comparing status.
-        current = await self._check_expiration(current)
-        if current.status != ApprovalStatus.PENDING:
-            return None
-        if self._repo is not None:
-            await self._repo.save(item)
-        self._items[item.id] = item
-        return item
+        async with self._lock:
+            current = self._items.get(item.id)
+            if current is None and self._repo is not None:
+                current = await self._repo.get(item.id)
+                if current is not None:
+                    self._items[current.id] = current
+            if current is None:
+                return None
+            # Apply lazy expiration check before comparing status.
+            current = await self._check_expiration_locked(current)
+            if current.status != ApprovalStatus.PENDING:
+                return None
+            if self._repo is not None:
+                await self._repo.save(item)
+            self._items[item.id] = item
+            return item
 
-    async def _check_expiration(self, item: ApprovalItem) -> ApprovalItem:
-        """Lazily expire a pending item past its ``expires_at``.
+    async def _check_expiration_locked(
+        self,
+        item: ApprovalItem,
+    ) -> ApprovalItem:
+        """Lazy expiration, assuming ``self._lock`` is held.
 
-        If the item is PENDING and has expired, it is transitioned to
-        EXPIRED in both the cache and the repository.
+        If the item is PENDING and has expired, transition it to
+        EXPIRED in both the cache and the repository.  Callers MUST
+        hold ``self._lock``; the method performs cache + repo mutations
+        without re-acquiring it.
 
         Args:
             item: The item to check.

@@ -97,6 +97,15 @@ class PruningService:
         self._pending_requests: dict[str, PruningRequest] = {}
         self._completed: list[PruningRecord] = []
         self._processed_approval_ids: set[str] = set()
+        # Approval ids currently being handled by a cycle.  Two
+        # concurrent ``_process_decided_approvals`` cycles MUST NOT
+        # both enter ``_handle_approved`` / ``_handle_rejected`` for
+        # the same id; the in-flight set closes that window without
+        # serialising the slow offboarding I/O path.  Transient
+        # failures (e.g. offboarding returns None) leave the id out
+        # of ``_processed_approval_ids`` so the next cycle retries.
+        self._in_flight_approvals: set[str] = set()
+        self._processing_lock = asyncio.Lock()
 
     @property
     def is_running(self) -> bool:
@@ -389,16 +398,45 @@ class PruningService:
             status=ApprovalStatus.APPROVED,
         )
         for item in approved_items:
-            if str(item.id) not in self._processed_approval_ids:
+            if not await self._try_claim(str(item.id)):
+                continue
+            try:
                 await self._handle_approved(item)
+            finally:
+                await self._release_claim(str(item.id))
 
         rejected_items = await self._approval_store.list_items(
             action_type=_ACTION_TYPE,
             status=ApprovalStatus.REJECTED,
         )
         for item in rejected_items:
-            if str(item.id) not in self._processed_approval_ids:
+            if not await self._try_claim(str(item.id)):
+                continue
+            try:
                 self._handle_rejected(item)
+            finally:
+                await self._release_claim(str(item.id))
+
+    async def _try_claim(self, approval_id: str) -> bool:
+        """Atomically claim an approval id for handling.
+
+        Returns ``True`` if this caller won the claim, ``False`` if the
+        id is already processed or currently in-flight in another
+        cycle.  The claim must be released via ``_release_claim``
+        regardless of handler outcome.
+        """
+        async with self._processing_lock:
+            if approval_id in self._processed_approval_ids:
+                return False
+            if approval_id in self._in_flight_approvals:
+                return False
+            self._in_flight_approvals.add(approval_id)
+            return True
+
+    async def _release_claim(self, approval_id: str) -> None:
+        """Release a previously claimed in-flight slot."""
+        async with self._processing_lock:
+            self._in_flight_approvals.discard(approval_id)
 
     async def _handle_approved(self, item: ApprovalItem) -> None:
         """Execute offboarding after approval."""

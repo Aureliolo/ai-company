@@ -72,6 +72,76 @@ class TestAgentRegistryService:
         result = await registry.get_by_name("nobody")
         assert result is None
 
+    async def test_get_by_names_preserves_order_and_nones(
+        self,
+        registry: AgentRegistryService,
+    ) -> None:
+        """Batch lookup returns results in input order with None for misses."""
+        alice = make_agent_identity(name="Alice")
+        bob = make_agent_identity(name="Bob")
+        await registry.register(alice)
+        await registry.register(bob)
+
+        results = await registry.get_by_names(("Bob", "nobody", "Alice"))
+        assert len(results) == 3
+        assert results[0] is not None
+        assert results[0].name == "Bob"
+        assert results[1] is None
+        assert results[2] is not None
+        assert results[2].name == "Alice"
+
+    async def test_get_by_names_empty_input(
+        self,
+        registry: AgentRegistryService,
+    ) -> None:
+        """Empty batch returns an empty tuple without touching the lock."""
+        results = await registry.get_by_names(())
+        assert results == ()
+
+    async def test_get_by_names_acquires_lock_once(
+        self,
+        registry: AgentRegistryService,
+    ) -> None:
+        """Batch lookup must acquire the registry lock exactly once."""
+        import asyncio
+
+        alice = make_agent_identity(name="Alice")
+        bob = make_agent_identity(name="Bob")
+        carol = make_agent_identity(name="Carol")
+        await registry.register(alice)
+        await registry.register(bob)
+        await registry.register(carol)
+
+        real_lock = registry._lock
+        acquire_count = 0
+
+        class CountingLock:
+            async def __aenter__(self) -> None:
+                nonlocal acquire_count
+                acquire_count += 1
+                await real_lock.acquire()
+
+            async def __aexit__(
+                self,
+                *args: object,
+            ) -> None:
+                real_lock.release()
+
+        registry._lock = CountingLock()  # type: ignore[assignment]
+        try:
+            results = await registry.get_by_names(
+                ("Alice", "Bob", "Carol", "Alice", "missing"),
+            )
+        finally:
+            registry._lock = real_lock
+
+        assert acquire_count == 1
+        assert len(results) == 5
+        assert results[4] is None  # missing
+        # No deadlock; the real lock is still usable.
+        assert isinstance(real_lock, asyncio.Lock)
+        assert not real_lock.locked()
+
     async def test_list_active_filters_status(
         self,
         registry: AgentRegistryService,

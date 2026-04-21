@@ -2,6 +2,7 @@
 
 from collections.abc import Generator
 from datetime import date
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock
 from uuid import uuid4
@@ -374,3 +375,52 @@ class TestCoordinationControllerNoCoordinator:
             json={},
         )
         assert resp.status_code == 503
+
+
+@pytest.mark.unit
+class TestResolveAgentsBatchLookup:
+    """_resolve_agents must batch agent lookups via registry.get_by_names."""
+
+    async def test_resolves_via_batch_call(self) -> None:
+        """Hits get_by_names exactly once; never falls back to get_by_name."""
+        from synthorg.api.controllers.coordination import CoordinationController
+        from synthorg.api.dto import CoordinateTaskRequest
+
+        agents = [_make_agent(name) for name in ("alice", "bob", "carol")]
+        mock_registry = AsyncMock()
+        mock_registry.get_by_names.return_value = tuple(agents)
+
+        app_state = SimpleNamespace(agent_registry=mock_registry)
+        controller = CoordinationController(owner=None)  # type: ignore[arg-type]
+        data = CoordinateTaskRequest(agent_names=("alice", "bob", "carol"))
+
+        result = await controller._resolve_agents(
+            app_state,  # type: ignore[arg-type]
+            data,
+            "task-batch-001",
+        )
+
+        assert mock_registry.get_by_names.await_count == 1
+        assert mock_registry.get_by_name.await_count == 0
+        assert [a.name for a in result] == ["alice", "bob", "carol"]
+
+    async def test_raises_validation_error_on_missing_agent(self) -> None:
+        """A None entry in the batch result surfaces as ApiValidationError."""
+        from synthorg.api.controllers.coordination import CoordinationController
+        from synthorg.api.dto import CoordinateTaskRequest
+        from synthorg.api.errors import ApiValidationError
+
+        alice = _make_agent("alice")
+        mock_registry = AsyncMock()
+        mock_registry.get_by_names.return_value = (alice, None)
+
+        app_state = SimpleNamespace(agent_registry=mock_registry)
+        controller = CoordinationController(owner=None)  # type: ignore[arg-type]
+        data = CoordinateTaskRequest(agent_names=("alice", "missing"))
+
+        with pytest.raises(ApiValidationError, match="missing"):
+            await controller._resolve_agents(
+                app_state,  # type: ignore[arg-type]
+                data,
+                "task-batch-002",
+            )

@@ -170,6 +170,36 @@ class AgentRegistryService:
                     return identity
             return None
 
+    async def get_by_names(
+        self,
+        names: tuple[NotBlankStr, ...],
+    ) -> tuple[AgentIdentity | None, ...]:
+        """Batch lookup preserving input order with ``None`` for misses.
+
+        Acquires the registry lock exactly once regardless of batch
+        size, avoiding the O(N) lock contention that fans-out of
+        ``get_by_name`` degenerate into.
+
+        Args:
+            names: Ordered tuple of agent names to resolve
+                (case-insensitive).
+
+        Returns:
+            Tuple of resolved identities in the same order as
+            ``names``.  Each entry is the first matching agent or
+            ``None`` if no agent has that name.
+        """
+        if not names:
+            return ()
+        async with self._lock:
+            by_lower_name: dict[str, AgentIdentity] = {}
+            for identity in self._agents.values():
+                key = str(identity.name).lower()
+                # First registration wins on name collision, matching
+                # ``get_by_name`` semantics.
+                by_lower_name.setdefault(key, identity)
+            return tuple(by_lower_name.get(str(name).lower()) for name in names)
+
     async def list_active(self) -> tuple[AgentIdentity, ...]:
         """List all agents with ACTIVE status.
 
