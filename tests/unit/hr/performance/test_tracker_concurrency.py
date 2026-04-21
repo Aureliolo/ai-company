@@ -9,6 +9,7 @@ into either body. These tests pin the locked invariant.
 """
 
 import asyncio
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -98,3 +99,40 @@ class TestTrackerConcurrency:
 
         assert len(tracker._task_metrics[_AGENT_ID]) == 30
         assert len(tracker._contributions[_AGENT_ID]) == 30
+
+
+@pytest.mark.unit
+class TestGetSnapshotsFaultIsolation:
+    """get_snapshots: failures for one agent must not poison the batch."""
+
+    async def test_partial_failure_returns_none_for_failing_agent(self) -> None:
+        tracker = PerformanceTracker()
+        snapshot_a = object()
+        snapshot_c = object()
+
+        async def fake_get_snapshot(agent_id: NotBlankStr, **_: object) -> object:
+            if str(agent_id) == "bad":
+                msg = "snapshot unavailable"
+                raise RuntimeError(msg)
+            if str(agent_id) == "good-a":
+                return snapshot_a
+            return snapshot_c
+
+        tracker.get_snapshot = AsyncMock(side_effect=fake_get_snapshot)  # type: ignore[method-assign]
+
+        results = await tracker.get_snapshots(
+            (
+                NotBlankStr("good-a"),
+                NotBlankStr("bad"),
+                NotBlankStr("good-c"),
+            ),
+        )
+
+        assert len(results) == 3
+        assert results[0] is snapshot_a
+        assert results[1] is None
+        assert results[2] is snapshot_c
+
+    async def test_empty_input_returns_empty_tuple(self) -> None:
+        tracker = PerformanceTracker()
+        assert await tracker.get_snapshots(()) == ()

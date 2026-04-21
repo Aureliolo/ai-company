@@ -8,9 +8,9 @@ to the database while the in-memory dict serves as a read cache.
 Concurrency model
 -----------------
 All mutation paths (``add``, ``save``, ``save_if_pending``,
-``_check_expiration`` write-back, and ``list_items``/``get`` cache
-populate) acquire a single instance-level ``asyncio.Lock`` so the
-check-fetch-save-cache-update region cannot interleave across
+``_check_expiration_locked`` write-back, and ``list_items``/``get``
+cache populate) acquire a single instance-level ``asyncio.Lock`` so
+the check-fetch-save-cache-update region cannot interleave across
 concurrent callers.
 
 ``save()`` additionally tracks in-flight saves per approval id.  When
@@ -18,6 +18,18 @@ two concurrent callers target the same id, the second sees the
 in-flight marker and returns ``None`` (first-writer-wins).  Sequential
 saves on the same id work normally -- the in-flight set is only
 populated while a save is actively running.
+
+To keep the first-writer-wins rejection observable under contention,
+``save()`` releases the store lock while it awaits ``_repo.save(item)``
+so a second caller can enter, detect the in-flight marker, and return
+``None`` without blocking.  During that small repo-I/O window a
+concurrent ``get()`` may still observe the cache's previous value
+while the repository has already committed the new one; readers of a
+given id reach consistency as soon as the winning ``save()`` finishes
+its cache update.  This is an accepted trade-off of FWW semantics --
+the alternative (holding the lock across I/O) collapses to
+last-writer-wins because the second caller can no longer observe the
+first's in-flight marker.
 """
 
 import asyncio
@@ -76,7 +88,9 @@ class ApprovalStore:
         self._lock = asyncio.Lock()
         # Approval ids whose ``save()`` is currently mid-flight.  A
         # second concurrent ``save(same_id)`` observes the marker and
-        # returns ``None`` (first-writer-wins).
+        # returns ``None`` (first-writer-wins), preventing a lost-update
+        # race where two callers' differing payloads silently stomp one
+        # another.
         self._saves_in_flight: set[str] = set()
 
     def clear(self) -> None:

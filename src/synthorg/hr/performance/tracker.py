@@ -29,6 +29,7 @@ from synthorg.observability.events.performance import (
     PERF_METRIC_RECORDED,
     PERF_OVERRIDE_APPLIED,
     PERF_SNAPSHOT_COMPUTED,
+    PERF_SNAPSHOT_FAILED,
     PERF_TRACKER_CLEARED,
     PERF_WINDOW_INSUFFICIENT_DATA,
 )
@@ -380,11 +381,11 @@ class PerformanceTracker:
                 snapshot = await self.get_snapshot(agent_id, now=now)
             except MemoryError, RecursionError:
                 raise
-            except Exception:
+            except Exception as exc:
                 logger.warning(
-                    PERF_SNAPSHOT_COMPUTED,
+                    PERF_SNAPSHOT_FAILED,
                     agent_id=str(agent_id),
-                    error="snapshot_unavailable",
+                    error=type(exc).__name__,
                     exc_info=True,
                 )
                 results.append(None)

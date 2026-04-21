@@ -118,3 +118,73 @@ class TestProcessDecidedApprovalsConcurrency:
         assert offboarding.calls == [str(agent.id)], (
             f"offboard must run exactly once per approval; got {offboarding.calls}"
         )
+
+    async def test_handler_exception_releases_claim_so_next_cycle_retries(
+        self,
+    ) -> None:
+        """If _handle_approved raises, the in-flight claim must be released.
+
+        The next cycle must then be able to re-claim the same approval id
+        rather than deadlocking on a leaked in-flight marker.
+        """
+        registry = AgentRegistryService()
+        agent = make_agent_identity(name="retry-agent")
+        await registry.register(agent)
+
+        approval_store = ApprovalStore()
+        approval = make_approval_item(
+            approval_id="approval-retry-001",
+            status=ApprovalStatus.APPROVED,
+            decided_at=datetime.now(UTC),
+            decided_by="ceo",
+            metadata={
+                "agent_id": str(agent.id),
+                "policy_name": "threshold",
+                "reason_summary": "test",
+                "pruning_request_id": "req-retry-001",
+            },
+        )
+        await approval_store.add(approval)
+
+        class ExplodingOffboardingService:
+            def __init__(self) -> None:
+                self.calls = 0
+
+            async def offboard(self, request: FiringRequest) -> OffboardingRecord:
+                self.calls += 1
+                if self.calls == 1:
+                    msg = "transient"
+                    raise RuntimeError(msg)
+                now = datetime.now(UTC)
+                return OffboardingRecord(
+                    agent_id=request.agent_id,
+                    agent_name=request.agent_name,
+                    firing_request_id=request.id,
+                    tasks_reassigned=(),
+                    memory_archive_id=None,
+                    org_memories_promoted=0,
+                    team_notification_sent=True,
+                    started_at=now,
+                    completed_at=now,
+                )
+
+        offboarding = ExplodingOffboardingService()
+        service = PruningService(
+            policies=(),
+            registry=registry,
+            tracker=_FakeTracker(),  # type: ignore[arg-type]
+            approval_store=approval_store,
+            offboarding_service=offboarding,  # type: ignore[arg-type]
+        )
+
+        # First cycle: offboarding fails transiently, claim is released.
+        await service._process_decided_approvals()
+        assert offboarding.calls == 1
+        assert str(approval.id) not in service._in_flight_approvals
+        assert str(approval.id) not in service._processed_approval_ids
+
+        # Second cycle: claim succeeds, offboarding completes, id is
+        # marked processed.
+        await service._process_decided_approvals()
+        assert offboarding.calls == 2
+        assert str(approval.id) in service._processed_approval_ids

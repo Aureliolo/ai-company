@@ -104,6 +104,10 @@ class PruningService:
         # serialising the slow offboarding I/O path.  Transient
         # failures (e.g. offboarding returns None) leave the id out
         # of ``_processed_approval_ids`` so the next cycle retries.
+        # Transient failures (e.g. offboarding returns ``None``) leave
+        # the id out of ``_processed_approval_ids`` so the next cycle
+        # retries; absence from the processed set is intentional on
+        # those paths, not an oversight.
         self._in_flight_approvals: set[str] = set()
         self._processing_lock = asyncio.Lock()
 

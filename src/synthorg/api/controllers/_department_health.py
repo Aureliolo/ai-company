@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Self
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
+from synthorg.api.errors import ServiceUnavailableError
 from synthorg.budget.currency import DEFAULT_CURRENCY, CurrencyCode
 from synthorg.budget.trends import BucketSize, TrendDataPoint, bucket_cost_records
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
@@ -150,7 +151,15 @@ async def _resolve_agent_ids(
     app_state: AppState,
     agent_names: tuple[str, ...],
 ) -> tuple[str, ...]:
-    """Map agent names to IDs via the registry in a single batch call."""
+    """Map agent names to IDs via the registry in a single batch call.
+
+    ``ServiceUnavailableError`` is allowed to propagate so the outer
+    ``assemble_department_health`` handler can surface registry outage
+    as a degraded response instead of silently reporting zero agents.
+    Other exceptions (e.g. unexpected registry bugs) are logged and
+    swallowed because per-name lookup failures used to be tolerated in
+    the previous per-agent fan-out.
+    """
     if not app_state.has_agent_registry:
         return ()
     if not agent_names:
@@ -160,6 +169,8 @@ async def _resolve_agent_ids(
             tuple(NotBlankStr(n) for n in agent_names),
         )
     except MemoryError, RecursionError:
+        raise
+    except ServiceUnavailableError:
         raise
     except Exception:
         logger.warning(

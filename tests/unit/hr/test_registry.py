@@ -98,6 +98,25 @@ class TestAgentRegistryService:
         results = await registry.get_by_names(())
         assert results == ()
 
+    async def test_get_by_names_duplicates_preserved_in_output(
+        self,
+        registry: AgentRegistryService,
+    ) -> None:
+        """Duplicate names in input produce duplicate matches in output."""
+        alice = make_agent_identity(name="Alice")
+        bob = make_agent_identity(name="Bob")
+        await registry.register(alice)
+        await registry.register(bob)
+
+        results = await registry.get_by_names(("Alice", "Bob", "Alice"))
+        assert len(results) == 3
+        assert results[0] is not None
+        assert results[1] is not None
+        assert results[2] is not None
+        assert results[0].name == "Alice"
+        assert results[1].name == "Bob"
+        assert results[2].name == "Alice"
+
     async def test_get_by_names_acquires_lock_once(
         self,
         registry: AgentRegistryService,

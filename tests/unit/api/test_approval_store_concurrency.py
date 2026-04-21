@@ -157,6 +157,42 @@ class TestSaveConcurrency:
         assert stored is not None
         assert stored.decision_reason == "second"
 
+    async def test_concurrent_save_first_writer_wins_cold_cache(self) -> None:
+        """FWW still holds when the store starts with a cold cache.
+
+        Both callers must pass through ``repo.get`` under the lock; the
+        second must still detect the in-flight marker and return None.
+        """
+        repo = GatedRepo()
+        initial = _make_item()
+        repo.items[initial.id] = initial
+        store = ApprovalStore(repo=repo)  # type: ignore[arg-type]
+        # Do NOT pre-warm the cache -- both saves must load from repo.
+
+        updated_a = initial.model_copy(update={"decision_reason": "a"})
+        updated_b = initial.model_copy(update={"decision_reason": "b"})
+
+        with patch("synthorg.api.approval_store.logger") as mock_logger:
+            task_a = asyncio.create_task(store.save(updated_a))
+            await repo.first_entered.wait()
+            task_b = asyncio.create_task(store.save(updated_b))
+            for _ in range(5):
+                await asyncio.sleep(0)
+            repo.gate.set()
+            result_a, result_b = await asyncio.gather(task_a, task_b)
+
+            winners = [r for r in (result_a, result_b) if r is not None]
+            rejections = [r for r in (result_a, result_b) if r is None]
+            assert len(winners) == 1
+            assert len(rejections) == 1
+            assert repo.save_calls == 1
+            conflict_calls = [
+                call
+                for call in mock_logger.warning.call_args_list
+                if call.kwargs.get("error") == "concurrent_save"
+            ]
+            assert len(conflict_calls) == 1
+
     async def test_save_in_flight_cleared_on_repo_error(self) -> None:
         """An exception in repo.save must clear in-flight so retries work."""
 
@@ -246,6 +282,24 @@ class TestAddConcurrency:
 
         stored = await store.get(item_a.id)
         assert stored is not None
+
+
+@pytest.mark.unit
+class TestAddConstraintViolationPath:
+    """add() surfaces repo constraint violations as ConflictError."""
+
+    async def test_repo_constraint_violation_becomes_conflict_error(self) -> None:
+        class ConstraintRepo(GatedRepo):
+            async def save(self, item: ApprovalItem) -> None:
+                del item
+                self.save_calls += 1
+                msg = "duplicate"
+                raise ConstraintViolationError(msg, constraint="pk")
+
+        repo = ConstraintRepo()
+        store = ApprovalStore(repo=repo)  # type: ignore[arg-type]
+        with pytest.raises(ConflictError, match="already exists"):
+            await store.add(_make_item())
 
 
 @pytest.mark.unit

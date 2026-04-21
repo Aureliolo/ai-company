@@ -177,8 +177,10 @@ class AgentRegistryService:
         """Batch lookup preserving input order with ``None`` for misses.
 
         Acquires the registry lock exactly once regardless of batch
-        size, avoiding the O(N) lock contention that fans-out of
-        ``get_by_name`` degenerate into.
+        size.  Fanning out N separate ``get_by_name`` calls (the old
+        pattern) required N lock acquisitions and serialised each
+        lookup under a shared lock; this batch method reduces that to
+        a single acquisition.
 
         Args:
             names: Ordered tuple of agent names to resolve
