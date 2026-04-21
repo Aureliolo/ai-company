@@ -53,7 +53,9 @@ class TestTrackerConcurrency:
             )
             await tracker.record_coordination_contributions(batch)
 
-        await asyncio.gather(*(_record(i) for i in range(n_calls)))
+        async with asyncio.TaskGroup() as tg:
+            for i in range(n_calls):
+                tg.create_task(_record(i))
 
         assert len(tracker._contributions[_AGENT_ID]) == n_calls * contribs_per_call
 
@@ -70,7 +72,9 @@ class TestTrackerConcurrency:
             )
             await tracker.record_collaboration_event(record)
 
-        await asyncio.gather(*(_record(i) for i in range(n_events)))
+        async with asyncio.TaskGroup() as tg:
+            for i in range(n_events):
+                tg.create_task(_record(i))
 
         assert len(tracker._collab_metrics[_AGENT_ID]) == n_events
 
@@ -92,10 +96,10 @@ class TestTrackerConcurrency:
                 (_make_contribution(subtask_id=f"sub-{i}"),),
             )
 
-        await asyncio.gather(
-            *(_record_task(i) for i in range(30)),
-            *(_record_contrib(i) for i in range(30)),
-        )
+        async with asyncio.TaskGroup() as tg:
+            for i in range(30):
+                tg.create_task(_record_task(i))
+                tg.create_task(_record_contrib(i))
 
         assert len(tracker._task_metrics[_AGENT_ID]) == 30
         assert len(tracker._contributions[_AGENT_ID]) == 30

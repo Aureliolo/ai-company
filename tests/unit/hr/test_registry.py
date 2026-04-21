@@ -137,8 +137,12 @@ class TestAgentRegistryService:
         class CountingLock:
             async def __aenter__(self) -> None:
                 nonlocal acquire_count
-                acquire_count += 1
+                # Count only successful acquisitions.  If ``acquire()``
+                # propagates (e.g. cancellation), we never took the
+                # lock and ``__aexit__`` will not fire, so the counter
+                # must stay consistent with released acquisitions.
                 await real_lock.acquire()
+                acquire_count += 1
 
             async def __aexit__(
                 self,

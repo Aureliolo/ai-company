@@ -7,7 +7,7 @@ Delegates scoring, windowing, and trend detection to pluggable strategies.
 import asyncio
 import re
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.performance.config import PerformanceConfig
@@ -58,6 +58,12 @@ if TYPE_CHECKING:
     from synthorg.hr.performance.window_protocol import MetricsWindowStrategy
 
 logger = get_logger(__name__)
+
+# Upper bound on a single ``get_snapshots`` batch.  Each input id
+# triggers a separate snapshot computation (scorers + window logic +
+# trend detection); unbounded fan-out from a user-controllable caller
+# would let a client burn arbitrary CPU on a single request.
+MAX_BATCH_SNAPSHOTS_LOOKUP: Final[int] = 1024
 
 
 class PerformanceTracker:
@@ -372,9 +378,22 @@ class PerformanceTracker:
 
         Returns:
             Tuple of snapshots (or ``None`` on failure) in input order.
+
+        Raises:
+            ValueError: If ``len(agent_ids)`` exceeds
+                ``MAX_BATCH_SNAPSHOTS_LOOKUP``.  Snapshot computation is
+                O(N) in the batch size; an unbounded batch from a
+                user-controllable caller would let a single request
+                monopolise scoring / window / trend work.
         """
         if not agent_ids:
             return ()
+        if len(agent_ids) > MAX_BATCH_SNAPSHOTS_LOOKUP:
+            msg = (
+                f"get_snapshots batch of {len(agent_ids)} exceeds "
+                f"MAX_BATCH_SNAPSHOTS_LOOKUP={MAX_BATCH_SNAPSHOTS_LOOKUP}"
+            )
+            raise ValueError(msg)
         results: list[AgentPerformanceSnapshot | None] = []
         for agent_id in agent_ids:
             try:

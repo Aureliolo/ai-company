@@ -46,6 +46,7 @@ from synthorg.core.enums import (
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_APPROVAL_CONFLICT,
+    API_APPROVAL_EXPIRE_CALLBACK_FAILED,
     API_APPROVAL_EXPIRED,
     API_APPROVAL_STORE_CLEARED,
     API_RESOURCE_NOT_FOUND,
@@ -343,11 +344,16 @@ class ApprovalStore:
                     self._on_expire(expired)
                 except MemoryError, RecursionError:
                     raise
-                except Exception:
+                except Exception as exc:
+                    # Best-effort: the approval is already transitioned
+                    # to EXPIRED in cache + repo at this point; callback
+                    # failure must not unwind the expiration itself.
+                    # Emit a dedicated event so operators can filter
+                    # callback failures from successful expirations.
                     logger.exception(
-                        API_APPROVAL_EXPIRED,
+                        API_APPROVAL_EXPIRE_CALLBACK_FAILED,
                         approval_id=item.id,
-                        note="on_expire callback failed",
+                        error=type(exc).__name__,
                     )
             return expired
         return item

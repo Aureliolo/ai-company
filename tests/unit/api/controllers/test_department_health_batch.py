@@ -20,6 +20,8 @@ from synthorg.api.controllers._department_health import (
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.enums import AgentStatus, SeniorityLevel
 from synthorg.hr.performance.models import AgentPerformanceSnapshot
+from synthorg.hr.performance.tracker import PerformanceTracker
+from synthorg.hr.registry import AgentRegistryService
 from tests.unit.hr.pruning.conftest import make_performance_snapshot
 
 
@@ -51,7 +53,7 @@ class TestResolveAgentIdsBatch:
             agent_id="00000000-0000-0000-0000-00000000000b",
             name="bob",
         )
-        mock_registry = AsyncMock()
+        mock_registry = AsyncMock(spec=AgentRegistryService)
         mock_registry.get_by_names.return_value = (alice, bob)
 
         app_state = SimpleNamespace(
@@ -73,7 +75,7 @@ class TestResolveAgentIdsBatch:
             agent_id="00000000-0000-0000-0000-00000000000a",
             name="alice",
         )
-        mock_registry = AsyncMock()
+        mock_registry = AsyncMock(spec=AgentRegistryService)
         mock_registry.get_by_names.return_value = (alice, None)
 
         app_state = SimpleNamespace(
@@ -108,7 +110,7 @@ class TestResolveSnapshotsBatch:
     async def test_uses_batch_call(self) -> None:
         snap_a = make_performance_snapshot(agent_id="agent-a")
         snap_b = make_performance_snapshot(agent_id="agent-b")
-        mock_tracker = AsyncMock()
+        mock_tracker = AsyncMock(spec=PerformanceTracker)
         mock_tracker.get_snapshots.return_value = (snap_a, snap_b)
 
         app_state = SimpleNamespace(performance_tracker=mock_tracker)
@@ -126,7 +128,7 @@ class TestResolveSnapshotsBatch:
 
     async def test_filters_none_snapshots(self) -> None:
         snap_a = make_performance_snapshot(agent_id="agent-a")
-        mock_tracker = AsyncMock()
+        mock_tracker = AsyncMock(spec=PerformanceTracker)
         mock_tracker.get_snapshots.return_value = (snap_a, None)
 
         app_state = SimpleNamespace(performance_tracker=mock_tracker)
@@ -140,7 +142,7 @@ class TestResolveSnapshotsBatch:
         assert str(result[0].agent_id) == "agent-a"
 
     async def test_empty_agent_ids(self) -> None:
-        mock_tracker = AsyncMock()
+        mock_tracker = AsyncMock(spec=PerformanceTracker)
         mock_tracker.get_snapshots.return_value = ()
 
         app_state = SimpleNamespace(performance_tracker=mock_tracker)

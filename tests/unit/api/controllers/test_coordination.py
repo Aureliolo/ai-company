@@ -387,7 +387,7 @@ class TestResolveAgentsBatchLookup:
         from synthorg.api.dto import CoordinateTaskRequest
 
         agents = [_make_agent(name) for name in ("alice", "bob", "carol")]
-        mock_registry = AsyncMock()
+        mock_registry = AsyncMock(spec=AgentRegistryService)
         mock_registry.get_by_names.return_value = tuple(agents)
 
         app_state = SimpleNamespace(agent_registry=mock_registry)
@@ -411,7 +411,7 @@ class TestResolveAgentsBatchLookup:
         from synthorg.api.errors import ApiValidationError
 
         alice = _make_agent("alice")
-        mock_registry = AsyncMock()
+        mock_registry = AsyncMock(spec=AgentRegistryService)
         mock_registry.get_by_names.return_value = (alice, None)
 
         app_state = SimpleNamespace(agent_registry=mock_registry)

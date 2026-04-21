@@ -103,19 +103,24 @@ class TestSaveConcurrency:
         ) as mock_logger:
             task_a = asyncio.create_task(store.save(updated_a))
             await repo.first_entered.wait()
-            task_b = asyncio.create_task(store.save(updated_b))
-            # Yield enough to let B enter save() and hit the in-flight check.
-            for _ in range(5):
-                await asyncio.sleep(0)
+            # Task A is parked inside repo.save waiting on the gate,
+            # with its approval id already in ``_saves_in_flight`` and
+            # the store lock released.  Awaiting the second save
+            # directly here is deterministic: the store lock is free,
+            # B observes the in-flight marker, logs the conflict and
+            # returns ``None`` before we unblock A.
+            result_b = await store.save(updated_b)
             repo.gate.set()
-
-            result_a, result_b = await asyncio.gather(task_a, task_b)
+            result_a = await task_a
 
             # Exactly one winner, one rejection.
             winners = [r for r in (result_a, result_b) if r is not None]
             rejections = [r for r in (result_a, result_b) if r is None]
             assert len(winners) == 1
             assert len(rejections) == 1
+            # The FWW contract is that the first caller wins.
+            assert result_a is not None
+            assert result_b is None
 
             # Stored payload matches the winner.
             stored = await store.get(initial.id)
@@ -175,16 +180,19 @@ class TestSaveConcurrency:
         with patch("synthorg.api.approval_store.logger") as mock_logger:
             task_a = asyncio.create_task(store.save(updated_a))
             await repo.first_entered.wait()
-            task_b = asyncio.create_task(store.save(updated_b))
-            for _ in range(5):
-                await asyncio.sleep(0)
+            # Same deterministic pattern as the warm-cache variant:
+            # A is parked in repo.save, B runs synchronously here,
+            # hits the in-flight marker, returns None without blocking.
+            result_b = await store.save(updated_b)
             repo.gate.set()
-            result_a, result_b = await asyncio.gather(task_a, task_b)
+            result_a = await task_a
 
             winners = [r for r in (result_a, result_b) if r is not None]
             rejections = [r for r in (result_a, result_b) if r is None]
             assert len(winners) == 1
             assert len(rejections) == 1
+            assert result_a is not None
+            assert result_b is None
             assert repo.save_calls == 1
             conflict_calls = [
                 call
@@ -246,10 +254,10 @@ class TestSaveIfPendingConcurrency:
             },
         )
 
-        results = await asyncio.gather(
-            store.save_if_pending(approve),
-            store.save_if_pending(reject),
-        )
+        async with asyncio.TaskGroup() as tg:
+            t_approve = tg.create_task(store.save_if_pending(approve))
+            t_reject = tg.create_task(store.save_if_pending(reject))
+        results = (t_approve.result(), t_reject.result())
         winners = [r for r in results if r is not None]
         losers = [r for r in results if r is None]
         assert len(winners) == 1
@@ -323,13 +331,15 @@ class TestExpirationConcurrency:
         store._items[item.id] = item
 
         # get() triggers expiration; save_if_pending sees non-PENDING stored state.
-        get_task = asyncio.create_task(store.get(item.id))
-        save_task = asyncio.create_task(
-            store.save_if_pending(
-                item.model_copy(update={"status": ApprovalStatus.APPROVED}),
-            ),
-        )
-        get_result, save_result = await asyncio.gather(get_task, save_task)
+        async with asyncio.TaskGroup() as tg:
+            get_task = tg.create_task(store.get(item.id))
+            save_task = tg.create_task(
+                store.save_if_pending(
+                    item.model_copy(update={"status": ApprovalStatus.APPROVED}),
+                ),
+            )
+        get_result = get_task.result()
+        save_result = save_task.result()
 
         # After serialisation exactly one of these is true:
         #   (a) expiration won: get returns EXPIRED, save_if_pending returns None.

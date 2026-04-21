@@ -5,7 +5,7 @@ their identities, and lifecycle status transitions (D8.3).
 """
 
 import asyncio
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.core.enums import AgentStatus
 from synthorg.hr.errors import (
@@ -22,6 +22,14 @@ from synthorg.observability.events.hr import (
     HR_REGISTRY_STATUS_UPDATED,
 )
 from synthorg.observability.events.versioning import VERSION_SNAPSHOT_FAILED
+
+# Upper bound on a single ``get_by_names`` batch.  Caller inputs can
+# originate from user-supplied request bodies (e.g. the coordination
+# endpoint's ``agent_names``), so the batch must not block the
+# registry's single ``asyncio.Lock`` for an unbounded period.  A
+# well-formed organisation has far fewer active agents than this
+# ceiling; anything larger is assumed to be misuse.
+MAX_BATCH_NAMES_LOOKUP: Final[int] = 1024
 
 if TYPE_CHECKING:
     from typing import Any
@@ -189,10 +197,25 @@ class AgentRegistryService:
         Returns:
             Tuple of resolved identities in the same order as
             ``names``.  Each entry is the first matching agent or
-            ``None`` if no agent has that name.
+            ``None`` if no agent has that name.  When multiple
+            registered agents share the same name (case-insensitive),
+            the first-registered identity wins, matching
+            ``get_by_name`` semantics.
+
+        Raises:
+            ValueError: If ``len(names)`` exceeds
+                ``MAX_BATCH_NAMES_LOOKUP``; the registry lock must not
+                be held for an unbounded scan when callers forward
+                user-supplied name lists.
         """
         if not names:
             return ()
+        if len(names) > MAX_BATCH_NAMES_LOOKUP:
+            msg = (
+                f"get_by_names batch of {len(names)} exceeds "
+                f"MAX_BATCH_NAMES_LOOKUP={MAX_BATCH_NAMES_LOOKUP}"
+            )
+            raise ValueError(msg)
         async with self._lock:
             by_lower_name: dict[str, AgentIdentity] = {}
             for identity in self._agents.values():

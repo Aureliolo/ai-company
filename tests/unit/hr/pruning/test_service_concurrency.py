@@ -105,15 +105,16 @@ class TestProcessDecidedApprovalsConcurrency:
 
         # Fire two concurrent cycles. First one should start offboarding
         # while the second one observes the claim and skips.
-        task_a = asyncio.create_task(service._process_decided_approvals())
-        await offboarding.wait_started()
-        task_b = asyncio.create_task(service._process_decided_approvals())
-        # Let B run its claim-check before releasing A.
-        for _ in range(5):
-            await asyncio.sleep(0)
-        offboarding.release()
-
-        await asyncio.gather(task_a, task_b)
+        async with asyncio.TaskGroup() as tg:
+            tg.create_task(service._process_decided_approvals())
+            await offboarding.wait_started()
+            # Task A is parked inside ``OffboardingService.offboard`` with
+            # the approval id held in ``_in_flight_approvals`` (and the
+            # outer ``_processing_lock`` released).  Awaiting the second
+            # cycle directly is deterministic: B acquires the lock,
+            # observes the claim, skips, and returns before we unblock A.
+            await service._process_decided_approvals()
+            offboarding.release()
 
         assert offboarding.calls == [str(agent.id)], (
             f"offboard must run exactly once per approval; got {offboarding.calls}"

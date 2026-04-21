@@ -102,10 +102,8 @@ class PruningService:
         # both enter ``_handle_approved`` / ``_handle_rejected`` for
         # the same id; the in-flight set closes that window without
         # serialising the slow offboarding I/O path.  Transient
-        # failures (e.g. offboarding returns None) leave the id out
-        # of ``_processed_approval_ids`` so the next cycle retries.
-        # Transient failures (e.g. offboarding returns ``None``) leave
-        # the id out of ``_processed_approval_ids`` so the next cycle
+        # failures (e.g. offboarding returns ``None``) leave the id
+        # out of ``_processed_approval_ids`` so the next cycle
         # retries; absence from the processed set is intentional on
         # those paths, not an oversight.
         self._in_flight_approvals: set[str] = set()
@@ -523,13 +521,18 @@ class PruningService:
         pending_request = self._pending_requests.pop(agent_id, None)
         self._processed_approval_ids.add(str(item.id))
 
-        request_id = (
-            pending_request.id
-            if pending_request
-            else NotBlankStr(
-                item.metadata.get("pruning_request_id", "unknown"),
-            )
-        )
+        if pending_request is not None:
+            request_id = pending_request.id
+        else:
+            # Metadata is populated internally at approval-submission
+            # time, but defend against corrupted / missing values so a
+            # stale approval cannot crash ``_record_completion`` via
+            # ``NotBlankStr("")``.
+            metadata_request_id = item.metadata.get(
+                "pruning_request_id",
+                "",
+            ).strip()
+            request_id = NotBlankStr(metadata_request_id or "unknown")
 
         record = PruningRecord(
             agent_id=NotBlankStr(agent_id),
