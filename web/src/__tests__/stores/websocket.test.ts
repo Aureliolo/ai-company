@@ -1,7 +1,4 @@
 import { http, HttpResponse } from 'msw'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cancelPendingPersist } from '@/stores/notifications'
-import { useToastStore } from '@/stores/toast'
 import { useWebSocketStore } from '@/stores/websocket'
 import { apiError, successFor } from '@/mocks/handlers'
 import type { getWsTicket } from '@/api/endpoints/auth'
@@ -167,12 +164,11 @@ describe('websocket store', () => {
   })
 
   afterEach(() => {
+    // Global afterEach in test-setup.tsx already runs dismissAll +
+    // cancelPendingPersist; duplicating here measurably raised the
+    // async-leak count on CI. Keep only the timer-restore, which is
+    // specific to this file's fake-timer setup.
     vi.useRealTimers()
-    // Timer-heavy WS tests schedule heartbeat, pong, and reconnect
-    // timers plus emit toasts; clear them all in teardown so
-    // `--detect-async-leaks` stays under the CI ceiling.
-    useToastStore.getState().dismissAll()
-    cancelPendingPersist()
   })
 
   describe('connect', () => {
