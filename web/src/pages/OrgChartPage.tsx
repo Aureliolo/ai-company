@@ -8,7 +8,8 @@ import {
   type Edge,
   type Node,
 } from '@xyflow/react'
-import { AlertTriangle, GitBranch, Loader2 } from 'lucide-react'
+import { GitBranch, Loader2 } from 'lucide-react'
+import { ErrorBanner } from '@/components/ui/error-banner'
 import { Link, useNavigate } from 'react-router'
 import { createLogger } from '@/lib/logger'
 import { useOrgChartData } from '@/hooks/useOrgChartData'
@@ -263,28 +264,30 @@ function OrgChartInner() {
   return (
     <div className="flex h-full flex-col">
       {error && (
-        <div role="alert" className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/5 p-card text-sm text-danger">
-          <AlertTriangle className="size-4 shrink-0" aria-hidden="true" />
-          {error}
-        </div>
+        <ErrorBanner severity="error" title="Could not load org chart" description={error} />
       )}
       {commError && (
-        <div role="alert" className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/5 p-card text-xs text-warning">
-          <AlertTriangle className="size-3.5 shrink-0" aria-hidden="true" />
-          Communication data unavailable: {commError}
-        </div>
+        <ErrorBanner
+          variant="inline"
+          severity="warning"
+          title="Communication data unavailable"
+          description={commError}
+        />
       )}
       {commTruncated && !commError && (
-        <div role="status" className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/5 p-card text-xs text-warning">
-          <AlertTriangle className="size-3.5 shrink-0" aria-hidden="true" />
-          Communication graph shows partial data (message limit reached)
-        </div>
+        <ErrorBanner
+          variant="inline"
+          severity="info"
+          title="Partial communication graph"
+          description="Message limit reached; showing available data."
+        />
       )}
       {!wsConnected && wsSetupError && (
-        <div role="status" aria-live="polite" className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/5 p-card text-xs text-warning">
-          <AlertTriangle className="size-3.5 shrink-0" aria-hidden="true" />
-          Real-time updates unavailable: {wsSetupError}
-        </div>
+        <ErrorBanner
+          variant="offline"
+          title="Real-time updates unavailable"
+          description={wsSetupError}
+        />
       )}
 
       <div className="flex items-center justify-between pb-3">

@@ -1,7 +1,8 @@
 import { useCallback, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { Tabs } from '@base-ui/react/tabs'
-import { AlertTriangle, ArrowLeft, Building2, Settings, Users, WifiOff } from 'lucide-react'
+import { ArrowLeft, Building2, Settings, Users } from 'lucide-react'
+import { ErrorBanner } from '@/components/ui/error-banner'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { ToggleField } from '@/components/ui/toggle-field'
@@ -111,10 +112,7 @@ export default function OrgEditPage() {
           </Button>
           <h1 className="text-lg font-semibold text-foreground">Edit Organization</h1>
         </div>
-        <div role="alert" className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/5 p-card text-sm text-danger">
-          <AlertTriangle className="size-4 shrink-0" />
-          {error ?? 'Failed to load organization data.'}
-        </div>
+        <ErrorBanner severity="error" title="Could not load organization" description={error ?? undefined} />
       </div>
     )
   }
@@ -138,18 +136,20 @@ export default function OrgEditPage() {
 
       {/* Error banner */}
       {(error || saveError) && (
-        <div role="alert" className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/5 p-card text-sm text-danger">
-          <AlertTriangle className="size-4 shrink-0" />
-          {saveError || error}
-        </div>
+        <ErrorBanner
+          severity="error"
+          title={saveError ? 'Could not save organization' : 'Could not load organization'}
+          description={saveError || error || undefined}
+        />
       )}
 
       {/* WS disconnect warning */}
       {!wsConnected && !loading && (
-        <div role="alert" className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/5 p-card text-sm text-warning">
-          <WifiOff className="size-4 shrink-0" />
-          {wsSetupError ?? 'Real-time updates disconnected. Data may be stale.'}
-        </div>
+        <ErrorBanner
+          variant="offline"
+          title="Real-time updates disconnected"
+          description={wsSetupError ?? 'Data may be stale until the connection recovers.'}
+        />
       )}
 
       {/* Content: YAML or tabbed GUI */}

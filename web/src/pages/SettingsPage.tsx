@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { Link } from 'react-router'
 import {
-  AlertTriangle,
   Brain,
   Eye,
   Globe,
@@ -11,13 +10,12 @@ import {
   Settings,
   Shield,
   Wallet,
-  WifiOff,
 } from 'lucide-react'
 import type { SettingEntry, SettingNamespace } from '@/api/types/settings'
 import { createLogger } from '@/lib/logger'
-import { cn } from '@/lib/utils'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { EmptyState } from '@/components/ui/empty-state'
+import { ErrorBanner } from '@/components/ui/error-banner'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { ToggleField } from '@/components/ui/toggle-field'
@@ -352,28 +350,15 @@ export default function SettingsPage() {
       <RestartBanner count={restartBannerCount} onDismiss={() => setRestartBannerCount(0)} />
 
       {error && (
-        <div
-          role="alert"
-          className={cn(
-            'flex items-center gap-2 rounded-lg',
-            'border border-danger/30 bg-danger/5',
-            'p-card text-sm text-danger',
-          )}
-        >
-          <AlertTriangle className="size-4 shrink-0" />
-          {error}
-        </div>
+        <ErrorBanner severity="error" title="Could not load settings" description={error} />
       )}
 
       {!wsConnected && !loading && (
-        <div className={cn(
-          'flex items-center gap-2 rounded-lg',
-          'border border-warning/30 bg-warning/5',
-          'p-card text-sm text-warning',
-        )}>
-          <WifiOff className="size-4 shrink-0" />
-          {wsSetupError ?? 'Real-time updates disconnected. Data may be stale.'}
-        </div>
+        <ErrorBanner
+          variant="offline"
+          title="Real-time updates disconnected"
+          description={wsSetupError ?? 'Data may be stale until the connection recovers.'}
+        />
       )}
 
       {advancedMode && (
