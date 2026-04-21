@@ -128,7 +128,7 @@ repos:
 
       - id: golangci-lint
         name: golangci-lint (CLI)
-        entry: go -C cli tool golangci-lint run
+        entry: bash -c "cd cli && golangci-lint run"
         language: system
         files: ^cli/.*\.go$
         pass_filenames: false

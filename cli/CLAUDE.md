@@ -1,6 +1,6 @@
 # CLI (Go Binary)
 
-Go tooling requires the module root as cwd. Use `go -C cli` which changes directory internally without affecting the shell. Never use `cd cli` -- it poisons the cwd for all subsequent Bash calls. golangci-lint is registered as a `tool` in `cli/go.mod` so it runs via `go -C cli tool golangci-lint`.
+Go tooling requires the module root as cwd. Use `go -C cli` which changes directory internally without affecting the shell. Never use `cd cli` -- it poisons the cwd for all subsequent Bash calls. `golangci-lint` is installed as an **external** binary (not a Go `tool` directive) to keep `cli/go.mod` free of GPL-3.0 transitive deps -- run `scripts/install_cli_tools.sh` once to install it locally (CI uses `golangci/golangci-lint-action` directly).
 
 ## Quick Commands
 
@@ -8,9 +8,19 @@ Go tooling requires the module root as cwd. Use `go -C cli` which changes direct
 go -C cli build -o synthorg ./main.go                                  # build CLI
 go -C cli test ./...                                                   # run tests (fuzz targets run seed corpus only without -fuzz flag)
 go -C cli vet ./...                                                    # vet
-go -C cli tool golangci-lint run                                       # lint
+bash -c "cd cli && golangci-lint run"                                  # lint (requires scripts/install_cli_tools.sh)
 go -C cli test -fuzz=FuzzYamlStr -fuzztime=30s ./internal/compose/     # fuzz example
 ```
+
+## Local Setup
+
+Install the external lint toolchain once per development machine:
+
+```bash
+bash scripts/install_cli_tools.sh
+```
+
+This installs the pinned `golangci-lint` version that matches CI (`.github/workflows/cli.yml`). Re-run after bumping the version. The pre-commit and pre-push hooks assume `golangci-lint` is on `PATH` (in pre-commit.ci it is skipped because the hosted runner does not have Go installed).
 
 ## Package Structure
 
