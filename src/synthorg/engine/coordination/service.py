@@ -294,7 +294,7 @@ class MultiAgentCoordinator:
 
         if self._performance_tracker is not None and contributions:
             try:
-                self._performance_tracker.record_coordination_contributions(
+                await self._performance_tracker.record_coordination_contributions(
                     contributions,
                 )
             except MemoryError, RecursionError:

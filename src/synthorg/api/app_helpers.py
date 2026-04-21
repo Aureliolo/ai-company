@@ -51,7 +51,7 @@ def _make_expire_callback(
 ) -> Callable[[ApprovalItem], None]:
     """Create a sync callback that publishes APPROVAL_EXPIRED events.
 
-    The callback is invoked by ``ApprovalStore._check_expiration``
+    The callback is invoked by ``ApprovalStore._check_expiration_locked``
     when lazy expiry transitions an item to EXPIRED.  Best-effort:
     publish errors are logged and swallowed.
 

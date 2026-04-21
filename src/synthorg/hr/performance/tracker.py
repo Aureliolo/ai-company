@@ -7,7 +7,7 @@ Delegates scoring, windowing, and trend detection to pluggable strategies.
 import asyncio
 import re
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.performance.config import PerformanceConfig
@@ -29,6 +29,7 @@ from synthorg.observability.events.performance import (
     PERF_METRIC_RECORDED,
     PERF_OVERRIDE_APPLIED,
     PERF_SNAPSHOT_COMPUTED,
+    PERF_SNAPSHOT_FAILED,
     PERF_TRACKER_CLEARED,
     PERF_WINDOW_INSUFFICIENT_DATA,
 )
@@ -57,6 +58,12 @@ if TYPE_CHECKING:
     from synthorg.hr.performance.window_protocol import MetricsWindowStrategy
 
 logger = get_logger(__name__)
+
+# Upper bound on a single ``get_snapshots`` batch.  Each input id
+# triggers a separate snapshot computation (scorers + window logic +
+# trend detection); unbounded fan-out from a user-controllable caller
+# would let a client burn arbitrary CPU on a single request.
+MAX_BATCH_SNAPSHOTS_LOOKUP: Final[int] = 1024
 
 
 class PerformanceTracker:
@@ -228,7 +235,7 @@ class PerformanceTracker:
         )
         return record
 
-    def record_coordination_contributions(
+    async def record_coordination_contributions(
         self,
         contributions: tuple[AgentContribution, ...],
     ) -> None:
@@ -237,9 +244,10 @@ class PerformanceTracker:
         Args:
             contributions: Attribution records from a coordinated run.
         """
-        for contrib in contributions:
-            agent_key = str(contrib.agent_id)
-            self._contributions.setdefault(agent_key, []).append(contrib)
+        async with self._metrics_lock:
+            for contrib in contributions:
+                agent_key = str(contrib.agent_id)
+                self._contributions.setdefault(agent_key, []).append(contrib)
 
         if contributions:
             logger.info(
@@ -292,9 +300,10 @@ class PerformanceTracker:
             record: Collaboration metric record to store.
         """
         agent_key = str(record.agent_id)
-        if agent_key not in self._collab_metrics:
-            self._collab_metrics[agent_key] = []
-        self._collab_metrics[agent_key].append(record)
+        async with self._metrics_lock:
+            if agent_key not in self._collab_metrics:
+                self._collab_metrics[agent_key] = []
+            self._collab_metrics[agent_key].append(record)
 
         logger.debug(
             PERF_METRIC_RECORDED,
@@ -348,6 +357,60 @@ class PerformanceTracker:
             agent_id=agent_id,
             records=records,
         )
+
+    async def get_snapshots(
+        self,
+        agent_ids: tuple[NotBlankStr, ...],
+        *,
+        now: AwareDatetime | None = None,
+    ) -> tuple[AgentPerformanceSnapshot | None, ...]:
+        """Compute performance snapshots for a batch of agents.
+
+        Order-preserving: the returned tuple has one entry per input
+        id in the same order.  Entries are ``None`` when snapshot
+        computation raises (e.g. insufficient data, strategy error).
+        Single-agent log emissions are preserved so existing
+        observability pipelines keep working.
+
+        Args:
+            agent_ids: Ordered tuple of agent identifiers.
+            now: Reference time (defaults to current UTC time).
+
+        Returns:
+            Tuple of snapshots (or ``None`` on failure) in input order.
+
+        Raises:
+            ValueError: If ``len(agent_ids)`` exceeds
+                ``MAX_BATCH_SNAPSHOTS_LOOKUP``.  Snapshot computation is
+                O(N) in the batch size; an unbounded batch from a
+                user-controllable caller would let a single request
+                monopolise scoring / window / trend work.
+        """
+        if not agent_ids:
+            return ()
+        if len(agent_ids) > MAX_BATCH_SNAPSHOTS_LOOKUP:
+            msg = (
+                f"get_snapshots batch of {len(agent_ids)} exceeds "
+                f"MAX_BATCH_SNAPSHOTS_LOOKUP={MAX_BATCH_SNAPSHOTS_LOOKUP}"
+            )
+            raise ValueError(msg)
+        results: list[AgentPerformanceSnapshot | None] = []
+        for agent_id in agent_ids:
+            try:
+                snapshot = await self.get_snapshot(agent_id, now=now)
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
+                logger.warning(
+                    PERF_SNAPSHOT_FAILED,
+                    agent_id=str(agent_id),
+                    error=type(exc).__name__,
+                    exc_info=True,
+                )
+                results.append(None)
+            else:
+                results.append(snapshot)
+        return tuple(results)
 
     async def get_snapshot(
         self,

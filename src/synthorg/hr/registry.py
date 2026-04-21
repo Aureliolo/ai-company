@@ -5,7 +5,7 @@ their identities, and lifecycle status transitions (D8.3).
 """
 
 import asyncio
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.core.enums import AgentStatus
 from synthorg.hr.errors import (
@@ -22,6 +22,14 @@ from synthorg.observability.events.hr import (
     HR_REGISTRY_STATUS_UPDATED,
 )
 from synthorg.observability.events.versioning import VERSION_SNAPSHOT_FAILED
+
+# Upper bound on a single ``get_by_names`` batch.  Caller inputs can
+# originate from user-supplied request bodies (e.g. the coordination
+# endpoint's ``agent_names``), so the batch must not block the
+# registry's single ``asyncio.Lock`` for an unbounded period.  A
+# well-formed organisation has far fewer active agents than this
+# ceiling; anything larger is assumed to be misuse.
+MAX_BATCH_NAMES_LOOKUP: Final[int] = 1024
 
 if TYPE_CHECKING:
     from typing import Any
@@ -169,6 +177,53 @@ class AgentRegistryService:
                 if str(identity.name).lower() == name_lower:
                     return identity
             return None
+
+    async def get_by_names(
+        self,
+        names: tuple[NotBlankStr, ...],
+    ) -> tuple[AgentIdentity | None, ...]:
+        """Batch lookup preserving input order with ``None`` for misses.
+
+        Acquires the registry lock exactly once regardless of batch
+        size.  Fanning out N separate ``get_by_name`` calls (the old
+        pattern) required N lock acquisitions and serialised each
+        lookup under a shared lock; this batch method reduces that to
+        a single acquisition.
+
+        Args:
+            names: Ordered tuple of agent names to resolve
+                (case-insensitive).
+
+        Returns:
+            Tuple of resolved identities in the same order as
+            ``names``.  Each entry is the first matching agent or
+            ``None`` if no agent has that name.  When multiple
+            registered agents share the same name (case-insensitive),
+            the first-registered identity wins, matching
+            ``get_by_name`` semantics.
+
+        Raises:
+            ValueError: If ``len(names)`` exceeds
+                ``MAX_BATCH_NAMES_LOOKUP``; the registry lock must not
+                be held for an unbounded scan when callers forward
+                user-supplied name lists.
+        """
+        if not names:
+            return ()
+        if len(names) > MAX_BATCH_NAMES_LOOKUP:
+            msg = (
+                f"get_by_names batch of {len(names)} exceeds "
+                f"MAX_BATCH_NAMES_LOOKUP={MAX_BATCH_NAMES_LOOKUP}"
+            )
+            raise ValueError(msg)
+        async with self._lock:
+            by_lower_name: dict[str, AgentIdentity] = {}
+            for identity in self._agents.values():
+                key = str(identity.name).lower()
+                # First registration wins on name collision, matching
+                # ``get_by_name`` semantics.
+                by_lower_name.setdefault(key, identity)
+            return tuple(by_lower_name.get(str(name).lower()) for name in names)
 
     async def list_active(self) -> tuple[AgentIdentity, ...]:
         """List all agents with ACTIVE status.

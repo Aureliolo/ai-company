@@ -1,6 +1,5 @@
 """Coordination controller -- multi-agent coordination endpoint."""
 
-import asyncio
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
@@ -336,17 +335,7 @@ class CoordinationController(Controller):
 
         if data.agent_names is not None:
             names = data.agent_names
-            results: list[AgentIdentity | None] = [None] * len(names)
-            async with asyncio.TaskGroup() as tg:
-                for idx, name in enumerate(names):
-
-                    async def _resolve(
-                        i: int = idx,
-                        n: str = name,
-                    ) -> None:
-                        results[i] = await registry.get_by_name(n)
-
-                    tg.create_task(_resolve())
+            results = await registry.get_by_names(tuple(names))
             agents: list[AgentIdentity] = []
             for name, agent in zip(names, results, strict=True):
                 if agent is None:

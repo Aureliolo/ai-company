@@ -1694,10 +1694,23 @@ routing decisions and wave outcomes:
   `"coordination_overhead"` (system-initiated: budget, shutdown, parking),
   `"quality_gate"` (failed quality check).
 - **Integration** -- contributions are fed into `PerformanceTracker
-  .record_coordination_contributions()` for trend analysis.  The async
-  method `record_task_metric()` guards writes behind an `asyncio.Lock`;
-  `record_coordination_contributions()` is synchronous (no await points)
-  so dict operations are atomic within the single-threaded event loop.
+  .record_coordination_contributions()` for trend analysis.  All three
+  write paths (`record_task_metric`, `record_coordination_contributions`,
+  `record_collaboration_event`) are `async` and guard mutations behind
+  a shared `asyncio.Lock` so contributions cannot race with other
+  metric writes even if a future refactor introduces new `await`
+  points mid-body.
+- **Batch snapshot retrieval** -- `PerformanceTracker.get_snapshots(agent_ids)`
+  returns one `AgentPerformanceSnapshot | None` per input id, in order, with
+  `None` marking agents whose snapshot computation raised.  Per-agent
+  failures emit `perf.snapshot.failed` (`PERF_SNAPSHOT_FAILED`) with
+  the exception type name so operators can filter snapshot failures
+  from successful `perf.snapshot.computed` events; the batch as a whole
+  never raises for routine strategy errors (only for `MemoryError` /
+  `RecursionError`).  The batch is capped at `MAX_BATCH_SNAPSHOTS_LOOKUP`
+  (1024) to prevent an unbounded caller from monopolising scoring work;
+  department-health aggregation is the primary consumer and passes at
+  most the number of agents in a department.
 
 ---
 
