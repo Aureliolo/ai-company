@@ -1,5 +1,10 @@
-name: Build apko base image
-description: Build, scan, sign, and attest an apko-composed base image
+name: Build apko base image (scan)
+description: >-
+  Build an apko-composed base image and run vulnerability scans. Always uploads
+  the built image as an artifact so the companion publish-apko-base action can
+  push, sign, and attest it on non-PR events with elevated permissions. This
+  composite is PR-safe: it needs only `contents: read` and `security-events:
+  write` (for the Trivy SARIF upload).
 
 inputs:
   image-name:
@@ -15,21 +20,14 @@ inputs:
   trivy-version:
     description: "Trivy version"
     required: true
-  architectures:
-    description: "Comma-separated list of architectures to push (e.g. amd64,arm64)"
-    required: false
-    default: "amd64,arm64"
-  ghcr-token:
-    description: "GITHUB_TOKEN for GHCR"
-    required: true
 
 outputs:
-  digest:
-    description: "Pushed image digest (empty on PR builds)"
-    value: ${{ steps.push.outputs.digest }}
   tag:
     description: "Image tag (sha-based)"
     value: ${{ steps.image-ref.outputs.tag }}
+  artifact-name:
+    description: "Name of the uploaded base image tarball artifact"
+    value: ${{ inputs.image-name }}-base-image
 
 runs:
   using: composite
@@ -38,14 +36,6 @@ runs:
       uses: ./.github/actions/setup-apko
       with:
         version: ${{ inputs.apko-version }}
-
-    - name: Log in to GHCR
-      if: github.event_name != 'pull_request'
-      uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
-      with:
-        registry: ghcr.io
-        username: ${{ github.actor }}
-        password: ${{ inputs.ghcr-token }}
 
     - name: Compute image tag
       id: image-ref
@@ -80,13 +70,15 @@ runs:
         TAG="sha-${GITHUB_SHA::7}"
         scripts/report-image-size.sh "ghcr.io/aureliolo/synthorg-${IMAGE_NAME}-base:${TAG}" "${IMAGE_NAME} Base"
 
-    - name: Upload base image artifact (PR only)
-      if: github.event_name == 'pull_request'
+    # Upload the built .tar on every event. On PRs the downstream app build jobs
+    # consume it directly; on push/tag the publish-apko-base action downloads it
+    # from a companion job that carries the GHCR write permissions.
+    - name: Upload base image artifact
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with: # zizmor: ignore[template-injection] -- inputs.image-name is action input, not shell
         name: ${{ inputs.image-name }}-base-image
         path: ${{ inputs.image-name }}-base.tar
-        retention-days: 1
+        retention-days: 2
 
     - name: Install Trivy
       shell: bash
@@ -131,76 +123,3 @@ runs:
       with: # zizmor: ignore[template-injection]
         sarif_file: trivy-${{ inputs.image-name }}-base.sarif
         category: trivy-${{ inputs.image-name }}-base
-
-    - name: Push base image (multi-arch manifest)
-      if: github.event_name != 'pull_request'
-      id: push
-      shell: bash
-      env:
-        IMAGE_NAME: ${{ inputs.image-name }}
-        ARCHITECTURES: ${{ inputs.architectures }}
-      run: |
-        TAG="sha-${GITHUB_SHA::7}"
-        REPO="ghcr.io/aureliolo/synthorg-${IMAGE_NAME}-base"
-        IFS=',' read -ra ARCHS <<< "${ARCHITECTURES}"
-        MANIFEST_ARGS=()
-        for arch in "${ARCHS[@]}"; do
-          docker push "${REPO}:${TAG}-${arch}"
-          MANIFEST_ARGS+=("${REPO}:${TAG}-${arch}")
-        done
-        docker manifest create "${REPO}:${TAG}" "${MANIFEST_ARGS[@]}"
-        DIGEST=$(docker manifest push "${REPO}:${TAG}")
-        echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
-
-    # GitHub releases occasionally 5xx; cosign-installer's internal retry (3
-    # attempts in ~7s) is not enough to ride out a longer outage. Wrap the
-    # install in two continue-on-error attempts with backoff before the final
-    # fail-hard attempt, so a single 10-20s burst of 500s doesn't kill the run.
-    - name: Install cosign (attempt 1)
-      if: github.event_name != 'pull_request'
-      id: cosign_1
-      continue-on-error: true
-      uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
-
-    - name: Back off before cosign retry 1
-      if: github.event_name != 'pull_request' && steps.cosign_1.outcome == 'failure'
-      shell: bash
-      run: sleep 15
-
-    - name: Install cosign (attempt 2)
-      if: github.event_name != 'pull_request' && steps.cosign_1.outcome == 'failure'
-      id: cosign_2
-      continue-on-error: true
-      uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
-
-    - name: Back off before cosign retry 2
-      if: github.event_name != 'pull_request' && steps.cosign_2.outcome == 'failure'
-      shell: bash
-      run: sleep 30
-
-    - name: Install cosign (final attempt)
-      if: github.event_name != 'pull_request' && steps.cosign_2.outcome == 'failure'
-      uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
-
-    - name: Sign image
-      if: github.event_name != 'pull_request'
-      shell: bash
-      env:
-        IMAGE_NAME: ${{ inputs.image-name }}
-        DIGEST: ${{ steps.push.outputs.digest }}
-      run: |
-        if [ -z "$DIGEST" ]; then echo "::error::No digest"; exit 1; fi
-        set -o pipefail
-        if ! cosign sign --yes "ghcr.io/aureliolo/synthorg-${IMAGE_NAME}-base@${DIGEST}" 2>&1 | tee /tmp/cosign-out; then
-          if grep -q 'createLogEntryConflict' /tmp/cosign-out; then
-            echo "::notice::Image already signed -- skipping"
-          else cat /tmp/cosign-out; exit 1; fi
-        fi
-
-    - name: Attest build provenance (SLSA Level 3)
-      if: github.event_name != 'pull_request'
-      uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
-      with: # zizmor: ignore[template-injection]
-        subject-name: ghcr.io/aureliolo/synthorg-${{ inputs.image-name }}-base
-        subject-digest: ${{ steps.push.outputs.digest }}
-        push-to-registry: true
