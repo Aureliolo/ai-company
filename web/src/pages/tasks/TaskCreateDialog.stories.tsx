@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { action } from 'storybook/actions'
 import { TaskCreateDialog } from './TaskCreateDialog'
+import type { Task } from '@/api/types/tasks'
 
 const meta = {
   title: 'Tasks/TaskCreateDialog',
@@ -12,11 +13,17 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
+// Sentinel-return stub: onCreate now resolves to ``Task | null``.
+const nullCreate = async (): Promise<Task | null> => null
+
 export const Open: Story = {
   args: {
     open: true,
     onOpenChange: () => {},
-    onCreate: async (data) => { action('onCreate')(data) },
+    onCreate: async (data) => {
+      action('onCreate')(data)
+      return null
+    },
   },
 }
 
@@ -24,6 +31,6 @@ export const Closed: Story = {
   args: {
     open: false,
     onOpenChange: () => {},
-    onCreate: async () => {},
+    onCreate: nullCreate,
   },
 }

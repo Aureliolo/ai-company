@@ -19,7 +19,15 @@ export interface ConfirmDialogProps {
   cancelLabel?: string
   /** Visual variant (default: "default"). "destructive" uses a red confirm button. */
   variant?: 'default' | 'destructive'
-  onConfirm: () => void | Promise<void>
+  /**
+   * Confirm handler. Resolving to ``false`` keeps the dialog open so
+   * the caller can retry from the same surface (used by sentinel-
+   * returning store mutations: when the underlying API call fails the
+   * store toasts the error and returns ``null`` / ``false``, and the
+   * caller propagates that as ``false`` here). Any other resolution
+   * (``void`` / ``undefined`` / ``true``) closes the dialog.
+   */
+  onConfirm: () => boolean | void | Promise<boolean | void>
   /**
    * Optional handler invoked when the user explicitly clicks the
    * Cancel button. Dismissals via Escape or backdrop click do NOT
@@ -109,12 +117,17 @@ export function ConfirmDialog({
                 if (busy) return
                 setSubmitting(true)
                 try {
-                  await onConfirm()
-                  onOpenChange(false)
+                  const result = await onConfirm()
+                  // Stay open when the caller explicitly signals failure
+                  // via a `false` return (sentinel store mutations); any
+                  // other return value (void / true / undefined) closes.
+                  if (result !== false) {
+                    onOpenChange(false)
+                  }
                 } catch (err) {
-                  // Dialog stays open on error so the caller can retry from
-                  // the same surface. Log the cause so the failure is not
-                  // invisible if the caller forgets to toast its own error.
+                  // Dialog stays open on a thrown error too, so the
+                  // caller can retry from the same surface. Log the
+                  // cause in case the caller forgets to toast.
                   log.warn('ConfirmDialog onConfirm threw', { title: sanitizeForLog(title) }, err)
                 } finally {
                   setSubmitting(false)

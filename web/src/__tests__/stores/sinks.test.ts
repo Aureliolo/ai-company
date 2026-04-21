@@ -1,6 +1,7 @@
 import { http, HttpResponse } from 'msw'
 import type { SinkInfo, TestSinkResult } from '@/api/types/settings'
 import { useSinksStore } from '@/stores/sinks'
+import { useToastStore } from '@/stores/toast'
 import { apiError, apiSuccess } from '@/mocks/handlers'
 import { server } from '@/test-setup'
 
@@ -135,7 +136,7 @@ describe('testConfig', () => {
     expect(response).toEqual(result)
   })
 
-  it('propagates errors from testSinkConfig', async () => {
+  it('returns null + emits error toast on testSinkConfig failure', async () => {
     server.use(
       http.post('/api/v1/settings/observability/sinks/_test', () =>
         HttpResponse.json(apiError('Invalid config')),
@@ -143,8 +144,14 @@ describe('testConfig', () => {
     )
 
     const data = { sink_overrides: '{}', custom_sinks: '[]' }
-    await expect(useSinksStore.getState().testConfig(data)).rejects.toThrow(
-      'Invalid config',
-    )
+    const result = await useSinksStore.getState().testConfig(data)
+
+    expect(result).toBeNull()
+    expect(useSinksStore.getState().error).toBe('Invalid config')
+    const errorToasts = useToastStore
+      .getState()
+      .toasts.filter((t) => t.variant === 'error')
+    expect(errorToasts).toHaveLength(1)
+    expect(errorToasts[0]!.title).toBe('Sink test failed')
   })
 })

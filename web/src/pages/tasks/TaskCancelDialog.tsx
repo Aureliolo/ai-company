@@ -16,11 +16,16 @@ export function TaskCancelDialog({ open, onOpenChange, onConfirm }: TaskCancelDi
     if (!next) setReason('')
   }
 
-  const handleConfirm = async () => {
+  const handleConfirm = async (): Promise<boolean> => {
     const ok = await onConfirm(reason)
     if (ok) {
-      handleOpenChange(false)
+      // Clear the reason text but let ConfirmDialog's keep-open-on-
+      // false contract drive the close itself. Returning the sentinel
+      // from this handler means a `false` result keeps the dialog
+      // open for retry without the handler fighting it.
+      setReason('')
     }
+    return ok
   }
 
   return (

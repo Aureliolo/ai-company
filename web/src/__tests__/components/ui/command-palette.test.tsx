@@ -16,13 +16,15 @@ beforeAll(() => {
   originalResizeObserver = globalThis.ResizeObserver
   originalScrollIntoView = Element.prototype.scrollIntoView
 
-  // cmdk uses ResizeObserver and scrollIntoView which are not in jsdom
-  class ResizeObserverMock {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
+  // cmdk uses ResizeObserver and scrollIntoView which are not in jsdom.
+  // Implementing the ``ResizeObserver`` interface makes the assignment
+  // structurally type-safe -- no cast needed.
+  class ResizeObserverMock implements ResizeObserver {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
   }
-  globalThis.ResizeObserver = ResizeObserverMock as unknown as typeof ResizeObserver
+  globalThis.ResizeObserver = ResizeObserverMock
   Element.prototype.scrollIntoView = vi.fn()
 })
 

@@ -54,6 +54,32 @@ export const AGENT_STATUS_VALUES = [
   'active', 'onboarding', 'on_leave', 'terminated',
 ] as const satisfies readonly AgentStatus[]
 
+export const TASK_STATUS_VALUES = [
+  'created', 'assigned', 'in_progress', 'in_review', 'completed',
+  'blocked', 'failed', 'interrupted', 'suspended', 'cancelled',
+  'rejected', 'auth_required',
+] as const satisfies readonly TaskStatus[]
+
+export const TASK_TYPE_VALUES = [
+  'development', 'design', 'research', 'review', 'meeting', 'admin',
+] as const satisfies readonly TaskType[]
+
+export const PRIORITY_VALUES = [
+  'critical', 'high', 'medium', 'low',
+] as const satisfies readonly Priority[]
+
+export const APPROVAL_STATUS_VALUES = [
+  'pending', 'approved', 'rejected', 'expired',
+] as const satisfies readonly ApprovalStatus[]
+
+export const APPROVAL_RISK_LEVEL_VALUES = [
+  'low', 'medium', 'high', 'critical',
+] as const satisfies readonly ApprovalRiskLevel[]
+
+export const URGENCY_LEVEL_VALUES = [
+  'critical', 'high', 'normal', 'no_expiry',
+] as const satisfies readonly UrgencyLevel[]
+
 export type AutonomyLevel = 'full' | 'semi' | 'supervised' | 'locked'
 
 export type OrgRole = 'owner' | 'department_admin' | 'editor' | 'viewer'
@@ -81,6 +107,17 @@ export const DEPARTMENT_NAME_VALUES = [
   'executive', 'product', 'design', 'engineering', 'quality_assurance',
   'data_analytics', 'operations', 'creative_marketing', 'security',
 ] as const satisfies readonly DepartmentName[]
+
+const DEPARTMENT_NAME_SET: ReadonlySet<string> = new Set(DEPARTMENT_NAME_VALUES)
+
+/**
+ * Type guard for {@link DepartmentName}. Lets callers narrow a raw
+ * string (e.g. from a select element's value) to the strict union
+ * without a cast.
+ */
+export function isDepartmentName(value: string): value is DepartmentName {
+  return DEPARTMENT_NAME_SET.has(value)
+}
 
 export type ProjectStatus =
   | 'planning'

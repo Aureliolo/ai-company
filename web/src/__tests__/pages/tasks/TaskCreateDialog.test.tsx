@@ -1,20 +1,28 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { TaskCreateDialog } from '@/pages/tasks/TaskCreateDialog'
+import { makeTask } from '../../helpers/factories'
+import type { Task } from '@/api/types/tasks'
+
+// onCreate now returns ``Task | null`` per the sentinel-return
+// contract; this stub resolves to null which the dialog treats as
+// failure (keeps the dialog open). Tests that assert the call site
+// override with their own mock.
+const nullCreate = async (): Promise<Task | null> => null
 
 describe('TaskCreateDialog', () => {
   it('renders nothing when closed', () => {
-    render(<TaskCreateDialog open={false} onOpenChange={() => {}} onCreate={async () => {}} />)
+    render(<TaskCreateDialog open={false} onOpenChange={() => {}} onCreate={nullCreate} />)
     expect(screen.queryByText('New Task')).not.toBeInTheDocument()
   })
 
   it('renders dialog when open', () => {
-    render(<TaskCreateDialog open={true} onOpenChange={() => {}} onCreate={async () => {}} />)
+    render(<TaskCreateDialog open={true} onOpenChange={() => {}} onCreate={nullCreate} />)
     expect(screen.getByText('New Task')).toBeInTheDocument()
   })
 
   it('renders required form fields', () => {
-    render(<TaskCreateDialog open={true} onOpenChange={() => {}} onCreate={async () => {}} />)
+    render(<TaskCreateDialog open={true} onOpenChange={() => {}} onCreate={nullCreate} />)
     expect(screen.getByPlaceholderText('Task title')).toBeInTheDocument()
     expect(screen.getByPlaceholderText('Describe the task...')).toBeInTheDocument()
     expect(screen.getByPlaceholderText('Project name')).toBeInTheDocument()
@@ -23,7 +31,7 @@ describe('TaskCreateDialog', () => {
 
   it('shows validation errors for empty required fields', async () => {
     const user = userEvent.setup()
-    render(<TaskCreateDialog open={true} onOpenChange={() => {}} onCreate={async () => {}} />)
+    render(<TaskCreateDialog open={true} onOpenChange={() => {}} onCreate={nullCreate} />)
     await user.click(screen.getByText('Create Task'))
     expect(screen.getByText('Title is required')).toBeInTheDocument()
     expect(screen.getByText('Description is required')).toBeInTheDocument()
@@ -33,7 +41,7 @@ describe('TaskCreateDialog', () => {
 
   it('calls onCreate with form data on valid submission', async () => {
     const user = userEvent.setup()
-    const onCreate = vi.fn().mockResolvedValue(undefined)
+    const onCreate = vi.fn().mockResolvedValue(makeTask('ok'))
     render(<TaskCreateDialog open={true} onOpenChange={() => {}} onCreate={onCreate} />)
 
     await user.type(screen.getByPlaceholderText('Task title'), 'My task')
@@ -53,10 +61,14 @@ describe('TaskCreateDialog', () => {
     )
   })
 
-  it('shows error message on submission failure', async () => {
+  it('keeps dialog open and preserves form state on sentinel-null failure', async () => {
+    // Store-owned error UX: on failure the store emits a toast and
+    // returns ``null``. The dialog MUST keep itself open and preserve
+    // the user's inputs so they can retry without re-typing.
     const user = userEvent.setup()
-    const onCreate = vi.fn().mockRejectedValue(new Error('Server error'))
-    render(<TaskCreateDialog open={true} onOpenChange={() => {}} onCreate={onCreate} />)
+    const onOpenChange = vi.fn()
+    const onCreate = vi.fn().mockResolvedValue(null)
+    render(<TaskCreateDialog open={true} onOpenChange={onOpenChange} onCreate={onCreate} />)
 
     await user.type(screen.getByPlaceholderText('Task title'), 'My task')
     await user.type(screen.getByPlaceholderText('Describe the task...'), 'Desc')
@@ -64,13 +76,15 @@ describe('TaskCreateDialog', () => {
     await user.type(screen.getByPlaceholderText('Agent or user'), 'agent')
 
     await user.click(screen.getByText('Create Task'))
-    expect(screen.getByText('Server error')).toBeInTheDocument()
+    expect(onCreate).toHaveBeenCalled()
+    expect(onOpenChange).not.toHaveBeenCalledWith(false)
+    expect((screen.getByPlaceholderText('Task title') as HTMLInputElement).value).toBe('My task')
   })
 
   it('calls onOpenChange(false) on successful creation', async () => {
     const user = userEvent.setup()
     const onOpenChange = vi.fn()
-    const onCreate = vi.fn().mockResolvedValue(undefined)
+    const onCreate = vi.fn().mockResolvedValue(makeTask('ok'))
     render(<TaskCreateDialog open={true} onOpenChange={onOpenChange} onCreate={onCreate} />)
 
     await user.type(screen.getByPlaceholderText('Task title'), 'My task')

@@ -29,6 +29,13 @@ export const WS_EVENT_TYPE_VALUES = [
 export type WsEventType = (typeof WS_EVENT_TYPE_VALUES)[number]
 
 export interface WsEvent {
+  /**
+   * Wire-protocol version. Absent on legacy events -- treated as 1.
+   * Clients MUST ignore events whose version they do not understand.
+   * Coordinates with `WS_PROTOCOL_VERSION` in `@/utils/constants` and
+   * the server's `WsEvent.version` in `src/synthorg/api/ws_models.py`.
+   */
+  version?: number
   event_type: WsEventType
   channel: WsChannel
   timestamp: string

@@ -6,7 +6,6 @@ import {
   AGENT_STATUS_VALUES,
   SENIORITY_LEVEL_VALUES,
   type AgentStatus,
-  type DepartmentName,
   type SeniorityLevel,
 } from '@/api/types/enums'
 import { formatLabel } from '@/utils/format'
@@ -31,16 +30,16 @@ export function AgentFilters({ className }: { className?: string }) {
   // static list of every enum member we support.
   const configDepartments = useCompanyStore((s) => s.config?.departments)
   const departmentOptions = useMemo<
-    ReadonlyArray<{ value: DepartmentName; label: string }>
+    ReadonlyArray<{ value: string; label: string }>
   >(() => {
     if (!configDepartments || configDepartments.length === 0) return []
     return configDepartments.map((d) => ({
-      value: d.name as DepartmentName,
+      value: d.name,
       label: d.display_name ?? formatLabel(d.name),
     }))
   }, [configDepartments])
   const validDepartmentNames = useMemo(
-    () => new Set<DepartmentName>(departmentOptions.map((o) => o.value)),
+    () => new Set<string>(departmentOptions.map((o) => o.value)),
     [departmentOptions],
   )
 
@@ -69,8 +68,13 @@ export function AgentFilters({ className }: { className?: string }) {
       <select
         value={departmentFilter ?? ''}
         onChange={(e) => {
-          const v = e.target.value as DepartmentName
-          setDepartmentFilter(v && validDepartmentNames.has(v) ? v : null)
+          const v = e.target.value
+          // Departments come from the LIVE company config (see the
+          // useMemo above). The store's `departmentFilter` is
+          // `string | null` precisely so user-created departments
+          // beyond the static `DepartmentName` enum are accepted --
+          // no cast needed.
+          setDepartmentFilter(validDepartmentNames.has(v) ? v : null)
         }}
         className="h-9 rounded-lg border border-border bg-card px-3 text-sm text-foreground focus:border-accent focus:outline-none"
         aria-label="Filter by department"

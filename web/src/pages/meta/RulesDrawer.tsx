@@ -64,12 +64,14 @@ export function RulesDrawer({
     [customRules],
   )
 
-  const handleBuilderClose = useCallback(async () => {
-    setView('list')
-    setEditRule(null)
+  const safeRefresh = useCallback(async () => {
     try {
       await onRefresh()
     } catch (err) {
+      // onRefresh typically loads the rule list from a parent page;
+      // a transient failure there shouldn't swallow the mutation's
+      // success but the user still needs to know the list may be
+      // stale.
       addToast({
         variant: 'error',
         title: 'Failed to refresh rules',
@@ -78,44 +80,40 @@ export function RulesDrawer({
     }
   }, [onRefresh, addToast])
 
+  const handleBuilderClose = useCallback(async () => {
+    setView('list')
+    setEditRule(null)
+    await safeRefresh()
+  }, [safeRefresh])
+
   const handleToggle = useCallback(
     async (_name: string, id?: string) => {
       if (!id) return
-      try {
-        await toggleRule(id)
-        await onRefresh()
-      } catch (err) {
-        addToast({
-          variant: 'error',
-          title: 'Failed to toggle rule',
-          description: getErrorMessage(err),
-        })
+      // Sentinel-return contract: the store owns success/error toasts.
+      // Only null-check to decide whether to refresh the list.
+      const toggled = await toggleRule(id)
+      if (toggled) {
+        await safeRefresh()
       }
     },
-    [toggleRule, onRefresh, addToast],
+    [toggleRule, safeRefresh],
   )
 
   const handleDeleteConfirm = useCallback(async () => {
-    if (!deleteTarget) return
+    if (!deleteTarget) return false
     setDeleting(true)
-    try {
-      await deleteRule(deleteTarget)
-      await onRefresh()
-      addToast({
-        variant: 'success',
-        title: 'Rule deleted',
-      })
-    } catch (err) {
-      addToast({
-        variant: 'error',
-        title: 'Failed to delete rule',
-        description: getErrorMessage(err),
-      })
-    } finally {
-      setDeleting(false)
-      setDeleteTarget(null)
-    }
-  }, [deleteTarget, deleteRule, onRefresh, addToast])
+    // Sentinel-return contract: the store emits both the success and
+    // error toast. On success, refresh + close the dialog by clearing
+    // deleteTarget; on failure, leave the dialog open so the user can
+    // retry without losing their place (returning false tells the
+    // ConfirmDialog primitive not to auto-close).
+    const ok = await deleteRule(deleteTarget)
+    setDeleting(false)
+    if (!ok) return false
+    setDeleteTarget(null)
+    await safeRefresh()
+    return true
+  }, [deleteTarget, deleteRule, safeRefresh])
 
   const handleDrawerClose = useCallback(() => {
     setView('list')

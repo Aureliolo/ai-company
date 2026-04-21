@@ -56,6 +56,12 @@ export interface EnqueueParams {
   readonly href?: string
   readonly entityId?: string
   readonly severity?: NotificationSeverity
+  /**
+   * Optional inline action label + handler forwarded to the toast
+   * fan-out (so e.g. a "Retry" button can sit on a connection-lost
+   * notification). Drawer / browser routes ignore this field today.
+   */
+  readonly toastAction?: { label: string; onClick: () => void }
 }
 
 // ---------------------------------------------------------------------------
@@ -202,7 +208,7 @@ const MAX_STRING_LEN = 128
  * Returns `undefined` for non-strings so callers can pass the result
  * directly into an optional field without widening the type.
  */
-function sanitizeWsString(value: unknown, maxLen: number = MAX_STRING_LEN): string | undefined {
+export function sanitizeWsString(value: unknown, maxLen: number = MAX_STRING_LEN): string | undefined {
   if (typeof value !== 'string') return undefined
   const stripped = value
     // eslint-disable-next-line no-control-regex
@@ -304,6 +310,7 @@ export const useNotificationsStore = create<NotificationsState>()((set, get) => 
           variant: SEVERITY_TO_TOAST_VARIANT[severity],
           title: params.title,
           description: params.description,
+          action: params.toastAction,
         })
       }
 

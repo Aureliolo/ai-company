@@ -4,8 +4,6 @@ import { InputField } from '@/components/ui/input-field'
 import { TagInput } from '@/components/ui/tag-input'
 import { Button } from '@/components/ui/button'
 import { useProjectsStore } from '@/stores/projects'
-import { useToastStore } from '@/stores/toast'
-import { getErrorMessage } from '@/utils/errors'
 
 interface ProjectCreateDrawerProps {
   open: boolean
@@ -33,13 +31,11 @@ const INITIAL_FORM: FormState = {
 export function ProjectCreateDrawer({ open, onClose }: ProjectCreateDrawerProps) {
   const [form, setForm] = useState<FormState>(INITIAL_FORM)
   const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({})
-  const [submitError, setSubmitError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
   function updateField<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((prev) => ({ ...prev, [key]: value }))
     setErrors((prev) => ({ ...prev, [key]: undefined }))
-    setSubmitError(null)
   }
 
   async function handleSubmit() {
@@ -55,29 +51,24 @@ export function ProjectCreateDrawer({ open, onClose }: ProjectCreateDrawerProps)
     if (Object.keys(next).length > 0) return
 
     setSubmitting(true)
-    try {
-      await useProjectsStore.getState().createProject({
-        name: form.name.trim(),
-        description: form.description.trim() || undefined,
-        team: form.team.length > 0 ? form.team : undefined,
-        lead: form.lead.trim() || undefined,
-        deadline: form.deadline || undefined,
-        budget: form.budget ? Number(form.budget) : undefined,
-      })
-      useToastStore.getState().add({ variant: 'success', title: 'Project created' })
+    const result = await useProjectsStore.getState().createProject({
+      name: form.name.trim(),
+      description: form.description.trim() || undefined,
+      team: form.team.length > 0 ? form.team : undefined,
+      lead: form.lead.trim() || undefined,
+      deadline: form.deadline || undefined,
+      budget: form.budget ? Number(form.budget) : undefined,
+    })
+    setSubmitting(false)
+    if (result) {
       setForm(INITIAL_FORM)
       onClose()
-    } catch (err) {
-      setSubmitError(getErrorMessage(err))
-    } finally {
-      setSubmitting(false)
     }
   }
 
   function handleClose() {
     setForm(INITIAL_FORM)
     setErrors({})
-    setSubmitError(null)
     onClose()
   }
 
@@ -134,12 +125,6 @@ export function ProjectCreateDrawer({ open, onClose }: ProjectCreateDrawerProps)
           placeholder="0.00"
           hint="Budget in EUR"
         />
-
-        {submitError && (
-          <div className="rounded-md border border-danger/30 bg-danger/5 p-card text-sm text-danger">
-            {submitError}
-          </div>
-        )}
 
         <div className="flex justify-end gap-2 pt-2">
           <Button variant="outline" onClick={handleClose} disabled={submitting}>

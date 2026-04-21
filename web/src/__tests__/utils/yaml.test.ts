@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import fc from 'fast-check'
 import { parseYaml, serializeToYaml, validateCompanyYaml } from '@/utils/yaml'
-import { makeCompanyConfig } from '../helpers/factories'
-import type { CompanyConfig } from '@/api/types/org'
+import { DEPARTMENT_NAME_VALUES } from '@/api/types/enums'
+import { makeAgent, makeCompanyConfig, makeDepartment } from '../helpers/factories'
 
 describe('serializeToYaml', () => {
   it('serializes a CompanyConfig to valid YAML', () => {
@@ -75,27 +75,40 @@ describe('validateCompanyYaml', () => {
 })
 
 describe('serializeToYaml / parseYaml property-based round-trip', () => {
-  const arbAgent = fc.record({
+  // Sample DepartmentName values from the canonical enum so generated
+  // configs satisfy ``Partial<AgentConfig>`` / ``Partial<Department>``
+  // without a cast.
+  const arbDepartmentName = fc.constantFrom(...DEPARTMENT_NAME_VALUES)
+
+  const arbAgentSeed = fc.record({
     name: fc.string({ minLength: 1, maxLength: 20 }),
     role: fc.string({ minLength: 1, maxLength: 30 }),
-    department: fc.string({ minLength: 1, maxLength: 20 }),
+    department: arbDepartmentName,
   })
 
-  const arbDepartment = fc.record({
-    name: fc.string({ minLength: 1, maxLength: 20 }),
+  const arbDepartmentSeed = fc.record({
+    name: arbDepartmentName,
     display_name: fc.string({ minLength: 1, maxLength: 30 }),
   })
 
-  const arbCompanyConfig = fc.record({
-    company_name: fc.string({ minLength: 1, maxLength: 50 }),
-    agents: fc.array(arbAgent, { minLength: 0, maxLength: 5 }),
-    departments: fc.array(arbDepartment, { minLength: 0, maxLength: 5 }),
-  })
+  const arbCompanyConfig = fc
+    .record({
+      company_name: fc.string({ minLength: 1, maxLength: 50 }),
+      agents: fc.array(arbAgentSeed, { minLength: 0, maxLength: 5 }),
+      departments: fc.array(arbDepartmentSeed, { minLength: 0, maxLength: 5 }),
+    })
+    .map((seed) =>
+      makeCompanyConfig({
+        company_name: seed.company_name,
+        agents: seed.agents.map((a) => makeAgent(a.name, a)),
+        departments: seed.departments.map((d) => makeDepartment(d.name, d)),
+      }),
+    )
 
   it('round-trips company_name and array lengths', () => {
     fc.assert(
       fc.property(arbCompanyConfig, (config) => {
-        const yaml = serializeToYaml(config as unknown as CompanyConfig)
+        const yaml = serializeToYaml(config)
         const parsed = parseYaml(yaml)
         expect(parsed.company_name).toBe(config.company_name)
         expect(parsed.agents).toHaveLength(config.agents.length)

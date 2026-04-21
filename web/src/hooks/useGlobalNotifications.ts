@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from 'react'
 import { useWebSocket, type ChannelBinding } from '@/hooks/useWebSocket'
 import { useAgentsStore } from '@/stores/agents'
 import { useNotificationsStore } from '@/stores/notifications'
+import { useWebSocketStore } from '@/stores/websocket'
 import { createLogger } from '@/lib/logger'
 import { sanitizeForLog } from '@/utils/logging'
 import type { WsChannel } from '@/api/types/websocket'
@@ -83,7 +84,10 @@ export function useGlobalNotifications(): void {
     }
   }, [setupError])
 
-  // Surface reconnect exhaustion as a more severe notification.
+  // Surface reconnect exhaustion as a more severe notification, with an
+  // inline Retry action so the user can recover without a full page
+  // refresh. The Retry calls back into the WebSocket store to reset the
+  // reconnect budget and start a fresh attempt.
   const reconnectExhaustedRef = useRef(false)
   useEffect(() => {
     if (reconnectExhausted && !reconnectExhaustedRef.current) {
@@ -92,7 +96,14 @@ export function useGlobalNotifications(): void {
       useNotificationsStore.getState().enqueue({
         category: 'connection.exhausted',
         title: 'Live notifications disconnected',
-        description: 'Reconnect attempts exhausted. Refresh to restore.',
+        description:
+          'Reconnect attempts exhausted. Click Retry to try again, or refresh the page.',
+        toastAction: {
+          label: 'Retry',
+          onClick: () => {
+            void useWebSocketStore.getState().retry()
+          },
+        },
       })
     }
   }, [reconnectExhausted])

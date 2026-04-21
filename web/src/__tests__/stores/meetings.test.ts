@@ -1,12 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { useMeetingsStore, _resetRequestSeqs } from '@/stores/meetings'
+import { useToastStore } from '@/stores/toast'
 import { makeMeeting } from '../helpers/factories'
 import { apiError, apiSuccess, paginatedFor } from '@/mocks/handlers'
 import type { listMeetings } from '@/api/endpoints/meetings'
 import { server } from '@/test-setup'
 import type { MeetingResponse } from '@/api/types/meetings'
 import type { WsEvent } from '@/api/types/websocket'
+
+// Bidi-override characters constructed via fromCharCode so ESLint's
+// ``security/detect-bidi-characters`` rule sees only hex in source.
+// ``202e`` = RIGHT-TO-LEFT OVERRIDE, ``202d`` = LEFT-TO-RIGHT OVERRIDE
+// -- both stripped by ``sanitizeWsString`` per the CVE-2021-42574 class.
+const RLO = String.fromCharCode(0x202e)
+const LRO = String.fromCharCode(0x202d)
 
 function paginated(
   data: MeetingResponse[],
@@ -226,19 +234,24 @@ describe('triggerMeeting', () => {
     expect(state.triggering).toBe(false)
   })
 
-  it('re-throws on failure and resets triggering', async () => {
+  it('returns [] sentinel + emits error toast on failure and resets triggering', async () => {
     server.use(
       http.post('/api/v1/meetings/trigger', () =>
         HttpResponse.json(apiError('Trigger failed')),
       ),
     )
 
-    await expect(
-      useMeetingsStore.getState().triggerMeeting({ event_name: 'bad_event' }),
-    ).rejects.toThrow('Trigger failed')
+    const result = await useMeetingsStore
+      .getState()
+      .triggerMeeting({ event_name: 'bad_event' })
 
+    expect(result).toEqual([])
     const state = useMeetingsStore.getState()
     expect(state.triggering).toBe(false)
+    const toasts = useToastStore.getState().toasts
+    expect(toasts).toHaveLength(1)
+    expect(toasts[0]!.variant).toBe('error')
+    expect(toasts[0]!.title).toBe('Failed to trigger meeting')
   })
 })
 
@@ -320,6 +333,128 @@ describe('handleWsEvent', () => {
     expect(useMeetingsStore.getState().meetings).toHaveLength(0)
     expect(warnSpy).toHaveBeenCalledOnce()
     warnSpy.mockRestore()
+  })
+
+  it('rejects frames whose status is outside the enum', () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const meeting = makeMeeting('ws-bad-status', {
+      status: 'not_a_status' as MeetingResponse['status'],
+    })
+    const event: WsEvent = {
+      channel: 'meetings',
+      event_type: 'meeting.completed',
+      payload: { meeting },
+      timestamp: new Date().toISOString(),
+    }
+
+    useMeetingsStore.getState().handleWsEvent(event)
+
+    expect(useMeetingsStore.getState().meetings).toHaveLength(0)
+    errorSpy.mockRestore()
+  })
+
+  it('rejects frames whose token_budget is non-finite', () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const meeting = makeMeeting('ws-inf-budget', {
+      token_budget: Number.POSITIVE_INFINITY,
+    })
+    const event: WsEvent = {
+      channel: 'meetings',
+      event_type: 'meeting.completed',
+      payload: { meeting },
+      timestamp: new Date().toISOString(),
+    }
+
+    useMeetingsStore.getState().handleWsEvent(event)
+
+    expect(useMeetingsStore.getState().meetings).toHaveLength(0)
+    errorSpy.mockRestore()
+  })
+
+  it('rejects frames whose contribution turn_number is negative', () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const meeting = makeMeeting('ws-neg-turn')
+    // Mutate one contribution to have a negative turn_number.
+    const tainted = {
+      ...meeting,
+      minutes: meeting.minutes && {
+        ...meeting.minutes,
+        contributions: [
+          { ...meeting.minutes.contributions[0]!, turn_number: -1 },
+        ],
+      },
+    }
+    const event: WsEvent = {
+      channel: 'meetings',
+      event_type: 'meeting.completed',
+      payload: { meeting: tainted },
+      timestamp: new Date().toISOString(),
+    }
+
+    useMeetingsStore.getState().handleWsEvent(event)
+
+    expect(useMeetingsStore.getState().meetings).toHaveLength(0)
+    errorSpy.mockRestore()
+  })
+
+  it('skips upsert when sanitized meeting_id collapses to empty', () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    // A meeting_id made entirely of bidi-override characters
+    // sanitizes to ''; ``isMeetingShape`` accepts it as a string but
+    // ``handleWsEvent`` must refuse the upsert because '' would
+    // collapse unrelated meetings onto the same map key.
+    const meeting = makeMeeting(RLO + LRO)
+    const event: WsEvent = {
+      channel: 'meetings',
+      event_type: 'meeting.completed',
+      payload: { meeting },
+      timestamp: new Date().toISOString(),
+    }
+
+    useMeetingsStore.getState().handleWsEvent(event)
+
+    expect(useMeetingsStore.getState().meetings).toHaveLength(0)
+    errorSpy.mockRestore()
+  })
+
+  it('drops contributions whose agent_id sanitizes to empty', () => {
+    const meeting = makeMeeting('ws-drop-contrib')
+    const tainted = {
+      ...meeting,
+      minutes: meeting.minutes && {
+        ...meeting.minutes,
+        contributions: [
+          meeting.minutes.contributions[0]!,
+          { ...meeting.minutes.contributions[1]!, agent_id: RLO },
+        ],
+      },
+    }
+    const event: WsEvent = {
+      channel: 'meetings',
+      event_type: 'meeting.completed',
+      payload: { meeting: tainted },
+      timestamp: new Date().toISOString(),
+    }
+
+    useMeetingsStore.getState().handleWsEvent(event)
+
+    const stored = useMeetingsStore.getState().meetings[0]
+    expect(stored?.minutes?.contributions).toHaveLength(1)
+    expect(stored?.minutes?.contributions[0]?.agent_id).toBe('agent-alice')
+  })
+
+  it('preserves null error_message when sanitization blanks it', () => {
+    const meeting = makeMeeting('ws-null-error', { status: 'failed', error_message: RLO })
+    const event: WsEvent = {
+      channel: 'meetings',
+      event_type: 'meeting.failed',
+      payload: { meeting },
+      timestamp: new Date().toISOString(),
+    }
+
+    useMeetingsStore.getState().handleWsEvent(event)
+
+    expect(useMeetingsStore.getState().meetings[0]?.error_message).toBeNull()
   })
 })
 

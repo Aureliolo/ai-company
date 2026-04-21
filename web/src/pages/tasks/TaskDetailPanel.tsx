@@ -13,7 +13,6 @@ import { getTaskStatusLabel, getTaskTypeLabel, getAvailableTransitions, getPrior
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { formatDate, formatCurrency } from '@/utils/format'
 import { useToastStore } from '@/stores/toast'
-import { getErrorMessage } from '@/utils/errors'
 import type { Priority, TaskStatus } from '@/api/types/enums'
 import type { CancelTaskRequest, Task, TransitionTaskRequest, UpdateTaskRequest } from '@/api/types/tasks'
 
@@ -22,8 +21,10 @@ export interface TaskDetailPanelProps {
   onClose: () => void
   onUpdate: (taskId: string, data: UpdateTaskRequest) => Promise<void>
   onTransition: (taskId: string, data: TransitionTaskRequest) => Promise<void>
-  onCancel: (taskId: string, data: CancelTaskRequest) => Promise<void>
-  onDelete: (taskId: string) => Promise<void>
+  /** Resolves to ``true`` on success, ``false`` on failure (sentinel). */
+  onCancel: (taskId: string, data: CancelTaskRequest) => Promise<boolean>
+  /** Resolves to ``true`` on success, ``false`` on failure (sentinel). */
+  onDelete: (taskId: string) => Promise<boolean>
   loading?: boolean
 }
 
@@ -63,39 +64,37 @@ export function TaskDetailPanel({
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [onClose])
 
+  // The ``onTransition`` / ``onCancel`` / ``onDelete`` / ``onUpdate``
+  // callbacks are thin wrappers around the tasks store's sentinel-
+  // returning mutations (see ``TaskBoardPage``), which already emit
+  // both the success and error toast. No try/catch here -- the
+  // wrappers don't throw, and adding a caller-side error toast
+  // would double up with the store's.
   const handleTransition = useCallback(async (targetStatus: TaskStatus) => {
     setTransitioning(targetStatus)
     try {
       await onTransition(task.id, { target_status: targetStatus, expected_version: task.version })
-    } catch {
-      useToastStore.getState().add({ variant: 'error', title: 'Transition failed' })
     } finally {
       setTransitioning(null)
     }
   }, [task.id, task.version, onTransition])
 
-  const handleCancel = useCallback(async () => {
+  const handleCancel = useCallback(async (): Promise<boolean> => {
     if (!cancelReason.trim()) {
       useToastStore.getState().add({ variant: 'error', title: 'Please provide a cancellation reason' })
-      return
+      return false
     }
-    try {
-      await onCancel(task.id, { reason: cancelReason.trim() })
-      setCancelOpen(false)
-      setCancelReason('')
-    } catch {
-      useToastStore.getState().add({ variant: 'error', title: 'Failed to cancel task' })
-    }
+    const ok = await onCancel(task.id, { reason: cancelReason.trim() })
+    if (!ok) return false
+    setCancelReason('')
+    return true
   }, [task.id, cancelReason, onCancel])
 
-  const handleDelete = useCallback(async () => {
-    try {
-      await onDelete(task.id)
-      setDeleteOpen(false)
-      onClose()
-    } catch {
-      useToastStore.getState().add({ variant: 'error', title: 'Failed to delete task' })
-    }
+  const handleDelete = useCallback(async (): Promise<boolean> => {
+    const ok = await onDelete(task.id)
+    if (!ok) return false
+    onClose()
+    return true
   }, [task.id, onDelete, onClose])
 
   return (
@@ -144,12 +143,7 @@ export function TaskDetailPanel({
               <InlineEdit
                 value={task.title}
                 onSave={async (value) => {
-                  try {
-                    await onUpdate(task.id, { title: value, expected_version: task.version })
-                  } catch (err) {
-                    useToastStore.getState().add({ variant: 'error', title: 'Failed to save title', description: getErrorMessage(err) })
-                    throw err
-                  }
+                  await onUpdate(task.id, { title: value, expected_version: task.version })
                 }}
                 validate={(v) => v.trim().length === 0 ? 'Title is required' : null}
                 className="text-lg font-semibold"
@@ -161,12 +155,7 @@ export function TaskDetailPanel({
                 <InlineEdit
                   value={task.description}
                   onSave={async (value) => {
-                    try {
-                      await onUpdate(task.id, { description: value, expected_version: task.version })
-                    } catch (err) {
-                      useToastStore.getState().add({ variant: 'error', title: 'Failed to save description', description: getErrorMessage(err) })
-                      throw err
-                    }
+                    await onUpdate(task.id, { description: value, expected_version: task.version })
                   }}
                   className="mt-1 text-sm text-text-secondary"
                 />
@@ -180,11 +169,7 @@ export function TaskDetailPanel({
                   <select
                     value={task.priority}
                     onChange={async (e) => {
-                      try {
-                        await onUpdate(task.id, { priority: e.target.value as Priority, expected_version: task.version })
-                      } catch (err) {
-                        useToastStore.getState().add({ variant: 'error', title: 'Failed to update priority', description: getErrorMessage(err) })
-                      }
+                      await onUpdate(task.id, { priority: e.target.value as Priority, expected_version: task.version })
                     }}
                     className="h-7 rounded border border-border bg-surface px-1.5 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-accent"
                     aria-label="Change priority"
@@ -207,12 +192,7 @@ export function TaskDetailPanel({
                   <InlineEdit
                     value={task.assigned_to ?? ''}
                     onSave={async (value) => {
-                      try {
-                        await onUpdate(task.id, { assigned_to: value.trim() || undefined, expected_version: task.version })
-                      } catch (err) {
-                        useToastStore.getState().add({ variant: 'error', title: 'Failed to update assignee', description: getErrorMessage(err) })
-                        throw err
-                      }
+                      await onUpdate(task.id, { assigned_to: value.trim() || undefined, expected_version: task.version })
                     }}
                     className="text-sm"
                     placeholder="Unassigned"

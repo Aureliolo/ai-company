@@ -1,9 +1,14 @@
 import { create } from 'zustand'
 import { listArtifacts, getArtifact, getArtifactContentText, deleteArtifact as deleteArtifactApi } from '@/api/endpoints/artifacts'
 import { getErrorMessage } from '@/utils/errors'
+import { sanitizeForLog } from '@/utils/logging'
+import { createLogger } from '@/lib/logger'
+import { useToastStore } from '@/stores/toast'
 import type { Artifact } from '@/api/types/artifacts'
 import type { ArtifactType } from '@/api/types/enums'
 import type { WsEvent } from '@/api/types/websocket'
+
+const log = createLogger('artifacts')
 
 /** Content types eligible for inline text preview: text/*, application/json, and YAML. */
 function isPreviewableText(contentType: string): boolean {
@@ -36,10 +41,12 @@ interface ArtifactsState {
   detailLoading: boolean
   detailError: string | null
 
-  // Actions
+  // Actions. Mutations follow the canonical store error contract:
+  // log + error toast + return sentinel (`false`) on failure. Callers
+  // MUST NOT wrap these in try/catch.
   fetchArtifacts: () => Promise<void>
   fetchArtifactDetail: (id: string) => Promise<void>
-  deleteArtifact: (id: string) => Promise<void>
+  deleteArtifact: (id: string) => Promise<boolean>
   setSearchQuery: (q: string) => void
   setTypeFilter: (t: ArtifactType | null) => void
   setCreatedByFilter: (c: string | null) => void
@@ -57,6 +64,14 @@ function isStaleDetailRequest(token: number): boolean { return _detailRequestTok
 let _listRequestToken = 0
 /** True when a newer list request has superseded this one. */
 function isStaleListRequest(token: number): boolean { return _listRequestToken !== token }
+
+// Id of the artifact whose detail fetch is currently in-flight.
+// ``fetchArtifactDetail`` clears ``selectedArtifact`` *before* awaiting
+// the API, so an ``isSelected`` check alone can't invalidate a pending
+// detail load when the same artifact is deleted mid-flight. Tracking
+// the pending id lets ``deleteArtifact`` bump ``_detailRequestToken``
+// and keep stale responses from repopulating deleted data.
+let _pendingDetailId: string | null = null
 
 export const useArtifactsStore = create<ArtifactsState>()((set) => ({
   artifacts: [],
@@ -91,6 +106,7 @@ export const useArtifactsStore = create<ArtifactsState>()((set) => ({
 
   fetchArtifactDetail: async (id: string) => {
     const token = ++_detailRequestToken
+    _pendingDetailId = id
     set({ detailLoading: true, detailError: null, selectedArtifact: null, contentPreview: null })
     try {
       const artifact = await getArtifact(id)
@@ -113,21 +129,74 @@ export const useArtifactsStore = create<ArtifactsState>()((set) => ({
     } catch (err) {
       if (isStaleDetailRequest(token)) return
       set({ detailLoading: false, detailError: getErrorMessage(err), selectedArtifact: null, contentPreview: null })
+    } finally {
+      if (_pendingDetailId === id) _pendingDetailId = null
     }
   },
 
   deleteArtifact: async (id: string) => {
-    await deleteArtifactApi(id)
-    set((state) => {
-      const isSelected = state.selectedArtifact?.id === id
-      return {
-        artifacts: state.artifacts.filter((a) => a.id !== id),
-        totalArtifacts: Math.max(0, state.totalArtifacts - 1),
-        selectedArtifact: isSelected ? null : state.selectedArtifact,
-        contentPreview: isSelected ? null : state.contentPreview,
-        detailError: isSelected ? null : state.detailError,
-      }
+    // Optimistic delete: snapshot the slice the mutation touches,
+    // apply the delete immediately so the list updates without
+    // waiting on the network, then roll back on failure. Matches
+    // the canonical store-mutation pattern in
+    // ``stores/connections/crud-actions.ts``.
+    const snapshot = useArtifactsStore.getState()
+    const previous = {
+      artifacts: snapshot.artifacts,
+      totalArtifacts: snapshot.totalArtifacts,
+      selectedArtifact: snapshot.selectedArtifact,
+      contentPreview: snapshot.contentPreview,
+      detailLoading: snapshot.detailLoading,
+      detailError: snapshot.detailError,
+    }
+    _listRequestToken++
+    const invalidatesPendingDetail = _pendingDetailId === id
+    if (invalidatesPendingDetail) {
+      _detailRequestToken++
+      _pendingDetailId = null
+    }
+    const isSelected = snapshot.selectedArtifact?.id === id
+    if (isSelected && !invalidatesPendingDetail) _detailRequestToken++
+    const invalidatesDetail = isSelected || invalidatesPendingDetail
+    set({
+      artifacts: snapshot.artifacts.filter((a) => a.id !== id),
+      totalArtifacts: Math.max(0, snapshot.totalArtifacts - 1),
+      selectedArtifact: invalidatesDetail ? null : snapshot.selectedArtifact,
+      contentPreview: invalidatesDetail ? null : snapshot.contentPreview,
+      detailLoading: invalidatesDetail ? false : snapshot.detailLoading,
+      detailError: invalidatesDetail ? null : snapshot.detailError,
     })
+    try {
+      await deleteArtifactApi(id)
+      useToastStore.getState().add({
+        variant: 'success',
+        title: 'Artifact deleted',
+      })
+      return true
+    } catch (err) {
+      // Restore the pre-delete slice so the list/detail view reflects
+      // the server's truth after the failed mutation. ``detailLoading``
+      // is forced to ``false`` when the delete had invalidated a
+      // pending detail fetch via the token bump -- we can't un-bump
+      // the tokens now, so the in-flight fetch will be ignored, and
+      // leaving ``detailLoading=true`` would otherwise strand the
+      // detail pane on its spinner until the user navigates away.
+      set(
+        invalidatesDetail
+          ? { ...previous, detailLoading: false }
+          : previous,
+      )
+      log.error(
+        'Delete artifact failed:',
+        sanitizeForLog({ artifactId: id, error: err }),
+      )
+      useToastStore.getState().add({
+        variant: 'error',
+        title: 'Failed to delete artifact',
+        description: getErrorMessage(err),
+      })
+      return false
+    }
   },
 
   setSearchQuery: (q) => set({ searchQuery: q }),

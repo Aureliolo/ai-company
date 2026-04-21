@@ -1,22 +1,15 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
-import { AlertCircle, Shield, Trash2 } from 'lucide-react'
+import { Shield, Trash2 } from 'lucide-react'
 import { SectionCard } from '@/components/ui/section-card'
 import { Button } from '@/components/ui/button'
 import { InputField } from '@/components/ui/input-field'
 import { SliderField } from '@/components/ui/slider-field'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { StatPill } from '@/components/ui/stat-pill'
-import { useToastStore } from '@/stores/toast'
 import { useAuth } from '@/hooks/useAuth'
-import {
-  getQualityOverride,
-  setQualityOverride,
-  clearQualityOverride,
-} from '@/api/endpoints/quality'
-import { getErrorMessage } from '@/utils/errors'
+import { useQualityOverridesStore } from '@/stores/quality-overrides'
 import { formatDateOnly } from '@/utils/format'
 import type { OverrideResponse } from '@/api/types/collaboration'
-import type { AxiosError } from 'axios'
 
 const OVERRIDE_ROLES = ['ceo', 'manager'] as const
 
@@ -31,11 +24,10 @@ export function QualityScoreOverride({
 }: QualityScoreOverrideProps) {
   const [override, setOverride] = useState<OverrideResponse | null>(null)
   const [loading, setLoading] = useState(true)
-  const [fetchError, setFetchError] = useState<string | null>(null)
+  const [loadError, setLoadError] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [clearDialogOpen, setClearDialogOpen] = useState(false)
   const [clearing, setClearing] = useState(false)
-  const addToast = useToastStore((s) => s.add)
   const { userRole } = useAuth()
   const canManageOverrides =
     userRole !== null &&
@@ -47,31 +39,40 @@ export function QualityScoreOverride({
   const [reasonError, setReasonError] = useState<string | undefined>()
   const [expiresInDays, setExpiresInDays] = useState<number | null>(null)
 
-  // Guard against stale responses when agentId changes.
+  // Guard against stale responses when agentId changes. The ref is
+  // updated synchronously during render so any async callback that
+  // re-reads it sees the current prop even before ``useEffect``
+  // commit-phase fires -- React guarantees the ref itself is stable
+  // across renders, and writing to ``.current`` during render is
+  // safe for this "track the latest prop" pattern. The sibling
+  // ``prevAgentIdRef`` detects the prop *change* so we can reset
+  // transient UI flags (spinners, open dialogs, validation errors)
+  // directly during render -- React's documented "reset state when
+  // props change" idiom -- instead of deferring to an effect that
+  // would leave the previous agent's state visible for one frame.
   const activeAgentRef = useRef(agentId)
+  activeAgentRef.current = agentId
+  const prevAgentIdRef = useRef(agentId)
+  if (prevAgentIdRef.current !== agentId) {
+    prevAgentIdRef.current = agentId
+    setSubmitting(false)
+    setClearing(false)
+    setClearDialogOpen(false)
+    setReasonError(undefined)
+  }
 
   const fetchOverride = useCallback(async () => {
-    activeAgentRef.current = agentId
     setLoading(true)
     setOverride(null)
-    setFetchError(null)
-    try {
-      const data = await getQualityOverride(agentId)
-      if (activeAgentRef.current !== agentId) return
-      setOverride(data)
-    } catch (err) {
-      if (activeAgentRef.current !== agentId) return
-      const status = (err as AxiosError)?.response?.status
-      if (status === 404) {
-        setOverride(null)
-      } else {
-        setFetchError(getErrorMessage(err))
-      }
-    } finally {
-      if (activeAgentRef.current === agentId) {
-        setLoading(false)
-      }
+    setLoadError(false)
+    const result = await useQualityOverridesStore.getState().getOverride(agentId)
+    if (activeAgentRef.current !== agentId) return
+    if (result.kind === 'ok') {
+      setOverride(result.data)
+    } else if (result.kind === 'error') {
+      setLoadError(true)
     }
+    setLoading(false)
   }, [agentId])
 
   useEffect(() => {
@@ -85,37 +86,48 @@ export function QualityScoreOverride({
     }
     setReasonError(undefined)
     setSubmitting(true)
-    try {
-      const data = await setQualityOverride(agentId, {
-        score,
-        reason: reason.trim(),
-        expires_in_days: expiresInDays,
-      })
+    // Capture the agent identity at request start so a late resolve
+    // for a previous agent can't overwrite state that now belongs to
+    // a different one -- matches the staleness guard in fetchOverride.
+    const requestAgent = agentId
+    const data = await useQualityOverridesStore.getState().setOverride(requestAgent, {
+      score,
+      reason: reason.trim(),
+      expires_in_days: expiresInDays,
+    })
+    if (activeAgentRef.current !== requestAgent) {
+      // Stale agent: clear the submit flag so the new agent's form
+      // isn't stuck with a spinning button, but don't touch score /
+      // reason / override state which now belong to the new view.
+      setSubmitting(false)
+      return
+    }
+    setSubmitting(false)
+    if (data) {
       setOverride(data)
       setScore(5.0)
       setReason('')
       setExpiresInDays(null)
-      addToast({ variant: 'success', title: 'Quality override applied' })
-    } catch (err) {
-      addToast({ variant: 'error', title: getErrorMessage(err) })
-    } finally {
-      setSubmitting(false)
     }
-  }, [agentId, score, reason, expiresInDays, addToast])
+  }, [agentId, score, reason, expiresInDays])
 
-  const handleClear = useCallback(async () => {
+  const handleClear = useCallback(async (): Promise<boolean> => {
     setClearing(true)
-    try {
-      await clearQualityOverride(agentId)
-      setOverride(null)
-      setClearDialogOpen(false)
-      addToast({ variant: 'success', title: 'Quality override cleared' })
-    } catch (err) {
-      addToast({ variant: 'error', title: getErrorMessage(err) })
-    } finally {
+    const requestAgent = agentId
+    const ok = await useQualityOverridesStore.getState().clearOverride(requestAgent)
+    if (activeAgentRef.current !== requestAgent) {
+      // Stale agent: reset the busy flag so the UI for the new agent
+      // isn't stuck with a spinning button, then bail out without
+      // touching any state that now belongs to a different view.
       setClearing(false)
+      return false
     }
-  }, [agentId, addToast])
+    setClearing(false)
+    if (!ok) return false
+    setOverride(null)
+    setClearDialogOpen(false)
+    return true
+  }, [agentId])
 
   if (loading) return null
 
@@ -138,10 +150,19 @@ export function QualityScoreOverride({
         ) : undefined
       }
     >
-      {fetchError ? (
-        <div className="flex items-center gap-2 text-sm text-danger">
-          <AlertCircle className="size-4" />
-          <span>{fetchError}</span>
+      {loadError ? (
+        <div className="space-y-2">
+          <p className="text-sm text-danger">
+            Failed to load quality override. The existing override (if
+            any) is unknown -- retry before applying a new one.
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void fetchOverride()}
+          >
+            Retry
+          </Button>
         </div>
       ) : override ? (
         <div className="space-y-2">

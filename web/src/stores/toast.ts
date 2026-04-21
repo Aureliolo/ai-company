@@ -2,6 +2,16 @@ import { create } from 'zustand'
 
 export type ToastVariant = 'success' | 'error' | 'warning' | 'info'
 
+/**
+ * Optional inline action surfaced inside a toast (e.g. a "Retry" button
+ * on a connection-lost notification). The toast is always dismissed
+ * after the action runs so the user gets immediate feedback.
+ */
+export interface ToastAction {
+  label: string
+  onClick: () => void
+}
+
 export interface ToastItem {
   id: string
   variant: ToastVariant
@@ -11,6 +21,8 @@ export interface ToastItem {
   duration?: number
   /** Whether the toast can be manually dismissed (default: true). */
   dismissible?: boolean
+  /** Optional inline action (e.g. Retry, Undo). */
+  action?: ToastAction
 }
 
 interface ToastState {

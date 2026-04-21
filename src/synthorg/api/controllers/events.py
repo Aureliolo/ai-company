@@ -43,6 +43,10 @@ from synthorg.observability.events.event_stream import (
 logger = get_logger(__name__)
 
 _SSE_KEEPALIVE_SECONDS = 30.0
+# Session IDs flow into a hub keyed on the value -- restrict the alphabet
+# to alphanumerics + dash + underscore to block path-traversal-shaped or
+# control-character session IDs reaching the hub.
+_SESSION_ID_PATTERN = r"^[a-zA-Z0-9_-]{1,128}$"
 
 
 # ── DTOs ─────────────────────────────────────────────────────────
@@ -244,7 +248,10 @@ class EventStreamController(Controller):
         state: State,
         session_id: Annotated[
             NotBlankStr,
-            Parameter(max_length=QUERY_MAX_LENGTH),
+            Parameter(
+                max_length=QUERY_MAX_LENGTH,
+                pattern=_SESSION_ID_PATTERN,
+            ),
         ],
     ) -> ServerSentEvent:
         """SSE stream of AG-UI events for a session.
@@ -306,7 +313,10 @@ class InterruptController(Controller):
         state: State,
         session_id: Annotated[
             NotBlankStr | None,
-            Parameter(max_length=QUERY_MAX_LENGTH),
+            Parameter(
+                max_length=QUERY_MAX_LENGTH,
+                pattern=_SESSION_ID_PATTERN,
+            ),
         ] = None,
     ) -> ApiResponse[tuple[InterruptResponse, ...]]:
         """List pending interrupts.

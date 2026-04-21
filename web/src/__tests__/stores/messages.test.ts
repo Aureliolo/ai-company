@@ -232,11 +232,17 @@ describe('messagesStore', () => {
   })
 
   describe('handleWsEvent', () => {
-    const makeWsEvent = (message: Record<string, unknown>): WsEvent => ({
+    /**
+     * Builds a WS event whose payload carries the message verbatim. The
+     * helper accepts ``unknown`` so tests can pass either a typed
+     * ``Message`` or a deliberately malformed object without juggling
+     * casts at every call site.
+     */
+    const makeWsEvent = (message: unknown): WsEvent => ({
       event_type: 'message.sent',
       channel: 'messages',
       timestamp: new Date().toISOString(),
-      payload: { message },
+      payload: { message: message as WsEvent['payload']['message'] },
     })
 
     it('prepends message to active channel list', () => {
@@ -249,7 +255,7 @@ describe('messagesStore', () => {
       useMessagesStore
         .getState()
         .handleWsEvent(
-          makeWsEvent(newMsg as unknown as Record<string, unknown>),
+          makeWsEvent(newMsg),
           '#engineering',
         )
 
@@ -265,7 +271,7 @@ describe('messagesStore', () => {
       useMessagesStore
         .getState()
         .handleWsEvent(
-          makeWsEvent(newMsg as unknown as Record<string, unknown>),
+          makeWsEvent(newMsg),
           '#engineering',
         )
 
@@ -306,7 +312,7 @@ describe('messagesStore', () => {
       })
 
       useMessagesStore.getState().handleWsEvent(
-        makeWsEvent(msg as unknown as Record<string, unknown>),
+        makeWsEvent(msg),
         '#eng',
       )
 
@@ -325,6 +331,65 @@ describe('messagesStore', () => {
       useMessagesStore.getState().handleWsEvent(event, '#engineering')
 
       expect(useMessagesStore.getState().messages).toHaveLength(0)
+    })
+
+    it('rejects messages with non-finite tokens_used in metadata', () => {
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      try {
+        const msg = {
+          ...makeMessage('inf-tokens'),
+          metadata: {
+            task_id: null,
+            project_id: null,
+            tokens_used: Number.POSITIVE_INFINITY,
+            cost: null,
+            extra: [] as [string, string][],
+          },
+        }
+        useMessagesStore
+          .getState()
+          .handleWsEvent(makeWsEvent(msg), '#engineering')
+        expect(useMessagesStore.getState().messages).toHaveLength(0)
+      } finally {
+        consoleSpy.mockRestore()
+      }
+    })
+
+    it('rejects messages with malformed attachments', () => {
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      try {
+        const msg = {
+          ...makeMessage('bad-attach'),
+          // ``null`` is not a valid attachment -- ``isAttachmentsShape``
+          // must reject the whole frame.
+          attachments: [null as unknown as { type: string; ref: string }],
+        }
+        useMessagesStore
+          .getState()
+          .handleWsEvent(makeWsEvent(msg), '#engineering')
+        expect(useMessagesStore.getState().messages).toHaveLength(0)
+      } finally {
+        consoleSpy.mockRestore()
+      }
+    })
+
+    it('sanitizes nested attachment ref and metadata.extra tuples', () => {
+      const RLO = String.fromCharCode(0x202e)
+      const msg = {
+        ...makeMessage('sanitize-nested', { channel: '#eng' }),
+        attachments: [{ type: 'artifact' as const, ref: `ref-1${RLO}` }],
+        metadata: {
+          task_id: null,
+          project_id: null,
+          tokens_used: null,
+          cost: null,
+          extra: [[`key${RLO}`, `value${RLO}`]] as [string, string][],
+        },
+      }
+      useMessagesStore.getState().handleWsEvent(makeWsEvent(msg), '#eng')
+      const stored = useMessagesStore.getState().messages[0]
+      expect(stored?.attachments[0]?.ref).toBe('ref-1')
+      expect(stored?.metadata.extra[0]).toEqual(['key', 'value'])
     })
   })
 

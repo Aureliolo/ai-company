@@ -12,7 +12,6 @@ import {
   type DragStartEvent,
 } from '@dnd-kit/core'
 import { AnimatePresence } from 'motion/react'
-import { getErrorMessage } from '@/utils/errors'
 import { AlertTriangle, WifiOff } from 'lucide-react'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { useTaskBoardData } from '@/hooks/useTaskBoardData'
@@ -210,16 +209,14 @@ export default function TaskBoardPage() {
     }
   }, [tasks, optimisticTransition, transitionTask, executeOptimistic])
 
-  // Create task
-  const handleCreateTask = useCallback(async (data: Parameters<typeof createTask>[0]) => {
-    try {
-      await createTask(data)
-      useToastStore.getState().add({ variant: 'success', title: 'Task created' })
-    } catch (err) {
-      useToastStore.getState().add({ variant: 'error', title: 'Failed to create task', description: getErrorMessage(err) })
-      throw err
-    }
-  }, [createTask])
+  // Create task. ``createTask`` is sentinel-returning (``Task`` on
+  // success, ``null`` on failure) and owns both the success/error
+  // toasts. Forward the sentinel so the dialog can decide whether to
+  // close (keep open on ``null``) without wrapping this in try/catch.
+  const handleCreateTask = useCallback(
+    async (data: Parameters<typeof createTask>[0]) => createTask(data),
+    [createTask],
+  )
 
   // Skeleton on initial load
   if (loading && tasks.length === 0) {
@@ -330,8 +327,8 @@ export default function TaskBoardPage() {
             onClose={handleClosePanel}
             onUpdate={async (id, data) => { await updateTask(id, data) }}
             onTransition={async (id, data) => { await transitionTask(id, data) }}
-            onCancel={async (id, data) => { await cancelTask(id, data) }}
-            onDelete={async (id) => { await deleteTask(id) }}
+            onCancel={async (id, data) => (await cancelTask(id, data)) !== null}
+            onDelete={(id) => deleteTask(id)}
           />
         )}
       </AnimatePresence>

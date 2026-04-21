@@ -3,14 +3,14 @@ import { Dialog } from '@base-ui/react/dialog'
 import { Loader2, X } from 'lucide-react'
 import { cn, FOCUS_RING } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
-import { getErrorMessage } from '@/utils/errors'
 import type { Complexity, Priority, TaskType } from '@/api/types/enums'
-import type { CreateTaskRequest } from '@/api/types/tasks'
+import type { CreateTaskRequest, Task } from '@/api/types/tasks'
 
 export interface TaskCreateDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onCreate: (data: CreateTaskRequest) => Promise<void>
+  /** Resolves to the created task on success, ``null`` on failure (sentinel). */
+  onCreate: (data: CreateTaskRequest) => Promise<Task | null>
 }
 
 const TASK_TYPES: { value: TaskType; label: string }[] = [
@@ -93,7 +93,6 @@ export function TaskCreateDialog({ open, onOpenChange, onCreate }: TaskCreateDia
   const [form, setForm] = useState<FormState>(INITIAL_FORM)
   const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({})
   const [submitting, setSubmitting] = useState(false)
-  const [submitError, setSubmitError] = useState<string | null>(null)
 
   // Reset form state on close (render-phase check mirroring AgentCreateDialog /
   // DepartmentCreateDialog / PackSelectionDialog so reopening does not show
@@ -102,14 +101,12 @@ export function TaskCreateDialog({ open, onOpenChange, onCreate }: TaskCreateDia
   if (!open && prevOpenRef.current) {
     setForm(INITIAL_FORM)
     setErrors({})
-    setSubmitError(null)
   }
   prevOpenRef.current = open
 
   function updateField<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((prev) => ({ ...prev, [key]: value }))
     setErrors((prev) => ({ ...prev, [key]: undefined }))
-    setSubmitError(null)
   }
 
   function validate(): boolean {
@@ -129,7 +126,6 @@ export function TaskCreateDialog({ open, onOpenChange, onCreate }: TaskCreateDia
   const handleSubmit = useCallback(async () => {
     if (!validate()) return
     setSubmitting(true)
-    setSubmitError(null)
     try {
       const data: CreateTaskRequest = {
         title: form.title.trim(),
@@ -142,11 +138,13 @@ export function TaskCreateDialog({ open, onOpenChange, onCreate }: TaskCreateDia
         estimated_complexity: form.estimated_complexity,
         budget_limit: form.budget_limit ? Number(form.budget_limit) : undefined,
       }
-      await onCreate(data)
+      // Sentinel-return: the store owns the error UX (toast + log) on
+      // failure, so we only null-check here. ``null`` keeps the dialog
+      // open so the user doesn't lose their filled-in form.
+      const created = await onCreate(data)
+      if (created === null) return
       setForm(INITIAL_FORM)
       onOpenChange(false)
-    } catch (err) {
-      setSubmitError(getErrorMessage(err))
     } finally {
       setSubmitting(false)
     }
@@ -274,10 +272,6 @@ export function TaskCreateDialog({ open, onOpenChange, onCreate }: TaskCreateDia
             <FormField label="Budget Limit">
               <input type="number" value={form.budget_limit} onChange={(e) => updateField('budget_limit', e.target.value)} className={INPUT_CLASSES} placeholder="0.00" min="0" step="0.01" />
             </FormField>
-
-            {submitError && (
-              <p className="text-xs text-danger">{submitError}</p>
-            )}
 
             <div className="flex justify-end gap-3 pt-2">
               <Dialog.Close

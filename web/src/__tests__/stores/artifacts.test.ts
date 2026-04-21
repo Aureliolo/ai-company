@@ -146,21 +146,28 @@ describe('useArtifactsStore', () => {
       expect(useArtifactsStore.getState().totalArtifacts).toBe(1)
     })
 
-    it('propagates error without modifying list', async () => {
+    it('returns false sentinel + emits error toast on failure', async () => {
+      const { useToastStore } = await import('@/stores/toast')
+      useToastStore.getState().dismissAll()
       const a1 = makeArtifact('artifact-001')
       useArtifactsStore.setState({ artifacts: [a1], totalArtifacts: 1 })
       server.use(
         http.delete('/api/v1/artifacts/:id', () =>
-          HttpResponse.json(apiError('Delete failed')),
+          HttpResponse.json(apiError('Delete failed'), { status: 500 }),
         ),
       )
 
-      await expect(
-        useArtifactsStore.getState().deleteArtifact('artifact-001'),
-      ).rejects.toThrow('Delete failed')
+      const result = await useArtifactsStore
+        .getState()
+        .deleteArtifact('artifact-001')
 
+      expect(result).toBe(false)
       expect(useArtifactsStore.getState().artifacts).toEqual([a1])
       expect(useArtifactsStore.getState().totalArtifacts).toBe(1)
+      const toasts = useToastStore.getState().toasts
+      expect(toasts).toHaveLength(1)
+      expect(toasts[0]!.variant).toBe('error')
+      expect(toasts[0]!.title).toBe('Failed to delete artifact')
     })
   })
 

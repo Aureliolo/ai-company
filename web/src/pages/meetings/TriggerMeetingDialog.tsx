@@ -5,7 +5,13 @@ import { InputField } from '@/components/ui/input-field'
 interface TriggerMeetingDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onConfirm: (eventName: string) => Promise<void>
+  /**
+   * Trigger handler. Resolving to ``false`` keeps the dialog open
+   * (validation failure or a failed trigger); any other resolution
+   * closes it -- matches the ``ConfirmDialog.onConfirm`` sentinel
+   * contract.
+   */
+  onConfirm: (eventName: string) => Promise<boolean | void>
   loading?: boolean
 }
 
@@ -18,14 +24,15 @@ export function TriggerMeetingDialog({
   const [eventName, setEventName] = useState('')
   const [validationError, setValidationError] = useState<string | null>(null)
 
-  const handleConfirm = async () => {
+  const handleConfirm = async (): Promise<boolean | void> => {
     const trimmed = eventName.trim()
     if (!trimmed) {
       setValidationError('Event name is required.')
-      return
+      return false
     }
     setValidationError(null)
-    await onConfirm(trimmed)
+    const result = await onConfirm(trimmed)
+    if (result === false) return false
     setEventName('')
   }
 

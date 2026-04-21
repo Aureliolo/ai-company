@@ -17,7 +17,9 @@ import {
   reorderTeams as apiReorderTeams,
 } from '@/api/endpoints/company'
 import { getErrorMessage } from '@/utils/errors'
+import { sanitizeForLog } from '@/utils/logging'
 import { createLogger } from '@/lib/logger'
+import { useToastStore } from '@/stores/toast'
 import type { AgentConfig } from '@/api/types/agents'
 import type { DepartmentHealth } from '@/api/types/analytics'
 import type { DepartmentName } from '@/api/types/enums'
@@ -52,7 +54,12 @@ interface CompanyState {
   fetchDepartmentHealths: () => Promise<void>
   updateFromWsEvent: (event: WsEvent) => void
 
-  updateCompany: (data: UpdateCompanyRequest) => Promise<void>
+  /**
+   * Update top-level company config. Follows the canonical store error
+   * contract: log + error toast + return `false` on failure. Callers
+   * MUST NOT wrap in try/catch.
+   */
+  updateCompany: (data: UpdateCompanyRequest) => Promise<boolean>
   createDepartment: (data: CreateDepartmentRequest) => Promise<Department>
   updateDepartment: (name: string, data: UpdateDepartmentRequest) => Promise<Department>
   deleteDepartment: (name: string) => Promise<void>
@@ -148,16 +155,42 @@ export const useCompanyStore = create<CompanyState>()((set, get) => ({
   // ── Mutations ──────────────────────────────────────────────
 
   updateCompany: async (data) => {
+    // Split the two phases so a successful PATCH never gets reported
+    // as a failed save just because the follow-up refresh threw: the
+    // update has already committed on the server, and treating the
+    // refresh error as a mutation failure would leave the form dirty
+    // and invite duplicate retries of the same change.
     set((s) => ({ savingCount: s.savingCount + 1, saveError: null }))
     try {
       await apiUpdateCompany(data)
-      // Refetch full config to reflect partial-update response
-      await get().fetchCompanyData()
-      set((s) => ({ savingCount: Math.max(0, s.savingCount - 1) }))
     } catch (err) {
-      set((s) => ({ savingCount: Math.max(0, s.savingCount - 1), saveError: getErrorMessage(err) }))
-      throw err
+      log.error('Update company failed:', sanitizeForLog(err))
+      set((s) => ({
+        savingCount: Math.max(0, s.savingCount - 1),
+        saveError: getErrorMessage(err),
+      }))
+      useToastStore.getState().add({
+        variant: 'error',
+        title: 'Failed to update company',
+        description: getErrorMessage(err),
+      })
+      return false
     }
+    // PATCH succeeded. Attempt to refetch the canonical config so the
+    // UI reflects the server's post-update view, but do not undo the
+    // success signal if the refetch itself fails -- ``fetchCompanyData``
+    // already sets its own error state that page-level banners consume.
+    try {
+      await get().fetchCompanyData()
+    } catch (refreshErr) {
+      log.warn('Company updated but refresh failed:', sanitizeForLog(refreshErr))
+    }
+    set((s) => ({ savingCount: Math.max(0, s.savingCount - 1) }))
+    useToastStore.getState().add({
+      variant: 'success',
+      title: 'Company updated',
+    })
+    return true
   },
 
   createDepartment: async (data) => {

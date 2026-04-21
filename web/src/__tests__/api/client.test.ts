@@ -9,8 +9,20 @@ import { ApiRequestError, unwrap, unwrapPaginated, unwrapVoid, apiClient } from 
 import type { ErrorDetail } from '@/api/types/errors'
 import type { ApiResponse, PaginatedResponse } from '@/api/types/http'
 
-function mockResponse<T>(data: T): AxiosResponse<T> {
-  return { data, status: 200, statusText: 'OK', headers: {}, config: {} as AxiosResponse['config'] }
+/**
+ * Build an AxiosResponse fixture. ``data`` is widened to ``unknown`` so
+ * tests can pass deliberately malformed payloads (null, strings, etc.)
+ * to exercise the unwrap/unwrapPaginated error paths -- those are
+ * exactly the cases the helper exists to cover.
+ */
+function mockResponse<T>(data: unknown): AxiosResponse<T> {
+  return {
+    data: data as T,
+    status: 200,
+    statusText: 'OK',
+    headers: {},
+    config: {} as AxiosResponse['config'],
+  }
 }
 
 const testErrorDetail: ErrorDetail = {
@@ -82,20 +94,24 @@ describe('unwrap', () => {
   })
 
   it('throws for null body', () => {
-    const response = mockResponse(null)
-    expect(() => unwrap(response as unknown as AxiosResponse<ApiResponse<unknown>>)).toThrow('Unknown API error')
+    const response = mockResponse<ApiResponse<unknown>>(null)
+    expect(() => unwrap(response)).toThrow('Unknown API error')
   })
 
   it('throws for non-object body', () => {
-    const response = mockResponse('not an object')
-    expect(() => unwrap(response as unknown as AxiosResponse<ApiResponse<unknown>>)).toThrow('Unknown API error')
+    const response = mockResponse<ApiResponse<unknown>>('not an object')
+    expect(() => unwrap(response)).toThrow('Unknown API error')
   })
 
   it('throws for success=false with null error', () => {
+    // Deliberately malformed (null where ``error``/``error_detail`` must
+    // be a string / ErrorDetail) to exercise the "unknown error" branch.
+    // ``mockResponse``'s ``data`` parameter is widened to ``unknown`` so
+    // the malformed literal can be passed directly.
     const response = mockResponse<ApiResponse<null>>({
       data: null,
-      error: null as unknown as string,
-      error_detail: null as unknown as ErrorDetail,
+      error: null,
+      error_detail: null,
       success: false,
     })
     expect(() => unwrap(response)).toThrow('Unknown API error')
@@ -114,7 +130,9 @@ describe('unwrapVoid', () => {
   })
 
   it('handles 204 No Content with empty body', () => {
-    const response = { data: '' as unknown as ApiResponse<null>, status: 204, statusText: 'No Content', headers: {}, config: {} as AxiosResponse['config'] }
+    const response = mockResponse<ApiResponse<null>>('')
+    response.status = 204
+    response.statusText = 'No Content'
     expect(() => unwrapVoid(response)).not.toThrow()
   })
 
@@ -157,35 +175,40 @@ describe('unwrapPaginated', () => {
   })
 
   it('throws for missing pagination', () => {
-    const response = mockResponse({
+    const response = mockResponse<PaginatedResponse<unknown>>({
       data: [],
       error: null,
       error_detail: null,
       success: true,
       pagination: null,
     })
-    expect(() => unwrapPaginated(response as unknown as AxiosResponse<PaginatedResponse<unknown>>)).toThrow('Unexpected API response format')
+    expect(() => unwrapPaginated(response)).toThrow('Unexpected API response format')
   })
 
   it('throws for non-array data', () => {
-    const response = mockResponse({
+    const response = mockResponse<PaginatedResponse<unknown>>({
       data: 'not-array',
       error: null,
       error_detail: null,
       success: true,
       pagination: { total: 0, offset: 0, limit: 50 },
     })
-    expect(() => unwrapPaginated(response as unknown as AxiosResponse<PaginatedResponse<unknown>>)).toThrow('Unexpected API response format')
+    expect(() => unwrapPaginated(response)).toThrow('Unexpected API response format')
   })
 })
 
 /** Extract the fulfilled handler from the first request interceptor -- throws if not found. */
 function getRequestInterceptor(): (config: Record<string, unknown>) => Record<string, unknown> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const handlers = (apiClient.interceptors.request as any).handlers as Array<{ fulfilled?: (config: any) => any }> | undefined
+  // ``handlers`` is an undocumented axios internal exposed via the
+  // module augmentation in ``__tests__/_types/axios-internal.d.ts``.
+  const handlers = apiClient.interceptors.request.handlers
   const fulfilled = handlers?.[0]?.fulfilled
   if (!fulfilled) throw new Error('Request interceptor not found -- Axios internals may have changed')
-  return fulfilled as (config: Record<string, unknown>) => Record<string, unknown>
+  // The augmented type is ``InternalAxiosRequestConfig`` which insists on
+  // ``headers``. Tests pass minimal records, so we widen via ``unknown``.
+  return fulfilled as unknown as (
+    config: Record<string, unknown>,
+  ) => Record<string, unknown>
 }
 
 // Spy on getCsrfToken rather than setting `document.cookie` -- jsdom's

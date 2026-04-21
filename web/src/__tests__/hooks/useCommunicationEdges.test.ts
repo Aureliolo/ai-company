@@ -13,12 +13,33 @@ function paginated(
   data: MessageSeed[],
   meta: { total: number; offset: number; limit: number },
 ) {
+  // Seeds are minimal sender/to records; the hook only reads those two
+  // fields. ``paginatedFor`` demands the full Message shape, so we
+  // build a minimum-viable Message per seed.
+  const messages: Message[] = data.map((seed, idx) => ({
+    // Make ids globally unique across paginated pages so the
+    // hook's de-dup logic sees distinct messages instead of
+    // collapsing them -- ``idx`` alone resets per page and would
+    // produce collisions (page 0 ``msg-0`` == page 1 ``msg-0``).
+    id: `msg-${meta.offset + idx}`,
+    timestamp: '2026-04-21T00:00:00Z',
+    sender: seed.sender,
+    to: seed.to,
+    type: 'task_update',
+    priority: 'normal',
+    channel: 'direct',
+    content: '',
+    attachments: [],
+    metadata: {
+      task_id: null,
+      project_id: null,
+      tokens_used: null,
+      cost: null,
+      extra: [],
+    },
+  }))
   return paginatedFor<typeof listMessages>({
-    // Seeds are minimal sender/to records; the hook only reads those two
-    // fields, but paginatedFor's type parameter demands the full Message
-    // shape. Cast through `unknown` to keep the handler focused on the
-    // fields under test.
-    data: data as unknown as Message[],
+    data: messages,
     total: meta.total,
     offset: meta.offset,
     limit: meta.limit,

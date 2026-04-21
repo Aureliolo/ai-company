@@ -153,19 +153,26 @@ describe('useProjectsStore', () => {
       expect(state.totalProjects).toBe(1)
     })
 
-    it('propagates error without modifying state', async () => {
+    it('returns null sentinel + emits error toast on failure', async () => {
+      const { useToastStore } = await import('@/stores/toast')
+      useToastStore.getState().dismissAll()
       server.use(
         http.post('/api/v1/projects', () =>
-          HttpResponse.json(apiError('Create failed')),
+          HttpResponse.json(apiError('Create failed'), { status: 400 }),
         ),
       )
 
-      await expect(
-        useProjectsStore.getState().createProject({ name: 'Fail' }),
-      ).rejects.toThrow('Create failed')
+      const result = await useProjectsStore
+        .getState()
+        .createProject({ name: 'Fail' })
 
+      expect(result).toBeNull()
       expect(useProjectsStore.getState().projects).toEqual([])
       expect(useProjectsStore.getState().totalProjects).toBe(0)
+      const toasts = useToastStore.getState().toasts
+      expect(toasts).toHaveLength(1)
+      expect(toasts[0]!.variant).toBe('error')
+      expect(toasts[0]!.title).toBe('Failed to create project')
     })
   })
 

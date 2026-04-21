@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { createLogger } from '@/lib/logger'
+import { asObjectRecord } from '@/utils/parse'
 
 const log = createLogger('theme')
 
@@ -90,8 +91,8 @@ export function loadPreferences(): ThemePreferences {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return defaults
     const parsed: unknown = JSON.parse(raw)
-    if (!parsed || typeof parsed !== 'object') return defaults
-    const obj = parsed as Record<string, unknown>
+    const obj = asObjectRecord(parsed)
+    if (!obj) return defaults
     return {
       colorPalette: isValid(obj.colorPalette, COLOR_PALETTES) ? obj.colorPalette : defaults.colorPalette,
       density: isValid(obj.density, DENSITIES) ? obj.density : defaults.density,

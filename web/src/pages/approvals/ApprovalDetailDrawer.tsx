@@ -14,15 +14,21 @@ import {
 } from '@/utils/approvals'
 import { formatDate } from '@/utils/format'
 import { useToastStore } from '@/stores/toast'
-import { getErrorMessage } from '@/utils/errors'
 import type { ApprovalResponse, ApproveRequest, RejectRequest } from '@/api/types/approvals'
 
 export interface ApprovalDetailDrawerProps {
   approval: ApprovalResponse | null
   open: boolean
   onClose: () => void
-  onApprove: (id: string, data?: ApproveRequest) => Promise<void>
-  onReject: (id: string, data: RejectRequest) => Promise<void>
+  /**
+   * Resolve to ``true`` on success, ``false`` on failure. The drawer
+   * uses the boolean to decide whether to close the confirmation
+   * dialog and reset its inputs. Failure UX (toast / banner) is owned
+   * by the caller's underlying store mutation -- the drawer does NOT
+   * try/catch.
+   */
+  onApprove: (id: string, data?: ApproveRequest) => Promise<boolean>
+  onReject: (id: string, data: RejectRequest) => Promise<boolean>
   loading?: boolean
   error?: string | null
 }
@@ -150,33 +156,42 @@ export function ApprovalDetailDrawer({
     return () => document.removeEventListener('keydown', handleTab)
   }, [open, loading, approval])
 
-  const handleApprove = useCallback(async () => {
+  const handleApprove = useCallback(async (): Promise<boolean | void> => {
     if (!approval || approval.status !== 'pending') return
     setSubmitting(true)
     try {
-      await onApprove(approval.id, comment.trim() ? { comment: comment.trim() } : undefined)
-      setApproveOpen(false)
-      setComment('')
-    } catch (err) {
-      useToastStore.getState().add({ variant: 'error', title: 'Failed to approve', description: getErrorMessage(err) })
+      const ok = await onApprove(
+        approval.id,
+        comment.trim() ? { comment: comment.trim() } : undefined,
+      )
+      if (ok) {
+        // Inputs reset before ConfirmDialog closes itself.
+        setComment('')
+        return true
+      }
+      // Returning false keeps the ConfirmDialog open so the user can retry.
+      return false
     } finally {
+      // Always clear the in-flight flag so the button doesn't stay
+      // stuck spinning if the sentinel contract ever surfaces a throw.
       setSubmitting(false)
     }
   }, [approval, comment, onApprove])
 
-  const handleReject = useCallback(async () => {
+  const handleReject = useCallback(async (): Promise<boolean | void> => {
     if (!approval || approval.status !== 'pending') return
     if (!reason.trim()) {
       useToastStore.getState().add({ variant: 'error', title: 'Please provide a rejection reason' })
-      return
+      return false
     }
     setSubmitting(true)
     try {
-      await onReject(approval.id, { reason: reason.trim() })
-      setRejectOpen(false)
-      setReason('')
-    } catch (err) {
-      useToastStore.getState().add({ variant: 'error', title: 'Failed to reject', description: getErrorMessage(err) })
+      const ok = await onReject(approval.id, { reason: reason.trim() })
+      if (ok) {
+        setReason('')
+        return true
+      }
+      return false
     } finally {
       setSubmitting(false)
     }
@@ -257,7 +272,7 @@ export function ApprovalDetailDrawer({
 
               {/* Safety warning banner */}
               {approval.metadata.safety_classification === 'blocked' && (
-                <div className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2">
+                <div className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/10 p-card">
                   <AlertTriangle className="size-4 text-danger shrink-0" aria-hidden="true" />
                   <span className="text-sm text-danger">
                     This action was classified as blocked by the safety classifier.
@@ -265,7 +280,7 @@ export function ApprovalDetailDrawer({
                 </div>
               )}
               {approval.metadata.safety_classification === 'suspicious' && (
-                <div className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2">
+                <div className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/10 p-card">
                   <AlertTriangle className="size-4 text-warning shrink-0" aria-hidden="true" />
                   <span className="text-sm text-warning">
                     This action has been flagged as suspicious by the safety classifier.

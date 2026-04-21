@@ -4,13 +4,14 @@ import { listTasks } from '@/api/endpoints/tasks'
 import { getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 import { createLogger } from '@/lib/logger'
+import { sanitizeWsString } from '@/stores/notifications'
 import type {
   AgentActivityEvent,
   AgentConfig,
   AgentPerformanceSummary,
   CareerEvent,
 } from '@/api/types/agents'
-import type { AgentStatus, DepartmentName, SeniorityLevel } from '@/api/types/enums'
+import type { AgentStatus, SeniorityLevel } from '@/api/types/enums'
 import type { Task } from '@/api/types/tasks'
 import type { WsEvent } from '@/api/types/websocket'
 import type { AgentRuntimeStatus } from '@/lib/utils'
@@ -31,9 +32,14 @@ interface AgentsState {
   listLoading: boolean
   listError: string | null
 
-  // Filters
+  // Filters. ``departmentFilter`` is ``string | null`` (not
+  // ``DepartmentName | null``) because departments are sourced from
+  // live company config -- user-created department names are valid
+  // filter values but aren't members of the static ``DepartmentName``
+  // union. Consumers validate against the runtime list of configured
+  // departments before applying.
   searchQuery: string
-  departmentFilter: DepartmentName | null
+  departmentFilter: string | null
   levelFilter: SeniorityLevel | null
   statusFilter: AgentStatus | null
   sortBy: AgentSortKey
@@ -58,7 +64,7 @@ interface AgentsState {
   fetchAgentDetail: (name: string) => Promise<void>
   fetchMoreActivity: (name: string, offset: number) => Promise<void>
   setSearchQuery: (q: string) => void
-  setDepartmentFilter: (d: DepartmentName | null) => void
+  setDepartmentFilter: (d: string | null) => void
   setLevelFilter: (l: SeniorityLevel | null) => void
   setStatusFilter: (s: AgentStatus | null) => void
   setSortBy: (key: AgentSortKey) => void
@@ -238,12 +244,28 @@ export const useAgentsStore = create<AgentsState>()((set, get) => ({
     }
     if (event.event_type === 'agent.status_changed') {
       const payload = event.payload as Record<string, unknown>
-      const agentId = payload.agent_id
+      // Run the wire agent_id through the canonical WS sanitizer so
+      // it can't carry control/bidi chars into ``runtimeStatuses`` as
+      // a key -- a malformed frame would otherwise create an unusable
+      // map entry that callers can't address by the real agent id.
+      const rawAgentId = payload.agent_id
+      const sanitizedAgentId =
+        typeof rawAgentId === 'string' ? sanitizeWsString(rawAgentId) : undefined
       const status = payload.status
-      if (typeof agentId !== 'string' || !agentId.trim() || typeof status !== 'string' || !status.trim()) {
+      if (!sanitizedAgentId || typeof status !== 'string' || !status.trim()) {
         log.warn('agent.status_changed payload missing required fields', {
-          hasAgentId: typeof agentId === 'string',
+          hasAgentId: typeof rawAgentId === 'string',
           hasStatus: typeof status === 'string',
+        })
+        return
+      }
+      if (sanitizedAgentId !== rawAgentId) {
+        // A sanitized-mutated id means the wire value carried
+        // control/bidi chars; we can't trust it to point at the
+        // intended agent, so drop the event instead of aliasing to a
+        // neighbouring legitimate id.
+        log.warn('agent.status_changed id mutated during sanitization, skipping', {
+          agent_id: sanitizeForLog(rawAgentId),
         })
         return
       }
@@ -259,7 +281,7 @@ export const useAgentsStore = create<AgentsState>()((set, get) => ({
       set((state) => ({
         runtimeStatuses: {
           ...state.runtimeStatuses,
-          [agentId]: status as AgentRuntimeStatus,
+          [sanitizedAgentId]: status as AgentRuntimeStatus,
         },
       }))
       return

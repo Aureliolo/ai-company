@@ -123,8 +123,13 @@ vi.mock('@lezer/highlight', () => ({
 import { CodeMirrorEditor } from '@/components/ui/code-mirror-editor'
 import { EditorView } from '@codemirror/view'
 
-// Type-safe access to mock internals
-const MockEditorView = EditorView as unknown as typeof EditorView & { _instances: { dispatch: ReturnType<typeof vi.fn>; destroy: ReturnType<typeof vi.fn> }[] }
+// The vi.mock above attaches a `_instances` array to the EditorView
+// constructor for assertion purposes. Express that as a module-local
+// extension so we only need a single cast (not `as unknown as`).
+interface MockedEditorViewExtras {
+  _instances: { dispatch: ReturnType<typeof vi.fn>; destroy: ReturnType<typeof vi.fn> }[]
+}
+const MockEditorView = EditorView as typeof EditorView & MockedEditorViewExtras
 
 describe('CodeMirrorEditor', () => {
   const defaultProps = {

@@ -164,6 +164,10 @@ describe('websocket store', () => {
   })
 
   afterEach(() => {
+    // Global afterEach in test-setup.tsx already runs dismissAll +
+    // cancelPendingPersist; duplicating here measurably raised the
+    // async-leak count on CI. Keep only the timer-restore, which is
+    // specific to this file's fake-timer setup.
     vi.useRealTimers()
   })
 
@@ -179,13 +183,31 @@ const connectPromise = useWebSocketStore.getState().connect()
       expect(ws!.url).not.toContain('ticket=')
     })
 
-    it('sets connected to true on open', async () => {
-const connectPromise = useWebSocketStore.getState().connect()
+    it('keeps connected=false until server sends auth_ok', async () => {
+      const connectPromise = useWebSocketStore.getState().connect()
       await vi.runAllTimersAsync()
       await connectPromise
 
-      MockWebSocket.latest()!.simulateOpen()
+      const ws = MockWebSocket.latest()!
+      ws.simulateOpen()
+      // The auth message has been sent but the server has not yet
+      // ack'd. Closing the flash gap means we wait.
+      expect(useWebSocketStore.getState().connected).toBe(false)
+
+      ws.simulateMessage({ action: 'auth_ok' })
       expect(useWebSocketStore.getState().connected).toBe(true)
+    })
+
+    it('keeps connected=false when socket closes before auth_ok arrives', async () => {
+      const connectPromise = useWebSocketStore.getState().connect()
+      await vi.runAllTimersAsync()
+      await connectPromise
+
+      const ws = MockWebSocket.latest()!
+      ws.simulateOpen()
+      ws.simulateClose(4001, 'auth failed')
+
+      expect(useWebSocketStore.getState().connected).toBe(false)
     })
 
     it('deduplicates concurrent connect calls', async () => {
@@ -432,9 +454,22 @@ const handler = vi.fn()
       const ws = MockWebSocket.latest()!
       ws.simulateOpen()
 
-      // Simulate oversized raw message (> 131072 bytes).
-      // Uses ASCII 'x' so char count == byte count (estimateByteLength uses TextEncoder).
-      const oversized = 'x'.repeat(131073)
+      // Build a full, valid WsEvent envelope (event_type/channel/
+      // timestamp/payload/version) whose encoded byte length exceeds
+      // the 32 KiB inbound cap. If the test used a trimmed-down shape
+      // the store could drop the frame for failing ``isWsEvent``
+      // instead of the size gate, and the assertion would pass for
+      // the wrong reason.
+      const oversized = JSON.stringify({
+        version: 1,
+        event_type: 'task.created',
+        channel: 'tasks',
+        timestamp: '2026-04-21T00:00:00Z',
+        payload: { task_id: 'stub', text: 'x'.repeat(33_000) },
+      })
+      expect(new TextEncoder().encode(oversized).byteLength).toBeGreaterThan(
+        32_768,
+      )
       ws.onmessage?.({ data: oversized })
 
       expect(handler).not.toHaveBeenCalled()
@@ -525,6 +560,182 @@ const connectPromise = useWebSocketStore.getState().connect()
 
       ws.simulateMessage({ action: 'subscribed', channels: ['tasks', 'approvals'] })
       expect(useWebSocketStore.getState().subscribedChannels).toEqual(['tasks', 'approvals'])
+    })
+  })
+
+  describe('heartbeat', () => {
+    async function connectAndAuth() {
+      const connectPromise = useWebSocketStore.getState().connect()
+      await vi.runAllTimersAsync()
+      await connectPromise
+      const ws = MockWebSocket.latest()!
+      ws.simulateOpen()
+      ws.simulateMessage({ action: 'auth_ok' })
+      // Lock in the helper's contract: every test in this describe
+      // block assumes the store has finished the auth handshake before
+      // it starts asserting timer behaviour. If a regression stops
+      // flipping `connected` after auth_ok, fail here with a clear
+      // message rather than in a downstream heartbeat assertion.
+      expect(useWebSocketStore.getState().connected).toBe(true)
+      return ws
+    }
+
+    it('sends a ping every 20s after auth_ok', async () => {
+      const ws = await connectAndAuth()
+      const beforePings = ws.sentMessages.length
+
+      await vi.advanceTimersByTimeAsync(20_000)
+
+      const pings = ws.sentMessages.slice(beforePings).filter((m) => {
+        const parsed = JSON.parse(m) as { action?: string }
+        return parsed.action === 'ping'
+      })
+      expect(pings).toHaveLength(1)
+    })
+
+    it('does not send pings before auth_ok arrives', async () => {
+      const connectPromise = useWebSocketStore.getState().connect()
+      await vi.runAllTimersAsync()
+      await connectPromise
+
+      const ws = MockWebSocket.latest()!
+      ws.simulateOpen()
+      // No auth_ok yet.
+      await vi.advanceTimersByTimeAsync(25_000)
+
+      const pings = ws.sentMessages.filter((m) => {
+        const parsed = JSON.parse(m) as { action?: string }
+        return parsed.action === 'ping'
+      })
+      expect(pings).toHaveLength(0)
+    })
+
+    it('clears pong timeout when pong arrives in time', async () => {
+      const ws = await connectAndAuth()
+      await vi.advanceTimersByTimeAsync(20_000)
+      ws.simulateMessage({ action: 'pong' })
+      // Advance past the pong timeout window; if the timer was cleared
+      // the socket stays open.
+      await vi.advanceTimersByTimeAsync(11_000)
+
+      expect(ws.closed).toBe(false)
+    })
+
+    it('closes the socket and reconnects when no pong arrives within 10s', async () => {
+      const ws = await connectAndAuth()
+      const instancesBefore = MockWebSocket.instances.length
+
+      await vi.advanceTimersByTimeAsync(20_000) // ping fired
+      await vi.advanceTimersByTimeAsync(10_000) // pong timeout
+
+      expect(ws.closed).toBe(true)
+      // Reconnect schedules another connect attempt.
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(MockWebSocket.instances.length).toBeGreaterThan(instancesBefore)
+    })
+
+    it('stops the heartbeat on disconnect', async () => {
+      const ws = await connectAndAuth()
+      const sentBefore = ws.sentMessages.length
+
+      useWebSocketStore.getState().disconnect()
+      await vi.advanceTimersByTimeAsync(60_000)
+
+      expect(ws.sentMessages.length).toBe(sentBefore)
+    })
+  })
+
+  describe('protocol version handling', () => {
+    it('discards events whose version does not match', async () => {
+      const handler = vi.fn()
+      useWebSocketStore.getState().onChannelEvent('tasks', handler)
+
+      const connectPromise = useWebSocketStore.getState().connect()
+      await vi.runAllTimersAsync()
+      await connectPromise
+      const ws = MockWebSocket.latest()!
+      ws.simulateOpen()
+      ws.simulateMessage({ action: 'auth_ok' })
+
+      ws.simulateMessage({
+        version: 999,
+        event_type: 'task.created',
+        channel: 'tasks',
+        timestamp: new Date().toISOString(),
+        payload: { task_id: 'x' },
+      })
+      expect(handler).not.toHaveBeenCalled()
+    })
+
+    it('treats absent version as v1 (backwards compatible)', async () => {
+      const handler = vi.fn()
+      useWebSocketStore.getState().onChannelEvent('tasks', handler)
+
+      const connectPromise = useWebSocketStore.getState().connect()
+      await vi.runAllTimersAsync()
+      await connectPromise
+      const ws = MockWebSocket.latest()!
+      ws.simulateOpen()
+      ws.simulateMessage({ action: 'auth_ok' })
+
+      const event: WsEvent = {
+        event_type: 'task.created',
+        channel: 'tasks',
+        timestamp: new Date().toISOString(),
+        payload: { task_id: 'x' },
+      }
+      ws.simulateMessage(event)
+      expect(handler).toHaveBeenCalledWith(event)
+    })
+
+    it('accepts events with explicit version=1', async () => {
+      const handler = vi.fn()
+      useWebSocketStore.getState().onChannelEvent('tasks', handler)
+
+      const connectPromise = useWebSocketStore.getState().connect()
+      await vi.runAllTimersAsync()
+      await connectPromise
+      const ws = MockWebSocket.latest()!
+      ws.simulateOpen()
+      ws.simulateMessage({ action: 'auth_ok' })
+
+      ws.simulateMessage({
+        version: 1,
+        event_type: 'task.created',
+        channel: 'tasks',
+        timestamp: new Date().toISOString(),
+        payload: { task_id: 'x' },
+      })
+      expect(handler).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  describe('retry()', () => {
+    it('resets reconnectExhausted and triggers a fresh connect attempt', async () => {
+      // Force exhaustion via repeated ticket failures.
+      ticketState.mode = { kind: 'envelope_error', message: 'connection refused' }
+      await expect(
+        useWebSocketStore.getState().connect(),
+      ).rejects.toThrow('connection refused')
+      for (let i = 0; i < 20; i++) {
+        await vi.advanceTimersByTimeAsync(30_000)
+        await vi.runAllTimersAsync()
+      }
+      expect(useWebSocketStore.getState().reconnectExhausted).toBe(true)
+
+      const callsBefore = ticketState.calls
+      ticketState.mode = {
+        kind: 'success',
+        ticket: 'recovery-ticket',
+        expires_in: 30,
+      }
+
+      const retryPromise = useWebSocketStore.getState().retry()
+      await vi.runAllTimersAsync()
+      await retryPromise
+
+      expect(useWebSocketStore.getState().reconnectExhausted).toBe(false)
+      expect(ticketState.calls).toBeGreaterThan(callsBefore)
     })
   })
 })

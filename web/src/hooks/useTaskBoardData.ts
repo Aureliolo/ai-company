@@ -25,11 +25,13 @@ export interface UseTaskBoardDataReturn {
   wsConnected: boolean
   wsSetupError: string | null
   fetchTask: (taskId: string) => Promise<void>
-  createTask: (data: CreateTaskRequest) => Promise<Task>
-  updateTask: (taskId: string, data: UpdateTaskRequest) => Promise<Task>
-  transitionTask: (taskId: string, data: TransitionTaskRequest) => Promise<Task>
-  cancelTask: (taskId: string, data: CancelTaskRequest) => Promise<Task>
-  deleteTask: (taskId: string) => Promise<void>
+  // Mirror the canonical store contract: failure resolves to `null` /
+  // `false`. Callers must null-check the sentinel rather than try/catch.
+  createTask: (data: CreateTaskRequest) => Promise<Task | null>
+  updateTask: (taskId: string, data: UpdateTaskRequest) => Promise<Task | null>
+  transitionTask: (taskId: string, data: TransitionTaskRequest) => Promise<Task | null>
+  cancelTask: (taskId: string, data: CancelTaskRequest) => Promise<Task | null>
+  deleteTask: (taskId: string) => Promise<boolean>
   optimisticTransition: (taskId: string, targetStatus: TaskStatus) => () => void
 }
 

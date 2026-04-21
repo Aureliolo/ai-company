@@ -2,10 +2,15 @@ import { create } from 'zustand'
 import { listProjects, getProject, createProject as createProjectApi } from '@/api/endpoints/projects'
 import { listTasks } from '@/api/endpoints/tasks'
 import { getErrorMessage } from '@/utils/errors'
+import { sanitizeForLog } from '@/utils/logging'
+import { createLogger } from '@/lib/logger'
+import { useToastStore } from '@/stores/toast'
 import type { ProjectStatus } from '@/api/types/enums'
 import type { CreateProjectRequest, Project } from '@/api/types/projects'
 import type { Task } from '@/api/types/tasks'
 import type { WsEvent } from '@/api/types/websocket'
+
+const log = createLogger('projects')
 
 interface ProjectsState {
   // List page
@@ -25,10 +30,12 @@ interface ProjectsState {
   detailLoading: boolean
   detailError: string | null
 
-  // Actions
+  // Actions. Mutations follow the canonical store error contract:
+  // log + error toast + return sentinel (`null`) on failure. Callers
+  // MUST NOT wrap these in try/catch.
   fetchProjects: () => Promise<void>
   fetchProjectDetail: (id: string) => Promise<void>
-  createProject: (data: CreateProjectRequest) => Promise<Project>
+  createProject: (data: CreateProjectRequest) => Promise<Project | null>
   setSearchQuery: (q: string) => void
   setStatusFilter: (s: ProjectStatus | null) => void
   setLeadFilter: (l: string | null) => void
@@ -104,19 +111,33 @@ export const useProjectsStore = create<ProjectsState>()((set) => ({
   },
 
   createProject: async (data: CreateProjectRequest) => {
-    const project = await createProjectApi(data)
-    // Optimistically add to local state for immediate UI update.
-    // Filter by ID first to prevent duplicates if a concurrent fetch already added it.
-    set((state) => {
-      const exists = state.projects.some((p) => p.id === project.id)
-      const filtered = state.projects.filter((p) => p.id !== project.id)
-      return {
-        projects: [project, ...filtered],
-        totalProjects: exists ? state.totalProjects : state.totalProjects + 1,
-      }
-    })
-    // Polling and WS events will reconcile with server state.
-    return project
+    try {
+      const project = await createProjectApi(data)
+      // Optimistically add to local state for immediate UI update.
+      // Filter by ID first to prevent duplicates if a concurrent fetch already added it.
+      set((state) => {
+        const exists = state.projects.some((p) => p.id === project.id)
+        const filtered = state.projects.filter((p) => p.id !== project.id)
+        return {
+          projects: [project, ...filtered],
+          totalProjects: exists ? state.totalProjects : state.totalProjects + 1,
+        }
+      })
+      useToastStore.getState().add({
+        variant: 'success',
+        title: `Project ${project.name} created`,
+      })
+      // Polling and WS events will reconcile with server state.
+      return project
+    } catch (err) {
+      log.error('Create project failed:', sanitizeForLog(err))
+      useToastStore.getState().add({
+        variant: 'error',
+        title: 'Failed to create project',
+        description: getErrorMessage(err),
+      })
+      return null
+    }
   },
 
   setSearchQuery: (q) => set({ searchQuery: q }),

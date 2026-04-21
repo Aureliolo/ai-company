@@ -1,14 +1,27 @@
 import { create } from 'zustand'
+import { createLogger } from '@/lib/logger'
+import { sanitizeForLog } from '@/utils/logging'
+import { getErrorMessage } from '@/utils/errors'
+import { asObjectRecord, asObjectRecordArray } from '@/utils/parse'
+import { useToastStore } from '@/stores/toast'
 import type { SinkInfo, TestSinkResult } from '@/api/types/settings'
 import { getNamespaceSettings, listSinks, testSinkConfig, updateSetting } from '@/api/endpoints/settings'
+
+const log = createLogger('sinks')
 
 interface SinksState {
   sinks: SinkInfo[]
   loading: boolean
   error: string | null
   fetchSinks: () => Promise<void>
-  saveSink: (sink: SinkInfo) => Promise<void>
-  testConfig: (data: { sink_overrides: string; custom_sinks: string }) => Promise<TestSinkResult>
+  /**
+   * Create or update a sink. Follows the canonical store error
+   * contract: on failure, logs + emits an error toast + returns
+   * ``false``. Callers MUST NOT wrap this in try/catch; branch on
+   * the sentinel instead.
+   */
+  saveSink: (sink: SinkInfo) => Promise<boolean>
+  testConfig: (data: { sink_overrides: string; custom_sinks: string }) => Promise<TestSinkResult | null>
 }
 
 function buildOverrideForSink(sink: SinkInfo): Record<string, unknown> {
@@ -39,6 +52,7 @@ export const useSinksStore = create<SinksState>((set, get) => ({
   },
 
   saveSink: async (sink) => {
+    const previous = get().sinks
     set({ error: null })
     try {
       if (sink.is_default) {
@@ -48,7 +62,8 @@ export const useSinksStore = create<SinksState>((set, get) => ({
         const overrideEntry = settings.find((s) => s.definition.key === 'sink_overrides')
         if (overrideEntry?.value) {
           const parsed: unknown = JSON.parse(overrideEntry.value)
-          if (parsed && typeof parsed === 'object') existingOverrides = parsed as Record<string, unknown>
+          const narrowed = asObjectRecord(parsed)
+          if (narrowed) existingOverrides = narrowed
         }
         existingOverrides[sink.identifier] = buildOverrideForSink(sink)
         await updateSetting('observability', 'sink_overrides', { value: JSON.stringify(existingOverrides) })
@@ -63,17 +78,28 @@ export const useSinksStore = create<SinksState>((set, get) => ({
         const customEntry = customSettings.find((s) => s.definition.key === 'custom_sinks')
         if (customEntry?.value) {
           const parsed: unknown = JSON.parse(customEntry.value)
-          if (Array.isArray(parsed)) existing = parsed as Record<string, unknown>[]
+          existing = asObjectRecordArray(parsed)
         }
         const merged = existing.filter((s) => s.file_path !== sink.identifier)
         merged.push(custom)
         await updateSetting('observability', 'custom_sinks', { value: JSON.stringify(merged) })
       }
       await get().fetchSinks()
+      useToastStore.getState().add({
+        variant: 'success',
+        title: 'Sink saved',
+      })
+      return true
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to save sink'
-      set({ error: message })
-      throw err
+      log.error('Failed to save sink', sanitizeForLog(err))
+      // Restore previous sinks if fetchSinks already replaced them.
+      set({ sinks: previous, error: getErrorMessage(err) })
+      useToastStore.getState().add({
+        variant: 'error',
+        title: 'Failed to save sink',
+        description: getErrorMessage(err),
+      })
+      return false
     }
   },
 
@@ -81,9 +107,14 @@ export const useSinksStore = create<SinksState>((set, get) => ({
     try {
       return await testSinkConfig(data)
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Test request failed'
-      set({ error: message })
-      throw err
+      log.error('Failed to test sink config', sanitizeForLog(err))
+      set({ error: getErrorMessage(err) })
+      useToastStore.getState().add({
+        variant: 'error',
+        title: 'Sink test failed',
+        description: getErrorMessage(err),
+      })
+      return null
     }
   },
 }))

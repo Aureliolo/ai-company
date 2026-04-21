@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useGlobalNotifications } from '@/hooks/useGlobalNotifications'
 import { useAgentsStore } from '@/stores/agents'
 import { useToastStore } from '@/stores/toast'
+import { useWebSocketStore } from '@/stores/websocket'
 import type { WsEvent } from '@/api/types/websocket'
 
 // Mock the useWebSocket hook so we can control connection state and capture
@@ -21,6 +22,11 @@ describe('useGlobalNotifications', () => {
       setupError: null,
     })
     useAgentsStore.setState({ runtimeStatuses: {} })
+    // Global afterEach in test-setup.tsx already handles
+    // `dismissAll()` + `cancelPendingPersist()`; do NOT duplicate
+    // here -- double-teardown measurably raises the async-leak count
+    // on CI. Keep a single pre-test reset so a state-dirty prior test
+    // cannot seed this one.
     useToastStore.getState().dismissAll()
   })
 
@@ -219,6 +225,28 @@ describe('useGlobalNotifications', () => {
     })
     rerender()
     expect(useToastStore.getState().toasts).toHaveLength(1)
+  })
+
+  it('wires a Retry action on the reconnect-exhausted toast that calls useWebSocketStore.retry()', () => {
+    mockUseWebSocket.mockReturnValue({
+      connected: false,
+      reconnectExhausted: true,
+      setupError: null,
+    })
+    const retrySpy = vi
+      .spyOn(useWebSocketStore.getState(), 'retry')
+      .mockResolvedValue(undefined)
+
+    renderHook(() => useGlobalNotifications())
+
+    const toasts = useToastStore.getState().toasts
+    expect(toasts).toHaveLength(1)
+    const action = toasts[0]!.action
+    expect(action).toBeDefined()
+    expect(action!.label).toBe('Retry')
+
+    action!.onClick()
+    expect(retrySpy).toHaveBeenCalledTimes(1)
   })
 
   it('unmount is a no-op that leaves the store untouched', () => {

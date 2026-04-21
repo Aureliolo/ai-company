@@ -18,7 +18,7 @@ const meta = {
   },
   args: {
     config: mockConfig,
-    onUpdate: async () => {},
+    onUpdate: async () => true,
     saving: false,
   },
 } satisfies Meta<typeof GeneralTab>

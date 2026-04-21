@@ -7,8 +7,6 @@ import { ContentTypeBadge } from '@/components/ui/content-type-badge'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useArtifactsStore } from '@/stores/artifacts'
-import { useToastStore } from '@/stores/toast'
-import { getErrorMessage } from '@/utils/errors'
 import { downloadArtifactFile } from '@/utils/download'
 import { formatFileSize, formatDate, formatLabel } from '@/utils/format'
 import { ROUTES } from '@/router/routes'
@@ -43,21 +41,20 @@ export function ArtifactMetadata({ artifact }: ArtifactMetadataProps) {
     downloadArtifactFile(artifact.id, artifact.path.split('/').pop() || artifact.id)
   }
 
-  async function handleDelete() {
+  async function handleDelete(): Promise<boolean> {
     setDeleting(true)
     try {
-      await useArtifactsStore.getState().deleteArtifact(artifact.id)
-      useToastStore.getState().add({ variant: 'success', title: 'Artifact deleted' })
-      navigate(ROUTES.ARTIFACTS)
-    } catch (err) {
-      useToastStore.getState().add({
-        variant: 'error',
-        title: 'Delete failed',
-        description: getErrorMessage(err),
-      })
+      const ok = await useArtifactsStore.getState().deleteArtifact(artifact.id)
+      if (ok) {
+        setDeleteOpen(false)
+        navigate(ROUTES.ARTIFACTS)
+      }
+      return ok
     } finally {
+      // Always clear the in-flight flag so the UI stays responsive even
+      // if the store ever throws (the sentinel contract says it should
+      // not, but the finally keeps the primitive honest).
       setDeleting(false)
-      setDeleteOpen(false)
     }
   }
 

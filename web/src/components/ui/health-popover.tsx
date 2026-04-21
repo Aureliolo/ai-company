@@ -108,9 +108,15 @@ interface SubsystemCardProps {
   description: string
   state: SubsystemState
   detail?: string
+  /**
+   * Optional recovery action (e.g. "Retry now"). Rendered as a small
+   * button inside the card footer; only surfaced when the subsystem is
+   * in a terminal failure state.
+   */
+  action?: { label: string; onClick: () => void }
 }
 
-function SubsystemCard({ icon: Icon, label, description, state, detail }: SubsystemCardProps) {
+function SubsystemCard({ icon: Icon, label, description, state, detail, action }: SubsystemCardProps) {
   const meta = STATE_META[state]
   return (
     <div
@@ -134,6 +140,17 @@ function SubsystemCard({ icon: Icon, label, description, state, detail }: Subsys
           <span className="text-compact text-muted-foreground">{detail}</span>
         )}
       </div>
+      {action && (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={action.onClick}
+          className="mt-1 self-start"
+        >
+          {action.label}
+        </Button>
+      )}
     </div>
   )
 }
@@ -385,6 +402,16 @@ export function HealthPopover({ children }: HealthPopoverProps) {
               description="Realtime push channel for agent activity, tasks, and notifications."
               state={wsState}
               detail={wsDetail}
+              action={
+                wsReconnectExhausted
+                  ? {
+                      label: 'Retry now',
+                      onClick: () => {
+                        void useWebSocketStore.getState().retry()
+                      },
+                    }
+                  : undefined
+              }
             />
             <SubsystemCard
               icon={Database}

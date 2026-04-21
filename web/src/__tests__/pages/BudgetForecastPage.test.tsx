@@ -171,7 +171,11 @@ describe('BudgetForecastPage', () => {
   it('shows "--" for confidence when value is undefined', () => {
     hookReturn = {
       ...defaultHookReturn,
-      forecast: { ...mockForecast, confidence: undefined as unknown as number },
+      // The forecast type requires `confidence: number`, but the runtime
+      // path has to tolerate `undefined` from the API. We assert the
+      // fallback explicitly.
+      // @ts-expect-error -- intentional: cover undefined fallback path
+      forecast: { ...mockForecast, confidence: undefined },
     }
     renderWithRouter()
     // Confidence metric card should display '--' for undefined

@@ -9,6 +9,11 @@ import { server } from '@/test-setup'
 import type { ApprovalResponse } from '@/api/types/approvals'
 import type { WsEvent } from '@/api/types/websocket'
 
+// Bidi-override chars constructed via fromCharCode so ESLint's
+// ``security/detect-bidi-characters`` rule sees only hex in source.
+const RLO = String.fromCharCode(0x202e)
+const LRO = String.fromCharCode(0x202d)
+
 function paginated(
   data: ApprovalResponse[],
   meta: Partial<{ total: number; offset: number; limit: number }> = {},
@@ -409,6 +414,205 @@ describe('handleWsEvent', () => {
 
     expect(useApprovalsStore.getState().approvals[0]!.status).toBe('approved')
   })
+
+  it('rejects approval whose metadata holds a non-string value', () => {
+    useApprovalsStore.setState({ approvals: [] })
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const event = makeWsEvent(
+      makeApproval('bad-meta', {
+        // Non-string metadata value violates the Record<string, string>
+        // contract; ``isApprovalShape`` must reject.
+        metadata: { region: 42 as unknown as string },
+      }),
+    )
+    useApprovalsStore.getState().handleWsEvent(event)
+    expect(useApprovalsStore.getState().approvals).toHaveLength(0)
+    errorSpy.mockRestore()
+  })
+
+  it('skips upsert when sanitized id collapses to empty', () => {
+    useApprovalsStore.setState({ approvals: [] })
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const event = makeWsEvent(makeApproval(RLO + LRO))
+    useApprovalsStore.getState().handleWsEvent(event)
+    expect(useApprovalsStore.getState().approvals).toHaveLength(0)
+    errorSpy.mockRestore()
+  })
+
+  it('sanitizes nullable fields to null when sanitization blanks them', () => {
+    useApprovalsStore.setState({ approvals: [] })
+    const event = makeWsEvent(
+      makeApproval('null-decide', {
+        status: 'approved',
+        // All-bidi-override decided_by should collapse to null per the
+        // string | null contract.
+        decided_by: RLO,
+      }),
+    )
+    useApprovalsStore.getState().handleWsEvent(event)
+    const stored = useApprovalsStore.getState().approvals[0]
+    expect(stored?.decided_by).toBeNull()
+  })
+
+  it('rejects approval whose id is mutated by sanitization', () => {
+    useApprovalsStore.setState({ approvals: [] })
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    // A legitimate-looking id with an embedded bidi override:
+    // sanitization strips the override, producing a different effective
+    // id that could alias a real approval. Reject the whole frame.
+    const event = makeWsEvent(makeApproval(`approval-1${RLO}`))
+    useApprovalsStore.getState().handleWsEvent(event)
+    expect(useApprovalsStore.getState().approvals).toHaveLength(0)
+    errorSpy.mockRestore()
+  })
+
+  it('sanitizes and accepts approval with a valid evidence_package', () => {
+    useApprovalsStore.setState({ approvals: [] })
+    const event = makeWsEvent(
+      makeApproval('with-evidence', {
+        evidence_package: {
+          id: 'ev-1',
+          title: 'Evidence Title',
+          narrative: 'Narrative body',
+          reasoning_trace: ['step 1', 'step 2'],
+          recommended_actions: [
+            {
+              action_type: 'approve',
+              label: 'Approve',
+              description: 'Approve the change',
+              confirmation_required: true,
+            },
+          ],
+          source_agent_id: 'agent-eng',
+          task_id: null,
+          risk_level: 'medium',
+          metadata: { region: 'eu-west' },
+          signature_threshold: 1,
+          signatures: [
+            {
+              approver_id: 'agent-cto',
+              algorithm: 'ed25519',
+              signature_bytes: 'aGVsbG8=',
+              signed_at: '2026-04-21T00:00:00Z',
+              chain_position: 1,
+            },
+          ],
+          is_fully_signed: true,
+          created_at: '2026-04-21T00:00:00Z',
+        },
+      }),
+    )
+    useApprovalsStore.getState().handleWsEvent(event)
+    const stored = useApprovalsStore.getState().approvals[0]
+    expect(stored?.evidence_package?.title).toBe('Evidence Title')
+    expect(stored?.evidence_package?.signatures).toHaveLength(1)
+  })
+
+  it('rejects approval whose evidence metadata contains non-string values', () => {
+    useApprovalsStore.setState({ approvals: [] })
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const event = makeWsEvent(
+      makeApproval('bad-evidence', {
+        evidence_package: {
+          id: 'ev-2',
+          title: 't',
+          narrative: 'n',
+          reasoning_trace: [],
+          recommended_actions: [],
+          source_agent_id: 'agent-eng',
+          task_id: null,
+          risk_level: 'medium',
+          // Non-string value violates the string-string map guard.
+          metadata: { count: 42 as unknown as string },
+          signature_threshold: 1,
+          signatures: [],
+          is_fully_signed: false,
+          created_at: '2026-04-21T00:00:00Z',
+        },
+      }),
+    )
+    useApprovalsStore.getState().handleWsEvent(event)
+    expect(useApprovalsStore.getState().approvals).toHaveLength(0)
+    errorSpy.mockRestore()
+  })
+
+  it.each([
+    ['NaN', Number.NaN],
+    ['Infinity', Number.POSITIVE_INFINITY],
+    ['negative', -1],
+    ['fractional', 0.5],
+  ])(
+    'rejects evidence signature with %s chain_position',
+    (_label, bad) => {
+      useApprovalsStore.setState({ approvals: [] })
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const event = makeWsEvent(
+        makeApproval('bad-chain-pos', {
+          evidence_package: {
+            id: 'ev-cp',
+            title: 't',
+            narrative: 'n',
+            reasoning_trace: [],
+            recommended_actions: [],
+            source_agent_id: 'agent-eng',
+            task_id: null,
+            risk_level: 'medium',
+            metadata: {},
+            signature_threshold: 1,
+            signatures: [
+              {
+                approver_id: 'agent-cto',
+                algorithm: 'ed25519',
+                signature_bytes: 'aGVsbG8=',
+                signed_at: '2026-04-21T00:00:00Z',
+                chain_position: bad,
+              },
+            ],
+            is_fully_signed: false,
+            created_at: '2026-04-21T00:00:00Z',
+          },
+        }),
+      )
+      useApprovalsStore.getState().handleWsEvent(event)
+      expect(useApprovalsStore.getState().approvals).toHaveLength(0)
+      errorSpy.mockRestore()
+    },
+  )
+
+  it.each([
+    ['NaN', Number.NaN],
+    ['Infinity', Number.POSITIVE_INFINITY],
+    ['negative', -1],
+    ['fractional', 0.5],
+  ])(
+    'rejects evidence with %s signature_threshold',
+    (_label, bad) => {
+      useApprovalsStore.setState({ approvals: [] })
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const event = makeWsEvent(
+        makeApproval('bad-threshold', {
+          evidence_package: {
+            id: 'ev-th',
+            title: 't',
+            narrative: 'n',
+            reasoning_trace: [],
+            recommended_actions: [],
+            source_agent_id: 'agent-eng',
+            task_id: null,
+            risk_level: 'medium',
+            metadata: {},
+            signature_threshold: bad,
+            signatures: [],
+            is_fully_signed: false,
+            created_at: '2026-04-21T00:00:00Z',
+          },
+        }),
+      )
+      useApprovalsStore.getState().handleWsEvent(event)
+      expect(useApprovalsStore.getState().approvals).toHaveLength(0)
+      errorSpy.mockRestore()
+    },
+  )
 })
 
 describe('batch selection', () => {
