@@ -445,11 +445,16 @@ jobs:
   build-backend:
     name: Build Backend
     needs: [version, build-backend-base, build-backend-base-publish]
+    # On PR events publish is always skipped (guarded to main / v* tags), so
+    # the app build falls back to the locally-loaded scan artifact. On any
+    # non-PR event we require publish to have succeeded -- this makes
+    # workflow_dispatch from a feature branch skip the app build entirely
+    # instead of trying to pull a base tag that was never pushed to GHCR.
     if: >-
       !cancelled() &&
       needs.version.result == 'success' &&
       needs.build-backend-base.result == 'success' &&
-      (needs.build-backend-base-publish.result == 'success' || needs.build-backend-base-publish.result == 'skipped')
+      (github.event_name == 'pull_request' || needs.build-backend-base-publish.result == 'success')
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
@@ -488,8 +493,9 @@ jobs:
         if: github.event_name == 'pull_request'
         env:
           BASE_TAG: ${{ needs.build-backend-base.outputs.tag }}
+          BASE_TARBALL: ${{ needs.build-backend-base.outputs.tarball-name }}
         run: |
-          docker load -i /tmp/backend-base.tar
+          docker load -i "/tmp/${BASE_TARBALL}"
           docker tag "ghcr.io/aureliolo/synthorg-backend-base:${BASE_TAG}-amd64" "ghcr.io/aureliolo/synthorg-backend-base:${BASE_TAG}"
 
       - name: Log in to GHCR
@@ -931,7 +937,7 @@ jobs:
       !cancelled() &&
       needs.version.result == 'success' &&
       needs.build-sandbox-base.result == 'success' &&
-      (needs.build-sandbox-base-publish.result == 'success' || needs.build-sandbox-base-publish.result == 'skipped')
+      (github.event_name == 'pull_request' || needs.build-sandbox-base-publish.result == 'success')
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
@@ -970,8 +976,9 @@ jobs:
         if: github.event_name == 'pull_request'
         env:
           BASE_TAG: ${{ needs.build-sandbox-base.outputs.tag }}
+          BASE_TARBALL: ${{ needs.build-sandbox-base.outputs.tarball-name }}
         run: |
-          docker load -i /tmp/sandbox-base.tar
+          docker load -i "/tmp/${BASE_TARBALL}"
           docker tag "ghcr.io/aureliolo/synthorg-sandbox-base:${BASE_TAG}-amd64" "ghcr.io/aureliolo/synthorg-sandbox-base:${BASE_TAG}"
 
       - name: Log in to GHCR
@@ -1137,7 +1144,7 @@ jobs:
       !cancelled() &&
       needs.version.result == 'success' &&
       needs.build-sidecar-base.result == 'success' &&
-      (needs.build-sidecar-base-publish.result == 'success' || needs.build-sidecar-base-publish.result == 'skipped')
+      (github.event_name == 'pull_request' || needs.build-sidecar-base-publish.result == 'success')
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
@@ -1176,8 +1183,9 @@ jobs:
         if: github.event_name == 'pull_request'
         env:
           BASE_TAG: ${{ needs.build-sidecar-base.outputs.tag }}
+          BASE_TARBALL: ${{ needs.build-sidecar-base.outputs.tarball-name }}
         run: |
-          docker load -i /tmp/sidecar-base.tar
+          docker load -i "/tmp/${BASE_TARBALL}"
           docker tag "ghcr.io/aureliolo/synthorg-sidecar-base:${BASE_TAG}-amd64" "ghcr.io/aureliolo/synthorg-sidecar-base:${BASE_TAG}"
 
       - name: Log in to GHCR
@@ -1342,7 +1350,7 @@ jobs:
       !cancelled() &&
       needs.version.result == 'success' &&
       needs.build-fine-tune-base.result == 'success' &&
-      (needs.build-fine-tune-base-publish.result == 'success' || needs.build-fine-tune-base-publish.result == 'skipped')
+      (github.event_name == 'pull_request' || needs.build-fine-tune-base-publish.result == 'success')
     runs-on: ubuntu-latest
     timeout-minutes: 60
     strategy:
@@ -1398,8 +1406,9 @@ jobs:
         if: github.event_name == 'pull_request'
         env:
           BASE_TAG: ${{ needs.build-fine-tune-base.outputs.tag }}
+          BASE_TARBALL: ${{ needs.build-fine-tune-base.outputs.tarball-name }}
         run: |
-          docker load -i /tmp/fine-tune-base.tar
+          docker load -i "/tmp/${BASE_TARBALL}"
           docker tag "ghcr.io/aureliolo/synthorg-fine-tune-base:${BASE_TAG}-amd64" "ghcr.io/aureliolo/synthorg-fine-tune-base:${BASE_TAG}"
 
       - name: Log in to GHCR

@@ -19,7 +19,9 @@
 #   scripts/configure_environments.sh --apply --repo owner/name
 #
 # Prerequisites:
-#   - gh CLI authenticated with admin:repo_hook and repo scopes
+#   - gh CLI authenticated with the `repo` scope (sufficient for all four
+#     environments / deployment-branch-policies endpoints per GitHub's docs;
+#     fine-grained PATs need `administration:write`)
 #   - default repo inferred via `gh repo view`, or pass --repo owner/name
 
 set -euo pipefail
@@ -39,7 +41,7 @@ while [[ $# -gt 0 ]]; do
       fi
       REPO="$2"; shift 2 ;;
     -h|--help)
-      sed -n '2,22p' "$0"
+      sed -n '2,25p' "$0"
       exit 0
       ;;
     *) echo "error: unknown flag: $1" >&2; exit 2 ;;

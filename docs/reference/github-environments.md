@@ -61,7 +61,9 @@ The script is a reconciler: on `--apply` the final state of each environment's
 branch policies exactly matches the `ENV_CONFIG` table inside the script.
 Missing policies are `POST`-ed (with `HTTP 422` already-exists treated as a
 no-op), and any extra policy not in the desired set is `DELETE`-d. Requires a
-`gh` CLI authenticated with repo admin scope.
+`gh` CLI authenticated with the `repo` scope (classic PAT/OAuth) or
+`administration:write` (fine-grained PATs/GitHub Apps) -- see the
+[deployments API docs](https://docs.github.com/rest/deployments/environments).
 
 ## Verifying policies
 
