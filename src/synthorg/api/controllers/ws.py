@@ -451,17 +451,13 @@ async def _setup_connection(
     if not already_accepted:
         await socket.accept()
 
-    # Send the auth acknowledgement before any other server frame so
-    # clients can transition to ``connected=true`` only after the server
-    # has validated the ticket. Both auth paths use this -- query-param
-    # auth validates pre-accept, but emitting the same ack keeps the
-    # client-side wire protocol uniform across paths.
-    try:
-        await _send_auth_ok(socket)
-    except WebSocketDisconnect:
-        return None
-
     # Subscribe to all shared channels + the user's private channel.
+    # This runs *before* ``auth_ok`` so that the server is already
+    # ready to broadcast by the time the client flips
+    # ``connected=true`` and starts listening -- emitting ``auth_ok``
+    # earlier would open a window where events published to channels
+    # the client has been auto-subscribed to could be dropped because
+    # ``subscriber.run_in_background`` hasn't started yet.
     user_ch = user_channel(user.user_id)
     all_subs = [*ALL_CHANNELS, user_ch]
     try:
@@ -480,6 +476,26 @@ async def _setup_connection(
     # Track presence.
     app_state = socket.app.state["app_state"]
     app_state.user_presence.connect(user.user_id)
+
+    # Now that subscriptions + presence are established, send the
+    # auth acknowledgement so the client can flip ``connected=true``
+    # knowing the server is ready to receive and broadcast.
+    try:
+        await _send_auth_ok(socket)
+    except WebSocketDisconnect:
+        # Unsubscribe + clear presence since the outer handler won't
+        # see this setup as "established".
+        try:
+            await channels_plugin.unsubscribe(subscriber)
+        except Exception:
+            logger.error(
+                API_WS_TRANSPORT_ERROR,
+                reason="unsubscribe_after_auth_ok_disconnect_failed",
+                client=str(socket.client),
+                exc_info=True,
+            )
+        app_state.user_presence.disconnect(user.user_id)
+        return None
 
     logger.info(
         API_WS_CONNECTED,

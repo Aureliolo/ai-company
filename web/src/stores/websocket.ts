@@ -266,12 +266,6 @@ export const useWebSocketStore = create<WebSocketState>()((set) => {
     }
 
     thisSocket.onmessage = (event: MessageEvent) => {
-      // Drop frames arriving on a socket that has already been
-      // superseded by a reconnect -- a late ``auth_ok`` / ``pong`` /
-      // ``subscribed`` from the old connection could otherwise flip
-      // ``connected`` back to true, clear the new pong timer, or
-      // stomp the new subscribed-channels set.
-      if (socket !== thisSocket) return
       if (typeof event.data !== 'string') return
       if (estimateByteLength(event.data) > WS_MAX_MESSAGE_SIZE) {
         log.error('Message exceeds max size, discarding')

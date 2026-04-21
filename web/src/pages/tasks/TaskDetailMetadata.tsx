@@ -3,11 +3,9 @@ import { InlineEdit } from '@/components/ui/inline-edit'
 import { SelectField, type SelectOption } from '@/components/ui/select-field'
 import { cn } from '@/lib/utils'
 import { useTasksStore } from '@/stores/tasks'
-import { useToastStore } from '@/stores/toast'
 import type { Priority } from '@/api/types/enums'
 import type { Task } from '@/api/types/tasks'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
-import { getErrorMessage } from '@/utils/errors'
 import { formatCurrency, formatDate } from '@/utils/format'
 import { getPriorityLabel, getTaskTypeLabel } from '@/utils/tasks'
 
@@ -33,18 +31,16 @@ export function TaskDetailMetadata({ task }: TaskDetailMetadataProps) {
         <InlineEdit
           value={task.description}
           onSave={async (value) => {
-            try {
-              await useTasksStore.getState().updateTask(task.id, {
-                description: value,
-                expected_version: task.version,
-              })
-            } catch (err) {
-              useToastStore.getState().add({
-                variant: 'error',
-                title: 'Failed to save description',
-                description: getErrorMessage(err),
-              })
-              throw err
+            // Sentinel-return contract: ``updateTask`` handles its
+            // own toast UX and returns ``null`` on failure. Throwing
+            // when the result is null is how InlineEdit is signalled
+            // to keep the input open and show its error state.
+            const updated = await useTasksStore.getState().updateTask(task.id, {
+              description: value,
+              expected_version: task.version,
+            })
+            if (!updated) {
+              throw new Error('Failed to save description')
             }
           }}
           className="mt-1 text-sm text-text-secondary"
@@ -57,18 +53,15 @@ export function TaskDetailMetadata({ task }: TaskDetailMetadataProps) {
         options={PRIORITY_OPTIONS}
         value={task.priority}
         onChange={async (value) => {
-          try {
-            await useTasksStore.getState().updateTask(task.id, {
-              priority: value as Priority,
-              expected_version: task.version,
-            })
-          } catch (err) {
-            useToastStore.getState().add({
-              variant: 'error',
-              title: 'Failed to update priority',
-              description: getErrorMessage(err),
-            })
-          }
+          // Sentinel-return contract: the store owns the error toast.
+          // Nothing to do on failure beyond letting the caller's UI
+          // reflect the pre-change priority (the store's ``upsertTask``
+          // on success already updates the select via its ``value``
+          // binding).
+          await useTasksStore.getState().updateTask(task.id, {
+            priority: value as Priority,
+            expected_version: task.version,
+          })
         }}
       />
 

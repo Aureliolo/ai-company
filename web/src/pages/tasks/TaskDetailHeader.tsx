@@ -1,9 +1,7 @@
 import { InlineEdit } from '@/components/ui/inline-edit'
 import { PriorityBadge, TaskStatusIndicator } from '@/components/ui/task-status-indicator'
 import { useTasksStore } from '@/stores/tasks'
-import { useToastStore } from '@/stores/toast'
 import type { Task } from '@/api/types/tasks'
-import { getErrorMessage } from '@/utils/errors'
 
 interface TaskDetailHeaderProps {
   task: Task
@@ -20,18 +18,17 @@ export function TaskDetailHeader({ task }: TaskDetailHeaderProps) {
         <InlineEdit
           value={task.title}
           onSave={async (value) => {
-            try {
-              await useTasksStore.getState().updateTask(task.id, {
-                title: value,
-                expected_version: task.version,
-              })
-            } catch (err) {
-              useToastStore.getState().add({
-                variant: 'error',
-                title: 'Failed to save title',
-                description: getErrorMessage(err),
-              })
-              throw err
+            // Sentinel-return contract: the store logs + toasts on
+            // failure and returns ``null``. Throwing when the result
+            // is null is how InlineEdit is told to keep the input
+            // open and surface its error state; the store already
+            // owns the toast UX so we don't add another one here.
+            const updated = await useTasksStore.getState().updateTask(task.id, {
+              title: value,
+              expected_version: task.version,
+            })
+            if (!updated) {
+              throw new Error('Failed to save title')
             }
           }}
           validate={(v) => (v.trim().length === 0 ? 'Title is required' : null)}

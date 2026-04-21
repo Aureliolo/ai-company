@@ -224,6 +224,23 @@ function isOptionalString(value: unknown): boolean {
 }
 
 /**
+ * Element-wise string-array equality for detecting whether
+ * ``sanitizeIds`` mutated any agent-id entry during sanitization.
+ * A mutated entry means the wire value carried control/bidi chars
+ * and we can't trust it to point at the intended agent.
+ */
+function arraysEqual(
+  a: readonly string[],
+  b: readonly string[],
+): boolean {
+  if (a.length !== b.length) return false
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false
+  }
+  return true
+}
+
+/**
  * Minimum structural check for a ``Task``-shaped WS payload. Validates
  * the required identifier + enum-typed fields (``status``, ``priority``,
  * ``type``, ``estimated_complexity``, ``coordination_topology`` -- each
@@ -425,31 +442,44 @@ export const useTasksStore = create<TasksState>()((set, get) => ({
     if (payload.task && typeof payload.task === 'object' && !Array.isArray(payload.task)) {
       const candidate = payload.task as Record<string, unknown>
       if (isTaskShape(candidate)) {
-        // Sanitize identifier fields *before* the pendingTransitions
-        // check so a frame whose id carries an embedded bidi override
-        // or control character can't bypass the optimistic-transition
-        // gate (which keys off the raw id) and then sanitize down to
-        // the plain id to overwrite the real task. We also reject
-        // when sanitization *mutates* an id -- that means the wire
-        // value carried control/bidi chars and we can't trust it to
-        // point at the intended record.
+        // Sanitize identifier-bearing fields *before* the
+        // pendingTransitions check so a frame whose id carries an
+        // embedded bidi override or control character can't bypass
+        // the optimistic-transition gate (which keys off the raw id)
+        // and then sanitize down to the plain id to overwrite the
+        // real task. We also reject when sanitization *mutates* any
+        // identifier-bearing field -- ``assigned_to``, parent_task_id,
+        // reviewers, dependencies, delegation_chain can all change
+        // task-to-task / task-to-agent relationships silently if
+        // control/bidi-carrying ids get normalized out.
         const sanitized = sanitizeTask(candidate)
-        const idsMutated =
+        const requiredBlank =
+          !sanitized.id || !sanitized.project || !sanitized.created_by
+        const requiredMutated =
           sanitized.id !== candidate.id ||
           sanitized.project !== candidate.project ||
           sanitized.created_by !== candidate.created_by
+        const assignedMutated = sanitized.assigned_to !== candidate.assigned_to
+        const parentMutated = sanitized.parent_task_id !== candidate.parent_task_id
+        const stringArraysMutated =
+          !arraysEqual(sanitized.reviewers, candidate.reviewers) ||
+          !arraysEqual(sanitized.dependencies, candidate.dependencies) ||
+          !arraysEqual(sanitized.delegation_chain, candidate.delegation_chain)
         if (
-          !sanitized.id ||
-          !sanitized.project ||
-          !sanitized.created_by ||
-          idsMutated
+          requiredBlank ||
+          requiredMutated ||
+          assignedMutated ||
+          parentMutated ||
+          stringArraysMutated
         ) {
           log.error(
-            'Task payload lost or mutated required identifiers during sanitization, skipping upsert',
+            'Task payload lost or mutated identifier-bearing fields during sanitization, skipping upsert',
             sanitizeForLog({
               id: candidate.id,
               project: candidate.project,
               created_by: candidate.created_by,
+              assigned_to: candidate.assigned_to,
+              parent_task_id: candidate.parent_task_id,
             }),
           )
           return

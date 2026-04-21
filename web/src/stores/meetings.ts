@@ -34,7 +34,12 @@ const MEETING_PHASE_SET: ReadonlySet<string> = new Set<string>(MEETING_PHASE_VAL
 function isTokenUsageMap(value: unknown): value is Record<string, number> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
   for (const [key, count] of Object.entries(value)) {
-    if (typeof key !== 'string' || typeof count !== 'number') return false
+    // Token counters must be finite non-negative numbers -- a NaN /
+    // Infinity / negative value on the wire would poison downstream
+    // spend math the moment the store surfaces it.
+    if (typeof key !== 'string' || !Number.isFinite(count) || count < 0) {
+      return false
+    }
   }
   return true
 }
@@ -176,7 +181,11 @@ function isMeetingShape(
     typeof c.meeting_type_name === 'string' &&
     typeof c.protocol_type === 'string' &&
     MEETING_PROTOCOL_TYPE_SET.has(c.protocol_type) &&
+    // Budget must be finite + non-negative; NaN/Infinity/negatives
+    // would break spend math downstream.
+    Number.isFinite(c.token_budget) &&
     typeof c.token_budget === 'number' &&
+    c.token_budget >= 0 &&
     Array.isArray(c.contribution_rank) &&
     c.contribution_rank.every((entry) => typeof entry === 'string') &&
     isTokenUsageMap(c.token_usage_by_participant) &&
@@ -184,13 +193,16 @@ function isMeetingShape(
     // and ``error_message`` are nullable on the wire (completed
     // meetings fill in ``minutes``; failed meetings fill in
     // ``error_message``). ``meeting_duration_seconds`` is null while
-    // in-progress and becomes a number once ended. Accepting null
-    // for all three matches the declared types and keeps the guard
-    // aligned with the asserted ``MeetingResponse`` shape.
+    // in-progress and becomes a finite non-negative number once
+    // ended. Accepting null for all three matches the declared types
+    // and keeps the guard aligned with the asserted ``MeetingResponse``
+    // shape.
     isMeetingMinutesShape(c.minutes) &&
     (c.error_message === null || typeof c.error_message === 'string') &&
     (c.meeting_duration_seconds === null ||
-      typeof c.meeting_duration_seconds === 'number')
+      (typeof c.meeting_duration_seconds === 'number' &&
+        Number.isFinite(c.meeting_duration_seconds) &&
+        c.meeting_duration_seconds >= 0))
   )
 }
 
@@ -211,10 +223,14 @@ function sanitizeAgenda(agenda: MeetingAgenda): MeetingAgenda {
     items: agenda.items.map((item) => ({
       title: sanitizeWsString(item.title, 256) ?? '',
       description: sanitizeWsString(item.description, 1024) ?? '',
+      // ``presenter_id`` is ``string | null`` on the wire. If
+      // sanitization blanks a non-null id (bidi-only, control-only),
+      // collapse to ``null`` rather than emitting ``''`` so the
+      // nullable contract is preserved.
       presenter_id:
         item.presenter_id === null
           ? null
-          : sanitizeWsString(item.presenter_id, 128) ?? '',
+          : sanitizeWsString(item.presenter_id, 128) || null,
     })),
   }
 }
@@ -258,10 +274,13 @@ function sanitizeMeetingMinutes(
       .filter((d) => d.length > 0),
     action_items: minutes.action_items.map((ai) => ({
       description: sanitizeWsString(ai.description, 1024) ?? '',
+      // Nullable field: if sanitization blanks a non-null assignee,
+      // fall back to ``null`` rather than ``''`` to preserve the
+      // wire contract.
       assignee_id:
         ai.assignee_id === null
           ? null
-          : sanitizeWsString(ai.assignee_id, 128) ?? '',
+          : sanitizeWsString(ai.assignee_id, 128) || null,
       priority: ai.priority,
     })),
     conflicts_detected: minutes.conflicts_detected,
