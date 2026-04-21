@@ -21,8 +21,10 @@ export interface TaskDetailPanelProps {
   onClose: () => void
   onUpdate: (taskId: string, data: UpdateTaskRequest) => Promise<void>
   onTransition: (taskId: string, data: TransitionTaskRequest) => Promise<void>
-  onCancel: (taskId: string, data: CancelTaskRequest) => Promise<void>
-  onDelete: (taskId: string) => Promise<void>
+  /** Resolves to ``true`` on success, ``false`` on failure (sentinel). */
+  onCancel: (taskId: string, data: CancelTaskRequest) => Promise<boolean>
+  /** Resolves to ``true`` on success, ``false`` on failure (sentinel). */
+  onDelete: (taskId: string) => Promise<boolean>
   loading?: boolean
 }
 
@@ -82,13 +84,15 @@ export function TaskDetailPanel({
       useToastStore.getState().add({ variant: 'error', title: 'Please provide a cancellation reason' })
       return false
     }
-    await onCancel(task.id, { reason: cancelReason.trim() })
+    const ok = await onCancel(task.id, { reason: cancelReason.trim() })
+    if (!ok) return false
     setCancelReason('')
     return true
   }, [task.id, cancelReason, onCancel])
 
   const handleDelete = useCallback(async (): Promise<boolean> => {
-    await onDelete(task.id)
+    const ok = await onDelete(task.id)
+    if (!ok) return false
     onClose()
     return true
   }, [task.id, onDelete, onClose])

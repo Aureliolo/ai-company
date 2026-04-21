@@ -473,9 +473,32 @@ async def _setup_connection(
         await socket.close(code=1011, reason="Internal error")
         return None
 
-    # Track presence.
+    # Track presence. If the presence registry throws (e.g., the
+    # AppState slot is swapped mid-connection), we need to undo the
+    # earlier ``subscribe()`` so the subscriber isn't left live for a
+    # connection that never finished establishing.
     app_state = socket.app.state["app_state"]
-    app_state.user_presence.connect(user.user_id)
+    try:
+        app_state.user_presence.connect(user.user_id)
+    except Exception:
+        logger.error(
+            API_WS_TRANSPORT_ERROR,
+            reason="presence_connect_failed",
+            client=str(socket.client),
+            user_id=user.user_id,
+            exc_info=True,
+        )
+        try:
+            await channels_plugin.unsubscribe(subscriber)
+        except Exception:
+            logger.error(
+                API_WS_TRANSPORT_ERROR,
+                reason="unsubscribe_after_presence_connect_failure",
+                client=str(socket.client),
+                exc_info=True,
+            )
+        await socket.close(code=1011, reason="Internal error")
+        return None
 
     # Now that subscriptions + presence are established, send the
     # auth acknowledgement so the client can flip ``connected=true``

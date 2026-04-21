@@ -9,6 +9,11 @@ import { server } from '@/test-setup'
 import type { ApprovalResponse } from '@/api/types/approvals'
 import type { WsEvent } from '@/api/types/websocket'
 
+// Bidi-override chars constructed via fromCharCode so ESLint's
+// ``security/detect-bidi-characters`` rule sees only hex in source.
+const RLO = String.fromCharCode(0x202e)
+const LRO = String.fromCharCode(0x202d)
+
 function paginated(
   data: ApprovalResponse[],
   meta: Partial<{ total: number; offset: number; limit: number }> = {},
@@ -408,6 +413,45 @@ describe('handleWsEvent', () => {
     useApprovalsStore.getState().handleWsEvent(event)
 
     expect(useApprovalsStore.getState().approvals[0]!.status).toBe('approved')
+  })
+
+  it('rejects approval whose metadata holds a non-string value', () => {
+    useApprovalsStore.setState({ approvals: [] })
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const event = makeWsEvent(
+      makeApproval('bad-meta', {
+        // Non-string metadata value violates the Record<string, string>
+        // contract; ``isApprovalShape`` must reject.
+        metadata: { region: 42 as unknown as string },
+      }),
+    )
+    useApprovalsStore.getState().handleWsEvent(event)
+    expect(useApprovalsStore.getState().approvals).toHaveLength(0)
+    errorSpy.mockRestore()
+  })
+
+  it('skips upsert when sanitized id collapses to empty', () => {
+    useApprovalsStore.setState({ approvals: [] })
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const event = makeWsEvent(makeApproval(RLO + LRO))
+    useApprovalsStore.getState().handleWsEvent(event)
+    expect(useApprovalsStore.getState().approvals).toHaveLength(0)
+    errorSpy.mockRestore()
+  })
+
+  it('sanitizes nullable fields to null when sanitization blanks them', () => {
+    useApprovalsStore.setState({ approvals: [] })
+    const event = makeWsEvent(
+      makeApproval('null-decide', {
+        status: 'approved',
+        // All-bidi-override decided_by should collapse to null per the
+        // string | null contract.
+        decided_by: RLO,
+      }),
+    )
+    useApprovalsStore.getState().handleWsEvent(event)
+    const stored = useApprovalsStore.getState().approvals[0]
+    expect(stored?.decided_by).toBeNull()
   })
 })
 

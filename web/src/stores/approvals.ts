@@ -93,9 +93,11 @@ function isEvidencePackageShape(value: unknown): boolean {
   if (typeof v.source_agent_id !== 'string') return false
   if (v.task_id !== null && typeof v.task_id !== 'string') return false
   if (typeof v.risk_level !== 'string') return false
-  if (typeof v.metadata !== 'object' || v.metadata === null || Array.isArray(v.metadata)) {
-    return false
-  }
+  // ``EvidencePackage.metadata`` is a string->unknown map on the
+  // declared TS side, but the server emits it with string values
+  // only. Validate that shape here so ``sanitizeEvidencePackage``
+  // can trust the values when it calls ``sanitizeWsString`` on them.
+  if (!isStringStringRecord(v.metadata)) return false
   if (typeof v.signature_threshold !== 'number') return false
   if (
     !Array.isArray(v.signatures) ||

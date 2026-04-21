@@ -267,7 +267,12 @@ function sanitizeMeetingMinutes(
       .map((id) => sanitizeWsString(id, 128) ?? '')
       .filter((id) => id.length > 0),
     agenda: sanitizeAgenda(minutes.agenda),
-    contributions: minutes.contributions.map(sanitizeContribution),
+    // Drop contributions whose agent_id sanitizes to empty -- same
+    // defensive filter we apply to ``participant_ids`` and
+    // ``contribution_rank`` so an unrenderable row can't slip through.
+    contributions: minutes.contributions
+      .map(sanitizeContribution)
+      .filter((contribution) => contribution.agent_id.length > 0),
     summary: sanitizeWsString(minutes.summary, 4096) ?? '',
     decisions: minutes.decisions
       .map((d) => sanitizeWsString(d, 1024) ?? '')

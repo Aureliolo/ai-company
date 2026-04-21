@@ -326,8 +326,8 @@ export default function TaskBoardPage() {
             onClose={handleClosePanel}
             onUpdate={async (id, data) => { await updateTask(id, data) }}
             onTransition={async (id, data) => { await transitionTask(id, data) }}
-            onCancel={async (id, data) => { await cancelTask(id, data) }}
-            onDelete={async (id) => { await deleteTask(id) }}
+            onCancel={async (id, data) => (await cancelTask(id, data)) !== null}
+            onDelete={(id) => deleteTask(id)}
           />
         )}
       </AnimatePresence>

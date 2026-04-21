@@ -6,6 +6,11 @@ import { server } from '@/test-setup'
 import type { AgentConfig, AgentPerformanceSummary } from '@/api/types/agents'
 import type { Task } from '@/api/types/tasks'
 
+// Bidi-override chars via fromCharCode so ESLint's
+// ``security/detect-bidi-characters`` rule sees only hex in source.
+const RLO = String.fromCharCode(0x202e)
+const LRO = String.fromCharCode(0x202d)
+
 function makeAgent(overrides: Partial<AgentConfig> = {}): AgentConfig {
   return {
     id: 'agent-001',
@@ -598,6 +603,34 @@ describe('runtime statuses (org chart)', () => {
       payload: {},
     })
     expect(Object.keys(useAgentsStore.getState().runtimeStatuses)).toHaveLength(0)
+  })
+
+  it('updateFromWsEvent drops frames whose agent_id sanitizes to empty', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    useAgentsStore.getState().updateFromWsEvent({
+      event_type: 'agent.status_changed',
+      channel: 'agents',
+      timestamp: '2026-03-27T10:00:00Z',
+      // Bidi-override-only id collapses to '' after sanitization.
+      payload: { agent_id: RLO + LRO, status: 'idle' },
+    })
+    expect(Object.keys(useAgentsStore.getState().runtimeStatuses)).toHaveLength(0)
+    warnSpy.mockRestore()
+  })
+
+  it('updateFromWsEvent drops frames whose agent_id changes under sanitization', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    // Valid-looking id with an embedded bidi override -- sanitization
+    // strips the override, changing the effective id, which could
+    // alias a different legitimate agent. Reject the frame.
+    useAgentsStore.getState().updateFromWsEvent({
+      event_type: 'agent.status_changed',
+      channel: 'agents',
+      timestamp: '2026-03-27T10:00:00Z',
+      payload: { agent_id: `agent-1${RLO}`, status: 'idle' },
+    })
+    expect(Object.keys(useAgentsStore.getState().runtimeStatuses)).toHaveLength(0)
+    warnSpy.mockRestore()
   })
 })
 

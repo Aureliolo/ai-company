@@ -259,6 +259,16 @@ export const useAgentsStore = create<AgentsState>()((set, get) => ({
         })
         return
       }
+      if (sanitizedAgentId !== rawAgentId) {
+        // A sanitized-mutated id means the wire value carried
+        // control/bidi chars; we can't trust it to point at the
+        // intended agent, so drop the event instead of aliasing to a
+        // neighbouring legitimate id.
+        log.warn('agent.status_changed id mutated during sanitization, skipping', {
+          agent_id: sanitizeForLog(rawAgentId),
+        })
+        return
+      }
       if (!VALID_RUNTIME_STATUSES.has(status)) {
         // `status` arrives from an untrusted WebSocket payload, so sanitize
         // before embedding in the structured log.

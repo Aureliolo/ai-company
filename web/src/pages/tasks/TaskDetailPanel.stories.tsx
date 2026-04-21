@@ -35,6 +35,7 @@ const mockTask: Task = {
 }
 
 const noop = async () => {}
+const noopSentinel = async () => true
 
 const meta = {
   title: 'Tasks/TaskDetailPanel',
@@ -52,8 +53,8 @@ export const Default: Story = {
     onClose: () => {},
     onUpdate: noop,
     onTransition: noop,
-    onCancel: noop,
-    onDelete: noop,
+    onCancel: noopSentinel,
+    onDelete: noopSentinel,
   },
 }
 
@@ -63,8 +64,8 @@ export const Loading: Story = {
     onClose: () => {},
     onUpdate: noop,
     onTransition: noop,
-    onCancel: noop,
-    onDelete: noop,
+    onCancel: noopSentinel,
+    onDelete: noopSentinel,
     loading: true,
   },
 }
@@ -75,7 +76,7 @@ export const CompletedTask: Story = {
     onClose: () => {},
     onUpdate: noop,
     onTransition: noop,
-    onCancel: noop,
-    onDelete: noop,
+    onCancel: noopSentinel,
+    onDelete: noopSentinel,
   },
 }

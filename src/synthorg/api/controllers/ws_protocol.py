@@ -272,6 +272,13 @@ def _handle_subscribe(
         len(client_filters) > _MAX_FILTER_KEYS
         or any(len(str(v)) > _MAX_FILTER_VALUE_LEN for v in client_filters.values())
     ):
+        logger.warning(
+            API_WS_INVALID_MESSAGE,
+            reason="filters_bounds_exceeded",
+            filter_count=len(client_filters),
+            max_keys=_MAX_FILTER_KEYS,
+            max_value_len=_MAX_FILTER_VALUE_LEN,
+        )
         return json.dumps({"error": "Filter bounds exceeded"})
 
     # Accept known channels the user is authorized to receive.
