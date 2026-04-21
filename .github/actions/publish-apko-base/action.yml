@@ -1,0 +1,138 @@
+name: Publish apko base image
+description: >-
+  Download a scanned apko base image tarball (produced by build-apko-base),
+  push it as a multi-arch manifest to GHCR, sign it with cosign (keyless via
+  GitHub OIDC), and attest SLSA Level 3 build provenance. Called from a
+  companion job that carries `packages: write`, `id-token: write`, and
+  `attestations: write` and only runs on non-PR events.
+
+inputs:
+  image-name:
+    description: "Image name suffix (e.g. backend, sandbox, sidecar, fine-tune)"
+    required: true
+  tag:
+    description: "Image tag produced by build-apko-base (e.g. sha-abcdef1)"
+    required: true
+  artifact-name:
+    description: "Artifact name for the base image tarball produced by build-apko-base"
+    required: true
+  tarball-name:
+    description: >-
+      Filename of the tarball inside the downloaded artifact. Must match the
+      `tarball-name` output of build-apko-base; making it an explicit input
+      removes the implicit `${image-name}-base.tar` coupling.
+    required: true
+  architectures:
+    description: "Comma-separated list of architectures to push (e.g. amd64,arm64)"
+    required: false
+    default: "amd64,arm64"
+  ghcr-token:
+    description: "GITHUB_TOKEN for GHCR"
+    required: true
+
+outputs:
+  digest:
+    description: "Pushed multi-arch manifest digest"
+    value: ${{ steps.push.outputs.digest }}
+  tag:
+    description: "Echo of the input tag"
+    value: ${{ inputs.tag }}
+
+runs:
+  using: composite
+  steps:
+    - name: Download base image artifact
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: .
+
+    - name: Log in to GHCR
+      uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ inputs.ghcr-token }}
+
+    - name: Load image from tarball
+      shell: bash
+      env:
+        TARBALL_NAME: ${{ inputs.tarball-name }}
+      run: |
+        if [ ! -f "${TARBALL_NAME}" ]; then
+          echo "::error::Tarball '${TARBALL_NAME}' not found in downloaded artifact"
+          exit 1
+        fi
+        docker load -i "${TARBALL_NAME}"
+
+    - name: Push base image (multi-arch manifest)
+      id: push
+      shell: bash
+      env:
+        IMAGE_NAME: ${{ inputs.image-name }}
+        TAG: ${{ inputs.tag }}
+        ARCHITECTURES: ${{ inputs.architectures }}
+      run: |
+        REPO="ghcr.io/aureliolo/synthorg-${IMAGE_NAME}-base"
+        IFS=',' read -ra ARCHS <<< "${ARCHITECTURES}"
+        MANIFEST_ARGS=()
+        for arch in "${ARCHS[@]}"; do
+          docker push "${REPO}:${TAG}-${arch}"
+          MANIFEST_ARGS+=("${REPO}:${TAG}-${arch}")
+        done
+        # --amend keeps re-runs on the same SHA safe: a successful push on a
+        # prior run leaves the manifest list present, and a plain `create` would
+        # fail with "manifest already exists" before the idempotent push below.
+        docker manifest create --amend "${REPO}:${TAG}" "${MANIFEST_ARGS[@]}"
+        DIGEST=$(docker manifest push "${REPO}:${TAG}")
+        echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
+
+    # GitHub releases occasionally 5xx; cosign-installer's internal retry (3
+    # attempts in ~7s) is not enough to ride out a longer outage. Wrap the
+    # install in two continue-on-error attempts with backoff before the final
+    # fail-hard attempt, so a single 10-20s burst of 500s doesn't kill the run.
+    - name: Install cosign (attempt 1)
+      id: cosign_1
+      continue-on-error: true
+      uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
+
+    - name: Back off before cosign retry 1
+      if: steps.cosign_1.outcome == 'failure'
+      shell: bash
+      run: sleep 15
+
+    - name: Install cosign (attempt 2)
+      if: steps.cosign_1.outcome == 'failure'
+      id: cosign_2
+      continue-on-error: true
+      uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
+
+    - name: Back off before cosign retry 2
+      if: steps.cosign_2.outcome == 'failure'
+      shell: bash
+      run: sleep 30
+
+    - name: Install cosign (final attempt)
+      if: steps.cosign_2.outcome == 'failure'
+      uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
+
+    - name: Sign image
+      shell: bash
+      env:
+        IMAGE_NAME: ${{ inputs.image-name }}
+        DIGEST: ${{ steps.push.outputs.digest }}
+      run: |
+        set -euo pipefail
+        if [ -z "$DIGEST" ]; then echo "::error::No digest"; exit 1; fi
+        if ! cosign sign --yes "ghcr.io/aureliolo/synthorg-${IMAGE_NAME}-base@${DIGEST}" 2>&1 | tee /tmp/cosign-out; then
+          if grep -q 'createLogEntryConflict' /tmp/cosign-out; then
+            echo "::notice::Image already signed -- skipping"
+          else cat /tmp/cosign-out; exit 1; fi
+        fi
+
+    - name: Attest build provenance (SLSA Level 3)
+      uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+      with: # zizmor: ignore[template-injection]
+        subject-name: ghcr.io/aureliolo/synthorg-${{ inputs.image-name }}-base
+        subject-digest: ${{ steps.push.outputs.digest }}
+        push-to-registry: true

@@ -207,6 +207,10 @@ jobs:
   # =========================================================================
   # apko base images -- Wolfi-composed bases (all use build-apko-base action)
   # =========================================================================
+  # The build-*-base jobs run on every event (PR, push, tag). They only need
+  # `security-events: write` to upload Trivy SARIF results. The companion
+  # build-*-base-publish jobs run on non-PR events and carry the elevated
+  # permissions needed to push, sign, and attest the image.
   build-backend-base:
     name: Build Backend Base (apko)
     needs: [version, changes, validate-compose]
@@ -217,13 +221,11 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
-      packages: write
-      id-token: write
-      attestations: write
       security-events: write
     outputs:
-      digest: ${{ steps.build.outputs.digest }}
       tag: ${{ steps.build.outputs.tag }}
+      artifact-name: ${{ steps.build.outputs.artifact-name }}
+      tarball-name: ${{ steps.build.outputs.tarball-name }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
@@ -234,6 +236,38 @@ jobs:
           image-name: backend
           apko-yaml: docker/backend/apko.yaml
           trivy-version: ${{ env.TRIVY_VERSION }}
+
+  build-backend-base-publish:
+    name: Publish Backend Base (apko)
+    needs: [version, build-backend-base]
+    # Restricted to main pushes and v-tags: `github.event_name != 'pull_request'`
+    # alone would also admit workflow_dispatch from an arbitrary feature branch,
+    # letting unmerged code push, sign, and attest base images.
+    if: >-
+      !cancelled() &&
+      (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) &&
+      needs.build-backend-base.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    outputs:
+      digest: ${{ steps.publish.outputs.digest }}
+      tag: ${{ steps.publish.outputs.tag }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+      - id: publish
+        uses: ./.github/actions/publish-apko-base
+        with:
+          image-name: backend
+          tag: ${{ needs.build-backend-base.outputs.tag }}
+          artifact-name: ${{ needs.build-backend-base.outputs.artifact-name }}
+          tarball-name: ${{ needs.build-backend-base.outputs.tarball-name }}
           ghcr-token: ${{ secrets.GITHUB_TOKEN }}
 
   build-sandbox-base:
@@ -246,13 +280,11 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
-      packages: write
-      id-token: write
-      attestations: write
       security-events: write
     outputs:
-      digest: ${{ steps.build.outputs.digest }}
       tag: ${{ steps.build.outputs.tag }}
+      artifact-name: ${{ steps.build.outputs.artifact-name }}
+      tarball-name: ${{ steps.build.outputs.tarball-name }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
@@ -263,6 +295,35 @@ jobs:
           image-name: sandbox
           apko-yaml: docker/sandbox/apko.yaml
           trivy-version: ${{ env.TRIVY_VERSION }}
+
+  build-sandbox-base-publish:
+    name: Publish Sandbox Base (apko)
+    needs: [version, build-sandbox-base]
+    if: >-
+      !cancelled() &&
+      (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) &&
+      needs.build-sandbox-base.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    outputs:
+      digest: ${{ steps.publish.outputs.digest }}
+      tag: ${{ steps.publish.outputs.tag }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+      - id: publish
+        uses: ./.github/actions/publish-apko-base
+        with:
+          image-name: sandbox
+          tag: ${{ needs.build-sandbox-base.outputs.tag }}
+          artifact-name: ${{ needs.build-sandbox-base.outputs.artifact-name }}
+          tarball-name: ${{ needs.build-sandbox-base.outputs.tarball-name }}
           ghcr-token: ${{ secrets.GITHUB_TOKEN }}
 
   build-sidecar-base:
@@ -275,13 +336,11 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
-      packages: write
-      id-token: write
-      attestations: write
       security-events: write
     outputs:
-      digest: ${{ steps.build.outputs.digest }}
       tag: ${{ steps.build.outputs.tag }}
+      artifact-name: ${{ steps.build.outputs.artifact-name }}
+      tarball-name: ${{ steps.build.outputs.tarball-name }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
@@ -292,6 +351,35 @@ jobs:
           image-name: sidecar
           apko-yaml: docker/sidecar/apko.yaml
           trivy-version: ${{ env.TRIVY_VERSION }}
+
+  build-sidecar-base-publish:
+    name: Publish Sidecar Base (apko)
+    needs: [version, build-sidecar-base]
+    if: >-
+      !cancelled() &&
+      (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) &&
+      needs.build-sidecar-base.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    outputs:
+      digest: ${{ steps.publish.outputs.digest }}
+      tag: ${{ steps.publish.outputs.tag }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+      - id: publish
+        uses: ./.github/actions/publish-apko-base
+        with:
+          image-name: sidecar
+          tag: ${{ needs.build-sidecar-base.outputs.tag }}
+          artifact-name: ${{ needs.build-sidecar-base.outputs.artifact-name }}
+          tarball-name: ${{ needs.build-sidecar-base.outputs.tarball-name }}
           ghcr-token: ${{ secrets.GITHUB_TOKEN }}
 
   build-fine-tune-base:
@@ -304,13 +392,11 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
-      packages: write
-      id-token: write
-      attestations: write
       security-events: write
     outputs:
-      digest: ${{ steps.build.outputs.digest }}
       tag: ${{ steps.build.outputs.tag }}
+      artifact-name: ${{ steps.build.outputs.artifact-name }}
+      tarball-name: ${{ steps.build.outputs.tarball-name }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
@@ -321,6 +407,35 @@ jobs:
           image-name: fine-tune
           apko-yaml: docker/fine-tune/apko.yaml
           trivy-version: ${{ env.TRIVY_VERSION }}
+
+  build-fine-tune-base-publish:
+    name: Publish Fine-Tune Base (apko)
+    needs: [version, build-fine-tune-base]
+    if: >-
+      !cancelled() &&
+      (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) &&
+      needs.build-fine-tune-base.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    outputs:
+      digest: ${{ steps.publish.outputs.digest }}
+      tag: ${{ steps.publish.outputs.tag }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+      - id: publish
+        uses: ./.github/actions/publish-apko-base
+        with:
+          image-name: fine-tune
+          tag: ${{ needs.build-fine-tune-base.outputs.tag }}
+          artifact-name: ${{ needs.build-fine-tune-base.outputs.artifact-name }}
+          tarball-name: ${{ needs.build-fine-tune-base.outputs.tarball-name }}
           architectures: "amd64"
           ghcr-token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -329,11 +444,17 @@ jobs:
   # =========================================================================
   build-backend:
     name: Build Backend
-    needs: [version, build-backend-base]
+    needs: [version, build-backend-base, build-backend-base-publish]
+    # On PR events publish is always skipped (guarded to main / v* tags), so
+    # the app build falls back to the locally-loaded scan artifact. On any
+    # non-PR event we require publish to have succeeded -- this makes
+    # workflow_dispatch from a feature branch skip the app build entirely
+    # instead of trying to pull a base tag that was never pushed to GHCR.
     if: >-
       !cancelled() &&
       needs.version.result == 'success' &&
-      needs.build-backend-base.result == 'success'
+      needs.build-backend-base.result == 'success' &&
+      (github.event_name == 'pull_request' || needs.build-backend-base-publish.result == 'success')
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
@@ -365,15 +486,16 @@ jobs:
         if: github.event_name == 'pull_request'
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
-          name: backend-base-image
+          name: ${{ needs.build-backend-base.outputs.artifact-name }}
           path: /tmp
 
       - name: Load base image (PR only)
         if: github.event_name == 'pull_request'
         env:
           BASE_TAG: ${{ needs.build-backend-base.outputs.tag }}
+          BASE_TARBALL: ${{ needs.build-backend-base.outputs.tarball-name }}
         run: |
-          docker load -i /tmp/backend-base.tar
+          docker load -i "/tmp/${BASE_TARBALL}"
           docker tag "ghcr.io/aureliolo/synthorg-backend-base:${BASE_TAG}-amd64" "ghcr.io/aureliolo/synthorg-backend-base:${BASE_TAG}"
 
       - name: Log in to GHCR
@@ -406,7 +528,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            BASE_IMAGE=${{ needs.build-backend-base.outputs.digest != '' && format('ghcr.io/aureliolo/synthorg-backend-base@{0}', needs.build-backend-base.outputs.digest) || format('ghcr.io/aureliolo/synthorg-backend-base:{0}', needs.build-backend-base.outputs.tag) }}
+            BASE_IMAGE=${{ needs.build-backend-base-publish.outputs.digest != '' && format('ghcr.io/aureliolo/synthorg-backend-base@{0}', needs.build-backend-base-publish.outputs.digest) || format('ghcr.io/aureliolo/synthorg-backend-base:{0}', needs.build-backend-base.outputs.tag) }}
             DEPLOYMENT_ENV=${{ needs.version.outputs.deployment_env }}
           cache-from: ${{ github.event_name != 'pull_request' && 'type=gha' || '' }}
           cache-to: ${{ github.event_name != 'pull_request' && 'type=gha,mode=max' || '' }}
@@ -480,7 +602,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            BASE_IMAGE=${{ needs.build-backend-base.outputs.digest != '' && format('ghcr.io/aureliolo/synthorg-backend-base@{0}', needs.build-backend-base.outputs.digest) || format('ghcr.io/aureliolo/synthorg-backend-base:{0}', needs.build-backend-base.outputs.tag) }}
+            BASE_IMAGE=${{ needs.build-backend-base-publish.outputs.digest != '' && format('ghcr.io/aureliolo/synthorg-backend-base@{0}', needs.build-backend-base-publish.outputs.digest) || format('ghcr.io/aureliolo/synthorg-backend-base:{0}', needs.build-backend-base.outputs.tag) }}
             DEPLOYMENT_ENV=${{ needs.version.outputs.deployment_env }}
           cache-from: type=gha
           platforms: linux/amd64,linux/arm64
@@ -500,7 +622,7 @@ jobs:
             echo "::error::Push step did not produce a digest -- cannot sign image"
             exit 1
           fi
-          set -o pipefail
+          set -euo pipefail
           if ! cosign sign --yes ghcr.io/aureliolo/synthorg-backend@${DIGEST} 2>&1 | tee /tmp/cosign-out; then
             if grep -q 'createLogEntryConflict' /tmp/cosign-out; then
               echo "::notice::Image already signed in transparency log -- skipping"
@@ -751,10 +873,13 @@ jobs:
             fi
           done
 
-          # Create and push multi-arch manifest for each tag
+          # Create and push multi-arch manifest for each tag. --amend keeps
+          # re-runs on the same SHA safe: a prior successful push leaves the
+          # manifest list present, and a plain `create` would fail with
+          # "manifest already exists" on retry.
           DIGEST=""
           for t in "${MANIFEST_TAGS[@]}"; do
-            docker manifest create "${REPO}:${t}" \
+            docker manifest create --amend "${REPO}:${t}" \
               "${REPO}:${SHA_TAG}-amd64" \
               "${REPO}:${SHA_TAG}-arm64"
             PUSH_OUT=$(docker manifest push "${REPO}:${t}")
@@ -774,7 +899,7 @@ jobs:
           DIGEST: ${{ steps.push.outputs.digest }}
         run: |
           if [ -z "$DIGEST" ]; then echo "::error::No digest"; exit 1; fi
-          set -o pipefail
+          set -euo pipefail
           if ! cosign sign --yes ghcr.io/aureliolo/synthorg-web@${DIGEST} 2>&1 | tee /tmp/cosign-out; then
             if grep -q 'createLogEntryConflict' /tmp/cosign-out; then
               echo "::notice::Image already signed -- skipping"
@@ -807,11 +932,12 @@ jobs:
 
   build-sandbox:
     name: Build Sandbox
-    needs: [version, build-sandbox-base]
+    needs: [version, build-sandbox-base, build-sandbox-base-publish]
     if: >-
       !cancelled() &&
       needs.version.result == 'success' &&
-      needs.build-sandbox-base.result == 'success'
+      needs.build-sandbox-base.result == 'success' &&
+      (github.event_name == 'pull_request' || needs.build-sandbox-base-publish.result == 'success')
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
@@ -843,15 +969,16 @@ jobs:
         if: github.event_name == 'pull_request'
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
-          name: sandbox-base-image
+          name: ${{ needs.build-sandbox-base.outputs.artifact-name }}
           path: /tmp
 
       - name: Load base image (PR only)
         if: github.event_name == 'pull_request'
         env:
           BASE_TAG: ${{ needs.build-sandbox-base.outputs.tag }}
+          BASE_TARBALL: ${{ needs.build-sandbox-base.outputs.tarball-name }}
         run: |
-          docker load -i /tmp/sandbox-base.tar
+          docker load -i "/tmp/${BASE_TARBALL}"
           docker tag "ghcr.io/aureliolo/synthorg-sandbox-base:${BASE_TAG}-amd64" "ghcr.io/aureliolo/synthorg-sandbox-base:${BASE_TAG}"
 
       - name: Log in to GHCR
@@ -885,7 +1012,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            BASE_IMAGE=${{ needs.build-sandbox-base.outputs.digest != '' && format('ghcr.io/aureliolo/synthorg-sandbox-base@{0}', needs.build-sandbox-base.outputs.digest) || format('ghcr.io/aureliolo/synthorg-sandbox-base:{0}', needs.build-sandbox-base.outputs.tag) }}
+            BASE_IMAGE=${{ needs.build-sandbox-base-publish.outputs.digest != '' && format('ghcr.io/aureliolo/synthorg-sandbox-base@{0}', needs.build-sandbox-base-publish.outputs.digest) || format('ghcr.io/aureliolo/synthorg-sandbox-base:{0}', needs.build-sandbox-base.outputs.tag) }}
           cache-from: ${{ github.event_name != 'pull_request' && 'type=gha' || '' }}
           cache-to: ${{ github.event_name != 'pull_request' && 'type=gha,mode=max' || '' }}
           platforms: linux/amd64
@@ -957,7 +1084,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            BASE_IMAGE=${{ needs.build-sandbox-base.outputs.digest != '' && format('ghcr.io/aureliolo/synthorg-sandbox-base@{0}', needs.build-sandbox-base.outputs.digest) || format('ghcr.io/aureliolo/synthorg-sandbox-base:{0}', needs.build-sandbox-base.outputs.tag) }}
+            BASE_IMAGE=${{ needs.build-sandbox-base-publish.outputs.digest != '' && format('ghcr.io/aureliolo/synthorg-sandbox-base@{0}', needs.build-sandbox-base-publish.outputs.digest) || format('ghcr.io/aureliolo/synthorg-sandbox-base:{0}', needs.build-sandbox-base.outputs.tag) }}
           cache-from: type=gha
           platforms: linux/amd64,linux/arm64
           sbom: true
@@ -976,7 +1103,7 @@ jobs:
             echo "::error::Push step did not produce a digest -- cannot sign image"
             exit 1
           fi
-          set -o pipefail
+          set -euo pipefail
           if ! cosign sign --yes ghcr.io/aureliolo/synthorg-sandbox@${DIGEST} 2>&1 | tee /tmp/cosign-out; then
             if grep -q 'createLogEntryConflict' /tmp/cosign-out; then
               echo "::notice::Image already signed in transparency log -- skipping"
@@ -1012,11 +1139,12 @@ jobs:
 
   build-sidecar:
     name: Build Sidecar
-    needs: [version, build-sidecar-base]
+    needs: [version, build-sidecar-base, build-sidecar-base-publish]
     if: >-
       !cancelled() &&
       needs.version.result == 'success' &&
-      needs.build-sidecar-base.result == 'success'
+      needs.build-sidecar-base.result == 'success' &&
+      (github.event_name == 'pull_request' || needs.build-sidecar-base-publish.result == 'success')
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
@@ -1048,15 +1176,16 @@ jobs:
         if: github.event_name == 'pull_request'
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
-          name: sidecar-base-image
+          name: ${{ needs.build-sidecar-base.outputs.artifact-name }}
           path: /tmp
 
       - name: Load base image (PR only)
         if: github.event_name == 'pull_request'
         env:
           BASE_TAG: ${{ needs.build-sidecar-base.outputs.tag }}
+          BASE_TARBALL: ${{ needs.build-sidecar-base.outputs.tarball-name }}
         run: |
-          docker load -i /tmp/sidecar-base.tar
+          docker load -i "/tmp/${BASE_TARBALL}"
           docker tag "ghcr.io/aureliolo/synthorg-sidecar-base:${BASE_TAG}-amd64" "ghcr.io/aureliolo/synthorg-sidecar-base:${BASE_TAG}"
 
       - name: Log in to GHCR
@@ -1089,7 +1218,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            BASE_IMAGE=${{ needs.build-sidecar-base.outputs.digest != '' && format('ghcr.io/aureliolo/synthorg-sidecar-base@{0}', needs.build-sidecar-base.outputs.digest) || format('ghcr.io/aureliolo/synthorg-sidecar-base:{0}', needs.build-sidecar-base.outputs.tag) }}
+            BASE_IMAGE=${{ needs.build-sidecar-base-publish.outputs.digest != '' && format('ghcr.io/aureliolo/synthorg-sidecar-base@{0}', needs.build-sidecar-base-publish.outputs.digest) || format('ghcr.io/aureliolo/synthorg-sidecar-base:{0}', needs.build-sidecar-base.outputs.tag) }}
           cache-from: ${{ github.event_name != 'pull_request' && 'type=gha' || '' }}
           cache-to: ${{ github.event_name != 'pull_request' && 'type=gha,mode=max' || '' }}
           platforms: linux/amd64
@@ -1156,7 +1285,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            BASE_IMAGE=${{ needs.build-sidecar-base.outputs.digest != '' && format('ghcr.io/aureliolo/synthorg-sidecar-base@{0}', needs.build-sidecar-base.outputs.digest) || format('ghcr.io/aureliolo/synthorg-sidecar-base:{0}', needs.build-sidecar-base.outputs.tag) }}
+            BASE_IMAGE=${{ needs.build-sidecar-base-publish.outputs.digest != '' && format('ghcr.io/aureliolo/synthorg-sidecar-base@{0}', needs.build-sidecar-base-publish.outputs.digest) || format('ghcr.io/aureliolo/synthorg-sidecar-base:{0}', needs.build-sidecar-base.outputs.tag) }}
           cache-from: type=gha
           platforms: linux/amd64,linux/arm64
           sbom: true
@@ -1175,7 +1304,7 @@ jobs:
             echo "::error::Push step did not produce a digest -- cannot sign image"
             exit 1
           fi
-          set -o pipefail
+          set -euo pipefail
           if ! cosign sign --yes ghcr.io/aureliolo/synthorg-sidecar@${DIGEST} 2>&1 | tee /tmp/cosign-out; then
             if grep -q 'createLogEntryConflict' /tmp/cosign-out; then
               echo "::notice::Image already signed in transparency log -- skipping"
@@ -1216,11 +1345,12 @@ jobs:
   # PyPI (CUDA) or pytorch.org/whl/cpu via [tool.uv.sources] in pyproject.toml.
   build-fine-tune:
     name: Build Fine-Tune (${{ matrix.variant }})
-    needs: [version, build-fine-tune-base]
+    needs: [version, build-fine-tune-base, build-fine-tune-base-publish]
     if: >-
       !cancelled() &&
       needs.version.result == 'success' &&
-      needs.build-fine-tune-base.result == 'success'
+      needs.build-fine-tune-base.result == 'success' &&
+      (github.event_name == 'pull_request' || needs.build-fine-tune-base-publish.result == 'success')
     runs-on: ubuntu-latest
     timeout-minutes: 60
     strategy:
@@ -1269,15 +1399,16 @@ jobs:
         if: github.event_name == 'pull_request'
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
-          name: fine-tune-base-image
+          name: ${{ needs.build-fine-tune-base.outputs.artifact-name }}
           path: /tmp
 
       - name: Load base image (PR only)
         if: github.event_name == 'pull_request'
         env:
           BASE_TAG: ${{ needs.build-fine-tune-base.outputs.tag }}
+          BASE_TARBALL: ${{ needs.build-fine-tune-base.outputs.tarball-name }}
         run: |
-          docker load -i /tmp/fine-tune-base.tar
+          docker load -i "/tmp/${BASE_TARBALL}"
           docker tag "ghcr.io/aureliolo/synthorg-fine-tune-base:${BASE_TAG}-amd64" "ghcr.io/aureliolo/synthorg-fine-tune-base:${BASE_TAG}"
 
       - name: Log in to GHCR
@@ -1310,7 +1441,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            BASE_IMAGE=${{ needs.build-fine-tune-base.outputs.digest != '' && format('ghcr.io/aureliolo/synthorg-fine-tune-base@{0}', needs.build-fine-tune-base.outputs.digest) || format('ghcr.io/aureliolo/synthorg-fine-tune-base:{0}', needs.build-fine-tune-base.outputs.tag) }}
+            BASE_IMAGE=${{ needs.build-fine-tune-base-publish.outputs.digest != '' && format('ghcr.io/aureliolo/synthorg-fine-tune-base@{0}', needs.build-fine-tune-base-publish.outputs.digest) || format('ghcr.io/aureliolo/synthorg-fine-tune-base:{0}', needs.build-fine-tune-base.outputs.tag) }}
             FINE_TUNE_EXTRA=${{ matrix.extra }}
           cache-from: ${{ github.event_name != 'pull_request' && format('type=gha,scope=fine-tune-{0}', matrix.variant) || '' }}
           cache-to: ${{ github.event_name != 'pull_request' && format('type=gha,mode=max,scope=fine-tune-{0}', matrix.variant) || '' }}
@@ -1378,7 +1509,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            BASE_IMAGE=${{ needs.build-fine-tune-base.outputs.digest != '' && format('ghcr.io/aureliolo/synthorg-fine-tune-base@{0}', needs.build-fine-tune-base.outputs.digest) || format('ghcr.io/aureliolo/synthorg-fine-tune-base:{0}', needs.build-fine-tune-base.outputs.tag) }}
+            BASE_IMAGE=${{ needs.build-fine-tune-base-publish.outputs.digest != '' && format('ghcr.io/aureliolo/synthorg-fine-tune-base@{0}', needs.build-fine-tune-base-publish.outputs.digest) || format('ghcr.io/aureliolo/synthorg-fine-tune-base:{0}', needs.build-fine-tune-base.outputs.tag) }}
             FINE_TUNE_EXTRA=${{ matrix.extra }}
           cache-from: ${{ format('type=gha,scope=fine-tune-{0}', matrix.variant) }}
           platforms: linux/amd64
@@ -1399,7 +1530,7 @@ jobs:
             echo "::error::Push step did not produce a digest -- cannot sign image"
             exit 1
           fi
-          set -o pipefail
+          set -euo pipefail
           if ! cosign sign --yes "${IMAGE}@${DIGEST}" 2>&1 | tee /tmp/cosign-out; then
             if grep -q 'createLogEntryConflict' /tmp/cosign-out; then
               echo "::notice::Image already signed in transparency log -- skipping"
@@ -1453,7 +1584,21 @@ jobs:
   # Append container image references to the GitHub Release (version tags only)
   update-release:
     name: Update Release Notes
-    needs: [version, build-backend-base, build-sandbox-base, build-sidecar-base, build-fine-tune-base, build-backend, build-web, build-sandbox, build-sidecar, build-fine-tune]
+    needs:
+      - version
+      - build-backend-base
+      - build-backend-base-publish
+      - build-sandbox-base
+      - build-sandbox-base-publish
+      - build-sidecar-base
+      - build-sidecar-base-publish
+      - build-fine-tune-base
+      - build-fine-tune-base-publish
+      - build-backend
+      - build-web
+      - build-sandbox
+      - build-sidecar
+      - build-fine-tune
     if: >-
       startsWith(github.ref, 'refs/tags/v') && github.event_name != 'pull_request' &&
       !cancelled() &&

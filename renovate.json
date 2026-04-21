@@ -49,7 +49,12 @@
     {
       "description": "CLI tool version inputs (golangci-lint, GoReleaser, govulncheck)",
       "matchManagers": ["custom.regex"],
-      "matchDepNames": ["golangci/golangci-lint", "goreleaser/goreleaser", "golang.org/x/vuln/cmd/govulncheck"],
+      "matchDepNames": [
+        "golangci/golangci-lint",
+        "github.com/golangci/golangci-lint/v2/cmd/golangci-lint",
+        "goreleaser/goreleaser",
+        "golang.org/x/vuln/cmd/govulncheck"
+      ],
       "groupName": "CLI dependencies",
       "groupSlug": "cli",
       "commitMessagePrefix": "chore:",
@@ -156,8 +161,8 @@
     },
     {
       "customType": "regex",
-      "description": "go install binary versions in CI workflows",
-      "managerFilePatterns": ["/\\.github/.*\\.ya?ml$/"],
+      "description": "go install binary versions in CI workflows and local dev setup scripts",
+      "managerFilePatterns": ["/\\.github/.*\\.ya?ml$/", "/scripts/install_.*\\.sh$/"],
       "matchStrings": [
         "go install (?<depName>[^@]+)@(?<currentValue>v[^\\s\"]+)"
       ],
