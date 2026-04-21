@@ -157,16 +157,34 @@ def _has_error_str_exc_kwarg(keywords: Iterable[ast.keyword]) -> bool:
     return False
 
 
+class InspectionError(RuntimeError):
+    """A source file could not be parsed or read for AST inspection.
+
+    Raised from :func:`_scan_file` instead of silently returning "no
+    hits" so a bad file fails the gate closed -- the alternative would
+    let a deliberately-unparseable file sneak an unsafe site past CI.
+    """
+
+
 def _scan_file(path: Path) -> list[tuple[int, int]]:
-    """Return the sorted list of ``(lineno, col_offset)`` hits in *path*."""
+    """Return the sorted list of ``(lineno, col_offset)`` hits in *path*.
+
+    Raises:
+        InspectionError: If the file cannot be read or parsed. The
+            caller MUST surface this as a gate violation; skipping
+            unparseable files would let an attacker ship a payload
+            that scanners cannot inspect.
+    """
     try:
         source = path.read_text(encoding="utf-8")
-    except UnicodeDecodeError, OSError:
-        return []
+    except (UnicodeDecodeError, OSError) as exc:
+        msg = f"failed to read {path}: {type(exc).__name__}: {exc}"
+        raise InspectionError(msg) from exc
     try:
         tree = ast.parse(source, filename=str(path))
-    except SyntaxError:
-        return []
+    except SyntaxError as exc:
+        msg = f"failed to parse {path}: SyntaxError at line {exc.lineno}: {exc.msg}"
+        raise InspectionError(msg) from exc
     finder = _LoggerExceptionFinder()
     finder.visit(tree)
     return sorted(finder.hits)
@@ -231,13 +249,54 @@ def _rel(path: Path) -> str:
     return path.resolve().relative_to(_REPO_ROOT).as_posix()
 
 
-def cmd_refresh_baseline() -> int:
-    """Recompute the baseline from current source state."""
+_FORCE_REFRESH_FLAG = "--force"
+"""Sentinel CLI flag that authorises ``--refresh-baseline`` to add sites."""
+
+
+def cmd_refresh_baseline(*, force: bool = False) -> int:
+    """Recompute the baseline from current source state.
+
+    The baseline is only allowed to *shrink* (sites converted to the
+    safe ``logger.warning`` pattern).  A refresh that would add new
+    locations not already in the baseline fails loudly unless the
+    caller explicitly passes ``--force`` (for the initial capture,
+    tree-wide audits, or an explicit SEC review).  This prevents the
+    accidental "add a new unsafe site, run --refresh-baseline, commit"
+    workflow that would otherwise defeat the gate.
+    """
+    previous = _load_baseline()
     locations: dict[str, list[tuple[int, int]]] = {}
+    inspection_errors: list[str] = []
     for src_path in _iter_source_files():
-        hits = _scan_file(src_path)
+        try:
+            hits = _scan_file(src_path)
+        except InspectionError as exc:
+            inspection_errors.append(str(exc))
+            continue
         if hits:
             locations[_rel(src_path)] = list(hits)
+    if inspection_errors:
+        for line in inspection_errors:
+            print(f"inspection-error: {line}", file=sys.stderr)
+        print(
+            "\nSEC-1: baseline refresh aborted -- some files could not be "
+            "inspected. Resolve the errors above and re-run.",
+            file=sys.stderr,
+        )
+        return 1
+    additions = _baseline_additions(previous, locations)
+    if additions and not force:
+        for line in additions:
+            print(line, file=sys.stderr)
+        print(
+            "\nSEC-1: refreshing the baseline would introduce the sites above, "
+            "which the gate is designed to block. Convert them to the safe "
+            "`logger.warning(...)` pattern first, or re-run with "
+            f"`{_FORCE_REFRESH_FLAG}` if this addition has been explicitly "
+            "reviewed.",
+            file=sys.stderr,
+        )
+        return 1
     _save_baseline(locations)
     total = sum(len(v) for v in locations.values())
     print(
@@ -247,11 +306,31 @@ def cmd_refresh_baseline() -> int:
     return 0
 
 
+def _baseline_additions(
+    previous: dict[str, set[tuple[int, int]]],
+    current: dict[str, list[tuple[int, int]]],
+) -> list[str]:
+    """Return printable lines for every new location not in *previous*."""
+    lines: list[str] = []
+    for key, entries in sorted(current.items()):
+        allowed = previous.get(key, set())
+        for lineno, col in entries:
+            if (lineno, col) not in allowed:
+                lines.append(
+                    f"refresh-would-add: {key}:{lineno}:{col}: "
+                    "logger.exception(..., error=str(exc))"
+                )
+    return lines
+
+
 def _scan_and_compare(
     src_path: Path, baseline: dict[str, set[tuple[int, int]]]
 ) -> list[str]:
     """Return violation lines for *src_path* versus its baseline entry."""
-    hits = _scan_file(src_path)
+    try:
+        hits = _scan_file(src_path)
+    except InspectionError as exc:
+        return [f"{_rel(src_path)}: inspection failed: {exc}"]
     if not hits:
         return []
     key = _rel(src_path)
@@ -332,10 +411,19 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Rewrite _logger_exception_baseline.json from current state.",
     )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help=(
+            "Allow --refresh-baseline to add new locations. Required on "
+            "the initial capture or any explicitly-reviewed expansion; "
+            "without this flag, refresh only permits baseline shrinkage."
+        ),
+    )
     args = parser.parse_args(argv)
 
     if args.refresh_baseline:
-        return cmd_refresh_baseline()
+        return cmd_refresh_baseline(force=args.force)
     if args.scan_all:
         return cmd_scan_all()
     return cmd_scan_paths(args.paths)

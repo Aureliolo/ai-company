@@ -19,16 +19,16 @@ from synthorg.integrations.errors import (
     SecretRotationError,
     SecretStorageError,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.integrations import (
     SECRET_BACKEND_UNAVAILABLE,
+    SECRET_DELETE_FAILED,
     SECRET_DELETED,
     SECRET_RETRIEVAL_FAILED,
     SECRET_ROTATED,
     SECRET_STORAGE_FAILED,
     SECRET_STORED,
 )
-from synthorg.observability.redaction import safe_error_description
 
 logger = get_logger(__name__)
 
@@ -194,9 +194,12 @@ class EncryptedSqliteSecretBackend:
                 deleted = cursor.rowcount > 0
         except Exception as exc:
             # Driver exceptions may embed connection URIs with
-            # credentials; scrub + drop traceback.
+            # credentials; scrub + drop traceback.  Use the
+            # ``SECRET_DELETE_FAILED`` event (not ``STORAGE_FAILED``)
+            # so delete failures stay distinguishable from writes,
+            # matching the Postgres backend.
             logger.warning(
-                SECRET_STORAGE_FAILED,
+                SECRET_DELETE_FAILED,
                 secret_id=secret_id,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),

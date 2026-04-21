@@ -280,11 +280,16 @@ def _parse_jsonrpc(body: bytes) -> JsonRpcRequest | None:
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
+        # No ``exc_info=True``: a traceback attached here would
+        # serialise frame-local variables (including the raw request
+        # body bytes) into the log event, exactly the leak channel
+        # SEC-1 is closing. ``error_type`` + scrubbed ``error``
+        # preserves triage detail without the stack walk.
         logger.warning(
             A2A_JSONRPC_PARSE_ERROR,
             reason="validation_error",
+            error_type=type(exc).__name__,
             error=safe_error_description(exc),
-            exc_info=True,
         )
         return None
 

@@ -22,7 +22,7 @@ from synthorg.integrations.oauth.pkce import (
     generate_code_challenge,
     generate_code_verifier,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.integrations import (
     OAUTH_FLOW_STARTED,
     OAUTH_TOKEN_EXCHANGE_FAILED,
@@ -30,7 +30,6 @@ from synthorg.observability.events.integrations import (
     OAUTH_TOKEN_REFRESH_FAILED,
     OAUTH_TOKEN_REFRESHED,
 )
-from synthorg.observability.redaction import safe_error_description
 
 logger = get_logger(__name__)
 

@@ -7,12 +7,11 @@ import httpx
 
 from synthorg.integrations.connections.models import OAuthToken
 from synthorg.integrations.errors import TokenExchangeFailedError
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.integrations import (
     OAUTH_TOKEN_EXCHANGE_FAILED,
     OAUTH_TOKEN_EXCHANGED,
 )
-from synthorg.observability.redaction import safe_error_description
 
 logger = get_logger(__name__)
 

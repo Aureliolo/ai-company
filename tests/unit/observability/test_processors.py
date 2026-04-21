@@ -252,3 +252,67 @@ class TestScrubEventFieldsEndToEnd:
             assert "ENDTOEND_LEAK" not in str(e)
             assert "CVLEAK" not in str(e)
             assert "client_secret=***" in str(e)
+
+
+@pytest.mark.unit
+class TestScrubEventFieldsProcessorChain:
+    """Guard: the processor must stay wired into the global pipeline.
+
+    These tests catch regressions that would silently disable the
+    SEC-1 leak defence -- dropping the processor from
+    ``_BASE_PROCESSORS`` or reordering it before ``format_exc_info``
+    (so tracebacks bypass the scrubber).
+    """
+
+    def test_processor_is_registered_in_base_processors(self) -> None:
+        from synthorg.observability.setup import _BASE_PROCESSORS
+
+        assert scrub_event_fields in _BASE_PROCESSORS, (
+            "scrub_event_fields must be part of the base processor chain; "
+            "removing it would reopen the SEC-1 leak channel."
+        )
+
+    def test_processor_runs_after_format_exc_info(self) -> None:
+        # The processor must see the flattened ``exc_info`` rendering,
+        # otherwise exception text bypasses the scrubber.
+        import structlog
+
+        from synthorg.observability.setup import _BASE_PROCESSORS
+
+        format_exc_info = structlog.processors.format_exc_info
+        assert format_exc_info in _BASE_PROCESSORS, (
+            "format_exc_info must be part of the base processor chain; "
+            "its removal would leave exception payloads unrendered."
+        )
+        assert _BASE_PROCESSORS.index(scrub_event_fields) > _BASE_PROCESSORS.index(
+            format_exc_info,
+        ), (
+            "scrub_event_fields must run AFTER format_exc_info; otherwise "
+            "exception text is scrubbed before it exists in the event dict."
+        )
+
+    def test_fail_open_returns_event_dict_unchanged(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # Force ``_scrub_value`` to raise so the fail-open branch runs.
+        # Patching the internal helper is the deterministic way to
+        # exercise the ``except Exception`` arm without crafting a
+        # pathological input that might be silently tolerated by a
+        # future scrubber refactor.
+        from synthorg.observability import processors as processors_mod
+
+        def _raise(_value: object) -> object:
+            msg = "boom"
+            raise RuntimeError(msg)
+
+        monkeypatch.setattr(processors_mod, "_scrub_value", _raise)
+
+        event = {"event": "x", "payload": "whatever"}
+        # The processor must return a dict and not raise; the caller's
+        # log pipeline would otherwise die on a single bad event.
+        result = scrub_event_fields(None, "warning", event)
+        assert result is event, (
+            "fail-open branch must return the original dict to prevent "
+            "partial scrubbing from dropping the event"
+        )

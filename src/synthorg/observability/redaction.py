@@ -67,8 +67,19 @@ _URL_FORM_PATTERN: Final[re.Pattern[str]] = re.compile(
 # being truncated at the first ``\\"``.
 _JSON_PATTERN: Final[re.Pattern[str]] = re.compile(
     r'"(access_token|refresh_token|client_secret|code_verifier|api_key'
-    r'|api_secret|authorization|bearer|id_token|assertion|password)"'
+    r"|api_secret|authorization|bearer|id_token|assertion|password"
+    r'|code)"'
     r'(\s*:\s*)"(?:\\.|[^"\\])*"',
+    re.IGNORECASE,
+)
+
+# URI userinfo: ``<scheme>://<user>:<password>@<host>``.  Connection
+# strings routinely surface in exception messages ("connection refused:
+# postgres://user:hunter2@host/db") and would otherwise leak the
+# password portion.  We mask the password field (``hunter2`` -> ``***``)
+# while keeping scheme/user/host for operator triage.
+_URL_USERINFO_PATTERN: Final[re.Pattern[str]] = re.compile(
+    r"([a-z][a-z0-9+.\-]*://)([^\s/:@]+):([^\s/@]+)@",
     re.IGNORECASE,
 )
 
@@ -99,6 +110,9 @@ def scrub_secret_tokens(text: str) -> str:
       the first embedded ``&``.
     - ``"access_token":"xxx"`` (and other JSON string values) →
       ``"access_token":"***"``
+    - ``postgres://user:hunter2@host/db`` (URI userinfo) →
+      ``postgres://user:***@host/db``.  Covers any ``<scheme>://
+      <user>:<password>@...`` URL that shows up in exception messages.
     - ``Authorization: Bearer xxx`` / ``Authorization: Basic xxx`` →
       ``Authorization: Bearer ***`` / ``Authorization: Basic ***``
     - ``gAAAAAB...`` (Fernet ciphertexts) → ``***FERNET_CIPHERTEXT***``
@@ -130,15 +144,25 @@ def scrub_secret_tokens(text: str) -> str:
             lambda m: f'"{m.group(1)}"{m.group(2)}"***"',
             scrubbed,
         )
+        scrubbed = _URL_USERINFO_PATTERN.sub(
+            lambda m: f"{m.group(1)}{m.group(2)}:***@",
+            scrubbed,
+        )
         scrubbed = _AUTH_HEADER_PATTERN.sub(
             lambda m: f"{m.group(1)}{m.group(2)} ***",
             scrubbed,
         )
         return _FERNET_PATTERN.sub("***FERNET_CIPHERTEXT***", scrubbed)
-    except re.error, RecursionError, MemoryError:
-        # Defensive: never let the scrubber crash the caller's log call.
-        # The processor-level scrubber will still see the event dict
-        # and can apply another pass.
+    except MemoryError, RecursionError:
+        # Catastrophic interpreter state -- propagate so the process
+        # can surface the failure rather than silently proceeding with
+        # a half-scrubbed or original string.
+        raise
+    except re.error:
+        # Defensive: regex-level failure (pathological input, engine
+        # bug) must not crash the caller's log call.  The
+        # processor-level scrubber still sees the event dict and can
+        # apply another pass.
         return text
 
 

@@ -137,19 +137,22 @@ def build_review_message(
     Returns:
         User message with code context for review.
     """
+    # SEC-1: every attacker-influenced string (diff summary, the file
+    # paths in ``changed_files``, and the file contents themselves)
+    # must sit inside a ``<code-diff>`` fence.  Without the wrap, a
+    # malicious filename or diff-summary line could masquerade as
+    # operator framing and escape the review intent.
     parts = [
         "Review the following merged code for semantic conflicts.\n\n",
         "## Diff Summary\n",
-        f"```\n{diff_summary}\n```\n\n",
-        "## Merged File Contents\n",
+        wrap_untrusted(TAG_CODE_DIFF, diff_summary),
+        "\n\n## Merged File Contents\n",
     ]
 
     for path, content in changed_files.items():
-        # SEC-1: wrap each file's content in a ``<code-diff>`` fence so
-        # code that includes model-like instructions cannot hijack the
-        # review pass.  The outer markdown heading stays as trusted
-        # framing.
-        parts.append(f"\n### {path}\n")
+        parts.append("\n### File path\n")
+        parts.append(wrap_untrusted(TAG_CODE_DIFF, path))
+        parts.append("\n\n### Contents\n")
         parts.append(wrap_untrusted(TAG_CODE_DIFF, content))
         parts.append("\n")
 

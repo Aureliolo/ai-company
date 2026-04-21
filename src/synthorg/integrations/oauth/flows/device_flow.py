@@ -11,7 +11,7 @@ from synthorg.integrations.errors import (
     DeviceFlowTimeoutError,
     TokenExchangeFailedError,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.integrations import (
     OAUTH_DEVICE_FLOW_GRANTED,
     OAUTH_DEVICE_FLOW_POLLING,
@@ -19,7 +19,6 @@ from synthorg.observability.events.integrations import (
     OAUTH_DEVICE_FLOW_TIMEOUT,
     OAUTH_TOKEN_EXCHANGE_FAILED,
 )
-from synthorg.observability.redaction import safe_error_description
 
 logger = get_logger(__name__)
 

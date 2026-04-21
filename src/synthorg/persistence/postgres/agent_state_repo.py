@@ -78,9 +78,10 @@ ON CONFLICT (agent_id) DO UPDATE SET
                 await conn.commit()
         except psycopg.Error as exc:
             msg = f"Failed to save agent state for {state.agent_id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_AGENT_STATE_SAVE_FAILED,
                 agent_id=state.agent_id,
+                error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
@@ -107,9 +108,10 @@ ON CONFLICT (agent_id) DO UPDATE SET
                 row = await cur.fetchone()
         except psycopg.Error as exc:
             msg = f"Failed to fetch agent state for {agent_id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_AGENT_STATE_FETCH_FAILED,
                 agent_id=agent_id,
+                error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
@@ -147,8 +149,9 @@ ON CONFLICT (agent_id) DO UPDATE SET
                 rows = await cur.fetchall()
         except psycopg.Error as exc:
             msg = "Failed to query active agent states"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_AGENT_STATE_ACTIVE_QUERY_FAILED,
+                error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
@@ -172,9 +175,10 @@ ON CONFLICT (agent_id) DO UPDATE SET
                 await conn.commit()
         except psycopg.Error as exc:
             msg = f"Failed to delete agent state for {agent_id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_AGENT_STATE_DELETE_FAILED,
                 agent_id=agent_id,
+                error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
@@ -200,9 +204,10 @@ ON CONFLICT (agent_id) DO UPDATE SET
             return AgentRuntimeState.model_validate(row)
         except ValidationError as exc:
             msg = f"Failed to deserialize agent state {row.get('agent_id')!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_AGENT_STATE_DESERIALIZE_FAILED,
                 agent_id=row.get("agent_id"),
+                error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc

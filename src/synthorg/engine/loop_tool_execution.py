@@ -12,7 +12,16 @@ from synthorg.engine.loop_protocol import (
     TerminationReason,
     TurnRecord,
 )
-from synthorg.engine.prompt_safety import TAG_TOOL_RESULT, wrap_untrusted
+from synthorg.engine.prompt_safety import (
+    TAG_CODE_DIFF,
+    TAG_CONFIG_VALUE,
+    TAG_CRITERIA_JSON,
+    TAG_TASK_DATA,
+    TAG_TASK_FACT,
+    TAG_TOOL_RESULT,
+    TAG_UNTRUSTED_ARTIFACT,
+    wrap_untrusted,
+)
 from synthorg.observability import get_logger, scrub_secret_tokens
 from synthorg.observability.events.approval_gate import (
     APPROVAL_GATE_PARK_TASKLESS,
@@ -45,22 +54,31 @@ logger = get_logger(__name__)
 # telemetry; the tool result is still wrapped in the fence, not
 # rejected (rejection would break legitimate tools that echo user
 # text in responses).
+# Closing-tag look-alikes for every untrusted-content fence declared
+# in ``synthorg.engine.prompt_safety``.  Deriving the regex set from
+# the shared ``TAG_*`` constants keeps the advisory detector in sync
+# with the wrapper: if a new tag is added (or one is renamed), this
+# list updates automatically instead of silently drifting.  Optional
+# whitespace before ``>`` mirrors ``_escape_closing_tag`` so lenient
+# variants (``</task-data >`` / ``</task-data\t>``) still trip.
+_FENCE_TAGS: Final[tuple[str, ...]] = (
+    TAG_TASK_DATA,
+    TAG_TASK_FACT,
+    TAG_TOOL_RESULT,
+    TAG_UNTRUSTED_ARTIFACT,
+    TAG_CODE_DIFF,
+    TAG_CONFIG_VALUE,
+    TAG_CRITERIA_JSON,
+)
+
 _INJECTION_PATTERNS: Final[tuple[re.Pattern[str], ...]] = (
     re.compile(r"ignore\s+(all|previous|prior)\s+instructions?", re.IGNORECASE),
     re.compile(r"disregard\s+(all|previous|prior)", re.IGNORECASE),
     re.compile(r"you\s+are\s+now", re.IGNORECASE),
     re.compile(r"system\s*:\s*you", re.IGNORECASE),
-    # Closing-tag look-alikes for every untrusted-content fence defined
-    # in ``synthorg.engine.prompt_safety``. Optional whitespace before
-    # ``>`` mirrors ``_escape_closing_tag`` so lenient variants still
-    # trip the advisory detector.
-    re.compile(r"</task-data\s*>", re.IGNORECASE),
-    re.compile(r"</task-fact\s*>", re.IGNORECASE),
-    re.compile(r"</tool-result\s*>", re.IGNORECASE),
-    re.compile(r"</untrusted-artifact\s*>", re.IGNORECASE),
-    re.compile(r"</code-diff\s*>", re.IGNORECASE),
-    re.compile(r"</config-value\s*>", re.IGNORECASE),
-    re.compile(r"</criteria-json\s*>", re.IGNORECASE),
+    *tuple(
+        re.compile(rf"</{re.escape(tag)}\s*>", re.IGNORECASE) for tag in _FENCE_TAGS
+    ),
 )
 
 

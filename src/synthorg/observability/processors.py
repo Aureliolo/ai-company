@@ -140,14 +140,14 @@ def scrub_event_fields(
         # the log line entirely.  Still safer than crashing the log
         # pipeline -- ``sanitize_sensitive_fields`` (which ran just
         # before us) has already redacted known-sensitive *field names*.
-        # We print to stderr (never ``logger``) so operators notice the
-        # scrub regression without triggering recursive log-through-logger
-        # failure, mirroring the pattern used by ``_handle_sink_failure``
-        # in ``setup.py``.
-        print(  # noqa: T201 - observability-internal stderr surface
+        # We write to ``sys.stderr`` directly (never via ``logger``) so
+        # operators notice the scrub regression without triggering a
+        # recursive log-through-logger failure. ``processors.py`` is
+        # not on the ``print()`` allowlist, so we use the raw stream
+        # write instead of ``print(file=sys.stderr)``.
+        sys.stderr.write(
             f"WARNING: scrub_event_fields failed; event passed unscrubbed: "
-            f"{type(exc).__name__}",
-            file=sys.stderr,
-            flush=True,
+            f"{type(exc).__name__}\n",
         )
+        sys.stderr.flush()
         return event_dict
