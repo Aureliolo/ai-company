@@ -57,8 +57,10 @@ bash scripts/configure_environments.sh
 bash scripts/configure_environments.sh --apply
 ```
 
-The script is idempotent: it uses `PUT` for the environment and looks up
-existing branch policies by name before `POST`-ing new ones. Requires a
+The script is a reconciler: on `--apply` the final state of each environment's
+branch policies exactly matches the `ENV_CONFIG` table inside the script.
+Missing policies are `POST`-ed (with `HTTP 422` already-exists treated as a
+no-op), and any extra policy not in the desired set is `DELETE`-d. Requires a
 `gh` CLI authenticated with repo admin scope.
 
 ## Verifying policies

@@ -6,10 +6,12 @@
 # matches an expected pattern. Environment-level policies cannot be expressed
 # in workflow YAML; they must be applied via the REST API (or the UI).
 #
-# This script is idempotent: re-running with --apply is safe. Environments are
-# created if they do not exist, and branch policies are looked up by name before
-# being added (POST to an existing name returns 422; the script treats that as a
-# no-op success).
+# This script is a reconciler: re-running with --apply is safe. Environments
+# are created if they do not exist, and each environment's branch-policy set is
+# driven exclusively by ENV_CONFIG below -- policies not listed there are
+# removed so the applied state exactly matches the desired state. A POST that
+# races a concurrent run (HTTP 422 "already exists") is treated as an
+# idempotent no-op.
 #
 # Usage:
 #   scripts/configure_environments.sh                 # dry-run (default)
@@ -77,15 +79,17 @@ run_gh() {
   fi
 }
 
-# Like run_gh, but tolerates HTTP 422 (conflict on an existing resource) as a
-# no-op success. Used for endpoints where the idempotent path is "POST already
-# exists => swallow the error". Captures stderr so we can inspect the status.
+# Like run_gh, but reports whether the request hit the "already exists" no-op
+# path. Exit codes:
+#   0  -- request succeeded (real create/update/delete)
+#   2  -- request returned HTTP 422 (no-op: the resource already matched)
+#   1  -- any other failure; stderr is forwarded to the user
 run_gh_allow_422() {
   if [ "$MODE" = "apply" ]; then
     local err
     err=$(gh api "$@" 2>&1 >/dev/null) && return 0
     if printf '%s' "$err" | grep -q 'HTTP 422'; then
-      return 0
+      return 2
     fi
     printf '%s\n' "$err" >&2
     return 1
@@ -93,6 +97,7 @@ run_gh_allow_422() {
     printf '  [dry-run] gh api'
     for arg in "$@"; do printf ' %q' "$arg"; done
     printf '\n'
+    return 0
   fi
 }
 
@@ -105,49 +110,102 @@ ensure_environment() {
     -f 'deployment_branch_policy[custom_branch_policies]=true'
 }
 
+# Prints `name<TAB>id` for each current branch policy on the environment.
+# The GitHub DELETE endpoint requires the numeric id, not the name.
 list_branch_policies() {
   local env_name="$1"
-  if [ "$MODE" = "apply" ]; then
-    # Propagate real failures instead of masking them with `|| echo ""`; the
-    # caller treats an empty output as "no policies", which would silently drive
-    # incorrect behaviour if the API call fails for an unrelated reason.
-    gh api "repos/${REPO}/environments/${env_name}/deployment-branch-policies" \
-      --jq '.branch_policies[].name'
-  else
-    # In dry-run we pretend no policies exist so every pattern shows as "to add".
-    echo ""
+  # Apply AND dry-run both issue this read-only GET so the reconciler has a
+  # real picture of which policies would be added or removed. A missing
+  # environment (first run) comes back as HTTP 404; translate that to "no
+  # policies exist yet" rather than aborting. --jq filters inside gh so we do
+  # not shell out to a separate jq dependency.
+  local out rc
+  out=$(gh api "repos/${REPO}/environments/${env_name}/deployment-branch-policies" \
+    --jq '.branch_policies[] | "\(.name)\t\(.id)"' 2>&1)
+  rc=$?
+  if [ "$rc" -ne 0 ]; then
+    if printf '%s' "$out" | grep -q 'HTTP 404'; then
+      return 0
+    fi
+    printf '%s\n' "$out" >&2
+    return 1
   fi
+  printf '%s' "$out"
 }
 
 add_branch_policy() {
   local env_name="$1"
   local pattern="$2"
-  local existing verb
-  if ! existing=$(list_branch_policies "$env_name"); then
+  local rc
+  # A racing concurrent run (or a stale list) can make the POST return 422
+  # "already exists"; treat that as idempotent success via run_gh_allow_422's
+  # exit-2 signal.
+  run_gh_allow_422 --method POST "repos/${REPO}/environments/${env_name}/deployment-branch-policies" \
+    -f "name=${pattern}" -f "type=branch"
+  rc=$?
+  case "$rc:$MODE" in
+    0:apply) echo "  policy '${pattern}' added" ;;
+    2:apply) echo "  policy '${pattern}' already present (422 no-op)" ;;
+    0:dry-run) echo "  policy '${pattern}' to add" ;;
+    *) return "$rc" ;;
+  esac
+}
+
+delete_branch_policy() {
+  local env_name="$1"
+  local pattern="$2"
+  local policy_id="$3"
+  if [ -z "$policy_id" ]; then
+    echo "error: delete_branch_policy: missing id for '${pattern}'" >&2
+    return 1
+  fi
+  run_gh --method DELETE "repos/${REPO}/environments/${env_name}/deployment-branch-policies/${policy_id}"
+  if [ "$MODE" = "apply" ]; then
+    echo "  policy '${pattern}' removed (not in desired set)"
+  else
+    echo "  policy '${pattern}' to remove (not in desired set)"
+  fi
+}
+
+# Reconciles the environment's branch policies against the desired CSV list:
+# creates any missing pattern (idempotent via 422 tolerance) and deletes any
+# pattern that is present but not in the desired set.
+reconcile_policies() {
+  local env_name="$1"
+  local desired_csv="$2"
+  local current name id pat
+  local -a desired_patterns=()
+  IFS=',' read -ra desired_patterns <<< "$desired_csv"
+
+  if ! current=$(list_branch_policies "$env_name"); then
     echo "error: failed to list branch policies for '${env_name}'" >&2
     return 1
   fi
-  if echo "$existing" | grep -qxF -- "$pattern"; then
-    echo "  policy '${pattern}' already present"
-    return 0
-  fi
-  # A racing concurrent run (or a stale cache in list_branch_policies) can leave
-  # the POST returning 422 "already exists"; treat that as idempotent success
-  # rather than a hard failure -- the header doc promises re-runs are safe.
-  run_gh_allow_422 --method POST "repos/${REPO}/environments/${env_name}/deployment-branch-policies" \
-    -f "name=${pattern}" -f "type=branch"
-  if [ "$MODE" = "apply" ]; then verb="added"; else verb="to add"; fi
-  echo "  policy '${pattern}' ${verb}"
+
+  # Create missing.
+  for pat in "${desired_patterns[@]}"; do
+    if printf '%s\n' "$current" | awk -F'\t' '{print $1}' | grep -qxF -- "$pat"; then
+      echo "  policy '${pat}' already present"
+    else
+      add_branch_policy "$env_name" "$pat"
+    fi
+  done
+
+  # Remove extras. Skip if list is empty (first run / dry-run with no env yet).
+  [ -z "$current" ] && return 0
+  while IFS=$'\t' read -r name id; do
+    [ -z "$name" ] && continue
+    if ! printf '%s\n' "${desired_patterns[@]}" | grep -qxF -- "$name"; then
+      delete_branch_policy "$env_name" "$name" "$id"
+    fi
+  done <<< "$current"
 }
 
 for row in "${ENV_CONFIG[@]}"; do
   env_name="${row%%|*}"
   patterns="${row#*|}"
   ensure_environment "$env_name"
-  IFS=',' read -ra PATS <<< "$patterns"
-  for pat in "${PATS[@]}"; do
-    add_branch_policy "$env_name" "$pat"
-  done
+  reconcile_policies "$env_name" "$patterns"
   echo
 done
 

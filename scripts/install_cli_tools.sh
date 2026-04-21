@@ -32,10 +32,19 @@ GOLANGCI_LINT_VERSION=$(
     | head -n1 | sed 's/.*@//'
 )
 
+# golangci-lint --version prints "golangci-lint has version 2.11.4 built..." --
+# the tag we compare against is "v2.11.4", so the extractor tolerates the
+# optional leading 'v' and reattaches it for the comparison.
+extract_version() {
+  local raw
+  raw=$("$1" --version 2>&1 | head -n1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1 || true)
+  [ -n "$raw" ] && printf 'v%s' "$raw"
+}
+
 # Skip the reinstall if the pinned version is already on PATH -- repeated runs
 # of this script during onboarding should be cheap.
 if command -v golangci-lint >/dev/null 2>&1; then
-  current=$(golangci-lint --version 2>&1 | head -n1 | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' || true)
+  current=$(extract_version "$(command -v golangci-lint)")
   if [ "${current:-}" = "${GOLANGCI_LINT_VERSION}" ]; then
     echo "golangci-lint ${GOLANGCI_LINT_VERSION} already installed, skipping"
     exit 0
@@ -45,14 +54,31 @@ fi
 echo "Installing golangci-lint ${GOLANGCI_LINT_VERSION}..."
 go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.11.4
 
+# `go install` writes to GOBIN if set, otherwise GOPATH/bin. Record the actual
+# install target so the PATH-error and version-check branches below can both
+# reference the binary we just produced, not whatever happens to be on PATH.
+gobin=$(go env GOBIN 2>/dev/null || true)
+gopath=$(go env GOPATH 2>/dev/null || true)
+install_dir="${gobin:-${gopath}/bin}"
+installed_binary="${install_dir}/golangci-lint"
+
 if ! command -v golangci-lint >/dev/null 2>&1; then
-  # `go install` writes to GOBIN if set, otherwise GOPATH/bin. Report the
-  # actual target so users can extend PATH correctly on unusual setups.
-  gobin=$(go env GOBIN 2>/dev/null || true)
-  gopath=$(go env GOPATH 2>/dev/null || true)
-  install_dir="${gobin:-${gopath}/bin}"
   echo "error: golangci-lint installed but not on PATH -- ensure ${install_dir} is on PATH (GOBIN='${gobin}', GOPATH='${gopath}')" >&2
   exit 1
 fi
 
-echo "golangci-lint ready: $(golangci-lint --version 2>&1 | head -n1)"
+# Prefer the freshly-installed binary (in case PATH resolves an older copy from
+# another location) and verify its reported version matches the pin. Fall back
+# to the one on PATH if install_dir is unreadable for some reason.
+verify_binary="${installed_binary}"
+if [ ! -x "${verify_binary}" ]; then
+  verify_binary="$(command -v golangci-lint)"
+fi
+installed_version=$(extract_version "${verify_binary}")
+if [ "${installed_version:-}" != "${GOLANGCI_LINT_VERSION}" ]; then
+  echo "error: golangci-lint version mismatch -- expected ${GOLANGCI_LINT_VERSION}, got '${installed_version:-unknown}' from ${verify_binary}" >&2
+  echo "hint: ensure ${install_dir} precedes other golangci-lint locations on PATH, or remove the stale binary" >&2
+  exit 1
+fi
+
+echo "golangci-lint ready: $(${verify_binary} --version 2>&1 | head -n1)"
