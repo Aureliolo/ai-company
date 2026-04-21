@@ -10,7 +10,7 @@ not a middleware.
 """
 
 import re
-from typing import Any
+from typing import Any, Final
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -18,6 +18,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.tool import (
     TOOL_HTML_PARSE_ERROR,
     TOOL_HTML_PARSE_GAP_DETECTED,
+    TOOL_HTML_PARSE_XXE_DETECTED,
 )
 
 logger = get_logger(__name__)
@@ -43,6 +44,40 @@ _STRIP_TAGS = frozenset(
         "applet",
     }
 )
+
+# SEC-1 / audit finding 91: pre-parse rejection patterns for XXE.
+#
+# ``<!DOCTYPE foo SYSTEM "...">`` and the PUBLIC variant load external
+# entities which can reach internal network or filesystem resources.
+# ``<!ENTITY>`` declarations (any form) enable billion-laughs expansion
+# and reference to external entities.  The regexes are case-insensitive
+# and intentionally loose: any match triggers a safe-empty fallback,
+# so a false positive only loses sanitisation of that one tool
+# response, not a security property.
+_EXTERNAL_DOCTYPE_RE: Final[re.Pattern[str]] = re.compile(
+    r"<!DOCTYPE[^>]*\b(SYSTEM|PUBLIC)\b",
+    re.IGNORECASE,
+)
+_ENTITY_DECL_RE: Final[re.Pattern[str]] = re.compile(
+    r"<!ENTITY\b",
+    re.IGNORECASE,
+)
+# HTML comments are stripped from the pre-scan copy so a DOCTYPE
+# mentioned inside a comment does not trigger a false positive.
+_HTML_COMMENT_RE: Final[re.Pattern[str]] = re.compile(
+    r"<!--.*?-->",
+    re.DOTALL,
+)
+
+
+class XXEDetectedError(ValueError):
+    """Pre-parse detection of an XXE payload.
+
+    Subclass of ``ValueError`` so the ``except Exception`` branch in
+    :meth:`HTMLParseGuard.sanitize` catches it naturally and routes
+    to the safe-empty fallback.
+    """
+
 
 # Event handler attributes to strip from all elements.
 _EVENT_HANDLER_PREFIXES = frozenset(
@@ -201,9 +236,7 @@ class HTMLParseGuard:
 
     def _sanitize_html(self, raw: str) -> HTMLSanitizeResult:
         """Parse and sanitize HTML content using lxml."""
-        from lxml import html as lxml_html  # noqa: PLC0415
-
-        doc = lxml_html.fromstring(raw)
+        doc = _parse_html_safely(raw)
         # Capture original text before stripping (single parse).
         original_text = doc.text_content().strip()  # type: ignore[attr-defined]
         stripped_count = self._strip_dangerous_elements(doc)
@@ -299,3 +332,99 @@ class HTMLParseGuard:
         original_len = len(original) or 1
         hidden_len = max(0, original_len - len(cleaned))
         return min(hidden_len / original_len, 1.0)
+
+
+def _parse_html_safely(raw: str) -> Any:
+    """Parse *raw* HTML with explicit XXE and entity-expansion defences.
+
+    Replaces the previous bare ``lxml.html.fromstring`` call
+    (SEC-1 / audit finding 91).
+
+    Pipeline:
+
+    1. Strip HTML comments from a local copy before the XXE pre-scan
+       so a ``<!DOCTYPE ...>`` inside a ``<!-- ... -->`` block does not
+       trigger a false positive.
+    2. Reject any external DOCTYPE (``SYSTEM`` / ``PUBLIC``
+       identifiers) or internal ``<!ENTITY>`` declaration by raising
+       :class:`XXEDetectedError`. Callers catch this via the ``except
+       Exception`` branch in :meth:`HTMLParseGuard.sanitize` which
+       returns a safe-empty result.
+    3. Parse with a module-scope ``HTMLParser`` configured with
+       ``no_network=True``, ``resolve_entities=False``,
+       ``load_dtd=False``, ``huge_tree=False`` -- belt-and-braces in
+       case a novel payload slips past the pre-scan.
+
+    Args:
+        raw: Raw (potentially attacker-controlled) HTML string.
+
+    Returns:
+        Parsed root ``lxml`` element.
+
+    Raises:
+        XXEDetectedError: If the payload carries an external DOCTYPE
+            or any entity declaration.
+    """
+    # Strip comments before the XXE scan.  The parser itself still
+    # removes comments from the tree later.
+    scan_source = _HTML_COMMENT_RE.sub("", raw)
+    if _EXTERNAL_DOCTYPE_RE.search(scan_source):
+        logger.warning(
+            TOOL_HTML_PARSE_XXE_DETECTED,
+            reason="external_doctype",
+            content_length=len(raw),
+        )
+        msg = "external DOCTYPE (SYSTEM/PUBLIC) detected; refusing to parse"
+        raise XXEDetectedError(msg)
+    if _ENTITY_DECL_RE.search(scan_source):
+        logger.warning(
+            TOOL_HTML_PARSE_XXE_DETECTED,
+            reason="entity_declaration",
+            content_length=len(raw),
+        )
+        msg = "ENTITY declaration detected; refusing to parse"
+        raise XXEDetectedError(msg)
+
+    from lxml import html as lxml_html  # noqa: PLC0415
+
+    # Use the lxml.html fromstring so the returned element supports
+    # ``text_content()`` / ``drop_tree()`` which the sanitiser relies
+    # on. Pass the shared safe parser explicitly so our no-network +
+    # huge_tree guards apply.
+    return lxml_html.fromstring(raw, parser=_SAFE_PARSER)
+
+
+def _build_safe_parser() -> Any:
+    """Build the shared ``HTMLParser`` used by :func:`_parse_html_safely`.
+
+    ``no_network=True`` blocks external resource loads (the primary
+    XXE vector); ``huge_tree=False`` caps entity expansion; ``recover``
+    keeps existing sanitiser behaviour on malformed input.
+
+    Uses :class:`lxml.html.HTMLParser` rather than
+    :class:`lxml.etree.HTMLParser` so parsed elements carry the
+    ``HtmlElement`` API (``text_content``, ``drop_tree``, etc.) the
+    sanitiser depends on.
+
+    Note: ``resolve_entities`` / ``load_dtd`` are ``XMLParser`` knobs,
+    not valid on ``HTMLParser``.  lxml's HTML parser does not resolve
+    DTDs or external entities by default, so our pre-parse DOCTYPE /
+    ENTITY rejection in :func:`_parse_html_safely` carries the
+    defence here rather than a parser flag.
+    """
+    from lxml import html as lxml_html  # noqa: PLC0415
+
+    return lxml_html.HTMLParser(
+        no_network=True,
+        remove_blank_text=True,
+        recover=True,
+        huge_tree=False,
+    )
+
+
+_SAFE_PARSER: Final[Any] = _build_safe_parser()
+"""Module-scope HTML parser with XXE / entity-expansion defences.
+
+Reused across calls to avoid re-building lxml state on every
+``sanitize()`` invocation.
+"""
