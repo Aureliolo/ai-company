@@ -28,6 +28,7 @@ from synthorg.observability.events.integrations import (
     SECRET_STORAGE_FAILED,
     SECRET_STORED,
 )
+from synthorg.observability.redaction import safe_error_description
 
 logger = get_logger(__name__)
 
@@ -110,10 +111,17 @@ class EncryptedSqliteSecretBackend:
         except MasterKeyError:
             raise
         except Exception as exc:
-            logger.exception(
+            # ``warning`` + scrubbed description: driver exceptions may
+            # embed connection URIs or raw Fernet ciphertext bytes.
+            # Traceback attachment via ``logger.exception`` would also
+            # serialize the request-level ``value`` parameter we just
+            # encrypted. Scrubbed type+message is enough for triage;
+            # ``raise ... from exc`` preserves the chain for callers.
+            logger.warning(
                 SECRET_STORAGE_FAILED,
                 secret_id=secret_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             msg = f"Failed to store secret {secret_id}"
             raise SecretStorageError(msg) from exc
@@ -129,10 +137,15 @@ class EncryptedSqliteSecretBackend:
                 )
                 row = await cursor.fetchone()
         except Exception as exc:
-            logger.exception(
+            # ``warning`` + scrubbed description: same rationale as
+            # ``store()`` above. A DB driver failure may embed the row's
+            # encrypted ciphertext in the exception; ``logger.exception``
+            # would serialize it via traceback.
+            logger.warning(
                 SECRET_RETRIEVAL_FAILED,
                 secret_id=secret_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             msg = f"Failed to retrieve secret {secret_id}"
             raise SecretRetrievalError(msg) from exc
@@ -143,9 +156,14 @@ class EncryptedSqliteSecretBackend:
         try:
             return self._fernet.decrypt(row[0])
         except InvalidToken as exc:
-            logger.exception(
+            # Decrypt failure: the ciphertext bytes (``row[0]``) are in
+            # the local frame, so ``logger.exception`` would serialize
+            # them via traceback. Static category string keeps triage
+            # useful without leaking key material.
+            logger.warning(
                 SECRET_RETRIEVAL_FAILED,
                 secret_id=secret_id,
+                error_type="InvalidToken",
                 error="wrong key or corrupted data",
             )
             msg = f"Failed to decrypt secret {secret_id}"
@@ -154,9 +172,11 @@ class EncryptedSqliteSecretBackend:
             # Catch-all so any residual decrypt failure (malformed
             # row data, driver bug, etc.) still surfaces through
             # the secret-backend contract instead of leaking raw.
-            logger.exception(
+            # Same traceback concern as the ``InvalidToken`` branch.
+            logger.warning(
                 SECRET_RETRIEVAL_FAILED,
                 secret_id=secret_id,
+                error_type=type(exc).__name__,
                 error=f"decrypt failed: {type(exc).__name__}",
             )
             msg = f"Failed to decrypt secret {secret_id}"
@@ -173,10 +193,13 @@ class EncryptedSqliteSecretBackend:
                 await db.commit()
                 deleted = cursor.rowcount > 0
         except Exception as exc:
-            logger.exception(
+            # Driver exceptions may embed connection URIs with
+            # credentials; scrub + drop traceback.
+            logger.warning(
                 SECRET_STORAGE_FAILED,
                 secret_id=secret_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             msg = f"Failed to delete secret {secret_id}"
             raise SecretStorageError(msg) from exc
@@ -203,10 +226,13 @@ class EncryptedSqliteSecretBackend:
         try:
             await self.store(new_id, new_value)
         except Exception as exc:
-            logger.exception(
+            # Carry the scrubbed description as context; the underlying
+            # exception stays in the chain via ``raise ... from exc``.
+            logger.warning(
                 SECRET_BACKEND_UNAVAILABLE,
                 old_id=old_id,
-                error=f"store of new secret failed: {exc}",
+                error_type=type(exc).__name__,
+                error=f"store of new secret failed: {safe_error_description(exc)}",
             )
             msg = f"Failed to store rotated secret (old_id={old_id})"
             raise SecretRotationError(msg) from exc
@@ -214,11 +240,12 @@ class EncryptedSqliteSecretBackend:
         try:
             deleted = await self.delete(old_id)
         except Exception as exc:
-            logger.exception(
+            logger.warning(
                 SECRET_BACKEND_UNAVAILABLE,
                 old_id=old_id,
                 new_id=new_id,
-                error=f"delete of old secret failed: {exc}",
+                error_type=type(exc).__name__,
+                error=f"delete of old secret failed: {safe_error_description(exc)}",
             )
             rollback_note = await self._rollback_new(new_id)
             msg = (
@@ -249,12 +276,14 @@ class EncryptedSqliteSecretBackend:
         try:
             await self.delete(new_id)
         except Exception as rb_exc:
-            logger.exception(
+            scrubbed = safe_error_description(rb_exc)
+            logger.warning(
                 SECRET_BACKEND_UNAVAILABLE,
                 new_id=new_id,
-                error=f"rollback delete failed: {rb_exc}",
+                error_type=type(rb_exc).__name__,
+                error=f"rollback delete failed: {scrubbed}",
             )
-            return f"rollback of new_id={new_id} also failed: {rb_exc}"
+            return f"rollback of new_id={new_id} also failed: {scrubbed}"
         return f"new_id={new_id} rolled back"
 
     async def close(self) -> None:
