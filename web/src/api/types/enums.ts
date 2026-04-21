@@ -68,6 +68,14 @@ export const PRIORITY_VALUES = [
   'critical', 'high', 'medium', 'low',
 ] as const satisfies readonly Priority[]
 
+export const APPROVAL_STATUS_VALUES = [
+  'pending', 'approved', 'rejected', 'expired',
+] as const satisfies readonly ApprovalStatus[]
+
+export const APPROVAL_RISK_LEVEL_VALUES = [
+  'low', 'medium', 'high', 'critical',
+] as const satisfies readonly ApprovalRiskLevel[]
+
 export type AutonomyLevel = 'full' | 'semi' | 'supervised' | 'locked'
 
 export type OrgRole = 'owner' | 'department_admin' | 'editor' | 'viewer'

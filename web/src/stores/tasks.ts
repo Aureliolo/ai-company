@@ -100,6 +100,27 @@ function sanitizeTask(c: Task): Task {
   }
 }
 
+/** Each ``dependencies`` entry must be a plain string agent id. */
+function isDependenciesShape(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((dep) => typeof dep === 'string')
+}
+
+/**
+ * Each ``acceptance_criteria`` entry must be a non-null object with a
+ * string ``description`` (the only field ``sanitizeTask`` reads). A
+ * bare shape check here keeps ``sanitizeTask.ac.description`` safe
+ * from malformed payloads smuggling non-string values.
+ */
+function isAcceptanceCriteriaShape(
+  value: unknown,
+): value is Array<{ description: string }> {
+  if (!Array.isArray(value)) return false
+  return value.every((ac) => {
+    if (typeof ac !== 'object' || ac === null || Array.isArray(ac)) return false
+    return typeof (ac as { description?: unknown }).description === 'string'
+  })
+}
+
 function isTaskShape(c: Record<string, unknown>): c is Record<string, unknown> & Task {
   return (
     typeof c.id === 'string' &&
@@ -110,8 +131,8 @@ function isTaskShape(c: Record<string, unknown>): c is Record<string, unknown> &
     TASK_PRIORITY_SET.has(c.priority) &&
     typeof c.type === 'string' &&
     TASK_TYPE_SET.has(c.type) &&
-    Array.isArray(c.dependencies) &&
-    Array.isArray(c.acceptance_criteria)
+    isDependenciesShape(c.dependencies) &&
+    isAcceptanceCriteriaShape(c.acceptance_criteria)
   )
 }
 

@@ -11,18 +11,21 @@ import type {
   ApproveRequest,
   RejectRequest,
 } from '@/api/types/approvals'
-import type { ApprovalRiskLevel, ApprovalStatus } from '@/api/types/enums'
+import {
+  APPROVAL_RISK_LEVEL_VALUES,
+  APPROVAL_STATUS_VALUES,
+} from '@/api/types/enums'
 import type { WsEvent } from '@/api/types/websocket'
 
 const log = createLogger('approvals')
 
-const APPROVAL_STATUS_VALUES: ReadonlySet<string> = new Set<ApprovalStatus>([
-  'pending', 'approved', 'rejected', 'expired',
-])
-
-const APPROVAL_RISK_LEVEL_VALUES: ReadonlySet<string> = new Set<ApprovalRiskLevel>([
-  'low', 'medium', 'high', 'critical',
-])
+// Runtime sets derived from the canonical enum tuples in
+// `@/api/types/enums`. Building them here rather than re-declaring the
+// literal list keeps the validator in lockstep with the type union --
+// any drift between the runtime check and the declared enum surfaces
+// at compile time.
+const APPROVAL_STATUS_SET: ReadonlySet<string> = new Set<string>(APPROVAL_STATUS_VALUES)
+const APPROVAL_RISK_LEVEL_SET: ReadonlySet<string> = new Set<string>(APPROVAL_RISK_LEVEL_VALUES)
 
 /** All metadata keys and values must be plain strings. */
 function isStringStringRecord(value: unknown): value is Record<string, string> {
@@ -47,10 +50,10 @@ function isApprovalShape(
   return (
     typeof c.id === 'string' &&
     typeof c.status === 'string' &&
-    APPROVAL_STATUS_VALUES.has(c.status) &&
+    APPROVAL_STATUS_SET.has(c.status) &&
     typeof c.title === 'string' &&
     typeof c.risk_level === 'string' &&
-    APPROVAL_RISK_LEVEL_VALUES.has(c.risk_level) &&
+    APPROVAL_RISK_LEVEL_SET.has(c.risk_level) &&
     typeof c.action_type === 'string' &&
     typeof c.description === 'string' &&
     typeof c.requested_by === 'string' &&

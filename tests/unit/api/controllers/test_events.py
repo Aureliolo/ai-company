@@ -16,6 +16,21 @@ from tests.unit.api.conftest import make_auth_headers
 _WRITE_HEADERS = make_auth_headers("ceo")
 _READ_HEADERS = make_auth_headers("observer")
 
+# Shared malformed session-id matrix used by both the SSE stream and
+# the polling interrupts endpoint. Any value here must be rejected by
+# the shared ``_SESSION_ID_PATTERN`` regex; keeping the list in one
+# place prevents the two endpoints from drifting apart.
+_MALFORMED_SESSION_IDS: tuple[tuple[str, str], ...] = (
+    ("../etc/passwd", "path_traversal"),
+    ("session id", "whitespace"),
+    ("session/with/slash", "slash"),
+    ("session\nbreak", "newline"),
+    ("x" * 129, "too_long"),
+    ("s$dollar", "special_char"),
+)
+_MALFORMED_SESSION_ID_VALUES = tuple(v for v, _ in _MALFORMED_SESSION_IDS)
+_MALFORMED_SESSION_ID_IDS = tuple(i for _, i in _MALFORMED_SESSION_IDS)
+
 
 @pytest.mark.unit
 class TestEventStreamSSE:
@@ -32,22 +47,8 @@ class TestEventStreamSSE:
 
     @pytest.mark.parametrize(
         "bad_id",
-        [
-            "../etc/passwd",  # path traversal shape
-            "session id",  # whitespace
-            "session/with/slash",
-            "session\nbreak",  # control chars
-            "x" * 129,  # over length cap
-            "s$dollar",  # dollar sign is outside the allowed character class
-        ],
-        ids=[
-            "path_traversal",
-            "whitespace",
-            "slash",
-            "newline",
-            "too_long",
-            "special_char",
-        ],
+        _MALFORMED_SESSION_ID_VALUES,
+        ids=_MALFORMED_SESSION_ID_IDS,
     )
     def test_stream_rejects_malformed_session_id(
         self,
@@ -106,22 +107,8 @@ class TestEventStreamSSE:
 
     @pytest.mark.parametrize(
         "bad_id",
-        [
-            "../etc/passwd",
-            "session id",
-            "session/with/slash",
-            "session\nbreak",
-            "x" * 129,
-            "s$dollar",
-        ],
-        ids=[
-            "path_traversal",
-            "whitespace",
-            "slash",
-            "newline",
-            "too_long",
-            "special_char",
-        ],
+        _MALFORMED_SESSION_ID_VALUES,
+        ids=_MALFORMED_SESSION_ID_IDS,
     )
     def test_interrupts_rejects_malformed_session_id(
         self,

@@ -50,7 +50,9 @@ function isMeetingShape(
  * Return a sanitized copy of a ``MeetingResponse`` with every
  * untrusted string field validated by ``isMeetingShape`` routed
  * through ``sanitizeWsString`` so bidi overrides and control chars
- * never reach the rendered UI.
+ * never reach the rendered UI. ``contribution_rank`` is a string[]
+ * of agent ids that renders directly in the UI, so each entry gets
+ * the same sanitization treatment.
  */
 function sanitizeMeeting(c: MeetingResponse): MeetingResponse {
   return {
@@ -58,6 +60,9 @@ function sanitizeMeeting(c: MeetingResponse): MeetingResponse {
     meeting_type_name: sanitizeWsString(c.meeting_type_name, 128) ?? '',
     status: (sanitizeWsString(c.status, 64) ?? '') as MeetingResponse['status'],
     protocol_type: (sanitizeWsString(c.protocol_type, 64) ?? '') as MeetingResponse['protocol_type'],
+    contribution_rank: c.contribution_rank
+      .map((agentId) => sanitizeWsString(agentId, 128) ?? '')
+      .filter((agentId) => agentId.length > 0),
   }
 }
 
