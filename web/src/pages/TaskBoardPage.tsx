@@ -209,13 +209,14 @@ export default function TaskBoardPage() {
     }
   }, [tasks, optimisticTransition, transitionTask, executeOptimistic])
 
-  // Create task. ``createTask`` is sentinel-returning (never throws)
-  // and owns both the success (``Task <title> created``) and error
-  // toast; the dialog closes on resolution, and a ``null`` return
-  // simply signals the store already surfaced the failure.
-  const handleCreateTask = useCallback(async (data: Parameters<typeof createTask>[0]) => {
-    await createTask(data)
-  }, [createTask])
+  // Create task. ``createTask`` is sentinel-returning (``Task`` on
+  // success, ``null`` on failure) and owns both the success/error
+  // toasts. Forward the sentinel so the dialog can decide whether to
+  // close (keep open on ``null``) without wrapping this in try/catch.
+  const handleCreateTask = useCallback(
+    async (data: Parameters<typeof createTask>[0]) => createTask(data),
+    [createTask],
+  )
 
   // Skeleton on initial load
   if (loading && tasks.length === 0) {

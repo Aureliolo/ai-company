@@ -573,7 +573,20 @@ async def _teardown_connection(
             exc_info=True,
         )
     app_state = socket.app.state["app_state"]
-    app_state.user_presence.disconnect(user.user_id)
+    # Presence disconnect is best-effort: if the user_presence
+    # registry has been swapped or raises on teardown, we still need
+    # to emit ``API_WS_DISCONNECTED`` and re-raise any deferred
+    # cancellation so the outer scheduler unwinds cleanly.
+    try:
+        app_state.user_presence.disconnect(user.user_id)
+    except Exception:
+        logger.warning(
+            API_WS_TRANSPORT_ERROR,
+            reason="presence_disconnect_failed",
+            client=str(socket.client),
+            user_id=user.user_id,
+            exc_info=True,
+        )
     logger.info(API_WS_DISCONNECTED, client=str(socket.client))
     if outer_cancelled_exc is not None:
         raise outer_cancelled_exc

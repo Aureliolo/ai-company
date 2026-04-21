@@ -5,12 +5,13 @@ import { cn, FOCUS_RING } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { getErrorMessage } from '@/utils/errors'
 import type { Complexity, Priority, TaskType } from '@/api/types/enums'
-import type { CreateTaskRequest } from '@/api/types/tasks'
+import type { CreateTaskRequest, Task } from '@/api/types/tasks'
 
 export interface TaskCreateDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onCreate: (data: CreateTaskRequest) => Promise<void>
+  /** Resolves to the created task on success, ``null`` on failure (sentinel). */
+  onCreate: (data: CreateTaskRequest) => Promise<Task | null>
 }
 
 const TASK_TYPES: { value: TaskType; label: string }[] = [
@@ -142,7 +143,11 @@ export function TaskCreateDialog({ open, onOpenChange, onCreate }: TaskCreateDia
         estimated_complexity: form.estimated_complexity,
         budget_limit: form.budget_limit ? Number(form.budget_limit) : undefined,
       }
-      await onCreate(data)
+      // Sentinel-return: keep the dialog open on ``null`` so the user
+      // doesn't lose their filled-in form after a store-surfaced
+      // error. The store has already emitted an error toast.
+      const created = await onCreate(data)
+      if (created === null) return
       setForm(INITIAL_FORM)
       onOpenChange(false)
     } catch (err) {

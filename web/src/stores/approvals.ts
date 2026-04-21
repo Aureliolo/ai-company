@@ -418,18 +418,21 @@ export const useApprovalsStore = create<ApprovalsState>()((set, get) => ({
     if (payload.approval && typeof payload.approval === 'object' && !Array.isArray(payload.approval)) {
       const candidate = payload.approval as Record<string, unknown>
       if (isApprovalShape(candidate)) {
-        if (pendingTransitions.has(candidate.id)) return
+        // Sanitize *before* the pendingTransitions check so a frame
+        // whose id carries control/bidi chars can't bypass the
+        // optimistic-transition gate (which keys off the raw id) and
+        // then sanitize to the plain id to overwrite a real approval.
+        // Mutation = the wire id carried chars we stripped, so we
+        // can't trust it to point at the intended record.
         const sanitized = sanitizeApproval(candidate)
-        if (!sanitized.id) {
-          // Whitespace-only / all-control-char id passes the shape
-          // guard but sanitizes to ''; upserting under '' would
-          // collide unrelated approvals.
+        if (!sanitized.id || sanitized.id !== candidate.id) {
           log.error(
-            'Approval payload has empty id after sanitization, skipping upsert',
-            { id: sanitizeForLog(candidate.id) },
+            'Approval payload lost or mutated id during sanitization, skipping upsert',
+            sanitizeForLog({ raw_id: candidate.id, sanitized_id: sanitized.id }),
           )
           return
         }
+        if (pendingTransitions.has(sanitized.id)) return
         get().upsertApproval(sanitized)
       } else {
         log.error('Received malformed approval payload, skipping upsert', {

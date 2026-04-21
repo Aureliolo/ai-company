@@ -94,13 +94,20 @@ def channel_allowed(
 def parse_event_payload(event_data: bytes) -> dict[str, Any] | None:
     """Decode the raw channel payload into a dict, logging+dropping on errors.
 
-    Non-UTF-8 bytes raise ``UnicodeDecodeError`` from the json codec
-    before ``json.loads`` ever returns; catch it alongside
-    ``JSONDecodeError`` so a single malformed frame is dropped with a
-    log rather than crashing the per-client callback.
+    Enforce UTF-8 explicitly before ``json.loads``: Python's JSON
+    codec infers encoding from a BOM (UTF-16/UTF-32 bytes round-trip
+    through ``json.loads`` without raising), but the downstream
+    ``event_data.decode("utf-8")`` call in ``ws.py`` would then fail
+    on the same bytes. Decoding here first catches both cases with a
+    single ``UnicodeDecodeError``.
     """
     try:
-        event = json.loads(event_data)
+        text = (
+            event_data.decode("utf-8")
+            if isinstance(event_data, (bytes, bytearray))
+            else event_data
+        )
+        event = json.loads(text)
     except json.JSONDecodeError, UnicodeDecodeError:
         logger.warning(
             API_WS_INVALID_MESSAGE,
