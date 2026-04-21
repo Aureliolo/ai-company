@@ -13,7 +13,7 @@ from synthorg.engine.loop_protocol import (
     TurnRecord,
 )
 from synthorg.engine.prompt_safety import TAG_TOOL_RESULT, wrap_untrusted
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, scrub_secret_tokens
 from synthorg.observability.events.approval_gate import (
     APPROVAL_GATE_PARK_TASKLESS,
 )
@@ -69,11 +69,14 @@ def _wrap_tool_result(result: ToolResult) -> ToolResult:
     for pattern in _INJECTION_PATTERNS:
         match = pattern.search(raw)
         if match is not None:
+            # SEC-1: scrub the telemetry sample before emitting -- if the
+            # attacker embedded a credential inside the injection payload,
+            # the raw ``sample=`` field would otherwise leak it into logs.
             logger.warning(
                 TOOL_INJECTION_PATTERN_DETECTED,
                 tool_call_id=result.tool_call_id,
                 pattern=pattern.pattern,
-                sample=raw[: min(200, len(raw))],
+                sample=scrub_secret_tokens(raw[: min(200, len(raw))]),
             )
             break
     return result.model_copy(

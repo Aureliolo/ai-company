@@ -114,6 +114,14 @@ def scrub_event_fields(
     field-name scrubber already replaced with ``**REDACTED**`` stay
     redacted.
 
+    **Robustness contract**: this processor runs on every log record.
+    If ``_scrub_value`` raises (e.g. a corrupted object whose ``repr``
+    blows up, or a pathological recursive structure), we return the
+    *original* event dict unchanged rather than letting the exception
+    propagate and abort the caller's log call. Losing scrubbing on one
+    event is preferable to silencing the entire logging pipeline at the
+    moment of crisis.
+
     Args:
         logger: The wrapped logger object (unused, required by structlog).
         method_name: The name of the log method called (unused).
@@ -121,6 +129,14 @@ def scrub_event_fields(
 
     Returns:
         A new event dict with every string value scrubbed via
-        :func:`synthorg.observability.redaction.scrub_secret_tokens`.
+        :func:`synthorg.observability.redaction.scrub_secret_tokens`,
+        or the original dict if the scrub itself fails.
     """
-    return {key: _scrub_value(value) for key, value in event_dict.items()}
+    try:
+        return {key: _scrub_value(value) for key, value in event_dict.items()}
+    except Exception:
+        # Fail open: pass the event through unscrubbed rather than drop
+        # the log line entirely.  Still safer than crashing the log
+        # pipeline -- ``sanitize_sensitive_fields`` (which ran just
+        # before us) has already redacted known-sensitive *field names*.
+        return event_dict

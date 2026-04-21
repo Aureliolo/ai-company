@@ -45,12 +45,15 @@ ellipsis marker ``...[truncated]`` counts against the cap.
 _TRUNCATION_MARKER: Final[str] = "...[truncated]"
 
 # URL-encoded form field: ``<key>=<value>`` where ``<key>`` is one of the
-# known credential names.  Stops at whitespace, ``&``, quotes, or
-# closing brackets so we don't eat adjacent structure.
+# known credential names.  Stops at unescaped whitespace / ``&`` / quotes
+# / closing brackets; percent-encoded triplets (``%HH``) are included in
+# the value so ``client_secret=%2A%26%2A`` is masked whole, not truncated
+# at the first embedded (encoded) ``&``.
 _URL_FORM_PATTERN: Final[re.Pattern[str]] = re.compile(
     r"(client_secret|client_id|refresh_token|access_token|code_verifier"
     r"|api_key|api_secret|id_token|assertion|password|bearer|authorization"
-    r"|code)=[^\s&'\"\]\}]+",
+    r"|code)="
+    r"(?:[^\s&'\"\]\}%]|%[0-9A-Fa-f]{2})+",
     re.IGNORECASE,
 )
 
@@ -86,7 +89,9 @@ def scrub_secret_tokens(text: str) -> str:
     Replacements are:
 
     - ``client_secret=xxx`` (and other URL-encoded form fields) →
-      ``client_secret=***``
+      ``client_secret=***``.  Percent-encoded values are covered too:
+      ``client_secret=%2A%26%2A`` is masked wholesale, not truncated at
+      the first embedded ``&``.
     - ``"access_token":"xxx"`` (and other JSON string values) →
       ``"access_token":"***"``
     - ``Authorization: Bearer xxx`` / ``Authorization: Basic xxx`` →
@@ -96,25 +101,40 @@ def scrub_secret_tokens(text: str) -> str:
     The function is idempotent: applying it twice is equivalent to
     applying it once.
 
+    **Robustness contract**: any exception raised by the regex engine
+    (for example, from catastrophic backtracking on a pathological
+    input) is swallowed; the original *text* is returned unchanged so
+    the caller's logging pipeline stays alive.  In that rare case, the
+    processor-level scrubber (`scrub_event_fields`) still gets a
+    chance to mask credentials downstream -- better a defensive
+    passthrough than a dropped log event.
+
     Args:
         text: Arbitrary string (exception message, response body, etc.).
 
     Returns:
-        A new string with all matched substrings replaced.
+        A new string with all matched substrings replaced, or the
+        original string if the scrub itself failed.
     """
-    scrubbed = _URL_FORM_PATTERN.sub(
-        lambda m: f"{m.group(1)}=***",
-        text,
-    )
-    scrubbed = _JSON_PATTERN.sub(
-        lambda m: f'"{m.group(1)}"{m.group(2)}"***"',
-        scrubbed,
-    )
-    scrubbed = _AUTH_HEADER_PATTERN.sub(
-        lambda m: f"{m.group(1)}{m.group(2)} ***",
-        scrubbed,
-    )
-    return _FERNET_PATTERN.sub("***FERNET_CIPHERTEXT***", scrubbed)
+    try:
+        scrubbed = _URL_FORM_PATTERN.sub(
+            lambda m: f"{m.group(1)}=***",
+            text,
+        )
+        scrubbed = _JSON_PATTERN.sub(
+            lambda m: f'"{m.group(1)}"{m.group(2)}"***"',
+            scrubbed,
+        )
+        scrubbed = _AUTH_HEADER_PATTERN.sub(
+            lambda m: f"{m.group(1)}{m.group(2)} ***",
+            scrubbed,
+        )
+        return _FERNET_PATTERN.sub("***FERNET_CIPHERTEXT***", scrubbed)
+    except re.error, RecursionError, MemoryError:
+        # Defensive: never let the scrubber crash the caller's log call.
+        # The processor-level scrubber will still see the event dict
+        # and can apply another pass.
+        return text
 
 
 def safe_error_description(exc: BaseException) -> str:
@@ -140,7 +160,18 @@ def safe_error_description(exc: BaseException) -> str:
         name.
     """
     type_name = type(exc).__name__
-    message = str(exc)
+    # ``str(exc)`` can raise if the exception has a broken ``__str__``
+    # (e.g., custom exceptions that recurse or call a method that
+    # itself raises). Fall back to ``repr(exc)`` and, if that also
+    # fails, to the type name alone. We never let the log helper
+    # crash the caller.
+    try:
+        message = str(exc)
+    except Exception:  # pragma: no cover - defensive
+        try:
+            message = repr(exc)
+        except Exception:  # pragma: no cover - defensive
+            return type_name
     if not message:
         return type_name
     scrubbed = scrub_secret_tokens(message)

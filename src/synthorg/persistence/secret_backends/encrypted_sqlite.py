@@ -276,7 +276,13 @@ class EncryptedSqliteSecretBackend:
         try:
             await self.delete(new_id)
         except Exception as rb_exc:
-            scrubbed = safe_error_description(rb_exc)
+            # SEC-1: wrap the scrub so a broken ``__str__`` on the
+            # rollback error cannot crash the rotation path silently
+            # (finding from silent-failure-hunter review).
+            try:
+                scrubbed = safe_error_description(rb_exc)
+            except Exception:  # pragma: no cover - defensive
+                scrubbed = type(rb_exc).__name__
             logger.warning(
                 SECRET_BACKEND_UNAVAILABLE,
                 new_id=new_id,

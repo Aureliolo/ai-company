@@ -76,7 +76,14 @@ class XXEDetectedError(ValueError):
     Subclass of ``ValueError`` so the ``except Exception`` branch in
     :meth:`HTMLParseGuard.sanitize` catches it naturally and routes
     to the safe-empty fallback.
+
+    ``is_retryable = False`` so the resilience layer's retry-classifier
+    (see ``BaseCompletionProvider`` / ``api/exception_handlers.py``)
+    never retries on an XXE-detected payload -- retrying a malicious
+    DOCTYPE buys nothing and wastes a real call.
     """
+
+    is_retryable = False
 
 
 # Event handler attributes to strip from all elements.

@@ -214,6 +214,38 @@ class TestSafeErrorDescriptionBasics:
         out = safe_error_description(exc)
         assert out.startswith("ValueError:")
 
+    def test_base_exception_system_exit_scrubbed(self) -> None:
+        # ``SystemExit`` is a ``BaseException`` subclass, not an ``Exception``.
+        # Our helper accepts ``BaseException`` -- make sure it still scrubs.
+        out = safe_error_description(SystemExit("oops client_secret=LEAKED"))
+        assert "LEAKED" not in out
+        assert out.startswith("SystemExit:")
+
+    def test_broken_str_method_does_not_crash(self) -> None:
+        # Some exceptions have broken ``__str__`` (e.g., custom ones that
+        # recurse or call a method that raises). The helper must never
+        # propagate that failure -- a broken description is better than
+        # a dropped log event.
+        class BrokenStrError(Exception):
+            def __str__(self) -> str:
+                msg = "no str for you"
+                raise RuntimeError(msg)
+
+        out = safe_error_description(BrokenStrError())
+        # Falls back to the repr path; at minimum, the type name is
+        # always present.
+        assert "BrokenStrError" in out
+
+    def test_percent_encoded_url_form_value_scrubbed(self) -> None:
+        # ``client_secret=%2A%26%2A`` contains a percent-encoded ``&``
+        # in the middle. The old regex stopped at the first ``&`` and
+        # only masked the prefix; the new pattern masks the whole value.
+        raw = "grant_type=x&client_secret=%2A%26%2A&next=value"
+        scrubbed = scrub_secret_tokens(raw)
+        assert "%2A%26%2A" not in scrubbed
+        assert "client_secret=***" in scrubbed
+        assert "next=value" in scrubbed
+
 
 @pytest.mark.unit
 class TestSafeErrorDescriptionTruncation:

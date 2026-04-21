@@ -150,9 +150,13 @@ class EncryptedPostgresSecretBackend:
         except MasterKeyError:
             raise
         except psycopg.Error as exc:
-            logger.exception(
+            # SEC-1: demote to ``warning`` + scrubbed description so the
+            # driver's ciphertext-bearing locals do not end up in the
+            # traceback frame. Mirrors ``encrypted_sqlite.py``.
+            logger.warning(
                 SECRET_STORAGE_FAILED,
                 secret_id=secret_id,
+                error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
             msg = f"Failed to store secret {secret_id}"
@@ -170,9 +174,10 @@ class EncryptedPostgresSecretBackend:
                 )
                 row = await cur.fetchone()
         except psycopg.Error as exc:
-            logger.exception(
+            logger.warning(
                 SECRET_RETRIEVAL_FAILED,
                 secret_id=secret_id,
+                error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
             msg = f"Failed to retrieve secret {secret_id}"
@@ -184,9 +189,10 @@ class EncryptedPostgresSecretBackend:
         try:
             return self._fernet.decrypt(bytes(row[0]))
         except InvalidToken as exc:
-            logger.exception(
+            logger.warning(
                 SECRET_RETRIEVAL_FAILED,
                 secret_id=secret_id,
+                error_type="InvalidToken",
                 error="wrong key or corrupted data",
             )
             msg = f"Failed to decrypt secret {secret_id}"
@@ -197,9 +203,10 @@ class EncryptedPostgresSecretBackend:
             # is None due to a schema drift) or from bytes() coercion of
             # an unexpected column type. InvalidToken is handled above;
             # anything else is a contract violation worth seeing.
-            logger.exception(
+            logger.warning(
                 SECRET_RETRIEVAL_FAILED,
                 secret_id=secret_id,
+                error_type=type(exc).__name__,
                 error=f"decrypt failed: {type(exc).__name__}",
             )
             msg = f"Failed to decrypt secret {secret_id}"
@@ -216,9 +223,10 @@ class EncryptedPostgresSecretBackend:
                 )
                 deleted = cur.rowcount > 0
         except psycopg.Error as exc:
-            logger.exception(
+            logger.warning(
                 SECRET_DELETE_FAILED,
                 secret_id=secret_id,
+                error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
             msg = f"Failed to delete secret {secret_id}"
@@ -257,10 +265,11 @@ class EncryptedPostgresSecretBackend:
         try:
             await self.store(new_id, new_value)
         except (SecretStorageError, MasterKeyError) as exc:
-            logger.exception(
+            logger.warning(
                 SECRET_BACKEND_UNAVAILABLE,
                 old_id=old_id,
-                error=f"store of new secret failed: {exc}",
+                error_type=type(exc).__name__,
+                error=f"store of new secret failed: {safe_error_description(exc)}",
             )
             msg = f"Failed to store rotated secret (old_id={old_id})"
             raise SecretRotationError(msg) from exc
@@ -275,13 +284,16 @@ class EncryptedPostgresSecretBackend:
             deleted = await self.delete(old_id)
         except SecretStorageError as exc:
             rollback_note = await self._rollback_new(new_id)
-            logger.exception(
+            scrubbed = safe_error_description(exc)
+            detail = (
+                f"delete of old secret failed: {scrubbed}; rollback: {rollback_note}"
+            )
+            logger.warning(
                 SECRET_BACKEND_UNAVAILABLE,
                 old_id=old_id,
                 new_id=new_id,
-                error=(
-                    f"delete of old secret failed: {exc}; rollback: {rollback_note}"
-                ),
+                error_type=type(exc).__name__,
+                error=detail,
             )
             msg = (
                 f"Failed to delete old secret {old_id} during rotation; {rollback_note}"
@@ -306,12 +318,20 @@ class EncryptedPostgresSecretBackend:
         try:
             await self.delete(new_id)
         except SecretStorageError as rb_exc:
-            logger.exception(
+            # SEC-1: wrap the scrub + return-string construction so a
+            # broken ``__str__`` on the rollback error cannot crash the
+            # rotation path silently (finding from silent-failure-hunter).
+            try:
+                scrubbed = safe_error_description(rb_exc)
+            except Exception:  # pragma: no cover - defensive
+                scrubbed = type(rb_exc).__name__
+            logger.warning(
                 SECRET_BACKEND_UNAVAILABLE,
                 new_id=new_id,
-                error=f"rollback delete failed: {rb_exc}",
+                error_type=type(rb_exc).__name__,
+                error=f"rollback delete failed: {scrubbed}",
             )
-            return f"rollback of new_id={new_id} also failed: {rb_exc}"
+            return f"rollback of new_id={new_id} also failed: {scrubbed}"
         return f"new_id={new_id} rolled back"
 
     async def close(self) -> None:
