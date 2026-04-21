@@ -12,6 +12,11 @@ jobs:
     name: apko lock --update
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # Environment `apko-lock` carries a `main`-only branch allowlist so the
+    # schedule-triggered write permissions (contents:write + pull-requests:write)
+    # are gated on the deployment ref being main. Configured via
+    # scripts/configure_environments.sh (see docs/reference/github-environments.md).
+    environment: apko-lock
     permissions:
       contents: write
       pull-requests: write
