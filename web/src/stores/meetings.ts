@@ -53,7 +53,18 @@ function isMeetingShape(
     typeof c.token_budget === 'number' &&
     Array.isArray(c.contribution_rank) &&
     c.contribution_rank.every((entry) => typeof entry === 'string') &&
-    isTokenUsageMap(c.token_usage_by_participant)
+    isTokenUsageMap(c.token_usage_by_participant) &&
+    // Remaining non-optional ``MeetingResponse`` fields. ``minutes``
+    // and ``error_message`` are nullable on the wire (completed
+    // meetings fill in ``minutes``; failed meetings fill in
+    // ``error_message``). ``meeting_duration_seconds`` is null while
+    // in-progress and becomes a number once ended. Accepting null
+    // for all three matches the declared types and keeps the guard
+    // aligned with the asserted ``MeetingResponse`` shape.
+    (c.minutes === null || (typeof c.minutes === 'object' && !Array.isArray(c.minutes))) &&
+    (c.error_message === null || typeof c.error_message === 'string') &&
+    (c.meeting_duration_seconds === null ||
+      typeof c.meeting_duration_seconds === 'number')
   )
 }
 
