@@ -8,7 +8,7 @@ import asyncio
 import os
 
 from synthorg.integrations.errors import TunnelError
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.integrations import (
     TUNNEL_ERROR,
     TUNNEL_STARTED,
@@ -81,8 +81,14 @@ class NgrokAdapter:
             self._tunnel = tunnel
             self._public_url = str(tunnel.public_url)
         except Exception as exc:
-            logger.exception(TUNNEL_ERROR, error=str(exc))
-            msg = f"Failed to start ngrok tunnel: {exc}"
+            # ngrok auth token env var may be echoed in exception
+            # messages; scrub + drop traceback.
+            logger.warning(
+                TUNNEL_ERROR,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            msg = f"Failed to start ngrok tunnel: {type(exc).__name__}"
             raise TunnelError(msg) from exc
 
         logger.info(
@@ -94,7 +100,16 @@ class NgrokAdapter:
         return self._public_url
 
     async def stop(self) -> None:
-        """Stop the ngrok tunnel."""
+        """Stop the ngrok tunnel (best-effort cleanup).
+
+        ``stop()`` is a shutdown hook: callers expect it to run during
+        teardown without forcing them to catch an exception. If the
+        remote disconnect fails we log the scrubbed error but still
+        clear the local tunnel handles so the adapter does not hold on
+        to stale state -- the ngrok process lifetime is owned upstream
+        anyway, and retaining the handle would block subsequent
+        ``start()`` calls on this adapter instance.
+        """
         if self._tunnel is None:
             return
         try:
@@ -102,10 +117,11 @@ class NgrokAdapter:
 
             await asyncio.to_thread(ngrok.disconnect, self._public_url)
         except Exception as exc:
-            logger.exception(
+            logger.warning(
                 TUNNEL_ERROR,
-                error=f"failed to disconnect: {exc}",
-                exc_type=type(exc).__name__,
+                phase="disconnect",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
         self._tunnel = None
         self._public_url = None

@@ -36,7 +36,14 @@ from synthorg.observability.enums import (
     SyslogFacility,
     SyslogProtocol,
 )
-from synthorg.observability.processors import sanitize_sensitive_fields
+from synthorg.observability.processors import (
+    sanitize_sensitive_fields,
+    scrub_event_fields,
+)
+from synthorg.observability.redaction import (
+    safe_error_description,
+    scrub_secret_tokens,
+)
 from synthorg.observability.setup import configure_logging
 
 __all__ = [
@@ -54,7 +61,10 @@ __all__ = [
     "configure_logging",
     "generate_correlation_id",
     "get_logger",
+    "safe_error_description",
     "sanitize_sensitive_fields",
+    "scrub_event_fields",
+    "scrub_secret_tokens",
     "unbind_correlation_id",
     "with_correlation",
     "with_correlation_async",

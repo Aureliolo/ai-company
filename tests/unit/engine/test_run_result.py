@@ -210,15 +210,26 @@ class TestFormatTaskInstruction:
     def test_basic_format(self, sample_task_with_criteria: Task) -> None:
         result = format_task_instruction(sample_task_with_criteria)
 
-        assert "# Task: Implement authentication module" in result
-        assert "JWT-based authentication" in result
-        assert "## Acceptance Criteria" in result
-        assert "- Login endpoint returns JWT token" in result
+        # SEC-1: user-controlled task fields must be wrapped in a
+        # ``<task-data>`` fence; the ``# Task`` heading is trusted
+        # framing.  Assert ordering so a formatter regression that
+        # moves any user-controlled string outside the fence fails the
+        # test, rather than silently passing on substring presence.
+        assert "# Task" in result
+        open_idx = result.index("<task-data>")
+        close_idx = result.index("</task-data>")
+        for fragment in (
+            "Title: Implement authentication module",
+            "JWT-based authentication",
+            "Acceptance Criteria:",
+            "- Login endpoint returns JWT token",
+        ):
+            assert open_idx < result.index(fragment) < close_idx
         assert "$5.00" in result
 
     def test_deadline_included(self, sample_task_with_criteria: Task) -> None:
         result = format_task_instruction(sample_task_with_criteria)
-        assert "**Deadline:** 2026-04-01T00:00:00" in result
+        assert "**Deadline:** <task-data>\n2026-04-01T00:00:00\n</task-data>" in result
 
     def test_deadline_has_blank_line_separator(
         self,
@@ -247,8 +258,14 @@ class TestFormatTaskInstruction:
         )
         result = format_task_instruction(task)
 
-        assert "# Task: Simple task" in result
-        assert "Do the thing." in result
+        assert "# Task" in result
+        # SEC-1: title/description must be fenced in <task-data> so a
+        # prompt-injection regression that moved content outside the
+        # fence would fail here instead of silently degrading.
+        open_idx = result.index("<task-data>")
+        close_idx = result.index("</task-data>")
+        assert open_idx < result.index("Title: Simple task") < close_idx
+        assert open_idx < result.index("Do the thing.") < close_idx
         assert "Acceptance Criteria" not in result
         assert "Budget" not in result
 

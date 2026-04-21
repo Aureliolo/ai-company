@@ -15,7 +15,7 @@ from synthorg.a2a.models import (
     JsonRpcRequest,
     JsonRpcResponse,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.a2a import (
     A2A_OUTBOUND_FAILED,
     A2A_OUTBOUND_SENT,
@@ -143,7 +143,7 @@ class A2AClient:
             {"id": task_id},
         )
 
-    async def _call_method(  # noqa: C901
+    async def _call_method(  # noqa: C901, PLR0912, PLR0915
         self,
         peer_name: str,
         method: str,
@@ -192,12 +192,15 @@ class A2AClient:
                 raise A2AClientError(msg, peer_name=peer_name)
             try:
                 await validate_url_host(url_str, self._network_validator)
+            except MemoryError, RecursionError:
+                raise
             except Exception as ssrf_exc:
                 logger.warning(
                     A2A_OUTBOUND_SSRF_BLOCKED,
                     peer_name=peer_name,
                     url=url_str,
-                    reason=str(ssrf_exc),
+                    error_type=type(ssrf_exc).__name__,
+                    error=safe_error_description(ssrf_exc),
                 )
                 msg = f"SSRF: blocked outbound URL for peer '{peer_name}'"
                 raise A2AClientError(
@@ -294,7 +297,7 @@ class A2AClient:
                 peer_name=peer_name,
                 method=method,
                 error_type=type(exc).__name__,
-                error=str(exc),
+                error=safe_error_description(exc),
                 transient=True,
             )
             msg = f"Connection to peer '{peer_name}' failed"
@@ -309,11 +312,12 @@ class A2AClient:
             msg = f"Peer '{peer_name}' returned {exc.response.status_code}"
             raise A2AClientError(msg, peer_name=peer_name) from exc
         except httpx.HTTPError as exc:
-            logger.exception(
+            logger.warning(
                 A2A_OUTBOUND_FAILED,
                 peer_name=peer_name,
                 method=method,
                 error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             msg = f"Request to peer '{peer_name}' failed"
             raise A2AClientError(msg, peer_name=peer_name) from exc
@@ -380,7 +384,8 @@ def _parse_rpc_response(
             A2A_OUTBOUND_FAILED,
             peer_name=peer_name,
             reason="response_json_decode_error",
-            error=str(exc),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         msg = f"Peer '{peer_name}' returned invalid JSON"
         raise A2AClientError(msg, peer_name=peer_name) from exc
@@ -394,7 +399,8 @@ def _parse_rpc_response(
             A2A_OUTBOUND_FAILED,
             peer_name=peer_name,
             reason="response_validation_error",
-            error=str(exc),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         msg = f"Peer '{peer_name}' returned invalid JSON-RPC"
         raise A2AClientError(msg, peer_name=peer_name) from exc

@@ -456,7 +456,7 @@ class TestAgentEngineMemoryMessages:
         task_idx = next(
             i
             for i, m in enumerate(conversation)
-            if m.role == MessageRole.USER and "# Task:" in m.content
+            if m.role == MessageRole.USER and "# Task" in m.content
         )
         assert sys_idx < mem_idx < task_idx
 

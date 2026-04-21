@@ -4,14 +4,25 @@ Extracted from :mod:`synthorg.engine.loop_helpers` to keep the main
 helpers module under the project size limit.
 """
 
-from typing import TYPE_CHECKING
+import re
+from typing import TYPE_CHECKING, Final
 
 from synthorg.engine.loop_protocol import (
     ExecutionResult,
     TerminationReason,
     TurnRecord,
 )
-from synthorg.observability import get_logger
+from synthorg.engine.prompt_safety import (
+    TAG_CODE_DIFF,
+    TAG_CONFIG_VALUE,
+    TAG_CRITERIA_JSON,
+    TAG_TASK_DATA,
+    TAG_TASK_FACT,
+    TAG_TOOL_RESULT,
+    TAG_UNTRUSTED_ARTIFACT,
+    wrap_untrusted,
+)
+from synthorg.observability import get_logger, scrub_secret_tokens
 from synthorg.observability.events.approval_gate import (
     APPROVAL_GATE_PARK_TASKLESS,
 )
@@ -19,9 +30,13 @@ from synthorg.observability.events.execution import (
     EXECUTION_LOOP_ERROR,
     EXECUTION_LOOP_TOOL_CALLS,
 )
-from synthorg.observability.events.tool import TOOL_L2_LOADED, TOOL_L3_FETCHED
+from synthorg.observability.events.tool import (
+    TOOL_INJECTION_PATTERN_DETECTED,
+    TOOL_L2_LOADED,
+    TOOL_L3_FETCHED,
+)
 from synthorg.providers.enums import MessageRole
-from synthorg.providers.models import ChatMessage
+from synthorg.providers.models import ChatMessage, ToolResult
 
 if TYPE_CHECKING:
     from synthorg.engine.approval_gate import ApprovalGate
@@ -31,6 +46,68 @@ if TYPE_CHECKING:
     from synthorg.tools.invoker import ToolInvoker
 
 logger = get_logger(__name__)
+
+
+# SEC-1 / audit finding 92: common prompt-injection patterns that a
+# tool might return in an attempt to take over the next LLM turn.
+# Matches are flagged via ``TOOL_INJECTION_PATTERN_DETECTED`` for
+# telemetry; the tool result is still wrapped in the fence, not
+# rejected (rejection would break legitimate tools that echo user
+# text in responses).
+# Closing-tag look-alikes for every untrusted-content fence declared
+# in ``synthorg.engine.prompt_safety``.  Deriving the regex set from
+# the shared ``TAG_*`` constants keeps the advisory detector in sync
+# with the wrapper: if a new tag is added (or one is renamed), this
+# list updates automatically instead of silently drifting.  Optional
+# whitespace before ``>`` mirrors ``_escape_closing_tag`` so lenient
+# variants (``</task-data >`` / ``</task-data\t>``) still trip.
+_FENCE_TAGS: Final[tuple[str, ...]] = (
+    TAG_TASK_DATA,
+    TAG_TASK_FACT,
+    TAG_TOOL_RESULT,
+    TAG_UNTRUSTED_ARTIFACT,
+    TAG_CODE_DIFF,
+    TAG_CONFIG_VALUE,
+    TAG_CRITERIA_JSON,
+)
+
+_INJECTION_PATTERNS: Final[tuple[re.Pattern[str], ...]] = (
+    re.compile(r"ignore\s+(all|previous|prior)\s+instructions?", re.IGNORECASE),
+    re.compile(r"disregard\s+(all|previous|prior)", re.IGNORECASE),
+    re.compile(r"you\s+are\s+now", re.IGNORECASE),
+    re.compile(r"system\s*:\s*you", re.IGNORECASE),
+    *tuple(
+        re.compile(rf"</{re.escape(tag)}\s*>", re.IGNORECASE) for tag in _FENCE_TAGS
+    ),
+)
+
+
+def _wrap_tool_result(result: ToolResult) -> ToolResult:
+    """Return *result* with its ``content`` wrapped in ``<tool-result>``.
+
+    Also emits ``TOOL_INJECTION_PATTERN_DETECTED`` when the raw
+    content matches a known injection pattern (see
+    :data:`_INJECTION_PATTERNS`). Detection is advisory; the wrap
+    happens unconditionally so a malicious tool cannot escape the
+    fence even if no pattern matches.
+    """
+    raw = result.content
+    for pattern in _INJECTION_PATTERNS:
+        match = pattern.search(raw)
+        if match is not None:
+            # SEC-1: scrub the telemetry sample before emitting -- if the
+            # attacker embedded a credential inside the injection payload,
+            # the raw ``sample=`` field would otherwise leak it into logs.
+            logger.warning(
+                TOOL_INJECTION_PATTERN_DETECTED,
+                tool_call_id=result.tool_call_id,
+                pattern=pattern.pattern,
+                sample=scrub_secret_tokens(raw[: min(200, len(raw))]),
+            )
+            break
+    return result.model_copy(
+        update={"content": wrap_untrusted(TAG_TOOL_RESULT, raw)},
+    )
 
 
 def _build_error_result(
@@ -173,9 +250,12 @@ async def execute_tool_calls(  # noqa: PLR0913, C901
         return _build_error_result(ctx, turns, error_msg)
 
     for result in results:
+        # SEC-1: fence the tool output before it enters context so the
+        # next LLM turn cannot mistake tool content for instructions.
+        wrapped = _wrap_tool_result(result)
         tool_msg = ChatMessage(
             role=MessageRole.TOOL,
-            tool_result=result,
+            tool_result=wrapped,
         )
         ctx = ctx.with_message(tool_msg)
 

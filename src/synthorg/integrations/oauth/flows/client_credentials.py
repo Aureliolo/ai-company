@@ -7,7 +7,7 @@ import httpx
 
 from synthorg.integrations.connections.models import OAuthToken
 from synthorg.integrations.errors import TokenExchangeFailedError
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.integrations import (
     OAUTH_TOKEN_EXCHANGE_FAILED,
     OAUTH_TOKEN_EXCHANGED,
@@ -89,11 +89,16 @@ class ClientCredentialsFlow:
                 resp.raise_for_status()
                 data = resp.json()
         except (httpx.HTTPError, json.JSONDecodeError) as exc:
-            logger.exception(
+            # ``warning`` + scrubbed description: the POST body carries
+            # ``client_secret`` and some providers echo it into error
+            # responses, so neither the traceback nor the stringified
+            # exception is safe to log verbatim.
+            logger.warning(
                 OAUTH_TOKEN_EXCHANGE_FAILED,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
-            msg = f"Client credentials exchange failed: {exc}"
+            msg = f"Client credentials exchange failed: {type(exc).__name__}"
             raise TokenExchangeFailedError(msg) from exc
 
         if not isinstance(data, dict):

@@ -9,11 +9,14 @@ They exercise the actual flow classes end-to-end and verify that
 raw tokens are returned (not placeholder ``pending-*`` refs).
 """
 
+from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
+import structlog.testing
 
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.models import (
@@ -353,3 +356,234 @@ class TestDeviceFlow:
             )
         assert token.access_token == "dev-token"
         assert token.refresh_token == "dev-refresh"
+
+
+# ── Leak-sentinel tests ──────────────────────────────────────────────
+# Regression guards for SEC-1 (`_audit/findings/90-secrets-in-logs.md`):
+# OAuth error logs must not leak `client_secret`, `refresh_token`, or
+# `code_verifier` -- not through `str(exc)`, not through traceback
+# frame-locals. These tests construct an ``httpx.HTTPStatusError`` whose
+# message carries the full POSTed form body (the worst-case shape some
+# providers produce) and assert nothing sensitive makes it to the logs.
+
+
+def _leaky_http_error(body_leak: str) -> httpx.HTTPStatusError:
+    """Build an HTTPStatusError whose ``str(exc)`` embeds ``body_leak``."""
+    request = httpx.Request(
+        "POST",
+        "https://idp.example.com/oauth/token",
+        content=body_leak.encode(),
+    )
+    response = httpx.Response(400, request=request, text="bad_request")
+    return httpx.HTTPStatusError(
+        (
+            f"Client error '400 Bad Request' for url "
+            f"'https://idp.example.com/oauth/token'. Body: {body_leak}"
+        ),
+        request=request,
+        response=response,
+    )
+
+
+_SENTINEL_CS = "super-secret-value-CS"
+_SENTINEL_CV = "super-secret-value-CV"
+_SENTINEL_RT = "super-secret-value-RT"
+_LEAKY_BODY = (
+    f"grant_type=authorization_code&client_secret={_SENTINEL_CS}"
+    f"&code_verifier={_SENTINEL_CV}&refresh_token={_SENTINEL_RT}"
+)
+
+
+def _leak_free(events: Sequence[Any]) -> None:
+    """Assert none of the sentinel values or key-prefix combinations
+    appear anywhere in the captured log events."""
+    blob = repr(events)
+    for sentinel in (_SENTINEL_CS, _SENTINEL_CV, _SENTINEL_RT):
+        assert sentinel not in blob, f"sentinel {sentinel!r} leaked into logs"
+    # Even the key prefixes followed by a real value must be masked.
+    for key in ("client_secret=", "refresh_token=", "code_verifier="):
+        masked_blob = blob.replace(f"{key}***", "")
+        assert key not in masked_blob, (
+            f"unmasked {key!r} found in logs (only ``{key}***`` is allowed)"
+        )
+
+
+@pytest.mark.integration
+class TestOAuthLogRedaction:
+    """SEC-1 regression guards for OAuth error-path logging.
+
+    All three leak-sentinel cases (authorization-code exchange, refresh,
+    client-credentials exchange) share the same sentinel setup and log
+    assertions; parametrizing prevents the three bodies from drifting
+    and keeps the scenario inventory visible in one place.
+    """
+
+    @staticmethod
+    def _mock_client() -> AsyncMock:
+        client_mock = AsyncMock()
+        client_mock.post.side_effect = _leaky_http_error(_LEAKY_BODY)
+        return client_mock
+
+    @pytest.mark.parametrize(
+        ("scenario", "mock_path"),
+        [
+            (
+                "authorization_code_exchange",
+                "synthorg.integrations.oauth.flows.authorization_code.httpx.AsyncClient",
+            ),
+            (
+                "authorization_code_refresh",
+                "synthorg.integrations.oauth.flows.authorization_code.httpx.AsyncClient",
+            ),
+            (
+                "client_credentials_exchange",
+                "synthorg.integrations.oauth.flows.client_credentials.httpx.AsyncClient",
+            ),
+        ],
+    )
+    async def test_oauth_flow_error_paths_scrub_secrets(
+        self,
+        scenario: str,
+        mock_path: str,
+    ) -> None:
+        from synthorg.integrations.errors import (
+            TokenExchangeFailedError,
+            TokenRefreshFailedError,
+        )
+        from synthorg.integrations.oauth.pkce import (
+            encrypt_pkce_verifier,
+            generate_code_verifier,
+        )
+
+        client_mock = self._mock_client()
+
+        async def _enter(_self: Any) -> AsyncMock:
+            return client_mock
+
+        async def _exit(_self: Any, *_args: Any) -> None:
+            return None
+
+        raised_message: str | None = None
+
+        with patch(mock_path) as client_cls:
+            client_cls.return_value.__aenter__ = _enter
+            client_cls.return_value.__aexit__ = _exit
+            if scenario == "authorization_code_exchange":
+                flow = AuthorizationCodeFlow()
+                verifier = generate_code_verifier()
+                state = OAuthState(
+                    state_token=NotBlankStr("state-redact"),
+                    connection_name=NotBlankStr("conn-1"),
+                    pkce_verifier=NotBlankStr(encrypt_pkce_verifier(verifier)),
+                    scopes_requested="read",
+                    redirect_uri="https://app.example.com/cb",
+                    expires_at=datetime.now(UTC) + timedelta(hours=1),
+                )
+                with (
+                    structlog.testing.capture_logs() as events,
+                    pytest.raises(
+                        TokenExchangeFailedError,
+                    ) as exchange_exc,
+                ):
+                    await flow.exchange_code(
+                        token_url="https://idp.example.com/oauth/token",
+                        client_id="cid",
+                        client_secret=_SENTINEL_CS,
+                        state=state,
+                        code="auth-code",
+                        redirect_uri="https://app.example.com/cb",
+                    )
+                raised_message = str(exchange_exc.value)
+            elif scenario == "authorization_code_refresh":
+                flow = AuthorizationCodeFlow()
+                with (
+                    structlog.testing.capture_logs() as events,
+                    pytest.raises(
+                        TokenRefreshFailedError,
+                    ),
+                ):
+                    await flow.refresh_token(
+                        token_url="https://idp.example.com/oauth/token",
+                        client_id="cid",
+                        client_secret=_SENTINEL_CS,
+                        refresh_token=_SENTINEL_RT,
+                    )
+            else:  # client_credentials_exchange
+                flow_cc = ClientCredentialsFlow()
+                with (
+                    structlog.testing.capture_logs() as events,
+                    pytest.raises(
+                        TokenExchangeFailedError,
+                    ),
+                ):
+                    await flow_cc.exchange(
+                        token_url="https://idp.example.com/oauth/token",
+                        client_id="cid",
+                        client_secret=_SENTINEL_CS,
+                    )
+
+        _leak_free(events)
+        # Taxonomy preserved for operators across every scenario.
+        assert any(e.get("error_type") == "HTTPStatusError" for e in events), events
+        if raised_message is not None:
+            # The exchange path surfaces the raised exception message to
+            # callers; make sure it too carries no sentinel material.
+            for sentinel in (_SENTINEL_CS, _SENTINEL_CV, _SENTINEL_RT):
+                assert sentinel not in raised_message
+
+    async def test_exchange_failure_does_not_emit_traceback_exc_info(
+        self,
+    ) -> None:
+        """``logger.warning`` (not ``exception``) carries no ``exc_info``
+        field. Without that field, structlog cannot serialize frame-local
+        values from the request payload."""
+        from synthorg.integrations.errors import TokenExchangeFailedError
+        from synthorg.integrations.oauth.pkce import (
+            encrypt_pkce_verifier,
+            generate_code_verifier,
+        )
+
+        flow = AuthorizationCodeFlow()
+        verifier = generate_code_verifier()
+        state = OAuthState(
+            state_token=NotBlankStr("state-noexc"),
+            connection_name=NotBlankStr("conn-1"),
+            pkce_verifier=NotBlankStr(encrypt_pkce_verifier(verifier)),
+            scopes_requested="read",
+            redirect_uri="https://app.example.com/cb",
+            expires_at=datetime.now(UTC) + timedelta(hours=1),
+        )
+        client_mock = AsyncMock()
+        client_mock.post.side_effect = _leaky_http_error(_LEAKY_BODY)
+
+        async def _enter(_self: Any) -> AsyncMock:
+            return client_mock
+
+        async def _exit(_self: Any, *_args: Any) -> None:
+            return None
+
+        with patch(
+            "synthorg.integrations.oauth.flows.authorization_code.httpx.AsyncClient",
+        ) as client_cls:
+            client_cls.return_value.__aenter__ = _enter
+            client_cls.return_value.__aexit__ = _exit
+            with (
+                structlog.testing.capture_logs() as events,
+                pytest.raises(
+                    TokenExchangeFailedError,
+                ),
+            ):
+                await flow.exchange_code(
+                    token_url="https://idp.example.com/oauth/token",
+                    client_id="cid",
+                    client_secret=_SENTINEL_CS,
+                    state=state,
+                    code="auth-code",
+                    redirect_uri="https://app.example.com/cb",
+                )
+        # No event may carry ``exc_info`` -- traceback frame-locals are
+        # the primary leak vector we demoted ``logger.exception`` to
+        # close.
+        for event in events:
+            assert "exc_info" not in event, event
+            assert event.get("log_level") != "error", event

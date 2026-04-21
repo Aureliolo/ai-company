@@ -17,7 +17,7 @@ from synthorg.api.auth.models import AuthenticatedUser, AuthMethod
 from synthorg.api.auth.service import SecretNotConfiguredError
 from synthorg.api.auth.system_user import SYSTEM_AUDIENCE, SYSTEM_ISSUER
 from synthorg.api.guards import HumanRole
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_AUTH_COOKIE_USED,
     API_AUTH_FAILED,
@@ -198,15 +198,17 @@ async def _try_jwt_auth(
         logger.warning(
             API_AUTH_FAILED,
             reason="jwt_invalid",
-            error_type=type(exc).__qualname__,
-            error=str(exc),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
             path=path,
         )
         return None
-    except SecretNotConfiguredError:
-        logger.exception(
+    except SecretNotConfiguredError as exc:
+        logger.warning(
             API_AUTH_FAILED,
             reason="jwt_secret_not_configured",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
             path=path,
         )
         return None
@@ -331,10 +333,12 @@ async def _try_api_key_auth(
     """
     try:
         key_hash = auth_service.hash_api_key(token)
-    except SecretNotConfiguredError:
-        logger.exception(
+    except SecretNotConfiguredError as exc:
+        logger.warning(
             API_AUTH_FAILED,
             reason="api_key_hash_failed_secret_not_configured",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
             path=path,
         )
         return None

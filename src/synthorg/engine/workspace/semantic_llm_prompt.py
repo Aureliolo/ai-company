@@ -9,6 +9,11 @@ import re
 from typing import Any
 
 from synthorg.core.enums import ConflictType
+from synthorg.engine.prompt_safety import (
+    TAG_CODE_DIFF,
+    untrusted_content_directive,
+    wrap_untrusted,
+)
 from synthorg.engine.workspace.models import MergeConflict
 from synthorg.observability import get_logger
 from synthorg.observability.events.workspace import (
@@ -86,6 +91,11 @@ def build_semantic_review_tool() -> ToolDefinition:
 def build_system_message() -> ChatMessage:
     """Build the system prompt for semantic review.
 
+    The system prompt carries an explicit directive that
+    ``<code-diff>`` fences wrap untrusted code content so the LLM
+    does not execute instructions embedded in reviewed source
+    (SEC-1 / audit finding 92).
+
     Returns:
         System message with review instructions.
     """
@@ -107,7 +117,8 @@ def build_system_message() -> ChatMessage:
             "Only report REAL conflicts that would cause runtime "
             "errors or incorrect behavior. Do NOT report style issues, "
             "naming conventions, or potential improvements.\n\n"
-            "Use the submit_semantic_review tool to report your findings."
+            "Use the submit_semantic_review tool to report your findings.\n\n"
+            + untrusted_content_directive((TAG_CODE_DIFF,))
         ),
     )
 
@@ -126,15 +137,24 @@ def build_review_message(
     Returns:
         User message with code context for review.
     """
+    # SEC-1: every attacker-influenced string (diff summary, the file
+    # paths in ``changed_files``, and the file contents themselves)
+    # must sit inside a ``<code-diff>`` fence.  Without the wrap, a
+    # malicious filename or diff-summary line could masquerade as
+    # operator framing and escape the review intent.
     parts = [
         "Review the following merged code for semantic conflicts.\n\n",
         "## Diff Summary\n",
-        f"```\n{diff_summary}\n```\n\n",
-        "## Merged File Contents\n",
+        wrap_untrusted(TAG_CODE_DIFF, diff_summary),
+        "\n\n## Merged File Contents\n",
     ]
 
     for path, content in changed_files.items():
-        parts.append(f"\n### {path}\n```python\n{content}\n```\n")
+        parts.append("\n### File path\n")
+        parts.append(wrap_untrusted(TAG_CODE_DIFF, path))
+        parts.append("\n\n### Contents\n")
+        parts.append(wrap_untrusted(TAG_CODE_DIFF, content))
+        parts.append("\n")
 
     return ChatMessage(
         role=MessageRole.USER,

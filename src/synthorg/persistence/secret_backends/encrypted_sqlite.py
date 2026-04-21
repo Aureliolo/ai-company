@@ -19,9 +19,10 @@ from synthorg.integrations.errors import (
     SecretRotationError,
     SecretStorageError,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.integrations import (
     SECRET_BACKEND_UNAVAILABLE,
+    SECRET_DELETE_FAILED,
     SECRET_DELETED,
     SECRET_RETRIEVAL_FAILED,
     SECRET_ROTATED,
@@ -109,11 +110,20 @@ class EncryptedSqliteSecretBackend:
             logger.debug(SECRET_STORED, secret_id=secret_id)
         except MasterKeyError:
             raise
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
-            logger.exception(
+            # ``warning`` + scrubbed description: driver exceptions may
+            # embed connection URIs or raw Fernet ciphertext bytes.
+            # Traceback attachment via ``logger.exception`` would also
+            # serialize the request-level ``value`` parameter we just
+            # encrypted. Scrubbed type+message is enough for triage;
+            # ``raise ... from exc`` preserves the chain for callers.
+            logger.warning(
                 SECRET_STORAGE_FAILED,
                 secret_id=secret_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             msg = f"Failed to store secret {secret_id}"
             raise SecretStorageError(msg) from exc
@@ -128,11 +138,18 @@ class EncryptedSqliteSecretBackend:
                     (secret_id,),
                 )
                 row = await cursor.fetchone()
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
-            logger.exception(
+            # ``warning`` + scrubbed description: same rationale as
+            # ``store()`` above. A DB driver failure may embed the row's
+            # encrypted ciphertext in the exception; ``logger.exception``
+            # would serialize it via traceback.
+            logger.warning(
                 SECRET_RETRIEVAL_FAILED,
                 secret_id=secret_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             msg = f"Failed to retrieve secret {secret_id}"
             raise SecretRetrievalError(msg) from exc
@@ -143,20 +160,29 @@ class EncryptedSqliteSecretBackend:
         try:
             return self._fernet.decrypt(row[0])
         except InvalidToken as exc:
-            logger.exception(
+            # Decrypt failure: the ciphertext bytes (``row[0]``) are in
+            # the local frame, so ``logger.exception`` would serialize
+            # them via traceback. Static category string keeps triage
+            # useful without leaking key material.
+            logger.warning(
                 SECRET_RETRIEVAL_FAILED,
                 secret_id=secret_id,
+                error_type="InvalidToken",
                 error="wrong key or corrupted data",
             )
             msg = f"Failed to decrypt secret {secret_id}"
             raise SecretRetrievalError(msg) from exc
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             # Catch-all so any residual decrypt failure (malformed
             # row data, driver bug, etc.) still surfaces through
             # the secret-backend contract instead of leaking raw.
-            logger.exception(
+            # Same traceback concern as the ``InvalidToken`` branch.
+            logger.warning(
                 SECRET_RETRIEVAL_FAILED,
                 secret_id=secret_id,
+                error_type=type(exc).__name__,
                 error=f"decrypt failed: {type(exc).__name__}",
             )
             msg = f"Failed to decrypt secret {secret_id}"
@@ -172,11 +198,19 @@ class EncryptedSqliteSecretBackend:
                 )
                 await db.commit()
                 deleted = cursor.rowcount > 0
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
-            logger.exception(
-                SECRET_STORAGE_FAILED,
+            # Driver exceptions may embed connection URIs with
+            # credentials; scrub + drop traceback.  Use the
+            # ``SECRET_DELETE_FAILED`` event (not ``STORAGE_FAILED``)
+            # so delete failures stay distinguishable from writes,
+            # matching the Postgres backend.
+            logger.warning(
+                SECRET_DELETE_FAILED,
                 secret_id=secret_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             msg = f"Failed to delete secret {secret_id}"
             raise SecretStorageError(msg) from exc
@@ -202,23 +236,31 @@ class EncryptedSqliteSecretBackend:
         new_id = str(uuid4())
         try:
             await self.store(new_id, new_value)
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
-            logger.exception(
+            # Carry the scrubbed description as context; the underlying
+            # exception stays in the chain via ``raise ... from exc``.
+            logger.warning(
                 SECRET_BACKEND_UNAVAILABLE,
                 old_id=old_id,
-                error=f"store of new secret failed: {exc}",
+                error_type=type(exc).__name__,
+                error=f"store of new secret failed: {safe_error_description(exc)}",
             )
             msg = f"Failed to store rotated secret (old_id={old_id})"
             raise SecretRotationError(msg) from exc
 
         try:
             deleted = await self.delete(old_id)
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
-            logger.exception(
+            logger.warning(
                 SECRET_BACKEND_UNAVAILABLE,
                 old_id=old_id,
                 new_id=new_id,
-                error=f"delete of old secret failed: {exc}",
+                error_type=type(exc).__name__,
+                error=f"delete of old secret failed: {safe_error_description(exc)}",
             )
             rollback_note = await self._rollback_new(new_id)
             msg = (
@@ -248,13 +290,28 @@ class EncryptedSqliteSecretBackend:
         """Attempt to delete *new_id* after a failed rotation."""
         try:
             await self.delete(new_id)
+        except MemoryError, RecursionError:
+            raise
         except Exception as rb_exc:
-            logger.exception(
+            # SEC-1: wrap the scrub so a broken ``__str__`` on the
+            # rollback error cannot crash the rotation path silently
+            # (finding from silent-failure-hunter review).  Re-raise
+            # catastrophic interpreter state (``MemoryError`` /
+            # ``RecursionError``) so the process surfaces the failure
+            # rather than swallowing it under a scrubbed fallback.
+            try:
+                scrubbed = safe_error_description(rb_exc)
+            except MemoryError, RecursionError:
+                raise
+            except Exception:  # pragma: no cover - defensive
+                scrubbed = type(rb_exc).__name__
+            logger.warning(
                 SECRET_BACKEND_UNAVAILABLE,
                 new_id=new_id,
-                error=f"rollback delete failed: {rb_exc}",
+                error_type=type(rb_exc).__name__,
+                error=f"rollback delete failed: {scrubbed}",
             )
-            return f"rollback of new_id={new_id} also failed: {rb_exc}"
+            return f"rollback of new_id={new_id} also failed: {scrubbed}"
         return f"new_id={new_id} rolled back"
 
     async def close(self) -> None:

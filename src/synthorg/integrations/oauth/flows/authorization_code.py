@@ -22,7 +22,7 @@ from synthorg.integrations.oauth.pkce import (
     generate_code_challenge,
     generate_code_verifier,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.integrations import (
     OAUTH_FLOW_STARTED,
     OAUTH_TOKEN_EXCHANGE_FAILED,
@@ -159,11 +159,16 @@ class AuthorizationCodeFlow:
                 resp.raise_for_status()
                 data = resp.json()
         except (httpx.HTTPError, json.JSONDecodeError) as exc:
-            logger.exception(
+            # Use ``warning`` (no traceback) + scrubbed description so the
+            # request payload that contained ``client_secret`` and
+            # ``code_verifier`` cannot leak through frame-local repr's or
+            # stringified error bodies.
+            logger.warning(
                 OAUTH_TOKEN_EXCHANGE_FAILED,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
-            msg = f"Token exchange failed: {exc}"
+            msg = f"Token exchange failed: {type(exc).__name__}"
             raise TokenExchangeFailedError(msg) from exc
 
         return self._parse_token_response(data, "exchange")
@@ -194,22 +199,28 @@ class AuthorizationCodeFlow:
                 resp.raise_for_status()
                 data = resp.json()
         except (httpx.HTTPError, json.JSONDecodeError) as exc:
-            logger.exception(
+            # See ``exchange_code`` above: ``warning`` + scrubbed description
+            # keeps the refresh_token and client_secret out of logs.
+            logger.warning(
                 OAUTH_TOKEN_REFRESH_FAILED,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
-            msg = f"Token refresh failed: {exc}"
+            msg = f"Token refresh failed: {type(exc).__name__}"
             raise TokenRefreshFailedError(msg) from exc
 
         try:
             return self._parse_token_response(data, "refresh")
         except TokenExchangeFailedError as exc:
             # Normalize refresh failures to the refresh error domain.
-            logger.exception(
+            # Parse-error messages are already sanitized (we build them
+            # ourselves), but scrub defensively for consistency.
+            logger.warning(
                 OAUTH_TOKEN_REFRESH_FAILED,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
-            raise TokenRefreshFailedError(str(exc)) from exc
+            raise TokenRefreshFailedError(safe_error_description(exc)) from exc
 
     @staticmethod
     def _parse_token_response(  # noqa: C901, PLR0912

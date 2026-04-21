@@ -1,10 +1,14 @@
 """Custom structlog processors for the observability pipeline."""
 
 import re
+import sys
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
+from synthorg.observability.redaction import scrub_secret_tokens
+
 if TYPE_CHECKING:
-    from collections.abc import Mapping, MutableMapping
+    from collections.abc import MutableMapping
 
 _SENSITIVE_PATTERN: re.Pattern[str] = re.compile(
     r"(password|secret|token|api_key|api_secret|authorization"
@@ -68,3 +72,95 @@ def sanitize_sensitive_fields(
         )
         for key, value in event_dict.items()
     }
+
+
+def _scrub_value(value: Any) -> Any:
+    """Recursively scrub credential patterns out of string values.
+
+    Traverses nested mapping / list / tuple structures, applying
+    :func:`synthorg.observability.redaction.scrub_secret_tokens` to every
+    string leaf.  Non-string leaves are returned unchanged.
+
+    The mapping branch uses :class:`collections.abc.Mapping` so
+    immutable wrappers like :class:`types.MappingProxyType` (used by
+    the registry/``BaseTool`` immutability convention) are recursed
+    into as well, and a fresh ``dict`` is returned so the original
+    structure is never mutated.
+
+    Args:
+        value: The value to scrub.
+
+    Returns:
+        A new structure with every string leaf scrubbed.
+    """
+    if isinstance(value, str):
+        return scrub_secret_tokens(value)
+    if isinstance(value, Mapping):
+        return {k: _scrub_value(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_scrub_value(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_scrub_value(item) for item in value)
+    return value
+
+
+def scrub_event_fields(
+    logger: Any,  # noqa: ARG001
+    method_name: str,  # noqa: ARG001
+    event_dict: MutableMapping[str, Any],
+) -> Mapping[str, Any]:
+    """Deep-scrub credential patterns out of every string value.
+
+    Belt-and-braces defence against the ``error=str(exc)`` leak vector
+    (SEC-1 / audit finding 90): even when a caller embeds a stringified
+    exception (or response body) that carries ``client_secret=...``,
+    ``"access_token":"..."``, ``Authorization: Bearer ...``, or raw
+    Fernet ciphertext, this processor rewrites the string so those
+    substrings are masked before the renderer sees them.
+
+    Runs *after* ``sanitize_sensitive_fields`` so keys that the
+    field-name scrubber already replaced with ``**REDACTED**`` stay
+    redacted.
+
+    **Robustness contract**: this processor runs on every log record.
+    If ``_scrub_value`` raises (e.g. a corrupted object whose ``repr``
+    blows up, or a pathological recursive structure), we return the
+    *original* event dict unchanged rather than letting the exception
+    propagate and abort the caller's log call. Losing scrubbing on one
+    event is preferable to silencing the entire logging pipeline at the
+    moment of crisis.
+
+    Args:
+        logger: The wrapped logger object (unused, required by structlog).
+        method_name: The name of the log method called (unused).
+        event_dict: The event dictionary to process.
+
+    Returns:
+        A new event dict with every string value scrubbed via
+        :func:`synthorg.observability.redaction.scrub_secret_tokens`,
+        or the original dict if the scrub itself fails.
+    """
+    try:
+        return {key: _scrub_value(value) for key, value in event_dict.items()}
+    except MemoryError, RecursionError:
+        # Interpreter-fatal errors must propagate per project convention
+        # -- swallowing them here would hide exactly the class of failures
+        # the rest of the codebase relies on for surfacing catastrophic
+        # state.
+        raise
+    except Exception as exc:
+        # Fail open: pass the event through unscrubbed rather than drop
+        # the log line entirely.  Still safer than crashing the log
+        # pipeline -- ``sanitize_sensitive_fields`` (which ran just
+        # before us) has already redacted known-sensitive *field names*.
+        # We write to ``sys.stderr`` directly (never via ``logger``) so
+        # operators notice the scrub regression without triggering a
+        # recursive log-through-logger failure. ``processors.py`` is
+        # not on the ``print()`` allowlist, so we use the raw stream
+        # write instead of ``print(file=sys.stderr)``.
+        sys.stderr.write(
+            f"WARNING: scrub_event_fields failed; event passed unscrubbed: "
+            f"{type(exc).__name__}\n",
+        )
+        sys.stderr.flush()
+        return event_dict

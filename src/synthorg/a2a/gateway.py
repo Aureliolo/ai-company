@@ -30,7 +30,7 @@ from synthorg.a2a.models import (
 from synthorg.a2a.security import validate_peer
 from synthorg.a2a.task_mapper import to_a2a
 from synthorg.api.rate_limits.guard import per_op_rate_limit
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.a2a import (
     A2A_INBOUND_AUTH_FAILED,
     A2A_INBOUND_DISPATCHED,
@@ -274,17 +274,22 @@ def _parse_jsonrpc(body: bytes) -> JsonRpcRequest | None:
         logger.warning(
             A2A_JSONRPC_PARSE_ERROR,
             reason="json_decode_error",
-            error=str(exc),
+            error=safe_error_description(exc),
         )
         return None
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
+        # No ``exc_info=True``: a traceback attached here would
+        # serialise frame-local variables (including the raw request
+        # body bytes) into the log event, exactly the leak channel
+        # SEC-1 is closing. ``error_type`` + scrubbed ``error``
+        # preserves triage detail without the stack walk.
         logger.warning(
             A2A_JSONRPC_PARSE_ERROR,
             reason="validation_error",
-            error=str(exc),
-            exc_info=True,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         return None
 
@@ -355,12 +360,19 @@ async def _dispatch_method(
         )
     except MemoryError, RecursionError:
         raise
-    except Exception:
-        logger.exception(
+    except Exception as exc:
+        # A2A is a credential-bearing path: a traceback attached via
+        # ``logger.exception`` would serialise frame-local values from
+        # the validated ``rpc_request`` (peer payloads, auth tokens).
+        # ``warning`` + ``safe_error_description`` keeps operator
+        # triage detail without the stack walk.
+        logger.warning(
             A2A_INBOUND_REJECTED,
             method=method,
             peer_name=peer_name,
             reason="unhandled exception",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         return Response(
             content=_error_response(
@@ -436,12 +448,18 @@ async def _verify_peer_credentials(  # noqa: PLR0911
         # mTLS/none: no header-level check needed
     except MemoryError, RecursionError:
         raise
-    except Exception:
-        logger.error(
+    except Exception as exc:
+        # Credential verification sits alongside ``request``,
+        # ``credentials``, and raw auth headers in the local frame --
+        # attaching ``exc_info=True`` would have structlog serialise
+        # those into the event and reintroduce the SEC-1 leak. Log
+        # the scrubbed type+message only.
+        logger.warning(
             A2A_INBOUND_AUTH_FAILED,
             peer_name=peer_name,
             reason="credential verification failed",
-            exc_info=True,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         return False
 
