@@ -122,6 +122,7 @@ nav:
   - Design:
       - design/index.md
       - Agents: design/agents.md
+      - HR & Agent Lifecycle: design/hr-lifecycle.md
       - Organization: design/organization.md
       - Communication: design/communication.md
       - Engine: design/engine.md
