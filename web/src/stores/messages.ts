@@ -39,8 +39,11 @@ function isMessageMetadataShape(value: unknown): boolean {
   const m = value as Record<string, unknown>
   if (m.task_id !== null && typeof m.task_id !== 'string') return false
   if (m.project_id !== null && typeof m.project_id !== 'string') return false
-  if (m.tokens_used !== null && typeof m.tokens_used !== 'number') return false
-  if (m.cost !== null && typeof m.cost !== 'number') return false
+  // ``Number.isFinite`` rejects ``NaN``/``Infinity``/``-Infinity``. A bare
+  // ``typeof === 'number'`` would let those through and poison the store
+  // (downstream cost-aggregation / token-sum math silently propagates them).
+  if (m.tokens_used !== null && !Number.isFinite(m.tokens_used)) return false
+  if (m.cost !== null && !Number.isFinite(m.cost)) return false
   if (!Array.isArray(m.extra)) return false
   return m.extra.every(
     (entry) =>
@@ -126,11 +129,13 @@ function parseWsMessage(
     return null
   }
 
-  // Sanitize nested structures: attachment.ref is a WS-origin string,
-  // and metadata.extra is an array of [string, string] tuples whose
-  // keys and values come straight off the wire.
+  // Sanitize nested structures: both attachment.type and attachment.ref
+  // come straight off the wire (enum-typed on the server side but
+  // still untrusted), and metadata.extra is an array of
+  // ``[string, string]`` tuples whose keys and values are attacker-
+  // reachable.
   const attachments = c.attachments.map((att) => ({
-    type: att.type,
+    type: (sanitizeWsString(att.type, 64) ?? '') as Message['attachments'][number]['type'],
     ref: sanitizeWsString(att.ref, 512) ?? '',
   }))
   const metadata = {
@@ -153,8 +158,11 @@ function parseWsMessage(
     ),
   }
 
+  // Build the returned ``Message`` explicitly -- a ``...c`` spread
+  // would carry any unsanitized string keys present on the wire
+  // payload (attacker-controlled enumerable props) straight into
+  // store state, defeating the purpose of this function.
   return {
-    ...c,
     id,
     timestamp,
     sender,

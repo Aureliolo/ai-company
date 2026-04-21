@@ -142,9 +142,21 @@ function sanitizeTask(c: Task): Task {
   }
 }
 
-/** Each ``dependencies`` entry must be a plain string agent id. */
-function isDependenciesShape(value: unknown): value is string[] {
+/** Each ``dependencies`` / ``reviewers`` / ``delegation_chain`` entry must be a plain string. */
+function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((dep) => typeof dep === 'string')
+}
+
+/** Each ``artifacts_expected`` entry must have string ``name`` + ``type``. */
+function isArtifactsExpectedShape(
+  value: unknown,
+): value is Array<{ name: string; type: string }> {
+  if (!Array.isArray(value)) return false
+  return value.every((entry) => {
+    if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) return false
+    const e = entry as { name?: unknown; type?: unknown }
+    return typeof e.name === 'string' && typeof e.type === 'string'
+  })
 }
 
 /**
@@ -177,7 +189,13 @@ function isTaskShape(c: Record<string, unknown>): c is Record<string, unknown> &
     TASK_PRIORITY_SET.has(c.priority) &&
     typeof c.type === 'string' &&
     TASK_TYPE_SET.has(c.type) &&
-    isDependenciesShape(c.dependencies) &&
+    typeof c.project === 'string' &&
+    typeof c.created_by === 'string' &&
+    (c.assigned_to === null || typeof c.assigned_to === 'string') &&
+    isStringArray(c.reviewers) &&
+    isStringArray(c.dependencies) &&
+    isStringArray(c.delegation_chain) &&
+    isArtifactsExpectedShape(c.artifacts_expected) &&
     isAcceptanceCriteriaShape(c.acceptance_criteria)
   )
 }

@@ -37,6 +37,76 @@ function isStringStringRecord(value: unknown): value is Record<string, string> {
   return true
 }
 
+/** Every recommended-action entry must have the fields the sanitizer reads. */
+function isRecommendedActionShape(value: unknown): boolean {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
+  const v = value as Record<string, unknown>
+  return (
+    typeof v.action_type === 'string' &&
+    typeof v.label === 'string' &&
+    typeof v.description === 'string' &&
+    typeof v.confirmation_required === 'boolean'
+  )
+}
+
+/** Every signature entry must have id + algo + base64 bytes + timestamp + position. */
+function isSignatureShape(value: unknown): boolean {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
+  const v = value as Record<string, unknown>
+  return (
+    typeof v.approver_id === 'string' &&
+    typeof v.algorithm === 'string' &&
+    typeof v.signature_bytes === 'string' &&
+    typeof v.signed_at === 'string' &&
+    typeof v.chain_position === 'number'
+  )
+}
+
+/**
+ * ``evidence_package`` is nullable (approvals without structured
+ * evidence) but when present must carry every field
+ * ``sanitizeEvidencePackage`` dereferences. Without this guard a
+ * malformed payload like ``{reasoning_trace: null}`` or
+ * ``{signatures: [null]}`` would pass ``isApprovalShape`` and blow
+ * up inside the sanitizer's ``map`` / ``Object.entries`` calls.
+ */
+function isEvidencePackageShape(value: unknown): boolean {
+  if (value === null) return true
+  if (typeof value !== 'object' || Array.isArray(value)) return false
+  const v = value as Record<string, unknown>
+  if (typeof v.id !== 'string') return false
+  if (typeof v.title !== 'string') return false
+  if (typeof v.narrative !== 'string') return false
+  if (
+    !Array.isArray(v.reasoning_trace) ||
+    !v.reasoning_trace.every((line) => typeof line === 'string')
+  ) {
+    return false
+  }
+  if (
+    !Array.isArray(v.recommended_actions) ||
+    !v.recommended_actions.every(isRecommendedActionShape)
+  ) {
+    return false
+  }
+  if (typeof v.source_agent_id !== 'string') return false
+  if (v.task_id !== null && typeof v.task_id !== 'string') return false
+  if (typeof v.risk_level !== 'string') return false
+  if (typeof v.metadata !== 'object' || v.metadata === null || Array.isArray(v.metadata)) {
+    return false
+  }
+  if (typeof v.signature_threshold !== 'number') return false
+  if (
+    !Array.isArray(v.signatures) ||
+    !v.signatures.every(isSignatureShape)
+  ) {
+    return false
+  }
+  if (typeof v.is_fully_signed !== 'boolean') return false
+  if (typeof v.created_at !== 'string') return false
+  return true
+}
+
 /**
  * Type predicate: a WS payload object satisfies the {@link ApprovalResponse}
  * shape so consumers can use it without a cast. Enum-typed fields
@@ -60,7 +130,8 @@ function isApprovalShape(
     typeof c.description === 'string' &&
     typeof c.requested_by === 'string' &&
     typeof c.created_at === 'string' &&
-    isStringStringRecord(c.metadata)
+    isStringStringRecord(c.metadata) &&
+    isEvidencePackageShape(c.evidence_package)
   )
 }
 

@@ -34,14 +34,48 @@ function isTokenUsageMap(value: unknown): value is Record<string, number> {
   return true
 }
 
+/** Every agenda item must have the fields ``sanitizeAgenda`` reads. */
+function isAgendaItemShape(value: unknown): boolean {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
+  const v = value as Record<string, unknown>
+  return (
+    typeof v.title === 'string' &&
+    typeof v.description === 'string' &&
+    (v.presenter_id === null || typeof v.presenter_id === 'string')
+  )
+}
+
+/** Every contribution must have the fields ``sanitizeContribution`` reads. */
+function isContributionShape(value: unknown): boolean {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
+  const v = value as Record<string, unknown>
+  return (
+    typeof v.agent_id === 'string' &&
+    typeof v.content === 'string' &&
+    typeof v.timestamp === 'string'
+  )
+}
+
+/** Every action item must have ``description`` + nullable ``assignee_id``. */
+function isActionItemShape(value: unknown): boolean {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
+  const v = value as Record<string, unknown>
+  return (
+    typeof v.description === 'string' &&
+    (v.assignee_id === null || typeof v.assignee_id === 'string')
+  )
+}
+
 /**
  * Structural check for the nested ``MeetingMinutes`` payload the
  * server emits on ``completed`` meetings. Accepts ``null`` (meeting
  * still in-progress or failed) and otherwise verifies each field
- * the sanitizer dereferences -- without this, a malformed frame that
- * merely passed the outer "object, not array" test could throw inside
- * ``sanitizeMeetingMinutes`` when e.g. ``minutes.agenda.items.map`` is
- * called on a missing agenda.
+ * the sanitizer dereferences. Element-level guards on the array
+ * fields are critical: a malformed frame like ``contributions: [null]``
+ * or ``action_items: [{}]`` would previously pass the outer
+ * ``Array.isArray`` check and then throw inside
+ * ``sanitizeMeetingMinutes`` when it tried to read ``.agent_id`` /
+ * ``.description`` on the missing element.
  */
 function isMeetingMinutesShape(value: unknown): boolean {
   if (value === null) return true
@@ -50,18 +84,40 @@ function isMeetingMinutesShape(value: unknown): boolean {
   if (typeof m.meeting_id !== 'string') return false
   if (typeof m.protocol_type !== 'string') return false
   if (typeof m.leader_id !== 'string') return false
-  if (!Array.isArray(m.participant_ids)) return false
+  if (
+    !Array.isArray(m.participant_ids) ||
+    !m.participant_ids.every((id) => typeof id === 'string')
+  ) {
+    return false
+  }
   if (typeof m.agenda !== 'object' || m.agenda === null || Array.isArray(m.agenda)) {
     return false
   }
   const agenda = m.agenda as Record<string, unknown>
   if (typeof agenda.title !== 'string') return false
   if (typeof agenda.context !== 'string') return false
-  if (!Array.isArray(agenda.items)) return false
-  if (!Array.isArray(m.contributions)) return false
+  if (!Array.isArray(agenda.items) || !agenda.items.every(isAgendaItemShape)) {
+    return false
+  }
+  if (
+    !Array.isArray(m.contributions) ||
+    !m.contributions.every(isContributionShape)
+  ) {
+    return false
+  }
   if (typeof m.summary !== 'string') return false
-  if (!Array.isArray(m.decisions)) return false
-  if (!Array.isArray(m.action_items)) return false
+  if (
+    !Array.isArray(m.decisions) ||
+    !m.decisions.every((d) => typeof d === 'string')
+  ) {
+    return false
+  }
+  if (
+    !Array.isArray(m.action_items) ||
+    !m.action_items.every(isActionItemShape)
+  ) {
+    return false
+  }
   if (typeof m.started_at !== 'string') return false
   if (typeof m.ended_at !== 'string') return false
   return true
