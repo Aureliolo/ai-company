@@ -208,16 +208,6 @@
       ],
       "datasourceTemplate": "docker",
       "versioningTemplate": "docker"
-    },
-    {
-      "customType": "regex",
-      "description": "Atlas CLI version pinned via release.ariga.io URL in the backend Dockerfile. Renovate bumps ATLAS_VERSION via the github-releases datasource when ariga/atlas tags a new release; the ATLAS_SHA256_* values are refreshed manually by running `curl -sL <url> | sha256sum` against the new versioned URLs and committing alongside the version bump.",
-      "managerFilePatterns": ["/docker/backend/Dockerfile$/"],
-      "matchStrings": [
-        "# renovate: datasource=github-releases depName=(?<depName>[^\\s]+)\\n\\s*ARG ATLAS_VERSION=(?<currentValue>v[^\\s]+)"
-      ],
-      "datasourceTemplate": "github-releases",
-      "versioningTemplate": "semver"
     }
   ]
 }

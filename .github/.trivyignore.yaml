@@ -60,8 +60,9 @@ vulnerabilities:
 
   # NOTE: Earlier revisions of this PR waived several Go stdlib CVEs
   # carried by the Atlas CLI binary. That workaround is no longer
-  # needed: docker/backend/Dockerfile now downloads the
-  # atlas-community-linux-*-latest CDN artifact (pinned by per-arch
-  # SHA256), which Atlas rebuilds whenever the Go toolchain ships
-  # stdlib security patches. The currently-pinned rebuild uses
-  # Go 1.25.9 which has all known stdlib CVEs backported.
+  # needed: docker/backend/Dockerfile copies the atlas binary from
+  # the upstream arigaio/atlas:latest-community-distroless image
+  # (pinned by multi-arch manifest digest via Renovate's built-in
+  # docker manager). Upstream rebuilds the image whenever the Go
+  # toolchain ships stdlib security patches, so Go stdlib CVEs
+  # carried by the binary follow that rebuild cadence.
