@@ -12,7 +12,10 @@ from datetime import UTC, datetime
 import pytest
 
 from synthorg.core.types import NotBlankStr
-from synthorg.memory.embedding.fine_tune_models import CheckpointRecord
+from synthorg.memory.embedding.fine_tune_models import (
+    CheckpointRecord,
+    FineTuneRun,
+)
 from synthorg.memory.service import (
     CheckpointNotFoundError,
     CheckpointRollbackCorruptError,
@@ -114,7 +117,11 @@ class _FakeRunRepo:
         *,
         limit: int = 50,
         offset: int = 0,
-    ) -> tuple[tuple[()], int]:
+    ) -> tuple[tuple[FineTuneRun, ...], int]:
+        # Match the ``FineTuneRunRepository`` protocol signature so
+        # mypy strict mode accepts this fake as a Protocol instance;
+        # the tests that touch ``list_runs`` never stage rows, so
+        # returning an empty tuple is enough.
         return (), 0
 
     async def update_run(self, run: object) -> None:  # pragma: no cover - unused
