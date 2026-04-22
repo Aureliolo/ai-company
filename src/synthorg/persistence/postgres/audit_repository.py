@@ -9,7 +9,7 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 from pydantic import ValidationError
 
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_AUDIT_ENTRY_DESERIALIZE_FAILED,
     PERSISTENCE_AUDIT_ENTRY_QUERIED,
@@ -435,3 +435,36 @@ INSERT INTO audit_entries (
             limit=limit,
             offset=offset,
         )
+
+    async def purge_before(self, cutoff: AwareDatetime) -> int:
+        """Delete audit entries strictly older than *cutoff* (CFG-1).
+
+        Args:
+            cutoff: UTC-normalised timestamp. Rows with
+                ``timestamp < cutoff`` are removed.
+
+        Returns:
+            Number of rows deleted.
+
+        Raises:
+            QueryError: If the DELETE fails.
+        """
+        utc_cutoff = cutoff.astimezone(UTC)
+        try:
+            async with self._pool.connection() as conn, conn.cursor() as cur:
+                await cur.execute(
+                    "DELETE FROM audit_entries WHERE timestamp < %s",
+                    (utc_cutoff,),
+                )
+                deleted = cur.rowcount
+                await conn.commit()
+        except psycopg.Error as exc:
+            msg = "Failed to purge audit entries"
+            logger.warning(
+                PERSISTENCE_AUDIT_ENTRY_QUERY_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                cutoff=utc_cutoff.isoformat(),
+            )
+            raise QueryError(msg) from exc
+        return deleted

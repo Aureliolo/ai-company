@@ -336,6 +336,23 @@ class SecurityConfig(BaseModel):
         default_factory=SecurityPolicyConfig,
         description="Runtime policy engine configuration",
     )
+    audit_retention_days: int = Field(
+        default=730,
+        ge=0,
+        le=36_500,
+        description=(
+            "Days to retain audit_entries before automatic purge."
+            " 0 disables purging (unbounded). Default 730 (2 years)."
+        ),
+    )
+    retention_cleanup_paused: bool = Field(
+        default=False,
+        description=(
+            "Pause flag for the audit retention purge loop. When"
+            " True the loop stays resident but every tick"
+            " short-circuits."
+        ),
+    )
 
     @model_validator(mode="after")
     def _check_disjoint_action_types(self) -> SecurityConfig:

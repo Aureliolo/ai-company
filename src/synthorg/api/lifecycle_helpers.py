@@ -106,6 +106,97 @@ async def _ticket_cleanup_loop(app_state: AppState) -> None:
             )
 
 
+async def _resolve_audit_retention(
+    app_state: AppState,
+) -> tuple[int, bool]:
+    """Resolve (retention_days, paused) for the audit retention loop.
+
+    Returns ``(0, False)`` when the settings resolver is unavailable
+    or either read fails -- 0 days disables purging, which is the
+    safe default.
+    """
+    if not app_state.has_config_resolver:
+        return 0, False
+    try:
+        days = await app_state.config_resolver.get_int(
+            SettingNamespace.SECURITY.value, "audit_retention_days"
+        )
+        paused_raw = await app_state.config_resolver.get_bool(
+            SettingNamespace.SECURITY.value, "retention_cleanup_paused"
+        )
+    except asyncio.CancelledError:
+        raise
+    except MemoryError, RecursionError:
+        raise
+    except Exception:
+        logger.warning(
+            API_APP_STARTUP,
+            error=(
+                "Failed to resolve audit retention settings;"
+                " purge loop will no-op this tick"
+            ),
+            exc_info=True,
+        )
+        return 0, False
+    return days, paused_raw
+
+
+async def _audit_retention_loop(app_state: AppState) -> None:
+    """Daily sweep that purges audit_entries older than retention window.
+
+    Reads ``security.audit_retention_days`` and
+    ``security.retention_cleanup_paused`` from the settings resolver
+    on every tick so operator changes take effect without restart.
+    A ``retention_days`` of 0 (the safe default when resolution
+    fails) disables purging entirely. The loop stays resident even
+    when paused so lifecycle plumbing is unchanged.
+
+    Tick cadence is fixed at 24h -- audit retention is not a hot
+    path and this keeps the loop cheap.
+    """
+    from datetime import UTC, datetime, timedelta  # noqa: PLC0415
+
+    tick_seconds = 86_400.0
+    while True:
+        await asyncio.sleep(tick_seconds)
+        days, paused = await _resolve_audit_retention(app_state)
+        if paused:
+            logger.info(
+                API_APP_STARTUP,
+                note="audit retention purge paused by operator",
+            )
+            continue
+        if days <= 0:
+            logger.debug(
+                API_APP_STARTUP,
+                note="audit retention purge disabled (days<=0)",
+            )
+            continue
+        if not app_state.has_persistence:
+            continue
+        cutoff = datetime.now(UTC) - timedelta(days=days)
+        try:
+            deleted = await app_state.persistence.audit_entries.purge_before(
+                cutoff,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.warning(
+                API_APP_STARTUP,
+                note="audit retention purge failed",
+                exc_info=True,
+            )
+            continue
+        logger.info(
+            API_APP_STARTUP,
+            note="audit retention purge completed",
+            deleted=deleted,
+            retention_days=days,
+            cutoff=cutoff.isoformat(),
+        )
+
+
 async def _maybe_promote_first_owner(app_state: AppState) -> None:
     """Promote the first user to owner if no owner exists.
 

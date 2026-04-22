@@ -20,6 +20,7 @@ from synthorg.observability.events.api import (
 )
 
 if TYPE_CHECKING:
+    from synthorg.persistence.auth_protocol import RefreshTokenRepository
     from synthorg.persistence.repositories import UserRepository
 
 logger = get_logger(__name__)
@@ -31,12 +32,25 @@ class UserService:
     Raises from the underlying repository (``ConstraintViolationError``,
     ``QueryError``) propagate unchanged so the controller can map them
     to the appropriate HTTP response.
+
+    Args:
+        repo: User repository implementation.
+        refresh_tokens: Optional refresh-token repository. When
+            provided, ``delete()`` revokes all active refresh tokens
+            for the user (CFG-1 audit: GDPR cascade). Sessions + API
+            keys already cascade via schema FK.
     """
 
-    __slots__ = ("_repo",)
+    __slots__ = ("_refresh_tokens", "_repo")
 
-    def __init__(self, *, repo: UserRepository) -> None:
+    def __init__(
+        self,
+        *,
+        repo: UserRepository,
+        refresh_tokens: RefreshTokenRepository | None = None,
+    ) -> None:
         self._repo = repo
+        self._refresh_tokens = refresh_tokens
 
     async def get(self, user_id: NotBlankStr) -> User | None:
         """Fetch a user by id, or ``None`` when no row matches."""
@@ -86,12 +100,38 @@ class UserService:
         *,
         deleted_by_user_id: NotBlankStr,
     ) -> bool:
-        """Delete a user; returns ``True`` when a row was removed."""
+        """Delete a user and cascade to dependent rows.
+
+        Schema FK cascade removes sessions + api_keys; this method
+        additionally revokes any in-memory refresh tokens for the
+        user (GDPR cascade, CFG-1 audit). Audit entries are
+        preserved by design -- ``audit_entries.agent_id`` carries
+        the agent identifier, not the user id, and the security
+        design keeps the audit trail intact even after user removal.
+
+        Returns ``True`` when a user row was removed.
+        """
+        revoked_refresh_tokens = 0
+        if self._refresh_tokens is not None:
+            try:
+                revoked_refresh_tokens = await self._refresh_tokens.revoke_by_user(
+                    user_id
+                )
+            except MemoryError, RecursionError:
+                raise
+            except Exception:
+                logger.warning(
+                    API_USER_DELETED,
+                    user_id=user_id,
+                    note="refresh-token cascade failed; continuing with user delete",
+                    exc_info=True,
+                )
         deleted = await self._repo.delete(user_id)
         if deleted:
             logger.info(
                 API_USER_DELETED,
                 user_id=user_id,
                 deleted_by_user_id=deleted_by_user_id,
+                cascade_refresh_tokens=revoked_refresh_tokens,
             )
         return deleted

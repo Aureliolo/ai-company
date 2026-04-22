@@ -38,8 +38,17 @@ logger = get_logger(__name__)
 
 
 def _service(state: State) -> UserService:
-    """Build the per-request :class:`UserService`."""
-    return UserService(repo=state.app_state.persistence.users)
+    """Build the per-request :class:`UserService`.
+
+    Threads the refresh-token repo so ``delete()`` cascades revocation
+    (CFG-1 audit / GDPR): sessions + api_keys cascade via schema FK,
+    refresh tokens cascade here.
+    """
+    persistence = state.app_state.persistence
+    return UserService(
+        repo=persistence.users,
+        refresh_tokens=persistence.refresh_tokens,
+    )
 
 
 # Derive from AuthConfig default to prevent silent divergence.

@@ -17,6 +17,7 @@ from synthorg.api.lifecycle import (
 )
 from synthorg.api.lifecycle_helpers import (
     _apply_bridge_config,
+    _audit_retention_loop,
     _build_settings_dispatcher,
     _maybe_bootstrap_agents,
     _maybe_promote_first_owner,
@@ -330,6 +331,13 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
             name="ws-ticket-cleanup",
         )
         _ticket_cleanup_task.add_done_callback(_on_cleanup_task_done)
+
+        # CFG-1: audit retention purge loop (once every 24h).
+        _audit_retention_task = asyncio.create_task(
+            _audit_retention_loop(app_state),
+            name="audit-retention",
+        )
+        _audit_retention_task.add_done_callback(_on_cleanup_task_done)
         # Idempotent: stop any prior health prober instance before
         # starting a new one so probers do not accumulate when the
         # shared app re-enters lifespan.

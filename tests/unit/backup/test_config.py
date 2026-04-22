@@ -90,8 +90,10 @@ class TestBackupConfigDefaults:
         assert cfg.on_shutdown is True
 
     def test_default_on_startup(self) -> None:
+        # CFG-1 audit flipped the default to False; scheduled backups
+        # cover the same guarantee without surprise writes at boot.
         cfg = BackupConfig()
-        assert cfg.on_startup is True
+        assert cfg.on_startup is False
 
     def test_default_compression(self) -> None:
         cfg = BackupConfig()

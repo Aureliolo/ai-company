@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 import aiosqlite
 from pydantic import ValidationError
 
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_AUDIT_ENTRY_DESERIALIZE_FAILED,
     PERSISTENCE_AUDIT_ENTRY_QUERIED,
@@ -265,6 +265,37 @@ INSERT INTO audit_entries (
         where = f" WHERE {' AND '.join(conditions)}" if conditions else ""
         return where, params
 
+    async def purge_before(self, cutoff: AwareDatetime) -> int:
+        """Delete audit entries strictly older than *cutoff* (CFG-1).
+
+        Args:
+            cutoff: UTC-normalised timestamp. Rows with
+                ``timestamp < cutoff`` are removed.
+
+        Returns:
+            Number of rows deleted.
+
+        Raises:
+            QueryError: If the DELETE fails.
+        """
+        utc_cutoff = cutoff.astimezone(UTC).isoformat()
+        try:
+            cursor = await self._db.execute(
+                "DELETE FROM audit_entries WHERE timestamp < ?",
+                (utc_cutoff,),
+            )
+            await self._db.commit()
+        except (sqlite3.Error, aiosqlite.Error) as exc:
+            msg = "Failed to purge audit entries"
+            logger.warning(
+                PERSISTENCE_AUDIT_ENTRY_QUERY_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                cutoff=utc_cutoff,
+            )
+            raise QueryError(msg) from exc
+        return cursor.rowcount
+
     def _row_to_entry(self, row: dict[str, object]) -> AuditEntry:
         """Convert a database row to an ``AuditEntry`` model.
 
@@ -283,9 +314,10 @@ INSERT INTO audit_entries (
             return AuditEntry.model_validate(parsed)
         except (ValidationError, json.JSONDecodeError, KeyError, TypeError) as exc:
             msg = f"Failed to deserialize audit entry {row.get('id')!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_AUDIT_ENTRY_DESERIALIZE_FAILED,
                 entry_id=row.get("id"),
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
