@@ -1,10 +1,10 @@
-"""Tests for approval gate models -- EscalationInfo and ResumePayload."""
+"""Tests for approval event models -- EscalationInfo and ResumePayload."""
 
 import pytest
 from pydantic import ValidationError
 
+from synthorg.approval.models import EscalationInfo, ResumePayload
 from synthorg.core.enums import ApprovalRiskLevel
-from synthorg.engine.approval_gate_models import EscalationInfo, ResumePayload
 
 pytestmark = pytest.mark.unit
 

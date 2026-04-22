@@ -12,6 +12,7 @@ import copy
 from contextlib import nullcontext
 from typing import TYPE_CHECKING
 
+from synthorg.approval.models import EscalationInfo
 from synthorg.core.enums import ApprovalRiskLevel
 from synthorg.observability import get_logger
 from synthorg.observability.events.security import (
@@ -45,7 +46,6 @@ from .scan_result_handler import handle_sensitive_scan
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-    from synthorg.engine.approval_gate_models import EscalationInfo
     from synthorg.security.protocol import SecurityInterceptionStrategy
     from synthorg.tools.html_parse_guard import HTMLParseGuard
 
@@ -182,10 +182,6 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
         if violation is None:
             return None
         if violation.requires_approval:
-            from synthorg.engine.approval_gate_models import (  # noqa: PLC0415
-                EscalationInfo,
-            )
-
             approval_id = f"sub-constraint-{tool_call.id}"
             self._pending_escalations.append(
                 EscalationInfo(
@@ -286,10 +282,6 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
                 approval_id=verdict.approval_id,
             )
             if verdict.approval_id is not None:
-                from synthorg.engine.approval_gate_models import (  # noqa: PLC0415
-                    EscalationInfo,
-                )
-
                 self._pending_escalations.append(
                     EscalationInfo(
                         approval_id=verdict.approval_id,
@@ -578,12 +570,8 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
                 is_error=True,
             )
         try:
-            from synthorg.engine.approval_gate_models import (  # noqa: PLC0415
-                EscalationInfo as _EscalationInfo,
-            )
-
             self._pending_escalations.append(
-                _EscalationInfo(
+                EscalationInfo(
                     approval_id=str(result.metadata["approval_id"]),
                     tool_call_id=tool_call.id,
                     tool_name=tool.name,

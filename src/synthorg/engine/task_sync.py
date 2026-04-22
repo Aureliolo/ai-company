@@ -27,7 +27,7 @@ from synthorg.observability.events.execution import (
 )
 
 if TYPE_CHECKING:
-    from synthorg.api.approval_store import ApprovalStore
+    from synthorg.approval.protocol import ApprovalStoreProtocol
     from synthorg.engine.context import AgentContext
     from synthorg.engine.loop_protocol import ExecutionResult
     from synthorg.engine.task_engine import TaskEngine
@@ -178,7 +178,7 @@ async def apply_post_execution_transitions(
     agent_id: str,
     task_id: str,
     task_engine: TaskEngine | None,
-    approval_store: ApprovalStore | None = None,
+    approval_store: ApprovalStoreProtocol | None = None,
 ) -> ExecutionResult:
     """Apply post-execution task transitions based on termination reason.
 
@@ -284,7 +284,7 @@ async def _transition_and_sync(  # noqa: PLR0913
 
 
 async def _create_review_approval(
-    approval_store: ApprovalStore | None,
+    approval_store: ApprovalStoreProtocol | None,
     *,
     agent_id: str,
     task_id: str,

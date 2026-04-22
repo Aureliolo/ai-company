@@ -39,11 +39,11 @@ from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, ToolResult
 
 if TYPE_CHECKING:
+    from synthorg.approval.models import EscalationInfo
     from synthorg.engine.approval_gate import ApprovalGate
-    from synthorg.engine.approval_gate_models import EscalationInfo
     from synthorg.engine.context import AgentContext
     from synthorg.providers.models import CompletionResponse
-    from synthorg.tools.invoker import ToolInvoker
+    from synthorg.tools.protocol import ToolInvokerProtocol
 
 logger = get_logger(__name__)
 
@@ -200,7 +200,7 @@ async def _park_for_approval(
 
 async def execute_tool_calls(  # noqa: PLR0913, C901
     ctx: AgentContext,
-    tool_invoker: ToolInvoker | None,
+    tool_invoker: ToolInvokerProtocol | None,
     response: CompletionResponse,
     turn_number: int,
     turns: list[TurnRecord],

@@ -26,11 +26,11 @@ from synthorg.observability.events.conflict import (
 )
 
 if TYPE_CHECKING:
+    from synthorg.communication.conflict_resolution.escalation.protocol import (
+        EscalationQueueStore,
+    )
     from synthorg.communication.conflict_resolution.escalation.registry import (
         PendingFuturesRegistry,
-    )
-    from synthorg.persistence.postgres.escalation_repo import (
-        PostgresEscalationRepository,
     )
 
 logger = get_logger(__name__)
@@ -96,7 +96,7 @@ class PostgresEscalationNotifySubscriber:
 
     def __init__(
         self,
-        repo: PostgresEscalationRepository,
+        repo: EscalationQueueStore,
         registry: PendingFuturesRegistry,
         *,
         channel: str,
@@ -105,8 +105,13 @@ class PostgresEscalationNotifySubscriber:
         """Initialise the subscriber.
 
         Args:
-            repo: Postgres escalation repository; used to fetch the
-                decision payload when a ``DECIDED`` signal arrives.
+            repo: Escalation queue store (protocol-typed).  Postgres
+                implementations deliver real NOTIFY payloads via
+                ``subscribe_notifications``; other backends either
+                return a backend-specific stream or raise
+                ``RuntimeError`` from ``subscribe_notifications`` when
+                subscriptions are unsupported (see the contract in
+                ``synthorg.communication.conflict_resolution.escalation.protocol``).
             registry: Process-local registry whose futures should wake.
             channel: LISTEN/NOTIFY channel name.
             reconnect_delay_seconds: Seconds to wait before reconnecting

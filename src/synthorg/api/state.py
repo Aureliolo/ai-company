@@ -7,7 +7,6 @@ Holds typed references to core services, injected into
 
 from typing import TYPE_CHECKING
 
-from synthorg.api.approval_store import ApprovalStore  # noqa: TC001
 from synthorg.api.auth.presence import UserPresence
 from synthorg.api.auth.service import AuthService  # noqa: TC001
 from synthorg.api.auth.ticket_store import WsTicketStore
@@ -18,6 +17,7 @@ from synthorg.api.rate_limits.inflight_config import (
 )
 from synthorg.api.services.org_mutations import OrgMutationService
 from synthorg.api.state_services import AppStateServicesMixin
+from synthorg.approval.protocol import ApprovalStoreProtocol  # noqa: TC001
 from synthorg.backup.service import BackupService  # noqa: TC001
 from synthorg.budget.coordination_store import (
     CoordinationMetricsStore,  # noqa: TC001
@@ -208,7 +208,7 @@ class AppState(AppStateServicesMixin):
         self,
         *,
         config: RootConfig,
-        approval_store: ApprovalStore,
+        approval_store: ApprovalStoreProtocol,
         persistence: PersistenceBackend | None = None,
         message_bus: MessageBus | None = None,
         cost_tracker: CostTracker | None = None,

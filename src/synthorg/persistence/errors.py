@@ -2,19 +2,40 @@
 
 All persistence-related errors inherit from ``PersistenceError`` so
 callers can catch the entire family with a single except clause.
+
+Each concrete exception carries an ``is_retryable`` class attribute
+mirroring the provider-layer convention in ``synthorg.providers.errors``.
+Callers that implement bounded retry/backoff (e.g. a repository
+middleware) can branch on this flag without string-matching the driver
+exception.  Default: ``False``.  Transient I/O failures override to
+``True``.
 """
 
 
 class PersistenceError(Exception):
     """Base exception for all persistence operations."""
 
+    is_retryable: bool = False
+
 
 class PersistenceConnectionError(PersistenceError):
-    """Raised when a backend connection cannot be established or is lost."""
+    """Raised when a backend connection cannot be established or is lost.
+
+    Network drops, pool exhaustion, and connect timeouts are transient
+    by default -- callers can retry with backoff.
+    """
+
+    is_retryable: bool = True
 
 
 class MigrationError(PersistenceError):
-    """Raised when a database migration fails."""
+    """Raised when a database migration fails.
+
+    Non-retryable: a failed migration indicates schema drift or a
+    logic bug, not a transient condition.
+    """
+
+    is_retryable: bool = False
 
 
 class RecordNotFoundError(PersistenceError):
@@ -25,13 +46,25 @@ class RecordNotFoundError(PersistenceError):
     return ``None`` on miss instead of raising.
     """
 
+    is_retryable: bool = False
+
 
 class DuplicateRecordError(PersistenceError):
     """Raised when inserting a record that already exists."""
 
+    is_retryable: bool = False
+
 
 class QueryError(PersistenceError):
-    """Raised when a query fails due to invalid parameters or backend issues."""
+    """Raised when a query fails due to invalid parameters or backend issues.
+
+    Transient by default: connection drops and deadlocks during a
+    query surface here and are safe to retry.  Deterministic failures
+    (bad SQL, invalid params) use :class:`ConstraintViolationError`
+    or :class:`VersionConflictError` which override to non-retryable.
+    """
+
+    is_retryable: bool = True
 
 
 class ConstraintViolationError(QueryError):
@@ -42,7 +75,12 @@ class ConstraintViolationError(QueryError):
     token parsed from the error message (for SQLite).  Callers can
     check this attribute to map the violation to a domain error
     without parsing error strings.
+
+    Non-retryable: constraint violations are deterministic for a
+    given input and will not succeed on a bare retry.
     """
+
+    is_retryable: bool = False
 
     def __init__(self, message: str, *, constraint: str) -> None:
         super().__init__(message)
@@ -50,12 +88,23 @@ class ConstraintViolationError(QueryError):
 
 
 class VersionConflictError(QueryError):
-    """Raised when an optimistic concurrency version check fails."""
+    """Raised when an optimistic concurrency version check fails.
+
+    Non-retryable at this layer: the caller must re-read, re-apply
+    its intended change, and resubmit with the fresh version.  A
+    blind retry would just lose the racing write.
+    """
+
+    is_retryable: bool = False
 
 
 class ArtifactTooLargeError(PersistenceError):
     """Raised when a single artifact exceeds the maximum allowed size."""
 
+    is_retryable: bool = False
+
 
 class ArtifactStorageFullError(PersistenceError):
     """Raised when total artifact storage exceeds capacity."""
+
+    is_retryable: bool = False

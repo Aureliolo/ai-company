@@ -31,7 +31,7 @@ from synthorg.observability.events.hr import HR_SCALING_FACTORY_ASSEMBLED
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
-    from synthorg.api.approval_store import ApprovalStore
+    from synthorg.approval.protocol import ApprovalStoreProtocol
     from synthorg.core.types import NotBlankStr
     from synthorg.hr.pruning.policy import PruningPolicy
     from synthorg.hr.scaling.config import ScalingConfig
@@ -111,7 +111,7 @@ def create_scaling_strategies(
 def create_scaling_guards(
     config: ScalingConfig,
     *,
-    approval_store: ApprovalStore | None = None,
+    approval_store: ApprovalStoreProtocol | None = None,
 ) -> ScalingGuard:
     """Create the guard chain from configuration.
 

@@ -23,7 +23,7 @@ from synthorg.observability.events.approval_gate import (
 from .base import BaseTool, ToolExecutionResult
 
 if TYPE_CHECKING:
-    from synthorg.api.approval_store import ApprovalStore
+    from synthorg.approval.protocol import ApprovalStoreProtocol
     from synthorg.security.timeout.risk_tier_classifier import (
         DefaultRiskTierClassifier,
     )
@@ -49,7 +49,7 @@ class RequestHumanApprovalTool(BaseTool):
     def __init__(
         self,
         *,
-        approval_store: ApprovalStore,
+        approval_store: ApprovalStoreProtocol,
         risk_classifier: DefaultRiskTierClassifier | None = None,
         agent_id: str,
         task_id: str | None = None,

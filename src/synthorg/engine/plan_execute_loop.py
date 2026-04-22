@@ -75,7 +75,7 @@ if TYPE_CHECKING:
     from synthorg.engine.stagnation.protocol import StagnationDetector
     from synthorg.providers.models import ToolDefinition
     from synthorg.providers.protocol import CompletionProvider
-    from synthorg.tools.invoker import ToolInvoker
+    from synthorg.tools.protocol import ToolInvokerProtocol
 
 logger = get_logger(__name__)
 
@@ -145,7 +145,7 @@ class PlanExecuteLoop(PlanExecuteStepMixin):
         *,
         context: AgentContext,
         provider: CompletionProvider,
-        tool_invoker: ToolInvoker | None = None,
+        tool_invoker: ToolInvokerProtocol | None = None,
         budget_checker: BudgetChecker | None = None,
         shutdown_checker: ShutdownChecker | None = None,
         completion_config: CompletionConfig | None = None,
@@ -254,7 +254,7 @@ class PlanExecuteLoop(PlanExecuteStepMixin):
         executor_model: str,
         config: CompletionConfig,
         tool_defs: list[ToolDefinition] | None,
-        tool_invoker: ToolInvoker | None,
+        tool_invoker: ToolInvokerProtocol | None,
         plan: ExecutionPlan,
         turns: list[TurnRecord],
         all_plans: list[ExecutionPlan],
@@ -647,7 +647,7 @@ class PlanExecuteLoop(PlanExecuteStepMixin):
         executor_model: str,
         config: CompletionConfig,
         tool_defs: list[ToolDefinition] | None,
-        tool_invoker: ToolInvoker | None,
+        tool_invoker: ToolInvokerProtocol | None,
         step: PlanStep,
         turns: list[TurnRecord],
         budget_checker: BudgetChecker | None,

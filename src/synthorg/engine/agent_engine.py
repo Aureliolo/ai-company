@@ -53,7 +53,7 @@ from synthorg.security.audit import AuditLog
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-    from synthorg.api.approval_store import ApprovalStore
+    from synthorg.approval.protocol import ApprovalStoreProtocol
     from synthorg.budget.coordination_collector import CoordinationMetricsCollector
     from synthorg.budget.coordination_config import ErrorTaxonomyConfig
     from synthorg.budget.enforcer import BudgetEnforcer
@@ -101,7 +101,7 @@ if TYPE_CHECKING:
     from synthorg.security.config import SecurityConfig
     from synthorg.settings.resolver import ConfigResolver
     from synthorg.tools.invocation_tracker import ToolInvocationTracker
-    from synthorg.tools.invoker import ToolInvoker
+    from synthorg.tools.protocol import ToolInvokerProtocol
     from synthorg.tools.registry import ToolRegistry
 
 logger = get_logger(__name__)
@@ -151,7 +151,7 @@ class AgentEngine(
         error_taxonomy_config: ErrorTaxonomyConfig | None = None,
         budget_enforcer: BudgetEnforcer | None = None,
         security_config: SecurityConfig | None = None,
-        approval_store: ApprovalStore | None = None,
+        approval_store: ApprovalStoreProtocol | None = None,
         parked_context_repo: ParkedContextRepository | None = None,
         task_engine: TaskEngine | None = None,
         checkpoint_repo: CheckpointRepository | None = None,
@@ -504,7 +504,7 @@ class AgentEngine(
         system_prompt: SystemPrompt,
         start: float,
         timeout_seconds: float | None = None,
-        tool_invoker: ToolInvoker | None = None,
+        tool_invoker: ToolInvokerProtocol | None = None,
         effective_autonomy: EffectiveAutonomy | None = None,
         provider: CompletionProvider | None = None,
         project_budget: float = 0.0,

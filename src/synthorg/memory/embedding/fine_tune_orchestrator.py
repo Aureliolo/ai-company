@@ -44,9 +44,9 @@ if TYPE_CHECKING:
     from synthorg.memory.embedding.fine_tune_models import (
         FineTuneRequest,
     )
-    from synthorg.persistence.sqlite.fine_tune_repo import (
-        SQLiteFineTuneCheckpointRepository,
-        SQLiteFineTuneRunRepository,
+    from synthorg.persistence.fine_tune_protocol import (
+        FineTuneCheckpointRepository,
+        FineTuneRunRepository,
     )
 
 logger = get_logger(__name__)
@@ -70,8 +70,8 @@ class FineTuneOrchestrator:
     cancel, and startup recovery.
 
     Args:
-        run_repo: SQLite repository for run state.
-        checkpoint_repo: SQLite repository for checkpoints.
+        run_repo: Repository for run state (protocol-typed; backend-agnostic).
+        checkpoint_repo: Repository for checkpoints (protocol-typed).
         settings_service: Runtime settings (for deploy stage).
         channels_plugin: WS plugin exposing ``publish(data, channels=...)``.
         llm_provider: Optional LLM provider for data generation.
@@ -80,8 +80,8 @@ class FineTuneOrchestrator:
     def __init__(
         self,
         *,
-        run_repo: SQLiteFineTuneRunRepository,
-        checkpoint_repo: SQLiteFineTuneCheckpointRepository,
+        run_repo: FineTuneRunRepository,
+        checkpoint_repo: FineTuneCheckpointRepository,
         settings_service: object | None = None,
         channels_plugin: ChannelsPlugin | None = None,
         llm_provider: object | None = None,

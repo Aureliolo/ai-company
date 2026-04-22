@@ -4,31 +4,12 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from synthorg.core.enums import ApprovalRiskLevel
 from synthorg.engine.approval_gate import ApprovalGate
-from synthorg.engine.approval_gate_models import EscalationInfo
 from synthorg.persistence.repositories import ParkedContextRepository
 from synthorg.security.timeout.park_service import ParkService
+from tests.unit.engine.approval_helpers import make_escalation as _make_escalation
 
 pytestmark = pytest.mark.unit
-
-
-def _make_escalation(  # noqa: PLR0913
-    approval_id: str = "approval-1",
-    tool_call_id: str = "tc-1",
-    tool_name: str = "deploy_to_prod",
-    action_type: str = "deploy:production",
-    risk_level: ApprovalRiskLevel = ApprovalRiskLevel.HIGH,
-    reason: str = "Needs approval",
-) -> EscalationInfo:
-    return EscalationInfo(
-        approval_id=approval_id,
-        tool_call_id=tool_call_id,
-        tool_name=tool_name,
-        action_type=action_type,
-        risk_level=risk_level,
-        reason=reason,
-    )
 
 
 @pytest.fixture

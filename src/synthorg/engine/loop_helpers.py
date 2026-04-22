@@ -53,7 +53,7 @@ if TYPE_CHECKING:
     from synthorg.engine.context import AgentContext
     from synthorg.engine.stagnation.protocol import StagnationDetector
     from synthorg.providers.protocol import CompletionProvider
-    from synthorg.tools.invoker import ToolInvoker
+    from synthorg.tools.protocol import ToolInvokerProtocol
 
 logger = get_logger(__name__)
 
@@ -287,7 +287,7 @@ def check_response_errors(
 
 
 def get_tool_definitions(
-    tool_invoker: ToolInvoker | None,
+    tool_invoker: ToolInvokerProtocol | None,
     loaded_tools: frozenset[str] = frozenset(),
 ) -> list[ToolDefinition] | None:
     """Extract disclosure-aware tool definitions from the invoker.

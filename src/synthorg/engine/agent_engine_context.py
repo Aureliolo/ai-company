@@ -29,7 +29,7 @@ if TYPE_CHECKING:
     from synthorg.core.task import Task
     from synthorg.engine.prompt import SystemPrompt
     from synthorg.security.autonomy.models import EffectiveAutonomy
-    from synthorg.tools.invoker import ToolInvoker
+    from synthorg.tools.protocol import ToolInvokerProtocol
 
 logger = get_logger(__name__)
 
@@ -68,7 +68,7 @@ class AgentEngineContextMixin:
         task_id: str,
         max_turns: int,
         memory_messages: tuple[ChatMessage, ...],
-        tool_invoker: ToolInvoker | None = None,
+        tool_invoker: ToolInvokerProtocol | None = None,
         effective_autonomy: EffectiveAutonomy | None = None,
     ) -> tuple[AgentContext, SystemPrompt]:
         """Build system prompt and prepare execution context."""

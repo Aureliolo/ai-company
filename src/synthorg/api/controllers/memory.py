@@ -75,8 +75,8 @@ def _build_memory_service(app_state: AppState) -> MemoryService:
     except NotImplementedError as exc:
         raise ClientException(
             detail=(
-                "Fine-tune admin endpoints require an SQLite persistence "
-                "backend; the current backend does not implement them."
+                "Fine-tune admin endpoints are not supported by the "
+                "active persistence backend."
             ),
             status_code=HTTP_501_NOT_IMPLEMENTED,
         ) from exc

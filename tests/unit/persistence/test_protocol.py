@@ -700,6 +700,9 @@ class _FakeBackend:
     def build_escalations(self, *, notify_channel: str | None = None) -> Any:
         return None
 
+    def build_ontology_versioning(self) -> Any:
+        return None
+
     async def get_setting(self, key: str) -> str | None:
         return None
 

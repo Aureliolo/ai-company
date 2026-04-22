@@ -760,6 +760,12 @@ class FakePersistenceBackend:
 
         return AsyncMock()
 
+    def build_ontology_versioning(self) -> Any:
+        """Fake ontology versioning factory -- returns a mock service."""
+        from unittest.mock import AsyncMock
+
+        return AsyncMock()
+
     async def get_setting(self, key: str) -> str | None:
         return self._settings.get(key)
 

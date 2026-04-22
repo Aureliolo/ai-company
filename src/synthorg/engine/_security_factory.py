@@ -33,7 +33,7 @@ from synthorg.security.timeout.risk_tier_classifier import DefaultRiskTierClassi
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-    from synthorg.api.approval_store import ApprovalStore
+    from synthorg.approval.protocol import ApprovalStoreProtocol
     from synthorg.config.schema import ProviderConfig
     from synthorg.core.agent import AgentIdentity
     from synthorg.providers.registry import ProviderRegistry
@@ -49,7 +49,7 @@ def make_security_interceptor(  # noqa: PLR0913
     security_config: SecurityConfig | None,
     audit_log: AuditLog,
     *,
-    approval_store: ApprovalStore | None = None,
+    approval_store: ApprovalStoreProtocol | None = None,
     effective_autonomy: EffectiveAutonomy | None = None,
     provider_registry: ProviderRegistry | None = None,
     provider_configs: Mapping[str, ProviderConfig] | None = None,
@@ -245,7 +245,7 @@ def _warn_disabled_features(cfg: SecurityConfig) -> None:
 
 def registry_with_approval_tool(
     tool_registry: ToolRegistry,
-    approval_store: ApprovalStore | None,
+    approval_store: ApprovalStoreProtocol | None,
     identity: AgentIdentity,
     task_id: str | None = None,
 ) -> ToolRegistry:

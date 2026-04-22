@@ -5,10 +5,10 @@ run results, system prompt construction, runtime execution state,
 execution loops, and engine errors.
 """
 
+from synthorg.approval.models import EscalationInfo, ResumePayload
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.agent_state import AgentRuntimeState
 from synthorg.engine.approval_gate import ApprovalGate
-from synthorg.engine.approval_gate_models import EscalationInfo, ResumePayload
 from synthorg.engine.assignment import (
     STRATEGY_MAP,
     STRATEGY_NAME_AUCTION,

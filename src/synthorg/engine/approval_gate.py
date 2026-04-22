@@ -16,6 +16,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
+from synthorg.approval.models import EscalationInfo  # noqa: TC001
 from synthorg.communication.event_stream.interrupt import (
     Interrupt,
     InterruptResolution,
@@ -42,8 +43,6 @@ from synthorg.observability.events.approval_gate import (
 from synthorg.persistence.repositories import ParkedContextRepository  # noqa: TC001
 from synthorg.security.timeout.park_service import ParkService  # noqa: TC001
 from synthorg.security.timeout.parked_context import ParkedContext  # noqa: TC001
-
-from .approval_gate_models import EscalationInfo  # noqa: TC001
 
 if TYPE_CHECKING:
     from synthorg.engine.context import AgentContext

@@ -56,6 +56,7 @@ from synthorg.observability.events.meta import (
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
+    from synthorg.approval.protocol import ApprovalStoreProtocol
     from synthorg.meta.chief_of_staff.protocol import ConfidenceAdjuster
     from synthorg.meta.config import SelfImprovementConfig
     from synthorg.meta.protocol import (
@@ -174,6 +175,8 @@ def build_strategies(
 
 def build_guards(
     config: SelfImprovementConfig,
+    *,
+    approval_store: ApprovalStoreProtocol | None = None,
 ) -> tuple[ProposalGuard, ...]:
     """Build the proposal guard chain.
 
@@ -182,6 +185,12 @@ def build_guards(
 
     Args:
         config: Self-improvement configuration.
+        approval_store: Approval store routed into
+            :class:`ApprovalGateGuard` so proposals are durably
+            registered before proceeding.  When ``None`` the
+            approval gate fails closed -- every proposal is
+            rejected because the mandatory-review invariant
+            cannot be enforced.
 
     Returns:
         Tuple of guards in evaluation order.
@@ -193,7 +202,7 @@ def build_guards(
             max_proposals=config.guards.proposal_rate_limit,
             window_hours=config.guards.rate_limit_window_hours,
         ),
-        ApprovalGateGuard(),
+        ApprovalGateGuard(approval_store=approval_store),
     )
 
 

@@ -38,7 +38,7 @@ if TYPE_CHECKING:
     from synthorg.providers.models import CompletionConfig
     from synthorg.providers.protocol import CompletionProvider
     from synthorg.security.autonomy.models import EffectiveAutonomy
-    from synthorg.tools.invoker import ToolInvoker
+    from synthorg.tools.protocol import ToolInvokerProtocol
 
 logger = get_logger(__name__)
 
@@ -376,7 +376,7 @@ class AgentEnginePostExecMixin:
         task_id: str,
         completion_config: CompletionConfig | None,
         budget_checker: BudgetChecker | None,
-        tool_invoker: ToolInvoker | None,
+        tool_invoker: ToolInvokerProtocol | None,
         start: float,
         timeout_seconds: float | None,
         provider: CompletionProvider | None = None,

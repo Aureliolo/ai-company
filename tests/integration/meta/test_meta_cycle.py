@@ -6,6 +6,7 @@ guards -> approval -> rollout -> regression detection.
 
 import pytest
 
+from synthorg.api.approval_store import ApprovalStore
 from synthorg.meta.config import SelfImprovementConfig
 from synthorg.meta.models import (
     OrgBudgetSummary,
@@ -74,6 +75,7 @@ class TestMetaCycleIntegration:
                 enabled=True,
                 config_tuning_enabled=True,
             ),
+            approval_store=ApprovalStore(),
         )
         proposals = await svc.run_cycle(_snap(quality=4.0))
 
@@ -97,6 +99,7 @@ class TestMetaCycleIntegration:
                 enabled=True,
                 config_tuning_enabled=True,
             ),
+            approval_store=ApprovalStore(),
         )
         proposals = await svc.run_cycle(_snap(days_left=7))
 
@@ -116,6 +119,7 @@ class TestMetaCycleIntegration:
             ),
             clock=FakeClock(),
             snapshot_builder=snapshot_builder,
+            approval_store=ApprovalStore(),
         )
         proposals = await svc.run_cycle(_snap(quality=4.0))
         assert len(proposals) >= 1
@@ -147,6 +151,7 @@ class TestMetaCycleIntegration:
                 config_tuning_enabled=True,
                 architecture_proposals_enabled=False,
             ),
+            approval_store=ApprovalStore(),
         )
         # Coordination cost ratio suggests both config and architecture.
         proposals = await svc.run_cycle(_snap(coord_ratio=0.5))
@@ -161,6 +166,7 @@ class TestMetaCycleIntegration:
                 enabled=True,
                 config_tuning_enabled=True,
             ),
+            approval_store=ApprovalStore(),
         )
         proposals = await svc.run_cycle(_snap())
         assert proposals == ()
@@ -174,6 +180,7 @@ class TestMetaCycleIntegration:
                 architecture_proposals_enabled=True,
                 prompt_tuning_enabled=True,
             ),
+            approval_store=ApprovalStore(),
         )
         proposals = await svc.run_cycle(_snap(quality=4.0))
         altitudes = {p.altitude for p in proposals}

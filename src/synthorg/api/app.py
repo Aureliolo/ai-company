@@ -58,6 +58,7 @@ from synthorg.api.rate_limits._subject import parse_trusted_networks
 from synthorg.api.rate_limits.inflight_protocol import InflightStore  # noqa: TC001
 from synthorg.api.rate_limits.protocol import SlidingWindowStore  # noqa: TC001
 from synthorg.api.state import AppState
+from synthorg.approval.protocol import ApprovalStoreProtocol  # noqa: TC001
 from synthorg.backup.factory import build_backup_service
 from synthorg.budget.coordination_store import (
     CoordinationMetricsStore,
@@ -132,7 +133,7 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
     persistence: PersistenceBackend | None = None,
     message_bus: MessageBus | None = None,
     cost_tracker: CostTracker | None = None,
-    approval_store: ApprovalStore | None = None,
+    approval_store: ApprovalStoreProtocol | None = None,
     auth_service: AuthService | None = None,
     task_engine: TaskEngine | None = None,
     coordinator: MultiAgentCoordinator | None = None,
@@ -337,8 +338,10 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
 
     channels_plugin = create_channels_plugin()
     expire_callback = _make_expire_callback(channels_plugin)
-    effective_approval_store = approval_store or ApprovalStore(
-        on_expire=expire_callback,
+    effective_approval_store: ApprovalStoreProtocol = (
+        approval_store
+        if approval_store is not None
+        else ApprovalStore(on_expire=expire_callback)
     )
 
     # Wire meeting event publisher to the meetings WS channel.

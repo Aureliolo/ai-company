@@ -788,13 +788,6 @@ async def auto_wire_ontology(
         ONTOLOGY_AUTO_WIRE_FAILED,
     )
     from synthorg.ontology.service import OntologyService  # noqa: PLC0415
-    from synthorg.ontology.versioning import (  # noqa: PLC0415
-        create_ontology_versioning,
-        create_postgres_ontology_versioning,
-    )
-    from synthorg.persistence.postgres.backend import (  # noqa: PLC0415
-        PostgresPersistenceBackend,
-    )
 
     ontology_config = effective_config.ontology
     if persistence is None or not getattr(persistence, "is_connected", False):
@@ -808,15 +801,13 @@ async def auto_wire_ontology(
     # Ontology runs on the shared persistence backend (#1457 A5): the
     # entity repository and versioning service both take the backend's
     # active DB handle, so schema migrations (Atlas) and connection
-    # lifecycle are owned by PersistenceBackend.  SQLite hands back an
-    # aiosqlite connection, Postgres hands back an AsyncConnectionPool --
-    # pick the matching versioning factory.
+    # lifecycle are owned by PersistenceBackend.  The backend's
+    # ``build_ontology_versioning`` factory selects the correct
+    # versioning service (SQLite aiosqlite vs Postgres pool) without
+    # leaking concrete-backend identity to this call site.
     backend = persistence.ontology_entities
     try:
-        if isinstance(persistence, PostgresPersistenceBackend):
-            versioning = create_postgres_ontology_versioning(persistence.get_db())
-        else:
-            versioning = create_ontology_versioning(persistence.get_db())
+        versioning = persistence.build_ontology_versioning()
         service = OntologyService(
             backend=backend,
             versioning=versioning,

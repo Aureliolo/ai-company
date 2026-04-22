@@ -55,7 +55,7 @@ if TYPE_CHECKING:
     from synthorg.engine.stagnation.protocol import StagnationDetector
     from synthorg.providers.models import ToolDefinition
     from synthorg.providers.protocol import CompletionProvider
-    from synthorg.tools.invoker import ToolInvoker
+    from synthorg.tools.protocol import ToolInvokerProtocol
 
 logger = get_logger(__name__)
 
@@ -121,7 +121,7 @@ class ReactLoop:
         *,
         context: AgentContext,
         provider: CompletionProvider,
-        tool_invoker: ToolInvoker | None = None,
+        tool_invoker: ToolInvokerProtocol | None = None,
         budget_checker: BudgetChecker | None = None,
         shutdown_checker: ShutdownChecker | None = None,
         completion_config: CompletionConfig | None = None,
@@ -230,7 +230,7 @@ class ReactLoop:
         self,
         context: AgentContext,
         completion_config: CompletionConfig | None,
-        tool_invoker: ToolInvoker | None,
+        tool_invoker: ToolInvokerProtocol | None,
     ) -> tuple[str, CompletionConfig, list[ToolDefinition] | None, list[TurnRecord]]:
         """Log loop start and resolve config, model ID, and tool defs."""
         logger.info(
@@ -257,7 +257,7 @@ class ReactLoop:
         response: CompletionResponse,
         turn_number: int,
         turns: list[TurnRecord],
-        tool_invoker: ToolInvoker | None,
+        tool_invoker: ToolInvokerProtocol | None,
         shutdown_checker: ShutdownChecker | None = None,
     ) -> AgentContext | ExecutionResult:
         """Check errors, update context, handle completion or tool calls."""
