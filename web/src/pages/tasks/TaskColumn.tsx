@@ -5,6 +5,7 @@ import { Inbox } from 'lucide-react'
 import { cn, type SemanticColor } from '@/lib/utils'
 import { EmptyState } from '@/components/ui/empty-state'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
+import { formatNumber } from '@/utils/format'
 import { TaskCard } from './TaskCard'
 import type { KanbanColumn } from '@/utils/tasks'
 import type { Task } from '@/api/types/tasks'
@@ -87,18 +88,18 @@ export function TaskColumn({ column, tasks, onSelectTask }: TaskColumnProps) {
           {column.label}
         </span>
         <span
-          className="rounded-full bg-surface px-1.5 py-0.5 text-[10px] font-mono text-text-muted"
+          className="rounded-full bg-surface px-1.5 py-0.5 text-[length:var(--so-text-micro)] font-mono text-text-muted"
           aria-label={`${tasks.length} task${tasks.length === 1 ? '' : 's'}`}
         >
-          {tasks.length}
+          {formatNumber(tasks.length)}
         </span>
         {estimatedHours > 0 && (
           <span
-            className="ml-auto text-[10px] font-mono text-text-muted"
-            aria-label={`Estimated workload: approximately ${estimatedHours} hours`}
+            className="ml-auto text-[length:var(--so-text-micro)] font-mono text-text-muted"
+            aria-label={`Estimated workload: approximately ${formatNumber(estimatedHours)} hours`}
             title="Rough workload based on task complexity (simple=1h, medium=3h, complex=8h, epic=24h)"
           >
-            ~{estimatedHours}h
+            ~{formatNumber(estimatedHours)}h
           </span>
         )}
       </div>

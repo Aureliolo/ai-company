@@ -35,7 +35,7 @@ export default function ArtifactDetailPage() {
   if (!artifact) {
     return (
       <div className="space-y-section-gap">
-        <Breadcrumbs items={[{ label: 'Artifacts', to: ROUTES.ARTIFACTS }, { label: 'Unknown artifact' }]} />
+        <Breadcrumbs items={[{ label: 'Artifacts', to: ROUTES.ARTIFACTS }, { label: artifactId || 'Unknown artifact' }]} />
         <ErrorBanner severity="error" title="Artifact not found" description={error ?? undefined} />
       </div>
     )

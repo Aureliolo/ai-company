@@ -105,13 +105,19 @@ describe('useListShortcuts', () => {
   it('shortcuts ignored when input is focused', () => {
     const input = document.createElement('input')
     document.body.appendChild(input)
-    input.focus()
-    const { result } = renderHook(() =>
-      useListShortcuts({ itemCount: 5 }),
-    )
-    pressKey('j')
-    expect(result.current.selectedIndex).toBeNull()
-    input.remove()
+    try {
+      input.focus()
+      const { result } = renderHook(() =>
+        useListShortcuts({ itemCount: 5 }),
+      )
+      pressKey('j')
+      expect(result.current.selectedIndex).toBeNull()
+    } finally {
+      // Blur + remove even if an assertion failed so focused DOM state never
+      // leaks into later tests.
+      input.blur()
+      input.remove()
+    }
   })
 
   it('modifier keys disable shortcuts', () => {

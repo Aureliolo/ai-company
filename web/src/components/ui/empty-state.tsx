@@ -1,5 +1,6 @@
 import type { LucideIcon } from 'lucide-react'
 import { ExternalLink } from 'lucide-react'
+import { Link, useInRouterContext } from 'react-router'
 import { cn } from '@/lib/utils'
 import { Button } from './button'
 
@@ -16,7 +17,12 @@ export interface EmptyStateAction {
 
 export interface EmptyStateLearnMore {
   label?: string
-  /** Internal React Router path (onClick handled by the caller if routing is needed) or external URL. */
+  /**
+   * Internal React Router path (starts with `/`) or external URL. Internal
+   * paths route via React Router's `<Link>` when the EmptyState is rendered
+   * inside a router context (preserving client-side state); external URLs
+   * always render as a plain `<a>` with `target=_blank` + `rel=noopener`.
+   */
   href: string
   /** Set true when href points outside the app; adds `target=_blank` + `rel=noopener`. Default auto-detects based on protocol. */
   external?: boolean
@@ -55,10 +61,8 @@ export function EmptyState({
   // Strip any href with an unsafe protocol (javascript:, data:, vbscript:,
   // file:, ...) before we render <a href=...>. Internal paths starting with
   // `/` or `#` and conventional protocols (http/https/mailto/tel) are
-  // allowed. Callers needing client-side routing for internal paths can pass
-  // an explicit `onClick` (or wrap EmptyState in a custom link-based shell).
-  // Normalise once so the protocol check, the internal/external classification,
-  // and the rendered `href` all see the same string.
+  // allowed. Normalise once so the protocol check, the internal/external
+  // classification, and the rendered `href` all see the same string.
   const normalizedHref = learnMore?.href.trim()
   const safeLearnMore =
     learnMore !== undefined && normalizedHref !== undefined && SAFE_HREF_PATTERN.test(normalizedHref)
@@ -70,6 +74,13 @@ export function EmptyState({
       (safeLearnMore.href.startsWith('http://') ||
         safeLearnMore.href.startsWith('https://') ||
         safeLearnMore.href.startsWith('//')))
+  // Only route internal paths through React Router when the EmptyState is
+  // actually inside a router context. Outside a router (e.g. isolated unit
+  // tests, certain Storybook setups) we fall back to a plain <a>; `<Link>`
+  // would throw otherwise.
+  const insideRouter = useInRouterContext()
+  const useReactRouterLink =
+    safeLearnMore !== undefined && !isExternal && insideRouter && safeLearnMore.href.startsWith('/')
 
   return (
     <div
@@ -93,15 +104,24 @@ export function EmptyState({
           <p className="max-w-sm text-xs text-muted-foreground">{description}</p>
         )}
         {safeLearnMore && (
-          <a
-            href={safeLearnMore.href}
-            target={isExternal ? '_blank' : undefined}
-            rel={isExternal ? 'noopener noreferrer' : undefined}
-            className="inline-flex items-center gap-1 text-xs text-accent hover:text-accent-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-sm"
-          >
-            {safeLearnMore.label ?? 'Learn more'}
-            {isExternal && <ExternalLink className="size-3" aria-hidden="true" />}
-          </a>
+          useReactRouterLink ? (
+            <Link
+              to={safeLearnMore.href}
+              className="inline-flex items-center gap-1 text-xs text-accent hover:text-accent-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-sm"
+            >
+              {safeLearnMore.label ?? 'Learn more'}
+            </Link>
+          ) : (
+            <a
+              href={safeLearnMore.href}
+              target={isExternal ? '_blank' : undefined}
+              rel={isExternal ? 'noopener noreferrer' : undefined}
+              className="inline-flex items-center gap-1 text-xs text-accent hover:text-accent-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-sm"
+            >
+              {safeLearnMore.label ?? 'Learn more'}
+              {isExternal && <ExternalLink className="size-3" aria-hidden="true" />}
+            </a>
+          )
         )}
       </div>
       {action && (

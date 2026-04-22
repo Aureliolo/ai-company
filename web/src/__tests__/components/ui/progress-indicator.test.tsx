@@ -13,14 +13,13 @@ describe('ProgressIndicator', () => {
   })
 
   it('determinate: clamps value to [0, 100]', () => {
-    render(<ProgressIndicator variant="determinate" value={-5} label="A" />)
+    const { rerender } = render(
+      <ProgressIndicator variant="determinate" value={-5} label="Clamp" />,
+    )
     expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '0')
 
-    const { rerender } = render(<ProgressIndicator variant="determinate" value={150} label="B" />)
-    rerender(<ProgressIndicator variant="determinate" value={150} label="B" />)
-    // Two progressbars rendered; just check the second one
-    const bars = screen.getAllByRole('progressbar')
-    expect(bars[bars.length - 1]).toHaveAttribute('aria-valuenow', '100')
+    rerender(<ProgressIndicator variant="determinate" value={150} label="Clamp" />)
+    expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '100')
   })
 
   it('indeterminate: has aria-busy=true', () => {

@@ -31,6 +31,12 @@ export function useShortcutRegistry() {
  * to display. This hook does NOT attach any keyboard handlers -- registration
  * is documentation/display-only. Handlers are wired separately (via
  * `useListShortcuts`, `useCommandPalette`, etc.).
+ *
+ * Unlike `useShortcutRegistry()`, this hook gracefully no-ops when used
+ * outside `<ShortcutRegistryProvider>` (the effect body short-circuits when
+ * `register` / `unregister` are undefined). That lets shortcut-registering
+ * components be reused in isolated contexts (unit tests, isolated Storybook
+ * stories) without forcing every caller to mount the provider.
  */
 export function useRegisterShortcuts(shortcuts: RegisteredShortcut[]) {
   const ctx = use(ShortcutRegistryContext)

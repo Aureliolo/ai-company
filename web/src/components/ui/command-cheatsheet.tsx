@@ -44,7 +44,7 @@ interface ShortcutSectionProps {
 function ShortcutSection({ group, items }: ShortcutSectionProps) {
   return (
     <section>
-      <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+      <h3 className="mb-2 text-[length:var(--so-text-compact)] font-semibold uppercase tracking-wider text-muted-foreground">
         {group}
       </h3>
       <ul className="space-y-1.5">
@@ -143,7 +143,7 @@ export function CommandCheatsheet({
             )}
           </div>
 
-          <p className="mt-3 border-t border-border pt-3 text-[11px] text-muted-foreground">
+          <p className="mt-3 border-t border-border pt-3 text-[length:var(--so-text-compact)] text-muted-foreground">
             Press <KeyboardShortcutHint keys={['?']} /> to toggle this panel.
           </p>
         </Dialog.Popup>

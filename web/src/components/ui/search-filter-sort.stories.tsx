@@ -116,7 +116,7 @@ function SlashShortcutDemo() {
   return (
     <div className="space-y-2">
       <p className="text-xs text-muted-foreground">
-        Press <kbd className="rounded border border-border bg-surface px-1 py-0.5 text-[10px]">/</kbd> anywhere on the page to focus the search.
+        Press <kbd className="rounded border border-border bg-surface px-1 py-0.5 text-[length:var(--so-text-micro)]">/</kbd> anywhere on the page to focus the search.
       </p>
       <SearchFilterSort
         search={<SearchInput value={search} onChange={setSearch} placeholder="Press / to focus" focusShortcut ariaLabel="Demo search" />}
@@ -128,4 +128,83 @@ function SlashShortcutDemo() {
 export const SlashShortcut: Story = {
   args: {},
   render: () => <SlashShortcutDemo />,
+}
+
+// --- Required UI-story state matrix ------------------------------------------
+// SearchFilterSort is a slot-based layout wrapper; its "states" are expressed
+// by the content of its slots rather than internal props. The stories below
+// exercise the hover / loading / error / empty states by wiring the slots to
+// representative content so visual-regression coverage exists for each.
+
+function HoverDemo() {
+  const [search, setSearch] = useState('')
+  return (
+    <SearchFilterSort
+      search={<SearchInput value={search} onChange={setSearch} placeholder="Hover me" ariaLabel="Search" />}
+      trailing={
+        <Button size="sm" className="hover:bg-accent/80">Hover me</Button>
+      }
+    />
+  )
+}
+
+export const Hover: Story = {
+  args: {},
+  render: () => <HoverDemo />,
+}
+
+function LoadingDemo() {
+  return (
+    <SearchFilterSort
+      search={
+        <SearchInput value="" onChange={() => {}} disabled placeholder="Loading results..." ariaLabel="Search (loading)" />
+      }
+      trailing={
+        <Button size="sm" disabled>
+          Loading...
+        </Button>
+      }
+    />
+  )
+}
+
+export const Loading: Story = {
+  args: {},
+  render: () => <LoadingDemo />,
+}
+
+function ErrorDemo() {
+  return (
+    <div className="space-y-2">
+      <SearchFilterSort
+        search={<SearchInput value="" onChange={() => {}} disabled placeholder="Search unavailable" ariaLabel="Search (error)" />}
+      />
+      <p className="text-xs text-danger" role="alert">
+        Could not load filters. Retry to continue searching.
+      </p>
+    </div>
+  )
+}
+
+export const Error: Story = {
+  args: {},
+  render: () => <ErrorDemo />,
+}
+
+function EmptyDemo() {
+  return (
+    <div className="space-y-section-gap">
+      <SearchFilterSort
+        search={<SearchInput value="" onChange={() => {}} placeholder="Search agents..." ariaLabel="Search agents" />}
+      />
+      <p className="py-12 text-center text-xs text-muted-foreground">
+        No agents match the current filter.
+      </p>
+    </div>
+  )
+}
+
+export const Empty: Story = {
+  args: {},
+  render: () => <EmptyDemo />,
 }

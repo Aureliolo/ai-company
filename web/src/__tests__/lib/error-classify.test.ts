@@ -20,6 +20,7 @@ describe('classifyError', () => {
     expect(c.isTransient).toBe(true)
     expect(c.isClient).toBe(false)
     expect(c.retryable).toBe(true)
+    expect(c.guidance).toMatch(/network connection/i)
   })
 
   it('5xx is transient + retryable', () => {

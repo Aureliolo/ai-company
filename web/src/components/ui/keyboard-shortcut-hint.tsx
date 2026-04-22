@@ -21,16 +21,12 @@ function kbdSizeClasses(size: HintSize): string {
 
 interface KbdKeyProps {
   label: string
-  positionalKey: string
   size: HintSize
 }
 
-function KbdKey({ label, positionalKey, size }: KbdKeyProps) {
+function KbdKey({ label, size }: KbdKeyProps) {
   return (
     <kbd
-      // Keys render in input order; duplicates like ['g', 'g'] are valid
-      // so the caller builds a positional identity.
-      key={positionalKey}
       className={cn(
         'inline-flex items-center justify-center rounded border border-border bg-surface font-mono font-medium text-foreground shadow-sm',
         kbdSizeClasses(size),
@@ -63,7 +59,6 @@ export function KeyboardShortcutHint({
           // eslint-disable-next-line @eslint-react/no-array-index-key
           key={`${key}-${idx}`}
           label={key}
-          positionalKey={`${key}-${idx}`}
           size={size}
         />
       ))}

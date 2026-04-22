@@ -129,7 +129,7 @@ function StageRow({ stage }: { stage: ProgressStage }) {
 
   return (
     <li className="flex items-start gap-2 text-sm" aria-label={`${stage.label}: ${stage.status}`}>
-      <Icon className={cn('mt-0.5 size-4 shrink-0', iconColor, iconExtra)} aria-hidden="true" strokeWidth={1.75} />
+      <Icon className={cn('mt-0.5 size-4 shrink-0', iconColor, iconExtra)} aria-hidden="true" strokeWidth="var(--so-stroke-thin)" />
       <div className="min-w-0 flex-1">
         <p className={cn('font-medium', labelColor)}>{stage.label}</p>
         {stage.description && (
