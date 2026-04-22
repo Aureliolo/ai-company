@@ -9,7 +9,7 @@ import asyncio
 from typing import TYPE_CHECKING
 
 from synthorg.notifications.factory import build_notification_dispatcher
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_APP_STARTUP,
     API_AUTH_LOCKOUT_CLEANUP,
@@ -106,17 +106,24 @@ async def _ticket_cleanup_loop(app_state: AppState) -> None:
             )
 
 
+_DEFAULT_AUDIT_RETENTION_DAYS = 730
+
+
 async def _resolve_audit_retention(
     app_state: AppState,
 ) -> tuple[int, bool]:
-    """Resolve (retention_days, paused) for the audit retention loop.
+    """Resolve ``(retention_days, paused)`` for the audit retention loop.
 
-    Returns ``(0, False)`` when the settings resolver is unavailable
-    or either read fails -- 0 days disables purging, which is the
-    safe default.
+    Falls back to the registered default (``730`` days, unpaused) when
+    the settings resolver is unavailable or either read fails.  The
+    fallback intentionally keeps retention enabled rather than
+    disabling purging on a broken settings backend -- leaving expired
+    audit rows around is a compliance risk, so prefer the built-in
+    default to a silent zero.  ``0`` is reserved for an operator
+    explicitly opting out via ``security.audit_retention_days=0``.
     """
     if not app_state.has_config_resolver:
-        return 0, False
+        return _DEFAULT_AUDIT_RETENTION_DAYS, False
     try:
         days = await app_state.config_resolver.get_int(
             SettingNamespace.SECURITY.value, "audit_retention_days"
@@ -128,16 +135,18 @@ async def _resolve_audit_retention(
         raise
     except MemoryError, RecursionError:
         raise
-    except Exception:
+    except Exception as exc:
         logger.warning(
             API_APP_STARTUP,
             error=(
                 "Failed to resolve audit retention settings;"
-                " purge loop will no-op this tick"
+                " falling back to default retention window"
             ),
-            exc_info=True,
+            error_type=type(exc).__name__,
+            error_desc=safe_error_description(exc),
+            fallback_days=_DEFAULT_AUDIT_RETENTION_DAYS,
         )
-        return 0, False
+        return _DEFAULT_AUDIT_RETENTION_DAYS, False
     return days, paused_raw
 
 
@@ -163,9 +172,12 @@ async def _audit_retention_tick(app_state: AppState) -> None:
         deleted = await app_state.persistence.audit_entries.purge_before(cutoff)
     except MemoryError, RecursionError:
         raise
-    except Exception:
+    except Exception as exc:
         logger.warning(
-            API_APP_STARTUP, note="audit retention purge failed", exc_info=True
+            API_APP_STARTUP,
+            note="audit retention purge failed",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         return
     logger.info(
@@ -183,10 +195,12 @@ async def _audit_retention_loop(app_state: AppState) -> None:
     Reads ``security.audit_retention_days`` and
     ``security.retention_cleanup_paused`` from the settings resolver
     on every tick so operator changes take effect without restart.
-    A ``retention_days`` of 0 (the safe default when resolution
-    fails) disables purging entirely. The loop stays resident even
-    when paused so lifecycle plumbing is unchanged. Tick cadence is
-    24h -- audit retention is not a hot path.
+    A ``retention_days`` of 0 disables purging entirely (opt-out via
+    ``security.audit_retention_days=0``); resolver outages fall back
+    to the registered default of 730 days rather than disabling
+    retention. The loop stays resident even when paused so lifecycle
+    plumbing is unchanged. Tick cadence is 24h -- audit retention is
+    not a hot path.
     """
     tick_seconds = 86_400.0
     while True:
@@ -352,6 +366,60 @@ def _build_settings_dispatcher(
     )
 
 
+async def _validate_approval_urgency_invariant(app_state: AppState) -> None:
+    """Reject startup when approval urgency thresholds violate the contract.
+
+    ``api.approval_urgency_critical_seconds`` must be strictly less than
+    ``api.approval_urgency_high_seconds`` -- a critical escalation has
+    to fire sooner than a high one. Both settings are ``restart_required``,
+    so the only place to enforce the cross-setting invariant is at app
+    startup. Registry defaults (3600 / 14400) satisfy the invariant;
+    this guard catches operator-tuned misconfigurations that the
+    per-setting ``min_value`` / ``max_value`` bounds can't express.
+
+    Resolver failures (settings backend down) are logged and the
+    invariant check is skipped -- other bridge-config paths handle the
+    outage independently and the built-in defaults stay safe.
+    """
+    try:
+        critical = await app_state.config_resolver.get_float(
+            SettingNamespace.API.value, "approval_urgency_critical_seconds"
+        )
+        high = await app_state.config_resolver.get_float(
+            SettingNamespace.API.value, "approval_urgency_high_seconds"
+        )
+    except asyncio.CancelledError:
+        raise
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        logger.warning(
+            API_APP_STARTUP,
+            error=(
+                "Failed to resolve approval-urgency settings for"
+                " invariant check; skipping"
+            ),
+            error_type=type(exc).__name__,
+            error_desc=safe_error_description(exc),
+        )
+        return
+    if critical >= high:
+        msg = (
+            "Invalid approval-urgency configuration:"
+            f" api.approval_urgency_critical_seconds={critical}"
+            f" must be strictly less than"
+            f" api.approval_urgency_high_seconds={high}."
+            " A critical escalation must fire sooner than a high one."
+        )
+        logger.error(
+            API_APP_STARTUP,
+            error=msg,
+            critical_seconds=critical,
+            high_seconds=high,
+        )
+        raise ValueError(msg)
+
+
 async def _apply_bridge_config(  # noqa: C901, PLR0912, PLR0915
     app_state: AppState,
     effective_config: RootConfig | None,
@@ -364,6 +432,8 @@ async def _apply_bridge_config(  # noqa: C901, PLR0912, PLR0915
     """
     if not app_state.has_config_resolver or app_state.bridge_config_applied:
         return
+
+    await _validate_approval_urgency_invariant(app_state)
 
     try:
         app_state.ticket_store.set_max_pending_per_user(

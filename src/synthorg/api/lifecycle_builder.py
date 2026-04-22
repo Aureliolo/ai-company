@@ -27,6 +27,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_APP_SHUTDOWN,
     API_APP_STARTUP,
+    API_AUDIT_RETENTION,
     API_SERVICE_AUTO_WIRE_FAILED,
     API_SERVICE_AUTO_WIRED,
     API_WS_TICKET_CLEANUP,
@@ -96,17 +97,35 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
     _health_prober: ProviderHealthProber | None = None
     _training_memory_backend: object | None = None
 
-    def _on_cleanup_task_done(task: asyncio.Task[None]) -> None:
-        """Log unexpected cleanup-task death."""
-        if task.cancelled():
-            return
-        exc = task.exception()
-        if exc is not None:
-            logger.error(
-                API_WS_TICKET_CLEANUP,
-                error="Ticket cleanup task died unexpectedly",
-                exc_info=exc,
-            )
+    def _make_cleanup_done_callback(
+        event: str,
+        message: str,
+    ) -> Callable[[asyncio.Task[None]], None]:
+        """Build a task-done callback that logs under a domain event.
+
+        The ticket-cleanup and audit-retention loops both want the same
+        "log if it died unexpectedly" semantics but need different
+        observability event names so a compliance-affecting retention
+        outage is not mis-routed to the WebSocket cleanup channel.
+        """
+
+        def _callback(task: asyncio.Task[None]) -> None:
+            if task.cancelled():
+                return
+            exc = task.exception()
+            if exc is not None:
+                logger.error(event, error=message, exc_info=exc)
+
+        return _callback
+
+    _on_ticket_cleanup_done = _make_cleanup_done_callback(
+        API_WS_TICKET_CLEANUP,
+        "Ticket cleanup task died unexpectedly",
+    )
+    _on_audit_retention_done = _make_cleanup_done_callback(
+        API_AUDIT_RETENTION,
+        "Audit retention task died unexpectedly",
+    )
 
     async def on_startup() -> None:  # noqa: C901, PLR0912, PLR0915
         nonlocal _ticket_cleanup_task, _audit_retention_task
@@ -314,7 +333,7 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
         # shared-app test fixture).  Cancel it before spawning a
         # fresh one so tasks do not accumulate.  Any non-cancellation
         # exception from the prior task has already been logged by
-        # ``_on_cleanup_task_done``; it is discarded here because we
+        # ``_on_ticket_cleanup_done``; it is discarded here because we
         # are replacing the task, not handling its outcome.
         if _ticket_cleanup_task is not None and not _ticket_cleanup_task.done():
             _ticket_cleanup_task.cancel()
@@ -332,7 +351,7 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
             _ticket_cleanup_loop(app_state),
             name="ws-ticket-cleanup",
         )
-        _ticket_cleanup_task.add_done_callback(_on_cleanup_task_done)
+        _ticket_cleanup_task.add_done_callback(_on_ticket_cleanup_done)
 
         # CFG-1: audit retention purge loop (once every 24h).
         # Idempotent: cancel any prior retention task before spawning a
@@ -351,7 +370,7 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
             _audit_retention_loop(app_state),
             name="audit-retention",
         )
-        _audit_retention_task.add_done_callback(_on_cleanup_task_done)
+        _audit_retention_task.add_done_callback(_on_audit_retention_done)
         # Idempotent: stop any prior health prober instance before
         # starting a new one so probers do not accumulate when the
         # shared app re-enters lifespan.

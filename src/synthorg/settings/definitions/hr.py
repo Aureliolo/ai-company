@@ -104,6 +104,7 @@ _r.register(
         restart_required=True,
         min_value=0.0,
         max_value=1.0,
+        yaml_path="hr.personality_big_five_weight",
     )
 )
 
@@ -122,6 +123,7 @@ _r.register(
         restart_required=True,
         min_value=0.0,
         max_value=1.0,
+        yaml_path="hr.personality_collaboration_weight",
     )
 )
 
@@ -140,5 +142,6 @@ _r.register(
         restart_required=True,
         min_value=0.0,
         max_value=1.0,
+        yaml_path="hr.personality_conflict_weight",
     )
 )

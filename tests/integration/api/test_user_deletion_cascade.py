@@ -20,7 +20,7 @@ from typing import ClassVar
 
 import pytest
 
-from synthorg.api.auth.models import OrgRole, User
+from synthorg.api.auth.models import ApiKey, OrgRole, User
 from synthorg.api.auth.session import Session
 from synthorg.api.auth.user_service import UserService
 from synthorg.api.guards import HumanRole
@@ -79,7 +79,7 @@ class TestUserDeletionCascade:
         self,
         on_disk_backend: SQLitePersistenceBackend,
     ) -> None:
-        """delete() revokes active refresh tokens and FK cascades the rest."""
+        """delete() revokes refresh tokens and FK cascades sessions + api_keys."""
         user = _make_user()
         await on_disk_backend.users.save(user)
 
@@ -98,6 +98,16 @@ class TestUserDeletionCascade:
             expires,
         )
 
+        api_key = ApiKey(
+            id="apikey-del-001",
+            key_hash="deadbeef" * 8,
+            name="integration test key",
+            role=HumanRole.MANAGER,
+            user_id=user.id,
+            created_at=datetime.now(UTC),
+        )
+        await on_disk_backend.api_keys.save(api_key)
+
         service = UserService(
             repo=on_disk_backend.users,
             refresh_tokens=on_disk_backend.refresh_tokens,
@@ -113,6 +123,8 @@ class TestUserDeletionCascade:
         assert await on_disk_backend.users.get(user.id) is None
         # Session cascaded via FK
         assert await on_disk_backend.sessions.get(session.session_id) is None
+        # API key cascaded via FK
+        assert await on_disk_backend.api_keys.get(api_key.id) is None
         # Refresh token rows cascaded via FK (revoke_by_user flipped used=1
         # first, then the FK cascade dropped the row)
         remaining = await on_disk_backend.refresh_tokens.revoke_by_user(user.id)

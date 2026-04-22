@@ -280,6 +280,7 @@ _r.register(
         restart_required=True,
         min_value=1,
         max_value=1000,
+        yaml_path="communication.escalation_default_result_limit",
     )
 )
 
@@ -296,5 +297,6 @@ _r.register(
         ),
         group="Escalation",
         level=SettingLevel.ADVANCED,
+        yaml_path="communication.escalation_sweeper_paused",
     )
 )

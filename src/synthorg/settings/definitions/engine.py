@@ -127,6 +127,7 @@ _r.register(
         restart_required=True,
         min_value=0.0,
         max_value=1.0,
+        yaml_path="engine.classifier_rule_matched_confidence",
     )
 )
 
@@ -145,6 +146,7 @@ _r.register(
         restart_required=True,
         min_value=0.0,
         max_value=1.0,
+        yaml_path="engine.classifier_fallback_confidence",
     )
 )
 
@@ -163,6 +165,7 @@ _r.register(
         restart_required=True,
         min_value=0.0,
         max_value=1.0,
+        yaml_path="engine.heuristic_pass_threshold",
     )
 )
 
@@ -181,6 +184,7 @@ _r.register(
         restart_required=True,
         min_value=0.0,
         max_value=1.0,
+        yaml_path="engine.weak_model_min_accuracy",
     )
 )
 
@@ -199,6 +203,7 @@ _r.register(
         restart_required=True,
         min_value=1.0,
         max_value=600.0,
+        yaml_path="engine.classification_detector_timeout_seconds",
     )
 )
 
@@ -217,6 +222,7 @@ _r.register(
         restart_required=True,
         min_value=0.0,
         max_value=1.0,
+        yaml_path="engine.replay_low_completeness_threshold",
     )
 )
 
@@ -236,6 +242,7 @@ _r.register(
         restart_required=True,
         min_value=0.0,
         max_value=1.0,
+        yaml_path="engine.prompt_token_ratio_warn_threshold",
     )
 )
 
@@ -252,6 +259,7 @@ _r.register(
         ),
         group="Safety",
         level=SettingLevel.ADVANCED,
+        yaml_path="engine.timeout_enforcement_enabled",
     )
 )
 
@@ -270,5 +278,6 @@ _r.register(
         restart_required=True,
         min_value=0.0,
         max_value=1.0,
+        yaml_path="engine.passive_drift_notify_threshold",
     )
 )

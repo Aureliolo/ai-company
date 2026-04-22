@@ -233,7 +233,7 @@ def _rate_efficiency(
         return EfficiencyRating.NORMAL
     if cost_per_1k > threshold_factor * global_avg:
         return EfficiencyRating.INEFFICIENT
-    if cost_per_1k < lower_bound_factor * global_avg:
+    if cost_per_1k <= lower_bound_factor * global_avg:
         return EfficiencyRating.EFFICIENT
     return EfficiencyRating.NORMAL
 

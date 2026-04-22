@@ -101,15 +101,17 @@ INSERT INTO audit_entries (
             logger.warning(
                 PERSISTENCE_AUDIT_ENTRY_SAVE_FAILED,
                 entry_id=entry.id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise DuplicateRecordError(msg) from exc
         except psycopg.Error as exc:
             msg = f"Failed to save audit entry {entry.id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_AUDIT_ENTRY_SAVE_FAILED,
                 entry_id=entry.id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         logger.info(
@@ -175,9 +177,10 @@ INSERT INTO audit_entries (
                 rows = await cur.fetchall()
         except psycopg.Error as exc:
             msg = "Failed to query audit entries"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_AUDIT_ENTRY_QUERY_FAILED,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
                 agent_id=agent_id,
                 action_type=action_type,
                 verdict=verdict,
@@ -288,10 +291,11 @@ INSERT INTO audit_entries (
             return AuditEntry.model_validate(parsed)
         except (ValidationError, KeyError, TypeError, json.JSONDecodeError) as exc:
             msg = f"Failed to deserialize audit entry {row.get('id')!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_AUDIT_ENTRY_DESERIALIZE_FAILED,
                 entry_id=row.get("id"),
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -377,9 +381,10 @@ INSERT INTO audit_entries (
                 rows = await cur.fetchall()
         except psycopg.Error as exc:
             msg = "JSONB query failed on audit_entries"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_AUDIT_ENTRY_QUERY_FAILED,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 

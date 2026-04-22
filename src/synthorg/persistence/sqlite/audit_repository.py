@@ -99,18 +99,20 @@ INSERT INTO audit_entries (
                 )
                 raise DuplicateRecordError(msg) from exc
             msg = f"Failed to save audit entry {entry.id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_AUDIT_ENTRY_SAVE_FAILED,
                 entry_id=entry.id,
-                error=error_text,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to save audit entry {entry.id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_AUDIT_ENTRY_SAVE_FAILED,
                 entry_id=entry.id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         logger.debug(
@@ -172,9 +174,10 @@ INSERT INTO audit_entries (
             rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to query audit entries"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_AUDIT_ENTRY_QUERY_FAILED,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
                 agent_id=agent_id,
                 action_type=action_type,
                 verdict=verdict,
