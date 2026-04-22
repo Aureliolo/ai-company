@@ -278,9 +278,15 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           PR_NUMBER: ${{ needs.build.outputs.pr_number }}
+          HEAD_SHA: ${{ needs.build.outputs.head_sha }}
         run: |
           npm ci --ignore-scripts --prefix .github
-          npx --prefix .github wrangler pages deploy _site --project-name=synthorg-pr-preview --branch="pr-${PR_NUMBER}"
+          npx --prefix .github wrangler pages deploy _site \
+            --project-name=synthorg-pr-preview \
+            --branch="pr-${PR_NUMBER}" \
+            --commit-hash="${HEAD_SHA}" \
+            --commit-message="PR #${PR_NUMBER} preview" \
+            --commit-dirty=true
 
       - name: Comment preview URL
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
