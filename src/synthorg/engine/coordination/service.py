@@ -81,8 +81,12 @@ class MultiAgentCoordinator:
             coordination contributions.
         coordination_chain: Optional ``CoordinationMiddlewareChain``
             that runs ``before_decompose`` / ``after_decompose`` /
-            ``before_dispatch`` / ``after_rollup`` hooks around the
-            pipeline; ``None`` disables middleware entirely.
+            ``before_dispatch`` / ``after_rollup`` /
+            ``before_update_parent`` hooks around the pipeline.
+            ``coordinate()`` invokes each hook via the corresponding
+            ``run_*`` method on the chain, so middleware implementers
+            must define all five hooks (though each may be a no-op).
+            ``None`` disables middleware entirely.
         default_topology_provider: Optional callable returning the
             topology to fall back on when ``routing_result.decisions``
             is empty. Passed as a callable (rather than a frozen
@@ -249,6 +253,20 @@ class MultiAgentCoordinator:
                 # original exception was raised before this phase
                 # marker existed in ``phases``).
                 elapsed = time.monotonic() - topology_start
+                # Always log at WARNING before re-raising. This covers
+                # both (a) mixed-topology errors ``_resolve_topology``
+                # logs internally AND (b) provider-originated failures
+                # raised by ``default_topology_provider()`` or any
+                # future topology-resolution subsystem that did not
+                # log before raising. One entry per failure path is
+                # the coding-guideline contract.
+                logger.warning(
+                    COORDINATION_PHASE_FAILED,
+                    phase=topology_phase,
+                    error_type=type(phase_exc).__name__,
+                    error=safe_error_description(phase_exc),
+                    empty_routing_decisions=not routing_result.decisions,
+                )
                 phases.append(
                     CoordinationPhaseResult(
                         phase=topology_phase,

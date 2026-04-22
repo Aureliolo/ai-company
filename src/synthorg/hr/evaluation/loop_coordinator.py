@@ -44,6 +44,7 @@ from synthorg.observability.events.eval_loop import (
     EVAL_LOOP_ACTION_PROPOSED,
     EVAL_LOOP_AGENT_EVAL_FAILED,
     EVAL_LOOP_BENCHMARK_FAILED,
+    EVAL_LOOP_CONFIG_DRIFT,
     EVAL_LOOP_CYCLE_COMPLETE,
     EVAL_LOOP_CYCLE_FAILED,
     EVAL_LOOP_CYCLE_START,
@@ -96,7 +97,7 @@ if set(_DEFAULT_PATTERN_ACTIONS.keys()) != _EXPECTED_PATTERN_KEYS:
     # error surface the ``ImportError`` lands on (CI failure, import
     # crash at module load, etc.).
     logger.error(
-        EVAL_LOOP_CYCLE_FAILED,
+        EVAL_LOOP_CONFIG_DRIFT,
         reason="default_pattern_actions_drift",
         missing=sorted(_missing),
         extra=sorted(_extra),
@@ -424,13 +425,26 @@ class EvalLoopCoordinator:
             # directly without a redundant cast.
             actions.append(mapped)
 
-        if actions:
+        # Deduplicate action ids while preserving first-seen order so
+        # two distinct weak pillars that happen to share an action
+        # identifier (e.g. an operator override collapsing two pillars
+        # onto ``"escalate_to_engineer"``) don't trigger the same
+        # remediation twice.
+        seen: set[NotBlankStr] = set()
+        unique_actions: list[NotBlankStr] = []
+        for action in actions:
+            if action in seen:
+                continue
+            seen.add(action)
+            unique_actions.append(action)
+
+        if unique_actions:
             logger.info(
                 EVAL_LOOP_ACTION_PROPOSED,
-                action_count=len(actions),
-                actions=actions,
+                action_count=len(unique_actions),
+                actions=unique_actions,
             )
-        return tuple(actions)
+        return tuple(unique_actions)
 
     async def _run_benchmarks(self) -> tuple[BenchmarkRunResult, ...]:
         """Run all registered benchmarks concurrently.
