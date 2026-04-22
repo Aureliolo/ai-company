@@ -282,6 +282,13 @@ class FakeAuditRepository:
             results = [e for e in results if e.timestamp <= until]
         return tuple(results[:limit])
 
+    async def purge_before(self, cutoff: datetime) -> int:
+        before = len(self._entries)
+        self._entries = {
+            k: e for k, e in self._entries.items() if e.timestamp >= cutoff
+        }
+        return before - len(self._entries)
+
 
 # FakeDecisionRepository lives in a sibling module to keep this file
 # under the 800-line limit.  Re-exported here so existing test imports

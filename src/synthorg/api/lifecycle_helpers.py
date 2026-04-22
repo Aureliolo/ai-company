@@ -141,6 +141,42 @@ async def _resolve_audit_retention(
     return days, paused_raw
 
 
+async def _audit_retention_tick(app_state: AppState) -> None:
+    """Single iteration of the audit retention sweep.
+
+    Extracted from ``_audit_retention_loop`` so the loop body stays
+    under the project function-length limit.
+    """
+    from datetime import UTC, datetime, timedelta  # noqa: PLC0415
+
+    days, paused = await _resolve_audit_retention(app_state)
+    if paused:
+        logger.info(API_APP_STARTUP, note="audit retention purge paused")
+        return
+    if days <= 0:
+        logger.debug(API_APP_STARTUP, note="audit retention purge disabled")
+        return
+    if not app_state.has_persistence:
+        return
+    cutoff = datetime.now(UTC) - timedelta(days=days)
+    try:
+        deleted = await app_state.persistence.audit_entries.purge_before(cutoff)
+    except MemoryError, RecursionError:
+        raise
+    except Exception:
+        logger.warning(
+            API_APP_STARTUP, note="audit retention purge failed", exc_info=True
+        )
+        return
+    logger.info(
+        API_APP_STARTUP,
+        note="audit retention purge completed",
+        deleted=deleted,
+        retention_days=days,
+        cutoff=cutoff.isoformat(),
+    )
+
+
 async def _audit_retention_loop(app_state: AppState) -> None:
     """Daily sweep that purges audit_entries older than retention window.
 
@@ -149,52 +185,13 @@ async def _audit_retention_loop(app_state: AppState) -> None:
     on every tick so operator changes take effect without restart.
     A ``retention_days`` of 0 (the safe default when resolution
     fails) disables purging entirely. The loop stays resident even
-    when paused so lifecycle plumbing is unchanged.
-
-    Tick cadence is fixed at 24h -- audit retention is not a hot
-    path and this keeps the loop cheap.
+    when paused so lifecycle plumbing is unchanged. Tick cadence is
+    24h -- audit retention is not a hot path.
     """
-    from datetime import UTC, datetime, timedelta  # noqa: PLC0415
-
     tick_seconds = 86_400.0
     while True:
         await asyncio.sleep(tick_seconds)
-        days, paused = await _resolve_audit_retention(app_state)
-        if paused:
-            logger.info(
-                API_APP_STARTUP,
-                note="audit retention purge paused by operator",
-            )
-            continue
-        if days <= 0:
-            logger.debug(
-                API_APP_STARTUP,
-                note="audit retention purge disabled (days<=0)",
-            )
-            continue
-        if not app_state.has_persistence:
-            continue
-        cutoff = datetime.now(UTC) - timedelta(days=days)
-        try:
-            deleted = await app_state.persistence.audit_entries.purge_before(
-                cutoff,
-            )
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
-            logger.warning(
-                API_APP_STARTUP,
-                note="audit retention purge failed",
-                exc_info=True,
-            )
-            continue
-        logger.info(
-            API_APP_STARTUP,
-            note="audit retention purge completed",
-            deleted=deleted,
-            retention_days=days,
-            cutoff=cutoff.isoformat(),
-        )
+        await _audit_retention_tick(app_state)
 
 
 async def _maybe_promote_first_owner(app_state: AppState) -> None:

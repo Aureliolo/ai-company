@@ -473,3 +473,74 @@ class TestSQLiteAuditRepository:
         """SQLiteAuditRepository is an AuditRepository."""
         repo = SQLiteAuditRepository(migrated_db)
         assert isinstance(repo, AuditRepository)
+
+    async def test_purge_before_deletes_older_entries(
+        self, migrated_db: aiosqlite.Connection
+    ) -> None:
+        """Rows strictly older than the cutoff are removed (CFG-1)."""
+        repo = SQLiteAuditRepository(migrated_db)
+        now = datetime.now(UTC)
+        cutoff = now - timedelta(hours=1)
+        e_old = _make_entry(
+            entry_id="ae-old",
+            timestamp=now - timedelta(hours=2),
+        )
+        e_new = _make_entry(entry_id="ae-new", timestamp=now)
+        await repo.save(e_old)
+        await repo.save(e_new)
+
+        deleted = await repo.purge_before(cutoff)
+
+        assert deleted == 1
+        remaining = await repo.query()
+        assert len(remaining) == 1
+        assert remaining[0].id == "ae-new"
+
+    async def test_purge_before_preserves_at_cutoff(
+        self, migrated_db: aiosqlite.Connection
+    ) -> None:
+        """Rows with timestamp == cutoff are preserved (strict <)."""
+        repo = SQLiteAuditRepository(migrated_db)
+        ts = datetime.now(UTC)
+        entry = _make_entry(entry_id="ae-at-cutoff", timestamp=ts)
+        await repo.save(entry)
+
+        deleted = await repo.purge_before(ts)
+
+        assert deleted == 0
+        remaining = await repo.query()
+        assert len(remaining) == 1
+
+    async def test_purge_before_no_matches(
+        self, migrated_db: aiosqlite.Connection
+    ) -> None:
+        """Cutoff in the past with only newer rows returns 0."""
+        repo = SQLiteAuditRepository(migrated_db)
+        now = datetime.now(UTC)
+        entry = _make_entry(entry_id="ae-recent", timestamp=now)
+        await repo.save(entry)
+
+        deleted = await repo.purge_before(now - timedelta(days=1))
+
+        assert deleted == 0
+
+    async def test_purge_before_normalizes_timezone(
+        self, migrated_db: aiosqlite.Connection
+    ) -> None:
+        """Non-UTC cutoff is converted to UTC before comparison."""
+        repo = SQLiteAuditRepository(migrated_db)
+        utc_now = datetime.now(UTC)
+        # Save one row an hour before "now" in UTC
+        entry = _make_entry(
+            entry_id="ae-1",
+            timestamp=utc_now - timedelta(hours=1),
+        )
+        await repo.save(entry)
+
+        # Pass cutoff in a non-UTC timezone (equivalent instant)
+        offset = timezone(timedelta(hours=-5))
+        cutoff_local = utc_now.astimezone(offset)
+
+        deleted = await repo.purge_before(cutoff_local)
+
+        assert deleted == 1
