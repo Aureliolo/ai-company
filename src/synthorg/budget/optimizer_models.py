@@ -355,6 +355,10 @@ class CostOptimizerConfig(BaseModel):
             (independent of stddev).
         inefficiency_threshold_factor: Factor above global average
             cost_per_1k to flag as inefficient.
+        efficiency_lower_bound_factor: Factor *below* global average
+            cost_per_1k under which an agent is rated EFFICIENT.
+            Default ``0.8`` means agents spending <=80% of the global
+            average cost-per-1k are rated efficient.
         approval_auto_deny_alert_level: Alert level at or above which
             operations are automatically denied.
         approval_warn_threshold: Absolute cost threshold (in the
@@ -384,6 +388,12 @@ class CostOptimizerConfig(BaseModel):
         default=1.5,
         gt=1.0,
         description="Factor above global avg for inefficiency",
+    )
+    efficiency_lower_bound_factor: float = Field(
+        default=0.8,
+        ge=0.0,
+        le=1.0,
+        description="Factor below global avg cost_per_1k rated EFFICIENT",
     )
     approval_auto_deny_alert_level: BudgetAlertLevel = Field(
         default=BudgetAlertLevel.HARD_STOP,

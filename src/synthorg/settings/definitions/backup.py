@@ -84,8 +84,13 @@ _r.register(
         namespace=SettingNamespace.BACKUP,
         key="on_startup",
         type=SettingType.BOOLEAN,
-        default="true",
-        description="Create a backup on startup",
+        default="false",
+        description=(
+            "Create a backup on startup. Disabled by default (CFG-1"
+            " audit) -- scheduled backups cover the same guarantee"
+            " without surprise writes at boot. Enable for"
+            " belt-and-braces coverage in single-instance deployments."
+        ),
         group="Triggers",
     )
 )

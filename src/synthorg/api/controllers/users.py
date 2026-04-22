@@ -38,8 +38,21 @@ logger = get_logger(__name__)
 
 
 def _service(state: State) -> UserService:
-    """Build the per-request :class:`UserService`."""
-    return UserService(repo=state.app_state.persistence.users)
+    """Build the per-request :class:`UserService`.
+
+    Threads the refresh-token repo so ``delete()`` can explicitly
+    revoke outstanding refresh tokens before the DB delete as
+    defense-in-depth (CFG-1 audit / GDPR). Sessions, api_keys, and
+    refresh_tokens are all also removed by the schema's
+    ``ON DELETE CASCADE`` on ``user_id`` when the user row goes
+    away -- the explicit revocation runs first so tokens stop
+    minting access tokens immediately.
+    """
+    persistence = state.app_state.persistence
+    return UserService(
+        repo=persistence.users,
+        refresh_tokens=persistence.refresh_tokens,
+    )
 
 
 # Derive from AuthConfig default to prevent silent divergence.

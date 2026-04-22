@@ -40,9 +40,6 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-# Agents spending below this fraction of global average are rated EFFICIENT
-_EFFICIENCY_LOWER_BOUND = 0.8
-
 
 def _build_efficiency_from_records(
     records: Sequence[CostRecord],
@@ -50,6 +47,7 @@ def _build_efficiency_from_records(
     start: datetime,
     end: datetime,
     threshold_factor: float,
+    lower_bound_factor: float,
 ) -> EfficiencyAnalysis:
     """Build an EfficiencyAnalysis from pre-fetched records."""
     by_agent: dict[str, list[CostRecord]] = defaultdict(list)
@@ -67,7 +65,12 @@ def _build_efficiency_from_records(
         )
         total_tokens = sum(r.input_tokens + r.output_tokens for r in agent_records)
         cost_per_1k = _compute_cost_per_1k(total_cost, total_tokens)
-        rating = _rate_efficiency(cost_per_1k, global_avg, threshold_factor)
+        rating = _rate_efficiency(
+            cost_per_1k,
+            global_avg,
+            threshold_factor,
+            lower_bound_factor,
+        )
 
         agent_efficiencies.append(
             AgentEfficiency(
@@ -223,13 +226,14 @@ def _rate_efficiency(
     cost_per_1k: float,
     global_avg: float,
     threshold_factor: float,
+    lower_bound_factor: float,
 ) -> EfficiencyRating:
     """Rate an agent's cost efficiency relative to global average."""
     if global_avg == 0.0:
         return EfficiencyRating.NORMAL
     if cost_per_1k > threshold_factor * global_avg:
         return EfficiencyRating.INEFFICIENT
-    if cost_per_1k < _EFFICIENCY_LOWER_BOUND * global_avg:
+    if cost_per_1k <= lower_bound_factor * global_avg:
         return EfficiencyRating.EFFICIENT
     return EfficiencyRating.NORMAL
 

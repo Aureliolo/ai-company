@@ -26,14 +26,21 @@ from synthorg.observability.processors import (
 from synthorg.observability.sinks import SINK_ROUTING, build_handler
 
 # Default per-logger levels applied when no config overrides are given.
+# CFG-1 audit: ``synthorg.engine`` and ``synthorg.memory`` previously
+# defaulted to DEBUG which produces noisy disk output and can surface
+# PII in shared environments. Operators who want DEBUG for those
+# namespaces opt in via the ``observability/per_logger_levels`` setting
+# (or the ``config.logger_levels`` YAML key); ``SYNTHORG_LOG_LEVEL``
+# only adjusts the CONSOLE sink level and does NOT override these
+# per-logger defaults.
 _DEFAULT_LOGGER_LEVELS: tuple[tuple[str, LogLevel], ...] = (
     ("synthorg.core", LogLevel.INFO),
-    ("synthorg.engine", LogLevel.DEBUG),
+    ("synthorg.engine", LogLevel.INFO),
     ("synthorg.communication", LogLevel.INFO),
     ("synthorg.providers", LogLevel.INFO),
     ("synthorg.budget", LogLevel.INFO),
     ("synthorg.security", LogLevel.INFO),
-    ("synthorg.memory", LogLevel.DEBUG),
+    ("synthorg.memory", LogLevel.INFO),
     ("synthorg.tools", LogLevel.INFO),
     ("synthorg.api", LogLevel.INFO),
     ("synthorg.cli", LogLevel.INFO),

@@ -48,9 +48,6 @@ from synthorg.observability.events.meeting import (
 
 logger = get_logger(__name__)
 
-# Reserve 20% of budget for the summary phase.
-_SUMMARY_RESERVE_FRACTION = 0.20
-
 
 def _build_turn_prompt(
     agenda_text: str,
@@ -137,7 +134,7 @@ class RoundRobinProtocol:
         agenda_text = build_agenda_prompt(agenda)
 
         summary_reserve = (
-            int(token_budget * _SUMMARY_RESERVE_FRACTION)
+            int(token_budget * self._config.summary_reserve_fraction)
             if self._config.leader_summarizes
             else 0
         )

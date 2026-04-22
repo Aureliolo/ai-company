@@ -58,9 +58,6 @@ from synthorg.observability.events.meeting import (
 
 logger = get_logger(__name__)
 
-# Reserve 20% of remaining budget for the synthesis phase.
-_SYNTHESIS_RESERVE_FRACTION = 0.20
-
 
 def _build_input_prompt(agenda_text: str, agent_id: str) -> str:
     """Build an input-gathering prompt for an agent."""
@@ -350,7 +347,7 @@ class StructuredPhasesProtocol:
         num_participants = len(participant_ids)
         # Reserve budget for conflict check, discussion, and synthesis
         # phases that follow input gathering (mirrors RoundRobinProtocol).
-        later_reserve = int(tracker.remaining * _SYNTHESIS_RESERVE_FRACTION)
+        later_reserve = int(tracker.remaining * self._config.synthesis_reserve_fraction)
         input_budget = tracker.remaining - later_reserve
         tokens_per_agent = max(1, input_budget // max(1, num_participants))
 
@@ -579,7 +576,9 @@ class StructuredPhasesProtocol:
 
         # Reserve tokens for the synthesis phase that follows
         # discussion so that discussion cannot exhaust the budget.
-        synthesis_reserve = int(tracker.remaining * _SYNTHESIS_RESERVE_FRACTION)
+        synthesis_reserve = int(
+            tracker.remaining * self._config.synthesis_reserve_fraction
+        )
         available_for_discussion = max(0, tracker.remaining - synthesis_reserve)
         discussion_budget = min(
             self._config.max_discussion_tokens,

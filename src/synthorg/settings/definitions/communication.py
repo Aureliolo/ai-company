@@ -175,3 +175,128 @@ _r.register(
         yaml_path="communication.loop_prevention.window_seconds",
     )
 )
+
+# ── Meeting protocol token reserves ──────────────────────────────
+# Three protocols each reserve a fraction of the meeting token budget
+# for their final synthesis/summary phase. Surfaced for operator
+# visibility; applied at protocol construction so changes take effect
+# on next restart.
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COMMUNICATION,
+        key="roundrobin_summary_reserve_fraction",
+        type=SettingType.FLOAT,
+        default="0.20",
+        description=(
+            "Fraction of token budget reserved for the summary phase in"
+            " round-robin meetings (default 20%)"
+        ),
+        group="Meetings",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+        min_value=0.0,
+        max_value=1.0,
+        yaml_path=(
+            "communication.meeting_protocol.round_robin.summary_reserve_fraction"
+        ),
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COMMUNICATION,
+        key="positionpapers_synthesis_reserve_fraction",
+        type=SettingType.FLOAT,
+        default="0.20",
+        description=(
+            "Fraction of token budget reserved for synthesis in"
+            " position-papers meetings (default 20%)"
+        ),
+        group="Meetings",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+        min_value=0.0,
+        max_value=1.0,
+        yaml_path=(
+            "communication.meeting_protocol.position_papers.synthesis_reserve_fraction"
+        ),
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COMMUNICATION,
+        key="structuredphases_synthesis_reserve_fraction",
+        type=SettingType.FLOAT,
+        default="0.20",
+        description=(
+            "Fraction of remaining token budget reserved for synthesis in"
+            " structured-phases meetings (default 20%)"
+        ),
+        group="Meetings",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+        min_value=0.0,
+        max_value=1.0,
+        yaml_path=(
+            "communication.meeting_protocol.structured_phases.synthesis_reserve_fraction"
+        ),
+    )
+)
+
+# ── Kill switches (CFG-1 audit) ──────────────────────────────────
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COMMUNICATION,
+        key="meetings_enabled",
+        type=SettingType.BOOLEAN,
+        default="true",
+        description=(
+            "Organization-level kill switch for the meetings subsystem."
+            " Disable to pause all scheduled and event-triggered"
+            " meetings without removing meeting types from config."
+        ),
+        group="Meetings",
+        yaml_path="communication.meetings.enabled",
+    )
+)
+
+# ── Escalation queue + sweeper (CFG-1 audit) ─────────────────────
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COMMUNICATION,
+        key="escalation_default_result_limit",
+        type=SettingType.INTEGER,
+        default="50",
+        description=(
+            "Default row limit when querying the in-memory escalation"
+            " queue. Overridable per-call."
+        ),
+        group="Escalation",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+        min_value=1,
+        max_value=1000,
+        yaml_path="communication.escalation_default_result_limit",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COMMUNICATION,
+        key="escalation_sweeper_paused",
+        type=SettingType.BOOLEAN,
+        default="false",
+        description=(
+            "Pause flag for the escalation expiration sweeper. When"
+            " True the sweeper stays resident but every tick"
+            " short-circuits -- used for debugging stuck escalations."
+        ),
+        group="Escalation",
+        level=SettingLevel.ADVANCED,
+        yaml_path="communication.escalation_sweeper_paused",
+    )
+)

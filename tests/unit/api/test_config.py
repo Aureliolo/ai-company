@@ -21,8 +21,11 @@ class TestApiConfig:
         assert config.server.port == 3001
 
     def test_cors_defaults(self) -> None:
+        # CFG-1 audit flipped the default to an empty tuple so
+        # production deployments never accidentally allow the Vite
+        # dev origin. Operators opt in explicitly via the setting.
         cors = CorsConfig()
-        assert "http://localhost:5173" in cors.allowed_origins
+        assert cors.allowed_origins == ()
         assert "GET" in cors.allow_methods
 
     def test_rate_limit_defaults(self) -> None:

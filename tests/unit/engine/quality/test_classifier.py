@@ -2,8 +2,13 @@
 
 import pytest
 
+import synthorg.settings.definitions  # noqa: F401 -- populate registry side-effect
 from synthorg.engine.loop_protocol import TerminationReason, TurnRecord
-from synthorg.engine.quality.classifier import RuleBasedStepClassifier
+from synthorg.engine.quality.classifier import (
+    _DEFAULT_CONFIDENCE_FALLBACK,
+    _DEFAULT_CONFIDENCE_RULE_MATCHED,
+    RuleBasedStepClassifier,
+)
 from synthorg.engine.quality.models import StepQuality
 from synthorg.engine.stagnation.models import (
     StagnationReason,
@@ -11,6 +16,8 @@ from synthorg.engine.stagnation.models import (
     StagnationVerdict,
 )
 from synthorg.providers.enums import FinishReason
+from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.registry import get_registry
 
 
 def _turn(
@@ -214,3 +221,84 @@ class TestRuleBasedStepClassifier:
         )
         assert signal.quality == StepQuality.INCORRECT
         assert signal.confidence == 1.0  # Definitive, not 0.7
+
+
+@pytest.mark.unit
+class TestClassifierConfidenceValidation:
+    """Constructor validates confidence bounds to ``[0.0, 1.0]``."""
+
+    @pytest.mark.parametrize(
+        "kwargs",
+        [
+            {"rule_matched_confidence": -0.1},
+            {"rule_matched_confidence": 1.5},
+            {"fallback_confidence": -0.01},
+            {"fallback_confidence": 2.0},
+        ],
+    )
+    def test_out_of_range_confidence_raises(
+        self,
+        kwargs: dict[str, float],
+    ) -> None:
+        with pytest.raises(ValueError, match=r"must be in \[0\.0, 1\.0\]"):
+            RuleBasedStepClassifier(**kwargs)
+
+    @pytest.mark.parametrize(
+        "kwargs",
+        [
+            {"rule_matched_confidence": 0.0},
+            {"rule_matched_confidence": 1.0},
+            {"fallback_confidence": 0.0},
+            {"fallback_confidence": 1.0},
+            {"rule_matched_confidence": 0.95, "fallback_confidence": 0.6},
+        ],
+    )
+    def test_in_range_confidence_accepted(
+        self,
+        kwargs: dict[str, float],
+    ) -> None:
+        # Must not raise.
+        RuleBasedStepClassifier(**kwargs)
+
+
+@pytest.mark.unit
+class TestClassifierDefaultsRegistryDrift:
+    """Module defaults must match the settings-registry defaults.
+
+    ``_DEFAULT_CONFIDENCE_RULE_MATCHED`` and
+    ``_DEFAULT_CONFIDENCE_FALLBACK`` are fallbacks used when callers
+    construct :class:`RuleBasedStepClassifier` without explicit
+    ``rule_matched_confidence`` / ``fallback_confidence`` kwargs.  The
+    canonical defaults live in the settings registry under the
+    ``engine.classifier_rule_matched_confidence`` and
+    ``engine.classifier_fallback_confidence`` entries; this test is
+    the drift guard that fails if the two sources of truth ever
+    diverge.
+    """
+
+    @pytest.mark.parametrize(
+        ("setting_key", "expected_default"),
+        [
+            (
+                "classifier_rule_matched_confidence",
+                _DEFAULT_CONFIDENCE_RULE_MATCHED,
+            ),
+            (
+                "classifier_fallback_confidence",
+                _DEFAULT_CONFIDENCE_FALLBACK,
+            ),
+        ],
+    )
+    def test_default_matches_registry(
+        self,
+        setting_key: str,
+        expected_default: float,
+    ) -> None:
+        registry = get_registry()
+        registered = registry.get(
+            SettingNamespace.ENGINE.value,
+            setting_key,
+        )
+        assert registered is not None
+        assert registered.default is not None
+        assert float(registered.default) == expected_default

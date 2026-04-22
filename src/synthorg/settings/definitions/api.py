@@ -130,8 +130,14 @@ _r.register(
         namespace=SettingNamespace.API,
         key="cors_allowed_origins",
         type=SettingType.JSON,
-        default='["http://localhost:5173"]',
-        description="Origins permitted to make cross-origin requests",
+        default="[]",
+        description=(
+            "Origins permitted to make cross-origin requests."
+            " Empty default denies all cross-origin requests;"
+            " operators must explicitly allowlist dashboard"
+            " origins (e.g. ``http://localhost:5173`` for local"
+            " development). Matches CorsConfig default."
+        ),
         group="CORS",
         level=SettingLevel.ADVANCED,
         restart_required=True,
@@ -531,5 +537,153 @@ _r.register(
         min_value=5,
         max_value=100,
         yaml_path="api.query_limits.max_meeting_context_keys",
+    )
+)
+
+# ── CFG-1 audit: cache, WS auth, cleanup, urgency ────────────────
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.API,
+        key="docs_cache_max_age_seconds",
+        type=SettingType.INTEGER,
+        default="300",
+        description=(
+            "Cache-Control max-age emitted for /docs responses. Longer"
+            " values reduce repeat fetches of the Scalar bundle; 0"
+            " disables caching."
+        ),
+        group="Documentation",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+        min_value=0,
+        max_value=86_400,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.API,
+        key="ws_auth_timeout_seconds",
+        type=SettingType.FLOAT,
+        default="10.0",
+        description=(
+            "How long the WebSocket handler waits for the first-message"
+            " auth payload after accepting the connection before"
+            " closing with a 4001 auth-timeout code."
+        ),
+        group="WebSocket",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+        min_value=1.0,
+        max_value=120.0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.API,
+        key="ticket_cleanup_mode",
+        type=SettingType.ENUM,
+        default="async",
+        description=(
+            "Ticket cleanup mode. 'async' (default) runs cleanup in a"
+            " background task; 'sync' blocks the request. Use 'sync'"
+            " only for tests / audits."
+        ),
+        group="WebSocket",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+        enum_values=("async", "sync"),
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.API,
+        key="lifecycle_cleanup_enabled",
+        type=SettingType.BOOLEAN,
+        default="true",
+        description=(
+            "Master kill switch for the WS ticket / session / lockout"
+            " cleanup loop. When False the loop stays resident but"
+            " every tick short-circuits -- pauses cleanup without"
+            " tearing down lifecycle."
+        ),
+        group="WebSocket",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.API,
+        key="rate_limiter_enabled",
+        type=SettingType.BOOLEAN,
+        default="true",
+        description=(
+            "Master kill switch for the three-tier global rate"
+            " limiter (IP floor + unauthenticated + authenticated)."
+            " Disable only in trusted dev environments."
+        ),
+        group="Rate Limiting",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.API,
+        key="approval_urgency_critical_seconds",
+        type=SettingType.FLOAT,
+        default="3600.0",
+        description=(
+            "Time-remaining threshold at or below which a pending"
+            " approval is classified 'critical' (default 1 hour)."
+            " Must be less than approval_urgency_high_seconds."
+        ),
+        group="Approvals",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+        min_value=60.0,
+        max_value=86_400.0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.API,
+        key="approval_urgency_high_seconds",
+        type=SettingType.FLOAT,
+        default="14400.0",
+        description=(
+            "Time-remaining threshold at or below which a pending"
+            " approval is classified 'high' (default 4 hours)."
+        ),
+        group="Approvals",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+        min_value=300.0,
+        max_value=604_800.0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.API,
+        key="human_routing_threshold",
+        type=SettingType.FLOAT,
+        default="0.8",
+        description=(
+            "Strictness level above which the hybrid client routes"
+            " a request to a human reviewer rather than the automated"
+            " path."
+        ),
+        group="Hybrid Routing",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+        min_value=0.0,
+        max_value=1.0,
     )
 )

@@ -15,6 +15,14 @@ export type SettingNamespace =
   | 'backup'
   | 'engine'
   | 'display'
+  | 'communication'
+  | 'a2a'
+  | 'integrations'
+  | 'meta'
+  | 'notifications'
+  | 'tools'
+  | 'settings'
+  | 'hr'
 
 export type SettingType = 'str' | 'int' | 'float' | 'bool' | 'enum' | 'json'
 

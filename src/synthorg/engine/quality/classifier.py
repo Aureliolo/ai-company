@@ -15,15 +15,29 @@ from synthorg.engine.stagnation.models import (
     StagnationVerdict,
 )
 from synthorg.observability import get_logger
-from synthorg.observability.events.quality import QUALITY_STEP_CLASSIFIED
+from synthorg.observability.events.quality import (
+    QUALITY_CLASSIFIER_CONFIG_INVALID,
+    QUALITY_STEP_CLASSIFIED,
+)
 from synthorg.providers.enums import FinishReason
 
 logger = get_logger(__name__)
 
 # Confidence levels for rule-based classification.
+# ``_CONFIDENCE_DEFINITIVE`` is not operator-tunable (a definitive
+# stagnation verdict is a boolean -- no ambiguity to model).  The
+# rule-matched and fallback confidences default to the values
+# registered under the ``engine.classifier_rule_matched_confidence``
+# and ``engine.classifier_fallback_confidence`` settings and can be
+# overridden per-instance via the ``RuleBasedStepClassifier``
+# constructor.  Both registry entries are ``restart_required=True``
+# -- operators edit them in the settings store/dashboard and the
+# service must be restarted for the new values to flow through
+# startup wiring into newly constructed classifiers (no live
+# hot-apply path exists).
 _CONFIDENCE_DEFINITIVE: float = 1.0
-_CONFIDENCE_RULE_MATCHED: float = 0.7
-_CONFIDENCE_FALLBACK: float = 0.5
+_DEFAULT_CONFIDENCE_RULE_MATCHED: float = 0.7
+_DEFAULT_CONFIDENCE_FALLBACK: float = 0.5
 
 
 @runtime_checkable
@@ -69,7 +83,58 @@ class RuleBasedStepClassifier:
        least one tool call producing results.
     4. **NEUTRAL** (fallback): Everything else -- exploratory steps,
        partial progress, no tool calls.
+
+    Args:
+        rule_matched_confidence: Confidence score attached to
+            rule-matched verdicts.  Bridged from the
+            ``engine.classifier_rule_matched_confidence`` setting
+            (``restart_required``); callers that resolve the setting
+            at startup should pass the resolved float so the newly
+            constructed classifier carries the current value.  Must
+            be in ``[0.0, 1.0]``.
+        fallback_confidence: Confidence score attached to the
+            NEUTRAL fallback verdict.  Bridged from
+            ``engine.classifier_fallback_confidence``
+            (``restart_required``).  Must be in ``[0.0, 1.0]``.
+
+    Raises:
+        ValueError: If either confidence is outside ``[0.0, 1.0]``.
     """
+
+    __slots__ = ("_fallback_confidence", "_rule_matched_confidence")
+
+    def __init__(
+        self,
+        *,
+        rule_matched_confidence: float = _DEFAULT_CONFIDENCE_RULE_MATCHED,
+        fallback_confidence: float = _DEFAULT_CONFIDENCE_FALLBACK,
+    ) -> None:
+        if not 0.0 <= rule_matched_confidence <= 1.0:
+            msg = (
+                "rule_matched_confidence must be in [0.0, 1.0];"
+                f" got {rule_matched_confidence!r}"
+            )
+            logger.warning(
+                QUALITY_CLASSIFIER_CONFIG_INVALID,
+                error=msg,
+                parameter="rule_matched_confidence",
+                value=rule_matched_confidence,
+            )
+            raise ValueError(msg)
+        if not 0.0 <= fallback_confidence <= 1.0:
+            msg = (
+                "fallback_confidence must be in [0.0, 1.0];"
+                f" got {fallback_confidence!r}"
+            )
+            logger.warning(
+                QUALITY_CLASSIFIER_CONFIG_INVALID,
+                error=msg,
+                parameter="fallback_confidence",
+                value=fallback_confidence,
+            )
+            raise ValueError(msg)
+        self._rule_matched_confidence = rule_matched_confidence
+        self._fallback_confidence = fallback_confidence
 
     async def classify(
         self,
@@ -101,7 +166,7 @@ class RuleBasedStepClassifier:
         if termination_reason == TerminationReason.ERROR:
             signal = StepQualitySignal(
                 quality=StepQuality.INCORRECT,
-                confidence=_CONFIDENCE_RULE_MATCHED,
+                confidence=self._rule_matched_confidence,
                 reason="Step terminated with ERROR",
                 step_index=step_index,
                 turn_range=turn_range,
@@ -112,7 +177,7 @@ class RuleBasedStepClassifier:
         if turns and turns[-1].finish_reason == FinishReason.ERROR:
             signal = StepQualitySignal(
                 quality=StepQuality.INCORRECT,
-                confidence=_CONFIDENCE_RULE_MATCHED,
+                confidence=self._rule_matched_confidence,
                 reason="Final turn finished with error",
                 step_index=step_index,
                 turn_range=turn_range,
@@ -125,7 +190,7 @@ class RuleBasedStepClassifier:
         if termination_reason == TerminationReason.COMPLETED and has_tool_calls:
             signal = StepQualitySignal(
                 quality=StepQuality.CORRECT,
-                confidence=_CONFIDENCE_RULE_MATCHED,
+                confidence=self._rule_matched_confidence,
                 reason="Step completed with tool calls",
                 step_index=step_index,
                 turn_range=turn_range,
@@ -142,7 +207,7 @@ class RuleBasedStepClassifier:
 
         signal = StepQualitySignal(
             quality=StepQuality.NEUTRAL,
-            confidence=_CONFIDENCE_FALLBACK,
+            confidence=self._fallback_confidence,
             reason=reason,
             step_index=step_index,
             turn_range=turn_range,

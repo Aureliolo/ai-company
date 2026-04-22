@@ -206,6 +206,9 @@ class _FakeAuditRepository:
     ) -> tuple[AuditEntry, ...]:
         return ()
 
+    async def purge_before(self, cutoff: AwareDatetime) -> int:
+        return 0
+
 
 class _FakeDecisionRepository:
     async def append_with_next_version(

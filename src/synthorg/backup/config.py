@@ -67,8 +67,14 @@ class BackupConfig(BaseModel):
         description="Create a backup on graceful shutdown",
     )
     on_startup: bool = Field(
-        default=True,
-        description="Create a backup on startup",
+        default=False,
+        description=(
+            "Create a backup on startup. CFG-1 audit: flipped from True"
+            " to False -- scheduled backups (see ``schedule_hours``)"
+            " provide the same guarantee without surprise writes at"
+            " boot. Operators who want startup snapshots must opt in"
+            " explicitly."
+        ),
     )
     compression: bool = Field(
         default=True,

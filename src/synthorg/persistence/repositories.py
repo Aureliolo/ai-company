@@ -342,6 +342,27 @@ class AuditRepository(Protocol):
         """
         ...
 
+    async def purge_before(self, cutoff: AwareDatetime) -> int:
+        """Delete audit entries older than *cutoff* (CFG-1 audit).
+
+        This is the one exception to the append-only rule: it powers
+        the retention sweeper which enforces the operator-configurable
+        ``security.audit_retention_days`` window. Rows are removed
+        permanently -- the GDPR-vs-forensic tradeoff is decided at the
+        retention-window level, not per row.
+
+        Args:
+            cutoff: Entries strictly older than this UTC timestamp
+                are deleted.
+
+        Returns:
+            Number of rows removed.
+
+        Raises:
+            QueryError: If the operation fails.
+        """
+        ...
+
 
 @runtime_checkable
 class UserRepository(Protocol):

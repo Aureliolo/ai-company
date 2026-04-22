@@ -235,10 +235,21 @@ class FakeParkedContextRepository:
 
 
 class FakeAuditRepository:
-    """In-memory audit entry repository for tests."""
+    """In-memory audit entry repository for tests.
+
+    Extra attributes exposed for lifecycle-helper tests:
+
+    * ``purge_calls`` -- counter incremented on every ``purge_before``
+      call so retention-loop tests can assert the tick actually invoked
+      the repository.
+    * ``raise_on_purge`` -- optional exception raised from
+      ``purge_before`` to exercise the repo-error branch.
+    """
 
     def __init__(self) -> None:
         self._entries: dict[str, AuditEntry] = {}
+        self.purge_calls: int = 0
+        self.raise_on_purge: BaseException | None = None
 
     async def save(self, entry: AuditEntry) -> None:
         if entry.id in self._entries:
@@ -281,6 +292,16 @@ class FakeAuditRepository:
         if until is not None:
             results = [e for e in results if e.timestamp <= until]
         return tuple(results[:limit])
+
+    async def purge_before(self, cutoff: datetime) -> int:
+        self.purge_calls += 1
+        if self.raise_on_purge is not None:
+            raise self.raise_on_purge
+        before = len(self._entries)
+        self._entries = {
+            k: e for k, e in self._entries.items() if e.timestamp >= cutoff
+        }
+        return before - len(self._entries)
 
 
 # FakeDecisionRepository lives in a sibling module to keep this file
