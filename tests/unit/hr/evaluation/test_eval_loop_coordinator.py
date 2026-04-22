@@ -327,18 +327,50 @@ class TestEvalLoopCoordinatorProposeActions:
         assert actions == ("custom_action",)
 
     async def test_unknown_pattern_skipped(self) -> None:
-        coordinator = _make_coordinator()
-        actions = await coordinator._propose_actions(
-            ("weakness:unknown",),
+        import structlog
+
+        from synthorg.observability.events.eval_loop import (
+            EVAL_LOOP_ACTION_PROPOSED,
         )
+
+        coordinator = _make_coordinator()
+        with structlog.testing.capture_logs() as cap:
+            actions = await coordinator._propose_actions(
+                ("weakness:unknown",),
+            )
         assert actions == ()
+        # Assert the warning-path contract: an operator grepping the
+        # logs for ``reason="unmapped_pattern"`` must find the event.
+        unmapped = [
+            rec
+            for rec in cap
+            if rec.get("event") == EVAL_LOOP_ACTION_PROPOSED
+            and rec.get("reason") == "unmapped_pattern"
+        ]
+        assert len(unmapped) == 1, f"expected one unmapped_pattern warning; got {cap!r}"
 
     async def test_malformed_pattern_skipped(self) -> None:
+        import structlog
+
+        from synthorg.observability.events.eval_loop import (
+            EVAL_LOOP_ACTION_PROPOSED,
+        )
+
         coordinator = _make_coordinator()
         # No colon means unparseable; the coordinator logs a warning
         # (EVAL_LOOP_ACTION_PROPOSED with reason="malformed_pattern")
         # and skips the entry rather than emitting a bogus action.
-        actions = await coordinator._propose_actions(
-            ("justatoken",),
-        )
+        with structlog.testing.capture_logs() as cap:
+            actions = await coordinator._propose_actions(
+                ("justatoken",),
+            )
         assert actions == ()
+        malformed = [
+            rec
+            for rec in cap
+            if rec.get("event") == EVAL_LOOP_ACTION_PROPOSED
+            and rec.get("reason") == "malformed_pattern"
+        ]
+        assert len(malformed) == 1, (
+            f"expected one malformed_pattern warning; got {cap!r}"
+        )

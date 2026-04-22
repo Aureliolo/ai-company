@@ -6,6 +6,9 @@ rollup → update parent task.
 """
 
 import time
+from collections.abc import (
+    Callable,  # noqa: TC003 -- runtime-read by typing.get_type_hints()
+)
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
@@ -35,8 +38,6 @@ from synthorg.observability.events.coordination import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-
     from synthorg.engine.coordination.dispatcher_types import DispatchResult
     from synthorg.engine.coordination.models import CoordinationContext
     from synthorg.engine.decomposition.models import (
@@ -212,8 +213,46 @@ class MultiAgentCoordinator:
             # runtime settings or raise).
             self._validate_routing(routing_result, phases)
 
-            # Phase 4: Resolve topology (only reached for dispatchable work).
-            topology = self._resolve_topology(routing_result)
+            # Phase 4: Resolve topology (only reached for dispatchable
+            # work). Wrapped in try/except because
+            # ``default_topology_provider()`` may read runtime settings
+            # or raise -- any failure must surface as a failed
+            # coordination phase with a proper ``CoordinationPhaseError``
+            # + partial_phases so the caller sees the partial pipeline
+            # instead of an opaque traceback.
+            topology_phase = "resolve_topology"
+            topology_start = time.monotonic()
+            try:
+                topology = self._resolve_topology(routing_result)
+            except CoordinationPhaseError:
+                # Already a coordination-phase error (e.g. mixed
+                # topologies in routing); _resolve_topology logged and
+                # appended the phase marker itself.
+                raise
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
+                elapsed = time.monotonic() - topology_start
+                logger.warning(
+                    COORDINATION_PHASE_FAILED,
+                    phase=topology_phase,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                phases.append(
+                    CoordinationPhaseResult(
+                        phase=topology_phase,
+                        success=False,
+                        duration_seconds=elapsed,
+                        error=safe_error_description(exc),
+                    )
+                )
+                msg = f"Topology resolution failed: {safe_error_description(exc)}"
+                raise CoordinationPhaseError(
+                    msg,
+                    phase=topology_phase,
+                    partial_phases=tuple(phases),
+                ) from exc
 
             # Phase 5: Dispatch (workspace setup -> execute -> merge)
             dispatch_result = await self._phase_dispatch(

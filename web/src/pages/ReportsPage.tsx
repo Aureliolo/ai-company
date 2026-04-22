@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { FileText, Play } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ErrorBanner } from '@/components/ui/error-banner'
@@ -89,33 +89,42 @@ export default function ReportsPage() {
   const toast = useToastStore((state) => state.add)
 
   // Shared fetch helper so the initial load and the retry handler
-  // use identical wiring (same log, same state transitions). The
-  // ``AbortController`` replaces the previous ``cancelled`` flag so
-  // in-flight requests are actually cancelled on unmount rather than
-  // just having their state updates skipped.
-  const fetchPeriods = useCallback(async (signal?: AbortSignal) => {
+  // use identical wiring (same log, same state transitions). A single
+  // ``AbortController`` ref is kept across every fetch attempt so the
+  // retry path inherits the same cancellation semantics as the
+  // initial load -- each new ``fetchPeriods`` aborts whatever is
+  // in-flight before starting fresh, and the unmount cleanup aborts
+  // the currently-active controller regardless of whether it was
+  // spawned by the initial load or a retry click.
+  const abortRef = useRef<AbortController | null>(null)
+
+  const fetchPeriods = useCallback(async () => {
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
+    const { signal } = controller
     setLoadingPeriods(true)
     setPeriodsError(null)
     try {
       const result = await listReportPeriods({ signal })
-      if (signal?.aborted) return
+      if (signal.aborted) return
       setPeriods(result)
     } catch (err) {
-      if (signal?.aborted) return
+      if (signal.aborted) return
       log.error('listReportPeriods', err)
       setPeriodsError(getErrorMessage(err))
     } finally {
-      if (!signal?.aborted) {
+      if (!signal.aborted) {
         setLoadingPeriods(false)
       }
     }
   }, [])
 
   useEffect(() => {
-    const controller = new AbortController()
-    void fetchPeriods(controller.signal)
+    void fetchPeriods()
     return () => {
-      controller.abort()
+      abortRef.current?.abort()
+      abortRef.current = null
     }
   }, [fetchPeriods])
 

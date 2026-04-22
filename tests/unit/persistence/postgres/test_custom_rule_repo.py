@@ -6,7 +6,7 @@ Docker) is required. Integration tests against a real
 ``tests/integration/persistence/``.
 """
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta, timezone
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID, uuid4
@@ -159,10 +159,11 @@ class TestEnsureTz:
         assert result.tzinfo is UTC
 
     def test_aware_datetime_converts_to_utc(self) -> None:
-        import zoneinfo
-
-        paris = zoneinfo.ZoneInfo("Europe/Paris")
-        aware = datetime(2026, 4, 22, 14, 0, tzinfo=paris)
+        # Fixed-offset timezone (+2h) keeps the test hermetic -- no
+        # dependency on the system tzdata / ``zoneinfo`` catalog, which
+        # may be missing or out-of-date on some CI runners.
+        plus_two = timezone(timedelta(hours=2))
+        aware = datetime(2026, 4, 22, 14, 0, tzinfo=plus_two)
         result = _ensure_tz(aware)
         assert result.tzinfo is UTC
 
@@ -280,14 +281,9 @@ class TestGet:
         got = await instance.get(str(uuid4()))
         assert got is None
 
-    async def test_get_wraps_db_error(
-        self,
-        repo: tuple[PostgresCustomRuleRepository, _FakePool],
-    ) -> None:
-        instance, pool = repo
-        pool.execute_side_effect = psycopg.errors.DatabaseError("boom")
-        with pytest.raises(QueryError, match="Failed to fetch"):
-            await instance.get(str(uuid4()))
+    # ``test_get_wraps_db_error`` + ``test_get_by_name_wraps_db_error``
+    # are merged into a parametrized form on the class below to keep
+    # the "DB error -> QueryError" contract in one place.
 
 
 class TestGetByName:
@@ -311,14 +307,7 @@ class TestGetByName:
         got = await instance.get_by_name("nonexistent")
         assert got is None
 
-    async def test_get_by_name_wraps_db_error(
-        self,
-        repo: tuple[PostgresCustomRuleRepository, _FakePool],
-    ) -> None:
-        instance, pool = repo
-        pool.execute_side_effect = psycopg.errors.DatabaseError("boom")
-        with pytest.raises(QueryError, match="Failed to fetch"):
-            await instance.get_by_name("x")
+    # Merged into the parametrized class below.
 
 
 class TestListRules:
@@ -418,3 +407,31 @@ class TestDelete:
         pool.execute_side_effect = psycopg.errors.DatabaseError("boom")
         with pytest.raises(QueryError, match="Failed to delete"):
             await instance.delete(str(uuid4()))
+
+
+class TestReadPathsWrapDbError:
+    """Shared "DB error -> QueryError" contract for read paths.
+
+    ``get`` and ``get_by_name`` have identical error-wrapping
+    behaviour, so consolidating the regression into a single
+    parametrized test keeps the contract in one place and stops
+    the two copies from drifting out of sync.
+    """
+
+    @pytest.mark.parametrize(
+        ("method_name", "call_arg"),
+        [
+            ("get", lambda: str(uuid4())),
+            ("get_by_name", lambda: "any-name"),
+        ],
+    )
+    async def test_read_path_wraps_db_error_as_query_error(
+        self,
+        repo: tuple[PostgresCustomRuleRepository, _FakePool],
+        method_name: str,
+        call_arg: Any,
+    ) -> None:
+        instance, pool = repo
+        pool.execute_side_effect = psycopg.errors.DatabaseError("boom")
+        with pytest.raises(QueryError, match="Failed to fetch"):
+            await getattr(instance, method_name)(call_arg())

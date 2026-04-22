@@ -16,7 +16,6 @@ loop:
 
 import asyncio
 import time
-from collections import Counter
 from datetime import UTC, datetime, timedelta
 from types import MappingProxyType
 from typing import Final
@@ -266,25 +265,29 @@ class EvalLoopCoordinator:
             return ()
 
         threshold = self._config.pattern_weakness_threshold
-        weak_counts: Counter[str] = Counter()
+        # Track unique weak agents per pillar (``pillar -> set[agent_id]``)
+        # so the count reflects the number of distinct agents weak on a
+        # pillar -- not the number of per-pillar score entries. This
+        # protects against both (a) duplicate pillar entries within a
+        # single report (defensive -- the model does not enforce
+        # uniqueness) and (b) the same agent producing multiple reports
+        # in the cycle window, which Counter-based arithmetic would
+        # double-count.
+        weak_agents_per_pillar: dict[str, set[str]] = {}
         for report in reports:
-            # Collect the set of weak pillars for this agent first so a
-            # report that carries the same pillar twice (defensive -- the
-            # model does not currently enforce uniqueness) still counts
-            # the agent once per pillar.
             weak_pillars = {
                 score.pillar.value
                 for score in report.pillar_scores
                 if score.score < threshold
             }
             for pillar in weak_pillars:
-                weak_counts[pillar] += 1
+                weak_agents_per_pillar.setdefault(pillar, set()).add(report.agent_id)
 
         min_agents = self._config.pattern_min_agents
         qualifying = [
-            (pillar, count)
-            for pillar, count in weak_counts.items()
-            if count >= min_agents
+            (pillar, len(agents))
+            for pillar, agents in weak_agents_per_pillar.items()
+            if len(agents) >= min_agents
         ]
         qualifying.sort(key=lambda item: (-item[1], item[0]))
 
