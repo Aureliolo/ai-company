@@ -276,22 +276,29 @@ class TestClassifierDefaultsRegistryDrift:
     diverge.
     """
 
-    def test_rule_matched_default_matches_registry(self) -> None:
+    @pytest.mark.parametrize(
+        ("setting_key", "expected_default"),
+        [
+            (
+                "classifier_rule_matched_confidence",
+                _DEFAULT_CONFIDENCE_RULE_MATCHED,
+            ),
+            (
+                "classifier_fallback_confidence",
+                _DEFAULT_CONFIDENCE_FALLBACK,
+            ),
+        ],
+    )
+    def test_default_matches_registry(
+        self,
+        setting_key: str,
+        expected_default: float,
+    ) -> None:
         registry = get_registry()
         registered = registry.get(
             SettingNamespace.ENGINE.value,
-            "classifier_rule_matched_confidence",
+            setting_key,
         )
         assert registered is not None
         assert registered.default is not None
-        assert float(registered.default) == _DEFAULT_CONFIDENCE_RULE_MATCHED
-
-    def test_fallback_default_matches_registry(self) -> None:
-        registry = get_registry()
-        registered = registry.get(
-            SettingNamespace.ENGINE.value,
-            "classifier_fallback_confidence",
-        )
-        assert registered is not None
-        assert registered.default is not None
-        assert float(registered.default) == _DEFAULT_CONFIDENCE_FALLBACK
+        assert float(registered.default) == expected_default
