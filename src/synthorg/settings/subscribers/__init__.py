@@ -9,6 +9,9 @@ from synthorg.settings.subscribers.memory_subscriber import (
 from synthorg.settings.subscribers.observability_subscriber import (
     ObservabilitySettingsSubscriber,
 )
+from synthorg.settings.subscribers.per_op_rate_limit_subscriber import (
+    PerOpRateLimitSettingsSubscriber,
+)
 from synthorg.settings.subscribers.provider_subscriber import (
     ProviderSettingsSubscriber,
 )
@@ -17,5 +20,6 @@ __all__ = [
     "BackupSettingsSubscriber",
     "MemorySettingsSubscriber",
     "ObservabilitySettingsSubscriber",
+    "PerOpRateLimitSettingsSubscriber",
     "ProviderSettingsSubscriber",
 ]

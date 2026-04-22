@@ -1,4 +1,4 @@
-"""Per-operation rate limit guard factory (#1391).
+"""Per-operation rate limit guard factory.
 
 ``per_op_rate_limit`` returns a Litestar ``Guard`` that throttles an
 endpoint based on a sliding-window bucket.  The guard reads the live
@@ -29,23 +29,50 @@ from synthorg.observability.events.api import API_APP_STARTUP, API_GUARD_DENIED
 logger = get_logger(__name__)
 
 
-def _resolve_wiring(
-    state: Any,
-    operation: str,
-) -> tuple[SlidingWindowStore, PerOpRateLimitConfig]:
-    """Fetch the store + config from app state, or raise 503.
+def _read_live_config(state: Any) -> PerOpRateLimitConfig | None:
+    """Read the current per-op sliding-window config from app state.
 
-    Missing store/config is a wiring error, NOT an "off" signal -- fail
-    loud and closed with a 503 so misconfigured deployments do not ship
-    without protection.  503 + no ``Retry-After`` tells clients this is
-    a server-side issue (not a per-user throttle).
+    Primary source is :class:`AppState` (the settings subscriber
+    hot-swaps the config there).  Falls back to the Litestar State
+    dict key ``per_op_rate_limit_config`` for unit tests that build
+    minimal state without an ``AppState``.  Returns ``None`` when
+    neither source has a config (treated as a wiring error at the
+    call site).
     """
-    store: SlidingWindowStore | None = getattr(state, STATE_KEY_STORE, None)
-    config: PerOpRateLimitConfig | None = getattr(
+    app_state = getattr(state, "app_state", None)
+    if app_state is not None and getattr(
+        app_state,
+        "has_per_op_rate_limit_config",
+        False,
+    ):
+        live: PerOpRateLimitConfig = app_state.per_op_rate_limit_config
+        return live
+    dict_value: PerOpRateLimitConfig | None = getattr(
         state,
         STATE_KEY_CONFIG,
         None,
     )
+    return dict_value
+
+
+def _resolve_wiring(
+    state: Any,
+    operation: str,
+) -> tuple[SlidingWindowStore, PerOpRateLimitConfig]:
+    """Fetch the store + live config from app state, or raise 503.
+
+    The store lives in the Litestar state dict (built once at startup,
+    never swapped).  The config lives on :class:`AppState` so the
+    settings subscriber can hot-swap it when operators edit
+    ``api.per_op_rate_limit_enabled`` or ``api.per_op_rate_limit_overrides``
+    without restarting the app.  Missing store/config is a wiring
+    error, NOT an "off" signal -- fail loud and closed with a 503 so
+    misconfigured deployments do not ship without protection.  503 +
+    no ``Retry-After`` tells clients this is a server-side issue (not
+    a per-user throttle).
+    """
+    store: SlidingWindowStore | None = getattr(state, STATE_KEY_STORE, None)
+    config = _read_live_config(state)
     if store is None or config is None:
         logger.error(
             API_APP_STARTUP,
@@ -159,12 +186,11 @@ def per_op_rate_limit(
     ) -> None:
         state = connection.app.state
         # Master switch: when the operator has explicitly disabled
-        # per-op rate limiting the guard is a no-op.
-        config_early: PerOpRateLimitConfig | None = getattr(
-            state,
-            STATE_KEY_CONFIG,
-            None,
-        )
+        # per-op rate limiting the guard is a no-op.  Read the live
+        # config (AppState first, Litestar state dict fallback) so
+        # subscriber swaps take effect on the next request without
+        # needing a restart.
+        config_early = _read_live_config(state)
         if config_early is not None and not config_early.enabled:
             return
         store, config = _resolve_wiring(state, operation)

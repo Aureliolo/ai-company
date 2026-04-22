@@ -10,6 +10,10 @@ from typing import TYPE_CHECKING, Any
 from synthorg.api.auth.presence import UserPresence  # noqa: TC001
 from synthorg.api.auth.service import AuthService  # noqa: TC001
 from synthorg.api.auth.ticket_store import WsTicketStore  # noqa: TC001
+from synthorg.api.rate_limits.config import PerOpRateLimitConfig  # noqa: TC001
+from synthorg.api.rate_limits.inflight_config import (
+    PerOpConcurrencyConfig,  # noqa: TC001
+)
 from synthorg.api.services.org_mutations import OrgMutationService  # noqa: TC001
 from synthorg.backup.service import BackupService  # noqa: TC001
 from synthorg.communication.conflict_resolution.escalation.notify import (
@@ -137,6 +141,8 @@ class AppStateServicesMixin:
     _a2a_peer_registry: PeerRegistry | None
     _mcp_catalog_service: CatalogService | None
     _mcp_installations_repo: McpInstallationRepository | None
+    _per_op_rate_limit_config: PerOpRateLimitConfig | None
+    _per_op_concurrency_config: PerOpConcurrencyConfig | None
     _persistence: Any
 
     @property
@@ -472,6 +478,109 @@ class AppStateServicesMixin:
             service="model_router",
             old_strategy=old_strategy,
             new_strategy=router.strategy_name,
+        )
+
+    @property
+    def has_per_op_rate_limit_config(self) -> bool:
+        """Check whether the per-op sliding-window config is set."""
+        return self._per_op_rate_limit_config is not None
+
+    @property
+    def per_op_rate_limit_config(self) -> PerOpRateLimitConfig:
+        """Return the current per-op sliding-window config or raise 503."""
+        return self._require_service(
+            self._per_op_rate_limit_config,
+            "per_op_rate_limit_config",
+        )
+
+    def set_per_op_rate_limit_config(
+        self,
+        config: PerOpRateLimitConfig,
+    ) -> None:
+        """Attach the per-op sliding-window config at startup (once).
+
+        Guards and middleware read through :attr:`per_op_rate_limit_config`
+        at request time, so swapping this reference is how the settings
+        subscriber applies runtime overrides without restarting the app.
+        """
+        self._per_op_rate_limit_config = config
+
+    def swap_per_op_rate_limit_config(
+        self,
+        config: PerOpRateLimitConfig,
+    ) -> None:
+        """Replace the per-op sliding-window config (hot-reload).
+
+        Called by the settings subscriber when operators change
+        ``api.per_op_rate_limit_enabled`` or
+        ``api.per_op_rate_limit_overrides``.  The store itself is not
+        rebuilt -- only the config object swaps, so already-queued
+        timestamps remain in place and a ``backend`` flip still needs
+        a restart (it is marked ``restart_required=True``).
+        """
+        old_enabled = (
+            self._per_op_rate_limit_config.enabled
+            if self._per_op_rate_limit_config is not None
+            else None
+        )
+        self._per_op_rate_limit_config = config
+        logger.info(
+            SETTINGS_SERVICE_SWAPPED,
+            service="per_op_rate_limit_config",
+            old_enabled=old_enabled,
+            new_enabled=config.enabled,
+            override_count=len(config.overrides),
+        )
+
+    @property
+    def has_per_op_concurrency_config(self) -> bool:
+        """Check whether the per-op inflight config is set."""
+        return self._per_op_concurrency_config is not None
+
+    @property
+    def per_op_concurrency_config(self) -> PerOpConcurrencyConfig:
+        """Return the current per-op inflight config or raise 503."""
+        return self._require_service(
+            self._per_op_concurrency_config,
+            "per_op_concurrency_config",
+        )
+
+    def set_per_op_concurrency_config(
+        self,
+        config: PerOpConcurrencyConfig,
+    ) -> None:
+        """Attach the per-op inflight config at startup (once).
+
+        Paired swap target for the inflight subscriber path; mirrors
+        :meth:`set_per_op_rate_limit_config` so the two per-op guards
+        have symmetric wiring.
+        """
+        self._per_op_concurrency_config = config
+
+    def swap_per_op_concurrency_config(
+        self,
+        config: PerOpConcurrencyConfig,
+    ) -> None:
+        """Replace the per-op inflight config (hot-reload).
+
+        Called by the settings subscriber on
+        ``api.per_op_concurrency_enabled`` or
+        ``api.per_op_concurrency_overrides`` change.  The inflight
+        store keeps its counters -- only the enforcement config
+        changes.
+        """
+        old_enabled = (
+            self._per_op_concurrency_config.enabled
+            if self._per_op_concurrency_config is not None
+            else None
+        )
+        self._per_op_concurrency_config = config
+        logger.info(
+            SETTINGS_SERVICE_SWAPPED,
+            service="per_op_concurrency_config",
+            old_enabled=old_enabled,
+            new_enabled=config.enabled,
+            override_count=len(config.overrides),
         )
 
     @property

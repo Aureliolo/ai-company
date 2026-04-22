@@ -377,7 +377,7 @@ def _build_middleware(
     #   4. unauth_rl -- 20/min/IP for requests where user is None
     #   5. RequestLoggingMiddleware
     #   6. auth_rl -- per-user cap for authenticated requests
-    #   7. PerOpConcurrencyMiddleware -- per-op inflight cap (#1489);
+    #   7. PerOpConcurrencyMiddleware -- per-op inflight cap;
     #      innermost so ``scope["user"]`` is already populated and the
     #      permit is held only during actual handler execution.
     return [

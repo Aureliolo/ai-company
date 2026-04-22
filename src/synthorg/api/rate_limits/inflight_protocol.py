@@ -1,4 +1,4 @@
-"""Per-operation inflight-concurrency Protocol (#1489, SEC-2).
+"""Per-operation inflight-concurrency Protocol.
 
 The ``InflightStore`` Protocol is the pluggable contract that the
 per-operation concurrency middleware calls to acquire a permit.

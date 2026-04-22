@@ -1,4 +1,4 @@
-"""Per-operation inflight middleware (#1489, SEC-2).
+"""Per-operation inflight middleware.
 
 ``PerOpConcurrencyMiddleware`` reads a route-handler ``opt`` annotation
 (``{"per_op_concurrency": (operation, max_inflight, key_policy)}``)
@@ -38,24 +38,51 @@ logger = get_logger(__name__)
 # Public because callers splat ``per_op_concurrency(...)`` into
 # ``opt={}``; the literal must be stable across releases.
 OPT_KEY: Final[str] = "per_op_concurrency"
+_OPT_TUPLE_LEN: Final[int] = 3
+
+
+def _read_live_inflight_config(state: Any) -> PerOpConcurrencyConfig | None:
+    """Read the current per-op inflight config from app state.
+
+    Primary source is :class:`AppState` (the settings subscriber
+    hot-swaps the config there).  Falls back to the Litestar State
+    dict key ``per_op_inflight_config`` for unit tests that build
+    minimal state without an ``AppState``.  Returns ``None`` when
+    neither source has a config (treated as a wiring error at the
+    call site).
+    """
+    app_state = getattr(state, "app_state", None)
+    if app_state is not None and getattr(
+        app_state,
+        "has_per_op_concurrency_config",
+        False,
+    ):
+        live: PerOpConcurrencyConfig = app_state.per_op_concurrency_config
+        return live
+    dict_value: PerOpConcurrencyConfig | None = getattr(
+        state,
+        STATE_KEY_INFLIGHT_CONFIG,
+        None,
+    )
+    return dict_value
 
 
 def _resolve_wiring(
     state: Any,
     operation: str,
 ) -> tuple[InflightStore, PerOpConcurrencyConfig]:
-    """Fetch the inflight store + config from app state, or raise 503.
+    """Fetch the inflight store + live config, or raise 503.
 
-    Missing store/config is a deployment error, not a per-user throttle:
-    fail loud (ERROR log) and closed (503) so misconfigured deployments
-    do not ship silently uncapped.  Mirrors the sliding-window guard's
-    wiring-error behaviour so both tiers diverge only in error code.
+    The store lives in the Litestar state dict (built once at startup,
+    never swapped).  The config lives on :class:`AppState` so the
+    settings subscriber can hot-swap it when operators edit
+    ``api.per_op_concurrency_enabled`` or
+    ``api.per_op_concurrency_overrides`` without restarting the app.
+    Missing store/config is a deployment error, not a per-user
+    throttle: fail loud (ERROR log) and closed (503) so misconfigured
+    deployments do not ship silently uncapped.
     """
-    config: PerOpConcurrencyConfig | None = getattr(
-        state,
-        STATE_KEY_INFLIGHT_CONFIG,
-        None,
-    )
+    config = _read_live_inflight_config(state)
     store: InflightStore | None = getattr(
         state,
         STATE_KEY_INFLIGHT_STORE,
@@ -112,6 +139,36 @@ class PerOpConcurrencyMiddleware(ASGIMiddleware):
             await next_app(scope, receive, send)
             return
 
+        # Defensive: a route handler may have been annotated with a
+        # malformed ``opt[per_op_concurrency]`` via typo or a future
+        # refactor.  Without this check a bad annotation would raise a
+        # generic ``ValueError`` / ``TypeError`` from tuple unpacking
+        # and surface as a 500.  Fail closed (503) with an actionable
+        # log so the deployment error is visible instead of the
+        # endpoint silently running uncapped after exception handling.
+        if (
+            not isinstance(policy, (tuple, list))
+            or len(policy) != _OPT_TUPLE_LEN
+            or not isinstance(policy[0], str)
+            or not isinstance(policy[1], int)
+            or policy[2] not in ("user", "ip", "user_or_ip")
+        ):
+            logger.error(
+                API_APP_STARTUP,
+                guard="per_op_concurrency",
+                error="malformed_opt_per_op_concurrency",
+                note=(
+                    "opt[per_op_concurrency] must be a 3-tuple of "
+                    "(operation: str, max_inflight: int, "
+                    "key_policy: Literal['user','ip','user_or_ip'])"
+                ),
+            )
+            msg = (
+                "Inflight guard annotation is malformed on this route. "
+                "This is a deployment error; see logs for context."
+            )
+            raise ServiceUnavailableError(msg)
+
         operation, default_max_inflight, key_policy = policy
 
         app = scope.get("app")
@@ -119,12 +176,10 @@ class PerOpConcurrencyMiddleware(ASGIMiddleware):
 
         # Master switch: a disabled config short-circuits the middleware
         # without requiring the store to be wired.  Missing config is
-        # still treated as a wiring error below.
-        config_early: PerOpConcurrencyConfig | None = getattr(
-            state,
-            STATE_KEY_INFLIGHT_CONFIG,
-            None,
-        )
+        # still treated as a wiring error below.  Read the live config
+        # (AppState first, Litestar state dict fallback) so subscriber
+        # swaps take effect on the next request without a restart.
+        config_early = _read_live_inflight_config(state)
         if config_early is not None and not config_early.enabled:
             await next_app(scope, receive, send)
             return

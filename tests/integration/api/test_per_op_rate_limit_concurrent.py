@@ -1,7 +1,7 @@
 """Integration test: 100 concurrent mutations exercise the per-op guard.
 
-SEC-2 acceptance criterion.  Builds a full Litestar app with the
-per-operation rate-limit middleware wired, authenticates as admin,
+Builds a full Litestar app with the per-operation rate-limit
+middleware wired, authenticates as admin,
 then fires 100 concurrent POSTs to a guarded endpoint via a
 ``ThreadPoolExecutor`` (the sync ``TestClient`` drives parallel
 requests through the ASGI transport).  The first ``max_requests``
@@ -309,3 +309,71 @@ class TestConcurrencyGuardAgainstFinetunePreflight:
             body = resp.json()
             assert body["error_detail"]["error_code"] == 5002
             assert body["error_detail"]["error_category"] == "rate_limit"
+
+
+class TestHighTierOpsCarryGuards:
+    """Regression guard: HIGH-tier endpoints must keep both guards wired.
+
+    A full-request flow against memory.fine_tune / checkpoint_* /
+    providers.pull_model / providers.discover_models requires a live
+    fine-tune orchestrator and provider backend the integration stub
+    doesn't carry -- but the audit wiring itself is verifiable at the
+    route-manifest level: every HIGH-tier op must carry a
+    ``per_op_rate_limit`` guard AND a ``per_op_concurrency`` opt entry
+    with its designated operation string.  This catches the
+    regression where someone removes a decorator without realising
+    these are SEC-2 audit requirements.
+    """
+
+    _HIGH_TIER_OPS: tuple[tuple[str, str], ...] = (
+        ("memory.fine_tune", "start_fine_tune"),
+        ("memory.checkpoint_deploy", "deploy_checkpoint"),
+        ("memory.checkpoint_rollback", "rollback_checkpoint"),
+        ("providers.pull_model", "pull_model"),
+        ("providers.discover_models", "discover_models"),
+    )
+
+    def test_high_tier_ops_have_both_guards_wired(
+        self,
+        fake_persistence: FakePersistenceBackend,
+        fake_message_bus: FakeMessageBus,
+    ) -> None:
+        app = _build_app(fake_persistence, fake_message_bus)
+        # Walk every handler once so the assertion survives route
+        # reorganisations (new routers, nested controllers, etc.).
+        handler_by_name: dict[str, Any] = {}
+        for route in app.routes:
+            for handler in getattr(route, "route_handlers", []) or []:
+                handler_by_name[getattr(handler, "handler_name", "")] = handler
+
+        missing: list[str] = []
+        for op_name, handler_name in self._HIGH_TIER_OPS:
+            handler = handler_by_name.get(handler_name)
+            if handler is None:
+                missing.append(f"{op_name}: handler {handler_name!r} not found")
+                continue
+            guards = getattr(handler, "guards", None) or ()
+            guard_names = tuple(getattr(g, "__name__", "") for g in guards)
+            if not any(
+                name.startswith(f"per_op_rate_limit[{op_name}]") for name in guard_names
+            ):
+                missing.append(
+                    f"{op_name}: per_op_rate_limit guard missing "
+                    f"(found guards: {guard_names})"
+                )
+            opt = getattr(handler, "opt", None) or {}
+            inflight_opt = opt.get("per_op_concurrency")
+            if inflight_opt is None:
+                missing.append(
+                    f"{op_name}: per_op_concurrency opt missing (opt keys: {list(opt)})"
+                )
+                continue
+            if (
+                not isinstance(inflight_opt, (tuple, list))
+                or len(inflight_opt) != 3
+                or inflight_opt[0] != op_name
+            ):
+                missing.append(
+                    f"{op_name}: per_op_concurrency opt malformed: {inflight_opt!r}"
+                )
+        assert not missing, "HIGH-tier guard wiring regression:\n" + "\n".join(missing)

@@ -1,4 +1,4 @@
-"""In-memory per-operation inflight limiter (#1489, SEC-2).
+"""In-memory per-operation inflight limiter.
 
 Each bucket holds an integer counter and a per-key lock so the check-
 and-increment is atomic.  On ``acquire``, if the counter is below
@@ -120,12 +120,14 @@ class InMemoryInflightStore(InflightStore):
                     current=current,
                     retry_after=_MIN_RETRY_AFTER_SECONDS,
                 )
-                msg = (
-                    f"Concurrency limit exceeded for {key!r}: "
-                    f"{current}/{max_inflight} inflight"
-                )
+                # Public message intentionally opaque: the exact
+                # ``current`` / ``max_inflight`` counts go to the audit
+                # log above so operators can diagnose saturation, but
+                # surfacing them in the response body would let a
+                # caller coordinate requests to exhaust the limit
+                # precisely or infer how many concurrent requests
+                # other subjects currently hold for the same operation.
                 raise ConcurrencyLimitExceededError(
-                    msg,
                     retry_after=_MIN_RETRY_AFTER_SECONDS,
                 )
             self._counters[key] = current + 1

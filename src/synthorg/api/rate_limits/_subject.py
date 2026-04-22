@@ -1,4 +1,4 @@
-"""Shared subject-identity resolution for rate-limit guards (#1489, #1391).
+"""Shared subject-identity resolution for rate-limit guards.
 
 Both the sliding-window ``per_op_rate_limit`` guard and the inflight
 ``PerOpConcurrencyMiddleware`` must bucket requests by the same
@@ -26,11 +26,20 @@ STATE_KEY_STORE: Final[str] = "per_op_rate_limit_store"
 STATE_KEY_CONFIG: Final[str] = "per_op_rate_limit_config"
 STATE_KEY_INFLIGHT_STORE: Final[str] = "per_op_inflight_store"
 STATE_KEY_INFLIGHT_CONFIG: Final[str] = "per_op_inflight_config"
-# Trusted-proxy set (frozenset[str]) used to decide whether to read
-# X-Forwarded-For; mirrors the global limiter's behaviour so the per-op
-# guards pick the same "real client IP" and cannot be bypassed by
-# untrusted callers spoofing the forwarded header.
+# Trusted-proxy raw set (frozenset[str]) kept on app state for
+# diagnostic reads; the pre-parsed tuple below is what both per-op
+# guards consult at request time.
 STATE_KEY_TRUSTED_PROXIES: Final[str] = "per_op_trusted_proxies"
+# Pre-parsed tuple of ``ip_network`` objects built once at startup
+# from ``per_op_trusted_proxies``.  Parsing per-request added a
+# measurable hot-path cost (each guarded mutation re-parsed the full
+# set); caching the parsed tuple keeps the "real client IP" resolution
+# constant-cost per request.
+STATE_KEY_TRUSTED_NETWORKS: Final[str] = "per_op_trusted_networks"
+TrustedNetworks = tuple[
+    ipaddress.IPv4Network | ipaddress.IPv6Network,
+    ...,
+]
 # Trusted-proxy-normalised client IP key -- stashed on the ASGI scope
 # by any middleware that has already resolved the forwarded IP.  The
 # helpers read this first and only walk X-Forwarded-For themselves when
@@ -123,22 +132,16 @@ def client_ip(connection: ASGIConnection[Any, Any, Any, Any]) -> str:
     return peer or "unknown"
 
 
-def _trusted_networks(
-    connection: ASGIConnection[Any, Any, Any, Any],
-) -> tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...]:
-    """Read and parse the trusted-proxy state into IP networks.
+def parse_trusted_networks(raw: frozenset[str]) -> TrustedNetworks:
+    """Parse a ``frozenset[str]`` of proxy CIDRs into IP networks.
 
-    ``per_op_trusted_proxies`` is seeded as a ``frozenset[str]`` at app
-    startup (raw strings from the config).  Parse each entry into an
-    ``ip_network`` object so both bare IPs (``"10.0.0.1"``) and CIDR
-    ranges (``"10.0.0.0/8"``) match correctly; malformed entries are
-    skipped (logged by config validation at ingest time, not here).
+    Called once at startup by ``api/app.py`` to precompute the tuple
+    stashed on app state; also used by tests that need to build the
+    same shape without going through the full app lifecycle.  Malformed
+    entries are skipped (logged by config validation at ingest time,
+    not here) so a typo in one proxy CIDR does not disable the whole
+    trusted-proxy set.
     """
-    raw: frozenset[str] = getattr(
-        connection.app.state,
-        STATE_KEY_TRUSTED_PROXIES,
-        frozenset(),
-    )
     parsed: list[ipaddress.IPv4Network | ipaddress.IPv6Network] = []
     for entry in raw:
         try:
@@ -146,6 +149,32 @@ def _trusted_networks(
         except ValueError:
             continue
     return tuple(parsed)
+
+
+def _trusted_networks(
+    connection: ASGIConnection[Any, Any, Any, Any],
+) -> TrustedNetworks:
+    """Return the cached trusted-network tuple from app state.
+
+    The tuple is built once at startup by ``api/app.py`` via
+    :func:`parse_trusted_networks` and stashed under
+    ``STATE_KEY_TRUSTED_NETWORKS``.  Falls back to parsing on the fly
+    if the cache is not present (test fixtures that bypass full app
+    startup) so the guard remains correct even with a minimal state.
+    """
+    cached: TrustedNetworks | None = getattr(
+        connection.app.state,
+        STATE_KEY_TRUSTED_NETWORKS,
+        None,
+    )
+    if cached is not None:
+        return cached
+    raw: frozenset[str] = getattr(
+        connection.app.state,
+        STATE_KEY_TRUSTED_PROXIES,
+        frozenset(),
+    )
+    return parse_trusted_networks(raw)
 
 
 def _ip_in_networks(

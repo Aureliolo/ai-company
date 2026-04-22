@@ -1,4 +1,4 @@
-"""Factory for per-operation inflight-store strategies (#1489, SEC-2)."""
+"""Factory for per-operation inflight-store strategies."""
 
 from synthorg.api.rate_limits.in_memory_inflight import InMemoryInflightStore
 from synthorg.api.rate_limits.inflight_config import (

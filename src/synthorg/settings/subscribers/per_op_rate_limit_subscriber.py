@@ -1,0 +1,229 @@
+"""Per-operation rate-limit settings subscriber.
+
+Reacts to runtime changes of the ``api.per_op_rate_limit_*`` and
+``api.per_op_concurrency_*`` settings.  On any watched change the
+subscriber rebuilds the corresponding ``PerOpRateLimitConfig`` /
+``PerOpConcurrencyConfig`` from the current database values and swaps
+it into :class:`AppState` so the next request sees the new policy
+without a process restart.
+
+Only the ``enabled`` and ``overrides`` keys are watched -- the
+``backend`` key is ``restart_required=True`` (filtered by the
+dispatcher) because the store is constructed once at startup and
+switching backends is not a hot-reload concern.
+"""
+
+import json
+from typing import TYPE_CHECKING, Any
+
+from synthorg.api.rate_limits.config import PerOpRateLimitConfig
+from synthorg.api.rate_limits.inflight_config import PerOpConcurrencyConfig
+from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.settings import (
+    SETTINGS_SERVICE_SWAP_FAILED,
+    SETTINGS_SUBSCRIBER_NOTIFIED,
+)
+
+if TYPE_CHECKING:
+    from synthorg.api.state import AppState
+    from synthorg.settings.service import SettingsService
+
+logger = get_logger(__name__)
+
+_NAMESPACE = "api"
+_RATE_LIMIT_ENABLED = "per_op_rate_limit_enabled"
+_RATE_LIMIT_OVERRIDES = "per_op_rate_limit_overrides"
+_CONCURRENCY_ENABLED = "per_op_concurrency_enabled"
+_CONCURRENCY_OVERRIDES = "per_op_concurrency_overrides"
+
+_WATCHED: frozenset[tuple[str, str]] = frozenset(
+    {
+        (_NAMESPACE, _RATE_LIMIT_ENABLED),
+        (_NAMESPACE, _RATE_LIMIT_OVERRIDES),
+        (_NAMESPACE, _CONCURRENCY_ENABLED),
+        (_NAMESPACE, _CONCURRENCY_OVERRIDES),
+    }
+)
+_RATE_LIMIT_OVERRIDE_TUPLE_LEN = 2
+
+
+class PerOpRateLimitSettingsSubscriber:
+    """Swap per-op rate-limit / concurrency configs on DB change.
+
+    Holds a reference to :class:`AppState` (where the live configs
+    are stored) and :class:`SettingsService` (to read new values).
+    On a watched change, reads the full current tuple of settings
+    for that guard (``enabled`` + ``overrides``), rebuilds the
+    ``PerOpRateLimitConfig`` / ``PerOpConcurrencyConfig`` model, and
+    calls the matching AppState swap method.  Validation errors are
+    logged via ``SETTINGS_SERVICE_SWAP_FAILED`` and re-raised so the
+    dispatcher logs with full subscriber context; the previous
+    in-memory config stays in place so the guard keeps working.
+
+    Args:
+        app_state: Application state that owns the live configs.
+        settings_service: Settings service for reading current values.
+    """
+
+    def __init__(
+        self,
+        app_state: AppState,
+        settings_service: SettingsService,
+    ) -> None:
+        self._app_state = app_state
+        self._settings_service = settings_service
+
+    @property
+    def watched_keys(self) -> frozenset[tuple[str, str]]:
+        """Return the ``(namespace, key)`` pairs this subscriber watches."""
+        return _WATCHED
+
+    @property
+    def subscriber_name(self) -> str:
+        """Human-readable subscriber name for logs."""
+        return "per-op-rate-limit-settings"
+
+    async def on_settings_changed(
+        self,
+        namespace: str,
+        key: str,
+    ) -> None:
+        """Route the change to the matching rebuild path."""
+        if namespace != _NAMESPACE:
+            logger.warning(
+                SETTINGS_SUBSCRIBER_NOTIFIED,
+                subscriber=self.subscriber_name,
+                namespace=namespace,
+                key=key,
+                note="ignored unexpected namespace",
+            )
+            return
+
+        if key in (_RATE_LIMIT_ENABLED, _RATE_LIMIT_OVERRIDES):
+            await self._rebuild_rate_limit_config(key)
+        elif key in (_CONCURRENCY_ENABLED, _CONCURRENCY_OVERRIDES):
+            await self._rebuild_concurrency_config(key)
+        else:
+            logger.warning(
+                SETTINGS_SUBSCRIBER_NOTIFIED,
+                subscriber=self.subscriber_name,
+                namespace=namespace,
+                key=key,
+                note="ignored unexpected key",
+            )
+
+    async def _rebuild_rate_limit_config(self, trigger_key: str) -> None:
+        """Rebuild ``PerOpRateLimitConfig`` and swap into AppState."""
+        try:
+            enabled = await self._read_bool(_RATE_LIMIT_ENABLED)
+            overrides_raw = await self._read_json(_RATE_LIMIT_OVERRIDES)
+            overrides = self._coerce_rate_limit_overrides(overrides_raw)
+            existing = (
+                self._app_state.per_op_rate_limit_config
+                if self._app_state.has_per_op_rate_limit_config
+                else None
+            )
+            backend = existing.backend if existing is not None else "memory"
+            new_config = PerOpRateLimitConfig(
+                enabled=enabled,
+                backend=backend,
+                overrides=overrides,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                SETTINGS_SERVICE_SWAP_FAILED,
+                service="per_op_rate_limit_config",
+                trigger_key=trigger_key,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise
+        self._app_state.swap_per_op_rate_limit_config(new_config)
+
+    async def _rebuild_concurrency_config(self, trigger_key: str) -> None:
+        """Rebuild ``PerOpConcurrencyConfig`` and swap into AppState."""
+        try:
+            enabled = await self._read_bool(_CONCURRENCY_ENABLED)
+            overrides_raw = await self._read_json(_CONCURRENCY_OVERRIDES)
+            overrides = self._coerce_concurrency_overrides(overrides_raw)
+            existing = (
+                self._app_state.per_op_concurrency_config
+                if self._app_state.has_per_op_concurrency_config
+                else None
+            )
+            backend = existing.backend if existing is not None else "memory"
+            new_config = PerOpConcurrencyConfig(
+                enabled=enabled,
+                backend=backend,
+                overrides=overrides,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                SETTINGS_SERVICE_SWAP_FAILED,
+                service="per_op_concurrency_config",
+                trigger_key=trigger_key,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise
+        self._app_state.swap_per_op_concurrency_config(new_config)
+
+    async def _read_bool(self, key: str) -> bool:
+        """Read a boolean setting.  Accepts ``"true"``/``"false"`` strings."""
+        result = await self._settings_service.get(_NAMESPACE, key)
+        return str(result.value).lower() == "true"
+
+    async def _read_json(self, key: str) -> Any:
+        """Read a JSON-typed setting and parse into Python objects."""
+        result = await self._settings_service.get(_NAMESPACE, key)
+        raw = str(result.value) if result.value is not None else "{}"
+        return json.loads(raw) if raw else {}
+
+    @staticmethod
+    def _coerce_rate_limit_overrides(
+        raw: Any,
+    ) -> dict[str, tuple[int, int]]:
+        """Coerce a JSON dict into ``PerOpRateLimitConfig.overrides`` shape.
+
+        Expected shape: ``{"op.name": [max_requests, window_seconds]}``.
+        JSON arrays arrive as lists; the Pydantic model expects tuples
+        so the entries are converted here.  Non-dict / malformed inputs
+        raise ``ValueError``; the caller turns that into a swap-failed
+        log without clobbering the existing config.
+        """
+        if not isinstance(raw, dict):
+            msg = (
+                "per_op_rate_limit_overrides must be a JSON object, "
+                f"got {type(raw).__name__}"
+            )
+            raise TypeError(msg)
+        coerced: dict[str, tuple[int, int]] = {}
+        for op_name, value in raw.items():
+            if (
+                not isinstance(value, (list, tuple))
+                or len(value) != _RATE_LIMIT_OVERRIDE_TUPLE_LEN
+            ):
+                msg = (
+                    f"overrides[{op_name!r}] must be a 2-element "
+                    "[max_requests, window_seconds] array"
+                )
+                raise ValueError(msg)
+            max_req = int(value[0])
+            window = int(value[1])
+            coerced[str(op_name)] = (max_req, window)
+        return coerced
+
+    @staticmethod
+    def _coerce_concurrency_overrides(raw: Any) -> dict[str, int]:
+        """Coerce a JSON dict into ``PerOpConcurrencyConfig.overrides``."""
+        if not isinstance(raw, dict):
+            msg = (
+                "per_op_concurrency_overrides must be a JSON object, "
+                f"got {type(raw).__name__}"
+            )
+            raise TypeError(msg)
+        return {str(op): int(value) for op, value in raw.items()}

@@ -1,4 +1,4 @@
-"""Per-operation inflight-concurrency configuration (#1489, SEC-2)."""
+"""Per-operation inflight-concurrency configuration."""
 
 from typing import Literal, Self
 

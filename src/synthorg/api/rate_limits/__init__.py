@@ -1,4 +1,4 @@
-"""Per-operation rate limiting (#1391) + inflight concurrency (#1489).
+"""Per-operation rate limiting and inflight concurrency guards.
 
 Two layered guards sit on top of the global two-tier limiter in
 ``api/config.py`` ``RateLimitConfig``:

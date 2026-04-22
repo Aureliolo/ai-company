@@ -137,10 +137,12 @@ limiter (``api.rate_limit.*``). Both are runtime-editable via settings.
 | `api.per_op_rate_limit.backend` | ENUM | `memory` | no (restart) | Sliding-window store backend. `memory` is the only implementation today; `redis` reserved for cross-worker fairness. |
 | `api.per_op_rate_limit.overrides` | JSON | `{}` | yes | Per-operation overrides keyed by operation name. Shape: `{"<op>": [max_requests, window_seconds]}`. Setting either component to `0` disables the guard for that operation; negative values are rejected. |
 
-Example override to tighten ``memory.fine_tune`` to two starts per day:
+Example override to tighten ``memory.fine_tune`` to two starts per day.
+The ``SettingsController`` routes by ``(namespace, key)`` where ``key``
+is the registry key (underscores), not the yaml_path (dots):
 
 ```bash
-curl -X PUT http://localhost:3001/api/v1/settings/api/per_op_rate_limit.overrides \
+curl -X PUT http://localhost:3001/api/v1/settings/api/per_op_rate_limit_overrides \
   -H "Content-Type: application/json" \
   -H "Cookie: session=${TOKEN}" \
   -d '{"value": "{\"memory.fine_tune\": [2, 86400]}"}'

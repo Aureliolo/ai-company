@@ -1,4 +1,4 @@
-"""Per-operation inflight guard opt-factory (#1489, SEC-2).
+"""Per-operation inflight guard opt-factory.
 
 ``per_op_concurrency`` returns a dict intended to be splatted into a
 Litestar route's ``opt={}`` argument.  The companion

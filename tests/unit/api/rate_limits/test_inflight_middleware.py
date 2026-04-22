@@ -1,4 +1,4 @@
-"""Unit tests for PerOpConcurrencyMiddleware (#1489, SEC-2).
+"""Unit tests for PerOpConcurrencyMiddleware.
 
 Concurrent scenarios use :class:`TestClient` (sync) driven by a
 ``ThreadPoolExecutor`` so requests land in the Litestar app truly in
@@ -378,7 +378,7 @@ class TestKeyPolicyVariants:
     def test_user_policy_falls_back_to_ip_when_anonymous(self) -> None:
         """``key="user"`` with no auth degrades to IP + logs a warning.
 
-        The fallback is a SEC-2 safety net: unauthenticated requests
+        The fallback is a safety net: unauthenticated requests
         still get bucketed (by IP) rather than bypassing the guard.
         """
 

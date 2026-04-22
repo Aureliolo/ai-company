@@ -1,4 +1,4 @@
-"""Unit tests for the in-memory inflight store (#1489, SEC-2)."""
+"""Unit tests for the in-memory inflight store."""
 
 import asyncio
 
@@ -55,9 +55,14 @@ class TestConcurrencyDenial:
     async def test_concurrent_at_cap_raises(self) -> None:
         store = InMemoryInflightStore()
         gate = asyncio.Event()
+        acquired = asyncio.Event()
 
         async def holder() -> None:
             async with store.acquire("op:user-1", max_inflight=1):
+                # Signal the attempt coroutine only after the permit is
+                # held -- using an ``Event`` instead of ``sleep(0)`` is
+                # deterministic under any event-loop scheduling order.
+                acquired.set()
                 await gate.wait()
 
         async def attempt() -> ConcurrencyLimitExceededError:
@@ -70,8 +75,7 @@ class TestConcurrencyDenial:
 
         try:
             holder_task = asyncio.create_task(holder())
-            # Yield so the holder takes the permit before the attempt.
-            await asyncio.sleep(0)
+            await acquired.wait()
             err = await attempt()
             assert err.retry_after == 1
             assert err.status_code == 429

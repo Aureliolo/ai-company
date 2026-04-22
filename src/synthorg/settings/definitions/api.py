@@ -285,7 +285,7 @@ _r.register(
         default="true",
         description=(
             "Master switch for per-operation sliding-window rate limits"
-            " (#1391). Disable to make all per_op_rate_limit guards no-ops."
+            ". Disable to make all per_op_rate_limit guards no-ops."
         ),
         group="Rate Limiting",
         level=SettingLevel.ADVANCED,
@@ -340,7 +340,7 @@ _r.register(
         default="true",
         description=(
             "Master switch for per-operation inflight-concurrency caps"
-            " (#1489). Disable to make the PerOpConcurrencyMiddleware"
+            ". Disable to make the PerOpConcurrencyMiddleware"
             " a no-op for all requests."
         ),
         group="Rate Limiting",
