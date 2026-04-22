@@ -472,6 +472,14 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
                 "SYNTHORG_PAGINATION_CURSOR_SECRET to a stable value "
                 "(>= 16 bytes)."
             )
+            # Emit the structured error before raising so centralized
+            # log collectors see the refusal reason even if the caller
+            # swallows or reformats the exception message.
+            logger.error(
+                API_APP_STARTUP,
+                note="refusing startup: ephemeral pagination cursor secret in prod",
+                env_marker=env_marker,
+            )
             raise RuntimeError(msg)
         logger.warning(
             API_APP_STARTUP,

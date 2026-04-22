@@ -222,10 +222,18 @@ export default function CeremonyPolicyPage() {
         const { listDepartments } = await import('@/api/endpoints/company')
         let cursor: string | null = null
         const limit = 200
+        // Cycle guard: a malformed backend that returns the same
+        // ``nextCursor`` twice with ``hasMore=true`` would otherwise
+        // loop forever. Bail out with partial results when we see a
+        // cursor repeat, and rely on the operator-facing toast below
+        // if the department count ends up incomplete.
+        const seenCursors = new Set<string>()
         while (!cancelled) {
           const result = await listDepartments({ cursor, limit })
           allDepts.push(...result.data)
           if (!result.hasMore || !result.nextCursor) break
+          if (seenCursors.has(result.nextCursor)) break
+          seenCursors.add(result.nextCursor)
           cursor = result.nextCursor
         }
       } catch {

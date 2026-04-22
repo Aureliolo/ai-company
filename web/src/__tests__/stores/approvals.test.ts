@@ -16,9 +16,14 @@ const LRO = String.fromCharCode(0x202d)
 
 function paginated(
   data: ApprovalResponse[],
-  meta: Partial<{ total: number; offset: number; limit: number }> = {},
+  meta: Partial<{ total: number | null; offset: number; limit: number }> = {},
 ) {
-  const total = meta.total ?? data.length
+  // ``total`` is ``number | null`` under cursor pagination so the
+  // repo-backed ``total === null`` path (where the backend skips the
+  // COUNT(*) round-trip) is exercisable from tests. ``'total' in
+  // meta`` means the caller explicitly wanted the supplied value
+  // (possibly ``null``); otherwise fall back to ``data.length``.
+  const total = 'total' in meta ? (meta.total as number | null) : data.length
   const offset = meta.offset ?? 0
   const limit = meta.limit ?? 200
   return paginatedFor<typeof listApprovals>({

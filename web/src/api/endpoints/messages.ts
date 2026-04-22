@@ -9,11 +9,12 @@ export async function listMessages(params?: PaginationParams & { channel?: strin
 }
 
 export async function listChannels(
-  params?: { cursor?: string | null; limit?: number },
+  params?: PaginationParams & { signal?: AbortSignal },
 ): Promise<PaginatedResult<Channel>> {
+  const { signal, ...queryParams } = params ?? {}
   const response = await apiClient.get<PaginatedResponse<Channel>>(
     '/messages/channels',
-    { params },
+    { params: queryParams, signal },
   )
   return unwrapPaginated<Channel>(response)
 }

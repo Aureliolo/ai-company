@@ -10,18 +10,36 @@ import type { WsEvent } from '@/api/types/websocket'
 function paginated(
   data: Message[],
   meta: Partial<{
-    total: number
+    total: number | null
     offset: number
     limit: number
     nextCursor: string | null
     hasMore: boolean
   }> = {},
 ) {
-  const total = meta.total ?? data.length
+  // ``total`` is ``number | null`` under cursor pagination so the
+  // repo-backed ``total === null`` path is exercisable from tests;
+  // ``'total' in meta`` means the caller supplied an explicit value
+  // (possibly ``null``), otherwise fall back to ``data.length``.
+  const total = 'total' in meta ? (meta.total as number | null) : data.length
   const offset = meta.offset ?? 0
   const limit = meta.limit ?? 50
-  const nextCursor = meta.nextCursor ?? null
-  const hasMore = meta.hasMore ?? false
+  // If the caller supplied a ``nextCursor`` without a ``hasMore``
+  // (or vice versa), default the missing field to the consistent
+  // counterpart so the helper cannot emit the impossible
+  // ``has_more=true, next_cursor=null`` or ``next_cursor!=null,
+  // has_more=false`` envelopes the backend's ``PaginationMeta``
+  // consistency validator rejects.  The server-side tests would
+  // otherwise pass even if the store silently dropped continuation
+  // state.
+  const nextCursor =
+    meta.nextCursor !== undefined
+      ? meta.nextCursor
+      : meta.hasMore === true
+        ? 'auto-continuation-cursor'
+        : null
+  const hasMore =
+    meta.hasMore !== undefined ? meta.hasMore : nextCursor !== null
   return paginatedFor<typeof listMessages>({
     data,
     total,

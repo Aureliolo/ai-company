@@ -13,9 +13,10 @@ from litestar.exceptions import (
 )
 from litestar.status_codes import HTTP_204_NO_CONTENT
 
-from synthorg.api.dto import ApiResponse, PaginatedResponse
+from synthorg.api.cursor import decode_cursor, encode_cursor
+from synthorg.api.dto import ApiResponse, PaginatedResponse, PaginationMeta
 from synthorg.api.guards import HumanRole, require_roles
-from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
+from synthorg.api.pagination import CursorLimit, CursorParam  # noqa: TC001
 from synthorg.api.path_params import PathId  # noqa: TC001
 from synthorg.api.rate_limits.guard import per_op_rate_limit
 from synthorg.api.state import AppState  # noqa: TC001
@@ -98,19 +99,34 @@ class BackupController(Controller):
         cursor: CursorParam = None,
         limit: CursorLimit = 50,
     ) -> PaginatedResponse[BackupInfo]:
-        """List all available backups (paginated).
+        """List available backups (paginated, newest first).
+
+        Pushes ``limit + 1 / offset`` into ``BackupService.list_backups``
+        so manifest parsing stays O(limit) instead of scaling with the
+        total on-disk backup count.
 
         Args:
             state: Application state.
-            cursor: Opaque pagination cursor from the previous page.
+            cursor: Opaque pagination cursor from the previous page;
+                ``None`` starts at the newest backup.
             limit: Page size.
 
         Returns:
             Paginated backup info summaries.
         """
         app_state: AppState = state.app_state
+        offset = (
+            0
+            if cursor is None
+            else decode_cursor(cursor, secret=app_state.cursor_secret)
+        )
         try:
-            backups = await app_state.backup_service.list_backups()
+            # Fetch ``limit + 1`` so we can detect that another page
+            # follows without a second full-directory scan.
+            backups = await app_state.backup_service.list_backups(
+                limit=limit + 1,
+                offset=offset,
+            )
         except BackupError as exc:
             logger.error(
                 BACKUP_FAILED,
@@ -119,13 +135,21 @@ class BackupController(Controller):
             )
             msg = "Failed to list backups"
             raise InternalServerException(msg) from exc
-        page, meta = paginate_cursor(
-            tuple(backups),
-            limit=limit,
-            cursor=cursor,
-            secret=app_state.cursor_secret,
+        has_more = len(backups) > limit
+        window = backups[:limit]
+        next_cursor = (
+            encode_cursor(offset + limit, secret=app_state.cursor_secret)
+            if has_more
+            else None
         )
-        return PaginatedResponse[BackupInfo](data=page, pagination=meta)
+        meta = PaginationMeta(
+            limit=limit,
+            next_cursor=next_cursor,
+            has_more=has_more,
+            total=None,
+            offset=offset,
+        )
+        return PaginatedResponse[BackupInfo](data=window, pagination=meta)
 
     @get("/{backup_id:str}")
     async def get_backup(

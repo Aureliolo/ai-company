@@ -168,9 +168,15 @@ class TestListVersions:
         next_cursor = body["pagination"]["next_cursor"]
         assert next_cursor is not None
 
-        # Second page via opaque cursor.
+        # Second page via opaque cursor.  Pass the cursor through
+        # ``params`` rather than interpolating it into the URL so the
+        # test does not couple to cursor-encoding details (e.g. if
+        # future versions use a symbol that needs URL-escaping, the
+        # interpolated form breaks silently while ``params`` hands it
+        # to httpx as an opaque value).
         resp2 = test_client.get(
-            f"/api/v1/workflows/{wf_id}/versions?limit=2&cursor={next_cursor}",
+            f"/api/v1/workflows/{wf_id}/versions",
+            params={"limit": 2, "cursor": next_cursor},
             headers=make_auth_headers("ceo"),
         )
         assert resp2.status_code == 200

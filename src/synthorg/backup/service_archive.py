@@ -44,15 +44,46 @@ class BackupServiceArchiveMixin:
     _backup_lock: asyncio.Lock
     _config: BackupConfig
 
-    async def list_backups(self) -> tuple[BackupInfo, ...]:
-        """List all available backups."""
+    async def list_backups(
+        self,
+        *,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> tuple[BackupInfo, ...]:
+        """List available backups, newest first.
+
+        When ``limit`` is provided, at most ``limit`` entries are
+        returned starting at ``offset``.  Manifest parsing is cheap
+        per-entry but linear in directory size, so pushing pagination
+        down here lets the controller stay O(limit) instead of O(total
+        backups) -- important when the on-disk history grows.
+
+        Args:
+            limit: Maximum number of entries to return.  ``None`` keeps
+                the legacy behaviour of listing every entry.
+            offset: Number of entries to skip from the newest.
+
+        Returns:
+            Tuple of backup info summaries, newest first.
+        """
         entries = await asyncio.to_thread(self._scan_backup_entries)
         if entries is None:
             logger.debug(BACKUP_LISTED, count=0)
             return ()
 
+        # The directory listing order is filesystem-dependent, so
+        # sort the cheap entry handles first and only then parse the
+        # window the caller asked for.  Entry names encode the backup
+        # timestamp (``backup-YYYYMMDD-HHMMSS...``) which is a stable
+        # proxy for the ``BackupInfo.timestamp`` we eventually return.
+        entries.sort(key=lambda item: item[0].name, reverse=True)
+
+        start = max(0, offset)
+        stop = start + limit if limit is not None else None
+        window = entries[start:stop] if stop is not None else entries[start:]
+
         infos: list[BackupInfo] = []
-        for entry, is_dir in entries:
+        for entry, is_dir in window:
             if is_dir:
                 info = await asyncio.to_thread(self._try_load_dir_info, entry)
                 if info is not None:
@@ -62,6 +93,8 @@ class BackupServiceArchiveMixin:
                 if info is not None:
                     infos.append(info)
 
+        # Final tie-break by the parsed timestamp so entries with the
+        # same filename prefix end up in true chronological order.
         infos.sort(key=lambda i: i.timestamp, reverse=True)
         logger.debug(BACKUP_LISTED, count=len(infos))
         return tuple(infos)

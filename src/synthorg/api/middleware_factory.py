@@ -228,13 +228,21 @@ def _build_auth_exclude_paths(
     )
     # Fold all mandatory fail-safe paths through a single helper so
     # each addition stays O(1) and the function body keeps below
-    # ruff's complexity ceiling.
+    # ruff's complexity ceiling.  ``/auth/setup`` + ``/auth/login``
+    # stay in the list so a custom ``auth.exclude_paths`` never
+    # locks operators out of the initial setup / recovery flows:
+    # the auth middleware cannot authenticate a user without a way
+    # to set or recover credentials first.
+    auth_setup_path = f"^{prefix}/auth/setup$"
+    auth_login_path = f"^{prefix}/auth/login$"
     mandatory_paths: list[str] = [
         healthz_path,
         readyz_path,
         metrics_path,
         setup_status_path,
         logout_path,
+        auth_setup_path,
+        auth_login_path,
         ws_path,
         oauth_callback_path,
     ]

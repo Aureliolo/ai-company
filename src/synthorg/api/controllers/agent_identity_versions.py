@@ -140,7 +140,11 @@ class AgentIdentityVersionController(Controller):
         # disagrees with the returned ``data`` slice.
         safe_total = max(total - dropped, len(safe_versions))
         next_offset = offset + len(safe_versions)
-        has_more = next_offset < safe_total
+        # Snapshot-drift guard (see role_versions.py for the full
+        # rationale): short / empty pages cannot advance the cursor.
+        has_more = (
+            len(safe_versions) > 0 and next_offset > offset and next_offset < safe_total
+        )
         next_cursor = encode_cursor(next_offset, secret=secret) if has_more else None
         meta = PaginationMeta(
             limit=limit,

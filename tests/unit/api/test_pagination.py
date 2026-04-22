@@ -136,6 +136,48 @@ class TestInvalidCursor:
                 secret=secret,
             )
 
+    def test_cursor_points_at_shrunk_collection_boundary(
+        self,
+        secret: CursorSecret,
+    ) -> None:
+        """A valid cursor pointing *exactly* at the new end is rejected.
+
+        Regression for the ``offset >= len(items)`` guard.  Issue a
+        cursor against a 20-item collection that points to offset 10,
+        then replay it against a collection that has shrunk to
+        exactly 10 items.  An empty page would silently hide the
+        truncation; the explicit rejection forces callers to observe
+        the state change instead.
+        """
+        full = tuple(range(20))
+        _, meta = paginate_cursor(full, limit=10, cursor=None, secret=secret)
+        assert meta.next_cursor is not None
+        shrunk = tuple(range(10))  # cursor now points exactly at len(shrunk).
+        with pytest.raises(InvalidCursorError):
+            paginate_cursor(
+                shrunk,
+                limit=10,
+                cursor=meta.next_cursor,
+                secret=secret,
+            )
+
+    def test_cursor_points_past_shrunk_collection_end(
+        self,
+        secret: CursorSecret,
+    ) -> None:
+        """A cursor pointing past the end is rejected too."""
+        full = tuple(range(20))
+        _, meta = paginate_cursor(full, limit=10, cursor=None, secret=secret)
+        assert meta.next_cursor is not None
+        shrunk = tuple(range(5))  # cursor offset > len(shrunk).
+        with pytest.raises(InvalidCursorError):
+            paginate_cursor(
+                shrunk,
+                limit=10,
+                cursor=meta.next_cursor,
+                secret=secret,
+            )
+
 
 class TestCursorStability:
     """Same input -> same cursor (deterministic for a fixed secret)."""

@@ -58,7 +58,15 @@ class RoleVersionController(Controller):
         )
         next_offset = offset + len(versions)
 
-        has_more = next_offset < total
+        # Guard against snapshot drift between ``list_versions`` and
+        # ``count_versions``: if the list read came back short of the
+        # requested page but the count still claims more items exist,
+        # ``next_offset`` would point at the same row the current
+        # cursor already decodes to, and the client would loop on
+        # that page forever.  Require the page to have at least one
+        # row AND the offset to have advanced before claiming more
+        # pages exist.
+        has_more = len(versions) > 0 and next_offset > offset and next_offset < total
 
         next_cursor = encode_cursor(next_offset, secret=secret) if has_more else None
 

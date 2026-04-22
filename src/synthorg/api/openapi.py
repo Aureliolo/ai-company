@@ -539,9 +539,16 @@ def _should_inject(
     is_write = method in _WRITE_METHODS
     has_params = _has_path_params(path)
 
+    # ``/readyz`` is the one public path that legitimately returns
+    # 503 when persistence / message-bus subsystems are unhealthy,
+    # so the schema MUST document it even though the path is public.
+    # Other public paths (``/healthz``, ``/auth/*``, ``/setup/status``)
+    # always return 200 while the process is alive.
+    serves_503 = path.endswith("/readyz")
+
     checks: dict[str, bool] = {
         "InternalError": True,
-        "ServiceUnavailable": not is_public,
+        "ServiceUnavailable": not is_public or serves_503,
         "Unauthorized": not is_public,
         "Forbidden": not is_public and is_write,
         # Inject on write methods or replace Litestar's incorrect default.

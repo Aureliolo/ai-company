@@ -1,4 +1,9 @@
-import { apiClient, unwrap } from '../client'
+import {
+  apiClient,
+  unwrap,
+  unwrapPaginated,
+  type PaginatedResult,
+} from '../client'
 import type { ApiResponse, PaginatedResponse } from '../types/http'
 
 // -- Response types ----------------------------------------------------------
@@ -44,25 +49,17 @@ export async function getScalingDecisions(params?: {
   /** Opaque pagination cursor from the previous response's `pagination.next_cursor`. */
   cursor?: string | null
   limit?: number
-}): Promise<{
-  data: ScalingDecisionResponse[]
-  total: number | null
-  nextCursor: string | null
-  hasMore: boolean
-}> {
+}): Promise<PaginatedResult<ScalingDecisionResponse>> {
+  // Return the shared ``PaginatedResult<T>`` shape so every cursor
+  // endpoint in ``@/api/endpoints`` honours the same envelope, the
+  // matching MSW handler can use ``paginatedFor<typeof
+  // getScalingDecisions>(...)``, and stores can reuse the
+  // ``nextCursor`` / ``hasMore`` / ``total`` / ``offset`` / ``limit``
+  // fields without branching on a bespoke return type.
   const response = await apiClient.get<
     PaginatedResponse<ScalingDecisionResponse>
   >('/scaling/decisions', { params })
-  const body = response.data
-  if (!body.pagination) {
-    throw new Error('Invalid paginated response: missing pagination envelope')
-  }
-  return {
-    data: body.data ?? [],
-    total: body.pagination.total,
-    nextCursor: body.pagination.next_cursor,
-    hasMore: body.pagination.has_more,
-  }
+  return unwrapPaginated<ScalingDecisionResponse>(response)
 }
 
 export async function getScalingSignals(): Promise<ScalingSignalResponse[]> {

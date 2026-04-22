@@ -60,7 +60,9 @@ class BudgetConfigVersionController(Controller):
         )
         next_offset = offset + len(versions)
 
-        has_more = next_offset < total
+        # Snapshot-drift guard (see role_versions.py for the full
+        # rationale): short / empty pages cannot advance the cursor.
+        has_more = len(versions) > 0 and next_offset > offset and next_offset < total
 
         next_cursor = encode_cursor(next_offset, secret=secret) if has_more else None
 
