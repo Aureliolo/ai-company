@@ -30,7 +30,7 @@ from synthorg.security.trust.models import (
 )
 
 if TYPE_CHECKING:
-    from synthorg.api.approval_store import ApprovalStore
+    from synthorg.approval.protocol import ApprovalStoreProtocol
     from synthorg.hr.performance.models import AgentPerformanceSnapshot
     from synthorg.security.trust.config import TrustConfig
     from synthorg.security.trust.protocol import TrustStrategy
@@ -56,7 +56,7 @@ class TrustService:
         *,
         strategy: TrustStrategy,
         config: TrustConfig,
-        approval_store: ApprovalStore | None = None,
+        approval_store: ApprovalStoreProtocol | None = None,
     ) -> None:
         self._strategy = strategy
         self._config = config

@@ -53,6 +53,7 @@ from synthorg.api.middleware_factory import _build_middleware
 from synthorg.api.rate_limits import build_sliding_window_store
 from synthorg.api.rate_limits.protocol import SlidingWindowStore  # noqa: TC001
 from synthorg.api.state import AppState
+from synthorg.approval.protocol import ApprovalStoreProtocol  # noqa: TC001
 from synthorg.backup.factory import build_backup_service
 from synthorg.budget.coordination_store import (
     CoordinationMetricsStore,
@@ -127,7 +128,7 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
     persistence: PersistenceBackend | None = None,
     message_bus: MessageBus | None = None,
     cost_tracker: CostTracker | None = None,
-    approval_store: ApprovalStore | None = None,
+    approval_store: ApprovalStoreProtocol | None = None,
     auth_service: AuthService | None = None,
     task_engine: TaskEngine | None = None,
     coordinator: MultiAgentCoordinator | None = None,

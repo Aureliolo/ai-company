@@ -11,7 +11,6 @@ from synthorg.engine.loop_selector import (
     build_execution_loop,
     select_loop_type,
 )
-from synthorg.engine.react_loop import ReactLoop
 from synthorg.observability import get_logger
 from synthorg.observability.events.execution import (
     EXECUTION_LOOP_AUTO_SELECTED,
@@ -71,9 +70,10 @@ class AgentEngineFactoriesMixin:
             interrupt_store=self._interrupt_store,
         )
 
-    def _make_default_loop(self) -> ReactLoop:
-        """Build the default ReactLoop with approval gate and stagnation detector."""
-        return ReactLoop(
+    def _make_default_loop(self) -> ExecutionLoop:
+        """Build the default ``react`` loop via the shared factory."""
+        return build_execution_loop(
+            "react",
             approval_gate=self._approval_gate,
             stagnation_detector=self._stagnation_detector,
             compaction_callback=self._compaction_callback,

@@ -1,8 +1,10 @@
-"""Approval gate models -- escalation info and resume payload.
+"""Approval event models shared between engine, tools, and api layers.
 
-These frozen Pydantic models carry escalation details from SecOps
-ESCALATE verdicts or ``request_human_approval`` tool calls, and
-approval decision payloads for resume injection.
+These frozen Pydantic models are emitted by ``ToolInvoker`` when a
+security ``ESCALATE`` verdict or a tool-reported ``requires_parking``
+metadata flag is observed, and consumed by ``ApprovalGate`` to decide
+parking.  Keeping them in a neutral module lets both subsystems depend
+on the types without forming an import cycle.
 """
 
 from pydantic import BaseModel, ConfigDict

@@ -60,7 +60,7 @@ from synthorg.security.service_safety import SecOpsServiceSafetyMixin
 from synthorg.security.timeout.protocol import RiskTierClassifier  # noqa: TC001
 
 if TYPE_CHECKING:
-    from synthorg.api.approval_store import ApprovalStore
+    from synthorg.approval.protocol import ApprovalStoreProtocol
     from synthorg.security.denial_tracker import (
         DenialTracker,
     )
@@ -96,7 +96,7 @@ class SecOpsService(SecOpsServiceSafetyMixin):
         rule_engine: RuleEngine,
         audit_log: AuditLog,
         output_scanner: OutputScanner,
-        approval_store: ApprovalStore | None = None,
+        approval_store: ApprovalStoreProtocol | None = None,
         effective_autonomy: EffectiveAutonomy | None = None,
         risk_classifier: RiskTierClassifier | None = None,
         output_scan_policy: OutputScanResponsePolicy | None = None,

@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from synthorg.engine.trajectory.efficiency_ratios import EfficiencyRatios
     from synthorg.providers.models import CompletionConfig
     from synthorg.providers.protocol import CompletionProvider
-    from synthorg.tools.invoker import ToolInvoker
+    from synthorg.tools.protocol import ToolInvokerProtocol
 
 
 class NodeType(StrEnum):
@@ -284,7 +284,7 @@ class ExecutionLoop(Protocol):
         *,
         context: AgentContext,
         provider: CompletionProvider,
-        tool_invoker: ToolInvoker | None = None,
+        tool_invoker: ToolInvokerProtocol | None = None,
         budget_checker: BudgetChecker | None = None,
         shutdown_checker: ShutdownChecker | None = None,
         completion_config: CompletionConfig | None = None,

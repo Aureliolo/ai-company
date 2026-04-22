@@ -18,7 +18,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.meta import META_PROPOSAL_GUARD_PASSED
 
 if TYPE_CHECKING:
-    from synthorg.api.approval_store import ApprovalStore
+    from synthorg.approval.protocol import ApprovalStoreProtocol
 
 logger = get_logger(__name__)
 
@@ -45,7 +45,7 @@ class ApprovalGateGuard:
     def __init__(
         self,
         *,
-        approval_store: ApprovalStore | None = None,
+        approval_store: ApprovalStoreProtocol | None = None,
     ) -> None:
         self._store = approval_store
 

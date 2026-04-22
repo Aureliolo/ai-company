@@ -78,7 +78,7 @@ if TYPE_CHECKING:
     from synthorg.engine.stagnation.protocol import StagnationDetector
     from synthorg.providers.models import ToolDefinition
     from synthorg.providers.protocol import CompletionProvider
-    from synthorg.tools.invoker import ToolInvoker
+    from synthorg.tools.protocol import ToolInvokerProtocol
 
 logger = get_logger(__name__)
 
@@ -143,7 +143,7 @@ class HybridLoop:
         *,
         context: AgentContext,
         provider: CompletionProvider,
-        tool_invoker: ToolInvoker | None = None,
+        tool_invoker: ToolInvokerProtocol | None = None,
         budget_checker: BudgetChecker | None = None,
         shutdown_checker: ShutdownChecker | None = None,
         completion_config: CompletionConfig | None = None,
@@ -250,7 +250,7 @@ class HybridLoop:
         planner_model: str,
         config: CompletionConfig,
         tool_defs: list[ToolDefinition] | None,
-        tool_invoker: ToolInvoker | None,
+        tool_invoker: ToolInvokerProtocol | None,
         plan: ExecutionPlan,
         turns: list[TurnRecord],
         all_plans: list[ExecutionPlan],
@@ -585,7 +585,7 @@ class HybridLoop:
         executor_model: str,
         config: CompletionConfig,
         tool_defs: list[ToolDefinition] | None,
-        tool_invoker: ToolInvoker | None,
+        tool_invoker: ToolInvokerProtocol | None,
         step: PlanStep,
         turns: list[TurnRecord],
         budget_checker: BudgetChecker | None,
@@ -672,7 +672,7 @@ class HybridLoop:
         model: str,
         config: CompletionConfig,
         tool_defs: list[ToolDefinition] | None,
-        tool_invoker: ToolInvoker | None,
+        tool_invoker: ToolInvokerProtocol | None,
         turns: list[TurnRecord],
         budget_checker: BudgetChecker | None,
         shutdown_checker: ShutdownChecker | None,
@@ -755,7 +755,7 @@ class HybridLoop:
     async def _handle_step_tool_calls(  # noqa: PLR0913
         self,
         ctx: AgentContext,
-        tool_invoker: ToolInvoker | None,
+        tool_invoker: ToolInvokerProtocol | None,
         response: CompletionResponse,
         turn_number: int,
         turns: list[TurnRecord],

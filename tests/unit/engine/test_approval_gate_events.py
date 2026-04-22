@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from synthorg.approval.models import EscalationInfo
 from synthorg.communication.event_stream.interrupt import (
     Interrupt,
     InterruptStore,
@@ -15,7 +16,6 @@ from synthorg.communication.event_stream.stream import EventStreamHub
 from synthorg.communication.event_stream.types import AgUiEventType
 from synthorg.core.enums import ApprovalRiskLevel
 from synthorg.engine.approval_gate import ApprovalGate
-from synthorg.engine.approval_gate_models import EscalationInfo
 
 
 def _make_escalation(**overrides: Any) -> EscalationInfo:

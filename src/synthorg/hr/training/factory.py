@@ -6,7 +6,7 @@ from synthorg.hr.training.models import ContentType
 from synthorg.observability import get_logger
 
 if TYPE_CHECKING:
-    from synthorg.api.approval_store import ApprovalStore
+    from synthorg.approval.protocol import ApprovalStoreProtocol
     from synthorg.hr.performance.tracker import PerformanceTracker
     from synthorg.hr.registry import AgentRegistryService
     from synthorg.hr.training.config import TrainingConfig
@@ -72,7 +72,7 @@ def build_training_service(  # noqa: PLR0913
     memory_backend: MemoryBackend,
     tracker: PerformanceTracker,
     registry: AgentRegistryService,
-    approval_store: ApprovalStore,
+    approval_store: ApprovalStoreProtocol,
     tool_tracker: ToolInvocationTracker,
     provider: CompletionProvider | None = None,
 ) -> TrainingService:
@@ -235,7 +235,7 @@ def _build_curation(
 def _build_guards(
     config: TrainingConfig,
     *,
-    approval_store: ApprovalStore,
+    approval_store: ApprovalStoreProtocol,
 ) -> tuple[TrainingGuard, ...]:
     """Build guard chain from config.
 

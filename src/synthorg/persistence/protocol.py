@@ -484,6 +484,21 @@ class PersistenceBackend(Protocol):
         """
         ...
 
+    def build_ontology_versioning(self) -> Any:
+        """Construct the ontology versioning service bound to this backend.
+
+        Returns a ``VersioningService[EntityDefinition]`` wired to the
+        backend's active DB handle.  SQLite implementations pass their
+        ``aiosqlite.Connection``; Postgres implementations pass their
+        ``AsyncConnectionPool``.  Typed as :class:`Any` here to avoid
+        importing ontology/versioning types into the persistence
+        protocol.
+
+        Raises:
+            PersistenceConnectionError: If the backend is not connected.
+        """
+        ...
+
     async def get_setting(self, key: NotBlankStr) -> str | None:
         """Retrieve a setting value by key.
 

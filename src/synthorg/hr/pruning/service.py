@@ -48,7 +48,7 @@ from synthorg.observability.events.hr import (
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
-    from synthorg.api.approval_store import ApprovalStore
+    from synthorg.approval.protocol import ApprovalStoreProtocol
     from synthorg.core.agent import AgentIdentity
     from synthorg.hr.models import OffboardingRecord
     from synthorg.hr.offboarding_service import OffboardingService
@@ -80,7 +80,7 @@ class PruningService:
         policies: tuple[PruningPolicy, ...],
         registry: AgentRegistryService,
         tracker: PerformanceTracker,
-        approval_store: ApprovalStore,
+        approval_store: ApprovalStoreProtocol,
         offboarding_service: OffboardingService,
         config: PruningServiceConfig | None = None,
         on_notification: (Callable[[PruningRecord], Awaitable[None]] | None) = None,

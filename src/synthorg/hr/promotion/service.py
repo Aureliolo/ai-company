@@ -45,7 +45,7 @@ from synthorg.observability.events.promotion import (
 if TYPE_CHECKING:
     from pydantic import AwareDatetime
 
-    from synthorg.api.approval_store import ApprovalStore
+    from synthorg.approval.protocol import ApprovalStoreProtocol
     from synthorg.hr.performance.tracker import PerformanceTracker
     from synthorg.hr.promotion.approval_protocol import (
         PromotionApprovalStrategy,
@@ -121,7 +121,7 @@ class PromotionService:
         registry: AgentRegistryService,
         tracker: PerformanceTracker,
         config: PromotionConfig,
-        approval_store: ApprovalStore | None = None,
+        approval_store: ApprovalStoreProtocol | None = None,
         trust_service: TrustService | None = None,
         on_notification: PromotionNotificationCallback | None = None,
     ) -> None:

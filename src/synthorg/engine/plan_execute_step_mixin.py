@@ -47,7 +47,7 @@ if TYPE_CHECKING:
         ToolDefinition,
     )
     from synthorg.providers.protocol import CompletionProvider
-    from synthorg.tools.invoker import ToolInvoker
+    from synthorg.tools.protocol import ToolInvokerProtocol
 
 logger = get_logger(__name__)
 
@@ -65,7 +65,7 @@ class PlanExecuteStepMixin:
         model: str,
         config: CompletionConfig,
         tool_defs: list[ToolDefinition] | None,
-        tool_invoker: ToolInvoker | None,
+        tool_invoker: ToolInvokerProtocol | None,
         turns: list[TurnRecord],
         budget_checker: BudgetChecker | None,
         shutdown_checker: ShutdownChecker | None,
@@ -150,7 +150,7 @@ class PlanExecuteStepMixin:
     async def _handle_step_tool_calls(  # noqa: PLR0913
         self,
         ctx: AgentContext,
-        tool_invoker: ToolInvoker | None,
+        tool_invoker: ToolInvokerProtocol | None,
         response: CompletionResponse,
         turn_number: int,
         turns: list[TurnRecord],

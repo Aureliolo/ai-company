@@ -724,6 +724,14 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         pool = self.get_db()
         return PostgresEscalationRepository(pool, notify_channel=notify_channel)
 
+    def build_ontology_versioning(self) -> Any:
+        """Construct the ontology versioning service bound to this backend."""
+        from synthorg.ontology.versioning import (  # noqa: PLC0415
+            create_postgres_ontology_versioning,
+        )
+
+        return create_postgres_ontology_versioning(self.get_db())
+
     async def get_setting(self, key: NotBlankStr) -> str | None:
         """Retrieve a setting value by key from the ``_system`` namespace.
 

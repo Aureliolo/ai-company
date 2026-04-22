@@ -23,7 +23,7 @@ from synthorg.observability.events.training import (
 )
 
 if TYPE_CHECKING:
-    from synthorg.api.approval_store import ApprovalStore
+    from synthorg.approval.protocol import ApprovalStoreProtocol
     from synthorg.hr.training.models import TrainingPlan
 
 logger = get_logger(__name__)
@@ -44,7 +44,7 @@ class ReviewGateGuard:
         approval_store: Approval store for creating review items.
     """
 
-    def __init__(self, *, approval_store: ApprovalStore) -> None:
+    def __init__(self, *, approval_store: ApprovalStoreProtocol) -> None:
         self._approval_store = approval_store
 
     @property

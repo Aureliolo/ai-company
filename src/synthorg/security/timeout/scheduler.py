@@ -27,7 +27,7 @@ from synthorg.observability.events.timeout import (
 )
 
 if TYPE_CHECKING:
-    from synthorg.api.approval_store import ApprovalStore
+    from synthorg.approval.protocol import ApprovalStoreProtocol
     from synthorg.core.approval import ApprovalItem
     from synthorg.security.timeout.models import TimeoutAction
     from synthorg.security.timeout.timeout_checker import TimeoutChecker
@@ -55,7 +55,7 @@ class ApprovalTimeoutScheduler:
     def __init__(
         self,
         *,
-        approval_store: ApprovalStore,
+        approval_store: ApprovalStoreProtocol,
         timeout_checker: TimeoutChecker,
         interval_seconds: float = 60.0,
         on_timeout_resolve: (

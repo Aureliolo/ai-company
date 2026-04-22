@@ -54,9 +54,7 @@ from synthorg.observability.events.api import (
 from synthorg.persistence.errors import ConstraintViolationError
 
 if TYPE_CHECKING:
-    from synthorg.persistence.sqlite.approval_repo import (
-        SQLiteApprovalRepository,
-    )
+    from synthorg.persistence.approval_protocol import ApprovalRepository
 
 logger = get_logger(__name__)
 
@@ -81,7 +79,7 @@ class ApprovalStore:
         self,
         *,
         on_expire: Callable[[ApprovalItem], None] | None = None,
-        repo: SQLiteApprovalRepository | None = None,
+        repo: ApprovalRepository | None = None,
     ) -> None:
         self._items: dict[str, ApprovalItem] = {}
         self._on_expire = on_expire

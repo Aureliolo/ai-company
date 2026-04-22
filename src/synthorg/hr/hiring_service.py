@@ -41,7 +41,7 @@ from synthorg.observability.events.hr import (
 )
 
 if TYPE_CHECKING:
-    from synthorg.api.approval_store import ApprovalStore
+    from synthorg.approval.protocol import ApprovalStoreProtocol
     from synthorg.hr.onboarding_service import OnboardingService
 
 logger = get_logger(__name__)
@@ -67,7 +67,7 @@ class HiringService:
         self,
         *,
         registry: AgentRegistryService,
-        approval_store: ApprovalStore | None = None,
+        approval_store: ApprovalStoreProtocol | None = None,
         onboarding_service: OnboardingService | None = None,
         default_model_config: ModelConfig | None = None,
     ) -> None:

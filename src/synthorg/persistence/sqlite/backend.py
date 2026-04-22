@@ -4,7 +4,7 @@ import asyncio
 import json
 import sqlite3
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import aiosqlite
 from pydantic import BaseModel
@@ -143,6 +143,11 @@ if TYPE_CHECKING:
     from synthorg.persistence.auth_protocol import LockoutRepository
     from synthorg.persistence.config import SQLiteConfig
     from synthorg.persistence.escalation_protocol import EscalationQueueRepository
+    from synthorg.persistence.fine_tune_protocol import (
+        FineTuneCheckpointRepository,
+        FineTuneRunRepository,
+    )
+    from synthorg.persistence.version_repo import VersionRepository
 
 logger = get_logger(__name__)
 
@@ -185,18 +190,14 @@ class SQLitePersistenceBackend:
         self._workflow_definitions: SQLiteWorkflowDefinitionRepository | None = None
         self._workflow_executions: SQLiteWorkflowExecutionRepository | None = None
         self._subworkflows: SQLiteSubworkflowRepository | None = None
-        self._workflow_versions: SQLiteVersionRepository[WorkflowDefinition] | None = (
+        self._workflow_versions: VersionRepository[WorkflowDefinition] | None = None
+        self._identity_versions: VersionRepository[AgentIdentity] | None = None
+        self._evaluation_config_versions: VersionRepository[EvaluationConfig] | None = (
             None
         )
-        self._identity_versions: SQLiteVersionRepository[AgentIdentity] | None = None
-        self._evaluation_config_versions: (
-            SQLiteVersionRepository[EvaluationConfig] | None
-        ) = None
-        self._budget_config_versions: SQLiteVersionRepository[BudgetConfig] | None = (
-            None
-        )
-        self._company_versions: SQLiteVersionRepository[Company] | None = None
-        self._role_versions: SQLiteVersionRepository[Role] | None = None
+        self._budget_config_versions: VersionRepository[BudgetConfig] | None = None
+        self._company_versions: VersionRepository[Company] | None = None
+        self._role_versions: VersionRepository[Role] | None = None
         self._decision_records: SQLiteDecisionRepository | None = None
         self._risk_overrides: SQLiteRiskOverrideRepository | None = None
         self._ssrf_violations: SQLiteSsrfViolationRepository | None = None
@@ -204,8 +205,8 @@ class SQLitePersistenceBackend:
         self._project_cost_aggregates: SQLiteProjectCostAggregateRepository | None = (
             None
         )
-        self._fine_tune_checkpoints: SQLiteFineTuneCheckpointRepository | None = None
-        self._fine_tune_runs: SQLiteFineTuneRunRepository | None = None
+        self._fine_tune_checkpoints: FineTuneCheckpointRepository | None = None
+        self._fine_tune_runs: FineTuneRunRepository | None = None
         self._training_plans: SQLiteTrainingPlanRepository | None = None
         self._training_results: SQLiteTrainingResultRepository | None = None
         self._custom_rules: SQLiteCustomRuleRepository | None = None
@@ -359,7 +360,7 @@ class SQLitePersistenceBackend:
         def _ver_repo[T: BaseModel](
             table: str,
             model_cls: type[T],
-        ) -> SQLiteVersionRepository[T]:
+        ) -> VersionRepository[T]:
             assert self._db is not None  # noqa: S101
             return SQLiteVersionRepository(
                 self._db,
@@ -635,7 +636,7 @@ class SQLitePersistenceBackend:
         )
 
     @property
-    def fine_tune_checkpoints(self) -> SQLiteFineTuneCheckpointRepository:
+    def fine_tune_checkpoints(self) -> FineTuneCheckpointRepository:
         """Repository for fine-tune checkpoint persistence."""
         return self._require_connected(
             self._fine_tune_checkpoints,
@@ -643,7 +644,7 @@ class SQLitePersistenceBackend:
         )
 
     @property
-    def fine_tune_runs(self) -> SQLiteFineTuneRunRepository:
+    def fine_tune_runs(self) -> FineTuneRunRepository:
         """Repository for fine-tune pipeline run persistence."""
         return self._require_connected(
             self._fine_tune_runs,
@@ -680,7 +681,7 @@ class SQLitePersistenceBackend:
         )
 
     @property
-    def workflow_versions(self) -> SQLiteVersionRepository[WorkflowDefinition]:
+    def workflow_versions(self) -> VersionRepository[WorkflowDefinition]:
         """Repository for workflow definition version persistence."""
         return self._require_connected(
             self._workflow_versions,
@@ -688,7 +689,7 @@ class SQLitePersistenceBackend:
         )
 
     @property
-    def identity_versions(self) -> SQLiteVersionRepository[AgentIdentity]:
+    def identity_versions(self) -> VersionRepository[AgentIdentity]:
         """Repository for AgentIdentity version snapshot persistence."""
         return self._require_connected(
             self._identity_versions,
@@ -698,7 +699,7 @@ class SQLitePersistenceBackend:
     @property
     def evaluation_config_versions(
         self,
-    ) -> SQLiteVersionRepository[EvaluationConfig]:
+    ) -> VersionRepository[EvaluationConfig]:
         """Repository for EvaluationConfig version snapshot persistence."""
         return self._require_connected(
             self._evaluation_config_versions,
@@ -708,7 +709,7 @@ class SQLitePersistenceBackend:
     @property
     def budget_config_versions(
         self,
-    ) -> SQLiteVersionRepository[BudgetConfig]:
+    ) -> VersionRepository[BudgetConfig]:
         """Repository for BudgetConfig version snapshot persistence."""
         return self._require_connected(
             self._budget_config_versions,
@@ -718,7 +719,7 @@ class SQLitePersistenceBackend:
     @property
     def company_versions(
         self,
-    ) -> SQLiteVersionRepository[Company]:
+    ) -> VersionRepository[Company]:
         """Repository for Company version snapshot persistence."""
         return self._require_connected(
             self._company_versions,
@@ -728,7 +729,7 @@ class SQLitePersistenceBackend:
     @property
     def role_versions(
         self,
-    ) -> SQLiteVersionRepository[Role]:
+    ) -> VersionRepository[Role]:
         """Repository for Role version snapshot persistence."""
         return self._require_connected(
             self._role_versions,
@@ -880,6 +881,14 @@ class SQLitePersistenceBackend:
 
         db = self.get_db()
         return SQLiteEscalationRepository(db)
+
+    def build_ontology_versioning(self) -> Any:
+        """Construct the ontology versioning service bound to this backend."""
+        from synthorg.ontology.versioning import (  # noqa: PLC0415
+            create_ontology_versioning,
+        )
+
+        return create_ontology_versioning(self.get_db())
 
     async def get_setting(self, key: NotBlankStr) -> str | None:
         """Retrieve a setting value by key from the ``_system`` namespace.

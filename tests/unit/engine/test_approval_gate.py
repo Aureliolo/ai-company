@@ -4,9 +4,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from synthorg.approval.models import EscalationInfo
 from synthorg.core.enums import ApprovalRiskLevel
 from synthorg.engine.approval_gate import ApprovalGate
-from synthorg.engine.approval_gate_models import EscalationInfo
 from synthorg.persistence.repositories import ParkedContextRepository
 from synthorg.security.timeout.park_service import ParkService
 
