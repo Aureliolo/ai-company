@@ -59,6 +59,13 @@ class TestMessageBusConfigValidation:
         cfg = MessageBusConfig(channels=())
         assert cfg.channels == ()
 
+    def test_nats_backend_without_config_rejected(self) -> None:
+        with pytest.raises(
+            ValidationError,
+            match="nats must be provided",
+        ):
+            MessageBusConfig(backend=MessageBusBackend.NATS)
+
 
 @pytest.mark.unit
 class TestMessageBusConfigImmutability:
