@@ -21,6 +21,8 @@ from synthorg.communication.enums import (
 )
 from synthorg.communication.meeting.frequency import MeetingFrequency
 
+_TEST_NATS_URL = "nats://localhost:4222"
+
 # ── MessageBusConfig ────────────────────────────────────────────
 
 
@@ -35,7 +37,7 @@ class TestMessageBusConfigDefaults:
         cfg = MessageBusConfig(
             backend=MessageBusBackend.NATS,
             channels=("#ops", "#alerts"),
-            nats=NatsConfig(url="nats://localhost:4222"),
+            nats=NatsConfig(url=_TEST_NATS_URL),
         )
         assert cfg.backend is MessageBusBackend.NATS
         assert cfg.channels == ("#ops", "#alerts")
@@ -79,11 +81,11 @@ class TestMessageBusConfigImmutability:
         updated = original.model_copy(
             update={
                 "backend": MessageBusBackend.NATS,
-                "nats": NatsConfig(url="nats://localhost:4222"),
+                "nats": NatsConfig(url=_TEST_NATS_URL),
             },
         )
         assert updated.backend is MessageBusBackend.NATS
-        assert updated.nats == NatsConfig(url="nats://localhost:4222")
+        assert updated.nats == NatsConfig(url=_TEST_NATS_URL)
         assert original.backend is MessageBusBackend.INTERNAL
         assert original.nats is None
 
@@ -94,7 +96,7 @@ class TestMessageBusConfigSerialization:
         cfg = MessageBusConfig(
             backend=MessageBusBackend.NATS,
             channels=("#a", "#b"),
-            nats=NatsConfig(url="nats://localhost:4222"),
+            nats=NatsConfig(url=_TEST_NATS_URL),
         )
         restored = MessageBusConfig.model_validate_json(cfg.model_dump_json())
         assert restored == cfg
@@ -516,7 +518,7 @@ class TestCommunicationConfigDefaults:
             default_pattern=CommunicationPattern.EVENT_DRIVEN,
             message_bus=MessageBusConfig(
                 backend=MessageBusBackend.NATS,
-                nats=NatsConfig(url="nats://localhost:4222"),
+                nats=NatsConfig(url=_TEST_NATS_URL),
             ),
             hierarchy=HierarchyConfig(allow_skip_level=True),
         )
@@ -548,7 +550,7 @@ class TestCommunicationConfigSerialization:
             default_pattern=CommunicationPattern.MEETING_BASED,
             message_bus=MessageBusConfig(
                 backend=MessageBusBackend.NATS,
-                nats=NatsConfig(url="nats://localhost:4222"),
+                nats=NatsConfig(url=_TEST_NATS_URL),
             ),
         )
         restored = CommunicationConfig.model_validate_json(cfg.model_dump_json())
