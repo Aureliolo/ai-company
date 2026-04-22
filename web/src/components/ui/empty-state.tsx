@@ -1,6 +1,5 @@
 import type { LucideIcon } from 'lucide-react'
 import { ExternalLink } from 'lucide-react'
-import { Link } from 'react-router'
 import { cn } from '@/lib/utils'
 import { Button } from './button'
 
@@ -53,6 +52,11 @@ export function EmptyState({
   className,
   announce = false,
 }: EmptyStateProps) {
+  // Strip any href with an unsafe protocol (javascript:, data:, vbscript:,
+  // file:, ...) before we render <a href=...>. Internal paths starting with
+  // `/` or `#` and conventional protocols (http/https/mailto/tel) are
+  // allowed. Callers needing client-side routing for internal paths can pass
+  // an explicit `onClick` (or wrap EmptyState in a custom link-based shell).
   const safeLearnMore =
     learnMore !== undefined && SAFE_HREF_PATTERN.test(learnMore.href.trim())
       ? learnMore
@@ -63,11 +67,6 @@ export function EmptyState({
       (safeLearnMore.href.startsWith('http://') ||
         safeLearnMore.href.startsWith('https://') ||
         safeLearnMore.href.startsWith('//')))
-  // Internal paths (starting with `/`) use React Router's <Link>; external
-  // URLs and protocol links (mailto, tel) use a plain <a> with target/rel
-  // applied only when `external`.
-  const useReactRouterLink =
-    safeLearnMore !== undefined && !isExternal && safeLearnMore.href.startsWith('/')
 
   return (
     <div
@@ -91,24 +90,15 @@ export function EmptyState({
           <p className="max-w-sm text-xs text-muted-foreground">{description}</p>
         )}
         {safeLearnMore && (
-          useReactRouterLink ? (
-            <Link
-              to={safeLearnMore.href}
-              className="inline-flex items-center gap-1 text-xs text-accent hover:text-accent-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-sm"
-            >
-              {safeLearnMore.label ?? 'Learn more'}
-            </Link>
-          ) : (
-            <a
-              href={safeLearnMore.href}
-              target={isExternal ? '_blank' : undefined}
-              rel={isExternal ? 'noopener noreferrer' : undefined}
-              className="inline-flex items-center gap-1 text-xs text-accent hover:text-accent-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-sm"
-            >
-              {safeLearnMore.label ?? 'Learn more'}
-              {isExternal && <ExternalLink className="size-3" aria-hidden="true" />}
-            </a>
-          )
+          <a
+            href={safeLearnMore.href}
+            target={isExternal ? '_blank' : undefined}
+            rel={isExternal ? 'noopener noreferrer' : undefined}
+            className="inline-flex items-center gap-1 text-xs text-accent hover:text-accent-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-sm"
+          >
+            {safeLearnMore.label ?? 'Learn more'}
+            {isExternal && <ExternalLink className="size-3" aria-hidden="true" />}
+          </a>
         )}
       </div>
       {action && (
