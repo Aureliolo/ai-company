@@ -24,6 +24,7 @@ from synthorg.observability.events.workflow_definition import (
 from synthorg.observability.events.workflow_version import (
     WORKFLOW_VERSION_SNAPSHOT_FAILED,
 )
+from synthorg.persistence.errors import VersionConflictError
 
 if TYPE_CHECKING:
     from synthorg.persistence.version_repo import VersionRepository
@@ -216,9 +217,19 @@ class WorkflowService:
                 ``create_definition``.
             VersionConflictError: A row exists but its stored
                 ``revision`` does not match ``definition.revision - 1``
-                (optimistic-concurrency failure).
+                (optimistic-concurrency failure). Re-raised from the
+                persistence layer so callers can pattern-match on the
+                service-level import surface.
         """
-        updated = await self._definitions.update_if_exists(definition)
+        try:
+            updated = await self._definitions.update_if_exists(definition)
+        except VersionConflictError:
+            logger.warning(
+                WORKFLOW_DEF_VERSION_CONFLICT,
+                definition_id=str(definition.id),
+                operation="update_definition",
+            )
+            raise
         if not updated:
             logger.warning(
                 WORKFLOW_DEF_NOT_FOUND,

@@ -107,6 +107,26 @@ class PostgresWorkflowDefinitionRepository:
     def __init__(self, pool: AsyncConnectionPool) -> None:
         self._pool = pool
 
+    def _require_valid_revision(self, definition: WorkflowDefinition) -> None:
+        """Reject obviously-invalid revisions before hitting the DB.
+
+        Shared between :meth:`save`, :meth:`update_if_exists`, and
+        :meth:`create_if_absent` so all three write paths fail fast with
+        the same ``QueryError`` instead of hitting the ``revision >= 1``
+        CHECK constraint and surfacing a generic driver error.
+        """
+        if definition.revision < 1:
+            msg = (
+                f"Workflow definition revision must be >= 1, got"
+                f" {definition.revision} for {definition.id!r}"
+            )
+            logger.warning(
+                PERSISTENCE_WORKFLOW_DEF_SAVE_FAILED,
+                definition_id=definition.id,
+                error=msg,
+            )
+            raise QueryError(msg)
+
     async def update_if_exists(self, definition: WorkflowDefinition) -> bool:
         """Conditional UPDATE, returning ``False`` if the row is missing.
 
@@ -115,6 +135,7 @@ class PostgresWorkflowDefinitionRepository:
         applies when the stored row's ``revision`` equals
         ``definition.revision - 1``.
         """
+        self._require_valid_revision(definition)
         nodes_jsonb = Jsonb([n.model_dump(mode="json") for n in definition.nodes])
         edges_jsonb = Jsonb([e.model_dump(mode="json") for e in definition.edges])
         inputs_jsonb = Jsonb([i.model_dump(mode="json") for i in definition.inputs])
@@ -194,6 +215,7 @@ class PostgresWorkflowDefinitionRepository:
 
         See :meth:`WorkflowDefinitionRepository.create_if_absent`.
         """
+        self._require_valid_revision(definition)
         nodes_jsonb = Jsonb([n.model_dump(mode="json") for n in definition.nodes])
         edges_jsonb = Jsonb([e.model_dump(mode="json") for e in definition.edges])
         inputs_jsonb = Jsonb([i.model_dump(mode="json") for i in definition.inputs])
@@ -262,17 +284,7 @@ class PostgresWorkflowDefinitionRepository:
             QueryError: If the database operation fails.
             VersionConflictError: If optimistic concurrency check fails.
         """
-        if definition.revision < 1:
-            msg = (
-                f"Workflow definition revision must be >= 1, got"
-                f" {definition.revision} for {definition.id!r}"
-            )
-            logger.warning(
-                PERSISTENCE_WORKFLOW_DEF_SAVE_FAILED,
-                definition_id=definition.id,
-                error=msg,
-            )
-            raise QueryError(msg)
+        self._require_valid_revision(definition)
 
         nodes_jsonb = Jsonb([n.model_dump(mode="json") for n in definition.nodes])
         edges_jsonb = Jsonb([e.model_dump(mode="json") for e in definition.edges])

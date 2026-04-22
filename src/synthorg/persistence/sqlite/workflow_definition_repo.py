@@ -84,10 +84,11 @@ def _deserialize_row(
         return WorkflowDefinition.model_validate(data)
     except (ValueError, ValidationError, json.JSONDecodeError, KeyError) as exc:
         msg = f"Failed to deserialize workflow definition {context_id!r}"
-        logger.exception(
+        logger.warning(
             PERSISTENCE_WORKFLOW_DEF_DESERIALIZE_FAILED,
             definition_id=context_id,
-            error=str(exc),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         raise QueryError(msg) from exc
 
