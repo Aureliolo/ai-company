@@ -253,3 +253,39 @@ _r.register(
         yaml_path="communication.meetings.enabled",
     )
 )
+
+# ── Escalation queue + sweeper (CFG-1 audit) ─────────────────────
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COMMUNICATION,
+        key="escalation_default_result_limit",
+        type=SettingType.INTEGER,
+        default="50",
+        description=(
+            "Default row limit when querying the in-memory escalation"
+            " queue. Overridable per-call."
+        ),
+        group="Escalation",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+        min_value=1,
+        max_value=1000,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COMMUNICATION,
+        key="escalation_sweeper_paused",
+        type=SettingType.BOOLEAN,
+        default="false",
+        description=(
+            "Pause flag for the escalation expiration sweeper. When"
+            " True the sweeper stays resident but every tick"
+            " short-circuits -- used for debugging stuck escalations."
+        ),
+        group="Escalation",
+        level=SettingLevel.ADVANCED,
+    )
+)

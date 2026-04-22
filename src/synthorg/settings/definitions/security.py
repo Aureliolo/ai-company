@@ -56,3 +56,42 @@ _r.register(
         yaml_path="security.output_scan_policy_type",
     )
 )
+
+# ── Audit retention (CFG-1 audit) ────────────────────────────────
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.SECURITY,
+        key="audit_retention_days",
+        type=SettingType.INTEGER,
+        default="730",
+        description=(
+            "Number of days to retain audit_entries before automatic"
+            " purge. 0 disables purging (unbounded retention)."
+            " Default 730 (2 years) balances GDPR exposure against"
+            " forensic value."
+        ),
+        group="Retention",
+        level=SettingLevel.ADVANCED,
+        min_value=0,
+        max_value=36_500,
+        yaml_path="security.audit_retention_days",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.SECURITY,
+        key="retention_cleanup_paused",
+        type=SettingType.BOOLEAN,
+        default="false",
+        description=(
+            "Pause flag for the audit retention purge loop. When"
+            " True, the loop stays resident but every tick"
+            " short-circuits -- used during incident investigations"
+            " to preserve all records."
+        ),
+        group="Retention",
+        level=SettingLevel.ADVANCED,
+    )
+)
