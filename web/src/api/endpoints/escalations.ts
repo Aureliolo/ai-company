@@ -27,7 +27,8 @@ const BASE = '/conflicts/escalations'
 export interface ListEscalationsFilters {
   readonly status?: EscalationStatus
   readonly limit?: number
-  readonly offset?: number
+  /** Opaque pagination cursor from the previous response's `pagination.next_cursor`. */
+  readonly cursor?: string | null
 }
 
 export async function listEscalations(

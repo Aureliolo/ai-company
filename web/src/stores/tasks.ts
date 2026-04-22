@@ -316,7 +316,7 @@ export const useTasksStore = create<TasksState>()((set, get) => ({
     set({ loading: true, error: null })
     try {
       const result = await tasksApi.listTasks(filters)
-      set({ tasks: result.data, total: result.total, loading: false })
+      set({ tasks: result.data, total: result.total ?? 0, loading: false })
     } catch (err) {
       set({ loading: false, error: getErrorMessage(err) })
     }

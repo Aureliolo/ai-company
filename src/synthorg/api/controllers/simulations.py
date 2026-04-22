@@ -28,6 +28,7 @@ from synthorg.client.runner import SimulationRunner
 from synthorg.client.store import SimulationRecord
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
+from synthorg.observability.background_tasks import log_task_exceptions
 from synthorg.observability.events.client import (
     SIMULATION_RUN_CANCELLED,
     SIMULATION_RUN_FAILED,
@@ -294,9 +295,19 @@ class SimulationController(Controller):
             if event is not None:
                 _publish_event(request, event, final)
 
-        task = asyncio.create_task(runner_task())
+        task = asyncio.create_task(
+            runner_task(),
+            name=f"simulation-runner[{record.simulation_id}]",
+        )
         sim_state.background_tasks.add(task)
         task.add_done_callback(sim_state.background_tasks.discard)
+        task.add_done_callback(
+            log_task_exceptions(
+                logger,
+                SIMULATION_RUN_FAILED,
+                simulation_id=record.simulation_id,
+            ),
+        )
         return ApiResponse(data=_to_response(record))
 
     @post("/{simulation_id:str}/cancel", guards=[require_write_access])

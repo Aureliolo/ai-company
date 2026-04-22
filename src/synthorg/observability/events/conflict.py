@@ -56,3 +56,6 @@ CONFLICT_LCM_LOOKUP: Final[str] = "conflict.lcm_lookup"
 CONFLICT_DISSENT_QUERIED: Final[str] = "conflict.dissent.queried"
 CONFLICT_HIERARCHY_ERROR: Final[str] = "conflict.hierarchy.error"
 CONFLICT_STRATEGY_ERROR: Final[str] = "conflict.strategy.error"
+
+# Escalation notification (fire-and-forget)
+CONFLICT_ESCALATION_NOTIFY_FAILED: Final[str] = "conflict.escalation.notify.failed"

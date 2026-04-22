@@ -106,7 +106,7 @@ export const useWorkflowsStore = create<WorkflowsState>()((set) => ({
       if (isStaleListRequest(token)) return
       set({
         workflows: result.data,
-        totalWorkflows: result.total,
+        totalWorkflows: result.total ?? result.data.length,
         listLoading: false,
       })
     } catch (err) {

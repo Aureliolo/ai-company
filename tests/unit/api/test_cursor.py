@@ -85,6 +85,27 @@ class TestTamperDetection:
         with pytest.raises(InvalidCursorError):
             decode_cursor("not!!base64!!", secret=stable_secret)
 
+    def test_tampered_signature_rejected(self, stable_secret: CursorSecret) -> None:
+        """Direct signature-field tampering is rejected even with a valid offset."""
+        good = encode_cursor(50, secret=stable_secret)
+        padded = good + "=" * (-len(good) % 4)
+        payload = json.loads(base64.urlsafe_b64decode(padded.encode("ascii")))
+        payload["s"] = "deadbeef" * 8  # valid-looking hex, wrong HMAC
+        tampered_bytes = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+        tampered = base64.urlsafe_b64encode(tampered_bytes).rstrip(b"=").decode("ascii")
+        with pytest.raises(InvalidCursorError):
+            decode_cursor(tampered, secret=stable_secret)
+
+    def test_non_ascii_token_rejected(self, stable_secret: CursorSecret) -> None:
+        """Tokens with non-ASCII characters are rejected as invalid base64."""
+        with pytest.raises(InvalidCursorError):
+            decode_cursor("cursoré", secret=stable_secret)
+
+    def test_empty_token_rejected(self, stable_secret: CursorSecret) -> None:
+        """Empty tokens are rejected at the boundary (no decode needed)."""
+        with pytest.raises(InvalidCursorError):
+            decode_cursor("", secret=stable_secret)
+
     def test_non_json_payload_rejected(self, stable_secret: CursorSecret) -> None:
         # Valid base64 but not JSON.
         token = base64.urlsafe_b64encode(b"hello world").rstrip(b"=").decode("ascii")
@@ -104,6 +125,27 @@ class TestTamperDetection:
         token = base64.urlsafe_b64encode(token_bytes).rstrip(b"=").decode("ascii")
         with pytest.raises(InvalidCursorError):
             decode_cursor(token, secret=stable_secret)
+
+
+class TestSecretValidation:
+    """CursorSecret enforces a minimum key length."""
+
+    def test_short_key_rejected(self) -> None:
+        with pytest.raises(ValueError, match="at least 16 bytes"):
+            CursorSecret.from_key("short")
+
+    def test_exactly_minimum_key_accepted(self) -> None:
+        # 16-byte key is the minimum; must not raise.
+        CursorSecret.from_key("x" * 16)
+
+
+class TestEncodeValidation:
+    """encode_cursor rejects invalid offsets at the source."""
+
+    def test_negative_offset_rejected(self) -> None:
+        secret = CursorSecret.from_key("encode-validation-key-32-bytes00")
+        with pytest.raises(ValueError, match="must be >= 0"):
+            encode_cursor(-1, secret=secret)
 
 
 class TestEphemeralSecret:

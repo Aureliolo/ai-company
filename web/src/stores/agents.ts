@@ -51,6 +51,10 @@ interface AgentsState {
   agentTasks: readonly Task[]
   activity: readonly AgentActivityEvent[]
   activityTotal: number
+  /** Opaque cursor for the next page; null on the final page. */
+  activityNextCursor: string | null
+  /** Whether more activity items follow the current page. */
+  activityHasMore: boolean
   activityLoading: boolean
   careerHistory: readonly CareerEvent[]
   detailLoading: boolean
@@ -62,7 +66,7 @@ interface AgentsState {
   // Actions
   fetchAgents: () => Promise<void>
   fetchAgentDetail: (name: string) => Promise<void>
-  fetchMoreActivity: (name: string, offset: number) => Promise<void>
+  fetchMoreActivity: (name: string) => Promise<void>
   setSearchQuery: (q: string) => void
   setDepartmentFilter: (d: string | null) => void
   setLevelFilter: (l: SeniorityLevel | null) => void
@@ -98,6 +102,8 @@ export const useAgentsStore = create<AgentsState>()((set, get) => ({
   agentTasks: [],
   activity: [],
   activityTotal: 0,
+  activityNextCursor: null,
+  activityHasMore: false,
   activityLoading: false,
   careerHistory: [],
   detailLoading: false,
@@ -112,7 +118,7 @@ export const useAgentsStore = create<AgentsState>()((set, get) => ({
       const result = await listAgents({ limit: 200 })
       set({
         agents: result.data,
-        totalAgents: result.total,
+        totalAgents: result.total ?? result.data.length,
         listLoading: false,
       })
     } catch (err) {
@@ -151,12 +157,16 @@ export const useAgentsStore = create<AgentsState>()((set, get) => ({
       if (activityResult.status === 'rejected') partialErrors.push('activity')
       if (historyResult.status === 'rejected') partialErrors.push('career history')
 
+      const activityPage =
+        activityResult.status === 'fulfilled' ? activityResult.value : null
       set({
         selectedAgent: agent,
         performance: perfResult.status === 'fulfilled' ? perfResult.value : null,
         agentTasks: tasksResult.status === 'fulfilled' ? tasksResult.value.data : [],
-        activity: activityResult.status === 'fulfilled' ? activityResult.value.data : [],
-        activityTotal: activityResult.status === 'fulfilled' ? activityResult.value.total : 0,
+        activity: activityPage?.data ?? [],
+        activityTotal: activityPage?.total ?? 0,
+        activityNextCursor: activityPage?.nextCursor ?? null,
+        activityHasMore: activityPage?.hasMore ?? false,
         careerHistory: historyResult.status === 'fulfilled' ? historyResult.value : [],
         detailLoading: false,
         detailError: partialErrors.length > 0
@@ -172,16 +182,27 @@ export const useAgentsStore = create<AgentsState>()((set, get) => ({
     }
   },
 
-  fetchMoreActivity: async (name: string, offset: number) => {
-    const { activity, selectedAgent, activityLoading } = get()
-    // Short-circuit if already fetching, at client cap, or agent changed
+  fetchMoreActivity: async (name: string) => {
+    const {
+      activity,
+      selectedAgent,
+      activityLoading,
+      activityNextCursor,
+      activityHasMore,
+    } = get()
+    // Short-circuit if already fetching, at client cap, no more pages,
+    // or agent changed.
     if (activityLoading) return
     if (activity.length >= MAX_ACTIVITIES) return
+    if (!activityHasMore || !activityNextCursor) return
     if (selectedAgent && selectedAgent.name !== name) return
 
     set({ activityLoading: true })
     try {
-      const result = await getAgentActivity(name, { offset, limit: 20 })
+      const result = await getAgentActivity(name, {
+        cursor: activityNextCursor,
+        limit: 20,
+      })
       // Ignore response if agent changed while fetching
       if (get().selectedAgent?.name !== name) {
         set({ activityLoading: false })
@@ -191,7 +212,12 @@ export const useAgentsStore = create<AgentsState>()((set, get) => ({
         const merged = [...state.activity, ...result.data].slice(0, MAX_ACTIVITIES)
         return {
           activity: merged,
-          activityTotal: Math.min(result.total, MAX_ACTIVITIES),
+          activityTotal:
+            result.total === null
+              ? state.activityTotal
+              : Math.min(result.total, MAX_ACTIVITIES),
+          activityNextCursor: result.nextCursor,
+          activityHasMore: result.hasMore,
           activityLoading: false,
         }
       })
@@ -218,6 +244,8 @@ export const useAgentsStore = create<AgentsState>()((set, get) => ({
       agentTasks: [],
       activity: [],
       activityTotal: 0,
+      activityNextCursor: null,
+      activityHasMore: false,
       activityLoading: false,
       careerHistory: [],
       detailLoading: false,

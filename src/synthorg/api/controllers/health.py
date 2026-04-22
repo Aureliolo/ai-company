@@ -11,7 +11,7 @@
 import asyncio
 import time
 from enum import StrEnum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -63,7 +63,10 @@ class LivenessStatus(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    status: str = Field(description="Always 'ok' while the process is alive")
+    status: Literal["ok"] = Field(
+        default="ok",
+        description="Always 'ok' while the process is alive",
+    )
     version: str = Field(description="Application version")
     uptime_seconds: float = Field(description="Seconds since startup")
 

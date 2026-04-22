@@ -14,7 +14,8 @@ import type {
 
 export async function listWorkflows(filters?: {
   workflow_type?: string
-  offset?: number
+  /** Opaque pagination cursor from the previous response's `pagination.next_cursor`. */
+  cursor?: string | null
   limit?: number
 }): Promise<PaginatedResult<WorkflowDefinition>> {
   const response = await apiClient.get<PaginatedResponse<WorkflowDefinition>>(
@@ -104,7 +105,7 @@ export async function exportWorkflowYaml(id: string): Promise<string> {
 
 export async function listWorkflowVersions(
   id: string,
-  params?: { offset?: number; limit?: number },
+  params?: { cursor?: string | null; limit?: number },
 ): Promise<PaginatedResult<WorkflowDefinitionVersionSummary>> {
   const response = await apiClient.get<PaginatedResponse<WorkflowDefinitionVersionSummary>>(
     `/workflows/${encodeURIComponent(id)}/versions`,

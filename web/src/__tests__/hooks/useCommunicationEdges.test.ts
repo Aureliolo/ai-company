@@ -11,7 +11,13 @@ type MessageSeed = { sender: string; to: string }
 
 function paginated(
   data: MessageSeed[],
-  meta: { total: number; offset: number; limit: number },
+  meta: {
+    total: number
+    offset: number
+    limit: number
+    nextCursor?: string | null
+    hasMore?: boolean
+  },
 ) {
   // Seeds are minimal sender/to records; the hook only reads those two
   // fields. ``paginatedFor`` demands the full Message shape, so we
@@ -38,17 +44,28 @@ function paginated(
       extra: [],
     },
   }))
+  const nextCursor = meta.nextCursor ?? null
+  const hasMore = meta.hasMore ?? false
   return paginatedFor<typeof listMessages>({
     data: messages,
     total: meta.total,
     offset: meta.offset,
     limit: meta.limit,
+    nextCursor,
+    hasMore,
+    pagination: {
+      total: meta.total,
+      offset: meta.offset,
+      limit: meta.limit,
+      next_cursor: nextCursor,
+      has_more: hasMore,
+    },
   })
 }
 
 describe('useCommunicationEdges', () => {
   let messagesCalls: Array<{
-    offset: string | null
+    cursor: string | null
     limit: string | null
   }> = []
 
@@ -101,20 +118,33 @@ describe('useCommunicationEdges', () => {
       to: `agent-${i + 1}`,
     }))
     const page2Data = [{ sender: 'carol', to: 'dave' }]
+    const PAGE_2_CURSOR = 'cursor-page-2'
     server.use(
       http.get('/api/v1/messages', ({ request }) => {
         const params = new URL(request.url).searchParams
         messagesCalls.push({
-          offset: params.get('offset'),
+          cursor: params.get('cursor'),
           limit: params.get('limit'),
         })
-        if (params.get('offset') === '100') {
+        if (params.get('cursor') === PAGE_2_CURSOR) {
           return HttpResponse.json(
-            paginated(page2Data, { total: 101, offset: 100, limit: 100 }),
+            paginated(page2Data, {
+              total: 101,
+              offset: 100,
+              limit: 100,
+              nextCursor: null,
+              hasMore: false,
+            }),
           )
         }
         return HttpResponse.json(
-          paginated(page1Data, { total: 101, offset: 0, limit: 100 }),
+          paginated(page1Data, {
+            total: 101,
+            offset: 0,
+            limit: 100,
+            nextCursor: PAGE_2_CURSOR,
+            hasMore: true,
+          }),
         )
       }),
     )
@@ -127,8 +157,8 @@ describe('useCommunicationEdges', () => {
 
     expect(result.current.links.length).toBeGreaterThan(0)
     expect(messagesCalls).toHaveLength(2)
-    expect(messagesCalls[0]).toEqual({ offset: '0', limit: '100' })
-    expect(messagesCalls[1]).toEqual({ offset: '100', limit: '100' })
+    expect(messagesCalls[0]).toEqual({ cursor: null, limit: '100' })
+    expect(messagesCalls[1]).toEqual({ cursor: PAGE_2_CURSOR, limit: '100' })
   })
 
   it('sets error on API failure', async () => {

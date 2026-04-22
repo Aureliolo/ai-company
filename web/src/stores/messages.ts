@@ -185,6 +185,10 @@ interface MessagesState {
   // Messages (for active channel)
   messages: Message[]
   total: number
+  /** Opaque cursor for the next page; null on the final page. */
+  nextCursor: string | null
+  /** Whether more messages follow the current page. */
+  hasMore: boolean
   loading: boolean
   loadingMore: boolean
   error: string | null
@@ -224,6 +228,8 @@ export const useMessagesStore = create<MessagesState>()((set, get) => ({
 
   messages: [],
   total: 0,
+  nextCursor: null,
+  hasMore: false,
   loading: false,
   loadingMore: false,
   error: null,
@@ -253,7 +259,9 @@ export const useMessagesStore = create<MessagesState>()((set, get) => ({
       if (seq !== messageRequestSeq) return
       set({
         messages: result.data,
-        total: result.total,
+        total: result.total ?? 0,
+        nextCursor: result.nextCursor,
+        hasMore: result.hasMore,
         loading: false,
         newMessageIds: new Set<string>(),
       })
@@ -264,15 +272,15 @@ export const useMessagesStore = create<MessagesState>()((set, get) => ({
   },
 
   fetchMoreMessages: async (channel) => {
-    const { messages: existing, loadingMore } = get()
-    if (loadingMore) return
+    const { loadingMore, nextCursor, hasMore } = get()
+    if (loadingMore || !hasMore || !nextCursor) return
     const seq = messageRequestSeq
     set({ loadingMore: true, error: null })
     try {
       const result = await messagesApi.listMessages({
         channel,
         limit: MESSAGES_FETCH_LIMIT,
-        offset: existing.length,
+        cursor: nextCursor,
       })
       if (seq !== messageRequestSeq) return
       set((s) => {
@@ -284,7 +292,9 @@ export const useMessagesStore = create<MessagesState>()((set, get) => ({
         )
         return {
           messages: [...s.messages, ...deduped],
-          total: result.total,
+          total: result.total ?? s.total,
+          nextCursor: result.nextCursor,
+          hasMore: result.hasMore,
           loadingMore: false,
         }
       })

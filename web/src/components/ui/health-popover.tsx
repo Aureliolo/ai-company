@@ -258,12 +258,17 @@ export function HealthPopover({ children }: HealthPopoverProps) {
     [fetchHealth],
   )
 
-  // Derive individual subsystem states
+  // Derive individual subsystem states.  The readiness endpoint's
+  // ``status`` is a binary ok/unavailable (post-OPS-1 split); map to
+  // the popover's richer tri-state so "unavailable" renders as a
+  // failure rather than leaking through as an unknown state.
   const apiState: SubsystemState =
     loadState.state === 'loading'
       ? 'loading'
       : loadState.state === 'ok'
-        ? loadState.data.status
+        ? loadState.data.status === 'ok'
+          ? 'ok'
+          : 'down'
         : loadState.state === 'error'
           ? 'down'
           : 'unknown'

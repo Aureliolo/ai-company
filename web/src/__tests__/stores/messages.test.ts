@@ -9,13 +9,33 @@ import type { WsEvent } from '@/api/types/websocket'
 
 function paginated(
   data: Message[],
-  meta: Partial<{ total: number; offset: number; limit: number }> = {},
+  meta: Partial<{
+    total: number
+    offset: number
+    limit: number
+    nextCursor: string | null
+    hasMore: boolean
+  }> = {},
 ) {
+  const total = meta.total ?? data.length
+  const offset = meta.offset ?? 0
+  const limit = meta.limit ?? 50
+  const nextCursor = meta.nextCursor ?? null
+  const hasMore = meta.hasMore ?? false
   return paginatedFor<typeof listMessages>({
     data,
-    total: meta.total ?? data.length,
-    offset: meta.offset ?? 0,
-    limit: meta.limit ?? 50,
+    total,
+    offset,
+    limit,
+    nextCursor,
+    hasMore,
+    pagination: {
+      total,
+      offset,
+      limit,
+      next_cursor: nextCursor,
+      has_more: hasMore,
+    },
   })
 }
 
@@ -27,6 +47,8 @@ function resetStore() {
     channelsError: null,
     messages: [],
     total: 0,
+    nextCursor: null,
+    hasMore: false,
     loading: false,
     loadingMore: false,
     error: null,
@@ -144,13 +166,20 @@ describe('messagesStore', () => {
 
   describe('fetchMoreMessages', () => {
     it('appends messages to existing list', async () => {
-      useMessagesStore.setState({ messages: [makeMessage('1')], total: 5 })
+      useMessagesStore.setState({
+        messages: [makeMessage('1')],
+        total: 5,
+        nextCursor: 'cursor-page-2',
+        hasMore: true,
+      })
       server.use(
         http.get('/api/v1/messages', () =>
           HttpResponse.json(
             paginated([makeMessage('2'), makeMessage('3')], {
               total: 5,
               offset: 1,
+              nextCursor: null,
+              hasMore: false,
             }),
           ),
         ),
@@ -181,6 +210,8 @@ describe('messagesStore', () => {
       useMessagesStore.setState({
         messages: [makeMessage('1')],
         total: 5,
+        nextCursor: 'cursor-page-2',
+        hasMore: true,
       })
       server.use(
         http.get('/api/v1/messages', () =>
@@ -198,6 +229,8 @@ describe('messagesStore', () => {
       useMessagesStore.setState({
         messages: [makeMessage('1')],
         total: 5,
+        nextCursor: 'cursor-old-page-2',
+        hasMore: true,
       })
       let release!: () => void
       const gate = new Promise<void>((resolve) => {
@@ -207,8 +240,8 @@ describe('messagesStore', () => {
         http.get('/api/v1/messages', async ({ request }) => {
           const url = new URL(request.url)
           const channel = url.searchParams.get('channel')
-          const offset = url.searchParams.get('offset')
-          if (channel === '#old' && offset) {
+          const cursor = url.searchParams.get('cursor')
+          if (channel === '#old' && cursor) {
             await gate
             return HttpResponse.json(
               paginated([makeMessage('stale')], { total: 5, offset: 1 }),

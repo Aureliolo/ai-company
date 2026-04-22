@@ -131,43 +131,40 @@ def encode_cursor(offset: int, *, secret: CursorSecret) -> str:
     )
 
 
-def decode_cursor(token: str, *, secret: CursorSecret) -> int:
-    """Decode an opaque signed cursor and return the offset.
-
-    Args:
-        token: The cursor string previously produced by :func:`encode_cursor`.
-        secret: HMAC secret matching the one used to sign.
-
-    Returns:
-        The zero-based offset.
+def _decode_token_payload(token: str) -> dict[str, object]:
+    """Base64url-decode and JSON-parse the cursor token.
 
     Raises:
-        InvalidCursorError: If the token is malformed, has been
-            tampered with, or was signed by a different secret.
+        InvalidCursorError: If the token is empty, contains non-ASCII
+            characters, is not valid base64, or does not decode to a
+            JSON object.
     """
     if not token:
         msg = "cursor token is empty"
         raise InvalidCursorError(msg)
-
     try:
-        # Re-pad: base64 decoding tolerates missing padding only when
-        # the string length is already a multiple of 4.
         padded = token + "=" * (-len(token) % 4)
         decoded = base64.urlsafe_b64decode(padded.encode("ascii"))
-    except (ValueError, TypeError) as exc:
+    except (ValueError, TypeError, UnicodeEncodeError) as exc:
         msg = "cursor token is not valid base64"
         raise InvalidCursorError(msg) from exc
-
     try:
         payload = json.loads(decoded)
     except (ValueError, UnicodeDecodeError) as exc:
         msg = "cursor token payload is not valid JSON"
         raise InvalidCursorError(msg) from exc
-
     if not isinstance(payload, dict):
         msg = "cursor token payload must be a JSON object"
         raise InvalidCursorError(msg)
+    return payload
 
+
+def _validate_cursor_payload(
+    payload: dict[str, object],
+    *,
+    secret: CursorSecret,
+) -> int:
+    """Extract + verify the offset from a decoded cursor payload."""
     offset = payload.get("o")
     signature = payload.get("s")
     if not isinstance(offset, int) or isinstance(offset, bool):
@@ -183,3 +180,21 @@ def decode_cursor(token: str, *, secret: CursorSecret) -> int:
         msg = "cursor signature is invalid"
         raise InvalidCursorError(msg)
     return offset
+
+
+def decode_cursor(token: str, *, secret: CursorSecret) -> int:
+    """Decode an opaque signed cursor and return the offset.
+
+    Args:
+        token: The cursor string previously produced by :func:`encode_cursor`.
+        secret: HMAC secret matching the one used to sign.
+
+    Returns:
+        The zero-based offset.
+
+    Raises:
+        InvalidCursorError: If the token is malformed, has been
+            tampered with, or was signed by a different secret.
+    """
+    payload = _decode_token_payload(token)
+    return _validate_cursor_payload(payload, secret=secret)

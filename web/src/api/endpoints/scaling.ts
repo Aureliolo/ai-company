@@ -41,24 +41,27 @@ export async function getScalingStrategies(): Promise<ScalingStrategyResponse[]>
 }
 
 export async function getScalingDecisions(params?: {
-  offset?: number
+  /** Opaque pagination cursor from the previous response's `pagination.next_cursor`. */
+  cursor?: string | null
   limit?: number
-}): Promise<{ data: ScalingDecisionResponse[]; total: number }> {
+}): Promise<{
+  data: ScalingDecisionResponse[]
+  total: number | null
+  nextCursor: string | null
+  hasMore: boolean
+}> {
   const response = await apiClient.get<
     PaginatedResponse<ScalingDecisionResponse>
   >('/scaling/decisions', { params })
   const body = response.data
-  if (
-    !body.pagination ||
-    typeof body.pagination.total !== 'number'
-  ) {
-    throw new Error(
-      'Invalid paginated response: missing pagination.total field',
-    )
+  if (!body.pagination) {
+    throw new Error('Invalid paginated response: missing pagination envelope')
   }
   return {
     data: body.data ?? [],
     total: body.pagination.total,
+    nextCursor: body.pagination.next_cursor,
+    hasMore: body.pagination.has_more,
   }
 }
 

@@ -71,18 +71,21 @@ export function useCommunicationEdges(enabled = true): UseCommunicationEdgesRetu
     async function fetchAll() {
       try {
         const allMessages: Array<{ sender: string; to: string }> = []
-        let offset = 0
-
+        let cursor: string | null = null
         let truncated = false
         for (let page = 0; page < MAX_PAGES; page++) {
           if (controller.signal.aborted) return
-          const result = await listMessages({ offset, limit: PAGE_LIMIT, signal: controller.signal })
+          const result = await listMessages({
+            cursor,
+            limit: PAGE_LIMIT,
+            signal: controller.signal,
+          })
           for (const msg of result.data) {
             allMessages.push({ sender: msg.sender, to: msg.to })
           }
-          offset += result.data.length
-          if (offset >= result.total || result.data.length === 0) break
-          if (page === MAX_PAGES - 1 && offset < result.total) {
+          if (!result.hasMore || result.data.length === 0) break
+          cursor = result.nextCursor
+          if (page === MAX_PAGES - 1 && result.hasMore) {
             truncated = true
           }
         }

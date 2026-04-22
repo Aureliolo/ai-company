@@ -1,13 +1,19 @@
 """Unit tests for BackgroundTaskRegistry."""
 
 import asyncio
+import contextlib
 import logging
 from collections.abc import MutableMapping
 from typing import Any
 
 import pytest
+import structlog.testing
 
-from synthorg.observability.background_tasks import BackgroundTaskRegistry
+from synthorg.observability import get_logger
+from synthorg.observability.background_tasks import (
+    BackgroundTaskRegistry,
+    log_task_exceptions,
+)
 from synthorg.observability.events.async_task import (
     BACKGROUND_TASKS_DRAIN_TIMEOUT,
 )
@@ -181,3 +187,80 @@ async def test_no_task_exception_warning_on_failed_task(
         "Task exception was never retrieved" in (r.getMessage() or "")
         for r in caplog.records
     )
+
+
+class TestLogTaskExceptions:
+    """``log_task_exceptions`` factory: callback for long-lived tasks."""
+
+    async def test_logs_uncancelled_exception(self) -> None:
+        logger = get_logger("test.log_task_exceptions")
+        with structlog.testing.capture_logs() as events:
+            task = asyncio.create_task(_raiser(ValueError("broken")))
+            task.add_done_callback(
+                log_task_exceptions(logger, "test.event", subsystem="loop"),
+            )
+            with contextlib.suppress(ValueError):
+                await task
+            await asyncio.sleep(0)
+        matched = [e for e in events if e.get("event") == "test.event"]
+        assert matched
+        assert matched[0]["log_level"] == "warning"
+        assert matched[0].get("subsystem") == "loop"
+        assert matched[0].get("error_type") == "ValueError"
+
+    async def test_ignores_cancelled_task(self) -> None:
+        logger = get_logger("test.log_task_exceptions")
+        started = asyncio.Event()
+
+        async def _runner() -> None:
+            started.set()
+            await asyncio.Event().wait()
+
+        with structlog.testing.capture_logs() as events:
+            task = asyncio.create_task(_runner())
+            task.add_done_callback(log_task_exceptions(logger, "test.event"))
+            await started.wait()
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+            await asyncio.sleep(0)
+        assert not any(e.get("event") == "test.event" for e in events)
+
+    async def test_success_logs_nothing(self) -> None:
+        logger = get_logger("test.log_task_exceptions")
+        with structlog.testing.capture_logs() as events:
+            task = asyncio.create_task(_noop())
+            task.add_done_callback(log_task_exceptions(logger, "test.event"))
+            await task
+            await asyncio.sleep(0)
+        assert not any(e.get("event") == "test.event" for e in events)
+
+    async def test_escalates_memory_error_to_critical(self) -> None:
+        logger = get_logger("test.log_task_exceptions")
+        with structlog.testing.capture_logs() as events:
+            task = asyncio.create_task(_raiser(MemoryError("oom")))
+            task.add_done_callback(log_task_exceptions(logger, "test.event"))
+            with contextlib.suppress(MemoryError):
+                await task
+            await asyncio.sleep(0)
+        matched = [e for e in events if e.get("event") == "test.event"]
+        assert matched
+        assert matched[0]["log_level"] == "critical"
+        assert matched[0].get("error_type") == "MemoryError"
+
+    async def test_context_frozen_after_registration(self) -> None:
+        """Mutating ``context`` after registering the callback is a no-op."""
+        logger = get_logger("test.log_task_exceptions")
+        context: dict[str, Any] = {"channel": "alpha"}
+        with structlog.testing.capture_logs() as events:
+            task = asyncio.create_task(_raiser(ValueError("x")))
+            task.add_done_callback(
+                log_task_exceptions(logger, "test.event", **context),
+            )
+            context["channel"] = "mutated-after"
+            with contextlib.suppress(ValueError):
+                await task
+            await asyncio.sleep(0)
+        matched = [e for e in events if e.get("event") == "test.event"]
+        assert matched
+        assert matched[0].get("channel") == "alpha"  # not "mutated-after"

@@ -136,11 +136,14 @@ export function useAgentDetailData(agentName: string): UseAgentDetailDataReturn 
     [agent, performance],
   )
 
-  // Load more activity -- store-level activityLoading prevents duplicates
+  // Load more activity -- store-level activityLoading prevents duplicates.
+  // Cursor state is held on the store (``activityNextCursor`` /
+  // ``activityHasMore``); the hook just kicks off the fetch when
+  // invoked by the UI.
   const fetchMoreActivity = useCallback(() => {
     if (!agentName) return
-    useAgentsStore.getState().fetchMoreActivity(agentName, activity.length)
-  }, [agentName, activity.length])
+    useAgentsStore.getState().fetchMoreActivity(agentName)
+  }, [agentName])
 
   if (!agentName) return EMPTY_RETURN
 

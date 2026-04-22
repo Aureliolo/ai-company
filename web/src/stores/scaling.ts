@@ -81,7 +81,7 @@ export const useScalingStore = create<ScalingState>()((set, get) => ({
             : state.decisions,
         totalDecisions:
           decisionsR.status === 'fulfilled'
-            ? decisionsR.value.total
+            ? decisionsR.value.total ?? decisionsR.value.data.length
             : state.totalDecisions,
         signals:
           signalsR.status === 'fulfilled' ? signalsR.value : state.signals,
@@ -107,7 +107,10 @@ export const useScalingStore = create<ScalingState>()((set, get) => ({
   fetchDecisions: async () => {
     try {
       const result = await getScalingDecisions({ limit: 50 })
-      set({ decisions: result.data, totalDecisions: result.total })
+      set({
+        decisions: result.data,
+        totalDecisions: result.total ?? result.data.length,
+      })
     } catch (err) {
       log.error('Failed to fetch decisions', err)
       throw err

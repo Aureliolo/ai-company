@@ -96,11 +96,15 @@ export function StatusBar({ onHamburgerClick, sidebarOverlayOpen = false }: Stat
     }
   }, [])
 
-  // Poll system health
+  // Poll system health.  Readiness returns a binary outcome
+  // (``ok`` / ``unavailable``); map ``unavailable`` to ``down`` so the
+  // StatusBar's richer tri-state (unknown/ok/degraded/down) surfaces a
+  // failed readiness probe as a hard-down signal rather than leaking
+  // through as unknown.
   const pollHealth = useCallback(async () => {
     try {
       const health: HealthStatus = await getHealth()
-      setHealthStatus(health.status)
+      setHealthStatus(health.status === 'ok' ? 'ok' : 'down')
     } catch {
       // Preserve last known state on transient failures; only real health
       // payloads should set 'degraded' or 'down'

@@ -66,6 +66,8 @@ export interface VersionsSlice {
   versions: readonly WorkflowDefinitionVersionSummary[]
   versionsLoading: boolean
   versionsHasMore: boolean
+  /** Opaque cursor for the next page; null on the final page. */
+  versionsNextCursor: string | null
   diffResult: WorkflowDiff | null
   diffLoading: boolean
   /** @internal Request counter to discard stale version responses. */

@@ -192,7 +192,10 @@ class PaginationMeta(BaseModel):
         default=None,
         description="Opaque cursor for the next page (null on final page)",
     )
-    has_more: bool = Field(description="Whether more items follow the current page")
+    has_more: bool = Field(
+        default=False,
+        description="Whether more items follow the current page",
+    )
     total: int | None = Field(
         default=None,
         ge=0,
@@ -203,6 +206,23 @@ class PaginationMeta(BaseModel):
         ge=0,
         description="Starting offset of the current page (decoded cursor offset)",
     )
+
+    @model_validator(mode="after")
+    def _validate_cursor_consistency(self) -> Self:
+        """``has_more`` and ``next_cursor`` must agree.
+
+        A non-null cursor means more pages exist; a null cursor means
+        the caller is on the final page. Letting the two disagree would
+        silently strand clients -- the envelope would advertise "more
+        data" with no way to fetch it, or vice versa.
+        """
+        if self.has_more and self.next_cursor is None:
+            msg = "has_more=True requires a non-null next_cursor"
+            raise ValueError(msg)
+        if not self.has_more and self.next_cursor is not None:
+            msg = "has_more=False requires next_cursor to be None"
+            raise ValueError(msg)
+        return self
 
 
 class PaginatedResponse[T](BaseModel):

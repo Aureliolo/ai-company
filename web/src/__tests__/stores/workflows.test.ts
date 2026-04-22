@@ -26,11 +26,21 @@ function makeWorkflow(
 }
 
 function paginated(data: WorkflowDefinition[], total?: number) {
+  const resolvedTotal = total ?? data.length
   return paginatedFor<typeof listWorkflows>({
     data,
-    total: total ?? data.length,
+    total: resolvedTotal,
     offset: 0,
     limit: 200,
+    nextCursor: null,
+    hasMore: false,
+    pagination: {
+      total: resolvedTotal,
+      offset: 0,
+      limit: 200,
+      next_cursor: null,
+      has_more: false,
+    },
   })
 }
 

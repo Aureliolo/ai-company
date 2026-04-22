@@ -60,7 +60,7 @@ describe('client property tests', () => {
             error: null,
             error_detail: null,
             success: true,
-            pagination: { total, offset, limit },
+            pagination: { total, offset, limit, next_cursor: null, has_more: false },
           })
           const result = unwrapPaginated(response)
           expect(result.data).toEqual(items)

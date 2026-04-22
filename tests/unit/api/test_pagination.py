@@ -1,8 +1,10 @@
 """Unit tests for the cursor-based pagination helper."""
 
 import pytest
+from pydantic import ValidationError
 
 from synthorg.api.cursor import CursorSecret, InvalidCursorError
+from synthorg.api.dto import PaginationMeta
 from synthorg.api.pagination import paginate_cursor
 
 pytestmark = pytest.mark.unit
@@ -117,3 +119,25 @@ class TestCursorStability:
         _, meta_a = paginate_cursor(items, limit=5, cursor=None, secret=secret)
         _, meta_b = paginate_cursor(items, limit=5, cursor=None, secret=secret)
         assert meta_a.next_cursor == meta_b.next_cursor
+
+
+class TestPaginationMetaConsistency:
+    """``has_more`` and ``next_cursor`` must agree."""
+
+    def test_has_more_true_without_cursor_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            PaginationMeta(limit=50, next_cursor=None, has_more=True)
+
+    def test_has_more_false_with_cursor_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            PaginationMeta(limit=50, next_cursor="abc", has_more=False)
+
+    def test_has_more_true_with_cursor_accepted(self) -> None:
+        meta = PaginationMeta(limit=50, next_cursor="abc", has_more=True)
+        assert meta.has_more is True
+        assert meta.next_cursor == "abc"
+
+    def test_has_more_false_without_cursor_accepted(self) -> None:
+        meta = PaginationMeta(limit=50, next_cursor=None, has_more=False)
+        assert meta.has_more is False
+        assert meta.next_cursor is None

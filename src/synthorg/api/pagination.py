@@ -72,7 +72,15 @@ def paginate_cursor[T](
     """
     offset = 0 if cursor is None else decode_cursor(cursor, secret=secret)
     effective_limit = max(1, min(limit, MAX_LIMIT))
-    offset = max(0, min(offset, len(items)))
+    # Out-of-bounds cursors are rejected explicitly.  The cursor is
+    # HMAC-signed so a client cannot forge one past the true end;
+    # reaching this branch means the collection shrunk between
+    # issuing the cursor and walking it (e.g. deletions) -- returning
+    # an empty page would silently hide the truncation from callers
+    # that rely on ``has_more`` progressing consistently.
+    if offset > len(items):
+        msg = "cursor points past the end of the collection"
+        raise InvalidCursorError(msg)
     page = items[offset : offset + effective_limit]
     next_offset = offset + effective_limit
     has_more = next_offset < len(items)

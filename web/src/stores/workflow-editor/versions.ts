@@ -16,6 +16,7 @@ export const createVersionsSlice: SliceCreator<VersionsSlice> = (set, get) => ({
   versions: [],
   versionsLoading: false,
   versionsHasMore: false,
+  versionsNextCursor: null,
   diffResult: null,
   diffLoading: false,
   _versionsRequestId: 0,
@@ -41,7 +42,8 @@ export const createVersionsSlice: SliceCreator<VersionsSlice> = (set, get) => ({
       set({
         versions: result.data,
         versionsLoading: false,
-        versionsHasMore: result.data.length >= limit,
+        versionsHasMore: result.hasMore,
+        versionsNextCursor: result.nextCursor,
       })
     } catch (err) {
       if (get()._versionsRequestId !== reqId) return
@@ -51,19 +53,27 @@ export const createVersionsSlice: SliceCreator<VersionsSlice> = (set, get) => ({
   },
 
   loadMoreVersions: async () => {
-    const { definition: defn, versionsLoading, versionsHasMore } = get()
-    if (!defn || versionsLoading || !versionsHasMore) return
+    const {
+      definition: defn,
+      versionsLoading,
+      versionsHasMore,
+      versionsNextCursor,
+    } = get()
+    if (!defn || versionsLoading || !versionsHasMore || !versionsNextCursor) return
     const reqId = get()._versionsRequestId + 1
-    const offset = get().versions.length
     set({ versionsLoading: true, _versionsRequestId: reqId })
     try {
       const limit = 50
-      const result = await listWorkflowVersions(defn.id, { limit, offset })
+      const result = await listWorkflowVersions(defn.id, {
+        limit,
+        cursor: versionsNextCursor,
+      })
       if (get()._versionsRequestId !== reqId) return
       set((prev) => ({
         versions: [...prev.versions, ...result.data],
         versionsLoading: false,
-        versionsHasMore: result.data.length >= limit,
+        versionsHasMore: result.hasMore,
+        versionsNextCursor: result.nextCursor,
       }))
     } catch (err) {
       if (get()._versionsRequestId !== reqId) return

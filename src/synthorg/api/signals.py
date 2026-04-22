@@ -1,21 +1,14 @@
 """POSIX signal handlers for orderly shutdown.
 
-Uvicorn installs its own ``SIGTERM``/``SIGINT`` handlers that flip the
-ASGI lifespan into shutdown -- which is what ultimately drives our
-``on_shutdown`` callbacks. This module layers an explicit asyncio
-signal handler on top so:
-
-* Operators get an ``api.shutdown.signal.received`` log the moment the
-  signal arrives (uvicorn's own log is delayed until it starts
-  cancelling in-flight requests).
-* ``AppState`` carries a ``shutdown_requested`` event other subsystems
-  can observe (e.g. a long-running reconcile loop can exit early
-  instead of waiting for cancellation).
+This module installs explicit asyncio ``SIGTERM``/``SIGINT`` handlers
+so we can log the signal the moment it arrives (before the ASGI
+lifespan begins cancelling in-flight requests) and flag an
+``AppState.shutdown_requested`` event that long-lived subsystems can
+poll or ``await`` to exit early instead of waiting for cancellation.
 
 Windows has no POSIX signals; the asyncio proactor event loop raises
 ``NotImplementedError`` on :meth:`add_signal_handler`. The helper logs
-a DEBUG event and returns instead, so the app still boots and uvicorn's
-own CTRL+C handling remains in effect.
+a DEBUG event and returns instead, so the app still boots.
 """
 
 import asyncio
@@ -44,13 +37,18 @@ def install_shutdown_handlers(app_state: AppState) -> None:
 
     Idempotent: the shared-app test fixture reuses a single ``AppState``
     across lifespan re-enters. Repeated calls overwrite the handler
-    with a fresh closure that captures the same ``app_state``.
+    with a fresh closure that captures the same ``app_state`` and
+    ``.clear()`` the ``shutdown_requested`` event so a second lifespan
+    does not observe a stale "already set" state from the previous
+    run.
 
-    On non-POSIX (Windows dev), logs DEBUG and returns. Uvicorn's
-    Windows handler (``KeyboardInterrupt`` catch + CTRL_BREAK_EVENT on
-    Win32) is sufficient for dev/test; production deployments are
-    Linux containers.
+    On non-POSIX (Windows dev), logs DEBUG and returns.
     """
+    # Reset the shutdown flag so a reused AppState starts clean even
+    # if the prior lifespan observed SIGTERM.  Safe before any handler
+    # is registered and a no-op when already clear.
+    app_state.shutdown_requested.clear()
+
     # ``sys.platform`` narrows to a literal on the current host, so
     # mypy would flag the POSIX branch as unreachable on a Windows
     # development machine (and vice versa).  Read it through a local
@@ -76,6 +74,7 @@ def install_shutdown_handlers(app_state: AppState) -> None:
         )
         return
 
+    skipped: list[str] = []
     for sig in _POSIX_SIGNALS:
         try:
             loop.add_signal_handler(
@@ -83,16 +82,19 @@ def install_shutdown_handlers(app_state: AppState) -> None:
                 _make_handler(sig, app_state),
             )
         except NotImplementedError:
-            # Proactor event loops (ProactorEventLoop on Win pre-3.8
-            # subinterpreters, embedded runtimes) raise
-            # NotImplementedError.  Keep uvicorn's handler as the
-            # safety net.
-            logger.debug(
-                API_SHUTDOWN_HANDLER_SKIPPED,
-                reason="loop-lacks-signal-handler",
-                signal=sig.name,
-            )
-            return
+            # Proactor event loops (embedded runtimes, subinterpreters)
+            # raise ``NotImplementedError``.  Collect the skipped signal
+            # names and log once at the end so a mixed outcome
+            # (e.g. SIGTERM registered but SIGINT refused) is visible
+            # instead of silently exiting after the first skip.
+            skipped.append(sig.name)
+
+    if skipped:
+        logger.debug(
+            API_SHUTDOWN_HANDLER_SKIPPED,
+            reason="loop-lacks-signal-handler",
+            signals=tuple(skipped),
+        )
 
 
 def _make_handler(

@@ -53,7 +53,7 @@ export const Degraded: Story = {
           HttpResponse.json(
             successFor<typeof getHealth>({
               ...BASE_PAYLOAD,
-              status: 'degraded',
+              status: 'unavailable',
               message_bus: false,
             }),
           ),
@@ -74,7 +74,7 @@ export const Down: Story = {
           HttpResponse.json(
             successFor<typeof getHealth>({
               ...BASE_PAYLOAD,
-              status: 'down',
+              status: 'unavailable',
               persistence: false,
               message_bus: false,
             }),

@@ -25,7 +25,13 @@ export interface CostRecordListResponseBody {
   data: CostRecord[]
   error?: string | null
   error_detail?: ErrorDetail | null
-  pagination: { total: number; offset: number; limit: number }
+  pagination: {
+    total: number | null
+    offset: number
+    limit: number
+    next_cursor: string | null
+    has_more: boolean
+  }
   daily_summary: DailySummary[]
   period_summary: PeriodSummary
   currency: string
@@ -44,6 +50,15 @@ export async function listCostRecords(
     total: body.pagination.total,
     offset: body.pagination.offset,
     limit: body.pagination.limit,
+    nextCursor: body.pagination.next_cursor,
+    hasMore: body.pagination.has_more,
+    pagination: {
+      total: body.pagination.total,
+      offset: body.pagination.offset,
+      limit: body.pagination.limit,
+      next_cursor: body.pagination.next_cursor,
+      has_more: body.pagination.has_more,
+    },
     daily_summary: body.daily_summary,
     period_summary: body.period_summary,
     currency: body.currency,

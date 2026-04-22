@@ -313,11 +313,16 @@ class AppState(AppStateServicesMixin):
         self._bridge_config_applied: bool = False
         self._provider_management: ProviderManagementService | None = None
         self._org_mutation_service: OrgMutationService | None = None
-        # Lazy shutdown flag observable by long-lived subsystems.
+        # Shutdown flag observable by long-lived subsystems.
         # ``install_shutdown_handlers`` sets it when SIGTERM/SIGINT
         # arrive so reconcile loops can exit early instead of waiting
-        # for lifespan cancellation.
-        self._shutdown_requested: asyncio.Event | None = None
+        # for lifespan cancellation.  Constructed eagerly so that two
+        # concurrent first-reads (e.g. handler + reconcile task) cannot
+        # each allocate their own ``Event`` and leave one observer
+        # stranded on a stale reference.  Constructing an
+        # ``asyncio.Event`` outside a running loop is safe -- it only
+        # acquires a loop reference on ``.wait()`` / ``.set()``.
+        self._shutdown_requested: asyncio.Event = asyncio.Event()
         # Opaque pagination cursor HMAC secret.  Set by ``create_app`` from
         # ``api.pagination.cursor_secret`` (settings) or
         # ``SYNTHORG_PAGINATION_CURSOR_SECRET`` (env); falls back to an
@@ -423,15 +428,12 @@ class AppState(AppStateServicesMixin):
 
     @property
     def shutdown_requested(self) -> asyncio.Event:
-        """Return the lazy shutdown ``asyncio.Event``.
+        """Return the shutdown ``asyncio.Event``.
 
-        Constructed on first access so ``AppState`` can be built
-        outside a running event loop (tests).  SIGTERM/SIGINT
-        handlers set the event; long-lived subsystems ``await`` or
-        poll it to exit early.
+        SIGTERM/SIGINT handlers set the event; long-lived subsystems
+        ``await`` or poll it to exit early.  Constructed eagerly in
+        ``__init__`` so every reader sees the same instance.
         """
-        if self._shutdown_requested is None:
-            self._shutdown_requested = asyncio.Event()
         return self._shutdown_requested
 
     @property

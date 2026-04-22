@@ -115,13 +115,13 @@ describe('useAgentDetailData', () => {
     expect(mockPollingStart).not.toHaveBeenCalled()
   })
 
-  it('fetchMoreActivity passes activity.length as offset', () => {
+  it('fetchMoreActivity calls the store action with the agent name', () => {
     useAgentsStore.setState({
       activity: [makeActivityEvent(), makeActivityEvent()],
     })
     const { result } = renderHook(() => useAgentDetailData('alice'))
     result.current.fetchMoreActivity()
-    expect(mockFetchMoreActivity).toHaveBeenCalledWith('alice', 2)
+    expect(mockFetchMoreActivity).toHaveBeenCalledWith('alice')
   })
 
   it('returns wsConnected from useWebSocket', () => {

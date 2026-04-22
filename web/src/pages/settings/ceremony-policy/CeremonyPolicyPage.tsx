@@ -220,13 +220,13 @@ export default function CeremonyPolicyPage() {
       const allDepts: Department[] = []
       try {
         const { listDepartments } = await import('@/api/endpoints/company')
-        let offset = 0
+        let cursor: string | null = null
         const limit = 200
         while (!cancelled) {
-          const result = await listDepartments({ offset, limit })
+          const result = await listDepartments({ cursor, limit })
           allDepts.push(...result.data)
-          if (result.data.length < limit) break
-          offset += limit
+          if (!result.hasMore || !result.nextCursor) break
+          cursor = result.nextCursor
         }
       } catch {
         if (!cancelled) {

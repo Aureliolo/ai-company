@@ -96,6 +96,8 @@ export function paginatedFor<
     total: result.total,
     offset: result.offset,
     limit: result.limit,
+    next_cursor: result.nextCursor,
+    has_more: result.hasMore,
   }
   return {
     data: result.data as Item[],
@@ -108,5 +110,19 @@ export function paginatedFor<
 
 /** Build an empty paginated result with default offset/limit. */
 export function emptyPage<T>(limit = 200): PaginatedResult<T> {
-  return { data: [], total: 0, offset: 0, limit }
+  return {
+    data: [],
+    total: 0,
+    offset: 0,
+    limit,
+    nextCursor: null,
+    hasMore: false,
+    pagination: {
+      total: 0,
+      offset: 0,
+      limit,
+      next_cursor: null,
+      has_more: false,
+    },
+  }
 }

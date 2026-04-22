@@ -126,7 +126,14 @@ class BackgroundTaskRegistry:
                     exc_info=(type(exc), exc, exc.__traceback__),
                     **context,
                 )
-                loop = asyncio.get_running_loop()
+                # Done-callbacks usually run while the loop is alive, but
+                # a registry shared across lifespan boundaries may fire a
+                # last callback after the loop has closed. A missing loop
+                # must not mask the fatal log we just emitted.
+                try:
+                    loop = asyncio.get_running_loop()
+                except RuntimeError:
+                    return
                 loop.call_exception_handler(
                     {
                         "message": "fatal exception in tracked background task",
@@ -237,7 +244,14 @@ def log_task_exceptions(
                 exc_info=(type(exc), exc, exc.__traceback__),
                 **frozen_context,
             )
-            loop = asyncio.get_running_loop()
+            # A done-callback can fire after the owning loop has
+            # closed (e.g. the task was cancelled during shutdown but
+            # its callback queued post-loop-stop). Missing the
+            # handler registration must not mask the fatal log above.
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                return
             loop.call_exception_handler(
                 {
                     "message": "fatal exception in long-lived background task",

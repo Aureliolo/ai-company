@@ -380,6 +380,8 @@ describe('fetchMoreActivity', () => {
     useAgentsStore.setState({
       activity: existingEvents,
       activityTotal: 1,
+      activityNextCursor: 'cursor-page-2',
+      activityHasMore: true,
       selectedAgent: makeAgent({ name: 'Alice Smith' }),
     })
 
@@ -398,12 +400,18 @@ describe('fetchMoreActivity', () => {
           error: null,
           error_detail: null,
           success: true,
-          pagination: { total: 5, offset: 1, limit: 20 },
+          pagination: {
+            total: 5,
+            offset: 1,
+            limit: 20,
+            next_cursor: null,
+            has_more: false,
+          },
         }),
       ),
     )
 
-    await useAgentsStore.getState().fetchMoreActivity('Alice Smith', 1)
+    await useAgentsStore.getState().fetchMoreActivity('Alice Smith')
 
     expect(useAgentsStore.getState().activity).toHaveLength(2)
     expect(useAgentsStore.getState().activityTotal).toBe(5)
@@ -419,6 +427,8 @@ describe('fetchMoreActivity', () => {
     useAgentsStore.setState({
       activity: existingEvents,
       activityTotal: 200,
+      activityNextCursor: 'cursor-page-2',
+      activityHasMore: true,
       selectedAgent: makeAgent({ name: 'Alice Smith' }),
     })
 
@@ -435,12 +445,18 @@ describe('fetchMoreActivity', () => {
           error: null,
           error_detail: null,
           success: true,
-          pagination: { total: 200, offset: 99, limit: 20 },
+          pagination: {
+            total: 200,
+            offset: 99,
+            limit: 20,
+            next_cursor: 'cursor-page-3',
+            has_more: true,
+          },
         }),
       ),
     )
 
-    await useAgentsStore.getState().fetchMoreActivity('Alice Smith', 99)
+    await useAgentsStore.getState().fetchMoreActivity('Alice Smith')
 
     expect(useAgentsStore.getState().activity).toHaveLength(100)
   })
@@ -457,6 +473,8 @@ describe('fetchMoreActivity', () => {
     useAgentsStore.setState({
       activity: existingEvents,
       activityTotal: 5,
+      activityNextCursor: 'cursor-page-2',
+      activityHasMore: true,
       selectedAgent: makeAgent({ name: 'Alice Smith' }),
     })
 
@@ -466,7 +484,7 @@ describe('fetchMoreActivity', () => {
       ),
     )
 
-    await useAgentsStore.getState().fetchMoreActivity('Alice Smith', 1)
+    await useAgentsStore.getState().fetchMoreActivity('Alice Smith')
 
     expect(useAgentsStore.getState().activity).toHaveLength(1)
     expect(useAgentsStore.getState().activity[0]!.description).toBe('Task done')

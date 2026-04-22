@@ -64,7 +64,7 @@ export const useOntologyStore = create<OntologyState>()((set) => ({
       const result = await listEntities({ limit: 200 })
       set({
         entities: result.data,
-        totalEntities: result.total,
+        totalEntities: result.total ?? result.data.length,
         entitiesLoading: false,
       })
     } catch (err) {

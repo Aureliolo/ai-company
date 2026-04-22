@@ -8,9 +8,19 @@ export type ApiResponse<T> =
   | { data: null; error: string | null; error_detail: ErrorDetail | null; success: false }
 
 export interface PaginationMeta {
-  total: number
-  offset: number
+  /** Maximum items per page. */
   limit: number
+  /** Opaque cursor for the next page; null on the final page. */
+  next_cursor: string | null
+  /** Whether more items follow the current page. */
+  has_more: boolean
+  /**
+   * Total matching items. Null when the backend could not compute it
+   * without an extra round-trip (repo-backed endpoints).
+   */
+  total: number | null
+  /** Starting offset of the current page (reflects the decoded cursor). */
+  offset: number
 }
 
 /** Discriminated paginated response envelope. */
@@ -19,6 +29,7 @@ export type PaginatedResponse<T> =
   | { data: null; error: string | null; error_detail: ErrorDetail | null; success: false; pagination: null; degraded_sources?: readonly string[] }
 
 export interface PaginationParams {
-  offset?: number
+  /** Opaque pagination cursor from the previous page response. */
+  cursor?: string | null
   limit?: number
 }

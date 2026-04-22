@@ -52,9 +52,11 @@ from synthorg.notifications.models import (
     NotificationSeverity,
 )
 from synthorg.observability import get_logger
+from synthorg.observability.background_tasks import log_task_exceptions
 from synthorg.observability.events.conflict import (
     CONFLICT_ESCALATED,
     CONFLICT_ESCALATION_CANCELLED,
+    CONFLICT_ESCALATION_NOTIFY_FAILED,
     CONFLICT_ESCALATION_QUEUED,
     CONFLICT_ESCALATION_RESOLVED,
     CONFLICT_ESCALATION_TIMEOUT,
@@ -191,6 +193,14 @@ class HumanEscalationResolver:
             )
             self._notify_tasks.add(notify_task)
             notify_task.add_done_callback(self._notify_tasks.discard)
+            notify_task.add_done_callback(
+                log_task_exceptions(
+                    logger,
+                    CONFLICT_ESCALATION_NOTIFY_FAILED,
+                    escalation_id=escalation.id,
+                    conflict_id=conflict.id,
+                ),
+            )
 
         try:
             if self._timeout_seconds is None:

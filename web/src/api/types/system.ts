@@ -4,14 +4,35 @@ import type { AutonomyLevel } from './enums'
 
 export type TelemetryStatus = 'enabled' | 'disabled'
 
-export interface HealthStatus {
-  status: 'ok' | 'degraded' | 'down'
+/** Binary readiness outcome from ``/api/v1/readyz``. */
+export type ReadinessOutcome = 'ok' | 'unavailable'
+
+/** Liveness response from ``/api/v1/healthz`` -- always ``status: 'ok'``. */
+export interface LivenessStatus {
+  status: 'ok'
+  version: string
+  uptime_seconds: number
+}
+
+/**
+ * Readiness response from ``/api/v1/readyz`` -- ``status`` is binary
+ * (``ok`` / ``unavailable``). HTTP 200 when ok, 503 when unavailable.
+ */
+export interface ReadinessStatus {
+  status: ReadinessOutcome
   persistence: boolean | null
   message_bus: boolean | null
   telemetry: TelemetryStatus
   version: string
   uptime_seconds: number
 }
+
+/**
+ * Legacy alias for callers that still import `HealthStatus`.  New
+ * code should use :type:`ReadinessStatus` / :type:`LivenessStatus`
+ * directly so the liveness vs readiness split is explicit.
+ */
+export type HealthStatus = ReadinessStatus
 
 export interface AutonomyLevelResponse {
   agent_id: string

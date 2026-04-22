@@ -11,20 +11,40 @@ import type { Task } from '@/api/types/tasks'
 import type { WsEvent } from '@/api/types/websocket'
 
 function paginatedProjects(data: Project[], total?: number) {
+  const resolvedTotal = total ?? data.length
   return paginatedFor<typeof listProjects>({
     data,
-    total: total ?? data.length,
+    total: resolvedTotal,
     offset: 0,
     limit: 200,
+    nextCursor: null,
+    hasMore: false,
+    pagination: {
+      total: resolvedTotal,
+      offset: 0,
+      limit: 200,
+      next_cursor: null,
+      has_more: false,
+    },
   })
 }
 
 function paginatedTasks(data: Task[], total?: number) {
+  const resolvedTotal = total ?? data.length
   return paginatedFor<typeof listTasks>({
     data,
-    total: total ?? data.length,
+    total: resolvedTotal,
     offset: 0,
     limit: 50,
+    nextCursor: null,
+    hasMore: false,
+    pagination: {
+      total: resolvedTotal,
+      offset: 0,
+      limit: 50,
+      next_cursor: null,
+      has_more: false,
+    },
   })
 }
 
