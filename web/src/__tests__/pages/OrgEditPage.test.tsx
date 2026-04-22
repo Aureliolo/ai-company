@@ -92,10 +92,28 @@ describe('OrgEditPage', () => {
     expect(screen.getByText('Save failed')).toBeInTheDocument()
   })
 
-  it('renders WS disconnect warning', () => {
+  it('renders WS disconnect warning after a prior connection drops', () => {
+    // Start connected so wasConnectedRef flips to true, then drop the
+    // connection. The banner must only show after a real disconnect, not
+    // during the initial handshake.
+    hookReturn = { ...defaultHookReturn, wsConnected: true }
+    const { rerender } = renderPage()
+    // Disconnected with no prior connect: banner must stay hidden.
+    hookReturn = { ...defaultHookReturn, wsConnected: false }
+    rerender(
+      <MemoryRouter initialEntries={['/org/edit']}>
+        <OrgEditPage />
+      </MemoryRouter>,
+    )
+    expect(screen.getByText(/disconnected/i)).toBeInTheDocument()
+  })
+
+  it('does not render WS disconnect warning during initial handshake', () => {
+    // First render: never connected, no setup error. Banner must stay hidden
+    // to avoid the false-positive flash before the WS finishes connecting.
     hookReturn = { ...defaultHookReturn, wsConnected: false }
     renderPage()
-    expect(screen.getByText(/disconnected/i)).toBeInTheDocument()
+    expect(screen.queryByText(/disconnected/i)).not.toBeInTheDocument()
   })
 
   it('renders custom WS setup error', () => {
