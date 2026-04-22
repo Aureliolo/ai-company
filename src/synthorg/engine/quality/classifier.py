@@ -27,8 +27,11 @@ logger = get_logger(__name__)
 # registered under the ``engine.classifier_rule_matched_confidence``
 # and ``engine.classifier_fallback_confidence`` settings and can be
 # overridden per-instance via the ``RuleBasedStepClassifier``
-# constructor; callers that resolve those settings at startup pass
-# the resolved floats in so operator edits take effect at runtime.
+# constructor.  Both registry entries are ``restart_required=True``
+# -- operators edit them in the settings store/dashboard and the
+# service must be restarted for the new values to flow through
+# startup wiring into newly constructed classifiers (no live
+# hot-apply path exists).
 _CONFIDENCE_DEFINITIVE: float = 1.0
 _DEFAULT_CONFIDENCE_RULE_MATCHED: float = 0.7
 _DEFAULT_CONFIDENCE_FALLBACK: float = 0.5
@@ -80,13 +83,19 @@ class RuleBasedStepClassifier:
 
     Args:
         rule_matched_confidence: Confidence score attached to
-            rule-matched verdicts.  Bridged from
-            ``engine.classifier_rule_matched_confidence``;
-            callers resolving the setting at startup should pass
-            the resolved float so operator edits take effect.
+            rule-matched verdicts.  Bridged from the
+            ``engine.classifier_rule_matched_confidence`` setting
+            (``restart_required``); callers that resolve the setting
+            at startup should pass the resolved float so the newly
+            constructed classifier carries the current value.  Must
+            be in ``[0.0, 1.0]``.
         fallback_confidence: Confidence score attached to the
             NEUTRAL fallback verdict.  Bridged from
-            ``engine.classifier_fallback_confidence``.
+            ``engine.classifier_fallback_confidence``
+            (``restart_required``).  Must be in ``[0.0, 1.0]``.
+
+    Raises:
+        ValueError: If either confidence is outside ``[0.0, 1.0]``.
     """
 
     __slots__ = ("_fallback_confidence", "_rule_matched_confidence")
@@ -97,6 +106,18 @@ class RuleBasedStepClassifier:
         rule_matched_confidence: float = _DEFAULT_CONFIDENCE_RULE_MATCHED,
         fallback_confidence: float = _DEFAULT_CONFIDENCE_FALLBACK,
     ) -> None:
+        if not 0.0 <= rule_matched_confidence <= 1.0:
+            msg = (
+                "rule_matched_confidence must be in [0.0, 1.0];"
+                f" got {rule_matched_confidence!r}"
+            )
+            raise ValueError(msg)
+        if not 0.0 <= fallback_confidence <= 1.0:
+            msg = (
+                "fallback_confidence must be in [0.0, 1.0];"
+                f" got {fallback_confidence!r}"
+            )
+            raise ValueError(msg)
         self._rule_matched_confidence = rule_matched_confidence
         self._fallback_confidence = fallback_confidence
 

@@ -71,6 +71,55 @@ def _make_session(
     )
 
 
+async def _seed_user_with_dependencies(  # noqa: PLR0913
+    *,
+    on_disk_backend: SQLitePersistenceBackend,
+    user_id: str,
+    username: str,
+    session_id: str,
+    token_hash: str,
+    api_key_id: str,
+    api_key_hash: str,
+    api_key_name: str,
+) -> tuple[User, Session, ApiKey]:
+    """Build and persist a user plus a session, refresh token, and api key.
+
+    Shared setup for the cascade tests -- both verify that deleting
+    the user cascades across every dependent auth row, so each test
+    needs an identical fanout and the bulk of the body is noise.
+    Returns the three models so individual tests can assert against
+    them by id after calling ``UserService.delete``.
+    """
+    user = _make_user(user_id=user_id, username=username)
+    await on_disk_backend.users.save(user)
+
+    session = _make_session(
+        session_id=session_id,
+        user_id=user.id,
+        username=user.username,
+    )
+    await on_disk_backend.sessions.create(session)
+
+    expires = datetime.now(UTC) + timedelta(hours=1)
+    await on_disk_backend.refresh_tokens.create(
+        token_hash,
+        session.session_id,
+        user.id,
+        expires,
+    )
+
+    api_key = ApiKey(
+        id=api_key_id,
+        key_hash=api_key_hash,
+        name=api_key_name,
+        role=HumanRole.MANAGER,
+        user_id=user.id,
+        created_at=datetime.now(UTC),
+    )
+    await on_disk_backend.api_keys.save(api_key)
+    return user, session, api_key
+
+
 @pytest.mark.integration
 class TestUserDeletionCascade:
     """End-to-end cascade on ``DELETE /users/{id}`` via UserService."""
@@ -80,33 +129,16 @@ class TestUserDeletionCascade:
         on_disk_backend: SQLitePersistenceBackend,
     ) -> None:
         """delete() revokes refresh tokens and FK cascades sessions + api_keys."""
-        user = _make_user()
-        await on_disk_backend.users.save(user)
-
-        session = _make_session(
+        user, session, api_key = await _seed_user_with_dependencies(
+            on_disk_backend=on_disk_backend,
+            user_id="user-del-001",
+            username="alice-del",
             session_id="sess-del-001",
-            user_id=user.id,
-            username=user.username,
+            token_hash="token-hash-del-001",
+            api_key_id="apikey-del-001",
+            api_key_hash="deadbeef" * 8,
+            api_key_name="integration test key",
         )
-        await on_disk_backend.sessions.create(session)
-
-        expires = datetime.now(UTC) + timedelta(hours=1)
-        await on_disk_backend.refresh_tokens.create(
-            "token-hash-del-001",
-            session.session_id,
-            user.id,
-            expires,
-        )
-
-        api_key = ApiKey(
-            id="apikey-del-001",
-            key_hash="deadbeef" * 8,
-            name="integration test key",
-            role=HumanRole.MANAGER,
-            user_id=user.id,
-            created_at=datetime.now(UTC),
-        )
-        await on_disk_backend.api_keys.save(api_key)
 
         service = UserService(
             repo=on_disk_backend.users,
@@ -119,16 +151,12 @@ class TestUserDeletionCascade:
         )
 
         assert deleted is True
-        # User row gone
         assert await on_disk_backend.users.get(user.id) is None
-        # Session cascaded via FK
         assert await on_disk_backend.sessions.get(session.session_id) is None
-        # API key cascaded via FK
         assert await on_disk_backend.api_keys.get(api_key.id) is None
-        # Refresh token rows cascaded via FK (revoke_by_user flipped used=1
-        # first, then the FK cascade dropped the row)
-        remaining = await on_disk_backend.refresh_tokens.revoke_by_user(user.id)
-        assert remaining == 0
+        # Refresh tokens cascaded via FK (revoke_by_user flipped used=1
+        # first, then the FK cascade dropped the row).
+        assert await on_disk_backend.refresh_tokens.revoke_by_user(user.id) == 0
 
     async def test_delete_without_refresh_repo_still_cascades(
         self,
@@ -141,33 +169,16 @@ class TestUserDeletionCascade:
         constructor variant as well, not just for the defense-in-depth
         path in the sibling test.
         """
-        user = _make_user(user_id="user-del-002", username="bob-del")
-        await on_disk_backend.users.save(user)
-
-        session = _make_session(
+        user, session, api_key = await _seed_user_with_dependencies(
+            on_disk_backend=on_disk_backend,
+            user_id="user-del-002",
+            username="bob-del",
             session_id="sess-del-002",
-            user_id=user.id,
-            username=user.username,
+            token_hash="token-hash-del-002",
+            api_key_id="apikey-del-002",
+            api_key_hash="feedface" * 8,
+            api_key_name="integration test key no-refresh-repo",
         )
-        await on_disk_backend.sessions.create(session)
-
-        expires = datetime.now(UTC) + timedelta(hours=1)
-        await on_disk_backend.refresh_tokens.create(
-            "token-hash-del-002",
-            session.session_id,
-            user.id,
-            expires,
-        )
-
-        api_key = ApiKey(
-            id="apikey-del-002",
-            key_hash="feedface" * 8,
-            name="integration test key no-refresh-repo",
-            role=HumanRole.MANAGER,
-            user_id=user.id,
-            created_at=datetime.now(UTC),
-        )
-        await on_disk_backend.api_keys.save(api_key)
 
         service = UserService(repo=on_disk_backend.users)
 
@@ -180,8 +191,8 @@ class TestUserDeletionCascade:
         assert await on_disk_backend.users.get(user.id) is None
         assert await on_disk_backend.sessions.get(session.session_id) is None
         assert await on_disk_backend.api_keys.get(api_key.id) is None
-        # Refresh token rows cascaded via schema FK (no explicit revoke
-        # step since this constructor variant has no refresh_tokens repo)
+        # Refresh tokens cascaded via schema FK (no explicit revoke
+        # step since this constructor variant has no refresh_tokens repo).
         assert await on_disk_backend.refresh_tokens.revoke_by_user(user.id) == 0
 
     async def test_delete_missing_user_returns_false(

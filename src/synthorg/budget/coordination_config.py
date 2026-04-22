@@ -175,11 +175,13 @@ class ErrorTaxonomyConfig(BaseModel):
     )
     detector_timeout_seconds: float = Field(
         default=30.0,
-        gt=0.0,
+        ge=1.0,
+        le=600.0,
         description=(
             "Per-detector timeout (seconds) applied by the pipeline's"
             " isolation wrapper. Bridged from the"
-            " engine.classification_detector_timeout_seconds setting."
+            " engine.classification_detector_timeout_seconds setting;"
+            " bounds match the setting definition (1.0-600.0)."
         ),
     )
 
