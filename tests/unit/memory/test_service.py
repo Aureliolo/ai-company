@@ -323,42 +323,47 @@ class TestMemoryServiceRollback:
     :class:`TestMemoryServiceCheckpoints`.
     """
 
-    async def test_rollback_without_backup_raises_unavailable(self) -> None:
-        repo = _FakeCheckpointRepo()
-        await repo.save_checkpoint(_checkpoint(checkpoint_id="a"))
-        service = MemoryService(
-            checkpoint_repo=repo,
-            run_repo=_FakeRunRepo(),
-            settings_service=None,
-        )
-        with pytest.raises(CheckpointRollbackUnavailableError):
-            await service.rollback_checkpoint(NotBlankStr("a"))
+    @pytest.mark.parametrize(
+        ("backup_json", "attach_settings", "expected_exc", "match"),
+        [
+            # No backup payload -> Unavailable (no settings service needed
+            # because the corrupt-JSON branch never runs).
+            (None, False, CheckpointRollbackUnavailableError, None),
+            # Malformed JSON -> Corrupt.
+            ("{not-json", True, CheckpointRollbackCorruptError, None),
+            # JSON that parses to a non-mapping (list) -> Corrupt with
+            # the explicit "JSON object" message so the second guard is
+            # covered distinctly from the decode-failure branch.
+            ("[]", True, CheckpointRollbackCorruptError, "JSON object"),
+        ],
+        ids=["missing_backup", "corrupt_json", "non_mapping_json"],
+    )
+    async def test_rollback_error_cases(
+        self,
+        backup_json: str | None,
+        attach_settings: bool,
+        expected_exc: type[Exception],
+        match: str | None,
+    ) -> None:
+        """Consolidated rollback failure matrix.
 
-    async def test_rollback_with_corrupt_json_raises(self) -> None:
+        Each row represents a distinct reason the rollback must refuse
+        to restore: no backup recorded, a backup that fails JSON
+        parsing, and a backup that parses to the wrong shape. A single
+        parametrized test keeps the matrix explicit and the setup DRY.
+        """
         repo = _FakeCheckpointRepo()
         await repo.save_checkpoint(
-            _checkpoint(checkpoint_id="a", backup_config_json="{not-json"),
+            _checkpoint(checkpoint_id="a", backup_config_json=backup_json),
         )
         service = MemoryService(
             checkpoint_repo=repo,
             run_repo=_FakeRunRepo(),
-            settings_service=_FakeSettingsService(),  # type: ignore[arg-type]
+            settings_service=(
+                _FakeSettingsService() if attach_settings else None  # type: ignore[arg-type]
+            ),
         )
-        with pytest.raises(CheckpointRollbackCorruptError):
-            await service.rollback_checkpoint(NotBlankStr("a"))
-
-    async def test_rollback_with_non_mapping_json_raises(self) -> None:
-        repo = _FakeCheckpointRepo()
-        # ``json.loads("[]")`` returns a list, not a dict.
-        await repo.save_checkpoint(
-            _checkpoint(checkpoint_id="a", backup_config_json="[]"),
-        )
-        service = MemoryService(
-            checkpoint_repo=repo,
-            run_repo=_FakeRunRepo(),
-            settings_service=_FakeSettingsService(),  # type: ignore[arg-type]
-        )
-        with pytest.raises(CheckpointRollbackCorruptError, match="JSON object"):
+        with pytest.raises(expected_exc, match=match):
             await service.rollback_checkpoint(NotBlankStr("a"))
 
     async def test_rollback_with_valid_mapping_restores_settings(self) -> None:
