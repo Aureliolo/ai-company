@@ -147,12 +147,32 @@ class PerOpConcurrencyMiddleware(ASGIMiddleware):
         # and surface as a 500.  Fail closed (503) with an actionable
         # log so the deployment error is visible instead of the
         # endpoint silently running uncapped after exception handling.
+        #
+        # Each check is explicit rather than combined into a single
+        # conjunction so subtle bugs stay visible:
+        #   * ``isinstance(True, int)`` is True in Python, so we
+        #     reject ``bool`` before the int check to avoid
+        #     ``max_inflight=False`` sneaking through as "0".
+        #   * ``policy[0]`` must equal its ``strip()`` -- a padded
+        #     operation name is the same regression ``per_op_concurrency``
+        #     factory guards against at the opt-factory layer.
+        op_invalid = (
+            not isinstance(policy[0], str)
+            or policy[0] == ""
+            or policy[0] != policy[0].strip()
+        )
+        max_inflight_invalid = (
+            isinstance(policy[1], bool)
+            or not isinstance(policy[1], int)
+            or policy[1] <= 0
+        )
+        key_invalid = policy[2] not in ("user", "ip", "user_or_ip")
         if (
             not isinstance(policy, (tuple, list))
             or len(policy) != _OPT_TUPLE_LEN
-            or not isinstance(policy[0], str)
-            or not isinstance(policy[1], int)
-            or policy[2] not in ("user", "ip", "user_or_ip")
+            or op_invalid
+            or max_inflight_invalid
+            or key_invalid
         ):
             logger.error(
                 API_APP_STARTUP,
@@ -160,7 +180,8 @@ class PerOpConcurrencyMiddleware(ASGIMiddleware):
                 error="malformed_opt_per_op_concurrency",
                 note=(
                     "opt[per_op_concurrency] must be a 3-tuple of "
-                    "(operation: str, max_inflight: int, "
+                    "(operation: non-empty stripped str, "
+                    "max_inflight: positive int (not bool), "
                     "key_policy: Literal['user','ip','user_or_ip'])"
                 ),
             )

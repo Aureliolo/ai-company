@@ -125,6 +125,18 @@ def _fire_concurrent_posts(  # noqa: PLR0913 -- test helper with optional knobs
                     timeout=_HOLD_TIMEOUT_SECONDS,
                     return_when=FIRST_COMPLETED,
                 )
+                if not done:
+                    # Timed out with no progress -- the middleware
+                    # did not deny a sibling within the budget.  Fail
+                    # fast rather than spin: the test's invariant is
+                    # broken, and masking the failure behind a
+                    # generic pytest timeout loses the diagnostic.
+                    msg = (
+                        "wait() timed out without a completed future "
+                        f"(denied_seen={denied_seen}, "
+                        f"expected_denials={expected_denials})"
+                    )
+                    raise AssertionError(msg)
                 denied_seen += len(done)
             release.set()
         return [f.result() for f in futures]

@@ -202,13 +202,17 @@ def per_op_rate_limit(
         raise ValueError(msg)
     if key not in _VALID_KEY_POLICIES:
         msg = f"key must be one of {_VALID_KEY_POLICIES!r}, got {key!r}"
+        # ``key`` is a forbidden telemetry field name (the privacy
+        # scrubber rejects anything matching the ``key|token|secret|
+        # ...`` allowlist).  Rename the logged field to
+        # ``key_policy`` so the startup warning reaches the sink.
         logger.warning(
             API_APP_STARTUP,
             guard="per_op_rate_limit",
             operation=stripped_op,
             max_requests=max_requests,
             window_seconds=window_seconds,
-            key=str(key),
+            key_policy=str(key),
             error=msg,
         )
         raise ValueError(msg)

@@ -235,7 +235,7 @@ class TestConcurrentBurstAgainstAgentsCreate:
 class TestConcurrencyGuardAgainstFinetunePreflight:
     """5 concurrent POSTs to a concurrency-guarded op yield 1 ok + 4 denied."""
 
-    def test_inflight_cap_fires_5002(
+    def test_inflight_cap_fires_5002(  # noqa: C901 -- barrier orchestration
         self,
         fake_persistence: FakePersistenceBackend,
         fake_message_bus: FakeMessageBus,
@@ -351,6 +351,19 @@ class TestConcurrencyGuardAgainstFinetunePreflight:
                         timeout=_HOLD_TIMEOUT_SECONDS,
                         return_when=FIRST_COMPLETED,
                     )
+                    if not done:
+                        # No progress within the budget -- either the
+                        # middleware never denied a sibling, or the
+                        # TestClient transport wedged.  Fail fast so
+                        # the diagnostic points at this invariant
+                        # rather than a generic pytest timeout.
+                        release.set()
+                        msg = (
+                            "wait() timed out without a completed "
+                            f"future (denied_seen={denied_seen}, "
+                            f"expected_denials={concurrency - 1})"
+                        )
+                        raise AssertionError(msg)
                     denied_seen += len(done)
                 release.set()
                 responses = [f.result() for f in futures]

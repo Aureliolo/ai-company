@@ -191,9 +191,14 @@ class PerOpRateLimitSettingsSubscriber:
 
         Expected shape: ``{"op.name": [max_requests, window_seconds]}``.
         JSON arrays arrive as lists; the Pydantic model expects tuples
-        so the entries are converted here.  Non-dict / malformed inputs
-        raise ``ValueError``; the caller turns that into a swap-failed
-        log without clobbering the existing config.
+        so the entries are converted here.  Both components must be
+        non-negative (``0`` disables the operation; negatives are
+        rejected by the Pydantic validator downstream, but we enforce
+        it here too so the ``SETTINGS_SERVICE_SWAP_FAILED`` log
+        identifies the offending operator/key directly instead of a
+        generic Pydantic error).  Non-dict / malformed inputs raise
+        ``ValueError``/``TypeError``; the caller turns that into a
+        swap-failed log without clobbering the existing config.
         """
         if not isinstance(raw, dict):
             msg = (
@@ -214,16 +219,40 @@ class PerOpRateLimitSettingsSubscriber:
                 raise ValueError(msg)
             max_req = int(value[0])
             window = int(value[1])
+            if max_req < 0 or window < 0:
+                msg = (
+                    f"overrides[{op_name!r}]=[{max_req}, {window}] "
+                    "has a negative component; use 0 to disable an "
+                    "operation"
+                )
+                raise ValueError(msg)
             coerced[str(op_name)] = (max_req, window)
         return coerced
 
     @staticmethod
     def _coerce_concurrency_overrides(raw: Any) -> dict[str, int]:
-        """Coerce a JSON dict into ``PerOpConcurrencyConfig.overrides``."""
+        """Coerce a JSON dict into ``PerOpConcurrencyConfig.overrides``.
+
+        Values must be non-negative (``0`` disables the operation;
+        negatives are rejected).  The Pydantic validator downstream
+        also enforces this, but surfacing the violation here makes
+        the ``SETTINGS_SERVICE_SWAP_FAILED`` log name the offending
+        operation instead of emitting a generic Pydantic traceback.
+        """
         if not isinstance(raw, dict):
             msg = (
                 "per_op_concurrency_overrides must be a JSON object, "
                 f"got {type(raw).__name__}"
             )
             raise TypeError(msg)
-        return {str(op): int(value) for op, value in raw.items()}
+        coerced: dict[str, int] = {}
+        for op_name, value in raw.items():
+            as_int = int(value)
+            if as_int < 0:
+                msg = (
+                    f"overrides[{op_name!r}]={as_int} is negative; "
+                    "use 0 to disable an operation"
+                )
+                raise ValueError(msg)
+            coerced[str(op_name)] = as_int
+        return coerced

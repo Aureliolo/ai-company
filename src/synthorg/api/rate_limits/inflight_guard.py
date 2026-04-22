@@ -87,12 +87,15 @@ def per_op_concurrency(
         raise ValueError(msg)
     if key not in _VALID_KEY_POLICIES:
         msg = f"key must be one of {_VALID_KEY_POLICIES!r}, got {key!r}"
+        # ``key`` is a forbidden telemetry field (matches the privacy
+        # scrubber's ``key|token|secret|...`` allowlist).  Rename to
+        # ``key_policy`` so the warning actually reaches the sink.
         logger.warning(
             API_APP_STARTUP,
             guard="per_op_concurrency",
             operation=stripped_op,
             max_inflight=max_inflight,
-            key=str(key),
+            key_policy=str(key),
             error=msg,
         )
         raise ValueError(msg)
