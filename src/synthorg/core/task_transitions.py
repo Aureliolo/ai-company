@@ -23,14 +23,14 @@ non-terminal (can be reassigned).  AUTH_REQUIRED is non-terminal
 (waiting for authorization).
 """
 
+from typing import Final
+
 from synthorg.core.enums import TaskStatus
-from synthorg.observability import get_logger
+from synthorg.core.state_machine import StateMachine
 from synthorg.observability.events.task import (
     TASK_TRANSITION_CONFIG_ERROR,
     TASK_TRANSITION_INVALID,
 )
-
-logger = get_logger(__name__)
 
 VALID_TRANSITIONS: dict[TaskStatus, frozenset[TaskStatus]] = {
     TaskStatus.CREATED: frozenset({TaskStatus.ASSIGNED, TaskStatus.REJECTED}),
@@ -74,10 +74,14 @@ VALID_TRANSITIONS: dict[TaskStatus, frozenset[TaskStatus]] = {
     TaskStatus.REJECTED: frozenset(),  # terminal
 }
 
-_missing = set(TaskStatus) - set(VALID_TRANSITIONS)
-if _missing:
-    _msg = f"Missing transition entries for: {sorted(s.value for s in _missing)}"
-    raise ValueError(_msg)
+_MACHINE: Final[StateMachine[TaskStatus]] = StateMachine(
+    VALID_TRANSITIONS,
+    name="task_status",
+    display_label="task status",
+    invalid_event=TASK_TRANSITION_INVALID,
+    config_event=TASK_TRANSITION_CONFIG_ERROR,
+    all_states=TaskStatus,
+)
 
 
 def validate_transition(current: TaskStatus, target: TaskStatus) -> None:
@@ -91,27 +95,4 @@ def validate_transition(current: TaskStatus, target: TaskStatus) -> None:
         ValueError: If the transition from *current* to *target*
             is not in :data:`VALID_TRANSITIONS`.
     """
-    if current not in VALID_TRANSITIONS:
-        logger.critical(
-            TASK_TRANSITION_CONFIG_ERROR,
-            current_status=current.value,
-        )
-        msg = (
-            f"TaskStatus {current.value!r} has no entry in VALID_TRANSITIONS. "
-            f"This is a configuration error -- update task_transitions.py."
-        )
-        raise ValueError(msg)
-    allowed = VALID_TRANSITIONS[current]
-    if target not in allowed:
-        logger.warning(
-            TASK_TRANSITION_INVALID,
-            current_status=current.value,
-            target_status=target.value,
-            allowed=sorted(s.value for s in allowed),
-        )
-        msg = (
-            f"Invalid task status transition: {current.value!r} -> "
-            f"{target.value!r}. Allowed from {current.value!r}: "
-            f"{sorted(s.value for s in allowed)}"
-        )
-        raise ValueError(msg)
+    _MACHINE.validate(current, target)

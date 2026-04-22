@@ -604,11 +604,10 @@ This is lighter-weight than full checkpoint/resume (`checkpoint/resume.py`), whi
 
 ### Credential Isolation Boundary
 
-Credentials never enter the brain or session planes.  Three enforcement points:
+Credentials never enter the brain or session planes.  Two enforcement points:
 
 1. **Task metadata validator** (`engine/_validation.py::validate_task_metadata`) -- rejects `Task.metadata` keys matching credential patterns (token, secret, api_key, password, bearer) at the engine input boundary before execution starts.
 2. **Sandbox credential manager** (`tools/sandbox/credential_manager.py`) -- strips credential-like environment variables before they enter sandbox containers.
-3. **Auth proxy** (`tools/sandbox/auth_proxy.py`) -- injects authentication headers at tool execution time via a local HTTP proxy, so credentials never transit through the agent context.
 
 See also: [Security > Credential Isolation Boundary](security.md#credential-isolation-boundary).
 

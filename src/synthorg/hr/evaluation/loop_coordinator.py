@@ -16,7 +16,10 @@ loop:
 
 import asyncio
 import time
+from collections import Counter
 from datetime import UTC, datetime, timedelta
+from types import MappingProxyType
+from typing import Final
 from uuid import uuid4
 
 from synthorg.core.types import NotBlankStr
@@ -25,6 +28,7 @@ from synthorg.hr.evaluation.config import EvalLoopConfig
 from synthorg.hr.evaluation.dogfooding_dataset_builder import (
     DogfoodingDatasetBuilder,  # noqa: TC001
 )
+from synthorg.hr.evaluation.enums import EvaluationPillar
 from synthorg.hr.evaluation.evaluator import EvaluationService  # noqa: TC001
 from synthorg.hr.evaluation.external_benchmark_models import (
     BenchmarkRunResult,
@@ -38,11 +42,23 @@ from synthorg.hr.performance.tracker import PerformanceTracker  # noqa: TC001
 from synthorg.hr.training.service import TrainingService  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.eval_loop import (
+    EVAL_LOOP_ACTION_PROPOSED,
     EVAL_LOOP_AGENT_EVAL_FAILED,
     EVAL_LOOP_BENCHMARK_FAILED,
     EVAL_LOOP_CYCLE_COMPLETE,
     EVAL_LOOP_CYCLE_FAILED,
     EVAL_LOOP_CYCLE_START,
+    EVAL_LOOP_PATTERN_IDENTIFIED,
+)
+
+_DEFAULT_PATTERN_ACTIONS: Final[MappingProxyType[str, str]] = MappingProxyType(
+    {
+        EvaluationPillar.INTELLIGENCE.value: "increase_review_depth",
+        EvaluationPillar.EFFICIENCY.value: "tighten_cost_budget",
+        EvaluationPillar.RESILIENCE.value: "add_recovery_training",
+        EvaluationPillar.GOVERNANCE.value: "expand_audit_coverage",
+        EvaluationPillar.EXPERIENCE.value: "improve_tone_training",
+    },
 )
 
 logger = get_logger(__name__)
@@ -222,31 +238,92 @@ class EvalLoopCoordinator:
 
     async def _identify_patterns(
         self,
-        _reports: tuple[EvaluationReport, ...],
+        reports: tuple[EvaluationReport, ...],
     ) -> tuple[NotBlankStr, ...]:
-        """Stub pattern identifier.
+        """Identify pillar-weakness patterns across agents.
 
-        Future: cluster failure modes across evaluation reports
-        and identify recurring patterns.
+        For each report, count pillars scoring below
+        ``config.pattern_weakness_threshold``. Pillars with at least
+        ``config.pattern_min_agents`` weak agents are returned as
+        deterministic patterns ordered by weak-count (desc) then
+        pillar name (asc) for stable output.
+
+        Args:
+            reports: Per-agent evaluation reports from the current cycle.
 
         Returns:
-            Empty tuple (stub).
+            Patterns in the form ``"weakness:<pillar>"``.
         """
-        return ()
+        if not self._config.pattern_identifier_enabled or not reports:
+            return ()
+
+        threshold = self._config.pattern_weakness_threshold
+        weak_counts: Counter[str] = Counter()
+        for report in reports:
+            for score in report.pillar_scores:
+                if score.score < threshold:
+                    weak_counts[score.pillar.value] += 1
+
+        min_agents = self._config.pattern_min_agents
+        qualifying = [
+            (pillar, count)
+            for pillar, count in weak_counts.items()
+            if count >= min_agents
+        ]
+        qualifying.sort(key=lambda item: (-item[1], item[0]))
+
+        patterns = tuple(NotBlankStr(f"weakness:{pillar}") for pillar, _ in qualifying)
+        if patterns:
+            logger.info(
+                EVAL_LOOP_PATTERN_IDENTIFIED,
+                pattern_count=len(patterns),
+                patterns=list(patterns),
+                threshold=threshold,
+                min_agents=min_agents,
+            )
+        return patterns
 
     async def _propose_actions(
         self,
-        _patterns: tuple[NotBlankStr, ...],
+        patterns: tuple[NotBlankStr, ...],
     ) -> tuple[NotBlankStr, ...]:
-        """Stub action proposer.
+        """Map identified patterns to action identifiers.
 
-        Future: generate targeted training plans from identified
-        patterns and feed them to ``TrainingService``.
+        Uses :data:`_DEFAULT_PATTERN_ACTIONS` keyed by
+        :class:`EvaluationPillar` by default. Operators may override
+        entries via ``config.pattern_action_map`` -- keys are pillar
+        values, values are free-form action ids.
+
+        Unknown patterns (neither in the override nor in the default
+        map) are silently skipped so experimental pattern types do
+        not emit bogus actions.
+
+        Args:
+            patterns: Patterns returned by :meth:`_identify_patterns`.
 
         Returns:
-            Empty tuple (stub).
+            Ordered tuple of action identifiers.
         """
-        return ()
+        if not patterns:
+            return ()
+
+        override = self._config.pattern_action_map or {}
+        actions: list[NotBlankStr] = []
+        for pattern in patterns:
+            if ":" not in pattern:
+                continue
+            _, pillar = pattern.split(":", 1)
+            mapped = override.get(pillar) or _DEFAULT_PATTERN_ACTIONS.get(pillar)
+            if mapped:
+                actions.append(NotBlankStr(mapped))
+
+        if actions:
+            logger.info(
+                EVAL_LOOP_ACTION_PROPOSED,
+                action_count=len(actions),
+                actions=actions,
+            )
+        return tuple(actions)
 
     async def _run_benchmarks(self) -> tuple[BenchmarkRunResult, ...]:
         """Run all registered benchmarks concurrently.

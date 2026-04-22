@@ -9,10 +9,11 @@ from collections import Counter
 from datetime import datetime
 from enum import StrEnum
 from types import MappingProxyType
-from typing import Any, Self
+from typing import Any, Final, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from synthorg.core.state_machine import StateMachine
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.workflow import (
@@ -59,15 +60,14 @@ VALID_SPRINT_TRANSITIONS: MappingProxyType[SprintStatus, frozenset[SprintStatus]
     )
 )
 
-_missing = set(SprintStatus) - set(VALID_SPRINT_TRANSITIONS)
-if _missing:
-    _msg = (
-        f"Missing VALID_SPRINT_TRANSITIONS entries for: "
-        f"{sorted(s.value for s in _missing)}"
-    )
-    raise ValueError(_msg)
-
-del _missing
+_SPRINT_MACHINE: Final[StateMachine[SprintStatus]] = StateMachine(
+    VALID_SPRINT_TRANSITIONS,
+    name="sprint_lifecycle",
+    display_label="sprint",
+    invalid_event=SPRINT_LIFECYCLE_TRANSITION_INVALID,
+    config_event=SPRINT_LIFECYCLE_TRANSITION_INVALID,
+    all_states=SprintStatus,
+)
 
 
 def validate_sprint_transition(
@@ -83,32 +83,7 @@ def validate_sprint_transition(
     Raises:
         ValueError: If the transition is not allowed.
     """
-    if current not in VALID_SPRINT_TRANSITIONS:
-        msg = (
-            f"SprintStatus {current.value!r} has no entry in VALID_SPRINT_TRANSITIONS."
-        )
-        logger.warning(
-            SPRINT_LIFECYCLE_TRANSITION_INVALID,
-            current_status=current.value,
-            target_status=target.value,
-            reason="missing_transition_entry",
-        )
-        raise ValueError(msg)
-    allowed = VALID_SPRINT_TRANSITIONS[current]
-    if target not in allowed:
-        logger.warning(
-            SPRINT_LIFECYCLE_TRANSITION_INVALID,
-            current_status=current.value,
-            target_status=target.value,
-            allowed=sorted(s.value for s in allowed),
-        )
-        msg = (
-            f"Invalid sprint transition: "
-            f"{current.value!r} -> {target.value!r}. "
-            f"Allowed from {current.value!r}: "
-            f"{sorted(s.value for s in allowed)}"
-        )
-        raise ValueError(msg)
+    _SPRINT_MACHINE.validate(current, target)
     logger.info(
         SPRINT_LIFECYCLE_TRANSITION,
         from_status=current.value,

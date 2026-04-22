@@ -29,12 +29,14 @@ from synthorg.observability.events.metrics import (
 )
 from synthorg.observability.prometheus_labels import (
     VALID_AUDIT_APPEND_STATUSES,
+    VALID_IDENTITY_CHANGE_TYPES,
     VALID_OTLP_KINDS,
     VALID_OTLP_OUTCOMES,
     VALID_STATUS_CLASSES,
     VALID_TASK_OUTCOMES,
     VALID_TOOL_OUTCOMES,
     VALID_VERDICTS,
+    VALID_WORKFLOW_EXECUTION_STATUSES,
     require_finite,
     require_label,
     require_non_negative,
@@ -148,6 +150,32 @@ class PrometheusCollector:
             f"{prefix}_security_evaluations_total",
             "Security evaluation verdicts",
             ["verdict"],
+            registry=self.registry,
+        )
+
+        # -- Escalation gauge (pull-refreshed per scrape) ----------------
+        self._escalation_queue_depth = Gauge(
+            f"{prefix}_escalation_queue_depth",
+            "Pending escalations awaiting decision",
+            ["department"],
+            registry=self.registry,
+        )
+
+        # -- Agent identity change counter (push-updated) ----------------
+        self._agent_identity_changes = PromCounter(
+            f"{prefix}_agent_identity_version_changes_total",
+            "Agent identity version changes",
+            ["agent_id", "change_type"],
+            registry=self.registry,
+        )
+
+        # -- Workflow execution histogram (push-updated) -----------------
+        from prometheus_client import Histogram as PromHistogram  # noqa: PLC0415
+
+        self._workflow_execution_duration = PromHistogram(
+            f"{prefix}_workflow_execution_seconds",
+            "Workflow execution duration",
+            ["workflow_id", "status"],
             registry=self.registry,
         )
 
@@ -408,6 +436,80 @@ class PrometheusCollector:
             efficiency=efficiency,
             overhead_percent=overhead_percent,
         )
+
+    def record_escalation_queue_depth(
+        self,
+        *,
+        department: str,
+        depth: int,
+    ) -> None:
+        """Set the escalation queue depth gauge for a department.
+
+        Args:
+            department: Department name owning the escalation queue.
+            depth: Current count of pending escalations.
+        """
+        if not department:
+            msg = "record_escalation_queue_depth: department must be non-empty"
+            raise ValueError(msg)
+        require_non_negative("record_escalation_queue_depth: depth", depth)
+        self._escalation_queue_depth.labels(department=department).set(depth)
+
+    def record_agent_identity_change(
+        self,
+        *,
+        agent_id: str,
+        change_type: str,
+    ) -> None:
+        """Increment the agent identity change counter.
+
+        Args:
+            agent_id: Agent whose identity changed.
+            change_type: One of ``"created"``, ``"updated"``, ``"rolled_back"``.
+        """
+        if not agent_id:
+            msg = "record_agent_identity_change: agent_id must be non-empty"
+            raise ValueError(msg)
+        require_label(
+            "record_agent_identity_change: change_type",
+            change_type,
+            VALID_IDENTITY_CHANGE_TYPES,
+        )
+        self._agent_identity_changes.labels(
+            agent_id=agent_id,
+            change_type=change_type,
+        ).inc()
+
+    def record_workflow_execution(
+        self,
+        *,
+        workflow_id: str,
+        status: str,
+        duration_seconds: float,
+    ) -> None:
+        """Observe a completed workflow execution in the duration histogram.
+
+        Args:
+            workflow_id: Workflow definition identifier.
+            status: Terminal status (``"completed"``, ``"failed"``, etc).
+            duration_seconds: Wall-clock duration of the execution.
+        """
+        if not workflow_id:
+            msg = "record_workflow_execution: workflow_id must be non-empty"
+            raise ValueError(msg)
+        require_label(
+            "record_workflow_execution: status",
+            status,
+            VALID_WORKFLOW_EXECUTION_STATUSES,
+        )
+        require_non_negative(
+            "record_workflow_execution: duration_seconds",
+            duration_seconds,
+        )
+        self._workflow_execution_duration.labels(
+            workflow_id=workflow_id,
+            status=status,
+        ).observe(duration_seconds)
 
     async def refresh(self, app_state: AppState) -> None:
         """Refresh all gauge values from AppState services.

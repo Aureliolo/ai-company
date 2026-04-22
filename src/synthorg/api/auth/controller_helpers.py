@@ -153,6 +153,12 @@ def require_password_changed(
         )
         raise PermissionDeniedException(detail="Invalid user session")
     if user.must_change_password:
+        logger.warning(
+            API_AUTH_FAILED,
+            reason="password_change_required",
+            user_id=user.user_id,
+            path=path,
+        )
         raise PermissionDeniedException(detail="Password change required")
 
 

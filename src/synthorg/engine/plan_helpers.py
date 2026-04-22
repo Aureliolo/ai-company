@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 from synthorg.observability import get_logger
 from synthorg.observability.events.execution import (
     EXECUTION_PLAN_STEP_INDEX_OUT_OF_RANGE,
+    EXECUTION_PLAN_STEP_STATUS_UPDATED,
     EXECUTION_PLAN_SUMMARY_FALLBACK,
 )
 from synthorg.providers.enums import FinishReason, MessageRole
@@ -57,8 +58,16 @@ def update_step_status(
         )
         raise IndexError(msg)
     steps = list(plan.steps)
+    from_status = steps[step_idx].status
     steps[step_idx] = steps[step_idx].model_copy(
         update={"status": status},
+    )
+    logger.info(
+        EXECUTION_PLAN_STEP_STATUS_UPDATED,
+        step_idx=step_idx,
+        from_status=from_status.value,
+        to_status=status.value,
+        revision=plan.revision_number,
     )
     return plan.model_copy(update={"steps": tuple(steps)})
 

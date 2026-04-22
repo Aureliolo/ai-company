@@ -2,6 +2,12 @@
 
 Provides factory functions that create handler functions for common
 CRUD operations, reducing boilerplate across domain handler modules.
+
+The placeholder implementations below are the current state for all
+19 domain handlers; real service-layer wiring is tracked in
+``META-MCP-1`` (see docs). Every invocation emits a WARNING-level
+``MCP_HANDLER_NOT_IMPLEMENTED`` event so operators can see which
+placeholder tools are hit.
 """
 
 import json
@@ -9,7 +15,7 @@ from typing import Any
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import (
-    MCP_SERVER_INVOKE_START,
+    MCP_HANDLER_NOT_IMPLEMENTED,
 )
 
 logger = get_logger(__name__)
@@ -34,10 +40,10 @@ def make_placeholder_handler(tool_name: str) -> Any:
         app_state: Any,  # noqa: ARG001
         arguments: dict[str, Any],
     ) -> str:
-        logger.debug(
-            MCP_SERVER_INVOKE_START,
+        logger.warning(
+            MCP_HANDLER_NOT_IMPLEMENTED,
             tool_name=tool_name,
-            placeholder=True,
+            follow_up_issue="META-MCP-1",
         )
         return json.dumps(
             {

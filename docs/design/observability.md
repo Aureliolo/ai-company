@@ -87,6 +87,16 @@ log aggregation and telemetry export:
 | HTTP | Batched POST to a configurable URL | JSON array | Ship log batches to any JSON-accepting endpoint |
 | OTLP | HTTP POST to an OpenTelemetry collector | OTLP JSON | Map structlog events to OTLP log records with correlation IDs as trace context |
 
+### OTLP transport: HTTP only
+
+SynthOrg ships only the **HTTP** OTLP exporter (`opentelemetry.exporter.otlp.proto.http`). The gRPC transport is not supported. The rationale is operational:
+
+- HTTP is a single lightweight dependency on `protobuf` + `requests`; the gRPC transport pulls in `grpcio` (roughly a 30 MB wheel) that most operators do not already have installed.
+- OTLP/HTTP and OTLP/gRPC share the same payload schema, so switching later is a dependency change rather than a protocol redesign.
+- Every OpenTelemetry collector supports both; operators who prefer gRPC can run a side-car collector and point SynthOrg at its HTTP receiver.
+
+If a concrete deployment needs gRPC directly, file an enhancement issue with the target environment -- there is no open design blocker, only a missing dependency opt-in.
+
 The HTTP sink sends raw JSON arrays.  Backends that expect different payload formats
 (e.g., Grafana Loki's `/loki/api/v1/push`, Elasticsearch's `/_bulk`) require a
 collector/proxy (Promtail, Logstash, Vector, etc.) to translate the payload.

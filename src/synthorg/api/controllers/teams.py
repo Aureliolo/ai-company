@@ -16,6 +16,7 @@ from synthorg.api.guards import require_ceo_or_manager, require_read_access
 from synthorg.api.path_params import PathName  # noqa: TC001
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.company import Team
+from synthorg.core.normalization import casefold_equals
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
@@ -430,7 +431,7 @@ class TeamController(Controller):
             team_idx, team = _find_team(teams, team_name)
 
             if reassign_to is not None:
-                if reassign_to.strip().casefold() == team_name.strip().casefold():
+                if casefold_equals(reassign_to, team_name):
                     msg = "Cannot reassign members to the team being deleted"
                     raise ApiValidationError(msg)
                 target_idx, target = _find_team(teams, reassign_to)

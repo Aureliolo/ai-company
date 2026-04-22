@@ -9,16 +9,14 @@ in a leaf module that the tracker composes.
 The tracker owns all state; this module is intentionally stateless.
 """
 
-import math
-from collections import defaultdict
 from collections.abc import Sequence  # noqa: TC003 -- runtime type
 from datetime import datetime  # noqa: TC003 -- runtime type
 from typing import NamedTuple
 
+from synthorg.budget._aggregation import group_by_agent, sum_cost
 from synthorg.budget.cost_record import CostRecord  # noqa: TC001 -- runtime use
 from synthorg.budget.errors import MixedCurrencyAggregationError
 from synthorg.budget.spending_summary import AgentSpending
-from synthorg.constants import BUDGET_ROUNDING_PRECISION
 from synthorg.core.types import NotBlankStr  # noqa: TC001 -- runtime use in filter
 from synthorg.observability import get_logger
 from synthorg.observability.events.budget import (
@@ -145,20 +143,15 @@ def _aggregate(
         task_id=task_id,
         project_id=project_id,
     )
-    costs: list[float] = []
-    input_tokens = 0
-    output_tokens = 0
-    for r in records:
-        costs.append(r.cost)
-        input_tokens += r.input_tokens
-        output_tokens += r.output_tokens
-    cost = round(math.fsum(costs), BUDGET_ROUNDING_PRECISION)
+    cost = sum_cost(records)
+    input_tokens = sum(r.input_tokens for r in records)
+    output_tokens = sum(r.output_tokens for r in records)
     return _AggregateResult(
         cost=cost,
         currency=currency,
         input_tokens=input_tokens,
         output_tokens=output_tokens,
-        record_count=len(costs),
+        record_count=len(records),
     )
 
 
@@ -166,10 +159,7 @@ def _build_agent_spendings(
     filtered: Sequence[CostRecord],
 ) -> list[AgentSpending]:
     """Group filtered records by agent and aggregate each group."""
-    by_agent: dict[str, list[CostRecord]] = defaultdict(list)
-    for rec in filtered:
-        by_agent[rec.agent_id].append(rec)
-
+    by_agent = group_by_agent(filtered)
     result: list[AgentSpending] = []
     for aid in sorted(by_agent):
         agg = _aggregate(by_agent[aid], agent_id=aid)

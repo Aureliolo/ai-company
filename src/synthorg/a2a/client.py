@@ -18,6 +18,7 @@ from synthorg.a2a.models import (
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.a2a import (
     A2A_OUTBOUND_FAILED,
+    A2A_OUTBOUND_RESPONSE_INVALID,
     A2A_OUTBOUND_SENT,
     A2A_OUTBOUND_SSRF_BLOCKED,
 )
@@ -165,11 +166,21 @@ class A2AClient:
         conn = await self._catalog.get(peer_name)
         if conn is None:
             msg = f"A2A peer connection '{peer_name}' not found"
+            logger.warning(
+                A2A_OUTBOUND_FAILED,
+                peer_name=peer_name,
+                reason="connection_not_found",
+            )
             raise A2AClientError(msg, peer_name=peer_name)
 
         base_url = conn.base_url
         if not base_url:
             msg = f"A2A peer '{peer_name}' has no base_url"
+            logger.warning(
+                A2A_OUTBOUND_FAILED,
+                peer_name=peer_name,
+                reason="no_base_url",
+            )
             raise A2AClientError(msg, peer_name=peer_name)
 
         # SSRF validation on outbound URL
@@ -249,16 +260,34 @@ class A2AClient:
                 f"A2A peer '{peer_name}' returned error: "
                 f"{rpc_resp.error.message} (code={rpc_resp.error.code})"
             )
+            logger.warning(
+                A2A_OUTBOUND_FAILED,
+                peer_name=peer_name,
+                reason="rpc_error",
+                rpc_error_code=rpc_resp.error.code,
+            )
             raise A2AClientError(msg, peer_name=peer_name)
 
         result = rpc_resp.result
         if not result or "id" not in result:
             msg = f"Peer '{peer_name}' returned malformed response (missing task id)"
+            logger.warning(
+                A2A_OUTBOUND_RESPONSE_INVALID,
+                peer_name=peer_name,
+                reason="missing_task_id",
+            )
             raise A2AClientError(msg, peer_name=peer_name)
         try:
             return A2ATask.model_validate(result)
         except Exception as exc:
             msg = f"Peer '{peer_name}' returned invalid task payload"
+            logger.warning(
+                A2A_OUTBOUND_RESPONSE_INVALID,
+                peer_name=peer_name,
+                reason="invalid_payload",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             raise A2AClientError(msg, peer_name=peer_name) from exc
 
     async def _send_request(

@@ -1,0 +1,60 @@
+"""Shared aggregation helpers for cost-record analyses.
+
+Consolidates the ``defaultdict(list)`` + ``math.fsum`` + cost-per-1k
+idiom that previously lived in both ``_tracker_helpers`` and
+``_optimizer_helpers``.  Pure functions, no I/O, same-currency
+enforcement delegated to the caller.
+"""
+
+import math
+from collections import defaultdict
+from typing import TYPE_CHECKING
+
+from synthorg.constants import BUDGET_ROUNDING_PRECISION
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from synthorg.budget.cost_record import CostRecord
+
+
+def group_by_agent(
+    records: Sequence[CostRecord],
+) -> dict[str, list[CostRecord]]:
+    """Group cost records by ``agent_id`` preserving insertion order."""
+    bucket: dict[str, list[CostRecord]] = defaultdict(list)
+    for record in records:
+        bucket[record.agent_id].append(record)
+    return bucket
+
+
+def sum_cost(records: Sequence[CostRecord]) -> float:
+    """Sum ``cost`` across records using ``math.fsum`` + rounding.
+
+    ``math.fsum`` avoids accumulated floating-point drift that
+    plain ``sum()`` would introduce across long sequences.
+    """
+    return round(
+        math.fsum(r.cost for r in records),
+        BUDGET_ROUNDING_PRECISION,
+    )
+
+
+def sum_tokens(records: Sequence[CostRecord]) -> int:
+    """Sum ``input_tokens + output_tokens`` across records."""
+    return sum(r.input_tokens + r.output_tokens for r in records)
+
+
+def compute_cost_per_1k(total_cost: float, total_tokens: int) -> float:
+    """Return cost per 1000 tokens rounded to the budget precision.
+
+    Returns ``0.0`` when ``total_tokens`` is ``0`` so callers never
+    divide by zero on agents that ran without token counts (usually
+    error or no-op invocations).
+    """
+    if total_tokens <= 0:
+        return 0.0
+    return round(
+        (total_cost / total_tokens) * 1000.0,
+        BUDGET_ROUNDING_PRECISION,
+    )

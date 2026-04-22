@@ -29,6 +29,7 @@ from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.config.schema import AgentConfig  # noqa: TC001
 from synthorg.core.agent import AgentIdentity  # noqa: TC001
 from synthorg.core.enums import AgentStatus, ToolAccessLevel  # noqa: TC001
+from synthorg.core.normalization import find_by_name_ci
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.hr.activity import (
     ActivityEvent,
@@ -222,10 +223,9 @@ class AgentController(Controller):
         """
         app_state: AppState = state.app_state
         agents = await app_state.config_resolver.get_agents()
-        name_lower = agent_name.lower()
-        for agent in agents:
-            if agent.name.lower() == name_lower:
-                return ApiResponse(data=agent)
+        found = find_by_name_ci(agents, agent_name)
+        if found is not None:
+            return ApiResponse(data=found)
         msg = "Agent not found"
         logger.warning(API_RESOURCE_NOT_FOUND, resource="agent", name=agent_name)
         raise NotFoundError(msg)

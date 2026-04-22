@@ -15,6 +15,7 @@ from synthorg.observability.events.metrics import METRICS_SCRAPE_FAILED
 
 __all__ = [
     "VALID_AUDIT_APPEND_STATUSES",
+    "VALID_IDENTITY_CHANGE_TYPES",
     "VALID_OTLP_KINDS",
     "VALID_OTLP_OUTCOMES",
     "VALID_STATUS_CLASSES",
@@ -22,6 +23,7 @@ __all__ = [
     "VALID_TOKEN_DIRECTIONS",
     "VALID_TOOL_OUTCOMES",
     "VALID_VERDICTS",
+    "VALID_WORKFLOW_EXECUTION_STATUSES",
     "require_finite",
     "require_label",
     "require_non_negative",
@@ -104,6 +106,12 @@ VALID_AUDIT_APPEND_STATUSES: Final[frozenset[str]] = frozenset(
 )
 VALID_OTLP_KINDS: Final[frozenset[str]] = frozenset({"logs", "traces"})
 VALID_OTLP_OUTCOMES: Final[frozenset[str]] = frozenset({"success", "failure"})
+VALID_IDENTITY_CHANGE_TYPES: Final[frozenset[str]] = frozenset(
+    {"created", "updated", "rolled_back", "archived"}
+)
+VALID_WORKFLOW_EXECUTION_STATUSES: Final[frozenset[str]] = frozenset(
+    {"completed", "failed", "cancelled", "timeout"}
+)
 
 
 def status_class(status_code: int) -> str:

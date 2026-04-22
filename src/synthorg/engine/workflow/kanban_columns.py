@@ -7,8 +7,10 @@ are validated independently of (and mapped onto) task status transitions.
 
 from enum import StrEnum
 from types import MappingProxyType
+from typing import Final
 
 from synthorg.core.enums import TaskStatus
+from synthorg.core.state_machine import StateMachine
 from synthorg.observability import get_logger
 from synthorg.observability.events.workflow import (
     KANBAN_COLUMN_TRANSITION,
@@ -128,15 +130,14 @@ VALID_COLUMN_TRANSITIONS: MappingProxyType[KanbanColumn, frozenset[KanbanColumn]
     )
 )
 
-_missing_col_transitions = set(KanbanColumn) - set(VALID_COLUMN_TRANSITIONS)
-if _missing_col_transitions:
-    _msg = (
-        f"Missing VALID_COLUMN_TRANSITIONS entries for: "
-        f"{sorted(c.value for c in _missing_col_transitions)}"
-    )
-    raise ValueError(_msg)
-
-del _missing_col_transitions
+_COLUMN_MACHINE: Final[StateMachine[KanbanColumn]] = StateMachine(
+    VALID_COLUMN_TRANSITIONS,
+    name="kanban_column",
+    display_label="Kanban column",
+    invalid_event=KANBAN_COLUMN_TRANSITION_INVALID,
+    config_event=KANBAN_COLUMN_TRANSITION_INVALID,
+    all_states=KanbanColumn,
+)
 
 
 # -- Task status transition paths per column move ---------------------------
@@ -216,32 +217,7 @@ def validate_column_transition(
     Raises:
         ValueError: If the transition is not allowed.
     """
-    if current not in VALID_COLUMN_TRANSITIONS:
-        msg = (
-            f"KanbanColumn {current.value!r} has no entry in VALID_COLUMN_TRANSITIONS."
-        )
-        logger.warning(
-            KANBAN_COLUMN_TRANSITION_INVALID,
-            current_column=current.value,
-            target_column=target.value,
-            reason="missing_transition_entry",
-        )
-        raise ValueError(msg)
-    allowed = VALID_COLUMN_TRANSITIONS[current]
-    if target not in allowed:
-        logger.warning(
-            KANBAN_COLUMN_TRANSITION_INVALID,
-            current_column=current.value,
-            target_column=target.value,
-            allowed=sorted(c.value for c in allowed),
-        )
-        msg = (
-            f"Invalid Kanban column transition: "
-            f"{current.value!r} -> {target.value!r}. "
-            f"Allowed from {current.value!r}: "
-            f"{sorted(c.value for c in allowed)}"
-        )
-        raise ValueError(msg)
+    _COLUMN_MACHINE.validate(current, target)
     logger.info(
         KANBAN_COLUMN_TRANSITION,
         from_column=current.value,

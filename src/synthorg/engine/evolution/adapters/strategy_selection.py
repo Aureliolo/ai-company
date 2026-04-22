@@ -9,10 +9,14 @@ from synthorg.engine.evolution.models import (
     AdaptationAxis,
     AdaptationProposal,
 )
+from synthorg.observability import get_logger
+from synthorg.observability.events.evolution import EVOLUTION_ADAPTED
 
 if TYPE_CHECKING:
     from synthorg.core.types import NotBlankStr
     from synthorg.memory.protocol import MemoryBackend
+
+logger = get_logger(__name__)
 
 
 class StrategySelectionAdapter:
@@ -62,4 +66,11 @@ class StrategySelectionAdapter:
             proposal,
             agent_id,
             "evolution-strategy",
+        )
+        logger.info(
+            EVOLUTION_ADAPTED,
+            adapter=self.name,
+            axis=self.axis.value,
+            agent_id=agent_id,
+            proposal_id=str(proposal.id),
         )

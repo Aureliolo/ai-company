@@ -104,7 +104,7 @@ class TestEvalLoopCoordinatorRunCycle:
         assert report.window_end >= before
         assert report.window_start < report.window_end
 
-    async def test_run_cycle_stubs_return_empty(self) -> None:
+    async def test_run_cycle_no_reports_no_patterns(self) -> None:
         coordinator = _make_coordinator()
         report = await coordinator.run_cycle(window=timedelta(hours=1))
         assert report.observations == ()
@@ -163,3 +163,114 @@ class TestEvalLoopCoordinatorCollectAgentIds:
             since=datetime(2020, 1, 1, tzinfo=UTC),
         )
         assert ids == ()
+
+
+def _make_pillar_score(pillar: str, score: float) -> MagicMock:
+    ps = MagicMock()
+    ps.pillar.value = pillar
+    ps.score = score
+    return ps
+
+
+def _make_report(agent_id: str, *pillar_scores: tuple[str, float]) -> MagicMock:
+    report = MagicMock()
+    report.agent_id = agent_id
+    report.pillar_scores = tuple(_make_pillar_score(p, s) for p, s in pillar_scores)
+    return report
+
+
+@pytest.mark.unit
+class TestEvalLoopCoordinatorIdentifyPatterns:
+    """_identify_patterns() clustering behaviour."""
+
+    async def test_disabled_pattern_identifier_returns_empty(self) -> None:
+        config = EvalLoopConfig(pattern_identifier_enabled=False)
+        coordinator = _make_coordinator(config=config)
+        report = _make_report("a", ("intelligence", 1.0))
+        assert await coordinator._identify_patterns((report,)) == ()
+
+    async def test_empty_reports_returns_empty(self) -> None:
+        coordinator = _make_coordinator()
+        assert await coordinator._identify_patterns(()) == ()
+
+    async def test_clusters_pillars_below_threshold(self) -> None:
+        config = EvalLoopConfig(
+            pattern_weakness_threshold=5.0,
+            pattern_min_agents=2,
+        )
+        coordinator = _make_coordinator(config=config)
+        reports = (
+            _make_report("a", ("intelligence", 2.0), ("efficiency", 8.0)),
+            _make_report("b", ("intelligence", 3.0), ("efficiency", 7.0)),
+            _make_report("c", ("intelligence", 9.0), ("efficiency", 9.0)),
+        )
+        patterns = await coordinator._identify_patterns(reports)
+        assert patterns == ("weakness:intelligence",)
+
+    async def test_sorts_patterns_by_count_desc_then_name(self) -> None:
+        config = EvalLoopConfig(
+            pattern_weakness_threshold=5.0,
+            pattern_min_agents=2,
+        )
+        coordinator = _make_coordinator(config=config)
+        reports = (
+            _make_report("a", ("intelligence", 1.0), ("governance", 1.0)),
+            _make_report("b", ("intelligence", 2.0), ("governance", 2.0)),
+            _make_report("c", ("governance", 2.0)),  # governance has 3 weak agents
+        )
+        patterns = await coordinator._identify_patterns(reports)
+        # governance first (3 weak), then intelligence (2 weak)
+        assert patterns == ("weakness:governance", "weakness:intelligence")
+
+    async def test_skips_pillars_below_min_agents(self) -> None:
+        config = EvalLoopConfig(
+            pattern_weakness_threshold=5.0,
+            pattern_min_agents=3,
+        )
+        coordinator = _make_coordinator(config=config)
+        reports = (
+            _make_report("a", ("intelligence", 1.0)),
+            _make_report("b", ("intelligence", 2.0)),
+        )
+        assert await coordinator._identify_patterns(reports) == ()
+
+
+@pytest.mark.unit
+class TestEvalLoopCoordinatorProposeActions:
+    """_propose_actions() mapping behaviour."""
+
+    async def test_empty_patterns_returns_empty(self) -> None:
+        coordinator = _make_coordinator()
+        assert await coordinator._propose_actions(()) == ()
+
+    async def test_maps_known_pillars_to_default_actions(self) -> None:
+        coordinator = _make_coordinator()
+        actions = await coordinator._propose_actions(
+            ("weakness:intelligence", "weakness:governance"),
+        )
+        assert actions == ("increase_review_depth", "expand_audit_coverage")
+
+    async def test_override_beats_default(self) -> None:
+        config = EvalLoopConfig(
+            pattern_action_map={"intelligence": "custom_action"},
+        )
+        coordinator = _make_coordinator(config=config)
+        actions = await coordinator._propose_actions(
+            ("weakness:intelligence",),
+        )
+        assert actions == ("custom_action",)
+
+    async def test_unknown_pattern_skipped(self) -> None:
+        coordinator = _make_coordinator()
+        actions = await coordinator._propose_actions(
+            ("weakness:unknown",),
+        )
+        assert actions == ()
+
+    async def test_malformed_pattern_skipped(self) -> None:
+        coordinator = _make_coordinator()
+        # No colon means unparseable; should be silently skipped.
+        actions = await coordinator._propose_actions(
+            ("justatoken",),
+        )
+        assert actions == ()

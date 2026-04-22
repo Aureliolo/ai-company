@@ -7,13 +7,18 @@ Pydantic models following project conventions.
 
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Any, Self
+from typing import Any, Final, Self
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from synthorg.core.enums import Complexity, Priority, TaskType
+from synthorg.core.state_machine import StateMachine
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.observability.events.client import (
+    CLIENT_REQUEST_TRANSITION_CONFIG_ERROR,
+    CLIENT_REQUEST_TRANSITION_INVALID,
+)
 
 
 class RequestStatus(StrEnum):
@@ -49,13 +54,14 @@ VALID_REQUEST_TRANSITIONS: dict[RequestStatus, frozenset[RequestStatus]] = {
     RequestStatus.CANCELLED: frozenset(),
 }
 
-_missing_request = set(RequestStatus) - set(VALID_REQUEST_TRANSITIONS)
-if _missing_request:
-    _msg = (
-        "Missing request transition entries for: "
-        f"{sorted(s.value for s in _missing_request)}"
-    )
-    raise ValueError(_msg)
+_REQUEST_MACHINE: Final[StateMachine[RequestStatus]] = StateMachine(
+    VALID_REQUEST_TRANSITIONS,
+    name="client_request",
+    display_label="request",
+    invalid_event=CLIENT_REQUEST_TRANSITION_INVALID,
+    config_event=CLIENT_REQUEST_TRANSITION_CONFIG_ERROR,
+    all_states=RequestStatus,
+)
 
 
 def validate_request_transition(
@@ -71,17 +77,7 @@ def validate_request_transition(
     Raises:
         ValueError: If the transition is not valid.
     """
-    allowed = VALID_REQUEST_TRANSITIONS.get(current)
-    if allowed is None:
-        msg = f"RequestStatus {current.value!r} has no transition entry."
-        raise ValueError(msg)
-    if target not in allowed:
-        msg = (
-            f"Invalid request transition: {current.value!r} -> "
-            f"{target.value!r}. Allowed: "
-            f"{sorted(s.value for s in allowed)}"
-        )
-        raise ValueError(msg)
+    _REQUEST_MACHINE.validate(current, target)
 
 
 class ClientProfile(BaseModel):
