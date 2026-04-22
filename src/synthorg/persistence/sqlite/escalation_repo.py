@@ -6,8 +6,11 @@ structured logging.  Stores the :class:`Conflict` snapshot and the
 optional decision payload as JSON TEXT columns for schema simplicity.
 """
 
+import asyncio
 import json
 import sqlite3
+from collections.abc import AsyncIterator  # noqa: TC003
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 
 import aiosqlite
@@ -23,7 +26,7 @@ from synthorg.communication.conflict_resolution.escalation.protocol import (
     EscalationQueueStore,
 )
 from synthorg.communication.conflict_resolution.models import Conflict
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_REQUEST_ERROR
 from synthorg.persistence.errors import ConstraintViolationError, QueryError
 
@@ -80,8 +83,13 @@ def _row_to_escalation(row: Row) -> Escalation:
             row_id = str(row["id"]) if row else "<unknown>"
         except TypeError, KeyError:
             row_id = "<unknown>"
-        msg = f"Failed to parse escalation row {row_id!r}: {exc}"
-        logger.exception(API_REQUEST_ERROR, row_id=row_id, error=msg)
+        logger.warning(
+            API_REQUEST_ERROR,
+            row_id=row_id,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        msg = f"Failed to parse escalation row {row_id!r}"
         raise QueryError(msg) from exc
 
 
@@ -124,7 +132,7 @@ class SQLiteEscalationRepository(EscalationQueueStore):
                 error_type="escalation_create_duplicate",
                 escalation_id=escalation.id,
                 conflict_id=escalation.conflict.id,
-                error=str(exc),
+                error=safe_error_description(exc),
             )
             await self._db.rollback()
             raise ConstraintViolationError(msg, constraint=str(exc)) from exc
@@ -135,7 +143,7 @@ class SQLiteEscalationRepository(EscalationQueueStore):
                 error_type="escalation_create_failed",
                 escalation_id=escalation.id,
                 conflict_id=escalation.conflict.id,
-                error=str(exc),
+                error=safe_error_description(exc),
             )
             await self._db.rollback()
             raise QueryError(msg) from exc
@@ -152,7 +160,7 @@ class SQLiteEscalationRepository(EscalationQueueStore):
                 API_REQUEST_ERROR,
                 error_type="escalation_get_failed",
                 escalation_id=escalation_id,
-                error=str(exc),
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         if row is None:
@@ -194,7 +202,7 @@ class SQLiteEscalationRepository(EscalationQueueStore):
             logger.warning(
                 API_REQUEST_ERROR,
                 error_type="escalation_list_failed",
-                error=str(exc),
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         # A single corrupt row must not poison the entire page -- log and
@@ -207,7 +215,7 @@ class SQLiteEscalationRepository(EscalationQueueStore):
                 logger.warning(
                     API_REQUEST_ERROR,
                     error_type="escalation_row_corrupt_skipped",
-                    error=str(exc),
+                    error=safe_error_description(exc),
                 )
         return tuple(page_items), total
 
@@ -266,11 +274,11 @@ class SQLiteEscalationRepository(EscalationQueueStore):
             rows = await cursor.fetchall()
             await self._db.commit()
         except (sqlite3.Error, aiosqlite.Error) as exc:
-            msg = f"Failed to mark escalations expired: {exc}"
+            msg = "Failed to mark escalations expired"
             logger.warning(
                 API_REQUEST_ERROR,
                 error_type="escalation_mark_expired_failed",
-                error=str(exc),
+                error=safe_error_description(exc),
             )
             await self._db.rollback()
             raise QueryError(msg) from exc
@@ -279,6 +287,44 @@ class SQLiteEscalationRepository(EscalationQueueStore):
     async def close(self) -> None:
         """No-op: the connection is owned by the persistence backend."""
         return
+
+    @asynccontextmanager
+    async def subscribe_notifications(
+        self,
+        channel: str,  # noqa: ARG002
+    ) -> AsyncIterator[AsyncIterator[str]]:
+        # The `@asynccontextmanager` decorator turns this generator into a
+        # callable returning an `AbstractAsyncContextManager[AsyncIterator[str]]`
+        # which matches the protocol declared on `EscalationQueueStore`;
+        # the generator itself must be annotated with the inner iterator
+        # type because that is what the `yield` statement produces.
+        """Return an iterator that blocks until cancelled (no-op).
+
+        SQLite is single-process by design; there is no cross-instance
+        signalling channel for this backend. The subscriber contract
+        still needs an async context manager + iterator, so we yield
+        an iterator that awaits an :class:`asyncio.Event` that is never
+        set and exits cleanly on cancellation. Callers get a valid
+        iterator they can iterate over with ``async for`` -- the body
+        just never runs until the task is cancelled.
+        """
+        stop = asyncio.Event()
+
+        async def _never() -> AsyncIterator[str]:
+            # The type system needs at least one ``yield`` to see this
+            # as an async generator; put one behind an always-false
+            # gate so it is never actually emitted.  The outer ``await``
+            # blocks until ``stop`` is set on context-manager exit.
+            while not stop.is_set():
+                await stop.wait()
+                if stop.is_set():
+                    return
+                yield ""  # pragma: no cover - unreachable in normal flow
+
+        try:
+            yield _never()
+        finally:
+            stop.set()
 
     async def _update_terminal(  # noqa: PLR0913
         self,
@@ -319,7 +365,7 @@ class SQLiteEscalationRepository(EscalationQueueStore):
                 error_type="escalation_update_failed",
                 escalation_id=escalation_id,
                 target_status=new_status.value,
-                error=str(exc),
+                error=safe_error_description(exc),
             )
             await self._db.rollback()
             raise QueryError(msg) from exc

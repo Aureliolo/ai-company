@@ -112,6 +112,10 @@ MEMORY_FINE_TUNE_PERSIST_FAILED: Final[str] = "memory.fine_tune.persist_failed"
 MEMORY_EMBEDDER_SETTINGS_READ_FAILED: Final[str] = (
     "memory.embedder.settings_read_failed"
 )
+MEMORY_CHECKPOINT_DEPLOYED: Final[str] = "memory.checkpoint.deployed"
+MEMORY_CHECKPOINT_DEPLOY_FAILED: Final[str] = "memory.checkpoint.deploy_failed"
+MEMORY_CHECKPOINT_ROLLBACK: Final[str] = "memory.checkpoint.rollback"
+MEMORY_CHECKPOINT_ROLLBACK_FAILED: Final[str] = "memory.checkpoint.rollback_failed"
 
 # ── Composite routing ────────────────────────────────────────────
 

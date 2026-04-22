@@ -1,0 +1,111 @@
+"""Artifact service layer.
+
+Wraps :class:`ArtifactRepository` so API controllers can list / get /
+save / delete artifacts without reaching into
+``state.app_state.persistence.artifacts`` directly. Centralises the
+``PERSISTENCE_ARTIFACT_*`` logging so every mutation has the same
+audit shape.
+
+Content storage (upload / download / rollback) stays in the controller
+because it depends on :class:`ArtifactStorage` rather than the repository
+-- a distinct boundary from persistence that already has its own
+backing-store abstraction.
+"""
+
+import uuid
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING
+
+from synthorg.core.artifact import Artifact
+from synthorg.core.enums import ArtifactType  # noqa: TC001
+from synthorg.core.types import NotBlankStr
+from synthorg.observability import get_logger
+from synthorg.observability.events.persistence import (
+    PERSISTENCE_ARTIFACT_DELETED,
+    PERSISTENCE_ARTIFACT_SAVED,
+)
+
+if TYPE_CHECKING:
+    from synthorg.persistence.artifact_project_repos import ArtifactRepository
+
+logger = get_logger(__name__)
+
+
+class ArtifactService:
+    """CRUD orchestration for artifacts with uniform audit logging."""
+
+    __slots__ = ("_repo",)
+
+    def __init__(self, *, repo: ArtifactRepository) -> None:
+        self._repo = repo
+
+    async def list_artifacts(
+        self,
+        *,
+        task_id: NotBlankStr | None = None,
+        created_by: NotBlankStr | None = None,
+        artifact_type: ArtifactType | None = None,
+    ) -> tuple[Artifact, ...]:
+        """List artifacts, optionally filtered by one or more facets.
+
+        All three filters are AND-combined when provided; passing
+        ``None`` for a filter omits it from the query.
+        """
+        return await self._repo.list_artifacts(
+            task_id=task_id,
+            created_by=created_by,
+            artifact_type=artifact_type,
+        )
+
+    async def get(self, artifact_id: NotBlankStr) -> Artifact | None:
+        """Return a single artifact by id, or ``None`` when missing."""
+        return await self._repo.get(artifact_id)
+
+    async def create(  # noqa: PLR0913
+        self,
+        *,
+        artifact_type: ArtifactType,
+        path: NotBlankStr,
+        task_id: NotBlankStr,
+        created_by: NotBlankStr,
+        description: str = "",
+        content_type: str = "",
+        project_id: NotBlankStr | None = None,
+    ) -> Artifact:
+        """Persist a new artifact with a server-generated id.
+
+        The id has the shape ``"artifact-<uuid4-hex>"`` (full 32 hex
+        chars, 128 bits of entropy) and the ``created_at`` timestamp is
+        set to the current UTC time; callers do not provide either.
+        Truncating the UUID shrinks entropy enough for collisions to
+        become a real risk at scale, so the full hex is retained.
+        """
+        artifact = Artifact(
+            id=NotBlankStr(f"artifact-{uuid.uuid4().hex}"),
+            type=artifact_type,
+            path=path,
+            task_id=task_id,
+            created_by=created_by,
+            description=description,
+            content_type=content_type,
+            project_id=project_id,
+            created_at=datetime.now(UTC),
+        )
+        await self._repo.save(artifact)
+        logger.info(PERSISTENCE_ARTIFACT_SAVED, artifact_id=artifact.id)
+        return artifact
+
+    async def save(self, artifact: Artifact) -> None:
+        """Upsert a caller-constructed artifact (used by content upload)."""
+        await self._repo.save(artifact)
+        logger.info(PERSISTENCE_ARTIFACT_SAVED, artifact_id=artifact.id)
+
+    async def delete(self, artifact_id: NotBlankStr) -> bool:
+        """Delete an artifact; returns ``True`` when a row was removed."""
+        deleted = await self._repo.delete(artifact_id)
+        logger.info(
+            PERSISTENCE_ARTIFACT_DELETED,
+            artifact_id=artifact_id,
+            deleted=deleted,
+        )
+        return deleted

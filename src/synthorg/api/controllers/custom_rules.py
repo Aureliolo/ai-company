@@ -16,7 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_read_access, require_write_access
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.meta.models import (
     OrgBudgetSummary,
     OrgCoordinationSummary,
@@ -36,16 +36,16 @@ from synthorg.meta.rules.custom import (
     DeclarativeRule,
     MetricDescriptor,
 )
+from synthorg.meta.rules.service import CustomRuleNotFoundError, CustomRulesService
 from synthorg.observability import get_logger
-from synthorg.observability.events.meta import (
-    META_CUSTOM_RULE_CREATED,
-    META_CUSTOM_RULE_DELETED,
-    META_CUSTOM_RULE_TOGGLED,
-    META_CUSTOM_RULE_UPDATED,
-)
 from synthorg.persistence.errors import ConstraintViolationError
 
 logger = get_logger(__name__)
+
+
+def _service(state: State) -> CustomRulesService:
+    """Build the per-request :class:`CustomRulesService`."""
+    return CustomRulesService(repo=state.app_state.persistence.custom_rules)
 
 
 # ── Request DTOs ──────────────────────────────────────────────────
@@ -177,8 +177,7 @@ class CustomRuleController(Controller):
         Returns:
             List of custom rule definitions.
         """
-        repo = state.app_state.persistence.custom_rules
-        rules = await repo.list_rules()
+        rules = await _service(state).list_rules()
         return ApiResponse[list[dict[str, Any]]](
             data=[rule_to_dict(r) for r in rules],
         )
@@ -198,8 +197,7 @@ class CustomRuleController(Controller):
         Returns:
             The custom rule definition.
         """
-        repo = state.app_state.persistence.custom_rules
-        rule = await repo.get(rule_id)
+        rule = await _service(state).get(rule_id)
         if rule is None:
             msg = f"Custom rule {rule_id} not found"
             raise NotFoundException(msg)
@@ -232,21 +230,15 @@ class CustomRuleController(Controller):
             created_at=now,
             updated_at=now,
         )
-        repo = state.app_state.persistence.custom_rules
         try:
-            await repo.save(definition)
+            saved = await _service(state).create(definition)
         except ConstraintViolationError as exc:
             raise ClientException(
                 detail=str(exc),
                 status_code=409,
             ) from exc
-        logger.info(
-            META_CUSTOM_RULE_CREATED,
-            rule_id=str(definition.id),
-            rule_name=definition.name,
-        )
         return ApiResponse[dict[str, Any]](
-            data=rule_to_dict(definition),
+            data=rule_to_dict(saved),
         )
 
     @patch("/{rule_id:str}", guards=[require_write_access])
@@ -266,27 +258,18 @@ class CustomRuleController(Controller):
         Returns:
             The updated rule definition.
         """
-        repo = state.app_state.persistence.custom_rules
-        existing = await repo.get(rule_id)
-        if existing is None:
-            msg = f"Custom rule {rule_id} not found"
-            raise NotFoundException(msg)
-        updates = data.model_dump(exclude_none=True)
-        updates["updated_at"] = datetime.now(UTC)
-        merged = {**existing.model_dump(), **updates}
-        updated = CustomRuleDefinition.model_validate(merged)
         try:
-            await repo.save(updated)
+            updated = await _service(state).update(
+                NotBlankStr(rule_id),
+                data.model_dump(exclude_none=True),
+            )
+        except CustomRuleNotFoundError as exc:
+            raise NotFoundException(str(exc)) from exc
         except ConstraintViolationError as exc:
             raise ClientException(
                 detail=str(exc),
                 status_code=409,
             ) from exc
-        logger.info(
-            META_CUSTOM_RULE_UPDATED,
-            rule_id=rule_id,
-            rule_name=updated.name,
-        )
         return ApiResponse[dict[str, Any]](
             data=rule_to_dict(updated),
         )
@@ -307,15 +290,10 @@ class CustomRuleController(Controller):
             state: Litestar application state.
             rule_id: UUID of the rule to delete.
         """
-        repo = state.app_state.persistence.custom_rules
-        deleted = await repo.delete(rule_id)
-        if not deleted:
-            msg = f"Custom rule {rule_id} not found"
-            raise NotFoundException(msg)
-        logger.info(
-            META_CUSTOM_RULE_DELETED,
-            rule_id=rule_id,
-        )
+        try:
+            await _service(state).delete(NotBlankStr(rule_id))
+        except CustomRuleNotFoundError as exc:
+            raise NotFoundException(str(exc)) from exc
 
     @post("/{rule_id:str}/toggle", guards=[require_write_access])
     async def toggle_rule(
@@ -332,23 +310,10 @@ class CustomRuleController(Controller):
         Returns:
             The updated rule definition.
         """
-        repo = state.app_state.persistence.custom_rules
-        existing = await repo.get(rule_id)
-        if existing is None:
-            msg = f"Custom rule {rule_id} not found"
-            raise NotFoundException(msg)
-        toggled = existing.model_copy(
-            update={
-                "enabled": not existing.enabled,
-                "updated_at": datetime.now(UTC),
-            },
-        )
-        await repo.save(toggled)
-        logger.info(
-            META_CUSTOM_RULE_TOGGLED,
-            rule_id=rule_id,
-            enabled=toggled.enabled,
-        )
+        try:
+            toggled = await _service(state).toggle(NotBlankStr(rule_id))
+        except CustomRuleNotFoundError as exc:
+            raise NotFoundException(str(exc)) from exc
         return ApiResponse[dict[str, Any]](
             data=rule_to_dict(toggled),
         )

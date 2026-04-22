@@ -5,20 +5,18 @@ All endpoints require CEO or the internal SYSTEM role
 """
 
 import asyncio
-import contextlib
-import json
 from typing import Final
 
 from litestar import Controller, delete, get, post
 from litestar.datastructures import State  # noqa: TC002
-from litestar.exceptions import ClientException
-from litestar.status_codes import HTTP_409_CONFLICT
+from litestar.exceptions import ClientException, NotFoundException
+from litestar.status_codes import HTTP_409_CONFLICT, HTTP_501_NOT_IMPLEMENTED
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import HumanRole, require_roles
 from synthorg.api.state import AppState  # noqa: TC001
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.memory.embedding.fine_tune import FineTuneStage
 from synthorg.memory.embedding.fine_tune_models import (
     CheckpointRecord,
@@ -29,13 +27,20 @@ from synthorg.memory.embedding.fine_tune_models import (
     PreflightResult,
 )
 from synthorg.memory.errors import FineTuneDependencyError
-from synthorg.observability import get_logger
+from synthorg.memory.service import (
+    CheckpointNotFoundError,
+    CheckpointRollbackCorruptError,
+    CheckpointRollbackUnavailableError,
+    MemoryService,
+)
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.memory import (
     MEMORY_EMBEDDER_SETTINGS_READ_FAILED,
     MEMORY_FINE_TUNE_BATCH_SIZE_RECOMMENDATION_FAILED,
     MEMORY_FINE_TUNE_PREFLIGHT_COMPLETED,
     MEMORY_FINE_TUNE_REQUESTED,
 )
+from synthorg.persistence.errors import QueryError
 
 logger = get_logger(__name__)
 
@@ -43,6 +48,46 @@ logger = get_logger(__name__)
 # Tiers are checked in descending order; first threshold whose VRAM ceiling
 # is reached wins.  CPU-only / sub-threshold falls back to _DEFAULT_BATCH_SIZE.
 _DEFAULT_BATCH_SIZE: Final[int] = 16
+
+
+def _build_memory_service(app_state: AppState) -> MemoryService:
+    """Construct a :class:`MemoryService` from the current AppState.
+
+    Kept on the controller module rather than :class:`AppState` so the
+    service layer depends on AppState (and not vice-versa) and the
+    AppState slot inventory stays stable. Resolves the fine-tune
+    repositories through :class:`PersistenceBackend` so the controller
+    does not hard-wire the SQLite implementation; backends that do not
+    support fine-tuning raise ``NotImplementedError`` at accessor-call
+    time, which we translate to HTTP 501 here so operators get a clean
+    "unsupported backend" response instead of a 500 traceback.
+
+    Raises:
+        ClientException: When the backend does not implement the
+            fine-tune repositories (HTTP 501). The only such backend
+            today is Postgres; SQLite always exposes both repos.
+    """
+    backend = app_state.persistence
+    try:
+        checkpoint_repo = backend.fine_tune_checkpoints
+        run_repo = backend.fine_tune_runs
+    except NotImplementedError as exc:
+        raise ClientException(
+            detail=(
+                "Fine-tune admin endpoints require an SQLite persistence "
+                "backend; the current backend does not implement them."
+            ),
+            status_code=HTTP_501_NOT_IMPLEMENTED,
+        ) from exc
+    return MemoryService(
+        checkpoint_repo=checkpoint_repo,
+        run_repo=run_repo,
+        settings_service=(
+            app_state.settings_service if app_state.has_settings_service else None
+        ),
+    )
+
+
 _BATCH_SIZE_BY_VRAM_GB: Final[tuple[tuple[float, int], ...]] = (
     (40.0, 128),
     (16.0, 64),
@@ -231,17 +276,8 @@ class MemoryAdminController(Controller):
         """List fine-tuning checkpoints."""
         limit = min(max(limit, 1), 200)
         offset = max(offset, 0)
-        app_state: AppState = state.app_state
-        db = app_state.persistence.get_db()
-        from synthorg.persistence.sqlite.fine_tune_repo import (  # noqa: PLC0415
-            SQLiteFineTuneCheckpointRepository,
-        )
-
-        repo = SQLiteFineTuneCheckpointRepository(db)
-        cps, _ = await repo.list_checkpoints(
-            limit=limit,
-            offset=offset,
-        )
+        service = _build_memory_service(state.app_state)
+        cps = await service.list_checkpoints(limit=limit, offset=offset)
         return ApiResponse(data=cps)
 
     @post("/fine-tune/checkpoints/{checkpoint_id:str}/deploy")
@@ -250,73 +286,27 @@ class MemoryAdminController(Controller):
         state: State,
         checkpoint_id: str,
     ) -> ApiResponse[CheckpointRecord]:
-        """Deploy a specific checkpoint."""
-        app_state: AppState = state.app_state
-        db = app_state.persistence.get_db()
-        from synthorg.persistence.sqlite.fine_tune_repo import (  # noqa: PLC0415
-            SQLiteFineTuneCheckpointRepository,
-        )
+        """Deploy a specific checkpoint.
 
-        repo = SQLiteFineTuneCheckpointRepository(db)
-        cp = await repo.get_checkpoint(checkpoint_id)
-        if cp is None:
-            msg = f"Checkpoint {checkpoint_id} not found"
-            raise ClientException(detail=msg)
-        # Record prior active to allow rollback on failure.
-        prior = await repo.get_active_checkpoint()
-        await repo.set_active(checkpoint_id)
-        # Update runtime embedder config via settings if available.
-        if app_state.has_settings_service:
-            svc = app_state.settings_service
-            # Capture prior settings for rollback.
-            prior_model = prior_provider = None
-            try:
-                sv = await svc.get("memory", "embedder_model")
-                prior_model = sv.value if sv is not None else None
-            except Exception:  # noqa: S110
-                pass  # Best-effort read for rollback
-            try:
-                sv = await svc.get("memory", "embedder_provider")
-                prior_provider = sv.value if sv is not None else None
-            except Exception:  # noqa: S110
-                pass  # Best-effort read for rollback
-            try:
-                await svc.set("memory", "embedder_model", cp.model_path)
-                await svc.set("memory", "embedder_provider", "local")
-            except Exception as exc:
-                # Rollback activation + settings on failure.
-                if prior is not None:
-                    await repo.set_active(prior.id)
-                else:
-                    await repo.deactivate_all()
-                if prior_model is not None:
-                    with contextlib.suppress(Exception):
-                        await svc.set(
-                            "memory",
-                            "embedder_model",
-                            prior_model,
-                        )
-                if prior_provider is not None:
-                    with contextlib.suppress(Exception):
-                        await svc.set(
-                            "memory",
-                            "embedder_provider",
-                            prior_provider,
-                        )
-                logger.warning(
-                    MEMORY_FINE_TUNE_REQUESTED,
-                    error=f"Settings update failed: {exc}",
-                    checkpoint_id=checkpoint_id,
-                )
-                raise ClientException(
-                    detail="Failed to update embedder settings",
-                    status_code=HTTP_409_CONFLICT,
-                ) from exc
-        updated = await repo.get_checkpoint(checkpoint_id)
-        if updated is None:
+        Exception mapping:
+
+        - ``CheckpointNotFoundError`` -> HTTP 404
+        - ``QueryError`` (persistence-level failure during activation
+          or re-read) -> HTTP 409 with a safe message
+        - Any other exception propagates so unexpected server bugs
+          surface as HTTP 500 instead of being silenced as 409
+          "conflict".
+        """
+        service = _build_memory_service(state.app_state)
+        try:
+            updated = await service.deploy_checkpoint(NotBlankStr(checkpoint_id))
+        except CheckpointNotFoundError as exc:
+            raise NotFoundException(detail=str(exc)) from exc
+        except QueryError as exc:
             raise ClientException(
-                detail="Checkpoint activated but not found on re-read",
-            )
+                detail="Failed to update embedder settings",
+                status_code=HTTP_409_CONFLICT,
+            ) from exc
         return ApiResponse(data=updated)
 
     @post("/fine-tune/checkpoints/{checkpoint_id:str}/rollback")
@@ -325,44 +315,25 @@ class MemoryAdminController(Controller):
         state: State,
         checkpoint_id: str,
     ) -> ApiResponse[CheckpointRecord]:
-        """Rollback: restore pre-deployment config from backup."""
-        app_state: AppState = state.app_state
-        db = app_state.persistence.get_db()
-        from synthorg.persistence.sqlite.fine_tune_repo import (  # noqa: PLC0415
-            SQLiteFineTuneCheckpointRepository,
-        )
+        """Rollback: restore pre-deployment config from backup.
 
-        repo = SQLiteFineTuneCheckpointRepository(db)
-        cp = await repo.get_checkpoint(checkpoint_id)
-        if cp is None:
-            msg = f"Checkpoint {checkpoint_id} not found"
-            raise ClientException(detail=msg)
-        if cp.backup_config_json is None:
-            msg = "No backup config available for this checkpoint"
-            raise ClientException(detail=msg)
-        # Restore backup config via settings service.
-        if app_state.has_settings_service:
-            try:
-                backup = json.loads(cp.backup_config_json)
-            except (json.JSONDecodeError, TypeError) as exc:
-                logger.warning(
-                    MEMORY_FINE_TUNE_REQUESTED,
-                    error=f"Corrupt backup config: {exc}",
-                    checkpoint_id=checkpoint_id,
-                )
-                raise ClientException(
-                    detail="Backup config is corrupt and cannot be restored",
-                ) from exc
-            svc = app_state.settings_service
-            for key, value in backup.items():
-                await svc.set("memory", key, value)
-        # Deactivate all checkpoints (no checkpoint is "active" now).
-        await repo.deactivate_all()
-        updated = await repo.get_checkpoint(checkpoint_id)
-        if updated is None:
-            raise ClientException(
-                detail="Checkpoint not found after rollback",
-            )
+        Exception mapping:
+
+        - ``CheckpointNotFoundError`` -> HTTP 404
+        - ``CheckpointRollbackUnavailableError``,
+          ``CheckpointRollbackCorruptError`` -> HTTP 400 via
+          ``ClientException`` (operator error / corrupt backup)
+        - Any other exception propagates as HTTP 500
+        """
+        service = _build_memory_service(state.app_state)
+        try:
+            updated = await service.rollback_checkpoint(NotBlankStr(checkpoint_id))
+        except CheckpointNotFoundError as exc:
+            raise NotFoundException(detail=str(exc)) from exc
+        except CheckpointRollbackUnavailableError as exc:
+            raise ClientException(detail=str(exc)) from exc
+        except CheckpointRollbackCorruptError as exc:
+            raise ClientException(detail=str(exc)) from exc
         return ApiResponse(data=updated)
 
     @delete("/fine-tune/checkpoints/{checkpoint_id:str}", status_code=200)
@@ -371,18 +342,21 @@ class MemoryAdminController(Controller):
         state: State,
         checkpoint_id: str,
     ) -> ApiResponse[None]:
-        """Delete a checkpoint (rejects active checkpoint)."""
-        app_state: AppState = state.app_state
-        db = app_state.persistence.get_db()
-        from synthorg.persistence.sqlite.fine_tune_repo import (  # noqa: PLC0415
-            SQLiteFineTuneCheckpointRepository,
-        )
+        """Delete a checkpoint (rejects active checkpoint).
 
-        repo = SQLiteFineTuneCheckpointRepository(db)
-        from synthorg.persistence.errors import QueryError  # noqa: PLC0415
+        Exception mapping mirrors deploy/rollback so all checkpoint
+        endpoints share the same contract:
 
+        - ``CheckpointNotFoundError`` -> HTTP 404
+        - ``QueryError`` (e.g. attempt to delete the active checkpoint)
+          -> HTTP 409
+        - anything else propagates as HTTP 500
+        """
+        service = _build_memory_service(state.app_state)
         try:
-            await repo.delete_checkpoint(checkpoint_id)
+            await service.delete_checkpoint(NotBlankStr(checkpoint_id))
+        except CheckpointNotFoundError as exc:
+            raise NotFoundException(detail=str(exc)) from exc
         except QueryError as exc:
             raise ClientException(
                 detail=str(exc),
@@ -402,14 +376,8 @@ class MemoryAdminController(Controller):
         """List historical pipeline runs."""
         limit = min(max(limit, 1), 200)
         offset = max(offset, 0)
-        app_state: AppState = state.app_state
-        db = app_state.persistence.get_db()
-        from synthorg.persistence.sqlite.fine_tune_repo import (  # noqa: PLC0415
-            SQLiteFineTuneRunRepository,
-        )
-
-        repo = SQLiteFineTuneRunRepository(db)
-        runs, _ = await repo.list_runs(limit=limit, offset=offset)
+        service = _build_memory_service(state.app_state)
+        runs = await service.list_runs(limit=limit, offset=offset)
         return ApiResponse(data=runs)
 
     # -- Embedder config ---------------------------------------------
@@ -449,10 +417,11 @@ class MemoryAdminController(Controller):
                 )
             except MemoryError, RecursionError:
                 raise
-            except Exception:
+            except Exception as exc:
                 logger.warning(
                     MEMORY_EMBEDDER_SETTINGS_READ_FAILED,
-                    exc_info=True,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
         return ApiResponse(data=result)
 

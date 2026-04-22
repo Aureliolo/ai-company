@@ -90,6 +90,7 @@ META_CUSTOM_RULE_DELETED: Final[str] = "meta.custom_rule.deleted"
 META_CUSTOM_RULE_DELETE_FAILED: Final[str] = "meta.custom_rule.delete_failed"
 META_CUSTOM_RULE_CREATED: Final[str] = "meta.custom_rule.created"
 META_CUSTOM_RULE_UPDATED: Final[str] = "meta.custom_rule.updated"
+META_CUSTOM_RULE_UPDATE_REJECTED: Final[str] = "meta.custom_rule.update_rejected"
 META_CUSTOM_RULE_TOGGLED: Final[str] = "meta.custom_rule.toggled"
 
 # -- Code modification events ----------------------------------------------

@@ -66,9 +66,6 @@ if TYPE_CHECKING:
 
     from synthorg.budget.config import BudgetConfig
     from synthorg.budget.degradation import DegradationResult
-    from synthorg.budget.project_cost_aggregate import (
-        ProjectCostAggregateRepository,
-    )
     from synthorg.budget.quota import QuotaCheckResult
     from synthorg.budget.quota_tracker import QuotaTracker
     from synthorg.budget.risk_tracker import RiskTracker
@@ -77,6 +74,9 @@ if TYPE_CHECKING:
     from synthorg.core.task import Task
     from synthorg.core.types import NotBlankStr
     from synthorg.engine.loop_protocol import BudgetChecker
+    from synthorg.persistence.project_cost_aggregate_protocol import (
+        ProjectCostAggregateRepository,
+    )
     from synthorg.providers.routing.resolver import ModelResolver
     from synthorg.security.risk_scorer import RiskScorer
 

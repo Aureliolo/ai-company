@@ -1,15 +1,21 @@
 """Postgres implementation of the PresetRepository protocol.
 
 This is the Postgres sibling of src/synthorg/persistence/sqlite/preset_repo.py.
-Postgres stores config_json as native JSONB column.
+Postgres stores config_json as native JSONB column; the protocol's
+``PresetRow`` / ``PresetListRow`` contracts expose it as ``str`` (JSON
+source text) and ISO 8601 strings for timestamps, so the Postgres impl
+normalises ``dict`` -> ``json.dumps`` and ``datetime`` -> ``.isoformat()``
+before returning rows to the caller.
 """
 
-from typing import TYPE_CHECKING
+import json
+from datetime import datetime
+from typing import TYPE_CHECKING, Any
 
 import psycopg
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.preset import (
     PRESET_CUSTOM_COUNT_FAILED,
     PRESET_CUSTOM_DELETE_FAILED,
@@ -28,6 +34,46 @@ if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool
 
 logger = get_logger(__name__)
+
+
+def _normalize_config_json(value: Any) -> str:
+    """Serialize a JSONB dict back to a JSON string for protocol parity.
+
+    SQLite's ``config_json`` is stored verbatim as TEXT, so the protocol
+    exposes ``str``. Postgres returns JSONB as a Python ``dict`` or
+    ``list``; we re-serialise to match. Unexpected types (``int``,
+    ``bytes``, ...) indicate schema drift or a broken adapter and must
+    fail loudly rather than round-tripping through ``str(value)``.
+
+    Raises:
+        QueryError: If *value* is not ``str``/``dict``/``list``.
+    """
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict | list):
+        return json.dumps(value)
+    msg = (
+        "preset config_json from Postgres has unexpected type "
+        f"{type(value).__name__}; expected str, dict, or list"
+    )
+    raise QueryError(msg)
+
+
+def _normalize_timestamp(value: Any) -> str:
+    """Return an ISO 8601 string from a ``datetime`` or passthrough ``str``.
+
+    Raises:
+        QueryError: If *value* is neither ``datetime`` nor ``str``.
+    """
+    if isinstance(value, str):
+        return value
+    if isinstance(value, datetime):
+        return value.isoformat()
+    msg = (
+        "preset timestamp from Postgres has unexpected type "
+        f"{type(value).__name__}; expected datetime or str"
+    )
+    raise QueryError(msg)
 
 
 class PostgresPersonalityPresetRepository:
@@ -79,10 +125,11 @@ ON CONFLICT(name) DO UPDATE SET
                 await conn.commit()
         except psycopg.Error as exc:
             msg = f"Failed to save custom preset {name!r}"
-            logger.exception(
+            logger.warning(
                 PRESET_CUSTOM_SAVE_FAILED,
                 preset_name=name,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         logger.info(PRESET_CUSTOM_SAVED, preset_name=name)
@@ -112,10 +159,11 @@ ON CONFLICT(name) DO UPDATE SET
                 row = await cur.fetchone()
         except psycopg.Error as exc:
             msg = f"Failed to fetch custom preset {name!r}"
-            logger.exception(
+            logger.warning(
                 PRESET_CUSTOM_FETCH_FAILED,
                 preset_name=name,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -128,7 +176,27 @@ ON CONFLICT(name) DO UPDATE SET
             return None
 
         logger.debug(PRESET_CUSTOM_FETCHED, preset_name=name, found=True)
-        return PresetRow(row[0], row[1], row[2], row[3])
+        # ``_normalize_*`` now fails loudly when a Postgres row ships an
+        # unexpected type (schema drift / adapter bug). Catch the resulting
+        # ``QueryError`` here so operators see the same structured
+        # ``PRESET_CUSTOM_FETCH_FAILED`` log as other fetch failures,
+        # then re-raise without swallowing.
+        try:
+            return PresetRow(
+                _normalize_config_json(row[0]),
+                row[1],
+                _normalize_timestamp(row[2]),
+                _normalize_timestamp(row[3]),
+            )
+        except QueryError as exc:
+            logger.warning(
+                PRESET_CUSTOM_FETCH_FAILED,
+                preset_name=name,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                stage="row_normalization",
+            )
+            raise
 
     async def list_all(
         self,
@@ -150,12 +218,32 @@ ON CONFLICT(name) DO UPDATE SET
                 rows = await cur.fetchall()
         except psycopg.Error as exc:
             msg = "Failed to list custom presets"
-            logger.exception(PRESET_CUSTOM_LIST_FAILED, error=str(exc))
+            logger.warning(
+                PRESET_CUSTOM_LIST_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             raise QueryError(msg) from exc
 
-        result = tuple(
-            PresetListRow(row[0], row[1], row[2], row[3], row[4]) for row in rows
-        )
+        try:
+            result = tuple(
+                PresetListRow(
+                    row[0],
+                    _normalize_config_json(row[1]),
+                    row[2],
+                    _normalize_timestamp(row[3]),
+                    _normalize_timestamp(row[4]),
+                )
+                for row in rows
+            )
+        except QueryError as exc:
+            logger.warning(
+                PRESET_CUSTOM_LIST_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                stage="row_normalization",
+            )
+            raise
         logger.debug(PRESET_CUSTOM_LISTED, count=len(result))
         return result
 
@@ -181,10 +269,11 @@ ON CONFLICT(name) DO UPDATE SET
                 await conn.commit()
         except psycopg.Error as exc:
             msg = f"Failed to delete custom preset {name!r}"
-            logger.exception(
+            logger.warning(
                 PRESET_CUSTOM_DELETE_FAILED,
                 preset_name=name,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -209,7 +298,11 @@ ON CONFLICT(name) DO UPDATE SET
                 row = await cur.fetchone()
         except psycopg.Error as exc:
             msg = "Failed to count custom presets"
-            logger.exception(PRESET_CUSTOM_COUNT_FAILED, error=str(exc))
+            logger.warning(
+                PRESET_CUSTOM_COUNT_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             raise QueryError(msg) from exc
 
         if row is None:

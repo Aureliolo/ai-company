@@ -50,7 +50,7 @@ if TYPE_CHECKING:
 
     from synthorg.budget.config import BudgetConfig
     from synthorg.budget.cost_record import CostRecord
-    from synthorg.budget.project_cost_aggregate import (
+    from synthorg.persistence.project_cost_aggregate_protocol import (
         ProjectCostAggregateRepository,
     )
 

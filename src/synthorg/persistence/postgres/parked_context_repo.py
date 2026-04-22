@@ -14,7 +14,7 @@ from psycopg.types.json import Jsonb
 from pydantic import ValidationError
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_PARKED_CONTEXT_DELETED,
     PERSISTENCE_PARKED_CONTEXT_DESERIALIZE_FAILED,
@@ -56,6 +56,10 @@ class PostgresParkedContextRepository:
         try:
             data = context.model_dump(mode="json")
             data["context_json"] = Jsonb(json.loads(data["context_json"]))
+            # ``metadata`` is a plain ``dict`` on the Pydantic model but the
+            # Postgres column is ``JSONB``; psycopg cannot adapt raw dicts,
+            # so wrap explicitly.
+            data["metadata"] = Jsonb(data.get("metadata") or {})
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(
                     """\
@@ -79,18 +83,20 @@ ON CONFLICT(id) DO UPDATE SET
                 await conn.commit()
         except json.JSONDecodeError as exc:
             msg = f"Invalid JSON in context_json for parked context {context.id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_PARKED_CONTEXT_SAVE_FAILED,
                 parked_id=context.id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         except psycopg.Error as exc:
             msg = f"Failed to save parked context {context.id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_PARKED_CONTEXT_SAVE_FAILED,
                 parked_id=context.id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -116,10 +122,11 @@ ON CONFLICT(id) DO UPDATE SET
                 row = await cur.fetchone()
         except psycopg.Error as exc:
             msg = f"Failed to query parked context {parked_id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_PARKED_CONTEXT_QUERY_FAILED,
                 parked_id=parked_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -148,10 +155,11 @@ ON CONFLICT(id) DO UPDATE SET
                 row = await cur.fetchone()
         except psycopg.Error as exc:
             msg = f"Failed to query parked context by approval {approval_id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_PARKED_CONTEXT_QUERY_FAILED,
                 approval_id=approval_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -177,10 +185,11 @@ ON CONFLICT(id) DO UPDATE SET
                 rows = await cur.fetchall()
         except psycopg.Error as exc:
             msg = f"Failed to query parked contexts for agent {agent_id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_PARKED_CONTEXT_QUERY_FAILED,
                 agent_id=agent_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -205,10 +214,11 @@ ON CONFLICT(id) DO UPDATE SET
                 await conn.commit()
         except psycopg.Error as exc:
             msg = f"Failed to delete parked context {parked_id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_PARKED_CONTEXT_QUERY_FAILED,
                 parked_id=parked_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -237,9 +247,10 @@ ON CONFLICT(id) DO UPDATE SET
             return ParkedContext.model_validate(row)
         except (ValidationError, ValueError) as exc:
             msg = f"Failed to deserialize parked context {row.get('id')!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_PARKED_CONTEXT_DESERIALIZE_FAILED,
                 parked_id=row.get("id"),
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc

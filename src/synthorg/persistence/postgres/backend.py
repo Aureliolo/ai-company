@@ -33,6 +33,10 @@ from synthorg.observability.events.persistence import (
 )
 from synthorg.persistence.config import PostgresConfig  # noqa: TC001
 from synthorg.persistence.errors import PersistenceConnectionError
+from synthorg.persistence.fine_tune_protocol import (
+    FineTuneCheckpointRepository,  # noqa: TC001
+    FineTuneRunRepository,  # noqa: TC001
+)
 from synthorg.persistence.integration_stubs import (
     StubConnectionRepository,
     StubConnectionSecretRepository,
@@ -574,6 +578,32 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
             self._project_cost_aggregates,
             "project_cost_aggregates",
         )
+
+    @property
+    def fine_tune_checkpoints(self) -> FineTuneCheckpointRepository:
+        """Repository for fine-tune checkpoint persistence.
+
+        Fine-tuning is SQLite-only today; the Postgres backend does not
+        expose a matching table. Callers (currently the memory admin
+        controller) must guard against non-SQLite backends rather than
+        accessing this property. Raising here surfaces the mismatch
+        loudly instead of silently returning an SQLite-specific repo
+        constructed over a Postgres connection.
+        """
+        msg = (
+            "Fine-tune checkpoint persistence is SQLite-only; "
+            "the Postgres backend does not yet provide an implementation."
+        )
+        raise NotImplementedError(msg)
+
+    @property
+    def fine_tune_runs(self) -> FineTuneRunRepository:
+        """Repository for fine-tune pipeline runs (SQLite-only, see above)."""
+        msg = (
+            "Fine-tune run persistence is SQLite-only; "
+            "the Postgres backend does not yet provide an implementation."
+        )
+        raise NotImplementedError(msg)
 
     @property
     def connections(self) -> StubConnectionRepository:

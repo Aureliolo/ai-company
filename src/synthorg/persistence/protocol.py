@@ -35,6 +35,10 @@ from synthorg.persistence.custom_rule_repo import (
 from synthorg.persistence.escalation_protocol import (
     EscalationQueueRepository,  # noqa: TC001
 )
+from synthorg.persistence.fine_tune_protocol import (
+    FineTuneCheckpointRepository,  # noqa: TC001
+    FineTuneRunRepository,  # noqa: TC001
+)
 from synthorg.persistence.mcp_protocol import (
     McpInstallationRepository,  # noqa: TC001
 )
@@ -47,6 +51,9 @@ from synthorg.persistence.ontology_protocol import (
 )
 from synthorg.persistence.preset_repository import (
     PersonalityPresetRepository,  # noqa: TC001
+)
+from synthorg.persistence.project_cost_aggregate_protocol import (
+    ProjectCostAggregateRepository,  # noqa: TC001
 )
 from synthorg.persistence.repositories import (
     AgentStateRepository,  # noqa: TC001
@@ -421,6 +428,29 @@ class PersistenceBackend(Protocol):
     @property
     def ontology_drift(self) -> OntologyDriftReportRepository:
         """Repository for ontology drift reports."""
+        ...
+
+    @property
+    def project_cost_aggregates(self) -> ProjectCostAggregateRepository:
+        """Repository for durable per-project cost aggregates."""
+        ...
+
+    @property
+    def fine_tune_checkpoints(self) -> FineTuneCheckpointRepository:
+        """Repository for fine-tune checkpoint persistence.
+
+        Implementations that do not support fine-tuning MUST raise
+        ``NotImplementedError`` with a descriptive message so callers
+        do not silently receive an unusable repo.
+        """
+        ...
+
+    @property
+    def fine_tune_runs(self) -> FineTuneRunRepository:
+        """Repository for fine-tune pipeline run persistence.
+
+        Same availability semantics as :attr:`fine_tune_checkpoints`.
+        """
         ...
 
     def build_lockouts(self, auth_config: AuthConfig) -> LockoutRepository:

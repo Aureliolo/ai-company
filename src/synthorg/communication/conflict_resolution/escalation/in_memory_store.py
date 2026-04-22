@@ -7,6 +7,8 @@ should use ``sqlite`` or ``postgres`` via
 """
 
 import asyncio
+from collections.abc import AsyncIterator  # noqa: TC003
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 
 from synthorg.communication.conflict_resolution.escalation.models import (
@@ -244,3 +246,37 @@ class InMemoryEscalationStore(EscalationQueueStore):
         """Clear the store."""
         async with self._lock:
             self._rows.clear()
+
+    @asynccontextmanager
+    async def subscribe_notifications(
+        self,
+        channel: str,  # noqa: ARG002
+    ) -> AsyncIterator[AsyncIterator[str]]:
+        """Return an iterator that blocks until cancelled (no-op).
+
+        The in-memory store runs inside a single process, so there is
+        no cross-process signal to wait on. The context manager yields
+        an iterator that parks on an ``asyncio.Event`` that is only
+        set when the caller exits the ``async with`` block.
+
+        Note on typing: the ``@asynccontextmanager`` decorator turns
+        this generator (which yields an ``AsyncIterator[str]``) into a
+        callable returning an
+        ``AbstractAsyncContextManager[AsyncIterator[str]]`` at the call
+        site, matching :class:`EscalationQueueStore`'s protocol. The
+        decorated function's own annotation stays ``AsyncIterator[...]``
+        because that is what the underlying async generator produces.
+        """
+        stop = asyncio.Event()
+
+        async def _never() -> AsyncIterator[str]:
+            while not stop.is_set():
+                await stop.wait()
+                if stop.is_set():
+                    return
+                yield ""  # pragma: no cover - unreachable in normal flow
+
+        try:
+            yield _never()
+        finally:
+            stop.set()

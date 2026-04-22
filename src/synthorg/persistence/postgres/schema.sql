@@ -89,6 +89,8 @@ CREATE TABLE messages (
 CREATE INDEX idx_messages_channel ON messages(channel);
 CREATE INDEX idx_messages_timestamp ON messages(timestamp);
 CREATE INDEX idx_messages_metadata_gin ON messages USING GIN (metadata);
+CREATE INDEX idx_messages_sender ON messages(sender);
+CREATE INDEX idx_messages_to ON messages("to");
 
 -- ── Lifecycle events ──────────────────────────────────────────
 CREATE TABLE lifecycle_events (
@@ -438,12 +440,16 @@ CREATE TABLE workflow_definitions (
     workflow_type TEXT NOT NULL CHECK (workflow_type IN (
         'sequential_pipeline', 'parallel_execution', 'kanban', 'agile_kanban'
     )),
+    version TEXT NOT NULL DEFAULT '1.0.0' CHECK (length(version) > 0),
+    inputs JSONB NOT NULL DEFAULT '[]'::jsonb,
+    outputs JSONB NOT NULL DEFAULT '[]'::jsonb,
+    is_subworkflow BOOLEAN NOT NULL DEFAULT FALSE,
     nodes JSONB NOT NULL,
     edges JSONB NOT NULL,
     created_by TEXT NOT NULL CHECK (length(created_by) > 0),
     created_at TIMESTAMPTZ NOT NULL,
     updated_at TIMESTAMPTZ NOT NULL,
-    version BIGINT NOT NULL DEFAULT 1 CHECK (version >= 1)
+    revision BIGINT NOT NULL DEFAULT 1 CHECK (revision >= 1)
 );
 
 CREATE INDEX idx_wd_workflow_type
@@ -451,6 +457,9 @@ CREATE INDEX idx_wd_workflow_type
 
 CREATE INDEX idx_wd_updated_at
     ON workflow_definitions(updated_at DESC);
+
+CREATE INDEX idx_wd_is_subworkflow
+    ON workflow_definitions(is_subworkflow);
 
 -- ── Subworkflows ─────────────────────────────────────────────
 
@@ -486,7 +495,7 @@ CREATE INDEX idx_subworkflows_updated_at
 CREATE TABLE workflow_executions (
     id TEXT PRIMARY KEY NOT NULL CHECK (length(id) > 0),
     definition_id TEXT NOT NULL CHECK (length(definition_id) > 0),
-    definition_version BIGINT NOT NULL CHECK (definition_version >= 1),
+    definition_revision BIGINT NOT NULL CHECK (definition_revision >= 1),
     status TEXT NOT NULL CHECK (status IN (
         'pending', 'running', 'completed', 'failed', 'cancelled'
     )),
@@ -1061,6 +1070,7 @@ CREATE TABLE custom_rules (
 );
 
 CREATE UNIQUE INDEX custom_rules_name ON custom_rules (name);
+CREATE INDEX idx_custom_rules_enabled ON custom_rules(enabled);
 
 -- ── Approvals (#1443) ───────────────────────────────────────────
 -- Mirror of the SQLite ``approvals`` table.  Boolean-ish checks
@@ -1100,6 +1110,8 @@ CREATE TABLE approvals (
 CREATE INDEX idx_approvals_status ON approvals(status);
 CREATE INDEX idx_approvals_action_type ON approvals(action_type);
 CREATE INDEX idx_approvals_risk_level ON approvals(risk_level);
+CREATE INDEX idx_approvals_requested_by_status ON approvals(requested_by, status);
+CREATE INDEX idx_approvals_status_expires_at ON approvals(status, expires_at);
 
 -- Org memory: MVCC operation log + materialized snapshot (#1457 A4).
 -- Tags are TEXT JSON to match the SQLite backend's serialization;

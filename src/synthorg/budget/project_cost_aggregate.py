@@ -1,12 +1,15 @@
-"""Durable per-project cost aggregate model and repository protocol.
+"""Durable per-project cost aggregate value object.
 
 Stores lifetime cost totals per project, surviving the in-memory
 CostTracker's 168-hour retention window.  Updated atomically on
 each cost recording; queried by BudgetEnforcer for project-level
 budget enforcement.
-"""
 
-from typing import Protocol, runtime_checkable
+The repository Protocol for this value object lives in
+``synthorg.persistence.project_cost_aggregate_protocol`` per the
+persistence-boundary convention -- concrete backends implement that
+Protocol and expose it via ``PersistenceBackend.project_cost_aggregates``.
+"""
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
@@ -49,47 +52,6 @@ class ProjectCostAggregate(BaseModel):
     )
 
 
-@runtime_checkable
-class ProjectCostAggregateRepository(Protocol):
-    """Repository for durable per-project cost aggregates.
-
-    Implementations must provide atomic increment semantics so
-    concurrent cost recordings do not lose updates.
-    """
-
-    async def get(
-        self,
-        project_id: NotBlankStr,
-    ) -> ProjectCostAggregate | None:
-        """Retrieve the aggregate for a project.
-
-        Args:
-            project_id: Project identifier.
-
-        Returns:
-            The aggregate, or ``None`` if no costs have been recorded.
-        """
-        ...
-
-    async def increment(
-        self,
-        project_id: NotBlankStr,
-        cost: float,
-        input_tokens: int,
-        output_tokens: int,
-    ) -> ProjectCostAggregate:
-        """Atomically increment the project's cost aggregate.
-
-        Creates a new aggregate row on the first call for a project.
-        Subsequent calls increment the existing totals.
-
-        Args:
-            project_id: Project identifier.
-            cost: Cost delta to add.
-            input_tokens: Input token delta to add.
-            output_tokens: Output token delta to add.
-
-        Returns:
-            The updated aggregate after the increment.
-        """
-        ...
+# Repository Protocol moved to
+# ``synthorg.persistence.project_cost_aggregate_protocol`` per the
+# persistence-boundary convention; importers should reach for it there.

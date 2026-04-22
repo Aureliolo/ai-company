@@ -14,7 +14,6 @@ from pydantic import ValidationError
 from synthorg.api.controllers._workflow_builders import (
     apply_update,
     build_definition_from_blueprint,
-    fetch_existing_for_update,
     load_blueprint_or_error,
     run_subworkflow_validation,
     wf_versioning,
@@ -41,6 +40,12 @@ from synthorg.engine.workflow.definition import (
     WorkflowIODeclaration,
     WorkflowNode,
 )
+from synthorg.engine.workflow.service import (
+    WorkflowDefinitionExistsError,
+    WorkflowDefinitionNotFoundError,
+    WorkflowDefinitionRevisionMismatchError,
+    WorkflowService,
+)
 from synthorg.engine.workflow.validation import WorkflowValidationResult
 from synthorg.engine.workflow.validation import (
     validate_workflow as run_workflow_validation,
@@ -52,22 +57,30 @@ from synthorg.observability.events.blueprint import (
     BLUEPRINT_INSTANTIATE_SUCCESS,
 )
 from synthorg.observability.events.workflow_definition import (
-    WORKFLOW_DEF_CREATED,
-    WORKFLOW_DEF_DELETED,
     WORKFLOW_DEF_INVALID_REQUEST,
     WORKFLOW_DEF_NOT_FOUND,
-    WORKFLOW_DEF_UPDATED,
     WORKFLOW_DEF_VERSION_CONFLICT,
 )
-from synthorg.observability.events.workflow_version import (
-    WORKFLOW_VERSION_SNAPSHOT_FAILED,
-)
 from synthorg.persistence.errors import (
-    PersistenceError,
     VersionConflictError,
 )
 
 logger = get_logger(__name__)
+
+
+def _service(state: State) -> WorkflowService:
+    """Build the per-request :class:`WorkflowService`.
+
+    Wires in the :class:`VersioningService` for workflow definitions so
+    create/update paths persist a best-effort version snapshot in the
+    same service call -- controllers no longer orchestrate the two
+    writes by hand.
+    """
+    return WorkflowService(
+        definition_repo=state.app_state.persistence.workflow_definitions,
+        version_repo=state.app_state.persistence.workflow_versions,
+        versioning_service=wf_versioning(state),
+    )
 
 
 WorkflowTypeFilter = Annotated[
@@ -115,8 +128,7 @@ class WorkflowController(Controller):
                     status_code=400,
                 )
 
-        repo = state.app_state.persistence.workflow_definitions
-        defs = await repo.list_definitions(workflow_type=parsed_type)
+        defs = await _service(state).list_definitions(workflow_type=parsed_type)
         page, meta = paginate(defs, offset=offset, limit=limit)
         return PaginatedResponse[WorkflowDefinition](
             data=page,
@@ -175,23 +187,28 @@ class WorkflowController(Controller):
             now,
         )
 
-        repo = state.app_state.persistence.workflow_definitions
-        await repo.save(definition)
-
-        svc = wf_versioning(state)
         try:
-            await svc.snapshot_if_changed(
-                entity_id=definition.id,
-                snapshot=definition,
-                saved_by=creator,
-            )
-        except PersistenceError:
-            logger.exception(
-                WORKFLOW_VERSION_SNAPSHOT_FAILED,
+            await _service(state).create_definition(definition, saved_by=creator)
+        except WorkflowDefinitionExistsError as exc:
+            # Duplicate id hit at the SQL level in ``create_if_absent``.
+            # Surface as HTTP 409 so clients retrying a failed create do
+            # not see a 500.
+            logger.warning(
+                WORKFLOW_DEF_INVALID_REQUEST,
                 definition_id=definition.id,
-                revision=definition.revision,
+                reason="duplicate_id",
+                error=str(exc),
+            )
+            return Response(
+                content=ApiResponse[WorkflowDefinition](
+                    error=str(exc),
+                ),
+                status_code=409,
             )
 
+        # Snapshot orchestration moved into ``WorkflowService.create_definition``
+        # (via the ``saved_by`` kwarg), so no explicit ``snapshot_if_changed``
+        # call is needed here.
         logger.info(
             BLUEPRINT_INSTANTIATE_SUCCESS,
             definition_id=definition.id,
@@ -209,8 +226,7 @@ class WorkflowController(Controller):
         workflow_id: PathId,
     ) -> Response[ApiResponse[WorkflowDefinition]]:
         """Get a workflow definition by ID."""
-        repo = state.app_state.persistence.workflow_definitions
-        definition = await repo.get(workflow_id)
+        definition = await _service(state).get_definition(workflow_id)
         if definition is None:
             logger.warning(
                 WORKFLOW_DEF_NOT_FOUND,
@@ -284,24 +300,27 @@ class WorkflowController(Controller):
                 status_code=422,
             )
 
-        repo = state.app_state.persistence.workflow_definitions
-        await repo.save(definition)
-
-        svc = wf_versioning(state)
         try:
-            await svc.snapshot_if_changed(
-                entity_id=definition.id,
-                snapshot=definition,
-                saved_by=creator,
-            )
-        except PersistenceError:
-            logger.exception(
-                WORKFLOW_VERSION_SNAPSHOT_FAILED,
+            await _service(state).create_definition(definition, saved_by=creator)
+        except WorkflowDefinitionExistsError as exc:
+            # The service raises this when ``create_if_absent`` hits a
+            # duplicate id at the SQL level. Map to HTTP 409 so clients
+            # retrying a failed create do not see a 500.
+            logger.warning(
+                WORKFLOW_DEF_INVALID_REQUEST,
                 definition_id=definition.id,
-                revision=definition.revision,
+                reason="duplicate_id",
+                error=str(exc),
+            )
+            return Response(
+                content=ApiResponse[WorkflowDefinition](
+                    error=str(exc),
+                ),
+                status_code=409,
             )
 
-        logger.info(WORKFLOW_DEF_CREATED, definition_id=definition.id)
+        # Snapshot recording is handled inside ``WorkflowService`` via the
+        # ``saved_by`` kwarg; no explicit ``snapshot_if_changed`` is needed.
 
         return Response(
             content=ApiResponse[WorkflowDefinition](data=definition),
@@ -309,7 +328,7 @@ class WorkflowController(Controller):
         )
 
     @patch("/{workflow_id:str}", guards=[require_write_access])
-    async def update_workflow(
+    async def update_workflow(  # noqa: PLR0911 -- enumerate distinct HTTP error paths explicitly
         self,
         request: Request[Any, Any, Any],
         state: State,
@@ -317,15 +336,38 @@ class WorkflowController(Controller):
         data: UpdateWorkflowDefinitionRequest,
     ) -> Response[ApiResponse[WorkflowDefinition]]:
         """Update an existing workflow definition."""
-        repo = state.app_state.persistence.workflow_definitions
-        fetch_result = await fetch_existing_for_update(
-            repo,
-            workflow_id,
-            data.expected_revision,
-        )
-        if isinstance(fetch_result, Response):
-            return fetch_result
-        existing = fetch_result
+        service = _service(state)
+        try:
+            existing = await service.fetch_for_update(
+                workflow_id,
+                data.expected_revision,
+            )
+        except WorkflowDefinitionNotFoundError as exc:
+            logger.warning(
+                WORKFLOW_DEF_NOT_FOUND,
+                definition_id=workflow_id,
+            )
+            return Response(
+                content=ApiResponse[WorkflowDefinition](
+                    error=str(exc),
+                ),
+                status_code=404,
+            )
+        except WorkflowDefinitionRevisionMismatchError as exc:
+            logger.warning(
+                WORKFLOW_DEF_VERSION_CONFLICT,
+                definition_id=workflow_id,
+                expected=exc.expected,
+                actual=exc.actual,
+            )
+            return Response(
+                content=ApiResponse[WorkflowDefinition](
+                    error=(
+                        "Version conflict: the workflow was modified. Reload and retry."
+                    ),
+                ),
+                status_code=409,
+            )
 
         update_result = apply_update(existing, data)
         if isinstance(update_result, Response):
@@ -346,8 +388,22 @@ class WorkflowController(Controller):
                 status_code=422,
             )
 
+        updater = get_auth_user_id(request)
         try:
-            await repo.save(updated)
+            await service.update_definition(updated, saved_by=updater)
+        except WorkflowDefinitionNotFoundError as exc:
+            # Row was deleted between fetch_for_update and update;
+            # surface as 404 so the client refetches rather than
+            # accidentally creating via a retry.
+            logger.warning(
+                WORKFLOW_DEF_NOT_FOUND,
+                definition_id=updated.id,
+                operation="update_workflow",
+            )
+            return Response(
+                content=ApiResponse[WorkflowDefinition](error=str(exc)),
+                status_code=404,
+            )
         except VersionConflictError as exc:
             logger.warning(
                 WORKFLOW_DEF_VERSION_CONFLICT,
@@ -361,21 +417,8 @@ class WorkflowController(Controller):
                 status_code=409,
             )
 
-        updater = get_auth_user_id(request)
-        svc = wf_versioning(state)
-        try:
-            await svc.snapshot_if_changed(
-                entity_id=updated.id,
-                snapshot=updated,
-                saved_by=updater,
-            )
-        except PersistenceError:
-            logger.exception(
-                WORKFLOW_VERSION_SNAPSHOT_FAILED,
-                definition_id=updated.id,
-                revision=updated.revision,
-            )
-        logger.info(WORKFLOW_DEF_UPDATED, definition_id=updated.id)
+        # Snapshot recording is handled inside ``WorkflowService`` via the
+        # ``saved_by`` kwarg; no explicit ``snapshot_if_changed`` is needed.
 
         return Response(
             content=ApiResponse[WorkflowDefinition](data=updated),
@@ -392,8 +435,7 @@ class WorkflowController(Controller):
         workflow_id: PathId,
     ) -> None:
         """Delete a workflow definition and its version history."""
-        repo = state.app_state.persistence.workflow_definitions
-        deleted = await repo.delete(workflow_id)
+        deleted = await _service(state).delete_definition(workflow_id)
         if not deleted:
             logger.warning(
                 WORKFLOW_DEF_NOT_FOUND,
@@ -401,22 +443,6 @@ class WorkflowController(Controller):
             )
             msg = "Workflow definition not found"
             raise NotFoundError(msg)
-        # Defense-in-depth: explicit delete ensures cleanup even if
-        # foreign keys are disabled.  Best-effort -- version cleanup
-        # failure must not mask the successful primary delete.
-        try:
-            version_repo = state.app_state.persistence.workflow_versions
-            await version_repo.delete_versions_for_entity(workflow_id)
-        except PersistenceError:
-            logger.warning(
-                WORKFLOW_VERSION_SNAPSHOT_FAILED,
-                definition_id=workflow_id,
-                reason="version_cleanup_failed",
-            )
-        logger.info(
-            WORKFLOW_DEF_DELETED,
-            definition_id=workflow_id,
-        )
 
     @post("/validate-draft", guards=[require_read_access], status_code=200)
     async def validate_draft(
@@ -481,8 +507,7 @@ class WorkflowController(Controller):
         workflow_id: PathId,
     ) -> Response[ApiResponse[WorkflowValidationResult]]:
         """Validate a workflow definition for execution readiness."""
-        repo = state.app_state.persistence.workflow_definitions
-        definition = await repo.get(workflow_id)
+        definition = await _service(state).get_definition(workflow_id)
         if definition is None:
             logger.warning(
                 WORKFLOW_DEF_NOT_FOUND,
@@ -509,8 +534,7 @@ class WorkflowController(Controller):
         workflow_id: PathId,
     ) -> Response[str] | Response[ApiResponse[None]]:
         """Export a workflow definition as YAML."""
-        repo = state.app_state.persistence.workflow_definitions
-        definition = await repo.get(workflow_id)
+        definition = await _service(state).get_definition(workflow_id)
         if definition is None:
             logger.warning(
                 WORKFLOW_DEF_NOT_FOUND,

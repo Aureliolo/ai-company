@@ -23,7 +23,7 @@ from synthorg.engine.workflow.execution_models import (
     WorkflowExecution,
     WorkflowNodeExecution,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_WORKFLOW_EXEC_DELETE_FAILED,
     PERSISTENCE_WORKFLOW_EXEC_DELETED,
@@ -49,7 +49,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 _SELECT_COLUMNS = """\
-id, definition_id, definition_version, status, node_executions,
+id, definition_id, definition_revision, status, node_executions,
 activated_by, project, created_at, updated_at, completed_at,
 error, version"""
 
@@ -98,8 +98,6 @@ def _deserialize_row(
         data["node_executions"] = _deserialize_node_executions(
             data.get("node_executions") or [],
         )
-        if "definition_version" in data:
-            data["definition_revision"] = data.pop("definition_version")
         return WorkflowExecution.model_validate(data)
     except (
         TypeError,
@@ -108,10 +106,11 @@ def _deserialize_row(
         KeyError,
     ) as exc:
         msg = f"Failed to deserialize workflow execution {context_id!r}"
-        logger.exception(
+        logger.warning(
             PERSISTENCE_WORKFLOW_EXEC_DESERIALIZE_FAILED,
             execution_id=context_id,
-            error=str(exc),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         raise QueryError(msg) from exc
 
@@ -184,7 +183,7 @@ class PostgresWorkflowExecutionRepository:
                 await cur.execute(
                     """
                     INSERT INTO workflow_executions
-                        (id, definition_id, definition_version, status,
+                        (id, definition_id, definition_revision, status,
                          node_executions,
                          activated_by, project, created_at, updated_at, completed_at,
                          error, version)
@@ -204,10 +203,11 @@ class PostgresWorkflowExecutionRepository:
                 await conn.commit()
         except psycopg.Error as exc:
             msg = f"Failed to save workflow execution {execution.id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_WORKFLOW_EXEC_SAVE_FAILED,
                 execution_id=execution.id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -219,7 +219,7 @@ class PostgresWorkflowExecutionRepository:
                 await cur.execute(
                     """
                     UPDATE workflow_executions SET
-                        definition_id=%s, definition_version=%s, status=%s,
+                        definition_id=%s, definition_revision=%s, status=%s,
                         node_executions=%s, activated_by=%s, project=%s,
                         created_at=%s, updated_at=%s, completed_at=%s,
                         error=%s, version=%s
@@ -246,10 +246,11 @@ class PostgresWorkflowExecutionRepository:
                 await conn.commit()
         except psycopg.Error as exc:
             msg = f"Failed to save workflow execution {execution.id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_WORKFLOW_EXEC_SAVE_FAILED,
                 execution_id=execution.id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -280,10 +281,11 @@ class PostgresWorkflowExecutionRepository:
                 row = await cur.fetchone()
         except psycopg.Error as exc:
             msg = f"Failed to fetch workflow execution {execution_id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_WORKFLOW_EXEC_FETCH_FAILED,
                 execution_id=execution_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -332,10 +334,11 @@ class PostgresWorkflowExecutionRepository:
                 rows = await cur.fetchall()
         except psycopg.Error as exc:
             msg = f"Failed to list executions for definition {definition_id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_WORKFLOW_EXEC_LIST_FAILED,
                 definition_id=definition_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -378,10 +381,11 @@ class PostgresWorkflowExecutionRepository:
                 rows = await cur.fetchall()
         except psycopg.Error as exc:
             msg = f"Failed to list executions with status {status.value!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_WORKFLOW_EXEC_LIST_FAILED,
                 status=status.value,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -430,10 +434,11 @@ class PostgresWorkflowExecutionRepository:
                 row = await cur.fetchone()
         except psycopg.Error as exc:
             msg = f"Failed to find execution by task_id {task_id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_WORKFLOW_EXEC_FIND_BY_TASK_FAILED,
                 task_id=task_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -476,10 +481,11 @@ class PostgresWorkflowExecutionRepository:
                 await conn.commit()
         except psycopg.Error as exc:
             msg = f"Failed to delete workflow execution {execution_id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_WORKFLOW_EXEC_DELETE_FAILED,
                 execution_id=execution_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         logger.info(

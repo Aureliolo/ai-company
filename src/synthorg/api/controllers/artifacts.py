@@ -1,7 +1,5 @@
 """Artifact controller -- endpoints for artifact management, storage, and retrieval."""
 
-import uuid
-from datetime import UTC, datetime
 from typing import Annotated, Any
 
 from litestar import Controller, Request, Response, delete, get, post, put
@@ -24,13 +22,12 @@ from synthorg.api.ws_models import WsEventType
 from synthorg.core.artifact import Artifact
 from synthorg.core.enums import ArtifactType
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.artifacts.service import ArtifactService
 from synthorg.observability import get_logger
 from synthorg.observability.events.persistence import (
     PERSISTENCE_ARTIFACT_CONTENT_MISSING,
-    PERSISTENCE_ARTIFACT_DELETED,
     PERSISTENCE_ARTIFACT_FETCH_FAILED,
     PERSISTENCE_ARTIFACT_SAVE_FAILED,
-    PERSISTENCE_ARTIFACT_SAVED,
     PERSISTENCE_ARTIFACT_STORAGE_DELETE_FAILED,
     PERSISTENCE_ARTIFACT_STORAGE_ROLLBACK_FAILED,
     PERSISTENCE_ARTIFACT_STORE_FAILED,
@@ -44,6 +41,11 @@ from synthorg.persistence.errors import (
 )
 
 logger = get_logger(__name__)
+
+
+def _service(state: State) -> ArtifactService:
+    """Build the per-request :class:`ArtifactService` instance."""
+    return ArtifactService(repo=state.app_state.persistence.artifacts)
 
 
 _SAFE_CONTENT_TYPES = frozenset(
@@ -98,7 +100,7 @@ TypeFilter = Annotated[
 
 
 async def _save_metadata_with_rollback(
-    repo: Any,
+    service: ArtifactService,
     storage: Any,
     artifact_id: str,
     updated: Artifact,
@@ -106,7 +108,7 @@ async def _save_metadata_with_rollback(
     """Save updated artifact metadata, rolling back storage on failure.
 
     Args:
-        repo: Artifact persistence repository.
+        service: Artifact service wrapping the persistence repo.
         storage: Artifact content storage backend.
         artifact_id: Artifact identifier.
         updated: Updated artifact model.
@@ -115,7 +117,7 @@ async def _save_metadata_with_rollback(
         PersistenceError: If the metadata save fails (after rollback attempt).
     """
     try:
-        await repo.save(updated)
+        await service.save(updated)
     except PersistenceError as exc:
         logger.warning(
             PERSISTENCE_ARTIFACT_SAVE_FAILED,
@@ -178,8 +180,7 @@ class ArtifactController(Controller):
                     status_code=400,
                 )
 
-        repo = state.app_state.persistence.artifacts
-        artifacts = await repo.list_artifacts(
+        artifacts = await _service(state).list_artifacts(
             task_id=task_id,
             created_by=created_by,
             artifact_type=parsed_type,
@@ -202,8 +203,7 @@ class ArtifactController(Controller):
         Returns:
             The artifact metadata, or 404 if not found.
         """
-        repo = state.app_state.persistence.artifacts
-        artifact = await repo.get(artifact_id)
+        artifact = await _service(state).get(artifact_id)
         if artifact is None:
             return Response(
                 content=ApiResponse[Artifact](
@@ -233,20 +233,15 @@ class ArtifactController(Controller):
         Returns:
             The created artifact with generated ID.
         """
-        artifact = Artifact(
-            id=f"artifact-{uuid.uuid4().hex[:12]}",
-            type=data.type,
+        artifact = await _service(state).create(
+            artifact_type=data.type,
             path=data.path,
             task_id=data.task_id,
             created_by=data.created_by,
             description=data.description,
             content_type=data.content_type,
             project_id=data.project_id,
-            created_at=datetime.now(UTC),
         )
-        repo = state.app_state.persistence.artifacts
-        await repo.save(artifact)
-        logger.info(PERSISTENCE_ARTIFACT_SAVED, artifact_id=artifact.id)
         publish_ws_event(
             request,
             WsEventType.ARTIFACT_CREATED,
@@ -284,8 +279,8 @@ class ArtifactController(Controller):
         Returns:
             200 on success, 404 if not found.
         """
-        repo = state.app_state.persistence.artifacts
-        artifact = await repo.get(artifact_id)
+        service = _service(state)
+        artifact = await service.get(artifact_id)
         if artifact is None:
             return Response(
                 content=ApiResponse[None](
@@ -305,8 +300,7 @@ class ArtifactController(Controller):
                 artifact_id=artifact_id,
                 error=str(exc),
             )
-        await repo.delete(artifact_id)
-        logger.info(PERSISTENCE_ARTIFACT_DELETED, artifact_id=artifact_id)
+        await service.delete(artifact_id)
         publish_ws_event(
             request,
             WsEventType.ARTIFACT_DELETED,
@@ -354,8 +348,8 @@ class ArtifactController(Controller):
         Returns:
             Updated artifact metadata with size_bytes set.
         """
-        repo = state.app_state.persistence.artifacts
-        artifact = await repo.get(artifact_id)
+        service = _service(state)
+        artifact = await service.get(artifact_id)
         if artifact is None:
             msg = f"Artifact {artifact_id!r} not found"
             logger.warning(
@@ -394,7 +388,7 @@ class ArtifactController(Controller):
                 "content_type": (artifact.content_type or "application/octet-stream"),
             },
         )
-        await _save_metadata_with_rollback(repo, storage, artifact_id, updated)
+        await _save_metadata_with_rollback(service, storage, artifact_id, updated)
         logger.info(
             PERSISTENCE_ARTIFACT_STORED,
             artifact_id=artifact_id,
@@ -435,8 +429,7 @@ class ArtifactController(Controller):
             Binary content with appropriate content type, or JSON
             error on 404.
         """
-        repo = state.app_state.persistence.artifacts
-        artifact = await repo.get(artifact_id)
+        artifact = await _service(state).get(artifact_id)
         if artifact is None:
             return Response(
                 content=ApiResponse[None](error="Artifact not found"),

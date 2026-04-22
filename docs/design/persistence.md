@@ -73,10 +73,24 @@ one level up in `src/synthorg/persistence/`:
 | `version_repo.py`                      | Generic version-snapshot repository reused by ontology + future versioned entities |
 | `secret_backends/protocol.py`          | `SecretBackend` protocol used by the secret-backend factory |
 
+The table above is representative, not exhaustive -- the authoritative
+inventory is the set of properties / factory methods on
+``PersistenceBackend`` in ``src/synthorg/persistence/protocol.py``, and the
+concrete repositories live alongside the dialect-specific backends in
+``src/synthorg/persistence/{sqlite,postgres}/``.
+
 Every concrete repository implements its matching protocol; application code
 depends on the protocol, not the implementation.  Switching backends is a
 configuration change (``PersistenceConfig.backend``) rather than a code change,
 and the unit-test suite stays backend-free so most tests remain fast and local.
+
+API controllers reach persistence through **domain-scoped service layers**
+(``ArtifactService``, ``WorkflowService``, ``MemoryService``,
+``CustomRulesService``, ``UserService``, ...) rather than importing
+repositories directly.  Services keep controllers thin, centralise audit
+logging, and own cross-repo orchestration (e.g. workflow-definition delete
+cascading to its version snapshots) so the audit trail stays consistent
+regardless of which HTTP endpoint invoked the mutation.
 
 Postgres adds server-side integrity beyond what SQLite can express: `CONSTRAINT
 TRIGGER`s enforce "exactly one CEO" and "at least one owner" invariants across

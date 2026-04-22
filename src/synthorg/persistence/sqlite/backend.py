@@ -16,7 +16,7 @@ from synthorg.core.role import Role
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.definition import WorkflowDefinition
 from synthorg.hr.evaluation.config import EvaluationConfig
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_BACKEND_ALREADY_CONNECTED,
     PERSISTENCE_BACKEND_CONNECTED,
@@ -57,6 +57,10 @@ from synthorg.persistence.sqlite.custom_rule_repo import (
 )
 from synthorg.persistence.sqlite.decision_repo import (
     SQLiteDecisionRepository,
+)
+from synthorg.persistence.sqlite.fine_tune_repo import (
+    SQLiteFineTuneCheckpointRepository,
+    SQLiteFineTuneRunRepository,
 )
 from synthorg.persistence.sqlite.heartbeat_repo import (
     SQLiteHeartbeatRepository,
@@ -154,7 +158,7 @@ class SQLitePersistenceBackend:
         config: SQLite-specific configuration.
     """
 
-    def __init__(self, config: SQLiteConfig) -> None:
+    def __init__(self, config: SQLiteConfig) -> None:  # noqa: PLR0915 -- repo registry setup intentionally enumerates every attribute
         self._config = config
         self._lifecycle_lock = asyncio.Lock()
         # Shared write lock for multi-statement transactions on the
@@ -200,6 +204,8 @@ class SQLitePersistenceBackend:
         self._project_cost_aggregates: SQLiteProjectCostAggregateRepository | None = (
             None
         )
+        self._fine_tune_checkpoints: SQLiteFineTuneCheckpointRepository | None = None
+        self._fine_tune_runs: SQLiteFineTuneRunRepository | None = None
         self._training_plans: SQLiteTrainingPlanRepository | None = None
         self._training_results: SQLiteTrainingResultRepository | None = None
         self._custom_rules: SQLiteCustomRuleRepository | None = None
@@ -252,6 +258,8 @@ class SQLitePersistenceBackend:
         self._ssrf_violations = None
         self._circuit_breaker_state = None
         self._project_cost_aggregates = None
+        self._fine_tune_checkpoints = None
+        self._fine_tune_runs = None
         self._training_plans = None
         self._training_results = None
         self._custom_rules = None
@@ -407,6 +415,8 @@ class SQLitePersistenceBackend:
             self._db,
             write_lock=self._shared_write_lock,
         )
+        self._fine_tune_checkpoints = SQLiteFineTuneCheckpointRepository(self._db)
+        self._fine_tune_runs = SQLiteFineTuneRunRepository(self._db)
         self._training_plans = SQLiteTrainingPlanRepository(self._db)
         self._training_results = SQLiteTrainingResultRepository(self._db)
         self._custom_rules = SQLiteCustomRuleRepository(self._db)
@@ -423,10 +433,11 @@ class SQLitePersistenceBackend:
         Raises:
             PersistenceConnectionError: Always.
         """
-        logger.exception(
+        logger.warning(
             PERSISTENCE_BACKEND_CONNECTION_FAILED,
             path=self._config.path,
-            error=str(exc),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         if self._db is not None:
             try:
@@ -435,7 +446,7 @@ class SQLitePersistenceBackend:
                 logger.warning(
                     PERSISTENCE_BACKEND_DISCONNECT_ERROR,
                     path=self._config.path,
-                    error=str(cleanup_exc),
+                    error=safe_error_description(cleanup_exc),
                     error_type=type(cleanup_exc).__name__,
                     context="cleanup_after_connect_failure",
                 )
@@ -460,7 +471,7 @@ class SQLitePersistenceBackend:
                 logger.warning(
                     PERSISTENCE_BACKEND_DISCONNECT_ERROR,
                     path=self._config.path,
-                    error=str(exc),
+                    error=safe_error_description(exc),
                     error_type=type(exc).__name__,
                 )
             finally:
@@ -478,7 +489,7 @@ class SQLitePersistenceBackend:
             logger.warning(
                 PERSISTENCE_BACKEND_HEALTH_CHECK,
                 healthy=False,
-                error=str(exc),
+                error=safe_error_description(exc),
                 error_type=type(exc).__name__,
             )
             return False
@@ -621,6 +632,22 @@ class SQLitePersistenceBackend:
         return self._require_connected(
             self._project_cost_aggregates,
             "project_cost_aggregates",
+        )
+
+    @property
+    def fine_tune_checkpoints(self) -> SQLiteFineTuneCheckpointRepository:
+        """Repository for fine-tune checkpoint persistence."""
+        return self._require_connected(
+            self._fine_tune_checkpoints,
+            "fine_tune_checkpoints",
+        )
+
+    @property
+    def fine_tune_runs(self) -> SQLiteFineTuneRunRepository:
+        """Repository for fine-tune pipeline run persistence."""
+        return self._require_connected(
+            self._fine_tune_runs,
+            "fine_tune_runs",
         )
 
     @property

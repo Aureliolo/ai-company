@@ -18,9 +18,10 @@ from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.workflow.definition import (
     WorkflowDefinition,
     WorkflowEdge,
+    WorkflowIODeclaration,
     WorkflowNode,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_WORKFLOW_DEF_DELETE_FAILED,
     PERSISTENCE_WORKFLOW_DEF_DELETED,
@@ -40,8 +41,8 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 _SELECT_COLUMNS = """\
-id, name, description, workflow_type, nodes, edges,
-created_by, created_at, updated_at, version"""
+id, name, description, workflow_type, version, inputs, outputs,
+is_subworkflow, nodes, edges, created_by, created_at, updated_at, revision"""
 
 
 def _deserialize_row(
@@ -52,7 +53,7 @@ def _deserialize_row(
 
     Postgres returns JSONB as Python list/dict (no json.loads needed),
     and TIMESTAMPTZ as timezone-aware datetime. The main work is
-    reconstructing the node/edge models and enums.
+    reconstructing the node/edge/input/output models and enums.
 
     Args:
         row: A single database row with workflow definition columns.
@@ -73,16 +74,21 @@ def _deserialize_row(
         data["edges"] = tuple(
             WorkflowEdge.model_validate(e) for e in (data.get("edges") or [])
         )
-        if "version" in data and isinstance(data["version"], int):
-            data["revision"] = data.pop("version")
-            data.setdefault("version", "1.0.0")
+        data["inputs"] = tuple(
+            WorkflowIODeclaration.model_validate(i) for i in (data.get("inputs") or [])
+        )
+        data["outputs"] = tuple(
+            WorkflowIODeclaration.model_validate(o) for o in (data.get("outputs") or [])
+        )
+        data["is_subworkflow"] = bool(data.get("is_subworkflow", False))
         return WorkflowDefinition.model_validate(data)
     except (ValueError, ValidationError, KeyError, TypeError) as exc:
         msg = f"Failed to deserialize workflow definition {context_id!r}"
-        logger.exception(
+        logger.warning(
             PERSISTENCE_WORKFLOW_DEF_DESERIALIZE_FAILED,
             definition_id=context_id,
-            error=str(exc),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         raise QueryError(msg) from exc
 
@@ -101,23 +107,17 @@ class PostgresWorkflowDefinitionRepository:
     def __init__(self, pool: AsyncConnectionPool) -> None:
         self._pool = pool
 
-    async def save(self, definition: WorkflowDefinition) -> None:
-        """Persist a workflow definition via upsert.
+    def _require_valid_revision(self, definition: WorkflowDefinition) -> None:
+        """Reject obviously-invalid revisions before hitting the DB.
 
-        The upsert enforces optimistic concurrency: updates only
-        succeed when the existing row's version is exactly one
-        behind the incoming version.
-
-        Args:
-            definition: Workflow definition model to persist.
-
-        Raises:
-            QueryError: If the database operation fails.
-            VersionConflictError: If optimistic concurrency check fails.
+        Shared between :meth:`save`, :meth:`update_if_exists`, and
+        :meth:`create_if_absent` so all three write paths fail fast with
+        the same ``QueryError`` instead of hitting the ``revision >= 1``
+        CHECK constraint and surfacing a generic driver error.
         """
         if definition.revision < 1:
             msg = (
-                f"Workflow definition version must be >= 1, got"
+                f"Workflow definition revision must be >= 1, got"
                 f" {definition.revision} for {definition.id!r}"
             )
             logger.warning(
@@ -127,26 +127,193 @@ class PostgresWorkflowDefinitionRepository:
             )
             raise QueryError(msg)
 
+    async def update_if_exists(self, definition: WorkflowDefinition) -> bool:
+        """Conditional UPDATE, returning ``False`` if the row is missing.
+
+        See :meth:`WorkflowDefinitionRepository.update_if_exists`.
+        Same optimistic-concurrency rule as :meth:`save`: UPDATE only
+        applies when the stored row's ``revision`` equals
+        ``definition.revision - 1``.
+        """
+        self._require_valid_revision(definition)
         nodes_jsonb = Jsonb([n.model_dump(mode="json") for n in definition.nodes])
         edges_jsonb = Jsonb([e.model_dump(mode="json") for e in definition.edges])
+        inputs_jsonb = Jsonb([i.model_dump(mode="json") for i in definition.inputs])
+        outputs_jsonb = Jsonb([o.model_dump(mode="json") for o in definition.outputs])
+        try:
+            async with self._pool.connection() as conn, conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    UPDATE workflow_definitions SET
+                        name=%s, description=%s, workflow_type=%s,
+                        version=%s, inputs=%s, outputs=%s,
+                        is_subworkflow=%s, nodes=%s, edges=%s,
+                        updated_at=%s, revision=%s
+                    WHERE id = %s AND revision = %s
+                    """,
+                    (
+                        definition.name,
+                        definition.description,
+                        definition.workflow_type.value,
+                        definition.version,
+                        inputs_jsonb,
+                        outputs_jsonb,
+                        definition.is_subworkflow,
+                        nodes_jsonb,
+                        edges_jsonb,
+                        definition.updated_at,
+                        definition.revision,
+                        definition.id,
+                        definition.revision - 1,
+                    ),
+                )
+                updated = cur.rowcount
+                if updated == 0:
+                    # Row either missing or at a different revision.
+                    # Probe to distinguish the two cases so callers can
+                    # surface precise errors (404 vs 409).
+                    await cur.execute(
+                        "SELECT revision FROM workflow_definitions WHERE id = %s",
+                        (definition.id,),
+                    )
+                    probe = await cur.fetchone()
+                    if probe is None:
+                        await conn.rollback()
+                        return False
+                    msg = (
+                        f"Version conflict updating workflow definition"
+                        f" {definition.id!r}: current revision is {probe[0]},"
+                        f" incoming revision is {definition.revision}"
+                    )
+                    await conn.rollback()
+                    logger.warning(
+                        PERSISTENCE_WORKFLOW_DEF_SAVE_FAILED,
+                        definition_id=definition.id,
+                        error=msg,
+                    )
+                    raise VersionConflictError(msg)
+                await conn.commit()
+        except psycopg.Error as exc:
+            msg = f"Failed to update workflow definition {definition.id!r}"
+            logger.warning(
+                PERSISTENCE_WORKFLOW_DEF_SAVE_FAILED,
+                definition_id=definition.id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        logger.info(
+            PERSISTENCE_WORKFLOW_DEF_SAVED,
+            definition_id=definition.id,
+            revision=definition.revision,
+            operation="update_if_exists",
+        )
+        return True
+
+    async def create_if_absent(self, definition: WorkflowDefinition) -> bool:
+        """Atomic create-or-skip via ``INSERT ... ON CONFLICT DO NOTHING``.
+
+        See :meth:`WorkflowDefinitionRepository.create_if_absent`.
+        """
+        self._require_valid_revision(definition)
+        nodes_jsonb = Jsonb([n.model_dump(mode="json") for n in definition.nodes])
+        edges_jsonb = Jsonb([e.model_dump(mode="json") for e in definition.edges])
+        inputs_jsonb = Jsonb([i.model_dump(mode="json") for i in definition.inputs])
+        outputs_jsonb = Jsonb([o.model_dump(mode="json") for o in definition.outputs])
+        try:
+            async with self._pool.connection() as conn, conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    INSERT INTO workflow_definitions
+                        (id, name, description, workflow_type, version,
+                         inputs, outputs, is_subworkflow, nodes, edges,
+                         created_by, created_at, updated_at, revision)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                            %s, %s, %s, %s)
+                    ON CONFLICT(id) DO NOTHING
+                    """,
+                    (
+                        definition.id,
+                        definition.name,
+                        definition.description,
+                        definition.workflow_type.value,
+                        definition.version,
+                        inputs_jsonb,
+                        outputs_jsonb,
+                        definition.is_subworkflow,
+                        nodes_jsonb,
+                        edges_jsonb,
+                        definition.created_by,
+                        definition.created_at,
+                        definition.updated_at,
+                        definition.revision,
+                    ),
+                )
+                inserted = cur.rowcount > 0
+                await conn.commit()
+        except psycopg.Error as exc:
+            msg = f"Failed to create workflow definition {definition.id!r}"
+            logger.warning(
+                PERSISTENCE_WORKFLOW_DEF_SAVE_FAILED,
+                definition_id=definition.id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        if inserted:
+            logger.info(
+                PERSISTENCE_WORKFLOW_DEF_SAVED,
+                definition_id=definition.id,
+                revision=definition.revision,
+                operation="create_if_absent",
+            )
+        return inserted
+
+    async def save(self, definition: WorkflowDefinition) -> None:
+        """Persist a workflow definition via upsert.
+
+        The upsert enforces optimistic concurrency: updates only
+        succeed when the existing row's ``revision`` is exactly one
+        behind the incoming ``revision``. ``version`` is a free-form
+        semver string with no concurrency semantics.
+
+        Args:
+            definition: Workflow definition model to persist.
+
+        Raises:
+            QueryError: If the database operation fails.
+            VersionConflictError: If optimistic concurrency check fails.
+        """
+        self._require_valid_revision(definition)
+
+        nodes_jsonb = Jsonb([n.model_dump(mode="json") for n in definition.nodes])
+        edges_jsonb = Jsonb([e.model_dump(mode="json") for e in definition.edges])
+        inputs_jsonb = Jsonb([i.model_dump(mode="json") for i in definition.inputs])
+        outputs_jsonb = Jsonb([o.model_dump(mode="json") for o in definition.outputs])
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 if definition.revision > 1:
                     # Update path: optimistic concurrency via WHERE
-                    # version = incoming_version - 1.  If no row exists
-                    # at all this is also a version conflict (you can't
+                    # revision = incoming_revision - 1.  If no row exists
+                    # at all this is also a revision conflict (you can't
                     # "update" a non-existent definition).
                     await cur.execute(
                         """
                         UPDATE workflow_definitions SET
                             name=%s, description=%s, workflow_type=%s,
-                            nodes=%s, edges=%s, updated_at=%s, version=%s
-                        WHERE id = %s AND version = %s
+                            version=%s, inputs=%s, outputs=%s,
+                            is_subworkflow=%s, nodes=%s, edges=%s,
+                            updated_at=%s, revision=%s
+                        WHERE id = %s AND revision = %s
                         """,
                         (
                             definition.name,
                             definition.description,
                             definition.workflow_type.value,
+                            definition.version,
+                            inputs_jsonb,
+                            outputs_jsonb,
+                            definition.is_subworkflow,
                             nodes_jsonb,
                             edges_jsonb,
                             definition.updated_at,
@@ -156,15 +323,16 @@ class PostgresWorkflowDefinitionRepository:
                         ),
                     )
                 else:
-                    # Create path: version == 1.  ON CONFLICT DO NOTHING
+                    # Create path: revision == 1.  ON CONFLICT DO NOTHING
                     # so a duplicate create attempt sets rowcount to 0.
                     await cur.execute(
                         """
                         INSERT INTO workflow_definitions
-                            (id, name, description, workflow_type, nodes,
-                             edges, created_by, created_at, updated_at,
-                             version)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                            (id, name, description, workflow_type, version,
+                             inputs, outputs, is_subworkflow, nodes, edges,
+                             created_by, created_at, updated_at, revision)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                                %s, %s, %s, %s)
                         ON CONFLICT(id) DO NOTHING
                         """,
                         (
@@ -172,6 +340,10 @@ class PostgresWorkflowDefinitionRepository:
                             definition.name,
                             definition.description,
                             definition.workflow_type.value,
+                            definition.version,
+                            inputs_jsonb,
+                            outputs_jsonb,
+                            definition.is_subworkflow,
                             nodes_jsonb,
                             edges_jsonb,
                             definition.created_by,
@@ -183,14 +355,14 @@ class PostgresWorkflowDefinitionRepository:
                 if cur.rowcount == 0:
                     if definition.revision > 1:
                         msg = (
-                            f"Version conflict saving workflow definition"
-                            f" {definition.id!r}: expected version"
+                            f"Revision conflict saving workflow definition"
+                            f" {definition.id!r}: expected revision"
                             f" {definition.revision - 1}, not found"
                         )
                     else:
                         msg = (
                             f"Workflow definition {definition.id!r} already"
-                            f" exists: cannot create version 1 over an"
+                            f" exists: cannot create revision 1 over an"
                             f" existing row"
                         )
                     logger.warning(
@@ -202,10 +374,11 @@ class PostgresWorkflowDefinitionRepository:
                 await conn.commit()
         except psycopg.Error as exc:
             msg = f"Failed to save workflow definition {definition.id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_WORKFLOW_DEF_SAVE_FAILED,
                 definition_id=definition.id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         logger.info(
@@ -240,10 +413,11 @@ class PostgresWorkflowDefinitionRepository:
                 row = await cur.fetchone()
         except psycopg.Error as exc:
             msg = f"Failed to fetch workflow definition {definition_id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_WORKFLOW_DEF_FETCH_FAILED,
                 definition_id=definition_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -300,9 +474,10 @@ class PostgresWorkflowDefinitionRepository:
                 rows = await cur.fetchall()
         except psycopg.Error as exc:
             msg = "Failed to list workflow definitions"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_WORKFLOW_DEF_LIST_FAILED,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -337,10 +512,11 @@ class PostgresWorkflowDefinitionRepository:
                 await conn.commit()
         except psycopg.Error as exc:
             msg = f"Failed to delete workflow definition {definition_id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_WORKFLOW_DEF_DELETE_FAILED,
                 definition_id=definition_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 

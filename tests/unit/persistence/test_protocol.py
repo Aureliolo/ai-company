@@ -414,6 +414,12 @@ class _FakeWorkflowDefinitionRepository:
     async def save(self, definition: WorkflowDefinition) -> None:
         pass
 
+    async def create_if_absent(self, definition: WorkflowDefinition) -> bool:
+        return True
+
+    async def update_if_exists(self, definition: WorkflowDefinition) -> bool:
+        return True
+
     async def get(self, definition_id: NotBlankStr) -> WorkflowDefinition | None:
         return None
 
@@ -665,6 +671,28 @@ class _FakeBackend:
     @property
     def ontology_drift(self) -> Any:
         return None
+
+    @property
+    def project_cost_aggregates(self) -> Any:
+        # Same contract as the real backends: raise rather than silently
+        # returning ``None`` so misuse of this fake fails at the
+        # protocol boundary instead of deep inside a service.
+        msg = "project_cost_aggregates not supported by the protocol-compliance fake"
+        raise NotImplementedError(msg)
+
+    @property
+    def fine_tune_checkpoints(self) -> Any:
+        # Match the contract of the real backends: if the backend does
+        # not implement fine-tune persistence it must raise, not silently
+        # hand back ``None`` that would fail later with a NoneType error
+        # somewhere deep in a service call.
+        msg = "fine_tune_checkpoints not supported by the protocol-compliance fake"
+        raise NotImplementedError(msg)
+
+    @property
+    def fine_tune_runs(self) -> Any:
+        msg = "fine_tune_runs not supported by the protocol-compliance fake"
+        raise NotImplementedError(msg)
 
     def build_lockouts(self, auth_config: Any) -> Any:
         return None
