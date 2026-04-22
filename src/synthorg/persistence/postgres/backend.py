@@ -138,6 +138,7 @@ if TYPE_CHECKING:
         LifecycleEventRepository,
         TaskMetricRepository,
     )
+    from synthorg.ontology.models import EntityDefinition
     from synthorg.persistence.auth_protocol import LockoutRepository
     from synthorg.persistence.circuit_breaker_repo import (
         CircuitBreakerStateRepository,
@@ -170,6 +171,7 @@ if TYPE_CHECKING:
     from synthorg.persistence.workflow_execution_repo import (
         WorkflowExecutionRepository,
     )
+    from synthorg.versioning.service import VersioningService
 
 logger = get_logger(__name__)
 
@@ -724,7 +726,9 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         pool = self.get_db()
         return PostgresEscalationRepository(pool, notify_channel=notify_channel)
 
-    def build_ontology_versioning(self) -> Any:
+    def build_ontology_versioning(
+        self,
+    ) -> VersioningService[EntityDefinition]:
         """Construct the ontology versioning service bound to this backend."""
         from synthorg.ontology.versioning import (  # noqa: PLC0415
             create_postgres_ontology_versioning,

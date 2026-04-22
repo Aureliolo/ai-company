@@ -65,8 +65,10 @@ one level up in `src/synthorg/persistence/`:
 | Protocol module                        | Concerns |
 |----------------------------------------|-----------|
 | `protocol.py` (`PersistenceBackend`)   | Backend aggregate: connect / disconnect, migrate, and accessors for every repository below |
+| `approval_protocol.py`                 | `ApprovalRepository` -- human-in-the-loop decision queue |
 | `auth_protocol.py`                     | `SessionRepository`, `RefreshTokenRepository`, `LockoutRepository` |
 | `escalation_protocol.py`               | Conflict-resolution escalation queue |
+| `fine_tune_protocol.py`                | `FineTuneRunRepository`, `FineTuneCheckpointRepository` |
 | `mcp_protocol.py`                      | MCP catalog installation repository |
 | `memory_protocol.py`                   | Org-memory fact repository with MVCC log + snapshot |
 | `ontology_protocol.py`                 | Ontology entity + drift-report repositories |
@@ -97,6 +99,20 @@ TRIGGER`s enforce "exactly one CEO" and "at least one owner" invariants across
 concurrent writers, and optional capability protocols surface Postgres-native
 features (JSONB analytics, TimescaleDB hypertables) that SQLite callers
 simply do not see.
+
+### Backend capability methods
+
+When an application service needs a subsystem whose construction differs
+between backends -- e.g. ontology versioning that wraps an
+``aiosqlite.Connection`` for SQLite but an ``AsyncConnectionPool`` for
+Postgres -- the pattern is a ``build_*()`` method on ``PersistenceBackend``
+instead of an ``isinstance(persistence, ConcreteBackend)`` branch at the
+call site.  Current examples include ``build_lockouts(auth_config)``,
+``build_escalations(notify_channel)``, and ``build_ontology_versioning()``.
+Callers always type against the protocol; the factory hides the dialect
+choice.  This matches the "no ``isinstance`` against concrete persistence
+backends outside ``persistence/`` or its factory" rule enforced by the
+code audit (ARC-1, #1491).
 
 ## Schema patterns
 

@@ -4,7 +4,7 @@ import asyncio
 import json
 import sqlite3
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import aiosqlite
 from pydantic import BaseModel
@@ -140,6 +140,7 @@ from synthorg.persistence.sqlite.workflow_execution_repo import (
 
 if TYPE_CHECKING:
     from synthorg.api.auth.config import AuthConfig
+    from synthorg.ontology.models import EntityDefinition
     from synthorg.persistence.auth_protocol import LockoutRepository
     from synthorg.persistence.config import SQLiteConfig
     from synthorg.persistence.escalation_protocol import EscalationQueueRepository
@@ -148,6 +149,7 @@ if TYPE_CHECKING:
         FineTuneRunRepository,
     )
     from synthorg.persistence.version_repo import VersionRepository
+    from synthorg.versioning.service import VersioningService
 
 logger = get_logger(__name__)
 
@@ -882,7 +884,9 @@ class SQLitePersistenceBackend:
         db = self.get_db()
         return SQLiteEscalationRepository(db)
 
-    def build_ontology_versioning(self) -> Any:
+    def build_ontology_versioning(
+        self,
+    ) -> VersioningService[EntityDefinition]:
         """Construct the ontology versioning service bound to this backend."""
         from synthorg.ontology.versioning import (  # noqa: PLC0415
             create_ontology_versioning,

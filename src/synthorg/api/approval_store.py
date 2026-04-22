@@ -1,9 +1,10 @@
-"""Approval store with optional SQLite persistence.
+"""Approval store with optional durable persistence.
 
 Provides async CRUD operations for ``ApprovalItem`` instances.
-Designed to be attached to ``AppState``.  When a
-``SQLiteApprovalRepository`` is provided, mutations are persisted
-to the database while the in-memory dict serves as a read cache.
+Designed to be attached to ``AppState``.  When an
+``ApprovalRepository`` (protocol-typed; backend-agnostic) is
+provided, mutations are persisted to the database while the in-memory
+dict serves as a read cache.
 
 Concurrency model
 -----------------
@@ -43,7 +44,8 @@ from synthorg.core.enums import (
     ApprovalRiskLevel,
     ApprovalStatus,
 )
-from synthorg.observability import get_logger
+from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_APPROVAL_CONFLICT,
     API_APPROVAL_EXPIRE_CALLBACK_FAILED,
@@ -60,7 +62,7 @@ logger = get_logger(__name__)
 
 
 class ApprovalStore:
-    """Approval store with in-memory cache and optional SQLite persistence.
+    """Approval store with in-memory cache and optional durable persistence.
 
     Uses a plain ``dict`` for O(1) lookups by ID.  A single instance
     ``asyncio.Lock`` serialises all mutation paths so read-then-write
@@ -72,7 +74,8 @@ class ApprovalStore:
 
     Args:
         on_expire: Optional callback for expired items.
-        repo: Optional SQLite repository for persistence.
+        repo: Optional durable repository for persistence
+            (protocol-typed; backend-agnostic).
     """
 
     def __init__(
@@ -179,7 +182,7 @@ class ApprovalStore:
         *,
         status: ApprovalStatus | None = None,
         risk_level: ApprovalRiskLevel | None = None,
-        action_type: str | None = None,
+        action_type: NotBlankStr | None = None,
     ) -> tuple[ApprovalItem, ...]:
         """List approval items with optional filters.
 
@@ -409,10 +412,11 @@ class ApprovalStore:
                     # failure must not unwind the expiration itself.
                     # Emit a dedicated event so operators can filter
                     # callback failures from successful expirations.
-                    logger.exception(
+                    logger.warning(
                         API_APPROVAL_EXPIRE_CALLBACK_FAILED,
                         approval_id=item.id,
-                        error=type(exc).__name__,
+                        error_type=type(exc).__name__,
+                        error=safe_error_description(exc),
                     )
             return expired
         return item

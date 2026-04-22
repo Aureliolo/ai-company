@@ -4,7 +4,7 @@ Application code depends on this protocol for storage lifecycle
 management.  Repository protocols provide entity-level access.
 """
 
-from typing import Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from synthorg.api.auth.config import AuthConfig  # noqa: TC001
 from synthorg.budget.config import BudgetConfig  # noqa: TC001
@@ -97,6 +97,10 @@ from synthorg.persistence.workflow_definition_repo import (
 from synthorg.persistence.workflow_execution_repo import (
     WorkflowExecutionRepository,  # noqa: TC001
 )
+
+if TYPE_CHECKING:
+    from synthorg.ontology.models import EntityDefinition
+    from synthorg.versioning.service import VersioningService
 
 
 @runtime_checkable
@@ -484,15 +488,15 @@ class PersistenceBackend(Protocol):
         """
         ...
 
-    def build_ontology_versioning(self) -> Any:
+    def build_ontology_versioning(
+        self,
+    ) -> VersioningService[EntityDefinition]:
         """Construct the ontology versioning service bound to this backend.
 
-        Returns a ``VersioningService[EntityDefinition]`` wired to the
-        backend's active DB handle.  SQLite implementations pass their
-        ``aiosqlite.Connection``; Postgres implementations pass their
-        ``AsyncConnectionPool``.  Typed as :class:`Any` here to avoid
-        importing ontology/versioning types into the persistence
-        protocol.
+        Returns a versioning service wired to the backend's active DB
+        handle.  SQLite implementations bind the service to their
+        ``aiosqlite.Connection``; Postgres implementations bind to their
+        ``AsyncConnectionPool``.
 
         Raises:
             PersistenceConnectionError: If the backend is not connected.

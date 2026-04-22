@@ -14,17 +14,17 @@ from synthorg.core.enums import (
     ApprovalRiskLevel,  # noqa: TC001
     ApprovalStatus,  # noqa: TC001
 )
+from synthorg.core.types import NotBlankStr  # noqa: TC001
 
 
 @runtime_checkable
 class ApprovalStoreProtocol(Protocol):
     """CRUD + lifecycle contract for an approval-item store.
 
-    Concrete implementations (currently ``synthorg.api.approval_store
-    .ApprovalStore``) provide an in-memory cache with optional
-    persistence-backed writes.  Consumers depend on this protocol so
-    the storage implementation can evolve without touching the engine,
-    security, or hr layers.
+    Concrete implementations (currently ``synthorg.api.approval_store.ApprovalStore``)
+    provide an in-memory cache with optional persistence-backed writes.
+    Consumers depend on this protocol so the storage implementation can
+    evolve without touching the engine, security, or hr layers.
 
     Methods mirror the public surface of ``ApprovalStore``; private
     helpers (cache invalidation, expiration checks) are not part of
@@ -46,7 +46,7 @@ class ApprovalStoreProtocol(Protocol):
         """
         ...
 
-    async def get(self, approval_id: str) -> ApprovalItem | None:
+    async def get(self, approval_id: NotBlankStr) -> ApprovalItem | None:
         """Get an approval item by ID, applying lazy expiration."""
         ...
 
@@ -55,7 +55,7 @@ class ApprovalStoreProtocol(Protocol):
         *,
         status: ApprovalStatus | None = None,
         risk_level: ApprovalRiskLevel | None = None,
-        action_type: str | None = None,
+        action_type: NotBlankStr | None = None,
     ) -> tuple[ApprovalItem, ...]:
         """List approval items with optional filters."""
         ...
