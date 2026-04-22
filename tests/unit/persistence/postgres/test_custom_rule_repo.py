@@ -166,6 +166,10 @@ class TestEnsureTz:
         aware = datetime(2026, 4, 22, 14, 0, tzinfo=plus_two)
         result = _ensure_tz(aware)
         assert result.tzinfo is UTC
+        # Also assert the converted instant (14:00+02:00 = 12:00 UTC).
+        # A broken ``replace(tzinfo=UTC)`` implementation would still
+        # pass the ``tzinfo is UTC`` check but silently shift the time.
+        assert result == datetime(2026, 4, 22, 12, 0, tzinfo=UTC)
 
 
 class TestRowToDefinition:
@@ -178,19 +182,38 @@ class TestRowToDefinition:
         assert got.severity == rule.severity
         assert got.target_altitudes == rule.target_altitudes
 
-    def test_corrupt_row_raises_query_error(self) -> None:
-        rule = _make_rule()
-        row = _row_for(rule)
-        row["comparator"] = "not-a-real-enum-value"
-        with pytest.raises(QueryError, match="Failed to parse custom rule"):
-            _row_to_definition(row)
+    @pytest.mark.parametrize(
+        ("mutation_label", "apply_mutation"),
+        [
+            (
+                "unknown_comparator_enum_value",
+                lambda row: row.__setitem__("comparator", "not-a-real-enum-value"),
+            ),
+            (
+                "missing_threshold_key",
+                lambda row: row.pop("threshold", None),
+            ),
+        ],
+    )
+    def test_bad_row_raises_query_error(
+        self,
+        mutation_label: str,
+        apply_mutation: Any,
+    ) -> None:
+        """Any row that cannot be deserialised becomes a ``QueryError``.
 
-    def test_missing_key_raises_query_error(self) -> None:
+        The concrete failures -- unknown enum value, missing column,
+        bad type -- all flow through the same ``(ValueError, TypeError,
+        KeyError)`` handler in ``_row_to_definition`` that logs
+        ``META_CUSTOM_RULE_FETCH_FAILED`` before re-raising. One
+        parametrized test keeps that contract in a single place.
+        """
         rule = _make_rule()
         row = _row_for(rule)
-        del row["threshold"]
+        apply_mutation(row)
         with pytest.raises(QueryError, match="Failed to parse custom rule"):
             _row_to_definition(row)
+        assert mutation_label  # pin label in assertion for test output
 
 
 # ──────────────────────────────────────────────────────────────────────────────

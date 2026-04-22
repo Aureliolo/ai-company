@@ -374,3 +374,32 @@ class TestEvalLoopCoordinatorProposeActions:
         assert len(malformed) == 1, (
             f"expected one malformed_pattern warning; got {cap!r}"
         )
+
+    async def test_empty_pillar_after_colon_skipped(self) -> None:
+        """``"weakness:"`` (colon but empty pillar) is treated as unmapped.
+
+        The coordinator splits on ``":"`` so the pillar name ends up
+        empty; neither the operator override nor
+        ``_DEFAULT_PATTERN_ACTIONS`` has an entry keyed by ``""``.
+        The expected behaviour is a WARNING-logged skip with
+        ``reason="unmapped_pattern"`` -- there is no action for an
+        empty pillar name and silently dropping it would hide
+        configuration bugs.
+        """
+        import structlog
+
+        from synthorg.observability.events.eval_loop import (
+            EVAL_LOOP_ACTION_PROPOSED,
+        )
+
+        coordinator = _make_coordinator()
+        with structlog.testing.capture_logs() as cap:
+            actions = await coordinator._propose_actions(("weakness:",))
+        assert actions == ()
+        unmapped = [
+            rec
+            for rec in cap
+            if rec.get("event") == EVAL_LOOP_ACTION_PROPOSED
+            and rec.get("reason") == "unmapped_pattern"
+        ]
+        assert len(unmapped) == 1, f"expected one unmapped_pattern warning; got {cap!r}"

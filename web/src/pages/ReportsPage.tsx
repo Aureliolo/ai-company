@@ -31,8 +31,21 @@ interface ReportPeriodCardProps {
   onGenerate: (period: ReportPeriod) => void
 }
 
+// Single source of truth for turning a ``ReportPeriod`` token
+// (``'monthly'``, ``'quarterly'``, ``'day_7'``, ...) into a
+// user-facing label. Capitalises words and normalises
+// snake_case / kebab-case separators to spaces so every UI
+// surface renders periods identically.
+function formatReportPeriod(period: ReportPeriod): string {
+  return period
+    .split(/[-_]/)
+    .filter((part) => part.length > 0)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
+}
+
 function ReportPeriodCard({ period, generating, onGenerate }: ReportPeriodCardProps) {
-  const title = period.charAt(0).toUpperCase() + period.slice(1)
+  const title = formatReportPeriod(period)
   const isBusy = generating !== null
   const isThisPeriodBusy = generating === period
   return (
@@ -137,7 +150,7 @@ export default function ReportsPage() {
         toast({
           variant: 'success',
           title: 'Report generated',
-          description: `${period} report ready.`,
+          description: `${formatReportPeriod(period)} report ready.`,
         })
       } catch (err) {
         log.error('generateReport', err)
@@ -195,7 +208,7 @@ export default function ReportsPage() {
 
       {report ? (
         <SectionCard
-          title={`Latest ${report.period} report`}
+          title={`Latest ${formatReportPeriod(report.period)} report`}
           icon={FileText}
         >
           <MetadataGrid

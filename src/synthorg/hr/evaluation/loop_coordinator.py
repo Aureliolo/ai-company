@@ -56,16 +56,21 @@ from synthorg.observability.events.eval_loop import (
 # mapping are non-blank by construction, but Pydantic validates
 # them at config-load time when operators override the mapping via
 # ``EvalLoopConfig.pattern_action_map`` (see that field).
-_DEFAULT_PATTERN_ACTIONS: Final[MappingProxyType[NotBlankStr, NotBlankStr]] = (
-    MappingProxyType(
-        {
-            EvaluationPillar.INTELLIGENCE.value: "increase_review_depth",
-            EvaluationPillar.EFFICIENCY.value: "tighten_cost_budget",
-            EvaluationPillar.RESILIENCE.value: "add_recovery_training",
-            EvaluationPillar.GOVERNANCE.value: "expand_audit_coverage",
-            EvaluationPillar.EXPERIENCE.value: "improve_tone_training",
-        },
-    )
+# Keys are plain ``str`` to match ``EvalLoopConfig.pattern_action_map``
+# (``dict[str, NotBlankStr]``): pattern keys come from
+# ``EvaluationPillar.value`` (already non-blank by construction) and
+# lookup sites ``.get(pillar)`` against both the default and the
+# operator override, so the two containers must agree on key type.
+# Values stay ``NotBlankStr`` so blank action ids are rejected
+# statically + at Pydantic config-load time.
+_DEFAULT_PATTERN_ACTIONS: Final[MappingProxyType[str, NotBlankStr]] = MappingProxyType(
+    {
+        EvaluationPillar.INTELLIGENCE.value: "increase_review_depth",
+        EvaluationPillar.EFFICIENCY.value: "tighten_cost_budget",
+        EvaluationPillar.RESILIENCE.value: "add_recovery_training",
+        EvaluationPillar.GOVERNANCE.value: "expand_audit_coverage",
+        EvaluationPillar.EXPERIENCE.value: "improve_tone_training",
+    },
 )
 
 logger = get_logger(__name__)

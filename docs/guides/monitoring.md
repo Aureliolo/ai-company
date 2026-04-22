@@ -65,7 +65,7 @@ The endpoint is unauthenticated by default; put it behind your normal scrape-ACL
 | `synthorg_agent_identity_version_changes_total` | Counter | `agent_id`, `change_type` | Identity-version lifecycle events. ``change_type`` is bounded to ``created`` / ``updated`` / ``rolled_back`` / ``archived`` by the collector (``VALID_IDENTITY_CHANGE_TYPES``). |
 | `synthorg_workflow_execution_seconds` | Histogram | `workflow_definition_id`, `status` | Workflow execution duration (``workflow_definition_id`` is the stable definition id, bounded). ``status`` is bounded to ``completed`` / ``failed`` / ``cancelled`` / ``timeout`` by the collector (``VALID_WORKFLOW_EXECUTION_STATUSES``). |
 
-Bounded-label values are enforced at record time in `observability/prometheus_labels.py` -- PromQL filters that reference values outside the lists above will never match data.
+Bounded-label values are enforced at record time in `src/synthorg/observability/prometheus_labels.py` -- PromQL filters that reference values outside the lists above will never match data.
 
 ## Suggested PromQL queries
 

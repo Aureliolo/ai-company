@@ -347,7 +347,7 @@ class MultiAgentCoordinator:
             logger.warning(
                 COORDINATION_CLEANUP_FAILED,
                 parent_task_id=task.id,
-                error=str(attr_exc),
+                error=safe_error_description(attr_exc),
                 context="post_completion_attribution_build",
             )
 
@@ -362,7 +362,7 @@ class MultiAgentCoordinator:
                 logger.warning(
                     COORDINATION_CLEANUP_FAILED,
                     parent_task_id=task.id,
-                    error=str(tracker_exc),
+                    error=safe_error_description(tracker_exc),
                     context="post_completion_tracker_write",
                 )
 
@@ -402,7 +402,7 @@ class MultiAgentCoordinator:
                 error=safe_error_description(exc),
             )
             phases.append(phase)
-            msg = f"Decomposition failed: {exc}"
+            msg = f"Decomposition failed: {safe_error_description(exc)}"
             raise CoordinationPhaseError(
                 msg,
                 phase=phase_name,
@@ -459,7 +459,7 @@ class MultiAgentCoordinator:
                 error=safe_error_description(exc),
             )
             phases.append(phase)
-            msg = f"Routing failed: {exc}"
+            msg = f"Routing failed: {safe_error_description(exc)}"
             raise CoordinationPhaseError(
                 msg,
                 phase=phase_name,
@@ -605,7 +605,7 @@ class MultiAgentCoordinator:
                 error=safe_error_description(exc),
             )
             phases.append(phase)
-            msg = f"Dispatch failed: {exc}"
+            msg = f"Dispatch failed: {safe_error_description(exc)}"
             raise CoordinationPhaseError(
                 msg,
                 phase=phase_name,
