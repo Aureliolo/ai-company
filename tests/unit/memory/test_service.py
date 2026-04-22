@@ -170,7 +170,29 @@ class _FakeSettingsService:
 class TestMemoryServiceCheckpoints:
     """Happy-path coverage for list / get / delete."""
 
-    async def test_list_checkpoints_returns_page(self) -> None:
+    @pytest.mark.parametrize(
+        ("limit", "offset", "expected_ids"),
+        [
+            # Full page covers both rows (unordered set comparison).
+            (10, 0, ("a", "b")),
+            # Bounded: non-zero offset skips the first row.
+            (1, 1, ("b",)),
+            # Bounded: offset past the end returns an empty page.
+            (10, 5, ()),
+        ],
+    )
+    async def test_list_checkpoints_paginates(
+        self,
+        limit: int,
+        offset: int,
+        expected_ids: tuple[str, ...],
+    ) -> None:
+        """``list_checkpoints`` honours bounded limit/offset.
+
+        Parametrized over the three interesting cases -- full-page,
+        skip-leading, and past-end -- so adding another case is a
+        one-line tuple rather than a whole new test.
+        """
         repo = _FakeCheckpointRepo()
         await repo.save_checkpoint(_checkpoint(checkpoint_id="a"))
         await repo.save_checkpoint(_checkpoint(checkpoint_id="b"))
@@ -180,22 +202,8 @@ class TestMemoryServiceCheckpoints:
             settings_service=None,
         )
 
-        page = await service.list_checkpoints(limit=10, offset=0)
-        assert {c.id for c in page} == {"a", "b"}
-
-    async def test_list_checkpoints_respects_limit_and_offset(self) -> None:
-        """Bounded pagination: non-zero offset skips leading rows."""
-        repo = _FakeCheckpointRepo()
-        await repo.save_checkpoint(_checkpoint(checkpoint_id="a"))
-        await repo.save_checkpoint(_checkpoint(checkpoint_id="b"))
-        service = MemoryService(
-            checkpoint_repo=repo,
-            run_repo=_FakeRunRepo(),
-            settings_service=None,
-        )
-
-        page = await service.list_checkpoints(limit=1, offset=1)
-        assert [c.id for c in page] == ["b"]
+        page = await service.list_checkpoints(limit=limit, offset=offset)
+        assert tuple(sorted(c.id for c in page)) == tuple(sorted(expected_ids))
 
     async def test_get_checkpoint_miss_returns_none(self) -> None:
         service = MemoryService(
