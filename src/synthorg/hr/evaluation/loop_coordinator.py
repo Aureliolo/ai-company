@@ -73,6 +73,30 @@ _DEFAULT_PATTERN_ACTIONS: Final[MappingProxyType[str, NotBlankStr]] = MappingPro
     },
 )
 
+# Fail-fast drift guard: if a new ``EvaluationPillar`` is added but
+# ``_DEFAULT_PATTERN_ACTIONS`` isn't updated, module import raises so
+# ``_identify_patterns`` / ``_propose_actions`` can never run against
+# an incomplete mapping (which would silently drop actions for the
+# missing pillar). The check runs at import time (equivalent of a
+# unit test) so the guard is exercised every time the module loads.
+_EXPECTED_PATTERN_KEYS: Final[frozenset[str]] = frozenset(
+    p.value for p in EvaluationPillar
+)
+if set(_DEFAULT_PATTERN_ACTIONS.keys()) != _EXPECTED_PATTERN_KEYS:
+    _missing = _EXPECTED_PATTERN_KEYS - set(_DEFAULT_PATTERN_ACTIONS.keys())
+    _extra = set(_DEFAULT_PATTERN_ACTIONS.keys()) - _EXPECTED_PATTERN_KEYS
+    _msg = (
+        "_DEFAULT_PATTERN_ACTIONS drifted from EvaluationPillar enum: "
+        f"missing={sorted(_missing)!r}, extra={sorted(_extra)!r}"
+    )
+    raise ImportError(_msg)
+
+# Pattern kinds the ``_propose_actions`` mapper understands.  Any
+# pattern whose prefix is not in this set is logged + skipped so a
+# drifted detector cannot silently emit bogus actions via an unknown
+# prefix (e.g. ``"strength:intelligence"``).
+_SUPPORTED_PATTERN_KINDS: Final[frozenset[str]] = frozenset({"weakness"})
+
 logger = get_logger(__name__)
 
 
@@ -353,7 +377,20 @@ class EvalLoopCoordinator:
                     pattern=pattern,
                 )
                 continue
-            _, pillar = pattern.split(":", 1)
+            kind, pillar = pattern.split(":", 1)
+            if kind not in _SUPPORTED_PATTERN_KINDS:
+                # A future detector may emit non-``weakness`` prefixes
+                # (e.g. ``"strength:intelligence"``). Until a mapping
+                # for that kind is wired, skip with a WARNING so the
+                # unknown prefix cannot silently bypass the mapping.
+                logger.warning(
+                    EVAL_LOOP_ACTION_PROPOSED,
+                    action_count=0,
+                    reason="unknown_pattern_kind",
+                    pattern=pattern,
+                    kind=kind,
+                )
+                continue
             mapped = override.get(pillar) or _DEFAULT_PATTERN_ACTIONS.get(pillar)
             if not mapped:
                 logger.warning(

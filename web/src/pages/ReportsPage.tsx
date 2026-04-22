@@ -62,6 +62,15 @@ function ReportPeriodCard({ period, generating, onGenerate }: ReportPeriodCardPr
   )
 }
 
+// Only the ``boolean``-valued keys of ``ReportResponse`` are valid
+// checklist fields -- narrowing the type here means that a future
+// ``ReportResponse`` change that replaces one of the ``has_*`` booleans
+// with, say, a ``string`` or ``number`` triggers a compile-time error
+// on the constant below rather than a runtime rendering bug.
+type BooleanKeys<T> = {
+  [K in keyof T]: T[K] extends boolean ? K : never
+}[keyof T]
+
 // Driven table for the "Sections present" checklist rendered inside
 // the generated-report MetadataGrid. Keeps the four items as data so
 // the JSX inside the map stays under 8 lines and new report sections
@@ -72,7 +81,7 @@ const REPORT_CHECKLIST_FIELDS = [
   { key: 'has_task_completion', label: 'Task completion' },
   { key: 'has_risk_trends', label: 'Risk trends' },
 ] as const satisfies ReadonlyArray<{
-  key: keyof ReportResponse
+  key: BooleanKeys<ReportResponse>
   label: string
 }>
 

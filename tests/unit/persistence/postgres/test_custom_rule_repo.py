@@ -183,21 +183,15 @@ class TestRowToDefinition:
         assert got.target_altitudes == rule.target_altitudes
 
     @pytest.mark.parametrize(
-        ("mutation_label", "apply_mutation"),
+        "apply_mutation",
         [
-            (
-                "unknown_comparator_enum_value",
-                lambda row: row.__setitem__("comparator", "not-a-real-enum-value"),
-            ),
-            (
-                "missing_threshold_key",
-                lambda row: row.pop("threshold", None),
-            ),
+            lambda row: row.__setitem__("comparator", "not-a-real-enum-value"),
+            lambda row: row.pop("threshold", None),
         ],
+        ids=["unknown_comparator_enum_value", "missing_threshold_key"],
     )
     def test_bad_row_raises_query_error(
         self,
-        mutation_label: str,
         apply_mutation: Any,
     ) -> None:
         """Any row that cannot be deserialised becomes a ``QueryError``.
@@ -206,14 +200,14 @@ class TestRowToDefinition:
         bad type -- all flow through the same ``(ValueError, TypeError,
         KeyError)`` handler in ``_row_to_definition`` that logs
         ``META_CUSTOM_RULE_FETCH_FAILED`` before re-raising. One
-        parametrized test keeps that contract in a single place.
+        parametrized test (with ``ids=`` for readable pytest output)
+        keeps that contract in a single place.
         """
         rule = _make_rule()
         row = _row_for(rule)
         apply_mutation(row)
         with pytest.raises(QueryError, match="Failed to parse custom rule"):
             _row_to_definition(row)
-        assert mutation_label  # pin label in assertion for test output
 
 
 # ──────────────────────────────────────────────────────────────────────────────

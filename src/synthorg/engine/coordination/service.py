@@ -224,10 +224,21 @@ class MultiAgentCoordinator:
             topology_start = time.monotonic()
             try:
                 topology = self._resolve_topology(routing_result)
-            except CoordinationPhaseError:
-                # Already a coordination-phase error (e.g. mixed
-                # topologies in routing); _resolve_topology logged and
-                # appended the phase marker itself.
+            except CoordinationPhaseError as phase_exc:
+                # ``_resolve_topology`` raises ``CoordinationPhaseError``
+                # for mixed-topology routing but does NOT append a phase
+                # marker itself -- record the failure here so the phase
+                # list surfaces the topology-resolution step, mirroring
+                # the decomposition/routing/dispatch handlers below.
+                elapsed = time.monotonic() - topology_start
+                phases.append(
+                    CoordinationPhaseResult(
+                        phase=topology_phase,
+                        success=False,
+                        duration_seconds=elapsed,
+                        error=safe_error_description(phase_exc),
+                    )
+                )
                 raise
             except MemoryError, RecursionError:
                 raise
