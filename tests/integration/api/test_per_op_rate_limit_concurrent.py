@@ -17,10 +17,12 @@ endpoint that does not require a fine-tune orchestrator) to
 succeed and four must return 429 with ``error_code=5002``.
 """
 
+import time
 from collections.abc import AsyncGenerator, Generator
 from concurrent.futures import ThreadPoolExecutor
+from threading import Event as ThreadingEvent
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from litestar.testing import TestClient
@@ -48,6 +50,12 @@ _TEST_PASSWORD = "secure-pass-12chars"
 # -- the whole point of this test is to confirm the decorator's
 # ``max_requests=10`` fires after 10 successes.
 _AGENTS_CREATE_MAX_REQUESTS = 10
+
+
+def _release_after(release: ThreadingEvent, delay: float) -> None:
+    """Sleep for ``delay`` seconds then release the barrier."""
+    time.sleep(delay)
+    release.set()
 
 
 @pytest.fixture(autouse=True)
@@ -184,7 +192,13 @@ class TestConcurrentBurstAgainstAgentsCreate:
             }
 
         concurrency = 100
-        with ThreadPoolExecutor(max_workers=32) as pool:
+        # ``max_workers`` must match the submission count so all 100
+        # requests actually race for the permit at the same time.  A
+        # smaller pool would queue 68 of them and turn the SEC-2
+        # acceptance criterion ("100-way concurrent burst") into a
+        # serialised walk through the bucket, weakening the race the
+        # guard is supposed to handle.
+        with ThreadPoolExecutor(max_workers=concurrency) as pool:
             futures = [
                 pool.submit(authed_client.post, "/api/v1/agents/", json=_payload(i))
                 for i in range(concurrency)
@@ -255,10 +269,33 @@ class TestConcurrencyGuardAgainstFinetunePreflight:
             fake_message_bus,
             concurrency_overrides={"memory.fine_tune_preflight": 1},
         )
-        # Monkey-patch the fine_tune_preflight inflight opt on the route
-        # handler so the middleware actually sees it; the decorator value
-        # is absent by default.  We re-use the config override to pick
-        # the max_inflight=1 value; any non-None opt suffices to opt-in.
+        # Shared barrier: the first request enters the preflight checks
+        # (which run on the asyncio thread pool), blocks on ``release``,
+        # and holds the permit while the other four hit the middleware
+        # and are denied with 5002.  Patching the inner sync helper is
+        # the least invasive hook -- the handler stays untouched and
+        # ``threading.Event`` is natural for code running on a worker
+        # thread via ``asyncio.to_thread``.
+        release = ThreadingEvent()
+
+        def _held_preflight_checks(*_args: Any, **_kwargs: Any) -> tuple[Any, ...]:
+            # ``to_thread`` runs this synchronously in a worker, so a
+            # threading ``wait`` is the right primitive here.  5s cap
+            # so a misuse cannot wedge the suite.
+            release.wait(5.0)
+            return ()
+
+        def _held_batch_size() -> int:
+            return 1
+
+        # The handler invokes two helpers via ``asyncio.to_thread``;
+        # patch both so the overall ``TaskGroup`` blocks deterministically.
+        from synthorg.api.controllers import (
+            memory as _memory_mod,
+        )
+
+        # Monkey-patch the inflight opt so the middleware actually
+        # inspects this route.  The opt is a plain dict and settable.
         found = False
         for route in app.routes:
             for handler in getattr(route, "route_handlers", []) or []:
@@ -273,7 +310,19 @@ class TestConcurrencyGuardAgainstFinetunePreflight:
                     found = True
         assert found, "run_preflight handler not found on the app"
 
-        with TestClient(app) as client:
+        with (
+            patch.object(
+                _memory_mod,
+                "_run_preflight_checks",
+                _held_preflight_checks,
+            ),
+            patch.object(
+                _memory_mod,
+                "_recommend_batch_size",
+                _held_batch_size,
+            ),
+            TestClient(app) as client,
+        ):
             resp = client.post(
                 "/api/v1/auth/setup",
                 json={"username": _TEST_USERNAME, "password": _TEST_PASSWORD},
@@ -289,22 +338,41 @@ class TestConcurrencyGuardAgainstFinetunePreflight:
                 "source_dir": "/tmp/fake-source",  # noqa: S108 -- test payload; never written
                 "base_model": "test-small-001",
             }
-            with ThreadPoolExecutor(max_workers=5) as pool:
-                futures = [
-                    pool.submit(
-                        client.post,
-                        "/api/v1/admin/memory/fine-tune/preflight",
-                        json=payload,
-                    )
-                    for _ in range(5)
-                ]
+
+            def _fire() -> Any:
+                return client.post(
+                    "/api/v1/admin/memory/fine-tune/preflight",
+                    json=payload,
+                )
+
+            concurrency = 5
+            with ThreadPoolExecutor(max_workers=concurrency + 1) as pool:
+                futures = [pool.submit(_fire) for _ in range(concurrency)]
+                # Release the barrier after the dispatch has happened
+                # so the first request holds the permit while the four
+                # siblings hit the middleware and are denied.  The
+                # 50 ms window is big enough for the TestClient
+                # transport to dispatch all five requests on any
+                # reasonable runner; the barrier's own 5s timeout
+                # guarantees we never hang on a slow scheduler.
+                pool.submit(_release_after, release, 0.05)
                 responses = [f.result() for f in futures]
 
-        # Preflight runs synchronously fast, so concurrency is effectively
-        # sequential once the first acquires the permit.  We assert the
-        # invariant rather than a hard count: at most one inflight at a
-        # time, and any 429s must be concurrency denials (error_code 5002).
+        # Litestar defaults POST success to 201.
+        successes = [r for r in responses if r.status_code == 201]
         concurrency_denials = [r for r in responses if r.status_code == 429]
+        # Exact split: one holder + (concurrency - 1) denials.  Any
+        # deviation means the middleware did not actually cap at 1
+        # inflight and is a regression worth failing on.
+        assert len(successes) == 1, (
+            f"Expected exactly 1 success with max_inflight=1, got "
+            f"{len(successes)}; statuses: {[r.status_code for r in responses]}"
+        )
+        assert len(concurrency_denials) == concurrency - 1, (
+            f"Expected {concurrency - 1} concurrency denials, got "
+            f"{len(concurrency_denials)}; statuses: "
+            f"{[r.status_code for r in responses]}"
+        )
         for resp in concurrency_denials:
             body = resp.json()
             assert body["error_detail"]["error_code"] == 5002

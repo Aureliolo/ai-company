@@ -1,11 +1,12 @@
 """API namespace setting definitions.
 
-Registers 22 settings covering server, TLS, CORS, rate limiting
+Registers 31 settings covering server, TLS, CORS, rate limiting
 (global + per-operation sliding-window + per-operation inflight),
-authentication, and setup.  Seven are runtime-editable; fifteen are
-bootstrap-only (``restart_required=True``) because Litestar bakes
-middleware, rate-limit budgets, and CORS into the application at
-construction time.
+authentication, and setup.  Eleven are runtime-editable (picked up by
+the matching ``SettingsSubscriber`` on change); the remaining twenty
+are ``restart_required=True`` because Litestar bakes middleware,
+rate-limit budgets, CORS origins, and store backends into the
+application at construction time.
 """
 
 from synthorg.settings.enums import SettingLevel, SettingNamespace, SettingType
@@ -301,13 +302,15 @@ _r.register(
         default="memory",
         description=(
             "Backend for per-operation sliding-window rate limiter."
-            " 'memory' is process-local; 'redis' is reserved for"
-            " cross-worker fairness (not yet implemented)."
+            " Only 'memory' (process-local) ships today; a Redis"
+            " adapter for cross-worker fairness is planned but not"
+            " yet implemented, so it is intentionally not listed as"
+            " a selectable option until the factory supports it."
         ),
         group="Rate Limiting",
         level=SettingLevel.ADVANCED,
         restart_required=True,
-        enum_values=("memory", "redis"),
+        enum_values=("memory",),
         yaml_path="api.per_op_rate_limit.backend",
     )
 )
@@ -357,13 +360,15 @@ _r.register(
         default="memory",
         description=(
             "Backend for per-operation inflight limiter."
-            " 'memory' is process-local; 'redis' is reserved for"
-            " cross-worker fairness (not yet implemented)."
+            " Only 'memory' (process-local) ships today; a Redis"
+            " adapter for cross-worker fairness is planned but not"
+            " yet implemented, so it is intentionally not listed as"
+            " a selectable option until the factory supports it."
         ),
         group="Rate Limiting",
         level=SettingLevel.ADVANCED,
         restart_required=True,
-        enum_values=("memory", "redis"),
+        enum_values=("memory",),
         yaml_path="api.per_op_concurrency.backend",
     )
 )

@@ -12,14 +12,20 @@ list and centralises validation of ``operation`` / ``max_inflight`` /
 silently becoming no-ops at request time.
 """
 
-from typing import Any
+from typing import Any, Final, get_args
 
-from synthorg.api.rate_limits._subject import KeyPolicy  # noqa: TC001
+from synthorg.api.rate_limits._subject import KeyPolicy
 from synthorg.api.rate_limits.inflight_middleware import OPT_KEY
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_APP_STARTUP
 
 logger = get_logger(__name__)
+
+# Runtime view of the ``KeyPolicy`` literal alias so a typo like
+# ``key="usr"`` fails at import time rather than surviving to request
+# time and silently bucketing the caller under ``ip:...``.  Kept in
+# lockstep with the alias in ``_subject.py`` via ``typing.get_args``.
+_VALID_KEY_POLICIES: Final[tuple[str, ...]] = get_args(KeyPolicy)
 
 
 def per_op_concurrency(
@@ -71,6 +77,17 @@ def per_op_concurrency(
             guard="per_op_concurrency",
             operation=operation,
             max_inflight=max_inflight,
+            error=msg,
+        )
+        raise ValueError(msg)
+    if key not in _VALID_KEY_POLICIES:
+        msg = f"key must be one of {_VALID_KEY_POLICIES!r}, got {key!r}"
+        logger.warning(
+            API_APP_STARTUP,
+            guard="per_op_concurrency",
+            operation=operation,
+            max_inflight=max_inflight,
+            key=str(key),
             error=msg,
         )
         raise ValueError(msg)

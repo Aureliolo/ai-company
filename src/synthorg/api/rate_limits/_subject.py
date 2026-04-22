@@ -127,8 +127,18 @@ def client_ip(connection: ASGIConnection[Any, Any, Any, Any]) -> str:
         if forwarded:
             hops = [h.strip() for h in forwarded.split(",") if h.strip()]
             for hop in reversed(hops):
-                if not _ip_in_networks(hop, trusted_networks):
-                    return hop
+                if _ip_in_networks(hop, trusted_networks):
+                    continue
+                # Validate the hop is a real IP before returning it as a
+                # subject key.  Otherwise a caller behind a trusted proxy
+                # could send ``X-Forwarded-For: garbage, 10.0.0.1`` and
+                # get bucketed under ``ip:garbage``, then rotate
+                # arbitrary strings to evade both tiers of the guard.
+                try:
+                    ipaddress.ip_address(hop)
+                except ValueError:
+                    continue
+                return hop
     return peer or "unknown"
 
 

@@ -9,7 +9,7 @@ overrides take effect without a restart.
 
 import math
 from collections.abc import Awaitable, Callable  # noqa: TC003
-from typing import Any
+from typing import Any, Final, get_args
 
 from litestar.connection import ASGIConnection  # noqa: TC002
 from litestar.handlers.base import BaseRouteHandler  # noqa: TC002
@@ -27,6 +27,11 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_APP_STARTUP, API_GUARD_DENIED
 
 logger = get_logger(__name__)
+
+# Runtime view of ``KeyPolicy`` so a typo in the decorator (e.g.
+# ``key="usr"``) fails at import time instead of surviving to request
+# time and silently bucketing under ``ip:...``.
+_VALID_KEY_POLICIES: Final[tuple[str, ...]] = get_args(KeyPolicy)
 
 
 def _read_live_config(state: Any) -> PerOpRateLimitConfig | None:
@@ -174,6 +179,18 @@ def per_op_rate_limit(
             operation=operation,
             max_requests=max_requests,
             window_seconds=window_seconds,
+            error=msg,
+        )
+        raise ValueError(msg)
+    if key not in _VALID_KEY_POLICIES:
+        msg = f"key must be one of {_VALID_KEY_POLICIES!r}, got {key!r}"
+        logger.warning(
+            API_APP_STARTUP,
+            guard="per_op_rate_limit",
+            operation=operation,
+            max_requests=max_requests,
+            window_seconds=window_seconds,
+            key=str(key),
             error=msg,
         )
         raise ValueError(msg)

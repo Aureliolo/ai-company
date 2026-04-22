@@ -157,17 +157,27 @@ class TestClientIp:
         assert client_ip(conn) == "10.0.0.1"
 
     def test_trusted_peer_malformed_xff_entry_skipped(self) -> None:
-        # Bad entry in XFF cannot be checked for membership; the
-        # helper must treat it as "not in trusted set" (i.e. attacker
-        # content) and return that raw hop so the log-stream records
-        # the actually-observed value rather than silently falling
-        # back to the peer.
+        # Bad entries in XFF are ignored -- otherwise a caller behind
+        # a trusted proxy could rotate garbage strings to evade both
+        # rate-limit tiers by sitting in distinct buckets for each.
+        # After skipping the garbage, the helper falls back to the
+        # next untrusted hop (none here, so the peer).
         conn = _connection(
             peer="10.0.0.1",
             headers={"x-forwarded-for": "not-an-ip, 10.0.0.2"},
             trusted_proxies=frozenset({"10.0.0.0/8"}),
         )
-        assert client_ip(conn) == "not-an-ip"
+        assert client_ip(conn) == "10.0.0.1"
+
+    def test_trusted_peer_valid_hop_after_garbage_is_returned(self) -> None:
+        # Garbage is skipped, but a valid untrusted IP further left
+        # in the chain is still accepted as the real client.
+        conn = _connection(
+            peer="10.0.0.1",
+            headers={"x-forwarded-for": "203.0.113.9, not-an-ip, 10.0.0.2"},
+            trusted_proxies=frozenset({"10.0.0.0/8"}),
+        )
+        assert client_ip(conn) == "203.0.113.9"
 
     def test_no_peer_metadata_returns_unknown(self) -> None:
         conn = _connection(peer=None)

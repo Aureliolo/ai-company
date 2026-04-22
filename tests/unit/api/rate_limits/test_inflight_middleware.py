@@ -10,6 +10,7 @@ spec that mirrors this pattern.
 
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
+from threading import Event as ThreadingEvent
 from typing import Any
 
 import httpx
@@ -26,7 +27,24 @@ from synthorg.api.rate_limits.inflight_middleware import PerOpConcurrencyMiddlew
 
 pytestmark = pytest.mark.unit
 
-_HOLD_SECONDS = 0.3
+# Bounded timeout on the per-handler hold so a bug that forgets to
+# call ``release()`` cannot wedge the suite -- 5s is far longer than
+# any legitimate test path needs and still below the pytest per-test
+# timeout (30s) so the failure surfaces as "hold never released"
+# rather than a generic test timeout.
+_HOLD_TIMEOUT_SECONDS = 5.0
+
+
+async def _wait_for_release(release: ThreadingEvent) -> None:
+    """Park a handler coroutine on ``release`` via a worker thread.
+
+    ``asyncio.to_thread`` hands the blocking wait off to the default
+    thread pool, yielding the event loop so the TestClient transport
+    can dispatch sibling requests that should be denied by the
+    middleware.  Replaces the previous ``asyncio.sleep(0.3)`` pattern
+    which made the unit suite timing-sensitive under ``-n 8``.
+    """
+    await asyncio.to_thread(release.wait, _HOLD_TIMEOUT_SECONDS)
 
 
 def _make_test_app(
@@ -54,11 +72,34 @@ def _fire_concurrent_posts(
     client: TestClient[Any],
     path: str,
     count: int,
+    *,
+    release: ThreadingEvent | None = None,
+    release_delay_seconds: float = 0.05,
 ) -> list[httpx.Response]:
-    """Fire ``count`` POSTs in parallel via a thread pool."""
-    with ThreadPoolExecutor(max_workers=count) as pool:
+    """Fire ``count`` POSTs in parallel via a thread pool.
+
+    When ``release`` is provided the helper spins up an extra worker
+    that sleeps ``release_delay_seconds`` then calls ``release.set()``
+    so the permit-holder unblocks AFTER the sibling requests have
+    been dispatched into the middleware.  The delay is small enough
+    that the total wall-clock cost is trivial and the release is
+    deterministic -- unlike the old ``asyncio.sleep(0.3)`` pattern
+    which raced against scheduler jitter.
+    """
+    worker_count = count + (1 if release is not None else 0)
+    with ThreadPoolExecutor(max_workers=worker_count) as pool:
         futures = [pool.submit(client.post, path) for _ in range(count)]
+        if release is not None:
+            pool.submit(_release_after, release, release_delay_seconds)
         return [f.result() for f in futures]
+
+
+def _release_after(release: ThreadingEvent, delay: float) -> None:
+    """Sleep for ``delay`` then release the barrier (worker thread)."""
+    import time as _time
+
+    _time.sleep(delay)
+    release.set()
 
 
 class TestUnannotatedHandlersPassThrough:
@@ -79,17 +120,18 @@ class TestConcurrencyEnforcement:
 
     def test_concurrent_requests_partially_denied(self) -> None:
         """5 concurrent requests with max_inflight=2 -> 2 ok, 3 denied."""
+        release = ThreadingEvent()
 
         @post(
             "/t",
             opt=per_op_concurrency("test.cap", max_inflight=2, key="ip"),
         )
         async def handler() -> dict[str, bool]:
-            await asyncio.sleep(_HOLD_SECONDS)
+            await _wait_for_release(release)
             return {"ok": True}
 
         with TestClient(app=_make_test_app(handler)) as client:
-            results = _fire_concurrent_posts(client, "/t", 5)
+            results = _fire_concurrent_posts(client, "/t", 5, release=release)
         statuses = [r.status_code for r in results]
         assert statuses.count(201) == 2
         assert statuses.count(429) == 3
@@ -145,6 +187,9 @@ class TestConfigGates:
     """Config ``enabled=False`` and zero-override disable enforcement."""
 
     async def test_disabled_config_bypasses_middleware(self) -> None:
+        # Config master switch takes the middleware out of the path,
+        # so a handler that returns immediately suffices -- there is
+        # nothing to serialize when the guard is disabled.
         @post(
             "/t",
             opt=per_op_concurrency(
@@ -154,7 +199,6 @@ class TestConfigGates:
             ),
         )
         async def handler() -> dict[str, bool]:
-            await asyncio.sleep(_HOLD_SECONDS)
             return {"ok": True}
 
         cfg = PerOpConcurrencyConfig(enabled=False)
@@ -168,6 +212,9 @@ class TestConfigGates:
                 assert resp.status_code == 201
 
     async def test_zero_override_disables_single_operation(self) -> None:
+        # Same rationale as ``test_disabled_config_bypasses_middleware``:
+        # a per-op override of ``0`` disables enforcement for that op,
+        # so contention does not need to be simulated here.
         @post(
             "/t",
             opt=per_op_concurrency(
@@ -177,7 +224,6 @@ class TestConfigGates:
             ),
         )
         async def handler() -> dict[str, bool]:
-            await asyncio.sleep(_HOLD_SECONDS)
             return {"ok": True}
 
         cfg = PerOpConcurrencyConfig(overrides={"test.zero": 0})
@@ -195,6 +241,8 @@ class TestOverrides:
     """Config overrides replace decorator defaults."""
 
     def test_override_tightens_default(self) -> None:
+        release = ThreadingEvent()
+
         @post(
             "/t",
             opt=per_op_concurrency(
@@ -204,12 +252,12 @@ class TestOverrides:
             ),
         )
         async def handler() -> dict[str, bool]:
-            await asyncio.sleep(_HOLD_SECONDS)
+            await _wait_for_release(release)
             return {"ok": True}
 
         cfg = PerOpConcurrencyConfig(overrides={"test.tightened": 1})
         with TestClient(app=_make_test_app(handler, config=cfg)) as client:
-            results = _fire_concurrent_posts(client, "/t", 3)
+            results = _fire_concurrent_posts(client, "/t", 3, release=release)
         statuses = [r.status_code for r in results]
         assert statuses.count(201) == 1
         assert statuses.count(429) == 2
@@ -219,6 +267,8 @@ class TestBucketSharing:
     """Two operations passing the SAME operation name share a bucket."""
 
     def test_same_operation_shares_bucket(self) -> None:
+        release = ThreadingEvent()
+
         @post(
             "/start",
             opt=per_op_concurrency(
@@ -228,7 +278,7 @@ class TestBucketSharing:
             ),
         )
         async def start() -> dict[str, bool]:
-            await asyncio.sleep(_HOLD_SECONDS)
+            await _wait_for_release(release)
             return {"ok": True}
 
         @post(
@@ -240,7 +290,7 @@ class TestBucketSharing:
             ),
         )
         async def resume() -> dict[str, bool]:
-            await asyncio.sleep(_HOLD_SECONDS)
+            await _wait_for_release(release)
             return {"ok": True}
 
         store = InMemoryInflightStore()
@@ -256,11 +306,15 @@ class TestBucketSharing:
             ),
             exception_handlers=dict(EXCEPTION_HANDLERS),  # type: ignore[arg-type]
         )
-        with TestClient(app=app) as client, ThreadPoolExecutor(max_workers=2) as pool:
+        with TestClient(app=app) as client, ThreadPoolExecutor(max_workers=3) as pool:
             futures = [
                 pool.submit(client.post, "/start"),
                 pool.submit(client.post, "/resume"),
             ]
+            # Release the shared barrier after both requests have been
+            # dispatched so exactly one holds the permit while the other
+            # is denied by the shared bucket.
+            pool.submit(_release_after, release, 0.05)
             results = [f.result() for f in futures]
         statuses = sorted(r.status_code for r in results)
         # Exactly one succeeded; the other was denied by the shared bucket.
@@ -354,6 +408,7 @@ class TestKeyPolicyVariants:
         verifies the middleware does not explode on the non-ip key
         policy and still enforces the cap.
         """
+        release = ThreadingEvent()
 
         @post(
             "/t",
@@ -364,13 +419,11 @@ class TestKeyPolicyVariants:
             ),
         )
         async def handler() -> dict[str, bool]:
-            import asyncio as _asyncio
-
-            await _asyncio.sleep(_HOLD_SECONDS)
+            await _wait_for_release(release)
             return {"ok": True}
 
         with TestClient(app=_make_test_app(handler)) as client:
-            results = _fire_concurrent_posts(client, "/t", 5)
+            results = _fire_concurrent_posts(client, "/t", 5, release=release)
         statuses = [r.status_code for r in results]
         assert statuses.count(201) == 2
         assert statuses.count(429) == 3
@@ -381,6 +434,7 @@ class TestKeyPolicyVariants:
         The fallback is a safety net: unauthenticated requests
         still get bucketed (by IP) rather than bypassing the guard.
         """
+        release = ThreadingEvent()
 
         @post(
             "/t",
@@ -391,13 +445,11 @@ class TestKeyPolicyVariants:
             ),
         )
         async def handler() -> dict[str, bool]:
-            import asyncio as _asyncio
-
-            await _asyncio.sleep(_HOLD_SECONDS)
+            await _wait_for_release(release)
             return {"ok": True}
 
         with TestClient(app=_make_test_app(handler)) as client:
-            results = _fire_concurrent_posts(client, "/t", 5)
+            results = _fire_concurrent_posts(client, "/t", 5, release=release)
         statuses = [r.status_code for r in results]
         assert statuses.count(201) == 2
         assert statuses.count(429) == 3
@@ -418,14 +470,13 @@ class TestZeroOverrideAuditLog:
     """
 
     def test_override_zero_passes_all_requests_through(self) -> None:
+        # Override of 0 disables enforcement: no need to hold permits,
+        # every request should succeed immediately.
         @post(
             "/t",
             opt=per_op_concurrency("test.auditable", max_inflight=1, key="ip"),
         )
         async def handler() -> dict[str, bool]:
-            import asyncio as _asyncio
-
-            await _asyncio.sleep(_HOLD_SECONDS)
             return {"ok": True}
 
         cfg = PerOpConcurrencyConfig(overrides={"test.auditable": 0})

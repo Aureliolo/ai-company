@@ -1,5 +1,7 @@
 """Client request lifecycle endpoints at /requests."""
 
+import asyncio
+import threading
 from typing import Any
 
 from litestar import Controller, Request, get, post
@@ -23,6 +25,42 @@ from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 
 logger = get_logger(__name__)
+
+# Per-request-id ``asyncio.Lock`` registry for serialising lifecycle
+# transitions.  Without it ``scope``/``approve``/``reject`` have a
+# TOCTOU race between ``get`` and ``save``: two concurrent approvals
+# for the same request can both pass the status check and duplicate
+# ``intake_engine.process`` work.  The registry is process-local --
+# cross-worker fairness requires a distributed lock and is out of
+# scope here; matches the in-memory scope of the sibling per-op
+# inflight store.  Lock creation is guarded by a plain
+# ``threading.Lock`` because ``asyncio.Lock`` can only be constructed
+# once an event loop exists, so the registry dict needs a
+# thread-safe "check, then create" that does not require an active
+# event loop to serialise itself.
+_REQUEST_LOCKS: dict[str, asyncio.Lock] = {}
+_REQUEST_LOCKS_GUARD: threading.Lock = threading.Lock()
+
+
+def _lock_for_request(request_id: str) -> asyncio.Lock:
+    """Return the ``asyncio.Lock`` for ``request_id``, creating if absent.
+
+    Locks outlive the per-request handler (same request id may be
+    approved after being scoped, etc.).  They are never evicted --
+    this is a bounded set in practice because request ids are
+    operator-created and do not proliferate infinitely.  If that
+    ceases to hold, add a GC sweep analogous to
+    :class:`InMemoryInflightStore._gc_cold_buckets`.
+    """
+    lock = _REQUEST_LOCKS.get(request_id)
+    if lock is not None:
+        return lock
+    with _REQUEST_LOCKS_GUARD:
+        lock = _REQUEST_LOCKS.get(request_id)
+        if lock is None:
+            lock = asyncio.Lock()
+            _REQUEST_LOCKS[request_id] = lock
+        return lock
 
 
 class CreateRequestPayload(BaseModel):
@@ -179,49 +217,59 @@ class RequestController(Controller):
         """
         app_state: AppState = state.app_state
         sim_state = app_state.client_simulation_state
-        try:
-            stored = await sim_state.request_store.get(request_id)
-        except KeyError as exc:
-            msg = f"Request {request_id!r} not found"
-            raise NotFoundError(msg) from exc
-        if stored.status not in {RequestStatus.SUBMITTED, RequestStatus.TRIAGING}:
-            msg = (
-                f"Request {request_id!r} cannot be scoped from "
-                f"status {stored.status.value!r}"
-            )
-            raise ConflictError(msg)
-        metadata = dict(stored.metadata)
-        metadata["scoping_notes"] = data.notes
-        requirement = stored.requirement
-        overrides: dict[str, Any] = {}
-        if (
-            data.refined_title is not None
-            or data.refined_description is not None
-            or data.refined_acceptance_criteria is not None
-        ):
-            overrides["requirement"] = requirement.model_copy(
-                update={
-                    k: v
-                    for k, v in {
-                        "title": data.refined_title,
-                        "description": data.refined_description,
-                        "acceptance_criteria": data.refined_acceptance_criteria,
-                    }.items()
-                    if v is not None
-                },
-            )
-        walked = stored
-        if walked.status == RequestStatus.SUBMITTED:
-            walked = walked.with_status(
+        # Serialise lifecycle transitions per request id so two
+        # concurrent ``scope`` / ``approve`` / ``reject`` calls for the
+        # same request cannot both pass the status precondition and
+        # race at ``save`` time.  The lock scope is intentionally
+        # narrow -- only the get/check/save critical section -- so a
+        # stuck request does not block unrelated requests.
+        async with _lock_for_request(request_id):
+            try:
+                stored = await sim_state.request_store.get(request_id)
+            except KeyError as exc:
+                msg = f"Request {request_id!r} not found"
+                raise NotFoundError(msg) from exc
+            if stored.status not in {
+                RequestStatus.SUBMITTED,
                 RequestStatus.TRIAGING,
+            }:
+                msg = (
+                    f"Request {request_id!r} cannot be scoped from "
+                    f"status {stored.status.value!r}"
+                )
+                raise ConflictError(msg)
+            metadata = dict(stored.metadata)
+            metadata["scoping_notes"] = data.notes
+            requirement = stored.requirement
+            overrides: dict[str, Any] = {}
+            if (
+                data.refined_title is not None
+                or data.refined_description is not None
+                or data.refined_acceptance_criteria is not None
+            ):
+                overrides["requirement"] = requirement.model_copy(
+                    update={
+                        k: v
+                        for k, v in {
+                            "title": data.refined_title,
+                            "description": data.refined_description,
+                            "acceptance_criteria": data.refined_acceptance_criteria,
+                        }.items()
+                        if v is not None
+                    },
+                )
+            walked = stored
+            if walked.status == RequestStatus.SUBMITTED:
+                walked = walked.with_status(
+                    RequestStatus.TRIAGING,
+                    metadata=metadata,
+                )
+            scoped = walked.with_status(
+                RequestStatus.SCOPING,
                 metadata=metadata,
+                **overrides,
             )
-        scoped = walked.with_status(
-            RequestStatus.SCOPING,
-            metadata=metadata,
-            **overrides,
-        )
-        await sim_state.request_store.save(scoped)
+            await sim_state.request_store.save(scoped)
         _publish(request, WsEventType.REQUEST_SCOPED, scoped)
         return ApiResponse(data=scoped)
 
@@ -256,25 +304,29 @@ class RequestController(Controller):
         """
         app_state: AppState = state.app_state
         sim_state = app_state.client_simulation_state
-        try:
-            stored = await sim_state.request_store.get(request_id)
-        except KeyError as exc:
-            msg = f"Request {request_id!r} not found"
-            raise NotFoundError(msg) from exc
-        if stored.status not in {RequestStatus.SUBMITTED, RequestStatus.SCOPING}:
-            msg = (
-                f"Request {request_id!r} cannot be approved from "
-                f"status {stored.status.value!r}"
-            )
-            raise ConflictError(msg)
-        if sim_state.intake_engine is None:
-            msg = "Intake engine not configured"
-            raise ConflictError(msg)
-        if stored.status is RequestStatus.SUBMITTED:
-            final, _ = await sim_state.intake_engine.process(stored)
-        else:
-            final, _ = await sim_state.intake_engine.finalize_scoped(stored)
-        await sim_state.request_store.save(final)
+        async with _lock_for_request(request_id):
+            try:
+                stored = await sim_state.request_store.get(request_id)
+            except KeyError as exc:
+                msg = f"Request {request_id!r} not found"
+                raise NotFoundError(msg) from exc
+            if stored.status not in {
+                RequestStatus.SUBMITTED,
+                RequestStatus.SCOPING,
+            }:
+                msg = (
+                    f"Request {request_id!r} cannot be approved from "
+                    f"status {stored.status.value!r}"
+                )
+                raise ConflictError(msg)
+            if sim_state.intake_engine is None:
+                msg = "Intake engine not configured"
+                raise ConflictError(msg)
+            if stored.status is RequestStatus.SUBMITTED:
+                final, _ = await sim_state.intake_engine.process(stored)
+            else:
+                final, _ = await sim_state.intake_engine.finalize_scoped(stored)
+            await sim_state.request_store.save(final)
         _publish(request, WsEventType.REQUEST_APPROVED, final)
         return ApiResponse(data=final)
 
@@ -300,23 +352,27 @@ class RequestController(Controller):
         """Cancel a request, recording the rejection reason."""
         app_state: AppState = state.app_state
         sim_state = app_state.client_simulation_state
-        try:
-            stored = await sim_state.request_store.get(request_id)
-        except KeyError as exc:
-            msg = f"Request {request_id!r} not found"
-            raise NotFoundError(msg) from exc
-        if stored.status in {RequestStatus.TASK_CREATED, RequestStatus.CANCELLED}:
-            msg = (
-                f"Request {request_id!r} cannot be rejected from "
-                f"status {stored.status.value!r}"
+        async with _lock_for_request(request_id):
+            try:
+                stored = await sim_state.request_store.get(request_id)
+            except KeyError as exc:
+                msg = f"Request {request_id!r} not found"
+                raise NotFoundError(msg) from exc
+            if stored.status in {
+                RequestStatus.TASK_CREATED,
+                RequestStatus.CANCELLED,
+            }:
+                msg = (
+                    f"Request {request_id!r} cannot be rejected from "
+                    f"status {stored.status.value!r}"
+                )
+                raise ConflictError(msg)
+            metadata = dict(stored.metadata)
+            metadata["rejection_reason"] = data.reason
+            cancelled = stored.with_status(
+                RequestStatus.CANCELLED,
+                metadata=metadata,
             )
-            raise ConflictError(msg)
-        metadata = dict(stored.metadata)
-        metadata["rejection_reason"] = data.reason
-        cancelled = stored.with_status(
-            RequestStatus.CANCELLED,
-            metadata=metadata,
-        )
-        await sim_state.request_store.save(cancelled)
+            await sim_state.request_store.save(cancelled)
         _publish(request, WsEventType.REQUEST_REJECTED, cancelled)
         return ApiResponse(data=cancelled)

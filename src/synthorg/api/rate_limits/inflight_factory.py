@@ -19,26 +19,15 @@ def build_inflight_store(config: PerOpConcurrencyConfig) -> InflightStore:
 
     Returns:
         A concrete :class:`InflightStore` implementation.
-
-    Raises:
-        NotImplementedError: ``config.backend`` selects a backend that
-            has not been implemented yet (currently ``redis``).
     """
     if config.backend == "memory":
         return InMemoryInflightStore()
-    if config.backend == "redis":
-        msg = (
-            "Redis-backed per-op inflight limiter is not implemented. "
-            "Use backend='memory' or contribute a Redis adapter."
-        )
-        logger.warning(
-            API_APP_STARTUP,
-            backend=config.backend,
-            error="redis_inflight_backend_not_implemented",
-        )
-        raise NotImplementedError(msg)
-    # Defensive: the Literal union is exhaustive today, but any future
-    # backend value must be explicitly handled here before landing.
+    # Defensive: ``config.backend`` is a ``Literal["memory"]`` union
+    # today and the settings-enum is restricted to ``("memory",)``,
+    # so reaching this branch requires either a bypass of Pydantic
+    # validation or a new backend landed without its factory entry.
+    # Fail loud so the drift is obvious rather than silently
+    # falling through to an in-memory backend under a different name.
     msg = f"Unknown per-op inflight backend: {config.backend!r}"  # type: ignore[unreachable]
     logger.error(API_APP_STARTUP, backend=config.backend, error="unknown_backend")
     raise ValueError(msg)

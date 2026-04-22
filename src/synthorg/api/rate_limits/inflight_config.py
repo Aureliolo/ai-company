@@ -30,7 +30,12 @@ class PerOpConcurrencyConfig(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     enabled: bool = True
-    backend: Literal["memory", "redis"] = "memory"
+    # Tighten to the only shipped backend.  A Redis adapter for
+    # cross-worker fairness is planned; adding it here must land with
+    # both the factory branch and the corresponding settings-enum
+    # entry in lockstep so an operator never picks a selectable value
+    # the factory raises ``NotImplementedError`` on at app construction.
+    backend: Literal["memory"] = "memory"
     overrides: dict[NotBlankStr, int] = Field(default_factory=dict)
 
     @model_validator(mode="after")
