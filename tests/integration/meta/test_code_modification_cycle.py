@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from synthorg.api.approval_store import ApprovalStore
 from synthorg.meta.config import CodeModificationConfig, SelfImprovementConfig
 from synthorg.meta.models import (
     OrgBudgetSummary,
@@ -105,6 +106,7 @@ class TestCodeModificationCycleIntegration:
                 code_modification=_CODE_MOD_CFG,
             ),
             provider=provider,
+            approval_store=ApprovalStore(),
         )
         proposals = await svc.run_cycle(_snap(quality=4.0))
 
@@ -130,6 +132,7 @@ class TestCodeModificationCycleIntegration:
                 code_modification_enabled=False,
             ),
             provider=provider,
+            approval_store=ApprovalStore(),
         )
         proposals = await svc.run_cycle(_snap(quality=4.0))
         for p in proposals:
@@ -149,6 +152,7 @@ class TestCodeModificationCycleIntegration:
                 code_modification=_CODE_MOD_CFG,
             ),
             provider=provider,
+            approval_store=ApprovalStore(),
         )
         proposals = await svc.run_cycle(
             _snap(error_findings=20),
@@ -169,6 +173,7 @@ class TestCodeModificationCycleIntegration:
                 code_modification=_CODE_MOD_CFG,
             ),
             provider=provider,
+            approval_store=ApprovalStore(),
         )
         proposals = await svc.run_cycle(_snap())
         code_proposals = [

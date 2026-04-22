@@ -69,7 +69,9 @@ class TestSelfImprovementService:
         architecture: bool = False,
         prompt_tuning: bool = False,
     ) -> SelfImprovementService:
-        from synthorg.api.approval_store import ApprovalStore
+        from unittest.mock import AsyncMock
+
+        from synthorg.approval.protocol import ApprovalStoreProtocol
 
         cfg = SelfImprovementConfig(
             enabled=True,
@@ -77,13 +79,15 @@ class TestSelfImprovementService:
             architecture_proposals_enabled=architecture,
             prompt_tuning_enabled=prompt_tuning,
         )
-        # ApprovalGateGuard now fails closed without a store; wire an
-        # in-memory ApprovalStore so proposals can surface in tests.
+        # ``ApprovalGateGuard`` now fails closed without a store; wire
+        # a protocol-shaped mock so the meta-layer test does not depend
+        # on the concrete API-layer ``ApprovalStore`` implementation.
+        approval_store = AsyncMock(spec=ApprovalStoreProtocol)
         return SelfImprovementService(
             config=cfg,
             clock=FakeClock(),
             snapshot_builder=_snapshot_builder,
-            approval_store=ApprovalStore(),
+            approval_store=approval_store,
         )
 
     async def test_no_triggers_returns_empty(self) -> None:

@@ -141,6 +141,16 @@ class SelfImprovementService:
         group_aggregator: GroupSignalAggregator | None = None,
         approval_store: ApprovalStoreProtocol | None = None,
     ) -> None:
+        if config.enabled and approval_store is None:
+            # Fail-fast so callers notice at construction time rather
+            # than observing a silently no-op cycle when the approval
+            # gate rejects every proposal for lack of a store.
+            msg = (
+                "SelfImprovementService requires an approval_store when "
+                "config.enabled is True; the approval gate cannot enforce "
+                "mandatory human review without one."
+            )
+            raise ValueError(msg)
         self._config = config
         self._rule_engine = build_rule_engine(config)
         self._strategies = build_strategies(config, provider=provider)

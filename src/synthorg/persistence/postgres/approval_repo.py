@@ -180,6 +180,14 @@ class PostgresApprovalRepository:
                 await cur.execute(_APPROVALS_UPSERT_SQL, params)
                 await conn.commit()
         except psycopg.errors.IntegrityError as exc:
+            # Extract the PostgreSQL constraint name so callers can
+            # dispatch reliably on
+            # :attr:`ConstraintViolationError.constraint` without
+            # parsing server error text.
+            constraint = (
+                getattr(getattr(exc, "diag", None), "constraint_name", None)
+                or "<unknown>"
+            )
             msg = f"Constraint violation saving approval {item.id!r}"
             logger.warning(
                 API_APPROVAL_REPO_FAILED,
@@ -187,7 +195,10 @@ class PostgresApprovalRepository:
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            raise ConstraintViolationError(msg, constraint=str(exc)) from exc
+            raise ConstraintViolationError(
+                msg,
+                constraint=constraint,
+            ) from exc
         except psycopg.Error as exc:
             msg = f"Failed to save approval {item.id!r}"
             logger.warning(
