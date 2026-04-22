@@ -612,14 +612,11 @@ class RootConfig(BaseModel):
         """Ensure ``queue.enabled`` requires an implemented distributed backend.
 
         The distributed task queue currently publishes claims through
-        the JetStream work-queue client. ``MessageBusBackend`` also
-        lists ``REDIS`` / ``RABBITMQ`` / ``KAFKA`` as future backends
-        that are documented but not yet implemented, so pairing them
-        with ``queue.enabled`` would pass this check and then silently
-        no-op at auto-wire time. Require ``backend == NATS`` explicitly
-        so config load fails fast when the selected transport cannot
-        actually drive the queue, and additionally require a non-null
-        ``nats`` sub-block so the worker has something to connect to.
+        the JetStream work-queue client. Require ``backend == NATS``
+        explicitly so config load fails fast when the selected
+        transport cannot drive the queue, and additionally require a
+        non-null ``nats`` sub-block so the worker has something to
+        connect to.
         """
         from synthorg.communication.enums import MessageBusBackend  # noqa: PLC0415
 
@@ -629,8 +626,7 @@ class RootConfig(BaseModel):
         if backend != MessageBusBackend.NATS:
             msg = (
                 "queue.enabled requires communication.message_bus.backend=='nats'; "
-                f"got {backend.value!r}. Redis, RabbitMQ and Kafka are documented "
-                "as future transports but do not yet have a task-queue client."
+                f"got {backend.value!r}. Only NATS has a shipped task-queue client."
             )
             logger.warning(
                 CONFIG_VALIDATION_FAILED,

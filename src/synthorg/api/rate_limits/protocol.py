@@ -1,9 +1,9 @@
 """Sliding-window rate limiter Protocol (#1391).
 
 The ``SlidingWindowStore`` Protocol is the pluggable contract that
-per-operation guards call to acquire a slot.  Concrete implementations
-live in ``in_memory.py`` (default) and in ``redis.py`` (reserved for
-future use).
+per-operation guards call to acquire a slot.  The default implementation
+lives in ``in_memory.py``; alternative adapters can be added behind the
+factory without touching guard logic.
 
 The Protocol is intentionally minimal -- one method, one dataclass-like
 outcome -- so adapters can be added without touching guard logic.

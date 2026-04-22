@@ -50,7 +50,7 @@ class EscalationNotifySubscriber(Protocol):
     """Contract for cross-instance escalation wake-up subscribers.
 
     Implementations listen on a backend-specific signal (Postgres
-    LISTEN/NOTIFY, Redis pub/sub, etc.) and forward state transitions
+    LISTEN/NOTIFY, NATS subjects, etc.) and forward state transitions
     to an in-process :class:`PendingFuturesRegistry` so any local
     resolver awaiting the escalation wakes with the correct payload.
     """

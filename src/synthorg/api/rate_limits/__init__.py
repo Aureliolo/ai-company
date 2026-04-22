@@ -7,8 +7,8 @@ first for unauthenticated and authenticated keys; per-op guards add a
 narrower bucket keyed by ``(operation, user_or_ip)``.
 
 Pluggable via Protocol + strategy + factory + config discriminator per
-CLAUDE.md.  Ships with an ``InMemorySlidingWindowStore`` default; a
-Redis backend is reserved for future implementation.
+CLAUDE.md.  Ships with an ``InMemorySlidingWindowStore`` default;
+additional strategies can be added behind the factory when needed.
 """
 
 from synthorg.api.rate_limits.config import PerOpRateLimitConfig

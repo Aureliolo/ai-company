@@ -12,7 +12,7 @@ This page describes the **first distributed backend** that plugs into the existi
 This page is for:
 
 - Operators deploying SynthOrg beyond a single host
-- Contributors adding a new distributed backend (Redis Streams, RabbitMQ, Kafka, …) after the first one ships
+- Contributors adding a new distributed backend behind the pluggable `MessageBus` factory after the first one ships
 - Reviewers of Issues #236 and #237
 
 If you are running SynthOrg on one machine for one organization, you can skip this page. Nothing changes for you.
@@ -66,13 +66,13 @@ Five candidates were evaluated against the constraints of the existing `MessageB
 | Docker footprint | ~20 MB image, ~15 MB RAM idle | ~40 MB image, ~30 MB RAM | ~200 MB image, ~150 MB RAM | ~400 MB image, ~512 MB RAM (JVM) | Zero extra container |
 | Python client maturity | `nats-py` (official, asyncio, active) | `redis.asyncio` (bundled in redis-py) | `aio-pika` (mature, asyncio) | `aiokafka` (mature, heavy) | `pyzmq` (mature, callback-first) |
 | License | Apache 2.0 | BSD (Valkey) / non-OSS (Redis 7.4+) | MPL 2.0 | Apache 2.0 | MPL 2.0 |
-| Spec status (`architecture/tech-stack.md`) | Not yet listed, added by this design | Redis listed as "planned" | Listed as candidate | Listed as candidate | Not listed |
+| Spec status (`architecture/tech-stack.md`) | Listed as the shipped distributed backend | Evaluated, not adopted | Evaluated, not adopted | Evaluated, not adopted | Evaluated, not adopted |
 
 ### Per-candidate narratives
 
-**NATS JetStream.** Pull consumers map one-to-one onto the `receive(timeout=t)` semantics the existing Protocol exposes. Per-subscriber durable consumers replace per-(channel, subscriber) `asyncio.Queue` without any impedance mismatch. A single stream with `LimitsPolicy` and `MaxMsgsPerSubject` preserves the existing bounded-history semantic natively, without application-level bookkeeping. The task queue in Phase 4 uses a second stream with `WorkQueuePolicy` for the claim/ack lifecycle. Footprint is the smallest of the credible candidates, which matters for the default case where a user opts in and expects "run `docker compose --profile distributed up`" to be cheap. License is Apache 2.0, client is official and asyncio-native. Downside: not currently listed in `tech-stack.md`, so this design adds it alongside the existing Redis-planned note.
+**NATS JetStream.** Pull consumers map one-to-one onto the `receive(timeout=t)` semantics the existing Protocol exposes. Per-subscriber durable consumers replace per-(channel, subscriber) `asyncio.Queue` without any impedance mismatch. A single stream with `LimitsPolicy` and `MaxMsgsPerSubject` preserves the existing bounded-history semantic natively, without application-level bookkeeping. The task queue in Phase 4 uses a second stream with `WorkQueuePolicy` for the claim/ack lifecycle. Footprint is the smallest of the credible candidates, which matters for the default case where a user opts in and expects "run `docker compose --profile distributed up`" to be cheap. License is Apache 2.0, client is official and asyncio-native.
 
-**Valkey/Redis Streams.** Functionally a close second. `XADD` + `XREADGROUP BLOCK` map cleanly to `publish()` / `receive()`, consumer groups give per-subscriber claims, and the existing `MessageBusBackend` enum already has a `REDIS` slot reserved. The blocker is licensing: Redis 7.4+ is now SSPL/RSALv2 (non-OSS), which matters for a BUSL-licensed project that wants to stay compatible with downstream packaging. The mitigation is pinning Valkey 7.2+ (BSD fork, drop-in via `redis.asyncio`). If the first distributed backend were Redis/Valkey, the design doc and install instructions would have to lead with this license distinction, which is operational friction for a feature most users never touch. Workable but adds narrative weight.
+**Valkey/Redis Streams.** Functionally a close second. `XADD` + `XREADGROUP BLOCK` map cleanly to `publish()` / `receive()`, and consumer groups give per-subscriber claims. The blocker is licensing: Redis 7.4+ is now SSPL/RSALv2 (non-OSS), which matters for a BUSL-licensed project that wants to stay compatible with downstream packaging. The mitigation is pinning Valkey 7.2+ (BSD fork, drop-in via `redis.asyncio`). If the first distributed backend were Redis/Valkey, the design doc and install instructions would have to lead with this license distinction, which is operational friction for a feature most users never touch. Workable but adds narrative weight.
 
 **RabbitMQ.** Very mature, battle-tested, and `aio-pika` is a known-good async client. The problems are weight and replay. A RabbitMQ broker is ~200 MB, boots an Erlang VM, and brings a management plugin that expects to be configured. Replay / bounded history is weak unless the Streams plugin is enabled separately, which would require us to manage two RabbitMQ primitives (classic queues for delivery, streams for history). For a first distributed backend whose goal is opt-in-and-forget, the operational surface is too big.
 
@@ -90,7 +90,7 @@ NATS JetStream wins on three dimensions that matter most for a first distributed
 
 3. **Future-proof without lock-in.** JetStream's primitives (streams, durable consumers, KV buckets, work queues) map naturally onto what the design needs today *and* leave room for what the project will want later (leaf nodes for multi-region, KV for distributed config). Apache 2.0 license, official asyncio client, active project.
 
-The trade-off is that `docs/architecture/tech-stack.md` does not currently mention NATS; it lists Redis as the planned backend. This design adds NATS alongside the existing Redis-planned note rather than replacing it. Redis, RabbitMQ, and Kafka remain valid future backends under the same pluggable factory, and the CLI picker registry is designed so that adding any of them later is one struct literal plus one Python class, not a UI rewrite.
+NATS JetStream is the shipped distributed backend. The comparison above preserves the full evaluation so that a future change of backend (or addition of a second adapter) can be audited against the same criteria.
 
 #### NATS client library (2026-04-10)
 
@@ -271,7 +271,7 @@ The `nats` sub-block is required when `backend` is `nats` (validated at config l
 
 First-run users hit the picker in the Go CLI, which is unbiased and surfaces the trade-off explicitly.
 
-The picker is a generic `PickOne[T]` helper in `cli/internal/ui/picker.go` wrapping the `charmbracelet/huh` library already in the CLI dependency graph. The `BusBackends` registry in `cli/internal/ui/options.go` is data-driven: each entry has an ID, label, one-line summary, bullet-list pros, bullet-list cons, a default flag, and the value it writes to the config. Adding a future backend (Redis Streams, RabbitMQ, Kafka, …) is one struct literal in `options.go` plus the matching Python implementation in `src/synthorg/communication/bus/`. No UI code changes.
+The picker is a generic `PickOne[T]` helper in `cli/internal/ui/picker.go` wrapping the `charmbracelet/huh` library already in the CLI dependency graph. The `BusBackends` registry in `cli/internal/ui/options.go` is data-driven: each entry has an ID, label, one-line summary, bullet-list pros, bullet-list cons, a default flag, and the value it writes to the config. Adding a new backend later is one struct literal in `options.go` plus the matching Python implementation in `src/synthorg/communication/bus/`. No UI code changes.
 
 Non-interactive mode honors the existing `--yes` / `SYNTHORG_YES` convention by writing `internal` without prompting. A new `--bus-backend` flag on `init` lets scripted setup pick any value in the registry. Invalid values exit with code 2 and a message listing the valid backends.
 

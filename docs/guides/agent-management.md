@@ -177,17 +177,22 @@ See [Notifications & Events](notifications-and-events.md) for the full protocol.
 
 ## Setup wizard shortcuts
 
-The setup wizard at `/api/v1/setup/*` wraps agent creation with template defaults and personality presets:
+`/api/v1/setup/*` is the first-run wizard. Template-based auto-creation happens at `POST /api/v1/setup/company` when a template is selected; the wizard hydrates the org with the template's default agents in one shot. For the "Start Blank" path, `POST /api/v1/setup/agent` creates a single agent with an explicit model assignment:
 
 ```bash
-# Create an agent through the setup wizard (uses the template's default model + personality)
+# Create one agent on the Start Blank path; model assignment is required.
 curl -X POST http://localhost:3001/api/v1/setup/agent \
   -H "Content-Type: application/json" \
   -H "Cookie: ${SESSION}" \
-  -d '{"role": "Senior Backend Developer", "name": "Sarah Chen"}'
+  -d '{
+    "role": "Senior Backend Developer",
+    "name": "Sarah Chen",
+    "model_provider": "example-provider",
+    "model_id": "example-medium-001"
+  }'
 ```
 
-Useful during first-run; after completion, use `/api/v1/agents` for subsequent changes.
+After the wizard completes, use `/api/v1/agents` for subsequent changes.
 
 ---
 

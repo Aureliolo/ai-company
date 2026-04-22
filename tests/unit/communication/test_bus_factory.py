@@ -32,23 +32,6 @@ def test_factory_returns_jetstream_for_nats_backend() -> None:
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize(
-    "backend",
-    [
-        MessageBusBackend.REDIS,
-        MessageBusBackend.RABBITMQ,
-        MessageBusBackend.KAFKA,
-    ],
-)
-def test_factory_raises_for_unimplemented_backends(
-    backend: MessageBusBackend,
-) -> None:
-    config = MessageBusConfig(backend=backend)
-    with pytest.raises(ValueError, match="not yet implemented"):
-        build_message_bus(config)
-
-
-@pytest.mark.unit
 def test_nats_backend_requires_nats_config() -> None:
     """MessageBusConfig validator rejects backend=nats without nats block."""
     with pytest.raises(ValueError, match="nats must be provided"):

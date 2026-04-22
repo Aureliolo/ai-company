@@ -51,9 +51,6 @@ class InMemorySlidingWindowStore(SlidingWindowStore):
     per-operation throttling where global coordination is not required;
     the global two-tier limiter in ``api/app.py`` handles cross-worker
     coordination separately.
-
-    Wire up a Redis-backed adapter via :func:`build_sliding_window_store`
-    when cross-worker fairness becomes a requirement.
     """
 
     def __init__(self) -> None:

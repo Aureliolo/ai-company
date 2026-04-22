@@ -86,11 +86,8 @@ class TestCommunicationExports:
 @pytest.mark.unit
 class TestMessageBusBackend:
     def test_member_count(self) -> None:
-        assert len(MessageBusBackend) == 5
+        assert len(MessageBusBackend) == 2
 
     def test_values(self) -> None:
         assert MessageBusBackend.INTERNAL.value == "internal"
         assert MessageBusBackend.NATS.value == "nats"
-        assert MessageBusBackend.REDIS.value == "redis"
-        assert MessageBusBackend.RABBITMQ.value == "rabbitmq"
-        assert MessageBusBackend.KAFKA.value == "kafka"

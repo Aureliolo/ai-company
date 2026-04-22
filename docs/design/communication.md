@@ -314,7 +314,7 @@ All metadata fields are nullable except `extra`, which is always present (defaul
     communication:
       default_pattern: "hybrid"
       message_bus:
-        backend: "internal"        # implemented: internal, nats -- planned: redis, rabbitmq, kafka
+        backend: "internal"        # implemented: internal, nats
         channels:
           - "#all-hands"
           - "#engineering"
@@ -343,7 +343,7 @@ All metadata fields are nullable except `extra`, which is always present (defaul
     ```
 
 !!! info "Distributed bus backends"
-    The `backend` field switches between the in-process `internal` default and opt-in distributed backends. NATS JetStream is the first distributed backend; Redis Streams, RabbitMQ, and Kafka are documented alternatives for future implementation. See the [Distributed Runtime design](distributed-runtime.md) for the transport evaluation, stream layout, and migration path.
+    The `backend` field switches between the in-process `internal` default and the opt-in NATS JetStream backend for multi-process / multi-host deployments. See the [Distributed Runtime design](distributed-runtime.md) for the transport evaluation, stream layout, and migration path.
 
 ---
 

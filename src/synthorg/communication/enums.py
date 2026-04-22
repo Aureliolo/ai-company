@@ -102,12 +102,11 @@ class MessageBusBackend(StrEnum):
     """Message bus backend implementation.
 
     Maps to the Communication design page ``message_bus.backend``.
-    ``INTERNAL`` and ``NATS`` are implemented; the others are documented
-    future backends (see ``docs/design/distributed-runtime.md``).
+    ``INTERNAL`` (single-process asyncio queues) and ``NATS`` (JetStream
+    for distributed deployments) are the only shipped backends.  The
+    alternatives evaluated during the original backend-selection work
+    live in ``docs/design/distributed-runtime.md``.
     """
 
     INTERNAL = "internal"
     NATS = "nats"
-    REDIS = "redis"
-    RABBITMQ = "rabbitmq"
-    KAFKA = "kafka"

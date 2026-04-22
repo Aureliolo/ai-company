@@ -12,6 +12,7 @@ from synthorg.communication.config import (
     MeetingsConfig,
     MeetingTypeConfig,
     MessageBusConfig,
+    NatsConfig,
     RateLimitConfig,
 )
 from synthorg.communication.enums import (
@@ -32,10 +33,11 @@ class TestMessageBusConfigDefaults:
 
     def test_custom_values(self) -> None:
         cfg = MessageBusConfig(
-            backend=MessageBusBackend.REDIS,
+            backend=MessageBusBackend.NATS,
             channels=("#ops", "#alerts"),
+            nats=NatsConfig(url="nats://localhost:4222"),
         )
-        assert cfg.backend is MessageBusBackend.REDIS
+        assert cfg.backend is MessageBusBackend.NATS
         assert cfg.channels == ("#ops", "#alerts")
 
 
@@ -63,12 +65,12 @@ class TestMessageBusConfigImmutability:
     def test_frozen(self) -> None:
         cfg = MessageBusConfig()
         with pytest.raises(ValidationError):
-            cfg.backend = MessageBusBackend.KAFKA  # type: ignore[misc]
+            cfg.backend = MessageBusBackend.NATS  # type: ignore[misc]
 
     def test_model_copy(self) -> None:
         original = MessageBusConfig()
-        updated = original.model_copy(update={"backend": MessageBusBackend.RABBITMQ})
-        assert updated.backend is MessageBusBackend.RABBITMQ
+        updated = original.model_copy(update={"backend": MessageBusBackend.NATS})
+        assert updated.backend is MessageBusBackend.NATS
         assert original.backend is MessageBusBackend.INTERNAL
 
 
@@ -76,8 +78,9 @@ class TestMessageBusConfigImmutability:
 class TestMessageBusConfigSerialization:
     def test_json_roundtrip(self) -> None:
         cfg = MessageBusConfig(
-            backend=MessageBusBackend.KAFKA,
+            backend=MessageBusBackend.NATS,
             channels=("#a", "#b"),
+            nats=NatsConfig(url="nats://localhost:4222"),
         )
         restored = MessageBusConfig.model_validate_json(cfg.model_dump_json())
         assert restored == cfg
@@ -497,11 +500,14 @@ class TestCommunicationConfigDefaults:
     def test_custom_values(self) -> None:
         cfg = CommunicationConfig(
             default_pattern=CommunicationPattern.EVENT_DRIVEN,
-            message_bus=MessageBusConfig(backend=MessageBusBackend.REDIS),
+            message_bus=MessageBusConfig(
+                backend=MessageBusBackend.NATS,
+                nats=NatsConfig(url="nats://localhost:4222"),
+            ),
             hierarchy=HierarchyConfig(allow_skip_level=True),
         )
         assert cfg.default_pattern is CommunicationPattern.EVENT_DRIVEN
-        assert cfg.message_bus.backend is MessageBusBackend.REDIS
+        assert cfg.message_bus.backend is MessageBusBackend.NATS
         assert cfg.hierarchy.allow_skip_level is True
 
 
@@ -526,7 +532,10 @@ class TestCommunicationConfigSerialization:
     def test_json_roundtrip(self) -> None:
         cfg = CommunicationConfig(
             default_pattern=CommunicationPattern.MEETING_BASED,
-            message_bus=MessageBusConfig(backend=MessageBusBackend.KAFKA),
+            message_bus=MessageBusConfig(
+                backend=MessageBusBackend.NATS,
+                nats=NatsConfig(url="nats://localhost:4222"),
+            ),
         )
         restored = CommunicationConfig.model_validate_json(cfg.model_dump_json())
         assert restored == cfg

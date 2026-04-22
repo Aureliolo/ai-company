@@ -235,8 +235,8 @@ coupling point for agent execution. The `CoordinationService` can operate indepe
 any specific agent being present.
 
 **Verdict**: Not a current concern. The async pull model and single-writer actor design
-actively prevent synchronous coupling. Future risk if Redis/Kafka backends introduce
-ordering dependencies across agent groups.
+actively prevent synchronous coupling. Future risk if a transport with ordering guarantees
+is introduced across agent groups.
 
 ### Ownership Ambiguity Pattern
 

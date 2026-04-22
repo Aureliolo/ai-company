@@ -1,6 +1,6 @@
 // Package ui: data-driven registries for reusable PickOne pickers.
 //
-// Adding a future bus backend (Redis Streams, RabbitMQ, Kafka, ...):
+// Adding a new distributed bus backend:
 //  1. Append one Option[string] struct literal to BusBackends below.
 //  2. Add the matching Python backend class under
 //     src/synthorg/communication/bus/.

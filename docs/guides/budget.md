@@ -260,7 +260,7 @@ Returns the active `BudgetConfig` (limits, alert thresholds, cascade rules, curr
 ### List cost records
 
 ```bash
-# All records for the current month
+# First page, default 50 records
 curl "http://localhost:3001/api/v1/budget/records?limit=100" \
   -H "Cookie: ${SESSION}" | jq
 
@@ -268,18 +268,14 @@ curl "http://localhost:3001/api/v1/budget/records?limit=100" \
 curl "http://localhost:3001/api/v1/budget/records?agent_id=${AGENT_ID}&limit=50" \
   -H "Cookie: ${SESSION}" | jq
 
-# Filter by date range
-curl "http://localhost:3001/api/v1/budget/records?since=2026-04-01T00:00:00Z&until=2026-04-21T00:00:00Z" \
-  -H "Cookie: ${SESSION}" | jq
-
-# Filter by provider and tag
-curl "http://localhost:3001/api/v1/budget/records?provider=example-provider&tag=productive" \
+# Filter by task
+curl "http://localhost:3001/api/v1/budget/records?task_id=${TASK_ID}" \
   -H "Cookie: ${SESSION}" | jq
 ```
 
 The response includes `data` (paginated records), `daily_summary` (per-day totals aggregated across ALL matching records, not just the page), and `period_summary` (overall totals + computed `avg_cost`).
 
-Supported filters: `agent_id`, `provider`, `model`, `tag` (`productive` / `coordination` / `system` / `embedding`), `project_id`, `since`, `until`, `limit`, `offset`.
+Supported query parameters: `agent_id`, `task_id`, `offset`, `limit`. Additional slicing (by provider, model, tag, project, date range) can be done client-side from the paginated response or via report generation below.
 
 ### On-demand reports
 
@@ -301,7 +297,7 @@ Available periods: `daily`, `weekly`, `monthly`. Templates: `spending_summary`, 
 
 ### Budget alert webhook integration
 
-Budget thresholds emit notifications through `NotificationDispatcher` (console, ntfy, Slack, email). To route them to one of these sinks (see [Notifications & Events](notifications-and-events.md)), add the sink to `notifications.sinks` and filter by `event_type` starting with `BUDGET_`.
+Budget thresholds emit notifications through `NotificationDispatcher`. To route them to a configured sink (see [Notifications & Events](notifications-and-events.md) for the shipped adapter catalog), add the sink to `notifications.sinks` and filter by `event_type` starting with `BUDGET_`.
 
 Alternatively, subscribe to the `budget` WebSocket channel for real-time threshold events:
 

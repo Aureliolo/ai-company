@@ -11,7 +11,7 @@ Numbers are stable identifiers -- resolved questions are removed without renumbe
 | 1 | How deep should agent personality affect output? | Medium | Too deep leads to inconsistency; too shallow makes all agents feel the same. Capability-aware prompt profiles (#805) will add tier-based personality condensation. |
 | 4 | Should agents be able to create/modify other agents? | Medium | For example, a CTO "hires" a developer by creating a new agent config. |
 | 6 | What metrics define "good" agent performance? | Medium | Five-pillar evaluation framework (#1017) provides structure; quality scoring Layers 2+3 (#230) will add LLM judge and human override. |
-| 8 | Optimal message bus for local-first architecture? | Medium | asyncio queues for Phase 1; distributed backend (Redis, NATS) planned for Phase 2. |
+| 8 | Optimal message bus for local-first architecture? | Medium | asyncio queues for single-process; NATS JetStream shipped for distributed deployments. |
 
 ---
 
@@ -25,7 +25,7 @@ Numbers are stable identifiers -- resolved questions are removed without renumbe
 | Third-party library breaking changes | Medium | Python deps exact-pinned (`==`), JS deps range-based with lockfiles. Integration tests, abstraction layers, Renovate daily updates. |
 | Memory retrieval quality | Medium | Hybrid retrieval (dense + BM25 sparse with RRF fusion) shipped. LMEB-guided embedding selection implemented. Domain fine-tuning pipeline not yet implemented -- config and checkpoint lookup wired, training stages raise `NotImplementedError` (#1001). |
 | Agent personality inconsistency | Low | Strong system prompts, personality presets with condensed/minimal variants planned (#805). |
-| WebSocket scaling | Low | In-process channels for Phase 1. Redis pub/sub planned for distributed deployments. |
+| WebSocket scaling | Low | In-process channels today. Multi-instance fan-out can ride on the shipped NATS JetStream bus when needed. |
 
 ---
 

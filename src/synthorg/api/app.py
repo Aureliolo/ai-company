@@ -715,12 +715,10 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
 
     # Per-operation rate limiter (#1391).  Layered on top of the global
     # two-tier limiter; read from app state by ``per_op_rate_limit``
-    # guards.  Only build the store when the feature is enabled, so an
-    # unsupported/unimplemented backend (e.g. ``redis`` before the
-    # adapter lands) does not crash startup for deployments that turn
-    # per-op limiting off.  The guard treats missing store AS enabled
-    # as a wiring error, so we only wire ``None`` when the config
-    # explicitly opts out.
+    # guards.  Only build the store when the feature is enabled so
+    # deployments that opt out do not pay the allocation cost.  The
+    # guard treats a missing store AS enabled as a wiring error, so we
+    # only wire ``None`` when the config explicitly opts out.
     per_op_rate_limit_store: SlidingWindowStore | None = None
     if api_config.per_op_rate_limit.enabled:
         per_op_rate_limit_store = build_sliding_window_store(

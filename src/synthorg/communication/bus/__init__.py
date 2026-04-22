@@ -41,9 +41,6 @@ def build_message_bus(config: MessageBusConfig) -> MessageBus:
         A concrete ``MessageBus`` instance (not started).
 
     Raises:
-        ValueError: If ``config.backend`` names an implementation
-            that is documented but not yet implemented (Redis,
-            RabbitMQ, Kafka).
         ImportError: If the selected backend requires an optional
             dependency that is not installed (e.g. ``nats-py`` for
             the NATS backend).
@@ -57,24 +54,6 @@ def build_message_bus(config: MessageBusConfig) -> MessageBus:
             )
 
             return JetStreamMessageBus(config=config)
-        case (
-            MessageBusBackend.REDIS
-            | MessageBusBackend.RABBITMQ
-            | MessageBusBackend.KAFKA
-        ):
-            msg = (
-                f"MessageBus backend '{config.backend.value}' is documented "
-                f"as a future backend but not yet implemented. See "
-                f"docs/design/distributed-runtime.md. Supported backends: "
-                f"'internal', 'nats'."
-            )
-            logger.error(
-                CONFIG_VALIDATION_FAILED,
-                model="MessageBusConfig",
-                backend=config.backend.value,
-                reason="future_backend_not_implemented",
-            )
-            raise ValueError(msg)
         case _:
             # Defensive catch-all: any future MessageBusBackend member
             # that is not wired up above should fail loudly at startup

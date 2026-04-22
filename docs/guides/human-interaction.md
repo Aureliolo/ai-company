@@ -89,27 +89,23 @@ abuse-prone operations.  Guards are declared at the route level via
 `per_op_rate_limit("<op>", max_requests=N, window_seconds=W, key=...)`
 from `synthorg/api/rate_limits/guard.py`.
 
-- **Backend**: `SlidingWindowStore` protocol; only `backend: memory` is
-  wired today.  `PerOpRateLimitConfig` accepts `backend: redis` as a
-  forward-compatible config value, but the factory raises
-  `NotImplementedError` on startup if it is selected -- a shared-state
-  backend is tracked for a future release.  Configuration lives in
-  `PerOpRateLimitConfig` under `api.per_op_rate_limit` with an
-  `overrides: {op -> (max_requests, window_seconds)}` map that takes
-  effect without restart.  Setting either component to `0` disables
-  the operation; negative values are rejected at startup with a logged
-  error for diagnosability.
+- **Backend**: `SlidingWindowStore` protocol with an in-memory
+  implementation.  Configuration lives in `PerOpRateLimitConfig` under
+  `api.per_op_rate_limit` with an `overrides: {op -> (max_requests,
+  window_seconds)}` map that takes effect without restart.  Setting
+  either component to `0` disables the operation; negative values are
+  rejected at startup with a logged error for diagnosability.
 - **Keying**: `user`, `ip`, or `user_or_ip` (default).  The ``ip``
   source is the proxy-normalised ``trusted_client_ip`` populated on
   the ASGI scope; the raw ``X-Forwarded-For`` header is NOT trusted.
 - **Denials** raise `PerOperationRateLimitError` (`error_code=5001`,
-  `error_category=rate_limit`, `retryable=True`).  `handle_domain_error()`
-  emits a `Retry-After` header only when the exception supplies both
-  `retry_after` and `retryable=True`; the header value agrees with the
-  envelope's `retry_after` field, so 429 / 503-style responses can
-  never claim `retryable: false` while handing clients a `Retry-After`.
-  Missing wiring is treated as a deployment error and fails closed with
-  a 429 rather than silently skipping.
+  `error_category=rate_limit`, `retryable=True`).  Because
+  `PerOperationRateLimitError` subclasses `ApiError`, responses are
+  shaped by `handle_api_error()`, which emits a `Retry-After` header
+  whenever the exception supplies `retry_after`; the header value
+  agrees with the envelope's `retry_after` field.  Missing wiring is
+  treated as a deployment error and fails closed with a 429 rather
+  than silently skipping.
 - **Throttled endpoints** (initial set):
   - `POST /api/v1/auth/ws-ticket` (20/60s by user)
   - `PUT /api/v1/artifacts/{id}/content` (10/60s by user)

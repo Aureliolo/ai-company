@@ -31,7 +31,7 @@ class PerOpRateLimitConfig(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     enabled: bool = True
-    backend: Literal["memory", "redis"] = "memory"
+    backend: Literal["memory"] = "memory"
     overrides: dict[NotBlankStr, tuple[int, int]] = Field(default_factory=dict)
 
     @model_validator(mode="after")
