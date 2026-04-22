@@ -30,7 +30,7 @@ from synthorg.api.rate_limits.inflight_config import (
 )
 from synthorg.api.rate_limits.inflight_protocol import InflightStore  # noqa: TC001
 from synthorg.observability import get_logger
-from synthorg.observability.events.api import API_APP_STARTUP, API_GUARD_DENIED
+from synthorg.observability.events.api import API_APP_STARTUP
 
 logger = get_logger(__name__)
 
@@ -148,32 +148,38 @@ class PerOpConcurrencyMiddleware(ASGIMiddleware):
         # log so the deployment error is visible instead of the
         # endpoint silently running uncapped after exception handling.
         #
-        # Each check is explicit rather than combined into a single
-        # conjunction so subtle bugs stay visible:
+        # Ordering: first confirm ``policy`` is a tuple/list of the
+        # expected arity so subsequent ``policy[0..2]`` indexing is
+        # safe -- reading before the shape check could raise
+        # ``TypeError`` / ``IndexError`` and surface as a 500.
+        shape_invalid = (
+            not isinstance(policy, (tuple, list)) or len(policy) != _OPT_TUPLE_LEN
+        )
+        # Each field check is explicit rather than combined into a
+        # single conjunction so subtle bugs stay visible:
         #   * ``isinstance(True, int)`` is True in Python, so we
         #     reject ``bool`` before the int check to avoid
         #     ``max_inflight=False`` sneaking through as "0".
         #   * ``policy[0]`` must equal its ``strip()`` -- a padded
         #     operation name is the same regression ``per_op_concurrency``
         #     factory guards against at the opt-factory layer.
-        op_invalid = (
-            not isinstance(policy[0], str)
-            or policy[0] == ""
-            or policy[0] != policy[0].strip()
-        )
-        max_inflight_invalid = (
-            isinstance(policy[1], bool)
-            or not isinstance(policy[1], int)
-            or policy[1] <= 0
-        )
-        key_invalid = policy[2] not in ("user", "ip", "user_or_ip")
-        if (
-            not isinstance(policy, (tuple, list))
-            or len(policy) != _OPT_TUPLE_LEN
-            or op_invalid
-            or max_inflight_invalid
-            or key_invalid
-        ):
+        if shape_invalid:
+            op_invalid = True
+            max_inflight_invalid = True
+            key_invalid = True
+        else:
+            op_invalid = (
+                not isinstance(policy[0], str)
+                or policy[0] == ""
+                or policy[0] != policy[0].strip()
+            )
+            max_inflight_invalid = (
+                isinstance(policy[1], bool)
+                or not isinstance(policy[1], int)
+                or policy[1] <= 0
+            )
+            key_invalid = policy[2] not in ("user", "ip", "user_or_ip")
+        if shape_invalid or op_invalid or max_inflight_invalid or key_invalid:
             logger.error(
                 API_APP_STARTUP,
                 guard="per_op_concurrency",
@@ -211,16 +217,14 @@ class PerOpConcurrencyMiddleware(ASGIMiddleware):
         override = config.overrides.get(operation)
         max_inflight = override if override is not None else default_max_inflight
         if max_inflight <= 0:
-            # Operator disabled this operation via override (0; negative
-            # was rejected at config load).  Log at WARNING so the
-            # deliberately-uncapped state surfaces in audit logs and is
-            # not mistaken for a silent bypass.
-            logger.warning(
-                API_GUARD_DENIED,
-                guard="per_op_concurrency",
-                operation=operation,
-                note="inflight guard disabled via operator override (max_inflight=0)",
-            )
+            # Operator disabled this operation via override (0;
+            # negative was rejected at config load).  The
+            # deliberately-uncapped state is already audit-logged
+            # once per operator change by
+            # :class:`PerOpRateLimitSettingsSubscriber`
+            # (``SETTINGS_SERVICE_SWAPPED`` INFO on every swap);
+            # emitting a per-request WARNING here would flood logs
+            # on any hot endpoint the operator chose to uncap.
             await next_app(scope, receive, send)
             return
 

@@ -14,6 +14,7 @@ switching backends is not a hot-reload concern.
 """
 
 import json
+import re
 from typing import TYPE_CHECKING, Any
 
 from synthorg.api.rate_limits.config import PerOpRateLimitConfig
@@ -45,6 +46,35 @@ _WATCHED: frozenset[tuple[str, str]] = frozenset(
     }
 )
 _RATE_LIMIT_OVERRIDE_TUPLE_LEN = 2
+# JSON numbers arrive either as Python ``int`` (preferred) or as
+# string digits for operators who wrote ``"5"`` instead of ``5`` in
+# the settings payload.  We accept both but reject floats, booleans,
+# ``"true"``/``"false"``, and decimal strings -- blind ``int(...)``
+# would coerce ``True`` to ``1`` and silently truncate ``1.9`` to
+# ``1``, either of which would apply a limit the operator did not
+# actually configure.
+_INT_STRING_PATTERN = re.compile(r"^[+-]?\d+$")
+
+
+def _strict_int(value: Any, *, field: str) -> int:
+    """Coerce ``value`` to ``int`` without silent bool/float widening.
+
+    Accepts a plain ``int`` (excluding ``bool`` -- ``isinstance(True,
+    int) is True`` in Python) or a digit string (``"5"`` /
+    ``"-3"``).  Everything else raises ``ValueError`` -- the caller
+    turns that into a swap-failed log so the operator sees the
+    specific malformed value instead of the Pydantic downstream's
+    generic failure.
+    """
+    if isinstance(value, bool):
+        msg = f"{field} must be an integer, got bool {value!r}"
+        raise TypeError(msg)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str) and _INT_STRING_PATTERN.fullmatch(value):
+        return int(value)
+    msg = f"{field} must be an integer, got {type(value).__name__} {value!r}"
+    raise TypeError(msg)
 
 
 class PerOpRateLimitSettingsSubscriber:
@@ -173,9 +203,27 @@ class PerOpRateLimitSettingsSubscriber:
         self._app_state.swap_per_op_concurrency_config(new_config)
 
     async def _read_bool(self, key: str) -> bool:
-        """Read a boolean setting.  Accepts ``"true"``/``"false"`` strings."""
+        """Read a boolean setting, rejecting anything but ``"true"``/``"false"``.
+
+        Any other value (empty string, typo, None, ``"yes"``, etc.)
+        raises ``ValueError`` -- silently treating unrecognised text
+        as ``False`` would let a typo disable the guard without the
+        operator realising, so the subscriber surfaces the malformed
+        value through ``SETTINGS_SERVICE_SWAP_FAILED`` and keeps the
+        existing config in place instead.
+        """
         result = await self._settings_service.get(_NAMESPACE, key)
-        return str(result.value).lower() == "true"
+        raw = str(result.value) if result.value is not None else ""
+        normalised = raw.strip().lower()
+        if normalised == "true":
+            return True
+        if normalised == "false":
+            return False
+        msg = (
+            f"setting api.{key}={raw!r} is not a valid boolean "
+            "(expected 'true' or 'false')"
+        )
+        raise ValueError(msg)
 
     async def _read_json(self, key: str) -> Any:
         """Read a JSON-typed setting and parse into Python objects."""
@@ -217,8 +265,14 @@ class PerOpRateLimitSettingsSubscriber:
                     "[max_requests, window_seconds] array"
                 )
                 raise ValueError(msg)
-            max_req = int(value[0])
-            window = int(value[1])
+            max_req = _strict_int(
+                value[0],
+                field=f"overrides[{op_name!r}][0] (max_requests)",
+            )
+            window = _strict_int(
+                value[1],
+                field=f"overrides[{op_name!r}][1] (window_seconds)",
+            )
             if max_req < 0 or window < 0:
                 msg = (
                     f"overrides[{op_name!r}]=[{max_req}, {window}] "
@@ -247,7 +301,10 @@ class PerOpRateLimitSettingsSubscriber:
             raise TypeError(msg)
         coerced: dict[str, int] = {}
         for op_name, value in raw.items():
-            as_int = int(value)
+            as_int = _strict_int(
+                value,
+                field=f"overrides[{op_name!r}]",
+            )
             if as_int < 0:
                 msg = (
                     f"overrides[{op_name!r}]={as_int} is negative; "

@@ -234,3 +234,73 @@ class TestUnexpectedRouting:
         await sub.on_settings_changed("api", "some_unrelated_key")
         app_state.swap_per_op_rate_limit_config.assert_not_called()
         app_state.swap_per_op_concurrency_config.assert_not_called()
+
+
+class TestStrictValidation:
+    """Malformed DB values abort the swap instead of silently applying."""
+
+    async def test_invalid_bool_string_raises(self) -> None:
+        # A typo like ``"yes"`` must not silently disable the guard
+        # by collapsing to ``False`` at the old ``.lower() == "true"``
+        # check.  The swap is aborted and the previous config stays.
+        sub, app_state = _make_subscriber(
+            {
+                ("api", "per_op_rate_limit_enabled"): "yes",
+                ("api", "per_op_rate_limit_overrides"): "{}",
+            }
+        )
+        with pytest.raises(ValueError, match="not a valid boolean"):
+            await sub.on_settings_changed("api", "per_op_rate_limit_enabled")
+        app_state.swap_per_op_rate_limit_config.assert_not_called()
+
+    async def test_float_override_rejected(self) -> None:
+        # ``1.9`` would be silently truncated to ``1`` by blind
+        # ``int(...)`` -- the strict validator rejects non-integers so
+        # the operator sees the malformed value in the swap-failed log.
+        sub, app_state = _make_subscriber(
+            {
+                ("api", "per_op_rate_limit_enabled"): "true",
+                (
+                    "api",
+                    "per_op_rate_limit_overrides",
+                ): '{"agents.create": [1.9, 60]}',
+            }
+        )
+        with pytest.raises(TypeError, match="must be an integer"):
+            await sub.on_settings_changed("api", "per_op_rate_limit_overrides")
+        app_state.swap_per_op_rate_limit_config.assert_not_called()
+
+    async def test_bool_override_rejected(self) -> None:
+        # ``True`` is a subclass of ``int`` in Python and would
+        # collapse to ``1`` under blind ``int(...)``.  The strict
+        # validator rejects it so the operator's intent is explicit.
+        sub, app_state = _make_subscriber(
+            {
+                ("api", "per_op_concurrency_enabled"): "true",
+                (
+                    "api",
+                    "per_op_concurrency_overrides",
+                ): '{"memory.fine_tune": true}',
+            }
+        )
+        with pytest.raises(TypeError, match="must be an integer"):
+            await sub.on_settings_changed("api", "per_op_concurrency_overrides")
+        app_state.swap_per_op_concurrency_config.assert_not_called()
+
+    async def test_digit_string_override_accepted(self) -> None:
+        # Operators who wrote ``"5"`` (JSON string of a whole number)
+        # instead of ``5`` still get a valid update -- the strict
+        # validator only rejects non-integers, not integer-shaped
+        # strings.
+        sub, app_state = _make_subscriber(
+            {
+                ("api", "per_op_concurrency_enabled"): "true",
+                (
+                    "api",
+                    "per_op_concurrency_overrides",
+                ): '{"memory.fine_tune": "5"}',
+            }
+        )
+        await sub.on_settings_changed("api", "per_op_concurrency_overrides")
+        swapped = app_state.swap_per_op_concurrency_config.call_args[0][0]
+        assert swapped.overrides == {"memory.fine_tune": 5}

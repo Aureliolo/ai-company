@@ -242,18 +242,15 @@ def per_op_rate_limit(
             (default_max, default_window),
         )
         if limit_max <= 0 or limit_window <= 0:
-            # Operator disabled this operation via override.  Log at
-            # WARNING so the deliberately-uncapped state surfaces in
-            # audit logs and is not mistaken for a silent bypass.
-            logger.warning(
-                API_GUARD_DENIED,
-                guard="per_op_rate_limit",
-                operation=operation,
-                note=(
-                    "rate-limit guard disabled via operator override "
-                    "(max_requests or window_seconds = 0)"
-                ),
-            )
+            # Operator disabled this operation via override.  The
+            # deliberately-uncapped state is already audit-logged
+            # once per operator change by
+            # :class:`PerOpRateLimitSettingsSubscriber`
+            # (``SETTINGS_SERVICE_SWAPPED`` INFO on every swap);
+            # emitting a per-request WARNING here would flood logs
+            # on any hot endpoint the operator chose to uncap.
+            # Fall through silently -- the audit trail at config-swap
+            # time is sufficient.
             return
         subject = extract_subject_key(
             connection,
