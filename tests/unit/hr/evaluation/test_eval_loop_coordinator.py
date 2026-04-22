@@ -8,7 +8,10 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from synthorg.hr.evaluation.config import EvalLoopConfig
-from synthorg.hr.evaluation.loop_coordinator import EvalLoopCoordinator
+from synthorg.hr.evaluation.loop_coordinator import (
+    _DEFAULT_PATTERN_ACTIONS,
+    EvalLoopCoordinator,
+)
 from synthorg.hr.evaluation.models import EvaluationReport
 
 
@@ -298,11 +301,20 @@ class TestEvalLoopCoordinatorProposeActions:
         assert await coordinator._propose_actions(()) == ()
 
     async def test_maps_known_pillars_to_default_actions(self) -> None:
+        """Known pillars resolve to the source-of-truth default mapping.
+
+        Tracks ``_DEFAULT_PATTERN_ACTIONS`` rather than hard-coding the
+        action strings so edits to that mapping do not silently drift
+        this test's expectation.
+        """
         coordinator = _make_coordinator()
         actions = await coordinator._propose_actions(
             ("weakness:intelligence", "weakness:governance"),
         )
-        assert actions == ("increase_review_depth", "expand_audit_coverage")
+        assert actions == (
+            _DEFAULT_PATTERN_ACTIONS["intelligence"],
+            _DEFAULT_PATTERN_ACTIONS["governance"],
+        )
 
     async def test_override_beats_default(self) -> None:
         config = EvalLoopConfig(

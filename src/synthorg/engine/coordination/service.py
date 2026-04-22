@@ -353,13 +353,14 @@ class MultiAgentCoordinator:
             logger.warning(
                 COORDINATION_PHASE_FAILED,
                 phase=phase_name,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             phase = CoordinationPhaseResult(
                 phase=phase_name,
                 success=False,
                 duration_seconds=elapsed,
-                error=str(exc),
+                error=safe_error_description(exc),
             )
             phases.append(phase)
             msg = f"Decomposition failed: {exc}"
@@ -409,13 +410,14 @@ class MultiAgentCoordinator:
             logger.warning(
                 COORDINATION_PHASE_FAILED,
                 phase=phase_name,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             phase = CoordinationPhaseResult(
                 phase=phase_name,
                 success=False,
                 duration_seconds=elapsed,
-                error=str(exc),
+                error=safe_error_description(exc),
             )
             phases.append(phase)
             msg = f"Routing failed: {exc}"
@@ -554,13 +556,14 @@ class MultiAgentCoordinator:
             logger.warning(
                 COORDINATION_PHASE_FAILED,
                 phase=phase_name,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             phase = CoordinationPhaseResult(
                 phase=phase_name,
                 success=False,
                 duration_seconds=elapsed,
-                error=str(exc),
+                error=safe_error_description(exc),
             )
             phases.append(phase)
             msg = f"Dispatch failed: {exc}"
@@ -619,14 +622,15 @@ class MultiAgentCoordinator:
             logger.warning(
                 COORDINATION_PHASE_FAILED,
                 phase=phase_name,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             phases.append(
                 CoordinationPhaseResult(
                     phase=phase_name,
                     success=False,
                     duration_seconds=elapsed,
-                    error=str(exc),
+                    error=safe_error_description(exc),
                 )
             )
             return None
@@ -719,13 +723,14 @@ class MultiAgentCoordinator:
             logger.warning(
                 COORDINATION_PHASE_FAILED,
                 phase=phase_name,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             phases.append(
                 CoordinationPhaseResult(
                     phase=phase_name,
                     success=False,
                     duration_seconds=elapsed,
-                    error=str(exc),
+                    error=safe_error_description(exc),
                 )
             )

@@ -36,7 +36,7 @@ function ReportPeriodCard({ period, generating, onGenerate }: ReportPeriodCardPr
   const isBusy = generating !== null
   const isThisPeriodBusy = generating === period
   return (
-    <SectionCard key={period} title={title} icon={FileText}>
+    <SectionCard title={title} icon={FileText}>
       <Button
         size="sm"
         onClick={() => onGenerate(period)}
@@ -46,6 +46,37 @@ function ReportPeriodCard({ period, generating, onGenerate }: ReportPeriodCardPr
         {isThisPeriodBusy ? 'Generating…' : 'Generate'}
       </Button>
     </SectionCard>
+  )
+}
+
+// Driven table for the "Sections present" checklist rendered inside
+// the generated-report MetadataGrid. Keeps the four items as data so
+// the JSX inside the map stays under 8 lines and new report sections
+// only require adding a row here, not duplicating markup.
+const REPORT_CHECKLIST_FIELDS = [
+  { key: 'has_spending', label: 'Spending' },
+  { key: 'has_performance', label: 'Performance' },
+  { key: 'has_task_completion', label: 'Task completion' },
+  { key: 'has_risk_trends', label: 'Risk trends' },
+] as const satisfies ReadonlyArray<{
+  key: keyof ReportResponse
+  label: string
+}>
+
+function ChecklistItem({
+  label,
+  present,
+}: {
+  label: string
+  present: boolean
+}) {
+  return (
+    <li>
+      {label}:{' '}
+      <span className={present ? 'text-success' : 'text-text-muted'}>
+        {present ? 'yes' : 'no'}
+      </span>
+    </li>
   )
 }
 
@@ -175,54 +206,13 @@ export default function ReportsPage() {
                 label: 'Sections present',
                 value: (
                   <ul className="list-disc pl-4">
-                    <li>
-                      Spending:{' '}
-                      <span
-                        className={
-                          report.response.has_spending
-                            ? 'text-success'
-                            : 'text-text-muted'
-                        }
-                      >
-                        {report.response.has_spending ? 'yes' : 'no'}
-                      </span>
-                    </li>
-                    <li>
-                      Performance:{' '}
-                      <span
-                        className={
-                          report.response.has_performance
-                            ? 'text-success'
-                            : 'text-text-muted'
-                        }
-                      >
-                        {report.response.has_performance ? 'yes' : 'no'}
-                      </span>
-                    </li>
-                    <li>
-                      Task completion:{' '}
-                      <span
-                        className={
-                          report.response.has_task_completion
-                            ? 'text-success'
-                            : 'text-text-muted'
-                        }
-                      >
-                        {report.response.has_task_completion ? 'yes' : 'no'}
-                      </span>
-                    </li>
-                    <li>
-                      Risk trends:{' '}
-                      <span
-                        className={
-                          report.response.has_risk_trends
-                            ? 'text-success'
-                            : 'text-text-muted'
-                        }
-                      >
-                        {report.response.has_risk_trends ? 'yes' : 'no'}
-                      </span>
-                    </li>
+                    {REPORT_CHECKLIST_FIELDS.map(({ key, label }) => (
+                      <ChecklistItem
+                        key={key}
+                        label={label}
+                        present={Boolean(report.response[key])}
+                      />
+                    ))}
                   </ul>
                 ),
               },

@@ -360,11 +360,16 @@ class TestListRules:
             "list_rules(enabled_only=True) must mention the ``enabled`` column"
         )
         literal_filter = "enabled = true" in query.lower()
-        param_filter = True in params
+        # Explicit bool check -- plain ``True in params`` would match
+        # an integer ``1`` (because ``True == 1`` in Python) and let a
+        # refactor that accidentally binds an int through the
+        # placeholder slip past.
+        param_filter = any(isinstance(p, bool) and p is True for p in params)
         assert literal_filter or param_filter, (
             "list_rules(enabled_only=True) must either emit a literal "
-            "``WHERE enabled = true`` or bind ``True`` through "
-            f"placeholders; neither was found. query={query!r} params={params!r}"
+            "``WHERE enabled = true`` or bind a genuine ``True`` bool "
+            f"through placeholders; neither was found. "
+            f"query={query!r} params={params!r}"
         )
 
     async def test_list_rules_empty(

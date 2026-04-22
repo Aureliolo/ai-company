@@ -25,9 +25,16 @@ class TestSafetyClassifierPromptContract:
         tree = ast.parse(source)
 
         def _is_zero(node: ast.AST) -> bool:
-            if isinstance(node, ast.Constant) and isinstance(node.value, int | float):
-                return node.value == 0
-            return False
+            # Reject bools explicitly -- ``isinstance(True, int)`` is
+            # ``True`` in Python, so without this guard a
+            # ``temperature=False`` binding would silently satisfy the
+            # assertion.
+            if not isinstance(node, ast.Constant):
+                return False
+            value = node.value
+            if isinstance(value, bool):
+                return False
+            return isinstance(value, int | float) and value == 0
 
         # Restrict the search to ``CompletionConfig(..., temperature=0)``
         # calls so an unrelated module-level binding (e.g. a docstring
@@ -41,16 +48,32 @@ class TestSafetyClassifierPromptContract:
                 return func.attr == "CompletionConfig"
             return False
 
+        # Tighten the traversal: only walk the body of
+        # ``_classify_via_llm`` (the single function that actually
+        # builds the CompletionConfig) rather than the entire module,
+        # so a CompletionConfig stubbed elsewhere in the file (tests,
+        # helpers) cannot satisfy the assertion.
+        classify_fn: ast.FunctionDef | ast.AsyncFunctionDef | None = None
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+                and node.name == "_classify_via_llm"
+            ):
+                classify_fn = node
+                break
+        assert classify_fn is not None, (
+            "safety_classifier must expose a ``_classify_via_llm`` function "
+            "that drives the LLM call and pins its CompletionConfig."
+        )
+
         found = any(
-            isinstance(node, ast.Call)
-            and _targets_completion_config(node.func)
-            and any(
-                kw.arg == "temperature" and _is_zero(kw.value) for kw in node.keywords
-            )
-            for node in ast.walk(tree)
+            isinstance(n, ast.Call)
+            and _targets_completion_config(n.func)
+            and any(kw.arg == "temperature" and _is_zero(kw.value) for kw in n.keywords)
+            for n in ast.walk(classify_fn)
         )
         assert found, (
             "safety_classifier must construct a ``CompletionConfig`` with "
-            "``temperature=0.0`` (or equivalent numeric zero). No such "
-            "call was found in the AST."
+            "``temperature=0.0`` inside ``_classify_via_llm``. No such "
+            "call was found in that function's AST."
         )

@@ -288,10 +288,12 @@ class EvalLoopCoordinator:
         ]
         qualifying.sort(key=lambda item: (-item[1], item[0]))
 
-        # ``NotBlankStr`` is an ``Annotated[str, ...]`` alias; calling
-        # it at runtime does not run the validator, it just returns
-        # the underlying string. Keep the value as a plain ``str`` in
-        # the tuple and rely on static typing + validated inputs.
+        # ``NotBlankStr`` is ``Annotated[str, ...]`` -- it erases to
+        # plain ``str`` at runtime and mypy considers the cast
+        # redundant. The f-string is never empty since every
+        # ``pillar`` comes from a non-empty ``EvaluationPillar.value``
+        # constant, so the declared ``tuple[NotBlankStr, ...]``
+        # return type is satisfied structurally.
         patterns = tuple(f"weakness:{pillar}" for pillar, _ in qualifying)
         if patterns:
             logger.info(
@@ -354,6 +356,10 @@ class EvalLoopCoordinator:
                     pillar=pillar,
                 )
                 continue
+            # ``mapped`` is statically ``NotBlankStr`` (narrowed by the
+            # truthiness check above from ``str | None``); since
+            # ``NotBlankStr`` erases to ``str`` at runtime, we append
+            # directly without a redundant cast.
             actions.append(mapped)
 
         if actions:

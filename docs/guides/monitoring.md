@@ -120,7 +120,7 @@ sum by (status_class) (rate(synthorg_api_requests_total[1m]))
 
 ## Grafana dashboard
 
-Import `monitoring/grafana/synthorg-overview.json` into any Grafana instance (tested on v10+). The file is a standard Grafana 11 dashboard JSON with a single `${DS_PROMETHEUS}` template variable bound to your Prometheus data source.
+Import `monitoring/grafana/synthorg-overview.json` into any Grafana v10+ instance. The file is Grafana v10-compatible dashboard JSON (authored against the v11 editor, which emits a backward-compatible schema) with a single `${DS_PROMETHEUS}` template variable bound to your Prometheus data source.
 
 Panels included:
 
