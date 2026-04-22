@@ -311,8 +311,11 @@ class TestMemoryServiceDeploy:
 
         assert ("memory", "embedder_model") in settings.delete_calls
         assert ("memory", "embedder_provider") in settings.delete_calls
-        # The prior checkpoint was deactivated as part of rollback.
-        assert repo.deactivate_all_calls >= 1
+        # The rollback path invokes ``deactivate_all`` exactly once when
+        # there is no prior active checkpoint to reactivate; asserting
+        # ``== 1`` (not ``>= 1``) locks down the contract so an extra
+        # call introduced later trips the test.
+        assert repo.deactivate_all_calls == 1
 
     async def test_deploy_rollback_reactivates_prior_active_checkpoint(
         self,
@@ -350,12 +353,17 @@ class TestMemoryServiceDeploy:
         with pytest.raises(RuntimeError):
             await service.deploy_checkpoint(NotBlankStr("a"))
 
-        # Rollback restored the prior active checkpoint:
-        #  * ``set_active`` was called for "a" (the attempted activation)
-        #    and then again for "prior" during rollback.
-        #  * ``deactivate_all`` was NOT invoked -- that branch is only
-        #    taken when there is no prior active.
-        assert "prior" in repo.set_active_calls
+        # Rollback restored the prior active checkpoint in the expected
+        # order: first the attempted activation for "a", then the
+        # rollback reactivation for "prior". Asserting the exact
+        # sequence catches a future regression where rollback fires an
+        # extra ``set_active`` or flips the order.
+        assert repo.set_active_calls == ["a", "prior"]
+        # ``deactivate_all`` must NOT be invoked on this branch -- the
+        # prior-active-exists path routes through ``set_active(prior)``
+        # instead. Asserting unchanged-from-baseline catches a
+        # regression that would otherwise fall through to the no-prior
+        # branch.
         assert repo.deactivate_all_calls == baseline_deactivate_calls
         # Newly-written settings whose prior values were absent must
         # still be explicitly deleted so rollback leaves a pristine
