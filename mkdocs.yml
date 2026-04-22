@@ -122,6 +122,7 @@ nav:
       - Workflow API Tutorial: guides/workflow-api.md
       - Agent Management: guides/agent-management.md
       - Human Interaction & API: guides/human-interaction.md
+      - Persistence Migrations: guides/persistence-migrations.md
       - Contributing: guides/contributing.md
   - Design:
       - design/index.md

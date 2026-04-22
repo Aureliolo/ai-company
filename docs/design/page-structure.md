@@ -294,38 +294,33 @@ Navigates to a dedicated full page at `/agents/{agentName}`. Single scrollable p
 
 ## Navigation Hierarchy
 
-```text
-SIDEBAR (220px expanded / 56px icon rail)
-|
-+-- [Logo / Brand mark]
-|
-+-- PRIMARY
-|   +-- Dashboard          [LayoutDashboard]     /
-|   +-- Org Chart          [GitBranch]           /org
-|   +-- Task Board         [KanbanSquare]        /tasks
-|   +-- Budget             [DollarSign]          /budget  [amber dot when >85% spent]
-|   +-- Approvals          [ShieldCheck]         /approvals  [badge: pending count]
-|
-+-- WORKSPACE (collapsible label)
-|   +-- Agents             [Users]               /agents
-|   +-- Projects           [FolderKanban]        /projects
-|   +-- Workflows          [Workflow]            /workflows
-|   +-- Subworkflows       [Layers]              /subworkflows
-|   +-- Artifacts          [Package]             /artifacts
-|   +-- Messages           [MessageSquare]       /messages  [badge: unread count]
-|   +-- Meetings           [Video]               /meetings
-|   +-- Providers          [Cpu]                 /providers
-|   +-- Docs               [BookOpen]            /docs/  (external -- static HTML, not SPA)
-|   +-- Fine-Tuning        [Sparkles]            /settings/memory/fine-tuning
-|   +-- Settings           [Settings]            /settings
-|
-+-- BOTTOM
-    +-- [Collapse toggle]
-    +-- [Notifications bell + badge]
-    +-- [Cmd+K hint]
-    +-- [Connection status dot from /health]
-    +-- [User avatar / role badge / logout]
-```
+Sidebar layout (220px expanded, 56px icon rail):
+
+- **Brand**: Logo / brand mark
+- **Primary**:
+    - Dashboard -- `LayoutDashboard` -- `/`
+    - Org Chart -- `GitBranch` -- `/org`
+    - Task Board -- `KanbanSquare` -- `/tasks`
+    - Budget -- `DollarSign` -- `/budget` (amber dot when >85% spent)
+    - Approvals -- `ShieldCheck` -- `/approvals` (badge: pending count)
+- **Workspace** (collapsible label):
+    - Agents -- `Users` -- `/agents`
+    - Projects -- `FolderKanban` -- `/projects`
+    - Workflows -- `Workflow` -- `/workflows`
+    - Subworkflows -- `Layers` -- `/subworkflows`
+    - Artifacts -- `Package` -- `/artifacts`
+    - Messages -- `MessageSquare` -- `/messages` (badge: unread count)
+    - Meetings -- `Video` -- `/meetings`
+    - Providers -- `Cpu` -- `/providers`
+    - Docs -- `BookOpen` -- `/docs/` (external -- static HTML, not SPA)
+    - Fine-Tuning -- `Sparkles` -- `/settings/memory/fine-tuning`
+    - Settings -- `Settings` -- `/settings`
+- **Bottom**:
+    - Collapse toggle
+    - Notifications bell + badge
+    - `Cmd+K` hint
+    - Connection status dot from `/health`
+    - User avatar / role badge / logout
 
 **Icon source**: Lucide React (already a project dependency).
 

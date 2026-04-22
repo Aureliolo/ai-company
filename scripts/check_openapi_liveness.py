@@ -16,11 +16,14 @@ itself.  Safe to run locally before pushing.
 
 import os
 import sys
-import traceback
 
 # Match ``export_openapi.py``'s determinism contract so this check
-# exercises the same wiring path CI uses for docs deploys.
-os.environ.setdefault("SYNTHORG_DB_PATH", ":memory:")
+# exercises the same wiring path CI uses for docs deploys.  Force the
+# in-memory SQLite backend and strip ``SYNTHORG_DATABASE_URL`` so a
+# pre-set Postgres URL cannot flip the schema onto a different wiring
+# path.
+os.environ["SYNTHORG_DB_PATH"] = ":memory:"
+os.environ.pop("SYNTHORG_DATABASE_URL", None)
 
 MIN_PATH_COUNT = 200
 
@@ -41,6 +44,10 @@ CANARY_PATHS = frozenset(
 
 def main() -> int:
     """Run the export in-memory and assert the schema looks healthy."""
+    from synthorg.observability import get_logger, safe_error_description
+
+    logger = get_logger(__name__)
+
     try:
         from synthorg.api.app import create_app
         from synthorg.api.openapi import inject_rfc9457_responses
@@ -48,8 +55,14 @@ def main() -> int:
         app = create_app()
         schema = inject_rfc9457_responses(app.openapi_schema.to_schema())
     except Exception as exc:
-        print("OpenAPI export failed:", file=sys.stderr)
-        traceback.print_exception(exc)
+        # TRY400: logger.exception() attaches a traceback whose serialized
+        # frame-locals can leak secrets per CLAUDE.md SEC-1.  Use
+        # logger.error with safe_error_description instead.
+        logger.error(  # noqa: TRY400
+            "openapi_export_failed",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
         return 1
 
     paths = schema.get("paths") or {}
@@ -73,12 +86,19 @@ def main() -> int:
         )
 
     if errors:
-        print("OpenAPI liveness check failed:", file=sys.stderr)
-        for line in errors:
-            print(f"  - {line}", file=sys.stderr)
+        logger.error(
+            "openapi_liveness_failed",
+            path_count=path_count,
+            error_count=len(errors),
+            errors=errors,
+        )
         return 1
 
-    print(f"OpenAPI liveness OK: {path_count} paths, all canaries present.")
+    logger.info(
+        "openapi_liveness_ok",
+        path_count=path_count,
+        canary_count=len(CANARY_PATHS),
+    )
     return 0
 
 

@@ -5,7 +5,7 @@ disclosure.  L1 metadata is always in context (~100 tokens per
 tool), L2 bodies are loaded on demand (<5K tokens), and L3
 resources are fetched explicitly.
 
-See ``docs/design/operations.md`` Progressive Tool Disclosure.
+See ``docs/design/tools.md`` (Progressive Tool Disclosure section).
 """
 
 from typing import Literal

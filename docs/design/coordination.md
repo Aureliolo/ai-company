@@ -254,21 +254,17 @@ independent working tree). On completion, branches are merged sequentially.
 This is the dominant industry pattern (used by major coding agent products
 and IDE background agents).
 
-```text
-Planner decomposes task:
-|- Agent A: src/auth/     (worktree-A)
-|- Agent B: src/api/      (worktree-B)
-└- Agent C: tests/        (worktree-C)
-
-Each in isolated git worktree
-        |
-On completion: sequential merge
-|- Merge A -> main
-|- Rebase B on main, merge
-└- Rebase C on main, merge
-        |
-Textual conflicts: git detects, escalate to human or review agent
-Semantic conflicts: review agent evaluates merged result
+```mermaid
+flowchart TD
+    P[Planner decomposes task]
+    P --> A[Agent A: src/auth/ worktree-A]
+    P --> B[Agent B: src/api/ worktree-B]
+    P --> C[Agent C: tests/ worktree-C]
+    A --> M[Sequential merge]
+    B --> M
+    C --> M
+    M --> T[Textual conflicts: escalate to human or review agent]
+    M --> S[Semantic conflicts: review agent evaluates merged result]
 ```
 
 ???+ example "Workspace isolation configuration"

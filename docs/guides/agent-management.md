@@ -132,10 +132,10 @@ Firing is a CRITICAL-risk operation requiring human approval by default. The pru
 
 ```bash
 curl -X DELETE http://localhost:3001/api/v1/agents/${AGENT_NAME} \
-  -H "Content-Type: application/json" \
-  -H "Cookie: ${SESSION}" \
-  -d '{"reason": "role no longer needed"}'
+  -H "Cookie: ${SESSION}"
 ```
+
+The `DELETE /api/v1/agents/{agent_name}` endpoint does not accept a request body. Approval metadata (reason, justification) is recorded separately when the `CRITICAL`-risk approval gate captures the decision.
 
 What happens:
 

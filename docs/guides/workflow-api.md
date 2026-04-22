@@ -25,6 +25,8 @@ export SESSION='session=<your-cookie-value>'
 
 ## Workflow Lifecycle
 
+Endpoint paths in the diagram below omit the `/api/v1` prefix for readability; every curl example later in this guide uses the full `/api/v1/...` path.
+
 ```mermaid
 flowchart LR
     Create[POST /workflows] --> Draft[WorkflowDefinition v1.0.0]

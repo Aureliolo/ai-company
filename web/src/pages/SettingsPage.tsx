@@ -55,7 +55,7 @@ function SettingsActionCard({ to, title, description }: { to: string; title: str
   return (
     <Link
       to={to}
-      className="grid grid-cols-[1fr_auto] items-start gap-grid-gap rounded-md p-card transition-all duration-200 hover:bg-card-hover hover:-translate-y-px"
+      className="grid grid-cols-[1fr_auto] items-start gap-grid-gap rounded-md p-card transition-all duration-[var(--so-transition-dim)] hover:bg-card-hover hover:-translate-y-px"
     >
       <div className="min-w-0 space-y-1">
         <span className="text-sm font-medium text-foreground">{title}</span>

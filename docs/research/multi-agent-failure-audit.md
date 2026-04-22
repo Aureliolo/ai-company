@@ -132,13 +132,14 @@ in the conflict positions, `find_position_or_raise()` raises `ConflictStrategyEr
 
 **Initial concern about looping was unfounded.** The debate is single-shot.
 
-**Remaining concern**: If the judge evaluator raises an exception (provider error, timeout),
-the exception propagates through `ConflictResolutionService.resolve()` uncaught. There is
-no automatic fallback to authority on evaluator failure -- the resolution attempt fails
-entirely. Callers should be prepared for this.
+**Exception handling**: If the judge evaluator raises an exception (provider error, timeout),
+the exception is caught and the resolver falls back to `_authority_fallback(conflict)`. If the
+authority fallback itself raises `ConflictHierarchyError` (no common manager across
+departments), that exception is also caught and a final seniority-only fallback is used
+(without hierarchy). A resolution is always produced unless `MemoryError` or `RecursionError`
+occurs.
 
-**Verdict**: Safe (terminates). One exception path: evaluator exceptions propagate without
-fallback.
+**Verdict**: Safe (terminates). Multi-level fallback chain ensures resolution is always produced.
 
 ### HumanEscalationResolver
 
@@ -182,8 +183,11 @@ flowchart TD
     DR[DebateResolver]
     DR -->|judge returns winner| RD[RESOLVED_BY_DEBATE]
     DR -->|no JudgeEvaluator configured| AR2[AuthorityResolver]
-    DR -->|evaluator raises| EXC[exception propagates: no fallback]
+    DR -->|evaluator raises| AFB[authority fallback]
     AR2 --> RA2[RESOLVED_BY_AUTHORITY]
+    AFB -->|common manager found| RA4[RESOLVED_BY_AUTHORITY]
+    AFB -->|ConflictHierarchyError| SF[seniority-only fallback]
+    SF --> RA5[RESOLVED_BY_AUTHORITY no hierarchy]
 
     HE[HumanEscalationResolver] --> EH2[ESCALATED_TO_HUMAN stub - immediate]
 
@@ -192,8 +196,9 @@ flowchart TD
     AR -->|no common manager cross-dept| CHE[ConflictHierarchyError]
 ```
 
-All paths terminate. No infinite loops. The weakest path is the `DebateResolver` evaluator
-exception (no fallback) and the `HumanEscalationResolver` stub (no actual resolution).
+All paths terminate. No infinite loops. `DebateResolver` catches evaluator exceptions and
+cascades through authority and seniority fallbacks; the weakest remaining path is the
+`HumanEscalationResolver` stub (no actual resolution).
 
 ---
 

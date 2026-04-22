@@ -72,7 +72,7 @@ See [Notifications design](../design/notifications.md) for the protocol and exte
 
 ## WebSocket Event Channels
 
-The dashboard subscribes to real-time events over `/api/v1/ws`. External consumers can connect the same way. Tickets (one-time tokens) are obtained via `POST /api/v1/auth/ws-ticket` with a valid session, then passed as `?ticket=...` on the WebSocket handshake.
+The dashboard subscribes to real-time events over `/api/v1/ws`. External consumers can connect the same way. Tickets (one-time tokens) are obtained via `POST /api/v1/auth/ws-ticket` with a valid session. **Preferred flow**: connect without query params, then send `{"action":"auth","ticket":"<ticket>"}` as the first message -- this keeps the ticket out of URLs, logs, and browser history. Query-param `?ticket=...` remains supported as a legacy fallback.
 
 ### Channel Inventory
 
@@ -95,8 +95,13 @@ The dashboard subscribes to real-time events over `/api/v1/ws`. External consume
 const res = await fetch('/api/v1/auth/ws-ticket', { method: 'POST', credentials: 'include' })
 const { data: { ticket } } = await res.json()
 
-// 2. Open WebSocket with ticket
-const ws = new WebSocket(`wss://example.synthorg.io/api/v1/ws?ticket=${ticket}`)
+// 2. Open WebSocket without any query param
+const ws = new WebSocket('wss://example.synthorg.io/api/v1/ws')
+
+ws.addEventListener('open', () => {
+  // 3. Authenticate via the first message (keeps the ticket out of URLs)
+  ws.send(JSON.stringify({ action: 'auth', ticket }))
+})
 
 ws.addEventListener('message', (event) => {
   const frame = JSON.parse(event.data)
@@ -104,13 +109,13 @@ ws.addEventListener('message', (event) => {
     console.warn('Unknown event version', frame)
     return
   }
+  if (frame.action === 'auth_ok') {
+    // 4. Subscribes are only accepted after auth_ok
+    ws.send(JSON.stringify({ action: 'subscribe', channel: 'tasks' }))
+    ws.send(JSON.stringify({ action: 'subscribe', channel: 'approvals' }))
+    return
+  }
   handleEvent(frame)
-})
-
-// 3. Subscribe to channels after auth_ok arrives
-ws.addEventListener('open', () => {
-  ws.send(JSON.stringify({ action: 'subscribe', channel: 'tasks' }))
-  ws.send(JSON.stringify({ action: 'subscribe', channel: 'approvals' }))
 })
 ```
 
@@ -136,9 +141,9 @@ The server emits `{"action": "auth_ok"}` once your ticket is validated; only the
 
 Verify by triggering an approval: the dispatcher will post a formatted card to the channel within ~500ms.
 
-### Email relay via HTTP sink
+### Email relay via SMTP sink
 
-Want to route through a corporate SMTP gateway that doesn't accept direct connections? Use an HTTP sink pointed at your internal relay:
+Want to route through a corporate SMTP gateway that doesn't accept direct connections? Use an email sink configured to point at your internal SMTP relay:
 
 ```yaml
 notifications:

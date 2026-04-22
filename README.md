@@ -84,7 +84,7 @@ curl http://localhost:3001/api/v1/health
 
 **[Dynamic Workforce Scaling](https://synthorg.io/docs/design/agents/#dynamic-scaling)** -- Closed-loop hiring and pruning with pluggable strategies (workload, budget cap, skill gap, performance), safety guards (conflict resolution, cooldowns, rate limits, approval gates), and a dashboard for manual evaluation triggers.
 
-**[Budget & Cost Management](https://synthorg.io/docs/design/operations/)** -- Per-agent and per-project cost limits with hierarchical cascading, auto-downgrade to cheaper models at task boundaries, spending reports, budget forecasting, and anomaly detection.
+**[Budget & Cost Management](https://synthorg.io/docs/design/budget/)** -- Per-agent and per-project cost limits with hierarchical cascading, auto-downgrade to cheaper models at task boundaries, spending reports, budget forecasting, and anomaly detection.
 
 **[Security & Trust](https://synthorg.io/docs/security/)** -- SecOps agent with fail-closed rule engine, progressive trust (4 strategies), configurable autonomy levels (4 tiers), approval gates, LLM fallback evaluator, and audit logging. Container images are cosign-signed with [SLSA L3](https://slsa.dev) provenance.
 
@@ -98,7 +98,7 @@ curl http://localhost:3001/api/v1/health
 
 **[Web Dashboard](https://synthorg.io/docs/design/page-structure/)** -- React 19 + shadcn/ui dashboard with org chart, task board, agent detail, budget tracking, provider management, workflow editor, ceremony policy settings, and setup wizard. Real-time WebSocket updates.
 
-**[Notifications](https://synthorg.io/docs/design/operations/#notifications)** -- Pluggable notification sinks (console, ntfy, Slack, email) with severity filtering. Approval gates, budget thresholds, and timeout escalations emit alerts through a fan-out dispatcher.
+**[Notifications](https://synthorg.io/docs/design/notifications/)** -- Pluggable notification sinks (console, ntfy, Slack, email) with severity filtering. Approval gates, budget thresholds, and timeout escalations emit alerts through a fan-out dispatcher.
 
 **[Integrations](https://synthorg.io/docs/design/integrations/)** -- Typed connection catalog (GitHub, Slack, SMTP, database, generic HTTP, OAuth apps) with pluggable secret backends (Fernet-encrypted SQLite or Postgres, auto-selected to match the persistence backend; env-var fallback; Vault/AWS/Azure stubs). Full OAuth 2.1 (authorization code + PKCE, device flow, client credentials) with proactive token refresh. Webhook receiver with pluggable signature verifiers (GitHub HMAC, Slack signing, generic HMAC) and replay protection. Per-connection health checks with background prober and status smoothing. Tool-side `@with_connection_rate_limit` decorator backed by a bus-coordinated sliding window. Bundled MCP server catalog and local-dev ngrok tunnel.
 
@@ -142,7 +142,7 @@ SynthOrg vs [44 agent frameworks](https://synthorg.io/compare/) across 14 dimens
 |---------|-------------|
 | [User Guide](https://synthorg.io/docs/user_guide/) | Install, configure, run, customize |
 | [Guides](https://synthorg.io/docs/guides/) | Quickstart, company config, agents, budget, security, MCP tools, deployment, logging, memory |
-| [Design Specification](https://synthorg.io/docs/design/) | Agents, org structure, communication, engine, memory, operations, brand & UX, strategy (20 pages) |
+| [Design Specification](https://synthorg.io/docs/design/) | Agents, HR lifecycle, org structure, communication, engine, coordination, verification, memory, providers, budget, tools, security, observability, notifications, backup, deployment, brand & UX, strategy |
 | [Architecture](https://synthorg.io/docs/architecture/) | System overview, tech stack, decision log |
 | [REST API](https://synthorg.io/docs/rest-api/) | Scalar/OpenAPI reference |
 | [Library Reference](https://synthorg.io/docs/api/) | Auto-generated from docstrings (14 modules) |

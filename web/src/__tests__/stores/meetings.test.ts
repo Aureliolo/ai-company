@@ -252,6 +252,7 @@ describe('triggerMeeting', () => {
     expect(toasts).toHaveLength(1)
     expect(toasts[0]!.variant).toBe('error')
     expect(toasts[0]!.title).toBe('Could not trigger meeting')
+    expect(toasts[0]!.description).toBe('Trigger failed')
   })
 })
 

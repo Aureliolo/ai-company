@@ -464,9 +464,11 @@ class CreateApprovalRequest(BaseModel):
     )
     metadata: dict[str, str] = Field(
         default_factory=dict,
+        max_length=_MAX_METADATA_KEYS,
         description=(
             "Optional key-value metadata for the approval "
-            "(max 20 keys, 256-char values)."
+            f"(max {_MAX_METADATA_KEYS} keys, "
+            f"{_MAX_METADATA_STR_LEN}-char keys and values)."
         ),
     )
 

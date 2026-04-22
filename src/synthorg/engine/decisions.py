@@ -5,9 +5,8 @@ record captures full context at decision time -- executing agent,
 reviewer, criteria snapshot, and outcome -- for audit and analytics.
 
 See the Review Gate section of ``docs/design/engine.md`` for the
-drop-box design rationale, and the "Security and Approval System"
-section of ``docs/design/operations.md`` for how decisions flow
-through the approval lifecycle.
+drop-box design rationale, and ``docs/design/security.md`` for how
+approval decisions flow through the lifecycle.
 """
 
 from types import MappingProxyType

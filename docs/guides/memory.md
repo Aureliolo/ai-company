@@ -317,77 +317,60 @@ org_memory:
 
 ## Memory Admin API
 
-Operators can query and manage agent memory at runtime through `/admin/memory` endpoints. These are gated by the `admin` role.
+Operators with the `CEO` or `SYSTEM` role can manage embedding fine-tuning at runtime through the `/admin/memory/fine-tune*` endpoints (controller: `src/synthorg/api/controllers/memory.py`, guarded by `require_roles(HumanRole.CEO, HumanRole.SYSTEM)`).
 
-### List checkpoints
-
-```bash
-curl http://localhost:3001/api/v1/admin/memory/checkpoints \
-  -H "Cookie: ${SESSION}" | jq '.data[] | {agent_id, checkpoint_id, created_at, memory_count}'
-```
-
-### Trigger manual consolidation
-
-Consolidation merges redundant memories and promotes high-value items to longer-term storage. Normally it runs on a schedule; trigger it on demand:
+### Start a fine-tune run
 
 ```bash
-curl -X POST http://localhost:3001/api/v1/admin/memory/consolidate \
-  -H "Content-Type: application/json" \
-  -H "Cookie: ${SESSION}" \
-  -d '{"agent_id": "sarah_chen", "strategy": "llm_merge"}' | jq
-```
-
-Strategies: `llm_merge` (LLM synthesises redundant memories into a single canonical entry), `search_and_ask` (semantic dedup via embeddings + LLM confirmation). See [design/memory.md](../design/memory.md#consolidation).
-
-### Reindex embeddings
-
-If you change the embedding model or migrate backends, reindex to regenerate vectors:
-
-```bash
-curl -X POST http://localhost:3001/api/v1/admin/memory/reindex \
+curl -X POST http://localhost:3001/api/v1/admin/memory/fine-tune \
   -H "Content-Type: application/json" \
   -H "Cookie: ${SESSION}" \
   -d '{"agent_id": "sarah_chen"}' | jq
 ```
 
-### Query retrieval statistics
+### Resume, cancel, or check status
 
 ```bash
-curl "http://localhost:3001/api/v1/admin/memory/stats?agent_id=sarah_chen" \
-  -H "Cookie: ${SESSION}" | jq
-```
+# Resume a paused run
+curl -X POST http://localhost:3001/api/v1/admin/memory/fine-tune/resume/${RUN_ID} \
+  -H "Cookie: ${SESSION}"
 
-Returns retrieval hit rate, average retrieval latency, total memory count, procedural skill count, and consolidation history.
-
-### Procedural skill management
-
-Agents auto-generate `PROCEDURAL` memories from task failures. List and manage them:
-
-```bash
-# List an agent's procedural skills
-curl "http://localhost:3001/api/v1/admin/memory/procedural?agent_id=sarah_chen" \
+# Read current status
+curl http://localhost:3001/api/v1/admin/memory/fine-tune/status \
   -H "Cookie: ${SESSION}" | jq
 
-# Delete a stale skill
-curl -X DELETE "http://localhost:3001/api/v1/admin/memory/procedural/${SKILL_ID}" \
+# Cancel the active run
+curl -X POST http://localhost:3001/api/v1/admin/memory/fine-tune/cancel \
   -H "Cookie: ${SESSION}"
 ```
 
-### Organization memory (shared knowledge)
-
-Org memory is shared across agents via `OrgMemoryBackend`. Only agents with sufficient role can write.
+### Preflight check, checkpoints, deploy / rollback
 
 ```bash
-# Read org memory
-curl "http://localhost:3001/api/v1/admin/memory/org?query=deployment+procedure" \
-  -H "Cookie: ${SESSION}" | jq
-
-# Promote an agent memory to org scope (human action)
-curl -X POST http://localhost:3001/api/v1/admin/memory/org/promote \
+# Validate configuration before running
+curl -X POST http://localhost:3001/api/v1/admin/memory/fine-tune/preflight \
   -H "Content-Type: application/json" \
   -H "Cookie: ${SESSION}" \
-  -d '{"agent_id": "sarah_chen", "memory_id": "mem_01j..."}' | jq
+  -d '{"agent_id": "sarah_chen"}' | jq
+
+# List available checkpoints
+curl http://localhost:3001/api/v1/admin/memory/fine-tune/checkpoints \
+  -H "Cookie: ${SESSION}" | jq
+
+# Deploy or roll back a specific checkpoint
+curl -X POST http://localhost:3001/api/v1/admin/memory/fine-tune/checkpoints/${CHECKPOINT_ID}/deploy \
+  -H "Cookie: ${SESSION}"
+curl -X POST http://localhost:3001/api/v1/admin/memory/fine-tune/checkpoints/${CHECKPOINT_ID}/rollback \
+  -H "Cookie: ${SESSION}"
+
+# Delete a checkpoint
+curl -X DELETE http://localhost:3001/api/v1/admin/memory/fine-tune/checkpoints/${CHECKPOINT_ID} \
+  -H "Cookie: ${SESSION}"
 ```
+
+### Planned admin endpoints
+
+Consolidation, reindex, procedural-skill management, and organization-memory promotion are described in the [Memory design page](../design/memory.md#consolidation) but are not yet exposed as REST endpoints. Track progress against the Memory roadmap; in the meantime these operations happen on agent-lifecycle boundaries (consolidation cycles, startup reindex, procedural-memory auto-generation).
 
 ---
 

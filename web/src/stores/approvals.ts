@@ -403,8 +403,7 @@ export const useApprovalsStore = create<ApprovalsState>()((set, get) => ({
       useToastStore.getState().add({
         variant: 'error',
         title: 'Could not approve',
-        description:
-          'Check that the approval is still pending and you have the required permissions.',
+        description: getErrorMessage(err),
       })
       return null
     }
@@ -424,8 +423,7 @@ export const useApprovalsStore = create<ApprovalsState>()((set, get) => ({
       useToastStore.getState().add({
         variant: 'error',
         title: 'Could not reject',
-        description:
-          'Check that the approval is still pending and you have the required permissions.',
+        description: getErrorMessage(err),
       })
       return null
     }

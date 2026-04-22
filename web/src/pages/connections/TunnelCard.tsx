@@ -88,7 +88,7 @@ export function TunnelCard() {
       useToastStore.getState().add({
         variant: 'error',
         title: 'Could not copy URL',
-        description: 'Try copying the URL manually from the dialog.',
+        description: 'Try copying the URL manually from the Public URL field.',
       })
     }
   }

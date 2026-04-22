@@ -46,6 +46,7 @@ jobs:
               - 'web/**'
               - 'src/synthorg/api/schemas/**'
               - 'scripts/export_openapi.py'
+              - 'docs/openapi/openapi.json'
               - 'pyproject.toml'
               - 'uv.lock'
               - '.github/actions/**'
@@ -531,7 +532,7 @@ jobs:
   ci-pass:
     name: CI Pass
     if: always()
-    needs: [changes, lint, schema-validate, type-check, test, python-audit, dockerfile-lint, dashboard-lint, dashboard-type-check, dashboard-test, dashboard-build, dashboard-audit, dashboard-storybook-build]
+    needs: [changes, lint, schema-validate, type-check, openapi-liveness, test, python-audit, dockerfile-lint, dashboard-lint, dashboard-type-check, dashboard-test, dashboard-build, dashboard-audit, dashboard-storybook-build]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions: {}
@@ -545,6 +546,7 @@ jobs:
             ${{ needs.lint.result }}
             ${{ needs.schema-validate.result }}
             ${{ needs.type-check.result }}
+            ${{ needs.openapi-liveness.result }}
             ${{ needs.test.result }}
             ${{ needs.python-audit.result }}
             ${{ needs.dockerfile-lint.result }}

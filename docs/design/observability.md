@@ -117,7 +117,7 @@ File sinks use `RotatingFileHandler` by default (10 MB max, 5 backup files). Alt
 Rotated backup files can be automatically gzip-compressed by setting `compress_rotated: true`
 in the rotation config. Compressed backups are stored as `.log.N.gz` instead of `.log.N`,
 typically achieving 5--10x size reduction for structured JSON logs. Compression is off by
-default for backward compatibility. `compress_rotated` is only supported with the builtin
+default for backward compatibility. `compress_rotated` is only supported with the built-in
 rotation strategy; it is rejected when `rotation.strategy` is set to `external`.
 
 ### Sensitive Field Redaction
@@ -228,7 +228,7 @@ Four observability settings are runtime-editable via `SettingsService`:
 - `sink_overrides` (JSON) -- per-sink overrides keyed by sink identifier (`__console__` for the
   console sink, file path for file sinks). Each value is an object with optional fields:
   `enabled` (bool), `level` (string), `json_format` (bool), `rotation` (object with `max_bytes`,
-  `backup_count`, `strategy`, `compress_rotated` (builtin-only)). The console sink cannot be disabled
+  `backup_count`, `strategy`, `compress_rotated` (built-in-only)). The console sink cannot be disabled
   (`enabled: false` is rejected).
 - `custom_sinks` (JSON) -- additional sinks as a JSON array. Each entry may specify `sink_type`
   (`file`, `syslog`, `http`; defaults to `file`). File sinks require `file_path` and accept

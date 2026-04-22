@@ -75,7 +75,7 @@ API -> CLI
 | `/api/v1/personalities/*` | Personality preset discovery and custom preset CRUD |
 | `/api/v1/users` | CEO-only user CRUD |
 | `/api/v1/admin/backups` | Manual backup, list, detail, delete |
-| `/api/v1/ws` | WebSocket for real-time updates (ticket auth via `?ticket=`) |
+| `/api/v1/ws` | WebSocket for real-time updates. First-message auth preferred: connect without query params, then send `{"action":"auth","ticket":"<ticket>"}`. Query-param `?ticket=` is a legacy fallback. |
 | `POST /api/v1/auth/ws-ticket` | Exchange JWT for one-time WebSocket connection ticket |
 | `/api/v1/conflicts/escalations` | Human escalation approval queue |
 

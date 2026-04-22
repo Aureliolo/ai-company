@@ -254,7 +254,7 @@ async def _resolve_currency(
             API_REQUEST_ERROR,
             endpoint="activities",
             source=_SRC_BUDGET_CONFIG,
-            detail="Could not load budget configuration. Using default currency.",
+            detail="Could not load budget configuration; aborting request.",
             exc_info=True,
         )
         raise

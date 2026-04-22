@@ -165,7 +165,7 @@ export default function ApprovalsPage() {
       useToastStore.getState().add({
         variant: 'error',
         title: 'Could not approve all items',
-        description: 'Review the details below and retry.',
+        description: 'Please try again. If this keeps happening, check the application logs.',
       })
     } finally {
       setBatchLoading(false)
@@ -197,7 +197,7 @@ export default function ApprovalsPage() {
       useToastStore.getState().add({
         variant: 'error',
         title: 'Could not reject all items',
-        description: 'Review the details below and retry.',
+        description: 'Please try again. If this keeps happening, check the application logs.',
       })
     } finally {
       setBatchLoading(false)

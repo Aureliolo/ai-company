@@ -453,8 +453,7 @@ export const useMeetingsStore = create<MeetingsState>()((set, get) => ({
       useToastStore.getState().add({
         variant: 'error',
         title: 'Could not trigger meeting',
-        description:
-          'Check that all required agents are available and try again.',
+        description: getErrorMessage(err),
       })
       return []
     }

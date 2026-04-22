@@ -34,23 +34,28 @@ A2A is **disabled by default**. Enable via `a2a.enabled: true` in company YAML a
 
 ## Architecture
 
-```mermaid
-flowchart LR
-    ExtAgent[External agent]
-    Gateway[A2A Gateway]
-    DelegGuard[DelegationGuard]
-    InternalBus[Internal MessageBus]
-    Hub[EventStreamHub]
-    Projection[A2A Projection]
-    WebhookRX[WebhookReceiver]
+```d2
+direction: right
 
-    ExtAgent -->|JSON-RPC / SSE| Gateway
-    Gateway -->|auth + allowlist + signature| DelegGuard
-    DelegGuard --> InternalBus
-    Hub --> Projection
-    Projection -->|SSE or webhook| ExtAgent
-    ExtAgent -->|Push notification| WebhookRX
-    WebhookRX -->|HMAC verify + replay dedup| InternalBus
+ExtAgent: External agent
+
+SynthOrg: {
+  Gateway: A2A Gateway
+  DelegGuard: DelegationGuard
+  InternalBus: Internal MessageBus
+  Hub: EventStreamHub
+  Projection: A2A Projection
+  WebhookRX: WebhookReceiver
+
+  Gateway -> DelegGuard: "auth + allowlist + signature"
+  DelegGuard -> InternalBus
+  Hub -> Projection
+  WebhookRX -> InternalBus: "HMAC verify + replay dedup"
+}
+
+ExtAgent -> SynthOrg.Gateway: "JSON-RPC / SSE"
+SynthOrg.Projection -> ExtAgent: "SSE or webhook"
+ExtAgent -> SynthOrg.WebhookRX: "Push notification"
 ```
 
 The gateway is a thin translation layer: inbound A2A requests become internal `MessageBus` messages after passing the delegation guard and A2A-specific security checks. Outbound state is served through a per-consumer projection over the shared `EventStreamHub` -- no duplicate event source.

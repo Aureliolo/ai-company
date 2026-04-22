@@ -4,7 +4,6 @@ Exercises :func:`inject_rfc9457_responses` against the real
 Litestar-generated schema end-to-end.
 """
 
-import os
 from typing import Any
 
 import pytest
@@ -120,7 +119,9 @@ def test_no_oneof_with_null_after_processing() -> None:
 
 
 @pytest.mark.integration
-def test_openapi_export_is_live_and_complete() -> None:
+def test_openapi_export_is_live_and_complete(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Export produces a full schema under the CI determinism contract.
 
     Mirrors ``scripts/check_openapi_liveness.py``: guards against the
@@ -130,7 +131,8 @@ def test_openapi_export_is_live_and_complete() -> None:
     controllers silently skip registration, the export still succeeds
     but the schema is partial; this test fails loudly in that case.
     """
-    os.environ.setdefault("SYNTHORG_DB_PATH", ":memory:")
+    monkeypatch.setenv("SYNTHORG_DB_PATH", ":memory:")
+    monkeypatch.delenv("SYNTHORG_DATABASE_URL", raising=False)
 
     from synthorg.api.app import create_app
 
