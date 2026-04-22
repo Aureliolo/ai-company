@@ -5,7 +5,10 @@ const meta = {
   title: 'Overlays/KeyboardShortcutHint',
   component: KeyboardShortcutHint,
   tags: ['autodocs'],
-  parameters: { layout: 'padded' },
+  parameters: {
+    layout: 'padded',
+    a11y: { test: 'error' },
+  },
 } satisfies Meta<typeof KeyboardShortcutHint>
 
 export default meta

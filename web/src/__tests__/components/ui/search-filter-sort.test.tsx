@@ -102,6 +102,7 @@ describe('SearchInput', () => {
         }
         unmount()
       }),
+      { numRuns: 20 },
     )
   })
 

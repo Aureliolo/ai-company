@@ -80,3 +80,21 @@ export const CurrentPageOnly: Story = {
     ],
   },
 }
+
+/**
+ * Empty list: the component returns `null` when no items are supplied so the
+ * caller can safely conditionalise on a loading or not-yet-resolved state
+ * without wrapping the component in its own gate.
+ */
+export const Empty: Story = {
+  args: {
+    items: [],
+  },
+  parameters: {
+    docs: {
+      description: {
+        story: 'With an empty `items` array, `Breadcrumbs` renders nothing (returns `null`).',
+      },
+    },
+  },
+}

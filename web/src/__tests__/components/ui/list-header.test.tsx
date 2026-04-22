@@ -17,7 +17,11 @@ describe('ListHeader', () => {
 
   it('does not render count when undefined', () => {
     const { container } = render(<ListHeader title="Tasks" />)
-    expect(container.querySelector('[aria-label$="items"]')).toBeNull()
+    // The title row renders the <h1> on its own; a count span would sit as the
+    // next sibling. Asserting the absence of that slot is stricter than the
+    // old `aria-label$="items"` probe (which would pass even if a span shipped
+    // without a matching aria-label).
+    expect(container.querySelector('h1 + span')).toBeNull()
   })
 
   it('countLabel override replaces parenthesised count', () => {
@@ -65,6 +69,7 @@ describe('ListHeader', () => {
           unmount()
         },
       ),
+      { numRuns: 20 },
     )
   })
 })

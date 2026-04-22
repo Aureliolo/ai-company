@@ -49,7 +49,7 @@ export default function ArtifactDetailPage() {
         <ErrorBanner severity="error" title="Could not load artifact" description={error} />
       )}
 
-      {!wsConnected && !loading && hasEverConnectedRef.current && (
+      {!wsConnected && !loading && (hasEverConnectedRef.current || Boolean(wsSetupError)) && (
         <ErrorBanner
           variant="offline"
           title="Real-time updates disconnected"

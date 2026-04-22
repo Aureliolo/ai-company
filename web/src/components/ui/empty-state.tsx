@@ -57,9 +57,12 @@ export function EmptyState({
   // `/` or `#` and conventional protocols (http/https/mailto/tel) are
   // allowed. Callers needing client-side routing for internal paths can pass
   // an explicit `onClick` (or wrap EmptyState in a custom link-based shell).
+  // Normalise once so the protocol check, the internal/external classification,
+  // and the rendered `href` all see the same string.
+  const normalizedHref = learnMore?.href.trim()
   const safeLearnMore =
-    learnMore !== undefined && SAFE_HREF_PATTERN.test(learnMore.href.trim())
-      ? learnMore
+    learnMore !== undefined && normalizedHref !== undefined && SAFE_HREF_PATTERN.test(normalizedHref)
+      ? { ...learnMore, href: normalizedHref }
       : undefined
   const isExternal =
     safeLearnMore !== undefined &&

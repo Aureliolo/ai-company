@@ -109,7 +109,10 @@ export function classifyError(error: unknown): ClassifiedError {
         status,
         isTransient: false,
         isClient: true,
-        retryable: true,
+        // Conflicts require user action (refresh + re-submit with new state);
+        // callers that loop on `retryable` would otherwise thrash against the
+        // server without resolution.
+        retryable: false,
         guidance: 'Someone else modified this resource. Refresh and try again.',
       }
     }

@@ -95,6 +95,20 @@
 
   /* -- Transitions -- */
   --so-transition-dim: 180ms;
+  /*
+   * Base transition durations. Tailwind's `duration-N` utilities compile to
+   * `transition-duration: Nms`, so for shared-primitive Base UI components
+   * prefer arbitrary values referencing these variables (e.g.
+   * `duration-[var(--so-transition-default)]`) over hardcoded `duration-200`.
+   * Keep aligned with @/lib/motion durations:
+   *   tweenFast = 150ms, tweenDefault = 200ms, tweenSlow = 400ms.
+   */
+  --so-transition-fast: 150ms;
+  --so-transition-default: 200ms;
+  --so-transition-medium: 300ms;
+  --so-transition-slow: 400ms;
+  /* Indeterminate progress-bar cycle (matches @/lib/motion indeterminate). */
+  --so-transition-indeterminate: 1500ms;
 
   /* -- Org chart -- */
   --so-opacity-dragging: 0.6;

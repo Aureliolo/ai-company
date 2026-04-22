@@ -1,6 +1,7 @@
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react'
 import { useCallback, useId } from 'react'
 import { cn } from '@/lib/utils'
+import { formatNumber } from '@/utils/format'
 import { Button } from './button'
 
 export interface PaginationProps {
@@ -125,10 +126,10 @@ export function Pagination({
     >
       <div className="text-muted-foreground">
         {total === undefined
-          ? `Page ${safePage}`
+          ? `Page ${formatNumber(safePage)}`
           : total === 0
             ? 'No items'
-            : `${rangeStart}-${rangeEnd} of ${total}`}
+            : `${formatNumber(rangeStart ?? 0)}-${formatNumber(rangeEnd ?? 0)} of ${formatNumber(total)}`}
       </div>
 
       <div className="flex items-center gap-2">
@@ -175,9 +176,9 @@ export function Pagination({
             <ChevronLeft className="size-3.5" aria-hidden="true" />
           </Button>
           <span aria-current="page" className="px-2 tabular-nums text-foreground">
-            {safePage}
+            {formatNumber(safePage)}
             {total !== undefined && (
-              <span className="text-muted-foreground"> / {totalPages}</span>
+              <span className="text-muted-foreground"> / {formatNumber(totalPages)}</span>
             )}
           </span>
           <Button

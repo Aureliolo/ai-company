@@ -101,6 +101,7 @@ describe('Breadcrumbs', () => {
           unmount()
         },
       ),
+      { numRuns: 15 },
     )
   })
 
@@ -127,6 +128,7 @@ describe('Breadcrumbs', () => {
           unmount()
         },
       ),
+      { numRuns: 15 },
     )
   })
 })

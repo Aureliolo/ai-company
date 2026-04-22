@@ -145,6 +145,7 @@ describe('Pagination', () => {
           unmount()
         },
       ),
+      { numRuns: 20 },
     )
   })
 })

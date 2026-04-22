@@ -212,6 +212,16 @@ function Divider() {
   return <span className="h-3 w-px shrink-0 bg-border" />
 }
 
+/**
+ * Category-label dot for the StatusBar metric row (agents / active / idle /
+ * tasks / in-review). Intentionally distinct from `<StatusBadge>`, which is
+ * typed to `AgentRuntimeStatus` ('active'|'idle'|'error'|'offline') and owns
+ * the agent-state color mapping. These dots are decorative labels, not state
+ * indicators, so their colors (`bg-accent`, `bg-success`, `bg-muted-foreground`,
+ * `bg-warning`, `bg-danger`) are driven by the metric category, not a status
+ * value. Changing this to `<StatusBadge>` would require inventing synthetic
+ * agent statuses that do not exist in the system.
+ */
 function Dot({ color }: { color: string }) {
   return (
     <span

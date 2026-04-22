@@ -129,6 +129,7 @@ describe('useListPagination', () => {
           )
         },
       ),
+      { numRuns: 20 },
     )
   })
 

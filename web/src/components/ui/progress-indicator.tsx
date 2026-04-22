@@ -74,7 +74,7 @@ export function ProgressIndicator({
           aria-busy="true"
           className="relative h-1.5 w-full overflow-hidden rounded-full bg-card"
         >
-          <div className="absolute inset-y-0 left-0 w-1/3 animate-[so-indeterminate_1.5s_ease-in-out_infinite] bg-accent" />
+          <div className="absolute inset-y-0 left-0 w-1/3 animate-[so-indeterminate_var(--so-transition-indeterminate)_ease-in-out_infinite] bg-accent" />
         </div>
         {!label && description && (
           <p className="text-xs text-muted-foreground">{description}</p>
@@ -101,7 +101,7 @@ export function ProgressIndicator({
         aria-valuenow={pct}
         className="h-1.5 w-full overflow-hidden rounded-full bg-card"
       >
-        <div className="h-full bg-accent transition-[width] duration-300 ease-out" style={{ width: `${pct}%` }} />
+        <div className="h-full bg-accent transition-[width] duration-[var(--so-transition-medium)] ease-out" style={{ width: `${pct}%` }} />
       </div>
       {description && (
         <p className="text-xs text-muted-foreground">{description}</p>

@@ -15,7 +15,7 @@ type HintSize = NonNullable<KeyboardShortcutHintProps['size']>
 
 function kbdSizeClasses(size: HintSize): string {
   return size === 'sm'
-    ? 'text-[10px] h-5 min-w-5 px-1'
+    ? 'text-[length:var(--so-text-micro)] h-5 min-w-5 px-1'
     : 'text-xs h-6 min-w-6 px-1.5'
 }
 
@@ -68,7 +68,7 @@ export function KeyboardShortcutHint({
         />
       ))}
       {label && (
-        <span className={cn(size === 'sm' ? 'text-[10px]' : 'text-xs')}>{label}</span>
+        <span className={cn(size === 'sm' ? 'text-[length:var(--so-text-micro)]' : 'text-xs')}>{label}</span>
       )}
     </span>
   )

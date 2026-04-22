@@ -109,4 +109,24 @@ describe('EmptyState', () => {
     const link = screen.getByRole('link')
     expect(link).not.toHaveAttribute('target')
   })
+
+  it('does not render learnMore link for unsafe href protocols', () => {
+    render(
+      <EmptyState
+        title="Unsafe"
+        learnMore={{ href: 'javascript:alert(1)' }}
+      />,
+    )
+    expect(screen.queryByRole('link')).not.toBeInTheDocument()
+  })
+
+  it('does not render learnMore link for data: URIs', () => {
+    render(
+      <EmptyState
+        title="Unsafe"
+        learnMore={{ href: 'data:text/html,<script>alert(1)</script>' }}
+      />,
+    )
+    expect(screen.queryByRole('link')).not.toBeInTheDocument()
+  })
 })

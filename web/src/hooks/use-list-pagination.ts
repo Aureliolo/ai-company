@@ -32,6 +32,11 @@ function parsePositiveInt(raw: string | null, fallback: number): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
 }
 
+function sanitizePositiveInt(value: number, fallback: number): number {
+  const floored = Math.floor(value)
+  return Number.isFinite(floored) && floored > 0 ? floored : fallback
+}
+
 /**
  * URL-persisted pagination state for list pages.
  *
@@ -52,11 +57,23 @@ export function useListPagination<T>({
   const pageKey = `${namespace}Page`
   const sizeKey = `${namespace}Size`
 
-  // Defensive: reject non-positive configured defaults so downstream division
-  // never sees a zero divisor.
-  const safeDefaultPageSize = defaultPageSize > 0 ? defaultPageSize : 50
+  // Coerce caller-supplied sizes to positive integers. Read and write paths
+  // share the same sanitised set so `slice()`, `totalPages`, and the URL
+  // never disagree about page boundaries when a fractional or non-finite
+  // option slips in (e.g. `12.5` or `NaN`).
+  const safeDefaultPageSize = sanitizePositiveInt(defaultPageSize, 50)
+  const sanitizedOptions = useMemo(() => {
+    const set = new Set<number>()
+    for (const option of pageSizeOptions) {
+      const sanitized = sanitizePositiveInt(option, 0)
+      if (sanitized > 0) set.add(sanitized)
+    }
+    // Guarantee the effective default is always part of the allowed set.
+    set.add(safeDefaultPageSize)
+    return [...set]
+  }, [pageSizeOptions, safeDefaultPageSize])
   const rawPageSize = parsePositiveInt(searchParams.get(sizeKey), safeDefaultPageSize)
-  const pageSize = pageSizeOptions.includes(rawPageSize) ? rawPageSize : safeDefaultPageSize
+  const pageSize = sanitizedOptions.includes(rawPageSize) ? rawPageSize : safeDefaultPageSize
   const totalItems = items.length
   const totalPages = totalItems === 0 ? 1 : Math.max(1, Math.ceil(totalItems / pageSize))
   const rawPage = parsePositiveInt(searchParams.get(pageKey), 1)
@@ -84,12 +101,13 @@ export function useListPagination<T>({
 
   const setPageSize = useCallback(
     (nextSize: number) => {
-      const clamped = pageSizeOptions.includes(nextSize) ? nextSize : safeDefaultPageSize
+      const nextSanitized = sanitizePositiveInt(nextSize, safeDefaultPageSize)
+      const clamped = sanitizedOptions.includes(nextSanitized) ? nextSanitized : safeDefaultPageSize
       setSearchParams(
         (prev) => {
           const next = new URLSearchParams(prev)
           const previousSize = parsePositiveInt(prev.get(sizeKey), safeDefaultPageSize)
-          const previousEffective = pageSizeOptions.includes(previousSize)
+          const previousEffective = sanitizedOptions.includes(previousSize)
             ? previousSize
             : safeDefaultPageSize
           if (clamped === safeDefaultPageSize) next.delete(sizeKey)
@@ -103,7 +121,7 @@ export function useListPagination<T>({
         { replace: true },
       )
     },
-    [setSearchParams, pageSizeOptions, safeDefaultPageSize, sizeKey, pageKey],
+    [setSearchParams, sanitizedOptions, safeDefaultPageSize, sizeKey, pageKey],
   )
 
   const resetPage = useCallback(() => setPage(1), [setPage])

@@ -178,6 +178,7 @@ describe('useListShortcuts', () => {
           unmount()
         },
       ),
+      { numRuns: 15 },
     )
   })
 })

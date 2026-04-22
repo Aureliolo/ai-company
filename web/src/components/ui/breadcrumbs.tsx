@@ -53,6 +53,22 @@ function BreadcrumbNode({ item, isLast }: BreadcrumbNodeProps) {
   return <span>{item.label}</span>
 }
 
+interface BreadcrumbRowProps {
+  item: RenderItem
+  isLast: boolean
+}
+
+function BreadcrumbRow({ item, isLast }: BreadcrumbRowProps) {
+  return (
+    <>
+      <BreadcrumbNode item={item} isLast={isLast} />
+      {!isLast && (
+        <ChevronRight aria-hidden="true" className="size-3 shrink-0 text-muted-foreground/70" />
+      )}
+    </>
+  )
+}
+
 /**
  * Breadcrumb navigation for deep detail pages.
  *
@@ -80,20 +96,14 @@ export function Breadcrumbs({ items, maxItems = 4, className }: BreadcrumbsProps
       className={cn('text-xs text-muted-foreground', className)}
     >
       <ol className="flex flex-wrap items-center gap-1.5">
-        {visibleItems.map((item, idx) => {
-          const isLast = idx === visibleItems.length - 1
-          return (
-            <li
-              key={typeof item === 'string' ? `ellipsis-${idx}` : `${item.label}-${idx}`}
-              className="flex items-center gap-1.5"
-            >
-              <BreadcrumbNode item={item} isLast={isLast} />
-              {!isLast && (
-                <ChevronRight aria-hidden="true" className="size-3 shrink-0 text-muted-foreground/70" />
-              )}
-            </li>
-          )
-        })}
+        {visibleItems.map((item, idx) => (
+          <li
+            key={typeof item === 'string' ? `ellipsis-${idx}` : `${item.label}-${idx}`}
+            className="flex items-center gap-1.5"
+          >
+            <BreadcrumbRow item={item} isLast={idx === visibleItems.length - 1} />
+          </li>
+        ))}
       </ol>
     </nav>
   )

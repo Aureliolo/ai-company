@@ -62,10 +62,20 @@ describe('classifyError', () => {
     expect(c.retryable).toBe(false)
   })
 
-  it('409 is client but retryable (conflict after refresh)', () => {
+  it('409 is client and non-retryable (conflict needs user action)', () => {
     const c = classifyError(axiosErrorWithStatus(409))
     expect(c.isClient).toBe(true)
-    expect(c.retryable).toBe(true)
+    expect(c.retryable).toBe(false)
+    expect(c.guidance).toMatch(/refresh/i)
+  })
+
+  it('canceled axios request is non-retryable and not transient', () => {
+    const err = new AxiosError('canceled', 'ERR_CANCELED')
+    const c = classifyError(err)
+    expect(c.isTransient).toBe(false)
+    expect(c.isClient).toBe(false)
+    expect(c.retryable).toBe(false)
+    expect(c.guidance).toMatch(/canceled/i)
   })
 
   it('422 (other 4xx) is client + not retryable', () => {

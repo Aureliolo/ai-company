@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { Button } from './button'
 import { SearchFilterSort } from './search-filter-sort'
 import { SearchInput } from './search-input'
+import { SelectField } from './select-field'
 
 const meta = {
   title: 'Layout/SearchFilterSort',
@@ -32,28 +33,46 @@ export const SearchOnly: Story = {
 
 function FullRowDemo() {
   const [search, setSearch] = useState('')
+  const [dept, setDept] = useState('all')
+  const [status, setStatus] = useState('all')
+  const [sort, setSort] = useState('name')
   return (
     <SearchFilterSort
       search={<SearchInput value={search} onChange={setSearch} placeholder="Search agents..." ariaLabel="Search agents" />}
       filters={
         <>
-          <select className="h-9 rounded-lg border border-border bg-card px-3 text-sm" aria-label="Department">
-            <option>All departments</option>
-            <option>Engineering</option>
-            <option>Design</option>
-          </select>
-          <select className="h-9 rounded-lg border border-border bg-card px-3 text-sm" aria-label="Status">
-            <option>All statuses</option>
-            <option>Active</option>
-            <option>Idle</option>
-          </select>
+          <SelectField
+            label="Department"
+            value={dept}
+            onChange={setDept}
+            options={[
+              { value: 'all', label: 'All departments' },
+              { value: 'eng', label: 'Engineering' },
+              { value: 'design', label: 'Design' },
+            ]}
+          />
+          <SelectField
+            label="Status"
+            value={status}
+            onChange={setStatus}
+            options={[
+              { value: 'all', label: 'All statuses' },
+              { value: 'active', label: 'Active' },
+              { value: 'idle', label: 'Idle' },
+            ]}
+          />
         </>
       }
       sort={
-        <select className="h-9 rounded-lg border border-border bg-card px-3 text-sm" aria-label="Sort">
-          <option>Sort: Name</option>
-          <option>Sort: Level</option>
-        </select>
+        <SelectField
+          label="Sort"
+          value={sort}
+          onChange={setSort}
+          options={[
+            { value: 'name', label: 'Sort: Name' },
+            { value: 'level', label: 'Sort: Level' },
+          ]}
+        />
       }
     />
   )
@@ -66,15 +85,21 @@ export const FullRow: Story = {
 
 function WithBatchActionsDemo() {
   const [search, setSearch] = useState('')
+  const [risk, setRisk] = useState('all')
   return (
     <SearchFilterSort
       search={<SearchInput value={search} onChange={setSearch} placeholder="Search approvals..." ariaLabel="Search approvals" />}
       filters={
-        <select className="h-9 rounded-lg border border-border bg-card px-3 text-sm" aria-label="Risk">
-          <option>All risk levels</option>
-          <option>Critical</option>
-          <option>High</option>
-        </select>
+        <SelectField
+          label="Risk"
+          value={risk}
+          onChange={setRisk}
+          options={[
+            { value: 'all', label: 'All risk levels' },
+            { value: 'critical', label: 'Critical' },
+            { value: 'high', label: 'High' },
+          ]}
+        />
       }
       trailing={<Button size="sm">3 selected</Button>}
     />

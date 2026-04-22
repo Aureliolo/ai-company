@@ -15,6 +15,7 @@ import {
   groupByRiskLevel,
   type ApprovalPageFilters,
 } from '@/utils/approvals'
+import { formatNumber } from '@/utils/format'
 import { sanitizeForLog } from '@/utils/logging'
 import { createLogger } from '@/lib/logger'
 
@@ -234,7 +235,15 @@ export default function ApprovalsPage() {
 
   return (
     <div className="space-y-section-gap">
-      <ListHeader title="Approvals" count={approvals.length} />
+      <ListHeader
+        title="Approvals"
+        count={filtered.length}
+        countLabel={
+          filtered.length === approvals.length
+            ? undefined
+            : `${formatNumber(filtered.length)} of ${formatNumber(approvals.length)}`
+        }
+      />
 
       {error && (
         <ErrorBanner severity="error" title="Could not load approvals" description={error} />

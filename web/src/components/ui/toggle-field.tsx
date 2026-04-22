@@ -39,7 +39,11 @@ export function ToggleField({
         <span
           aria-hidden="true"
           className={cn(
-            'block h-4 w-4 rounded-full bg-foreground transition-transform',
+            // Tailwind v4 `translate-x-*` emits the CSS `translate:` property,
+            // not `transform:`. Using `transition-transform` here leaves the
+            // knob snapping instantly -- target `translate` explicitly so the
+            // slide actually animates.
+            'block h-4 w-4 rounded-full bg-foreground transition-[translate]',
             checked ? 'translate-x-4' : 'translate-x-0.5',
           )}
         />

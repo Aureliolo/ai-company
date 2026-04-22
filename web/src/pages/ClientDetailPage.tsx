@@ -86,7 +86,7 @@ export default function ClientDetailPage() {
   if (error || !client) {
     return (
       <div className="space-y-section-gap">
-        <Breadcrumbs items={[{ label: 'Clients', to: ROUTES.CLIENTS }, { label: 'Unknown client' }]} />
+        <Breadcrumbs items={[{ label: 'Clients', to: ROUTES.CLIENTS }, { label: clientId ?? 'Unknown client' }]} />
         <ErrorBanner severity="error" title="Client not found" description={error ?? undefined} />
       </div>
     )

@@ -17,6 +17,16 @@ const COLOR_CLASSES: Record<SemanticColor | 'text-secondary', string> = {
   'text-secondary': 'bg-text-secondary',
 }
 
+// Rough workload-hour estimate per complexity bucket. Hoisted to module scope
+// so it is not rebuilt on every TaskColumn render. Unknown complexity values
+// (e.g. backend drift) fall back to 0 via the `??` below.
+const COMPLEXITY_HOURS: Record<string, number> = {
+  simple: 1,
+  medium: 3,
+  complex: 8,
+  epic: 24,
+}
+
 export interface TaskColumnProps {
   column: KanbanColumn
   tasks: Task[]
@@ -53,16 +63,6 @@ export function TaskColumn({ column, tasks, onSelectTask }: TaskColumnProps) {
 
   const taskIds = tasks.map((t) => t.id)
 
-  // Rough workload estimate based on complexity. Not a replacement for
-  // per-task duration -- just a signal of column load for operators triaging
-  // the board. Unknown complexity values (e.g. backend drift, deserialisation
-  // slop) contribute zero rather than NaN.
-  const COMPLEXITY_HOURS: Record<string, number> = {
-    simple: 1,
-    medium: 3,
-    complex: 8,
-    epic: 24,
-  }
   const estimatedHours = tasks.reduce(
     (sum, t) => sum + (COMPLEXITY_HOURS[t.estimated_complexity] ?? 0),
     0,

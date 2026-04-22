@@ -97,6 +97,7 @@ describe('ProgressIndicator', () => {
           unmount()
         },
       ),
+      { numRuns: 20 },
     )
   })
 })

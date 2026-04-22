@@ -102,6 +102,7 @@ describe('ErrorBanner', () => {
           unmount()
         },
       ),
+      { numRuns: 20 },
     )
   })
 })

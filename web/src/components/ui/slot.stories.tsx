@@ -78,3 +78,66 @@ export const InvalidChildLogsWarning: Story = {
     },
   },
 }
+
+// Slot is a transparent merge helper, not a visual primitive, so loading /
+// error / empty / hover states are carried by the child element, not by Slot
+// itself. The stories below document each required state for shared-primitive
+// coverage by wiring the child's visual state accordingly.
+
+export const Hover: Story = {
+  args: {
+    className: 'px-4 py-2 rounded-md bg-accent text-primary-foreground text-sm font-medium hover:bg-accent/80',
+    children: <button type="button">Hover me</button>,
+  },
+  parameters: {
+    docs: {
+      description: {
+        story: 'Hover styling comes from the child element; Slot only merges className + props.',
+      },
+    },
+  },
+}
+
+export const Loading: Story = {
+  args: {
+    className: 'px-4 py-2 rounded-md bg-muted text-muted-foreground text-sm cursor-wait',
+    children: <button type="button" disabled>Loading...</button>,
+  },
+  parameters: {
+    docs: {
+      description: {
+        story: 'Loading state: the child renders whatever loading affordance it carries; Slot forwards props as-is.',
+      },
+    },
+  },
+}
+
+export const Error: Story = {
+  args: {
+    className: 'px-4 py-2 rounded-md bg-danger/10 text-danger text-sm',
+    children: <button type="button">Try again</button>,
+  },
+  parameters: {
+    docs: {
+      description: {
+        story: 'Error state: styling and copy come from the child; Slot has no error semantics of its own.',
+      },
+    },
+  },
+}
+
+export const Empty: Story = {
+  args: {
+    className: 'text-muted-foreground',
+    // N/A: Slot requires exactly one child element. An empty-state story for
+    // Slot is documented by the behaviour shown in InvalidChildLogsWarning.
+    children: null,
+  },
+  parameters: {
+    docs: {
+      description: {
+        story: 'Not applicable: Slot requires exactly one child element. When `children` is null the story shows Slot rendering nothing (React elides falsy children).',
+      },
+    },
+  },
+}
