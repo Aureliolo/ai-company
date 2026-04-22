@@ -440,6 +440,26 @@ class TestEncodeCountlessSeekMeta:
         assert meta.total is None
         assert meta.offset == 0
 
+    def test_empty_follow_up_page_is_truncation(
+        self,
+        secret: CursorSecret,
+    ) -> None:
+        """``offset > 0`` with ``fetched_rows == 0`` raises truncation error.
+
+        Under the limit+1 contract a server-issued cursor always
+        points at a row that existed at the time of the previous
+        response, so an empty follow-up page means rows disappeared
+        between requests.  Silently returning a terminal page would
+        hide the truncation from monitoring.
+        """
+        with pytest.raises(InvalidCursorError, match="past the end"):
+            encode_countless_seek_meta(
+                offset=10,
+                fetched_rows=0,
+                limit=10,
+                secret=secret,
+            )
+
     def test_next_cursor_advances_by_limit(self, secret: CursorSecret) -> None:
         """Cursor advancement uses ``offset + limit``, independent of fetched_rows.
 

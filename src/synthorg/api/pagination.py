@@ -261,7 +261,24 @@ def encode_countless_seek_meta(
     Returns:
         ``PaginationMeta`` with ``total=None`` and the
         ``has_more`` / ``next_cursor`` fields derived from overflow.
+
+    Raises:
+        InvalidCursorError: When ``offset > 0`` and
+            ``fetched_rows == 0``.  Under the ``limit + 1`` contract
+            a server-issued cursor always points at a row that
+            existed when the previous page responded, so an empty
+            follow-up page signals truncation (rows disappeared
+            between requests); silently returning a terminal page
+            would hide that from monitoring.
     """
+    if offset > 0 and fetched_rows == 0:
+        logger.warning(
+            API_CURSOR_INVALID,
+            reason="cursor_past_end",
+            offset=offset,
+        )
+        msg = "cursor points past the end of the collection"
+        raise InvalidCursorError(msg)
     has_more = fetched_rows > limit
     next_cursor = encode_cursor(offset + limit, secret=secret) if has_more else None
     return PaginationMeta(
