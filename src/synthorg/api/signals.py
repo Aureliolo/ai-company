@@ -21,6 +21,7 @@ own CTRL+C handling remains in effect.
 import asyncio
 import signal
 import sys
+from collections.abc import Callable  # noqa: TC003
 from typing import TYPE_CHECKING
 
 from synthorg.observability import get_logger
@@ -50,11 +51,17 @@ def install_shutdown_handlers(app_state: AppState) -> None:
     Win32) is sufficient for dev/test; production deployments are
     Linux containers.
     """
-    if sys.platform == "win32":
+    # ``sys.platform`` narrows to a literal on the current host, so
+    # mypy would flag the POSIX branch as unreachable on a Windows
+    # development machine (and vice versa).  Read it through a local
+    # variable so the runtime check survives type checking on either
+    # platform.
+    current_platform: str = sys.platform
+    if current_platform == "win32":
         logger.debug(
             API_SHUTDOWN_HANDLER_SKIPPED,
             reason="non-posix-platform",
-            platform=sys.platform,
+            platform=current_platform,
         )
         return
 
@@ -73,7 +80,7 @@ def install_shutdown_handlers(app_state: AppState) -> None:
         try:
             loop.add_signal_handler(
                 sig,
-                lambda s=sig: _on_signal(s, app_state),
+                _make_handler(sig, app_state),
             )
         except NotImplementedError:
             # Proactor event loops (ProactorEventLoop on Win pre-3.8
@@ -86,6 +93,18 @@ def install_shutdown_handlers(app_state: AppState) -> None:
                 signal=sig.name,
             )
             return
+
+
+def _make_handler(
+    sig: signal.Signals,
+    app_state: AppState,
+) -> Callable[[], None]:
+    """Bind ``sig`` + ``app_state`` into a zero-arg handler closure."""
+
+    def handler() -> None:
+        _on_signal(sig, app_state)
+
+    return handler
 
 
 def _on_signal(sig: signal.Signals, app_state: AppState) -> None:

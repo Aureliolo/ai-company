@@ -442,7 +442,7 @@ class AppState(AppStateServicesMixin):
         after startup.  Tests that bypass ``create_app`` must call
         :meth:`set_cursor_secret` explicitly.
         """
-        return self._require_service(self._cursor_secret, "cursor_secret")  # type: ignore[no-any-return]
+        return self._require_service(self._cursor_secret, "cursor_secret")
 
     def set_cursor_secret(self, secret: CursorSecret) -> None:
         """Attach the opaque-pagination cursor HMAC secret (once-only)."""

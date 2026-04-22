@@ -17,7 +17,8 @@ class TestHappyPath:
     """Walk through the full collection page by page."""
 
     def test_empty_collection(self, secret: CursorSecret) -> None:
-        page, meta = paginate_cursor((), limit=10, cursor=None, secret=secret)
+        empty: tuple[int, ...] = ()
+        page, meta = paginate_cursor(empty, limit=10, cursor=None, secret=secret)
         assert page == ()
         assert meta.limit == 10
         assert meta.next_cursor is None
