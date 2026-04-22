@@ -215,21 +215,37 @@ class WorkflowService:
             WorkflowDefinitionNotFoundError: No row exists for
                 ``definition.id`` -- caller should use
                 ``create_definition``.
-            VersionConflictError: A row exists but its stored
-                ``revision`` does not match ``definition.revision - 1``
-                (optimistic-concurrency failure). Re-raised from the
-                persistence layer so callers can pattern-match on the
-                service-level import surface.
+            WorkflowDefinitionRevisionMismatchError: A row exists but
+                its stored ``revision`` does not match
+                ``definition.revision - 1`` (optimistic-concurrency
+                failure). Translated from the persistence layer's
+                ``VersionConflictError`` so callers of this service
+                never depend on a persistence-level exception type.
         """
         try:
             updated = await self._definitions.update_if_exists(definition)
-        except VersionConflictError:
+        except VersionConflictError as exc:
             logger.warning(
                 WORKFLOW_DEF_VERSION_CONFLICT,
                 definition_id=str(definition.id),
                 operation="update_definition",
             )
-            raise
+            msg = (
+                f"Workflow definition {definition.id!r} revision conflict:"
+                f" stored revision differs from incoming revision"
+                f" {definition.revision}"
+            )
+            # ``VersionConflictError`` does not carry structured
+            # ``expected``/``actual`` fields, but the incoming value is
+            # the caller-supplied revision; ``actual`` is unknown from
+            # here, so pass ``-1`` as a sentinel and keep the original
+            # driver exception attached as ``__cause__`` for debuggers.
+            raise WorkflowDefinitionRevisionMismatchError(
+                msg,
+                definition_id=str(definition.id),
+                expected=definition.revision,
+                actual=-1,
+            ) from exc
         if not updated:
             logger.warning(
                 WORKFLOW_DEF_NOT_FOUND,
@@ -267,6 +283,10 @@ class WorkflowService:
                 snapshot=definition,
                 saved_by=saved_by,
             )
+        except MemoryError, RecursionError:
+            # Fatal system errors must propagate so the workload can
+            # shed load; best-effort logging is the wrong response here.
+            raise
         except Exception as exc:
             logger.warning(
                 WORKFLOW_VERSION_SNAPSHOT_FAILED,
@@ -295,6 +315,8 @@ class WorkflowService:
 
         try:
             await self._versions.delete_versions_for_entity(definition_id)
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             logger.warning(
                 WORKFLOW_VERSION_SNAPSHOT_FAILED,

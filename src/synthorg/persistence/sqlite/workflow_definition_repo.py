@@ -108,6 +108,26 @@ class SQLiteWorkflowDefinitionRepository:
     def __init__(self, db: aiosqlite.Connection) -> None:
         self._db = db
 
+    def _require_valid_revision(self, definition: WorkflowDefinition) -> None:
+        """Reject obviously-invalid revisions before hitting the DB.
+
+        Shared between :meth:`save`, :meth:`update_if_exists`, and
+        :meth:`create_if_absent` so every write path fails fast with a
+        descriptive ``QueryError`` rather than bubbling a generic SQLite
+        CHECK-constraint error to the caller.
+        """
+        if definition.revision < 1:
+            msg = (
+                f"Workflow definition revision must be >= 1, got"
+                f" {definition.revision} for {definition.id!r}"
+            )
+            logger.warning(
+                PERSISTENCE_WORKFLOW_DEF_SAVE_FAILED,
+                definition_id=definition.id,
+                error=msg,
+            )
+            raise QueryError(msg)
+
     async def update_if_exists(self, definition: WorkflowDefinition) -> bool:
         """Conditional UPDATE, returning ``False`` if the row is missing.
 
@@ -118,6 +138,7 @@ class SQLiteWorkflowDefinitionRepository:
         ``VersionConflictError`` is raised so callers distinguish
         "row missing" (``False``) from "row changed concurrently".
         """
+        self._require_valid_revision(definition)
         nodes_json = json.dumps(
             [n.model_dump(mode="json") for n in definition.nodes],
         )
@@ -199,6 +220,7 @@ WHERE id = ? AND revision = ?""",
 
         See :meth:`WorkflowDefinitionRepository.create_if_absent`.
         """
+        self._require_valid_revision(definition)
         nodes_json = json.dumps(
             [n.model_dump(mode="json") for n in definition.nodes],
         )
