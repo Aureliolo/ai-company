@@ -90,10 +90,26 @@ jobs:
       - name: Build docs
         # TODO: Restore --strict once zensical supports it
         # https://github.com/zensical/backlog/issues/72
+        #
+        # Retry up to 3 times with 15s backoff; matches the preview
+        # workflow's resilience against transient D2 icon / pypi
+        # fetches on main-branch builds.  State is scrubbed between
+        # attempts so a flake cannot mask a deterministic failure.
         env:
           SYNTHORG_VERSION: ${{ steps.version.outputs.version }}
           PYTHONPATH: .
-        run: uv run zensical build
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if uv run zensical build; then
+              exit 0
+            fi
+            echo "::warning::zensical build failed (attempt ${attempt}/3); retrying after 15s"
+            rm -rf _site .d2-cache
+            sleep 15
+          done
+          echo "::error::zensical build failed after 3 attempts"
+          exit 1
 
       - name: Patch sitemap with static OpenAPI artifacts
         run: uv run python scripts/patch_sitemap.py

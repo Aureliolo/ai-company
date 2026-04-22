@@ -206,7 +206,7 @@ When tests fail due to timeout, slowness, or xdist resource contention:
 - **Enforced by**: commitizen (commit-msg hook)
 - **Signed commits**: required on `main` via branch protection -- all commits must be GPG/SSH signed
 - **Branches**: `<type>/<slug>` from main
-- **Pre-commit hooks**: trailing-whitespace, end-of-file-fixer, check-yaml, check-toml, check-json, check-merge-conflict, check-added-large-files, no-commit-to-branch (main), ruff check+format, gitleaks, hadolint (Dockerfile linting), golangci-lint + go vet (CLI, conditional on `cli/**/*.go`), no-em-dashes, no-redundant-timeout, check-single-migration-per-pr (at most 1 new migration per backend per PR), check-no-modify-migration (block editing existing migrations; bypass with `SYNTHORG_MIGRATION_SQUASH=1`), eslint-web (web dashboard, zero warnings, conditional on `web/src/**/*.{ts,tsx}`)
+- **Pre-commit hooks**: trailing-whitespace, end-of-file-fixer, check-yaml, check-toml, check-json, check-merge-conflict, check-added-large-files, no-commit-to-branch (main), ruff check+format, gitleaks, hadolint (Dockerfile linting), golangci-lint + go vet (CLI, conditional on `cli/**/*.go`), no-em-dashes, no-redundant-timeout, check-single-migration-per-pr (at most 1 new migration per backend per PR), check-no-modify-migration (block editing existing migrations; bypass with `SYNTHORG_MIGRATION_SQUASH=1`). **Note**: `eslint-web` runs at **pre-push only** (see Pre-push hooks below) -- TypeScript project-graph boot is 15-30s, so gating it on every commit penalises backend-only work.
 - **Hookify rules** (committed in `.claude/hookify.*.md`):
   - `block-pr-create`: blocks direct `gh pr create` (must use `/pre-pr-review`)
   - `enforce-parallel-tests`: enforces `-n 8` with pytest

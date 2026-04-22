@@ -77,6 +77,32 @@ class TestLimitClamping:
         # MAX_LIMIT is 200 today; clamped to it.
         assert meta.limit == 200
 
+    @pytest.mark.parametrize("limit", [0, -1, -1_000])
+    def test_limit_clamped_to_min(
+        self,
+        secret: CursorSecret,
+        limit: int,
+    ) -> None:
+        """Non-positive limits clamp to 1 rather than returning empty.
+
+        Litestar's ``CursorLimit`` annotation rejects limit<1 at the HTTP
+        parameter layer, but the internal helper is callable directly
+        from tests and future RPC layers.  Clamping to 1 keeps the
+        function's postcondition (``len(page) <= meta.limit``) stable
+        without leaking the parameter-layer validation rule.
+        """
+        items = tuple(range(10))
+        page, meta = paginate_cursor(
+            items,
+            limit=limit,
+            cursor=None,
+            secret=secret,
+        )
+        assert meta.limit == 1
+        assert len(page) == 1
+        assert page[0] == 0
+        assert meta.has_more is True
+
 
 class TestInvalidCursor:
     """Tampered / malformed cursors surface as InvalidCursorError."""

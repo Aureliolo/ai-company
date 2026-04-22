@@ -299,8 +299,12 @@ class SimulationController(Controller):
             runner_task(),
             name=f"simulation-runner[{record.simulation_id}]",
         )
-        sim_state.background_tasks.add(task)
-        task.add_done_callback(sim_state.background_tasks.discard)
+        # Register the exception logger FIRST so a task that finishes
+        # between ``create_task`` and ``background_tasks.add`` still has
+        # its failure surfaced -- asyncio invokes done-callbacks in the
+        # order they were registered.  Adding the task to the set
+        # before attaching the logger would let a fast-completing
+        # failure fire ``discard`` first and silently drop the error.
         task.add_done_callback(
             log_task_exceptions(
                 logger,
@@ -308,6 +312,8 @@ class SimulationController(Controller):
                 simulation_id=record.simulation_id,
             ),
         )
+        task.add_done_callback(sim_state.background_tasks.discard)
+        sim_state.background_tasks.add(task)
         return ApiResponse(data=_to_response(record))
 
     @post("/{simulation_id:str}/cancel", guards=[require_write_access])

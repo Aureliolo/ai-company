@@ -203,12 +203,17 @@ def log_task_exceptions(
     event: str,
     **context: Any,
 ) -> Callable[[asyncio.Task[Any]], None]:
-    """Build a done-callback that logs uncancelled task exceptions.
+    """Build an :meth:`asyncio.Task.add_done_callback`-compatible callback.
 
-    Unlike :class:`BackgroundTaskRegistry`, this helper is for
-    long-lived *named* tasks whose lifecycle matches the owning
-    subsystem (e.g. task-engine processing loop, bus-bridge poll
-    loop, meeting scheduler tick). The returned callback:
+    This is a plain factory -- it returns a single callback and does
+    no task tracking.  Unlike :class:`BackgroundTaskRegistry` (which
+    owns a set of fire-and-forget tasks and drains them on shutdown),
+    this helper is for callers who manage the task's lifecycle
+    themselves and only need exception-to-log routing.  Typical
+    targets are long-lived *named* tasks whose lifecycle matches the
+    owning subsystem (task-engine processing loop, bus-bridge poll
+    loop, meeting scheduler tick), but the callback is safe for any
+    :class:`asyncio.Task`.  The returned callback:
 
     * Ignores ``CancelledError`` (normal shutdown).
     * Escalates ``MemoryError``/``RecursionError`` to CRITICAL + the

@@ -20,8 +20,8 @@ pytestmark = pytest.mark.unit
 
 @pytest.fixture
 def stable_secret() -> CursorSecret:
-    """Build a secret with a fixed key so tests are deterministic."""
-    return CursorSecret.from_key("unit-test-fixed-key-32-bytes-pad00")
+    """Build a secret with a fixed 32-byte key so tests are deterministic."""
+    return CursorSecret.from_key("x" * 32)
 
 
 class TestEncodeDecode:

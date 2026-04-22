@@ -34,6 +34,13 @@ class InvalidCursorError(ValueError):
 # bits of entropy; below this the signing strength falls off fast.
 _MIN_KEY_BYTES = 16
 
+# Hard cap on cursor token length (characters).  Litestar's
+# ``CursorParam`` type already enforces this at HTTP-parameter parsing,
+# but internal callers (tests, future RPC layers) can bypass that path.
+# Keeping a defense-in-depth limit here bounds worst-case decode cost
+# for any path that hits ``decode_cursor`` directly.
+_MAX_CURSOR_LEN = 512
+
 
 class CursorSecret:
     """HMAC key wrapper.
@@ -135,12 +142,16 @@ def _decode_token_payload(token: str) -> dict[str, object]:
     """Base64url-decode and JSON-parse the cursor token.
 
     Raises:
-        InvalidCursorError: If the token is empty, contains non-ASCII
+        InvalidCursorError: If the token is empty, exceeds
+            :data:`_MAX_CURSOR_LEN` characters, contains non-ASCII
             characters, is not valid base64, or does not decode to a
             JSON object.
     """
     if not token:
         msg = "cursor token is empty"
+        raise InvalidCursorError(msg)
+    if len(token) > _MAX_CURSOR_LEN:
+        msg = f"cursor token exceeds {_MAX_CURSOR_LEN} characters"
         raise InvalidCursorError(msg)
     try:
         padded = token + "=" * (-len(token) % 4)

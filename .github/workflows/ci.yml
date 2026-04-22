@@ -422,6 +422,15 @@ jobs:
             echo "::error::.github/ci/web-async-leaks.max is not a positive integer: '$MAX_ASYNC_LEAKS'"
             exit 1
           fi
+          # Sanity-clamp the ceiling so an accidental extra zero (or a
+          # wholesale wipe to zero) doesn't green-light a regression or
+          # block CI forever.  The 1..1000 range covers every historical
+          # value plus meaningful headroom; anything outside signals a
+          # typo that should be reviewed, not auto-accepted.
+          if (( MAX_ASYNC_LEAKS < 1 || MAX_ASYNC_LEAKS > 1000 )); then
+            echo "::error::Async-leak ceiling '$MAX_ASYNC_LEAKS' is outside the sanity range [1, 1000]. Fix .github/ci/web-async-leaks.max or widen the bounds deliberately in ci.yml."
+            exit 1
+          fi
           echo "Async-leak ceiling: $MAX_ASYNC_LEAKS (from .github/ci/web-async-leaks.max)"
           # Disable errexit around the test pipeline so a Vitest failure
           # doesn't abort the step before we can read ${PIPESTATUS[0]}

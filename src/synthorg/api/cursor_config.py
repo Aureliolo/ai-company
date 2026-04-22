@@ -13,7 +13,7 @@ key in any deployment that expects stable cursors.
 
 import os
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 _ENV_VAR = "SYNTHORG_PAGINATION_CURSOR_SECRET"
 
@@ -38,6 +38,23 @@ class CursorConfig(BaseModel):
             f"{_ENV_VAR}."
         ),
     )
+
+    @field_validator("secret", mode="before")
+    @classmethod
+    def _reject_blank_secret(cls, value: object) -> object:
+        """Reject whitespace-only secrets at the config boundary.
+
+        A blank string would silently route to the ephemeral branch in
+        ``CursorSecret.from_config`` -- operators who typo an empty key
+        in the setting file would ship with random signing and never
+        see a startup warning about the explicit secret being missing.
+        Raising here makes the intent unambiguous: pass ``None`` for
+        ephemeral, or a real key.
+        """
+        if isinstance(value, str) and not value.strip():
+            msg = "cursor secret must not be blank; use None for ephemeral"
+            raise ValueError(msg)
+        return value
 
     @classmethod
     def from_env(cls) -> CursorConfig:

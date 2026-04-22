@@ -449,6 +449,30 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
     cursor_secret = CursorSecret.from_config(CursorConfig.from_env())
     app_state.set_cursor_secret(cursor_secret)
     if cursor_secret.is_ephemeral:
+        # Production deployments must supply a stable key.  Infer the
+        # deployment environment from ``SYNTHORG_TELEMETRY_ENV`` /
+        # ``SYNTHORG_TELEMETRY_ENV_BAKED`` (the same chain used by
+        # telemetry) and refuse to boot when the marker is ``prod``:
+        # rolling with a random key silently invalidates every client
+        # cursor on every restart, which is a correctness defect, not
+        # just a warning.
+        env_marker = (
+            (
+                os.environ.get("SYNTHORG_TELEMETRY_ENV")
+                or os.environ.get("SYNTHORG_TELEMETRY_ENV_BAKED")
+                or ""
+            )
+            .strip()
+            .lower()
+        )
+        if env_marker == "prod":
+            msg = (
+                "refusing to start with an ephemeral pagination cursor "
+                "secret in a production environment; set "
+                "SYNTHORG_PAGINATION_CURSOR_SECRET to a stable value "
+                "(>= 16 bytes)."
+            )
+            raise RuntimeError(msg)
         logger.warning(
             API_APP_STARTUP,
             note=(

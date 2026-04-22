@@ -155,6 +155,11 @@ jobs:
               exit 0
             fi
             echo "::warning::zensical build failed (attempt ${attempt}/3); retrying after 15s"
+            # Scrub partial build state so the retry does not inherit a
+            # half-written ``_site/`` or a stale D2 icon cache -- a
+            # genuinely deterministic failure would otherwise be masked
+            # by the first attempt's successful intermediate files.
+            rm -rf _site .d2-cache
             sleep 15
           done
           echo "::error::zensical build failed after 3 attempts"
