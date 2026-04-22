@@ -5,7 +5,11 @@ from pydantic import ValidationError
 
 from synthorg.api.cursor import CursorSecret, InvalidCursorError
 from synthorg.api.dto import PaginationMeta
-from synthorg.api.pagination import encode_repo_seek_meta, paginate_cursor
+from synthorg.api.pagination import (
+    encode_countless_seek_meta,
+    encode_repo_seek_meta,
+    paginate_cursor,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -38,6 +42,7 @@ class TestHappyPath:
         collected: list[int] = []
         cursor: str | None = None
         pages = 0
+        expected_offsets = [0, 50, 100]
         while True:
             page, meta = paginate_cursor(
                 items,
@@ -45,6 +50,11 @@ class TestHappyPath:
                 cursor=cursor,
                 secret=secret,
             )
+            # ``offset`` is part of the wire envelope clients see and
+            # use for UI display; verify it tracks the slice start on
+            # every page so a helper bug cannot regress the offset
+            # contract while still returning the right slices.
+            assert meta.offset == expected_offsets[pages]
             collected.extend(page)
             pages += 1
             if not meta.has_more:
@@ -373,3 +383,79 @@ class TestEncodeRepoSeekMeta:
         assert meta.has_more is False
         assert meta.next_cursor is None
         assert meta.total == 0
+
+
+class TestEncodeCountlessSeekMeta:
+    """Helper for repos that use the ``fetch limit + 1`` overflow pattern."""
+
+    def test_intermediate_page_emits_cursor(self, secret: CursorSecret) -> None:
+        """``fetched_rows > limit`` -> ``has_more`` + signed cursor, ``total=None``."""
+        meta = encode_countless_seek_meta(
+            offset=0,
+            fetched_rows=11,  # asked for 10+1, got overflow.
+            limit=10,
+            secret=secret,
+        )
+        assert meta.has_more is True
+        assert meta.next_cursor is not None
+        assert meta.total is None
+        assert meta.offset == 0
+        assert meta.limit == 10
+
+    def test_terminal_page_clears_cursor(self, secret: CursorSecret) -> None:
+        """``fetched_rows <= limit`` -> terminal, no cursor."""
+        meta = encode_countless_seek_meta(
+            offset=20,
+            fetched_rows=7,  # asked for 10+1, got only 7 -> no more.
+            limit=10,
+            secret=secret,
+        )
+        assert meta.has_more is False
+        assert meta.next_cursor is None
+        assert meta.total is None
+
+    def test_exact_fit_is_terminal(self, secret: CursorSecret) -> None:
+        """``fetched_rows == limit`` means no overflow row, so terminal."""
+        meta = encode_countless_seek_meta(
+            offset=0,
+            fetched_rows=10,
+            limit=10,
+            secret=secret,
+        )
+        # Caller fetched ``limit+1`` and only got ``limit`` rows, so
+        # there can't be a next page even though the page is full.
+        assert meta.has_more is False
+        assert meta.next_cursor is None
+
+    def test_empty_first_page(self, secret: CursorSecret) -> None:
+        """First page of an empty repo has no data and no cursor."""
+        meta = encode_countless_seek_meta(
+            offset=0,
+            fetched_rows=0,
+            limit=10,
+            secret=secret,
+        )
+        assert meta.has_more is False
+        assert meta.next_cursor is None
+        assert meta.total is None
+        assert meta.offset == 0
+
+    def test_next_cursor_advances_by_limit(self, secret: CursorSecret) -> None:
+        """Cursor advancement uses ``offset + limit``, independent of fetched_rows.
+
+        The countless path returns ``limit`` rows to the client even
+        when the repo served ``limit+1`` (the extra row is an
+        overflow sentinel), so the next cursor must address the row
+        after the last one in ``data``, which is always
+        ``offset + limit``.
+        """
+        from synthorg.api.cursor import decode_cursor
+
+        meta = encode_countless_seek_meta(
+            offset=40,
+            fetched_rows=11,
+            limit=10,
+            secret=secret,
+        )
+        assert meta.next_cursor is not None
+        assert decode_cursor(meta.next_cursor, secret=secret) == 50

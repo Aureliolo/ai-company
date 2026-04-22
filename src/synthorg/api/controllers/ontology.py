@@ -10,8 +10,8 @@ from litestar import Controller, delete, get, post, put
 from litestar.datastructures import State  # noqa: TC002
 from litestar.status_codes import HTTP_204_NO_CONTENT
 
-from synthorg.api.cursor import decode_cursor, encode_cursor
-from synthorg.api.dto import ApiResponse, PaginatedResponse, PaginationMeta
+from synthorg.api.cursor import decode_cursor
+from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.dto_ontology import (
     CreateEntityRequest,
     DriftReportResponse,
@@ -29,6 +29,7 @@ from synthorg.api.guards import (
 from synthorg.api.pagination import (
     CursorLimit,
     CursorParam,
+    encode_countless_seek_meta,
     paginate_cursor,
 )
 from synthorg.api.path_params import PathName  # noqa: TC001
@@ -391,7 +392,12 @@ class OntologyController(Controller):
             limit=limit + 1,
             offset=offset,
         )
-        has_more = len(versions) > limit
+        meta = encode_countless_seek_meta(
+            offset=offset,
+            fetched_rows=len(versions),
+            limit=limit,
+            secret=app_state.cursor_secret,
+        )
         window = versions[:limit]
         responses = tuple(
             EntityVersionResponse(
@@ -403,18 +409,6 @@ class OntologyController(Controller):
                 saved_at=v.saved_at,
             )
             for v in window
-        )
-        next_cursor = (
-            encode_cursor(offset + limit, secret=app_state.cursor_secret)
-            if has_more
-            else None
-        )
-        meta = PaginationMeta(
-            limit=limit,
-            next_cursor=next_cursor,
-            has_more=has_more,
-            total=None,
-            offset=offset,
         )
         return PaginatedResponse(data=responses, pagination=meta)
 

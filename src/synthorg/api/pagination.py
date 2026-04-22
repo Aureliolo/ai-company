@@ -231,10 +231,53 @@ def encode_repo_seek_meta(  # noqa: PLR0913 -- every arg tracks a distinct pagin
     )
 
 
+def encode_countless_seek_meta(
+    *,
+    offset: int,
+    fetched_rows: int,
+    limit: int,
+    secret: CursorSecret,
+) -> PaginationMeta:
+    """Build ``PaginationMeta`` for repos that skip the COUNT(*) round-trip.
+
+    Counterpart to :func:`encode_repo_seek_meta` for endpoints that
+    use the ``fetch limit+1, detect overflow`` pattern instead of
+    issuing a separate count query.  The caller fetches up to
+    ``limit + 1`` rows from the backing store; this helper uses the
+    overflow to drive ``has_more`` and ensures ``PaginationMeta.total``
+    stays ``None`` so clients know the count is unknown (and must
+    derive display counts from ``data.length`` per the frontend
+    contract in ``web/CLAUDE.md``).
+
+    Args:
+        offset: The decoded cursor offset the current page started at.
+        fetched_rows: The number of rows the repo returned when asked
+            for ``limit + 1`` (cap inclusive; the caller is
+            responsible for slicing the excess before handing to
+            ``PaginatedResponse``).
+        limit: The page size requested.
+        secret: HMAC secret used to sign the ``next_cursor``.
+
+    Returns:
+        ``PaginationMeta`` with ``total=None`` and the
+        ``has_more`` / ``next_cursor`` fields derived from overflow.
+    """
+    has_more = fetched_rows > limit
+    next_cursor = encode_cursor(offset + limit, secret=secret) if has_more else None
+    return PaginationMeta(
+        limit=limit,
+        next_cursor=next_cursor,
+        has_more=has_more,
+        total=None,
+        offset=offset,
+    )
+
+
 __all__ = (
     "CursorLimit",
     "CursorParam",
     "InvalidCursorError",
+    "encode_countless_seek_meta",
     "encode_repo_seek_meta",
     "paginate_cursor",
 )

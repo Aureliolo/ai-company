@@ -13,10 +13,14 @@ from litestar.exceptions import (
 )
 from litestar.status_codes import HTTP_204_NO_CONTENT
 
-from synthorg.api.cursor import decode_cursor, encode_cursor
-from synthorg.api.dto import ApiResponse, PaginatedResponse, PaginationMeta
+from synthorg.api.cursor import decode_cursor
+from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import HumanRole, require_roles
-from synthorg.api.pagination import CursorLimit, CursorParam  # noqa: TC001
+from synthorg.api.pagination import (
+    CursorLimit,
+    CursorParam,
+    encode_countless_seek_meta,
+)
 from synthorg.api.path_params import PathId  # noqa: TC001
 from synthorg.api.rate_limits.guard import per_op_rate_limit
 from synthorg.api.state import AppState  # noqa: TC001
@@ -135,20 +139,13 @@ class BackupController(Controller):
             )
             msg = "Failed to list backups"
             raise InternalServerException(msg) from exc
-        has_more = len(backups) > limit
-        window = backups[:limit]
-        next_cursor = (
-            encode_cursor(offset + limit, secret=app_state.cursor_secret)
-            if has_more
-            else None
-        )
-        meta = PaginationMeta(
-            limit=limit,
-            next_cursor=next_cursor,
-            has_more=has_more,
-            total=None,
+        meta = encode_countless_seek_meta(
             offset=offset,
+            fetched_rows=len(backups),
+            limit=limit,
+            secret=app_state.cursor_secret,
         )
+        window = backups[:limit]
         return PaginatedResponse[BackupInfo](data=window, pagination=meta)
 
     @get("/{backup_id:str}")
