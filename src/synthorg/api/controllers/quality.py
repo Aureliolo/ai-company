@@ -18,6 +18,7 @@ from synthorg.api.errors import (
 )
 from synthorg.api.guards import require_ceo_or_manager, require_read_access
 from synthorg.api.path_params import PathId  # noqa: TC001
+from synthorg.api.rate_limits import per_op_rate_limit
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.performance.models import QualityOverride
@@ -172,7 +173,19 @@ class QualityController(Controller):
     # require_write_access) -- PAIR_PROGRAMMER is excluded because
     # quality overrides affect evaluation scores and should only be
     # set by management roles.
-    @post("/override", guards=[require_ceo_or_manager], status_code=200)
+    @post(
+        "/override",
+        guards=[
+            require_ceo_or_manager,
+            per_op_rate_limit(
+                "quality.override",
+                max_requests=50,
+                window_seconds=60,
+                key="user",
+            ),
+        ],
+        status_code=200,
+    )
     async def set_override(
         self,
         state: State,
@@ -250,7 +263,15 @@ class QualityController(Controller):
 
     @delete(
         "/override",
-        guards=[require_ceo_or_manager],
+        guards=[
+            require_ceo_or_manager,
+            per_op_rate_limit(
+                "quality.delete_override",
+                max_requests=50,
+                window_seconds=60,
+                key="user",
+            ),
+        ],
         status_code=HTTP_204_NO_CONTENT,
     )
     async def clear_override(

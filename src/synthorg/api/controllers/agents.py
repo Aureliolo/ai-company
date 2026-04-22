@@ -22,6 +22,7 @@ from synthorg.api.guards import (
 )
 from synthorg.api.pagination import PaginationLimit, PaginationOffset, paginate
 from synthorg.api.path_params import PathName  # noqa: TC001
+from synthorg.api.rate_limits import per_op_rate_limit
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.api.ws_models import WsEventType
 from synthorg.budget.currency import DEFAULT_CURRENCY
@@ -224,7 +225,19 @@ class AgentController(Controller):
         logger.warning(API_RESOURCE_NOT_FOUND, resource="agent", name=agent_name)
         raise NotFoundError(msg)
 
-    @post("/", guards=[require_org_mutation()], status_code=201)
+    @post(
+        "/",
+        guards=[
+            require_org_mutation(),
+            per_op_rate_limit(
+                "agents.create",
+                max_requests=10,
+                window_seconds=60,
+                key="user",
+            ),
+        ],
+        status_code=201,
+    )
     async def create_agent(
         self,
         request: Request[Any, Any, Any],
@@ -255,7 +268,18 @@ class AgentController(Controller):
         )
         return ApiResponse(data=agent)
 
-    @patch("/{agent_name:str}", guards=[require_org_mutation()])
+    @patch(
+        "/{agent_name:str}",
+        guards=[
+            require_org_mutation(),
+            per_op_rate_limit(
+                "agents.update",
+                max_requests=20,
+                window_seconds=60,
+                key="user",
+            ),
+        ],
+    )
     async def update_agent(
         self,
         request: Request[Any, Any, Any],
@@ -303,7 +327,15 @@ class AgentController(Controller):
 
     @delete(
         "/{agent_name:str}",
-        guards=[require_org_mutation()],
+        guards=[
+            require_org_mutation(),
+            per_op_rate_limit(
+                "agents.delete",
+                max_requests=5,
+                window_seconds=60,
+                key="user",
+            ),
+        ],
         status_code=HTTP_204_NO_CONTENT,
     )
     async def delete_agent(

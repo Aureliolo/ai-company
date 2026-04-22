@@ -24,6 +24,7 @@ from synthorg.api.errors import (
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import PaginationLimit, PaginationOffset, paginate
 from synthorg.api.path_params import PathId  # noqa: TC001
+from synthorg.api.rate_limits import per_op_rate_limit
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.enums import TaskStatus  # noqa: TC001
 from synthorg.core.task import Task  # noqa: TC001
@@ -227,7 +228,18 @@ class TaskController(Controller):
             raise NotFoundError(msg)
         return ApiResponse(data=task)
 
-    @post(guards=[require_write_access], status_code=201)
+    @post(
+        guards=[
+            require_write_access,
+            per_op_rate_limit(
+                "tasks.create",
+                max_requests=50,
+                window_seconds=60,
+                key="user",
+            ),
+        ],
+        status_code=201,
+    )
     async def create_task(
         self,
         state: State,
@@ -281,7 +293,18 @@ class TaskController(Controller):
         )
         return ApiResponse(data=task)
 
-    @patch("/{task_id:str}", guards=[require_write_access])
+    @patch(
+        "/{task_id:str}",
+        guards=[
+            require_write_access,
+            per_op_rate_limit(
+                "tasks.update",
+                max_requests=100,
+                window_seconds=60,
+                key="user",
+            ),
+        ],
+    )
     async def update_task(
         self,
         state: State,
@@ -327,7 +350,15 @@ class TaskController(Controller):
 
     @post(
         "/{task_id:str}/transition",
-        guards=[require_write_access],
+        guards=[
+            require_write_access,
+            per_op_rate_limit(
+                "tasks.transition",
+                max_requests=100,
+                window_seconds=60,
+                key="user",
+            ),
+        ],
     )
     async def transition_task(
         self,
@@ -381,7 +412,15 @@ class TaskController(Controller):
 
     @delete(
         "/{task_id:str}",
-        guards=[require_write_access],
+        guards=[
+            require_write_access,
+            per_op_rate_limit(
+                "tasks.delete",
+                max_requests=20,
+                window_seconds=60,
+                key="user",
+            ),
+        ],
         status_code=HTTP_204_NO_CONTENT,
     )
     async def delete_task(
@@ -414,7 +453,18 @@ class TaskController(Controller):
             raise _map_task_engine_errors(exc, task_id=task_id) from exc
         logger.info(API_TASK_DELETED, task_id=task_id)
 
-    @post("/{task_id:str}/cancel", guards=[require_write_access])
+    @post(
+        "/{task_id:str}/cancel",
+        guards=[
+            require_write_access,
+            per_op_rate_limit(
+                "tasks.cancel",
+                max_requests=50,
+                window_seconds=60,
+                key="user",
+            ),
+        ],
+    )
     async def cancel_task(
         self,
         state: State,
