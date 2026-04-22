@@ -142,9 +142,16 @@ class AgentIdentityVersionController(Controller):
         # paginating by ``pagination.total`` don't see a count that
         # disagrees with the returned ``data`` slice.
         safe_total = max(total - dropped, len(safe_versions))
+        # Advance the cursor by rows *consumed from the repo* (``versions``),
+        # not by rows that survived the owner-mismatch filter
+        # (``safe_versions``).  Otherwise a page where the filter drops
+        # any rows would under-advance the cursor, the next page would
+        # replay the already-consumed rows, and a fully filtered page
+        # would strand the client with ``has_more=False`` even though
+        # subsequent rows exist in the repo.
         meta = encode_repo_seek_meta(
             offset=offset,
-            page_len=len(safe_versions),
+            page_len=len(versions),
             total=safe_total,
             limit=limit,
             secret=secret,
