@@ -74,7 +74,23 @@ def paginate_cursor[T](
         InvalidCursorError: If ``cursor`` is malformed, tampered, or
             signed by a different secret.
     """
-    offset = 0 if cursor is None else decode_cursor(cursor, secret=secret)
+    if cursor is None:
+        offset = 0
+    else:
+        try:
+            offset = decode_cursor(cursor, secret=secret)
+        except InvalidCursorError:
+            # Malformed / tampered / foreign-secret cursors raise here;
+            # log before re-raising so 400s from decode failures are
+            # observable in production alongside the truncation branch
+            # below.  The cursor itself is NOT logged -- it's attacker-
+            # controlled input and may carry secret fragments from
+            # tampering attempts.
+            logger.warning(
+                API_CURSOR_INVALID,
+                reason="cursor_decode_failed",
+            )
+            raise
     effective_limit = max(1, min(limit, MAX_LIMIT))
     # Out-of-bounds cursors are rejected explicitly.  The cursor is
     # HMAC-signed so a client cannot forge one past the true end;
@@ -156,31 +172,48 @@ def encode_repo_seek_meta(  # noqa: PLR0913 -- every arg tracks a distinct pagin
             client-facing slice (e.g. owner-mismatch forgeries) so
             ``pagination.total`` stays consistent with ``data``.
         reject_stale_cursor: When ``True`` (the default), a decoded
-            ``offset >= total`` raises :class:`InvalidCursorError`
+            ``offset == total`` raises :class:`InvalidCursorError`
             (mirrors the ``paginate_cursor`` helper).  Set to
-            ``False`` only when the caller needs to tolerate a cursor
-            pointing at the current end of an append-only repo (rare;
-            snapshot drift during the read is a better reason to
-            surface the truncation).
+            ``False`` only when the caller genuinely tolerates a
+            cursor landing exactly on the current end of an
+            append-only repo.  ``offset > total`` is ALWAYS rejected
+            regardless of this flag -- a cursor past the repo end is
+            never legitimate (the HMAC signature would have come from
+            a larger snapshot) and silently returning a terminal
+            page would hide the truncation from monitoring.
 
     Returns:
         ``PaginationMeta`` with the ``has_more`` / ``next_cursor``
         fields filled in, safe to wrap in ``PaginatedResponse``.
 
     Raises:
-        InvalidCursorError: When ``reject_stale_cursor`` is ``True``
-            and the cursor's decoded offset is past the repo's
-            reported end (``offset >= total`` with ``offset > 0``).
+        InvalidCursorError: When the cursor's decoded offset is past
+            the repo end.  ``offset > total`` always raises;
+            ``offset == total`` (with offset > 0) raises unless
+            ``reject_stale_cursor=False``.
     """
     # Out-of-bounds cursors signal the repo shrank between cursor
     # issuance and replay (deletions, filters).  Silently reporting
     # ``has_more=False`` would hide the truncation from monitoring
     # and strand clients on an empty page they cannot recover from;
-    # raise so callers surface the state change as HTTP 400.
-    if reject_stale_cursor and offset and offset >= total:
+    # raise so callers surface the state change as HTTP 400.  Split
+    # the boundary (``offset == total``) from the past-end case
+    # (``offset > total``) so ``reject_stale_cursor=False`` can relax
+    # the boundary alone without opening a loophole for clearly
+    # invalid cursors.
+    if offset and offset > total:
         logger.warning(
             API_CURSOR_INVALID,
             reason="cursor_past_end",
+            offset=offset,
+            total=total,
+        )
+        msg = "cursor points past the end of the collection"
+        raise InvalidCursorError(msg)
+    if reject_stale_cursor and offset and offset == total:
+        logger.warning(
+            API_CURSOR_INVALID,
+            reason="cursor_at_end",
             offset=offset,
             total=total,
         )

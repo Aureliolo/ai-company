@@ -336,6 +336,28 @@ class TestEncodeRepoSeekMeta:
         assert meta.has_more is False
         assert meta.next_cursor is None
 
+    def test_reject_stale_cursor_false_still_rejects_past_end(
+        self,
+        secret: CursorSecret,
+    ) -> None:
+        """The opt-out is boundary-only: ``offset > total`` still raises.
+
+        A cursor whose decoded offset is strictly past the repo end
+        could not have been issued against the current snapshot (the
+        HMAC would have signed the larger count), so it's never a
+        legitimate append-only boundary -- honour the rejection even
+        when the caller opted out of the boundary-equal check.
+        """
+        with pytest.raises(InvalidCursorError):
+            encode_repo_seek_meta(
+                offset=50,
+                page_len=0,
+                total=30,
+                limit=10,
+                secret=secret,
+                reject_stale_cursor=False,
+            )
+
     def test_zero_offset_empty_repo_is_not_stale(
         self,
         secret: CursorSecret,
