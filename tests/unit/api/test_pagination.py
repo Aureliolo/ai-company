@@ -5,7 +5,7 @@ from pydantic import ValidationError
 
 from synthorg.api.cursor import CursorSecret, InvalidCursorError
 from synthorg.api.dto import PaginationMeta
-from synthorg.api.pagination import paginate_cursor
+from synthorg.api.pagination import encode_repo_seek_meta, paginate_cursor
 
 pytestmark = pytest.mark.unit
 
@@ -209,3 +209,145 @@ class TestPaginationMetaConsistency:
         meta = PaginationMeta(limit=50, next_cursor=None, has_more=False)
         assert meta.has_more is False
         assert meta.next_cursor is None
+
+
+class TestEncodeRepoSeekMeta:
+    """Controller-facing helper for repo-backed pagination."""
+
+    def test_intermediate_page_emits_cursor(self, secret: CursorSecret) -> None:
+        meta = encode_repo_seek_meta(
+            offset=0,
+            page_len=10,
+            total=30,
+            limit=10,
+            secret=secret,
+        )
+        assert meta.has_more is True
+        assert meta.next_cursor is not None
+
+    def test_terminal_page_clears_cursor(self, secret: CursorSecret) -> None:
+        meta = encode_repo_seek_meta(
+            offset=20,
+            page_len=10,
+            total=30,
+            limit=10,
+            secret=secret,
+        )
+        assert meta.has_more is False
+        assert meta.next_cursor is None
+
+    def test_short_page_without_matching_total_is_terminal(
+        self,
+        secret: CursorSecret,
+    ) -> None:
+        """Snapshot drift guard: empty / short pages cannot loop."""
+        meta = encode_repo_seek_meta(
+            offset=10,
+            page_len=0,
+            total=20,
+            limit=10,
+            secret=secret,
+        )
+        # Even though ``total`` says more rows exist, a zero-length
+        # page cannot advance the cursor, so ``has_more`` must be
+        # False.
+        assert meta.has_more is False
+        assert meta.next_cursor is None
+
+    def test_stale_cursor_past_total_rejected(
+        self,
+        secret: CursorSecret,
+    ) -> None:
+        """``offset >= total`` (with offset > 0) raises like paginate_cursor."""
+        with pytest.raises(InvalidCursorError, match="past the end"):
+            encode_repo_seek_meta(
+                offset=50,
+                page_len=0,
+                total=30,
+                limit=10,
+                secret=secret,
+            )
+
+    def test_stale_cursor_at_total_boundary_rejected(
+        self,
+        secret: CursorSecret,
+    ) -> None:
+        """``offset == total`` (with offset > 0) is the truncation signal."""
+        with pytest.raises(InvalidCursorError):
+            encode_repo_seek_meta(
+                offset=30,
+                page_len=0,
+                total=30,
+                limit=10,
+                secret=secret,
+            )
+
+    def test_display_total_overrides_pagination_total(
+        self,
+        secret: CursorSecret,
+    ) -> None:
+        """``display_total`` controls ``meta.total`` independently of ``has_more``."""
+        meta = encode_repo_seek_meta(
+            offset=0,
+            page_len=10,
+            total=30,
+            display_total=29,
+            limit=10,
+            secret=secret,
+        )
+        assert meta.has_more is True  # still driven by repo ``total``.
+        assert meta.total == 29  # display-facing value is the override.
+
+    def test_display_total_does_not_mask_stale_cursor(
+        self,
+        secret: CursorSecret,
+    ) -> None:
+        """The stale-cursor check uses ``total``, not ``display_total``.
+
+        Regression guard: an earlier design had ``has_more`` compare
+        against the display total and would suppress ``next_cursor``
+        when forged rows shrank the displayed count below the cursor
+        offset, stranding callers before the last legitimate row.
+        """
+        meta = encode_repo_seek_meta(
+            offset=20,
+            page_len=10,
+            total=31,
+            display_total=30,
+            limit=10,
+            secret=secret,
+        )
+        assert meta.has_more is True
+        assert meta.next_cursor is not None
+
+    def test_reject_stale_cursor_false_returns_terminal_page(
+        self,
+        secret: CursorSecret,
+    ) -> None:
+        """Opt-out for callers that genuinely tolerate cursor==total."""
+        meta = encode_repo_seek_meta(
+            offset=30,
+            page_len=0,
+            total=30,
+            limit=10,
+            secret=secret,
+            reject_stale_cursor=False,
+        )
+        assert meta.has_more is False
+        assert meta.next_cursor is None
+
+    def test_zero_offset_empty_repo_is_not_stale(
+        self,
+        secret: CursorSecret,
+    ) -> None:
+        """First page against an empty repo is legitimate, not stale."""
+        meta = encode_repo_seek_meta(
+            offset=0,
+            page_len=0,
+            total=0,
+            limit=10,
+            secret=secret,
+        )
+        assert meta.has_more is False
+        assert meta.next_cursor is None
+        assert meta.total == 0

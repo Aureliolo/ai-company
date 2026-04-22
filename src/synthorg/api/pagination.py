@@ -22,6 +22,10 @@ from synthorg.api.cursor import (
     encode_cursor,
 )
 from synthorg.api.dto import DEFAULT_LIMIT, MAX_LIMIT, PaginationMeta
+from synthorg.observability import get_logger
+from synthorg.observability.events.api import API_CURSOR_INVALID
+
+logger = get_logger(__name__)
 
 CursorLimit = Annotated[
     int,
@@ -83,6 +87,15 @@ def paginate_cursor[T](
     # pointing exactly at the collection end -- reaching that position
     # is the unambiguous truncation signal.
     if offset and offset >= len(items):
+        # Truncation is an operator-visible event: the collection
+        # shrank between cursor issuance and replay, and silently
+        # returning an empty page would hide that from monitoring.
+        logger.warning(
+            API_CURSOR_INVALID,
+            reason="cursor_past_end",
+            offset=offset,
+            collection_length=len(items),
+        )
         msg = "cursor points past the end of the collection"
         raise InvalidCursorError(msg)
     page = items[offset : offset + effective_limit]
@@ -107,6 +120,7 @@ def encode_repo_seek_meta(  # noqa: PLR0913 -- every arg tracks a distinct pagin
     limit: int,
     secret: CursorSecret,
     display_total: int | None = None,
+    reject_stale_cursor: bool = True,
 ) -> PaginationMeta:
     """Build ``PaginationMeta`` for controllers that push limit+offset into the repo.
 
@@ -141,11 +155,37 @@ def encode_repo_seek_meta(  # noqa: PLR0913 -- every arg tracks a distinct pagin
             controller drops rows between the repo read and the
             client-facing slice (e.g. owner-mismatch forgeries) so
             ``pagination.total`` stays consistent with ``data``.
+        reject_stale_cursor: When ``True`` (the default), a decoded
+            ``offset >= total`` raises :class:`InvalidCursorError`
+            (mirrors the ``paginate_cursor`` helper).  Set to
+            ``False`` only when the caller needs to tolerate a cursor
+            pointing at the current end of an append-only repo (rare;
+            snapshot drift during the read is a better reason to
+            surface the truncation).
 
     Returns:
         ``PaginationMeta`` with the ``has_more`` / ``next_cursor``
         fields filled in, safe to wrap in ``PaginatedResponse``.
+
+    Raises:
+        InvalidCursorError: When ``reject_stale_cursor`` is ``True``
+            and the cursor's decoded offset is past the repo's
+            reported end (``offset >= total`` with ``offset > 0``).
     """
+    # Out-of-bounds cursors signal the repo shrank between cursor
+    # issuance and replay (deletions, filters).  Silently reporting
+    # ``has_more=False`` would hide the truncation from monitoring
+    # and strand clients on an empty page they cannot recover from;
+    # raise so callers surface the state change as HTTP 400.
+    if reject_stale_cursor and offset and offset >= total:
+        logger.warning(
+            API_CURSOR_INVALID,
+            reason="cursor_past_end",
+            offset=offset,
+            total=total,
+        )
+        msg = "cursor points past the end of the collection"
+        raise InvalidCursorError(msg)
     next_offset = offset + page_len
     has_more = page_len > 0 and next_offset > offset and next_offset < total
     next_cursor = encode_cursor(next_offset, secret=secret) if has_more else None
