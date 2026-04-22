@@ -14,8 +14,15 @@ from synthorg.core.enums import ApprovalRiskLevel
 def make_escalation(**overrides: Any) -> EscalationInfo:
     """Build an ``EscalationInfo`` with safe defaults.
 
-    Any field can be overridden via keyword arguments.
+    Any field can be overridden via keyword arguments.  Unknown keys
+    raise ``KeyError`` to catch typos -- Pydantic's default behaviour
+    is to silently ignore unknown fields, which would otherwise let a
+    misspelled override sneak through without taking effect.
     """
+    unknown = set(overrides) - set(EscalationInfo.model_fields)
+    if unknown:
+        msg = f"Unknown EscalationInfo override(s): {sorted(unknown)}"
+        raise KeyError(msg)
     defaults: dict[str, Any] = {
         "approval_id": "approval-1",
         "tool_call_id": "tc-1",

@@ -106,11 +106,12 @@ class PostgresEscalationNotifySubscriber:
 
         Args:
             repo: Escalation queue store (protocol-typed).  Postgres
-                implementations deliver real NOTIFY payloads; other
-                backends return a blocking-on-cancel iterator from
-                ``subscribe_notifications`` and so are used exclusively
-                in single-worker deployments where no real cross-instance
-                wake-up is needed.
+                implementations deliver real NOTIFY payloads via
+                ``subscribe_notifications``; other backends either
+                return a backend-specific stream or raise
+                ``RuntimeError`` from ``subscribe_notifications`` when
+                subscriptions are unsupported (see the contract in
+                ``synthorg.communication.conflict_resolution.escalation.protocol``).
             registry: Process-local registry whose futures should wake.
             channel: LISTEN/NOTIFY channel name.
             reconnect_delay_seconds: Seconds to wait before reconnecting

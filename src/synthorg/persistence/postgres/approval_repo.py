@@ -71,7 +71,12 @@ def _row_to_item(row: dict[str, Any]) -> ApprovalItem:
         QueryError: If the row contains corrupt or unparseable data.
     """
     try:
-        metadata_raw = row["metadata"] or {}
+        # Normalise only NULL explicitly; preserve other falsy payloads
+        # (e.g. ``[]``, ``""``, ``0``, ``false``) so ``ApprovalItem``'s
+        # ``dict[str, str]`` validation rejects them via ``ValidationError``
+        # rather than masking corruption as an empty dict.
+        raw_metadata = row["metadata"]
+        metadata_raw = {} if raw_metadata is None else raw_metadata
         # Postgres JSONB always deserializes to dict/list/primitive; if a
         # legacy row stored a non-object value, ``ApprovalItem`` construction
         # below will raise ``ValidationError`` and the outer except wraps it.

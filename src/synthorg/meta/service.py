@@ -56,6 +56,7 @@ from synthorg.observability.events.meta import (
 )
 
 if TYPE_CHECKING:
+    from synthorg.approval.protocol import ApprovalStoreProtocol
     from synthorg.memory.protocol import MemoryBackend
     from synthorg.meta.appliers.architecture_applier import (
         ArchitectureApplierContext,
@@ -138,11 +139,12 @@ class SelfImprovementService:
         roster: OrgRoster | None = None,
         snapshot_builder: SnapshotBuilder | None = None,
         group_aggregator: GroupSignalAggregator | None = None,
+        approval_store: ApprovalStoreProtocol | None = None,
     ) -> None:
         self._config = config
         self._rule_engine = build_rule_engine(config)
         self._strategies = build_strategies(config, provider=provider)
-        self._guards = build_guards(config)
+        self._guards = build_guards(config, approval_store=approval_store)
         self._appliers = build_appliers(
             config,
             config_provider=config_provider,

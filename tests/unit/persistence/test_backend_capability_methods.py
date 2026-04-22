@@ -4,8 +4,9 @@ Locks the contract of ``build_ontology_versioning()`` -- the
 capability method introduced by ARC-1 that replaces the
 ``isinstance(persistence, PostgresPersistenceBackend)`` check in
 ``api/auto_wire.py``.  Both the SQLite and Postgres backends must
-construct a versioning service with the expected surface (``save_version``,
-``list_versions``, ...) when invoked on a connected backend.
+construct a versioning service with the expected surface
+(``snapshot_if_changed``, ``force_snapshot``, ``get_latest``) when
+invoked on a connected backend.
 
 Postgres coverage lives alongside the existing integration-level
 persistence tests; here we exercise SQLite and verify the protocol

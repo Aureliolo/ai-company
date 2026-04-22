@@ -39,6 +39,7 @@ class TestApprovalStoreProtocol:
         actual = {
             name for name in vars(ApprovalStoreProtocol) if not name.startswith("_")
         }
-        assert expected.issubset(actual), (
-            f"ApprovalStoreProtocol missing methods: {expected - actual}"
+        assert actual == expected, (
+            "ApprovalStoreProtocol surface changed: "
+            f"missing={expected - actual}, added={actual - expected}"
         )

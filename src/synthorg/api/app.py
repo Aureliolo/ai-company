@@ -333,8 +333,10 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
 
     channels_plugin = create_channels_plugin()
     expire_callback = _make_expire_callback(channels_plugin)
-    effective_approval_store = approval_store or ApprovalStore(
-        on_expire=expire_callback,
+    effective_approval_store: ApprovalStoreProtocol = (
+        approval_store
+        if approval_store is not None
+        else ApprovalStore(on_expire=expire_callback)
     )
 
     # Wire meeting event publisher to the meetings WS channel.

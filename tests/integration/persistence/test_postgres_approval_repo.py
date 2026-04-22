@@ -204,17 +204,21 @@ async def test_save_update_overwrites(
     assert fetched.decided_by == "operator-b"
 
 
-async def test_corrupt_row_raises_query_error(
+async def test_pydantic_invalid_row_raises_query_error(
     repo: PostgresApprovalRepository,
     postgres_backend: PostgresPersistenceBackend,
 ) -> None:
-    """Invalid enum values in the DB surface as ``QueryError`` with
-    the structured logging event, not a raw ``ValueError``.  This
-    exercises the _row_to_item error path with ``ValidationError``
-    now being part of the caught exception tuple.
+    """A DB row that the DB accepts but Pydantic rejects surfaces as
+    :class:`QueryError` (wrapping the underlying ``ValidationError``),
+    exercising the ``_row_to_item`` error path with ``ValidationError``
+    in the caught exception tuple.
+
+    The schema's CHECK constraints block invalid enum values, so we
+    corrupt ``metadata`` to carry a non-string value -- permitted by
+    the ``JSONB`` column type but rejected by ``ApprovalItem``'s
+    ``dict[str, str]`` metadata field.
     """
     assert postgres_backend._pool is not None
-    # Insert a row with an invalid enum value using raw SQL.
     async with postgres_backend._pool.connection() as conn, conn.cursor() as cur:
         await cur.execute(
             "INSERT INTO approvals "
@@ -225,12 +229,12 @@ async def test_corrupt_row_raises_query_error(
             "(%s, %s, %s, %s, %s, %s, %s, %s, %s, "
             " %s, %s, %s, %s, %s, %s)",
             (
-                "approval-corrupt-001",
+                "approval-invalid-001",
                 "deploy:production",
-                "Bad",
-                "Bad",
+                "Invalid metadata",
+                "metadata dict carries a non-string value",
                 "agent-eng-001",
-                "NOT_A_RISK_LEVEL",  # invalid enum value
+                "high",
                 "pending",
                 datetime.now(UTC),
                 None,
@@ -239,13 +243,15 @@ async def test_corrupt_row_raises_query_error(
                 None,
                 None,
                 None,
-                Jsonb({}),
+                # Non-string value in metadata -- ApprovalItem
+                # requires dict[str, str] so Pydantic rejects.
+                Jsonb({"bad_field": 42}),
             ),
         )
         await conn.commit()
 
     with pytest.raises(QueryError):
-        await repo.get("approval-corrupt-001")
+        await repo.get("approval-invalid-001")
 
 
 async def test_save_duplicate_primary_key_raises_constraint(

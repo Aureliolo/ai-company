@@ -232,17 +232,12 @@ class TestRateLimitGuard:
 class TestApprovalGateGuard:
     """Approval gate guard tests."""
 
-    async def test_always_passes(self) -> None:
-        guard = ApprovalGateGuard()
-        result = await guard.evaluate(_config_proposal())
-        assert result.verdict == GuardVerdict.PASSED
-
     async def test_guard_name(self) -> None:
         guard = ApprovalGateGuard()
         assert guard.name == "approval_gate"
 
-    async def test_persists_proposal_to_configured_store(self) -> None:
-        """Guard must route proposals to the approval store."""
+    async def test_persists_proposal_and_passes(self) -> None:
+        """Guard persists the proposal and passes on first evaluation."""
         from unittest.mock import AsyncMock
 
         from synthorg.approval.protocol import ApprovalStoreProtocol
@@ -262,14 +257,28 @@ class TestApprovalGateGuard:
         assert item.metadata["proposal_id"] == str(proposal.id)
         assert item.metadata["altitude"] == proposal.altitude.value
 
-    async def test_missing_store_still_passes(self) -> None:
-        """Without a configured store the guard still passes cleanly."""
-        guard = ApprovalGateGuard(approval_store=None)
+    async def test_replay_treated_as_idempotent_pass(self) -> None:
+        """ConflictError from replay is treated as idempotent PASSED."""
+        from unittest.mock import AsyncMock
+
+        from synthorg.api.errors import ConflictError
+        from synthorg.approval.protocol import ApprovalStoreProtocol
+
+        store = AsyncMock(spec=ApprovalStoreProtocol)
+        store.add.side_effect = ConflictError("already exists")
+        guard = ApprovalGateGuard(approval_store=store)
+
         result = await guard.evaluate(_config_proposal())
         assert result.verdict == GuardVerdict.PASSED
 
-    async def test_store_failure_is_non_fatal(self) -> None:
-        """Store errors must not fail the guard (still PASSED)."""
+    async def test_missing_store_rejects(self) -> None:
+        """Without a configured store the guard fails closed."""
+        guard = ApprovalGateGuard(approval_store=None)
+        result = await guard.evaluate(_config_proposal())
+        assert result.verdict == GuardVerdict.REJECTED
+
+    async def test_store_failure_rejects(self) -> None:
+        """Non-duplicate store write errors fail the guard closed."""
         from unittest.mock import AsyncMock
 
         from synthorg.approval.protocol import ApprovalStoreProtocol
@@ -279,7 +288,7 @@ class TestApprovalGateGuard:
         guard = ApprovalGateGuard(approval_store=store)
 
         result = await guard.evaluate(_config_proposal())
-        assert result.verdict == GuardVerdict.PASSED
+        assert result.verdict == GuardVerdict.REJECTED
 
     def test_invalid_expiry_days_raises(self) -> None:
         """Guard construction rejects non-positive expiry windows."""
