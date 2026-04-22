@@ -79,6 +79,19 @@ class MultiAgentCoordinator:
         task_engine: Optional task engine for parent status updates.
         performance_tracker: Optional tracker for recording per-agent
             coordination contributions.
+        coordination_chain: Optional ``CoordinationMiddlewareChain``
+            that runs ``before_decompose`` / ``after_decompose`` /
+            ``before_dispatch`` / ``after_rollup`` hooks around the
+            pipeline; ``None`` disables middleware entirely.
+        default_topology_provider: Optional callable returning the
+            topology to fall back on when ``routing_result.decisions``
+            is empty. Passed as a callable (rather than a frozen
+            :class:`CoordinationTopology`) so operators can wire it
+            to a settings-store reader and runtime changes to
+            ``coordination.default_topology`` take effect without
+            rebuilding the coordinator. Falls back to
+            ``CoordinationTopology.SAS`` (the historical default)
+            when ``None`` is supplied.
     """
 
     __slots__ = (
@@ -230,6 +243,11 @@ class MultiAgentCoordinator:
                 # marker itself -- record the failure here so the phase
                 # list surfaces the topology-resolution step, mirroring
                 # the decomposition/routing/dispatch handlers below.
+                # Re-raise a NEW ``CoordinationPhaseError`` carrying
+                # the updated ``partial_phases`` so callers can see
+                # which phases completed before the failure (the
+                # original exception was raised before this phase
+                # marker existed in ``phases``).
                 elapsed = time.monotonic() - topology_start
                 phases.append(
                     CoordinationPhaseResult(
@@ -239,7 +257,11 @@ class MultiAgentCoordinator:
                         error=safe_error_description(phase_exc),
                     )
                 )
-                raise
+                raise CoordinationPhaseError(
+                    str(phase_exc),
+                    phase=topology_phase,
+                    partial_phases=tuple(phases),
+                ) from phase_exc
             except MemoryError, RecursionError:
                 raise
             except Exception as exc:

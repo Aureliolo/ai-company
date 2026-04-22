@@ -398,23 +398,27 @@ class TestListRules:
 
 
 class TestDelete:
-    async def test_delete_returns_true_when_row_deleted(
+    @pytest.mark.parametrize(
+        ("rowcount", "expected"),
+        [(1, True), (0, False)],
+        ids=["row_deleted", "no_rows_matched"],
+    )
+    async def test_delete_returns_rowcount_truthiness(
         self,
         repo: tuple[PostgresCustomRuleRepository, _FakePool],
+        rowcount: int,
+        expected: bool,
     ) -> None:
-        instance, pool = repo
-        pool.rowcount = 1
-        deleted = await instance.delete(str(uuid4()))
-        assert deleted is True
+        """``delete`` returns ``True`` iff the UPDATE removed a row.
 
-    async def test_delete_returns_false_when_no_rows(
-        self,
-        repo: tuple[PostgresCustomRuleRepository, _FakePool],
-    ) -> None:
+        Parametrized across the only two relevant rowcount values
+        (``1`` = row found + deleted, ``0`` = nothing matched) so
+        the two paths live in one test and cannot drift apart.
+        """
         instance, pool = repo
-        pool.rowcount = 0
+        pool.rowcount = rowcount
         deleted = await instance.delete(str(uuid4()))
-        assert deleted is False
+        assert deleted is expected
 
     async def test_delete_wraps_db_error(
         self,

@@ -50,6 +50,8 @@ from synthorg.observability.events.eval_loop import (
     EVAL_LOOP_PATTERN_IDENTIFIED,
 )
 
+logger = get_logger(__name__)
+
 # Keys + values are both identifier fields -- type them as
 # ``NotBlankStr`` so a future edit that leaves a blank / whitespace-
 # only action id is rejected statically. The values in this literal
@@ -89,6 +91,16 @@ if set(_DEFAULT_PATTERN_ACTIONS.keys()) != _EXPECTED_PATTERN_KEYS:
         "_DEFAULT_PATTERN_ACTIONS drifted from EvaluationPillar enum: "
         f"missing={sorted(_missing)!r}, extra={sorted(_extra)!r}"
     )
+    # Log before raising so operators observing the structured log
+    # stream see the drift details alongside whatever process-level
+    # error surface the ``ImportError`` lands on (CI failure, import
+    # crash at module load, etc.).
+    logger.error(
+        EVAL_LOOP_CYCLE_FAILED,
+        reason="default_pattern_actions_drift",
+        missing=sorted(_missing),
+        extra=sorted(_extra),
+    )
     raise ImportError(_msg)
 
 # Pattern kinds the ``_propose_actions`` mapper understands.  Any
@@ -96,8 +108,6 @@ if set(_DEFAULT_PATTERN_ACTIONS.keys()) != _EXPECTED_PATTERN_KEYS:
 # drifted detector cannot silently emit bogus actions via an unknown
 # prefix (e.g. ``"strength:intelligence"``).
 _SUPPORTED_PATTERN_KINDS: Final[frozenset[str]] = frozenset({"weakness"})
-
-logger = get_logger(__name__)
 
 
 class EvalLoopCoordinator:
@@ -348,14 +358,21 @@ class EvalLoopCoordinator:
         entries via ``config.pattern_action_map`` -- keys are pillar
         values, values are free-form action ids.
 
-        Malformed patterns (no ``:`` separator) and patterns for
-        which neither the operator override nor
-        :data:`_DEFAULT_PATTERN_ACTIONS` defines a mapping are
-        logged at WARNING level (via ``EVAL_LOOP_ACTION_PROPOSED``
-        with ``reason="malformed_pattern"`` / ``"unmapped_pattern"``)
-        and skipped. Operators chasing missing ``proposed_actions``
-        can grep the structured logs for those reasons to see which
-        patterns were dropped.
+        Patterns are skipped (with a WARNING-level log via
+        ``EVAL_LOOP_ACTION_PROPOSED``) in three cases:
+
+        * ``reason="malformed_pattern"`` -- no ``:`` separator.
+        * ``reason="unknown_pattern_kind"`` -- the prefix before the
+          ``:`` is not in :data:`_SUPPORTED_PATTERN_KINDS` (e.g. a
+          future detector emitting ``"strength:intelligence"`` is
+          skipped until a mapping for that kind is wired).
+        * ``reason="unmapped_pattern"`` -- neither the operator
+          override nor :data:`_DEFAULT_PATTERN_ACTIONS` defines a
+          mapping for the pillar.
+
+        Operators chasing missing ``proposed_actions`` can grep the
+        structured logs for those reasons to see which patterns were
+        dropped and why.
 
         Args:
             patterns: Patterns returned by :meth:`_identify_patterns`.
