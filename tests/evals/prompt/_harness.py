@@ -72,9 +72,16 @@ def run_grader(
 def assert_accuracy_at_least(outcome: EvalOutcome, threshold: float) -> None:
     """Fail the test if ``outcome.accuracy`` is below ``threshold``.
 
-    Keeps the failure message short and actionable so CI logs point
-    at the specific examples that regressed.
+    Also fails fast when ``outcome.total == 0`` (no examples were
+    run) so a miswired suite cannot silently report success.
     """
+    if outcome.total == 0:
+        msg = (
+            "prompt eval ran zero labelled examples -- suite may be "
+            "miswired (empty example set, import failure, or skipped "
+            "branch). Refusing to pass silently."
+        )
+        raise AssertionError(msg)
     if outcome.accuracy < threshold:
         failed = ", ".join(outcome.failures[:5])
         msg = (

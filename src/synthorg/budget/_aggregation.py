@@ -11,21 +11,30 @@ from collections import defaultdict
 from typing import TYPE_CHECKING
 
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
+from synthorg.observability import get_logger
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from synthorg.budget.cost_record import CostRecord
 
+logger = get_logger(__name__)
+
 
 def group_by_agent(
     records: Sequence[CostRecord],
 ) -> dict[str, list[CostRecord]]:
-    """Group cost records by ``agent_id`` preserving insertion order."""
+    """Group cost records by ``agent_id`` preserving insertion order.
+
+    Returns a plain ``dict`` (not a ``defaultdict``) so callers reading
+    a missing key raise ``KeyError`` rather than silently materialising
+    an empty list -- a defensive barrier against mutation-on-read
+    bugs that would skew aggregations downstream.
+    """
     bucket: dict[str, list[CostRecord]] = defaultdict(list)
     for record in records:
         bucket[record.agent_id].append(record)
-    return bucket
+    return dict(bucket)
 
 
 def sum_cost(records: Sequence[CostRecord]) -> float:

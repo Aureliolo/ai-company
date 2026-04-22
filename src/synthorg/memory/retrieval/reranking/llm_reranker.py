@@ -16,7 +16,12 @@ from synthorg.observability.events.memory import (
     MEMORY_RERANK_FAILED,
 )
 from synthorg.providers.enums import MessageRole
-from synthorg.providers.models import ChatMessage
+from synthorg.providers.models import ChatMessage, CompletionConfig
+
+# Re-ranking must be deterministic across CI shards so cache keys
+# remain stable. Temperature=0.0 also minimises the chance of the
+# LLM returning a malformed ranking array that forces a fallback.
+_RERANK_COMPLETION_CONFIG = CompletionConfig(temperature=0.0)
 
 if TYPE_CHECKING:
     from synthorg.core.types import NotBlankStr
@@ -201,7 +206,11 @@ class LLMQuerySpecificReranker:
             ),
             ChatMessage(role=MessageRole.USER, content=user_content),
         ]
-        response = await self._provider.complete(messages, self._model)
+        response = await self._provider.complete(
+            messages,
+            self._model,
+            config=_RERANK_COMPLETION_CONFIG,
+        )
         if response.content is None:
             logger.debug(
                 MEMORY_RERANK_FAILED,

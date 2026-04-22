@@ -35,6 +35,8 @@ from synthorg.observability.events.coordination import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from synthorg.engine.coordination.dispatcher_types import DispatchResult
     from synthorg.engine.coordination.models import CoordinationContext
     from synthorg.engine.decomposition.models import (
@@ -81,7 +83,7 @@ class MultiAgentCoordinator:
     __slots__ = (
         "_coordination_chain",
         "_decomposition_service",
-        "_default_topology",
+        "_default_topology_provider",
         "_parallel_executor",
         "_performance_tracker",
         "_routing_service",
@@ -99,7 +101,7 @@ class MultiAgentCoordinator:
         task_engine: TaskEngine | None = None,
         performance_tracker: PerformanceTracker | None = None,
         coordination_chain: CoordinationMiddlewareChain | None = None,
-        default_topology: CoordinationTopology = CoordinationTopology.SAS,
+        default_topology_provider: Callable[[], CoordinationTopology] | None = None,
     ) -> None:
         self._decomposition_service = decomposition_service
         self._routing_service = routing_service
@@ -108,7 +110,12 @@ class MultiAgentCoordinator:
         self._task_engine = task_engine
         self._performance_tracker = performance_tracker
         self._coordination_chain = coordination_chain
-        self._default_topology = default_topology
+        # Callable provider instead of a frozen value so operators
+        # can wire a settings-store reader here and runtime changes
+        # to ``coordination.default_topology`` take effect without
+        # rebuilding the coordinator. Falls back to ``SAS`` (the
+        # historical default) when no provider is supplied.
+        self._default_topology_provider = default_topology_provider
 
     async def coordinate(  # noqa: PLR0912, PLR0915, C901
         self,
@@ -453,7 +460,11 @@ class MultiAgentCoordinator:
                     phase="resolve_topology",
                 )
         else:
-            topology = self._default_topology
+            topology = (
+                self._default_topology_provider()
+                if self._default_topology_provider is not None
+                else CoordinationTopology.SAS
+            )
 
         # AUTO should have been resolved by TopologySelector; fallback
         if topology == CoordinationTopology.AUTO:

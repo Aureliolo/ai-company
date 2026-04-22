@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ListHeader } from '@/components/ui/list-header'
+import { MetadataGrid } from '@/components/ui/metadata-grid'
 import { SectionCard } from '@/components/ui/section-card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useToastStore } from '@/stores/toast'
@@ -31,6 +32,23 @@ export default function ReportsPage() {
   const [generating, setGenerating] = useState<ReportPeriod | null>(null)
   const [report, setReport] = useState<GeneratedReportState | null>(null)
   const toast = useToastStore((state) => state.add)
+
+  // Shared fetch helper so the initial load and the retry handler
+  // emit the same ``log.error`` on failure -- previously the retry
+  // handler silently swallowed errors while the initial load logged.
+  const fetchPeriods = useCallback(async () => {
+    setLoadingPeriods(true)
+    setPeriodsError(null)
+    try {
+      const result = await listReportPeriods()
+      setPeriods(result)
+    } catch (err) {
+      log.error('listReportPeriods', err)
+      setPeriodsError(getErrorMessage(err))
+    } finally {
+      setLoadingPeriods(false)
+    }
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -98,14 +116,7 @@ export default function ReportsPage() {
           severity="error"
           title="Could not load report periods"
           description={periodsError}
-          onRetry={() => {
-            setLoadingPeriods(true)
-            setPeriodsError(null)
-            void listReportPeriods()
-              .then((result) => setPeriods(result))
-              .catch((err) => setPeriodsError(getErrorMessage(err)))
-              .finally(() => setLoadingPeriods(false))
-          }}
+          onRetry={() => void fetchPeriods()}
         />
       ) : loadingPeriods ? (
         <div className="grid grid-cols-1 gap-grid-gap sm:grid-cols-2 lg:grid-cols-3">
@@ -126,7 +137,7 @@ export default function ReportsPage() {
                 onClick={() => void handleGenerate(period)}
                 disabled={generating !== null}
               >
-                <Play className="size-3" />
+                <Play className="size-3" aria-hidden="true" />
                 {generating === period ? 'Generating…' : 'Generate'}
               </Button>
             </SectionCard>
@@ -145,36 +156,81 @@ export default function ReportsPage() {
           title={`Latest ${report.period} report`}
           icon={FileText}
         >
-          <dl className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
-            <div>
-              <dt className="text-text-muted">Start</dt>
-              <dd className="font-mono">{formatDateTime(report.response.start)}</dd>
-            </div>
-            <div>
-              <dt className="text-text-muted">End</dt>
-              <dd className="font-mono">{formatDateTime(report.response.end)}</dd>
-            </div>
-            <div>
-              <dt className="text-text-muted">Sections present</dt>
-              <dd>
-                <ul className="list-disc pl-4">
-                  <li>Spending: {report.response.has_spending ? 'yes' : 'no'}</li>
-                  <li>Performance: {report.response.has_performance ? 'yes' : 'no'}</li>
-                  <li>
-                    Task completion:{' '}
-                    {report.response.has_task_completion ? 'yes' : 'no'}
-                  </li>
-                  <li>Risk trends: {report.response.has_risk_trends ? 'yes' : 'no'}</li>
-                </ul>
-              </dd>
-            </div>
-            <div>
-              <dt className="text-text-muted">Generated at</dt>
-              <dd className="font-mono">
-                {formatDateTime(report.response.generated_at)}
-              </dd>
-            </div>
-          </dl>
+          <MetadataGrid
+            columns={2}
+            items={[
+              {
+                label: 'Start',
+                value: formatDateTime(report.response.start),
+                valueClassName: 'font-mono',
+              },
+              {
+                label: 'End',
+                value: formatDateTime(report.response.end),
+                valueClassName: 'font-mono',
+              },
+              {
+                label: 'Sections present',
+                value: (
+                  <ul className="list-disc pl-4">
+                    <li>
+                      Spending:{' '}
+                      <span
+                        className={
+                          report.response.has_spending
+                            ? 'text-success'
+                            : 'text-text-muted'
+                        }
+                      >
+                        {report.response.has_spending ? 'yes' : 'no'}
+                      </span>
+                    </li>
+                    <li>
+                      Performance:{' '}
+                      <span
+                        className={
+                          report.response.has_performance
+                            ? 'text-success'
+                            : 'text-text-muted'
+                        }
+                      >
+                        {report.response.has_performance ? 'yes' : 'no'}
+                      </span>
+                    </li>
+                    <li>
+                      Task completion:{' '}
+                      <span
+                        className={
+                          report.response.has_task_completion
+                            ? 'text-success'
+                            : 'text-text-muted'
+                        }
+                      >
+                        {report.response.has_task_completion ? 'yes' : 'no'}
+                      </span>
+                    </li>
+                    <li>
+                      Risk trends:{' '}
+                      <span
+                        className={
+                          report.response.has_risk_trends
+                            ? 'text-success'
+                            : 'text-text-muted'
+                        }
+                      >
+                        {report.response.has_risk_trends ? 'yes' : 'no'}
+                      </span>
+                    </li>
+                  </ul>
+                ),
+              },
+              {
+                label: 'Generated at',
+                value: formatDateTime(report.response.generated_at),
+                valueClassName: 'font-mono',
+              },
+            ]}
+          />
         </SectionCard>
       ) : null}
     </div>

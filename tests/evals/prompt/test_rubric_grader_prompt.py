@@ -37,6 +37,15 @@ class TestRubricGraderPromptContract:
             "LLMRubricGrader must pin temperature=0.0 for determinism"
         )
 
+    # Pinned SHA-256[:16] of the grader module source. When the
+    # prompt or any supporting code in ``llm.py`` changes
+    # intentionally, update this value AND add a regression example
+    # below to prove the new prompt still passes the grading
+    # contract. The bare ``isinstance + len == 16`` check the
+    # original test used could never detect drift, which is exactly
+    # what fingerprint pinning is supposed to catch.
+    PINNED_RUBRIC_GRADER_FP = "88db1624d56dc099"
+
     def test_prompt_fingerprint_is_pinned(self) -> None:
         """Detect silent prompt edits via a stable hash.
 
@@ -52,7 +61,9 @@ class TestRubricGraderPromptContract:
 
         source = inspect.getsource(_grader_module)
         fp = fingerprint_prompt(source)
-        # The fingerprint covers the whole module; any drift here
-        # requires a deliberate bump, which is the point.
-        assert isinstance(fp, str)
-        assert len(fp) == 16
+        assert fp == self.PINNED_RUBRIC_GRADER_FP, (
+            f"LLM rubric grader source fingerprint drifted: got {fp!r}, "  # noqa: S608 -- assertion message, not SQL
+            f"expected {self.PINNED_RUBRIC_GRADER_FP!r}. "
+            "If this was intentional, update the pinned fingerprint "
+            "AND extend the labelled example set to cover the new behaviour."
+        )

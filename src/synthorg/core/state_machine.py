@@ -13,6 +13,7 @@ Usage::
         name="task_status",
         invalid_event=TASK_TRANSITION_INVALID,
         config_event=TASK_TRANSITION_CONFIG_ERROR,
+        transition_event=TASK_TRANSITION_ACCEPTED,
     )
 
 
@@ -20,6 +21,8 @@ Usage::
         _MACHINE.validate(current, target)
 """
 
+from copy import deepcopy
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Protocol
 
 from synthorg.observability import get_logger
@@ -45,6 +48,11 @@ class StateMachine[S: _HasValue]:
     key, mirroring the ``_missing`` checks previously duplicated
     across four modules.
 
+    The transition table is deep-copied and wrapped in a
+    ``MappingProxyType`` at construction so mutations of the caller's
+    original dict cannot change validation behaviour at runtime (per
+    the CLAUDE.md immutability convention for non-Pydantic registries).
+
     Args:
         transitions: Map from current state to the frozenset of
             allowed target states. Terminal states map to an empty
@@ -56,7 +64,15 @@ class StateMachine[S: _HasValue]:
             caller attempts a transition that is not in the table.
         config_event: Event constant emitted at CRITICAL when the
             current state has no entry in the table (i.e. the table
-            is stale versus the enum).
+            is stale versus the enum). Should be a DEDICATED config-
+            error event -- not the same constant as ``invalid_event`` --
+            so dashboards and alerts can separate user-driven
+            validation failures from configuration bugs.
+        transition_event: Optional event constant emitted at INFO
+            for each accepted transition. When ``None`` (default)
+            the caller is responsible for its own state-transition
+            INFO log. When provided, ``StateMachine.validate`` emits
+            the CLAUDE.md-required INFO audit log directly.
         all_states: Optional iterable of every valid state value;
             when supplied the constructor verifies every member
             appears as a key. Callers typically pass an enum type
@@ -75,6 +91,7 @@ class StateMachine[S: _HasValue]:
         name: str,
         invalid_event: str,
         config_event: str,
+        transition_event: str | None = None,
         all_states: Iterable[S] | None = None,
         display_label: str | None = None,
     ) -> None:
@@ -86,10 +103,15 @@ class StateMachine[S: _HasValue]:
                 missing_values = sorted(getattr(m, "value", str(m)) for m in missing)
                 msg = f"{name}: missing transition entries for: {missing_values}"
                 raise ValueError(msg)
-        self._transitions: Mapping[S, frozenset[S]] = transitions
+        frozen: dict[S, frozenset[S]] = {
+            state: frozenset(targets)
+            for state, targets in deepcopy(dict(transitions)).items()
+        }
+        self._transitions: Mapping[S, frozenset[S]] = MappingProxyType(frozen)
         self._name = name
         self._invalid_event = invalid_event
         self._config_event = config_event
+        self._transition_event = transition_event
         self._display_label = display_label or name.replace("_", " ")
 
     @property
@@ -107,16 +129,29 @@ class StateMachine[S: _HasValue]:
         return self._transitions[current]
 
     def is_terminal(self, state: S) -> bool:
-        """Return ``True`` when ``state`` has no outgoing transitions."""
-        return not self._transitions.get(state, frozenset())
+        """Return ``True`` when ``state`` has no outgoing transitions.
+
+        Returns ``False`` for states that are absent from the table
+        (they are unknown/stale rather than terminal); use
+        :meth:`validate` to surface the configuration error.
+        """
+        if state not in self._transitions:
+            return False
+        return not self._transitions[state]
 
     def validate(self, current: S, target: S) -> None:
         """Validate a transition from ``current`` to ``target``.
 
-        Emits structured logs on rejection:
+        Emits structured logs:
 
         - CRITICAL + ``config_event`` when ``current`` has no entry.
         - WARNING + ``invalid_event`` when ``target`` is not allowed.
+        - INFO + ``transition_event`` (if configured) when accepted.
+
+        Log keys use generic ``current_state`` / ``target_state``
+        names so the same fields are semantically meaningful for
+        status, Kanban column, sprint phase, and client-request
+        state machines alike.
 
         Raises:
             ValueError: If the transition is not allowed.
@@ -130,7 +165,7 @@ class StateMachine[S: _HasValue]:
             logger.critical(
                 self._config_event,
                 state_machine=self._name,
-                current_status=current.value,
+                current_state=current.value,
             )
             msg = (
                 f"{current.value!r} has no entry in {display} "
@@ -143,8 +178,8 @@ class StateMachine[S: _HasValue]:
             logger.warning(
                 self._invalid_event,
                 state_machine=self._name,
-                current_status=current.value,
-                target_status=target.value,
+                current_state=current.value,
+                target_state=target.value,
                 allowed=allowed_values,
             )
             msg = (
@@ -153,3 +188,10 @@ class StateMachine[S: _HasValue]:
                 f"{allowed_values}"
             )
             raise ValueError(msg)
+        if self._transition_event is not None:
+            logger.info(
+                self._transition_event,
+                state_machine=self._name,
+                current_state=current.value,
+                target_state=target.value,
+            )

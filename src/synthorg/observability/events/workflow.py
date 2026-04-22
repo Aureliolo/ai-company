@@ -17,6 +17,11 @@ KANBAN_WIP_LIMIT_EXCEEDED: str = "workflow.kanban.wip_limit_exceeded"
 KANBAN_COLUMN_TRANSITION_INVALID: str = "workflow.kanban.column_transition_invalid"
 """Invalid Kanban column transition attempted."""
 
+KANBAN_COLUMN_TRANSITION_CONFIG_ERROR: str = (
+    "workflow.kanban.column_transition_config_error"
+)
+"""Kanban transition table is stale versus the enum -- configuration bug."""
+
 KANBAN_STATUS_PATH_MISSING: str = "workflow.kanban.status_path_missing"
 """No task status path defined for a column move."""
 
@@ -41,6 +46,11 @@ SPRINT_LIFECYCLE_TRANSITION_INVALID: str = (
     "workflow.sprint.lifecycle_transition_invalid"
 )
 """Invalid sprint lifecycle transition attempted."""
+
+SPRINT_LIFECYCLE_TRANSITION_CONFIG_ERROR: str = (
+    "workflow.sprint.lifecycle_transition_config_error"
+)
+"""Sprint transition table is stale versus the enum -- configuration bug."""
 
 SPRINT_TASK_ADDED: str = "workflow.sprint.task_added"
 """Task added to sprint backlog."""

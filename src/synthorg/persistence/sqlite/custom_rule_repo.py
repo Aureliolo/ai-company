@@ -11,16 +11,14 @@ from aiosqlite import Row  # noqa: TC002
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.meta.models import ProposalAltitude, RuleSeverity
 from synthorg.meta.rules.custom import Comparator, CustomRuleDefinition
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.meta import (
     META_CUSTOM_RULE_DELETE_FAILED,
-    META_CUSTOM_RULE_DELETED,
     META_CUSTOM_RULE_FETCH_FAILED,
     META_CUSTOM_RULE_FETCHED,
     META_CUSTOM_RULE_LIST_FAILED,
     META_CUSTOM_RULE_LISTED,
     META_CUSTOM_RULE_SAVE_FAILED,
-    META_CUSTOM_RULE_SAVED,
 )
 from synthorg.persistence.errors import ConstraintViolationError, QueryError
 
@@ -146,17 +144,13 @@ ON CONFLICT(id) DO UPDATE SET
         except sqlite3.Error as exc:
             await self._db.rollback()
             msg = f"Failed to save custom rule {rule.name!r}"
-            logger.exception(
+            logger.warning(
                 META_CUSTOM_RULE_SAVE_FAILED,
                 rule_name=rule.name,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
-        logger.info(
-            META_CUSTOM_RULE_SAVED,
-            rule_id=str(rule.id),
-            rule_name=rule.name,
-        )
 
     async def get(
         self,
@@ -184,10 +178,11 @@ ON CONFLICT(id) DO UPDATE SET
                 row = await cursor.fetchone()
         except sqlite3.Error as exc:
             msg = f"Failed to fetch custom rule {rule_id!r}"
-            logger.exception(
+            logger.warning(
                 META_CUSTOM_RULE_FETCH_FAILED,
                 rule_id=rule_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         if row is None:
@@ -230,10 +225,11 @@ ON CONFLICT(id) DO UPDATE SET
                 row = await cursor.fetchone()
         except sqlite3.Error as exc:
             msg = f"Failed to fetch custom rule by name {name!r}"
-            logger.exception(
+            logger.warning(
                 META_CUSTOM_RULE_FETCH_FAILED,
                 rule_name=name,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         if row is None:
@@ -270,9 +266,10 @@ ON CONFLICT(id) DO UPDATE SET
                 rows = await cursor.fetchall()
         except sqlite3.Error as exc:
             msg = "Failed to list custom rules"
-            logger.exception(
+            logger.warning(
                 META_CUSTOM_RULE_LIST_FAILED,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         result = tuple(_row_to_definition(row) for row in rows)
@@ -301,15 +298,11 @@ ON CONFLICT(id) DO UPDATE SET
         except sqlite3.Error as exc:
             await self._db.rollback()
             msg = f"Failed to delete custom rule {rule_id!r}"
-            logger.exception(
+            logger.warning(
                 META_CUSTOM_RULE_DELETE_FAILED,
                 rule_id=rule_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
-        logger.info(
-            META_CUSTOM_RULE_DELETED,
-            rule_id=rule_id,
-            deleted=deleted,
-        )
         return deleted

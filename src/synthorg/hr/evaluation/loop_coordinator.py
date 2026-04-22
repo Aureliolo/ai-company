@@ -239,7 +239,7 @@ class EvalLoopCoordinator:
     async def _identify_patterns(
         self,
         reports: tuple[EvaluationReport, ...],
-    ) -> tuple[NotBlankStr, ...]:
+    ) -> tuple[str, ...]:
         """Identify pillar-weakness patterns across agents.
 
         For each report, count pillars scoring below
@@ -260,9 +260,17 @@ class EvalLoopCoordinator:
         threshold = self._config.pattern_weakness_threshold
         weak_counts: Counter[str] = Counter()
         for report in reports:
-            for score in report.pillar_scores:
-                if score.score < threshold:
-                    weak_counts[score.pillar.value] += 1
+            # Collect the set of weak pillars for this agent first so a
+            # report that carries the same pillar twice (defensive -- the
+            # model does not currently enforce uniqueness) still counts
+            # the agent once per pillar.
+            weak_pillars = {
+                score.pillar.value
+                for score in report.pillar_scores
+                if score.score < threshold
+            }
+            for pillar in weak_pillars:
+                weak_counts[pillar] += 1
 
         min_agents = self._config.pattern_min_agents
         qualifying = [
@@ -272,7 +280,11 @@ class EvalLoopCoordinator:
         ]
         qualifying.sort(key=lambda item: (-item[1], item[0]))
 
-        patterns = tuple(NotBlankStr(f"weakness:{pillar}") for pillar, _ in qualifying)
+        # ``NotBlankStr`` is an ``Annotated[str, ...]`` alias; calling
+        # it at runtime does not run the validator, it just returns
+        # the underlying string. Keep the value as a plain ``str`` in
+        # the tuple and rely on static typing + validated inputs.
+        patterns = tuple(f"weakness:{pillar}" for pillar, _ in qualifying)
         if patterns:
             logger.info(
                 EVAL_LOOP_PATTERN_IDENTIFIED,
@@ -285,8 +297,8 @@ class EvalLoopCoordinator:
 
     async def _propose_actions(
         self,
-        patterns: tuple[NotBlankStr, ...],
-    ) -> tuple[NotBlankStr, ...]:
+        patterns: tuple[str, ...],
+    ) -> tuple[str, ...]:
         """Map identified patterns to action identifiers.
 
         Uses :data:`_DEFAULT_PATTERN_ACTIONS` keyed by
@@ -308,14 +320,28 @@ class EvalLoopCoordinator:
             return ()
 
         override = self._config.pattern_action_map or {}
-        actions: list[NotBlankStr] = []
+        actions: list[str] = []
         for pattern in patterns:
             if ":" not in pattern:
+                logger.warning(
+                    EVAL_LOOP_ACTION_PROPOSED,
+                    action_count=0,
+                    reason="malformed_pattern",
+                    pattern=pattern,
+                )
                 continue
             _, pillar = pattern.split(":", 1)
             mapped = override.get(pillar) or _DEFAULT_PATTERN_ACTIONS.get(pillar)
-            if mapped:
-                actions.append(NotBlankStr(mapped))
+            if not mapped:
+                logger.warning(
+                    EVAL_LOOP_ACTION_PROPOSED,
+                    action_count=0,
+                    reason="unmapped_pattern",
+                    pattern=pattern,
+                    pillar=pillar,
+                )
+                continue
+            actions.append(mapped)
 
         if actions:
             logger.info(

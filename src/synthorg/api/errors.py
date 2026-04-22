@@ -114,6 +114,11 @@ class ErrorCode(IntEnum):
     TOOL_EXECUTION_ERROR = 8008
 
 
+# Error-code band for the NOT_FOUND category (3xxx). Used by
+# ``resource_not_found`` to reject non-NOT_FOUND codes so a 404
+# cannot accidentally carry an auth / validation / conflict code.
+_NOT_FOUND_BAND: Final[int] = 3
+
 # Maps first digit of error code to its expected category.
 # Used by ``__init_subclass__`` to validate that error code prefixes
 # match their declared category.
@@ -238,13 +243,27 @@ def resource_not_found(
         resource_type: Human-readable type (``"task"``, ``"agent"``).
         identifier: The missing identifier value.
         code: Specific error code for the resource (defaults to
-            the generic ``RESOURCE_NOT_FOUND``).
+            the generic ``RESOURCE_NOT_FOUND``). Must be a 3xxx
+            NOT_FOUND-category code; passing a code outside that
+            range would emit a 404 response carrying a non-NOT_FOUND
+            machine code, breaking the taxonomy contract for clients.
 
     Returns:
         A ``NotFoundError`` whose message is
         ``"{resource_type} {identifier!r} not found"`` and whose
         ``error_code`` is ``code``.
+
+    Raises:
+        ValueError: If ``code`` is not a 3xxx NOT_FOUND-category code.
     """
+    # ``ErrorCode`` groups codes in 1000-wide bands by category; the
+    # 3xxx band is reserved for NOT_FOUND per the enum docstring.
+    if code.value // 1000 != _NOT_FOUND_BAND:
+        msg = (
+            "resource_not_found requires a NOT_FOUND (3xxx) ErrorCode; "
+            f"got {code.name} ({code.value})"
+        )
+        raise ValueError(msg)
     error = NotFoundError(f"{resource_type} {identifier!r} not found")
     # ``error_code`` is a ClassVar on the base class; the factory
     # assigns an instance attribute so this particular raise reports

@@ -120,3 +120,31 @@ class PushMetrics:
             ["kind"],
             registry=registry,
         )
+
+        # -- Escalation queue depth (per department) -----------------
+        self.escalation_queue_depth = Gauge(
+            f"{prefix}_escalation_queue_depth",
+            "Pending escalations awaiting decision",
+            ["department"],
+            registry=registry,
+        )
+
+        # -- Agent identity change counter ---------------------------
+        self.agent_identity_changes = PromCounter(
+            f"{prefix}_agent_identity_version_changes_total",
+            "Agent identity version changes",
+            ["agent_id", "change_type"],
+            registry=registry,
+        )
+
+        # -- Workflow execution duration histogram -------------------
+        # The ``workflow_definition_id`` label is the stable workflow
+        # definition identifier (NOT a per-execution id) to keep
+        # cardinality bounded by the number of workflows an operator
+        # has defined.
+        self.workflow_execution_duration = Histogram(
+            f"{prefix}_workflow_execution_seconds",
+            "Workflow execution duration",
+            ["workflow_definition_id", "status"],
+            registry=registry,
+        )

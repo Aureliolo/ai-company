@@ -1,11 +1,18 @@
 """In-memory repository implementations for integration tables.
 
-These are **working** in-memory repositories (not broken stubs) that
-the ``PersistenceBackend`` protocol falls back to when a durable
-driver has not been wired for these domains. SQLite and Postgres
-integration tables are tracked as a separate work item; until they
-land the in-memory implementations below are the canonical
-single-process backend.
+.. warning::
+    These are **process-local, non-durable** repositories. Data lives
+    only in the current Python process, is not replicated across
+    replicas, and is lost on restart. Use them for local development,
+    tests, and single-process dev servers only -- **never** for
+    production. The ``PersistenceBackend`` protocol routes integration
+    domains here while SQLite / Postgres repositories for connections,
+    connection secrets, OAuth state, and webhook receipts are still
+    being built (see issue #1517 / HYG-3).
+
+When the durable drivers land, these classes move to the test-only
+fakes directory and the production ``PersistenceBackend`` wires in
+the real SQLite / Postgres repos directly.
 
 All reads return deep copies so callers cannot mutate internal
 state by holding references to returned models. Even though the

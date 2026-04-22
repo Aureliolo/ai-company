@@ -7,8 +7,12 @@ sharp-s, Greek, and Turkish dotted-I pairs.
 
 from typing import TYPE_CHECKING
 
+from synthorg.observability import get_logger
+
 if TYPE_CHECKING:
     from collections.abc import Iterable
+
+logger = get_logger(__name__)
 
 
 def casefold_equals(a: str, b: str) -> bool:

@@ -18,6 +18,7 @@ from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.workflow import (
     SPRINT_LIFECYCLE_TRANSITION,
+    SPRINT_LIFECYCLE_TRANSITION_CONFIG_ERROR,
     SPRINT_LIFECYCLE_TRANSITION_INVALID,
 )
 
@@ -65,7 +66,8 @@ _SPRINT_MACHINE: Final[StateMachine[SprintStatus]] = StateMachine(
     name="sprint_lifecycle",
     display_label="sprint",
     invalid_event=SPRINT_LIFECYCLE_TRANSITION_INVALID,
-    config_event=SPRINT_LIFECYCLE_TRANSITION_INVALID,
+    config_event=SPRINT_LIFECYCLE_TRANSITION_CONFIG_ERROR,
+    transition_event=SPRINT_LIFECYCLE_TRANSITION,
     all_states=SprintStatus,
 )
 

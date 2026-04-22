@@ -153,32 +153,6 @@ class PrometheusCollector:
             registry=self.registry,
         )
 
-        # -- Escalation gauge (pull-refreshed per scrape) ----------------
-        self._escalation_queue_depth = Gauge(
-            f"{prefix}_escalation_queue_depth",
-            "Pending escalations awaiting decision",
-            ["department"],
-            registry=self.registry,
-        )
-
-        # -- Agent identity change counter (push-updated) ----------------
-        self._agent_identity_changes = PromCounter(
-            f"{prefix}_agent_identity_version_changes_total",
-            "Agent identity version changes",
-            ["agent_id", "change_type"],
-            registry=self.registry,
-        )
-
-        # -- Workflow execution histogram (push-updated) -----------------
-        from prometheus_client import Histogram as PromHistogram  # noqa: PLC0415
-
-        self._workflow_execution_duration = PromHistogram(
-            f"{prefix}_workflow_execution_seconds",
-            "Workflow execution duration",
-            ["workflow_id", "status"],
-            registry=self.registry,
-        )
-
         # Push-updated metric families live in their own helper so
         # this module stays under the 800-line ceiling. The
         # attributes below alias into ``_push`` to preserve the
@@ -196,6 +170,9 @@ class PrometheusCollector:
         self._audit_chain_last_append_ts = self._push.audit_chain_last_append_ts
         self._otlp_export_batches = self._push.otlp_export_batches
         self._otlp_export_dropped = self._push.otlp_export_dropped
+        self._escalation_queue_depth = self._push.escalation_queue_depth
+        self._agent_identity_changes = self._push.agent_identity_changes
+        self._workflow_execution_duration = self._push.workflow_execution_duration
 
         logger.debug(METRICS_COLLECTOR_INITIALIZED, prefix=prefix)
 
@@ -463,9 +440,8 @@ class PrometheusCollector:
     ) -> None:
         """Increment the agent identity change counter.
 
-        Args:
-            agent_id: Agent whose identity changed.
-            change_type: One of ``"created"``, ``"updated"``, ``"rolled_back"``.
+        ``change_type`` must be one of ``VALID_IDENTITY_CHANGE_TYPES``
+        (``"created"``, ``"updated"``, ``"rolled_back"``, ``"archived"``).
         """
         if not agent_id:
             msg = "record_agent_identity_change: agent_id must be non-empty"
@@ -483,19 +459,18 @@ class PrometheusCollector:
     def record_workflow_execution(
         self,
         *,
-        workflow_id: str,
+        workflow_definition_id: str,
         status: str,
         duration_seconds: float,
     ) -> None:
         """Observe a completed workflow execution in the duration histogram.
 
-        Args:
-            workflow_id: Workflow definition identifier.
-            status: Terminal status (``"completed"``, ``"failed"``, etc).
-            duration_seconds: Wall-clock duration of the execution.
+        ``workflow_definition_id`` must be the stable workflow
+        definition id (bounded), NOT a per-run execution id, to keep
+        Prometheus cardinality in check.
         """
-        if not workflow_id:
-            msg = "record_workflow_execution: workflow_id must be non-empty"
+        if not workflow_definition_id:
+            msg = "record_workflow_execution: workflow_definition_id must be non-empty"
             raise ValueError(msg)
         require_label(
             "record_workflow_execution: status",
@@ -507,7 +482,7 @@ class PrometheusCollector:
             duration_seconds,
         )
         self._workflow_execution_duration.labels(
-            workflow_id=workflow_id,
+            workflow_definition_id=workflow_definition_id,
             status=status,
         ).observe(duration_seconds)
 

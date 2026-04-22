@@ -92,7 +92,19 @@ def _iter_sources() -> Iterator[Path]:
 def _scan(path: Path) -> Iterator[dict[str, object]]:
     try:
         content = path.read_text(encoding="utf-8")
-    except OSError, UnicodeDecodeError:
+    except (OSError, UnicodeDecodeError) as exc:
+        # Surface unreadable sources (permissions, disk errors,
+        # non-UTF-8 encodings) on stderr so the operator sees which
+        # files were skipped instead of silently getting a partial
+        # catalog. The script is a one-shot seed -- this is a plain
+        # ``print`` to stderr rather than structured logging because
+        # the script has no persistence-backed observability stack.
+        print(
+            f"extract_web_strings: skipping unreadable file "
+            f"{path.relative_to(_ROOT).as_posix()}: "
+            f"{type(exc).__name__}: {exc}",
+            file=sys.stderr,
+        )
         return
     rel = path.relative_to(_ROOT).as_posix()
 

@@ -239,8 +239,14 @@ def create_secret_backend(
         A configured ``SecretBackend`` instance.
 
     Raises:
-        ValueError: If the backend type is unknown or misconfigured.
-        NotImplementedError: If the backend type is a stub.
+        ValueError: If the backend type is misconfigured (missing
+            ``db_path`` for ``encrypted_sqlite`` or missing
+            ``pg_pool`` for ``encrypted_postgres``). Truly unknown
+            backend types cannot reach this factory: the
+            ``backend_type`` ``Literal`` union is exhaustive and the
+            terminal ``assert_never(backend_type)`` call turns any
+            missing enum branch into a static type-check error at
+            the call site rather than a runtime surprise.
     """
     backend_type = config.backend_type
 

@@ -9,7 +9,7 @@ from synthorg.engine.evolution.models import (
     AdaptationAxis,
     AdaptationProposal,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.evolution import EVOLUTION_ADAPTED
 
 if TYPE_CHECKING:
@@ -61,16 +61,30 @@ class StrategySelectionAdapter:
         Raises:
             Exception: If the memory store operation fails.
         """
-        await store_proposal_as_memory(
-            self._memory_backend,
-            proposal,
-            agent_id,
-            "evolution-strategy",
-        )
+        try:
+            await store_proposal_as_memory(
+                self._memory_backend,
+                proposal,
+                agent_id,
+                "evolution-strategy",
+            )
+        except Exception as exc:
+            logger.warning(
+                EVOLUTION_ADAPTED,
+                adapter=self.name,
+                axis=self.axis.value,
+                agent_id=agent_id,
+                proposal_id=str(proposal.id),
+                status="failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise
         logger.info(
             EVOLUTION_ADAPTED,
             adapter=self.name,
             axis=self.axis.value,
             agent_id=agent_id,
             proposal_id=str(proposal.id),
+            status="succeeded",
         )

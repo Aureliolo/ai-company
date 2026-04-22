@@ -1,12 +1,15 @@
 """Tests for EvalLoopCoordinator."""
 
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from synthorg.hr.evaluation.config import EvalLoopConfig
 from synthorg.hr.evaluation.loop_coordinator import EvalLoopCoordinator
+from synthorg.hr.evaluation.models import EvaluationReport
 
 
 def _make_coordinator(
@@ -165,18 +168,38 @@ class TestEvalLoopCoordinatorCollectAgentIds:
         assert ids == ()
 
 
-def _make_pillar_score(pillar: str, score: float) -> MagicMock:
-    ps = MagicMock()
-    ps.pillar.value = pillar
-    ps.score = score
-    return ps
+def _make_pillar_score(pillar: str, score: float) -> Any:
+    """Build a concrete test double with the shape ``_identify_patterns`` reads.
+
+    Using ``SimpleNamespace`` (not ``MagicMock``) means a typo on the
+    accessor side (``score.pillar.valye``, ``score.scroe``) raises
+    ``AttributeError`` instead of silently returning another MagicMock,
+    catching contract drift in the tests themselves.
+    """
+    return SimpleNamespace(
+        pillar=SimpleNamespace(value=pillar),
+        score=score,
+    )
 
 
-def _make_report(agent_id: str, *pillar_scores: tuple[str, float]) -> MagicMock:
-    report = MagicMock()
-    report.agent_id = agent_id
-    report.pillar_scores = tuple(_make_pillar_score(p, s) for p, s in pillar_scores)
-    return report
+def _make_report(
+    agent_id: str,
+    *pillar_scores: tuple[str, float],
+) -> EvaluationReport:
+    """Build a concrete report test double for ``_identify_patterns``.
+
+    The coordinator only reads ``agent_id`` and ``pillar_scores`` off
+    the report, so a structural stub is sufficient. We cast to the
+    real type so call sites don't need per-call ``type: ignore`` hints
+    while still preserving strict attribute-access checking inside
+    the test (hand-built ``SimpleNamespace`` objects raise on typos
+    rather than silently returning more mocks).
+    """
+    stub = SimpleNamespace(
+        agent_id=agent_id,
+        pillar_scores=tuple(_make_pillar_score(p, s) for p, s in pillar_scores),
+    )
+    return cast(EvaluationReport, stub)
 
 
 @pytest.mark.unit

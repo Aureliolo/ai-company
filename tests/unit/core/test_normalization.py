@@ -11,21 +11,24 @@ from synthorg.core.normalization import casefold_equals, find_by_name_ci
 class TestCasefoldEquals:
     """``casefold_equals`` handles Unicode + whitespace."""
 
-    def test_same_case_matches(self) -> None:
-        assert casefold_equals("alice", "alice") is True
-
-    def test_different_case_matches(self) -> None:
-        assert casefold_equals("Alice", "alice") is True
-
-    def test_whitespace_stripped(self) -> None:
-        assert casefold_equals("  Alice ", "alice") is True
-
-    def test_distinct_strings_do_not_match(self) -> None:
-        assert casefold_equals("alice", "bob") is False
-
-    def test_german_sharp_s_casefolds(self) -> None:
-        # 'straße'.casefold() == 'strasse' -- lower() would keep the ß.
-        assert casefold_equals("Straße", "STRASSE") is True
+    @pytest.mark.parametrize(
+        ("left", "right", "expected"),
+        [
+            ("alice", "alice", True),
+            ("Alice", "alice", True),
+            ("  Alice ", "alice", True),
+            ("alice", "bob", False),
+            # 'straße'.casefold() == 'strasse' -- .lower() would keep the ß.
+            ("Straße", "STRASSE", True),
+        ],
+    )
+    def test_casefold_equals_variants(
+        self,
+        left: str,
+        right: str,
+        expected: bool,
+    ) -> None:
+        assert casefold_equals(left, right) is expected
 
 
 @pytest.mark.unit

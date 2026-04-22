@@ -256,6 +256,36 @@ Custom sink file paths cannot collide with default sink paths (reserved even if 
 
 ---
 
+## Prometheus Metrics Inventory
+
+The `/metrics` endpoint exposes business and infrastructure metrics under the `synthorg_` prefix. Canonical set maintained by `observability/prometheus_collector.py` + `observability/prometheus_push_metrics.py`. All label value sets are bounded (validated against `prometheus_labels` allowlists) to keep Prometheus TSDB cardinality predictable.
+
+**Business health**
+
+- `synthorg_escalation_queue_depth{department}` -- gauge; pending escalations awaiting decision, per department.
+- `synthorg_agent_identity_version_changes_total{agent_id, change_type}` -- counter; emitted on each agent identity change. `change_type` is one of `created`, `updated`, `rolled_back`, `archived`.
+- `synthorg_workflow_execution_seconds{workflow_definition_id, status}` -- histogram; wall-clock duration of completed workflow executions. `workflow_definition_id` is the stable workflow **definition** id (bounded by defined workflows); passing an execution id would explode cardinality.
+
+**Cost + tokens**
+
+- `synthorg_provider_tokens_total{provider, model, direction}` -- counter; input/output token consumption.
+- `synthorg_provider_cost_total{provider, model}` -- counter; accumulated cost in the configured currency.
+
+**Latency**
+
+- `synthorg_api_request_duration_seconds{method, route, status_class}` -- histogram; per-route HTTP handler duration.
+- `synthorg_task_duration_seconds{outcome}` + `synthorg_task_runs_total{outcome}` -- task execution.
+- `synthorg_tool_duration_seconds{tool_name, outcome}` + `synthorg_tool_invocations_total{tool_name, outcome}` -- tool invocation.
+
+**Audit chain + OTLP health**
+
+- `synthorg_audit_chain_appends_total{status}`, `synthorg_audit_chain_depth`, `synthorg_audit_chain_last_append_timestamp_seconds`.
+- `synthorg_otlp_export_batches_total{kind, outcome}`, `synthorg_otlp_export_dropped_records_total{kind}`.
+
+See the ready-to-import [Grafana dashboard](../../monitoring/grafana/synthorg-overview.json) and the [monitoring guide](../guides/monitoring.md) for PromQL queries, alert rules, and expected ranges for each metric.
+
+---
+
 ## See Also
 
 - [Notifications](notifications.md) -- notification dispatcher and sinks

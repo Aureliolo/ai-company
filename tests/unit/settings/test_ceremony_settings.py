@@ -1,7 +1,9 @@
 """Tests for ceremony policy setting definitions.
 
-Verifies that the 7 ceremony-related settings are registered in the
+Verifies that the 6 ceremony-related settings are registered in the
 coordination namespace with correct types and constraints.
+(``ceremony_policy_overrides`` was dropped in HYG-1: the setting had
+zero production consumers and never wired.)
 """
 
 import pytest

@@ -23,13 +23,11 @@ from synthorg.meta.rules.custom import Comparator, CustomRuleDefinition
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.meta import (
     META_CUSTOM_RULE_DELETE_FAILED,
-    META_CUSTOM_RULE_DELETED,
     META_CUSTOM_RULE_FETCH_FAILED,
     META_CUSTOM_RULE_FETCHED,
     META_CUSTOM_RULE_LIST_FAILED,
     META_CUSTOM_RULE_LISTED,
     META_CUSTOM_RULE_SAVE_FAILED,
-    META_CUSTOM_RULE_SAVED,
 )
 from synthorg.persistence.errors import ConstraintViolationError, QueryError
 
@@ -144,8 +142,8 @@ class PostgresCustomRuleRepository:
                     ),
                 )
         except psycopg.errors.UniqueViolation as exc:
-            err_msg = str(exc).lower()
-            if "name" in err_msg:
+            constraint_name = getattr(exc.diag, "constraint_name", "") or ""
+            if constraint_name == "custom_rules_name":
                 msg = f"Custom rule name '{rule.name}' already exists"
                 logger.warning(
                     META_CUSTOM_RULE_SAVE_FAILED,
@@ -161,10 +159,11 @@ class PostgresCustomRuleRepository:
                 META_CUSTOM_RULE_SAVE_FAILED,
                 rule_name=rule.name,
                 error=msg,
+                constraint=constraint_name or "unknown",
             )
             raise ConstraintViolationError(
                 msg,
-                constraint="custom_rules_unknown",
+                constraint=constraint_name or "custom_rules_unknown",
             ) from exc
         except MemoryError, RecursionError:
             raise
@@ -177,11 +176,6 @@ class PostgresCustomRuleRepository:
                 error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
-        logger.info(
-            META_CUSTOM_RULE_SAVED,
-            rule_id=str(rule.id),
-            rule_name=rule.name,
-        )
 
     async def get(
         self,
@@ -361,9 +355,4 @@ class PostgresCustomRuleRepository:
                 error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
-        logger.info(
-            META_CUSTOM_RULE_DELETED,
-            rule_id=rule_id,
-            deleted=deleted,
-        )
         return deleted

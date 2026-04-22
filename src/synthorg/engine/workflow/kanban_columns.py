@@ -14,6 +14,7 @@ from synthorg.core.state_machine import StateMachine
 from synthorg.observability import get_logger
 from synthorg.observability.events.workflow import (
     KANBAN_COLUMN_TRANSITION,
+    KANBAN_COLUMN_TRANSITION_CONFIG_ERROR,
     KANBAN_COLUMN_TRANSITION_INVALID,
     KANBAN_STATUS_PATH_MISSING,
 )
@@ -135,7 +136,8 @@ _COLUMN_MACHINE: Final[StateMachine[KanbanColumn]] = StateMachine(
     name="kanban_column",
     display_label="Kanban column",
     invalid_event=KANBAN_COLUMN_TRANSITION_INVALID,
-    config_event=KANBAN_COLUMN_TRANSITION_INVALID,
+    config_event=KANBAN_COLUMN_TRANSITION_CONFIG_ERROR,
+    transition_event=KANBAN_COLUMN_TRANSITION,
     all_states=KanbanColumn,
 )
 

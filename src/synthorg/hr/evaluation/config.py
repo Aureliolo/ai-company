@@ -11,6 +11,10 @@ from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from synthorg.core.types import (
+    NotBlankStr,  # noqa: TC001 -- runtime-read by Pydantic validator
+)
+
 
 class IntelligenceConfig(BaseModel):
     """Intelligence/Accuracy pillar configuration.
@@ -271,9 +275,13 @@ class EvalLoopConfig(BaseModel):
         ge=1,
         description="Minimum weak-agent count before a pillar becomes a pattern",
     )
-    pattern_action_map: dict[str, str] | None = Field(
+    pattern_action_map: dict[str, NotBlankStr] | None = Field(
         default=None,
-        description="Operator override for pillar-to-action mapping",
+        description=(
+            "Operator override for pillar-to-action mapping. Values are "
+            "validated as ``NotBlankStr`` so blank or whitespace-only "
+            "action identifiers are rejected at config load."
+        ),
     )
 
 
