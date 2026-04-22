@@ -3,7 +3,7 @@
 A neutral subsystem module so ``engine`` and ``tools`` can both depend on
 approval event models (``EscalationInfo``, ``ResumePayload``) and on the
 ``ApprovalStoreProtocol`` contract without either module importing the
-other.  This eliminates the cycle previously dodged by ``TYPE_CHECKING``
+other.  This avoids the former cycle that was dodged by ``TYPE_CHECKING``
 imports and deferred runtime imports inside function bodies.
 
 The concrete ``ApprovalStore`` implementation lives in

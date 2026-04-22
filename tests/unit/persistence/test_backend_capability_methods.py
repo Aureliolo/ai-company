@@ -13,6 +13,8 @@ surface of the returned service so any signature drift in
 ``create_ontology_versioning`` surfaces in unit CI.
 """
 
+import inspect
+
 import pytest
 
 from synthorg.persistence.config import SQLiteConfig
@@ -32,11 +34,28 @@ class TestBuildOntologyVersioning:
         try:
             service = backend.build_ontology_versioning()
             assert isinstance(service, VersioningService)
-            # The service must expose the methods ``OntologyService``
-            # consumes -- any rename in the factory surfaces here.
-            assert hasattr(service, "snapshot_if_changed")
-            assert hasattr(service, "force_snapshot")
-            assert hasattr(service, "get_latest")
+            # Each method ``OntologyService`` consumes must exist AND be
+            # callable with the expected async signature -- a property,
+            # a sync stub, or a renamed method would all fail this check
+            # rather than slipping through a bare ``hasattr`` probe.
+            for method_name in (
+                "snapshot_if_changed",
+                "force_snapshot",
+                "get_latest",
+            ):
+                method = getattr(service, method_name)
+                assert callable(method), (
+                    f"{method_name} must be callable on {service!r}"
+                )
+                assert inspect.iscoroutinefunction(method), (
+                    f"{method_name} must be async"
+                )
+                # Exercising the signature catches renames of the
+                # ``entity_id`` keyword that downstream callers depend on.
+                sig = inspect.signature(method)
+                assert "entity_id" in sig.parameters, (
+                    f"{method_name} must accept an 'entity_id' parameter"
+                )
         finally:
             await backend.disconnect()
 

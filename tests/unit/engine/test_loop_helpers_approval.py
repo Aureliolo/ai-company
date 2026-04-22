@@ -5,7 +5,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from synthorg.approval.models import EscalationInfo
-from synthorg.core.enums import ApprovalRiskLevel
 from synthorg.engine.approval_gate import ApprovalGate
 from synthorg.engine.loop_protocol import ExecutionResult, TerminationReason
 from synthorg.engine.loop_tool_execution import execute_tool_calls
@@ -16,21 +15,9 @@ from synthorg.providers.models import (
     ToolCall,
     ToolResult,
 )
+from tests.unit.engine.approval_helpers import make_escalation as _make_escalation
 
 pytestmark = pytest.mark.unit
-
-
-def _make_escalation(
-    approval_id: str = "approval-1",
-) -> EscalationInfo:
-    return EscalationInfo(
-        approval_id=approval_id,
-        tool_call_id="tc-1",
-        tool_name="deploy_to_prod",
-        action_type="deploy:production",
-        risk_level=ApprovalRiskLevel.HIGH,
-        reason="Needs approval",
-    )
 
 
 def _make_response_with_tool_calls() -> CompletionResponse:

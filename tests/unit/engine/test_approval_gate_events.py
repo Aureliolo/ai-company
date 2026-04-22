@@ -1,12 +1,10 @@
 """Tests for ApprovalGate event stream integration."""
 
 from datetime import UTC, datetime
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from synthorg.approval.models import EscalationInfo
 from synthorg.communication.event_stream.interrupt import (
     Interrupt,
     InterruptStore,
@@ -14,24 +12,12 @@ from synthorg.communication.event_stream.interrupt import (
 )
 from synthorg.communication.event_stream.stream import EventStreamHub
 from synthorg.communication.event_stream.types import AgUiEventType
-from synthorg.core.enums import ApprovalRiskLevel
 from synthorg.engine.approval_gate import ApprovalGate
+from tests.unit.engine.approval_helpers import make_escalation as _make_escalation
+
+pytestmark = pytest.mark.unit
 
 
-def _make_escalation(**overrides: Any) -> EscalationInfo:
-    defaults: dict[str, Any] = {
-        "approval_id": "approval-001",
-        "tool_call_id": "tc-001",
-        "tool_name": "deploy_service",
-        "action_type": "deploy:production",
-        "risk_level": ApprovalRiskLevel.HIGH,
-        "reason": "Production deployment requires approval",
-    }
-    defaults.update(overrides)
-    return EscalationInfo(**defaults)
-
-
-@pytest.mark.unit
 class TestApprovalGateEventStream:
     async def test_park_publishes_approval_interrupt(self) -> None:
         park_service = MagicMock()
@@ -50,7 +36,11 @@ class TestApprovalGateEventStream:
         )
 
         context = MagicMock()
-        escalation = _make_escalation()
+        escalation = _make_escalation(
+            approval_id="approval-001",
+            tool_call_id="tc-001",
+            tool_name="deploy_service",
+        )
 
         await gate.park_context(
             escalation=escalation,
@@ -82,7 +72,7 @@ class TestApprovalGateEventStream:
         )
 
         context = MagicMock()
-        escalation = _make_escalation()
+        escalation = _make_escalation(tool_name="deploy_service")
 
         await gate.park_context(
             escalation=escalation,

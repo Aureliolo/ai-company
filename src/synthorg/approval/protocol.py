@@ -7,26 +7,24 @@ no caller needs to know the concrete ``ApprovalStore`` lives in
 ``synthorg.api.approval_store``.
 """
 
-from typing import Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
-from synthorg.core.approval import ApprovalItem  # noqa: TC001
-from synthorg.core.enums import (
-    ApprovalRiskLevel,  # noqa: TC001
-    ApprovalStatus,  # noqa: TC001
-)
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+if TYPE_CHECKING:
+    from synthorg.core.approval import ApprovalItem
+    from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
+    from synthorg.core.types import NotBlankStr
 
 
 @runtime_checkable
 class ApprovalStoreProtocol(Protocol):
     """CRUD + lifecycle contract for an approval-item store.
 
-    Concrete implementations (currently ``synthorg.api.approval_store.ApprovalStore``)
-    provide an in-memory cache with optional persistence-backed writes.
-    Consumers depend on this protocol so the storage implementation can
-    evolve without touching the engine, security, or hr layers.
+    Implementations provide an in-memory cache with optional
+    persistence-backed writes. Consumers depend on this protocol so
+    the storage implementation can evolve without touching the
+    engine, security, or hr layers.
 
-    Methods mirror the public surface of ``ApprovalStore``; private
+    Methods mirror the public surface of the concrete store; private
     helpers (cache invalidation, expiration checks) are not part of
     the contract.
     """

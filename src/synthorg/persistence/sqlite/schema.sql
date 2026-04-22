@@ -1006,6 +1006,7 @@ CREATE INDEX idx_approvals_action_type ON approvals(action_type);
 CREATE INDEX idx_approvals_risk_level ON approvals(risk_level);
 CREATE INDEX idx_approvals_requested_by_status ON approvals(requested_by, status);
 CREATE INDEX idx_approvals_status_expires_at ON approvals(status, expires_at);
+CREATE INDEX idx_approvals_task_id ON approvals(task_id);
 
 -- Conflict escalations (#1418: human escalation approval queue).
 -- Persists one row per conflict awaiting a human decision so the

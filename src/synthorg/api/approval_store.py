@@ -155,7 +155,7 @@ class ApprovalStore:
                     raise ConflictError(msg) from None
             self._items[item.id] = item
 
-    async def get(self, approval_id: str) -> ApprovalItem | None:
+    async def get(self, approval_id: NotBlankStr) -> ApprovalItem | None:
         """Get an approval item by ID, applying lazy expiration.
 
         Falls through to the repository on cache miss when a repo is

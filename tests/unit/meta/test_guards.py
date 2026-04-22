@@ -240,3 +240,48 @@ class TestApprovalGateGuard:
     async def test_guard_name(self) -> None:
         guard = ApprovalGateGuard()
         assert guard.name == "approval_gate"
+
+    async def test_persists_proposal_to_configured_store(self) -> None:
+        """Guard must route proposals to the approval store."""
+        from unittest.mock import AsyncMock
+
+        from synthorg.approval.protocol import ApprovalStoreProtocol
+
+        store = AsyncMock(spec=ApprovalStoreProtocol)
+        guard = ApprovalGateGuard(approval_store=store)
+        proposal = _config_proposal()
+
+        result = await guard.evaluate(proposal)
+        assert result.verdict == GuardVerdict.PASSED
+        store.add.assert_awaited_once()
+
+        # Inspect the persisted ApprovalItem
+        (item,) = store.add.await_args.args
+        assert item.action_type == f"proposal:{proposal.altitude.value}"
+        assert item.title == proposal.title
+        assert item.metadata["proposal_id"] == str(proposal.id)
+        assert item.metadata["altitude"] == proposal.altitude.value
+
+    async def test_missing_store_still_passes(self) -> None:
+        """Without a configured store the guard still passes cleanly."""
+        guard = ApprovalGateGuard(approval_store=None)
+        result = await guard.evaluate(_config_proposal())
+        assert result.verdict == GuardVerdict.PASSED
+
+    async def test_store_failure_is_non_fatal(self) -> None:
+        """Store errors must not fail the guard (still PASSED)."""
+        from unittest.mock import AsyncMock
+
+        from synthorg.approval.protocol import ApprovalStoreProtocol
+
+        store = AsyncMock(spec=ApprovalStoreProtocol)
+        store.add.side_effect = RuntimeError("boom")
+        guard = ApprovalGateGuard(approval_store=store)
+
+        result = await guard.evaluate(_config_proposal())
+        assert result.verdict == GuardVerdict.PASSED
+
+    def test_invalid_expiry_days_raises(self) -> None:
+        """Guard construction rejects non-positive expiry windows."""
+        with pytest.raises(ValueError, match="expiry_days"):
+            ApprovalGateGuard(expiry_days=0)

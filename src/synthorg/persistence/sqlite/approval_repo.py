@@ -6,12 +6,13 @@ from datetime import datetime
 
 import aiosqlite
 from aiosqlite import Row
+from pydantic import ValidationError
 
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.core.evidence import EvidencePackage
 from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_APPROVAL_REPO_DELETED,
     API_APPROVAL_REPO_FAILED,
@@ -93,13 +94,24 @@ def _row_to_item(row: Row) -> ApprovalItem:
             ),
             metadata=metadata_raw,
         )
-    except (json.JSONDecodeError, ValueError, TypeError, KeyError) as exc:
+    except (
+        json.JSONDecodeError,
+        ValueError,
+        TypeError,
+        KeyError,
+        ValidationError,
+    ) as exc:
         try:
             row_id = str(row["id"]) if row else "<unknown>"
         except TypeError, KeyError:
             row_id = "<unknown>"
-        msg = f"Failed to parse approval row {row_id!r}: {exc}"
-        logger.exception(API_APPROVAL_REPO_FAILED, row_id=row_id, error=msg)
+        msg = f"Failed to parse approval row {row_id!r}"
+        logger.warning(
+            API_APPROVAL_REPO_FAILED,
+            row_id=row_id,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
         raise QueryError(msg) from exc
 
 
@@ -154,16 +166,26 @@ class SQLiteApprovalRepository:
             await self._db.commit()
         except sqlite3.IntegrityError as exc:
             await self._db.rollback()
-            msg = f"Constraint violation saving approval {item.id!r}: {exc}"
-            logger.exception(API_APPROVAL_REPO_FAILED, approval_id=item.id, error=msg)
+            msg = f"Constraint violation saving approval {item.id!r}"
+            logger.warning(
+                API_APPROVAL_REPO_FAILED,
+                approval_id=item.id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             raise ConstraintViolationError(
                 msg,
                 constraint=str(exc),
             ) from exc
         except (sqlite3.Error, aiosqlite.Error) as exc:
             await self._db.rollback()
-            msg = f"Failed to save approval {item.id!r}: {exc}"
-            logger.exception(API_APPROVAL_REPO_FAILED, approval_id=item.id, error=msg)
+            msg = f"Failed to save approval {item.id!r}"
+            logger.warning(
+                API_APPROVAL_REPO_FAILED,
+                approval_id=item.id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             raise QueryError(msg) from exc
         logger.info(
             API_APPROVAL_REPO_SAVED,
@@ -194,11 +216,12 @@ class SQLiteApprovalRepository:
             cursor = await self._db.execute(sql, (approval_id,))
             row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
-            msg = f"Failed to fetch approval {approval_id!r}: {exc}"
-            logger.exception(
+            msg = f"Failed to fetch approval {approval_id!r}"
+            logger.warning(
                 API_APPROVAL_REPO_FAILED,
                 approval_id=approval_id,
-                error=msg,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         if row is None:
@@ -251,8 +274,12 @@ class SQLiteApprovalRepository:
         except QueryError:
             raise
         except (sqlite3.Error, aiosqlite.Error) as exc:
-            msg = f"Failed to list approvals: {exc}"
-            logger.exception(API_APPROVAL_REPO_FAILED, error=msg)
+            msg = "Failed to list approvals"
+            logger.warning(
+                API_APPROVAL_REPO_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             raise QueryError(msg) from exc
         logger.debug(API_APPROVAL_REPO_LISTED, count=len(items))
         return items
@@ -275,11 +302,12 @@ class SQLiteApprovalRepository:
             await self._db.commit()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             await self._db.rollback()
-            msg = f"Failed to delete approval {approval_id!r}: {exc}"
-            logger.exception(
+            msg = f"Failed to delete approval {approval_id!r}"
+            logger.warning(
                 API_APPROVAL_REPO_FAILED,
                 approval_id=approval_id,
-                error=msg,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         deleted = cursor.rowcount > 0

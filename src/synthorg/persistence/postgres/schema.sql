@@ -1112,6 +1112,7 @@ CREATE INDEX idx_approvals_action_type ON approvals(action_type);
 CREATE INDEX idx_approvals_risk_level ON approvals(risk_level);
 CREATE INDEX idx_approvals_requested_by_status ON approvals(requested_by, status);
 CREATE INDEX idx_approvals_status_expires_at ON approvals(status, expires_at);
+CREATE INDEX idx_approvals_task_id ON approvals(task_id);
 
 -- Org memory: MVCC operation log + materialized snapshot (#1457 A4).
 -- Tags are TEXT JSON to match the SQLite backend's serialization;

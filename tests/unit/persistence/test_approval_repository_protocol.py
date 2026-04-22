@@ -30,24 +30,29 @@ class TestApprovalRepositoryProtocol:
         finally:
             await db.close()
 
-    def test_postgres_impl_satisfies_protocol(self) -> None:
+    @pytest.mark.parametrize(
+        "method_name",
+        ["save", "get", "list_items", "delete"],
+    )
+    def test_postgres_impl_exposes_method(self, method_name: str) -> None:
         """``PostgresApprovalRepository`` exposes the protocol surface.
 
         We probe method presence on the class itself rather than
         constructing an instance -- opening a real pool belongs in the
         integration suite.  ``runtime_checkable`` matches on attribute
         presence, so class-level ``hasattr`` is sufficient to lock the
-        structural contract.
+        structural contract.  Parametrising makes a missing method
+        report as a single failing test rather than one loop iteration.
         """
-        for method_name in ("save", "get", "list_items", "delete"):
-            assert hasattr(PostgresApprovalRepository, method_name), (
-                f"PostgresApprovalRepository missing {method_name}"
-            )
+        assert hasattr(PostgresApprovalRepository, method_name), (
+            f"PostgresApprovalRepository missing {method_name}"
+        )
 
     def test_protocol_surface_is_stable(self) -> None:
-        """The protocol's public method names are the agreed surface."""
+        """The protocol's public method names are the exact surface."""
         expected = {"delete", "get", "list_items", "save"}
         actual = {name for name in vars(ApprovalRepository) if not name.startswith("_")}
-        assert expected.issubset(actual), (
-            f"ApprovalRepository missing methods: {expected - actual}"
+        assert actual == expected, (
+            "ApprovalRepository surface changed: "
+            f"missing={expected - actual}, added={actual - expected}"
         )

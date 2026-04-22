@@ -35,6 +35,7 @@ class TestToolInvokerProtocol:
         actual = {
             name for name in vars(ToolInvokerProtocol) if not name.startswith("_")
         }
-        assert expected.issubset(actual), (
-            f"ToolInvokerProtocol missing members: {expected - actual}"
+        assert actual == expected, (
+            "ToolInvokerProtocol surface changed: "
+            f"missing={expected - actual}, added={actual - expected}"
         )

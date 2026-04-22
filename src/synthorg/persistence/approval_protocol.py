@@ -1,11 +1,11 @@
 """Repository protocol for approval item persistence.
 
-Concrete implementation lives at
-``synthorg.persistence.sqlite.approval_repo.SQLiteApprovalRepository``.
+Concrete implementations live in backend modules
+(``synthorg.persistence.sqlite.approval_repo.SQLiteApprovalRepository``
+and ``synthorg.persistence.postgres.approval_repo.PostgresApprovalRepository``).
 The :class:`ApprovalStore` (``synthorg.api.approval_store``) holds a
 reference typed against this protocol so the storage implementation
-can be swapped (e.g. a future Postgres backend) without changing the
-store itself.
+can be swapped without changing the store itself.
 
 Mirrors the pattern of ``persistence/fine_tune_protocol.py`` and
 ``persistence/escalation_protocol.py``.

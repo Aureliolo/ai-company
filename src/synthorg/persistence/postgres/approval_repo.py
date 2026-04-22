@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Any
 import psycopg
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
+from pydantic import ValidationError
 
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
@@ -111,7 +112,7 @@ def _row_to_item(row: dict[str, Any]) -> ApprovalItem:
             evidence_package=evidence_package,
             metadata=metadata_raw,
         )
-    except (ValueError, TypeError, KeyError) as exc:
+    except (ValueError, TypeError, KeyError, ValidationError) as exc:
         try:
             row_id = str(row["id"]) if row else "<unknown>"
         except TypeError, KeyError:
@@ -172,6 +173,7 @@ class PostgresApprovalRepository:
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(_APPROVALS_UPSERT_SQL, params)
+                await conn.commit()
         except psycopg.errors.IntegrityError as exc:
             msg = f"Constraint violation saving approval {item.id!r}"
             logger.warning(
@@ -261,8 +263,6 @@ class PostgresApprovalRepository:
                 )
                 rows = await cur.fetchall()
                 items = tuple(_row_to_item(r) for r in rows)
-        except QueryError:
-            raise
         except psycopg.Error as exc:
             msg = "Failed to list approvals"
             logger.warning(
@@ -285,6 +285,7 @@ class PostgresApprovalRepository:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(sql, (approval_id,))
                 deleted = cur.rowcount > 0
+                await conn.commit()
         except psycopg.Error as exc:
             msg = f"Failed to delete approval {approval_id!r}"
             logger.warning(

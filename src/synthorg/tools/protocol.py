@@ -39,7 +39,14 @@ class ToolInvokerProtocol(Protocol):
 
     @property
     def pending_escalations(self) -> tuple[EscalationInfo, ...]:
-        """Escalations detected during the most recent invoke/invoke_all."""
+        """Escalations detected during the most recent invoke/invoke_all.
+
+        Implementations reset this tuple at the start of every
+        ``invoke``/``invoke_all`` call so callers only ever see the
+        escalations from the latest tool batch.  The engine drains the
+        tuple between batches via ``ApprovalGate``, so accumulation
+        across calls is not required.
+        """
         ...
 
     async def invoke(self, tool_call: ToolCall) -> ToolResult:
