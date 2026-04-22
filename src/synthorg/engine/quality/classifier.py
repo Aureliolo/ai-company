@@ -15,7 +15,10 @@ from synthorg.engine.stagnation.models import (
     StagnationVerdict,
 )
 from synthorg.observability import get_logger
-from synthorg.observability.events.quality import QUALITY_STEP_CLASSIFIED
+from synthorg.observability.events.quality import (
+    QUALITY_CLASSIFIER_CONFIG_INVALID,
+    QUALITY_STEP_CLASSIFIED,
+)
 from synthorg.providers.enums import FinishReason
 
 logger = get_logger(__name__)
@@ -112,7 +115,7 @@ class RuleBasedStepClassifier:
                 f" got {rule_matched_confidence!r}"
             )
             logger.warning(
-                QUALITY_STEP_CLASSIFIED,
+                QUALITY_CLASSIFIER_CONFIG_INVALID,
                 error=msg,
                 parameter="rule_matched_confidence",
                 value=rule_matched_confidence,
@@ -124,7 +127,7 @@ class RuleBasedStepClassifier:
                 f" got {fallback_confidence!r}"
             )
             logger.warning(
-                QUALITY_STEP_CLASSIFIED,
+                QUALITY_CLASSIFIER_CONFIG_INVALID,
                 error=msg,
                 parameter="fallback_confidence",
                 value=fallback_confidence,

@@ -16,7 +16,6 @@ persistence backend and asserts the cascade described in
 """
 
 from datetime import UTC, datetime, timedelta
-from typing import ClassVar
 
 import pytest
 
@@ -248,8 +247,6 @@ class TestUserDeletionCascade:
 
         class _RaisingRefreshRepo:
             """Stub that simulates a failing refresh-token backend."""
-
-            _revoked: ClassVar[set[str]] = set()
 
             async def create(self, *args: object, **kwargs: object) -> None:
                 del args, kwargs
