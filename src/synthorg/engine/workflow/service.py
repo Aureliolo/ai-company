@@ -61,6 +61,18 @@ class WorkflowDefinitionRevisionMismatchError(Exception):
         expected: int,
         actual: int | None,
     ) -> None:
+        """Build a revision-mismatch error with structured context.
+
+        Args:
+            message: Human-readable description (passed to
+                ``Exception.__init__``).
+            definition_id: Workflow definition identifier that hit the
+                conflict.
+            expected: Stored revision the caller was asserting against
+                (i.e. ``incoming_revision - 1`` for ``update_if_exists``).
+            actual: Revision actually persisted, or ``None`` if the
+                follow-up lookup could not determine it.
+        """
         super().__init__(message)
         self.definition_id = definition_id
         self.expected = expected
@@ -75,9 +87,12 @@ class WorkflowService:
     snapshot the new revision in a single service call so controllers
     no longer need to reach into ``VersioningService`` directly. A
     snapshot failure does not fail the whole operation (orphaned
-    versions are tolerable and periodically swept); it is logged at
-    WARNING so operators can investigate without losing the definition
-    write.
+    versions are tolerable and periodically swept); ordinary failures
+    are logged at WARNING. ``MemoryError`` and ``RecursionError`` are
+    NOT swallowed -- those fatal system errors propagate so the
+    workload can shed load even from the best-effort path. Callers
+    should still expect those two exception types to surface from any
+    method on this service.
     """
 
     __slots__ = ("_definitions", "_versioning", "_versions")
@@ -89,6 +104,23 @@ class WorkflowService:
         version_repo: VersionRepository[WorkflowDefinition],
         versioning_service: VersioningService[WorkflowDefinition] | None = None,
     ) -> None:
+        """Wire repository and versioning dependencies into the service.
+
+        Args:
+            definition_repo: Workflow-definition repository. Supplies
+                the atomic ``create_if_absent`` / ``update_if_exists``
+                contract the service depends on.
+            version_repo: Repository for version-snapshot storage used
+                by :meth:`delete_definition`'s cascade delete.
+            versioning_service: Optional :class:`VersioningService` for
+                workflow definitions. When set, create/update operations
+                record a best-effort version snapshot of the new
+                revision in the same service call; when ``None`` (or
+                when callers omit ``saved_by``), snapshotting is
+                skipped. ``MemoryError`` / ``RecursionError`` from the
+                snapshot still propagate; ordinary failures are logged
+                at WARNING.
+        """
         self._definitions = definition_repo
         self._versions = version_repo
         self._versioning = versioning_service
@@ -174,12 +206,20 @@ class WorkflowService:
 
         When ``saved_by`` is provided AND the service was constructed
         with a ``VersioningService``, a best-effort version snapshot is
-        recorded for the new revision. Snapshot failures are logged at
-        WARNING and swallowed; the definition write is authoritative.
+        recorded for the new revision. Ordinary snapshot failures are
+        logged at WARNING and swallowed; the definition write is
+        authoritative. ``MemoryError`` / ``RecursionError`` are never
+        suppressed -- those fatal system errors propagate up even from
+        the best-effort snapshot path, so callers should still handle
+        them.
 
         Raises:
             WorkflowDefinitionExistsError: ``definition.id`` already
                 exists -- caller should use ``update_definition``.
+            MemoryError: Propagated from the best-effort snapshot if
+                raised there; never swallowed.
+            RecursionError: Propagated from the best-effort snapshot if
+                raised there; never swallowed.
         """
         inserted = await self._definitions.create_if_absent(definition)
         if not inserted:
@@ -218,7 +258,9 @@ class WorkflowService:
         When ``saved_by`` is provided AND the service was constructed
         with a ``VersioningService``, a best-effort version snapshot
         is recorded. Same best-effort semantics as
-        :meth:`create_definition`.
+        :meth:`create_definition`: ordinary snapshot failures are
+        logged at WARNING and swallowed, but ``MemoryError`` and
+        ``RecursionError`` propagate so the workload can shed load.
 
         Raises:
             WorkflowDefinitionNotFoundError: No row exists for
@@ -230,6 +272,12 @@ class WorkflowService:
                 failure). Translated from the persistence layer's
                 ``VersionConflictError`` so callers of this service
                 never depend on a persistence-level exception type.
+            MemoryError: Propagated from either the stored-revision
+                lookup probe or the best-effort snapshot; never
+                swallowed.
+            RecursionError: Propagated from either the stored-revision
+                lookup probe or the best-effort snapshot; never
+                swallowed.
         """
         try:
             updated = await self._definitions.update_if_exists(definition)
