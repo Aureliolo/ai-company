@@ -76,7 +76,9 @@ class TestMessageBusConfigImmutability:
             },
         )
         assert updated.backend is MessageBusBackend.NATS
+        assert updated.nats == NatsConfig(url="nats://localhost:4222")
         assert original.backend is MessageBusBackend.INTERNAL
+        assert original.nats is None
 
 
 @pytest.mark.unit

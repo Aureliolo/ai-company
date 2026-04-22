@@ -275,25 +275,7 @@ curl "http://localhost:3001/api/v1/budget/records?task_id=${TASK_ID}" \
 
 The response includes `data` (paginated records), `daily_summary` (per-day totals aggregated across ALL matching records, not just the page), and `period_summary` (overall totals + computed `avg_cost`).
 
-Supported query parameters: `agent_id`, `task_id`, `offset`, `limit`. Additional slicing (by provider, model, tag, project, date range) can be done client-side from the paginated response or via report generation below.
-
-### On-demand reports
-
-```bash
-# Generate a weekly comprehensive report
-curl -X POST http://localhost:3001/api/v1/reports/generate \
-  -H "Content-Type: application/json" \
-  -H "Cookie: ${SESSION}" \
-  -d '{"period": "weekly", "template": "comprehensive"}' | jq
-
-# Spending summary only
-curl -X POST http://localhost:3001/api/v1/reports/generate \
-  -H "Content-Type: application/json" \
-  -H "Cookie: ${SESSION}" \
-  -d '{"period": "daily", "template": "spending_summary"}' | jq
-```
-
-Available periods: `daily`, `weekly`, `monthly`. Templates: `spending_summary`, `performance_metrics`, `task_completion`, `risk_trends`, `comprehensive`.
+Supported query parameters: `agent_id`, `task_id`, `offset`, `limit`. Additional slicing (by provider, model, tag, project, date range) is done client-side from the paginated response today; a dedicated report-generation endpoint is planned but not yet implemented.
 
 ### Budget alert webhook integration
 
@@ -302,7 +284,7 @@ Budget thresholds emit notifications through `NotificationDispatcher`. To route 
 Alternatively, subscribe to the `budget` WebSocket channel for real-time threshold events:
 
 ```javascript
-ws.send(JSON.stringify({ action: 'subscribe', channel: 'budget' }))
+ws.send(JSON.stringify({ action: 'subscribe', channels: ['budget'] }))
 ```
 
 Wire event types (see `WsEventType` in `src/synthorg/api/ws_models.py`): `budget.record_added`, `budget.alert`.

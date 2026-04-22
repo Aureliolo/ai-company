@@ -111,8 +111,7 @@ ws.addEventListener('message', (event) => {
   }
   if (frame.action === 'auth_ok') {
     // 4. Subscribes are only accepted after auth_ok
-    ws.send(JSON.stringify({ action: 'subscribe', channel: 'tasks' }))
-    ws.send(JSON.stringify({ action: 'subscribe', channel: 'approvals' }))
+    ws.send(JSON.stringify({ action: 'subscribe', channels: ['tasks', 'approvals'] }))
     return
   }
   handleEvent(frame)
