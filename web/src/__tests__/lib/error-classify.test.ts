@@ -1,4 +1,5 @@
 import { AxiosError, AxiosHeaders } from 'axios'
+import fc from 'fast-check'
 import { classifyError } from '@/lib/error-classify'
 
 function axiosErrorWithStatus(status: number): AxiosError {
@@ -95,5 +96,30 @@ describe('classifyError', () => {
   it('surfaces a message', () => {
     const c = classifyError(new Error('bang'))
     expect(c.message).toBe('bang')
+  })
+
+  it('property: every 5xx status is transient + retryable', () => {
+    fc.assert(
+      fc.property(fc.integer({ min: 500, max: 599 }), (status) => {
+        const c = classifyError(axiosErrorWithStatus(status))
+        expect(c.isTransient).toBe(true)
+        expect(c.isClient).toBe(false)
+        expect(c.retryable).toBe(true)
+      }),
+      { numRuns: 20 },
+    )
+  })
+
+  it('property: 4xx statuses (excluding 408/429/409) are client + non-retryable', () => {
+    fc.assert(
+      fc.property(fc.integer({ min: 400, max: 499 }), (status) => {
+        fc.pre(status !== 408 && status !== 429 && status !== 409)
+        const c = classifyError(axiosErrorWithStatus(status))
+        expect(c.isClient).toBe(true)
+        expect(c.isTransient).toBe(false)
+        expect(c.retryable).toBe(false)
+      }),
+      { numRuns: 20 },
+    )
   })
 })

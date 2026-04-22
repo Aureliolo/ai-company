@@ -86,14 +86,18 @@ describe('useListPagination', () => {
   })
 
   it('namespace allows multiple paginators on one page', () => {
-    const { result: a } = renderHook(() => useListPagination({ items: ITEMS, namespace: 'a' }), {
-      wrapper: makeWrapper(['/?aPage=2&bPage=3']),
-    })
-    const { result: b } = renderHook(() => useListPagination({ items: ITEMS, namespace: 'b' }), {
-      wrapper: makeWrapper(['/?aPage=2&bPage=3']),
-    })
-    expect(a.current.page).toBe(2)
-    expect(b.current.page).toBe(3)
+    // Both hooks must share the SAME URL / search-param context so this test
+    // actually proves coexistence (the earlier split-wrapper version just
+    // proved each hook reads its own URL in isolation).
+    const { result } = renderHook(
+      () => ({
+        a: useListPagination({ items: ITEMS, namespace: 'a' }),
+        b: useListPagination({ items: ITEMS, namespace: 'b' }),
+      }),
+      { wrapper: makeWrapper(['/?aPage=2&bPage=3']) },
+    )
+    expect(result.current.a.page).toBe(2)
+    expect(result.current.b.page).toBe(3)
   })
 
   it('empty list yields totalPages=1, paginatedItems=[]', () => {

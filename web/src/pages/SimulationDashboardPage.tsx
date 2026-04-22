@@ -107,7 +107,7 @@ export default function SimulationDashboardPage() {
       </div>
 
       {error && (
-        <ErrorBanner severity="error" title="Could not load simulation data" description={error} />
+        <ErrorBanner severity="error" title="Simulation error" description={error} />
       )}
 
       <div className="grid grid-cols-1 gap-grid-gap md:grid-cols-4">

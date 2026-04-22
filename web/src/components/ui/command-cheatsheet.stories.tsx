@@ -71,7 +71,7 @@ function ToggleDemo() {
   return (
     <>
       <p className="mb-4 text-xs text-muted-foreground">
-        Press <kbd className="rounded border border-border bg-surface px-1 py-0.5 text-[10px]">?</kbd> to toggle the cheatsheet.
+        Press <kbd className="rounded border border-border bg-surface px-1 py-0.5 text-[length:var(--so-text-micro)]">?</kbd> to toggle the cheatsheet.
       </p>
       <CommandCheatsheet />
     </>

@@ -1,6 +1,7 @@
 import { useAgentsData } from '@/hooks/useAgentsData'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ListHeader } from '@/components/ui/list-header'
+import { formatNumber } from '@/utils/format'
 import { AgentsSkeleton } from './agents/AgentsSkeleton'
 import { AgentFilters } from './agents/AgentFilters'
 import { AgentGridView } from './agents/AgentGridView'
@@ -24,7 +25,11 @@ export default function AgentsPage() {
       <ListHeader
         title="Agents"
         count={filteredAgents.length}
-        countLabel={filteredAgents.length === totalAgents ? undefined : `${filteredAgents.length} of ${totalAgents}`}
+        countLabel={
+          filteredAgents.length === totalAgents
+            ? undefined
+            : `${formatNumber(filteredAgents.length)} of ${formatNumber(totalAgents)}`
+        }
       />
 
       {error && (

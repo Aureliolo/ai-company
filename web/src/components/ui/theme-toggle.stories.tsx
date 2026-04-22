@@ -34,7 +34,7 @@ const meta = {
         }
       }, [])
       return (
-        <div className="flex h-[500px] w-[400px] items-start justify-end p-8">
+        <div className="flex h-[30rem] w-96 items-start justify-end p-8">
           <Story />
         </div>
       )

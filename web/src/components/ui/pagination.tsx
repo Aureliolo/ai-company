@@ -50,8 +50,12 @@ export function Pagination({
   className,
 }: PaginationProps) {
   const knownTotal = total !== undefined
-  // Defensive clamp: pageSize must be positive to avoid division-by-zero in totalPages.
-  const safePageSize = pageSize > 0 ? pageSize : DEFAULT_PAGE_SIZE_OPTIONS[0]!
+  // Defensive clamp: pageSize must be positive to avoid division-by-zero in
+  // totalPages. Fall back to the first option in the caller-supplied list
+  // (rather than a fixed 20) so the <select> below always has a matching
+  // <option> when `pageSize` is invalid or absent from the option set.
+  const firstValidOption = pageSizeOptions.find((size) => size > 0) ?? DEFAULT_PAGE_SIZE_OPTIONS[0]!
+  const safePageSize = pageSize > 0 ? pageSize : firstValidOption
   const totalPages = knownTotal && total > 0 ? Math.max(1, Math.ceil(total / safePageSize)) : 1
   // In cursor mode (total unknown) we cannot determine totalPages, so don't clamp down to 1.
   const safePage = knownTotal ? Math.min(Math.max(1, page), totalPages) : Math.max(1, page)

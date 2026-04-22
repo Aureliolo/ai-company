@@ -86,11 +86,14 @@ export function useListPagination<T>({
 
   const setPage = useCallback(
     (nextPage: number) => {
+      // Defensively coerce to a positive integer before writing to the URL
+      // so NaN / fractional / negative callers never land in query params.
+      const sanitizedPage = sanitizePositiveInt(nextPage, 1)
       setSearchParams(
         (prev) => {
           const next = new URLSearchParams(prev)
-          if (nextPage <= 1) next.delete(pageKey)
-          else next.set(pageKey, String(nextPage))
+          if (sanitizedPage <= 1) next.delete(pageKey)
+          else next.set(pageKey, String(sanitizedPage))
           return next
         },
         { replace: true },

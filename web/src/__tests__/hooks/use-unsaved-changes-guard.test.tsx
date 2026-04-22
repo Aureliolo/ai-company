@@ -37,6 +37,10 @@ function ProceedDraftHarnessPage() {
     <div>
       <button type="button" onClick={() => navigate('/b')} aria-label="go-b">go</button>
       <button type="button" aria-label="proceed" onClick={guard.proceed}>proceed</button>
+      {/* Expose blocker state so the test can wait for the blocker to reach
+          'blocked' before clicking proceed, avoiding a race where proceed()
+          fires before useBlocker finishes its state transition. */}
+      <span data-testid="confirm">{String(guard.confirmOpen)}</span>
       <span data-testid="has-draft">{String(guard.hasDraft)}</span>
     </div>
   )
@@ -170,6 +174,12 @@ describe('useUnsavedChangesGuard', () => {
 
     act(() => {
       fireEvent.click(getByLabelText('go-b'))
+    })
+    // Wait for the blocker to transition to 'blocked' before firing proceed();
+    // otherwise proceed()'s `blocker.state === 'blocked'` guard races with
+    // React's state commit and the click becomes a no-op on fast machines.
+    await waitFor(() => {
+      expect(getByTestId('confirm').textContent).toBe('true')
     })
     act(() => {
       fireEvent.click(getByLabelText('proceed'))

@@ -75,3 +75,12 @@ export const StagesWithFailure: Story = {
     ],
   },
 }
+
+export const StagesEmpty: Story = {
+  args: {
+    variant: 'stages',
+    label: 'No stages yet',
+    description: 'Pipeline has not started.',
+    stages: [],
+  },
+}

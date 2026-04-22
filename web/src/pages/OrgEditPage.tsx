@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { Tabs } from '@base-ui/react/tabs'
 import { ArrowLeft, Building2, Settings, Users } from 'lucide-react'
@@ -58,6 +58,14 @@ export default function OrgEditPage() {
     optimisticReorderDepartments,
     optimisticReorderAgents,
   } = useOrgEditData()
+
+  // Only surface the offline banner once the WS has connected at least
+  // once; otherwise the first render flashes a false-positive warning
+  // before the handshake completes.
+  const wasConnectedRef = useRef(false)
+  useEffect(() => {
+    if (wsConnected) wasConnectedRef.current = true
+  }, [wsConnected])
 
   const rawTab = searchParams.get('tab') ?? 'general'
   const activeTab: TabValue = isTabValue(rawTab) ? rawTab : 'general'
@@ -144,7 +152,7 @@ export default function OrgEditPage() {
       )}
 
       {/* WS disconnect warning */}
-      {!wsConnected && !loading && (
+      {!wsConnected && !loading && (wasConnectedRef.current || Boolean(wsSetupError)) && (
         <ErrorBanner
           variant="offline"
           title="Real-time updates disconnected"

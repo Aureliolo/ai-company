@@ -181,7 +181,10 @@ describe('TaskDetailPage', () => {
 
   it('renders breadcrumb link to task board', async () => {
     await renderDetailPage()
-    expect(await screen.findByRole('link', { name: 'Tasks' })).toBeInTheDocument()
+    const link = await screen.findByRole('link', { name: 'Tasks' })
+    // Assert destination too so an accidental "Tasks" link elsewhere on
+    // the page does not silently satisfy the test.
+    expect(link).toHaveAttribute('href', '/tasks')
   })
 
   it('renders transition buttons for in_progress task', async () => {

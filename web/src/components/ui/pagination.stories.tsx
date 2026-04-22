@@ -6,7 +6,10 @@ const meta = {
   title: 'Navigation/Pagination',
   component: Pagination,
   tags: ['autodocs'],
-  parameters: { layout: 'padded' },
+  parameters: {
+    layout: 'padded',
+    a11y: { test: 'error' },
+  },
 } satisfies Meta<typeof Pagination>
 
 export default meta

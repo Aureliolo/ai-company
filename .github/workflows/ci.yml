@@ -407,8 +407,10 @@ jobs:
           # including the now-fixed ShortcutRegistry infinite-loop that
           # tripped tough-cookie / microtask leaks in the cheatsheet
           # test worker before it was killed by the CI timeout). Stable
-          # CI baseline for this PR is 76; 80 = 76 + the same ~3-leak
-          # run-to-run variance buffer we've used on earlier raises.
+          # CI baseline for this PR is 76; 80 = 76 + a 4-leak run-to-run
+          # variance buffer (same class of buffer we've used on earlier
+          # raises, rounded up to the next integer boundary given the
+          # wider surface-area change in this PR).
           # Lower again once #1468 replaces MSW's matching layer.
           MAX_ASYNC_LEAKS: '80'
         run: |

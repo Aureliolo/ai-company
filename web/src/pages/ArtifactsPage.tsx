@@ -1,6 +1,7 @@
 import { useArtifactsData } from '@/hooks/useArtifactsData'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ListHeader } from '@/components/ui/list-header'
+import { formatNumber } from '@/utils/format'
 import { ArtifactsSkeleton } from './artifacts/ArtifactsSkeleton'
 import { ArtifactFilters } from './artifacts/ArtifactFilters'
 import { ArtifactGridView } from './artifacts/ArtifactGridView'
@@ -24,7 +25,11 @@ export default function ArtifactsPage() {
       <ListHeader
         title="Artifacts"
         count={filteredArtifacts.length}
-        countLabel={filteredArtifacts.length === totalArtifacts ? undefined : `${filteredArtifacts.length} of ${totalArtifacts}`}
+        countLabel={
+          filteredArtifacts.length === totalArtifacts
+            ? undefined
+            : `${formatNumber(filteredArtifacts.length)} of ${formatNumber(totalArtifacts)}`
+        }
       />
 
       {error && (

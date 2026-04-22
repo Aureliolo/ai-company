@@ -110,7 +110,11 @@ export function ProgressIndicator({
   )
 }
 
-function StageRow({ stage }: { stage: ProgressStage }) {
+interface StageRowProps {
+  stage: ProgressStage
+}
+
+function StageRow({ stage }: StageRowProps) {
   const Icon =
     stage.status === 'done' ? CheckCircle2
       : stage.status === 'failed' ? XCircle

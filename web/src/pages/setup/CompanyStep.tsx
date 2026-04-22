@@ -155,7 +155,10 @@ export function CompanyStep() {
           severity="error"
           title="Could not apply template"
           description={companyError}
-          onRetry={() => void handleApplyTemplate()}
+          // Gate Retry by the same submit gate that controls the Apply button
+          // so the user cannot retry while base details are invalid or while
+          // a submit is already in flight.
+          onRetry={applyDisabled ? undefined : () => void handleApplyTemplate()}
         />
       )}
 

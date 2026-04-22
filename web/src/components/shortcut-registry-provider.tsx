@@ -23,11 +23,15 @@ function sameShortcutList(
   return true
 }
 
+interface ShortcutRegistryProviderProps {
+  children: ReactNode
+}
+
 /**
  * Provides the shortcut registry used by `<CommandCheatsheet>` and
  * `useRegisterShortcuts`. Mount once near the root of the app.
  */
-export function ShortcutRegistryProvider({ children }: { children: ReactNode }) {
+export function ShortcutRegistryProvider({ children }: ShortcutRegistryProviderProps) {
   // Map keyed by owner id; flattened for consumers. Preserves registration order.
   const [byOwner, setByOwner] = useState<Map<string, RegisteredShortcut[]>>(() => new Map())
 
