@@ -256,9 +256,9 @@ SecOps validation, tiered timeout policies, and progressive trust
 ([Decision Log](../architecture/decisions.md) D1).
 
 **Registry:** `StrEnum` for ~26 built-in action types (type safety, autocomplete, typos caught
-at compile time) + `ActionTypeRegistry` for custom types via explicit registration. Unknown
-strings are rejected at config load time -- a typo in `human_approval` list silently meaning
-"skip approval" is a critical safety concern.
+by static type checking and config-load-time validation) + `ActionTypeRegistry` for custom
+types via explicit registration. Unknown strings are rejected at config load time -- a typo
+in `human_approval` list silently meaning "skip approval" is a critical safety concern.
 
 **Granularity:** Two-level `category:action` hierarchy. Category shortcuts expand to all
 actions in that category (e.g., `auto_approve: ["code"]` expands to all `code:*` actions).

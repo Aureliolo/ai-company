@@ -272,7 +272,7 @@ curl "http://localhost:3001/api/v1/budget/records?since=2026-04-01T00:00:00Z&unt
   -H "Cookie: ${SESSION}" | jq
 
 # Filter by provider and tag
-curl "http://localhost:3001/api/v1/budget/records?provider=openrouter&tag=productive" \
+curl "http://localhost:3001/api/v1/budget/records?provider=example-provider&tag=productive" \
   -H "Cookie: ${SESSION}" | jq
 ```
 
@@ -300,7 +300,7 @@ Available periods: `daily`, `weekly`, `monthly`. Templates: `spending_summary`, 
 
 ### Budget alert webhook integration
 
-Budget thresholds emit notifications through `NotificationDispatcher` (Slack, ntfy, email, HTTP). To route them to a custom webhook, add an HTTP sink (see [Notifications & Events](notifications-and-events.md)) and filter by `event_type` starting with `BUDGET_`.
+Budget thresholds emit notifications through `NotificationDispatcher` (console, ntfy, Slack, email). To route them to one of these sinks (see [Notifications & Events](notifications-and-events.md)), add the sink to `notifications.sinks` and filter by `event_type` starting with `BUDGET_`.
 
 Alternatively, subscribe to the `budget` WebSocket channel for real-time threshold events:
 

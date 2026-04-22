@@ -16,28 +16,28 @@ level through departments to individual teams.
 
 ```mermaid
 graph TD
-    Company["Company Budget ($100/month)"]
-    Company --> Eng["Engineering (50%) -- $50"]
-    Company --> QA["Quality/QA (10%) -- $10"]
-    Company --> Product["Product (15%) -- $15"]
-    Company --> Ops["Operations (10%) -- $10"]
-    Company --> Reserve["Reserve (15%) -- $15"]
+    Company["Company Budget (100 per month)"]
+    Company --> Eng["Engineering (50%) -- 50"]
+    Company --> QA["Quality/QA (10%) -- 10"]
+    Company --> Product["Product (15%) -- 15"]
+    Company --> Ops["Operations (10%) -- 10"]
+    Company --> Reserve["Reserve (15%) -- 15"]
 
-    Eng --> Backend["Backend Team (40%) -- $20"]
-    Eng --> Frontend["Frontend Team (30%) -- $15"]
-    Eng --> DevOps["DevOps Team (30%) -- $15"]
+    Eng --> Backend["Backend Team (40%) -- 20"]
+    Eng --> Frontend["Frontend Team (30%) -- 15"]
+    Eng --> DevOps["DevOps Team (30%) -- 15"]
 ```
 
 !!! abstract "Note"
 
     Percentages are illustrative defaults. All allocations are configurable per company.
-    Dollar signs in the diagram match the default: `budget.currency` is an ISO 4217 code
-    that defaults to `USD` (the provider-native token-pricing unit for major LLM
-    providers SynthOrg integrates with). SynthOrg stamps `budget.currency` onto every
-    row at record-creation time; historical rows retain the code that was active when
-    they were written, so changing the setting only affects newly created rows.
-    Numeric cost values are never converted -- updating the setting relabels the display
-    symbol for future records, not the existing ones.
+    Numeric amounts in the diagram are unitless; `budget.currency` is an ISO 4217 code
+    resolved per the regional-defaults chain (user/company setting -> browser/system ->
+    neutral fallback). SynthOrg stamps `budget.currency` onto every row at
+    record-creation time; historical rows retain the code that was active when they were
+    written, so changing the setting only affects newly created rows. Numeric cost values
+    are never converted -- updating the setting relabels the display symbol for future
+    records, not the existing ones.
 
 ## Cost Tracking
 
@@ -52,7 +52,7 @@ Every API call is tracked with full context:
   "input_tokens": 4500,
   "output_tokens": 1200,
   "cost": 0.0315,
-  "currency": "USD",
+  "currency": "<operator-configured>",
   "timestamp": "2026-02-27T10:30:00Z"
 }
 ```
@@ -122,7 +122,7 @@ task-boundary auto-downgrade.
 ```yaml
 budget:
   total_monthly: 100.00
-  currency: "USD"  # ISO 4217 currency code for display (no FX conversion)
+  currency: "<ISO 4217 code>"  # display-only, no FX conversion
   reset_day: 1
   alerts:
     warn_at: 75               # percent

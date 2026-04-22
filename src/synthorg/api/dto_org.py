@@ -25,10 +25,10 @@ class UpdateCompanyRequest(BaseModel):
     )
     budget_monthly: float | None = Field(
         default=None,
-        gt=0,
+        ge=0,
         description=(
             "Monthly budget cap for the company in the operator's configured "
-            "currency (must be strictly positive)."
+            "currency; set to 0 to disable enforcement."
         ),
     )
     communication_pattern: NotBlankStr | None = Field(

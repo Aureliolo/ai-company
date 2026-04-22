@@ -28,8 +28,14 @@ HTML_FILE = OUTPUT_DIR / "reference.html"
 # integrations / OAuth / tunnel / webhook / connection controllers,
 # producing a partial schema that differs between environments.  Using an
 # in-memory SQLite fixture wires the full public API surface while
-# remaining ephemeral.  ``setdefault`` respects any operator override.
-os.environ.setdefault("SYNTHORG_DB_PATH", ":memory:")
+# remaining ephemeral.  If the operator has not pinned a backend, force
+# the in-memory SQLite contract AND strip ``SYNTHORG_DATABASE_URL`` so
+# a pre-set Postgres URL cannot silently steer the export onto a
+# different wiring path.  Explicit operator overrides (both env vars
+# set together) are respected.
+if "SYNTHORG_DB_PATH" not in os.environ:
+    os.environ["SYNTHORG_DB_PATH"] = ":memory:"
+    os.environ.pop("SYNTHORG_DATABASE_URL", None)
 
 # Pinned for stability; update after testing newer releases in local preview.
 # When bumping SCALAR_VERSION, recompute SCALAR_SRI:

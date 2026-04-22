@@ -67,7 +67,7 @@ class CreateCustomRuleRequest(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     name: NotBlankStr = Field(
-        description="Human-readable rule name (unique per organisation).",
+        description="Human-readable rule name (unique per organization).",
     )
     description: NotBlankStr = Field(
         description="What pattern this rule detects and why it matters.",

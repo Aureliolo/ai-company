@@ -1,6 +1,6 @@
 ---
 title: Agent Management
-description: Hire, fire, promote, and customise agents via the REST API. Covers personality assignment, rehiring from archive, and lifecycle events.
+description: Hire, fire, promote, and customize agents via the REST API. Covers personality assignment, rehiring from archive, and lifecycle events.
 ---
 
 # Agent Management

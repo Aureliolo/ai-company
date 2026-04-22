@@ -21,14 +21,14 @@ This page is the status-and-architecture reference: what ships today, how it map
 | Agent Card projection from internal `AgentIdentity` | Shipped |
 | Push notification subscription + webhook delivery | Shipped |
 | Auth schemes: `apiKey`, `oauth2`, `bearer`, `mTLS`, `none` | Shipped |
-| Allowlist-based inbound authorisation | Shipped |
+| Allowlist-based inbound authorization | Shipped |
 | Optional JWS Agent Card signature verification | Shipped |
 | Webhook HMAC signature verification + replay protection | Shipped |
 | SSRF validation on outbound webhooks | Shipped |
 | Delegation guard on inbound requests (loop prevention) | Shipped |
 | Quadratic communication enforcement strategies | Planned (detection ships today; enforcement is opt-in behind `alert_only`) |
 | Full A2A skill negotiation workflow | Planned |
-| Inter-org federation patterns (delegation across organisations) | Planned |
+| Inter-org federation patterns (delegation across organizations) | Planned |
 
 A2A is **disabled by default**. Enable via `a2a.enabled: true` in company YAML and configure auth + allowlist per deployment.
 
@@ -96,7 +96,7 @@ See [Communication -> Loop Prevention](communication.md#loop-prevention) for imp
 
 Four enforcement strategies are defined behind `QuadraticEnforcementStrategy`:
 
-| Strategy | Behaviour |
+| Strategy | Behavior |
 |----------|-----------|
 | `alert_only` (default) | Detect and emit `NotificationDispatcher` warnings |
 | `soft_throttle` | Auto-tighten rate limiter on the affected agent group |

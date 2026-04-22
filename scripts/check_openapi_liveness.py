@@ -25,7 +25,11 @@ import sys
 os.environ["SYNTHORG_DB_PATH"] = ":memory:"
 os.environ.pop("SYNTHORG_DATABASE_URL", None)
 
-MIN_PATH_COUNT = 200
+# Calibrated to the healthy export floor (~237 paths as of audit #79); a
+# small delta tolerates legitimate endpoint additions / deprecations
+# without letting a partial-export regression slip through.  Raise in
+# lockstep when the committed schema grows.
+MIN_PATH_COUNT = 230
 
 # Canary endpoints the audit (2026-04-20) identified as missing when
 # the determinism fix regresses.  Their presence proves the full

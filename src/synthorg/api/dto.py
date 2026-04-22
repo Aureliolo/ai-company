@@ -482,10 +482,7 @@ class CreateApprovalRequest(BaseModel):
 
     @model_validator(mode="after")
     def _validate_metadata_bounds(self) -> Self:
-        """Limit metadata size to prevent memory abuse."""
-        if len(self.metadata) > _MAX_METADATA_KEYS:
-            msg = f"metadata must have at most {_MAX_METADATA_KEYS} keys"
-            raise ValueError(msg)
+        """Enforce per-entry size limits; key-count via Field(max_length=...)."""
         for k, v in self.metadata.items():
             if len(k) > _MAX_METADATA_STR_LEN:
                 msg = f"metadata key must be at most {_MAX_METADATA_STR_LEN} characters"

@@ -11,8 +11,8 @@ This guide covers how humans and external systems interact with SynthOrg: the AP
 
 ## API-First Architecture
 
-The REST/WebSocket API is the **primary interface** for all consumers. The Web UI and any
-future CLI tool are thin clients that call the API -- they contain no business logic.
+The REST/WebSocket API is the **primary interface** for all consumers. The Web UI and CLI
+are thin clients that call the API -- they contain no business logic.
 
 ```d2
 Engine: "SynthOrg Engine\n(Core Logic, Agent Orchestration, Tasks)"
