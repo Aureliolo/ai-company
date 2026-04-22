@@ -61,11 +61,7 @@ from synthorg.observability.events.workflow_definition import (
     WORKFLOW_DEF_NOT_FOUND,
     WORKFLOW_DEF_VERSION_CONFLICT,
 )
-from synthorg.observability.events.workflow_version import (
-    WORKFLOW_VERSION_SNAPSHOT_FAILED,
-)
 from synthorg.persistence.errors import (
-    PersistenceError,
     VersionConflictError,
 )
 
@@ -73,10 +69,17 @@ logger = get_logger(__name__)
 
 
 def _service(state: State) -> WorkflowService:
-    """Build the per-request :class:`WorkflowService`."""
+    """Build the per-request :class:`WorkflowService`.
+
+    Wires in the :class:`VersioningService` for workflow definitions so
+    create/update paths persist a best-effort version snapshot in the
+    same service call -- controllers no longer orchestrate the two
+    writes by hand.
+    """
     return WorkflowService(
         definition_repo=state.app_state.persistence.workflow_definitions,
         version_repo=state.app_state.persistence.workflow_versions,
+        versioning_service=wf_versioning(state),
     )
 
 
@@ -185,7 +188,7 @@ class WorkflowController(Controller):
         )
 
         try:
-            await _service(state).create_definition(definition)
+            await _service(state).create_definition(definition, saved_by=creator)
         except WorkflowDefinitionExistsError as exc:
             # Duplicate id hit at the SQL level in ``create_if_absent``.
             # Surface as HTTP 409 so clients retrying a failed create do
@@ -203,20 +206,9 @@ class WorkflowController(Controller):
                 status_code=409,
             )
 
-        svc = wf_versioning(state)
-        try:
-            await svc.snapshot_if_changed(
-                entity_id=definition.id,
-                snapshot=definition,
-                saved_by=creator,
-            )
-        except PersistenceError:
-            logger.exception(
-                WORKFLOW_VERSION_SNAPSHOT_FAILED,
-                definition_id=definition.id,
-                revision=definition.revision,
-            )
-
+        # Snapshot orchestration moved into ``WorkflowService.create_definition``
+        # (via the ``saved_by`` kwarg), so no explicit ``snapshot_if_changed``
+        # call is needed here.
         logger.info(
             BLUEPRINT_INSTANTIATE_SUCCESS,
             definition_id=definition.id,
@@ -309,7 +301,7 @@ class WorkflowController(Controller):
             )
 
         try:
-            await _service(state).create_definition(definition)
+            await _service(state).create_definition(definition, saved_by=creator)
         except WorkflowDefinitionExistsError as exc:
             # The service raises this when ``create_if_absent`` hits a
             # duplicate id at the SQL level. Map to HTTP 409 so clients
@@ -327,19 +319,8 @@ class WorkflowController(Controller):
                 status_code=409,
             )
 
-        svc = wf_versioning(state)
-        try:
-            await svc.snapshot_if_changed(
-                entity_id=definition.id,
-                snapshot=definition,
-                saved_by=creator,
-            )
-        except PersistenceError:
-            logger.exception(
-                WORKFLOW_VERSION_SNAPSHOT_FAILED,
-                definition_id=definition.id,
-                revision=definition.revision,
-            )
+        # Snapshot recording is handled inside ``WorkflowService`` via the
+        # ``saved_by`` kwarg; no explicit ``snapshot_if_changed`` is needed.
 
         return Response(
             content=ApiResponse[WorkflowDefinition](data=definition),
@@ -407,8 +388,9 @@ class WorkflowController(Controller):
                 status_code=422,
             )
 
+        updater = get_auth_user_id(request)
         try:
-            await service.update_definition(updated)
+            await service.update_definition(updated, saved_by=updater)
         except WorkflowDefinitionNotFoundError as exc:
             # Row was deleted between fetch_for_update and update;
             # surface as 404 so the client refetches rather than
@@ -435,20 +417,8 @@ class WorkflowController(Controller):
                 status_code=409,
             )
 
-        updater = get_auth_user_id(request)
-        svc = wf_versioning(state)
-        try:
-            await svc.snapshot_if_changed(
-                entity_id=updated.id,
-                snapshot=updated,
-                saved_by=updater,
-            )
-        except PersistenceError:
-            logger.exception(
-                WORKFLOW_VERSION_SNAPSHOT_FAILED,
-                definition_id=updated.id,
-                revision=updated.revision,
-            )
+        # Snapshot recording is handled inside ``WorkflowService`` via the
+        # ``saved_by`` kwarg; no explicit ``snapshot_if_changed`` is needed.
 
         return Response(
             content=ApiResponse[WorkflowDefinition](data=updated),

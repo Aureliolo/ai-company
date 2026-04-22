@@ -30,6 +30,7 @@ if TYPE_CHECKING:
     from synthorg.persistence.workflow_definition_repo import (
         WorkflowDefinitionRepository,
     )
+    from synthorg.versioning.service import VersioningService
 
 logger = get_logger(__name__)
 
@@ -60,18 +61,30 @@ class WorkflowDefinitionRevisionMismatchError(Exception):
 
 
 class WorkflowService:
-    """Service for workflow definition CRUD + version cascade."""
+    """Service for workflow definition CRUD + version cascade.
 
-    __slots__ = ("_definitions", "_versions")
+    When ``versioning_service`` is provided, :meth:`create_definition`
+    and :meth:`update_definition` persist the definition AND best-effort
+    snapshot the new revision in a single service call so controllers
+    no longer need to reach into ``VersioningService`` directly. A
+    snapshot failure does not fail the whole operation (orphaned
+    versions are tolerable and periodically swept); it is logged at
+    WARNING so operators can investigate without losing the definition
+    write.
+    """
+
+    __slots__ = ("_definitions", "_versioning", "_versions")
 
     def __init__(
         self,
         *,
         definition_repo: WorkflowDefinitionRepository,
         version_repo: VersionRepository[WorkflowDefinition],
+        versioning_service: VersioningService[WorkflowDefinition] | None = None,
     ) -> None:
         self._definitions = definition_repo
         self._versions = version_repo
+        self._versioning = versioning_service
 
     async def list_definitions(
         self,
@@ -141,6 +154,8 @@ class WorkflowService:
     async def create_definition(
         self,
         definition: WorkflowDefinition,
+        *,
+        saved_by: str | None = None,
     ) -> WorkflowDefinition:
         """Persist a new definition with audit log.
 
@@ -149,6 +164,11 @@ class WorkflowService:
         observe "not found" and then both upsert via ``save`` -- that
         check-then-save pattern has a TOCTOU window the backend's
         ``INSERT ... ON CONFLICT DO NOTHING`` closes at the SQL level.
+
+        When ``saved_by`` is provided AND the service was constructed
+        with a ``VersioningService``, a best-effort version snapshot is
+        recorded for the new revision. Snapshot failures are logged at
+        WARNING and swallowed; the definition write is authoritative.
 
         Raises:
             WorkflowDefinitionExistsError: ``definition.id`` already
@@ -166,12 +186,15 @@ class WorkflowService:
                 "use update_definition to modify it"
             )
             raise WorkflowDefinitionExistsError(msg)
+        await self._best_effort_snapshot(definition, saved_by)
         logger.info(WORKFLOW_DEF_CREATED, definition_id=definition.id)
         return definition
 
     async def update_definition(
         self,
         definition: WorkflowDefinition,
+        *,
+        saved_by: str | None = None,
     ) -> WorkflowDefinition:
         """Update an existing definition with audit log.
 
@@ -181,6 +204,11 @@ class WorkflowService:
         ``WORKFLOW_DEF_UPDATED``. A missing row now surfaces as
         ``WorkflowDefinitionNotFoundError`` (HTTP 404) -- create/update
         audit semantics stay distinct even under delete races.
+
+        When ``saved_by`` is provided AND the service was constructed
+        with a ``VersioningService``, a best-effort version snapshot
+        is recorded. Same best-effort semantics as
+        :meth:`create_definition`.
 
         Raises:
             WorkflowDefinitionNotFoundError: No row exists for
@@ -202,8 +230,40 @@ class WorkflowService:
                 "use create_definition to insert it"
             )
             raise WorkflowDefinitionNotFoundError(msg)
+        await self._best_effort_snapshot(definition, saved_by)
         logger.info(WORKFLOW_DEF_UPDATED, definition_id=definition.id)
         return definition
+
+    async def _best_effort_snapshot(
+        self,
+        definition: WorkflowDefinition,
+        saved_by: str | None,
+    ) -> None:
+        """Record a version snapshot if the service has versioning wired in.
+
+        No-op when either the versioning service is not attached or the
+        caller did not provide ``saved_by`` (e.g. system-driven writes
+        that do not attribute authorship). Snapshot failures are logged
+        at WARNING and swallowed -- orphaned snapshots are tolerable and
+        periodically swept; losing a definition write because the
+        snapshot table is momentarily unavailable is not.
+        """
+        if self._versioning is None or saved_by is None:
+            return
+        try:
+            await self._versioning.snapshot_if_changed(
+                entity_id=definition.id,
+                snapshot=definition,
+                saved_by=saved_by,
+            )
+        except Exception as exc:
+            logger.warning(
+                WORKFLOW_VERSION_SNAPSHOT_FAILED,
+                definition_id=definition.id,
+                revision=definition.revision,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
 
     async def delete_definition(
         self,

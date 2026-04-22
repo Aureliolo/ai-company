@@ -181,6 +181,12 @@ class PostgresWorkflowDefinitionRepository:
                 error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
+        logger.info(
+            PERSISTENCE_WORKFLOW_DEF_SAVED,
+            definition_id=definition.id,
+            revision=definition.revision,
+            operation="update_if_exists",
+        )
         return True
 
     async def create_if_absent(self, definition: WorkflowDefinition) -> bool:
@@ -232,6 +238,13 @@ class PostgresWorkflowDefinitionRepository:
                 error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
+        if inserted:
+            logger.info(
+                PERSISTENCE_WORKFLOW_DEF_SAVED,
+                definition_id=definition.id,
+                revision=definition.revision,
+                operation="create_if_absent",
+            )
         return inserted
 
     async def save(self, definition: WorkflowDefinition) -> None:
