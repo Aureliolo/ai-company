@@ -260,7 +260,7 @@ Returns the active `BudgetConfig` (limits, alert thresholds, cascade rules, curr
 ### List cost records
 
 ```bash
-# First page, default 50 records
+# First page, 100 records (server default is 50 when limit is omitted)
 curl "http://localhost:3001/api/v1/budget/records?limit=100" \
   -H "Cookie: ${SESSION}" | jq
 

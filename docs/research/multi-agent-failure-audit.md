@@ -139,7 +139,7 @@ departments), that exception is also caught and a final seniority-only fallback 
 (without hierarchy). A resolution is always produced unless `MemoryError` or `RecursionError`
 occurs.
 
-**Verdict**: Safe (terminates). Multi-level fallback chain ensures resolution is always produced.
+**Verdict**: Safe (terminates). On the evaluator-raises path, the multi-level fallback chain (`_authority_fallback` -> seniority-only on `ConflictHierarchyError`) ensures a resolution is always produced. On the no-JudgeEvaluator-configured path, `DebateResolver` calls `_authority_fallback` without a surrounding `try`, so a `ConflictHierarchyError` from AR2 propagates to the caller.
 
 ### HumanEscalationResolver
 

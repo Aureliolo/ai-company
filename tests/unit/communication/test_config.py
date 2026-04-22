@@ -69,7 +69,12 @@ class TestMessageBusConfigImmutability:
 
     def test_model_copy(self) -> None:
         original = MessageBusConfig()
-        updated = original.model_copy(update={"backend": MessageBusBackend.NATS})
+        updated = original.model_copy(
+            update={
+                "backend": MessageBusBackend.NATS,
+                "nats": NatsConfig(url="nats://localhost:4222"),
+            },
+        )
         assert updated.backend is MessageBusBackend.NATS
         assert original.backend is MessageBusBackend.INTERNAL
 

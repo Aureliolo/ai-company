@@ -13,16 +13,9 @@ For the architecture (identity versioning, evolution, five-pillar evaluation), s
 
 ## Hiring
 
-Agents are hired via `POST /api/v1/agents`. You need a name, role, department, seniority level, and either an explicit model or a tier (`large`/`medium`/`small`) that the model matcher resolves against your configured providers.
-
-### From a personality preset
+Agents are hired via `POST /api/v1/agents` with a `CreateAgentOrgRequest` body. The DTO accepts only: `name`, `role`, `department`, `level` (one of the `SeniorityLevel` values), and the `model_provider` / `model_id` pair (both together or both omitted -- if omitted, the model matcher falls back to the provider catalog default).
 
 ```bash
-# List available presets (built-in + custom)
-curl http://localhost:3001/api/v1/personalities/presets \
-  -H "Cookie: ${SESSION}" | jq '.data[] | {name, description}'
-
-# Hire with a preset
 curl -X POST http://localhost:3001/api/v1/agents \
   -H "Content-Type: application/json" \
   -H "Cookie: ${SESSION}" \
@@ -31,83 +24,40 @@ curl -X POST http://localhost:3001/api/v1/agents \
     "role": "Senior Backend Developer",
     "department": "Engineering",
     "level": "Senior",
-    "personality_preset": "analytical-pragmatist",
-    "model_tier": "medium"
+    "model_provider": "example-provider",
+    "model_id": "example-medium-001"
   }' | jq
 ```
 
-### With explicit personality config
+Personality presets and personality dimensions are **not** fields on the hiring DTO. They are applied during the first-run setup flow via `SetupAgentRequest` (see [Setup wizard shortcuts](#setup-wizard-shortcuts) below). `PersonalityConfig` internals (`decision_making`, `collaboration`, `verbosity`, `conflict_approach`, and the Big-5 dimensions) are runtime state, not user-settable through the public API.
 
 ```bash
-curl -X POST http://localhost:3001/api/v1/agents \
-  -H "Content-Type: application/json" \
-  -H "Cookie: ${SESSION}" \
-  -d '{
-    "name": "Alex Rivera",
-    "role": "QA Engineer",
-    "department": "Quality",
-    "level": "Mid",
-    "model_tier": "small",
-    "personality": {
-      "traits": ["thorough", "skeptical"],
-      "communication_style": "precise",
-      "openness": 0.5,
-      "conscientiousness": 0.95,
-      "extraversion": 0.4,
-      "agreeableness": 0.6,
-      "stress_response": 0.7,
-      "decision_making": "analytical",
-      "collaboration": "team",
-      "verbosity": "balanced",
-      "conflict_approach": "collaborate"
-    }
-  }' | jq
+# List available presets (used by the setup wizard, not by POST /api/v1/agents)
+curl http://localhost:3001/api/v1/personalities/presets \
+  -H "Cookie: ${SESSION}" | jq '.data[] | {name, description}'
 ```
 
-### With tool and autonomy overrides
-
-```bash
-curl -X POST http://localhost:3001/api/v1/agents \
-  -H "Content-Type: application/json" \
-  -H "Cookie: ${SESSION}" \
-  -d '{
-    "name": "Morgan Taylor",
-    "role": "DevOps Engineer",
-    "department": "Engineering",
-    "level": "Senior",
-    "model_tier": "medium",
-    "autonomy_level": "semi",
-    "tools": {
-      "access_level": "elevated",
-      "allowed": ["file_system", "git", "terminal", "deployment"],
-      "denied": []
-    }
-  }' | jq
-```
+Tool access and autonomy are **not** part of `CreateAgentOrgRequest` either: tool grants are resolved from role, department, and org config at runtime, and `autonomy_level` is set on `UpdateAgentOrgRequest` (or on the department-level endpoints) *after* the agent is hired. See [Updating an agent](#updating-an-agent).
 
 ## Updating an agent
 
 Partial updates via `PATCH /api/v1/agents/{name}`. The server validates conflicts and domain constraints (e.g. duplicate names, missing departments); consult the OpenAPI schema for the exact accepted fields and response codes.
 
 ```bash
-# Change model tier
-curl -X PATCH http://localhost:3001/api/v1/agents/${AGENT_NAME} \
-  -H "Content-Type: application/json" \
-  -H "Cookie: ${SESSION}" \
-  -d '{"model_tier": "large"}'
-
 # Change autonomy
 curl -X PATCH http://localhost:3001/api/v1/agents/${AGENT_NAME} \
   -H "Content-Type: application/json" \
   -H "Cookie: ${SESSION}" \
   -d '{"autonomy_level": "supervised"}'
 
-# Swap personality preset
+# Swap model pair (both fields must be set together)
 curl -X PATCH http://localhost:3001/api/v1/agents/${AGENT_NAME} \
   -H "Content-Type: application/json" \
   -H "Cookie: ${SESSION}" \
-  -d '{"personality_preset": "creative-explorer"}'
+  -d '{"model_provider": "example-provider", "model_id": "example-large-001"}'
 ```
+
+`UpdateAgentOrgRequest` accepts only: `name`, `role`, `department`, `level`, `autonomy_level`, `model_provider`, `model_id`.
 
 Every update creates a new `AgentIdentity` version snapshot in `agent_identity_versions`. Query the history:
 
@@ -145,21 +95,9 @@ Current behavior (`delete_agent` in `src/synthorg/api/services/_org_agent_mutati
 
 Planned (not yet implemented): automated task reassignment via `TaskReassignmentStrategy`, memory archival via `MemoryArchivalStrategy`, selective promotion to `OrgMemoryBackend`, and an explicit `TERMINATED` lifecycle state. Until those land, fires are best paired with manual task reassignment before the DELETE call.
 
-## Rehiring from archive
+## Rehiring from archive (planned)
 
-```bash
-# List archived agents
-curl "http://localhost:3001/api/v1/agents?status=terminated" \
-  -H "Cookie: ${SESSION}" | jq
-
-# Rehire -- restores archived memory into a new identity
-curl -X POST http://localhost:3001/api/v1/agents/${AGENT_NAME}/rehire \
-  -H "Content-Type: application/json" \
-  -H "Cookie: ${SESSION}" \
-  -d '{"department": "Engineering", "level": "Senior"}' | jq
-```
-
-The rehired agent gets a fresh identity (new hire date, new version chain) but inherits their archived memories.
+A dedicated `POST /api/v1/agents/{agent_name}/rehire` endpoint -- which would restore archived memory into a new identity with a fresh hire date and version chain -- is **not yet implemented** in the agents controller. Until it ships, rehiring is a manual two-step: list archived agents via the existing listing, then recreate with `POST /api/v1/agents` using a fresh `CreateAgentOrgRequest` payload; memory restoration is performed out-of-band through the Memory Admin API. This planned surface sits alongside the same lifecycle automation called out in [Firing](#firing).
 
 ## Lifecycle events (WebSocket)
 
