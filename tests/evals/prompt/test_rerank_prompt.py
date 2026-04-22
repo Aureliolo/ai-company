@@ -53,3 +53,56 @@ class TestRerankPromptContract:
             "_RERANK_COMPLETION_CONFIG.temperature must equal 0.0 at runtime; "
             f"got {runtime_config.temperature!r}"
         )
+
+    async def test_provider_complete_called_with_pinned_config(self) -> None:
+        """Call-site proof: ``_rerank_via_llm`` passes the pinned config.
+
+        The definition-level assertions above can pass while a future
+        refactor slips a different config into the actual provider
+        call. This exercises ``_rerank_via_llm`` with stub collaborators
+        and asserts the ``config=`` kwarg the reranker hands to
+        ``provider.complete(...)`` is exactly ``_RERANK_COMPLETION_CONFIG``.
+        """
+        import json
+        from types import SimpleNamespace
+        from typing import cast
+        from unittest.mock import AsyncMock
+
+        from synthorg.memory.retrieval.models import (
+            RetrievalCandidate,
+            RetrievalQuery,
+        )
+        from synthorg.memory.retrieval.reranking import llm_reranker as _mod
+        from synthorg.memory.retrieval.reranking.llm_reranker import (
+            LLMQuerySpecificReranker,
+        )
+        from synthorg.providers.protocol import CompletionProvider
+
+        provider = SimpleNamespace(
+            complete=AsyncMock(
+                return_value=SimpleNamespace(content=json.dumps({"ranking": [0]})),
+            ),
+        )
+        reranker = LLMQuerySpecificReranker(
+            provider=cast(CompletionProvider, provider),
+            model="test-small-001",
+            cache=None,
+        )
+        query = cast(RetrievalQuery, SimpleNamespace(text="needle"))
+        candidates = (
+            cast(
+                RetrievalCandidate,
+                SimpleNamespace(
+                    entry=SimpleNamespace(id="a", content="hay"),
+                    combined_score=0.5,
+                ),
+            ),
+        )
+        await reranker._rerank_via_llm(query, candidates)
+        provider.complete.assert_awaited_once()
+        kwargs = provider.complete.await_args.kwargs
+        assert kwargs.get("config") is _mod._RERANK_COMPLETION_CONFIG, (
+            "provider.complete must receive the pinned "
+            "_RERANK_COMPLETION_CONFIG so any refactor that constructs a "
+            "fresh CompletionConfig fails this regression."
+        )

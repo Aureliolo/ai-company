@@ -54,7 +54,7 @@ The endpoint is unauthenticated by default; put it behind your normal scrape-ACL
 |--------|------|--------|-------------|
 | `synthorg_provider_tokens_total` | Counter | `provider`, `model`, `direction` | Input/output tokens by model |
 | `synthorg_provider_cost_total` | Counter | `provider`, `model` | Cost per provider call |
-| `synthorg_api_requests_total` | Counter | `method`, `path`, `status_class` | API request rate |
+| `synthorg_api_requests_total` | Counter | `method`, `route`, `status_class` | API request rate |
 | `synthorg_tool_invocations_total` | Counter | `tool_name`, `outcome` | Tool invocations by outcome |
 
 ### HYG-1 additions

@@ -187,17 +187,13 @@ class MultiAgentCoordinator:
             # Phase 2: Route
             routing_result = self._phase_route(context, decomp_result, phases)
 
-            # Phase 3: Validate -- fail fast if all subtasks are
-            # unroutable. We run this BEFORE resolving topology so the
-            # deterministic routing error surfaces without first
-            # calling ``default_topology_provider()`` (which may read
-            # runtime settings or raise).
-            self._validate_routing(routing_result, phases)
-
-            # Phase 4: Resolve topology (only reached for dispatchable work).
-            topology = self._resolve_topology(routing_result)
-
-            # Middleware: before_dispatch
+            # Middleware: before_dispatch.  Runs BEFORE validation +
+            # topology resolution so that any routing mutations the
+            # middleware applies (e.g. re-routing unassigned subtasks,
+            # enriching topology metadata) are included in the inputs
+            # those two phases consume.  Previously the order was
+            # validate -> resolve -> middleware, which meant middleware
+            # edits to ``routing_result`` never influenced topology.
             if mw_chain is not None:
                 mw_ctx = mw_ctx.model_copy(
                     update={
@@ -206,9 +202,18 @@ class MultiAgentCoordinator:
                     },
                 )
                 mw_ctx = await mw_chain.run_before_dispatch(mw_ctx)
-                # Propagate middleware-mutated routing
                 if mw_ctx.routing_result is not None:
                     routing_result = mw_ctx.routing_result
+
+            # Phase 3: Validate -- fail fast if all subtasks are
+            # unroutable. Runs BEFORE resolving topology so the
+            # deterministic routing error surfaces without first
+            # calling ``default_topology_provider()`` (which may read
+            # runtime settings or raise).
+            self._validate_routing(routing_result, phases)
+
+            # Phase 4: Resolve topology (only reached for dispatchable work).
+            topology = self._resolve_topology(routing_result)
 
             # Phase 5: Dispatch (workspace setup -> execute -> merge)
             dispatch_result = await self._phase_dispatch(

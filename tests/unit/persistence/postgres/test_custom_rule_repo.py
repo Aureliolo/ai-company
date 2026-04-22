@@ -334,16 +334,38 @@ class TestListRules:
         assert len(rules) == 2
         assert {r.name for r in rules} == {"alpha", "beta"}
 
-    async def test_list_enabled_only_binds_flag(
+    async def test_list_enabled_only_filters_on_enabled_column(
         self,
         repo: tuple[PostgresCustomRuleRepository, _FakePool],
     ) -> None:
+        """``enabled_only=True`` must scope the SELECT to the ``enabled`` column.
+
+        The original assertion required the literal text ``"enabled = true"``
+        in the query, which breaks the moment the repo switches to a
+        parameterised ``WHERE enabled = %s`` clause (a perfectly valid
+        refactor). We instead require:
+
+        - the ``enabled`` column name appears in the query (either as a
+          filter or a parameter placeholder), AND
+        - the bound parameters include the literal ``True`` flag when
+          ``enabled_only=True`` (catching a refactor that changes the
+          predicate but still funnels through the same method).
+        """
         instance, pool = repo
         pool.fetchall_result = []
         await instance.list_rules(enabled_only=True)
         assert pool.executed, "list_rules should issue a SELECT"
-        query, _params = pool.executed[0]
-        assert "enabled = true" in query.lower() or "enabled = TRUE" in query
+        query, params = pool.executed[0]
+        assert "enabled" in query.lower(), (
+            "list_rules(enabled_only=True) must mention the ``enabled`` column"
+        )
+        literal_filter = "enabled = true" in query.lower()
+        param_filter = True in params
+        assert literal_filter or param_filter, (
+            "list_rules(enabled_only=True) must either emit a literal "
+            "``WHERE enabled = true`` or bind ``True`` through "
+            f"placeholders; neither was found. query={query!r} params={params!r}"
+        )
 
     async def test_list_rules_empty(
         self,

@@ -51,14 +51,22 @@ from synthorg.observability.events.eval_loop import (
     EVAL_LOOP_PATTERN_IDENTIFIED,
 )
 
-_DEFAULT_PATTERN_ACTIONS: Final[MappingProxyType[str, str]] = MappingProxyType(
-    {
-        EvaluationPillar.INTELLIGENCE.value: "increase_review_depth",
-        EvaluationPillar.EFFICIENCY.value: "tighten_cost_budget",
-        EvaluationPillar.RESILIENCE.value: "add_recovery_training",
-        EvaluationPillar.GOVERNANCE.value: "expand_audit_coverage",
-        EvaluationPillar.EXPERIENCE.value: "improve_tone_training",
-    },
+# Keys + values are both identifier fields -- type them as
+# ``NotBlankStr`` so a future edit that leaves a blank / whitespace-
+# only action id is rejected statically. The values in this literal
+# mapping are non-blank by construction, but Pydantic validates
+# them at config-load time when operators override the mapping via
+# ``EvalLoopConfig.pattern_action_map`` (see that field).
+_DEFAULT_PATTERN_ACTIONS: Final[MappingProxyType[NotBlankStr, NotBlankStr]] = (
+    MappingProxyType(
+        {
+            EvaluationPillar.INTELLIGENCE.value: "increase_review_depth",
+            EvaluationPillar.EFFICIENCY.value: "tighten_cost_budget",
+            EvaluationPillar.RESILIENCE.value: "add_recovery_training",
+            EvaluationPillar.GOVERNANCE.value: "expand_audit_coverage",
+            EvaluationPillar.EXPERIENCE.value: "improve_tone_training",
+        },
+    )
 )
 
 logger = get_logger(__name__)
@@ -239,7 +247,7 @@ class EvalLoopCoordinator:
     async def _identify_patterns(
         self,
         reports: tuple[EvaluationReport, ...],
-    ) -> tuple[str, ...]:
+    ) -> tuple[NotBlankStr, ...]:
         """Identify pillar-weakness patterns across agents.
 
         For each report, count pillars scoring below
@@ -297,8 +305,8 @@ class EvalLoopCoordinator:
 
     async def _propose_actions(
         self,
-        patterns: tuple[str, ...],
-    ) -> tuple[str, ...]:
+        patterns: tuple[NotBlankStr, ...],
+    ) -> tuple[NotBlankStr, ...]:
         """Map identified patterns to action identifiers.
 
         Uses :data:`_DEFAULT_PATTERN_ACTIONS` keyed by
@@ -325,7 +333,7 @@ class EvalLoopCoordinator:
             return ()
 
         override = self._config.pattern_action_map or {}
-        actions: list[str] = []
+        actions: list[NotBlankStr] = []
         for pattern in patterns:
             if ":" not in pattern:
                 logger.warning(

@@ -25,6 +25,30 @@ interface GeneratedReportState {
   response: ReportResponse
 }
 
+interface ReportPeriodCardProps {
+  period: ReportPeriod
+  generating: ReportPeriod | null
+  onGenerate: (period: ReportPeriod) => void
+}
+
+function ReportPeriodCard({ period, generating, onGenerate }: ReportPeriodCardProps) {
+  const title = period.charAt(0).toUpperCase() + period.slice(1)
+  const isBusy = generating !== null
+  const isThisPeriodBusy = generating === period
+  return (
+    <SectionCard key={period} title={title} icon={FileText}>
+      <Button
+        size="sm"
+        onClick={() => onGenerate(period)}
+        disabled={isBusy}
+      >
+        <Play className="size-3" aria-hidden="true" />
+        {isThisPeriodBusy ? 'Generating…' : 'Generate'}
+      </Button>
+    </SectionCard>
+  )
+}
+
 export default function ReportsPage() {
   const [periods, setPeriods] = useState<readonly ReportPeriod[] | null>(null)
   const [loadingPeriods, setLoadingPeriods] = useState(true)
@@ -113,20 +137,12 @@ export default function ReportsPage() {
       ) : periods && periods.length > 0 ? (
         <div className="grid grid-cols-1 gap-grid-gap sm:grid-cols-2 lg:grid-cols-3">
           {periods.map((period) => (
-            <SectionCard
+            <ReportPeriodCard
               key={period}
-              title={period.charAt(0).toUpperCase() + period.slice(1)}
-              icon={FileText}
-            >
-              <Button
-                size="sm"
-                onClick={() => void handleGenerate(period)}
-                disabled={generating !== null}
-              >
-                <Play className="size-3" aria-hidden="true" />
-                {generating === period ? 'Generating…' : 'Generate'}
-              </Button>
-            </SectionCard>
+              period={period}
+              generating={generating}
+              onGenerate={(p) => void handleGenerate(p)}
+            />
           ))}
         </div>
       ) : (

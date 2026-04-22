@@ -29,41 +29,28 @@ class TestSafetyClassifierPromptContract:
                 return node.value == 0
             return False
 
-        found = False
-        for node in ast.walk(tree):
-            # Keyword argument: ``foo(temperature=0.0)``.
-            if (
-                isinstance(node, ast.keyword)
-                and node.arg == "temperature"
-                and _is_zero(node.value)
-            ):
-                found = True
-                break
-            # Assignment: ``temperature = 0.0``.
-            if isinstance(node, ast.Assign):
-                for target in node.targets:
-                    if (
-                        isinstance(target, ast.Name)
-                        and target.id == "temperature"
-                        and _is_zero(node.value)
-                    ):
-                        found = True
-                        break
-                if found:
-                    break
-            # Annotated default: ``temperature: float = 0.0``.
-            if (
-                isinstance(node, ast.AnnAssign)
-                and isinstance(node.target, ast.Name)
-                and node.target.id == "temperature"
-                and node.value is not None
-                and _is_zero(node.value)
-            ):
-                found = True
-                break
+        # Restrict the search to ``CompletionConfig(..., temperature=0)``
+        # calls so an unrelated module-level binding (e.g. a docstring
+        # example assigned to ``temperature``) cannot make this test
+        # false-pass. The classifier constructs its config via the
+        # ``CompletionConfig`` class from ``synthorg.providers.models``.
+        def _targets_completion_config(func: ast.AST) -> bool:
+            if isinstance(func, ast.Name):
+                return func.id == "CompletionConfig"
+            if isinstance(func, ast.Attribute):
+                return func.attr == "CompletionConfig"
+            return False
 
+        found = any(
+            isinstance(node, ast.Call)
+            and _targets_completion_config(node.func)
+            and any(
+                kw.arg == "temperature" and _is_zero(kw.value) for kw in node.keywords
+            )
+            for node in ast.walk(tree)
+        )
         assert found, (
-            "safety_classifier must pin ``temperature=0.0`` via a "
-            "keyword argument, assignment, or annotated default; "
-            "no such binding found in the AST."
+            "safety_classifier must construct a ``CompletionConfig`` with "
+            "``temperature=0.0`` (or equivalent numeric zero). No such "
+            "call was found in the AST."
         )

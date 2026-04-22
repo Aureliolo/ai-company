@@ -15,11 +15,14 @@ from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validat
 from synthorg.core.enums import Complexity, Priority, TaskType
 from synthorg.core.state_machine import StateMachine
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.observability import get_logger
 from synthorg.observability.events.client import (
     CLIENT_REQUEST_TRANSITION,
     CLIENT_REQUEST_TRANSITION_CONFIG_ERROR,
     CLIENT_REQUEST_TRANSITION_INVALID,
 )
+
+logger = get_logger(__name__)
 
 
 class RequestStatus(StrEnum):
@@ -338,6 +341,11 @@ class ClientRequest(BaseModel):
         """
         if "status" in overrides:
             msg = "status override is not allowed; pass transition target explicitly"
+            logger.warning(
+                CLIENT_REQUEST_TRANSITION_INVALID,
+                request_id=str(self.request_id),
+                reason="status_in_overrides",
+            )
             raise ValueError(msg)
         validate_request_transition(self.status, target)
         payload = self.model_dump()

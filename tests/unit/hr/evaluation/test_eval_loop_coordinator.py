@@ -257,6 +257,37 @@ class TestEvalLoopCoordinatorIdentifyPatterns:
         )
         assert await coordinator._identify_patterns(reports) == ()
 
+    async def test_duplicate_pillar_in_same_report_counts_once(self) -> None:
+        """A single agent report with a duplicated pillar counts once.
+
+        Regression: pre-fix the loop incremented ``weak_counts``
+        per ``pillar_score`` entry, so a report that listed the same
+        pillar twice (defensive -- the model does not enforce
+        uniqueness) would inflate the weak-agent count and
+        spuriously satisfy ``pattern_min_agents``. Post-fix the
+        coordinator collapses per-agent pillars into a set first.
+        """
+        config = EvalLoopConfig(
+            pattern_weakness_threshold=5.0,
+            pattern_min_agents=2,
+        )
+        coordinator = _make_coordinator(config=config)
+        # One agent, one pillar listed twice. min_agents=2 means the
+        # pillar should NOT be promoted to a pattern, because only one
+        # agent is actually weak on it.
+        reports = (
+            _make_report(
+                "a",
+                ("intelligence", 1.0),
+                ("intelligence", 2.0),
+            ),
+        )
+        patterns = await coordinator._identify_patterns(reports)
+        assert patterns == (), (
+            "Duplicate pillar entries from the same agent must not inflate "
+            f"weak_counts; got {patterns!r}"
+        )
+
 
 @pytest.mark.unit
 class TestEvalLoopCoordinatorProposeActions:
