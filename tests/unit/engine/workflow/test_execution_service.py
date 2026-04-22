@@ -55,6 +55,12 @@ class FakeDefinitionRepo:
         self._store[definition.id] = copy.deepcopy(definition)
         return True
 
+    async def update_if_exists(self, definition: WorkflowDefinition) -> bool:
+        if definition.id not in self._store:
+            return False
+        self._store[definition.id] = copy.deepcopy(definition)
+        return True
+
     async def get(self, definition_id: str) -> WorkflowDefinition | None:
         stored = self._store.get(definition_id)
         return copy.deepcopy(stored) if stored is not None else None

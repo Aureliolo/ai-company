@@ -107,6 +107,86 @@ class SQLiteWorkflowDefinitionRepository:
     def __init__(self, db: aiosqlite.Connection) -> None:
         self._db = db
 
+    async def update_if_exists(self, definition: WorkflowDefinition) -> bool:
+        """Conditional UPDATE, returning ``False`` if the row is missing.
+
+        See :meth:`WorkflowDefinitionRepository.update_if_exists`.
+        Enforces the same optimistic-concurrency rule as
+        :meth:`save`: the UPDATE only applies when the stored row's
+        ``revision`` equals ``definition.revision - 1``; otherwise a
+        ``VersionConflictError`` is raised so callers distinguish
+        "row missing" (``False``) from "row changed concurrently".
+        """
+        nodes_json = json.dumps(
+            [n.model_dump(mode="json") for n in definition.nodes],
+        )
+        edges_json = json.dumps(
+            [e.model_dump(mode="json") for e in definition.edges],
+        )
+        inputs_json = json.dumps(
+            [i.model_dump(mode="json") for i in definition.inputs],
+        )
+        outputs_json = json.dumps(
+            [o.model_dump(mode="json") for o in definition.outputs],
+        )
+        try:
+            cursor = await self._db.execute(
+                """\
+UPDATE workflow_definitions SET
+    name=?, description=?, workflow_type=?, version=?, inputs=?, outputs=?,
+    is_subworkflow=?, nodes=?, edges=?, updated_at=?, revision=?
+WHERE id = ? AND revision = ?""",
+                (
+                    definition.name,
+                    definition.description,
+                    definition.workflow_type.value,
+                    definition.version,
+                    inputs_json,
+                    outputs_json,
+                    1 if definition.is_subworkflow else 0,
+                    nodes_json,
+                    edges_json,
+                    definition.updated_at.astimezone(UTC).isoformat(),
+                    definition.revision,
+                    definition.id,
+                    definition.revision - 1,
+                ),
+            )
+            if cursor.rowcount == 0:
+                # Distinguish "row missing" from "row exists with a
+                # different revision" so callers get a precise error.
+                probe = await self._db.execute(
+                    "SELECT revision FROM workflow_definitions WHERE id = ?",
+                    (definition.id,),
+                )
+                existing = await probe.fetchone()
+                await self._db.rollback()
+                if existing is None:
+                    return False
+                current = existing["revision"]
+                msg = (
+                    f"Version conflict updating workflow definition"
+                    f" {definition.id!r}: current revision is {current},"
+                    f" incoming revision is {definition.revision}"
+                )
+                logger.warning(
+                    PERSISTENCE_WORKFLOW_DEF_SAVE_FAILED,
+                    definition_id=definition.id,
+                    error=msg,
+                )
+                raise VersionConflictError(msg)
+            await self._db.commit()
+        except sqlite3.Error as exc:
+            msg = f"Failed to update workflow definition {definition.id!r}"
+            logger.warning(
+                PERSISTENCE_WORKFLOW_DEF_SAVE_FAILED,
+                definition_id=definition.id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        return True
+
     async def create_if_absent(self, definition: WorkflowDefinition) -> bool:
         """Atomic create-or-skip via ``INSERT ... ON CONFLICT DO NOTHING``.
 

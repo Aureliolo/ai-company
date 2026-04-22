@@ -173,15 +173,35 @@ class WorkflowService:
         self,
         definition: WorkflowDefinition,
     ) -> WorkflowDefinition:
-        """Upsert an existing definition with audit log.
+        """Update an existing definition with audit log.
 
-        Intentionally does NOT pre-check existence so optimistic
-        concurrency retries (create-or-update from the controller's
-        ``fetch_existing_for_update`` flow) continue to work without
-        an extra round-trip; the controller already checks existence
-        before invoking ``update``.
+        Uses the repository's ``update_if_exists`` so a row deleted
+        after the controller's existence check cannot be silently
+        resurrected by an upsert while still emitting
+        ``WORKFLOW_DEF_UPDATED``. A missing row now surfaces as
+        ``WorkflowDefinitionNotFoundError`` (HTTP 404) -- create/update
+        audit semantics stay distinct even under delete races.
+
+        Raises:
+            WorkflowDefinitionNotFoundError: No row exists for
+                ``definition.id`` -- caller should use
+                ``create_definition``.
+            VersionConflictError: A row exists but its stored
+                ``revision`` does not match ``definition.revision - 1``
+                (optimistic-concurrency failure).
         """
-        await self._definitions.save(definition)
+        updated = await self._definitions.update_if_exists(definition)
+        if not updated:
+            logger.warning(
+                WORKFLOW_DEF_NOT_FOUND,
+                definition_id=str(definition.id),
+                operation="update_definition",
+            )
+            msg = (
+                f"Workflow definition {definition.id!r} not found; "
+                "use create_definition to insert it"
+            )
+            raise WorkflowDefinitionNotFoundError(msg)
         logger.info(WORKFLOW_DEF_UPDATED, definition_id=definition.id)
         return definition
 

@@ -41,6 +41,7 @@ from synthorg.engine.workflow.definition import (
     WorkflowNode,
 )
 from synthorg.engine.workflow.service import (
+    WorkflowDefinitionExistsError,
     WorkflowDefinitionNotFoundError,
     WorkflowDefinitionRevisionMismatchError,
     WorkflowService,
@@ -183,7 +184,24 @@ class WorkflowController(Controller):
             now,
         )
 
-        await _service(state).create_definition(definition)
+        try:
+            await _service(state).create_definition(definition)
+        except WorkflowDefinitionExistsError as exc:
+            # Duplicate id hit at the SQL level in ``create_if_absent``.
+            # Surface as HTTP 409 so clients retrying a failed create do
+            # not see a 500.
+            logger.warning(
+                WORKFLOW_DEF_INVALID_REQUEST,
+                definition_id=definition.id,
+                reason="duplicate_id",
+                error=str(exc),
+            )
+            return Response(
+                content=ApiResponse[WorkflowDefinition](
+                    error=str(exc),
+                ),
+                status_code=409,
+            )
 
         svc = wf_versioning(state)
         try:
@@ -290,7 +308,24 @@ class WorkflowController(Controller):
                 status_code=422,
             )
 
-        await _service(state).create_definition(definition)
+        try:
+            await _service(state).create_definition(definition)
+        except WorkflowDefinitionExistsError as exc:
+            # The service raises this when ``create_if_absent`` hits a
+            # duplicate id at the SQL level. Map to HTTP 409 so clients
+            # retrying a failed create do not see a 500.
+            logger.warning(
+                WORKFLOW_DEF_INVALID_REQUEST,
+                definition_id=definition.id,
+                reason="duplicate_id",
+                error=str(exc),
+            )
+            return Response(
+                content=ApiResponse[WorkflowDefinition](
+                    error=str(exc),
+                ),
+                status_code=409,
+            )
 
         svc = wf_versioning(state)
         try:
@@ -312,7 +347,7 @@ class WorkflowController(Controller):
         )
 
     @patch("/{workflow_id:str}", guards=[require_write_access])
-    async def update_workflow(
+    async def update_workflow(  # noqa: PLR0911 -- enumerate distinct HTTP error paths explicitly
         self,
         request: Request[Any, Any, Any],
         state: State,
@@ -374,6 +409,19 @@ class WorkflowController(Controller):
 
         try:
             await service.update_definition(updated)
+        except WorkflowDefinitionNotFoundError as exc:
+            # Row was deleted between fetch_for_update and update;
+            # surface as 404 so the client refetches rather than
+            # accidentally creating via a retry.
+            logger.warning(
+                WORKFLOW_DEF_NOT_FOUND,
+                definition_id=updated.id,
+                operation="update_workflow",
+            )
+            return Response(
+                content=ApiResponse[WorkflowDefinition](error=str(exc)),
+                status_code=404,
+            )
         except VersionConflictError as exc:
             logger.warning(
                 WORKFLOW_DEF_VERSION_CONFLICT,

@@ -417,6 +417,9 @@ class _FakeWorkflowDefinitionRepository:
     async def create_if_absent(self, definition: WorkflowDefinition) -> bool:
         return True
 
+    async def update_if_exists(self, definition: WorkflowDefinition) -> bool:
+        return True
+
     async def get(self, definition_id: NotBlankStr) -> WorkflowDefinition | None:
         return None
 

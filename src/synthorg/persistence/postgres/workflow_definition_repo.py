@@ -107,6 +107,82 @@ class PostgresWorkflowDefinitionRepository:
     def __init__(self, pool: AsyncConnectionPool) -> None:
         self._pool = pool
 
+    async def update_if_exists(self, definition: WorkflowDefinition) -> bool:
+        """Conditional UPDATE, returning ``False`` if the row is missing.
+
+        See :meth:`WorkflowDefinitionRepository.update_if_exists`.
+        Same optimistic-concurrency rule as :meth:`save`: UPDATE only
+        applies when the stored row's ``revision`` equals
+        ``definition.revision - 1``.
+        """
+        nodes_jsonb = Jsonb([n.model_dump(mode="json") for n in definition.nodes])
+        edges_jsonb = Jsonb([e.model_dump(mode="json") for e in definition.edges])
+        inputs_jsonb = Jsonb([i.model_dump(mode="json") for i in definition.inputs])
+        outputs_jsonb = Jsonb([o.model_dump(mode="json") for o in definition.outputs])
+        try:
+            async with self._pool.connection() as conn, conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    UPDATE workflow_definitions SET
+                        name=%s, description=%s, workflow_type=%s,
+                        version=%s, inputs=%s, outputs=%s,
+                        is_subworkflow=%s, nodes=%s, edges=%s,
+                        updated_at=%s, revision=%s
+                    WHERE id = %s AND revision = %s
+                    """,
+                    (
+                        definition.name,
+                        definition.description,
+                        definition.workflow_type.value,
+                        definition.version,
+                        inputs_jsonb,
+                        outputs_jsonb,
+                        definition.is_subworkflow,
+                        nodes_jsonb,
+                        edges_jsonb,
+                        definition.updated_at,
+                        definition.revision,
+                        definition.id,
+                        definition.revision - 1,
+                    ),
+                )
+                updated = cur.rowcount
+                if updated == 0:
+                    # Row either missing or at a different revision.
+                    # Probe to distinguish the two cases so callers can
+                    # surface precise errors (404 vs 409).
+                    await cur.execute(
+                        "SELECT revision FROM workflow_definitions WHERE id = %s",
+                        (definition.id,),
+                    )
+                    probe = await cur.fetchone()
+                    if probe is None:
+                        await conn.rollback()
+                        return False
+                    msg = (
+                        f"Version conflict updating workflow definition"
+                        f" {definition.id!r}: current revision is {probe[0]},"
+                        f" incoming revision is {definition.revision}"
+                    )
+                    await conn.rollback()
+                    logger.warning(
+                        PERSISTENCE_WORKFLOW_DEF_SAVE_FAILED,
+                        definition_id=definition.id,
+                        error=msg,
+                    )
+                    raise VersionConflictError(msg)
+                await conn.commit()
+        except psycopg.Error as exc:
+            msg = f"Failed to update workflow definition {definition.id!r}"
+            logger.warning(
+                PERSISTENCE_WORKFLOW_DEF_SAVE_FAILED,
+                definition_id=definition.id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        return True
+
     async def create_if_absent(self, definition: WorkflowDefinition) -> bool:
         """Atomic create-or-skip via ``INSERT ... ON CONFLICT DO NOTHING``.
 
