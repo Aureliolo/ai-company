@@ -1,9 +1,10 @@
 /**
  * Ontology page -- entity catalog + drift monitor.
  */
-import { AlertTriangle, Shapes } from 'lucide-react'
+import { Shapes } from 'lucide-react'
 import { useOntologyData } from '@/hooks/useOntologyData'
 import { EmptyState } from '@/components/ui/empty-state'
+import { ErrorBanner } from '@/components/ui/error-banner'
 import { EntityCatalog } from './ontology/EntityCatalog'
 import { DriftMonitor } from './ontology/DriftMonitor'
 import { OntologySkeleton } from './ontology/OntologySkeleton'
@@ -60,14 +61,7 @@ export default function OntologyPage() {
 
       {/* Error alert */}
       {entitiesError && (
-        <div
-          role="alert"
-          aria-live="assertive"
-          className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/5 p-card text-sm text-danger"
-        >
-          <AlertTriangle className="size-4 shrink-0" />
-          {entitiesError}
-        </div>
+        <ErrorBanner severity="error" title="Could not load ontology" description={entitiesError} />
       )}
 
       {/* Entity Catalog */}

@@ -1,11 +1,31 @@
 import type { LucideIcon } from 'lucide-react'
+import { ExternalLink } from 'lucide-react'
+import { Link, useInRouterContext } from 'react-router'
 import { cn } from '@/lib/utils'
 import { Button } from './button'
+
+// Protocols allowed in learnMore.href. Anything else (including
+// javascript:, data:, vbscript:, file:) is stripped because the consumer
+// passes an href straight to <a href=...>.
+const SAFE_HREF_PATTERN = /^(https?:|mailto:|tel:|\/|#)/i
 
 export interface EmptyStateAction {
   label: string
   onClick: () => void
   variant?: 'default' | 'outline'
+}
+
+export interface EmptyStateLearnMore {
+  label?: string
+  /**
+   * Internal React Router path (starts with `/`) or external URL. Internal
+   * paths route via React Router's `<Link>` when the EmptyState is rendered
+   * inside a router context (preserving client-side state); external URLs
+   * always render as a plain `<a>` with `target=_blank` + `rel=noopener`.
+   */
+  href: string
+  /** Set true when href points outside the app; adds `target=_blank` + `rel=noopener`. Default auto-detects based on protocol. */
+  external?: boolean
 }
 
 export interface EmptyStateProps {
@@ -17,6 +37,8 @@ export interface EmptyStateProps {
   description?: string
   /** Optional action button. */
   action?: EmptyStateAction
+  /** Optional "Learn more" link rendered below the description. Use for contextual help. */
+  learnMore?: EmptyStateLearnMore
   className?: string
   /** Enable live-region announcements for dynamic state changes. Default: false. */
   announce?: boolean
@@ -32,9 +54,34 @@ export function EmptyState({
   title,
   description,
   action,
+  learnMore,
   className,
   announce = false,
 }: EmptyStateProps) {
+  // Strip any href with an unsafe protocol (javascript:, data:, vbscript:,
+  // file:, ...) before we render <a href=...>. Internal paths starting with
+  // `/` or `#` and conventional protocols (http/https/mailto/tel) are
+  // allowed. Normalise once so the protocol check, the internal/external
+  // classification, and the rendered `href` all see the same string.
+  const normalizedHref = learnMore?.href.trim()
+  const safeLearnMore =
+    learnMore !== undefined && normalizedHref !== undefined && SAFE_HREF_PATTERN.test(normalizedHref)
+      ? { ...learnMore, href: normalizedHref }
+      : undefined
+  const isExternal =
+    safeLearnMore !== undefined &&
+    (safeLearnMore.external ??
+      (safeLearnMore.href.startsWith('http://') ||
+        safeLearnMore.href.startsWith('https://') ||
+        safeLearnMore.href.startsWith('//')))
+  // Only route internal paths through React Router when the EmptyState is
+  // actually inside a router context. Outside a router (e.g. isolated unit
+  // tests, certain Storybook setups) we fall back to a plain <a>; `<Link>`
+  // would throw otherwise.
+  const insideRouter = useInRouterContext()
+  const useReactRouterLink =
+    safeLearnMore !== undefined && !isExternal && insideRouter && safeLearnMore.href.startsWith('/')
+
   return (
     <div
       role={announce ? 'status' : undefined}
@@ -55,6 +102,26 @@ export function EmptyState({
         <p className="text-sm font-medium text-foreground">{title}</p>
         {description && (
           <p className="max-w-sm text-xs text-muted-foreground">{description}</p>
+        )}
+        {safeLearnMore && (
+          useReactRouterLink ? (
+            <Link
+              to={safeLearnMore.href}
+              className="inline-flex items-center gap-1 text-xs text-accent hover:text-accent-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-sm"
+            >
+              {safeLearnMore.label ?? 'Learn more'}
+            </Link>
+          ) : (
+            <a
+              href={safeLearnMore.href}
+              target={isExternal ? '_blank' : undefined}
+              rel={isExternal ? 'noopener noreferrer' : undefined}
+              className="inline-flex items-center gap-1 text-xs text-accent hover:text-accent-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-sm"
+            >
+              {safeLearnMore.label ?? 'Learn more'}
+              {isExternal && <ExternalLink className="size-3" aria-hidden="true" />}
+            </a>
+          )
         )}
       </div>
       {action && (

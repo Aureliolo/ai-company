@@ -33,11 +33,13 @@ import {
   type SidebarMode,
 } from '@/stores/theme'
 import { AnimatedPresence } from '@/components/ui/animated-presence'
+import { CommandCheatsheet } from '@/components/ui/command-cheatsheet'
 import { CommandPalette } from '@/components/ui/command-palette'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { MobileUnsupportedOverlay } from '@/components/ui/mobile-unsupported'
 import { SkeletonCard } from '@/components/ui/skeleton'
 import { ToastContainer } from '@/components/ui/toast'
+import { useRegisterShortcuts } from '@/hooks/use-shortcut-registry'
 import { NotificationDrawer } from '@/components/notifications/NotificationDrawer'
 import { Sidebar } from './Sidebar'
 import { StatusBar } from './StatusBar'
@@ -185,6 +187,20 @@ export default function AppLayout() {
   }, [])
   useRegisterCommands(themeCommands)
 
+  // Register global shortcuts surfaced by the ? cheatsheet. Memoised so the
+  // registry's effect key (JSON.stringify(shortcuts)) is computed from a
+  // stable reference; otherwise every AppLayout render re-registers the set.
+  const globalShortcuts = useMemo(
+    () => [
+      { keys: ['Ctrl', 'K'], label: 'Open command palette', group: 'Global' },
+      { keys: ['?'], label: 'Show keyboard shortcuts', group: 'Global' },
+      { keys: ['Shift', 'N'], label: 'Toggle notifications', group: 'Global' },
+      { keys: ['Ctrl', ','], label: 'Open settings', group: 'Global' },
+    ],
+    [],
+  )
+  useRegisterShortcuts(globalShortcuts)
+
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-background">
       <StatusBar onHamburgerClick={openSidebarOverlay} sidebarOverlayOpen={sidebarOverlayOpen} />
@@ -206,6 +222,7 @@ export default function AppLayout() {
       />
       <ToastContainer />
       <CommandPalette />
+      <CommandCheatsheet />
       <MobileUnsupportedOverlay />
     </div>
   )

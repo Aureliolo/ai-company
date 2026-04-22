@@ -12,7 +12,7 @@ import {
   type DragStartEvent,
 } from '@dnd-kit/core'
 import { AnimatePresence } from 'motion/react'
-import { AlertTriangle, WifiOff } from 'lucide-react'
+import { ErrorBanner } from '@/components/ui/error-banner'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { useTaskBoardData } from '@/hooks/useTaskBoardData'
 import { useOptimisticUpdate } from '@/hooks/useOptimisticUpdate'
@@ -258,17 +258,15 @@ export default function TaskBoardPage() {
       </div>
 
       {error && (
-        <div className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/5 p-card text-sm text-danger">
-          <AlertTriangle className="size-4 shrink-0" />
-          {error}
-        </div>
+        <ErrorBanner severity="error" title="Could not load tasks" description={error} />
       )}
 
       {!wsConnected && !loading && (
-        <div className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/5 p-card text-sm text-warning">
-          <WifiOff className="size-4 shrink-0" />
-          {wsSetupError ?? 'Real-time updates disconnected. Data may be stale.'}
-        </div>
+        <ErrorBanner
+          variant="offline"
+          title="Real-time updates disconnected"
+          description={wsSetupError ?? 'Data may be stale until the connection recovers.'}
+        />
       )}
 
       <TaskFilterBar
@@ -297,7 +295,8 @@ export default function TaskBoardPage() {
             onDragStart={handleDragStart}
             onDragEnd={handleDragEnd}
           >
-            <div className="flex gap-4 overflow-x-auto pb-4">
+            <div className="flex snap-x snap-mandatory gap-4 overflow-x-auto pb-4 md:snap-none">
+              {/* Each column is min-width-280 so narrow viewports scroll horizontally; keeps drag-drop working at every breakpoint. */}
               {visibleColumns.map((col) => (
                 <TaskColumn
                   key={col.id}

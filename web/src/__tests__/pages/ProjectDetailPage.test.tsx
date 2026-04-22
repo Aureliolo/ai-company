@@ -64,7 +64,7 @@ describe('ProjectDetailPage', () => {
   it('renders not found when no project and not loading', () => {
     hookReturn = { ...defaultHookReturn, project: null }
     renderPage()
-    expect(screen.getByText('Project not found.')).toBeInTheDocument()
+    expect(screen.getByText('Project not found')).toBeInTheDocument()
   })
 
   it('renders header, team section, and task list when project loaded', () => {
@@ -80,9 +80,9 @@ describe('ProjectDetailPage', () => {
     expect(screen.getByText('Failed to load')).toBeInTheDocument()
   })
 
-  it('renders back button', () => {
+  it('renders breadcrumb link to projects', () => {
     renderPage()
-    expect(screen.getByText('Back to Projects')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Projects' })).toBeInTheDocument()
   })
 
   describe('property-based state transitions', () => {
@@ -108,7 +108,7 @@ describe('ProjectDetailPage', () => {
         fc.property(fc.boolean(), (loading) => {
           hookReturn = { ...defaultHookReturn, project: null, loading }
           const { unmount } = renderPage()
-          const hasNotFound = screen.queryByText('Project not found.') !== null
+          const hasNotFound = screen.queryByText('Project not found') !== null
           unmount()
           return hasNotFound === !loading
         }),

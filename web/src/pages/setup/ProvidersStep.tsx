@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
+import { ErrorBanner } from '@/components/ui/error-banner'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { SectionCard } from '@/components/ui/section-card'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -147,35 +148,31 @@ export function ProvidersStep() {
       </div>
 
       {providersError && (
-        <div className="space-y-2">
-          <div role="alert" className="rounded-md border border-danger/30 bg-danger/5 p-card text-sm text-danger">
-            {providersError}
-          </div>
-          <Button variant="outline" size="sm" onClick={() => void fetchProviders()}>
-            Retry
-          </Button>
-        </div>
+        <ErrorBanner
+          title="Failed to load providers"
+          description={providersError}
+          onRetry={() => void fetchProviders()}
+        />
       )}
 
       {/* Missing provider warnings */}
       {missingProviders.length > 0 && (
-        <div className="rounded-md border border-warning/30 bg-warning/5 p-card text-sm text-warning">
-          Agents need these providers: {missingProviders.join(', ')}
-        </div>
+        <ErrorBanner
+          severity="warning"
+          title="Agents need providers that are not configured"
+          description={`Missing: ${missingProviders.join(', ')}`}
+        />
       )}
 
       {/* Auto-detect results */}
       {presetsLoading ? (
         <Skeleton className="h-32 rounded-lg" />
       ) : presetsError && presets.length === 0 ? (
-        <div className="space-y-2">
-          <div role="alert" className="rounded-md border border-danger/30 bg-danger/5 p-card text-sm text-danger">
-            Failed to load provider presets: {presetsError}
-          </div>
-          <Button variant="outline" size="sm" onClick={() => void fetchPresets()}>
-            Retry
-          </Button>
-        </div>
+        <ErrorBanner
+          title="Failed to load provider presets"
+          description={presetsError}
+          onRetry={() => void fetchPresets()}
+        />
       ) : (
         <ProviderProbeResults
           presets={presets}

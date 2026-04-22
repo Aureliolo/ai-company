@@ -1,0 +1,108 @@
+import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import fc from 'fast-check'
+import { ErrorBanner } from '@/components/ui/error-banner'
+
+describe('ErrorBanner', () => {
+  it('renders title and description', () => {
+    render(<ErrorBanner title="Failed" description="Retry?" />)
+    expect(screen.getByText('Failed')).toBeInTheDocument()
+    expect(screen.getByText('Retry?')).toBeInTheDocument()
+  })
+
+  it('error severity uses role=alert and aria-live=assertive', () => {
+    render(<ErrorBanner severity="error" title="Boom" />)
+    const banner = screen.getByRole('alert')
+    expect(banner).toHaveAttribute('aria-live', 'assertive')
+  })
+
+  it('warning severity uses role=status and aria-live=polite', () => {
+    render(<ErrorBanner severity="warning" title="Hmm" />)
+    const banner = screen.getByRole('status')
+    expect(banner).toHaveAttribute('aria-live', 'polite')
+  })
+
+  it('info severity uses role=status and aria-live=polite', () => {
+    render(<ErrorBanner severity="info" title="FYI" />)
+    const banner = screen.getByRole('status')
+    expect(banner).toHaveAttribute('aria-live', 'polite')
+  })
+
+  it('offline variant forces warning semantics and renders WifiOff icon', () => {
+    const { container } = render(<ErrorBanner variant="offline" title="Offline" />)
+    const banner = screen.getByRole('status')
+    expect(banner).toHaveAttribute('aria-live', 'polite')
+    // WifiOff is a lucide svg; no explicit assert on class name, just that svg renders
+    expect(container.querySelector('svg')).toBeInTheDocument()
+  })
+
+  it('onRetry renders Retry button and fires on click', async () => {
+    const user = userEvent.setup()
+    const onRetry = vi.fn()
+    render(<ErrorBanner title="Failed" onRetry={onRetry} />)
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
+    expect(onRetry).toHaveBeenCalledTimes(1)
+  })
+
+  it('onDismiss renders Dismiss button and fires on click', async () => {
+    const user = userEvent.setup()
+    const onDismiss = vi.fn()
+    render(<ErrorBanner title="Failed" onDismiss={onDismiss} />)
+    await user.click(screen.getByRole('button', { name: 'Dismiss' }))
+    expect(onDismiss).toHaveBeenCalledTimes(1)
+  })
+
+  it('action prop renders custom action button', async () => {
+    const user = userEvent.setup()
+    const onClick = vi.fn()
+    render(
+      <ErrorBanner
+        title="Update available"
+        action={{ label: 'Reload', onClick }}
+      />,
+    )
+    await user.click(screen.getByRole('button', { name: 'Reload' }))
+    expect(onClick).toHaveBeenCalledTimes(1)
+  })
+
+  it('inline variant applies compact density classes', () => {
+    const { container } = render(<ErrorBanner variant="inline" title="Compact" />)
+    expect(container.firstChild).toHaveClass('px-3', 'py-2')
+  })
+
+  it('no Retry button when onRetry is absent', () => {
+    render(<ErrorBanner title="Failed" />)
+    expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument()
+  })
+
+  it('applies className', () => {
+    const { container } = render(<ErrorBanner title="Test" className="custom-class" />)
+    expect(container.firstChild).toHaveClass('custom-class')
+  })
+
+  it('property: severity/variant map deterministically to role + aria-live', () => {
+    fc.assert(
+      fc.property(
+        fc.constantFrom('error', 'warning', 'info'),
+        fc.constantFrom('inline', 'section', 'offline'),
+        (severity, variant) => {
+          const { unmount } = render(
+            <ErrorBanner
+              severity={severity as 'error' | 'warning' | 'info'}
+              variant={variant as 'inline' | 'section' | 'offline'}
+              title="Prop-test"
+            />,
+          )
+          // Offline always forces warning semantics regardless of severity.
+          const expectError = variant !== 'offline' && severity === 'error'
+          const expectedRole = expectError ? 'alert' : 'status'
+          const expectedLive = expectError ? 'assertive' : 'polite'
+          const banner = screen.getByRole(expectedRole)
+          expect(banner).toHaveAttribute('aria-live', expectedLive)
+          unmount()
+        },
+      ),
+      { numRuns: 20 },
+    )
+  })
+})

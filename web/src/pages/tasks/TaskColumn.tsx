@@ -5,6 +5,7 @@ import { Inbox } from 'lucide-react'
 import { cn, type SemanticColor } from '@/lib/utils'
 import { EmptyState } from '@/components/ui/empty-state'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
+import { formatNumber } from '@/utils/format'
 import { TaskCard } from './TaskCard'
 import type { KanbanColumn } from '@/utils/tasks'
 import type { Task } from '@/api/types/tasks'
@@ -15,6 +16,16 @@ const COLOR_CLASSES: Record<SemanticColor | 'text-secondary', string> = {
   warning: 'bg-warning',
   danger: 'bg-danger',
   'text-secondary': 'bg-text-secondary',
+}
+
+// Rough workload-hour estimate per complexity bucket. Hoisted to module scope
+// so it is not rebuilt on every TaskColumn render. Unknown complexity values
+// (e.g. backend drift) fall back to 0 via the `??` below.
+const COMPLEXITY_HOURS: Record<string, number> = {
+  simple: 1,
+  medium: 3,
+  complex: 8,
+  epic: 24,
 }
 
 export interface TaskColumnProps {
@@ -53,9 +64,14 @@ export function TaskColumn({ column, tasks, onSelectTask }: TaskColumnProps) {
 
   const taskIds = tasks.map((t) => t.id)
 
+  const estimatedHours = tasks.reduce(
+    (sum, t) => sum + (COMPLEXITY_HOURS[t.estimated_complexity] ?? 0),
+    0,
+  )
+
   return (
     <section
-      className="flex w-72 shrink-0 flex-col"
+      className="flex w-72 shrink-0 snap-start flex-col"
       data-column-id={column.id}
       aria-labelledby={`task-column-${column.id}-label`}
     >
@@ -72,11 +88,20 @@ export function TaskColumn({ column, tasks, onSelectTask }: TaskColumnProps) {
           {column.label}
         </span>
         <span
-          className="rounded-full bg-surface px-1.5 py-0.5 text-[10px] font-mono text-text-muted"
+          className="rounded-full bg-surface px-1.5 py-0.5 text-[length:var(--so-text-micro)] font-mono text-text-muted"
           aria-label={`${tasks.length} task${tasks.length === 1 ? '' : 's'}`}
         >
-          {tasks.length}
+          {formatNumber(tasks.length)}
         </span>
+        {estimatedHours > 0 && (
+          <span
+            className="ml-auto text-[length:var(--so-text-micro)] font-mono text-text-muted"
+            aria-label={`Estimated workload: approximately ${formatNumber(estimatedHours)} hours`}
+            title="Rough workload based on task complexity (simple=1h, medium=3h, complex=8h, epic=24h)"
+          >
+            ~{formatNumber(estimatedHours)}h
+          </span>
+        )}
       </div>
 
       {/* Droppable zone */}

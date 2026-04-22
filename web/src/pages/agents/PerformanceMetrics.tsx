@@ -16,7 +16,7 @@ export function PerformanceMetrics({ cards, className }: PerformanceMetricsProps
   return (
     <SectionCard title="Performance" icon={BarChart3} className={className}>
       <StaggerGroup
-        className={cn('grid grid-cols-2 gap-grid-gap max-[1023px]:grid-cols-1')}
+        className={cn('grid grid-cols-1 gap-grid-gap md:grid-cols-2 lg:grid-cols-4')}
       >
         {cards.map((card) => (
           <StaggerItem key={card.label}>

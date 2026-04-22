@@ -302,7 +302,7 @@ export function ApprovalDetailDrawer({
               </div>
 
               {/* Metadata grid */}
-              <div className="grid grid-cols-2 gap-grid-gap rounded-lg border border-border p-card">
+              <div className="grid grid-cols-1 gap-grid-gap rounded-lg border border-border p-card md:grid-cols-2">
                 <MetaField icon={Tag} label="Action Type" value={approval.action_type} />
                 <MetaField icon={Shield} label="Risk Level" value={getRiskLevelLabel(approval.risk_level)} />
                 <MetaField icon={User} label="Requested By" value={approval.requested_by} />

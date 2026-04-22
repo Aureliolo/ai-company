@@ -59,3 +59,32 @@ export const Minimal: Story = {
     title: 'Nothing here yet',
   },
 }
+
+export const WithLearnMore: Story = {
+  args: {
+    icon: Inbox,
+    title: 'No custom rules defined',
+    description: 'Custom rules let you enforce project-specific review criteria.',
+    learnMore: {
+      label: 'Learn about custom rules',
+      href: 'https://synthorg.io/docs/custom-rules',
+      external: true,
+    },
+  },
+}
+
+export const WithActionAndLearnMore: Story = {
+  args: {
+    icon: Users,
+    title: 'No projects yet',
+    description: 'Projects group related tasks, agents, and artifacts together.',
+    action: {
+      label: 'Create project',
+      onClick: () => {},
+    },
+    learnMore: {
+      href: 'https://synthorg.io/docs/projects',
+      external: true,
+    },
+  },
+}

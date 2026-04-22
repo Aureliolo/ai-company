@@ -5,6 +5,7 @@ import { SectionCard } from '@/components/ui/section-card'
 import { StatPill } from '@/components/ui/stat-pill'
 import { MetricCard } from '@/components/ui/metric-card'
 import { Button } from '@/components/ui/button'
+import { ErrorBanner } from '@/components/ui/error-banner'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { useSetupWizardStore } from '@/stores/setup-wizard'
 import { validateCompanyStep } from '@/utils/setup-validation'
@@ -56,6 +57,13 @@ export function CompanyStep() {
   const handleApplyTemplate = useCallback(async () => {
     await submitCompany()
   }, [submitCompany])
+
+  // The Apply button is the affordance that moves `templateApplied` from
+  // false -> true, so it must be enabled when `baseDetailsValid` holds (name
+  // / description within limits) and a submit is not already in flight. The
+  // validator's `baseDetailsValid` flag is the source of truth here -- no
+  // string matching against the template-gate error message.
+  const applyDisabled = !validation.baseDetailsValid || companyLoading
 
   return (
     <div className="space-y-section-gap">
@@ -130,13 +138,11 @@ export function CompanyStep() {
         currency={currency}
       />
 
-      {/* Apply template button */}
+      {/* Apply template button. */}
       {!companyResponse && (
         <Button
           onClick={handleApplyTemplate}
-          disabled={validation.errors.some(
-            (e) => e !== 'Apply the template to continue',
-          ) || companyLoading}
+          disabled={applyDisabled}
           className="w-full"
         >
           {companyLoading ? 'Applying Template...' : 'Apply Template'}
@@ -144,9 +150,16 @@ export function CompanyStep() {
       )}
 
       {companyError && (
-        <div role="alert" className="rounded-md border border-danger/30 bg-danger/5 p-card text-sm text-danger">
-          {companyError}
-        </div>
+        <ErrorBanner
+          variant="section"
+          severity="error"
+          title="Could not apply template"
+          description={companyError}
+          // Gate Retry by the same submit gate that controls the Apply button
+          // so the user cannot retry while base details are invalid or while
+          // a submit is already in flight.
+          onRetry={applyDisabled ? undefined : () => void handleApplyTemplate()}
+        />
       )}
 
       {/* Preview after applying */}

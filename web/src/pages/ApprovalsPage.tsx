@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import { AnimatePresence } from 'motion/react'
-import { AlertTriangle, ClipboardCheck, WifiOff } from 'lucide-react'
+import { ClipboardCheck } from 'lucide-react'
 import { MetricCard } from '@/components/ui/metric-card'
 import { EmptyState } from '@/components/ui/empty-state'
+import { ErrorBanner } from '@/components/ui/error-banner'
+import { ListHeader } from '@/components/ui/list-header'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useApprovalsData } from '@/hooks/useApprovalsData'
@@ -13,6 +15,7 @@ import {
   groupByRiskLevel,
   type ApprovalPageFilters,
 } from '@/utils/approvals'
+import { formatNumber } from '@/utils/format'
 import { sanitizeForLog } from '@/utils/logging'
 import { createLogger } from '@/lib/logger'
 
@@ -232,20 +235,26 @@ export default function ApprovalsPage() {
 
   return (
     <div className="space-y-section-gap">
-      <h1 className="text-lg font-semibold text-foreground">Approvals</h1>
+      <ListHeader
+        title="Approvals"
+        count={filtered.length}
+        countLabel={
+          filtered.length === approvals.length
+            ? undefined
+            : `${formatNumber(filtered.length)} of ${formatNumber(approvals.length)}`
+        }
+      />
 
       {error && (
-        <div className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/5 p-card text-sm text-danger">
-          <AlertTriangle className="size-4 shrink-0" />
-          {error}
-        </div>
+        <ErrorBanner severity="error" title="Could not load approvals" description={error} />
       )}
 
       {(wsSetupError || (wasConnected && !wsConnected)) && !loading && (
-        <div className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/5 p-card text-sm text-warning">
-          <WifiOff className="size-4 shrink-0" />
-          {wsSetupError ?? 'Real-time updates disconnected. Data may be stale.'}
-        </div>
+        <ErrorBanner
+          variant="offline"
+          title="Real-time updates disconnected"
+          description={wsSetupError ?? 'Data may be stale until the connection recovers.'}
+        />
       )}
 
       <ApprovalFilterBar

@@ -1,6 +1,8 @@
 import { useParams } from 'react-router'
-import { AlertTriangle, WifiOff } from 'lucide-react'
+import { Breadcrumbs } from '@/components/ui/breadcrumbs'
+import { ErrorBanner } from '@/components/ui/error-banner'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
+import { ROUTES } from '@/router/routes'
 import { useAgentDetailData } from '@/hooks/useAgentDetailData'
 import { useCompanyStore } from '@/stores/company'
 import { AgentDetailSkeleton } from './agents/AgentDetailSkeleton'
@@ -56,27 +58,27 @@ export default function AgentDetailPage() {
 
   if (!agent) {
     return (
-      <div className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/5 p-card text-sm text-danger">
-        <AlertTriangle className="size-4 shrink-0" />
-        {error ?? 'Agent not found.'}
+      <div className="space-y-section-gap">
+        <Breadcrumbs items={[{ label: 'Agents', to: ROUTES.AGENTS }, { label: resolvedAgentName || 'Unknown agent' }]} />
+        <ErrorBanner severity="error" title="Agent not found" description={error ?? undefined} />
       </div>
     )
   }
 
   return (
     <div className="space-y-section-gap">
+      <Breadcrumbs items={[{ label: 'Agents', to: ROUTES.AGENTS }, { label: agent.name }]} />
+
       {error && (
-        <div className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/5 p-card text-sm text-danger">
-          <AlertTriangle className="size-4 shrink-0" />
-          {error}
-        </div>
+        <ErrorBanner severity="error" title="Could not load agent data" description={error} />
       )}
 
       {!wsConnected && !loading && (
-        <div className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/5 p-card text-sm text-warning">
-          <WifiOff className="size-4 shrink-0" />
-          {wsSetupError ?? 'Real-time updates disconnected. Data may be stale.'}
-        </div>
+        <ErrorBanner
+          variant="offline"
+          title="Real-time updates disconnected"
+          description={wsSetupError ?? 'Data may be stale until the connection recovers.'}
+        />
       )}
 
       <ErrorBoundary level="section">

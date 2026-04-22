@@ -1,8 +1,9 @@
 import { useMemo } from 'react'
 import { Link } from 'react-router'
-import { AlertTriangle, ArrowLeft, Calendar, WifiOff } from 'lucide-react'
+import { ArrowLeft, Calendar } from 'lucide-react'
 import { MetricCard } from '@/components/ui/metric-card'
 import { SectionCard } from '@/components/ui/section-card'
+import { ErrorBanner } from '@/components/ui/error-banner'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { EmptyState } from '@/components/ui/empty-state'
 import { SkeletonCard, SkeletonMetric, SkeletonTable } from '@/components/ui/skeleton'
@@ -114,17 +115,15 @@ export default function BudgetForecastPage() {
       </div>
 
       {error && (
-        <div className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/5 p-card text-sm text-danger">
-          <AlertTriangle className="size-4 shrink-0" />
-          {error}
-        </div>
+        <ErrorBanner severity="error" title="Could not load budget forecast" description={error} />
       )}
 
       {!wsConnected && !loading && (
-        <div className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/5 p-card text-sm text-warning">
-          <WifiOff className="size-4 shrink-0" />
-          {wsSetupError ?? 'Real-time updates disconnected. Data may be stale.'}
-        </div>
+        <ErrorBanner
+          variant="offline"
+          title="Real-time updates disconnected"
+          description={wsSetupError ?? 'Data may be stale until the connection recovers.'}
+        />
       )}
 
       <StaggerGroup className="grid grid-cols-4 gap-grid-gap max-[1023px]:grid-cols-2">

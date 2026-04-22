@@ -68,7 +68,7 @@ describe('AgentsPage', () => {
 
   it('renders agent count', () => {
     renderPage()
-    expect(screen.getByText('1 of 1')).toBeInTheDocument()
+    expect(screen.getByText('(1)')).toBeInTheDocument()
   })
 
   it('shows error banner when error is set', () => {

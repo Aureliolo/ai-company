@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { ErrorBanner } from '@/components/ui/error-banner'
 import { SkipWizardForm } from './SkipWizardForm'
 import { useSetupWizardStore } from '@/stores/setup-wizard'
 import { useSetupStore } from '@/stores/setup'
@@ -63,9 +64,13 @@ export function CompleteStep() {
       />
 
       {completionError && (
-        <div role="alert" className="rounded-md border border-danger/30 bg-danger/5 p-card text-sm text-danger">
-          {completionError}
-        </div>
+        <ErrorBanner
+          variant="section"
+          severity="error"
+          title="Could not complete setup"
+          description={completionError}
+          onRetry={() => void handleComplete()}
+        />
       )}
 
       {/* Complete button */}

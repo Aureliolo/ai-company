@@ -172,13 +172,19 @@ describe('TaskDetailPage', () => {
 
   it('renders task details when task is loaded', async () => {
     await renderDetailPage()
-    expect(await screen.findByText('Test task')).toBeInTheDocument()
+    // The task title appears in both the breadcrumb and the detail header; just confirm
+    // at least one instance is present plus the description.
+    const titleMatches = await screen.findAllByText('Test task')
+    expect(titleMatches.length).toBeGreaterThanOrEqual(1)
     expect(screen.getByText('Test description')).toBeInTheDocument()
   })
 
-  it('renders Back to Board button', async () => {
+  it('renders breadcrumb link to task board', async () => {
     await renderDetailPage()
-    expect(await screen.findByText('Back to Board')).toBeInTheDocument()
+    const link = await screen.findByRole('link', { name: 'Tasks' })
+    // Assert destination too so an accidental "Tasks" link elsewhere on
+    // the page does not silently satisfy the test.
+    expect(link).toHaveAttribute('href', '/tasks')
   })
 
   it('renders transition buttons for in_progress task', async () => {
@@ -209,7 +215,7 @@ describe('TaskDetailPage', () => {
       ),
     )
     await renderDetailPage()
-    await waitFor(() => expect(screen.getByText('Test task')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getAllByText('Test task').length).toBeGreaterThanOrEqual(1))
     expect(
       screen.queryByRole('button', { name: 'Cancel Task' }),
     ).not.toBeInTheDocument()

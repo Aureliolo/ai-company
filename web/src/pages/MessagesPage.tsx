@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useSearchParams } from 'react-router'
 import { AnimatePresence } from 'motion/react'
-import { AlertTriangle, MessageSquare, WifiOff } from 'lucide-react'
+import { MessageSquare } from 'lucide-react'
+import { ErrorBanner } from '@/components/ui/error-banner'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { useMessagesData } from '@/hooks/useMessagesData'
@@ -145,23 +146,18 @@ export default function MessagesPage() {
 
         {/* Error banners */}
         {error && (
-          <div className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/5 p-card text-sm text-danger">
-            <AlertTriangle className="size-4 shrink-0" />
-            {error}
-          </div>
+          <ErrorBanner severity="error" title="Could not load messages" description={error} />
         )}
         {channelsError && channelsError !== error && (
-          <div className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/5 p-card text-sm text-danger">
-            <AlertTriangle className="size-4 shrink-0" />
-            {channelsError}
-          </div>
+          <ErrorBanner severity="error" title="Could not load channels" description={channelsError} />
         )}
 
         {(wsSetupError || (wasConnectedRef.current && !wsConnected)) && !loading && (
-          <div className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/5 p-card text-sm text-warning">
-            <WifiOff className="size-4 shrink-0" />
-            {wsSetupError ?? 'Real-time updates disconnected. Data may be stale.'}
-          </div>
+          <ErrorBanner
+            variant="offline"
+            title="Real-time updates disconnected"
+            description={wsSetupError ?? 'Data may be stale until the connection recovers.'}
+          />
         )}
 
         {/* No channel selected prompt */}

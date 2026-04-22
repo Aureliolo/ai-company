@@ -1,3 +1,4 @@
+import { useId } from 'react'
 import { cn, type AgentRuntimeStatus } from '@/lib/utils'
 import { Avatar } from './avatar'
 import { StatusBadge } from './status-badge'
@@ -24,8 +25,11 @@ export function AgentCard({
   className,
   flashStyle,
 }: AgentCardProps) {
+  const nameId = useId()
+  const roleId = useId()
   return (
-    <div
+    <article
+      aria-labelledby={role ? `${nameId} ${roleId}` : nameId}
       className={cn(
         'rounded-lg border border-border bg-card p-card',
         'transition-all duration-200',
@@ -39,12 +43,12 @@ export function AgentCard({
         <Avatar name={name} size="md" />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <span className="truncate text-body-sm font-semibold text-foreground">
+            <span id={nameId} className="truncate text-body-sm font-semibold text-foreground">
               {name}
             </span>
             <StatusBadge status={status} />
           </div>
-          <span className="text-xs text-text-secondary">{role}</span>
+          <span id={roleId} className="text-xs text-text-secondary">{role}</span>
         </div>
       </div>
 
@@ -66,6 +70,6 @@ export function AgentCard({
           </div>
         )}
       </div>
-    </div>
+    </article>
   )
 }

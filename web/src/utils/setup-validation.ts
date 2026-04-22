@@ -8,11 +8,26 @@ export interface StepValidationResult {
   readonly errors: readonly string[]
 }
 
+/**
+ * Company-step validation result. In addition to the generic `valid` /
+ * `errors` fields, exposes structured gates so callers can enable/disable
+ * specific affordances (e.g. the Apply-Template button) without string-matching
+ * against error messages.
+ */
+export interface CompanyStepValidationResult extends StepValidationResult {
+  /** True when the template-apply request has succeeded (companyResponse present). */
+  readonly templateApplied: boolean
+  /** True when the non-template errors (name length, etc.) are empty. */
+  readonly baseDetailsValid: boolean
+}
+
 const VALID: StepValidationResult = { valid: true, errors: [] }
 
 function invalid(...errors: string[]): StepValidationResult {
   return { valid: false, errors }
 }
+
+export const COMPANY_TEMPLATE_GATE_ERROR = 'Apply the template to continue'
 
 // ── Step 0: Account ──────────────────────────────────────────
 
@@ -51,7 +66,7 @@ interface CompanyStepInput {
 const MAX_COMPANY_NAME_LENGTH = 200
 const MAX_DESCRIPTION_LENGTH = 1000
 
-export function validateCompanyStep(input: CompanyStepInput): StepValidationResult {
+export function validateCompanyStep(input: CompanyStepInput): CompanyStepValidationResult {
   const errors: string[] = []
   const trimmedName = input.companyName.trim()
 
@@ -65,11 +80,19 @@ export function validateCompanyStep(input: CompanyStepInput): StepValidationResu
     errors.push(`Description must be ${MAX_DESCRIPTION_LENGTH} characters or less`)
   }
 
-  if (!input.companyResponse) {
-    errors.push('Apply the template to continue')
+  const baseDetailsValid = errors.length === 0
+  const templateApplied = input.companyResponse !== null
+
+  if (!templateApplied) {
+    errors.push(COMPANY_TEMPLATE_GATE_ERROR)
   }
 
-  return errors.length > 0 ? { valid: false, errors } : VALID
+  return {
+    valid: errors.length === 0,
+    errors,
+    templateApplied,
+    baseDetailsValid,
+  }
 }
 
 // ── Step 3: Agents ───────────────────────────────────────────

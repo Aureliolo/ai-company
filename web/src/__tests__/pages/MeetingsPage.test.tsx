@@ -95,6 +95,9 @@ describe('MeetingsPage', () => {
 
   it('renders trigger meeting button', () => {
     renderMeetings()
-    expect(screen.getByText('Trigger Meeting')).toBeInTheDocument()
+    // ListHeader shows "Trigger meeting" (sentence case per consistent button labelling)
+    expect(
+      screen.getAllByRole('button', { name: /trigger meeting/i }).length,
+    ).toBeGreaterThanOrEqual(1)
   })
 })

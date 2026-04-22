@@ -5,6 +5,7 @@ import type { SinkInfo } from '@/api/types/settings'
 import type { WsEvent } from '@/api/types/websocket'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
+import { ErrorBanner } from '@/components/ui/error-banner'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { Skeleton } from '@/components/ui/skeleton'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
@@ -84,9 +85,7 @@ export default function SettingsSinksPage() {
       </div>
 
       {error && (
-        <div className="rounded-lg border border-danger/30 bg-danger/5 p-card text-sm text-danger">
-          {error}
-        </div>
+        <ErrorBanner severity="error" title="Could not load sinks" description={error} />
       )}
 
       {loading && sinks.length === 0 && (

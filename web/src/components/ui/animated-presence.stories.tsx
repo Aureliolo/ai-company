@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { useState } from 'react'
 import { AnimatedPresence } from './animated-presence'
+import { Button } from './button'
 
 const meta = {
   title: 'Animation/AnimatedPresence',
@@ -37,18 +38,14 @@ function TransitionDemo() {
     <div className="space-y-4">
       <div className="flex gap-2">
         {pages.map((page, i) => (
-          <button
-            type="button"
+          <Button
             key={page.key}
+            size="sm"
+            variant={i === index ? 'default' : 'outline'}
             onClick={() => setIndex(i)}
-            className={`rounded-md px-3 py-1.5 text-sm transition-colors ${
-              i === index
-                ? 'bg-accent text-accent-foreground'
-                : 'bg-card text-foreground hover:bg-card-hover'
-            }`}
           >
             {page.label}
-          </button>
+          </Button>
         ))}
       </div>
       <AnimatedPresence routeKey={current!.key}>
@@ -61,4 +58,74 @@ function TransitionDemo() {
 export const Default: Story = {
   args: { routeKey: '/', children: null },
   render: () => <TransitionDemo />,
+}
+
+function StaticContent() {
+  return (
+    <AnimatedPresence routeKey="/static">
+      <PageContent label="Static" color="bg-card" />
+    </AnimatedPresence>
+  )
+}
+
+export const StaticRoute: Story = {
+  args: { routeKey: '/static', children: null },
+  render: () => <StaticContent />,
+}
+
+function ReducedMotionDemo() {
+  const [index, setIndex] = useState(0)
+  const pages = [
+    { key: '/a', label: 'Route A', color: 'bg-card' },
+    { key: '/b', label: 'Route B', color: 'bg-surface' },
+  ]
+  const current = pages[index] ?? pages[0]!
+  return (
+    <div className="space-y-4">
+      <p className="text-xs text-muted-foreground">
+        Motion obeys <code>prefers-reduced-motion</code>. Toggle the OS setting (or emulate in devtools) to see the difference between the slide transitions and the reduced-motion fallback.
+      </p>
+      <Button size="sm" onClick={() => setIndex((i) => (i + 1) % pages.length)}>
+        Toggle route
+      </Button>
+      <AnimatedPresence routeKey={current.key}>
+        <PageContent label={current.label} color={current.color} />
+      </AnimatedPresence>
+    </div>
+  )
+}
+
+export const ReducedMotion: Story = {
+  args: { routeKey: '/', children: null },
+  render: () => <ReducedMotionDemo />,
+  parameters: {
+    a11y: {
+      config: {
+        rules: [{ id: 'meta-viewport', enabled: false }],
+      },
+    },
+  },
+}
+
+function RapidNavigationDemo() {
+  const pages = ['/a', '/b', '/c', '/d']
+  const [index, setIndex] = useState(0)
+  const current = pages[index % pages.length] ?? pages[0]!
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-2">
+        <Button size="sm" onClick={() => setIndex((i) => i + 1)}>
+          Next route (simulate rapid nav)
+        </Button>
+      </div>
+      <AnimatedPresence routeKey={current}>
+        <PageContent label={`Route ${current}`} color="bg-card" />
+      </AnimatedPresence>
+    </div>
+  )
+}
+
+export const RapidNavigation: Story = {
+  args: { routeKey: '/', children: null },
+  render: () => <RapidNavigationDemo />,
 }

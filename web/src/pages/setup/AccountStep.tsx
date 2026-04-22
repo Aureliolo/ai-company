@@ -2,10 +2,13 @@ import { useCallback, useEffect, useState } from 'react'
 import { createLogger } from '@/lib/logger'
 import { InputField } from '@/components/ui/input-field'
 import { Button } from '@/components/ui/button'
+import { ErrorBanner } from '@/components/ui/error-banner'
 import { useAuthStore } from '@/stores/auth'
 import { useSetupWizardStore } from '@/stores/setup-wizard'
 import { getPasswordStrength } from '@/utils/password-strength'
 import { getSetupStatus } from '@/api/endpoints/setup'
+import { getErrorMessage } from '@/utils/errors'
+import { sanitizeForLog } from '@/utils/logging'
 import { cn } from '@/lib/utils'
 
 const log = createLogger('setup')
@@ -19,23 +22,33 @@ export function AccountStep() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [minPasswordLength, setMinPasswordLength] = useState(DEFAULT_MIN_PASSWORD_LENGTH)
+  const [policyError, setPolicyError] = useState<string | null>(null)
+  const [policyLoading, setPolicyLoading] = useState(true)
 
   const authSetup = useAuthStore((s) => s.setup)
   const setAccountCreated = useSetupWizardStore((s) => s.setAccountCreated)
   const markStepComplete = useSetupWizardStore((s) => s.markStepComplete)
 
-  // Read backend-configured min password length
-  useEffect(() => {
-    getSetupStatus()
-      .then((status) => {
-        setMinPasswordLength(
-          status.min_password_length ?? DEFAULT_MIN_PASSWORD_LENGTH,
-        )
-      })
-      .catch((err) => {
-        log.error('Failed to fetch setup status:', err)
-      })
+  // Read backend-configured min password length. Surfaced as an error so
+  // users cannot submit under the default policy if the server has a stricter
+  // rule (otherwise the create-account POST would fail with a confusing error).
+  const fetchPolicy = useCallback(async () => {
+    setPolicyLoading(true)
+    setPolicyError(null)
+    try {
+      const status = await getSetupStatus()
+      setMinPasswordLength(status.min_password_length ?? DEFAULT_MIN_PASSWORD_LENGTH)
+    } catch (err) {
+      log.error('Failed to fetch setup status:', sanitizeForLog(err))
+      setPolicyError(getErrorMessage(err))
+    } finally {
+      setPolicyLoading(false)
+    }
   }, [])
+
+  useEffect(() => {
+    void fetchPolicy()
+  }, [fetchPolicy])
 
   const strength = getPasswordStrength(password)
 
@@ -121,13 +134,25 @@ export function AccountStep() {
           error={confirmPassword.length > 0 && password !== confirmPassword ? 'Passwords do not match' : null}
         />
 
-        {error && (
-          <div role="alert" className="rounded-md border border-danger/30 bg-danger/5 p-card text-sm text-danger">
-            {error}
-          </div>
+        {policyError && (
+          <ErrorBanner
+            variant="section"
+            severity="error"
+            title="Could not load password policy"
+            description="The server policy may be stricter than the default. Retry before creating your account so validation matches the server."
+            onRetry={() => void fetchPolicy()}
+          />
         )}
 
-        <Button onClick={handleSubmit} disabled={loading} className="w-full">
+        {error && (
+          <ErrorBanner variant="section" severity="error" title="Could not create account" description={error} />
+        )}
+
+        <Button
+          onClick={handleSubmit}
+          disabled={loading || policyLoading || policyError !== null}
+          className="w-full"
+        >
           {loading ? 'Creating Account...' : 'Create Account'}
         </Button>
       </div>

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Link, useParams } from 'react-router'
-import { AlertTriangle, ArrowLeft, Smile, Users } from 'lucide-react'
+import { useParams } from 'react-router'
+import { Smile, Users } from 'lucide-react'
 
 import {
   getClient,
@@ -8,6 +8,8 @@ import {
   type ClientProfile,
   type SatisfactionHistory,
 } from '@/api/endpoints/clients'
+import { Breadcrumbs } from '@/components/ui/breadcrumbs'
+import { ErrorBanner } from '@/components/ui/error-banner'
 import { MetricCard } from '@/components/ui/metric-card'
 import { SectionCard } from '@/components/ui/section-card'
 import { SkeletonCard } from '@/components/ui/skeleton'
@@ -84,34 +86,15 @@ export default function ClientDetailPage() {
   if (error || !client) {
     return (
       <div className="space-y-section-gap">
-        <Link
-          to={ROUTES.CLIENTS}
-          className="inline-flex items-center gap-2 text-sm text-accent hover:underline"
-        >
-          <ArrowLeft className="size-4" />
-          Back to clients
-        </Link>
-        <div
-          role="alert"
-          aria-live="assertive"
-          className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/5 p-card text-sm text-danger"
-        >
-          <AlertTriangle className="size-4 shrink-0" />
-          {error ?? 'Client not found.'}
-        </div>
+        <Breadcrumbs items={[{ label: 'Clients', to: ROUTES.CLIENTS }, { label: clientId ?? 'Unknown client' }]} />
+        <ErrorBanner severity="error" title="Client not found" description={error ?? undefined} />
       </div>
     )
   }
 
   return (
     <div className="space-y-section-gap">
-      <Link
-        to={ROUTES.CLIENTS}
-        className="inline-flex items-center gap-2 text-sm text-accent hover:underline"
-      >
-        <ArrowLeft className="size-4" />
-        Back to clients
-      </Link>
+      <Breadcrumbs items={[{ label: 'Clients', to: ROUTES.CLIENTS }, { label: client.name }]} />
       <div>
         <h1 className="text-lg font-semibold text-foreground">{client.name}</h1>
         <p className="text-sm text-text-secondary">{client.client_id}</p>
@@ -144,13 +127,13 @@ export default function ClientDetailPage() {
       </SectionCard>
       <SectionCard title="Satisfaction" icon={Smile}>
         {satisfactionError && (
-          <div
-            role="alert"
-            aria-live="assertive"
-            className="mb-card flex items-center gap-2 rounded-md border border-danger/30 bg-danger/5 p-card text-sm text-danger"
-          >
-            <AlertTriangle className="size-4 shrink-0" />
-            {satisfactionError}
+          <div className="mb-card">
+            <ErrorBanner
+              variant="inline"
+              severity="error"
+              title="Could not load satisfaction history"
+              description={satisfactionError}
+            />
           </div>
         )}
         {satisfaction && satisfaction.total_reviews > 0 ? (

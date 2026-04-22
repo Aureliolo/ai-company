@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
-import { AlertTriangle, Inbox } from 'lucide-react'
+import { Inbox } from 'lucide-react'
+import { ErrorBanner } from '@/components/ui/error-banner'
 
 import {
   approveRequest,
@@ -144,14 +145,7 @@ export default function RequestQueuePage() {
       </div>
 
       {error && (
-        <div
-          role="alert"
-          aria-live="assertive"
-          className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/5 p-card text-sm text-danger"
-        >
-          <AlertTriangle className="size-4 shrink-0" />
-          {error}
-        </div>
+        <ErrorBanner severity="error" title="Could not load request queue" description={error} />
       )}
 
       {requests.length === 0 ? (

@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router'
-import { AlertTriangle, Video, WifiOff } from 'lucide-react'
+import { Video } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
+import { ErrorBanner } from '@/components/ui/error-banner'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
+import { ListHeader } from '@/components/ui/list-header'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { useMeetingsData } from '@/hooks/useMeetingsData'
 import { filterMeetings, type MeetingPageFilters } from '@/utils/meetings'
@@ -82,23 +84,22 @@ export default function MeetingsPage() {
 
   return (
     <div className="space-y-section-gap">
-      <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-foreground">Meetings</h1>
-        <Button onClick={() => setTriggerOpen(true)}>Trigger Meeting</Button>
-      </div>
+      <ListHeader
+        title="Meetings"
+        count={filtered.length}
+        primaryAction={<Button onClick={() => setTriggerOpen(true)}>Trigger meeting</Button>}
+      />
 
       {error && (
-        <div role="alert" className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/5 p-card text-sm text-danger">
-          <AlertTriangle className="size-4 shrink-0" />
-          {error}
-        </div>
+        <ErrorBanner severity="error" title="Could not load meetings" description={error} />
       )}
 
       {(wsSetupError || (wasConnectedRef.current && !wsConnected)) && !loading && (
-        <div role="status" className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/5 p-card text-sm text-warning">
-          <WifiOff className="size-4 shrink-0" />
-          {wsSetupError ?? 'Real-time updates disconnected. Data may be stale.'}
-        </div>
+        <ErrorBanner
+          variant="offline"
+          title="Real-time updates disconnected"
+          description={wsSetupError ?? 'Data may be stale until the connection recovers.'}
+        />
       )}
 
       <ErrorBoundary level="section">

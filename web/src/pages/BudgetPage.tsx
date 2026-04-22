@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
-import { AlertTriangle, WifiOff } from 'lucide-react'
 import { MetricCard } from '@/components/ui/metric-card'
+import { ErrorBanner } from '@/components/ui/error-banner'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { useBudgetData } from '@/hooks/useBudgetData'
@@ -90,17 +90,15 @@ export default function BudgetPage() {
       </div>
 
       {error && (
-        <div className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/5 p-card text-sm text-danger">
-          <AlertTriangle className="size-4 shrink-0" />
-          {error}
-        </div>
+        <ErrorBanner severity="error" title="Could not load budget" description={error} />
       )}
 
       {!wsConnected && !loading && (
-        <div className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/5 p-card text-sm text-warning">
-          <WifiOff className="size-4 shrink-0" />
-          {wsSetupError ?? 'Real-time updates disconnected. Data may be stale.'}
-        </div>
+        <ErrorBanner
+          variant="offline"
+          title="Real-time updates disconnected"
+          description={wsSetupError ?? 'Data may be stale until the connection recovers.'}
+        />
       )}
 
       <ThresholdAlerts zone={thresholdZone} budgetConfig={budgetConfig} overview={overview} />

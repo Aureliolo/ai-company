@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
-import { Plug, Plus } from 'lucide-react'
+import { Plus } from 'lucide-react'
 import type { Connection } from '@/api/types/integrations'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { ErrorBanner } from '@/components/ui/error-banner'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
+import { ListHeader } from '@/components/ui/list-header'
 import { useConnectionsData } from '@/hooks/useConnectionsData'
 import { useConnectionsStore } from '@/stores/connections'
 import { TunnelCard } from './connections/TunnelCard'
@@ -33,26 +35,21 @@ export default function ConnectionsPage() {
 
   return (
     <div className="flex flex-col gap-section-gap">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Plug className="size-5 text-text-secondary" aria-hidden />
-          <h1 className="text-lg font-semibold text-foreground">Connections</h1>
-        </div>
-        <Button size="sm" onClick={() => setModal({ kind: 'create' })}>
-          <Plus className="mr-1.5 size-3.5" aria-hidden />
-          New connection
-        </Button>
-      </div>
+      <ListHeader
+        title="Connections"
+        count={connections.length}
+        primaryAction={
+          <Button size="sm" onClick={() => setModal({ kind: 'create' })}>
+            <Plus aria-hidden="true" />
+            New connection
+          </Button>
+        }
+      />
 
       <TunnelCard />
 
       {error && (
-        <div
-          role="alert"
-          className="rounded-md bg-danger/10 p-card text-sm text-danger"
-        >
-          {error}
-        </div>
+        <ErrorBanner severity="error" title="Could not load connections" description={error} />
       )}
 
       <ConnectionFilters />

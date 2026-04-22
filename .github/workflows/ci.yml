@@ -393,7 +393,26 @@ jobs:
           # buffer. Lower again once #1468 replaces MSW's matching
           # layer; do not raise further without the same kind of
           # documented per-PR justification.
-          MAX_ASYNC_LEAKS: '72'
+          #
+          # 2026-04-22 (PR #1506, WEB-2): raised 72 -> 80. WEB-2 adds
+          # fast-check property tests to nine component/hook suites
+          # (``breadcrumbs`` / ``error-banner`` / ``list-header`` /
+          # ``pagination`` / ``progress-indicator`` / ``search-filter-sort``
+          # / ``use-list-pagination`` / ``use-list-shortcuts`` /
+          # ``use-unsaved-changes-guard``) with numRuns capped at 15-20
+          # per property. Each property mount exercises the same MSW-
+          # intercepted render paths that existed before, so the
+          # structural XHR interceptor + axios response-chain leaks get
+          # hit a few more times. Observed CI: 63 -> 76 (+13 raw
+          # including the now-fixed ShortcutRegistry infinite-loop that
+          # tripped tough-cookie / microtask leaks in the cheatsheet
+          # test worker before it was killed by the CI timeout). Stable
+          # CI baseline for this PR is 76; 80 = 76 + a 4-leak run-to-run
+          # variance buffer (same class of buffer we've used on earlier
+          # raises, rounded up to the next integer boundary given the
+          # wider surface-area change in this PR).
+          # Lower again once #1468 replaces MSW's matching layer.
+          MAX_ASYNC_LEAKS: '80'
         run: |
           set -o pipefail
           # Disable errexit around the test pipeline so a Vitest failure

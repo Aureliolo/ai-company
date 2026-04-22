@@ -3,6 +3,7 @@ import { ReactFlowProvider, type Node } from '@xyflow/react'
 import { Workflow } from 'lucide-react'
 import { useSearchParams } from 'react-router'
 import { createLogger } from '@/lib/logger'
+import { ErrorBanner } from '@/components/ui/error-banner'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { EmptyState } from '@/components/ui/empty-state'
 import type { WorkflowNodeType } from '@/api/types/workflows'
@@ -159,8 +160,8 @@ function WorkflowEditorInner() {
   return (
     <div className="flex h-full flex-col">
       {state.error && (
-        <div role="alert" className="mb-2 rounded-lg border border-danger/30 bg-danger/5 p-card text-sm text-danger">
-          {state.error}
+        <div className="mb-2">
+          <ErrorBanner severity="error" title="Workflow editor error" description={state.error} />
         </div>
       )}
 
