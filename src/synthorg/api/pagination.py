@@ -99,13 +99,14 @@ def paginate_cursor[T](
     return page, meta
 
 
-def encode_repo_seek_meta(
+def encode_repo_seek_meta(  # noqa: PLR0913 -- every arg tracks a distinct pagination input
     *,
     offset: int,
     page_len: int,
     total: int,
     limit: int,
     secret: CursorSecret,
+    display_total: int | None = None,
 ) -> PaginationMeta:
     """Build ``PaginationMeta`` for controllers that push limit+offset into the repo.
 
@@ -117,12 +118,29 @@ def encode_repo_seek_meta(
     that would loop the client on the same page when
     ``count_versions`` disagrees with ``list_versions``.
 
+    ``display_total`` is an override for ``PaginationMeta.total`` that
+    stays independent of the ``total`` used for the ``has_more``
+    check.  Controllers that filter out forged / cross-wired rows
+    after the repo read (``agent_identity_versions``) need to report
+    a lower ``total`` to clients while still letting ``has_more``
+    see the full repo row count, so later pages containing only
+    legitimate rows stay reachable.
+
     Args:
         offset: The decoded cursor offset the current page started at.
-        page_len: The number of items the repo returned for this page.
-        total: The repo's reported total row count.
+        page_len: The number of repo rows consumed (``len(repo_rows)``,
+            *not* the filtered slice) -- the cursor must advance by
+            consumed rows so filtered pages do not replay already-read
+            rows on the next request.
+        total: The repo's reported total row count.  Drives the
+            ``has_more`` check.
         limit: The page size requested.
         secret: HMAC secret used to sign the ``next_cursor``.
+        display_total: Optional override for ``PaginationMeta.total``.
+            Defaults to ``total``.  Pass a lower value when the
+            controller drops rows between the repo read and the
+            client-facing slice (e.g. owner-mismatch forgeries) so
+            ``pagination.total`` stays consistent with ``data``.
 
     Returns:
         ``PaginationMeta`` with the ``has_more`` / ``next_cursor``
@@ -135,7 +153,7 @@ def encode_repo_seek_meta(
         limit=limit,
         next_cursor=next_cursor,
         has_more=has_more,
-        total=total,
+        total=display_total if display_total is not None else total,
         offset=offset,
     )
 
