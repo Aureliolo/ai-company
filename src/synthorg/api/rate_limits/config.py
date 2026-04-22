@@ -1,4 +1,4 @@
-"""Per-operation rate limit configuration (#1391)."""
+"""Per-operation rate limit configuration."""
 
 from typing import Literal, Self
 

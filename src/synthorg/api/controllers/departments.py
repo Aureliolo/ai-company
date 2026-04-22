@@ -34,6 +34,7 @@ from synthorg.api.guards import (
 )
 from synthorg.api.pagination import PaginationLimit, PaginationOffset, paginate
 from synthorg.api.path_params import PathName  # noqa: TC001
+from synthorg.api.rate_limits import per_op_rate_limit
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.api.ws_models import WsEventType
 from synthorg.config.schema import AgentConfig  # noqa: TC001
@@ -376,7 +377,19 @@ class DepartmentController(Controller):
         logger.warning(API_RESOURCE_NOT_FOUND, resource="department", name=name)
         raise NotFoundError(msg)
 
-    @post("/", guards=[require_org_mutation()], status_code=201)
+    @post(
+        "/",
+        guards=[
+            require_org_mutation(),
+            per_op_rate_limit(
+                "departments.create",
+                max_requests=10,
+                window_seconds=60,
+                key="user",
+            ),
+        ],
+        status_code=201,
+    )
     async def create_department(
         self,
         request: Request[Any, Any, Any],
@@ -408,7 +421,15 @@ class DepartmentController(Controller):
 
     @patch(
         "/{name:str}",
-        guards=[require_org_mutation(department_param="name")],
+        guards=[
+            require_org_mutation(department_param="name"),
+            per_op_rate_limit(
+                "departments.update",
+                max_requests=20,
+                window_seconds=60,
+                key="user",
+            ),
+        ],
     )
     async def update_department(
         self,
@@ -458,7 +479,15 @@ class DepartmentController(Controller):
 
     @delete(
         "/{name:str}",
-        guards=[require_org_mutation(department_param="name")],
+        guards=[
+            require_org_mutation(department_param="name"),
+            per_op_rate_limit(
+                "departments.delete",
+                max_requests=5,
+                window_seconds=60,
+                key="user",
+            ),
+        ],
         status_code=HTTP_204_NO_CONTENT,
     )
     async def delete_department(
@@ -490,7 +519,15 @@ class DepartmentController(Controller):
 
     @post(
         "/{name:str}/reorder-agents",
-        guards=[require_org_mutation(department_param="name")],
+        guards=[
+            require_org_mutation(department_param="name"),
+            per_op_rate_limit(
+                "departments.reorder_agents",
+                max_requests=30,
+                window_seconds=60,
+                key="user",
+            ),
+        ],
     )
     async def reorder_agents(
         self,
@@ -614,7 +651,15 @@ class DepartmentController(Controller):
 
     @put(
         "/{name:str}/ceremony-policy",
-        guards=[require_org_mutation(department_param="name")],
+        guards=[
+            require_org_mutation(department_param="name"),
+            per_op_rate_limit(
+                "departments.update_ceremony_policy",
+                max_requests=20,
+                window_seconds=60,
+                key="user",
+            ),
+        ],
     )
     async def update_department_ceremony_policy(
         self,
@@ -673,7 +718,15 @@ class DepartmentController(Controller):
 
     @delete(
         "/{name:str}/ceremony-policy",
-        guards=[require_org_mutation(department_param="name")],
+        guards=[
+            require_org_mutation(department_param="name"),
+            per_op_rate_limit(
+                "departments.delete_ceremony_policy",
+                max_requests=10,
+                window_seconds=60,
+                key="user",
+            ),
+        ],
         status_code=HTTP_204_NO_CONTENT,
     )
     async def delete_department_ceremony_policy(

@@ -19,6 +19,7 @@ from synthorg.api.errors import (
     UnauthorizedError,
 )
 from synthorg.api.guards import require_read_access
+from synthorg.api.rate_limits import per_op_rate_limit
 from synthorg.integrations.connections.models import WebhookReceipt  # noqa: TC001
 from synthorg.integrations.webhooks.event_bus_bridge import (
     publish_webhook_event,
@@ -66,6 +67,17 @@ class WebhooksController(Controller):
         "/{connection_name:str}/{event_type:str}",
         summary="Receive a webhook event",
         status_code=202,
+        guards=[
+            # External-facing endpoint (no auth): key on IP.
+            # 120/60s = sustained 2 rps per client; signature verification
+            # and replay protection run BELOW this guard.
+            per_op_rate_limit(
+                "webhooks.receive",
+                max_requests=120,
+                window_seconds=60,
+                key="ip",
+            ),
+        ],
     )
     async def receive_webhook(  # noqa: C901, PLR0915
         self,

@@ -107,6 +107,7 @@ curl -X POST http://localhost:3001/api/v1/settings/security/import \
 Some settings are bootstrap-only and cannot be hot-reloaded safely. They are marked with `restart_required=True` in the schema. Common examples:
 
 - `api.rate_limit.floor_max_requests` / `unauth_max_requests` / `auth_max_requests` (the three-tier rate limiter builds at startup)
+- `api.per_op_rate_limit.backend` / `api.per_op_concurrency.backend` (the per-op stores are constructed once at startup; enabled / overrides ARE runtime-editable)
 - `api.cors.allowed_origins` (Litestar CORS plugin registers at construction)
 - `backup.path` (backup scheduler's output directory)
 - `observability.ws_ticket_max_pending_per_user` (ticket store is constructed once)
@@ -122,6 +123,43 @@ The `SettingsChangeDispatcher` polls the `#settings` message bus channel and rou
 - `BackupSettingsSubscriber` -- toggles `BackupScheduler` on `enabled` change, reschedules on `schedule_hours` change
 
 Settings resolved via `ConfigResolver` bridge configs (e.g. `get_communication_bridge_config()`) are re-fetched at the top of each polling iteration in their consumers -- operator changes take effect within one poll cycle without restart.
+
+## Per-Operation Rate Limiting
+
+Two layered rate-limit subsystems sit on top of the global three-tier
+limiter (``api.rate_limit.*``). Both are runtime-editable via settings.
+
+### Sliding-window guard (``api.per_op_rate_limit.*``)
+
+| Setting | Type | Default | Runtime-editable | Purpose |
+|---------|------|---------|------------------|---------|
+| `api.per_op_rate_limit.enabled` | BOOLEAN | `true` | yes | Master switch; when `false` every `per_op_rate_limit` guard becomes a no-op. |
+| `api.per_op_rate_limit.backend` | ENUM | `memory` | no (restart) | Sliding-window store backend. `memory` is the only implementation today; `redis` reserved for cross-worker fairness. |
+| `api.per_op_rate_limit.overrides` | JSON | `{}` | yes | Per-operation overrides keyed by operation name. Shape: `{"<op>": [max_requests, window_seconds]}`. Setting either component to `0` disables the guard for that operation; negative values are rejected. |
+
+Example override to tighten ``memory.fine_tune`` to two starts per day.
+The ``SettingsController`` routes by ``(namespace, key)`` where ``key``
+is the registry key (underscores), not the yaml_path (dots):
+
+```bash
+curl -X PUT http://localhost:3001/api/v1/settings/api/per_op_rate_limit_overrides \
+  -H "Content-Type: application/json" \
+  -H "Cookie: session=${TOKEN}" \
+  -d '{"value": "{\"memory.fine_tune\": [2, 86400]}"}'
+```
+
+### Inflight concurrency guard (``api.per_op_concurrency.*``)
+
+| Setting | Type | Default | Runtime-editable | Purpose |
+|---------|------|---------|------------------|---------|
+| `api.per_op_concurrency.enabled` | BOOLEAN | `true` | yes | Master switch for the `PerOpConcurrencyMiddleware`. |
+| `api.per_op_concurrency.backend` | ENUM | `memory` | no (restart) | Inflight-counter store backend. `memory` today; `redis` reserved. |
+| `api.per_op_concurrency.overrides` | JSON | `{}` | yes | Per-operation overrides keyed by operation name. Shape: `{"<op>": <max_inflight>}`. `0` disables; negative values are rejected. |
+
+The six endpoints that declare an inflight cap by default:
+``memory.fine_tune`` (shared with ``memory.fine_tune_resume``),
+``memory.checkpoint_deploy``, ``memory.checkpoint_rollback``,
+``providers.pull_model``, ``providers.discover_models``.
 
 ## Common Configuration Patterns
 

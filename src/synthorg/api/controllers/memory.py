@@ -15,6 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import HumanRole, require_roles
+from synthorg.api.rate_limits import per_op_concurrency, per_op_rate_limit
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.embedding.fine_tune import FineTuneStage
@@ -133,7 +134,22 @@ class MemoryAdminController(Controller):
 
     # -- Fine-tuning pipeline ----------------------------------------
 
-    @post("/fine-tune")
+    @post(
+        "/fine-tune",
+        guards=[
+            per_op_rate_limit(
+                "memory.fine_tune",
+                max_requests=2,
+                window_seconds=3600,
+                key="user",
+            ),
+        ],
+        opt=per_op_concurrency(
+            "memory.fine_tune",
+            max_inflight=1,
+            key="user",
+        ),
+    )
     async def start_fine_tune(
         self,
         state: State,
@@ -168,7 +184,26 @@ class MemoryAdminController(Controller):
             ),
         )
 
-    @post("/fine-tune/resume/{run_id:str}")
+    @post(
+        "/fine-tune/resume/{run_id:str}",
+        guards=[
+            per_op_rate_limit(
+                "memory.fine_tune_resume",
+                max_requests=5,
+                window_seconds=3600,
+                key="user",
+            ),
+        ],
+        # Shares the inflight bucket with ``memory.fine_tune`` so a user
+        # cannot resume while a fresh start is still in flight; the
+        # sliding-window guard above still uses the distinct operation
+        # name so operators can tune resume rates independently.
+        opt=per_op_concurrency(
+            "memory.fine_tune",
+            max_inflight=1,
+            key="user",
+        ),
+    )
     async def resume_fine_tune(
         self,
         state: State,
@@ -223,7 +258,17 @@ class MemoryAdminController(Controller):
         status = await orchestrator.get_status()
         return ApiResponse(data=status)
 
-    @post("/fine-tune/cancel")
+    @post(
+        "/fine-tune/cancel",
+        guards=[
+            per_op_rate_limit(
+                "memory.fine_tune_cancel",
+                max_requests=10,
+                window_seconds=3600,
+                key="user",
+            ),
+        ],
+    )
     async def cancel_fine_tune(
         self,
         state: State,
@@ -237,7 +282,17 @@ class MemoryAdminController(Controller):
         status = await orchestrator.get_status()
         return ApiResponse(data=status)
 
-    @post("/fine-tune/preflight")
+    @post(
+        "/fine-tune/preflight",
+        guards=[
+            per_op_rate_limit(
+                "memory.fine_tune_preflight",
+                max_requests=50,
+                window_seconds=60,
+                key="user",
+            ),
+        ],
+    )
     async def run_preflight(
         self,
         state: State,  # noqa: ARG002
@@ -280,7 +335,22 @@ class MemoryAdminController(Controller):
         cps = await service.list_checkpoints(limit=limit, offset=offset)
         return ApiResponse(data=cps)
 
-    @post("/fine-tune/checkpoints/{checkpoint_id:str}/deploy")
+    @post(
+        "/fine-tune/checkpoints/{checkpoint_id:str}/deploy",
+        guards=[
+            per_op_rate_limit(
+                "memory.checkpoint_deploy",
+                max_requests=2,
+                window_seconds=3600,
+                key="user",
+            ),
+        ],
+        opt=per_op_concurrency(
+            "memory.checkpoint_deploy",
+            max_inflight=1,
+            key="user",
+        ),
+    )
     async def deploy_checkpoint(
         self,
         state: State,
@@ -309,7 +379,22 @@ class MemoryAdminController(Controller):
             ) from exc
         return ApiResponse(data=updated)
 
-    @post("/fine-tune/checkpoints/{checkpoint_id:str}/rollback")
+    @post(
+        "/fine-tune/checkpoints/{checkpoint_id:str}/rollback",
+        guards=[
+            per_op_rate_limit(
+                "memory.checkpoint_rollback",
+                max_requests=2,
+                window_seconds=3600,
+                key="user",
+            ),
+        ],
+        opt=per_op_concurrency(
+            "memory.checkpoint_rollback",
+            max_inflight=1,
+            key="user",
+        ),
+    )
     async def rollback_checkpoint(
         self,
         state: State,
@@ -336,7 +421,18 @@ class MemoryAdminController(Controller):
             raise ClientException(detail=str(exc)) from exc
         return ApiResponse(data=updated)
 
-    @delete("/fine-tune/checkpoints/{checkpoint_id:str}", status_code=200)
+    @delete(
+        "/fine-tune/checkpoints/{checkpoint_id:str}",
+        status_code=200,
+        guards=[
+            per_op_rate_limit(
+                "memory.checkpoint_delete",
+                max_requests=20,
+                window_seconds=60,
+                key="user",
+            ),
+        ],
+    )
     async def delete_checkpoint(
         self,
         state: State,

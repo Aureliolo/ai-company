@@ -64,6 +64,7 @@ _EXPECTED_CODES: dict[str, int] = {
     # 5xxx -- rate_limit
     "RATE_LIMITED": 5000,
     "PER_OPERATION_RATE_LIMITED": 5001,
+    "CONCURRENCY_LIMIT_EXCEEDED": 5002,
     # 6xxx -- budget_exhausted
     "BUDGET_EXHAUSTED": 6000,
     "DAILY_LIMIT_EXCEEDED": 6001,

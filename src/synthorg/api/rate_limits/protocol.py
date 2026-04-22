@@ -1,4 +1,4 @@
-"""Sliding-window rate limiter Protocol (#1391).
+"""Sliding-window rate limiter Protocol.
 
 The ``SlidingWindowStore`` Protocol is the pluggable contract that
 per-operation guards call to acquire a slot.  The default implementation

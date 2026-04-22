@@ -20,6 +20,7 @@ from synthorg.api.pagination import (
     paginate,
 )
 from synthorg.api.path_params import PathName  # noqa: TC001
+from synthorg.api.rate_limits import per_op_rate_limit
 from synthorg.observability import get_logger
 from synthorg.templates.preset_service import (
     PersonalityPresetService,
@@ -110,7 +111,15 @@ class PersonalityPresetController(Controller):
 
     @post(
         "/presets",
-        guards=[require_write_access],
+        guards=[
+            require_write_access,
+            per_op_rate_limit(
+                "personalities.create",
+                max_requests=20,
+                window_seconds=60,
+                key="user",
+            ),
+        ],
         status_code=201,
     )
     async def create_preset(
@@ -125,7 +134,15 @@ class PersonalityPresetController(Controller):
 
     @put(
         "/presets/{name:str}",
-        guards=[require_write_access],
+        guards=[
+            require_write_access,
+            per_op_rate_limit(
+                "personalities.update",
+                max_requests=30,
+                window_seconds=60,
+                key="user",
+            ),
+        ],
     )
     async def update_preset(
         self,
@@ -140,7 +157,15 @@ class PersonalityPresetController(Controller):
 
     @delete(
         "/presets/{name:str}",
-        guards=[require_write_access],
+        guards=[
+            require_write_access,
+            per_op_rate_limit(
+                "personalities.delete",
+                max_requests=10,
+                window_seconds=60,
+                key="user",
+            ),
+        ],
         status_code=200,
     )
     async def delete_preset(

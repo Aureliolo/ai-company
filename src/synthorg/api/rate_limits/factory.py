@@ -1,4 +1,4 @@
-"""Factory for sliding-window store strategies (#1391)."""
+"""Factory for sliding-window store strategies."""
 
 from synthorg.api.rate_limits.config import PerOpRateLimitConfig  # noqa: TC001
 from synthorg.api.rate_limits.in_memory import InMemorySlidingWindowStore

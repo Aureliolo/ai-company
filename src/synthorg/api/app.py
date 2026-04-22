@@ -50,7 +50,12 @@ from synthorg.api.lifecycle_builder import _build_lifecycle
 from synthorg.api.lifecycle_helpers import _build_settings_dispatcher
 from synthorg.api.middleware import security_headers_hook
 from synthorg.api.middleware_factory import _build_middleware
-from synthorg.api.rate_limits import build_sliding_window_store
+from synthorg.api.rate_limits import (
+    build_inflight_store,
+    build_sliding_window_store,
+)
+from synthorg.api.rate_limits._subject import parse_trusted_networks
+from synthorg.api.rate_limits.inflight_protocol import InflightStore  # noqa: TC001
 from synthorg.api.rate_limits.protocol import SlidingWindowStore  # noqa: TC001
 from synthorg.api.state import AppState
 from synthorg.backup.factory import build_backup_service
@@ -713,22 +718,39 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
     if _skip_lifecycle_shutdown:
         shutdown = []
 
-    # Per-operation rate limiter (#1391).  Layered on top of the global
+    # Per-operation rate limiter.  Layered on top of the global
     # two-tier limiter; read from app state by ``per_op_rate_limit``
-    # guards.  Only build the store when the feature is enabled so
-    # deployments that opt out do not pay the allocation cost.  The
-    # guard treats a missing store AS enabled as a wiring error, so we
-    # only wire ``None`` when the config explicitly opts out.
-    per_op_rate_limit_store: SlidingWindowStore | None = None
-    if api_config.per_op_rate_limit.enabled:
-        per_op_rate_limit_store = build_sliding_window_store(
-            api_config.per_op_rate_limit,
-        )
-        # Honour ``_skip_lifecycle_shutdown`` so tests that share an
-        # app across multiple lifespans do not tear down the store
-        # (and its background GC) on the first teardown.
-        if not _skip_lifecycle_shutdown:
-            shutdown = [*shutdown, per_op_rate_limit_store.close]
+    # guards.  The store is built unconditionally so that operators who
+    # toggle ``api.per_op_rate_limit_enabled`` at runtime (the setting
+    # is marked runtime-editable) do not land on a wired-but-uncapped
+    # request path; the config's ``enabled`` flag short-circuits the
+    # guard when disabled.  Store construction is cheap (empty dicts +
+    # per-key locks materialise lazily on first acquire).
+    per_op_rate_limit_store: SlidingWindowStore = build_sliding_window_store(
+        api_config.per_op_rate_limit,
+    )
+    app_state.set_per_op_rate_limit_config(api_config.per_op_rate_limit)
+    # Honour ``_skip_lifecycle_shutdown`` so tests that share an
+    # app across multiple lifespans do not tear down the store
+    # (and its background GC) on the first teardown.
+    if not _skip_lifecycle_shutdown:
+        shutdown = [*shutdown, per_op_rate_limit_store.close]
+
+    # Per-operation inflight-concurrency limiter.
+    # Layered on top of the sliding-window per-op limiter; caps
+    # simultaneous long-running requests per (operation, subject).
+    # Enforced by ``PerOpConcurrencyMiddleware`` registered in the
+    # middleware stack.  Built unconditionally (same rationale as the
+    # sliding-window store): runtime toggling of
+    # ``api.per_op_concurrency_enabled`` must not encounter a missing
+    # store.  The middleware short-circuits when
+    # ``config.enabled`` is False without ever touching the store.
+    per_op_inflight_store: InflightStore = build_inflight_store(
+        api_config.per_op_concurrency,
+    )
+    app_state.set_per_op_concurrency_config(api_config.per_op_concurrency)
+    if not _skip_lifecycle_shutdown:
+        shutdown = [*shutdown, per_op_inflight_store.close]
 
     return Litestar(
         route_handlers=[api_router, *a2a_root_controllers],
@@ -745,12 +767,22 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
                 "app_state": app_state,
                 "per_op_rate_limit_store": per_op_rate_limit_store,
                 "per_op_rate_limit_config": api_config.per_op_rate_limit,
+                # Inflight-concurrency state used by
+                # ``PerOpConcurrencyMiddleware``; mirrors the
+                # sliding-window store's wiring.
+                "per_op_inflight_store": per_op_inflight_store,
+                "per_op_inflight_config": api_config.per_op_concurrency,
                 # Mirrors the global limiter's trusted-proxy set so the
                 # per-op guard extracts the same "real" client IP behind
                 # reverse proxies instead of bucketing all traffic by
-                # the proxy's IP.
+                # the proxy's IP.  The raw frozenset is kept for
+                # diagnostic reads; the parsed tuple beside it is what
+                # the guards consult per-request.
                 "per_op_trusted_proxies": frozenset(
                     api_config.server.trusted_proxies,
+                ),
+                "per_op_trusted_networks": parse_trusted_networks(
+                    frozenset(api_config.server.trusted_proxies),
                 ),
             },
         ),

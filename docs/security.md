@@ -87,6 +87,38 @@ on resolution.
         startup with a validation error directing operators to use
         ``unauth_max_requests`` and ``auth_max_requests`` instead.
 
+- **Per-operation rate limiting** -- layered on top of the global three-tier
+  limiter, individual expensive or abuse-prone operations carry a
+  ``per_op_rate_limit`` guard that buckets requests per
+  ``(operation, subject)`` via a sliding window. Operations default to
+  bucketing by authenticated user ID; external-facing endpoints
+  (``webhooks.receive``) bucket by IP. Denials raise
+  ``PerOperationRateLimitError`` (HTTP 429, ``error_code=5001``,
+  ``error_category=rate_limit``, ``retryable=True``) with a
+  ``Retry-After`` header. Pluggable behind a
+  ``SlidingWindowStore`` protocol (default: in-memory; Redis reserved
+  for cross-worker fairness). Operators tune individual operations
+  via ``api.per_op_rate_limit.overrides`` without restart -- the
+  guard reads the live config on every request. Covers 85+ endpoints
+  across memory, providers, agents, tasks, approvals, workflows,
+  requests, meetings, users, webhooks, custom_rules, ontology,
+  departments, scaling, connections, personalities, reviews,
+  artifacts, backup, oauth, settings, setup, simulations, training,
+  escalations, a2a, and auth ws-ticket.
+- **Per-operation inflight concurrency** -- a companion middleware
+  (``PerOpConcurrencyMiddleware``) caps simultaneous long-running
+  requests per ``(operation, subject)`` for six HIGH-tier endpoints
+  (``memory.fine_tune`` shared with ``fine_tune_resume``,
+  ``memory.checkpoint_deploy``, ``memory.checkpoint_rollback``,
+  ``providers.pull_model``, ``providers.discover_models``). The
+  sliding-window guard caps burst rate across time; the inflight
+  cap separately enforces "one fine-tune per user at a time" even
+  when the window would let a burst through. Denials raise
+  ``ConcurrencyLimitExceededError`` (HTTP 429, ``error_code=5002``,
+  same envelope shape as ``PerOperationRateLimitError``). Pluggable
+  behind an ``InflightStore`` protocol with the same default/Redis
+  roadmap. Tuned via ``api.per_op_concurrency.overrides``.
+
 ### Notification Security
 
 Notification adapter configuration may contain credentials (SMTP passwords,

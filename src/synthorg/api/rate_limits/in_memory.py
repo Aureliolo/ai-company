@@ -1,4 +1,4 @@
-"""In-memory sliding-window rate limiter (#1391).
+"""In-memory sliding-window rate limiter.
 
 Each bucket holds a deque of monotonic timestamps.  On each ``acquire``
 call, timestamps older than ``window_seconds`` are evicted; if the
@@ -21,7 +21,7 @@ from dataclasses import dataclass, field
 from typing import Final
 
 from synthorg.api.rate_limits.protocol import RateLimitOutcome, SlidingWindowStore
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_REQUEST_ERROR
 
 logger = get_logger(__name__)
@@ -202,8 +202,12 @@ class InMemorySlidingWindowStore(SlidingWindowStore):
                 raise
             except Exception as exc:
                 # GC is best-effort -- never block acquire progress.
+                # ``safe_error_description`` scrubs attacker-controllable
+                # bytes from the serialised error so a misbehaving
+                # bucket-key or exception subclass cannot inject text
+                # that breaks the structured log stream (SEC-1).
                 logger.warning(
                     API_REQUEST_ERROR,
                     error_type="rate_limit_gc_failed",
-                    error=str(exc),
+                    error=safe_error_description(exc),
                 )

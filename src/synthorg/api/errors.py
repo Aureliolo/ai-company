@@ -81,6 +81,7 @@ class ErrorCode(IntEnum):
     # 5xxx -- rate_limit
     RATE_LIMITED = 5000
     PER_OPERATION_RATE_LIMITED = 5001
+    CONCURRENCY_LIMIT_EXCEEDED = 5002
 
     # 6xxx -- budget_exhausted
     BUDGET_EXHAUSTED = 6000
@@ -371,3 +372,19 @@ class PerOperationRateLimitError(ApiError):
     ) -> None:
         super().__init__(message, status_code=429)
         self.retry_after = max(1, int(retry_after))
+
+
+class ConcurrencyLimitExceededError(PerOperationRateLimitError):
+    """Raised when a per-operation concurrency (inflight) cap is hit (429).
+
+    Produced by the ``PerOpConcurrencyMiddleware`` when a user already
+    has ``max_inflight`` requests running for the guarded operation.
+    Inherits from :class:`PerOperationRateLimitError` so the existing
+    429 / ``Retry-After`` / RFC 9457 handling applies unchanged.  A
+    distinct ``error_code`` lets clients discriminate concurrency
+    denials ("you already have one running") from window denials
+    ("try again after the bucket refills").
+    """
+
+    default_message: ClassVar[str] = "Concurrency limit exceeded"
+    error_code: ClassVar[ErrorCode] = ErrorCode.CONCURRENCY_LIMIT_EXCEEDED

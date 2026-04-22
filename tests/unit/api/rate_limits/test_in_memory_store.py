@@ -1,4 +1,4 @@
-"""Unit tests for :class:`InMemorySlidingWindowStore` (#1391)."""
+"""Unit tests for :class:`InMemorySlidingWindowStore`."""
 
 import asyncio
 

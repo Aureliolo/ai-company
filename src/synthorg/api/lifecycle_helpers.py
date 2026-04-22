@@ -23,6 +23,7 @@ from synthorg.settings.subscribers import (
     BackupSettingsSubscriber,
     MemorySettingsSubscriber,
     ObservabilitySettingsSubscriber,
+    PerOpRateLimitSettingsSubscriber,
     ProviderSettingsSubscriber,
 )
 
@@ -240,7 +241,16 @@ def _build_settings_dispatcher(
         settings_service=settings_service,
         log_dir=log_dir,
     )
-    subs: list[SettingsSubscriber] = [provider_sub, memory_sub, observability_sub]
+    per_op_rl_sub = PerOpRateLimitSettingsSubscriber(
+        app_state=app_state,
+        settings_service=settings_service,
+    )
+    subs: list[SettingsSubscriber] = [
+        provider_sub,
+        memory_sub,
+        observability_sub,
+        per_op_rl_sub,
+    ]
     if backup_service is not None:
         subs.append(
             BackupSettingsSubscriber(

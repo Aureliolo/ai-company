@@ -1,4 +1,4 @@
-"""Unit tests for the per-operation rate limit guard (#1391)."""
+"""Unit tests for the per-operation rate limit guard."""
 
 from typing import Any
 

@@ -1,10 +1,12 @@
 """API namespace setting definitions.
 
-Registers 16 settings covering server, TLS, CORS, rate limiting,
-authentication, and setup.  Three are runtime-editable; thirteen are
-bootstrap-only (``restart_required=True``) because Litestar bakes
-middleware, rate-limit budgets, and CORS into the application at
-construction time.
+Registers 31 settings covering server, TLS, CORS, rate limiting
+(global + per-operation sliding-window + per-operation inflight),
+authentication, and setup.  Twelve are runtime-editable (picked up by
+the matching ``SettingsSubscriber`` on change); the remaining nineteen
+are ``restart_required=True`` because Litestar bakes middleware,
+rate-limit budgets, CORS origins, and store backends into the
+application at construction time.
 """
 
 from synthorg.settings.enums import SettingLevel, SettingNamespace, SettingType
@@ -273,6 +275,120 @@ _r.register(
         min_value=5.0,
         max_value=3600.0,
         yaml_path="api.ticket_cleanup_interval_seconds",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.API,
+        key="per_op_rate_limit_enabled",
+        type=SettingType.BOOLEAN,
+        default="true",
+        description=(
+            "Master switch for per-operation sliding-window rate limits"
+            ". Disable to make all per_op_rate_limit guards no-ops."
+        ),
+        group="Rate Limiting",
+        level=SettingLevel.ADVANCED,
+        yaml_path="api.per_op_rate_limit.enabled",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.API,
+        key="per_op_rate_limit_backend",
+        type=SettingType.ENUM,
+        default="memory",
+        description=(
+            "Backend for per-operation sliding-window rate limiter."
+            " Only 'memory' (process-local) ships today; a Redis"
+            " adapter for cross-worker fairness is planned but not"
+            " yet implemented, so it is intentionally not listed as"
+            " a selectable option until the factory supports it."
+        ),
+        group="Rate Limiting",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+        enum_values=("memory",),
+        yaml_path="api.per_op_rate_limit.backend",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.API,
+        key="per_op_rate_limit_overrides",
+        type=SettingType.JSON,
+        default="{}",
+        description=(
+            "Per-operation sliding-window overrides keyed by operation"
+            ' name, e.g. {"memory.fine_tune": [2, 3600]}. Each value'
+            " is a 2-tuple of [max_requests, window_seconds]."
+            " Setting either component to 0 disables that operation's"
+            " guard. Runtime-editable -- changes take effect on the"
+            " next request, no restart required."
+        ),
+        group="Rate Limiting",
+        level=SettingLevel.ADVANCED,
+        yaml_path="api.per_op_rate_limit.overrides",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.API,
+        key="per_op_concurrency_enabled",
+        type=SettingType.BOOLEAN,
+        default="true",
+        description=(
+            "Master switch for per-operation inflight-concurrency caps"
+            ". Disable to make the PerOpConcurrencyMiddleware"
+            " a no-op for all requests."
+        ),
+        group="Rate Limiting",
+        level=SettingLevel.ADVANCED,
+        yaml_path="api.per_op_concurrency.enabled",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.API,
+        key="per_op_concurrency_backend",
+        type=SettingType.ENUM,
+        default="memory",
+        description=(
+            "Backend for per-operation inflight limiter."
+            " Only 'memory' (process-local) ships today; a Redis"
+            " adapter for cross-worker fairness is planned but not"
+            " yet implemented, so it is intentionally not listed as"
+            " a selectable option until the factory supports it."
+        ),
+        group="Rate Limiting",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+        enum_values=("memory",),
+        yaml_path="api.per_op_concurrency.backend",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.API,
+        key="per_op_concurrency_overrides",
+        type=SettingType.JSON,
+        default="{}",
+        description=(
+            "Per-operation inflight overrides keyed by operation name,"
+            ' e.g. {"memory.fine_tune": 1}. Value is max_inflight'
+            " (positive integer). Setting a value to 0 disables the"
+            " operation's inflight guard. Runtime-editable -- changes"
+            " take effect on the next request, no restart required."
+        ),
+        group="Rate Limiting",
+        level=SettingLevel.ADVANCED,
+        yaml_path="api.per_op_concurrency.overrides",
     )
 )
 

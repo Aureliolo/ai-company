@@ -17,6 +17,7 @@ from synthorg.api.errors import (
     NotFoundError,
 )
 from synthorg.api.guards import require_read_access, require_write_access
+from synthorg.api.rate_limits import per_op_rate_limit
 from synthorg.integrations.connections.catalog import _UNSET
 from synthorg.integrations.connections.models import (
     Connection,
@@ -86,7 +87,15 @@ class ConnectionsController(Controller):
 
     @post(
         "/",
-        guards=[require_write_access],
+        guards=[
+            require_write_access,
+            per_op_rate_limit(
+                "connections.create",
+                max_requests=20,
+                window_seconds=60,
+                key="user",
+            ),
+        ],
         summary="Create a connection",
     )
     async def create_connection(
@@ -153,7 +162,15 @@ class ConnectionsController(Controller):
 
     @patch(
         "/{name:str}",
-        guards=[require_write_access],
+        guards=[
+            require_write_access,
+            per_op_rate_limit(
+                "connections.update",
+                max_requests=30,
+                window_seconds=60,
+                key="user",
+            ),
+        ],
         summary="Update a connection",
     )
     async def update_connection(
@@ -197,7 +214,15 @@ class ConnectionsController(Controller):
 
     @delete(
         "/{name:str}",
-        guards=[require_write_access],
+        guards=[
+            require_write_access,
+            per_op_rate_limit(
+                "connections.delete",
+                max_requests=10,
+                window_seconds=60,
+                key="user",
+            ),
+        ],
         summary="Delete a connection",
         status_code=200,
     )

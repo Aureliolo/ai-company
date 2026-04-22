@@ -16,6 +16,7 @@ from synthorg.api.dto import ApiResponse
 from synthorg.api.errors import ApiValidationError, ConflictError, NotFoundError
 from synthorg.api.guards import HumanRole, require_ceo
 from synthorg.api.path_params import PathId  # noqa: TC001
+from synthorg.api.rate_limits import per_op_rate_limit
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
@@ -144,7 +145,17 @@ class UserController(Controller):
     tags = ("users",)
     guards = [require_ceo]  # noqa: RUF012
 
-    @post(status_code=201)
+    @post(
+        status_code=201,
+        guards=[
+            per_op_rate_limit(
+                "users.create",
+                max_requests=5,
+                window_seconds=60,
+                key="user",
+            ),
+        ],
+    )
     async def create_user(
         self,
         state: State,
@@ -255,7 +266,17 @@ class UserController(Controller):
         user = await _get_user_or_404(_service(state), user_id)
         return ApiResponse(data=_to_response(user))
 
-    @patch("/{user_id:str}")
+    @patch(
+        "/{user_id:str}",
+        guards=[
+            per_op_rate_limit(
+                "users.update_role",
+                max_requests=10,
+                window_seconds=60,
+                key="user",
+            ),
+        ],
+    )
     async def update_user_role(
         self,
         state: State,
@@ -327,7 +348,18 @@ class UserController(Controller):
 
         return ApiResponse(data=_to_response(updated))
 
-    @delete("/{user_id:str}", status_code=HTTP_204_NO_CONTENT)
+    @delete(
+        "/{user_id:str}",
+        status_code=HTTP_204_NO_CONTENT,
+        guards=[
+            per_op_rate_limit(
+                "users.delete",
+                max_requests=3,
+                window_seconds=60,
+                key="user",
+            ),
+        ],
+    )
     async def delete_user(
         self,
         state: State,
@@ -402,7 +434,18 @@ class UserController(Controller):
 
     # -- Org role grant/revoke -------------------------------------------
 
-    @post("/{user_id:str}/org-roles", status_code=201)
+    @post(
+        "/{user_id:str}/org-roles",
+        status_code=201,
+        guards=[
+            per_op_rate_limit(
+                "users.grant_org_role",
+                max_requests=10,
+                window_seconds=60,
+                key="user",
+            ),
+        ],
+    )
     async def grant_org_role(
         self,
         state: State,
@@ -499,6 +542,14 @@ class UserController(Controller):
     @delete(
         "/{user_id:str}/org-roles/{role:str}",
         status_code=HTTP_204_NO_CONTENT,
+        guards=[
+            per_op_rate_limit(
+                "users.revoke_org_role",
+                max_requests=10,
+                window_seconds=60,
+                key="user",
+            ),
+        ],
     )
     async def revoke_org_role(
         self,

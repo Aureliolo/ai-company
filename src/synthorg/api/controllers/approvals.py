@@ -39,6 +39,7 @@ from synthorg.api.guards import (
 )
 from synthorg.api.pagination import PaginationLimit, PaginationOffset, paginate
 from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
+from synthorg.api.rate_limits import per_op_rate_limit
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.api.ws_models import WsEvent, WsEventType
 from synthorg.core.approval import ApprovalItem
@@ -442,7 +443,18 @@ class ApprovalsController(Controller):
         item = await _get_approval_or_404(app_state, approval_id)
         return ApiResponse(data=_to_approval_response(item, now=datetime.now(UTC)))
 
-    @post(guards=[require_write_access], status_code=201)
+    @post(
+        guards=[
+            require_write_access,
+            per_op_rate_limit(
+                "approvals.create",
+                max_requests=20,
+                window_seconds=60,
+                key="user",
+            ),
+        ],
+        status_code=201,
+    )
     async def create_approval(
         self,
         state: State,
@@ -512,7 +524,15 @@ class ApprovalsController(Controller):
 
     @post(
         "/{approval_id:str}/approve",
-        guards=[require_approval_roles],
+        guards=[
+            require_approval_roles,
+            per_op_rate_limit(
+                "approvals.approve",
+                max_requests=100,
+                window_seconds=60,
+                key="user",
+            ),
+        ],
         status_code=200,
     )
     async def approve(
@@ -568,7 +588,15 @@ class ApprovalsController(Controller):
 
     @post(
         "/{approval_id:str}/reject",
-        guards=[require_approval_roles],
+        guards=[
+            require_approval_roles,
+            per_op_rate_limit(
+                "approvals.reject",
+                max_requests=100,
+                window_seconds=60,
+                key="user",
+            ),
+        ],
         status_code=200,
     )
     async def reject(

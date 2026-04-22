@@ -11,6 +11,7 @@ from synthorg.api.channels import CHANNEL_REVIEWS, publish_ws_event
 from synthorg.api.dto import ApiResponse
 from synthorg.api.errors import ConflictError, NotFoundError, ServiceUnavailableError
 from synthorg.api.guards import require_read_access, require_write_access
+from synthorg.api.rate_limits import per_op_rate_limit
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.api.ws_models import WsEventType
 from synthorg.core.types import NotBlankStr  # noqa: TC001
@@ -103,7 +104,15 @@ class ReviewController(Controller):
 
     @post(
         "/{task_id:str}/stages/{stage_name:str}/decide",
-        guards=[require_write_access],
+        guards=[
+            require_write_access,
+            per_op_rate_limit(
+                "reviews.decide_stage",
+                max_requests=50,
+                window_seconds=60,
+                key="user",
+            ),
+        ],
     )
     async def decide_stage(
         self,

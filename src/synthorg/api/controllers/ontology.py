@@ -31,6 +31,7 @@ from synthorg.api.pagination import (
     paginate,
 )
 from synthorg.api.path_params import PathName  # noqa: TC001
+from synthorg.api.rate_limits import per_op_rate_limit
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
@@ -173,7 +174,15 @@ class OntologyController(Controller):
 
     @post(
         "/entities",
-        guards=[require_write_access],
+        guards=[
+            require_write_access,
+            per_op_rate_limit(
+                "ontology.create_entity",
+                max_requests=20,
+                window_seconds=60,
+                key="user",
+            ),
+        ],
         status_code=201,
     )
     async def create_entity(
@@ -226,7 +235,18 @@ class OntologyController(Controller):
 
         return ApiResponse(data=_entity_to_response(entity))
 
-    @put("/entities/{name:str}", guards=[require_write_access])
+    @put(
+        "/entities/{name:str}",
+        guards=[
+            require_write_access,
+            per_op_rate_limit(
+                "ontology.update_entity",
+                max_requests=30,
+                window_seconds=60,
+                key="user",
+            ),
+        ],
+    )
     async def update_entity(
         self,
         state: State,
@@ -297,7 +317,15 @@ class OntologyController(Controller):
 
     @delete(
         "/entities/{name:str}",
-        guards=[require_write_access],
+        guards=[
+            require_write_access,
+            per_op_rate_limit(
+                "ontology.delete_entity",
+                max_requests=10,
+                window_seconds=60,
+                key="user",
+            ),
+        ],
         status_code=HTTP_204_NO_CONTENT,
     )
     async def delete_entity(
@@ -439,7 +467,18 @@ class OntologyController(Controller):
         responses = tuple(_drift_report_to_response(r) for r in reports)
         return ApiResponse(data=responses)
 
-    @post("/drift/check", guards=[require_write_access])
+    @post(
+        "/drift/check",
+        guards=[
+            require_write_access,
+            per_op_rate_limit(
+                "ontology.drift_check",
+                max_requests=5,
+                window_seconds=60,
+                key="user",
+            ),
+        ],
+    )
     async def trigger_drift_check(
         self,
         state: State,
@@ -465,7 +504,18 @@ class OntologyController(Controller):
 
     # ── Admin ──────────────────────────────────────────────────
 
-    @post("/admin/derive", guards=[require_write_access])
+    @post(
+        "/admin/derive",
+        guards=[
+            require_write_access,
+            per_op_rate_limit(
+                "ontology.admin_derive",
+                max_requests=5,
+                window_seconds=60,
+                key="user",
+            ),
+        ],
+    )
     async def admin_derive(
         self,
         state: State,
@@ -477,7 +527,15 @@ class OntologyController(Controller):
 
     @post(
         "/admin/sync-org-memory",
-        guards=[require_write_access],
+        guards=[
+            require_write_access,
+            per_op_rate_limit(
+                "ontology.admin_sync_org_memory",
+                max_requests=5,
+                window_seconds=60,
+                key="user",
+            ),
+        ],
     )
     async def admin_sync_org_memory(
         self,

@@ -12,6 +12,10 @@ from synthorg.api.auth.presence import UserPresence
 from synthorg.api.auth.service import AuthService  # noqa: TC001
 from synthorg.api.auth.ticket_store import WsTicketStore
 from synthorg.api.errors import ServiceUnavailableError
+from synthorg.api.rate_limits.config import PerOpRateLimitConfig  # noqa: TC001
+from synthorg.api.rate_limits.inflight_config import (
+    PerOpConcurrencyConfig,  # noqa: TC001
+)
 from synthorg.api.services.org_mutations import OrgMutationService
 from synthorg.api.state_services import AppStateServicesMixin
 from synthorg.backup.service import BackupService  # noqa: TC001
@@ -171,6 +175,8 @@ class AppState(AppStateServicesMixin):
         "_ontology_service",
         "_ontology_sync_service",
         "_org_mutation_service",
+        "_per_op_concurrency_config",
+        "_per_op_rate_limit_config",
         "_performance_tracker",
         "_persistence",
         "_prometheus_collector",
@@ -303,6 +309,14 @@ class AppState(AppStateServicesMixin):
         self._bridge_config_applied: bool = False
         self._provider_management: ProviderManagementService | None = None
         self._org_mutation_service: OrgMutationService | None = None
+        # Per-operation rate-limit + concurrency configs live on
+        # AppState so the settings subscriber can hot-swap them when
+        # operators edit ``api.per_op_rate_limit_*`` or
+        # ``api.per_op_concurrency_*``.  Guards and the inflight
+        # middleware read them via the properties below.  Stores stay
+        # on the Litestar State dict (built once, never swapped).
+        self._per_op_rate_limit_config: PerOpRateLimitConfig | None = None
+        self._per_op_concurrency_config: PerOpConcurrencyConfig | None = None
         self._init_derived_services(
             settings_service=settings_service,
             config=config,
