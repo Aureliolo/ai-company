@@ -355,7 +355,7 @@ class TestMemoryServiceRollback:
         ) in settings.set_calls
         assert repo.deactivate_all_calls == 1
 
-    async def test_rollback_activated_checkpoint_reraises_unrecoverable(
+    async def test_rollback_returns_success_when_artifacts_consistent(
         self,
     ) -> None:
         """After rollback, the service re-reads the checkpoint; verify
