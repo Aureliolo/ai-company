@@ -21,8 +21,12 @@ from typing import Final
 
 from synthorg.api.errors import ConcurrencyLimitExceededError
 from synthorg.api.rate_limits.inflight_protocol import InflightStore
-from synthorg.observability import get_logger
-from synthorg.observability.events.api import API_GUARD_DENIED, API_REQUEST_ERROR
+from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.api import (
+    API_APP_STARTUP,
+    API_GUARD_DENIED,
+    API_REQUEST_ERROR,
+)
 
 logger = get_logger(__name__)
 
@@ -60,8 +64,11 @@ class InMemoryInflightStore(InflightStore):
         """Return an async context manager that holds one permit."""
         if max_inflight <= 0:
             msg = "max_inflight must be positive"
+            # Validation error at decorator/config time, not runtime -- use
+            # the startup event constant so these surface with other boot
+            # misconfigurations rather than request-path errors.
             logger.warning(
-                API_REQUEST_ERROR,
+                API_APP_STARTUP,
                 error_type="inflight_invalid_config",
                 limiter="InMemoryInflightStore",
                 key=key,
@@ -207,8 +214,13 @@ class InMemoryInflightStore(InflightStore):
                 # Non-recoverable: propagate so shutdown / OOM is not hidden.
                 raise
             except Exception as exc:
+                # ``safe_error_description`` strips attacker-controllable
+                # bytes from the serialised error so a misbehaving
+                # bucket-key or exception subclass cannot inject text
+                # that breaks the structured log stream.  Matches the
+                # SEC-1 hardened-log convention.
                 logger.warning(
                     API_REQUEST_ERROR,
                     error_type="inflight_gc_failed",
-                    error=str(exc),
+                    error=safe_error_description(exc),
                 )

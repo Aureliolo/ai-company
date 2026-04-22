@@ -29,6 +29,74 @@ from synthorg.observability.events.api import API_APP_STARTUP, API_GUARD_DENIED
 logger = get_logger(__name__)
 
 
+def _resolve_wiring(
+    state: Any,
+    operation: str,
+) -> tuple[SlidingWindowStore, PerOpRateLimitConfig]:
+    """Fetch the store + config from app state, or raise 503.
+
+    Missing store/config is a wiring error, NOT an "off" signal -- fail
+    loud and closed with a 503 so misconfigured deployments do not ship
+    without protection.  503 + no ``Retry-After`` tells clients this is
+    a server-side issue (not a per-user throttle).
+    """
+    store: SlidingWindowStore | None = getattr(state, STATE_KEY_STORE, None)
+    config: PerOpRateLimitConfig | None = getattr(
+        state,
+        STATE_KEY_CONFIG,
+        None,
+    )
+    if store is None or config is None:
+        logger.error(
+            API_APP_STARTUP,
+            guard="per_op_rate_limit",
+            operation=operation,
+            missing_store=store is None,
+            missing_config=config is None,
+            error=(
+                "per-op rate limiter not wired; refusing request to avoid "
+                "silently unthrottled endpoints"
+            ),
+        )
+        msg = (
+            f"Rate limit guard for operation {operation!r} is not wired. "
+            "This is a deployment error; see logs for context."
+        )
+        raise ServiceUnavailableError(msg)
+    return store, config
+
+
+def _raise_denied(
+    operation: str,
+    subject: str,
+    limit_max: int,
+    limit_window: int,
+    retry_after_seconds: float | None,
+) -> None:
+    """Log + raise a ``PerOperationRateLimitError`` with a sane retry."""
+    # Round up so a fractional 0.5s delay surfaces as at least 1s
+    # and clients never retry before the bucket actually reopens.
+    retry_after_s = (
+        math.ceil(retry_after_seconds) if retry_after_seconds is not None else 1
+    )
+    # Always surface at least 1 second so clients don't hot-loop.
+    retry_after_s = max(retry_after_s, 1)
+    logger.warning(
+        API_GUARD_DENIED,
+        guard="per_op_rate_limit",
+        operation=operation,
+        subject=subject,
+        max_requests=limit_max,
+        window_seconds=limit_window,
+        retry_after=retry_after_s,
+    )
+    msg = (
+        f"Rate limit exceeded for operation {operation!r}. "
+        f"Retry after {retry_after_s}s."
+    )
+    raise PerOperationRateLimitError(msg, retry_after=retry_after_s)
+
+
 def per_op_rate_limit(
     operation: str,
     *,
@@ -90,45 +158,33 @@ def per_op_rate_limit(
         _handler: BaseRouteHandler,
     ) -> None:
         state = connection.app.state
-        store: SlidingWindowStore | None = getattr(state, STATE_KEY_STORE, None)
-        config: PerOpRateLimitConfig | None = getattr(
+        # Master switch: when the operator has explicitly disabled
+        # per-op rate limiting the guard is a no-op.
+        config_early: PerOpRateLimitConfig | None = getattr(
             state,
             STATE_KEY_CONFIG,
             None,
         )
-        # Master switch: when the operator has explicitly disabled
-        # per-op rate limiting the guard is a no-op.
-        if config is not None and not config.enabled:
+        if config_early is not None and not config_early.enabled:
             return
-        # Missing store or missing config is a wiring error, NOT an
-        # "off" signal.  Fail loud and closed with a 503 so misconfigured
-        # deployments do not ship without protection.  A 429 would be
-        # semantically wrong here: the request is not rate-limited,
-        # the operator forgot to wire the limiter.  503 + no
-        # ``Retry-After`` tells clients this is a server-side issue.
-        if store is None or config is None:
-            logger.error(
-                API_APP_STARTUP,
-                guard="per_op_rate_limit",
-                operation=operation,
-                missing_store=store is None,
-                missing_config=config is None,
-                error=(
-                    "per-op rate limiter not wired; refusing request to avoid "
-                    "silently unthrottled endpoints"
-                ),
-            )
-            msg = (
-                f"Rate limit guard for operation {operation!r} is not wired. "
-                "This is a deployment error; see logs for context."
-            )
-            raise ServiceUnavailableError(msg)
+        store, config = _resolve_wiring(state, operation)
         limit_max, limit_window = config.overrides.get(
             operation,
             (default_max, default_window),
         )
         if limit_max <= 0 or limit_window <= 0:
-            # Operator disabled this operation via override.
+            # Operator disabled this operation via override.  Log at
+            # WARNING so the deliberately-uncapped state surfaces in
+            # audit logs and is not mistaken for a silent bypass.
+            logger.warning(
+                API_GUARD_DENIED,
+                guard="per_op_rate_limit",
+                operation=operation,
+                note=(
+                    "rate-limit guard disabled via operator override "
+                    "(max_requests or window_seconds = 0)"
+                ),
+            )
             return
         subject = extract_subject_key(
             connection,
@@ -143,29 +199,13 @@ def per_op_rate_limit(
         )
         if outcome.allowed:
             return
-        # Round up so a fractional 0.5s delay surfaces as at least 1s
-        # and clients never retry before the bucket actually reopens.
-        retry_after_s = (
-            math.ceil(outcome.retry_after_seconds)
-            if outcome.retry_after_seconds is not None
-            else 1
+        _raise_denied(
+            operation,
+            subject,
+            limit_max,
+            limit_window,
+            outcome.retry_after_seconds,
         )
-        # Always surface at least 1 second so clients don't hot-loop.
-        retry_after_s = max(retry_after_s, 1)
-        logger.warning(
-            API_GUARD_DENIED,
-            guard="per_op_rate_limit",
-            operation=operation,
-            subject=subject,
-            max_requests=limit_max,
-            window_seconds=limit_window,
-            retry_after=retry_after_s,
-        )
-        msg = (
-            f"Rate limit exceeded for operation {operation!r}. "
-            f"Retry after {retry_after_s}s."
-        )
-        raise PerOperationRateLimitError(msg, retry_after=retry_after_s)
 
     _guard.__name__ = f"per_op_rate_limit[{operation}]"
     _guard.__qualname__ = _guard.__name__

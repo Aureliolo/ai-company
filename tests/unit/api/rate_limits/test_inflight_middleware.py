@@ -285,3 +285,152 @@ class TestGuardFactoryValidation:
     def test_negative_max_inflight_rejected(self) -> None:
         with pytest.raises(ValueError, match="max_inflight"):
             per_op_concurrency("test.op", max_inflight=-1)
+
+
+class TestWiringError:
+    """Missing store/config fails loud and closed (503)."""
+
+    def test_missing_store_raises_503(self) -> None:
+        @post(
+            "/t",
+            opt=per_op_concurrency("test.missing", max_inflight=1, key="ip"),
+        )
+        async def handler() -> dict[str, bool]:
+            return {"ok": True}
+
+        # Wire config but NOT store -- simulates a deployment that
+        # constructed the config but forgot to build the store.
+        app = Litestar(
+            route_handlers=[handler],
+            middleware=[PerOpConcurrencyMiddleware()],
+            state=State(
+                {
+                    "per_op_inflight_config": PerOpConcurrencyConfig(),
+                    # per_op_inflight_store deliberately missing
+                },
+            ),
+            exception_handlers=dict(EXCEPTION_HANDLERS),  # type: ignore[arg-type]
+        )
+        with TestClient(app=app) as client:
+            resp = client.post("/t")
+        assert resp.status_code == 503
+        body = resp.json()
+        assert body["success"] is False
+        assert body["error_detail"]["error_category"] == "internal"
+
+    def test_missing_config_raises_503(self) -> None:
+        @post(
+            "/t",
+            opt=per_op_concurrency("test.missing2", max_inflight=1, key="ip"),
+        )
+        async def handler() -> dict[str, bool]:
+            return {"ok": True}
+
+        store = InMemoryInflightStore()
+        app = Litestar(
+            route_handlers=[handler],
+            middleware=[PerOpConcurrencyMiddleware()],
+            state=State(
+                {
+                    "per_op_inflight_store": store,
+                    # per_op_inflight_config deliberately missing
+                },
+            ),
+            exception_handlers=dict(EXCEPTION_HANDLERS),  # type: ignore[arg-type]
+        )
+        with TestClient(app=app) as client:
+            resp = client.post("/t")
+        assert resp.status_code == 503
+
+
+class TestKeyPolicyVariants:
+    """Guard bucketing honours all three key policies."""
+
+    def test_user_or_ip_policy_accepted(self) -> None:
+        """Sanity: the user_or_ip key policy wires end-to-end.
+
+        Unit tests drive requests from a single IP with no auth scope,
+        so user_or_ip and ip collapse to the same bucket.  The test
+        verifies the middleware does not explode on the non-ip key
+        policy and still enforces the cap.
+        """
+
+        @post(
+            "/t",
+            opt=per_op_concurrency(
+                "test.user_or_ip",
+                max_inflight=2,
+                key="user_or_ip",
+            ),
+        )
+        async def handler() -> dict[str, bool]:
+            import asyncio as _asyncio
+
+            await _asyncio.sleep(_HOLD_SECONDS)
+            return {"ok": True}
+
+        with TestClient(app=_make_test_app(handler)) as client:
+            results = _fire_concurrent_posts(client, "/t", 5)
+        statuses = [r.status_code for r in results]
+        assert statuses.count(201) == 2
+        assert statuses.count(429) == 3
+
+    def test_user_policy_falls_back_to_ip_when_anonymous(self) -> None:
+        """``key="user"`` with no auth degrades to IP + logs a warning.
+
+        The fallback is a SEC-2 safety net: unauthenticated requests
+        still get bucketed (by IP) rather than bypassing the guard.
+        """
+
+        @post(
+            "/t",
+            opt=per_op_concurrency(
+                "test.user_fallback",
+                max_inflight=2,
+                key="user",
+            ),
+        )
+        async def handler() -> dict[str, bool]:
+            import asyncio as _asyncio
+
+            await _asyncio.sleep(_HOLD_SECONDS)
+            return {"ok": True}
+
+        with TestClient(app=_make_test_app(handler)) as client:
+            results = _fire_concurrent_posts(client, "/t", 5)
+        statuses = [r.status_code for r in results]
+        assert statuses.count(201) == 2
+        assert statuses.count(429) == 3
+
+
+class TestZeroOverrideAuditLog:
+    """Disabling an operation via override still lets requests through.
+
+    End-to-end behavioural check: when an operator sets an override of
+    ``0`` on an inflight-guarded operation, all concurrent requests must
+    succeed (the guard is opt-out, not a silent cap of ``max=0``).  The
+    middleware separately logs an ``API_GUARD_DENIED`` WARNING with a
+    note so the deliberately-uncapped state surfaces in audit logs --
+    verified by reading the logs manually; structlog processors bypass
+    pytest's ``caplog`` unless configured, so the log emission itself
+    is not asserted here.  See ``inflight_middleware.py`` for the log
+    call site.
+    """
+
+    def test_override_zero_passes_all_requests_through(self) -> None:
+        @post(
+            "/t",
+            opt=per_op_concurrency("test.auditable", max_inflight=1, key="ip"),
+        )
+        async def handler() -> dict[str, bool]:
+            import asyncio as _asyncio
+
+            await _asyncio.sleep(_HOLD_SECONDS)
+            return {"ok": True}
+
+        cfg = PerOpConcurrencyConfig(overrides={"test.auditable": 0})
+        with TestClient(app=_make_test_app(handler, config=cfg)) as client:
+            results = _fire_concurrent_posts(client, "/t", 5)
+        # All five must succeed -- override=0 disables the cap entirely.
+        for resp in results:
+            assert resp.status_code == 201

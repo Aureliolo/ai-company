@@ -137,6 +137,8 @@ Error codes are 4-digit integers grouped by category (first digit = category).
 | Code | Name | Description |
 |------|------|-------------|
 | 5000 | `RATE_LIMITED` | Too many requests; back off and retry |
+| 5001 | `PER_OPERATION_RATE_LIMITED` | Per-operation sliding-window rate limit exceeded for the endpoint's `operation` (see error body). Retry after `retry_after` seconds. |
+| 5002 | `CONCURRENCY_LIMIT_EXCEEDED` | Per-operation concurrency cap reached -- a previous long-running request for the same (operation, subject) bucket is still inflight. Retry after 1 second, or once the inflight request completes. |
 
 ### 6xxx -- Budget Exhausted { #budget_exhausted }
 
@@ -208,6 +210,8 @@ Currently retryable error codes:
 | Code | Name | Typical Cause |
 |------|------|---------------|
 | 5000 | `RATE_LIMITED` | Too many requests to the API |
+| 5001 | `PER_OPERATION_RATE_LIMITED` | Per-operation sliding-window cap hit |
+| 5002 | `CONCURRENCY_LIMIT_EXCEEDED` | Per-operation inflight cap hit (long-running op still running) |
 | 8001 | `SERVICE_UNAVAILABLE` | Transient service outage |
 
 ### Recommended Retry Strategy

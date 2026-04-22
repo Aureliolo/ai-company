@@ -30,7 +30,7 @@ from synthorg.api.rate_limits.inflight_config import (
 )
 from synthorg.api.rate_limits.inflight_protocol import InflightStore  # noqa: TC001
 from synthorg.observability import get_logger
-from synthorg.observability.events.api import API_APP_STARTUP
+from synthorg.observability.events.api import API_APP_STARTUP, API_GUARD_DENIED
 
 logger = get_logger(__name__)
 
@@ -38,6 +38,47 @@ logger = get_logger(__name__)
 # Public because callers splat ``per_op_concurrency(...)`` into
 # ``opt={}``; the literal must be stable across releases.
 OPT_KEY: Final[str] = "per_op_concurrency"
+
+
+def _resolve_wiring(
+    state: Any,
+    operation: str,
+) -> tuple[InflightStore, PerOpConcurrencyConfig]:
+    """Fetch the inflight store + config from app state, or raise 503.
+
+    Missing store/config is a deployment error, not a per-user throttle:
+    fail loud (ERROR log) and closed (503) so misconfigured deployments
+    do not ship silently uncapped.  Mirrors the sliding-window guard's
+    wiring-error behaviour so both tiers diverge only in error code.
+    """
+    config: PerOpConcurrencyConfig | None = getattr(
+        state,
+        STATE_KEY_INFLIGHT_CONFIG,
+        None,
+    )
+    store: InflightStore | None = getattr(
+        state,
+        STATE_KEY_INFLIGHT_STORE,
+        None,
+    )
+    if store is None or config is None:
+        logger.error(
+            API_APP_STARTUP,
+            guard="per_op_concurrency",
+            operation=operation,
+            missing_store=store is None,
+            missing_config=config is None,
+            error=(
+                "per-op inflight limiter not wired; refusing request "
+                "to avoid silently uncapped endpoints"
+            ),
+        )
+        msg = (
+            f"Inflight guard for operation {operation!r} is not wired. "
+            "This is a deployment error; see logs for context."
+        )
+        raise ServiceUnavailableError(msg)
+    return store, config
 
 
 class PerOpConcurrencyMiddleware(ASGIMiddleware):
@@ -75,49 +116,34 @@ class PerOpConcurrencyMiddleware(ASGIMiddleware):
 
         app = scope.get("app")
         state = getattr(app, "state", None) if app is not None else None
-        config: PerOpConcurrencyConfig | None = getattr(
+
+        # Master switch: a disabled config short-circuits the middleware
+        # without requiring the store to be wired.  Missing config is
+        # still treated as a wiring error below.
+        config_early: PerOpConcurrencyConfig | None = getattr(
             state,
             STATE_KEY_INFLIGHT_CONFIG,
             None,
         )
-        store: InflightStore | None = getattr(
-            state,
-            STATE_KEY_INFLIGHT_STORE,
-            None,
-        )
-
-        # Master switch: opt-out short-circuits the middleware.
-        if config is not None and not config.enabled:
+        if config_early is not None and not config_early.enabled:
             await next_app(scope, receive, send)
             return
 
-        # Missing store/config is a wiring error -- fail loud and closed.
-        # 503 is semantically correct (deployment misconfiguration, not
-        # a per-user throttle); matches the sibling per_op_rate_limit
-        # guard's behaviour in the same failure mode.
-        if store is None or config is None:
-            logger.error(
-                API_APP_STARTUP,
-                guard="per_op_concurrency",
-                operation=operation,
-                missing_store=store is None,
-                missing_config=config is None,
-                error=(
-                    "per-op inflight limiter not wired; refusing request "
-                    "to avoid silently uncapped endpoints"
-                ),
-            )
-            msg = (
-                f"Inflight guard for operation {operation!r} is not wired. "
-                "This is a deployment error; see logs for context."
-            )
-            raise ServiceUnavailableError(msg)
+        store, config = _resolve_wiring(state, operation)
 
         override = config.overrides.get(operation)
         max_inflight = override if override is not None else default_max_inflight
         if max_inflight <= 0:
-            # Operator disabled this operation via override (0 or
-            # negative was rejected at config load).
+            # Operator disabled this operation via override (0; negative
+            # was rejected at config load).  Log at WARNING so the
+            # deliberately-uncapped state surfaces in audit logs and is
+            # not mistaken for a silent bypass.
+            logger.warning(
+                API_GUARD_DENIED,
+                guard="per_op_concurrency",
+                operation=operation,
+                note="inflight guard disabled via operator override (max_inflight=0)",
+            )
             await next_app(scope, receive, send)
             return
 

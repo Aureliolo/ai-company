@@ -135,3 +135,70 @@ class TestClose:
         await store.close()
         assert not store._counters
         assert not store._locks
+
+
+class TestNegativeRelease:
+    """``_release`` on a counter already at zero clamps + warns."""
+
+    async def test_release_without_acquire_clamps_to_zero(self) -> None:
+        store = InMemoryInflightStore()
+        try:
+            # Simulate a release on a key that was never acquired -- the
+            # code path the clamp is defensively guarding against.  The
+            # counter must stay at zero, and a subsequent legitimate
+            # acquire must still succeed (no lingering corruption).
+            await store._release("op:phantom")
+            assert store._counters.get("op:phantom", 0) == 0
+            async with store.acquire("op:phantom", max_inflight=1):
+                assert store._counters["op:phantom"] == 1
+            assert store._counters["op:phantom"] == 0
+        finally:
+            await store.close()
+
+
+class TestGcSweep:
+    """``_gc_cold_buckets`` reclaims empty buckets + orphan locks."""
+
+    async def test_empty_bucket_is_reaped(self) -> None:
+        store = InMemoryInflightStore()
+        try:
+            async with store.acquire("op:cold", max_inflight=1):
+                pass
+            # Counter is back at zero; lock is unlocked.  Sweep now.
+            assert store._counters.get("op:cold") == 0
+            await store._gc_cold_buckets()
+            assert "op:cold" not in store._counters
+            assert "op:cold" not in store._locks
+        finally:
+            await store.close()
+
+    async def test_active_bucket_is_not_reaped(self) -> None:
+        store = InMemoryInflightStore()
+
+        async def hold() -> None:
+            async with store.acquire("op:hot", max_inflight=1):
+                # While held, a sweep must not delete the counter; the
+                # lock is locked, and the counter is > 0.
+                await store._gc_cold_buckets()
+                assert store._counters["op:hot"] == 1
+                assert "op:hot" in store._locks
+
+        try:
+            await hold()
+        finally:
+            await store.close()
+
+    async def test_orphan_lock_is_reaped(self) -> None:
+        store = InMemoryInflightStore()
+        try:
+            # Create a lock entry without a matching counter (simulates
+            # a cancelled acquire that created the lock lazily but never
+            # materialised the counter).
+            _ = await store._get_lock("op:orphan")
+            assert "op:orphan" in store._locks
+            assert "op:orphan" not in store._counters
+            await store._gc_cold_buckets()
+            # Orphan locks that are not currently held must be dropped.
+            assert "op:orphan" not in store._locks
+        finally:
+            await store.close()

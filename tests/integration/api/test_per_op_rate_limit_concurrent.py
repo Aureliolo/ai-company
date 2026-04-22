@@ -193,19 +193,38 @@ class TestConcurrentBurstAgainstAgentsCreate:
 
         successes = [r for r in responses if r.status_code == 201]
         rate_limit_denials = [r for r in responses if r.status_code == 429]
-        # Sum may be smaller than 100 if the fake persistence rejects some
-        # creates with 409/422 for reasons unrelated to throttling; we only
-        # assert the invariant that the guard fired at least once for the
-        # overflow beyond 10 successful creates.
+        # Responses outside {201, 429} are "non-rate-limit failures"
+        # (e.g. 409/422 from the fake persistence when the department
+        # isn't wired for the test-provider).  We must NOT assert on
+        # successes alone because a persistence-stub rejection flow
+        # would make ``len(successes) == 0`` and trivially satisfy
+        # ``<= max_requests``.  Instead we assert on two behavioural
+        # invariants the middleware MUST satisfy regardless of the
+        # underlying handler's success rate:
+        # 1. ``successes`` never exceeds ``max_requests`` (guard caps
+        #    the window budget).
+        # 2. The first ``max_requests`` responses combined can be at
+        #    most ``max_requests`` non-429s -- equivalently, the
+        #    ``concurrency - max_requests`` overflow requests must all
+        #    hit 429.  We assert >= (overflow - slack) denials where
+        #    slack accounts for timing jitter in the thread pool.
+        statuses = [r.status_code for r in responses]
+        status_summary = {s: statuses.count(s) for s in set(statuses)}
+        non_throttled = [r for r in responses if r.status_code != 429]
+        assert len(non_throttled) <= _AGENTS_CREATE_MAX_REQUESTS, (
+            f"More than {_AGENTS_CREATE_MAX_REQUESTS} requests bypassed the "
+            f"guard; status distribution: {status_summary}"
+        )
         assert len(successes) <= _AGENTS_CREATE_MAX_REQUESTS, (
             f"Expected at most {_AGENTS_CREATE_MAX_REQUESTS} successes, "
-            f"got {len(successes)}"
+            f"got {len(successes)}; status distribution: {status_summary}"
         )
         assert len(rate_limit_denials) >= (
             concurrency - _AGENTS_CREATE_MAX_REQUESTS - 10
         ), (
             f"Expected at least ~{concurrency - _AGENTS_CREATE_MAX_REQUESTS - 10} "
-            f"rate-limit denials, got {len(rate_limit_denials)}"
+            f"rate-limit denials, got {len(rate_limit_denials)}; "
+            f"status distribution: {status_summary}"
         )
         # Every 429 must carry the RFC 9457 rate-limit envelope.
         for resp in rate_limit_denials:
