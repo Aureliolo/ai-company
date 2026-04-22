@@ -314,6 +314,55 @@ class TestMemoryServiceDeploy:
         # The prior checkpoint was deactivated as part of rollback.
         assert repo.deactivate_all_calls >= 1
 
+    async def test_deploy_rollback_reactivates_prior_active_checkpoint(
+        self,
+    ) -> None:
+        """When a prior active checkpoint exists, rollback re-activates it.
+
+        Complements ``test_deploy_rollback_deletes_newly_written_missing_settings``
+        (which exercises the no-prior branch): here the service must
+        pick the prior-reactivation path, NOT call ``deactivate_all``,
+        and still delete the newly-written settings whose prior values
+        were absent.
+        """
+        repo = _FakeCheckpointRepo()
+        await repo.save_checkpoint(
+            _checkpoint(checkpoint_id="prior", is_active=True),
+        )
+        await repo.save_checkpoint(_checkpoint(checkpoint_id="a"))
+        # Track the pre-deploy ``deactivate_all`` count so we can assert
+        # the rollback path does not increment it (the prior-exists
+        # branch routes through ``set_active(prior.id)`` instead).
+        baseline_deactivate_calls = repo.deactivate_all_calls
+        settings = _FakeSettingsService(
+            missing_keys={
+                ("memory", "embedder_model"),
+                ("memory", "embedder_provider"),
+            },
+        )
+        settings.fail_next_set_keys.add(("memory", "embedder_provider"))
+        service = MemoryService(
+            checkpoint_repo=repo,
+            run_repo=_FakeRunRepo(),
+            settings_service=settings,  # type: ignore[arg-type]
+        )
+
+        with pytest.raises(RuntimeError):
+            await service.deploy_checkpoint(NotBlankStr("a"))
+
+        # Rollback restored the prior active checkpoint:
+        #  * ``set_active`` was called for "a" (the attempted activation)
+        #    and then again for "prior" during rollback.
+        #  * ``deactivate_all`` was NOT invoked -- that branch is only
+        #    taken when there is no prior active.
+        assert "prior" in repo.set_active_calls
+        assert repo.deactivate_all_calls == baseline_deactivate_calls
+        # Newly-written settings whose prior values were absent must
+        # still be explicitly deleted so rollback leaves a pristine
+        # state.
+        assert ("memory", "embedder_model") in settings.delete_calls
+        assert ("memory", "embedder_provider") in settings.delete_calls
+
 
 class TestMemoryServiceRollback:
     """``rollback_checkpoint`` -- unavailable / corrupt / success.
