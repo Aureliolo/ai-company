@@ -159,7 +159,7 @@ Overriding any of `registry_host`, `image_repo_prefix`, `dhi_registry`, `postgre
 | `backup restore` | `--confirm` (required), `--dry-run`, `--no-restart`, `--timeout` |
 | `completion` | `[bash \| zsh \| fish \| powershell]` -- emit shell autocompletion script (Cobra built-in) |
 | `completion-install` | `[bash \| zsh \| fish \| powershell]` -- write the autocompletion script into your shell startup (`~/.bashrc`, `~/.zshrc`, etc.) |
-| `worker start` | `--workers` (int, default 4), `--nats-url`, `--stream-prefix`, `--container` (default `synthorg-backend`) -- runs the distributed task-queue worker pool |
+| `worker start` | `--workers` (int, default 4), `--nats-url`, `--stream-prefix`, `--container` (flag default `""`; falls back to `synthorg-backend` when unset) -- runs the distributed task-queue worker pool |
 | `wipe` | `--dry-run`, `--no-backup`, `--keep-images` |
 | `doctor` | `--checks`, `--fix` |
 | `version` | `--short` |

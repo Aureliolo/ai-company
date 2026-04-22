@@ -247,14 +247,14 @@ budget:
 
 Query spending, stream cost records, and integrate budget alerts into external dashboards.
 
-### Current budget status
+### Budget configuration
 
 ```bash
-curl http://localhost:3001/api/v1/budget/status \
+curl http://localhost:3001/api/v1/budget/config \
   -H "Cookie: ${SESSION}" | jq
 ```
 
-Returns current period spending, limits, remaining, and alert level (`info` / `warn` / `critical` / `hard_stop`).
+Returns the active `BudgetConfig` (limits, alert thresholds, cascade rules, currency). Current period spending and alert level are derived from the cost records stream (`/budget/records` summaries) or the WebSocket `budget` channel -- there is no separate `/budget/status` endpoint today.
 
 ### List cost records
 
@@ -308,11 +308,11 @@ Alternatively, subscribe to the `budget` WebSocket channel for real-time thresho
 ws.send(JSON.stringify({ action: 'subscribe', channel: 'budget' }))
 ```
 
-Events: `BudgetThresholdWarn`, `BudgetThresholdCritical`, `BudgetThresholdHardStop`, `PerAgentDailyLimitExhausted`.
+Wire event types (see `WsEventType` in `src/synthorg/api/ws_models.py`): `budget.record_added`, `budget.alert`.
 
-### Risk budget queries
+### Risk budget enforcement
 
-If `risk_budget.enabled: true`, parallel endpoints mirror the cost API at `/api/v1/budget/risk/records` and `/api/v1/budget/risk/status`. Risk is measured in `risk_units`, not currency.
+Risk enforcement (`risk_budget.enabled: true`) is handled internally by `RiskTracker` and `RiskEnforcer`. It is not exposed through dedicated public API endpoints today; risk events flow through the same `budget.alert` WebSocket event type described above.
 
 ---
 

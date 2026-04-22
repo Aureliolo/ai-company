@@ -377,7 +377,7 @@ topology deterministically; agents cannot change it.
 | R2 | Circuit breaker bounce count reset | Medium | Low | Dedup (60s) + rate limit | Exponential backoff reset; global per-pair counter |
 | R3 | No coordination overhead cap | Medium | Low | Budget hard stop | Wire `orchestration_ratio` metric to configurable human-review threshold |
 | R4 | Human escalation for conflict is a stub | Medium | High (pending #37) | None | Complete #37 (approval queue integration) |
-| R5 | DebateResolver evaluator exception fallback | Low | Low | Multi-level fallback: evaluator exception -> `_authority_fallback()` -> seniority-only on `ConflictHierarchyError` | Mitigated (implemented in `debate_strategy.py:100-116`) |
+| R5 | DebateResolver evaluator exception fallback | Low | Low | Multi-level fallback: evaluator exception -> `_authority_fallback()` -> seniority-only on `ConflictHierarchyError` | Mitigated (implemented in `DebateResolver.resolve` and `DebateResolver._authority_fallback` in `debate_strategy.py`) |
 | R6 | Chatty interface detection without enforcement | Low | Low | Observational metric | Wire `MessageOverhead.is_quadratic` to coordination throttle |
 | R7 | In-memory guardrail state lost on restart | Low | Medium | None | Persist circuit breaker + dedup state to SQLite |
 | R8 | Budget hard stop has no operator override | Low | Low | None | Add emergency budget override endpoint with CEO+BOARD approval |

@@ -5,7 +5,7 @@ description: Hire, fire, promote, and customize agents via the REST API. Covers 
 
 # Agent Management
 
-SynthOrg treats agents as real employees: they get hired, promoted, fired, and archived with full memory retention. This guide covers the operator-facing lifecycle: hiring an agent with a personality preset, customising their config, firing cleanly, and rehiring from the archive.
+SynthOrg treats agents as real employees: they get hired, promoted, fired, and archived with full memory retention. This guide covers the operator-facing lifecycle: hiring an agent with a personality preset, customizing their config, firing cleanly, and rehiring from the archive.
 
 For the architecture (identity versioning, evolution, five-pillar evaluation), see [Agents](../design/agents.md) and [HR & Agent Lifecycle](../design/hr-lifecycle.md).
 
@@ -169,7 +169,10 @@ Subscribe to the `agents` channel to get real-time lifecycle events:
 
 ```javascript
 ws.send(JSON.stringify({ action: 'subscribe', channel: 'agents' }))
-// Emits: AgentHired, AgentFired, AgentPromoted, AgentDemoted, PersonalityTrimmed
+// Emits WsEventType values (see src/synthorg/api/ws_models.py):
+//   agent.created, agent.updated, agent.deleted,
+//   agent.hired, agent.fired, agent.status_changed,
+//   personality.trimmed
 ```
 
 See [Notifications & Events](notifications-and-events.md) for the full protocol.
