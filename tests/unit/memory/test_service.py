@@ -183,6 +183,20 @@ class TestMemoryServiceCheckpoints:
         page = await service.list_checkpoints(limit=10, offset=0)
         assert {c.id for c in page} == {"a", "b"}
 
+    async def test_list_checkpoints_respects_limit_and_offset(self) -> None:
+        """Bounded pagination: non-zero offset skips leading rows."""
+        repo = _FakeCheckpointRepo()
+        await repo.save_checkpoint(_checkpoint(checkpoint_id="a"))
+        await repo.save_checkpoint(_checkpoint(checkpoint_id="b"))
+        service = MemoryService(
+            checkpoint_repo=repo,
+            run_repo=_FakeRunRepo(),
+            settings_service=None,
+        )
+
+        page = await service.list_checkpoints(limit=1, offset=1)
+        assert [c.id for c in page] == ["b"]
+
     async def test_get_checkpoint_miss_returns_none(self) -> None:
         service = MemoryService(
             checkpoint_repo=_FakeCheckpointRepo(),
@@ -191,14 +205,27 @@ class TestMemoryServiceCheckpoints:
         )
         assert await service.get_checkpoint(NotBlankStr("ghost")) is None
 
-    async def test_delete_missing_raises_not_found(self) -> None:
+    @pytest.mark.parametrize(
+        "operation",
+        ["delete_checkpoint", "deploy_checkpoint", "rollback_checkpoint"],
+    )
+    async def test_operation_on_missing_checkpoint_raises_not_found(
+        self,
+        operation: str,
+    ) -> None:
+        """All id-targeted operations raise ``CheckpointNotFoundError``.
+
+        Consolidates what would otherwise be three near-identical tests
+        by iterating over every service method that resolves an id to a
+        stored checkpoint before acting.
+        """
         service = MemoryService(
             checkpoint_repo=_FakeCheckpointRepo(),
             run_repo=_FakeRunRepo(),
             settings_service=None,
         )
         with pytest.raises(CheckpointNotFoundError):
-            await service.delete_checkpoint(NotBlankStr("ghost"))
+            await getattr(service, operation)(NotBlankStr("ghost"))
 
     async def test_delete_existing_delegates_to_repo(self) -> None:
         repo = _FakeCheckpointRepo()
@@ -214,15 +241,6 @@ class TestMemoryServiceCheckpoints:
 
 class TestMemoryServiceDeploy:
     """``deploy_checkpoint`` happy + rollback paths."""
-
-    async def test_deploy_missing_raises_not_found(self) -> None:
-        service = MemoryService(
-            checkpoint_repo=_FakeCheckpointRepo(),
-            run_repo=_FakeRunRepo(),
-            settings_service=None,
-        )
-        with pytest.raises(CheckpointNotFoundError):
-            await service.deploy_checkpoint(NotBlankStr("ghost"))
 
     async def test_deploy_without_settings_service_activates_only(self) -> None:
         repo = _FakeCheckpointRepo()
@@ -283,16 +301,12 @@ class TestMemoryServiceDeploy:
 
 
 class TestMemoryServiceRollback:
-    """``rollback_checkpoint`` -- unavailable / corrupt / success."""
+    """``rollback_checkpoint`` -- unavailable / corrupt / success.
 
-    async def test_rollback_missing_raises_not_found(self) -> None:
-        service = MemoryService(
-            checkpoint_repo=_FakeCheckpointRepo(),
-            run_repo=_FakeRunRepo(),
-            settings_service=None,
-        )
-        with pytest.raises(CheckpointNotFoundError):
-            await service.rollback_checkpoint(NotBlankStr("ghost"))
+    Missing-id cases are covered by the parametrized
+    ``test_operation_on_missing_checkpoint_raises_not_found`` on
+    :class:`TestMemoryServiceCheckpoints`.
+    """
 
     async def test_rollback_without_backup_raises_unavailable(self) -> None:
         repo = _FakeCheckpointRepo()
