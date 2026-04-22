@@ -240,6 +240,11 @@ class WorkflowService:
             stored_revision: int | None = None
             try:
                 existing = await self._definitions.get(definition.id)
+            except MemoryError, RecursionError:
+                # Fatal system errors must propagate even from a
+                # best-effort probe; otherwise the outer ``raise`` below
+                # would swallow them.
+                raise
             except Exception as lookup_exc:
                 logger.debug(
                     WORKFLOW_DEF_VERSION_CONFLICT,
