@@ -61,6 +61,47 @@ class TestInstallShutdownHandlers:
             # Must not raise; the skip is logged at DEBUG instead.
             install_shutdown_handlers(app_state)  # type: ignore[arg-type]
 
+    @pytest.mark.skipif(
+        sys.platform == "win32",
+        reason="POSIX-only code path",
+    )
+    async def test_survives_add_signal_handler_value_error(self) -> None:
+        """Non-main-thread lifespans (TestClient portal) are tolerated.
+
+        Litestar's ``TestClient`` drives lifespan startup through an
+        anyio portal running on a worker thread; ``add_signal_handler``
+        bottoms out in ``signal.set_wakeup_fd`` which raises
+        ``ValueError: set_wakeup_fd only works in main thread of the
+        main interpreter``.  The helper must catch that and skip
+        registration, since uvicorn in production owns signals and the
+        TestClient lifespan does not need them.
+        """
+        app_state = _FakeAppState()
+        loop = asyncio.get_running_loop()
+        with patch.object(
+            loop,
+            "add_signal_handler",
+            side_effect=ValueError(
+                "set_wakeup_fd only works in main thread of the main interpreter",
+            ),
+        ):
+            install_shutdown_handlers(app_state)  # type: ignore[arg-type]
+
+    @pytest.mark.skipif(
+        sys.platform == "win32",
+        reason="POSIX-only code path",
+    )
+    async def test_survives_add_signal_handler_runtime_error(self) -> None:
+        """Closed-loop or loop-state refusal is degraded, not fatal."""
+        app_state = _FakeAppState()
+        loop = asyncio.get_running_loop()
+        with patch.object(
+            loop,
+            "add_signal_handler",
+            side_effect=RuntimeError("loop is closed"),
+        ):
+            install_shutdown_handlers(app_state)  # type: ignore[arg-type]
+
 
 class TestOnSignal:
     """Handler behaviour when a signal arrives."""

@@ -13,8 +13,9 @@ from litestar.exceptions import (
 )
 from litestar.status_codes import HTTP_204_NO_CONTENT
 
-from synthorg.api.dto import ApiResponse
+from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import HumanRole, require_roles
+from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
 from synthorg.api.path_params import PathId  # noqa: TC001
 from synthorg.api.rate_limits.guard import per_op_rate_limit
 from synthorg.api.state import AppState  # noqa: TC001
@@ -94,14 +95,18 @@ class BackupController(Controller):
     async def list_backups(
         self,
         state: State,
-    ) -> ApiResponse[tuple[BackupInfo, ...]]:
-        """List all available backups.
+        cursor: CursorParam = None,
+        limit: CursorLimit = 50,
+    ) -> PaginatedResponse[BackupInfo]:
+        """List all available backups (paginated).
 
         Args:
             state: Application state.
+            cursor: Opaque pagination cursor from the previous page.
+            limit: Page size.
 
         Returns:
-            List of backup info summaries.
+            Paginated backup info summaries.
         """
         app_state: AppState = state.app_state
         try:
@@ -114,7 +119,13 @@ class BackupController(Controller):
             )
             msg = "Failed to list backups"
             raise InternalServerException(msg) from exc
-        return ApiResponse(data=backups)
+        page, meta = paginate_cursor(
+            tuple(backups),
+            limit=limit,
+            cursor=cursor,
+            secret=app_state.cursor_secret,
+        )
+        return PaginatedResponse[BackupInfo](data=page, pagination=meta)
 
     @get("/{backup_id:str}")
     async def get_backup(

@@ -29,6 +29,10 @@ export async function getReadiness(): Promise<ReadinessStatus> {
  * signal (`persistence` / `message_bus` flags + binary status) should
  * migrate to :func:`getReadiness` -- this wrapper just forwards to
  * it so the old call-site shape keeps working.
+ *
+ * @deprecated Use {@link getReadiness} for readiness probes (or
+ *   {@link getLiveness} for liveness) so the two signals stay
+ *   distinct. This alias exists only so older call sites compile.
  */
 export async function getHealth(): Promise<HealthStatus> {
   return getReadiness()

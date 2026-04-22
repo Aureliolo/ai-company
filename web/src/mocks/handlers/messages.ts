@@ -1,7 +1,7 @@
 import { http, HttpResponse } from 'msw'
 import type { listChannels, listMessages } from '@/api/endpoints/messages'
 import type { Channel, Message } from '@/api/types/messages'
-import { emptyPage, paginatedFor, successFor } from './helpers'
+import { emptyPage, paginatedFor } from './helpers'
 
 export function buildMessage(overrides: Partial<Message> = {}): Message {
   return {
@@ -39,6 +39,6 @@ export const messagesHandlers = [
     HttpResponse.json(paginatedFor<typeof listMessages>(emptyPage<Message>())),
   ),
   http.get('/api/v1/messages/channels', () =>
-    HttpResponse.json(successFor<typeof listChannels>([])),
+    HttpResponse.json(paginatedFor<typeof listChannels>(emptyPage<Channel>())),
   ),
 ]

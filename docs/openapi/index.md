@@ -30,7 +30,8 @@ When running the server locally you also get two kinds of side paths -- document
 
 | Path | Content |
 |---|---|
-| `/api/v1/readyz` | Liveness + readiness endpoint |
+| `/api/v1/healthz` | Liveness probe -- always returns 200 while the process is alive (used by supervisors to decide whether to restart the pod) |
+| `/api/v1/readyz` | Readiness probe -- returns 200 when persistence + message bus are healthy, 503 otherwise (used by load-balancers to gate traffic) |
 | `/api/v1/ws` | WebSocket endpoint for server-sent events (approvals, meetings, task lifecycle) |
 
 The static snapshot on this page is produced by `scripts/export_openapi.py`, which takes the live Litestar schema and runs it through `inject_rfc9457_responses` to attach RFC 9457 error response shapes to every operation. The result is a superset of what `/docs/openapi.json` returns at runtime.

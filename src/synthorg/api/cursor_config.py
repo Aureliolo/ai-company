@@ -58,6 +58,22 @@ class CursorConfig(BaseModel):
 
     @classmethod
     def from_env(cls) -> CursorConfig:
-        """Build from the ``SYNTHORG_PAGINATION_CURSOR_SECRET`` env var."""
-        raw = os.environ.get(_ENV_VAR, "").strip()
-        return cls(secret=raw or None)
+        """Build from the ``SYNTHORG_PAGINATION_CURSOR_SECRET`` env var.
+
+        A whitespace-only value is a configuration mistake (the operator
+        typed something but it collapsed to empty): reject it explicitly
+        so the startup log surfaces the typo, instead of silently
+        routing to the ephemeral branch which would quietly invalidate
+        pagination tokens on every restart.
+        """
+        raw = os.environ.get(_ENV_VAR)
+        if raw is None:
+            return cls(secret=None)
+        stripped = raw.strip()
+        if raw and not stripped:
+            msg = (
+                f"{_ENV_VAR} is set but contains only whitespace; "
+                "unset the variable for ephemeral cursors or set a real key"
+            )
+            raise ValueError(msg)
+        return cls(secret=stripped or None)

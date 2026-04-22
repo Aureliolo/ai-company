@@ -20,3 +20,9 @@ class TestMessageController:
         body = resp.json()
         assert body["success"] is True
         assert isinstance(body["data"], list)
+        # Paginated envelope: ``pagination`` is always present and the
+        # consistency validator keeps ``has_more`` and ``next_cursor``
+        # in lockstep (empty bus -> both falsy).
+        assert "pagination" in body
+        assert body["pagination"]["has_more"] is False
+        assert body["pagination"]["next_cursor"] is None

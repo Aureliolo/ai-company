@@ -130,7 +130,7 @@ export async function getVersionManifest(): Promise<Record<string, number>> {
 }
 
 export async function listDriftReports(params?: {
-  offset?: number
+  cursor?: string | null
   limit?: number
 }): Promise<PaginatedResult<DriftReportResponse>> {
   const response = await apiClient.get<PaginatedResponse<DriftReportResponse>>('/ontology/drift', {

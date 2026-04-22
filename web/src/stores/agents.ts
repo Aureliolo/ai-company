@@ -159,12 +159,16 @@ export const useAgentsStore = create<AgentsState>()((set, get) => ({
 
       const activityPage =
         activityResult.status === 'fulfilled' ? activityResult.value : null
+      // ``total`` is nullable under cursor pagination (repo endpoints
+      // omit COUNT). Fall back to the current page length so the UI
+      // never displays "0" while activity items exist.
+      const activityData = activityPage?.data ?? []
       set({
         selectedAgent: agent,
         performance: perfResult.status === 'fulfilled' ? perfResult.value : null,
         agentTasks: tasksResult.status === 'fulfilled' ? tasksResult.value.data : [],
-        activity: activityPage?.data ?? [],
-        activityTotal: activityPage?.total ?? 0,
+        activity: activityData,
+        activityTotal: activityPage?.total ?? activityData.length,
         activityNextCursor: activityPage?.nextCursor ?? null,
         activityHasMore: activityPage?.hasMore ?? false,
         careerHistory: historyResult.status === 'fulfilled' ? historyResult.value : [],
@@ -214,7 +218,7 @@ export const useAgentsStore = create<AgentsState>()((set, get) => ({
           activity: merged,
           activityTotal:
             result.total === null
-              ? state.activityTotal
+              ? merged.length
               : Math.min(result.total, MAX_ACTIVITIES),
           activityNextCursor: result.nextCursor,
           activityHasMore: result.hasMore,
@@ -222,9 +226,12 @@ export const useAgentsStore = create<AgentsState>()((set, get) => ({
         }
       })
     } catch (err) {
-      // Pagination failure -- existing data preserved, log for debugging
-      set({ activityLoading: false })
-      log.warn('Failed to load more activity:', getErrorMessage(err))
+      // Pagination failure -- existing data preserved; surface the
+      // error through ``detailError`` so the detail page can render a
+      // user-visible banner instead of silently spinning forever.
+      const message = getErrorMessage(err)
+      set({ activityLoading: false, detailError: message })
+      log.warn('Failed to load more activity', message)
     }
   },
 

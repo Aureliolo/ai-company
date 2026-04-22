@@ -18,7 +18,8 @@ from litestar.exceptions import (
 from litestar.testing import TestClient
 
 from synthorg.api.controllers.backup import BackupController
-from synthorg.api.dto import ApiResponse
+from synthorg.api.cursor import CursorSecret
+from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.backup.errors import (
     BackupInProgressError,
     BackupNotFoundError,
@@ -75,6 +76,10 @@ def _make_state_and_service() -> tuple[MagicMock, AsyncMock]:
     service = AsyncMock()
     app_state = MagicMock()
     app_state.backup_service = service
+    # Pagination requires a real cursor secret; MagicMock's default
+    # attribute resolution would hand back a Mock to ``paginate_cursor``
+    # which ultimately fails the HMAC pipeline.
+    app_state.cursor_secret = CursorSecret.from_key("test-key-32-bytes-padding0000000")
 
     state = MagicMock()
     state.app_state = app_state
@@ -127,8 +132,10 @@ class TestListBackups:
         result = await ctrl.list_backups.fn(ctrl, state=state)
 
         service.list_backups.assert_awaited_once()
-        assert isinstance(result, ApiResponse)
+        assert isinstance(result, PaginatedResponse)
         assert result.data == ()
+        assert result.pagination.has_more is False
+        assert result.pagination.next_cursor is None
 
 
 @pytest.mark.unit

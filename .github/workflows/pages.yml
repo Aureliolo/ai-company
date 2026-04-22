@@ -100,15 +100,21 @@ jobs:
           PYTHONPATH: .
         run: |
           set -euo pipefail
-          for attempt in 1 2 3; do
+          max_attempts=3
+          for attempt in $(seq 1 "$max_attempts"); do
             if uv run zensical build; then
               exit 0
             fi
-            echo "::warning::zensical build failed (attempt ${attempt}/3); retrying after 15s"
-            rm -rf _site .d2-cache
-            sleep 15
+            # Only log the retry + scrub state + sleep when another
+            # attempt will actually follow; on the final iteration the
+            # loop falls through to the error line below.
+            if [ "$attempt" -lt "$max_attempts" ]; then
+              echo "::warning::zensical build failed (attempt ${attempt}/${max_attempts}); retrying after 15s"
+              rm -rf _site .d2-cache
+              sleep 15
+            fi
           done
-          echo "::error::zensical build failed after 3 attempts"
+          echo "::error::zensical build failed after ${max_attempts} attempts"
           exit 1
 
       - name: Patch sitemap with static OpenAPI artifacts

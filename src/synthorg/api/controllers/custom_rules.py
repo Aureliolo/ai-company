@@ -14,8 +14,9 @@ from litestar.exceptions import ClientException, NotFoundException
 from litestar.status_codes import HTTP_204_NO_CONTENT
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.api.dto import ApiResponse
+from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_read_access, require_write_access
+from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
 from synthorg.api.rate_limits import per_op_rate_limit
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.models import (
@@ -190,16 +191,29 @@ class CustomRuleController(Controller):
     async def list_rules(
         self,
         state: State,
-    ) -> ApiResponse[list[dict[str, Any]]]:
-        """List all custom rules.
+        cursor: CursorParam = None,
+        limit: CursorLimit = 50,
+    ) -> PaginatedResponse[dict[str, Any]]:
+        """List all custom rules (paginated).
+
+        Args:
+            state: Application state.
+            cursor: Opaque pagination cursor from the previous page;
+                ``None`` starts at the beginning.
+            limit: Page size.
 
         Returns:
-            List of custom rule definitions.
+            Paginated custom rule definitions.
         """
         rules = await _service(state).list_rules()
-        return ApiResponse[list[dict[str, Any]]](
-            data=[rule_to_dict(r) for r in rules],
+        entries = tuple(rule_to_dict(r) for r in rules)
+        page, meta = paginate_cursor(
+            entries,
+            limit=limit,
+            cursor=cursor,
+            secret=state.app_state.cursor_secret,
         )
+        return PaginatedResponse[dict[str, Any]](data=page, pagination=meta)
 
     @get("/{rule_id:str}")
     async def get_rule(

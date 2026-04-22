@@ -202,12 +202,20 @@ def _build_auth_exclude_paths(
     # through. CSRF protection is handled by the state token the
     # callback validates against the oauth_states repo.
     oauth_callback_path = f"^{prefix}/oauth/callback$"
+    # Liveness / readiness probes are always excluded from auth so
+    # supervisors (k8s, docker-healthcheck, CLI status polling) can
+    # reach them without credentials.  A custom ``auth.exclude_paths``
+    # could otherwise silently start returning 401 on probes and break
+    # restart loops -- treat these as fail-safe additions alongside
+    # metrics / setup-status / logout.
+    healthz_path = f"^{prefix}/healthz$"
+    readyz_path = f"^{prefix}/readyz$"
     exclude_paths = (
         auth.exclude_paths
         if auth.exclude_paths is not None
         else (
-            f"^{prefix}/healthz$",
-            f"^{prefix}/readyz$",
+            healthz_path,
+            readyz_path,
             metrics_path,
             "^/docs",
             "^/api$",
@@ -218,23 +226,23 @@ def _build_auth_exclude_paths(
             oauth_callback_path,
         )
     )
-    if metrics_path not in exclude_paths:
-        exclude_paths = (*exclude_paths, metrics_path)
-    if setup_status_path not in exclude_paths:
-        exclude_paths = (*exclude_paths, setup_status_path)
-    if logout_path not in exclude_paths:
-        exclude_paths = (*exclude_paths, logout_path)
-    if ws_path not in exclude_paths:
-        exclude_paths = (*exclude_paths, ws_path)
-    if oauth_callback_path not in exclude_paths:
-        exclude_paths = (*exclude_paths, oauth_callback_path)
+    # Fold all mandatory fail-safe paths through a single helper so
+    # each addition stays O(1) and the function body keeps below
+    # ruff's complexity ceiling.
+    mandatory_paths: list[str] = [
+        healthz_path,
+        readyz_path,
+        metrics_path,
+        setup_status_path,
+        logout_path,
+        ws_path,
+        oauth_callback_path,
+    ]
     if a2a_enabled:
-        a2a_gateway_path = f"^{prefix}/a2a"
-        well_known_path = r"^/\.well-known"
-        if a2a_gateway_path not in exclude_paths:
-            exclude_paths = (*exclude_paths, a2a_gateway_path)
-        if well_known_path not in exclude_paths:
-            exclude_paths = (*exclude_paths, well_known_path)
+        mandatory_paths.extend((f"^{prefix}/a2a", r"^/\.well-known"))
+    for path in mandatory_paths:
+        if path not in exclude_paths:
+            exclude_paths = (*exclude_paths, path)
     return exclude_paths
 
 

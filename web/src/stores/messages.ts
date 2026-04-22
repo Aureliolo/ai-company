@@ -242,9 +242,13 @@ export const useMessagesStore = create<MessagesState>()((set, get) => ({
     const seq = ++channelRequestSeq
     set({ channelsLoading: true, channelsError: null })
     try {
-      const channels = await messagesApi.listChannels()
+      // ``listChannels`` now returns a paginated envelope; take the
+      // first page (channels are bounded by bus configuration, so a
+      // single page at the default limit covers every deployment we
+      // ship today).
+      const result = await messagesApi.listChannels()
       if (seq !== channelRequestSeq) return
-      set({ channels, channelsLoading: false })
+      set({ channels: result.data, channelsLoading: false })
     } catch (err) {
       if (seq !== channelRequestSeq) return
       set({ channelsLoading: false, channelsError: getErrorMessage(err) })
@@ -253,13 +257,21 @@ export const useMessagesStore = create<MessagesState>()((set, get) => ({
 
   fetchMessages: async (channel, limit = MESSAGES_FETCH_LIMIT) => {
     const seq = ++messageRequestSeq
-    set({ loading: true, error: null, loadingMore: false })
+    // Clear stale cursor state so fetchMoreMessages cannot resume from
+    // a cursor issued for a previous channel if this fresh load fails.
+    set({
+      loading: true,
+      error: null,
+      loadingMore: false,
+      nextCursor: null,
+      hasMore: false,
+    })
     try {
       const result = await messagesApi.listMessages({ channel, limit })
       if (seq !== messageRequestSeq) return
       set({
         messages: result.data,
-        total: result.total ?? 0,
+        total: result.total ?? result.data.length,
         nextCursor: result.nextCursor,
         hasMore: result.hasMore,
         loading: false,
@@ -267,7 +279,12 @@ export const useMessagesStore = create<MessagesState>()((set, get) => ({
       })
     } catch (err) {
       if (seq !== messageRequestSeq) return
-      set({ loading: false, error: getErrorMessage(err) })
+      set({
+        loading: false,
+        error: getErrorMessage(err),
+        nextCursor: null,
+        hasMore: false,
+      })
     }
   },
 
@@ -290,9 +307,10 @@ export const useMessagesStore = create<MessagesState>()((set, get) => ({
         const deduped = result.data.filter(
           (m) => !existingIds.has(m.id),
         )
+        const mergedLength = s.messages.length + deduped.length
         return {
           messages: [...s.messages, ...deduped],
-          total: result.total ?? s.total,
+          total: result.total ?? mergedLength,
           nextCursor: result.nextCursor,
           hasMore: result.hasMore,
           loadingMore: false,

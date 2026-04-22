@@ -367,7 +367,7 @@ export const useApprovalsStore = create<ApprovalsState>()((set, get) => ({
       // Sync selectedApproval with fresh data if drawer is open
       const currentSelected = get().selectedApproval
       const freshSelected = currentSelected ? merged.find((a) => a.id === currentSelected.id) ?? currentSelected : null
-      set({ approvals: merged, total: result.total ?? 0, loading: false, selectedIds: prunedSelected, selectedApproval: freshSelected })
+      set({ approvals: merged, total: result.total ?? merged.length, loading: false, selectedIds: prunedSelected, selectedApproval: freshSelected })
     } catch (err) {
       if (seq !== listRequestSeq) return
       log.warn('Failed to fetch approvals', sanitizeForLog(err))

@@ -10,13 +10,14 @@ from litestar import Controller, delete, get, patch, post
 from litestar.datastructures import State  # noqa: TC002
 from litestar.params import Parameter
 
-from synthorg.api.dto import ApiResponse
+from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.errors import (
     ApiValidationError,
     ConflictError,
     NotFoundError,
 )
 from synthorg.api.guards import require_read_access, require_write_access
+from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
 from synthorg.api.rate_limits import per_op_rate_limit
 from synthorg.integrations.connections.catalog import _UNSET
 from synthorg.integrations.connections.models import (
@@ -61,11 +62,29 @@ class ConnectionsController(Controller):
     async def list_connections(
         self,
         state: State,
-    ) -> ApiResponse[tuple[Connection, ...]]:
-        """List all connections in the catalog."""
-        catalog = state["app_state"].connection_catalog
+        cursor: CursorParam = None,
+        limit: CursorLimit = 50,
+    ) -> PaginatedResponse[Connection]:
+        """List all connections in the catalog (paginated).
+
+        Args:
+            state: Application state.
+            cursor: Opaque pagination cursor from the previous page.
+            limit: Page size.
+
+        Returns:
+            Paginated connection catalog entries.
+        """
+        app_state = state["app_state"]
+        catalog = app_state.connection_catalog
         connections = await catalog.list_all()
-        return ApiResponse(data=connections)
+        page, meta = paginate_cursor(
+            tuple(connections),
+            limit=limit,
+            cursor=cursor,
+            secret=app_state.cursor_secret,
+        )
+        return PaginatedResponse[Connection](data=page, pagination=meta)
 
     @get(
         "/{name:str}",

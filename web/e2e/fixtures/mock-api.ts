@@ -8,9 +8,43 @@ import type { Page } from '@playwright/test'
  * regardless of backend state.
  */
 export async function mockApiRoutes(page: Page) {
-  // Health endpoint
+  // Liveness -- always 200 while the process is alive.
+  await page.route('**/api/v1/healthz', (route) =>
+    route.fulfill({
+      json: {
+        success: true,
+        data: {
+          status: 'ok',
+          version: '0.6.4',
+          uptime_seconds: 0,
+        },
+        error: null,
+        error_detail: null,
+      },
+    }),
+  )
+
+  // Readiness -- returns the full ``ApiResponse<ReadinessStatus>``
+  // envelope so the dashboard's ``unwrap()`` call gets the expected
+  // ``data`` shape (a bare ``{ status: 'ok' }`` response would fail
+  // ``unwrap()`` validation since the wrapper expects ``success`` +
+  // ``data`` at the top level).
   await page.route('**/api/v1/readyz', (route) =>
-    route.fulfill({ json: { status: 'ok' } }),
+    route.fulfill({
+      json: {
+        success: true,
+        data: {
+          status: 'ok',
+          persistence: true,
+          message_bus: true,
+          telemetry: 'disabled',
+          version: '0.6.4',
+          uptime_seconds: 0,
+        },
+        error: null,
+        error_detail: null,
+      },
+    }),
   )
 
   // Auth ticket for WebSocket

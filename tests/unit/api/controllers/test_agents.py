@@ -366,6 +366,30 @@ class TestAgentActivity:
         assert body2["pagination"]["offset"] == 2
         assert body2["pagination"]["limit"] == 2
         assert len(body2["data"]) == 2
+        # Verify the cursor actually advanced: page 2's items must be
+        # distinct from page 1's, otherwise the controller could pass
+        # metadata checks while serving the same slice every call.
+        page1_task_ids = [
+            item.get("task_id") for item in body1["data"] if "task_id" in item
+        ]
+        page2_task_ids = [
+            item.get("task_id") for item in body2["data"] if "task_id" in item
+        ]
+        assert set(page1_task_ids).isdisjoint(set(page2_task_ids))
+
+        # Walk to the terminal page (limit=2 across 5 items -> page 3
+        # has 1 item and clears has_more + next_cursor per the
+        # PaginationMeta consistency validator).
+        resp3 = test_client.get(
+            f"/api/v1/agents/{_AGENT_NAME}/activity",
+            params={"limit": 2, "cursor": body2["pagination"]["next_cursor"]},
+        )
+        assert resp3.status_code == 200
+        body3 = resp3.json()
+        assert body3["pagination"]["offset"] == 4
+        assert body3["pagination"]["has_more"] is False
+        assert body3["pagination"]["next_cursor"] is None
+        assert len(body3["data"]) == 1
 
     async def test_activity_empty(
         self,

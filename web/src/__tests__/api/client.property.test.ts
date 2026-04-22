@@ -67,6 +67,42 @@ describe('client property tests', () => {
           expect(result.total).toBe(total)
           expect(result.offset).toBe(offset)
           expect(result.limit).toBe(limit)
+          // Terminal page: cursor fields must round-trip from the
+          // envelope into the unwrapped shape so cursor regressions
+          // (e.g. mapping ``next_cursor`` to the wrong key) surface.
+          expect(result.nextCursor).toBeNull()
+          expect(result.hasMore).toBe(false)
+        },
+      ),
+    )
+  })
+
+  it('unwrapPaginated preserves cursor metadata for intermediate pages', () => {
+    fc.assert(
+      fc.property(
+        fc.array(fc.record({ id: fc.string() }), { minLength: 1, maxLength: 10 }),
+        fc.string({ minLength: 4, maxLength: 32 }),
+        (items, nextCursor) => {
+          const response = mockResponse<PaginatedResponse<{ id: string }>>({
+            data: items,
+            error: null,
+            error_detail: null,
+            success: true,
+            pagination: {
+              total: null,
+              offset: 0,
+              limit: items.length,
+              next_cursor: nextCursor,
+              has_more: true,
+            },
+          })
+          const result = unwrapPaginated(response)
+          expect(result.nextCursor).toBe(nextCursor)
+          expect(result.hasMore).toBe(true)
+          // ``total`` is nullable under cursor pagination; the
+          // unwrap helper must surface ``null`` so stores derive
+          // display counts from ``data.length``.
+          expect(result.total).toBeNull()
         },
       ),
     )

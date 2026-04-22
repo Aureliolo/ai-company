@@ -51,6 +51,10 @@ jobs:
               - 'uv.lock'
               - '.github/actions/**'
               - '.github/workflows/ci.yml'
+              # The async-leak ceiling is consumed by the dashboard-test
+              # job; bumps must re-run the gate so the new ceiling is
+              # validated before merge.
+              - '.github/ci/*.max'
             docker:
               - 'docker/**'
               - '.dockerignore'
@@ -417,7 +421,10 @@ jobs:
           # workflow YAML.  The single-line file is read below.
         run: |
           set -o pipefail
-          MAX_ASYNC_LEAKS=$(grep -v '^#' .github/ci/web-async-leaks.max | head -1 | tr -d '[:space:]')
+          # The step runs with ``working-directory: web``; the ceiling
+          # file lives at the repo root, so reference it via
+          # ``$GITHUB_WORKSPACE`` instead of a relative path.
+          MAX_ASYNC_LEAKS=$(grep -v '^#' "$GITHUB_WORKSPACE/.github/ci/web-async-leaks.max" | head -1 | tr -d '[:space:]')
           if ! [[ "$MAX_ASYNC_LEAKS" =~ ^[0-9]+$ ]]; then
             echo "::error::.github/ci/web-async-leaks.max is not a positive integer: '$MAX_ASYNC_LEAKS'"
             exit 1

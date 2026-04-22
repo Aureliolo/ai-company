@@ -178,6 +178,11 @@ class TestListVersions:
         assert len(body2["data"]) == 1
         assert body2["data"][0]["version"] == 1
         assert body2["pagination"]["has_more"] is False
+        # Terminal page must also clear ``next_cursor`` so clients do
+        # not walk a dangling cursor past the end; the
+        # ``_validate_cursor_consistency`` validator on PaginationMeta
+        # enforces the ``has_more ↔ next_cursor`` pairing.
+        assert body2["pagination"]["next_cursor"] is None
 
 
 # ── GET /workflows/{id}/versions/{version} ────────────────────────

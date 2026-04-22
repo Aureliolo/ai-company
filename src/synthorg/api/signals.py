@@ -81,9 +81,17 @@ def install_shutdown_handlers(app_state: AppState) -> None:
                 sig,
                 _make_handler(sig, app_state),
             )
-        except NotImplementedError:
+        except NotImplementedError, ValueError, RuntimeError:
             # Proactor event loops (embedded runtimes, subinterpreters)
-            # raise ``NotImplementedError``.  Collect the skipped signal
+            # raise ``NotImplementedError``.  Non-main-thread execution
+            # (e.g. Litestar's ``TestClient`` portal runs the lifespan on
+            # a worker thread and ``loop.add_signal_handler`` bottoms out
+            # in ``signal.set_wakeup_fd`` which raises ``ValueError:
+            # set_wakeup_fd only works in main thread of the main
+            # interpreter``) is equally benign -- uvicorn in production
+            # owns the signal handler when this branch fires.
+            # ``RuntimeError`` covers the "loop is closed" race and any
+            # other loop-state refusal.  Collect the skipped signal
             # names and log once at the end so a mixed outcome
             # (e.g. SIGTERM registered but SIGINT refused) is visible
             # instead of silently exiting after the first skip.

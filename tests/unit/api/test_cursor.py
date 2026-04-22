@@ -175,10 +175,50 @@ class TestFromConfig:
         token = encode_cursor(5, secret=s1)
         assert decode_cursor(token, secret=s2) == 5
 
-    def test_empty_secret_is_ephemeral(self) -> None:
+    def test_none_secret_is_ephemeral(self) -> None:
+        """Explicit ``None`` routes to the ephemeral branch."""
         config = CursorConfig(secret=None)
         s = CursorSecret.from_config(config)
         assert s.is_ephemeral
+
+    def test_empty_string_secret_rejected_at_config(self) -> None:
+        """``CursorConfig`` rejects ``""`` at the field validator.
+
+        The boundary is the config model: blank strings would silently
+        route to ephemeral from ``CursorSecret.from_config`` if they
+        reached it, so the validator short-circuits before construction.
+        """
+        with pytest.raises(ValueError, match="must not be blank"):
+            CursorConfig(secret="")
+
+    def test_whitespace_only_secret_rejected_at_config(self) -> None:
+        """Whitespace-only strings are treated the same as ``""``."""
+        with pytest.raises(ValueError, match="must not be blank"):
+            CursorConfig(secret="   \t  ")
+
+    def test_from_env_rejects_whitespace_only_value(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A whitespace-only env var is a configuration mistake, not ephemeral.
+
+        Stripping + ``or None`` would silently route a typo (``" "``,
+        ``"\t"``) to the ephemeral branch, burning pagination tokens on
+        every restart with no operator-visible warning. ``from_env``
+        rejects explicitly so the startup failure surfaces the typo.
+        """
+        monkeypatch.setenv("SYNTHORG_PAGINATION_CURSOR_SECRET", "   \t ")
+        with pytest.raises(ValueError, match="whitespace"):
+            CursorConfig.from_env()
+
+    def test_from_env_unset_returns_ephemeral(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """An unset env var builds an ephemeral config, not an error."""
+        monkeypatch.delenv("SYNTHORG_PAGINATION_CURSOR_SECRET", raising=False)
+        config = CursorConfig.from_env()
+        assert config.secret is None
 
 
 @given(offset=st.integers(min_value=0, max_value=10**9))

@@ -1,7 +1,7 @@
 import { http, HttpResponse } from 'msw'
 import { useMessagesStore, _resetRequestSeqs } from '@/stores/messages'
 import { makeMessage, makeChannel } from '../helpers/factories'
-import { apiError, apiSuccess, paginatedFor } from '@/mocks/handlers'
+import { apiError, paginatedFor } from '@/mocks/handlers'
 import type { listMessages } from '@/api/endpoints/messages'
 import { server } from '@/test-setup'
 import type { Message } from '@/api/types/messages'
@@ -68,7 +68,19 @@ describe('messagesStore', () => {
       const channels = [makeChannel('#engineering'), makeChannel('#product')]
       server.use(
         http.get('/api/v1/messages/channels', () =>
-          HttpResponse.json(apiSuccess(channels)),
+          HttpResponse.json({
+            data: channels,
+            error: null,
+            error_detail: null,
+            success: true,
+            pagination: {
+              total: channels.length,
+              offset: 0,
+              limit: 50,
+              next_cursor: null,
+              has_more: false,
+            },
+          }),
         ),
       )
 

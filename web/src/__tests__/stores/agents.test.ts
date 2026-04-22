@@ -415,6 +415,11 @@ describe('fetchMoreActivity', () => {
 
     expect(useAgentsStore.getState().activity).toHaveLength(2)
     expect(useAgentsStore.getState().activityTotal).toBe(5)
+    // Terminal page must clear both cursor fields so a subsequent
+    // ``fetchMoreActivity`` call short-circuits on the ``!hasMore ||
+    // !nextCursor`` guard instead of replaying the last cursor.
+    expect(useAgentsStore.getState().activityHasMore).toBe(false)
+    expect(useAgentsStore.getState().activityNextCursor).toBeNull()
   })
 
   it('caps activity at MAX_ACTIVITIES (100)', async () => {
@@ -459,6 +464,10 @@ describe('fetchMoreActivity', () => {
     await useAgentsStore.getState().fetchMoreActivity('Alice Smith')
 
     expect(useAgentsStore.getState().activity).toHaveLength(100)
+    // Intermediate page must advance the cursor + keep ``hasMore``
+    // true so the next ``fetchMoreActivity`` call can continue.
+    expect(useAgentsStore.getState().activityNextCursor).toBe('cursor-page-3')
+    expect(useAgentsStore.getState().activityHasMore).toBe(true)
   })
 
   it('preserves existing data on failure', async () => {
@@ -488,6 +497,12 @@ describe('fetchMoreActivity', () => {
 
     expect(useAgentsStore.getState().activity).toHaveLength(1)
     expect(useAgentsStore.getState().activity[0]!.description).toBe('Task done')
+    // On failure the previous cursor state is preserved so the user
+    // can retry ``fetchMoreActivity`` without losing their place.
+    expect(useAgentsStore.getState().activityNextCursor).toBe('cursor-page-2')
+    expect(useAgentsStore.getState().activityHasMore).toBe(true)
+    // And ``detailError`` surfaces the failure for the UI banner.
+    expect(useAgentsStore.getState().detailError).not.toBeNull()
   })
 })
 

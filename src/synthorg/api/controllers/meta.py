@@ -8,8 +8,9 @@ from litestar.exceptions import NotFoundException
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.api.controllers.custom_rules import rule_to_dict
-from synthorg.api.dto import ApiResponse
+from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_org_mutation, require_read_access
+from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.meta.config import SelfImprovementConfig
 from synthorg.meta.mcp.server import get_server_config
@@ -60,11 +61,18 @@ class MetaController(Controller):
     async def list_rules(
         self,
         state: State,
-    ) -> ApiResponse[list[dict[str, Any]]]:
+        cursor: CursorParam = None,
+        limit: CursorLimit = 50,
+    ) -> PaginatedResponse[dict[str, Any]]:
         """List all signal rules (built-in + custom) with status.
 
+        Args:
+            state: Application state.
+            cursor: Opaque pagination cursor from the previous page.
+            limit: Page size.
+
         Returns:
-            List of rule names, enabled status, and type.
+            Paginated rule summaries.
         """
         from synthorg.meta.rules.builtin import default_rules  # noqa: PLC0415
 
@@ -92,27 +100,42 @@ class MetaController(Controller):
             )
         else:
             rule_list.extend({**rule_to_dict(cr), "type": "custom"} for cr in custom)
-        return ApiResponse[list[dict[str, Any]]](data=rule_list)
+        page, meta = paginate_cursor(
+            tuple(rule_list),
+            limit=limit,
+            cursor=cursor,
+            secret=state.app_state.cursor_secret,
+        )
+        return PaginatedResponse[dict[str, Any]](data=page, pagination=meta)
 
     @get("/mcp/tools")
     async def list_mcp_tools(
         self,
-    ) -> ApiResponse[list[dict[str, str]]]:
-        """List available MCP signal tools.
+        state: State,
+        cursor: CursorParam = None,
+        limit: CursorLimit = 50,
+    ) -> PaginatedResponse[dict[str, str]]:
+        """List available MCP signal tools (paginated).
+
+        Args:
+            state: Application state (source of the cursor secret).
+            cursor: Opaque pagination cursor from the previous page.
+            limit: Page size.
 
         Returns:
-            MCP tool definitions.
+            Paginated MCP tool definitions.
         """
         tools = get_tool_definitions()
-        return ApiResponse[list[dict[str, str]]](
-            data=[
-                {
-                    "name": t["name"],
-                    "description": t["description"],
-                }
-                for t in tools
-            ],
+        entries = tuple(
+            {"name": t["name"], "description": t["description"]} for t in tools
         )
+        page, meta = paginate_cursor(
+            entries,
+            limit=limit,
+            cursor=cursor,
+            secret=state.app_state.cursor_secret,
+        )
+        return PaginatedResponse[dict[str, str]](data=page, pagination=meta)
 
     @get("/mcp/server")
     async def get_mcp_server_config(
@@ -130,15 +153,30 @@ class MetaController(Controller):
     @get("/ab-tests")
     async def list_ab_tests(
         self,
-    ) -> ApiResponse[list[dict[str, Any]]]:
+        state: State,
+        cursor: CursorParam = None,
+        limit: CursorLimit = 50,
+    ) -> PaginatedResponse[dict[str, Any]]:
         """List active A/B tests with status and current metrics.
 
+        Args:
+            state: Application state (source of the cursor secret).
+            cursor: Opaque pagination cursor from the previous page.
+            limit: Page size.
+
         Returns:
-            List of active A/B test summaries.
+            Paginated A/B test summaries.
         """
         # TODO: wire to actual A/B test state once observation
         # loop and persistence are implemented.
-        return ApiResponse[list[dict[str, Any]]](data=[])
+        empty: tuple[dict[str, Any], ...] = ()
+        page, meta = paginate_cursor(
+            empty,
+            limit=limit,
+            cursor=cursor,
+            secret=state.app_state.cursor_secret,
+        )
+        return PaginatedResponse[dict[str, Any]](data=page, pagination=meta)
 
     @get("/ab-tests/{proposal_id:str}")
     async def get_ab_test_detail(
@@ -161,17 +199,24 @@ class MetaController(Controller):
     async def list_proposals(
         self,
         state: State,
-    ) -> ApiResponse[list[dict[str, Any]]]:
+        cursor: CursorParam = None,
+        limit: CursorLimit = 50,
+    ) -> PaginatedResponse[dict[str, Any]]:
         """List improvement proposals from the approval store.
 
         Returns proposals where action_type starts with ``meta.``.
 
+        Args:
+            state: Application state.
+            cursor: Opaque pagination cursor from the previous page.
+            limit: Page size.
+
         Returns:
-            List of proposal summaries.
+            Paginated proposal summaries.
         """
         store = state.app_state.approval_store
         all_items = await store.list_items()
-        proposals: list[dict[str, Any]] = [
+        proposals = tuple(
             {
                 "id": item.id,
                 "title": item.title,
@@ -183,8 +228,14 @@ class MetaController(Controller):
             }
             for item in all_items
             if item.action_type.startswith("meta.")
-        ]
-        return ApiResponse[list[dict[str, Any]]](data=proposals)
+        )
+        page, meta = paginate_cursor(
+            proposals,
+            limit=limit,
+            cursor=cursor,
+            secret=state.app_state.cursor_secret,
+        )
+        return PaginatedResponse[dict[str, Any]](data=page, pagination=meta)
 
     @get("/signals")
     async def get_signals(

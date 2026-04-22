@@ -395,7 +395,7 @@ class AgentController(Controller):
         return ApiResponse(data=summary)
 
     @get("/{agent_name:str}/activity")
-    async def get_agent_activity(  # noqa: D417 -- cursor documented in list endpoints
+    async def get_agent_activity(
         self,
         state: State,
         agent_name: PathName,
@@ -410,7 +410,8 @@ class AgentController(Controller):
         Args:
             state: Application state.
             agent_name: Agent name to look up.
-            offset: Pagination offset.
+            cursor: Opaque pagination cursor returned by the previous
+                page; ``None`` starts at the beginning.
             limit: Page size.
 
         Returns:

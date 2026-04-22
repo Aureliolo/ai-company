@@ -77,8 +77,12 @@ def paginate_cursor[T](
     # reaching this branch means the collection shrunk between
     # issuing the cursor and walking it (e.g. deletions) -- returning
     # an empty page would silently hide the truncation from callers
-    # that rely on ``has_more`` progressing consistently.
-    if offset > len(items):
+    # that rely on ``has_more`` progressing consistently.  The
+    # comparison is ``>=`` because ``has_more`` is False whenever
+    # ``next_offset == len(items)``, so no valid cursor is ever issued
+    # pointing exactly at the collection end -- reaching that position
+    # is the unambiguous truncation signal.
+    if offset and offset >= len(items):
         msg = "cursor points past the end of the collection"
         raise InvalidCursorError(msg)
     page = items[offset : offset + effective_limit]

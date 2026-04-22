@@ -10,7 +10,8 @@ from litestar import Controller, delete, get, post, put
 from litestar.datastructures import State  # noqa: TC002
 from litestar.status_codes import HTTP_204_NO_CONTENT
 
-from synthorg.api.dto import ApiResponse, PaginatedResponse
+from synthorg.api.cursor import decode_cursor, encode_cursor
+from synthorg.api.dto import ApiResponse, PaginatedResponse, PaginationMeta
 from synthorg.api.dto_ontology import (
     CreateEntityRequest,
     DriftReportResponse,
@@ -375,14 +376,23 @@ class OntologyController(Controller):
             msg = "Entity not found"
             raise NotFoundError(msg)  # noqa: B904
 
-        # Fetch a bounded superset and paginate in memory so cursor
-        # semantics stay stable across pages (service-layer ``offset``
-        # will migrate alongside the repo pagination pass).
+        # Decode the cursor at the controller so the repo can honour a
+        # true ``LIMIT / OFFSET`` instead of streaming every version.
+        # Request ``limit + 1`` so ``paginate_cursor`` can detect that
+        # another page follows without issuing a second COUNT query;
+        # that keeps the handler O(limit) rather than O(n).
+        offset = (
+            0
+            if cursor is None
+            else decode_cursor(cursor, secret=app_state.cursor_secret)
+        )
         versions = await svc.list_versions(
             name,
-            limit=1000,
-            offset=0,
+            limit=limit + 1,
+            offset=offset,
         )
+        has_more = len(versions) > limit
+        window = versions[:limit]
         responses = tuple(
             EntityVersionResponse(
                 entity_id=v.entity_id,
@@ -392,15 +402,21 @@ class OntologyController(Controller):
                 saved_by=v.saved_by,
                 saved_at=v.saved_at,
             )
-            for v in versions
+            for v in window
         )
-        page, meta = paginate_cursor(
-            responses,
+        next_cursor = (
+            encode_cursor(offset + limit, secret=app_state.cursor_secret)
+            if has_more
+            else None
+        )
+        meta = PaginationMeta(
             limit=limit,
-            cursor=cursor,
-            secret=app_state.cursor_secret,
+            next_cursor=next_cursor,
+            has_more=has_more,
+            total=None,
+            offset=offset,
         )
-        return PaginatedResponse(data=page, pagination=meta)
+        return PaginatedResponse(data=responses, pagination=meta)
 
     @get("/entities/{name:str}/versions/{version:int}")
     async def get_entity_version(
@@ -460,7 +476,12 @@ class OntologyController(Controller):
             )
             return PaginatedResponse(data=(), pagination=meta)
 
-        reports = await store.get_all_latest(limit=limit)
+        # Request ``limit + 1`` so ``paginate_cursor`` can detect that
+        # another page exists (its ``has_more`` check compares
+        # ``next_offset`` against ``len(items)`` -- if the store only
+        # returns ``limit`` items the helper always reports
+        # ``has_more=False`` regardless of the true count).
+        reports = await store.get_all_latest(limit=limit + 1)
         responses = tuple(_drift_report_to_response(r) for r in reports)
         page, meta = paginate_cursor(
             responses,

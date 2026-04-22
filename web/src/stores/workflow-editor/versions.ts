@@ -34,7 +34,15 @@ export const createVersionsSlice: SliceCreator<VersionsSlice> = (set, get) => ({
     const defn = get().definition
     if (!defn) return
     const reqId = get()._versionsRequestId + 1
-    set({ versionsLoading: true, _versionsRequestId: reqId })
+    // Clear stale cursor state so ``loadMoreVersions`` cannot resume
+    // from a cursor issued for a previous workflow definition if this
+    // fresh load fails or the user switches workflows mid-flight.
+    set({
+      versionsLoading: true,
+      _versionsRequestId: reqId,
+      versionsHasMore: false,
+      versionsNextCursor: null,
+    })
     try {
       const limit = 50
       const result = await listWorkflowVersions(defn.id, { limit })
@@ -48,7 +56,12 @@ export const createVersionsSlice: SliceCreator<VersionsSlice> = (set, get) => ({
     } catch (err) {
       if (get()._versionsRequestId !== reqId) return
       log.warn('Failed to load versions', sanitizeForLog(err))
-      set({ versionsLoading: false, error: getErrorMessage(err) })
+      set({
+        versionsLoading: false,
+        versionsHasMore: false,
+        versionsNextCursor: null,
+        error: getErrorMessage(err),
+      })
     }
   },
 

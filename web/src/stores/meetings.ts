@@ -393,7 +393,7 @@ export const useMeetingsStore = create<MeetingsState>()((set, get) => ({
         : null
       set({
         meetings: result.data,
-        total: result.total ?? 0,
+        total: result.total ?? result.data.length,
         loading: false,
         selectedMeeting: freshSelected,
       })
