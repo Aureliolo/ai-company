@@ -76,6 +76,9 @@ export function ProgressIndicator({
         >
           <div className="absolute inset-y-0 left-0 w-1/3 animate-[so-indeterminate_1.5s_ease-in-out_infinite] bg-accent" />
         </div>
+        {!label && description && (
+          <p className="text-xs text-muted-foreground">{description}</p>
+        )}
       </div>
     )
   }

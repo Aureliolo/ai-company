@@ -5,7 +5,10 @@ const meta = {
   title: 'Feedback/ErrorBanner',
   component: ErrorBanner,
   tags: ['autodocs'],
-  parameters: { layout: 'padded' },
+  parameters: {
+    layout: 'padded',
+    a11y: { test: 'error' },
+  },
 } satisfies Meta<typeof ErrorBanner>
 
 export default meta

@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react'
+import fc from 'fast-check'
 import { MemoryRouter } from 'react-router'
 import { Breadcrumbs } from '@/components/ui/breadcrumbs'
 
@@ -80,5 +81,52 @@ describe('Breadcrumbs', () => {
       items: [{ label: 'Home' }],
     })
     expect(container.querySelector('ol')).toBeInTheDocument()
+  })
+
+  it('property: when items.length <= maxItems all labels are rendered', () => {
+    fc.assert(
+      fc.property(
+        fc.integer({ min: 1, max: 8 }),
+        fc.integer({ min: 3, max: 10 }),
+        (length, maxItemsCandidate) => {
+          const items = Array.from({ length }, (_, i) => ({
+            label: `Item-${i}`,
+            ...(i < length - 1 ? { to: `/i-${i}` } : {}),
+          }))
+          const maxItems = Math.max(length, maxItemsCandidate)
+          const { unmount } = renderBreadcrumbs({ items, maxItems })
+          for (const item of items) {
+            expect(screen.getByText(item.label)).toBeInTheDocument()
+          }
+          unmount()
+        },
+      ),
+    )
+  })
+
+  it('property: when items.length > maxItems, first and last render and at least one middle is collapsed', () => {
+    fc.assert(
+      fc.property(
+        fc.integer({ min: 5, max: 10 }),
+        fc.integer({ min: 3, max: 4 }),
+        (length, maxItems) => {
+          fc.pre(length > maxItems)
+          const items = Array.from({ length }, (_, i) => ({
+            label: `N-${i}`,
+            ...(i < length - 1 ? { to: `/i-${i}` } : {}),
+          }))
+          const { unmount } = renderBreadcrumbs({ items, maxItems })
+          // First and last always render
+          expect(screen.getByText('N-0')).toBeInTheDocument()
+          expect(screen.getByText(`N-${length - 1}`)).toBeInTheDocument()
+          // At least one of the middle items is collapsed
+          const missing = items
+            .slice(1, -1)
+            .some((item) => screen.queryByText(item.label) === null)
+          expect(missing).toBe(true)
+          unmount()
+        },
+      ),
+    )
   })
 })

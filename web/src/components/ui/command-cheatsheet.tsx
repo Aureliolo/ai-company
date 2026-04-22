@@ -1,6 +1,6 @@
 import { Dialog } from '@base-ui/react/dialog'
 import { X } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { useShortcutRegistry, type RegisteredShortcut } from '@/hooks/use-shortcut-registry'
 import { Button } from './button'
@@ -15,6 +15,8 @@ export interface CommandCheatsheetProps {
   className?: string
 }
 
+type IdentifiedShortcut = { id: string } & RegisteredShortcut
+
 function isEditable(el: Element | null): boolean {
   if (!el) return false
   const tag = el.tagName
@@ -22,14 +24,39 @@ function isEditable(el: Element | null): boolean {
   return (el as HTMLElement).isContentEditable === true
 }
 
-function groupShortcuts(shortcuts: ReadonlyArray<{ id: string } & RegisteredShortcut>) {
-  const map = new Map<string, RegisteredShortcut[]>()
+function groupShortcuts(shortcuts: ReadonlyArray<IdentifiedShortcut>) {
+  // Preserve the registry-assigned `id` on every row so React can key the
+  // list deterministically (stable when two rows share a label + keys).
+  const map = new Map<string, IdentifiedShortcut[]>()
   for (const s of shortcuts) {
     const list = map.get(s.group) ?? []
     list.push(s)
     map.set(s.group, list)
   }
   return [...map.entries()]
+}
+
+interface ShortcutSectionProps {
+  group: string
+  items: readonly IdentifiedShortcut[]
+}
+
+function ShortcutSection({ group, items }: ShortcutSectionProps) {
+  return (
+    <section>
+      <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+        {group}
+      </h3>
+      <ul className="space-y-1.5">
+        {items.map((s) => (
+          <li key={s.id} className="flex items-center justify-between gap-4 text-sm">
+            <span className="text-foreground">{s.label}</span>
+            <KeyboardShortcutHint keys={s.keys} size="md" />
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
 }
 
 /**
@@ -50,10 +77,13 @@ export function CommandCheatsheet({
   const isControlled = openProp !== undefined
   const open = isControlled ? openProp : internalOpen
 
-  const setOpen = (next: boolean) => {
-    if (!isControlled) setInternalOpen(next)
-    onOpenChange?.(next)
-  }
+  const setOpen = useCallback(
+    (next: boolean) => {
+      if (!isControlled) setInternalOpen(next)
+      onOpenChange?.(next)
+    },
+    [isControlled, onOpenChange],
+  )
 
   const { shortcuts } = useShortcutRegistry()
   const grouped = useMemo(() => groupShortcuts(shortcuts), [shortcuts])
@@ -69,9 +99,7 @@ export function CommandCheatsheet({
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-    // setOpen identity is stable enough; we re-read `open` via closure on each keydown.
-    // eslint-disable-next-line @eslint-react/exhaustive-deps
-  }, [disableShortcut, open])
+  }, [disableShortcut, open, setOpen])
 
   return (
     <Dialog.Root open={open} onOpenChange={setOpen}>
@@ -109,19 +137,7 @@ export function CommandCheatsheet({
             ) : (
               <div className="space-y-5">
                 {grouped.map(([group, items]) => (
-                  <section key={group}>
-                    <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                      {group}
-                    </h3>
-                    <ul className="space-y-1.5">
-                      {items.map((s) => (
-                        <li key={`${group}:${s.label}:${s.keys.join('+')}`} className="flex items-center justify-between gap-4 text-sm">
-                          <span className="text-foreground">{s.label}</span>
-                          <KeyboardShortcutHint keys={s.keys} size="md" />
-                        </li>
-                      ))}
-                    </ul>
-                  </section>
+                  <ShortcutSection key={group} group={group} items={items} />
                 ))}
               </div>
             )}

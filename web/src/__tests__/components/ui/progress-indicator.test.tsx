@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react'
+import fc from 'fast-check'
 import { ProgressIndicator } from '@/components/ui/progress-indicator'
 
 describe('ProgressIndicator', () => {
@@ -75,5 +76,27 @@ describe('ProgressIndicator', () => {
     )
     expect(screen.getByText('Upload')).toBeInTheDocument()
     expect(screen.getByText('2.5 MB / 5 MB')).toBeInTheDocument()
+  })
+
+  it('indeterminate: renders description even when label is absent', () => {
+    render(<ProgressIndicator variant="indeterminate" description="Warming up..." />)
+    expect(screen.getByText('Warming up...')).toBeInTheDocument()
+  })
+
+  it('property: determinate clamp invariant holds for any finite value', () => {
+    fc.assert(
+      fc.property(
+        fc.integer({ min: -10_000, max: 10_000 }),
+        (value) => {
+          const { unmount } = render(
+            <ProgressIndicator variant="determinate" value={value} label="Clamp" />,
+          )
+          const bar = screen.getByRole('progressbar', { name: 'Clamp' })
+          const expected = String(Math.min(100, Math.max(0, Math.round(value))))
+          expect(bar).toHaveAttribute('aria-valuenow', expected)
+          unmount()
+        },
+      ),
+    )
   })
 })

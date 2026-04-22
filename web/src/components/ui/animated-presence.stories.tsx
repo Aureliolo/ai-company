@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { useState } from 'react'
 import { AnimatedPresence } from './animated-presence'
+import { Button } from './button'
 
 const meta = {
   title: 'Animation/AnimatedPresence',
@@ -37,18 +38,14 @@ function TransitionDemo() {
     <div className="space-y-4">
       <div className="flex gap-2">
         {pages.map((page, i) => (
-          <button
-            type="button"
+          <Button
             key={page.key}
+            size="sm"
+            variant={i === index ? 'default' : 'outline'}
             onClick={() => setIndex(i)}
-            className={`rounded-md px-3 py-1.5 text-sm transition-colors ${
-              i === index
-                ? 'bg-accent text-accent-foreground'
-                : 'bg-card text-foreground hover:bg-card-hover'
-            }`}
           >
             {page.label}
-          </button>
+          </Button>
         ))}
       </div>
       <AnimatedPresence routeKey={current!.key}>
@@ -88,13 +85,9 @@ function ReducedMotionDemo() {
       <p className="text-xs text-muted-foreground">
         Motion obeys <code>prefers-reduced-motion</code>. Toggle the OS setting (or emulate in devtools) to see the difference between the slide transitions and the reduced-motion fallback.
       </p>
-      <button
-        type="button"
-        onClick={() => setIndex((i) => (i + 1) % pages.length)}
-        className="rounded-md bg-accent px-3 py-1.5 text-sm text-accent-foreground"
-      >
+      <Button size="sm" onClick={() => setIndex((i) => (i + 1) % pages.length)}>
         Toggle route
-      </button>
+      </Button>
       <AnimatedPresence routeKey={current.key}>
         <PageContent label={current.label} color={current.color} />
       </AnimatedPresence>
@@ -121,13 +114,9 @@ function RapidNavigationDemo() {
   return (
     <div className="space-y-4">
       <div className="flex gap-2">
-        <button
-          type="button"
-          onClick={() => setIndex((i) => i + 1)}
-          className="rounded-md bg-accent px-3 py-1.5 text-sm text-accent-foreground"
-        >
+        <Button size="sm" onClick={() => setIndex((i) => i + 1)}>
           Next route (simulate rapid nav)
-        </button>
+        </Button>
       </div>
       <AnimatedPresence routeKey={current}>
         <PageContent label={`Route ${current}`} color="bg-card" />

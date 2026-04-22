@@ -76,9 +76,15 @@ export function TaskDetailTimeline({ task }: TaskDetailTimelineProps) {
 
   return (
     <div>
-      <h3 className="text-[11px] font-semibold uppercase tracking-wider text-text-muted">
+      {/*
+        Rendered as a non-semantic label for consistency with
+        TaskDetailMetadata (TaskDetailPage has no h1/h2 anchor, so using h3
+        here would skip heading levels). The <ol> below owns the accessible
+        name via aria-label.
+      */}
+      <span className="text-[11px] font-semibold uppercase tracking-wider text-text-muted">
         Timeline
-      </h3>
+      </span>
       <TaskStatusIndicator status={task.status} className="sr-only" />
       <ol className="mt-2 space-y-2" aria-label="Task lifecycle timeline">
         {entries.map((entry, idx) => {

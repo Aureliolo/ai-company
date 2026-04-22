@@ -51,6 +51,20 @@ export function useListShortcuts({
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
   const lastGRef = useRef<number>(0)
 
+  // Clamp the selection when the list shrinks (or becomes empty) so we never
+  // keep a stale index pointing past the end of the array. We call
+  // setSelectedIndex via the functional updater so React coalesces the update
+  // when the previous and next values already match.
+  useEffect(() => {
+    // eslint-disable-next-line @eslint-react/set-state-in-effect -- itemCount-driven reconciliation, not a derived-state anti-pattern
+    setSelectedIndex((prev) => {
+      if (prev === null) return null
+      if (itemCount <= 0) return null
+      if (prev >= itemCount) return itemCount - 1
+      return prev
+    })
+  }, [itemCount])
+
   useEffect(() => {
     if (disabled) return
     const handler = (event: KeyboardEvent) => {
@@ -78,14 +92,16 @@ export function useListShortcuts({
           })
           break
         case 'g': {
-          if (event.shiftKey) {
-            if (itemCount === 0) return
-            event.preventDefault()
-            setSelectedIndex(itemCount - 1)
-            return
-          }
+          // Shift+g yields event.key === 'G' (handled below), so the
+          // lowercase branch only runs for the `g g` (jump-to-top) sequence.
           const now = Date.now()
           if (now - lastGRef.current < 500) {
+            if (itemCount === 0) {
+              // No items: clear the two-press window but do not set a
+              // phantom selection.
+              lastGRef.current = 0
+              return
+            }
             event.preventDefault()
             setSelectedIndex(0)
             lastGRef.current = 0

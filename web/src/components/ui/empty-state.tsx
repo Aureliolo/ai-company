@@ -1,7 +1,13 @@
 import type { LucideIcon } from 'lucide-react'
 import { ExternalLink } from 'lucide-react'
+import { Link } from 'react-router'
 import { cn } from '@/lib/utils'
 import { Button } from './button'
+
+// Protocols allowed in learnMore.href. Anything else (including
+// javascript:, data:, vbscript:, file:) is stripped because the consumer
+// passes an href straight to <a href=...>.
+const SAFE_HREF_PATTERN = /^(https?:|mailto:|tel:|\/|#)/i
 
 export interface EmptyStateAction {
   label: string
@@ -47,9 +53,21 @@ export function EmptyState({
   className,
   announce = false,
 }: EmptyStateProps) {
+  const safeLearnMore =
+    learnMore !== undefined && SAFE_HREF_PATTERN.test(learnMore.href.trim())
+      ? learnMore
+      : undefined
   const isExternal =
-    learnMore !== undefined &&
-    (learnMore.external ?? (learnMore.href.startsWith('http://') || learnMore.href.startsWith('https://') || learnMore.href.startsWith('//')))
+    safeLearnMore !== undefined &&
+    (safeLearnMore.external ??
+      (safeLearnMore.href.startsWith('http://') ||
+        safeLearnMore.href.startsWith('https://') ||
+        safeLearnMore.href.startsWith('//')))
+  // Internal paths (starting with `/`) use React Router's <Link>; external
+  // URLs and protocol links (mailto, tel) use a plain <a> with target/rel
+  // applied only when `external`.
+  const useReactRouterLink =
+    safeLearnMore !== undefined && !isExternal && safeLearnMore.href.startsWith('/')
 
   return (
     <div
@@ -72,16 +90,25 @@ export function EmptyState({
         {description && (
           <p className="max-w-sm text-xs text-muted-foreground">{description}</p>
         )}
-        {learnMore && (
-          <a
-            href={learnMore.href}
-            target={isExternal ? '_blank' : undefined}
-            rel={isExternal ? 'noopener noreferrer' : undefined}
-            className="inline-flex items-center gap-1 text-xs text-accent hover:text-accent-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-sm"
-          >
-            {learnMore.label ?? 'Learn more'}
-            {isExternal && <ExternalLink className="size-3" aria-hidden="true" />}
-          </a>
+        {safeLearnMore && (
+          useReactRouterLink ? (
+            <Link
+              to={safeLearnMore.href}
+              className="inline-flex items-center gap-1 text-xs text-accent hover:text-accent-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-sm"
+            >
+              {safeLearnMore.label ?? 'Learn more'}
+            </Link>
+          ) : (
+            <a
+              href={safeLearnMore.href}
+              target={isExternal ? '_blank' : undefined}
+              rel={isExternal ? 'noopener noreferrer' : undefined}
+              className="inline-flex items-center gap-1 text-xs text-accent hover:text-accent-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-sm"
+            >
+              {safeLearnMore.label ?? 'Learn more'}
+              {isExternal && <ExternalLink className="size-3" aria-hidden="true" />}
+            </a>
+          )
         )}
       </div>
       {action && (

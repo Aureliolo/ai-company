@@ -1,10 +1,23 @@
 import type { LucideIcon } from 'lucide-react'
 import { AlertTriangle, Info, WifiOff, X, AlertCircle } from 'lucide-react'
+import { isValidElement } from 'react'
 import { cn } from '@/lib/utils'
 import { Button } from './button'
 
 export type ErrorBannerSeverity = 'error' | 'warning' | 'info'
 export type ErrorBannerVariant = 'inline' | 'section' | 'offline'
+
+interface ErrorBannerAction {
+  label: string
+  onClick: () => void
+}
+
+function isActionObject(value: unknown): value is ErrorBannerAction {
+  if (typeof value !== 'object' || value === null) return false
+  if (isValidElement(value)) return false
+  const candidate = value as { label?: unknown; onClick?: unknown }
+  return typeof candidate.label === 'string' && typeof candidate.onClick === 'function'
+}
 
 export interface ErrorBannerProps {
   /** Layout density. `section` is the default page-level banner; `inline` is compact for form rows/cards; `offline` is the connectivity variant. */
@@ -20,7 +33,7 @@ export interface ErrorBannerProps {
   /** Override the default icon (by severity). Always rendered at h-4 w-4 for consistency. */
   icon?: LucideIcon
   /** Optional action label shown next to Retry (e.g. "Learn more" link). */
-  action?: { label: string; onClick: () => void } | React.ReactNode
+  action?: ErrorBannerAction | React.ReactNode
   className?: string
 }
 
@@ -80,13 +93,16 @@ export function ErrorBanner({
         <p className={cn('font-medium', variant === 'inline' ? 'text-xs' : 'text-sm')}>
           {title}
         </p>
-        {description && (
-          <p className={cn(
-            'mt-1 text-muted-foreground',
-            variant === 'inline' ? 'text-xs' : 'text-xs',
-          )}>
-            {description}
-          </p>
+        {description !== undefined && description !== null && (
+          typeof description === 'string' ? (
+            <p className={cn('mt-1 text-xs text-muted-foreground')}>
+              {description}
+            </p>
+          ) : (
+            <div className={cn('mt-1 text-xs text-muted-foreground')}>
+              {description}
+            </div>
+          )
         )}
         {(onRetry || action) && (
           <div className="mt-2 flex flex-wrap gap-2">
@@ -95,7 +111,7 @@ export function ErrorBanner({
                 Retry
               </Button>
             )}
-            {action && (typeof action === 'object' && action !== null && 'label' in action ? (
+            {action && (isActionObject(action) ? (
               <Button size="xs" variant="ghost" onClick={action.onClick}>
                 {action.label}
               </Button>

@@ -14,6 +14,13 @@ export interface UseUnsavedChangesGuardOptions {
   draftKey?: string
   /** Serializer invoked on every change (debounced) to produce the draft payload. */
   draftData?: () => unknown
+  /**
+   * Signal that the draft payload has changed so the debounced write effect
+   * reschedules. Callers typically pass a JSON-serialized snapshot, a version
+   * counter bumped on every edit, or the dirty form value itself. Omit to
+   * schedule only once when `when` flips to true.
+   */
+  draftTrigger?: unknown
   /** Debounce interval for draft writes. Default 500ms. */
   draftDebounceMs?: number
   /** Callback when the user confirms "discard changes". Called after navigation proceeds. */
@@ -88,6 +95,7 @@ export function useUnsavedChangesGuard<T = unknown>({
   message = DEFAULT_MESSAGE,
   draftKey,
   draftData,
+  draftTrigger,
   draftDebounceMs = 500,
   onDiscard,
 }: UseUnsavedChangesGuardOptions): UseUnsavedChangesGuardResult<T> {
@@ -112,14 +120,34 @@ export function useUnsavedChangesGuard<T = unknown>({
     return window.localStorage.getItem(draftKey) !== null
   })
   const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const draftDataRef = useRef(draftData)
+  draftDataRef.current = draftData
 
+  // Refresh hasDraft whenever draftKey changes so callers see the correct
+  // state after navigating between forms that share the hook.
   useEffect(() => {
-    if (!draftKey || !draftData) return
+    if (!draftKey || typeof window === 'undefined') {
+      // eslint-disable-next-line @eslint-react/set-state-in-effect -- draftKey-driven reconciliation
+      setHasDraft(false)
+      return
+    }
+    // eslint-disable-next-line @eslint-react/set-state-in-effect -- draftKey-driven reconciliation
+    setHasDraft(window.localStorage.getItem(draftKey) !== null)
+  }, [draftKey])
+
+  // Debounced draft persistence. The caller passes a `draftTrigger` value
+  // (any serialisable marker derived from the form payload) that changes on
+  // every edit; when it changes we reschedule the debounce so subsequent
+  // edits also land in localStorage instead of only the first one.
+  useEffect(() => {
+    if (!draftKey || !draftDataRef.current) return
     if (!when) return
 
     if (draftTimerRef.current) clearTimeout(draftTimerRef.current)
     draftTimerRef.current = setTimeout(() => {
-      writeDraft(draftKey, draftData())
+      const serializer = draftDataRef.current
+      if (!serializer) return
+      writeDraft(draftKey, serializer())
       setHasDraft(true)
       draftTimerRef.current = null
     }, draftDebounceMs)
@@ -130,10 +158,7 @@ export function useUnsavedChangesGuard<T = unknown>({
         draftTimerRef.current = null
       }
     }
-    // draftData is intentionally called inside the timer so each interval
-    // captures the latest value without forcing a re-subscribe on every keystroke.
-    // eslint-disable-next-line @eslint-react/exhaustive-deps
-  }, [when, draftKey, draftDebounceMs])
+  }, [when, draftKey, draftDebounceMs, draftTrigger])
 
   const restoreDraft = useCallback<() => T | null>(() => {
     return readDraft<T>(draftKey)

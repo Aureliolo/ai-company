@@ -15,6 +15,16 @@ export function ShortcutRegistryProvider({ children }: { children: ReactNode }) 
 
   const register = useCallback((id: string, shortcuts: RegisteredShortcut[]) => {
     setByOwner((prev) => {
+      const existing = prev.get(id)
+      if (
+        existing &&
+        existing.length === shortcuts.length &&
+        existing.every((item, i) => Object.is(item, shortcuts[i]))
+      ) {
+        // Identical reference-by-reference; skip the Map copy + state update
+        // to keep the context stable for React.memo'd consumers.
+        return prev
+      }
       const next = new Map(prev)
       next.set(id, shortcuts)
       return next

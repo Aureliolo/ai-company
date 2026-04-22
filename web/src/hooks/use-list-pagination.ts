@@ -52,8 +52,11 @@ export function useListPagination<T>({
   const pageKey = `${namespace}Page`
   const sizeKey = `${namespace}Size`
 
-  const rawPageSize = parsePositiveInt(searchParams.get(sizeKey), defaultPageSize)
-  const pageSize = pageSizeOptions.includes(rawPageSize) ? rawPageSize : defaultPageSize
+  // Defensive: reject non-positive configured defaults so downstream division
+  // never sees a zero divisor.
+  const safeDefaultPageSize = defaultPageSize > 0 ? defaultPageSize : 50
+  const rawPageSize = parsePositiveInt(searchParams.get(sizeKey), safeDefaultPageSize)
+  const pageSize = pageSizeOptions.includes(rawPageSize) ? rawPageSize : safeDefaultPageSize
   const totalItems = items.length
   const totalPages = totalItems === 0 ? 1 : Math.max(1, Math.ceil(totalItems / pageSize))
   const rawPage = parsePositiveInt(searchParams.get(pageKey), 1)
@@ -81,20 +84,26 @@ export function useListPagination<T>({
 
   const setPageSize = useCallback(
     (nextSize: number) => {
-      const clamped = pageSizeOptions.includes(nextSize) ? nextSize : defaultPageSize
+      const clamped = pageSizeOptions.includes(nextSize) ? nextSize : safeDefaultPageSize
       setSearchParams(
         (prev) => {
           const next = new URLSearchParams(prev)
-          if (clamped === defaultPageSize) next.delete(sizeKey)
+          const previousSize = parsePositiveInt(prev.get(sizeKey), safeDefaultPageSize)
+          const previousEffective = pageSizeOptions.includes(previousSize)
+            ? previousSize
+            : safeDefaultPageSize
+          if (clamped === safeDefaultPageSize) next.delete(sizeKey)
           else next.set(sizeKey, String(clamped))
-          // Reset to page 1 when page size changes.
-          next.delete(pageKey)
+          // Only reset to page 1 when the effective page size actually changes;
+          // idempotent setPageSize(sameSize) calls should not bounce the reader
+          // back to page 1.
+          if (clamped !== previousEffective) next.delete(pageKey)
           return next
         },
         { replace: true },
       )
     },
-    [setSearchParams, pageSizeOptions, defaultPageSize, sizeKey, pageKey],
+    [setSearchParams, pageSizeOptions, safeDefaultPageSize, sizeKey, pageKey],
   )
 
   const resetPage = useCallback(() => setPage(1), [setPage])

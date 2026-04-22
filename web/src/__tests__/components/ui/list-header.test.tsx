@@ -1,6 +1,8 @@
 import { render, screen } from '@testing-library/react'
+import fc from 'fast-check'
 import { Button } from '@/components/ui/button'
 import { ListHeader } from '@/components/ui/list-header'
+import { formatNumber } from '@/utils/format'
 
 describe('ListHeader', () => {
   it('renders title as h1', () => {
@@ -10,8 +12,7 @@ describe('ListHeader', () => {
 
   it('renders formatted count when provided', () => {
     render(<ListHeader title="Tasks" count={12345} />)
-    // count includes "12" and "345" separated by a locale-specific thousands separator
-    expect(screen.getByText(/\(12.345\)/)).toBeInTheDocument()
+    expect(screen.getByText(`(${formatNumber(12345)})`)).toBeInTheDocument()
   })
 
   it('does not render count when undefined', () => {
@@ -45,5 +46,25 @@ describe('ListHeader', () => {
       />,
     )
     expect(screen.getByTestId('secondary')).toBeInTheDocument()
+  })
+
+  it('property: countLabel always wins over count when both provided', () => {
+    fc.assert(
+      fc.property(
+        fc.integer({ min: -1_000, max: 1_000_000 }),
+        // Constrain to a non-empty, visually-unique token so getByText can
+        // match the rendered span without collisions with other UI text.
+        fc.stringMatching(/^[A-Za-z0-9-]{3,12}$/),
+        (count, countLabel) => {
+          const { unmount } = render(
+            <ListHeader title="T" count={count} countLabel={countLabel} />,
+          )
+          expect(screen.getByText(countLabel)).toBeInTheDocument()
+          const formatted = `(${formatNumber(count)})`
+          expect(screen.queryByText(formatted)).not.toBeInTheDocument()
+          unmount()
+        },
+      ),
+    )
   })
 })

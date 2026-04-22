@@ -58,17 +58,12 @@ export function CompanyStep() {
     await submitCompany()
   }, [submitCompany])
 
-  // Blocking errors are every validation error OTHER than the "apply the
-  // template to continue" sentinel (which is the very action this button
-  // performs). The button disables only when at least one blocking error
-  // remains or the submit is in flight.
-  const applyDisabled = useMemo(
-    () =>
-      validation.errors.some(
-        (e) => e !== 'Apply the template to continue',
-      ) || companyLoading,
-    [validation.errors, companyLoading],
-  )
+  // The Apply button is the affordance that moves `templateApplied` from
+  // false -> true, so it must be enabled when `baseDetailsValid` holds (name
+  // / description within limits) and a submit is not already in flight. The
+  // validator's `baseDetailsValid` flag is the source of truth here -- no
+  // string matching against the template-gate error message.
+  const applyDisabled = !validation.baseDetailsValid || companyLoading
 
   return (
     <div className="space-y-section-gap">

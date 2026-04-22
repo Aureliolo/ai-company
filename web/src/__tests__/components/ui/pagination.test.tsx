@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import fc from 'fast-check'
 import { Pagination } from '@/components/ui/pagination'
 
 describe('Pagination', () => {
@@ -118,5 +119,32 @@ describe('Pagination', () => {
       />,
     )
     expect(screen.queryByLabelText('Items per page')).not.toBeInTheDocument()
+  })
+
+  it('property: First/Previous always disabled on the first page; Next/Last enabled as long as more pages remain', () => {
+    fc.assert(
+      fc.property(
+        fc.integer({ min: 1, max: 200 }),
+        fc.integer({ min: 1, max: 500 }),
+        (total, pageSize) => {
+          const { unmount } = render(
+            <Pagination page={1} pageSize={pageSize} total={total} onPageChange={() => {}} />,
+          )
+          expect(screen.getByRole('button', { name: 'First page' })).toBeDisabled()
+          expect(screen.getByRole('button', { name: 'Previous page' })).toBeDisabled()
+          const hasMore = total > pageSize
+          const nextBtn = screen.getByRole('button', { name: 'Next page' })
+          const lastBtn = screen.getByRole('button', { name: 'Last page' })
+          if (hasMore) {
+            expect(nextBtn).not.toBeDisabled()
+            expect(lastBtn).not.toBeDisabled()
+          } else {
+            expect(nextBtn).toBeDisabled()
+            expect(lastBtn).toBeDisabled()
+          }
+          unmount()
+        },
+      ),
+    )
   })
 })

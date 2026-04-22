@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import fc from 'fast-check'
 import { ErrorBanner } from '@/components/ui/error-banner'
 
 describe('ErrorBanner', () => {
@@ -77,5 +78,30 @@ describe('ErrorBanner', () => {
   it('applies className', () => {
     const { container } = render(<ErrorBanner title="Test" className="custom-class" />)
     expect(container.firstChild).toHaveClass('custom-class')
+  })
+
+  it('property: severity/variant map deterministically to role + aria-live', () => {
+    fc.assert(
+      fc.property(
+        fc.constantFrom('error', 'warning', 'info'),
+        fc.constantFrom('inline', 'section', 'offline'),
+        (severity, variant) => {
+          const { unmount } = render(
+            <ErrorBanner
+              severity={severity as 'error' | 'warning' | 'info'}
+              variant={variant as 'inline' | 'section' | 'offline'}
+              title="Prop-test"
+            />,
+          )
+          // Offline always forces warning semantics regardless of severity.
+          const expectError = variant !== 'offline' && severity === 'error'
+          const expectedRole = expectError ? 'alert' : 'status'
+          const expectedLive = expectError ? 'assertive' : 'polite'
+          const banner = screen.getByRole(expectedRole)
+          expect(banner).toHaveAttribute('aria-live', expectedLive)
+          unmount()
+        },
+      ),
+    )
   })
 })

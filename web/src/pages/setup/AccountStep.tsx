@@ -8,6 +8,7 @@ import { useSetupWizardStore } from '@/stores/setup-wizard'
 import { getPasswordStrength } from '@/utils/password-strength'
 import { getSetupStatus } from '@/api/endpoints/setup'
 import { getErrorMessage } from '@/utils/errors'
+import { sanitizeForLog } from '@/utils/logging'
 import { cn } from '@/lib/utils'
 
 const log = createLogger('setup')
@@ -38,7 +39,7 @@ export function AccountStep() {
       const status = await getSetupStatus()
       setMinPasswordLength(status.min_password_length ?? DEFAULT_MIN_PASSWORD_LENGTH)
     } catch (err) {
-      log.error('Failed to fetch setup status:', err)
+      log.error('Failed to fetch setup status:', sanitizeForLog(err))
       setPolicyError(getErrorMessage(err))
     } finally {
       setPolicyLoading(false)

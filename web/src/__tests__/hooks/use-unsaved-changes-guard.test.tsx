@@ -1,6 +1,7 @@
-import { act, fireEvent, render, renderHook, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, renderHook, waitFor, screen } from '@testing-library/react'
+import fc from 'fast-check'
 import type { ReactNode } from 'react'
-import { createMemoryRouter, RouterProvider, useNavigate } from 'react-router'
+import { createMemoryRouter, RouterProvider, useNavigate, useLocation } from 'react-router'
 import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard'
 
 const DRAFT_KEY = 'test-draft-guard'
@@ -39,6 +40,11 @@ function ProceedDraftHarnessPage() {
       <span data-testid="has-draft">{String(guard.hasDraft)}</span>
     </div>
   )
+}
+
+function CurrentPath() {
+  const location = useLocation()
+  return <span data-testid="path">{location.pathname}</span>
 }
 
 afterEach(() => {
@@ -148,18 +154,19 @@ describe('useUnsavedChangesGuard', () => {
     })
   })
 
-  it('proceed() clears draft on confirm and allows navigation', async () => {
+  it('proceed() clears draft and completes the navigation to the target route', async () => {
     window.localStorage.setItem(DRAFT_KEY, JSON.stringify({ existing: true }))
 
     const router = createMemoryRouter(
       [
-        { path: '/a', element: <ProceedDraftHarnessPage /> },
-        { path: '/b', element: <div>Page B</div> },
+        { path: '/a', element: <><ProceedDraftHarnessPage /><CurrentPath /></> },
+        { path: '/b', element: <><div>Page B</div><CurrentPath /></> },
       ],
       { initialEntries: ['/a'] },
     )
 
-    const { getByLabelText } = render(<RouterProvider router={router} />)
+    const { getByLabelText, getByTestId } = render(<RouterProvider router={router} />)
+    expect(getByTestId('path').textContent).toBe('/a')
 
     act(() => {
       fireEvent.click(getByLabelText('go-b'))
@@ -169,6 +176,90 @@ describe('useUnsavedChangesGuard', () => {
     })
     await waitFor(() => {
       expect(window.localStorage.getItem(DRAFT_KEY)).toBeNull()
+      expect(screen.getByTestId('path').textContent).toBe('/b')
     })
+  })
+
+  it('draftTrigger change reschedules the debounced write', () => {
+    vi.useFakeTimers()
+    try {
+      let payload = { v: 1 }
+      const { rerender } = renderHook(
+        ({ trigger }: { trigger: number }) =>
+          useUnsavedChangesGuard({
+            when: true,
+            draftKey: DRAFT_KEY,
+            draftData: () => payload,
+            draftTrigger: trigger,
+            draftDebounceMs: 100,
+          }),
+        { wrapper: hookWrapper, initialProps: { trigger: 0 } },
+      )
+      // First flush captures the initial payload.
+      act(() => { vi.advanceTimersByTime(150) })
+      expect(JSON.parse(window.localStorage.getItem(DRAFT_KEY) ?? '{}')).toEqual({ v: 1 })
+      // Payload changes; caller bumps the trigger.
+      payload = { v: 2 }
+      rerender({ trigger: 1 })
+      act(() => { vi.advanceTimersByTime(150) })
+      expect(JSON.parse(window.localStorage.getItem(DRAFT_KEY) ?? '{}')).toEqual({ v: 2 })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('hasDraft updates when draftKey changes', () => {
+    const KEY_A = 'test-draft-key-a'
+    const KEY_B = 'test-draft-key-b'
+    window.localStorage.setItem(KEY_A, JSON.stringify({ x: 1 }))
+    try {
+      const { result, rerender } = renderHook(
+        ({ key }: { key: string }) =>
+          useUnsavedChangesGuard({ when: false, draftKey: key }),
+        { wrapper: hookWrapper, initialProps: { key: KEY_A } },
+      )
+      expect(result.current.hasDraft).toBe(true)
+      rerender({ key: KEY_B })
+      expect(result.current.hasDraft).toBe(false)
+    } finally {
+      window.localStorage.removeItem(KEY_A)
+      window.localStorage.removeItem(KEY_B)
+    }
+  })
+
+  it('property: restoreDraft round-trips any JSON-safe payload written via draftTrigger', () => {
+    vi.useFakeTimers()
+    try {
+      fc.assert(
+        fc.property(
+          fc.record({
+            id: fc.integer(),
+            name: fc.string({ minLength: 0, maxLength: 40 }),
+            active: fc.boolean(),
+          }),
+          (payload) => {
+            window.localStorage.removeItem(DRAFT_KEY)
+            const { result, unmount } = renderHook(
+              () =>
+                useUnsavedChangesGuard<typeof payload>({
+                  when: true,
+                  draftKey: DRAFT_KEY,
+                  draftData: () => payload,
+                  draftTrigger: JSON.stringify(payload),
+                  draftDebounceMs: 50,
+                }),
+              { wrapper: hookWrapper },
+            )
+            act(() => { vi.advanceTimersByTime(100) })
+            expect(result.current.restoreDraft()).toEqual(payload)
+            unmount()
+          },
+        ),
+        { numRuns: 25 },
+      )
+    } finally {
+      vi.useRealTimers()
+      window.localStorage.removeItem(DRAFT_KEY)
+    }
   })
 })

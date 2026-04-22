@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react'
+import { expect, waitFor, within } from 'storybook/test'
 import { MobileUnsupportedOverlay } from './mobile-unsupported'
 
 const meta: Meta<typeof MobileUnsupportedOverlay> = {
@@ -49,6 +50,12 @@ export const Mobile767: Story = {
       },
     },
   },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    await waitFor(() => {
+      expect(canvas.queryByRole('alert')).toBeInTheDocument()
+    })
+  },
 }
 
 export const Tablet768NotTriggered: Story = {
@@ -69,6 +76,10 @@ export const Tablet768NotTriggered: Story = {
       },
     },
   },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    expect(canvas.queryByRole('alert')).not.toBeInTheDocument()
+  },
 }
 
 export const Tablet1023NotTriggered: Story = {
@@ -88,6 +99,10 @@ export const Tablet1023NotTriggered: Story = {
         },
       },
     },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    expect(canvas.queryByRole('alert')).not.toBeInTheDocument()
   },
 }
 

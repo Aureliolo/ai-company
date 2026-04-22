@@ -7,7 +7,10 @@ const meta = {
   title: 'Layout/ListHeader',
   component: ListHeader,
   tags: ['autodocs'],
-  parameters: { layout: 'padded' },
+  parameters: {
+    layout: 'padded',
+    a11y: { test: 'error' },
+  },
 } satisfies Meta<typeof ListHeader>
 
 export default meta

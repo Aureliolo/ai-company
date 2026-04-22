@@ -1,5 +1,4 @@
 import type { Meta, StoryObj } from '@storybook/react'
-import { useEffect } from 'react'
 import { ShortcutRegistryProvider } from '@/components/shortcut-registry-provider'
 import { useRegisterShortcuts } from '@/hooks/use-shortcut-registry'
 import { CommandCheatsheet } from './command-cheatsheet'
@@ -69,9 +68,6 @@ export const NoShortcuts: Story = {
 }
 
 function ToggleDemo() {
-  useEffect(() => {
-    // noop so stories a11y picks up the live rendering
-  }, [])
   return (
     <>
       <p className="mb-4 text-xs text-muted-foreground">

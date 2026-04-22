@@ -15,6 +15,44 @@ export interface BreadcrumbsProps {
   className?: string
 }
 
+// maxItems must leave room for first + ellipsis + at least one tail item.
+const MIN_MAX_ITEMS = 3
+
+type RenderItem = BreadcrumbItem | 'ellipsis'
+
+interface BreadcrumbNodeProps {
+  item: RenderItem
+  isLast: boolean
+}
+
+function BreadcrumbNode({ item, isLast }: BreadcrumbNodeProps) {
+  if (item === 'ellipsis') {
+    return (
+      <span aria-hidden="true" className="inline-flex items-center">
+        <MoreHorizontal className="size-3.5" />
+      </span>
+    )
+  }
+  if (isLast) {
+    return (
+      <span aria-current="page" className="font-medium text-foreground">
+        {item.label}
+      </span>
+    )
+  }
+  if (item.to) {
+    return (
+      <Link
+        to={item.to}
+        className="rounded px-0.5 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+      >
+        {item.label}
+      </Link>
+    )
+  }
+  return <span>{item.label}</span>
+}
+
 /**
  * Breadcrumb navigation for deep detail pages.
  *
@@ -28,9 +66,12 @@ export interface BreadcrumbsProps {
 export function Breadcrumbs({ items, maxItems = 4, className }: BreadcrumbsProps) {
   if (items.length === 0) return null
 
-  const collapsed = items.length > maxItems
-  const visibleItems: Array<BreadcrumbItem | 'ellipsis'> = collapsed
-    ? [items[0]!, 'ellipsis', ...items.slice(items.length - (maxItems - 2))]
+  // Guard against callers passing an absurdly low maxItems (e.g. 0/1/2) that
+  // would otherwise slice away the current-page terminal item.
+  const effectiveMax = Math.max(MIN_MAX_ITEMS, maxItems)
+  const collapsed = items.length > effectiveMax
+  const visibleItems: RenderItem[] = collapsed
+    ? [items[0]!, 'ellipsis', ...items.slice(items.length - (effectiveMax - 2))]
     : [...items]
 
   return (
@@ -42,25 +83,11 @@ export function Breadcrumbs({ items, maxItems = 4, className }: BreadcrumbsProps
         {visibleItems.map((item, idx) => {
           const isLast = idx === visibleItems.length - 1
           return (
-            <li key={typeof item === 'string' ? `ellipsis-${idx}` : `${item.label}-${idx}`} className="flex items-center gap-1.5">
-              {item === 'ellipsis' ? (
-                <span aria-hidden="true" className="inline-flex items-center">
-                  <MoreHorizontal className="size-3.5" />
-                </span>
-              ) : isLast ? (
-                <span aria-current="page" className="font-medium text-foreground">
-                  {item.label}
-                </span>
-              ) : item.to ? (
-                <Link
-                  to={item.to}
-                  className="rounded px-0.5 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-                >
-                  {item.label}
-                </Link>
-              ) : (
-                <span>{item.label}</span>
-              )}
+            <li
+              key={typeof item === 'string' ? `ellipsis-${idx}` : `${item.label}-${idx}`}
+              className="flex items-center gap-1.5"
+            >
+              <BreadcrumbNode item={item} isLast={isLast} />
               {!isLast && (
                 <ChevronRight aria-hidden="true" className="size-3 shrink-0 text-muted-foreground/70" />
               )}

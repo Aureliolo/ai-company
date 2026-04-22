@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import fc from 'fast-check'
 import { SearchFilterSort } from '@/components/ui/search-filter-sort'
 import { SearchInput } from '@/components/ui/search-input'
 
@@ -31,13 +32,15 @@ describe('SearchInput', () => {
     expect(screen.getByRole('searchbox', { name: 'Search agents' })).toBeInTheDocument()
   })
 
-  it('fires onChange', async () => {
+  it('fires onChange with each emitted character', async () => {
     const user = userEvent.setup()
     const onChange = vi.fn()
     render(<SearchInput value="" onChange={onChange} />)
     await user.type(screen.getByRole('searchbox'), 'hello')
-    // userEvent fires per-character; just check last value
-    expect(onChange).toHaveBeenCalled()
+    // userEvent.type fires controlled-input-style callbacks per keystroke.
+    // Assert both the call count and the last emitted value.
+    expect(onChange).toHaveBeenCalledTimes(5)
+    expect(onChange).toHaveBeenLastCalledWith('o')
   })
 
   it('shows clear button when value is non-empty', async () => {
@@ -79,6 +82,32 @@ describe('SearchInput', () => {
 
   it('focusShortcut off: pressing / does nothing', () => {
     render(<SearchInput value="" onChange={() => {}} />)
+    const input = screen.getByRole('searchbox')
+    expect(input).not.toHaveFocus()
+    act(() => {
+      fireEvent.keyDown(window, { key: '/' })
+    })
+    expect(input).not.toHaveFocus()
+  })
+
+  it('property: clear button is visible iff value.length > 0 (with disabled=false)', () => {
+    fc.assert(
+      fc.property(fc.string({ minLength: 0, maxLength: 30 }), (value) => {
+        const { unmount } = render(<SearchInput value={value} onChange={() => {}} />)
+        const clear = screen.queryByRole('button', { name: 'Clear search' })
+        if (value.length > 0) {
+          expect(clear).toBeInTheDocument()
+        } else {
+          expect(clear).not.toBeInTheDocument()
+        }
+        unmount()
+      }),
+    )
+  })
+
+  it('disabled: clear button hidden and / shortcut inactive', () => {
+    render(<SearchInput value="abc" onChange={() => {}} disabled focusShortcut />)
+    expect(screen.queryByRole('button', { name: 'Clear search' })).not.toBeInTheDocument()
     const input = screen.getByRole('searchbox')
     expect(input).not.toHaveFocus()
     act(() => {

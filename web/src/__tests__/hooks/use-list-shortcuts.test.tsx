@@ -1,4 +1,5 @@
 import { act, fireEvent, renderHook } from '@testing-library/react'
+import fc from 'fast-check'
 import { useListShortcuts } from '@/hooks/use-list-shortcuts'
 
 function pressKey(key: string, init?: KeyboardEventInit) {
@@ -119,5 +120,64 @@ describe('useListShortcuts', () => {
     )
     pressKey('j', { metaKey: true })
     expect(result.current.selectedIndex).toBeNull()
+  })
+
+  it('empty list: `g g` double-press never sets a phantom selection', () => {
+    const { result } = renderHook(() =>
+      useListShortcuts({ itemCount: 0 }),
+    )
+    pressKey('g')
+    pressKey('g')
+    expect(result.current.selectedIndex).toBeNull()
+  })
+
+  it('empty list: Shift+G is also a no-op', () => {
+    const { result } = renderHook(() =>
+      useListShortcuts({ itemCount: 0 }),
+    )
+    pressKey('G', { shiftKey: true })
+    expect(result.current.selectedIndex).toBeNull()
+  })
+
+  it('itemCount shrinks below selectedIndex: selection clamps', () => {
+    const { result, rerender } = renderHook(
+      ({ itemCount }: { itemCount: number }) => useListShortcuts({ itemCount }),
+      { initialProps: { itemCount: 10 } },
+    )
+    act(() => result.current.setSelectedIndex(7))
+    rerender({ itemCount: 3 })
+    expect(result.current.selectedIndex).toBe(2)
+  })
+
+  it('itemCount drops to zero: selection clears', () => {
+    const { result, rerender } = renderHook(
+      ({ itemCount }: { itemCount: number }) => useListShortcuts({ itemCount }),
+      { initialProps: { itemCount: 10 } },
+    )
+    act(() => result.current.setSelectedIndex(4))
+    rerender({ itemCount: 0 })
+    expect(result.current.selectedIndex).toBeNull()
+  })
+
+  it('property: j never advances past itemCount-1', () => {
+    fc.assert(
+      fc.property(
+        fc.integer({ min: 1, max: 20 }),
+        fc.integer({ min: 1, max: 40 }),
+        (itemCount, presses) => {
+          const { result, unmount } = renderHook(() =>
+            useListShortcuts({ itemCount }),
+          )
+          for (let i = 0; i < presses; i++) {
+            pressKey('j')
+          }
+          const sel = result.current.selectedIndex
+          expect(sel).not.toBeNull()
+          expect(sel!).toBeGreaterThanOrEqual(0)
+          expect(sel!).toBeLessThanOrEqual(itemCount - 1)
+          unmount()
+        },
+      ),
+    )
   })
 })

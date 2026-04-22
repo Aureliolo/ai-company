@@ -51,6 +51,7 @@ export function SearchInput({
 
   useEffect(() => {
     if (!focusShortcut) return
+    if (disabled) return
     const handler = (event: KeyboardEvent) => {
       if (event.key !== '/' || event.metaKey || event.ctrlKey || event.altKey) return
       if (isEditable(document.activeElement)) return
@@ -59,7 +60,7 @@ export function SearchInput({
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [focusShortcut])
+  }, [focusShortcut, disabled])
 
   return (
     <div className={cn('relative', className)}>
@@ -81,7 +82,7 @@ export function SearchInput({
           'disabled:opacity-60 disabled:cursor-not-allowed',
         )}
       />
-      {value && (
+      {value && !disabled && (
         <button
           type="button"
           onClick={() => {

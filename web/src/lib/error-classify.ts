@@ -25,6 +25,19 @@ export function classifyError(error: unknown): ClassifiedError {
   if (isAxiosError(error)) {
     const status = error.response?.status
 
+    // Canceled requests (AbortController / axios cancel) are not retryable.
+    // Emit them with the normal shape but no transient/retryable flag so
+    // callers don't loop a user-initiated cancel.
+    if (error.code === 'ERR_CANCELED') {
+      return {
+        message,
+        isTransient: false,
+        isClient: false,
+        retryable: false,
+        guidance: 'Request was canceled.',
+      }
+    }
+
     // Network-level failures have no response.
     if (!error.response) {
       return {

@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react'
 import { useParams } from 'react-router'
 import { useArtifactDetailData } from '@/hooks/useArtifactDetailData'
 import { Breadcrumbs } from '@/components/ui/breadcrumbs'
@@ -18,6 +19,14 @@ export default function ArtifactDetailPage() {
     wsConnected,
     wsSetupError,
   } = useArtifactDetailData(artifactId ?? '')
+
+  // Only surface the "real-time updates disconnected" banner once we've
+  // successfully connected at least once; otherwise the initial handshake
+  // flashes a false-positive offline banner before the socket is ready.
+  const hasEverConnectedRef = useRef(false)
+  useEffect(() => {
+    if (wsConnected) hasEverConnectedRef.current = true
+  }, [wsConnected])
 
   if (loading && !artifact) {
     return <ArtifactDetailSkeleton />
@@ -40,7 +49,7 @@ export default function ArtifactDetailPage() {
         <ErrorBanner severity="error" title="Could not load artifact" description={error} />
       )}
 
-      {!wsConnected && !loading && (
+      {!wsConnected && !loading && hasEverConnectedRef.current && (
         <ErrorBanner
           variant="offline"
           title="Real-time updates disconnected"

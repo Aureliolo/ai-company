@@ -11,6 +11,36 @@ export interface KeyboardShortcutHintProps {
   className?: string
 }
 
+type HintSize = NonNullable<KeyboardShortcutHintProps['size']>
+
+function kbdSizeClasses(size: HintSize): string {
+  return size === 'sm'
+    ? 'text-[10px] h-5 min-w-5 px-1'
+    : 'text-xs h-6 min-w-6 px-1.5'
+}
+
+interface KbdKeyProps {
+  label: string
+  positionalKey: string
+  size: HintSize
+}
+
+function KbdKey({ label, positionalKey, size }: KbdKeyProps) {
+  return (
+    <kbd
+      // Keys render in input order; duplicates like ['g', 'g'] are valid
+      // so the caller builds a positional identity.
+      key={positionalKey}
+      className={cn(
+        'inline-flex items-center justify-center rounded border border-border bg-surface font-mono font-medium text-foreground shadow-sm',
+        kbdSizeClasses(size),
+      )}
+    >
+      {label}
+    </kbd>
+  )
+}
+
 /**
  * Inline pill hint displaying a keyboard shortcut.
  *
@@ -24,27 +54,18 @@ export function KeyboardShortcutHint({
   size = 'sm',
   className,
 }: KeyboardShortcutHintProps) {
-  const kbdSize =
-    size === 'sm'
-      ? 'text-[10px] h-5 min-w-5 px-1'
-      : 'text-xs h-6 min-w-6 px-1.5'
-
   return (
     <span className={cn('inline-flex items-center gap-1 text-muted-foreground', className)}>
       {keys.map((key, idx) => (
-        <kbd
-          // Keys are rendered in input order; duplicates like ['g', 'g'] or
-          // ['Ctrl', 'Shift'] are valid, so the positional index is the
-          // correct identity. Disable the array-index-key rule locally.
+        <KbdKey
+          // Keys render in input order; duplicates like ['g', 'g'] are valid,
+          // so the positional index IS the identity here.
           // eslint-disable-next-line @eslint-react/no-array-index-key
           key={`${key}-${idx}`}
-          className={cn(
-            'inline-flex items-center justify-center rounded border border-border bg-surface font-mono font-medium text-foreground shadow-sm',
-            kbdSize,
-          )}
-        >
-          {key}
-        </kbd>
+          label={key}
+          positionalKey={`${key}-${idx}`}
+          size={size}
+        />
       ))}
       {label && (
         <span className={cn(size === 'sm' ? 'text-[10px]' : 'text-xs')}>{label}</span>

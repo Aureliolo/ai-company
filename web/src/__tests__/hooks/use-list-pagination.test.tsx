@@ -1,4 +1,5 @@
 import { act, renderHook } from '@testing-library/react'
+import fc from 'fast-check'
 import type { ReactNode } from 'react'
 import { MemoryRouter } from 'react-router'
 import { useListPagination } from '@/hooks/use-list-pagination'
@@ -101,5 +102,53 @@ describe('useListPagination', () => {
     })
     expect(result.current.totalPages).toBe(1)
     expect(result.current.paginatedItems).toHaveLength(0)
+  })
+
+  it('property: paginatedItems.length === min(pageSize, remaining) for any page/total', () => {
+    fc.assert(
+      fc.property(
+        fc.integer({ min: 0, max: 300 }),
+        fc.constantFrom(20, 50, 100),
+        fc.integer({ min: 1, max: 10 }),
+        (total, pageSize, pageNumber) => {
+          const items = Array.from({ length: total }, (_, i) => i)
+          const { result } = renderHook(
+            () => useListPagination({ items, defaultPageSize: pageSize }),
+            { wrapper: makeWrapper([`/?pPage=${pageNumber}&pSize=${pageSize}`]) },
+          )
+          // page is clamped to [1, totalPages]
+          const totalPages = total === 0 ? 1 : Math.max(1, Math.ceil(total / pageSize))
+          expect(result.current.page).toBeGreaterThanOrEqual(1)
+          expect(result.current.page).toBeLessThanOrEqual(totalPages)
+          // slice length never exceeds pageSize
+          expect(result.current.paginatedItems.length).toBeLessThanOrEqual(pageSize)
+          // slice length never exceeds remaining items from the clamped start
+          const start = (result.current.page - 1) * pageSize
+          expect(result.current.paginatedItems.length).toBe(
+            Math.max(0, Math.min(pageSize, total - start)),
+          )
+        },
+      ),
+    )
+  })
+
+  it('setPageSize(sameSize) is idempotent: current page stays put', () => {
+    const { result } = renderHook(() => useListPagination({ items: ITEMS }), {
+      wrapper: makeWrapper(['/?pPage=2&pSize=20']),
+    })
+    act(() => {
+      result.current.setPageSize(20)
+    })
+    expect(result.current.page).toBe(2)
+    expect(result.current.pageSize).toBe(20)
+  })
+
+  it('guards non-positive defaultPageSize', () => {
+    const { result } = renderHook(
+      () => useListPagination({ items: ITEMS, defaultPageSize: 0, pageSizeOptions: [20, 50, 100] }),
+      { wrapper: makeWrapper() },
+    )
+    expect(result.current.pageSize).toBe(50)
+    expect(result.current.totalPages).toBeGreaterThanOrEqual(1)
   })
 })

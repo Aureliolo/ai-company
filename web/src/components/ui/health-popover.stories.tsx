@@ -9,7 +9,10 @@ const meta = {
   title: 'Overlays/HealthPopover',
   component: HealthPopover,
   tags: ['autodocs'],
-  parameters: { layout: 'centered' },
+  parameters: {
+    layout: 'centered',
+    a11y: { test: 'error' },
+  },
 } satisfies Meta<typeof HealthPopover>
 
 export default meta
@@ -112,3 +115,15 @@ export const Loading: Story = {
     },
   },
 }
+
+// Hover: HealthPopover opens on click (via Base UI Popover), not hover.
+// There is no distinct hover visual state beyond the button's own hover ring,
+// so this intentionally reuses the happy-path story for visual-regression
+// coverage rather than exposing a separate "hover" artefact.
+export const Hover = AllSystemsOk
+
+// Empty: the popover always renders a health summary while the probe resolves
+// or after it succeeds. There is no "no data" surface to document -- the empty
+// state is represented by `Loading` (probe in flight) and `LoadError` (probe
+// rejected).
+export const Empty = Loading

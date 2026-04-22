@@ -9,11 +9,36 @@ const meta = {
   tags: ['autodocs'],
   parameters: { layout: 'centered' },
   decorators: [
-    (Story) => (
-      <div className="flex h-[500px] w-[400px] items-start justify-end p-8">
-        <Story />
-      </div>
-    ),
+    (Story) => {
+      // Snapshot + restore the theme-store state on every story mount so
+      // variant decorators (ColorPalette*, Density*, ...) never leak into
+      // subsequent stories rendered in the same page navigation.
+      useEffect(() => {
+        const initial = useThemeStore.getState()
+        const snapshot = {
+          colorPalette: initial.colorPalette,
+          density: initial.density,
+          animation: initial.animation,
+          typography: initial.typography,
+          sidebarMode: initial.sidebarMode,
+          popoverOpen: initial.popoverOpen,
+        }
+        return () => {
+          const s = useThemeStore.getState()
+          s.setColorPalette(snapshot.colorPalette)
+          s.setDensity(snapshot.density)
+          s.setAnimation(snapshot.animation)
+          s.setTypography(snapshot.typography)
+          s.setSidebarMode(snapshot.sidebarMode)
+          s.setPopoverOpen(snapshot.popoverOpen)
+        }
+      }, [])
+      return (
+        <div className="flex h-[500px] w-[400px] items-start justify-end p-8">
+          <Story />
+        </div>
+      )
+    },
   ],
 } satisfies Meta<typeof ThemeToggle>
 
@@ -67,90 +92,24 @@ function ApplyTheme({ palette, density, animation, typography, sidebar }: ApplyT
   return null
 }
 
-export const ColorPaletteStealth: Story = {
-  decorators: [
-    (Story) => (
-      <>
-        <ApplyTheme palette="stealth" />
-        <Story />
-      </>
-    ),
-  ],
+function variantStory(props: ApplyThemeProps): Story {
+  return {
+    decorators: [
+      (Story) => (
+        <>
+          <ApplyTheme {...props} />
+          <Story />
+        </>
+      ),
+    ],
+  }
 }
 
-export const ColorPaletteNeon: Story = {
-  decorators: [
-    (Story) => (
-      <>
-        <ApplyTheme palette="neon" />
-        <Story />
-      </>
-    ),
-  ],
-}
-
-export const DensityDense: Story = {
-  decorators: [
-    (Story) => (
-      <>
-        <ApplyTheme density="dense" />
-        <Story />
-      </>
-    ),
-  ],
-}
-
-export const DensitySparse: Story = {
-  decorators: [
-    (Story) => (
-      <>
-        <ApplyTheme density="sparse" />
-        <Story />
-      </>
-    ),
-  ],
-}
-
-export const AnimationInstant: Story = {
-  decorators: [
-    (Story) => (
-      <>
-        <ApplyTheme animation="instant" />
-        <Story />
-      </>
-    ),
-  ],
-}
-
-export const AnimationMinimal: Story = {
-  decorators: [
-    (Story) => (
-      <>
-        <ApplyTheme animation="minimal" />
-        <Story />
-      </>
-    ),
-  ],
-}
-
-export const TypographyJetbrains: Story = {
-  decorators: [
-    (Story) => (
-      <>
-        <ApplyTheme typography="jetbrains" />
-        <Story />
-      </>
-    ),
-  ],
-}
-
-export const SidebarRail: Story = {
-  decorators: [
-    (Story) => (
-      <>
-        <ApplyTheme sidebar="rail" />
-        <Story />
-      </>
-    ),
-  ],
-}
+export const ColorPaletteStealth: Story = variantStory({ palette: 'stealth' })
+export const ColorPaletteNeon: Story = variantStory({ palette: 'neon' })
+export const DensityDense: Story = variantStory({ density: 'dense' })
+export const DensitySparse: Story = variantStory({ density: 'sparse' })
+export const AnimationInstant: Story = variantStory({ animation: 'instant' })
+export const AnimationMinimal: Story = variantStory({ animation: 'minimal' })
+export const TypographyJetbrains: Story = variantStory({ typography: 'jetbrains' })
+export const SidebarRail: Story = variantStory({ sidebar: 'rail' })

@@ -187,13 +187,19 @@ export default function AppLayout() {
   }, [])
   useRegisterCommands(themeCommands)
 
-  // Register global shortcuts surfaced by the ? cheatsheet
-  useRegisterShortcuts([
-    { keys: ['Ctrl', 'K'], label: 'Open command palette', group: 'Global' },
-    { keys: ['?'], label: 'Show keyboard shortcuts', group: 'Global' },
-    { keys: ['Shift', 'N'], label: 'Toggle notifications', group: 'Global' },
-    { keys: ['Ctrl', ','], label: 'Open settings', group: 'Global' },
-  ])
+  // Register global shortcuts surfaced by the ? cheatsheet. Memoised so the
+  // registry's effect key (JSON.stringify(shortcuts)) is computed from a
+  // stable reference; otherwise every AppLayout render re-registers the set.
+  const globalShortcuts = useMemo(
+    () => [
+      { keys: ['Ctrl', 'K'], label: 'Open command palette', group: 'Global' },
+      { keys: ['?'], label: 'Show keyboard shortcuts', group: 'Global' },
+      { keys: ['Shift', 'N'], label: 'Toggle notifications', group: 'Global' },
+      { keys: ['Ctrl', ','], label: 'Open settings', group: 'Global' },
+    ],
+    [],
+  )
+  useRegisterShortcuts(globalShortcuts)
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-background">

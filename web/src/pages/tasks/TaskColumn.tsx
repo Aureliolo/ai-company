@@ -55,10 +55,16 @@ export function TaskColumn({ column, tasks, onSelectTask }: TaskColumnProps) {
 
   // Rough workload estimate based on complexity. Not a replacement for
   // per-task duration -- just a signal of column load for operators triaging
-  // the board.
-  const COMPLEXITY_HOURS = { simple: 1, medium: 3, complex: 8, epic: 24 } as const
+  // the board. Unknown complexity values (e.g. backend drift, deserialisation
+  // slop) contribute zero rather than NaN.
+  const COMPLEXITY_HOURS: Record<string, number> = {
+    simple: 1,
+    medium: 3,
+    complex: 8,
+    epic: 24,
+  }
   const estimatedHours = tasks.reduce(
-    (sum, t) => sum + COMPLEXITY_HOURS[t.estimated_complexity],
+    (sum, t) => sum + (COMPLEXITY_HOURS[t.estimated_complexity] ?? 0),
     0,
   )
 

@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react'
+import { action } from 'storybook/actions'
 import { Slot } from './slot'
 
 const meta = {
@@ -48,9 +49,9 @@ export const WithDiv: Story = {
 export const MergedClickHandlers: Story = {
   args: {
     className: 'px-3 py-2 rounded-md bg-accent/20 text-accent cursor-pointer',
-    onClick: () => alert('Slot-level handler fired'),
+    onClick: action('slot-level-handler'),
     children: (
-      <button type="button" onClick={() => alert('Child-level handler fired')}>Click me</button>
+      <button type="button" onClick={action('child-level-handler')}>Click me</button>
     ),
   },
   parameters: {

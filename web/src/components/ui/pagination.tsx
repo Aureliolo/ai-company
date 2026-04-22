@@ -63,6 +63,22 @@ export function Pagination({
 
   const onKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLElement>) => {
+      // Swallow only shortcuts that originate on the nav buttons themselves.
+      // If the user is typing in the page-size <select>, the browser's own
+      // Arrow / Home / End behaviour (open/close options, jump to bounds)
+      // should win -- we must not hijack it.
+      const target = event.target as HTMLElement | null
+      if (target) {
+        const tag = target.tagName
+        if (
+          tag === 'INPUT' ||
+          tag === 'TEXTAREA' ||
+          tag === 'SELECT' ||
+          (target as HTMLElement).isContentEditable === true
+        ) {
+          return
+        }
+      }
       switch (event.key) {
         case 'ArrowLeft':
         case 'PageUp':
@@ -123,7 +139,7 @@ export function Pagination({
             </label>
             <select
               id={selectId}
-              value={pageSize}
+              value={pageSizeOptions.includes(pageSize) ? pageSize : safePageSize}
               onChange={(e) => onPageSizeChange(Number(e.target.value))}
               className={cn(
                 'rounded-md border border-border bg-surface px-2 py-1 text-xs text-foreground',

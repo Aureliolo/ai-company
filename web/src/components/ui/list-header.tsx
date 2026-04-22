@@ -44,7 +44,7 @@ export function ListHeader({
           <div className="flex items-baseline gap-2">
             <h1 className="truncate text-lg font-semibold text-foreground">{title}</h1>
             {countText && (
-              <span aria-label={count !== undefined ? `${count} items` : undefined} className="shrink-0 font-mono text-sm text-muted-foreground">
+              <span className="shrink-0 font-mono text-sm text-muted-foreground">
                 {countText}
               </span>
             )}
