@@ -193,8 +193,11 @@ class WorkflowService:
                 "use update_definition to modify it"
             )
             raise WorkflowDefinitionExistsError(msg)
-        await self._best_effort_snapshot(definition, saved_by)
+        # Emit the state-transition INFO log BEFORE the best-effort
+        # snapshot so the committed create is always in the audit trail,
+        # even if the snapshot follow-up fails loud or silent.
         logger.info(WORKFLOW_DEF_CREATED, definition_id=definition.id)
+        await self._best_effort_snapshot(definition, saved_by)
         return definition
 
     async def update_definition(
@@ -231,6 +234,13 @@ class WorkflowService:
         try:
             updated = await self._definitions.update_if_exists(definition)
         except VersionConflictError as exc:
+            # ``update_if_exists`` applies the UPDATE only when the
+            # stored row's ``revision`` equals ``definition.revision - 1``,
+            # so the "expected stored revision" the caller is asserting
+            # against is N-1, not the incoming N. Reporting the incoming
+            # value would be off-by-one and mislead clients doing
+            # optimistic-concurrency retries.
+            expected_stored_revision = definition.revision - 1
             # Look up the stored revision so the domain exception reports
             # the real ``actual`` value rather than a made-up sentinel.
             # If the follow-up read itself fails, fall back to ``None``
@@ -259,18 +269,18 @@ class WorkflowService:
                 WORKFLOW_DEF_VERSION_CONFLICT,
                 definition_id=str(definition.id),
                 operation="update_definition",
-                expected_revision=definition.revision,
+                expected_revision=expected_stored_revision,
                 stored_revision=stored_revision,
             )
             msg = (
                 f"Workflow definition {definition.id!r} revision conflict:"
-                f" expected {definition.revision},"
+                f" expected {expected_stored_revision},"
                 f" stored {stored_revision}"
             )
             raise WorkflowDefinitionRevisionMismatchError(
                 msg,
                 definition_id=str(definition.id),
-                expected=definition.revision,
+                expected=expected_stored_revision,
                 actual=stored_revision,
             ) from exc
         if not updated:
@@ -284,8 +294,11 @@ class WorkflowService:
                 "use create_definition to insert it"
             )
             raise WorkflowDefinitionNotFoundError(msg)
-        await self._best_effort_snapshot(definition, saved_by)
+        # Emit the state-transition INFO log BEFORE the best-effort
+        # snapshot so the committed update is always in the audit trail,
+        # even if the snapshot follow-up fails loud or silent.
         logger.info(WORKFLOW_DEF_UPDATED, definition_id=definition.id)
+        await self._best_effort_snapshot(definition, saved_by)
         return definition
 
     async def _best_effort_snapshot(
@@ -340,6 +353,11 @@ class WorkflowService:
         if not deleted:
             return False
 
+        # Emit the state-transition INFO log BEFORE the best-effort
+        # version cascade so the committed delete is always in the audit
+        # trail, regardless of whether the snapshot cleanup later fails.
+        logger.info(WORKFLOW_DEF_DELETED, definition_id=definition_id)
+
         try:
             await self._versions.delete_versions_for_entity(definition_id)
         except MemoryError, RecursionError:
@@ -353,5 +371,4 @@ class WorkflowService:
                 stage="cascade_delete",
             )
 
-        logger.info(WORKFLOW_DEF_DELETED, definition_id=definition_id)
         return True
