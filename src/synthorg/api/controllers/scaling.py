@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from synthorg.api.dto import ApiResponse, PaginatedResponse, PaginationMeta
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import PaginationLimit, PaginationOffset, paginate
+from synthorg.api.rate_limits import per_op_rate_limit
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.scaling.enums import ScalingStrategyName
@@ -275,7 +276,18 @@ class ScalingController(Controller):
                         signals.append(_signal_to_response(signal))
         return ApiResponse(data=tuple(signals))
 
-    @post("/evaluate", guards=[require_write_access])
+    @post(
+        "/evaluate",
+        guards=[
+            require_write_access,
+            per_op_rate_limit(
+                "scaling.trigger_evaluation",
+                max_requests=10,
+                window_seconds=60,
+                key="user",
+            ),
+        ],
+    )
     async def trigger_evaluation(
         self,
         state: State,
@@ -311,7 +323,18 @@ class ScalingController(Controller):
         responses = tuple(_decision_to_response(d) for d in decisions)
         return ApiResponse(data=responses)
 
-    @put("/strategies/{strategy_name:str}", guards=[require_write_access])
+    @put(
+        "/strategies/{strategy_name:str}",
+        guards=[
+            require_write_access,
+            per_op_rate_limit(
+                "scaling.update_strategy",
+                max_requests=30,
+                window_seconds=60,
+                key="user",
+            ),
+        ],
+    )
     async def update_strategy(
         self,
         state: State,
@@ -374,7 +397,18 @@ class ScalingController(Controller):
             ),
         )
 
-    @put("/priority", guards=[require_write_access])
+    @put(
+        "/priority",
+        guards=[
+            require_write_access,
+            per_op_rate_limit(
+                "scaling.update_priority",
+                max_requests=30,
+                window_seconds=60,
+                key="user",
+            ),
+        ],
+    )
     async def update_priority(
         self,
         state: State,

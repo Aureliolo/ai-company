@@ -16,6 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_read_access, require_write_access
+from synthorg.api.rate_limits import per_op_rate_limit
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.models import (
     OrgBudgetSummary,
@@ -221,7 +222,19 @@ class CustomRuleController(Controller):
             raise NotFoundException(msg)
         return ApiResponse[dict[str, Any]](data=rule_to_dict(rule))
 
-    @post("/", guards=[require_write_access], status_code=201)
+    @post(
+        "/",
+        guards=[
+            require_write_access,
+            per_op_rate_limit(
+                "custom_rules.create",
+                max_requests=20,
+                window_seconds=60,
+                key="user",
+            ),
+        ],
+        status_code=201,
+    )
     async def create_rule(
         self,
         state: State,
@@ -259,7 +272,18 @@ class CustomRuleController(Controller):
             data=rule_to_dict(saved),
         )
 
-    @patch("/{rule_id:str}", guards=[require_write_access])
+    @patch(
+        "/{rule_id:str}",
+        guards=[
+            require_write_access,
+            per_op_rate_limit(
+                "custom_rules.update",
+                max_requests=30,
+                window_seconds=60,
+                key="user",
+            ),
+        ],
+    )
     async def update_rule(
         self,
         state: State,
@@ -294,7 +318,15 @@ class CustomRuleController(Controller):
 
     @delete(
         "/{rule_id:str}",
-        guards=[require_write_access],
+        guards=[
+            require_write_access,
+            per_op_rate_limit(
+                "custom_rules.delete",
+                max_requests=20,
+                window_seconds=60,
+                key="user",
+            ),
+        ],
         status_code=HTTP_204_NO_CONTENT,
     )
     async def delete_rule(
@@ -313,7 +345,18 @@ class CustomRuleController(Controller):
         except CustomRuleNotFoundError as exc:
             raise NotFoundException(str(exc)) from exc
 
-    @post("/{rule_id:str}/toggle", guards=[require_write_access])
+    @post(
+        "/{rule_id:str}/toggle",
+        guards=[
+            require_write_access,
+            per_op_rate_limit(
+                "custom_rules.toggle",
+                max_requests=30,
+                window_seconds=60,
+                key="user",
+            ),
+        ],
+    )
     async def toggle_rule(
         self,
         state: State,
@@ -349,7 +392,17 @@ class CustomRuleController(Controller):
             data=[_metric_to_dict(m) for m in METRIC_REGISTRY],
         )
 
-    @post("/preview")
+    @post(
+        "/preview",
+        guards=[
+            per_op_rate_limit(
+                "custom_rules.preview",
+                max_requests=30,
+                window_seconds=60,
+                key="user",
+            ),
+        ],
+    )
     async def preview_rule(
         self,
         data: PreviewRuleRequest,

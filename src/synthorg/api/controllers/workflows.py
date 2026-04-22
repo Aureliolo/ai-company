@@ -31,6 +31,7 @@ from synthorg.api.errors import NotFoundError
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import PaginationLimit, PaginationOffset, paginate
 from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
+from synthorg.api.rate_limits import per_op_rate_limit
 from synthorg.core.enums import WorkflowType
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.blueprint_loader import list_blueprints
@@ -160,7 +161,18 @@ class WorkflowController(Controller):
             ),
         )
 
-    @post("/from-blueprint", guards=[require_write_access])
+    @post(
+        "/from-blueprint",
+        guards=[
+            require_write_access,
+            per_op_rate_limit(
+                "workflows.create_from_blueprint",
+                max_requests=20,
+                window_seconds=60,
+                key="user",
+            ),
+        ],
+    )
     async def create_from_blueprint(
         self,
         request: Request[Any, Any, Any],
@@ -242,7 +254,17 @@ class WorkflowController(Controller):
             content=ApiResponse[WorkflowDefinition](data=definition),
         )
 
-    @post(guards=[require_write_access])
+    @post(
+        guards=[
+            require_write_access,
+            per_op_rate_limit(
+                "workflows.create",
+                max_requests=20,
+                window_seconds=60,
+                key="user",
+            ),
+        ],
+    )
     async def create_workflow(
         self,
         request: Request[Any, Any, Any],
@@ -327,7 +349,18 @@ class WorkflowController(Controller):
             status_code=201,
         )
 
-    @patch("/{workflow_id:str}", guards=[require_write_access])
+    @patch(
+        "/{workflow_id:str}",
+        guards=[
+            require_write_access,
+            per_op_rate_limit(
+                "workflows.update",
+                max_requests=30,
+                window_seconds=60,
+                key="user",
+            ),
+        ],
+    )
     async def update_workflow(  # noqa: PLR0911 -- enumerate distinct HTTP error paths explicitly
         self,
         request: Request[Any, Any, Any],
@@ -426,7 +459,15 @@ class WorkflowController(Controller):
 
     @delete(
         "/{workflow_id:str}",
-        guards=[require_write_access],
+        guards=[
+            require_write_access,
+            per_op_rate_limit(
+                "workflows.delete",
+                max_requests=10,
+                window_seconds=60,
+                key="user",
+            ),
+        ],
         status_code=HTTP_204_NO_CONTENT,
     )
     async def delete_workflow(
