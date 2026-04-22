@@ -99,9 +99,51 @@ def paginate_cursor[T](
     return page, meta
 
 
+def encode_repo_seek_meta(
+    *,
+    offset: int,
+    page_len: int,
+    total: int,
+    limit: int,
+    secret: CursorSecret,
+) -> PaginationMeta:
+    """Build ``PaginationMeta`` for controllers that push limit+offset into the repo.
+
+    Centralizes the ``has_more`` snapshot-drift guard so the next
+    pagination bug cannot regress across every version-history
+    controller one at a time.  An empty or short page (``page_len ==
+    0`` or ``offset + page_len == offset``) cannot advance the cursor
+    past the current offset, so the guard refuses to emit a cursor
+    that would loop the client on the same page when
+    ``count_versions`` disagrees with ``list_versions``.
+
+    Args:
+        offset: The decoded cursor offset the current page started at.
+        page_len: The number of items the repo returned for this page.
+        total: The repo's reported total row count.
+        limit: The page size requested.
+        secret: HMAC secret used to sign the ``next_cursor``.
+
+    Returns:
+        ``PaginationMeta`` with the ``has_more`` / ``next_cursor``
+        fields filled in, safe to wrap in ``PaginatedResponse``.
+    """
+    next_offset = offset + page_len
+    has_more = page_len > 0 and next_offset > offset and next_offset < total
+    next_cursor = encode_cursor(next_offset, secret=secret) if has_more else None
+    return PaginationMeta(
+        limit=limit,
+        next_cursor=next_cursor,
+        has_more=has_more,
+        total=total,
+        offset=offset,
+    )
+
+
 __all__ = (
     "CursorLimit",
     "CursorParam",
     "InvalidCursorError",
+    "encode_repo_seek_meta",
     "paginate_cursor",
 )

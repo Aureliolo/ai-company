@@ -8,15 +8,18 @@ from litestar.datastructures import State  # noqa: TC002
 from litestar.params import Parameter
 
 from synthorg.api.controllers._workflow_helpers import get_auth_user_id
-from synthorg.api.cursor import decode_cursor, encode_cursor
+from synthorg.api.cursor import decode_cursor
 from synthorg.api.dto import (
     ApiResponse,
     PaginatedResponse,
-    PaginationMeta,
     RollbackAgentIdentityRequest,
 )
 from synthorg.api.guards import require_read_access, require_write_access
-from synthorg.api.pagination import CursorLimit, CursorParam  # noqa: TC001
+from synthorg.api.pagination import (
+    CursorLimit,
+    CursorParam,
+    encode_repo_seek_meta,
+)
 from synthorg.api.path_params import PathId  # noqa: TC001
 from synthorg.core.agent import AgentIdentity
 from synthorg.engine.identity.diff import AgentIdentityDiff, compute_diff
@@ -139,19 +142,12 @@ class AgentIdentityVersionController(Controller):
         # paginating by ``pagination.total`` don't see a count that
         # disagrees with the returned ``data`` slice.
         safe_total = max(total - dropped, len(safe_versions))
-        next_offset = offset + len(safe_versions)
-        # Snapshot-drift guard (see role_versions.py for the full
-        # rationale): short / empty pages cannot advance the cursor.
-        has_more = (
-            len(safe_versions) > 0 and next_offset > offset and next_offset < safe_total
-        )
-        next_cursor = encode_cursor(next_offset, secret=secret) if has_more else None
-        meta = PaginationMeta(
-            limit=limit,
-            next_cursor=next_cursor,
-            has_more=has_more,
-            total=safe_total,
+        meta = encode_repo_seek_meta(
             offset=offset,
+            page_len=len(safe_versions),
+            total=safe_total,
+            limit=limit,
+            secret=secret,
         )
         return Response(
             content=PaginatedResponse[SnapshotT](

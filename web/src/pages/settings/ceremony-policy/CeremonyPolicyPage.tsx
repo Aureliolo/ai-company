@@ -225,16 +225,30 @@ export default function CeremonyPolicyPage() {
         // Cycle guard: a malformed backend that returns the same
         // ``nextCursor`` twice with ``hasMore=true`` would otherwise
         // loop forever. Bail out with partial results when we see a
-        // cursor repeat, and rely on the operator-facing toast below
-        // if the department count ends up incomplete.
+        // cursor repeat AND surface the truncation to the operator so
+        // they can retry or report it -- silently dropping items is
+        // the worst failure mode for a settings page backed by
+        // server-side state.
         const seenCursors = new Set<string>()
+        let cycleDetected = false
         while (!cancelled) {
           const result = await listDepartments({ cursor, limit })
           allDepts.push(...result.data)
           if (!result.hasMore || !result.nextCursor) break
-          if (seenCursors.has(result.nextCursor)) break
+          if (seenCursors.has(result.nextCursor)) {
+            cycleDetected = true
+            break
+          }
           seenCursors.add(result.nextCursor)
           cursor = result.nextCursor
+        }
+        if (cycleDetected && !cancelled) {
+          addToast({
+            variant: 'warning',
+            title: 'Department list may be incomplete',
+            description:
+              'Pagination cursor cycle detected -- refresh the page to retry.',
+          })
         }
       } catch {
         if (!cancelled) {

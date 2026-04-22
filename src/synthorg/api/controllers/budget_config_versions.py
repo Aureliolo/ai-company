@@ -7,14 +7,14 @@ from litestar import Controller, Response, get
 from litestar.datastructures import State  # noqa: TC002
 from litestar.params import Parameter
 
-from synthorg.api.cursor import decode_cursor, encode_cursor
-from synthorg.api.dto import (
-    ApiResponse,
-    PaginatedResponse,
-    PaginationMeta,
-)
+from synthorg.api.cursor import decode_cursor
+from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_read_access
-from synthorg.api.pagination import CursorLimit, CursorParam  # noqa: TC001
+from synthorg.api.pagination import (
+    CursorLimit,
+    CursorParam,
+    encode_repo_seek_meta,
+)
 from synthorg.budget.config import BudgetConfig
 from synthorg.observability import get_logger
 from synthorg.observability.events.versioning import (
@@ -58,20 +58,12 @@ class BudgetConfigVersionController(Controller):
             entity_id=_ENTITY_ID,
             count=len(versions),
         )
-        next_offset = offset + len(versions)
-
-        # Snapshot-drift guard (see role_versions.py for the full
-        # rationale): short / empty pages cannot advance the cursor.
-        has_more = len(versions) > 0 and next_offset > offset and next_offset < total
-
-        next_cursor = encode_cursor(next_offset, secret=secret) if has_more else None
-
-        meta = PaginationMeta(
-            limit=limit,
-            next_cursor=next_cursor,
-            has_more=has_more,
-            total=total,
+        meta = encode_repo_seek_meta(
             offset=offset,
+            page_len=len(versions),
+            total=total,
+            limit=limit,
+            secret=secret,
         )
         return Response(
             content=PaginatedResponse[SnapshotT](

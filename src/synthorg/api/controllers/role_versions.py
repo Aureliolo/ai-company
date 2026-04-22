@@ -7,14 +7,14 @@ from litestar import Controller, Response, get
 from litestar.datastructures import State  # noqa: TC002
 from litestar.params import Parameter
 
-from synthorg.api.cursor import decode_cursor, encode_cursor
-from synthorg.api.dto import (
-    ApiResponse,
-    PaginatedResponse,
-    PaginationMeta,
-)
+from synthorg.api.cursor import decode_cursor
+from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_read_access
-from synthorg.api.pagination import CursorLimit, CursorParam  # noqa: TC001
+from synthorg.api.pagination import (
+    CursorLimit,
+    CursorParam,
+    encode_repo_seek_meta,
+)
 from synthorg.core.role import Role
 from synthorg.observability import get_logger
 from synthorg.observability.events.versioning import (
@@ -56,26 +56,12 @@ class RoleVersionController(Controller):
             entity_id=role_name,
             count=len(versions),
         )
-        next_offset = offset + len(versions)
-
-        # Guard against snapshot drift between ``list_versions`` and
-        # ``count_versions``: if the list read came back short of the
-        # requested page but the count still claims more items exist,
-        # ``next_offset`` would point at the same row the current
-        # cursor already decodes to, and the client would loop on
-        # that page forever.  Require the page to have at least one
-        # row AND the offset to have advanced before claiming more
-        # pages exist.
-        has_more = len(versions) > 0 and next_offset > offset and next_offset < total
-
-        next_cursor = encode_cursor(next_offset, secret=secret) if has_more else None
-
-        meta = PaginationMeta(
-            limit=limit,
-            next_cursor=next_cursor,
-            has_more=has_more,
-            total=total,
+        meta = encode_repo_seek_meta(
             offset=offset,
+            page_len=len(versions),
+            total=total,
+            limit=limit,
+            secret=secret,
         )
         return Response(
             content=PaginatedResponse[SnapshotT](
