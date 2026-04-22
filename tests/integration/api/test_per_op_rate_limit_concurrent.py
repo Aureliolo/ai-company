@@ -17,9 +17,8 @@ endpoint that does not require a fine-tune orchestrator) to
 succeed and four must return 429 with ``error_code=5002``.
 """
 
-import time
 from collections.abc import AsyncGenerator, Generator
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from threading import Event as ThreadingEvent
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -50,12 +49,7 @@ _TEST_PASSWORD = "secure-pass-12chars"
 # -- the whole point of this test is to confirm the decorator's
 # ``max_requests=10`` fires after 10 successes.
 _AGENTS_CREATE_MAX_REQUESTS = 10
-
-
-def _release_after(release: ThreadingEvent, delay: float) -> None:
-    """Sleep for ``delay`` seconds then release the barrier."""
-    time.sleep(delay)
-    release.set()
+_HOLD_TIMEOUT_SECONDS = 5.0
 
 
 @pytest.fixture(autouse=True)
@@ -205,38 +199,25 @@ class TestConcurrentBurstAgainstAgentsCreate:
             ]
             responses = [f.result() for f in futures]
 
-        successes = [r for r in responses if r.status_code == 201]
         rate_limit_denials = [r for r in responses if r.status_code == 429]
-        # Responses outside {201, 429} are "non-rate-limit failures"
-        # (e.g. 409/422 from the fake persistence when the department
-        # isn't wired for the test-provider).  We must NOT assert on
-        # successes alone because a persistence-stub rejection flow
-        # would make ``len(successes) == 0`` and trivially satisfy
-        # ``<= max_requests``.  Instead we assert on two behavioural
-        # invariants the middleware MUST satisfy regardless of the
-        # underlying handler's success rate:
-        # 1. ``successes`` never exceeds ``max_requests`` (guard caps
-        #    the window budget).
-        # 2. The first ``max_requests`` responses combined can be at
-        #    most ``max_requests`` non-429s -- equivalently, the
-        #    ``concurrency - max_requests`` overflow requests must all
-        #    hit 429.  We assert >= (overflow - slack) denials where
-        #    slack accounts for timing jitter in the thread pool.
+        non_throttled = [r for r in responses if r.status_code != 429]
         statuses = [r.status_code for r in responses]
         status_summary = {s: statuses.count(s) for s in set(statuses)}
-        non_throttled = [r for r in responses if r.status_code != 429]
-        assert len(non_throttled) <= _AGENTS_CREATE_MAX_REQUESTS, (
-            f"More than {_AGENTS_CREATE_MAX_REQUESTS} requests bypassed the "
-            f"guard; status distribution: {status_summary}"
+        # Strict equality: the sliding-window guard must admit
+        # exactly ``max_requests`` requests per window and deny the
+        # remainder.  The original assertions used ``<=`` / ``>=``
+        # slack to tolerate thread-pool timing jitter, but with
+        # ``max_workers=concurrency`` the race is large enough that
+        # all 100 contend in a single window -- anything other than
+        # an exact ``max_requests`` / ``concurrency - max_requests``
+        # split is a real regression worth failing on.
+        assert len(non_throttled) == _AGENTS_CREATE_MAX_REQUESTS, (
+            f"Expected exactly {_AGENTS_CREATE_MAX_REQUESTS} non-throttled "
+            f"responses, got {len(non_throttled)}; "
+            f"status distribution: {status_summary}"
         )
-        assert len(successes) <= _AGENTS_CREATE_MAX_REQUESTS, (
-            f"Expected at most {_AGENTS_CREATE_MAX_REQUESTS} successes, "
-            f"got {len(successes)}; status distribution: {status_summary}"
-        )
-        assert len(rate_limit_denials) >= (
-            concurrency - _AGENTS_CREATE_MAX_REQUESTS - 10
-        ), (
-            f"Expected at least ~{concurrency - _AGENTS_CREATE_MAX_REQUESTS - 10} "
+        assert len(rate_limit_denials) == concurrency - _AGENTS_CREATE_MAX_REQUESTS, (
+            f"Expected exactly {concurrency - _AGENTS_CREATE_MAX_REQUESTS} "
             f"rate-limit denials, got {len(rate_limit_denials)}; "
             f"status distribution: {status_summary}"
         )
@@ -276,13 +257,18 @@ class TestConcurrencyGuardAgainstFinetunePreflight:
         # the least invasive hook -- the handler stays untouched and
         # ``threading.Event`` is natural for code running on a worker
         # thread via ``asyncio.to_thread``.
+        entered = ThreadingEvent()
         release = ThreadingEvent()
 
         def _held_preflight_checks(*_args: Any, **_kwargs: Any) -> tuple[Any, ...]:
-            # ``to_thread`` runs this synchronously in a worker, so a
-            # threading ``wait`` is the right primitive here.  5s cap
-            # so a misuse cannot wedge the suite.
-            release.wait(5.0)
+            # ``to_thread`` runs this synchronously on a worker, so
+            # ``threading.Event`` is the right primitive here.
+            # Signal entry (the holder has the permit), then park on
+            # ``release`` until the test releases explicitly.  Both
+            # events carry a bounded timeout so a wiring bug never
+            # wedges the suite.
+            entered.set()
+            release.wait(_HOLD_TIMEOUT_SECONDS)
             return ()
 
         def _held_batch_size() -> int:
@@ -346,16 +332,27 @@ class TestConcurrencyGuardAgainstFinetunePreflight:
                 )
 
             concurrency = 5
-            with ThreadPoolExecutor(max_workers=concurrency + 1) as pool:
+            with ThreadPoolExecutor(max_workers=concurrency) as pool:
                 futures = [pool.submit(_fire) for _ in range(concurrency)]
-                # Release the barrier after the dispatch has happened
-                # so the first request holds the permit while the four
-                # siblings hit the middleware and are denied.  The
-                # 50 ms window is big enough for the TestClient
-                # transport to dispatch all five requests on any
-                # reasonable runner; the barrier's own 5s timeout
-                # guarantees we never hang on a slow scheduler.
-                pool.submit(_release_after, release, 0.05)
+                # Deterministic handshake:
+                #   1. Wait for the holder to enter the patched body.
+                #   2. Wait for ``concurrency - 1`` siblings to
+                #      complete -- they must be the 429 denials
+                #      because the holder is still parked.
+                #   3. Release the holder so the last future resolves.
+                if not entered.wait(_HOLD_TIMEOUT_SECONDS):
+                    msg = "Handler never signalled 'entered' within timeout"
+                    raise AssertionError(msg)
+                pending = set(futures)
+                denied_seen = 0
+                while denied_seen < concurrency - 1 and pending:
+                    done, pending = wait(
+                        pending,
+                        timeout=_HOLD_TIMEOUT_SECONDS,
+                        return_when=FIRST_COMPLETED,
+                    )
+                    denied_seen += len(done)
+                release.set()
                 responses = [f.result() for f in futures]
 
         # Litestar defaults POST success to 201.
@@ -393,12 +390,31 @@ class TestHighTierOpsCarryGuards:
     these are SEC-2 audit requirements.
     """
 
-    _HIGH_TIER_OPS: tuple[tuple[str, str], ...] = (
-        ("memory.fine_tune", "start_fine_tune"),
-        ("memory.checkpoint_deploy", "deploy_checkpoint"),
-        ("memory.checkpoint_rollback", "rollback_checkpoint"),
-        ("providers.pull_model", "pull_model"),
-        ("providers.discover_models", "discover_models"),
+    # Each entry: (handler_name, rate_limit_op, concurrency_op).
+    # ``memory.fine_tune`` is intentionally the SHARED inflight
+    # bucket key for both ``start_fine_tune`` and ``resume_fine_tune``
+    # so operators cannot bypass the cap by starting then resuming a
+    # separate flow.  The sliding-window guards use DISTINCT operation
+    # names (``memory.fine_tune`` vs ``memory.fine_tune_resume``) so
+    # start and resume rates can be tuned independently.  Keep both
+    # entries here so a refactor that accidentally decouples the
+    # inflight bucket (or collapses the sliding-window ops) trips
+    # this regression test.
+    _HIGH_TIER_OPS: tuple[tuple[str, str, str], ...] = (
+        ("start_fine_tune", "memory.fine_tune", "memory.fine_tune"),
+        ("resume_fine_tune", "memory.fine_tune_resume", "memory.fine_tune"),
+        ("deploy_checkpoint", "memory.checkpoint_deploy", "memory.checkpoint_deploy"),
+        (
+            "rollback_checkpoint",
+            "memory.checkpoint_rollback",
+            "memory.checkpoint_rollback",
+        ),
+        ("pull_model", "providers.pull_model", "providers.pull_model"),
+        (
+            "discover_models",
+            "providers.discover_models",
+            "providers.discover_models",
+        ),
     )
 
     def test_high_tier_ops_have_both_guards_wired(
@@ -415,33 +431,35 @@ class TestHighTierOpsCarryGuards:
                 handler_by_name[getattr(handler, "handler_name", "")] = handler
 
         missing: list[str] = []
-        for op_name, handler_name in self._HIGH_TIER_OPS:
+        for handler_name, rl_op, inflight_op in self._HIGH_TIER_OPS:
             handler = handler_by_name.get(handler_name)
             if handler is None:
-                missing.append(f"{op_name}: handler {handler_name!r} not found")
+                missing.append(f"{handler_name}: handler not found")
                 continue
             guards = getattr(handler, "guards", None) or ()
             guard_names = tuple(getattr(g, "__name__", "") for g in guards)
             if not any(
-                name.startswith(f"per_op_rate_limit[{op_name}]") for name in guard_names
+                name.startswith(f"per_op_rate_limit[{rl_op}]") for name in guard_names
             ):
                 missing.append(
-                    f"{op_name}: per_op_rate_limit guard missing "
+                    f"{handler_name}: per_op_rate_limit[{rl_op}] guard missing "
                     f"(found guards: {guard_names})"
                 )
             opt = getattr(handler, "opt", None) or {}
             inflight_opt = opt.get("per_op_concurrency")
             if inflight_opt is None:
                 missing.append(
-                    f"{op_name}: per_op_concurrency opt missing (opt keys: {list(opt)})"
+                    f"{handler_name}: per_op_concurrency opt missing "
+                    f"(opt keys: {list(opt)})"
                 )
                 continue
             if (
                 not isinstance(inflight_opt, (tuple, list))
                 or len(inflight_opt) != 3
-                or inflight_opt[0] != op_name
+                or inflight_opt[0] != inflight_op
             ):
                 missing.append(
-                    f"{op_name}: per_op_concurrency opt malformed: {inflight_opt!r}"
+                    f"{handler_name}: per_op_concurrency opt malformed "
+                    f"(expected operation={inflight_op!r}, got {inflight_opt!r})"
                 )
         assert not missing, "HIGH-tier guard wiring regression:\n" + "\n".join(missing)

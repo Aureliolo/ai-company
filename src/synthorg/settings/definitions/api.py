@@ -2,8 +2,8 @@
 
 Registers 31 settings covering server, TLS, CORS, rate limiting
 (global + per-operation sliding-window + per-operation inflight),
-authentication, and setup.  Eleven are runtime-editable (picked up by
-the matching ``SettingsSubscriber`` on change); the remaining twenty
+authentication, and setup.  Twelve are runtime-editable (picked up by
+the matching ``SettingsSubscriber`` on change); the remaining nineteen
 are ``restart_required=True`` because Litestar bakes middleware,
 rate-limit budgets, CORS origins, and store backends into the
 application at construction time.

@@ -60,7 +60,12 @@ def per_op_concurrency(
         ValueError: If ``max_inflight`` is not positive or
             ``operation`` is empty.
     """
-    if not operation or not operation.strip():
+    # Strip the operation name so ``" memory.fine_tune "`` (whitespace
+    # typo) and ``"memory.fine_tune"`` resolve to the same bucket
+    # rather than silently creating distinct per-op overrides the
+    # operator never asked for.
+    stripped_op = operation.strip() if isinstance(operation, str) else operation
+    if not isinstance(stripped_op, str) or not stripped_op:
         msg = "operation must be a non-empty string"
         logger.warning(
             API_APP_STARTUP,
@@ -75,7 +80,7 @@ def per_op_concurrency(
         logger.warning(
             API_APP_STARTUP,
             guard="per_op_concurrency",
-            operation=operation,
+            operation=stripped_op,
             max_inflight=max_inflight,
             error=msg,
         )
@@ -85,10 +90,10 @@ def per_op_concurrency(
         logger.warning(
             API_APP_STARTUP,
             guard="per_op_concurrency",
-            operation=operation,
+            operation=stripped_op,
             max_inflight=max_inflight,
             key=str(key),
             error=msg,
         )
         raise ValueError(msg)
-    return {OPT_KEY: (operation, max_inflight, key)}
+    return {OPT_KEY: (stripped_op, max_inflight, key)}

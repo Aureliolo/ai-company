@@ -70,19 +70,20 @@ def _read_live_inflight_config(state: Any) -> PerOpConcurrencyConfig | None:
 def _resolve_wiring(
     state: Any,
     operation: str,
+    config: PerOpConcurrencyConfig | None,
 ) -> tuple[InflightStore, PerOpConcurrencyConfig]:
-    """Fetch the inflight store + live config, or raise 503.
+    """Fetch the inflight store and validate the config snapshot, or raise 503.
 
     The store lives in the Litestar state dict (built once at startup,
-    never swapped).  The config lives on :class:`AppState` so the
-    settings subscriber can hot-swap it when operators edit
-    ``api.per_op_concurrency_enabled`` or
-    ``api.per_op_concurrency_overrides`` without restarting the app.
-    Missing store/config is a deployment error, not a per-user
-    throttle: fail loud (ERROR log) and closed (503) so misconfigured
-    deployments do not ship silently uncapped.
+    never swapped).  The config is passed in by the caller as a
+    snapshot captured at request start -- re-reading it here would
+    open a window where the settings subscriber swaps the config
+    mid-request and the enabled flag observed here disagrees with
+    the one the master-switch check already observed.  Missing store
+    or config is a deployment error, not a per-user throttle: fail
+    loud (ERROR log) and closed (503) so misconfigured deployments do
+    not ship silently uncapped.
     """
-    config = _read_live_inflight_config(state)
     store: InflightStore | None = getattr(
         state,
         STATE_KEY_INFLIGHT_STORE,
@@ -174,17 +175,17 @@ class PerOpConcurrencyMiddleware(ASGIMiddleware):
         app = scope.get("app")
         state = getattr(app, "state", None) if app is not None else None
 
-        # Master switch: a disabled config short-circuits the middleware
-        # without requiring the store to be wired.  Missing config is
-        # still treated as a wiring error below.  Read the live config
-        # (AppState first, Litestar state dict fallback) so subscriber
-        # swaps take effect on the next request without a restart.
-        config_early = _read_live_inflight_config(state)
-        if config_early is not None and not config_early.enabled:
+        # Snapshot the live config once at request start so the
+        # master-switch check and ``_resolve_wiring`` observe the
+        # same config object even if the settings subscriber swaps
+        # it mid-request.  A disabled config short-circuits the
+        # middleware without requiring the store to be wired.
+        config_snapshot = _read_live_inflight_config(state)
+        if config_snapshot is not None and not config_snapshot.enabled:
             await next_app(scope, receive, send)
             return
 
-        store, config = _resolve_wiring(state, operation)
+        store, config = _resolve_wiring(state, operation, config_snapshot)
 
         override = config.overrides.get(operation)
         max_inflight = override if override is not None else default_max_inflight

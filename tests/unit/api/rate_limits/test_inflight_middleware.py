@@ -9,7 +9,7 @@ spec that mirrors this pattern.
 """
 
 import asyncio
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from threading import Event as ThreadingEvent
 from typing import Any
 
@@ -35,15 +35,21 @@ pytestmark = pytest.mark.unit
 _HOLD_TIMEOUT_SECONDS = 5.0
 
 
-async def _wait_for_release(release: ThreadingEvent) -> None:
-    """Park a handler coroutine on ``release`` via a worker thread.
+async def _signal_entry_and_wait(
+    entered: ThreadingEvent,
+    release: ThreadingEvent,
+) -> None:
+    """Handler barrier: signal "entered", then park until released.
 
-    ``asyncio.to_thread`` hands the blocking wait off to the default
-    thread pool, yielding the event loop so the TestClient transport
-    can dispatch sibling requests that should be denied by the
+    Runs inside the permit-holder's handler coroutine.  Setting
+    ``entered`` tells the test harness the holder is inside the
+    handler (and so has the permit); the subsequent ``release.wait``
+    parks the coroutine on a worker thread so the event loop keeps
+    dispatching sibling requests that should be denied by the
     middleware.  Replaces the previous ``asyncio.sleep(0.3)`` pattern
     which made the unit suite timing-sensitive under ``-n 8``.
     """
+    entered.set()
     await asyncio.to_thread(release.wait, _HOLD_TIMEOUT_SECONDS)
 
 
@@ -68,38 +74,60 @@ def _make_test_app(
     )
 
 
-def _fire_concurrent_posts(
+def _fire_concurrent_posts(  # noqa: PLR0913 -- test helper with optional knobs
     client: TestClient[Any],
     path: str,
     count: int,
     *,
+    entered: ThreadingEvent | None = None,
     release: ThreadingEvent | None = None,
-    release_delay_seconds: float = 0.05,
+    holders: int = 1,
 ) -> list[httpx.Response]:
     """Fire ``count`` POSTs in parallel via a thread pool.
 
-    When ``release`` is provided the helper spins up an extra worker
-    that sleeps ``release_delay_seconds`` then calls ``release.set()``
-    so the permit-holder unblocks AFTER the sibling requests have
-    been dispatched into the middleware.  The delay is small enough
-    that the total wall-clock cost is trivial and the release is
-    deterministic -- unlike the old ``asyncio.sleep(0.3)`` pattern
-    which raced against scheduler jitter.
+    When ``entered`` and ``release`` are both provided the helper runs
+    a fully deterministic handshake:
+
+      1. Submit ``count`` concurrent ``client.post`` futures.
+      2. Wait for ``entered`` -- set by the first permit-holder once
+         its handler has entered the body.
+      3. Wait for ``count - holders`` futures to complete -- those
+         are the siblings that the middleware denied with 429
+         (``holders`` futures are still parked in the handler, so by
+         pigeonhole the completed ones are the denials).
+      4. Set ``release`` so every parked holder finishes and the
+         remaining futures resolve.
+
+    No ``time.sleep`` anywhere: every transition is gated on a
+    primitive that a prior step observably set.  The bounded waits
+    fall back to pytest's per-test timeout if the wiring is broken,
+    so a bug surfaces as a clear failure rather than a hang.
     """
-    worker_count = count + (1 if release is not None else 0)
-    with ThreadPoolExecutor(max_workers=worker_count) as pool:
+    if (entered is None) != (release is None):
+        msg = "entered and release must be provided together or not at all"
+        raise ValueError(msg)
+    if holders < 1 or holders > count:
+        msg = f"holders={holders} must be in [1, {count}]"
+        raise ValueError(msg)
+
+    with ThreadPoolExecutor(max_workers=count) as pool:
         futures = [pool.submit(client.post, path) for _ in range(count)]
-        if release is not None:
-            pool.submit(_release_after, release, release_delay_seconds)
+        if entered is not None and release is not None:
+            if not entered.wait(_HOLD_TIMEOUT_SECONDS):
+                msg = "Handler never signalled 'entered' within the timeout"
+                raise AssertionError(msg)
+            pending = set(futures)
+            denied_seen = 0
+            expected_denials = count - holders
+            while denied_seen < expected_denials and pending:
+                done, pending = wait(
+                    pending,
+                    timeout=_HOLD_TIMEOUT_SECONDS,
+                    return_when=FIRST_COMPLETED,
+                )
+                denied_seen += len(done)
+            release.set()
         return [f.result() for f in futures]
-
-
-def _release_after(release: ThreadingEvent, delay: float) -> None:
-    """Sleep for ``delay`` then release the barrier (worker thread)."""
-    import time as _time
-
-    _time.sleep(delay)
-    release.set()
 
 
 class TestUnannotatedHandlersPassThrough:
@@ -120,6 +148,7 @@ class TestConcurrencyEnforcement:
 
     def test_concurrent_requests_partially_denied(self) -> None:
         """5 concurrent requests with max_inflight=2 -> 2 ok, 3 denied."""
+        entered = ThreadingEvent()
         release = ThreadingEvent()
 
         @post(
@@ -127,11 +156,18 @@ class TestConcurrencyEnforcement:
             opt=per_op_concurrency("test.cap", max_inflight=2, key="ip"),
         )
         async def handler() -> dict[str, bool]:
-            await _wait_for_release(release)
+            await _signal_entry_and_wait(entered, release)
             return {"ok": True}
 
         with TestClient(app=_make_test_app(handler)) as client:
-            results = _fire_concurrent_posts(client, "/t", 5, release=release)
+            results = _fire_concurrent_posts(
+                client,
+                "/t",
+                5,
+                entered=entered,
+                release=release,
+                holders=2,
+            )
         statuses = [r.status_code for r in results]
         assert statuses.count(201) == 2
         assert statuses.count(429) == 3
@@ -241,6 +277,7 @@ class TestOverrides:
     """Config overrides replace decorator defaults."""
 
     def test_override_tightens_default(self) -> None:
+        entered = ThreadingEvent()
         release = ThreadingEvent()
 
         @post(
@@ -252,12 +289,19 @@ class TestOverrides:
             ),
         )
         async def handler() -> dict[str, bool]:
-            await _wait_for_release(release)
+            await _signal_entry_and_wait(entered, release)
             return {"ok": True}
 
         cfg = PerOpConcurrencyConfig(overrides={"test.tightened": 1})
         with TestClient(app=_make_test_app(handler, config=cfg)) as client:
-            results = _fire_concurrent_posts(client, "/t", 3, release=release)
+            results = _fire_concurrent_posts(
+                client,
+                "/t",
+                3,
+                entered=entered,
+                release=release,
+                holders=1,
+            )
         statuses = [r.status_code for r in results]
         assert statuses.count(201) == 1
         assert statuses.count(429) == 2
@@ -267,6 +311,7 @@ class TestBucketSharing:
     """Two operations passing the SAME operation name share a bucket."""
 
     def test_same_operation_shares_bucket(self) -> None:
+        entered = ThreadingEvent()
         release = ThreadingEvent()
 
         @post(
@@ -278,7 +323,7 @@ class TestBucketSharing:
             ),
         )
         async def start() -> dict[str, bool]:
-            await _wait_for_release(release)
+            await _signal_entry_and_wait(entered, release)
             return {"ok": True}
 
         @post(
@@ -290,7 +335,7 @@ class TestBucketSharing:
             ),
         )
         async def resume() -> dict[str, bool]:
-            await _wait_for_release(release)
+            await _signal_entry_and_wait(entered, release)
             return {"ok": True}
 
         store = InMemoryInflightStore()
@@ -306,15 +351,24 @@ class TestBucketSharing:
             ),
             exception_handlers=dict(EXCEPTION_HANDLERS),  # type: ignore[arg-type]
         )
-        with TestClient(app=app) as client, ThreadPoolExecutor(max_workers=3) as pool:
+        with TestClient(app=app) as client, ThreadPoolExecutor(max_workers=2) as pool:
             futures = [
                 pool.submit(client.post, "/start"),
                 pool.submit(client.post, "/resume"),
             ]
-            # Release the shared barrier after both requests have been
-            # dispatched so exactly one holds the permit while the other
-            # is denied by the shared bucket.
-            pool.submit(_release_after, release, 0.05)
+            # Deterministic handshake: wait for the holder to enter
+            # the handler, then wait for the sibling future to resolve
+            # (must be the 429), then release the holder.
+            if not entered.wait(_HOLD_TIMEOUT_SECONDS):
+                msg = "Handler never signalled 'entered' within the timeout"
+                raise AssertionError(msg)
+            pending = set(futures)
+            _, pending = wait(
+                pending,
+                timeout=_HOLD_TIMEOUT_SECONDS,
+                return_when=FIRST_COMPLETED,
+            )
+            release.set()
             results = [f.result() for f in futures]
         statuses = sorted(r.status_code for r in results)
         # Exactly one succeeded; the other was denied by the shared bucket.
@@ -408,6 +462,7 @@ class TestKeyPolicyVariants:
         verifies the middleware does not explode on the non-ip key
         policy and still enforces the cap.
         """
+        entered = ThreadingEvent()
         release = ThreadingEvent()
 
         @post(
@@ -419,11 +474,18 @@ class TestKeyPolicyVariants:
             ),
         )
         async def handler() -> dict[str, bool]:
-            await _wait_for_release(release)
+            await _signal_entry_and_wait(entered, release)
             return {"ok": True}
 
         with TestClient(app=_make_test_app(handler)) as client:
-            results = _fire_concurrent_posts(client, "/t", 5, release=release)
+            results = _fire_concurrent_posts(
+                client,
+                "/t",
+                5,
+                entered=entered,
+                release=release,
+                holders=2,
+            )
         statuses = [r.status_code for r in results]
         assert statuses.count(201) == 2
         assert statuses.count(429) == 3
@@ -434,6 +496,7 @@ class TestKeyPolicyVariants:
         The fallback is a safety net: unauthenticated requests
         still get bucketed (by IP) rather than bypassing the guard.
         """
+        entered = ThreadingEvent()
         release = ThreadingEvent()
 
         @post(
@@ -445,11 +508,18 @@ class TestKeyPolicyVariants:
             ),
         )
         async def handler() -> dict[str, bool]:
-            await _wait_for_release(release)
+            await _signal_entry_and_wait(entered, release)
             return {"ok": True}
 
         with TestClient(app=_make_test_app(handler)) as client:
-            results = _fire_concurrent_posts(client, "/t", 5, release=release)
+            results = _fire_concurrent_posts(
+                client,
+                "/t",
+                5,
+                entered=entered,
+                release=release,
+                holders=2,
+            )
         statuses = [r.status_code for r in results]
         assert statuses.count(201) == 2
         assert statuses.count(429) == 3

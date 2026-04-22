@@ -43,15 +43,7 @@ _REQUEST_LOCKS_GUARD: threading.Lock = threading.Lock()
 
 
 def _lock_for_request(request_id: str) -> asyncio.Lock:
-    """Return the ``asyncio.Lock`` for ``request_id``, creating if absent.
-
-    Locks outlive the per-request handler (same request id may be
-    approved after being scoped, etc.).  They are never evicted --
-    this is a bounded set in practice because request ids are
-    operator-created and do not proliferate infinitely.  If that
-    ceases to hold, add a GC sweep analogous to
-    :class:`InMemoryInflightStore._gc_cold_buckets`.
-    """
+    """Return the ``asyncio.Lock`` for ``request_id``, creating if absent."""
     lock = _REQUEST_LOCKS.get(request_id)
     if lock is not None:
         return lock
@@ -61,6 +53,24 @@ def _lock_for_request(request_id: str) -> asyncio.Lock:
             lock = asyncio.Lock()
             _REQUEST_LOCKS[request_id] = lock
         return lock
+
+
+def _release_request_lock(request_id: str) -> None:
+    """Drop the lock for ``request_id`` after a terminal transition.
+
+    Called after the final ``save`` of a terminal state (approve,
+    reject) so ``_REQUEST_LOCKS`` does not accumulate one entry per
+    lifetime request id.  Only evicts when the lock is idle -- a
+    still-locked entry would strand any waiter who already holds a
+    reference to the same :class:`asyncio.Lock` object.  The caller
+    must already have released the ``async with _lock_for_request``
+    block before invoking this helper, otherwise the ``locked()``
+    probe reports the caller's own hold and the eviction is a no-op.
+    """
+    with _REQUEST_LOCKS_GUARD:
+        lock = _REQUEST_LOCKS.get(request_id)
+        if lock is not None and not lock.locked():
+            _REQUEST_LOCKS.pop(request_id, None)
 
 
 class CreateRequestPayload(BaseModel):
@@ -270,7 +280,13 @@ class RequestController(Controller):
                 **overrides,
             )
             await sim_state.request_store.save(scoped)
-        _publish(request, WsEventType.REQUEST_SCOPED, scoped)
+            # Publish inside the lock so the save + WS event are
+            # ordered atomically: a concurrent approve that takes the
+            # lock after us cannot emit its own event before ours
+            # reaches the bus.  SCOPING is not terminal, so the lock
+            # is intentionally retained across this handler (approve
+            # may run next on the same id).
+            _publish(request, WsEventType.REQUEST_SCOPED, scoped)
         return ApiResponse(data=scoped)
 
     @post(
@@ -327,7 +343,10 @@ class RequestController(Controller):
             else:
                 final, _ = await sim_state.intake_engine.finalize_scoped(stored)
             await sim_state.request_store.save(final)
-        _publish(request, WsEventType.REQUEST_APPROVED, final)
+            _publish(request, WsEventType.REQUEST_APPROVED, final)
+        # Approve walks to ``TASK_CREATED`` (terminal) -- drop the lock
+        # so ``_REQUEST_LOCKS`` does not accumulate.
+        _release_request_lock(request_id)
         return ApiResponse(data=final)
 
     @post(
@@ -374,5 +393,7 @@ class RequestController(Controller):
                 metadata=metadata,
             )
             await sim_state.request_store.save(cancelled)
-        _publish(request, WsEventType.REQUEST_REJECTED, cancelled)
+            _publish(request, WsEventType.REQUEST_REJECTED, cancelled)
+        # Reject walks to ``CANCELLED`` (terminal) -- drop the lock.
+        _release_request_lock(request_id)
         return ApiResponse(data=cancelled)

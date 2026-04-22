@@ -63,21 +63,22 @@ def _read_live_config(state: Any) -> PerOpRateLimitConfig | None:
 def _resolve_wiring(
     state: Any,
     operation: str,
+    config: PerOpRateLimitConfig | None,
 ) -> tuple[SlidingWindowStore, PerOpRateLimitConfig]:
-    """Fetch the store + live config from app state, or raise 503.
+    """Fetch the store and validate the live config snapshot, or raise 503.
 
     The store lives in the Litestar state dict (built once at startup,
-    never swapped).  The config lives on :class:`AppState` so the
-    settings subscriber can hot-swap it when operators edit
-    ``api.per_op_rate_limit_enabled`` or ``api.per_op_rate_limit_overrides``
-    without restarting the app.  Missing store/config is a wiring
-    error, NOT an "off" signal -- fail loud and closed with a 503 so
-    misconfigured deployments do not ship without protection.  503 +
-    no ``Retry-After`` tells clients this is a server-side issue (not
-    a per-user throttle).
+    never swapped).  The config is passed in by the caller as a
+    snapshot captured at request start -- re-reading it here would
+    open a window where the settings subscriber swaps the config
+    mid-request and the enabled flag observed here disagrees with
+    the one the master-switch check already observed.  Missing store
+    or config is a wiring error, NOT an "off" signal -- fail loud and
+    closed with a 503 so misconfigured deployments do not ship
+    without protection.  503 + no ``Retry-After`` tells clients this
+    is a server-side issue (not a per-user throttle).
     """
     store: SlidingWindowStore | None = getattr(state, STATE_KEY_STORE, None)
-    config = _read_live_config(state)
     if store is None or config is None:
         logger.error(
             API_APP_STARTUP,
@@ -160,12 +161,29 @@ def per_op_rate_limit(
     Raises:
         PerOperationRateLimitError: When the request exceeds the bucket.
     """
+    # Strip the operation name for the same reason as
+    # ``per_op_concurrency``: a whitespace typo
+    # (``" memory.fine_tune "``) would otherwise create a distinct
+    # bucket from the canonical ``"memory.fine_tune"`` and the
+    # operator's override would silently apply to only one of them.
+    stripped_op = operation.strip() if isinstance(operation, str) else operation
+    if not isinstance(stripped_op, str) or not stripped_op:
+        msg = "operation must be a non-empty string"
+        logger.warning(
+            API_APP_STARTUP,
+            guard="per_op_rate_limit",
+            operation=operation,
+            max_requests=max_requests,
+            window_seconds=window_seconds,
+            error=msg,
+        )
+        raise ValueError(msg)
     if max_requests <= 0:
         msg = "max_requests must be positive"
         logger.warning(
             API_APP_STARTUP,
             guard="per_op_rate_limit",
-            operation=operation,
+            operation=stripped_op,
             max_requests=max_requests,
             window_seconds=window_seconds,
             error=msg,
@@ -176,7 +194,7 @@ def per_op_rate_limit(
         logger.warning(
             API_APP_STARTUP,
             guard="per_op_rate_limit",
-            operation=operation,
+            operation=stripped_op,
             max_requests=max_requests,
             window_seconds=window_seconds,
             error=msg,
@@ -187,13 +205,14 @@ def per_op_rate_limit(
         logger.warning(
             API_APP_STARTUP,
             guard="per_op_rate_limit",
-            operation=operation,
+            operation=stripped_op,
             max_requests=max_requests,
             window_seconds=window_seconds,
             key=str(key),
             error=msg,
         )
         raise ValueError(msg)
+    operation = stripped_op
     default_max = max_requests
     default_window = window_seconds
 
@@ -202,15 +221,18 @@ def per_op_rate_limit(
         _handler: BaseRouteHandler,
     ) -> None:
         state = connection.app.state
-        # Master switch: when the operator has explicitly disabled
-        # per-op rate limiting the guard is a no-op.  Read the live
-        # config (AppState first, Litestar state dict fallback) so
-        # subscriber swaps take effect on the next request without
-        # needing a restart.
-        config_early = _read_live_config(state)
-        if config_early is not None and not config_early.enabled:
+        # Snapshot the live config once at request start: the
+        # settings subscriber may swap the config concurrently, and
+        # re-reading it between the master-switch check and
+        # ``_resolve_wiring`` would let a request observe
+        # ``enabled=True`` at the first read and ``enabled=False``
+        # (with a stale override set) at the second.  Using one
+        # snapshot for the whole request guarantees consistency.
+        config_snapshot = _read_live_config(state)
+        if config_snapshot is not None and not config_snapshot.enabled:
+            # Master switch off -- operator disabled per-op guards.
             return
-        store, config = _resolve_wiring(state, operation)
+        store, config = _resolve_wiring(state, operation, config_snapshot)
         limit_max, limit_window = config.overrides.get(
             operation,
             (default_max, default_window),
