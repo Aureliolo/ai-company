@@ -84,7 +84,7 @@ USER build
 # buildx resolves the per-platform manifest from the multi-arch
 # index automatically.
 # ---------------------------------------------------------------------------
-FROM arigaio/atlas:latest-community-distroless@sha256:aa883e317daa449aad7223a1c55ee2f5a6a51ef0900d4969686c920cb205da7b AS atlas
+FROM arigaio/atlas:latest-community-distroless@sha256:a154831b7b4ef6d226f36e1f0995da945321c144d17b8caca4f529599c042506 AS atlas
 
 # ---------------------------------------------------------------------------
 # Stage 2 -- Runtime (apko-composed Wolfi base: no shell, no package manager)
