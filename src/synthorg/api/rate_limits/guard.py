@@ -9,7 +9,7 @@ overrides take effect without a restart.
 
 import math
 from collections.abc import Awaitable, Callable  # noqa: TC003
-from typing import Any, Final, get_args
+from typing import Any, Final, NoReturn, get_args
 
 from litestar.connection import ASGIConnection  # noqa: TC002
 from litestar.handlers.base import BaseRouteHandler  # noqa: TC002
@@ -105,8 +105,13 @@ def _raise_denied(
     limit_max: int,
     limit_window: int,
     retry_after_seconds: float | None,
-) -> None:
-    """Log + raise a ``PerOperationRateLimitError`` with a sane retry."""
+) -> NoReturn:
+    """Log + raise a ``PerOperationRateLimitError`` with a sane retry.
+
+    Always raises -- annotated ``NoReturn`` so mypy narrows the
+    calling guard's control flow and tests cannot accidentally treat
+    this helper as having a successful return path.
+    """
     # Round up so a fractional 0.5s delay surfaces as at least 1s
     # and clients never retry before the bucket actually reopens.
     retry_after_s = (
