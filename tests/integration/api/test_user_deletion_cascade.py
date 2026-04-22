@@ -71,6 +71,30 @@ def _make_session(
     )
 
 
+async def _count_refresh_token_rows(
+    on_disk_backend: SQLitePersistenceBackend,
+    *,
+    user_id: str,
+) -> int:
+    """Count ``refresh_tokens`` rows keyed by ``user_id`` directly.
+
+    ``RefreshTokenRepository.revoke_by_user`` only counts tokens it
+    newly flipped from ``used=0`` to ``used=1``, so on a broken FK
+    cascade where the row is still present but pre-revoked, that
+    method would still return 0.  The cascade tests need a row-level
+    presence check to distinguish "cascade dropped the row" from
+    "row still there but already revoked", so they reach into the
+    backend's ``_db`` connection and run a direct ``COUNT(*)``.
+    """
+    refresh_repo = on_disk_backend.refresh_tokens
+    cursor = await refresh_repo._db.execute(
+        "SELECT COUNT(*) FROM refresh_tokens WHERE user_id = ?",
+        (user_id,),
+    )
+    row = await cursor.fetchone()
+    return int(row[0]) if row is not None else 0
+
+
 async def _seed_user_with_dependencies(  # noqa: PLR0913
     *,
     on_disk_backend: SQLitePersistenceBackend,
@@ -155,8 +179,9 @@ class TestUserDeletionCascade:
         assert await on_disk_backend.sessions.get(session.session_id) is None
         assert await on_disk_backend.api_keys.get(api_key.id) is None
         # Refresh tokens cascaded via FK (revoke_by_user flipped used=1
-        # first, then the FK cascade dropped the row).
-        assert await on_disk_backend.refresh_tokens.revoke_by_user(user.id) == 0
+        # first, then the FK cascade dropped the row). A direct COUNT
+        # verifies row removal rather than re-revocation.
+        assert await _count_refresh_token_rows(on_disk_backend, user_id=user.id) == 0
 
     async def test_delete_without_refresh_repo_still_cascades(
         self,
@@ -192,8 +217,9 @@ class TestUserDeletionCascade:
         assert await on_disk_backend.sessions.get(session.session_id) is None
         assert await on_disk_backend.api_keys.get(api_key.id) is None
         # Refresh tokens cascaded via schema FK (no explicit revoke
-        # step since this constructor variant has no refresh_tokens repo).
-        assert await on_disk_backend.refresh_tokens.revoke_by_user(user.id) == 0
+        # step since this constructor variant has no refresh_tokens
+        # repo). A direct COUNT verifies the row was dropped.
+        assert await _count_refresh_token_rows(on_disk_backend, user_id=user.id) == 0
 
     async def test_delete_missing_user_returns_false(
         self,

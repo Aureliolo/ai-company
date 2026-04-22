@@ -111,11 +111,23 @@ class RuleBasedStepClassifier:
                 "rule_matched_confidence must be in [0.0, 1.0];"
                 f" got {rule_matched_confidence!r}"
             )
+            logger.warning(
+                QUALITY_STEP_CLASSIFIED,
+                error=msg,
+                parameter="rule_matched_confidence",
+                value=rule_matched_confidence,
+            )
             raise ValueError(msg)
         if not 0.0 <= fallback_confidence <= 1.0:
             msg = (
                 "fallback_confidence must be in [0.0, 1.0];"
                 f" got {fallback_confidence!r}"
+            )
+            logger.warning(
+                QUALITY_STEP_CLASSIFIED,
+                error=msg,
+                parameter="fallback_confidence",
+                value=fallback_confidence,
             )
             raise ValueError(msg)
         self._rule_matched_confidence = rule_matched_confidence
