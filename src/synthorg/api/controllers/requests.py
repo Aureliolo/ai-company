@@ -12,7 +12,7 @@ from synthorg.api.channels import CHANNEL_REQUESTS, publish_ws_event
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.errors import ConflictError, NotFoundError
 from synthorg.api.guards import require_read_access, require_write_access
-from synthorg.api.pagination import PaginationLimit, PaginationOffset, paginate
+from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
 from synthorg.api.rate_limits import per_op_rate_limit
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.api.ws_models import WsEventType
@@ -133,8 +133,8 @@ class RequestController(Controller):
         self,
         state: State,
         status: RequestStatus | None = None,
-        offset: PaginationOffset = 0,
-        limit: PaginationLimit = 50,
+        cursor: CursorParam = None,
+        limit: CursorLimit = 50,
     ) -> PaginatedResponse[ClientRequest]:
         """List stored client requests, optionally filtered by status."""
         app_state: AppState = state.app_state
@@ -142,7 +142,12 @@ class RequestController(Controller):
         all_requests = await sim_state.request_store.list_all()
         if status is not None:
             all_requests = tuple(r for r in all_requests if r.status == status)
-        page, meta = paginate(all_requests, offset=offset, limit=limit)
+        page, meta = paginate_cursor(
+            all_requests,
+            limit=limit,
+            cursor=cursor,
+            secret=state.app_state.cursor_secret,
+        )
         return PaginatedResponse(data=page, pagination=meta)
 
     @get("/{request_id:str}")

@@ -82,7 +82,7 @@ class _FakeRateLimitConfig(BaseModel):
     unauth_max_requests: int = 20
     auth_max_requests: int = 6000
     time_unit: RateLimitTimeUnit = RateLimitTimeUnit.MINUTE
-    exclude_paths: tuple[str, ...] = ("/api/v1/health",)
+    exclude_paths: tuple[str, ...] = ("/api/v1/healthz", "/api/v1/readyz")
 
 
 class _FakeCorsConfig(BaseModel):

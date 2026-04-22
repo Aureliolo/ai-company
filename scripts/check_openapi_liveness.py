@@ -36,7 +36,8 @@ MIN_PATH_COUNT = 230
 # integrations / OAuth / clients wiring fired.
 CANARY_PATHS = frozenset(
     {
-        "/api/v1/health",
+        "/api/v1/healthz",
+        "/api/v1/readyz",
         "/api/v1/agents",
         "/api/v1/clients",
         "/api/v1/workflows",

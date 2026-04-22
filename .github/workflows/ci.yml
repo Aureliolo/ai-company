@@ -412,9 +412,17 @@ jobs:
           # raises, rounded up to the next integer boundary given the
           # wider surface-area change in this PR).
           # Lower again once #1468 replaces MSW's matching layer.
-          MAX_ASYNC_LEAKS: '80'
+          # The ceiling lives in ``.github/ci/web-async-leaks.max`` so
+          # raises show up in PR diffs instead of being buried in the
+          # workflow YAML.  The single-line file is read below.
         run: |
           set -o pipefail
+          MAX_ASYNC_LEAKS=$(grep -v '^#' .github/ci/web-async-leaks.max | head -1 | tr -d '[:space:]')
+          if ! [[ "$MAX_ASYNC_LEAKS" =~ ^[0-9]+$ ]]; then
+            echo "::error::.github/ci/web-async-leaks.max is not a positive integer: '$MAX_ASYNC_LEAKS'"
+            exit 1
+          fi
+          echo "Async-leak ceiling: $MAX_ASYNC_LEAKS (from .github/ci/web-async-leaks.max)"
           # Disable errexit around the test pipeline so a Vitest failure
           # doesn't abort the step before we can read ${PIPESTATUS[0]}
           # (GitHub Actions runs `run:` blocks with `bash -e`).

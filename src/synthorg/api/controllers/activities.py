@@ -18,7 +18,7 @@ from synthorg.api.auth.models import AuthenticatedUser
 from synthorg.api.dto import PaginatedResponse
 from synthorg.api.errors import ServiceUnavailableError
 from synthorg.api.guards import has_write_role, require_read_access
-from synthorg.api.pagination import PaginationLimit, PaginationOffset, paginate
+from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.budget.cost_record import CostRecord  # noqa: TC001
 from synthorg.budget.currency import DEFAULT_CURRENCY
@@ -336,8 +336,8 @@ class ActivityController(Controller):
         self,
         request: Request[Any, Any, Any],
         state: State,
-        offset: PaginationOffset = 0,
-        limit: PaginationLimit = 50,
+        cursor: CursorParam = None,
+        limit: CursorLimit = 50,
         event_type: Annotated[
             ActivityEventType | None,
             Parameter(
@@ -367,7 +367,7 @@ class ActivityController(Controller):
         Args:
             request: Incoming HTTP request (used for role-based redaction).
             state: Application state.
-            offset: Pagination offset.
+            cursor: Opaque pagination cursor from the previous page.
             limit: Page size.
             event_type: Filter by ``ActivityEventType`` (e.g. ``"hired"``).
                 Invalid values are rejected with 400.
@@ -409,11 +409,17 @@ class ActivityController(Controller):
         ):
             timeline = redact_cost_events(timeline)
 
-        page, meta = paginate(timeline, offset=offset, limit=limit)
+        page, meta = paginate_cursor(
+            timeline,
+            limit=limit,
+            cursor=cursor,
+            secret=app_state.cursor_secret,
+        )
 
         logger.debug(
             API_ACTIVITY_FEED_QUERIED,
-            total_events=meta.total,
+            returned_events=len(page),
+            has_more=meta.has_more,
             type_filter=event_type,
             agent_id_filter=agent_id,
             last_n_hours=last_n_hours,

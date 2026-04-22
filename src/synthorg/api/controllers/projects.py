@@ -15,7 +15,7 @@ from synthorg.api.dto import (
 )
 from synthorg.api.errors import ApiValidationError, NotFoundError
 from synthorg.api.guards import require_read_access, require_write_access
-from synthorg.api.pagination import PaginationLimit, PaginationOffset, paginate
+from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
 from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
 from synthorg.api.ws_models import WsEventType
 from synthorg.core.enums import ProjectStatus
@@ -56,8 +56,8 @@ class ProjectController(Controller):
     async def list_projects(
         self,
         state: State,
-        offset: PaginationOffset = 0,
-        limit: PaginationLimit = 50,
+        cursor: CursorParam = None,
+        limit: CursorLimit = 50,
         status: ProjectStatusFilter = None,
         lead: LeadFilter = None,
     ) -> PaginatedResponse[Project]:
@@ -65,7 +65,7 @@ class ProjectController(Controller):
 
         Args:
             state: Application state.
-            offset: Pagination offset.
+            cursor: Opaque pagination cursor from the previous page.
             limit: Page size.
             status: Filter by project status.
             lead: Filter by project lead agent ID.
@@ -91,7 +91,12 @@ class ProjectController(Controller):
             status=parsed_status,
             lead=lead,
         )
-        page, meta = paginate(projects, offset=offset, limit=limit)
+        page, meta = paginate_cursor(
+            projects,
+            limit=limit,
+            cursor=cursor,
+            secret=state.app_state.cursor_secret,
+        )
         return PaginatedResponse[Project](data=page, pagination=meta)
 
     @get("/{project_id:str}", guards=[require_read_access])

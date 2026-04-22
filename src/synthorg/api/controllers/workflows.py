@@ -29,7 +29,7 @@ from synthorg.api.dto import (
 )
 from synthorg.api.errors import NotFoundError
 from synthorg.api.guards import require_read_access, require_write_access
-from synthorg.api.pagination import PaginationLimit, PaginationOffset, paginate
+from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
 from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
 from synthorg.api.rate_limits import per_op_rate_limit
 from synthorg.core.enums import WorkflowType
@@ -104,8 +104,8 @@ class WorkflowController(Controller):
     async def list_workflows(
         self,
         state: State,
-        offset: PaginationOffset = 0,
-        limit: PaginationLimit = 50,
+        cursor: CursorParam = None,
+        limit: CursorLimit = 50,
         workflow_type: WorkflowTypeFilter = None,
     ) -> PaginatedResponse[WorkflowDefinition] | Response[ApiResponse[None]]:
         """List workflow definitions with optional filters."""
@@ -130,7 +130,12 @@ class WorkflowController(Controller):
                 )
 
         defs = await _service(state).list_definitions(workflow_type=parsed_type)
-        page, meta = paginate(defs, offset=offset, limit=limit)
+        page, meta = paginate_cursor(
+            defs,
+            limit=limit,
+            cursor=cursor,
+            secret=state.app_state.cursor_secret,
+        )
         return PaginatedResponse[WorkflowDefinition](
             data=page,
             pagination=meta,

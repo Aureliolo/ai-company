@@ -15,9 +15,9 @@ from synthorg.api.dto_personalities import (
 )
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import (
-    PaginationLimit,
-    PaginationOffset,
-    paginate,
+    CursorLimit,
+    CursorParam,
+    paginate_cursor,
 )
 from synthorg.api.path_params import PathName  # noqa: TC001
 from synthorg.api.rate_limits import per_op_rate_limit
@@ -74,14 +74,19 @@ class PersonalityPresetController(Controller):
     async def list_presets(
         self,
         state: State,
-        offset: PaginationOffset = 0,
-        limit: PaginationLimit = 50,
+        cursor: CursorParam = None,
+        limit: CursorLimit = 50,
     ) -> PaginatedResponse[PresetSummaryResponse]:
         """List all personality presets (builtin + custom)."""
         service = _get_service(state)
         entries = await service.list_all()
         summaries = tuple(_to_summary(e) for e in entries)
-        page, meta = paginate(summaries, offset=offset, limit=limit)
+        page, meta = paginate_cursor(
+            summaries,
+            limit=limit,
+            cursor=cursor,
+            secret=state.app_state.cursor_secret,
+        )
         return PaginatedResponse[PresetSummaryResponse](data=page, pagination=meta)
 
     @get(

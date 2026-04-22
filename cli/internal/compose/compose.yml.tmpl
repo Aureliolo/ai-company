@@ -221,7 +221,7 @@ services:
   # DHI NATS: distroless, runs as nonroot (65532). No in-container
   # healthcheck (no shell/wget inside DHI by design). Liveness is
   # surfaced at the application layer: ``NatsBus.health_check`` does a
-  # live PING/PONG round-trip and the backend's /api/v1/health reports
+  # live PING/PONG round-trip and the backend's /api/v1/readyz reports
   # the result. Configuration comes from a bind-mounted nats.conf
   # written next to compose.yml by the CLI -- NATS 2.12 has no
   # ``--max_payload`` CLI flag, so settings that diverge from defaults
@@ -258,7 +258,7 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
-  # NATS health is surfaced via the backend's /api/v1/health endpoint.
+  # NATS health is surfaced via the backend's /api/v1/readyz endpoint.
   # ``NatsBus.health_check`` performs a live PING/PONG round-trip, so
   # shipping a busybox sidecar purely to produce a green dot in
   # ``docker ps`` added a container for zero dependency value -- nothing

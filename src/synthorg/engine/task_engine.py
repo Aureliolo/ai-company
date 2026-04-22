@@ -39,11 +39,14 @@ from synthorg.engine.task_engine_models import (
 )
 from synthorg.engine.task_engine_version import VersionTracker
 from synthorg.observability import get_logger
+from synthorg.observability.background_tasks import log_task_exceptions
 from synthorg.observability.events.task_engine import (
     TASK_ENGINE_CREATED,
     TASK_ENGINE_LIST_CAPPED,
+    TASK_ENGINE_LOOP_DIED,
     TASK_ENGINE_MUTATION_FAILED,
     TASK_ENGINE_NOT_RUNNING,
+    TASK_ENGINE_OBSERVER_LOOP_DIED,
     TASK_ENGINE_QUEUE_FULL,
     TASK_ENGINE_READ_FAILED,
     TASK_ENGINE_STARTED,
@@ -134,9 +137,15 @@ class TaskEngine(TaskEngineLoopsMixin):
             self._processing_loop(),
             name="task-engine-loop",
         )
+        self._processing_task.add_done_callback(
+            log_task_exceptions(logger, TASK_ENGINE_LOOP_DIED),
+        )
         self._observer_task = asyncio.create_task(
             self._observer_dispatch_loop(),
             name="task-engine-observer-dispatcher",
+        )
+        self._observer_task.add_done_callback(
+            log_task_exceptions(logger, TASK_ENGINE_OBSERVER_LOOP_DIED),
         )
         logger.info(
             TASK_ENGINE_STARTED,

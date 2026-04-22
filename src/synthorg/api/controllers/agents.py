@@ -20,7 +20,7 @@ from synthorg.api.guards import (
     require_org_mutation,
     require_read_access,
 )
-from synthorg.api.pagination import PaginationLimit, PaginationOffset, paginate
+from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
 from synthorg.api.path_params import PathName  # noqa: TC001
 from synthorg.api.rate_limits import per_op_rate_limit
 from synthorg.api.state import AppState  # noqa: TC001
@@ -179,14 +179,14 @@ class AgentController(Controller):
     async def list_agents(
         self,
         state: State,
-        offset: PaginationOffset = 0,
-        limit: PaginationLimit = 50,
+        cursor: CursorParam = None,
+        limit: CursorLimit = 50,
     ) -> PaginatedResponse[AgentConfig]:
         """List all configured agents.
 
         Args:
             state: Application state.
-            offset: Pagination offset.
+            cursor: Opaque pagination cursor from the previous page.
             limit: Page size.
 
         Returns:
@@ -194,7 +194,12 @@ class AgentController(Controller):
         """
         app_state: AppState = state.app_state
         agents = await app_state.config_resolver.get_agents()
-        page, meta = paginate(agents, offset=offset, limit=limit)
+        page, meta = paginate_cursor(
+            agents,
+            limit=limit,
+            cursor=cursor,
+            secret=app_state.cursor_secret,
+        )
         return PaginatedResponse(data=page, pagination=meta)
 
     @get("/{agent_name:str}")
@@ -390,12 +395,12 @@ class AgentController(Controller):
         return ApiResponse(data=summary)
 
     @get("/{agent_name:str}/activity")
-    async def get_agent_activity(
+    async def get_agent_activity(  # noqa: D417 -- cursor documented in list endpoints
         self,
         state: State,
         agent_name: PathName,
-        offset: PaginationOffset = 0,
-        limit: PaginationLimit = 50,
+        cursor: CursorParam = None,
+        limit: CursorLimit = 50,
     ) -> PaginatedResponse[ActivityEvent]:
         """Get an agent's activity timeline (paginated).
 
@@ -442,11 +447,17 @@ class AgentController(Controller):
             task_metrics=task_metrics,
             currency=currency,
         )
-        page, meta = paginate(timeline, offset=offset, limit=limit)
+        page, meta = paginate_cursor(
+            timeline,
+            limit=limit,
+            cursor=cursor,
+            secret=app_state.cursor_secret,
+        )
         logger.debug(
             API_AGENT_ACTIVITY_QUERIED,
             agent_name=agent_name,
-            total_events=meta.total,
+            returned_events=len(page),
+            has_more=meta.has_more,
         )
         return PaginatedResponse(data=page, pagination=meta)
 

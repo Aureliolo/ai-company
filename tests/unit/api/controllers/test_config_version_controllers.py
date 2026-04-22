@@ -377,14 +377,22 @@ class TestRoleVersions:
             )
             await repo.save_version(_snap("backend-dev", r, version=v))
 
+        # Walk one page to advance past v3, then request the next.
+        resp1 = test_client.get(
+            "/api/v1/roles/backend-dev/versions?limit=1",
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp1.status_code == 200
+        cursor = resp1.json()["pagination"]["next_cursor"]
+        assert cursor is not None
         resp = test_client.get(
-            "/api/v1/roles/backend-dev/versions?limit=1&offset=1",
+            f"/api/v1/roles/backend-dev/versions?limit=1&cursor={cursor}",
             headers=make_auth_headers("ceo"),
         )
         assert resp.status_code == 200
         body = resp.json()
         assert len(body["data"]) == 1
-        # Descending order: v3, v2, v1 -- offset=1 skips v3
+        # Descending order: v3, v2, v1 -- cursor advances past v3.
         assert body["data"][0]["version"] == 2
         assert body["pagination"]["total"] == 3
         assert body["pagination"]["limit"] == 1

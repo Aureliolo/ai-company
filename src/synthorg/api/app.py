@@ -44,6 +44,8 @@ from synthorg.api.channels import (
 )
 from synthorg.api.controllers import BASE_CONTROLLERS
 from synthorg.api.controllers.ws import ws_handler
+from synthorg.api.cursor import CursorSecret
+from synthorg.api.cursor_config import CursorConfig
 from synthorg.api.exception_handlers import EXCEPTION_HANDLERS
 from synthorg.api.integrations_wiring import auto_wire_integrations
 from synthorg.api.lifecycle_builder import _build_lifecycle
@@ -439,6 +441,22 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
     )
     if distributed_task_queue is not None:
         app_state.set_distributed_task_queue(distributed_task_queue)
+
+    # Opaque pagination cursor HMAC secret.  Loaded from the
+    # ``SYNTHORG_PAGINATION_CURSOR_SECRET`` env var; falls back to an
+    # ephemeral per-process key which invalidates cursors across
+    # restarts (WARNING logged below so operators see the choice).
+    cursor_secret = CursorSecret.from_config(CursorConfig.from_env())
+    app_state.set_cursor_secret(cursor_secret)
+    if cursor_secret.is_ephemeral:
+        logger.warning(
+            API_APP_STARTUP,
+            note=(
+                "pagination cursor secret is ephemeral -- tokens will not "
+                "survive a restart.  Set SYNTHORG_PAGINATION_CURSOR_SECRET "
+                "to a stable value (>= 16 bytes) for production deployments."
+            ),
+        )
 
     # Human escalation approval queue (#1418).  Builds the pluggable
     # store + processor + Future registry and attaches them to

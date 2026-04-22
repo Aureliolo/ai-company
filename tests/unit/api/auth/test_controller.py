@@ -278,7 +278,7 @@ class TestRequirePasswordChanged:
         )
         connection = MagicMock()
         connection.scope = {"user": user}
-        connection.url.path = "/api/v1/health"
+        connection.url.path = "/api/v1/healthz"
 
         with pytest.raises(PermissionDeniedException):
             require_password_changed(connection, None)
@@ -299,7 +299,7 @@ class TestRequirePasswordChanged:
         )
         connection = MagicMock()
         connection.scope = {"user": user}
-        connection.url.path = "/api/v1/health"
+        connection.url.path = "/api/v1/healthz"
 
         # Should not raise
         require_password_changed(connection, None)
@@ -312,7 +312,7 @@ class TestRequirePasswordChanged:
 
         connection = MagicMock()
         connection.scope = {}
-        connection.url.path = "/api/v1/health"
+        connection.url.path = "/api/v1/healthz"
 
         # Should not raise
         require_password_changed(connection, None)
@@ -358,7 +358,7 @@ class TestRequirePasswordChanged:
 
         connection = MagicMock()
         connection.scope = {"user": "not-an-auth-user"}
-        connection.url.path = "/api/v1/health"
+        connection.url.path = "/api/v1/healthz"
 
         with pytest.raises(PermissionDeniedException):
             require_password_changed(connection, None)

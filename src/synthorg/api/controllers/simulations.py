@@ -13,7 +13,7 @@ from synthorg.api.channels import CHANNEL_SIMULATIONS, publish_ws_event
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.errors import ConflictError, NotFoundError
 from synthorg.api.guards import require_read_access, require_write_access
-from synthorg.api.pagination import PaginationLimit, PaginationOffset, paginate
+from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
 from synthorg.api.rate_limits.guard import per_op_rate_limit
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.api.ws_models import WsEventType
@@ -185,15 +185,20 @@ class SimulationController(Controller):
     async def list_simulations(
         self,
         state: State,
-        offset: PaginationOffset = 0,
-        limit: PaginationLimit = 50,
+        cursor: CursorParam = None,
+        limit: CursorLimit = 50,
     ) -> PaginatedResponse[SimulationStatusResponse]:
         """List all known simulation runs."""
         app_state: AppState = state.app_state
         sim_state = app_state.client_simulation_state
         records = await sim_state.simulation_store.list_all()
         responses = tuple(_to_response(r) for r in records)
-        page, meta = paginate(responses, offset=offset, limit=limit)
+        page, meta = paginate_cursor(
+            responses,
+            limit=limit,
+            cursor=cursor,
+            secret=state.app_state.cursor_secret,
+        )
         return PaginatedResponse(data=page, pagination=meta)
 
     @get("/{simulation_id:str}")

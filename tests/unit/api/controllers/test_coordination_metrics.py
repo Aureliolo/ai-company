@@ -151,9 +151,18 @@ class TestCoordinationMetricsController:
             coordination_metrics_store.record(
                 _make_record(task_id=f"task-{i}"),
             )
+        # Walk one page, then use the returned cursor to advance.
+        resp1 = test_client.get(
+            "/api/v1/coordination/metrics",
+            params={"limit": 1},
+            headers=_HEADERS,
+        )
+        assert resp1.status_code == 200
+        cursor = resp1.json()["pagination"]["next_cursor"]
+        assert cursor is not None
         resp = test_client.get(
             "/api/v1/coordination/metrics",
-            params={"offset": 1, "limit": 2},
+            params={"limit": 2, "cursor": cursor},
             headers=_HEADERS,
         )
         assert resp.status_code == 200

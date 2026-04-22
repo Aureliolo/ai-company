@@ -35,7 +35,8 @@ class TestApiConfig:
         assert rl.auth_max_requests == 6000
         assert rl.time_unit == RateLimitTimeUnit.MINUTE
         assert rl.time_unit.value == "minute"
-        assert "/api/v1/health" in rl.exclude_paths
+        assert "/api/v1/healthz" in rl.exclude_paths
+        assert "/api/v1/readyz" in rl.exclude_paths
         # Default floor must be >= default auth cap -- otherwise the
         # authenticated per-user budget is clipped by the floor.
         assert rl.floor_max_requests >= rl.auth_max_requests

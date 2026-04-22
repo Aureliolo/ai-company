@@ -151,7 +151,7 @@ class RateLimitConfig(BaseModel):
         description="Time window (second, minute, hour, day)",
     )
     exclude_paths: tuple[str, ...] = Field(
-        default=("/api/v1/health",),
+        default=("/api/v1/healthz", "/api/v1/readyz"),
         description="Paths excluded from rate limiting",
     )
     max_rpm_default: int = Field(

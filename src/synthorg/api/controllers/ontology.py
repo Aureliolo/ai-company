@@ -26,9 +26,9 @@ from synthorg.api.guards import (
     require_write_access,
 )
 from synthorg.api.pagination import (
-    PaginationLimit,
-    PaginationOffset,
-    paginate,
+    CursorLimit,
+    CursorParam,
+    paginate_cursor,
 )
 from synthorg.api.path_params import PathName  # noqa: TC001
 from synthorg.api.rate_limits import per_op_rate_limit
@@ -125,8 +125,8 @@ class OntologyController(Controller):
     async def list_entities(
         self,
         state: State,
-        offset: PaginationOffset = 0,
-        limit: PaginationLimit = 50,
+        cursor: CursorParam = None,
+        limit: CursorLimit = 50,
         tier: str | None = None,
     ) -> PaginatedResponse[EntityResponse]:
         """List all entity definitions, filterable by tier."""
@@ -149,7 +149,12 @@ class OntologyController(Controller):
         entities = await svc.list_entities(tier=tier_filter)
 
         responses = tuple(_entity_to_response(e) for e in entities)
-        page, meta = paginate(responses, offset=offset, limit=limit)
+        page, meta = paginate_cursor(
+            responses,
+            limit=limit,
+            cursor=cursor,
+            secret=app_state.cursor_secret,
+        )
         return PaginatedResponse(data=page, pagination=meta)
 
     @get("/entities/{name:str}")
@@ -357,8 +362,8 @@ class OntologyController(Controller):
         self,
         state: State,
         name: PathName,
-        offset: PaginationOffset = 0,
-        limit: PaginationLimit = 50,
+        cursor: CursorParam = None,
+        limit: CursorLimit = 50,
     ) -> PaginatedResponse[EntityVersionResponse]:
         """List all versions of an entity definition."""
         app_state: AppState = state.app_state
@@ -370,10 +375,13 @@ class OntologyController(Controller):
             msg = "Entity not found"
             raise NotFoundError(msg)  # noqa: B904
 
+        # Fetch a bounded superset and paginate in memory so cursor
+        # semantics stay stable across pages (service-layer ``offset``
+        # will migrate alongside the repo pagination pass).
         versions = await svc.list_versions(
             name,
-            limit=limit,
-            offset=offset,
+            limit=1000,
+            offset=0,
         )
         responses = tuple(
             EntityVersionResponse(
@@ -386,10 +394,11 @@ class OntologyController(Controller):
             )
             for v in versions
         )
-        page, meta = paginate(
+        page, meta = paginate_cursor(
             responses,
-            offset=offset,
             limit=limit,
+            cursor=cursor,
+            secret=app_state.cursor_secret,
         )
         return PaginatedResponse(data=page, pagination=meta)
 
@@ -436,19 +445,29 @@ class OntologyController(Controller):
     async def list_drift_reports(
         self,
         state: State,
-        offset: PaginationOffset = 0,
-        limit: PaginationLimit = 50,
+        cursor: CursorParam = None,
+        limit: CursorLimit = 50,
     ) -> PaginatedResponse[DriftReportResponse]:
         """Get latest drift reports for all entities."""
         app_state: AppState = state.app_state
         store = app_state.drift_report_store
         if store is None:
-            _, meta = paginate((), offset=offset, limit=limit)
+            _, meta = paginate_cursor(
+                (),
+                limit=limit,
+                cursor=cursor,
+                secret=app_state.cursor_secret,
+            )
             return PaginatedResponse(data=(), pagination=meta)
 
         reports = await store.get_all_latest(limit=limit)
         responses = tuple(_drift_report_to_response(r) for r in reports)
-        page, meta = paginate(responses, offset=offset, limit=limit)
+        page, meta = paginate_cursor(
+            responses,
+            limit=limit,
+            cursor=cursor,
+            secret=app_state.cursor_secret,
+        )
         return PaginatedResponse(data=page, pagination=meta)
 
     @get("/drift/{entity_name:str}")

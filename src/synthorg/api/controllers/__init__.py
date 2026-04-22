@@ -42,7 +42,10 @@ from synthorg.api.controllers.events import (
     EventStreamController,
     InterruptController,
 )
-from synthorg.api.controllers.health import HealthController
+from synthorg.api.controllers.health import (
+    LivenessController,
+    ReadinessController,
+)
 from synthorg.api.controllers.integration_health import (
     IntegrationHealthController,
 )
@@ -96,7 +99,8 @@ from synthorg.api.controllers.ws import ws_handler
 # ``None`` via ``AppState.persistence``'s ``ServiceUnavailableError``.  No
 # per-controller gating is required.
 BASE_CONTROLLERS: tuple[type[Controller], ...] = (
-    HealthController,
+    LivenessController,
+    ReadinessController,
     MetricsController,
     CompanyController,
     AgentController,
@@ -201,9 +205,9 @@ __all__ = [
     "EscalationsController",
     "EvaluationConfigVersionController",
     "EventStreamController",
-    "HealthController",
     "IntegrationHealthController",
     "InterruptController",
+    "LivenessController",
     "MCPCatalogController",
     "MeetingController",
     "MemoryAdminController",
@@ -217,6 +221,7 @@ __all__ = [
     "ProjectController",
     "ProviderController",
     "QualityController",
+    "ReadinessController",
     "ReportsController",
     "RequestController",
     "ReviewController",

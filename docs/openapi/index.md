@@ -30,7 +30,7 @@ When running the server locally you also get two kinds of side paths -- document
 
 | Path | Content |
 |---|---|
-| `/api/v1/health` | Liveness + readiness endpoint |
+| `/api/v1/readyz` | Liveness + readiness endpoint |
 | `/api/v1/ws` | WebSocket endpoint for server-sent events (approvals, meetings, task lifecycle) |
 
 The static snapshot on this page is produced by `scripts/export_openapi.py`, which takes the live Litestar schema and runs it through `inject_rfc9457_responses` to attach RFC 9457 error response shapes to every operation. The result is a superset of what `/docs/openapi.json` returns at runtime.

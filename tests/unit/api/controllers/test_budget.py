@@ -257,7 +257,7 @@ class TestCostRecordListResponseValidator:
         with pytest.raises(ValueError, match=msg):
             CostRecordListResponse(
                 error="something went wrong",
-                pagination=PaginationMeta(total=0, offset=0, limit=50),
+                pagination=PaginationMeta(limit=50, next_cursor=None, has_more=False),
                 period_summary=PeriodSummary(
                     total_cost=0.0,
                     total_input_tokens=0,
@@ -287,9 +287,9 @@ class TestCostRecordListResponseValidator:
             CostRecordListResponse(
                 error_detail=detail,
                 pagination=PaginationMeta(
-                    total=0,
-                    offset=0,
                     limit=50,
+                    next_cursor=None,
+                    has_more=False,
                 ),
                 period_summary=PeriodSummary(
                     total_cost=0.0,
@@ -318,9 +318,9 @@ class TestCostRecordListResponseValidator:
                 type="about:blank",
             ),
             pagination=PaginationMeta(
-                total=0,
-                offset=0,
                 limit=50,
+                next_cursor=None,
+                has_more=False,
             ),
             period_summary=PeriodSummary(
                 total_cost=0.0,
@@ -339,7 +339,7 @@ class TestCostRecordListResponseValidator:
         from synthorg.api.dto import PaginationMeta
 
         resp = CostRecordListResponse(
-            pagination=PaginationMeta(total=0, offset=0, limit=50),
+            pagination=PaginationMeta(limit=50, next_cursor=None, has_more=False),
             period_summary=PeriodSummary(
                 total_cost=0.0,
                 total_input_tokens=0,

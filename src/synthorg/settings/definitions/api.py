@@ -199,7 +199,7 @@ _r.register(
         namespace=SettingNamespace.API,
         key="rate_limit_exclude_paths",
         type=SettingType.JSON,
-        default='["/api/v1/health"]',
+        default='["/api/v1/healthz", "/api/v1/readyz"]',
         description="Paths excluded from rate limiting",
         group="Rate Limiting",
         level=SettingLevel.ADVANCED,

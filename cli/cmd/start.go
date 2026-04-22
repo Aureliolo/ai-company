@@ -232,7 +232,7 @@ func startDetached(ctx context.Context, info docker.Info, safeDir string, state 
 
 	if !startNoWait {
 		sp = out.StartSpinner("Waiting for backend to become healthy...")
-		healthURL := fmt.Sprintf("http://localhost:%d/api/v1/health", state.BackendPort)
+		healthURL := fmt.Sprintf("http://localhost:%d/api/v1/readyz", state.BackendPort)
 		if err := health.WaitForHealthy(ctx, healthURL, healthTimeout, 2*time.Second, 5*time.Second); err != nil {
 			sp.Error("Health check failed")
 			errOut.HintError("Run 'synthorg doctor' for diagnostics.")
@@ -398,7 +398,7 @@ func pullStartAndWait(ctx context.Context, info docker.Info, safeDir string, sta
 	sp.Success("Containers started")
 
 	sp = out.StartSpinner("Waiting for backend to become healthy...")
-	healthURL := fmt.Sprintf("http://localhost:%d/api/v1/health", state.BackendPort)
+	healthURL := fmt.Sprintf("http://localhost:%d/api/v1/readyz", state.BackendPort)
 	if err := health.WaitForHealthy(ctx, healthURL, 90*time.Second, 2*time.Second, 5*time.Second); err != nil {
 		sp.Error("Health check failed")
 		errOut.HintError("Run 'synthorg doctor' for diagnostics.")

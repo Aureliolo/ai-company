@@ -20,9 +20,9 @@ from litestar.params import Parameter
 from synthorg.api.dto import PaginatedResponse
 from synthorg.api.guards import require_read_access
 from synthorg.api.pagination import (
-    PaginationLimit,
-    PaginationOffset,
-    paginate,
+    CursorLimit,
+    CursorParam,
+    paginate_cursor,
 )
 from synthorg.api.path_params import QUERY_MAX_LENGTH
 from synthorg.observability import get_logger
@@ -97,8 +97,8 @@ class AuditController(Controller):
         verdict: Annotated[str, Parameter(max_length=50)] | None = None,
         since: datetime | None = None,
         until: datetime | None = None,
-        offset: PaginationOffset = 0,
-        limit: PaginationLimit = 50,
+        cursor: CursorParam = None,
+        limit: CursorLimit = 50,
         jsonb_contains: Annotated[str, Parameter(max_length=2048)] | None = None,
         jsonb_key_exists: Annotated[str, Parameter(max_length=256)] | None = None,
     ) -> PaginatedResponse[AuditEntry]:
@@ -121,7 +121,7 @@ class AuditController(Controller):
             verdict: Filter by verdict string.
             since: Exclude entries before this datetime (timezone-aware).
             until: Exclude entries after this datetime (timezone-aware).
-            offset: Pagination offset.
+            cursor: Opaque pagination cursor from the previous page.
             limit: Page size.
             jsonb_contains: JSON string for ``@>`` containment on
                 ``matched_rules`` (Postgres only).
@@ -148,7 +148,7 @@ class AuditController(Controller):
                 verdict=verdict,
                 since=since,
                 until=until,
-                offset=offset,
+                cursor=cursor,
                 limit=limit,
                 jsonb_contains=jsonb_contains,
                 jsonb_key_exists=jsonb_key_exists,
@@ -165,12 +165,17 @@ class AuditController(Controller):
             until=until,
             limit=audit_cap,
         )
-        page, meta = paginate(entries, offset=offset, limit=limit)
+        page, meta = paginate_cursor(
+            entries,
+            limit=limit,
+            cursor=cursor,
+            secret=app_state.cursor_secret,
+        )
         logger.info(
             API_AUDIT_QUERIED,
-            total=meta.total,
-            offset=meta.offset,
+            returned=len(page),
             limit=meta.limit,
+            has_more=meta.has_more,
         )
         return PaginatedResponse[AuditEntry](
             data=page,
@@ -216,7 +221,7 @@ class AuditController(Controller):
         verdict: str | None,
         since: datetime | None,
         until: datetime | None,
-        offset: int,
+        cursor: str | None,
         limit: int,
         jsonb_contains: str | None,
         jsonb_key_exists: str | None,
@@ -306,12 +311,17 @@ class AuditController(Controller):
             action_type=action_type,
             verdict=verdict,
         )
-        page, meta = paginate(filtered, offset=offset, limit=limit)
+        page, meta = paginate_cursor(
+            filtered,
+            limit=limit,
+            cursor=cursor,
+            secret=app_state.cursor_secret,
+        )
         logger.info(
             API_AUDIT_QUERIED,
-            total=meta.total,
-            offset=meta.offset,
+            returned=len(page),
             limit=meta.limit,
+            has_more=meta.has_more,
             jsonb_query=True,
         )
         return PaginatedResponse[AuditEntry](

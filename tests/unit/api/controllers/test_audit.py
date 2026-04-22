@@ -134,9 +134,18 @@ class TestAuditController:
     ) -> None:
         for i in range(5):
             audit_log.record(_make_entry(entry_id=f"e-{i}"))
+        # Walk two pages via cursor to reach offset 2.
+        resp1 = test_client.get(
+            "/api/v1/security/audit",
+            params={"limit": 2},
+            headers=_HEADERS,
+        )
+        assert resp1.status_code == 200
+        cursor = resp1.json()["pagination"]["next_cursor"]
+        assert cursor is not None
         resp = test_client.get(
             "/api/v1/security/audit",
-            params={"offset": 2, "limit": 2},
+            params={"limit": 2, "cursor": cursor},
             headers=_HEADERS,
         )
         assert resp.status_code == 200

@@ -189,3 +189,69 @@ class BackgroundTaskRegistry:
     def active_count(self) -> int:
         """Return the number of tasks still pending."""
         return len(self._tasks)
+
+
+def log_task_exceptions(
+    logger_: Any,
+    event: str,
+    **context: Any,
+) -> Callable[[asyncio.Task[Any]], None]:
+    """Build a done-callback that logs uncancelled task exceptions.
+
+    Unlike :class:`BackgroundTaskRegistry`, this helper is for
+    long-lived *named* tasks whose lifecycle matches the owning
+    subsystem (e.g. task-engine processing loop, bus-bridge poll
+    loop, meeting scheduler tick). The returned callback:
+
+    * Ignores ``CancelledError`` (normal shutdown).
+    * Escalates ``MemoryError``/``RecursionError`` to CRITICAL + the
+      event-loop exception handler (re-raising from a done-callback
+      would be swallowed by asyncio).
+    * Logs everything else at WARNING with ``exc_info`` + the task's
+      name so operators can identify which long-lived worker died.
+
+    Args:
+        logger_: Structlog logger for the owning subsystem.
+        event: Event constant to log under (e.g.
+            ``TASK_ENGINE_LOOP_DIED``).  Caller-owned so per-subsystem
+            taxonomy stays consistent with existing sinks.
+        **context: Structured kwargs merged into the failure log
+            (e.g. ``channel=...`` for bus bridge channels).
+
+    Returns:
+        Callable usable as ``task.add_done_callback(...)``.
+    """
+    frozen_context = MappingProxyType(copy.deepcopy(context))
+
+    def _on_done(task: asyncio.Task[Any]) -> None:
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if exc is None:
+            return
+        if isinstance(exc, MemoryError | RecursionError):
+            logger_.critical(
+                event,
+                task_name=task.get_name(),
+                error_type=type(exc).__name__,
+                exc_info=(type(exc), exc, exc.__traceback__),
+                **frozen_context,
+            )
+            loop = asyncio.get_running_loop()
+            loop.call_exception_handler(
+                {
+                    "message": "fatal exception in long-lived background task",
+                    "exception": exc,
+                    "task": task,
+                }
+            )
+            return
+        logger_.warning(
+            event,
+            task_name=task.get_name(),
+            error_type=type(exc).__name__,
+            exc_info=(type(exc), exc, exc.__traceback__),
+            **frozen_context,
+        )
+
+    return _on_done

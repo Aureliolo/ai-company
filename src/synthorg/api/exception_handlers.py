@@ -29,6 +29,7 @@ from litestar.exceptions import (
     ValidationException,
 )
 
+from synthorg.api.cursor import InvalidCursorError
 from synthorg.api.dto import ApiResponse, ErrorDetail, ProblemDetail
 from synthorg.api.errors import (
     ApiError,
@@ -554,6 +555,27 @@ def handle_validation_error(
     )
 
 
+def handle_invalid_cursor(
+    request: Request[Any, Any, Any],
+    exc: InvalidCursorError,
+) -> Response[ApiResponse[None]] | Response[ProblemDetail]:
+    """Map :class:`InvalidCursorError` to 400.
+
+    Cursor tokens are opaque to the client; if tampering or decoding
+    fails, surface the original (non-sensitive) message so operators
+    can distinguish malformed-base64 from signature-mismatch in logs.
+    """
+    _log_error(request, exc, status=400)
+    detail = str(exc) or "Invalid pagination cursor"
+    return _build_response(
+        request,
+        detail=detail,
+        error_code=ErrorCode.REQUEST_VALIDATION_ERROR,
+        error_category=ErrorCategory.VALIDATION,
+        status_code=400,
+    )
+
+
 def handle_not_authorized(
     request: Request[Any, Any, Any],
     exc: NotAuthorizedException,
@@ -653,6 +675,7 @@ EXCEPTION_HANDLERS: MappingProxyType[type[Exception], object] = MappingProxyType
         NotAuthorizedException: handle_not_authorized,
         PermissionDeniedException: handle_permission_denied,
         ValidationException: handle_validation_error,
+        InvalidCursorError: handle_invalid_cursor,
         NotFoundException: handle_not_found,
         HTTPException: handle_http_exception,
         ApiError: handle_api_error,

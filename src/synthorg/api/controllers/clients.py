@@ -11,7 +11,7 @@ from synthorg.api.channels import CHANNEL_CLIENTS, publish_ws_event
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.errors import ConflictError, NotFoundError
 from synthorg.api.guards import require_read_access, require_write_access
-from synthorg.api.pagination import PaginationLimit, PaginationOffset, paginate
+from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.api.ws_models import WsEventType
 from synthorg.client.ai_client import AIClient
@@ -163,14 +163,19 @@ class ClientController(Controller):
     async def list_clients(
         self,
         state: State,
-        offset: PaginationOffset = 0,
-        limit: PaginationLimit = 50,
+        cursor: CursorParam = None,
+        limit: CursorLimit = 50,
     ) -> PaginatedResponse[ClientProfile]:
         """List all configured clients (paginated)."""
         app_state: AppState = state.app_state
         sim_state = app_state.client_simulation_state
         profiles = await sim_state.pool.list_profiles()
-        page, meta = paginate(profiles, offset=offset, limit=limit)
+        page, meta = paginate_cursor(
+            profiles,
+            limit=limit,
+            cursor=cursor,
+            secret=app_state.cursor_secret,
+        )
         return PaginatedResponse(data=page, pagination=meta)
 
     @get("/{client_id:str}")

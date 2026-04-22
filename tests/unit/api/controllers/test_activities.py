@@ -294,13 +294,14 @@ class TestActivityFeed:
     ) -> None:
         resp = test_client.get(
             "/api/v1/activities",
-            params={"offset": 0, "limit": 10},
+            params={"limit": 10},
         )
         assert resp.status_code == 200
         body = resp.json()
         assert "pagination" in body
         assert body["pagination"]["offset"] == 0
         assert body["pagination"]["limit"] == 10
+        assert body["pagination"]["has_more"] is False
 
     async def test_graceful_degradation_no_performance_tracker(
         self,

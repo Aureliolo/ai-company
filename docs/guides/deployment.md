@@ -135,7 +135,7 @@ After the containers are running, open `http://localhost:3000`. The setup wizard
 - **Base image**: Wolfi apko-composed distroless (no shell, continuously scanned)
 - **Build**: 2-stage (builder -> apko runtime) for minimal attack surface
 - **User**: UID 65532 (distroless non-root)
-- **Health check**: `GET /api/v1/health` (10s interval, 5s timeout, 3 retries, 30s start period)
+- **Health check**: `GET /api/v1/readyz` (10s interval, 5s timeout, 3 retries, 30s start period)
 - **Entry point**: `uvicorn synthorg.api.app:create_app --factory --no-access-log`
 
 ### Web

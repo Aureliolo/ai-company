@@ -100,7 +100,7 @@ No corresponding flag -- settable via env var or `config set`:
 
 The CLI contains several `localhost` / service-DNS / port literals that look non-configurable but are correct by design:
 
-- **`localhost` in `doctor.go` / `start.go` / `status.go` / `wipe.go` / `update.go`**: these print URLs pointing at the operator's own host (e.g. `http://localhost:<BackendPort>/api/v1/health`). The port is flag/env-driven (`SYNTHORG_BACKEND_PORT`, `SYNTHORG_WEB_PORT`); the hostname is literally the host the CLI is running on.
+- **`localhost` in `doctor.go` / `start.go` / `status.go` / `wipe.go` / `update.go`**: these print URLs pointing at the operator's own host (e.g. `http://localhost:<BackendPort>/api/v1/readyz`). The port is flag/env-driven (`SYNTHORG_BACKEND_PORT`, `SYNTHORG_WEB_PORT`); the hostname is literally the host the CLI is running on.
 - **`postgres:5432` in `compose/generate.go::pgDSN`**: docker-compose internal DNS, container-to-container. The host-side Postgres port is a separate `Params.PostgresPort` tunable rendered in `compose.yml.tmpl`.
 - **`nats:4222` / `nats:8222` in `compose.yml.tmpl`**: NATS client and HTTP monitoring ports inside the compose network. `nats` is the compose service name. `8222` is the NATS-standard monitoring port, not exposed to the host.
 - **`nats://nats:4222` in `worker_start.go`**: compiled-in default for the `--nats-url` flag, already overridable via `SYNTHORG_DEFAULT_NATS_URL` (see above).

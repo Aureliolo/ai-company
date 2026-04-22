@@ -22,7 +22,7 @@ from synthorg.api.errors import (
     ServiceUnavailableError,
 )
 from synthorg.api.guards import require_read_access, require_write_access
-from synthorg.api.pagination import PaginationLimit, PaginationOffset, paginate
+from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
 from synthorg.api.path_params import PathId  # noqa: TC001
 from synthorg.api.rate_limits import per_op_rate_limit
 from synthorg.api.state import AppState  # noqa: TC001
@@ -166,8 +166,8 @@ class TaskController(Controller):
         status: TaskStatus | None = None,
         assigned_to: Annotated[str, Parameter(max_length=256)] | None = None,
         project: Annotated[str, Parameter(max_length=256)] | None = None,
-        offset: PaginationOffset = 0,
-        limit: PaginationLimit = 50,
+        cursor: CursorParam = None,
+        limit: CursorLimit = 50,
     ) -> PaginatedResponse[Task]:
         """List tasks with optional filters.
 
@@ -176,7 +176,7 @@ class TaskController(Controller):
             status: Filter by status.
             assigned_to: Filter by assignee.
             project: Filter by project.
-            offset: Pagination offset.
+            cursor: Opaque pagination cursor from the previous page.
             limit: Page size.
 
         Returns:
@@ -191,12 +191,16 @@ class TaskController(Controller):
             )
         except TaskInternalError as exc:
             raise _map_task_engine_errors(exc) from exc
-        page, meta = paginate(
+        page, meta = paginate_cursor(
             tasks,
-            offset=offset,
             limit=limit,
-            total=total,
+            cursor=cursor,
+            secret=app_state.cursor_secret,
         )
+        # ``total`` is still reported so callers that rely on a real
+        # count for progress indicators keep working; pagination goes
+        # via the opaque cursor.
+        meta = meta.model_copy(update={"total": total})
         return PaginatedResponse(data=page, pagination=meta)
 
     @get("/{task_id:str}")

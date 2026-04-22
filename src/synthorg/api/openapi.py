@@ -48,7 +48,8 @@ _APP_JSON: Final[str] = "application/json"
 
 # Paths that skip authentication (no 401/403 injected).
 _PUBLIC_PATH_SUFFIXES: Final[tuple[str, ...]] = (
-    "/health",
+    "/healthz",
+    "/readyz",
     "/auth/setup",
     "/auth/login",
     "/setup/status",

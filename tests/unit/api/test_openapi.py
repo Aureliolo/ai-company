@@ -63,7 +63,7 @@ def base_schema() -> dict[str, Any]:
     """Schema with representative paths for injection testing."""
     return _minimal_schema(
         paths={
-            "/api/v1/health": {
+            "/api/v1/healthz": {
                 "get": _minimal_operation(),
             },
             "/api/v1/auth/login": {
@@ -326,7 +326,7 @@ class TestOperationInjection:
     def test_public_endpoints_skip_401(self, base_schema: dict[str, Any]) -> None:
         result = inject_rfc9457_responses(base_schema)
         for path in (
-            "/api/v1/health",
+            "/api/v1/healthz",
             "/api/v1/auth/login",
             "/api/v1/auth/setup",
         ):
@@ -481,12 +481,12 @@ class TestOperationInjection:
 
     def test_public_skip_429(self, base_schema: dict[str, Any]) -> None:
         result = inject_rfc9457_responses(base_schema)
-        responses = result["paths"]["/api/v1/health"]["get"]["responses"]
+        responses = result["paths"]["/api/v1/healthz"]["get"]["responses"]
         assert "429" not in responses
 
     def test_public_skip_503(self, base_schema: dict[str, Any]) -> None:
         result = inject_rfc9457_responses(base_schema)
-        responses = result["paths"]["/api/v1/health"]["get"]["responses"]
+        responses = result["paths"]["/api/v1/healthz"]["get"]["responses"]
         assert "503" not in responses
 
     def test_delete_skip_409(self, base_schema: dict[str, Any]) -> None:

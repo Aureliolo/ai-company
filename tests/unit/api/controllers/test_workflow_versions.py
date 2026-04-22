@@ -155,7 +155,7 @@ class TestListVersions:
 
         # First page: limit=2
         resp = test_client.get(
-            f"/api/v1/workflows/{wf_id}/versions?limit=2&offset=0",
+            f"/api/v1/workflows/{wf_id}/versions?limit=2",
             headers=make_auth_headers("ceo"),
         )
         assert resp.status_code == 200
@@ -164,16 +164,20 @@ class TestListVersions:
         assert body["data"][0]["version"] == 3
         assert body["data"][1]["version"] == 2
         assert body["pagination"]["total"] == 3
+        assert body["pagination"]["has_more"] is True
+        next_cursor = body["pagination"]["next_cursor"]
+        assert next_cursor is not None
 
-        # Second page: offset=2
+        # Second page via opaque cursor.
         resp2 = test_client.get(
-            f"/api/v1/workflows/{wf_id}/versions?limit=2&offset=2",
+            f"/api/v1/workflows/{wf_id}/versions?limit=2&cursor={next_cursor}",
             headers=make_auth_headers("ceo"),
         )
         assert resp2.status_code == 200
         body2 = resp2.json()
         assert len(body2["data"]) == 1
         assert body2["data"][0]["version"] == 1
+        assert body2["pagination"]["has_more"] is False
 
 
 # ── GET /workflows/{id}/versions/{version} ────────────────────────

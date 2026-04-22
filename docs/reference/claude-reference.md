@@ -24,8 +24,8 @@ docker compose -f docker/compose.yml up -d
 docker compose -f docker/compose.yml down
 
 # Verify
-curl http://localhost:3001/api/v1/health   # backend (direct)
-curl http://localhost:3000/api/v1/health   # backend (via web proxy)
+curl http://localhost:3001/api/v1/readyz   # backend (direct)
+curl http://localhost:3000/api/v1/readyz   # backend (via web proxy)
 ```
 
 - **Images**: backend (Wolfi apko-composed distroless, non-root), web (Caddy pure-apko, SPA + API proxy + embedded docs), sandbox (Python + Node.js Wolfi, non-root)

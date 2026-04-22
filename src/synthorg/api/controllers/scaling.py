@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.api.dto import ApiResponse, PaginatedResponse, PaginationMeta
 from synthorg.api.guards import require_read_access, require_write_access
-from synthorg.api.pagination import PaginationLimit, PaginationOffset, paginate
+from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
 from synthorg.api.rate_limits import per_op_rate_limit
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.types import NotBlankStr
@@ -188,14 +188,14 @@ class ScalingController(Controller):
     async def list_decisions(
         self,
         state: State,
-        offset: PaginationOffset = 0,
-        limit: PaginationLimit = 50,
+        cursor: CursorParam = None,
+        limit: CursorLimit = 50,
     ) -> PaginatedResponse[ScalingDecisionResponse]:
         """List recent scaling decisions.
 
         Args:
             state: Application state.
-            offset: Pagination offset.
+            cursor: Opaque pagination cursor from the previous page.
             limit: Page size.
 
         Returns:
@@ -211,9 +211,11 @@ class ScalingController(Controller):
             return PaginatedResponse(
                 data=(),
                 pagination=PaginationMeta(
-                    total=0,
-                    offset=offset,
                     limit=limit,
+                    next_cursor=None,
+                    has_more=False,
+                    total=0,
+                    offset=0,
                 ),
             )
 
@@ -223,7 +225,12 @@ class ScalingController(Controller):
             reverse=True,
         )
         responses = tuple(_decision_to_response(d) for d in decisions)
-        page, meta = paginate(responses, offset=offset, limit=limit)
+        page, meta = paginate_cursor(
+            responses,
+            limit=limit,
+            cursor=cursor,
+            secret=state.app_state.cursor_secret,
+        )
         return PaginatedResponse(data=page, pagination=meta)
 
     @get("/signals", guards=[require_read_access])

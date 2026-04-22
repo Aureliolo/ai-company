@@ -7,13 +7,14 @@ from litestar import Controller, Response, get
 from litestar.datastructures import State  # noqa: TC002
 from litestar.params import Parameter
 
+from synthorg.api.cursor import decode_cursor, encode_cursor
 from synthorg.api.dto import (
     ApiResponse,
     PaginatedResponse,
     PaginationMeta,
 )
 from synthorg.api.guards import require_read_access
-from synthorg.api.pagination import PaginationLimit, PaginationOffset  # noqa: TC001
+from synthorg.api.pagination import CursorLimit, CursorParam  # noqa: TC001
 from synthorg.hr.evaluation.config import EvaluationConfig
 from synthorg.observability import get_logger
 from synthorg.observability.events.versioning import (
@@ -40,10 +41,12 @@ class EvaluationConfigVersionController(Controller):
     async def list_versions(
         self,
         state: State,
-        offset: PaginationOffset = 0,
-        limit: PaginationLimit = 20,
+        cursor: CursorParam = None,
+        limit: CursorLimit = 20,
     ) -> Response[PaginatedResponse[SnapshotT]]:
         """List version history for evaluation configuration."""
+        secret = state.app_state.cursor_secret
+        offset = 0 if cursor is None else decode_cursor(cursor, secret=secret)
         repo = state.app_state.persistence.evaluation_config_versions
         versions, total = await asyncio.gather(
             repo.list_versions(_ENTITY_ID, limit=limit, offset=offset),
@@ -55,7 +58,19 @@ class EvaluationConfigVersionController(Controller):
             entity_id=_ENTITY_ID,
             count=len(versions),
         )
-        meta = PaginationMeta(total=total, offset=offset, limit=limit)
+        next_offset = offset + len(versions)
+
+        has_more = next_offset < total
+
+        next_cursor = encode_cursor(next_offset, secret=secret) if has_more else None
+
+        meta = PaginationMeta(
+            limit=limit,
+            next_cursor=next_cursor,
+            has_more=has_more,
+            total=total,
+            offset=offset,
+        )
         return Response(
             content=PaginatedResponse[SnapshotT](
                 data=versions,

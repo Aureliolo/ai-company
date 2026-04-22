@@ -27,6 +27,7 @@ from synthorg.communication.meeting.participant import (
     ParticipantResolver,  # noqa: TC001
 )
 from synthorg.observability import get_logger
+from synthorg.observability.background_tasks import log_task_exceptions
 from synthorg.observability.events.meeting import (
     MEETING_EVENT_COOLDOWN_SKIPPED,
     MEETING_EVENT_TRIGGERED,
@@ -35,6 +36,7 @@ from synthorg.observability.events.meeting import (
     MEETING_SCHEDULER_ERROR,
     MEETING_SCHEDULER_STARTED,
     MEETING_SCHEDULER_STOPPED,
+    MEETING_SCHEDULER_TASK_DIED,
 )
 
 if TYPE_CHECKING:
@@ -130,13 +132,20 @@ class MeetingScheduler:
         self._running = True
 
         scheduled = self.get_scheduled_types()
-        self._tasks = [
-            asyncio.create_task(
+        self._tasks = []
+        for mt in scheduled:
+            task = asyncio.create_task(
                 self._run_periodic(mt),
                 name=f"meeting-{mt.name}",
             )
-            for mt in scheduled
-        ]
+            task.add_done_callback(
+                log_task_exceptions(
+                    logger,
+                    MEETING_SCHEDULER_TASK_DIED,
+                    meeting_type=mt.name,
+                ),
+            )
+            self._tasks.append(task)
 
         logger.info(
             MEETING_SCHEDULER_STARTED,

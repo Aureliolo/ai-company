@@ -143,7 +143,7 @@ class TestCSPPathSelection:
     @pytest.mark.parametrize(
         ("path", "expected_csp"),
         [
-            ("/api/v1/health", _API_CSP),
+            ("/api/v1/healthz", _API_CSP),
             ("/documents", _API_CSP),
             ("/docsearch", _API_CSP),
             ("/docs", _DOCS_CSP),
@@ -180,7 +180,7 @@ class TestCSPPathSelection:
 
     def test_api_path_keeps_strict_coop(self, test_client: TestClient[Any]) -> None:
         """API paths keep COOP same-origin."""
-        response = test_client.get("/api/v1/health")
+        response = test_client.get("/api/v1/healthz")
         assert response.headers.get("cross-origin-opener-policy") == "same-origin"
 
 
@@ -198,7 +198,7 @@ class TestCacheControlPathSelection:
     @pytest.mark.parametrize(
         ("path", "expected"),
         [
-            ("/api/v1/health", _API_CACHE_CONTROL),
+            ("/api/v1/healthz", _API_CACHE_CONTROL),
             ("/documents", _API_CACHE_CONTROL),
             ("/docsearch", _API_CACHE_CONTROL),
             ("/docs", _DOCS_CACHE_CONTROL),
@@ -241,7 +241,7 @@ class TestCacheControlPathSelection:
 
 class TestRequestLoggingMiddleware:
     def test_request_completes_with_status(self, test_client: TestClient[Any]) -> None:
-        response = test_client.get("/api/v1/health")
+        response = test_client.get("/api/v1/healthz")
         assert response.status_code == 200
 
     def test_not_found_returns_correct_status(

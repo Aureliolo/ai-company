@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.errors import ApiValidationError, NotFoundError
 from synthorg.api.guards import require_read_access, require_write_access
-from synthorg.api.pagination import PaginationLimit, PaginationOffset, paginate
+from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
 from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
 from synthorg.api.rate_limits import per_op_rate_limit
 from synthorg.communication.meeting.enums import MeetingStatus  # noqa: TC001
@@ -155,8 +155,8 @@ class MeetingController(Controller):
     async def list_meetings(
         self,
         state: State,
-        offset: PaginationOffset = 0,
-        limit: PaginationLimit = 50,
+        cursor: CursorParam = None,
+        limit: CursorLimit = 50,
         status: MeetingStatus | None = None,
         meeting_type: Annotated[str, Parameter(max_length=QUERY_MAX_LENGTH)]
         | None = None,
@@ -165,7 +165,7 @@ class MeetingController(Controller):
 
         Args:
             state: Application state.
-            offset: Pagination offset.
+            cursor: Opaque pagination cursor from the previous page.
             limit: Page size.
             status: Optional status filter.
             meeting_type: Optional meeting type name filter.
@@ -194,7 +194,12 @@ class MeetingController(Controller):
         if meeting_type is not None:
             records = tuple(r for r in records if r.meeting_type_name == meeting_type)
 
-        page, meta = paginate(records, offset=offset, limit=limit)
+        page, meta = paginate_cursor(
+            records,
+            limit=limit,
+            cursor=cursor,
+            secret=state.app_state.cursor_secret,
+        )
         enriched = tuple(_to_meeting_response(r) for r in page)
         return PaginatedResponse(data=enriched, pagination=meta)
 

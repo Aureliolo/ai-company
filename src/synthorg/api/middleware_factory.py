@@ -206,7 +206,8 @@ def _build_auth_exclude_paths(
         auth.exclude_paths
         if auth.exclude_paths is not None
         else (
-            f"^{prefix}/health$",
+            f"^{prefix}/healthz$",
+            f"^{prefix}/readyz$",
             metrics_path,
             "^/docs",
             "^/api$",
@@ -317,7 +318,8 @@ def _build_auth_and_csrf(
             f"{prefix}/auth/login",
             f"{prefix}/auth/setup",
             f"{prefix}/auth/logout",
-            f"{prefix}/health",
+            f"{prefix}/healthz",
+            f"{prefix}/readyz",
         }
     )
     csrf_middleware = create_csrf_middleware_class(auth, exempt_paths=csrf_exempt)

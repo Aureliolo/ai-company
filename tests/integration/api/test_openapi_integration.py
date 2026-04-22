@@ -16,7 +16,7 @@ from synthorg.api.openapi import inject_rfc9457_responses
 _MIN_PATH_COUNT = 200
 _CANARY_PATHS = frozenset(
     {
-        "/api/v1/health",
+        "/api/v1/healthz",
         "/api/v1/agents",
         "/api/v1/clients",
         "/api/v1/workflows",
@@ -71,7 +71,7 @@ def test_full_app_schema_enhancement() -> None:
     }
 
     # Public endpoints don't have 401.
-    health = result["paths"]["/api/v1/health"]["get"]["responses"]
+    health = result["paths"]["/api/v1/healthz"]["get"]["responses"]
     assert "401" not in health
 
     # RFC 9457 docs in x-documentation, not info.description.

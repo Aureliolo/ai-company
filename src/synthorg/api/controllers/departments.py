@@ -32,7 +32,7 @@ from synthorg.api.guards import (
     require_org_mutation,
     require_read_access,
 )
-from synthorg.api.pagination import PaginationLimit, PaginationOffset, paginate
+from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
 from synthorg.api.path_params import PathName  # noqa: TC001
 from synthorg.api.rate_limits import per_op_rate_limit
 from synthorg.api.state import AppState  # noqa: TC001
@@ -331,14 +331,14 @@ class DepartmentController(Controller):
     async def list_departments(
         self,
         state: State,
-        offset: PaginationOffset = 0,
-        limit: PaginationLimit = 50,
+        cursor: CursorParam = None,
+        limit: CursorLimit = 50,
     ) -> PaginatedResponse[Department]:
         """List all departments.
 
         Args:
             state: Application state.
-            offset: Pagination offset.
+            cursor: Opaque pagination cursor from the previous page.
             limit: Page size.
 
         Returns:
@@ -346,7 +346,12 @@ class DepartmentController(Controller):
         """
         app_state: AppState = state.app_state
         departments = await app_state.config_resolver.get_departments()
-        page, meta = paginate(departments, offset=offset, limit=limit)
+        page, meta = paginate_cursor(
+            departments,
+            limit=limit,
+            cursor=cursor,
+            secret=app_state.cursor_secret,
+        )
         return PaginatedResponse(data=page, pagination=meta)
 
     @get("/{name:str}")

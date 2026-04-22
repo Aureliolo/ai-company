@@ -37,7 +37,7 @@ from synthorg.api.guards import (
     require_read_access,
     require_write_access,
 )
-from synthorg.api.pagination import PaginationLimit, PaginationOffset, paginate
+from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
 from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
 from synthorg.api.rate_limits import per_op_rate_limit
 from synthorg.api.state import AppState  # noqa: TC001
@@ -381,8 +381,8 @@ class ApprovalsController(Controller):
         risk_level: ApprovalRiskLevel | None = None,
         action_type: Annotated[str, Parameter(max_length=QUERY_MAX_LENGTH)]
         | None = None,
-        offset: PaginationOffset = 0,
-        limit: PaginationLimit = 50,
+        cursor: CursorParam = None,
+        limit: CursorLimit = 50,
     ) -> PaginatedResponse[ApprovalResponse]:
         """List approval items with optional filters.
 
@@ -391,7 +391,7 @@ class ApprovalsController(Controller):
             status: Filter by approval status.
             risk_level: Filter by risk level.
             action_type: Filter by action type string.
-            offset: Pagination offset.
+            cursor: Opaque pagination cursor from the previous page.
             limit: Page size.
 
         Returns:
@@ -416,7 +416,12 @@ class ApprovalsController(Controller):
             risk_level=risk_level,
             action_type=action_type,
         )
-        page, meta = paginate(items, offset=offset, limit=limit)
+        page, meta = paginate_cursor(
+            items,
+            limit=limit,
+            cursor=cursor,
+            secret=app_state.cursor_secret,
+        )
         now = datetime.now(UTC)
         enriched = tuple(_to_approval_response(i, now=now) for i in page)
         return PaginatedResponse(data=enriched, pagination=meta)

@@ -31,7 +31,7 @@ services:
     depends_on:
       backend:
         # Gate the sidecar on the backend's image-level HEALTHCHECK
-        # (python-urllib probe against /api/v1/health in
+        # (python-urllib probe against /api/v1/readyz in
         # ``docker/backend/Dockerfile``) so fine-tune does not start
         # talking to a backend that is still running migrations or
         # wiring dependents.

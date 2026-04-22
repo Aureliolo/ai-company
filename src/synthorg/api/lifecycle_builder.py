@@ -144,6 +144,16 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
             app_state,
         )
 
+        # Install POSIX SIGTERM/SIGINT handlers.  Logs the incoming
+        # signal and flags ``app_state.shutdown_requested`` so
+        # long-lived loops can exit early instead of waiting for
+        # lifespan cancellation.  No-op on Windows / non-POSIX loops.
+        from synthorg.api.signals import (  # noqa: PLC0415
+            install_shutdown_handlers,
+        )
+
+        install_shutdown_handlers(app_state)
+
         # Auto-wire the agent registry's identity-versioning service now
         # that persistence is connected.  Running this before
         # ``_safe_startup`` would access ``persistence.identity_versions``

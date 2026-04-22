@@ -169,17 +169,40 @@ class ApiResponse[T](BaseModel):
 class PaginationMeta(BaseModel):
     """Pagination metadata for list responses.
 
+    Cursor-based: clients receive an opaque ``next_cursor`` and walk
+    forward until ``has_more`` is ``False``. Legacy ``total`` and
+    ``offset`` fields are preserved for callers that already rely on
+    them; new code should page via ``next_cursor``.
+
     Attributes:
-        total: Total number of items matching the query.
-        offset: Starting offset of the returned page.
         limit: Maximum items per page.
+        next_cursor: Opaque cursor for the next page (``None`` on the
+            final page).
+        has_more: Whether more items follow the current page.
+        total: Total matching items (``None`` for repo-backed endpoints
+            that avoid the extra ``COUNT(*)`` round-trip).
+        offset: Starting offset of the current page (``0`` for the first
+            page; reflects the decoded cursor offset otherwise).
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    total: int = Field(ge=0, description="Total matching items")
-    offset: int = Field(ge=0, description="Starting offset")
     limit: int = Field(ge=1, description="Maximum items per page")
+    next_cursor: str | None = Field(
+        default=None,
+        description="Opaque cursor for the next page (null on final page)",
+    )
+    has_more: bool = Field(description="Whether more items follow the current page")
+    total: int | None = Field(
+        default=None,
+        ge=0,
+        description="Total matching items (null when unknown)",
+    )
+    offset: int = Field(
+        default=0,
+        ge=0,
+        description="Starting offset of the current page (decoded cursor offset)",
+    )
 
 
 class PaginatedResponse[T](BaseModel):

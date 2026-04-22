@@ -38,6 +38,23 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
+# Per-service shutdown budgets (seconds). The total budget is bounded so
+# container orchestrators (Docker 30s default, Kubernetes 30s default
+# ``terminationGracePeriodSeconds``) have headroom before SIGKILL kicks.
+# Raising a budget should come with a note explaining which production
+# incident motivated the change.
+_TASK_ENGINE_SHUTDOWN_SECONDS: float = 10.0
+_MEETING_SCHEDULER_SHUTDOWN_SECONDS: float = 2.0
+_PERFORMANCE_TRACKER_SHUTDOWN_SECONDS: float = 2.0
+_BACKUP_SHUTDOWN_SECONDS: float = 5.0
+_SETTINGS_DISPATCHER_SHUTDOWN_SECONDS: float = 2.0
+_BRIDGE_SHUTDOWN_SECONDS: float = 2.0
+_DISTRIBUTED_QUEUE_SHUTDOWN_SECONDS: float = 3.0
+_MESSAGE_BUS_SHUTDOWN_SECONDS: float = 3.0
+_PERSISTENCE_SHUTDOWN_SECONDS: float = 5.0
+_APPROVAL_TIMEOUT_SHUTDOWN_SECONDS: float = 1.0
+
+
 class _AsyncStartStop(Protocol):
     """Minimal async lifecycle Protocol used by the distributed task queue hook.
 
@@ -61,6 +78,9 @@ async def _try_stop(
     coro: Awaitable[None],
     event: str,
     error_msg: str,
+    *,
+    timeout: float | None = None,  # noqa: ASYNC109 -- per-service shutdown budget
+    service: str | None = None,
 ) -> bool:
     """Await *coro* inside a safe try/except, logging failures.
 
@@ -68,14 +88,35 @@ async def _try_stop(
     all other exceptions are logged and swallowed so that sibling
     shutdown steps can still run.
 
+    When *timeout* is set, a ``TimeoutError`` is logged at ERROR with
+    the ``service`` label (when provided) and shutdown continues with
+    the next service.  Services that hang past their per-service
+    budget must not block the whole shutdown window.
+
     Returns ``True`` when *coro* completes without raising, ``False``
     when an exception was swallowed. Callers use this to guard
     "stopped" log lines so they only fire on actual success.
     """
+    awaitable = asyncio.wait_for(coro, timeout=timeout) if timeout is not None else coro
     try:
-        await coro
+        await awaitable
     except MemoryError, RecursionError:
         raise
+    except TimeoutError:
+        from synthorg.observability.events.api import (  # noqa: PLC0415
+            API_APP_SHUTDOWN_TIMEOUT,
+        )
+
+        # logger.error rather than logger.exception so TimeoutError
+        # frame-locals never serialize the awaited coroutine's state
+        # (which may include secret-bearing shutdown objects).
+        logger.error(  # noqa: TRY400
+            API_APP_SHUTDOWN_TIMEOUT,
+            service=service,
+            timeout_seconds=timeout,
+            error=error_msg,
+        )
+        return False
     except Exception:
         logger.exception(event, error=error_msg)
         return False
@@ -570,24 +611,35 @@ async def _safe_shutdown(  # noqa: PLR0913, PLR0912, C901
             approval_timeout_scheduler.stop(),
             API_APP_SHUTDOWN,
             "Failed to stop approval timeout scheduler",
+            timeout=_APPROVAL_TIMEOUT_SHUTDOWN_SECONDS,
+            service="approval_timeout_scheduler",
         )
     if meeting_scheduler is not None:
         await _try_stop(
             meeting_scheduler.stop(),
             API_APP_SHUTDOWN,
             "Failed to stop meeting scheduler",
+            timeout=_MEETING_SCHEDULER_SHUTDOWN_SECONDS,
+            service="meeting_scheduler",
         )
     if task_engine is not None:
+        # ``TaskEngine.stop`` accepts an explicit drain timeout; pass
+        # the budget through so both the queue drain and the outer
+        # ``wait_for`` cap converge on the same deadline.
         await _try_stop(
-            task_engine.stop(),
+            task_engine.stop(timeout=_TASK_ENGINE_SHUTDOWN_SECONDS),
             API_APP_SHUTDOWN,
             "Failed to stop task engine",
+            timeout=_TASK_ENGINE_SHUTDOWN_SECONDS + 1.0,
+            service="task_engine",
         )
     if performance_tracker is not None:
         await _try_stop(
             performance_tracker.aclose(),
             API_APP_SHUTDOWN,
             "Failed to close performance tracker",
+            timeout=_PERFORMANCE_TRACKER_SHUTDOWN_SECONDS,
+            service="performance_tracker",
         )
     if backup_service is not None:
         if backup_service.on_shutdown:
@@ -607,18 +659,24 @@ async def _safe_shutdown(  # noqa: PLR0913, PLR0912, C901
             backup_service.stop(),
             API_APP_SHUTDOWN,
             "Failed to stop backup service",
+            timeout=_BACKUP_SHUTDOWN_SECONDS,
+            service="backup_service",
         )
     if settings_dispatcher is not None:
         await _try_stop(
             settings_dispatcher.stop(),
             API_APP_SHUTDOWN,
             "Failed to stop settings dispatcher",
+            timeout=_SETTINGS_DISPATCHER_SHUTDOWN_SECONDS,
+            service="settings_dispatcher",
         )
     if bridge is not None:
         await _try_stop(
             bridge.stop(),
             API_APP_SHUTDOWN,
             "Failed to stop message bus bridge",
+            timeout=_BRIDGE_SHUTDOWN_SECONDS,
+            service="bus_bridge",
         )
     # Distributed task queue stops after bridge but before the bus so
     # the NATS connection it shares is still alive during drain. This
@@ -634,6 +692,8 @@ async def _safe_shutdown(  # noqa: PLR0913, PLR0912, C901
             distributed_task_queue.stop(),
             API_APP_SHUTDOWN,
             "Failed to stop distributed task queue",
+            timeout=_DISTRIBUTED_QUEUE_SHUTDOWN_SECONDS,
+            service="distributed_task_queue",
         )
         if ok:
             logger.info(
@@ -646,12 +706,16 @@ async def _safe_shutdown(  # noqa: PLR0913, PLR0912, C901
             message_bus.stop(),
             API_APP_SHUTDOWN,
             "Failed to stop message bus",
+            timeout=_MESSAGE_BUS_SHUTDOWN_SECONDS,
+            service="message_bus",
         )
     if persistence is not None:
         await _try_stop(
             persistence.disconnect(),
             API_APP_SHUTDOWN,
             "Failed to disconnect persistence",
+            timeout=_PERSISTENCE_SHUTDOWN_SECONDS,
+            service="persistence",
         )
 
 

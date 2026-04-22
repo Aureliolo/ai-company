@@ -16,9 +16,9 @@ from litestar.params import Parameter
 from synthorg.api.dto import PaginatedResponse
 from synthorg.api.guards import require_read_access
 from synthorg.api.pagination import (
-    PaginationLimit,
-    PaginationOffset,
-    paginate,
+    CursorLimit,
+    CursorParam,
+    paginate_cursor,
 )
 from synthorg.api.path_params import QUERY_MAX_LENGTH
 from synthorg.budget.coordination_store import CoordinationMetricsRecord
@@ -89,8 +89,8 @@ class CoordinationMetricsController(Controller):
         agent_id: Annotated[str, Parameter(max_length=QUERY_MAX_LENGTH)] | None = None,
         since: datetime | None = None,
         until: datetime | None = None,
-        offset: PaginationOffset = 0,
-        limit: PaginationLimit = 50,
+        cursor: CursorParam = None,
+        limit: CursorLimit = 50,
     ) -> PaginatedResponse[CoordinationMetricsRecord]:
         """Query coordination metrics with optional filters.
 
@@ -104,7 +104,7 @@ class CoordinationMetricsController(Controller):
             agent_id: Filter by lead agent identifier.
             since: Exclude records before this datetime (timezone-aware).
             until: Exclude records after this datetime (timezone-aware).
-            offset: Pagination offset.
+            cursor: Opaque pagination cursor from the previous page.
             limit: Page size.
 
         Returns:
@@ -145,17 +145,18 @@ class CoordinationMetricsController(Controller):
             limit=metrics_cap,
         )
         effective_total = min(total_matches, metrics_cap)
-        page, meta = paginate(
+        page, meta = paginate_cursor(
             entries,
-            offset=offset,
             limit=limit,
-            total=effective_total,
+            cursor=cursor,
+            secret=app_state.cursor_secret,
         )
         logger.info(
             API_COORDINATION_METRICS_QUERIED,
-            total=meta.total,
-            offset=meta.offset,
+            effective_total=effective_total,
+            returned=len(page),
             limit=meta.limit,
+            has_more=meta.has_more,
         )
         return PaginatedResponse[CoordinationMetricsRecord](
             data=page,

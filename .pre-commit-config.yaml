@@ -163,7 +163,11 @@ repos:
         language: system
         files: ^web/src/.*\.(ts|tsx)$
         pass_filenames: false
-        stages: [pre-commit, pre-push]
+        # Pre-push only: ESLint boots the TS project graph which can
+        # take 15-30s locally even on unrelated backend commits. The
+        # dedicated ``dashboard-lint`` CI job still gates pushes that
+        # land on the branch, so nothing escapes review.
+        stages: [pre-push]
 
       - id: forbidden-literals
         name: forbidden-literal gate (src/synthorg)

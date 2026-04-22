@@ -181,3 +181,12 @@ API_AGENT_CREATED: Final[str] = "api.agent.created"
 API_AGENT_UPDATED: Final[str] = "api.agent.updated"
 API_AGENT_DELETED: Final[str] = "api.agent.deleted"
 API_AGENTS_REORDERED: Final[str] = "api.agents.reordered"
+
+# Pagination / cursor
+API_CURSOR_SECRET_EPHEMERAL: Final[str] = "api.cursor.secret.ephemeral"  # noqa: S105 -- event name, not a secret
+API_CURSOR_INVALID: Final[str] = "api.cursor.invalid"
+
+# Shutdown
+API_APP_SHUTDOWN_TIMEOUT: Final[str] = "api.app.shutdown.timeout"
+API_SHUTDOWN_SIGNAL_RECEIVED: Final[str] = "api.shutdown.signal.received"
+API_SHUTDOWN_HANDLER_SKIPPED: Final[str] = "api.shutdown.handler.skipped"

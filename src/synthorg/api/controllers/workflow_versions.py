@@ -8,6 +8,7 @@ from litestar.datastructures import State  # noqa: TC002
 from litestar.params import Parameter
 
 from synthorg.api.controllers._workflow_helpers import get_auth_user_id
+from synthorg.api.cursor import decode_cursor, encode_cursor
 from synthorg.api.dto import (
     ApiResponse,
     PaginatedResponse,
@@ -15,7 +16,7 @@ from synthorg.api.dto import (
     RollbackWorkflowRequest,
 )
 from synthorg.api.guards import require_read_access, require_write_access
-from synthorg.api.pagination import PaginationLimit, PaginationOffset  # noqa: TC001
+from synthorg.api.pagination import CursorLimit, CursorParam  # noqa: TC001
 from synthorg.api.path_params import PathId  # noqa: TC001
 from synthorg.engine.workflow.definition import (
     WorkflowDefinition,
@@ -202,10 +203,12 @@ class WorkflowVersionController(Controller):
         self,
         state: State,
         workflow_id: PathId,
-        offset: PaginationOffset = 0,
-        limit: PaginationLimit = 20,
+        cursor: CursorParam = None,
+        limit: CursorLimit = 20,
     ) -> Response[PaginatedResponse[SnapshotT]]:
         """List version history for a workflow definition."""
+        secret = state.app_state.cursor_secret
+        offset = 0 if cursor is None else decode_cursor(cursor, secret=secret)
         version_repo = state.app_state.persistence.workflow_versions
         versions = await version_repo.list_versions(
             workflow_id,
@@ -218,7 +221,16 @@ class WorkflowVersionController(Controller):
             definition_id=workflow_id,
             count=len(versions),
         )
-        meta = PaginationMeta(total=total, offset=offset, limit=limit)
+        next_offset = offset + len(versions)
+        has_more = next_offset < total
+        next_cursor = encode_cursor(next_offset, secret=secret) if has_more else None
+        meta = PaginationMeta(
+            limit=limit,
+            next_cursor=next_cursor,
+            has_more=has_more,
+            total=total,
+            offset=offset,
+        )
         return Response(
             content=PaginatedResponse[SnapshotT](
                 data=versions,

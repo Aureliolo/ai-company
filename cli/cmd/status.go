@@ -670,7 +670,7 @@ type healthResponse struct {
 }
 
 func fetchHealth(ctx context.Context, port int) ([]byte, int, error) {
-	healthURL := fmt.Sprintf("http://localhost:%d/api/v1/health", port)
+	healthURL := fmt.Sprintf("http://localhost:%d/api/v1/readyz", port)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, healthURL, nil)
 	if err != nil {
 		return nil, 0, fmt.Errorf("health check error: %w", err)
@@ -709,6 +709,6 @@ func printLinks(out *ui.UI, state config.State) {
 	out.Box("Links", []string{
 		fmt.Sprintf("  %-12s http://localhost:%d", "Dashboard", state.WebPort),
 		fmt.Sprintf("  %-12s http://localhost:%d/api", "API docs", state.BackendPort),
-		fmt.Sprintf("  %-12s http://localhost:%d/api/v1/health", "Health", state.BackendPort),
+		fmt.Sprintf("  %-12s http://localhost:%d/api/v1/readyz", "Health", state.BackendPort),
 	})
 }

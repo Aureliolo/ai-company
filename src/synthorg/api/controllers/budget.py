@@ -16,7 +16,7 @@ from synthorg.api.dto import (
 )
 from synthorg.api.errors import ApiValidationError
 from synthorg.api.guards import require_read_access
-from synthorg.api.pagination import PaginationLimit, PaginationOffset, paginate
+from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
 from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.budget.config import BudgetConfig  # noqa: TC001
@@ -265,8 +265,8 @@ class BudgetController(Controller):
         state: State,
         agent_id: Annotated[str, Parameter(max_length=QUERY_MAX_LENGTH)] | None = None,
         task_id: Annotated[str, Parameter(max_length=QUERY_MAX_LENGTH)] | None = None,
-        offset: PaginationOffset = 0,
-        limit: PaginationLimit = 50,
+        cursor: CursorParam = None,
+        limit: CursorLimit = 50,
     ) -> CostRecordListResponse:
         """List cost records with optional filters and summaries.
 
@@ -277,7 +277,7 @@ class BudgetController(Controller):
             state: Application state.
             agent_id: Filter by agent.
             task_id: Filter by task.
-            offset: Pagination offset.
+            cursor: Opaque pagination cursor from the previous page.
             limit: Page size.
 
         Returns:
@@ -311,7 +311,12 @@ class BudgetController(Controller):
             task_id=task_id,
             record_count=len(records),
         )
-        page, meta = paginate(records, offset=offset, limit=limit)
+        page, meta = paginate_cursor(
+            records,
+            limit=limit,
+            cursor=cursor,
+            secret=app_state.cursor_secret,
+        )
         return CostRecordListResponse(
             data=page,
             pagination=meta,

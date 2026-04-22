@@ -19,7 +19,7 @@
 # status here: DHI NATS is distroless and exposes no in-container
 # probe. Instead, `NatsBus.health_check` performs a live round-trip
 # from the backend at request time, and the backend's own
-# `/api/v1/health` surfaces the result. Backend startup uses a normal
+# `/api/v1/readyz` surfaces the result. Backend startup uses a normal
 # retrying connect in `NatsBus.start`, so there is no benefit from a
 # compose-level readiness gate that would hang forever when no
 # healthcheck can be defined.

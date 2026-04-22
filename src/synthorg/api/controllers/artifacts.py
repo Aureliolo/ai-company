@@ -15,7 +15,7 @@ from synthorg.api.errors import (
     NotFoundError,
 )
 from synthorg.api.guards import require_read_access, require_write_access
-from synthorg.api.pagination import PaginationLimit, PaginationOffset, paginate
+from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
 from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
 from synthorg.api.rate_limits.guard import per_op_rate_limit
 from synthorg.api.ws_models import WsEventType
@@ -146,8 +146,8 @@ class ArtifactController(Controller):
     async def list_artifacts(  # noqa: PLR0913
         self,
         state: State,
-        offset: PaginationOffset = 0,
-        limit: PaginationLimit = 50,
+        cursor: CursorParam = None,
+        limit: CursorLimit = 50,
         task_id: TaskIdFilter = None,
         created_by: CreatedByFilter = None,
         type: TypeFilter = None,  # noqa: A002
@@ -156,7 +156,7 @@ class ArtifactController(Controller):
 
         Args:
             state: Application state.
-            offset: Pagination offset.
+            cursor: Opaque pagination cursor from the previous page.
             limit: Page size.
             task_id: Filter by originating task ID.
             created_by: Filter by creator agent ID.
@@ -185,7 +185,12 @@ class ArtifactController(Controller):
             created_by=created_by,
             artifact_type=parsed_type,
         )
-        page, meta = paginate(artifacts, offset=offset, limit=limit)
+        page, meta = paginate_cursor(
+            artifacts,
+            limit=limit,
+            cursor=cursor,
+            secret=state.app_state.cursor_secret,
+        )
         return PaginatedResponse[Artifact](data=page, pagination=meta)
 
     @get("/{artifact_id:str}", guards=[require_read_access])

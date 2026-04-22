@@ -107,7 +107,7 @@ func collectDocker(ctx context.Context, r *Report, safeDir string, pathErr error
 }
 
 func collectHealth(ctx context.Context, r *Report, backendPort int) {
-	healthURL := fmt.Sprintf("http://localhost:%d/api/v1/health", backendPort)
+	healthURL := fmt.Sprintf("http://localhost:%d/api/v1/readyz", backendPort)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, healthURL, nil)
 	if err != nil {
 		r.HealthStatus = "unreachable"

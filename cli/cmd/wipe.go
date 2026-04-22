@@ -386,7 +386,7 @@ func (wc *wipeContext) startContainers() error {
 // Returns an error if the backend does not become healthy within the
 // timeout or the context is cancelled.
 func (wc *wipeContext) waitForBackendHealth() error {
-	healthURL := fmt.Sprintf("http://localhost:%d/api/v1/health", wc.state.BackendPort)
+	healthURL := fmt.Sprintf("http://localhost:%d/api/v1/readyz", wc.state.BackendPort)
 	return health.WaitForHealthy(wc.ctx, healthURL, 30*time.Second, 2*time.Second, 5*time.Second)
 }
 

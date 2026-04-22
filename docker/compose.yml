@@ -187,7 +187,7 @@ services:
           pids: 64
     logging: *logging
 
-  # NATS health is surfaced via the backend's /api/v1/health endpoint.
+  # NATS health is surfaced via the backend's /api/v1/readyz endpoint.
   # `NatsBus.health_check` performs a live PING/PONG round-trip, so
   # shipping a busybox sidecar purely to produce a green dot in
   # `docker ps` added a container for zero dependency value -- nothing

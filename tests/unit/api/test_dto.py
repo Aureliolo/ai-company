@@ -166,20 +166,20 @@ class TestApiResponseErrorDetailConsistency:
             PaginatedResponse(
                 data=("a",),
                 error_detail=detail,
-                pagination=PaginationMeta(total=1, offset=0, limit=10),
+                pagination=PaginationMeta(limit=10, next_cursor=None, has_more=False),
             )
 
 
 class TestPaginatedResponseDegradedSources:
     def test_degraded_sources_defaults_to_empty(self) -> None:
         resp: PaginatedResponse[str] = PaginatedResponse(
-            pagination=PaginationMeta(total=0, offset=0, limit=10),
+            pagination=PaginationMeta(limit=10, next_cursor=None, has_more=False),
         )
         assert resp.degraded_sources == ()
 
     def test_degraded_sources_round_trips_through_json(self) -> None:
         resp: PaginatedResponse[str] = PaginatedResponse(
-            pagination=PaginationMeta(total=0, offset=0, limit=10),
+            pagination=PaginationMeta(limit=10, next_cursor=None, has_more=False),
             degraded_sources=("cost_tracker", "tool_invocation_tracker"),
         )
         data = resp.model_dump(mode="json")
@@ -192,7 +192,7 @@ class TestPaginatedResponseDegradedSources:
 class TestPaginatedResponseErrorDetail:
     def test_error_detail_defaults_to_none(self) -> None:
         resp: PaginatedResponse[str] = PaginatedResponse(
-            pagination=PaginationMeta(total=0, offset=0, limit=10),
+            pagination=PaginationMeta(limit=10, next_cursor=None, has_more=False),
         )
         assert resp.error_detail is None
 
@@ -201,7 +201,7 @@ class TestPaginatedResponseErrorDetail:
         resp: PaginatedResponse[str] = PaginatedResponse(
             error="err",
             error_detail=detail,
-            pagination=PaginationMeta(total=0, offset=0, limit=10),
+            pagination=PaginationMeta(limit=10, next_cursor=None, has_more=False),
         )
         assert resp.error_detail is not None
         assert resp.error_detail.error_code == 8000

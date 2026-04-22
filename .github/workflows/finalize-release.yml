@@ -15,6 +15,16 @@ on:
 
 permissions: {}
 
+# Finalize Release publishes a draft release (immutable after publish)
+# and deletes dev pre-release tags. Cancelling in-flight would leave the
+# draft half-published and the dev-tag cleanup partially applied --
+# ``cancel-in-progress: false`` keeps concurrent reruns serialised per
+# tag without clobbering each other. Concurrent stable tags still run
+# in parallel because the group key includes the tag name.
+concurrency:
+  group: finalize-release-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: false
+
 jobs:
   publish:
     name: Publish Draft Release

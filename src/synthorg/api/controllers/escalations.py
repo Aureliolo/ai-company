@@ -16,6 +16,7 @@ from litestar.datastructures import State  # noqa: TC002
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.api.auth.models import AuthenticatedUser
+from synthorg.api.cursor import decode_cursor, encode_cursor
 from synthorg.api.dto import ApiResponse, PaginatedResponse, PaginationMeta
 from synthorg.api.errors import (
     ApiValidationError,
@@ -24,7 +25,7 @@ from synthorg.api.errors import (
     UnauthorizedError,
 )
 from synthorg.api.guards import require_approval_roles, require_read_access
-from synthorg.api.pagination import PaginationLimit, PaginationOffset  # noqa: TC001
+from synthorg.api.pagination import CursorLimit, CursorParam  # noqa: TC001
 from synthorg.api.path_params import PathId  # noqa: TC001
 from synthorg.api.rate_limits.guard import per_op_rate_limit
 from synthorg.api.state import AppState  # noqa: TC001
@@ -132,8 +133,8 @@ class EscalationsController(Controller):
     async def list_escalations(
         self,
         state: State,
-        offset: PaginationOffset = 0,
-        limit: PaginationLimit = 50,
+        cursor: CursorParam = None,
+        limit: CursorLimit = 50,
         status: EscalationStatus = EscalationStatus.PENDING,
     ) -> PaginatedResponse[EscalationResponse]:
         """Page over escalations filtered by ``status`` (default PENDING)."""
@@ -146,14 +147,25 @@ class EscalationsController(Controller):
                 note="escalation_store_not_configured",
             )
             raise NotFoundError(msg)
+        secret = app_state.cursor_secret
+        offset = 0 if cursor is None else decode_cursor(cursor, secret=secret)
         page, total = await store.list_items(
             status=status,
             limit=limit,
             offset=offset,
         )
+        next_offset = offset + len(page)
+        has_more = next_offset < total
+        next_cursor = encode_cursor(next_offset, secret=secret) if has_more else None
         return PaginatedResponse[EscalationResponse](
             data=tuple(_to_response(row) for row in page),
-            pagination=PaginationMeta(total=total, offset=offset, limit=limit),
+            pagination=PaginationMeta(
+                limit=limit,
+                next_cursor=next_cursor,
+                has_more=has_more,
+                total=total,
+                offset=offset,
+            ),
         )
 
     @get(

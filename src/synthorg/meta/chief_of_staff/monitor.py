@@ -12,9 +12,11 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 from synthorg.observability import get_logger
+from synthorg.observability.background_tasks import log_task_exceptions
 from synthorg.observability.events.chief_of_staff import (
     COS_INFLECTION_CHECK_FAILED,
     COS_INFLECTION_DETECTED,
+    COS_MONITOR_LOOP_DIED,
     COS_MONITOR_STARTED,
     COS_MONITOR_STOPPED,
 )
@@ -65,7 +67,13 @@ class OrgInflectionMonitor:
         """Start the background monitoring loop."""
         if self._task is not None:
             return
-        self._task = asyncio.create_task(self._loop())
+        self._task = asyncio.create_task(
+            self._loop(),
+            name="cos-monitor-loop",
+        )
+        self._task.add_done_callback(
+            log_task_exceptions(logger, COS_MONITOR_LOOP_DIED),
+        )
         logger.info(
             COS_MONITOR_STARTED,
             interval_minutes=self._interval_s // 60,

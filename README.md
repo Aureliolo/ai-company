@@ -73,7 +73,7 @@ Schema migrations require the [Atlas CLI](https://atlasgo.io/getting-started) on
 ```bash
 cp docker/.env.example docker/.env
 docker compose -f docker/compose.yml up -d
-curl http://localhost:3001/api/v1/health
+curl http://localhost:3001/api/v1/readyz
 ```
 
 ## What's Inside

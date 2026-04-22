@@ -715,7 +715,7 @@ func performRestart(ctx context.Context, out io.Writer, info docker.Info, safeDi
 	sp.Success("Containers started")
 
 	sp = uiOut.StartSpinner("Waiting for backend to become healthy...")
-	healthURL := fmt.Sprintf("http://localhost:%d/api/v1/health", state.BackendPort)
+	healthURL := fmt.Sprintf("http://localhost:%d/api/v1/readyz", state.BackendPort)
 	healthTimeout, _ := time.ParseDuration(updateTimeout)
 	if healthTimeout <= 0 {
 		healthTimeout = 90 * time.Second

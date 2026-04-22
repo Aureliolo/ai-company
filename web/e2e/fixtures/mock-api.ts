@@ -9,7 +9,7 @@ import type { Page } from '@playwright/test'
  */
 export async function mockApiRoutes(page: Page) {
   // Health endpoint
-  await page.route('**/api/v1/health', (route) =>
+  await page.route('**/api/v1/readyz', (route) =>
     route.fulfill({ json: { status: 'ok' } }),
   )
 

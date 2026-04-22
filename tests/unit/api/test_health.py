@@ -1,4 +1,4 @@
-"""Tests for health check endpoint."""
+"""Tests for the liveness (/healthz) and readiness (/readyz) endpoints."""
 
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -15,9 +15,45 @@ from tests.unit.api.fakes import FakeMessageBus, FakePersistenceBackend
 
 
 @pytest.mark.unit
-class TestHealthCheck:
+class TestLiveness:
+    """``/healthz`` always reports ok while the event loop is responsive."""
+
+    def test_liveness_returns_ok(self, test_client: TestClient[Any]) -> None:
+        response = test_client.get("/api/v1/healthz")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["success"] is True
+        assert body["data"]["status"] == "ok"
+        assert "version" in body["data"]
+        assert body["data"]["uptime_seconds"] >= 0
+
+    def test_liveness_ignores_bus_down(
+        self,
+        test_client: TestClient[Any],
+        fake_message_bus: Any,
+    ) -> None:
+        # Liveness is a proof-of-life for supervisors; it does not probe
+        # dependencies, so a dead bus doesn't flip it to 503.
+        fake_message_bus._running = False
+        response = test_client.get("/api/v1/healthz")
+        assert response.status_code == 200
+        assert response.json()["data"]["status"] == "ok"
+
+    def test_old_health_endpoint_is_gone(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        # Pre-alpha: /health was replaced by /healthz + /readyz without
+        # a compatibility shim.  Old callers must migrate.
+        assert test_client.get("/api/v1/health").status_code == 404
+
+
+@pytest.mark.unit
+class TestReadinessHealthy:
+    """``/readyz`` returns 200 when persistence + bus are both healthy."""
+
     def test_returns_ok_when_all_healthy(self, test_client: TestClient[Any]) -> None:
-        response = test_client.get("/api/v1/health")
+        response = test_client.get("/api/v1/readyz")
         assert response.status_code == 200
         body = response.json()
         assert body["success"] is True
@@ -25,22 +61,25 @@ class TestHealthCheck:
         assert body["data"]["persistence"] is True
         assert body["data"]["message_bus"] is True
         assert body["data"]["telemetry"] in {"enabled", "disabled"}
-        assert "version" in body["data"]
-        assert body["data"]["uptime_seconds"] >= 0
 
-    def test_reports_degraded_when_bus_down(
+
+@pytest.mark.unit
+class TestReadinessUnhealthy:
+    """``/readyz`` returns 503 when any configured dependency is unhealthy."""
+
+    def test_503_when_bus_down(
         self,
         test_client: TestClient[Any],
         fake_message_bus: Any,
     ) -> None:
         fake_message_bus._running = False
-        response = test_client.get("/api/v1/health")
-        assert response.status_code == 200
+        response = test_client.get("/api/v1/readyz")
+        assert response.status_code == 503
         body = response.json()
-        assert body["data"]["status"] == "degraded"
+        assert body["data"]["status"] == "unavailable"
         assert body["data"]["message_bus"] is False
 
-    def test_reports_down_when_all_unhealthy(
+    def test_503_when_persistence_and_bus_down(
         self,
         test_client: TestClient[Any],
         fake_persistence: Any,
@@ -48,55 +87,56 @@ class TestHealthCheck:
     ) -> None:
         fake_persistence._connected = False
         fake_message_bus._running = False
-        response = test_client.get("/api/v1/health")
-        assert response.status_code == 200
-        body = response.json()
-        assert body["data"]["status"] == "down"
+        response = test_client.get("/api/v1/readyz")
+        assert response.status_code == 503
+        assert response.json()["data"]["status"] == "unavailable"
 
 
 @pytest.mark.unit
-class TestHealthCheckUnconfiguredServices:
-    """Health endpoint with partially or fully unconfigured services."""
+class TestReadinessUnconfigured:
+    """Dev stacks without a bus still report ready (no configured deps fail)."""
 
     @pytest.mark.parametrize(
         (
             "persistence_state",
             "bus_state",
-            "expected_status",
+            "expected_status_code",
+            "expected_outcome",
             "expected_persistence",
             "expected_bus",
         ),
         [
-            # Auto-wiring creates a message bus even when not provided,
-            # so bus is always True unless explicitly set to unhealthy.
-            pytest.param(None, None, "ok", None, True, id="no_services"),
+            pytest.param(None, None, 200, "ok", None, True, id="no_services"),
             pytest.param(
-                "healthy", None, "ok", True, True, id="persistence_only_healthy"
+                "healthy", None, 200, "ok", True, True, id="persistence_only_healthy"
             ),
             pytest.param(
                 "unhealthy",
                 None,
-                "degraded",
+                503,
+                "unavailable",
                 False,
                 True,
                 id="persistence_only_unhealthy",
             ),
-            pytest.param(None, "healthy", "ok", None, True, id="bus_only_healthy"),
+            pytest.param(None, "healthy", 200, "ok", None, True, id="bus_only_healthy"),
             pytest.param(
                 None,
                 "unhealthy",
-                "down",
+                503,
+                "unavailable",
                 None,
                 False,
                 id="bus_only_unhealthy",
             ),
         ],
     )
-    async def test_unconfigured_services(
+    async def test_unconfigured_services(  # noqa: PLR0913 -- parametrized test
         self,
         persistence_state: str | None,
         bus_state: str | None,
-        expected_status: str,
+        expected_status_code: int,
+        expected_outcome: str,
         expected_persistence: bool | None,
         expected_bus: bool | None,
     ) -> None:
@@ -112,23 +152,22 @@ class TestHealthCheckUnconfiguredServices:
         with TestClient(
             create_app(persistence=backend, message_bus=bus),
         ) as client:
-            # Simulate post-startup failures after app lifecycle completes.
             if persistence_state == "unhealthy" and backend is not None:
                 backend._connected = False
             if bus_state == "unhealthy" and bus is not None:
                 bus._running = False
 
-            response = client.get("/api/v1/health")
-            assert response.status_code == 200
+            response = client.get("/api/v1/readyz")
+            assert response.status_code == expected_status_code
             body = response.json()
-            assert body["data"]["status"] == expected_status
+            assert body["data"]["status"] == expected_outcome
             assert body["data"]["persistence"] is expected_persistence
             assert body["data"]["message_bus"] is expected_bus
 
 
 @pytest.mark.unit
-class TestHealthCheckExceptionPaths:
-    """Health endpoint when a configured service raises an exception."""
+class TestReadinessExceptionPaths:
+    """``/readyz`` surfaces 503 when a probe raises."""
 
     @pytest.mark.parametrize(
         ("service_spec", "response_key"),
@@ -140,8 +179,6 @@ class TestHealthCheckExceptionPaths:
                     "kwarg": "persistence",
                     "attr": "health_check",
                     "patch_kw": {},
-                    # Auto-wired bus is healthy, so status is degraded
-                    "expected_status": "degraded",
                 },
                 "persistence",
                 id="persistence_exception",
@@ -177,12 +214,11 @@ class TestHealthCheckExceptionPaths:
                 **service_spec["patch_kw"],
             ),
         ):
-            response = client.get("/api/v1/health")
-            assert response.status_code == 200
+            response = client.get("/api/v1/readyz")
+            assert response.status_code == 503
             body = response.json()
             assert body["data"][response_key] is False
-            expected_status = service_spec.get("expected_status", "down")
-            assert body["data"]["status"] == expected_status
+            assert body["data"]["status"] == "unavailable"
 
 
 @pytest.mark.unit
@@ -207,33 +243,20 @@ class TestResolveTelemetryStatus:
         assert _resolve_telemetry_status(app_state) is TelemetryStatus.DISABLED
 
     def test_disabled_when_enabled_but_reporter_is_noop(self) -> None:
-        """Enabled config + noop reporter must surface as ``disabled``.
-
-        Regression guard: ``_resolve_telemetry_status`` previously read
-        ``collector.enabled`` (config opt-in only), so the endpoint lied
-        whenever ``create_reporter`` degraded to ``NoopReporter``
-        (missing ``logfire`` extra, reporter init failure). The
-        ``is_functional`` property collapses "opted in but not
-        delivering" to ``False`` so the surfaced status matches reality.
-        """
+        """Enabled config + noop reporter must surface as ``disabled``."""
         app_state = MagicMock()
         app_state.has_telemetry_collector = True
-        # Simulate the "opted in but reporter degraded to noop" case:
-        # ``enabled`` reports True, ``is_functional`` reports False.
         app_state.telemetry_collector.enabled = True
         app_state.telemetry_collector.is_functional = False
         assert _resolve_telemetry_status(app_state) is TelemetryStatus.DISABLED
 
 
 @pytest.mark.unit
-class TestHealthTelemetryField:
-    """The /health endpoint always surfaces a telemetry status."""
+class TestReadinessTelemetryField:
+    """``/readyz`` always surfaces a telemetry status."""
 
     def test_disabled_by_default(self, test_client: TestClient[Any]) -> None:
-        response = test_client.get("/api/v1/health")
+        response = test_client.get("/api/v1/readyz")
         assert response.status_code == 200
         body = response.json()
-        # Default TelemetryConfig has enabled=False and nothing flips the
-        # SYNTHORG_TELEMETRY env var in the test fixture, so the collector
-        # is created but stays disabled.
         assert body["data"]["telemetry"] == "disabled"

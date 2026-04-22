@@ -15,6 +15,7 @@ from synthorg.api.ws_models import WsEvent, WsEventType
 from synthorg.communication.bus_protocol import MessageBus  # noqa: TC001
 from synthorg.communication.message import Message  # noqa: TC001
 from synthorg.observability import get_logger
+from synthorg.observability.background_tasks import log_task_exceptions
 from synthorg.observability.events.api import (
     API_APP_SHUTDOWN,
     API_APP_STARTUP,
@@ -166,6 +167,13 @@ class MessageBusBridge:
             task = asyncio.create_task(
                 self._poll_channel(channel_name),
                 name=f"bridge-{channel_name}",
+            )
+            task.add_done_callback(
+                log_task_exceptions(
+                    logger,
+                    API_BRIDGE_CHANNEL_DEAD,
+                    channel=channel_name,
+                ),
             )
             self._tasks.append(task)
 

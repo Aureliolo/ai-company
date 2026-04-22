@@ -8,6 +8,7 @@ from litestar.datastructures import State  # noqa: TC002
 from litestar.params import Parameter
 
 from synthorg.api.controllers._workflow_helpers import get_auth_user_id
+from synthorg.api.cursor import decode_cursor, encode_cursor
 from synthorg.api.dto import (
     ApiResponse,
     PaginatedResponse,
@@ -15,7 +16,7 @@ from synthorg.api.dto import (
     RollbackAgentIdentityRequest,
 )
 from synthorg.api.guards import require_read_access, require_write_access
-from synthorg.api.pagination import PaginationLimit, PaginationOffset  # noqa: TC001
+from synthorg.api.pagination import CursorLimit, CursorParam  # noqa: TC001
 from synthorg.api.path_params import PathId  # noqa: TC001
 from synthorg.core.agent import AgentIdentity
 from synthorg.engine.identity.diff import AgentIdentityDiff, compute_diff
@@ -104,10 +105,12 @@ class AgentIdentityVersionController(Controller):
         self,
         state: State,
         agent_id: PathId,
-        offset: PaginationOffset = 0,
-        limit: PaginationLimit = 20,
+        cursor: CursorParam = None,
+        limit: CursorLimit = 20,
     ) -> Response[PaginatedResponse[SnapshotT]]:
         """List version history for an agent identity."""
+        secret = state.app_state.cursor_secret
+        offset = 0 if cursor is None else decode_cursor(cursor, secret=secret)
         version_repo = state.app_state.persistence.identity_versions
         versions, total = await asyncio.gather(
             version_repo.list_versions(agent_id, limit=limit, offset=offset),
@@ -136,7 +139,16 @@ class AgentIdentityVersionController(Controller):
         # paginating by ``pagination.total`` don't see a count that
         # disagrees with the returned ``data`` slice.
         safe_total = max(total - dropped, len(safe_versions))
-        meta = PaginationMeta(total=safe_total, offset=offset, limit=limit)
+        next_offset = offset + len(safe_versions)
+        has_more = next_offset < safe_total
+        next_cursor = encode_cursor(next_offset, secret=secret) if has_more else None
+        meta = PaginationMeta(
+            limit=limit,
+            next_cursor=next_cursor,
+            has_more=has_more,
+            total=safe_total,
+            offset=offset,
+        )
         return Response(
             content=PaginatedResponse[SnapshotT](
                 data=safe_versions,
