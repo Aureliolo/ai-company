@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.api.auth.config import AuthConfig
 from synthorg.api.rate_limits.config import PerOpRateLimitConfig
+from synthorg.api.rate_limits.inflight_config import PerOpConcurrencyConfig
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
@@ -376,6 +377,9 @@ class ApiConfig(BaseModel):
             by user ID).
         per_op_rate_limit: Per-operation throttling configuration
             (layered on top of the global three-tier limiter).
+        per_op_concurrency: Per-operation inflight concurrency capping
+            (layered on top of the sliding-window per-op limiter; caps
+            simultaneous long-running requests per operation per subject).
         server: Uvicorn server configuration.
         auth: Authentication configuration.
         api_prefix: URL prefix for all API routes.
@@ -397,6 +401,14 @@ class ApiConfig(BaseModel):
     per_op_rate_limit: PerOpRateLimitConfig = Field(
         default_factory=PerOpRateLimitConfig,
         description="Per-operation throttling (layered on the global limiter)",
+    )
+    per_op_concurrency: PerOpConcurrencyConfig = Field(
+        default_factory=PerOpConcurrencyConfig,
+        description=(
+            "Per-operation inflight concurrency capping (layered on the"
+            " sliding-window per-op limiter; caps simultaneous long-running"
+            " requests per (operation, subject))"
+        ),
     )
     server: ServerConfig = Field(
         default_factory=ServerConfig,

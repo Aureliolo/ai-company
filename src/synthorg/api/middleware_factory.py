@@ -19,6 +19,7 @@ from litestar.middleware.rate_limit import (
 from synthorg.api.auth.csrf import create_csrf_middleware_class
 from synthorg.api.auth.middleware import create_auth_middleware_class
 from synthorg.api.middleware import RequestLoggingMiddleware
+from synthorg.api.rate_limits import PerOpConcurrencyMiddleware
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_NETWORK_EXPOSURE_WARNING
 
@@ -376,6 +377,9 @@ def _build_middleware(
     #   4. unauth_rl -- 20/min/IP for requests where user is None
     #   5. RequestLoggingMiddleware
     #   6. auth_rl -- per-user cap for authenticated requests
+    #   7. PerOpConcurrencyMiddleware -- per-op inflight cap (#1489);
+    #      innermost so ``scope["user"]`` is already populated and the
+    #      permit is held only during actual handler execution.
     return [
         ip_floor.middleware,
         auth_middleware,
@@ -383,4 +387,8 @@ def _build_middleware(
         unauth_rl.middleware,
         RequestLoggingMiddleware,
         auth_rl.middleware,
+        # Pass an instance: ``ASGIMiddleware`` (litestar 2.15+) is
+        # instance-based, not class-based.  Stateless -- no per-request
+        # state on the middleware itself (see its docstring).
+        PerOpConcurrencyMiddleware(),
     ]

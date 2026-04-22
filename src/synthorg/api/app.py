@@ -50,7 +50,11 @@ from synthorg.api.lifecycle_builder import _build_lifecycle
 from synthorg.api.lifecycle_helpers import _build_settings_dispatcher
 from synthorg.api.middleware import security_headers_hook
 from synthorg.api.middleware_factory import _build_middleware
-from synthorg.api.rate_limits import build_sliding_window_store
+from synthorg.api.rate_limits import (
+    build_inflight_store,
+    build_sliding_window_store,
+)
+from synthorg.api.rate_limits.inflight_protocol import InflightStore  # noqa: TC001
 from synthorg.api.rate_limits.protocol import SlidingWindowStore  # noqa: TC001
 from synthorg.api.state import AppState
 from synthorg.backup.factory import build_backup_service
@@ -730,6 +734,21 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
         if not _skip_lifecycle_shutdown:
             shutdown = [*shutdown, per_op_rate_limit_store.close]
 
+    # Per-operation inflight-concurrency limiter (#1489, SEC-2).
+    # Layered on top of the sliding-window per-op limiter; caps
+    # simultaneous long-running requests per (operation, subject).
+    # Enforced by ``PerOpConcurrencyMiddleware`` registered in the
+    # middleware stack.  Mirrors the wiring discipline of the
+    # sliding-window store: only built when enabled, missing-wiring is
+    # treated as a deployment error (fail-closed 503 from middleware).
+    per_op_inflight_store: InflightStore | None = None
+    if api_config.per_op_concurrency.enabled:
+        per_op_inflight_store = build_inflight_store(
+            api_config.per_op_concurrency,
+        )
+        if not _skip_lifecycle_shutdown:
+            shutdown = [*shutdown, per_op_inflight_store.close]
+
     return Litestar(
         route_handlers=[api_router, *a2a_root_controllers],
         # Disable Litestar's built-in logging config to preserve the
@@ -745,6 +764,11 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
                 "app_state": app_state,
                 "per_op_rate_limit_store": per_op_rate_limit_store,
                 "per_op_rate_limit_config": api_config.per_op_rate_limit,
+                # Inflight-concurrency state used by
+                # ``PerOpConcurrencyMiddleware``; mirrors the
+                # sliding-window store's wiring.
+                "per_op_inflight_store": per_op_inflight_store,
+                "per_op_inflight_config": api_config.per_op_concurrency,
                 # Mirrors the global limiter's trusted-proxy set so the
                 # per-op guard extracts the same "real" client IP behind
                 # reverse proxies instead of bucketing all traffic by
