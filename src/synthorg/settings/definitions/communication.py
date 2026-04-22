@@ -197,6 +197,9 @@ _r.register(
         restart_required=True,
         min_value=0.0,
         max_value=1.0,
+        yaml_path=(
+            "communication.meeting_protocol.round_robin.summary_reserve_fraction"
+        ),
     )
 )
 
@@ -215,6 +218,9 @@ _r.register(
         restart_required=True,
         min_value=0.0,
         max_value=1.0,
+        yaml_path=(
+            "communication.meeting_protocol.position_papers.synthesis_reserve_fraction"
+        ),
     )
 )
 
@@ -233,6 +239,9 @@ _r.register(
         restart_required=True,
         min_value=0.0,
         max_value=1.0,
+        yaml_path=(
+            "communication.meeting_protocol.structured_phases.synthesis_reserve_fraction"
+        ),
     )
 )
 

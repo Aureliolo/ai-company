@@ -130,8 +130,14 @@ _r.register(
         namespace=SettingNamespace.API,
         key="cors_allowed_origins",
         type=SettingType.JSON,
-        default='["http://localhost:5173"]',
-        description="Origins permitted to make cross-origin requests",
+        default="[]",
+        description=(
+            "Origins permitted to make cross-origin requests."
+            " Empty default denies all cross-origin requests;"
+            " operators must explicitly allowlist dashboard"
+            " origins (e.g. ``http://localhost:5173`` for local"
+            " development). Matches CorsConfig default."
+        ),
         group="CORS",
         level=SettingLevel.ADVANCED,
         restart_required=True,

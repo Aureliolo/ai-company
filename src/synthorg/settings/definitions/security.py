@@ -93,5 +93,6 @@ _r.register(
         ),
         group="Retention",
         level=SettingLevel.ADVANCED,
+        yaml_path="security.retention_cleanup_paused",
     )
 )

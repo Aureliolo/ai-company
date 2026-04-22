@@ -1,0 +1,210 @@
+"""Integration tests for user-deletion cascade (CFG-1 audit / GDPR).
+
+Exercises :meth:`UserService.delete` end-to-end against a real SQLite
+persistence backend and asserts the cascade described in
+``docs/guides/data-retention.md``:
+
+1. Refresh tokens are explicitly revoked before the DB delete
+   (defense-in-depth) -- :meth:`RefreshTokenRepository.revoke_by_user`
+   is called and returns the revoked count.
+2. ``refresh_tokens``, ``sessions``, and ``api_keys`` rows are removed
+   atomically by the schema-level ``ON DELETE CASCADE`` on
+   ``user_id`` when the user row goes away.
+3. If refresh-token revocation raises, the user delete is aborted
+   (fail-closed) so tokens are never left live alongside a deleted
+   user.
+"""
+
+from datetime import UTC, datetime, timedelta
+from typing import ClassVar
+
+import pytest
+
+from synthorg.api.auth.models import OrgRole, User
+from synthorg.api.auth.session import Session
+from synthorg.api.auth.user_service import UserService
+from synthorg.api.guards import HumanRole
+from synthorg.persistence.sqlite.backend import SQLitePersistenceBackend
+
+_UNUSED_STUB_METHOD = "not used in this test"
+_SIMULATED_REPO_FAILURE = "simulated refresh repo failure"
+
+
+def _make_user(
+    *,
+    user_id: str = "user-del-001",
+    username: str = "alice-del",
+    role: HumanRole = HumanRole.MANAGER,
+    org_roles: tuple[OrgRole, ...] = (),
+) -> User:
+    now = datetime.now(UTC)
+    return User(
+        id=user_id,
+        username=username,
+        password_hash="$argon2id$fake-hash",
+        role=role,
+        must_change_password=False,
+        org_roles=org_roles,
+        created_at=now,
+        updated_at=now,
+    )
+
+
+def _make_session(
+    *,
+    session_id: str,
+    user_id: str,
+    username: str,
+    role: HumanRole = HumanRole.MANAGER,
+) -> Session:
+    now = datetime.now(UTC)
+    return Session(
+        session_id=session_id,
+        user_id=user_id,
+        username=username,
+        role=role,
+        ip_address="127.0.0.1",
+        user_agent="pytest",
+        created_at=now,
+        last_active_at=now,
+        expires_at=now + timedelta(hours=1),
+    )
+
+
+@pytest.mark.integration
+class TestUserDeletionCascade:
+    """End-to-end cascade on ``DELETE /users/{id}`` via UserService."""
+
+    async def test_delete_revokes_refresh_tokens_then_cascades(
+        self,
+        on_disk_backend: SQLitePersistenceBackend,
+    ) -> None:
+        """delete() revokes active refresh tokens and FK cascades the rest."""
+        user = _make_user()
+        await on_disk_backend.users.save(user)
+
+        session = _make_session(
+            session_id="sess-del-001",
+            user_id=user.id,
+            username=user.username,
+        )
+        await on_disk_backend.sessions.create(session)
+
+        expires = datetime.now(UTC) + timedelta(hours=1)
+        await on_disk_backend.refresh_tokens.create(
+            "token-hash-del-001",
+            session.session_id,
+            user.id,
+            expires,
+        )
+
+        service = UserService(
+            repo=on_disk_backend.users,
+            refresh_tokens=on_disk_backend.refresh_tokens,
+        )
+
+        deleted = await service.delete(
+            user.id,
+            deleted_by_user_id="admin-001",
+        )
+
+        assert deleted is True
+        # User row gone
+        assert await on_disk_backend.users.get(user.id) is None
+        # Session cascaded via FK
+        assert await on_disk_backend.sessions.get(session.session_id) is None
+        # Refresh token rows cascaded via FK (revoke_by_user flipped used=1
+        # first, then the FK cascade dropped the row)
+        remaining = await on_disk_backend.refresh_tokens.revoke_by_user(user.id)
+        assert remaining == 0
+
+    async def test_delete_without_refresh_repo_still_cascades(
+        self,
+        on_disk_backend: SQLitePersistenceBackend,
+    ) -> None:
+        """Cascade works even when UserService has no refresh_tokens repo."""
+        user = _make_user(user_id="user-del-002", username="bob-del")
+        await on_disk_backend.users.save(user)
+
+        session = _make_session(
+            session_id="sess-del-002",
+            user_id=user.id,
+            username=user.username,
+        )
+        await on_disk_backend.sessions.create(session)
+
+        service = UserService(repo=on_disk_backend.users)
+
+        deleted = await service.delete(
+            user.id,
+            deleted_by_user_id="admin-001",
+        )
+
+        assert deleted is True
+        assert await on_disk_backend.users.get(user.id) is None
+        assert await on_disk_backend.sessions.get(session.session_id) is None
+
+    async def test_delete_missing_user_returns_false(
+        self,
+        on_disk_backend: SQLitePersistenceBackend,
+    ) -> None:
+        """delete() returns False when no user row matches."""
+        service = UserService(
+            repo=on_disk_backend.users,
+            refresh_tokens=on_disk_backend.refresh_tokens,
+        )
+
+        deleted = await service.delete(
+            "user-does-not-exist",
+            deleted_by_user_id="admin-001",
+        )
+
+        assert deleted is False
+
+    async def test_delete_fails_closed_when_revocation_raises(
+        self,
+        on_disk_backend: SQLitePersistenceBackend,
+    ) -> None:
+        """If refresh-token revocation raises, the user delete is aborted."""
+        user = _make_user(user_id="user-del-003", username="carol-del")
+        await on_disk_backend.users.save(user)
+
+        class _RaisingRefreshRepo:
+            """Stub that simulates a failing refresh-token backend."""
+
+            _revoked: ClassVar[set[str]] = set()
+
+            async def create(self, *args: object, **kwargs: object) -> None:
+                del args, kwargs
+                raise AssertionError(_UNUSED_STUB_METHOD)
+
+            async def consume(self, *args: object, **kwargs: object) -> None:
+                del args, kwargs
+                raise AssertionError(_UNUSED_STUB_METHOD)
+
+            async def revoke_by_session(self, session_id: str) -> int:
+                del session_id
+                raise AssertionError(_UNUSED_STUB_METHOD)
+
+            async def revoke_by_user(self, user_id: str) -> int:
+                del user_id
+                raise RuntimeError(_SIMULATED_REPO_FAILURE)
+
+            async def cleanup_expired(self) -> int:
+                raise AssertionError(_UNUSED_STUB_METHOD)
+
+        service = UserService(
+            repo=on_disk_backend.users,
+            refresh_tokens=_RaisingRefreshRepo(),
+        )
+
+        with pytest.raises(RuntimeError, match=_SIMULATED_REPO_FAILURE):
+            await service.delete(
+                user.id,
+                deleted_by_user_id="admin-001",
+            )
+
+        # User row survives -- fail-closed semantics
+        still_there = await on_disk_backend.users.get(user.id)
+        assert still_there is not None
+        assert still_there.id == user.id

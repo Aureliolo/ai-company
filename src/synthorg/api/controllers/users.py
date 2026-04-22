@@ -40,9 +40,13 @@ logger = get_logger(__name__)
 def _service(state: State) -> UserService:
     """Build the per-request :class:`UserService`.
 
-    Threads the refresh-token repo so ``delete()`` cascades revocation
-    (CFG-1 audit / GDPR): sessions + api_keys cascade via schema FK,
-    refresh tokens cascade here.
+    Threads the refresh-token repo so ``delete()`` can explicitly
+    revoke outstanding refresh tokens before the DB delete as
+    defense-in-depth (CFG-1 audit / GDPR). Sessions, api_keys, and
+    refresh_tokens are all also removed by the schema's
+    ``ON DELETE CASCADE`` on ``user_id`` when the user row goes
+    away -- the explicit revocation runs first so tokens stop
+    minting access tokens immediately.
     """
     persistence = state.app_state.persistence
     return UserService(

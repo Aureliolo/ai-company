@@ -190,8 +190,8 @@ async def _audit_retention_loop(app_state: AppState) -> None:
     """
     tick_seconds = 86_400.0
     while True:
-        await asyncio.sleep(tick_seconds)
         await _audit_retention_tick(app_state)
+        await asyncio.sleep(tick_seconds)
 
 
 async def _maybe_promote_first_owner(app_state: AppState) -> None:

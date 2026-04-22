@@ -62,6 +62,7 @@ _r.register(
         restart_required=True,
         min_value=0.0,
         max_value=1.0,
+        yaml_path="budget.cost_optimizer.efficiency_lower_bound_factor",
     )
 )
 

@@ -259,6 +259,7 @@ class CostOptimizer:
             start=start,
             end=end,
             threshold_factor=self._config.inefficiency_threshold_factor,
+            lower_bound_factor=self._config.efficiency_lower_bound_factor,
         )
 
         logger.info(
@@ -327,6 +328,7 @@ class CostOptimizer:
             start=start,
             end=end,
             threshold_factor=self._config.inefficiency_threshold_factor,
+            lower_bound_factor=self._config.efficiency_lower_bound_factor,
         )
 
         logger.info(

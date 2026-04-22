@@ -91,8 +91,8 @@ These environment variables are read by the code but were previously undocumente
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `SYNTHORG_DATABASE_URL` | *(unset)* | Postgres connection URL (e.g. `postgres://user:pass@host:5432/synthorg`). Setting this switches the persistence backend from SQLite to Postgres regardless of `SYNTHORG_PERSISTENCE_BACKEND`. |
-| `SYNTHORG_POSTGRES_SSL_MODE` | parsed from URL | Override Postgres SSL mode (`disable`, `require`, `verify-ca`, `verify-full`). Omit to honor the URL query string. |
+| `SYNTHORG_DATABASE_URL` | *(unset)* | Postgres connection URL (e.g. `postgres://user:pass@host:5432/synthorg`). Setting this switches the persistence backend from SQLite to Postgres regardless of `SYNTHORG_PERSISTENCE_BACKEND`. Query parameters are **not** supported in this URL -- `_postgres_config_from_url()` rejects them up front; route `sslmode` overrides through `SYNTHORG_POSTGRES_SSL_MODE` instead. |
+| `SYNTHORG_POSTGRES_SSL_MODE` | `require` | Override Postgres SSL mode (`disable`, `require`, `verify-ca`, `verify-full`). When unset, the default comes from `PostgresConfig.ssl_mode` (`"require"`), which rejects plaintext connections. |
 | `SYNTHORG_NATS_URL` | `nats://localhost:4222` | NATS server URL for the distributed task queue. Required when `queue.enabled=true`. Must use `nats://`, `tls://`, or `nats+tls://`. |
 | `SYNTHORG_NATS_STREAM_PREFIX` | `SYNTHORG` | JetStream stream name prefix. The bus stream is `<prefix>_BUS`; the KV bucket is `<prefix>_BUS_CHANNELS`. |
 | `SYNTHORG_ARTIFACT_DIR` | `/data` (Postgres) or DB path directory (SQLite) | Filesystem path for artifact storage. Container deployments usually bind-mount this. |
@@ -105,7 +105,7 @@ These environment variables are read by the code but were previously undocumente
 
 ### Settings-registry env vars
 
-Every registered setting automatically accepts an env-var override of the form `SYNTHORG_<NAMESPACE>_<KEY>` (uppercase, with dots in `yaml_path` replaced by underscores). For example, setting `SYNTHORG_API_CORS_ALLOWED_ORIGINS='["http://localhost:5173"]'` overrides the CORS origin list for the current process. See [Settings Reference](settings-reference.md) for the full catalog.
+Every registered setting automatically accepts an env-var override of the form `SYNTHORG_<NAMESPACE>_<KEY>`, where `<NAMESPACE>` and `<KEY>` are the registered setting's namespace and key uppercased (they are **not** derived from the setting's `yaml_path`). For example, setting `SYNTHORG_API_CORS_ALLOWED_ORIGINS='["http://localhost:5173"]'` overrides the CORS origin list for the current process. See [Settings Reference](settings-reference.md) for the full catalog.
 
 **Resolution chain** (first match wins, in `synthorg.telemetry.collector._resolve_environment`):
 

@@ -91,6 +91,7 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
         A tuple of (on_startup, on_shutdown) callback lists.
     """
     _ticket_cleanup_task: asyncio.Task[None] | None = None
+    _audit_retention_task: asyncio.Task[None] | None = None
     _auto_wired_dispatcher: SettingsChangeDispatcher | None = None
     _health_prober: ProviderHealthProber | None = None
     _training_memory_backend: object | None = None
@@ -108,7 +109,8 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
             )
 
     async def on_startup() -> None:  # noqa: C901, PLR0912, PLR0915
-        nonlocal _ticket_cleanup_task, _auto_wired_dispatcher
+        nonlocal _ticket_cleanup_task, _audit_retention_task
+        nonlocal _auto_wired_dispatcher
         nonlocal _health_prober, _training_memory_backend
         logger.info(API_APP_STARTUP, version=__version__)
         await _safe_startup(
@@ -333,6 +335,18 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
         _ticket_cleanup_task.add_done_callback(_on_cleanup_task_done)
 
         # CFG-1: audit retention purge loop (once every 24h).
+        # Idempotent: cancel any prior retention task before spawning a
+        # fresh one so tasks do not accumulate when lifespan re-enters.
+        if _audit_retention_task is not None and not _audit_retention_task.done():
+            _audit_retention_task.cancel()
+            try:
+                await _audit_retention_task
+            except asyncio.CancelledError:
+                pass
+            except MemoryError, RecursionError:
+                raise
+            except Exception:  # noqa: S110 -- already logged via done-callback
+                pass
         _audit_retention_task = asyncio.create_task(
             _audit_retention_loop(app_state),
             name="audit-retention",
@@ -408,7 +422,8 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
                 )
 
     async def on_shutdown() -> None:  # noqa: C901, PLR0912, PLR0915
-        nonlocal _ticket_cleanup_task, _auto_wired_dispatcher
+        nonlocal _ticket_cleanup_task, _audit_retention_task
+        nonlocal _auto_wired_dispatcher
         nonlocal _health_prober, _training_memory_backend
         # Disconnect training memory backend if auto-wired.
         if _training_memory_backend is not None:
@@ -430,6 +445,11 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
             with contextlib.suppress(asyncio.CancelledError):
                 await _ticket_cleanup_task
             _ticket_cleanup_task = None
+        if _audit_retention_task is not None:
+            _audit_retention_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await _audit_retention_task
+            _audit_retention_task = None
         logger.info(API_APP_SHUTDOWN, version=__version__)
         if _health_prober is not None:
             await _try_stop(

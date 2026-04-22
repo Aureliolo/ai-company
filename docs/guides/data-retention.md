@@ -18,7 +18,7 @@ lives, how long it is retained, and how it is removed.
 | `api_keys.key_hash` | `api_keys` | Until revoked or `expires_at` | FK cascade on user delete + scheduled cleanup |
 | `login_attempts.ip_address` | `login_attempts` | 15 minutes (default lockout window) | Lockout cleanup loop |
 | `audit_entries.agent_id`, `.arguments_hash` | `audit_entries` | `security.audit_retention_days` (default 730 = 2 years) | Audit retention loop (daily) |
-| Refresh token hashes | In-memory only | Until TTL expires | `UserService.delete()` revocation + periodic sweep |
+| Refresh token hashes | `refresh_tokens` | Until revoked or `expires_at` | `UserService.delete()` explicit revocation + FK cascade on user delete + periodic sweep of expired rows |
 | `tasks.created_by`, `artifacts.created_by` | respective tables | Indefinite; authorship preserved | Not cascaded on user delete (content outlives its author) |
 | Client profile / feedback / requests | `client_*` tables | Indefinite; authorship preserved | Not cascaded on user delete |
 
@@ -26,14 +26,19 @@ lives, how long it is retained, and how it is removed.
 
 When an operator issues `DELETE /api/v1/users/{user_id}` the server:
 
-1. **Revokes refresh tokens** -- the `UserService.delete()` method calls
+1. **Revokes refresh tokens (defense-in-depth)** -- the
+   `UserService.delete()` method calls
    `RefreshTokenRepository.revoke_by_user(user_id)` before the DB
-   delete so outstanding refresh tokens cannot continue to mint
-   access tokens.
-2. **Cascades via foreign key** -- the `api_keys` and `sessions`
-   tables declare `user_id TEXT NOT NULL REFERENCES users(id) ON
-   DELETE CASCADE`, so all API keys and active sessions (including
-   their recorded IP/UA) are removed atomically.
+   delete so outstanding tokens cannot continue to mint access
+   tokens even while the delete is in flight or retried. If the
+   revocation raises, the user delete is aborted (fail-closed) so
+   tokens are never left live alongside a deleted user.
+2. **Cascades via foreign key** -- the `api_keys`, `sessions`, and
+   `refresh_tokens` tables all declare
+   `user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE`,
+   so API keys, active sessions (including their recorded IP/UA),
+   and any remaining refresh token rows are removed atomically
+   when the user row is deleted.
 3. **Preserves audit entries** -- `audit_entries.agent_id` carries
    the agent identifier, not the user id; there is no FK from audit
    entries to users. Audit integrity is intentionally held above
@@ -43,8 +48,10 @@ When an operator issues `DELETE /api/v1/users/{user_id}` the server:
    author; removing the author would destroy project history.
 
 The cascade set is covered by integration tests in
-`tests/integration/api/test_user_deletion_cascade.py` (both SQLite
-and Postgres conformance variants).
+`tests/integration/api/test_user_deletion_cascade.py`, which
+exercise `UserService.delete()` end-to-end against the SQLite
+backend and assert the refresh-token revocation + FK cascade
+behaviour.
 
 ## Audit retention window
 
@@ -65,7 +72,9 @@ hours. Each tick:
 3. Computes `cutoff = utcnow() - retention_days * 86400`.
 4. Calls `AuditRepository.purge_before(cutoff)` which issues
    `DELETE FROM audit_entries WHERE timestamp < cutoff`.
-5. Logs `AUDIT_RETENTION_PURGED(count=..., cutoff=...)`.
+5. Logs the result under the `API_APP_STARTUP` event with
+   `note="audit retention purge completed"` plus the deleted row
+   count, configured retention window, and cutoff timestamp.
 
 Both SQLite and Postgres backends implement
 `purge_before` (see `src/synthorg/persistence/sqlite/audit_repository.py`
