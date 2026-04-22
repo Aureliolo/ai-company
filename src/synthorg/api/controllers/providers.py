@@ -51,6 +51,7 @@ from synthorg.api.errors import (
 )
 from synthorg.api.guards import require_ceo_or_manager, require_read_access
 from synthorg.api.path_params import PathName  # noqa: TC001
+from synthorg.api.rate_limits import per_op_concurrency, per_op_rate_limit
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
@@ -95,7 +96,15 @@ class ProviderController(Controller):
 
     @post(
         "/probe-preset",
-        guards=[require_ceo_or_manager],
+        guards=[
+            require_ceo_or_manager,
+            per_op_rate_limit(
+                "providers.probe",
+                max_requests=10,
+                window_seconds=60,
+                key="user",
+            ),
+        ],
     )
     async def probe_preset(
         self,
@@ -245,7 +254,15 @@ class ProviderController(Controller):
 
     @post(
         "/",
-        guards=[require_ceo_or_manager],
+        guards=[
+            require_ceo_or_manager,
+            per_op_rate_limit(
+                "providers.create",
+                max_requests=10,
+                window_seconds=60,
+                key="user",
+            ),
+        ],
     )
     async def create_provider(
         self,
@@ -292,7 +309,15 @@ class ProviderController(Controller):
 
     @post(
         "/from-preset",
-        guards=[require_ceo_or_manager],
+        guards=[
+            require_ceo_or_manager,
+            per_op_rate_limit(
+                "providers.create_from_preset",
+                max_requests=10,
+                window_seconds=60,
+                key="user",
+            ),
+        ],
     )
     async def create_from_preset(
         self,
@@ -336,7 +361,15 @@ class ProviderController(Controller):
 
     @put(
         "/{name:str}",
-        guards=[require_ceo_or_manager],
+        guards=[
+            require_ceo_or_manager,
+            per_op_rate_limit(
+                "providers.update",
+                max_requests=20,
+                window_seconds=60,
+                key="user",
+            ),
+        ],
     )
     async def update_provider(
         self,
@@ -382,7 +415,15 @@ class ProviderController(Controller):
 
     @delete(
         "/{name:str}",
-        guards=[require_ceo_or_manager],
+        guards=[
+            require_ceo_or_manager,
+            per_op_rate_limit(
+                "providers.delete",
+                max_requests=5,
+                window_seconds=60,
+                key="user",
+            ),
+        ],
         status_code=HTTP_204_NO_CONTENT,
     )
     async def delete_provider(
@@ -412,7 +453,20 @@ class ProviderController(Controller):
 
     @post(
         "/{name:str}/discover-models",
-        guards=[require_ceo_or_manager],
+        guards=[
+            require_ceo_or_manager,
+            per_op_rate_limit(
+                "providers.discover_models",
+                max_requests=5,
+                window_seconds=60,
+                key="user",
+            ),
+        ],
+        opt=per_op_concurrency(
+            "providers.discover_models",
+            max_inflight=2,
+            key="user",
+        ),
     )
     async def discover_models(
         self,
@@ -461,7 +515,15 @@ class ProviderController(Controller):
 
     @post(
         "/{name:str}/test",
-        guards=[require_ceo_or_manager],
+        guards=[
+            require_ceo_or_manager,
+            per_op_rate_limit(
+                "providers.test",
+                max_requests=20,
+                window_seconds=60,
+                key="user",
+            ),
+        ],
     )
     async def test_connection(
         self,
@@ -526,7 +588,15 @@ class ProviderController(Controller):
 
     @post(
         "/discovery-policy/entries",
-        guards=[require_ceo_or_manager],
+        guards=[
+            require_ceo_or_manager,
+            per_op_rate_limit(
+                "providers.allowlist_add",
+                max_requests=50,
+                window_seconds=60,
+                key="user",
+            ),
+        ],
     )
     async def add_allowlist_entry(
         self,
@@ -555,7 +625,15 @@ class ProviderController(Controller):
 
     @post(
         "/discovery-policy/remove-entry",
-        guards=[require_ceo_or_manager],
+        guards=[
+            require_ceo_or_manager,
+            per_op_rate_limit(
+                "providers.allowlist_remove",
+                max_requests=50,
+                window_seconds=60,
+                key="user",
+            ),
+        ],
     )
     async def remove_allowlist_entry(
         self,
@@ -586,7 +664,20 @@ class ProviderController(Controller):
 
     @post(
         "/{name:str}/models/pull",
-        guards=[require_ceo_or_manager],
+        guards=[
+            require_ceo_or_manager,
+            per_op_rate_limit(
+                "providers.pull_model",
+                max_requests=5,
+                window_seconds=300,
+                key="user",
+            ),
+        ],
+        opt=per_op_concurrency(
+            "providers.pull_model",
+            max_inflight=2,
+            key="user",
+        ),
         media_type="text/event-stream",
     )
     async def pull_model(
@@ -658,7 +749,15 @@ class ProviderController(Controller):
 
     @delete(
         "/{name:str}/models/{model_id:path}",
-        guards=[require_ceo_or_manager],
+        guards=[
+            require_ceo_or_manager,
+            per_op_rate_limit(
+                "providers.delete_model",
+                max_requests=20,
+                window_seconds=60,
+                key="user",
+            ),
+        ],
         status_code=HTTP_204_NO_CONTENT,
     )
     async def delete_model(
@@ -714,7 +813,15 @@ class ProviderController(Controller):
 
     @put(
         "/{name:str}/models/{model_id:path}/config",
-        guards=[require_ceo_or_manager],
+        guards=[
+            require_ceo_or_manager,
+            per_op_rate_limit(
+                "providers.update_model_config",
+                max_requests=50,
+                window_seconds=60,
+                key="user",
+            ),
+        ],
     )
     async def update_model_config(
         self,
