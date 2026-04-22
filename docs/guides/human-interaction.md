@@ -89,22 +89,27 @@ abuse-prone operations.  Guards are declared at the route level via
 `per_op_rate_limit("<op>", max_requests=N, window_seconds=W, key=...)`
 from `synthorg/api/rate_limits/guard.py`.
 
-- **Backend**: `SlidingWindowStore` protocol (default `memory`; set
-  `api.per_op_rate_limit.backend: redis` to share sliding-window state
-  across workers).  Configuration lives in `PerOpRateLimitConfig` under
-  `api.per_op_rate_limit` with an `overrides: {op -> (max_requests,
-  window_seconds)}` map that takes effect without restart.  Setting
-  either component to `0` disables the operation; negative values are
-  rejected at startup with a logged error for diagnosability.
+- **Backend**: `SlidingWindowStore` protocol; only `backend: memory` is
+  wired today.  `PerOpRateLimitConfig` accepts `backend: redis` as a
+  forward-compatible config value, but the factory raises
+  `NotImplementedError` on startup if it is selected -- a shared-state
+  backend is tracked for a future release.  Configuration lives in
+  `PerOpRateLimitConfig` under `api.per_op_rate_limit` with an
+  `overrides: {op -> (max_requests, window_seconds)}` map that takes
+  effect without restart.  Setting either component to `0` disables
+  the operation; negative values are rejected at startup with a logged
+  error for diagnosability.
 - **Keying**: `user`, `ip`, or `user_or_ip` (default).  The ``ip``
   source is the proxy-normalised ``trusted_client_ip`` populated on
   the ASGI scope; the raw ``X-Forwarded-For`` header is NOT trusted.
 - **Denials** raise `PerOperationRateLimitError` (`error_code=5001`,
-  `error_category=rate_limit`, `retryable=True`).  `handle_api_error()`
-  emits a `Retry-After` header whenever the exception supplies
-  `retry_after`; the header value agrees with the envelope's
-  `retry_after` field.  Missing wiring is treated as a deployment error
-  and fails closed with a 429 rather than silently skipping.
+  `error_category=rate_limit`, `retryable=True`).  `handle_domain_error()`
+  emits a `Retry-After` header only when the exception supplies both
+  `retry_after` and `retryable=True`; the header value agrees with the
+  envelope's `retry_after` field, so 429 / 503-style responses can
+  never claim `retryable: false` while handing clients a `Retry-After`.
+  Missing wiring is treated as a deployment error and fails closed with
+  a 429 rather than silently skipping.
 - **Throttled endpoints** (initial set):
   - `POST /api/v1/auth/ws-ticket` (20/60s by user)
   - `PUT /api/v1/artifacts/{id}/content` (10/60s by user)
@@ -120,10 +125,10 @@ from `synthorg/api/rate_limits/guard.py`.
 ## Domain Error Handler Registration
 
 A single `handle_domain_error` handler (registered in
-`api/exception_handlers.EXCEPTION_HANDLERS`) maps seven domain error
+`api/exception_handlers.EXCEPTION_HANDLERS`) maps eight domain error
 base classes to RFC 9457 responses: `EngineError`,
-`BudgetExhaustedError`, `ProviderError`, `OntologyError`,
-`CommunicationError`, `IntegrationError`, `ToolError`.  Each base
+`BudgetExhaustedError`, `MixedCurrencyAggregationError`, `ProviderError`,
+`OntologyError`, `CommunicationError`, `IntegrationError`, `ToolError`.  Each base
 carries `status_code` / `error_code` / `error_category` / `retryable`
 / `default_message` as ClassVar metadata so MRO dispatch picks up
 subclass overrides automatically.  5xx responses return the class-level
@@ -187,7 +192,7 @@ and retry guidance.
     The Web UI is built as a React 19 + shadcn/ui + Tailwind CSS dashboard. The API
     remains fully self-sufficient for all operations -- the dashboard is a thin client.
 
-For the full page list, navigation hierarchy, URL routing map, and WebSocket channel subscriptions, see [Page Structure & IA](../design/page-structure.md).
+For the full-page list, navigation hierarchy, URL routing map, and WebSocket channel subscriptions, see [Page Structure & IA](../design/page-structure.md).
 
 **Primary navigation** (sidebar, always visible):
 

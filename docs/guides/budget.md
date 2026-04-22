@@ -174,8 +174,9 @@ Every LLM API call is recorded as a cost record with full context:
 
 | Endpoint | Description |
 |----------|-------------|
-| `GET /api/v1/budget/status` | Current budget status (spent, remaining, alerts) |
+| `GET /api/v1/budget/config` | Active `BudgetConfig` (limits, alert thresholds, cascade rules, currency) |
 | `GET /api/v1/budget/records` | Cost records with filtering and aggregation |
+| `GET /api/v1/budget/agents/{agent_id}` | Per-agent cost summary |
 
 ---
 

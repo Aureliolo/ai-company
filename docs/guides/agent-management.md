@@ -87,7 +87,7 @@ curl -X POST http://localhost:3001/api/v1/agents \
 
 ## Updating an agent
 
-Partial updates via `PATCH /api/v1/agents/{name}`. Immutable fields (`id`, `hiring_date`) cannot be changed; attempting to do so returns 422.
+Partial updates via `PATCH /api/v1/agents/{name}`. The server validates conflicts and domain constraints (e.g. duplicate names, missing departments); consult the OpenAPI schema for the exact accepted fields and response codes.
 
 ```bash
 # Change model tier
@@ -137,15 +137,13 @@ curl -X DELETE http://localhost:3001/api/v1/agents/${AGENT_NAME} \
 
 The `DELETE /api/v1/agents/{agent_name}` endpoint does not accept a request body. Approval metadata (reason, justification) is recorded separately when the `CRITICAL`-risk approval gate captures the decision.
 
-What happens:
+Current behavior (`delete_agent` in `src/synthorg/api/services/_org_agent_mutations.py`):
 
-1. Active tasks are reassigned via `TaskReassignmentStrategy` (default: return to unassigned queue with priority boost).
-2. Agent memories are archived to `ArchivalStore` via `MemoryArchivalStrategy` (default: full snapshot, read-only).
-3. Semantic + procedural memories are selectively promoted to `OrgMemoryBackend` (rule-based).
-4. Hot memory store is cleared.
-5. Agent transitions to `TERMINATED`.
+1. The API validates the agent exists and runs org-mutation guard checks.
+2. The agent record is removed from the active org configuration.
+3. A company snapshot is persisted and an `API_AGENT_DELETED` event is logged and broadcast on the `agents` WebSocket channel.
 
-No data is destroyed -- just moved out of the active path.
+Planned (not yet implemented): automated task reassignment via `TaskReassignmentStrategy`, memory archival via `MemoryArchivalStrategy`, selective promotion to `OrgMemoryBackend`, and an explicit `TERMINATED` lifecycle state. Until those land, fires are best paired with manual task reassignment before the DELETE call.
 
 ## Rehiring from archive
 
