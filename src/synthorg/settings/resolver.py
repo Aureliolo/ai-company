@@ -661,8 +661,11 @@ class ConfigResolver:
         ``model_copy``) because all its fields are registered in the
         settings registry.  The ``default_topology`` setting is
         consumed by :class:`MultiAgentCoordinator` via the
-        ``default_topology=config.topology`` kwarg wired in
-        ``engine/coordination/factory.py``; it is not part of
+        ``default_topology_provider`` kwarg wired in
+        ``engine/coordination/factory.py`` -- the provider is a
+        callable that reads ``config.topology`` at call time so
+        runtime setting changes propagate without a coordinator
+        rebuild. ``default_topology`` is not part of
         ``CoordinationConfig`` because that model is reconstructed
         per request rather than rebuilt at settings-change time.
 

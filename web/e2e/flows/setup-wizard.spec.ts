@@ -15,11 +15,15 @@ test.describe('Setup wizard critical flow', () => {
     await mockApiRoutes(page)
   })
 
-  test('loads the setup wizard root', async ({ page }) => {
+  test('loads the setup wizard root with its first-step heading', async ({ page }) => {
     await page.goto('/setup')
     await expect(page).toHaveURL(/\/setup/)
-    // The wizard renders a heading even on first paint; the catch-all
-    // mock ensures data loads resolve instantly.
+    // The main region mounts on first paint.
     await expect(page.locator('main')).toBeVisible()
+    // Assert the wizard actually rendered a heading (not just that
+    // the generic <main> container is present). The wizard renders
+    // its step title as an ``h1`` / ``h2`` element; matching by
+    // role keeps the assertion resilient to copy edits.
+    await expect(page.getByRole('heading').first()).toBeVisible()
   })
 })

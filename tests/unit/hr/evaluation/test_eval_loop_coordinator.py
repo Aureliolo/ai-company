@@ -292,7 +292,9 @@ class TestEvalLoopCoordinatorProposeActions:
 
     async def test_malformed_pattern_skipped(self) -> None:
         coordinator = _make_coordinator()
-        # No colon means unparseable; should be silently skipped.
+        # No colon means unparseable; the coordinator logs a warning
+        # (EVAL_LOOP_ACTION_PROPOSED with reason="malformed_pattern")
+        # and skips the entry rather than emitting a bogus action.
         actions = await coordinator._propose_actions(
             ("justatoken",),
         )

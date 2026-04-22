@@ -73,8 +73,14 @@ def assert_accuracy_at_least(outcome: EvalOutcome, threshold: float) -> None:
     """Fail the test if ``outcome.accuracy`` is below ``threshold``.
 
     Also fails fast when ``outcome.total == 0`` (no examples were
-    run) so a miswired suite cannot silently report success.
+    run) so a miswired suite cannot silently report success, and
+    rejects thresholds outside the valid probability range so a
+    typo like ``-0.9`` or ``90`` cannot silently turn the contract
+    into "always passes" / "never passes".
     """
+    if not 0.0 <= threshold <= 1.0:
+        msg = f"threshold must be between 0.0 and 1.0 inclusive; got {threshold!r}"
+        raise ValueError(msg)
     if outcome.total == 0:
         msg = (
             "prompt eval ran zero labelled examples -- suite may be "

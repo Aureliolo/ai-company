@@ -212,6 +212,11 @@ def validate_column_transition(
 ) -> None:
     """Validate that a Kanban column transition is allowed.
 
+    The success INFO log (``KANBAN_COLUMN_TRANSITION``) is emitted by
+    :meth:`StateMachine.validate` via its ``transition_event``
+    wiring; this thin wrapper just forwards the call so callers
+    don't need to know about the underlying machine.
+
     Args:
         current: The current column.
         target: The desired target column.
@@ -220,11 +225,6 @@ def validate_column_transition(
         ValueError: If the transition is not allowed.
     """
     _COLUMN_MACHINE.validate(current, target)
-    logger.info(
-        KANBAN_COLUMN_TRANSITION,
-        from_column=current.value,
-        to_column=target.value,
-    )
 
 
 def resolve_task_transitions(

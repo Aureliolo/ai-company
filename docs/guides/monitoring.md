@@ -55,7 +55,7 @@ The endpoint is unauthenticated by default; put it behind your normal scrape-ACL
 | `synthorg_provider_tokens_total` | Counter | `provider`, `model`, `direction` | Input/output tokens by model |
 | `synthorg_provider_cost_total` | Counter | `provider`, `model` | Cost per provider call |
 | `synthorg_api_requests_total` | Counter | `method`, `path`, `status_class` | API request rate |
-| `synthorg_tool_invocations_total` | Counter | `tool`, `outcome` | Tool invocations by outcome |
+| `synthorg_tool_invocations_total` | Counter | `tool_name`, `outcome` | Tool invocations by outcome |
 
 ### HYG-1 additions
 
@@ -63,7 +63,7 @@ The endpoint is unauthenticated by default; put it behind your normal scrape-ACL
 |--------|------|--------|-------------|
 | `synthorg_escalation_queue_depth` | Gauge | `department` | Pending escalations awaiting decision |
 | `synthorg_agent_identity_version_changes_total` | Counter | `agent_id`, `change_type` | Identity-version lifecycle events |
-| `synthorg_workflow_execution_seconds` | Histogram | `workflow_id`, `status` | Workflow execution duration |
+| `synthorg_workflow_execution_seconds` | Histogram | `workflow_definition_id`, `status` | Workflow execution duration (``workflow_definition_id`` is the stable definition id, bounded) |
 
 ## Suggested PromQL queries
 

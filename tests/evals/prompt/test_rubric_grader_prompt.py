@@ -24,10 +24,13 @@ class TestRubricGraderPromptContract:
     """Guard rails for the LLM rubric grader prompt surface."""
 
     def test_temperature_is_zero(self) -> None:
-        """Grader must run at temperature=0 for deterministic scores."""
-        # The grader builds its CompletionConfig inline; locate the
-        # exact keyword using the module's source so the assertion
-        # survives reflow edits.
+        """Grader must run at temperature=0 for deterministic scores.
+
+        Checked via an AST walk (resilient to formatting) and a
+        substring cross-check (guards against accidentally removing
+        the keyword during a refactor).
+        """
+        import ast
         import inspect
 
         from synthorg.engine.quality.graders.llm import LLMRubricGrader
@@ -35,6 +38,24 @@ class TestRubricGraderPromptContract:
         source = inspect.getsource(LLMRubricGrader)
         assert "temperature=0.0" in source, (
             "LLMRubricGrader must pin temperature=0.0 for determinism"
+        )
+        # AST-level check: find a ``temperature=0.0`` keyword
+        # argument inside a ``Call`` (CompletionConfig construction)
+        # anywhere in the grader class. This refuses to pass if the
+        # substring appears only in a docstring.
+        tree = ast.parse(source)
+        found = any(
+            isinstance(node, ast.keyword)
+            and node.arg == "temperature"
+            and isinstance(node.value, ast.Constant)
+            and isinstance(node.value.value, int | float)
+            and node.value.value == 0
+            for node in ast.walk(tree)
+        )
+        assert found, (
+            "LLMRubricGrader must pass ``temperature=0.0`` as a "
+            "keyword argument when constructing CompletionConfig "
+            "(no matching ast.keyword node found)"
         )
 
     # Pinned SHA-256[:16] of the grader module source. When the

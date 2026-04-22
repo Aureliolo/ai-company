@@ -8,9 +8,16 @@ export type ReportPeriod = Schemas['ReportPeriod']
 export type ReportResponse = Schemas['ReportResponse']
 export type GenerateReportRequest = Schemas['GenerateReportRequest']
 
-export async function listReportPeriods(): Promise<ReportPeriod[]> {
+export interface ListReportPeriodsOptions {
+  signal?: AbortSignal
+}
+
+export async function listReportPeriods(
+  options: ListReportPeriodsOptions = {},
+): Promise<ReportPeriod[]> {
   const response = await apiClient.get<ApiResponse<ReportPeriod[]>>(
     '/reports/periods',
+    { signal: options.signal },
   )
   return unwrap(response)
 }

@@ -9,6 +9,11 @@ import hashlib
 import json
 from typing import TYPE_CHECKING
 
+from synthorg.engine.prompt_safety import (
+    TAG_TASK_DATA,
+    untrusted_content_directive,
+    wrap_untrusted,
+)
 from synthorg.observability import get_logger
 from synthorg.observability.events.memory import (
     MEMORY_RERANK_CACHE_MISS,
@@ -34,7 +39,8 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_RERANK_SYSTEM_PROMPT = """\
+_RERANK_SYSTEM_PROMPT = (
+    """\
 You are a retrieval re-ranker. Given a query and a list of memory \
 candidates, rank them by relevance to the query.
 
@@ -42,6 +48,8 @@ Respond with JSON: {{"ranking": [idx0, idx1, ...]}} where each idx \
 is the 0-based index of a candidate in the input list, ordered from \
 most to least relevant. Include ALL indices exactly once.
 """
+    "\n\n" + untrusted_content_directive((TAG_TASK_DATA,))
+)
 
 _MAX_CANDIDATE_CONTENT_CHARS = 500
 
@@ -196,9 +204,19 @@ class LLMQuerySpecificReranker:
             candidate_lines.append(
                 f"[{i}] score={c.combined_score:.2f} content={content_preview!r}",
             )
-        user_content = f"Query: {query.text}\n\nCandidates:\n" + "\n".join(
-            candidate_lines
+        # SEC-1: both the query text and the candidate payload come
+        # from attacker-controllable storage (stored memories, user
+        # queries) and must be fenced with ``wrap_untrusted`` so the
+        # model cannot confuse data for instructions. The system
+        # prompt appends ``untrusted_content_directive`` at import
+        # time so the model is explicitly told what lives inside
+        # ``<task-data>`` tags.
+        wrapped_query = wrap_untrusted(TAG_TASK_DATA, query.text)
+        wrapped_candidates = wrap_untrusted(
+            TAG_TASK_DATA,
+            "\n".join(candidate_lines),
         )
+        user_content = f"Query:\n{wrapped_query}\n\nCandidates:\n{wrapped_candidates}"
         messages: list[ChatMessage] = [
             ChatMessage(
                 role=MessageRole.SYSTEM,

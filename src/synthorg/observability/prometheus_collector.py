@@ -427,6 +427,11 @@ class PrometheusCollector:
             depth: Current count of pending escalations.
         """
         if not department:
+            logger.warning(
+                METRICS_SCRAPE_FAILED,
+                component="escalation_queue_depth",
+                reason="empty_department",
+            )
             msg = "record_escalation_queue_depth: department must be non-empty"
             raise ValueError(msg)
         require_non_negative("record_escalation_queue_depth: depth", depth)
@@ -444,6 +449,11 @@ class PrometheusCollector:
         (``"created"``, ``"updated"``, ``"rolled_back"``, ``"archived"``).
         """
         if not agent_id:
+            logger.warning(
+                METRICS_SCRAPE_FAILED,
+                component="agent_identity_change",
+                reason="empty_agent_id",
+            )
             msg = "record_agent_identity_change: agent_id must be non-empty"
             raise ValueError(msg)
         require_label(
@@ -470,6 +480,11 @@ class PrometheusCollector:
         Prometheus cardinality in check.
         """
         if not workflow_definition_id:
+            logger.warning(
+                METRICS_SCRAPE_FAILED,
+                component="workflow_execution",
+                reason="empty_workflow_definition_id",
+            )
             msg = "record_workflow_execution: workflow_definition_id must be non-empty"
             raise ValueError(msg)
         require_label(

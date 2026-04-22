@@ -34,49 +34,35 @@ export default function ReportsPage() {
   const toast = useToastStore((state) => state.add)
 
   // Shared fetch helper so the initial load and the retry handler
-  // emit the same ``log.error`` on failure -- previously the retry
-  // handler silently swallowed errors while the initial load logged.
-  const fetchPeriods = useCallback(async () => {
+  // use identical wiring (same log, same state transitions). The
+  // ``AbortController`` replaces the previous ``cancelled`` flag so
+  // in-flight requests are actually cancelled on unmount rather than
+  // just having their state updates skipped.
+  const fetchPeriods = useCallback(async (signal?: AbortSignal) => {
     setLoadingPeriods(true)
     setPeriodsError(null)
     try {
-      const result = await listReportPeriods()
+      const result = await listReportPeriods({ signal })
+      if (signal?.aborted) return
       setPeriods(result)
     } catch (err) {
+      if (signal?.aborted) return
       log.error('listReportPeriods', err)
       setPeriodsError(getErrorMessage(err))
     } finally {
-      setLoadingPeriods(false)
+      if (!signal?.aborted) {
+        setLoadingPeriods(false)
+      }
     }
   }, [])
 
   useEffect(() => {
-    let cancelled = false
-
-    async function load() {
-      try {
-        const result = await listReportPeriods()
-        if (!cancelled) {
-          setPeriods(result)
-          setPeriodsError(null)
-        }
-      } catch (err) {
-        log.error('listReportPeriods', err)
-        if (!cancelled) {
-          setPeriodsError(getErrorMessage(err))
-        }
-      } finally {
-        if (!cancelled) {
-          setLoadingPeriods(false)
-        }
-      }
-    }
-
-    void load()
+    const controller = new AbortController()
+    void fetchPeriods(controller.signal)
     return () => {
-      cancelled = true
+      controller.abort()
     }
-  }, [])
+  }, [fetchPeriods])
 
   const handleGenerate = useCallback(
     async (period: ReportPeriod) => {

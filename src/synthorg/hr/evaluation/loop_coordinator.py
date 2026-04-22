@@ -306,9 +306,14 @@ class EvalLoopCoordinator:
         entries via ``config.pattern_action_map`` -- keys are pillar
         values, values are free-form action ids.
 
-        Unknown patterns (neither in the override nor in the default
-        map) are silently skipped so experimental pattern types do
-        not emit bogus actions.
+        Malformed patterns (no ``:`` separator) and patterns for
+        which neither the operator override nor
+        :data:`_DEFAULT_PATTERN_ACTIONS` defines a mapping are
+        logged at WARNING level (via ``EVAL_LOOP_ACTION_PROPOSED``
+        with ``reason="malformed_pattern"`` / ``"unmapped_pattern"``)
+        and skipped. Operators chasing missing ``proposed_actions``
+        can grep the structured logs for those reasons to see which
+        patterns were dropped.
 
         Args:
             patterns: Patterns returned by :meth:`_identify_patterns`.

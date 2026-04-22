@@ -28,6 +28,7 @@ from typing import Final
 from synthorg.core.enums import TaskStatus
 from synthorg.core.state_machine import StateMachine
 from synthorg.observability.events.task import (
+    TASK_TRANSITION,
     TASK_TRANSITION_CONFIG_ERROR,
     TASK_TRANSITION_INVALID,
 )
@@ -80,6 +81,7 @@ _MACHINE: Final[StateMachine[TaskStatus]] = StateMachine(
     display_label="task status",
     invalid_event=TASK_TRANSITION_INVALID,
     config_event=TASK_TRANSITION_CONFIG_ERROR,
+    transition_event=TASK_TRANSITION,
     all_states=TaskStatus,
 )
 

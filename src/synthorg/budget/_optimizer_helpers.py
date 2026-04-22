@@ -16,6 +16,7 @@ from synthorg.budget._aggregation import (
     sum_cost,
     sum_tokens,
 )
+from synthorg.budget._tracker_helpers import _assert_single_currency
 from synthorg.budget.currency import DEFAULT_CURRENCY, format_cost
 from synthorg.budget.enums import BudgetAlertLevel
 from synthorg.budget.optimizer_models import (
@@ -56,6 +57,11 @@ def _build_efficiency_from_records(
     lower_bound_factor: float,
 ) -> EfficiencyAnalysis:
     """Build an EfficiencyAnalysis from pre-fetched records."""
+    # Same-currency invariant: records that share aggregations must
+    # also share a currency so the resulting ``global_avg`` + per-
+    # agent ``cost_per_1k`` comparisons are meaningful. Mixed input
+    # raises ``MixedCurrencyAggregationError`` (HTTP 409) upstream.
+    _assert_single_currency(records)
     by_agent = group_by_agent(records)
     global_avg = _compute_global_avg_cost_per_1k(records)
 

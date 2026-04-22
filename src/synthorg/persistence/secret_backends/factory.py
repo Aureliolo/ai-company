@@ -241,12 +241,13 @@ def create_secret_backend(
     Raises:
         ValueError: If the backend type is misconfigured (missing
             ``db_path`` for ``encrypted_sqlite`` or missing
-            ``pg_pool`` for ``encrypted_postgres``). Truly unknown
-            backend types cannot reach this factory: the
-            ``backend_type`` ``Literal`` union is exhaustive and the
-            terminal ``assert_never(backend_type)`` call turns any
-            missing enum branch into a static type-check error at
-            the call site rather than a runtime surprise.
+            ``pg_pool`` for ``encrypted_postgres``).
+        AssertionError: Raised by ``typing.assert_never`` if a
+            ``backend_type`` value outside the exhaustive ``Literal``
+            union somehow reaches the factory (e.g. a call site
+            bypasses the type-check via ``cast`` or raw ``str``).
+            Normally unreachable -- the ``Literal`` union is
+            checked statically at every call site.
     """
     backend_type = config.backend_type
 
@@ -284,5 +285,13 @@ def create_secret_backend(
     # The Literal union on ``SecretBackendConfig.backend_type`` is
     # exhaustive; the ``assert_never`` marks this branch unreachable
     # so a future backend discriminator added without wiring a
-    # factory path fails type-check at the call site.
+    # factory path fails type-check at the call site. The ERROR log
+    # below gives operators runtime context if this defensive branch
+    # is ever hit (e.g. a call site bypasses the type-check via
+    # ``cast`` or raw ``str``).
+    logger.error(  # type: ignore[unreachable]
+        SECRET_BACKEND_UNAVAILABLE,
+        backend=str(backend_type),
+        reason="unreachable_backend_type",
+    )
     assert_never(backend_type)

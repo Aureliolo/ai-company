@@ -16,6 +16,7 @@ from synthorg.core.enums import Complexity, Priority, TaskType
 from synthorg.core.state_machine import StateMachine
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability.events.client import (
+    CLIENT_REQUEST_TRANSITION,
     CLIENT_REQUEST_TRANSITION_CONFIG_ERROR,
     CLIENT_REQUEST_TRANSITION_INVALID,
 )
@@ -60,6 +61,7 @@ _REQUEST_MACHINE: Final[StateMachine[RequestStatus]] = StateMachine(
     display_label="request",
     invalid_event=CLIENT_REQUEST_TRANSITION_INVALID,
     config_event=CLIENT_REQUEST_TRANSITION_CONFIG_ERROR,
+    transition_event=CLIENT_REQUEST_TRANSITION,
     all_states=RequestStatus,
 )
 

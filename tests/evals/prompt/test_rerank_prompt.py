@@ -27,6 +27,17 @@ class TestRerankPromptContract:
         CI shards, which poisons the cache keys computed from
         ``(query_text, candidate_ids)`` -- cache entries pinned to one
         ranking would then return different orderings on re-computation.
+
+        Checked both ways:
+
+        1. **Definition**: a ``temperature=0.0`` binding appears in the
+           module source (regex match on the CompletionConfig construction).
+        2. **Usage**: the module exposes a ``_RERANK_COMPLETION_CONFIG``
+           instance whose ``temperature`` attribute actually equals
+           ``0.0`` at runtime. Source matching alone can be fooled by
+           dead code or a commented example; runtime inspection proves
+           the config object the reranker passes to
+           ``self._provider.complete(..., config=...)`` is the pinned one.
         """
         import re
 
@@ -36,4 +47,9 @@ class TestRerankPromptContract:
         assert re.search(r"temperature\s*=\s*0(?:\.0+)?", source), (
             "llm_reranker must pin temperature=0.0 on its "
             "CompletionConfig for deterministic re-ranking"
+        )
+        runtime_config = llm_reranker._RERANK_COMPLETION_CONFIG
+        assert runtime_config.temperature == 0.0, (
+            "_RERANK_COMPLETION_CONFIG.temperature must equal 0.0 at runtime; "
+            f"got {runtime_config.temperature!r}"
         )
