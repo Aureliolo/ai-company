@@ -93,6 +93,27 @@ def _deserialize_row(
         raise QueryError(msg) from exc
 
 
+async def _rollback_quietly(db: aiosqlite.Connection) -> None:
+    """Roll back the shared aiosqlite connection, swallowing any errors.
+
+    The repository's write paths share a single connection, so an error
+    between ``execute`` and ``commit`` leaves the transaction open. Call
+    this from every ``except sqlite3.Error`` handler to avoid handing
+    the next caller a poisoned transaction. Rollback errors are logged
+    but not re-raised -- the outer handler is already raising a
+    ``QueryError`` that carries the original failure context.
+    """
+    try:
+        await db.rollback()
+    except sqlite3.Error as rollback_exc:
+        logger.debug(
+            PERSISTENCE_WORKFLOW_DEF_SAVE_FAILED,
+            stage="rollback_suppressed",
+            error_type=type(rollback_exc).__name__,
+            error=safe_error_description(rollback_exc),
+        )
+
+
 class SQLiteWorkflowDefinitionRepository:
     """SQLite-backed workflow definition repository.
 
@@ -199,6 +220,9 @@ WHERE id = ? AND revision = ?""",
                 raise VersionConflictError(msg)
             await self._db.commit()
         except sqlite3.Error as exc:
+            # Roll back the aiosqlite transaction so the shared
+            # connection cannot be poisoned for the next borrower.
+            await _rollback_quietly(self._db)
             msg = f"Failed to update workflow definition {definition.id!r}"
             logger.warning(
                 PERSISTENCE_WORKFLOW_DEF_SAVE_FAILED,
@@ -261,6 +285,7 @@ ON CONFLICT(id) DO NOTHING""",
             )
             await self._db.commit()
         except sqlite3.Error as exc:
+            await _rollback_quietly(self._db)
             msg = f"Failed to create workflow definition {definition.id!r}"
             logger.warning(
                 PERSISTENCE_WORKFLOW_DEF_SAVE_FAILED,
@@ -290,8 +315,11 @@ ON CONFLICT(id) DO NOTHING""",
             definition: Workflow definition model to persist.
 
         Raises:
-            QueryError: If the database operation fails.
+            QueryError: If the database operation fails or the
+                ``revision`` value is invalid (see
+                :meth:`_require_valid_revision`).
         """
+        self._require_valid_revision(definition)
         nodes_json = json.dumps(
             [n.model_dump(mode="json") for n in definition.nodes],
         )
@@ -367,6 +395,7 @@ WHERE workflow_definitions.revision = excluded.revision - 1""",
                 raise VersionConflictError(msg)
             await self._db.commit()
         except sqlite3.Error as exc:
+            await _rollback_quietly(self._db)
             msg = f"Failed to save workflow definition {definition.id!r}"
             logger.warning(
                 PERSISTENCE_WORKFLOW_DEF_SAVE_FAILED,
@@ -495,6 +524,7 @@ WHERE workflow_definitions.revision = excluded.revision - 1""",
             )
             await self._db.commit()
         except sqlite3.Error as exc:
+            await _rollback_quietly(self._db)
             msg = f"Failed to delete workflow definition {definition_id!r}"
             logger.warning(
                 PERSISTENCE_WORKFLOW_DEF_DELETE_FAILED,

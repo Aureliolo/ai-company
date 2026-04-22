@@ -45,7 +45,13 @@ class WorkflowDefinitionNotFoundError(Exception):
 
 
 class WorkflowDefinitionRevisionMismatchError(Exception):
-    """Raised when an optimistic-concurrency revision check fails."""
+    """Raised when an optimistic-concurrency revision check fails.
+
+    ``actual`` is ``None`` when the persistence layer surfaces a
+    conflict without a usable stored-revision read (e.g. the follow-up
+    lookup raced with a delete). Callers should treat ``None`` as
+    "unknown stored revision" rather than a sentinel integer.
+    """
 
     def __init__(
         self,
@@ -53,7 +59,7 @@ class WorkflowDefinitionRevisionMismatchError(Exception):
         *,
         definition_id: str,
         expected: int,
-        actual: int,
+        actual: int | None,
     ) -> None:
         super().__init__(message)
         self.definition_id = definition_id
@@ -225,26 +231,42 @@ class WorkflowService:
         try:
             updated = await self._definitions.update_if_exists(definition)
         except VersionConflictError as exc:
+            # Look up the stored revision so the domain exception reports
+            # the real ``actual`` value rather than a made-up sentinel.
+            # If the follow-up read itself fails, fall back to ``None``
+            # for ``actual`` and let the domain exception carry just the
+            # expected revision; swallowing that lookup is fine because
+            # we still propagate the original conflict as ``__cause__``.
+            stored_revision: int | None = None
+            try:
+                existing = await self._definitions.get(definition.id)
+            except Exception as lookup_exc:
+                logger.debug(
+                    WORKFLOW_DEF_VERSION_CONFLICT,
+                    definition_id=str(definition.id),
+                    stage="stored_revision_lookup_failed",
+                    error_type=type(lookup_exc).__name__,
+                )
+            else:
+                if existing is not None:
+                    stored_revision = existing.revision
             logger.warning(
                 WORKFLOW_DEF_VERSION_CONFLICT,
                 definition_id=str(definition.id),
                 operation="update_definition",
+                expected_revision=definition.revision,
+                stored_revision=stored_revision,
             )
             msg = (
                 f"Workflow definition {definition.id!r} revision conflict:"
-                f" stored revision differs from incoming revision"
-                f" {definition.revision}"
+                f" expected {definition.revision},"
+                f" stored {stored_revision}"
             )
-            # ``VersionConflictError`` does not carry structured
-            # ``expected``/``actual`` fields, but the incoming value is
-            # the caller-supplied revision; ``actual`` is unknown from
-            # here, so pass ``-1`` as a sentinel and keep the original
-            # driver exception attached as ``__cause__`` for debuggers.
             raise WorkflowDefinitionRevisionMismatchError(
                 msg,
                 definition_id=str(definition.id),
                 expected=definition.revision,
-                actual=-1,
+                actual=stored_revision,
             ) from exc
         if not updated:
             logger.warning(
