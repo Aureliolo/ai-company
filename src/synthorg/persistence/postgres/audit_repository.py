@@ -461,8 +461,8 @@ INSERT INTO audit_entries (
                     "DELETE FROM audit_entries WHERE timestamp < %s",
                     (utc_cutoff,),
                 )
-                await conn.commit()
                 deleted = cur.rowcount
+                await conn.commit()
         except psycopg.Error as exc:
             msg = "Failed to purge audit entries"
             logger.warning(

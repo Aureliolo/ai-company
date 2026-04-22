@@ -78,10 +78,6 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-# Per-detector timeout in seconds -- prevents a hung detector from
-# blocking the classification pipeline indefinitely.
-_DETECTOR_TIMEOUT_SECONDS = 30.0
-
 
 # ── Detector factory maps ──────────────────────────────────────
 
@@ -535,18 +531,21 @@ async def _run_detectors_by_scope(  # noqa: PLR0913
                 agent_id,
                 task_id,
                 execution_id,
+                timeout_seconds=config.detector_timeout_seconds,
             )
             all_findings.extend(findings)
             checked_categories.add(detector.category)
     return all_findings, checked_categories
 
 
-async def _safe_detect(
+async def _safe_detect(  # noqa: PLR0913
     detector: Detector,
     context: DetectionContext,
     agent_id: str,
     task_id: str,
     execution_id: str,
+    *,
+    timeout_seconds: float,
 ) -> tuple[ErrorFinding, ...]:
     """Run a single detector with isolation and a timeout.
 
@@ -555,7 +554,7 @@ async def _safe_detect(
     without stopping the pipeline.
     """
     try:
-        async with asyncio.timeout(_DETECTOR_TIMEOUT_SECONDS):
+        async with asyncio.timeout(timeout_seconds):
             return await detector.detect(context)
     except MemoryError, RecursionError:
         raise
@@ -566,7 +565,7 @@ async def _safe_detect(
             task_id=task_id,
             execution_id=execution_id,
             detector=type(detector).__name__,
-            timeout_seconds=_DETECTOR_TIMEOUT_SECONDS,
+            timeout_seconds=timeout_seconds,
         )
         return ()
     except Exception:

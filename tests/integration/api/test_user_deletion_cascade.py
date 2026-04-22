@@ -134,7 +134,13 @@ class TestUserDeletionCascade:
         self,
         on_disk_backend: SQLitePersistenceBackend,
     ) -> None:
-        """Cascade works even when UserService has no refresh_tokens repo."""
+        """Cascade works even when UserService has no refresh_tokens repo.
+
+        Exercises the full dependent set (sessions + api_keys + refresh
+        tokens) so the FK cascade is verified end-to-end for this
+        constructor variant as well, not just for the defense-in-depth
+        path in the sibling test.
+        """
         user = _make_user(user_id="user-del-002", username="bob-del")
         await on_disk_backend.users.save(user)
 
@@ -144,6 +150,24 @@ class TestUserDeletionCascade:
             username=user.username,
         )
         await on_disk_backend.sessions.create(session)
+
+        expires = datetime.now(UTC) + timedelta(hours=1)
+        await on_disk_backend.refresh_tokens.create(
+            "token-hash-del-002",
+            session.session_id,
+            user.id,
+            expires,
+        )
+
+        api_key = ApiKey(
+            id="apikey-del-002",
+            key_hash="feedface" * 8,
+            name="integration test key no-refresh-repo",
+            role=HumanRole.MANAGER,
+            user_id=user.id,
+            created_at=datetime.now(UTC),
+        )
+        await on_disk_backend.api_keys.save(api_key)
 
         service = UserService(repo=on_disk_backend.users)
 
@@ -155,6 +179,10 @@ class TestUserDeletionCascade:
         assert deleted is True
         assert await on_disk_backend.users.get(user.id) is None
         assert await on_disk_backend.sessions.get(session.session_id) is None
+        assert await on_disk_backend.api_keys.get(api_key.id) is None
+        # Refresh token rows cascaded via schema FK (no explicit revoke
+        # step since this constructor variant has no refresh_tokens repo)
+        assert await on_disk_backend.refresh_tokens.revoke_by_user(user.id) == 0
 
     async def test_delete_missing_user_returns_false(
         self,

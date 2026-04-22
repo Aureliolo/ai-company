@@ -12,6 +12,7 @@ from synthorg.notifications.factory import build_notification_dispatcher
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_APP_STARTUP,
+    API_AUDIT_RETENTION,
     API_AUTH_LOCKOUT_CLEANUP,
     API_SESSION_CLEANUP,
     API_WS_TICKET_CLEANUP,
@@ -160,10 +161,10 @@ async def _audit_retention_tick(app_state: AppState) -> None:
 
     days, paused = await _resolve_audit_retention(app_state)
     if paused:
-        logger.info(API_APP_STARTUP, note="audit retention purge paused")
+        logger.info(API_AUDIT_RETENTION, note="audit retention purge paused")
         return
     if days <= 0:
-        logger.debug(API_APP_STARTUP, note="audit retention purge disabled")
+        logger.debug(API_AUDIT_RETENTION, note="audit retention purge disabled")
         return
     if not app_state.has_persistence:
         return
@@ -174,14 +175,14 @@ async def _audit_retention_tick(app_state: AppState) -> None:
         raise
     except Exception as exc:
         logger.warning(
-            API_APP_STARTUP,
+            API_AUDIT_RETENTION,
             note="audit retention purge failed",
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
         return
     logger.info(
-        API_APP_STARTUP,
+        API_AUDIT_RETENTION,
         note="audit retention purge completed",
         deleted=deleted,
         retention_days=days,

@@ -173,6 +173,15 @@ class ErrorTaxonomyConfig(BaseModel):
         ge=0.0,
         description="Max cost per task for LLM classification",
     )
+    detector_timeout_seconds: float = Field(
+        default=30.0,
+        gt=0.0,
+        description=(
+            "Per-detector timeout (seconds) applied by the pipeline's"
+            " isolation wrapper. Bridged from the"
+            " engine.classification_detector_timeout_seconds setting."
+        ),
+    )
 
     @computed_field(  # type: ignore[prop-decorator]
         description="Active error categories",
