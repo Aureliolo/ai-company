@@ -13,6 +13,8 @@ class RoundRobinConfig(BaseModel):
         max_turns_per_agent: Maximum turns each agent may take.
         max_total_turns: Hard cap on total turns across all agents.
         leader_summarizes: Whether the leader produces a final summary.
+        summary_reserve_fraction: Fraction of the token budget reserved
+            for the summary phase (0.0--1.0).
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -31,6 +33,12 @@ class RoundRobinConfig(BaseModel):
         default=True,
         description="Whether the leader produces a final summary",
     )
+    summary_reserve_fraction: float = Field(
+        default=0.20,
+        ge=0.0,
+        le=1.0,
+        description="Fraction of token budget reserved for summary phase",
+    )
 
 
 class PositionPapersConfig(BaseModel):
@@ -41,6 +49,8 @@ class PositionPapersConfig(BaseModel):
         synthesizer: Who performs synthesis.  The sentinel
             ``"meeting_leader"`` resolves to the meeting leader at
             runtime; otherwise interpreted as a specific agent ID.
+        synthesis_reserve_fraction: Fraction of the token budget reserved
+            for the synthesis phase (0.0--1.0).
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -54,6 +64,12 @@ class PositionPapersConfig(BaseModel):
         default="meeting_leader",
         description="Who performs synthesis (meeting_leader or agent ID)",
     )
+    synthesis_reserve_fraction: float = Field(
+        default=0.20,
+        ge=0.0,
+        le=1.0,
+        description="Fraction of token budget reserved for synthesis phase",
+    )
 
 
 class StructuredPhasesConfig(BaseModel):
@@ -64,6 +80,8 @@ class StructuredPhasesConfig(BaseModel):
             conflicts are detected.
         max_discussion_tokens: Token budget for the discussion
             round.
+        synthesis_reserve_fraction: Fraction of the remaining token
+            budget reserved for the synthesis phase (0.0--1.0).
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -76,6 +94,12 @@ class StructuredPhasesConfig(BaseModel):
         default=1000,
         gt=0,
         description="Token budget for discussion round",
+    )
+    synthesis_reserve_fraction: float = Field(
+        default=0.20,
+        ge=0.0,
+        le=1.0,
+        description="Fraction of remaining token budget reserved for synthesis",
     )
 
 

@@ -95,7 +95,11 @@ export const WRITE_ROLES = ['ceo', 'manager', 'pair_programmer'] as const
 export const SETTINGS_ADVANCED_KEY = 'settings_show_advanced'
 
 /** Display order for setting namespaces shown in the Settings page.
- * 'company' and 'providers' are excluded -- they have dedicated pages. */
+ * 'company' and 'providers' are excluded -- they have dedicated pages.
+ * 'settings' is excluded -- service-managed internal knobs.
+ * CFG-1 audit: a2a, communication, integrations, meta, notifications,
+ * tools added so operators see every runtime-editable namespace.
+ * Each setting's `restart_required` flag is honored by RestartBadge. */
 export const NAMESPACE_ORDER: readonly SettingNamespace[] = [
   'api',
   'memory',
@@ -106,6 +110,13 @@ export const NAMESPACE_ORDER: readonly SettingNamespace[] = [
   'observability',
   'backup',
   'engine',
+  'communication',
+  'a2a',
+  'integrations',
+  'meta',
+  'notifications',
+  'tools',
+  'hr',
 ] as const
 
 /** Human-readable display names for setting namespaces. */
@@ -121,6 +132,14 @@ export const NAMESPACE_DISPLAY_NAMES: Readonly<Record<SettingNamespace, string>>
   backup: 'Backup',
   engine: 'Engine',
   display: 'Display',
+  communication: 'Communication',
+  a2a: 'A2A Federation',
+  integrations: 'Integrations',
+  meta: 'Meta-Agent',
+  notifications: 'Notifications',
+  tools: 'Tools',
+  settings: 'Settings (internal)',
+  hr: 'HR',
 }
 
 /** sessionStorage key for the advanced-mode first-toggle warning. */

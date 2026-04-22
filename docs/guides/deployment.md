@@ -85,6 +85,28 @@ All environment variables are configured in `docker/.env` (copy from `docker/.en
 | `SYNTHORG_TELEMETRY_ENV` | *(unset)* | Explicit deployment-environment tag (`dev` / `pre-release` / `prod` / `ci` / `staging-east` / ...). Always wins the resolution chain if set. |
 | `SYNTHORG_TELEMETRY_ENV_BAKED` | set by image | Image-baked fallback tag for the deployment environment. Release-tag CI builds bake `prod`; every pre-release tag form (`-dev.N`, `-rc.*`, `-alpha.*`, `-beta.*`) bakes `pre-release`; everything else bakes `dev`. Consulted only when `SYNTHORG_TELEMETRY_ENV` is unset *and* no CI markers are present; operators normally override via `SYNTHORG_TELEMETRY_ENV`. |
 
+### Persistence, queue, and observability (CFG-1 audit)
+
+These environment variables are read by the code but were previously undocumented. Setting any of them requires a container restart.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SYNTHORG_DATABASE_URL` | *(unset)* | Postgres connection URL (e.g. `postgres://user:pass@host:5432/synthorg`). Setting this switches the persistence backend from SQLite to Postgres regardless of `SYNTHORG_PERSISTENCE_BACKEND`. |
+| `SYNTHORG_POSTGRES_SSL_MODE` | parsed from URL | Override Postgres SSL mode (`disable`, `require`, `verify-ca`, `verify-full`). Omit to honor the URL query string. |
+| `SYNTHORG_NATS_URL` | `nats://localhost:4222` | NATS server URL for the distributed task queue. Required when `queue.enabled=true`. Must use `nats://`, `tls://`, or `nats+tls://`. |
+| `SYNTHORG_NATS_STREAM_PREFIX` | `SYNTHORG` | JetStream stream name prefix. The bus stream is `<prefix>_BUS`; the KV bucket is `<prefix>_BUS_CHANNELS`. |
+| `SYNTHORG_ARTIFACT_DIR` | `/data` (Postgres) or DB path directory (SQLite) | Filesystem path for artifact storage. Container deployments usually bind-mount this. |
+| `SYNTHORG_TRACE_OTLP_ENDPOINT` | *(unset)* | OpenTelemetry OTLP HTTP endpoint (e.g. `http://otel-collector:4318/v1/traces`). Leaving it unset disables distributed tracing. |
+| `SYNTHORG_TRACE_SERVICE_NAME` | `synthorg` | Service name attached to all emitted trace spans. |
+| `SYNTHORG_TRACE_SAMPLING_RATIO` | `1.0` | Trace sampling ratio (0.0 = none, 1.0 = every request). |
+| `SYNTHORG_CONFIG_PATH` | `company.yaml` | Path to the company configuration YAML file. Relative paths resolve against the working directory. |
+| `SYNTHORG_WORKER_COUNT` | from config | Number of concurrent workers for the distributed task queue. Only consulted when the worker process is launched via `python -m synthorg.workers`. |
+| `SYNTHORG_FINE_TUNE_HEALTH_PORT` | `15002` | HTTP health check port exposed by the embedding fine-tune sidecar container. Adjust only if the default collides with another service. |
+
+### Settings-registry env vars
+
+Every registered setting automatically accepts an env-var override of the form `SYNTHORG_<NAMESPACE>_<KEY>` (uppercase, with dots in `yaml_path` replaced by underscores). For example, setting `SYNTHORG_API_CORS_ALLOWED_ORIGINS='["http://localhost:5173"]'` overrides the CORS origin list for the current process. See [Settings Reference](settings-reference.md) for the full catalog.
+
 **Resolution chain** (first match wins, in `synthorg.telemetry.collector._resolve_environment`):
 
 1. `SYNTHORG_TELEMETRY_ENV` (operator override) -- always wins if non-empty.

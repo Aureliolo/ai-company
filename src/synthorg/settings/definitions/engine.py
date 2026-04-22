@@ -91,3 +91,21 @@ _r.register(
         yaml_path="engine.health_quality_degradation_threshold",
     )
 )
+
+# ── Kill switches (CFG-1 audit) ──────────────────────────────────
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
+        key="evolution_enabled",
+        type=SettingType.BOOLEAN,
+        default="true",
+        description=(
+            "Master kill switch for the agent evolution system."
+            " When False, evolution triggers never fire."
+        ),
+        group="Evolution",
+        level=SettingLevel.ADVANCED,
+        yaml_path="engine.evolution.enabled",
+    )
+)

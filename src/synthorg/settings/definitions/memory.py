@@ -107,3 +107,23 @@ _r.register(
         yaml_path="memory.consolidation_enforce_batch_size",
     )
 )
+
+# ── Kill switches (CFG-1 audit) ──────────────────────────────────
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.MEMORY,
+        key="consolidation_enabled",
+        type=SettingType.BOOLEAN,
+        default="true",
+        description=(
+            "Master kill switch for memory consolidation. When False"
+            " the consolidation scheduler stays constructed but every"
+            " tick short-circuits -- safe way to pause consolidation"
+            " without tearing down lifecycle plumbing."
+        ),
+        group="Maintenance",
+        level=SettingLevel.ADVANCED,
+        yaml_path="memory.consolidation.enabled",
+    )
+)

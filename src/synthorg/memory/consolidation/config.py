@@ -300,6 +300,10 @@ class ConsolidationConfig(BaseModel):
     """Top-level memory consolidation configuration.
 
     Attributes:
+        enabled: Master kill switch for memory consolidation. When
+            ``False`` the consolidation scheduler is constructed but
+            every tick short-circuits -- operator-safe way to pause
+            consolidation without tearing down lifecycle plumbing.
         interval: How often to run consolidation.
         max_memories_per_agent: Upper bound on memories per agent.
         retention: Per-category retention settings.
@@ -310,6 +314,13 @@ class ConsolidationConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
+    enabled: bool = Field(
+        default=True,
+        description=(
+            "Master kill switch for memory consolidation. When False"
+            " every consolidation tick short-circuits immediately."
+        ),
+    )
     interval: ConsolidationInterval = Field(
         default=ConsolidationInterval.DAILY,
         description="How often to run consolidation",

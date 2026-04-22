@@ -36,11 +36,14 @@ class CorsConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    # Default targets the Vite dev server; production deployments
-    # override via the settings registry (``api.cors_allowed_origins``
-    # in ``src/synthorg/settings/definitions/api.py``).
+    # Empty by default: safe-by-default for production. Local dev sets
+    # the origin explicitly via the settings registry
+    # (``api.cors_allowed_origins`` in
+    # ``src/synthorg/settings/definitions/api.py``) or env var
+    # ``SYNTHORG_API_CORS_ALLOWED_ORIGINS``. CFG-1 audit: flipped from
+    # the previous Vite-dev default of ``("http://localhost:5173",)``.
     allowed_origins: tuple[str, ...] = Field(
-        default=("http://localhost:5173",),
+        default=(),
         description="Origins permitted to make cross-origin requests",
     )
     allow_methods: tuple[str, ...] = Field(
