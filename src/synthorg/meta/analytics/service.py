@@ -116,11 +116,14 @@ class AnalyticsService:
         if horizon_days < 1:
             msg = f"horizon_days must be >= 1, got {horizon_days}"
             raise ValueError(msg)
+        if since >= until:
+            msg = "since must be earlier than until"
+            raise ValueError(msg)
         budget: OrgBudgetSummary = await self._signals.get_budget(
             since=since,
             until=until,
         )
-        window_hours = max((until - since).total_seconds() / 3600, 1.0)
+        window_hours = (until - since).total_seconds() / 3600
         daily_rate = budget.total_spend / window_hours * 24.0
         return AnalyticsForecast(
             horizon_days=horizon_days,

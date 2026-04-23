@@ -35,11 +35,11 @@ from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,  # noqa: TC001 -- PEP 649 annotation
 )
 from synthorg.meta.mcp.handlers.common import (
+    PaginationMeta,
     coerce_pagination,
     dump_many,
     err,
     ok,
-    paginate_sequence,
     require_arg,
     require_destructive_guardrails,
 )
@@ -192,15 +192,14 @@ async def _messages_list(
     """List messages on a channel (paginated)."""
     try:
         channel = _get_str(arguments, _ARG_CHANNEL)
-        messages = await app_state.message_service.list_messages(channel=channel)
         offset, limit = coerce_pagination(arguments)
-        page, pagination = paginate_sequence(
-            messages,
+        messages, total = await app_state.message_service.list_messages(
+            channel=channel,
             offset=offset,
             limit=limit,
-            total=len(messages),
         )
-        return ok(dump_many(page), pagination=pagination)
+        pagination = PaginationMeta(total=total, offset=offset, limit=limit)
+        return ok(dump_many(messages), pagination=pagination)
     except Exception as exc:
         _log_invoke_failed("synthorg_messages_list", exc)
         return err(exc)
@@ -310,17 +309,14 @@ async def _meetings_list(
         status = _parse_meeting_status(arguments)
         meeting_type = _get_str(arguments, _ARG_MEETING_TYPE)
         offset, limit = coerce_pagination(arguments)
-        records = await app_state.meeting_service.list_meetings(
+        records, total = await app_state.meeting_service.list_meetings(
             status=status,
             meeting_type=meeting_type,
-        )
-        page, pagination = paginate_sequence(
-            records,
             offset=offset,
             limit=limit,
-            total=len(records),
         )
-        return ok(dump_many(page), pagination=pagination)
+        pagination = PaginationMeta(total=total, offset=offset, limit=limit)
+        return ok(dump_many(records), pagination=pagination)
     except Exception as exc:
         _log_invoke_failed("synthorg_meetings_list", exc)
         return err(exc)
@@ -425,15 +421,13 @@ async def _connections_list(
 ) -> str:
     """List external-system connections (paginated)."""
     try:
-        connections = await app_state.connection_service.list_connections()
         offset, limit = coerce_pagination(arguments)
-        page, pagination = paginate_sequence(
-            connections,
+        connections, total = await app_state.connection_service.list_connections(
             offset=offset,
             limit=limit,
-            total=len(connections),
         )
-        return ok(dump_many(page), pagination=pagination)
+        pagination = PaginationMeta(total=total, offset=offset, limit=limit)
+        return ok(dump_many(connections), pagination=pagination)
     except Exception as exc:
         _log_invoke_failed("synthorg_connections_list", exc)
         return err(exc)
@@ -570,15 +564,13 @@ async def _webhooks_list(
 ) -> str:
     """List registered webhook definitions (paginated)."""
     try:
-        definitions = await app_state.webhook_service.list_webhooks()
         offset, limit = coerce_pagination(arguments)
-        page, pagination = paginate_sequence(
-            definitions,
+        definitions, total = await app_state.webhook_service.list_webhooks(
             offset=offset,
             limit=limit,
-            total=len(definitions),
         )
-        return ok(dump_many(page), pagination=pagination)
+        pagination = PaginationMeta(total=total, offset=offset, limit=limit)
+        return ok(dump_many(definitions), pagination=pagination)
     except Exception as exc:
         _log_invoke_failed("synthorg_webhooks_list", exc)
         return err(exc)

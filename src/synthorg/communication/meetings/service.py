@@ -57,8 +57,16 @@ class MeetingService:
         *,
         status: MeetingStatus | None = None,
         meeting_type: NotBlankStr | None = None,
-    ) -> Sequence[MeetingRecord]:
-        """Return records newest-first, optionally filtered."""
+        offset: int = 0,
+        limit: int | None = None,
+    ) -> tuple[Sequence[MeetingRecord], int]:
+        """Return records newest-first, optionally filtered and paginated.
+
+        Returns ``(items, total)`` where ``total`` is the unfiltered
+        count for the applied filter (status / meeting_type) so the
+        handler can build the pagination envelope without slicing a
+        second time.
+        """
         records = self._orchestrator.get_records()
         if status is not None:
             records = tuple(r for r in records if r.status == status)
@@ -66,7 +74,10 @@ class MeetingService:
             records = tuple(r for r in records if r.meeting_type_name == meeting_type)
         # ``MeetingRecord`` has no timestamp; the orchestrator preserves
         # chronological append order, so we reverse to surface newest-first.
-        return tuple(reversed(records))
+        ordered = tuple(reversed(records))
+        total = len(ordered)
+        end = total if limit is None else offset + limit
+        return (ordered[offset:end], total)
 
     async def get_meeting(
         self,

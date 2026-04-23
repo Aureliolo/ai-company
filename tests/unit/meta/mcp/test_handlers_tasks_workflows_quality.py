@@ -190,6 +190,8 @@ def workflow_def() -> SimpleNamespace:
 
 @pytest.fixture
 def workflow_app_state(workflow_def: SimpleNamespace) -> SimpleNamespace:
+    from synthorg.engine.workflow.service import WorkflowService
+
     def_repo = AsyncMock()
     def_repo.list_definitions.return_value = (workflow_def,)
     def_repo.get.return_value = workflow_def
@@ -202,7 +204,14 @@ def workflow_app_state(workflow_def: SimpleNamespace) -> SimpleNamespace:
         workflow_definitions=def_repo,
         workflow_versions=version_repo,
     )
-    return SimpleNamespace(persistence=persistence)
+    workflow_service = WorkflowService(
+        definition_repo=def_repo,
+        version_repo=version_repo,
+    )
+    return SimpleNamespace(
+        persistence=persistence,
+        workflow_service=workflow_service,
+    )
 
 
 class TestWorkflowsSmoke:

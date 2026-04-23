@@ -32,9 +32,17 @@ class WebhookService:
     def __init__(self, *, store: WebhookDefinitionStore) -> None:
         self._store = store
 
-    async def list_webhooks(self) -> Sequence[WebhookDefinition]:
-        """Return all definitions ordered newest-first."""
-        return await self._store.list_definitions()
+    async def list_webhooks(
+        self,
+        *,
+        offset: int = 0,
+        limit: int | None = None,
+    ) -> tuple[Sequence[WebhookDefinition], int]:
+        """Return paginated definitions newest-first + unfiltered total."""
+        definitions = tuple(await self._store.list_definitions())
+        total = len(definitions)
+        end = total if limit is None else offset + limit
+        return (definitions[offset:end], total)
 
     async def get_webhook(
         self,

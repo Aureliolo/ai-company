@@ -155,19 +155,27 @@ def _to_jsonable(value: Any) -> Any:
 async def _mcp_catalog_list(
     *,
     app_state: Any,
-    arguments: dict[str, Any],  # noqa: ARG001
+    arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """List available MCP catalog entries (paginated)."""
     tool = "synthorg_mcp_catalog_list"
     try:
+        offset, limit = coerce_pagination(arguments)
         entries = await app_state.mcp_catalog_facade_service.list_catalog()
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
-    return ok([_to_jsonable(e) for e in entries])
+    sequence = tuple(entries)
+    page, pagination = paginate_sequence(
+        sequence,
+        offset=offset,
+        limit=limit,
+        total=len(sequence),
+    )
+    return ok([_to_jsonable(e) for e in page], pagination=pagination)
 
 
 async def _mcp_catalog_search(

@@ -9,6 +9,7 @@ primitive yet exists) and raises
 not yet implement.
 """
 
+import copy
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, cast
 from uuid import UUID, uuid4
@@ -190,9 +191,8 @@ class OAuthFacadeService:
         self._providers: dict[str, _OAuthProviderRecord] = {}
 
     async def list_providers(self) -> Sequence[_OAuthProviderRecord]:
-        return tuple(
-            sorted(self._providers.values(), key=lambda p: p.created_at, reverse=True),
-        )
+        snapshot = tuple(copy.deepcopy(p) for p in self._providers.values())
+        return tuple(sorted(snapshot, key=lambda p: p.created_at, reverse=True))
 
     async def configure_provider(
         self,
@@ -218,7 +218,7 @@ class OAuthFacadeService:
             provider_name=name,
             actor_id=actor_id,
         )
-        return record
+        return copy.deepcopy(record)
 
     async def remove_provider(
         self,
@@ -288,16 +288,16 @@ class ClientFacadeService:
         self._clients: dict[UUID, _ClientRecord] = {}
 
     async def list_clients(self) -> Sequence[_ClientRecord]:
-        return tuple(
-            sorted(self._clients.values(), key=lambda c: c.created_at, reverse=True),
-        )
+        snapshot = tuple(copy.deepcopy(c) for c in self._clients.values())
+        return tuple(sorted(snapshot, key=lambda c: c.created_at, reverse=True))
 
     async def get_client(self, client_id: NotBlankStr) -> _ClientRecord | None:
         try:
             key = UUID(client_id)
         except ValueError:
             return None
-        return self._clients.get(key)
+        record = self._clients.get(key)
+        return copy.deepcopy(record) if record is not None else None
 
     async def create_client(
         self,
@@ -320,7 +320,7 @@ class ClientFacadeService:
             client_id=str(record.id),
             actor_id=actor_id,
         )
-        return record
+        return copy.deepcopy(record)
 
     async def deactivate_client(
         self,
@@ -414,16 +414,16 @@ class ArtifactFacadeService:
         self._index: dict[UUID, _ArtifactRecord] = {}
 
     async def list_artifacts(self) -> Sequence[_ArtifactRecord]:
-        return tuple(
-            sorted(self._index.values(), key=lambda a: a.created_at, reverse=True),
-        )
+        snapshot = tuple(copy.deepcopy(a) for a in self._index.values())
+        return tuple(sorted(snapshot, key=lambda a: a.created_at, reverse=True))
 
     async def get_artifact(self, artifact_id: NotBlankStr) -> _ArtifactRecord | None:
         try:
             key = UUID(artifact_id)
         except ValueError:
             return None
-        return self._index.get(key)
+        record = self._index.get(key)
+        return copy.deepcopy(record) if record is not None else None
 
     async def create_artifact(
         self,
@@ -449,7 +449,7 @@ class ArtifactFacadeService:
             actor_id=actor_id,
             size_bytes=size_bytes,
         )
-        return record
+        return copy.deepcopy(record)
 
     async def delete_artifact(
         self,
@@ -466,13 +466,19 @@ class ArtifactFacadeService:
         if record is None:
             return False
         fn = getattr(self._storage, "delete", None)
-        if callable(fn):
-            # Delete from storage FIRST so the index and storage cannot
-            # diverge silently -- if storage fails, the record stays in
-            # the index and the caller sees the real error.  Use the
-            # backend's own storage_ref, not the facade UUID, because the
-            # two diverge when the storage backend uses its own scheme.
-            await fn(record.storage_ref)
+        if not callable(fn):
+            raise _capability(
+                "artifact_delete",
+                "ArtifactStorageBackend does not expose delete; refusing to "
+                "drop the index entry silently since the blob would be "
+                "orphaned.",
+            )
+        # Delete from storage FIRST so the index and storage cannot
+        # diverge silently -- if storage fails, the record stays in
+        # the index and the caller sees the real error.  Use the
+        # backend's own storage_ref, not the facade UUID, because the
+        # two diverge when the storage backend uses its own scheme.
+        await fn(record.storage_ref)
         self._index.pop(key, None)
         logger.info(
             ARTIFACT_DELETED_VIA_MCP,

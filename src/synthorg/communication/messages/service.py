@@ -61,11 +61,23 @@ class MessageService:
         self,
         *,
         channel: NotBlankStr | None = None,
-    ) -> Sequence[Message]:
-        """Return message history for a channel, empty when unspecified."""
+        offset: int = 0,
+        limit: int | None = None,
+    ) -> tuple[Sequence[Message], int]:
+        """Return message history for a channel, paginated.
+
+        Returns ``(items, total)`` where ``items`` is the requested page
+        slice and ``total`` is the unfiltered count for the channel.
+        The handler uses ``total`` to build the pagination envelope so
+        callers can navigate.  Passing ``channel=None`` returns
+        ``((), 0)`` -- an empty page -- without touching persistence.
+        """
         if channel is None:
-            return ()
-        return tuple(await self._persistence.messages.get_history(channel))
+            return ((), 0)
+        history = tuple(await self._persistence.messages.get_history(channel))
+        total = len(history)
+        end = total if limit is None else offset + limit
+        return (history[offset:end], total)
 
     async def get_message(
         self,

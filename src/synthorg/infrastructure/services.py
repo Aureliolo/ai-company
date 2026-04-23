@@ -268,13 +268,13 @@ class BackupFacadeService:
         actor_id: NotBlankStr,
         reason: NotBlankStr,
     ) -> Mapping[str, object]:
+        await self._service.restore_from_backup(backup_id)
         logger.info(
             BACKUP_RESTORED_VIA_MCP,
             backup_id=backup_id,
             actor_id=actor_id,
             reason=reason,
         )
-        await self._service.restore_from_backup(backup_id)
         return {"backup_id": backup_id, "restored": True}
 
 

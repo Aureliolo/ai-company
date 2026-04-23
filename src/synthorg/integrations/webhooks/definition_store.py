@@ -55,8 +55,19 @@ class InMemoryWebhookDefinitionStore:
         return None
 
     async def add(self, definition: WebhookDefinition) -> None:
-        """Persist a new definition; rejects duplicate names."""
+        """Persist a new definition; rejects duplicate IDs or names.
+
+        Raises:
+            KeyError: If a definition with the same ID already exists
+                (an ``add`` of an existing ID would silently overwrite
+                the prior record, which is not what the caller asked for).
+            ValueError: If another definition with the same name already
+                exists under a different ID.
+        """
         async with self._lock:
+            if definition.id in self._by_id:
+                msg = f"WebhookDefinition id already exists: {definition.id}"
+                raise KeyError(msg)
             for existing in self._by_id.values():
                 if existing.name == definition.name:
                     msg = f"WebhookDefinition name already exists: {definition.name!r}"

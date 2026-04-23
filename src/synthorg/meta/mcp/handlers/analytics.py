@@ -26,11 +26,11 @@ from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,  # noqa: TC001 -- PEP 649 annotation
 )
 from synthorg.meta.mcp.handlers.common import (
+    PaginationMeta,
     coerce_pagination,
     dump_many,
     err,
     ok,
-    paginate_sequence,
     require_arg,
 )
 from synthorg.observability import get_logger, safe_error_description
@@ -338,13 +338,14 @@ async def _reports_list(
             offset=offset,
             limit=limit,
         )
-        page, pagination = paginate_sequence(
-            reports,
-            offset=offset,
-            limit=limit,
-            total=total,
-        )
-        return ok(dump_many(page), pagination=pagination)
+        # ``reports_service.list_reports`` already returns the requested
+        # page (offset/limit applied service-side) plus the unfiltered
+        # ``total`` count.  Build the pagination envelope directly from
+        # that slice -- do NOT re-slice with ``paginate_sequence`` or
+        # page 2+ requests will apply the offset a second time and come
+        # back empty.
+        pagination = PaginationMeta(total=total, offset=offset, limit=limit)
+        return ok(dump_many(reports), pagination=pagination)
     except ArgumentValidationError as exc:
         return err(exc)
     except Exception as exc:

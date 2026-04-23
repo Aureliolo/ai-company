@@ -76,7 +76,7 @@ def _webhook(name: str = "wh") -> WebhookDefinition:
 @pytest.fixture
 def fake_message_service() -> AsyncMock:
     service = AsyncMock()
-    service.list_messages = AsyncMock(return_value=())
+    service.list_messages = AsyncMock(return_value=((), 0))
     service.get_message = AsyncMock(return_value=None)
     service.send_message = AsyncMock(return_value=None)
     service.delete_message = AsyncMock(
@@ -88,7 +88,7 @@ def fake_message_service() -> AsyncMock:
 @pytest.fixture
 def fake_meeting_service() -> AsyncMock:
     service = AsyncMock()
-    service.list_meetings = AsyncMock(return_value=())
+    service.list_meetings = AsyncMock(return_value=((), 0))
     service.get_meeting = AsyncMock(return_value=None)
     service.create_meeting = AsyncMock(
         side_effect=CapabilityNotSupportedError("meeting_create", "reason"),
@@ -105,7 +105,7 @@ def fake_meeting_service() -> AsyncMock:
 @pytest.fixture
 def fake_connection_service() -> AsyncMock:
     service = AsyncMock()
-    service.list_connections = AsyncMock(return_value=())
+    service.list_connections = AsyncMock(return_value=((), 0))
     service.get_connection = AsyncMock(return_value=None)
     service.create_connection = AsyncMock(return_value=_connection())
     service.delete_connection = AsyncMock(return_value=None)
@@ -116,7 +116,7 @@ def fake_connection_service() -> AsyncMock:
 @pytest.fixture
 def fake_webhook_service() -> AsyncMock:
     service = AsyncMock()
-    service.list_webhooks = AsyncMock(return_value=())
+    service.list_webhooks = AsyncMock(return_value=((), 0))
     service.get_webhook = AsyncMock(return_value=None)
     service.create_webhook = AsyncMock(return_value=_webhook())
     service.update_webhook = AsyncMock(return_value=_webhook())
@@ -242,7 +242,9 @@ class TestMeetingsHandlers:
         fake_app_state: SimpleNamespace,
         fake_meeting_service: AsyncMock,
     ) -> None:
-        fake_meeting_service.list_meetings = AsyncMock(return_value=(_meeting(),))
+        fake_meeting_service.list_meetings = AsyncMock(
+            return_value=((_meeting(),), 1),
+        )
         handler = COMMUNICATION_HANDLERS["synthorg_meetings_list"]
         response = await handler(app_state=fake_app_state, arguments={})
         payload = json.loads(response)

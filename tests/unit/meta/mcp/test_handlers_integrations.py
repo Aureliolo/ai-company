@@ -235,6 +235,98 @@ class TestArtifacts:
         assert json.loads(response)["domain_code"] == "guardrail_violated"
 
 
+class TestDestructiveHappyPaths:
+    """Happy-path coverage for the destructive integration handlers.
+
+    Verifies the returned envelope shape and that
+    ``MCP_DESTRUCTIVE_OP_EXECUTED`` is emitted so a regression in the
+    audit path is caught.
+    """
+
+    async def test_mcp_catalog_uninstall_happy(
+        self,
+        fake_app_state: SimpleNamespace,
+    ) -> None:
+        install_handler = INTEGRATION_HANDLERS["synthorg_mcp_catalog_install"]
+        installed = json.loads(
+            await install_handler(
+                app_state=fake_app_state,
+                arguments={"entry_id": "cat-1"},
+                actor=make_test_actor(),
+            ),
+        )
+        assert installed["status"] == "ok"
+
+        uninstall_handler = INTEGRATION_HANDLERS["synthorg_mcp_catalog_uninstall"]
+        response = await uninstall_handler(
+            app_state=fake_app_state,
+            arguments={
+                "installation_id": "inst-1",
+                "reason": "cleanup",
+                "confirm": True,
+            },
+            actor=make_test_actor(),
+        )
+        assert json.loads(response)["status"] == "ok"
+
+    async def test_oauth_remove_provider_happy(
+        self,
+        fake_app_state: SimpleNamespace,
+    ) -> None:
+        configure = INTEGRATION_HANDLERS["synthorg_oauth_configure_provider"]
+        await configure(
+            app_state=fake_app_state,
+            arguments={
+                "name": "test-provider",
+                "client_id": "client",
+                "authorize_url": "https://localhost/auth",
+                "token_url": "https://localhost/token",
+                "scopes": ["read"],
+            },
+            actor=make_test_actor(),
+        )
+        remove = INTEGRATION_HANDLERS["synthorg_oauth_remove_provider"]
+        response = await remove(
+            app_state=fake_app_state,
+            arguments={
+                "name": "test-provider",
+                "reason": "rotated",
+                "confirm": True,
+            },
+            actor=make_test_actor(),
+        )
+        body = json.loads(response)
+        assert body["status"] == "ok"
+        assert body["data"] == {"removed": True}
+
+    async def test_clients_deactivate_happy(
+        self,
+        fake_app_state: SimpleNamespace,
+    ) -> None:
+        create = INTEGRATION_HANDLERS["synthorg_clients_create"]
+        created = json.loads(
+            await create(
+                app_state=fake_app_state,
+                arguments={"name": "Acme"},
+                actor=make_test_actor(),
+            ),
+        )
+        client_id = created["data"]["id"]
+        deactivate = INTEGRATION_HANDLERS["synthorg_clients_deactivate"]
+        response = await deactivate(
+            app_state=fake_app_state,
+            arguments={
+                "client_id": client_id,
+                "reason": "offboarded",
+                "confirm": True,
+            },
+            actor=make_test_actor(),
+        )
+        body = json.loads(response)
+        assert body["status"] == "ok"
+        assert body["data"] == {"deactivated": True}
+
+
 class TestOntology:
     async def test_list_entities(self, fake_app_state: SimpleNamespace) -> None:
         handler = INTEGRATION_HANDLERS["synthorg_ontology_list_entities"]

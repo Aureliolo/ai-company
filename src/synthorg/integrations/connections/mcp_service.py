@@ -35,9 +35,17 @@ class ConnectionService:
     def __init__(self, *, catalog: ConnectionCatalog) -> None:
         self._catalog = catalog
 
-    async def list_connections(self) -> Sequence[Connection]:
-        """Return all known connections."""
-        return tuple(await self._catalog.list_all())
+    async def list_connections(
+        self,
+        *,
+        offset: int = 0,
+        limit: int | None = None,
+    ) -> tuple[Sequence[Connection], int]:
+        """Return paginated connections and the unfiltered total."""
+        connections = tuple(await self._catalog.list_all())
+        total = len(connections)
+        end = total if limit is None else offset + limit
+        return (connections[offset:end], total)
 
     async def get_connection(
         self,

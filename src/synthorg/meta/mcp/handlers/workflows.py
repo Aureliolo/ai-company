@@ -124,26 +124,23 @@ def _require_non_blank(arguments: dict[str, Any], key: str) -> str:
 def _service(app_state: Any) -> WorkflowService:
     """Return the workflow service facade.
 
-    Prefers ``app_state.workflow_service`` when bootstrap has wired one
-    (keeps handlers off ``persistence.*``).  Falls back to per-call
-    construction from the persistence backend for app_states that have
-    not adopted the cached-service pattern yet; the fallback path emits
-    a DEBUG log so deployments using the legacy wiring are observable
-    in telemetry.
+    Handlers must route through the injected ``workflow_service`` slot
+    so hot-swap / lifecycle behavior flows through one canonical path.
+    Callers that have not wired the service on ``AppState`` get a loud
+    runtime error instead of a silent per-call construction that would
+    bypass the facade.
     """
     cached: WorkflowService | None = getattr(app_state, "workflow_service", None)
-    if cached is not None:
-        return cached
-    logger.debug(
-        MCP_HANDLER_LAZY_SERVICE_INIT,
-        tool_name="workflows._service",
-        service="workflow_service",
-        reason="app_state.workflow_service not wired -- building per-call",
-    )
-    return WorkflowService(
-        definition_repo=app_state.persistence.workflow_definitions,
-        version_repo=app_state.persistence.workflow_versions,
-    )
+    if cached is None:
+        logger.error(
+            MCP_HANDLER_LAZY_SERVICE_INIT,
+            tool_name="workflows._service",
+            service="workflow_service",
+            reason="app_state.workflow_service not wired",
+        )
+        msg = "workflow_service not wired on app_state"
+        raise RuntimeError(msg)
+    return cached
 
 
 # --- workflow definition CRUD ---------------------------------------------

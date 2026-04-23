@@ -208,8 +208,7 @@ class TestSignalsServiceProposals:
         )
         approval_store.list_items = AsyncMock(return_value=(older, newer))
         result = await service.list_proposals()
-        assert result[0] is newer
-        assert result[1] is older
+        assert [item.id for item in result] == [newer.id, older.id]
 
     async def test_submit_proposal_persists(
         self,
