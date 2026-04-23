@@ -81,6 +81,12 @@ class SettingsChangeDispatcher:
         self._subscribers = subscribers
         self._task: asyncio.Task[None] | None = None
         self._running: bool = False
+        # Serializes start() / stop() so the _running check-and-set
+        # and the subsequent _task assignment are atomic against
+        # concurrent lifecycle calls. Two concurrent start() calls
+        # both observing _running=False would otherwise both
+        # subscribe to #settings and both spawn a poll task.
+        self._lifecycle_lock = asyncio.Lock()
 
     async def start(self) -> None:
         """Start the polling loop.
@@ -88,38 +94,45 @@ class SettingsChangeDispatcher:
         Raises:
             RuntimeError: If the dispatcher is already running.
         """
-        if self._running:
-            msg = "SettingsChangeDispatcher is already running"
-            logger.warning(SETTINGS_DISPATCHER_STARTED, error=msg)
-            raise RuntimeError(msg)
+        async with self._lifecycle_lock:
+            if self._running:
+                msg = "SettingsChangeDispatcher is already running"
+                logger.warning(SETTINGS_DISPATCHER_STARTED, error=msg)
+                raise RuntimeError(msg)
 
-        await self._ensure_channel()
-        await self._bus.subscribe(_SETTINGS_CHANNEL, _SUBSCRIBER_ID)
+            await self._ensure_channel()
+            await self._bus.subscribe(_SETTINGS_CHANNEL, _SUBSCRIBER_ID)
 
-        self._running = True
-        self._task = asyncio.create_task(
-            self._poll_loop(),
-            name="settings-dispatcher",
-        )
-        self._task.add_done_callback(self._on_task_done)
-        logger.info(
-            SETTINGS_DISPATCHER_STARTED,
-            subscriber_count=len(self._subscribers),
-        )
+            self._running = True
+            self._task = asyncio.create_task(
+                self._poll_loop(),
+                name="settings-dispatcher",
+            )
+            self._task.add_done_callback(self._on_task_done)
+            logger.info(
+                SETTINGS_DISPATCHER_STARTED,
+                subscriber_count=len(self._subscribers),
+            )
 
     async def stop(self) -> None:
-        """Cancel the polling task.  Idempotent."""
-        if not self._running:
-            return
+        """Cancel the polling task.  Idempotent.
 
-        if self._task is not None:
-            self._task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._task
-            self._task = None
+        Holds ``_lifecycle_lock`` so ``stop()`` cannot race a
+        partially-constructed ``start()`` (e.g. channel subscribed but
+        ``_task`` not yet assigned).
+        """
+        async with self._lifecycle_lock:
+            if not self._running:
+                return
 
-        self._running = False
-        logger.info(SETTINGS_DISPATCHER_STOPPED)
+            if self._task is not None:
+                self._task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await self._task
+                self._task = None
+
+            self._running = False
+            logger.info(SETTINGS_DISPATCHER_STOPPED)
 
     def _on_task_done(self, task: asyncio.Task[None]) -> None:
         """Handle unexpected poll-loop exit.
