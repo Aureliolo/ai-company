@@ -1,9 +1,16 @@
-"""Approval domain MCP tools."""
+"""Approval domain MCP tools.
+
+``reject`` is destructive -- enforces the ``confirm=True`` + non-blank
+``reason`` guardrail at the schema level so a caller who forgets
+``confirm`` is rejected by the wire layer before ever reaching the
+handler.
+"""
 
 from typing import TYPE_CHECKING
 
 from synthorg.meta.mcp.tool_builder import (
     PAGINATION_PROPERTIES,
+    admin_tool,
     read_tool,
     write_tool,
 )
@@ -11,14 +18,25 @@ from synthorg.meta.mcp.tool_builder import (
 if TYPE_CHECKING:
     from synthorg.meta.mcp.registry import MCPToolDef
 
+_APPROVAL_STATUS_ENUM = ["pending", "approved", "rejected", "expired"]
+_RISK_LEVEL_ENUM = ["low", "medium", "high", "critical"]
+
 APPROVAL_TOOLS: tuple[MCPToolDef, ...] = (
     read_tool(
         "approvals",
         "list",
         "List approval items with optional filtering.",
         {
-            "status": {"type": "string", "description": "Filter by approval status"},
-            "risk_level": {"type": "string", "description": "Filter by risk level"},
+            "status": {
+                "type": "string",
+                "description": "Filter by approval status",
+                "enum": _APPROVAL_STATUS_ENUM,
+            },
+            "risk_level": {
+                "type": "string",
+                "description": "Filter by risk level",
+                "enum": _RISK_LEVEL_ENUM,
+            },
             "action_type": {"type": "string", "description": "Filter by action type"},
             **PAGINATION_PROPERTIES,
         },
@@ -41,11 +59,22 @@ APPROVAL_TOOLS: tuple[MCPToolDef, ...] = (
                 "type": "string",
                 "description": "Type of action requiring approval",
             },
+            "title": {
+                "type": "string",
+                "description": "Short summary of the approval",
+                "minLength": 1,
+            },
             "description": {
                 "type": "string",
                 "description": "Description of the proposed action",
+                "minLength": 1,
             },
-            "risk_level": {"type": "string", "description": "Risk level assessment"},
+            "risk_level": {
+                "type": "string",
+                "description": "Risk level assessment",
+                "enum": _RISK_LEVEL_ENUM,
+                "default": "medium",
+            },
         },
         required=("action_type", "description"),
     ),
@@ -59,14 +88,23 @@ APPROVAL_TOOLS: tuple[MCPToolDef, ...] = (
         },
         required=("approval_id",),
     ),
-    write_tool(
+    admin_tool(
         "approvals",
         "reject",
-        "Reject a pending approval item.",
+        "Reject a pending approval item (destructive; requires confirm).",
         {
             "approval_id": {"type": "string", "description": "Approval UUID"},
-            "reason": {"type": "string", "description": "Rejection reason"},
+            "reason": {
+                "type": "string",
+                "description": "Rejection reason (non-blank)",
+                "minLength": 1,
+            },
+            "confirm": {
+                "type": "boolean",
+                "description": "Must be true to proceed",
+                "enum": [True],
+            },
         },
-        required=("approval_id",),
+        required=("approval_id", "reason", "confirm"),
     ),
 )

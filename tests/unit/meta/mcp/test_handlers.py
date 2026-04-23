@@ -3,6 +3,7 @@
 import json
 
 import pytest
+import structlog.testing
 
 from synthorg.meta.mcp.domains import build_full_registry
 from synthorg.meta.mcp.handlers import build_handler_map
@@ -11,6 +12,7 @@ from synthorg.meta.mcp.handlers.common import (
     make_placeholder_handler,
 )
 from synthorg.meta.mcp.invoker import MCPToolInvoker
+from synthorg.observability.events.mcp import MCP_HANDLER_NOT_IMPLEMENTED
 
 pytestmark = pytest.mark.unit
 
@@ -30,6 +32,30 @@ class TestPlaceholderHandler:
         result = await handler(app_state=None, arguments={"key": "val"})
         body = json.loads(result)
         assert body["arguments_received"] == {"key": "val"}
+
+    async def test_logs_warning_with_handler_not_implemented_event(self) -> None:
+        """Placeholder log is upgraded to WARNING + uses the HYG-1 event.
+
+        Ops alerting depends on this level + name being stable.
+        """
+        handler = make_placeholder_handler("synthorg_test_get")
+        with structlog.testing.capture_logs() as logs:
+            await handler(app_state=None, arguments={})
+        events = [e for e in logs if e.get("event") == MCP_HANDLER_NOT_IMPLEMENTED]
+        assert len(events) == 1
+        assert events[0]["log_level"] == "warning"
+        assert events[0]["tool_name"] == "synthorg_test_get"
+
+    async def test_accepts_actor_kwarg(self) -> None:
+        """Handler protocol now includes ``actor``; placeholder ignores it."""
+        handler = make_placeholder_handler("synthorg_test_get")
+        result = await handler(
+            app_state=None,
+            arguments={},
+            actor=object(),
+        )
+        body = json.loads(result)
+        assert body["status"] == "not_implemented"
 
 
 class TestMakeHandlersForTools:

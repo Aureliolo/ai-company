@@ -27,8 +27,12 @@ logger = get_logger(__name__)
 class ToolHandler(Protocol):
     """Protocol for MCP tool handler functions.
 
-    Handlers receive the application state and parsed arguments,
-    returning a JSON-serialized string result.
+    Handlers receive the application state, parsed arguments, and the
+    calling actor identity (when available), returning a
+    JSON-serialized string result.  The ``actor`` argument is threaded
+    from the invoker so destructive-op guardrails can enforce
+    attribution; handlers that don't care about identity accept it and
+    ignore it.
     """
 
     async def __call__(
@@ -36,12 +40,17 @@ class ToolHandler(Protocol):
         *,
         app_state: Any,
         arguments: dict[str, Any],
+        actor: Any = None,
     ) -> str:
         """Execute the tool logic.
 
         Args:
             app_state: Application state providing service access.
             arguments: Parsed tool arguments from the MCP call.
+            actor: Calling agent identity (typically
+                ``AgentIdentity``), or ``None`` when the invoker was
+                not supplied one.  Destructive-op handlers require
+                non-``None``.
 
         Returns:
             JSON-serialized result string.
@@ -75,6 +84,7 @@ class MCPToolInvoker:
         arguments: dict[str, Any],
         *,
         app_state: Any,
+        actor: Any = None,
     ) -> ToolExecutionResult:
         """Dispatch a tool invocation to its handler.
 
@@ -89,6 +99,11 @@ class MCPToolInvoker:
             tool_name: Name of the MCP tool to invoke.
             arguments: Tool call arguments.
             app_state: Application state for service access.
+            actor: Calling agent identity (typically
+                ``AgentIdentity``), threaded to the handler for
+                destructive-op attribution.  Defaults to ``None``;
+                destructive handlers will reject with a
+                ``guardrail_violated`` error envelope.
 
         Returns:
             ``ToolExecutionResult`` with the handler's JSON output
@@ -133,6 +148,7 @@ class MCPToolInvoker:
             result = await handler(
                 app_state=app_state,
                 arguments=deepcopy(arguments),
+                actor=actor,
             )
         except MemoryError, RecursionError:
             raise

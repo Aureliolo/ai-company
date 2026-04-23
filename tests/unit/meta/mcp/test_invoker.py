@@ -18,7 +18,12 @@ class TestMCPToolInvoker:
         tool = make_tool()
         registry = registry_with(tool)
 
-        async def handler(*, app_state: object, arguments: dict[str, object]) -> str:
+        async def handler(
+            *,
+            app_state: object,
+            arguments: dict[str, object],
+            actor: object = None,
+        ) -> str:
             return json.dumps({"result": "ok"})
 
         invoker = MCPToolInvoker(registry, {"synthorg_test_get": handler})
@@ -49,7 +54,10 @@ class TestMCPToolInvoker:
         registry = registry_with(tool)
 
         async def bad_handler(
-            *, app_state: object, arguments: dict[str, object]
+            *,
+            app_state: object,
+            arguments: dict[str, object],
+            actor: object = None,
         ) -> str:
             msg = "something broke"
             raise ValueError(msg)
@@ -67,7 +75,12 @@ class TestMCPToolInvoker:
         registry = registry_with(tool)
         captured: dict[str, object] = {}
 
-        async def handler(*, app_state: object, arguments: dict[str, object]) -> str:
+        async def handler(
+            *,
+            app_state: object,
+            arguments: dict[str, object],
+            actor: object = None,
+        ) -> str:
             captured.update(arguments)
             return json.dumps({"ok": True})
 
@@ -84,7 +97,12 @@ class TestMCPToolInvoker:
         registry = registry_with(tool)
         captured: list[object] = []
 
-        async def handler(*, app_state: object, arguments: dict[str, object]) -> str:
+        async def handler(
+            *,
+            app_state: object,
+            arguments: dict[str, object],
+            actor: object = None,
+        ) -> str:
             captured.append(app_state)
             return json.dumps({"ok": True})
 
@@ -92,6 +110,50 @@ class TestMCPToolInvoker:
         invoker = MCPToolInvoker(registry, {"synthorg_test_get": handler})
         await invoker.invoke("synthorg_test_get", {}, app_state=sentinel)
         assert captured[0] is sentinel
+
+    async def test_invoke_passes_actor_when_provided(self) -> None:
+        """Invoker threads ``actor`` through to the handler."""
+        tool = make_tool()
+        registry = registry_with(tool)
+        captured: list[object] = []
+
+        async def handler(
+            *,
+            app_state: object,
+            arguments: dict[str, object],
+            actor: object = None,
+        ) -> str:
+            captured.append(actor)
+            return json.dumps({"ok": True})
+
+        actor_sentinel = object()
+        invoker = MCPToolInvoker(registry, {"synthorg_test_get": handler})
+        await invoker.invoke(
+            "synthorg_test_get",
+            {},
+            app_state=None,
+            actor=actor_sentinel,
+        )
+        assert captured[0] is actor_sentinel
+
+    async def test_invoke_actor_defaults_to_none(self) -> None:
+        """When the caller omits ``actor``, the handler receives ``None``."""
+        tool = make_tool()
+        registry = registry_with(tool)
+        captured: list[object] = []
+
+        async def handler(
+            *,
+            app_state: object,
+            arguments: dict[str, object],
+            actor: object = None,
+        ) -> str:
+            captured.append(actor)
+            return json.dumps({"ok": True})
+
+        invoker = MCPToolInvoker(registry, {"synthorg_test_get": handler})
+        await invoker.invoke("synthorg_test_get", {}, app_state=None)
+        assert captured[0] is None
 
     async def test_invoke_handler_key_different_from_name(self) -> None:
         """Tool name and handler_key can differ."""
@@ -104,7 +166,12 @@ class TestMCPToolInvoker:
         )
         registry = registry_with(tool)
 
-        async def handler(*, app_state: object, arguments: dict[str, object]) -> str:
+        async def handler(
+            *,
+            app_state: object,
+            arguments: dict[str, object],
+            actor: object = None,
+        ) -> str:
             return json.dumps({"handler": "custom"})
 
         invoker = MCPToolInvoker(registry, {"custom_key": handler})
@@ -118,7 +185,10 @@ class TestMCPToolInvoker:
         registry = registry_with(tool)
 
         async def oom_handler(
-            *, app_state: object, arguments: dict[str, object]
+            *,
+            app_state: object,
+            arguments: dict[str, object],
+            actor: object = None,
         ) -> str:
             raise MemoryError
 
@@ -132,7 +202,10 @@ class TestMCPToolInvoker:
         registry = registry_with(tool)
 
         async def recursion_handler(
-            *, app_state: object, arguments: dict[str, object]
+            *,
+            app_state: object,
+            arguments: dict[str, object],
+            actor: object = None,
         ) -> str:
             raise RecursionError
 
