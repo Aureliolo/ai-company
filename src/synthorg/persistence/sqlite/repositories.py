@@ -30,6 +30,7 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_MESSAGE_SAVE_FAILED,
     PERSISTENCE_MESSAGE_SAVED,
     PERSISTENCE_TASK_COUNT_FAILED,
+    PERSISTENCE_TASK_COUNTED,
     PERSISTENCE_TASK_DELETE_FAILED,
     PERSISTENCE_TASK_DELETED,
     PERSISTENCE_TASK_DESERIALIZE_FAILED,
@@ -228,8 +229,14 @@ id, title, description, type, priority, project, created_by,
         if limit is not None:
             query += " LIMIT ?"
             params.append(int(limit))
-        if offset:
-            query += " OFFSET ?"
+            if offset:
+                query += " OFFSET ?"
+                params.append(int(offset))
+        elif offset:
+            # SQLite rejects ``OFFSET`` without a preceding ``LIMIT``;
+            # ``LIMIT -1`` is the documented idiom for "no limit" so
+            # offset-only calls produce valid SQL.
+            query += " LIMIT -1 OFFSET ?"
             params.append(int(offset))
 
         try:
@@ -282,7 +289,9 @@ id, title, description, type, priority, project, created_by,
                 error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
-        return int(row[0]) if row is not None else 0
+        total = int(row[0]) if row is not None else 0
+        logger.debug(PERSISTENCE_TASK_COUNTED, count=total)
+        return total
 
     async def delete(self, task_id: str) -> bool:
         """Delete a task by ID."""

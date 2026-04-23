@@ -190,7 +190,7 @@ def _summarise_memories(
     ``content_max_chars`` characters so a single oversized memory
     cannot balloon the prompt.
     """
-    if not memories:
+    if not memories or cap <= 0:
         return "  (none)"
     recent = memories[-cap:]
     lines: list[str] = []
@@ -294,6 +294,13 @@ class SeparateAnalyzerProposer:
     ) -> None:
         if summary_cap < 0:
             msg = f"summary_cap must be non-negative; got {summary_cap}"
+            logger.warning(
+                EVOLUTION_PROPOSER_INIT,
+                proposer="separate_analyzer",
+                model=model,
+                summary_cap=summary_cap,
+                error=msg,
+            )
             raise ValueError(msg)
         self._provider = provider
         self._model = model

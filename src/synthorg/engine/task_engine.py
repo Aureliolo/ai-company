@@ -485,12 +485,26 @@ class TaskEngine(TaskEngineLoopsMixin):
 
     @staticmethod
     def _validate_pagination(limit: int | None, offset: int) -> None:
-        """Reject negative ``limit`` / ``offset`` before touching the repo."""
+        """Reject negative or ill-composed pagination before touching the repo.
+
+        ``offset > 0`` without a matching ``limit`` is rejected: the
+        legacy fallback computes ``total = len(tasks)``, which would
+        undercount the full cardinality once the offset has skipped
+        leading rows.  Callers that want offset must pass an explicit
+        ``limit`` so the engine can route through the paginated branch
+        that issues a dedicated ``count_tasks`` round-trip.
+        """
         if limit is not None and limit < 0:
             msg = f"limit must be non-negative when set; got {limit}"
             raise ValueError(msg)
         if offset < 0:
             msg = f"offset must be non-negative; got {offset}"
+            raise ValueError(msg)
+        if limit is None and offset > 0:
+            msg = (
+                f"offset ({offset}) requires an explicit limit; "
+                "pass `limit` to use offset-based pagination"
+            )
             raise ValueError(msg)
 
     async def _fetch_tasks(
@@ -584,7 +598,11 @@ class TaskEngine(TaskEngineLoopsMixin):
 
         Raises:
             TaskInternalError: If the persistence backend fails.
-            ValueError: If ``limit`` is negative or ``offset`` is negative.
+            ValueError: If ``limit`` is negative, ``offset`` is negative,
+                or ``offset > 0`` is passed without an explicit ``limit``
+                (offset-based pagination requires a paired limit so the
+                returned total stays accurate; see
+                :meth:`_validate_pagination`).
         """
         self._validate_pagination(limit, offset)
         tasks = await self._fetch_tasks(

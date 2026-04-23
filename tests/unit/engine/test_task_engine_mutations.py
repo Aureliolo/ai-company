@@ -645,6 +645,27 @@ class TestListTasksPushDownPagination:
         finally:
             await eng.stop(timeout=2.0)
 
+    async def test_offset_without_limit_rejected_at_engine(
+        self,
+        persistence: FakePersistence,
+    ) -> None:
+        """``offset>0`` without ``limit`` fails fast with ``ValueError``.
+
+        Offset-based pagination without a paired limit would make the
+        engine's ``limit=None`` branch report
+        ``total = len(post_offset_tasks)`` which silently undercounts
+        the full cardinality.  The engine therefore rejects the shape
+        at the boundary; repository-direct callers retain offset-only
+        semantics.
+        """
+        eng = TaskEngine(persistence=persistence)  # type: ignore[arg-type]
+        eng.start()
+        try:
+            with pytest.raises(ValueError, match="requires an explicit limit"):
+                await eng.list_tasks(offset=5)
+        finally:
+            await eng.stop(timeout=2.0)
+
     async def test_negative_limit_rejected(
         self,
         persistence: FakePersistence,
