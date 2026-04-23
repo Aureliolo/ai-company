@@ -427,6 +427,13 @@ class TestApprovalsReject:
         ]
         assert len(guardrail) == 1
         assert guardrail[0]["violation"] == "missing_confirm"
+        # Audit event must NOT fire when the guardrail blocks the op --
+        # a false audit trail would claim a destructive action happened
+        # when it did not.
+        audit_events = [
+            e for e in logs if e.get("event") == MCP_DESTRUCTIVE_OP_EXECUTED
+        ]
+        assert audit_events == []
 
     async def test_reject_without_reason(
         self,

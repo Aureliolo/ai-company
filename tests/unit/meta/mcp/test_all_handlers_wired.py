@@ -252,8 +252,25 @@ class TestNoPlaceholderInProduction:
         )
 
 
+def _baseline_args(tool_name: str) -> dict[str, Any]:
+    """Build the minimal argument set that passes the id/path checks for
+    a destructive tool, leaving guardrail fields unset so each test can
+    probe the branch it targets."""
+    args: dict[str, Any] = {}
+    target_key_guess = _guess_id_key(tool_name)
+    if target_key_guess:
+        args[target_key_guess] = "placeholder-id"
+    return args
+
+
 class TestDestructiveGuardrails:
-    """Every destructive op rejects missing confirm/reason/actor."""
+    """Every destructive op rejects missing confirm/reason/actor + non-bool confirm.
+
+    Each parametrised sweep covers the full destructive-op universe so
+    a new destructive tool that's missed from the canonical list gets
+    caught by the handler-parity tests, and a handler that drops any
+    single guardrail branch is caught here.
+    """
 
     @pytest.mark.parametrize("tool_name", DESTRUCTIVE_TOOLS)
     async def test_missing_confirm_is_blocked(
@@ -264,12 +281,7 @@ class TestDestructiveGuardrails:
     ) -> None:
         handlers = build_handler_map()
         handler = handlers[tool_name]
-        # Minimal args with reason but no confirm -- should be a
-        # guardrail violation, not a service call.
-        target_key_guess = _guess_id_key(tool_name)
-        args: dict[str, Any] = {"reason": "cleanup"}
-        if target_key_guess:
-            args[target_key_guess] = "placeholder-id"
+        args = _baseline_args(tool_name) | {"reason": "cleanup"}
         result = await handler(
             app_state=fake_app_state,
             arguments=args,
@@ -280,6 +292,69 @@ class TestDestructiveGuardrails:
         assert body["domain_code"] == "guardrail_violated", (
             f"{tool_name} returned {body.get('domain_code')!r}; "
             f"expected guardrail_violated"
+        )
+
+    @pytest.mark.parametrize("tool_name", DESTRUCTIVE_TOOLS)
+    async def test_missing_reason_is_blocked(
+        self,
+        tool_name: str,
+        fake_app_state: SimpleNamespace,
+        actor: SimpleNamespace,
+    ) -> None:
+        handlers = build_handler_map()
+        handler = handlers[tool_name]
+        args = _baseline_args(tool_name) | {"confirm": True}
+        result = await handler(
+            app_state=fake_app_state,
+            arguments=args,
+            actor=actor,
+        )
+        body = json.loads(result)
+        assert body["status"] == "error"
+        assert body["domain_code"] == "guardrail_violated"
+
+    @pytest.mark.parametrize("tool_name", DESTRUCTIVE_TOOLS)
+    async def test_missing_actor_is_blocked(
+        self,
+        tool_name: str,
+        fake_app_state: SimpleNamespace,
+    ) -> None:
+        handlers = build_handler_map()
+        handler = handlers[tool_name]
+        args = _baseline_args(tool_name) | {"confirm": True, "reason": "x"}
+        result = await handler(
+            app_state=fake_app_state,
+            arguments=args,
+            actor=None,
+        )
+        body = json.loads(result)
+        assert body["status"] == "error"
+        assert body["domain_code"] == "guardrail_violated"
+
+    @pytest.mark.parametrize("tool_name", DESTRUCTIVE_TOOLS)
+    async def test_string_confirm_is_rejected(
+        self,
+        tool_name: str,
+        fake_app_state: SimpleNamespace,
+        actor: SimpleNamespace,
+    ) -> None:
+        """``confirm: "true"`` (string) must fail; truthy-bypass would be a bug."""
+        handlers = build_handler_map()
+        handler = handlers[tool_name]
+        args = _baseline_args(tool_name) | {
+            "confirm": "true",  # intentionally a string, not a bool
+            "reason": "x",
+        }
+        result = await handler(
+            app_state=fake_app_state,
+            arguments=args,
+            actor=actor,
+        )
+        body = json.loads(result)
+        assert body["status"] == "error"
+        assert body["domain_code"] == "guardrail_violated", (
+            f"{tool_name}: confirm='true' (string) should fail "
+            f"but returned {body.get('domain_code')!r}"
         )
 
 

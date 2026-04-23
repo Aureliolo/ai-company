@@ -25,11 +25,11 @@ from synthorg.meta.mcp.errors import (
     invalid_argument,
 )
 from synthorg.meta.mcp.handlers.common import (
+    PaginationMeta,
     dump_many,
     err,
     not_supported,
     ok,
-    paginate_sequence,
     require_destructive_guardrails,
 )
 from synthorg.observability import get_logger, safe_error_description
@@ -195,17 +195,21 @@ async def _memory_list_checkpoints(
         _log_invalid(tool, exc)
         return err(exc)
     try:
-        service = _service(app_state)
-        checkpoints = await service.list_checkpoints(limit=limit, offset=offset)
+        # Call the repo directly rather than through ``MemoryService``:
+        # the service drops the repo's total count, which pagination
+        # metadata needs.  Accessing ``app_state.persistence.*`` is the
+        # canonical persistence-boundary entry point.
+        (
+            checkpoints,
+            total,
+        ) = await app_state.persistence.fine_tune_checkpoints.list_checkpoints(
+            limit=limit,
+            offset=offset,
+        )
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
-    _, meta = paginate_sequence(
-        checkpoints,
-        offset=offset,
-        limit=limit,
-        total=len(checkpoints),
-    )
+    meta = PaginationMeta(total=total, offset=offset, limit=limit)
     logger.debug(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(data=dump_many(checkpoints), pagination=meta)
 

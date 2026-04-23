@@ -9,6 +9,7 @@ from typing import Any
 
 from synthorg.meta.mcp.errors import ArgumentValidationError, invalid_argument
 from synthorg.meta.mcp.handlers.common import (
+    PaginationMeta,
     dump_many,
     err,
     ok,
@@ -170,12 +171,9 @@ async def _budget_versions_list(
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
-    _, meta = paginate_sequence(
-        versions,
-        offset=offset,
-        limit=limit,
-        total=total,
-    )
+    # The repo already returned the requested page; don't re-paginate.
+    # Build the envelope meta directly with the repo's true total.
+    meta = PaginationMeta(total=total, offset=offset, limit=limit)
     logger.debug(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(data=dump_many(versions), pagination=meta)
 

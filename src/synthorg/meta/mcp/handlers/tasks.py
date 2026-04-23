@@ -46,7 +46,6 @@ _TY_NON_BLANK = "non-blank string"
 _TY_AGENT = "identified agent"
 _TY_TASK_STATUS = "TaskStatus"
 _ARG_TASK_ID = "task_id"
-_ARG_TITLE = "title"  # noqa: RUF100
 _ARG_TARGET = "target_status"
 _ARG_UPDATES = "updates"
 _ARG_STATUS = "status"
