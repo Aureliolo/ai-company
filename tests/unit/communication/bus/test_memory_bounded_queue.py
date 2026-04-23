@@ -1,0 +1,139 @@
+"""Subscriber-queue bounding tests for the in-memory bus (issue #1534).
+
+The un-bounded ``asyncio.Queue()`` at ``bus/memory.py:201`` lets a
+publisher outrun a slow subscriber indefinitely. These tests pin the
+drop-newest policy and the ``COMM_SUBSCRIBER_QUEUE_OVERFLOW`` signal
+so a regression to unbounded behavior is immediately visible.
+"""
+
+import logging
+
+import pytest
+
+from synthorg.communication.bus.memory import InMemoryMessageBus
+from synthorg.communication.config import (
+    MessageBusConfig,
+    MessageRetentionConfig,
+)
+from synthorg.communication.enums import MessagePriority, MessageType
+from synthorg.communication.message import Message
+from synthorg.observability.events.communication import (
+    COMM_SUBSCRIBER_QUEUE_OVERFLOW,
+)
+
+
+def _message(channel: str, sender: str, to: str, idx: int) -> Message:
+    """Build a minimal text message for a test publish."""
+    return Message.model_validate(
+        {
+            "from": sender,
+            "to": to,
+            "channel": channel,
+            "parts": [{"type": "text", "text": f"msg-{idx}"}],
+            "type": MessageType.TASK_UPDATE,
+            "priority": MessagePriority.NORMAL,
+        }
+    )
+
+
+@pytest.mark.unit
+class TestBoundedSubscriberQueue:
+    """The subscriber queue must be bounded by ``max_subscriber_queue_size``."""
+
+    async def test_publish_drops_newest_on_overflow(
+        self,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """Once a subscriber queue is full, further publishes drop newest.
+
+        Invariants:
+
+        - the first ``max_subscriber_queue_size`` envelopes remain queued
+        - subsequent publishes do NOT raise ``QueueFull``
+        - each overflow emits ``COMM_SUBSCRIBER_QUEUE_OVERFLOW`` at
+          WARNING with ``drop_policy="newest"`` and ``backend="memory"``
+        """
+        max_queue_size = 4
+        overflow_count = 2
+        channel = "#engineering"
+        config = MessageBusConfig(
+            channels=(channel,),
+            retention=MessageRetentionConfig(
+                max_messages_per_channel=1000,
+                max_subscriber_queue_size=max_queue_size,
+            ),
+        )
+        bus = InMemoryMessageBus(config=config)
+        await bus.start()
+        subscriber = "agent-slow-001"
+        await bus.subscribe(channel, subscriber)
+
+        caplog.set_level(logging.WARNING)
+        total = max_queue_size + overflow_count
+        for idx in range(total):
+            # Publisher never blocks or raises on an overflowed
+            # subscriber -- slow consumer must not nuke the channel.
+            await bus.publish(
+                _message(channel, sender="alice", to=subscriber, idx=idx),
+            )
+
+        queue = bus._queues[(channel, subscriber)]
+        assert queue.qsize() == max_queue_size, (
+            f"expected queue to hold {max_queue_size} envelopes, got {queue.qsize()}"
+        )
+
+        overflow_records = [
+            r
+            for r in caplog.records
+            if COMM_SUBSCRIBER_QUEUE_OVERFLOW in r.getMessage()
+        ]
+        assert len(overflow_records) == overflow_count, (
+            f"expected {overflow_count} overflow events, "
+            f"got {len(overflow_records)}: {[r.getMessage() for r in caplog.records]}"
+        )
+        for record in overflow_records:
+            msg = record.getMessage()
+            assert "drop_policy" in msg, msg
+            assert "newest" in msg, msg
+            assert "backend" in msg, msg
+            assert "memory" in msg, msg
+            assert channel in msg, msg
+
+        await bus.stop()
+
+    async def test_publish_preserves_oldest_envelopes(self) -> None:
+        """The drop-newest policy keeps older envelopes intact."""
+        max_queue_size = 3
+        channel = "#engineering"
+        config = MessageBusConfig(
+            channels=(channel,),
+            retention=MessageRetentionConfig(
+                max_messages_per_channel=1000,
+                max_subscriber_queue_size=max_queue_size,
+            ),
+        )
+        bus = InMemoryMessageBus(config=config)
+        await bus.start()
+        subscriber = "agent-slow-002"
+        await bus.subscribe(channel, subscriber)
+
+        for idx in range(max_queue_size + 3):
+            await bus.publish(
+                _message(channel, sender="alice", to=subscriber, idx=idx),
+            )
+
+        # Drain the queue and verify the first ``max_queue_size``
+        # envelopes are what we see -- dropped envelopes are the
+        # NEWEST arrivals, not the oldest.
+        received: list[int] = []
+        for _ in range(max_queue_size):
+            envelope = await bus.receive(channel, subscriber, timeout=0.1)
+            assert envelope is not None
+            text = envelope.message.parts[0].text  # type: ignore[union-attr]
+            received.append(int(text.removeprefix("msg-")))
+
+        assert received == list(range(max_queue_size)), (
+            f"drop-newest preserves oldest entries; got {received}"
+        )
+
+        await bus.stop()
