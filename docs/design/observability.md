@@ -187,7 +187,10 @@ names. Format: `"<domain>.<noun>.<verb>"` (e.g., `"api.request.started"`).
 | `MCP_HANDLER_ARGUMENT_INVALID` | WARNING | Caller input failed `require_arg` / pagination / enum coercion; returned `domain_code="invalid_argument"`. |
 | `MCP_HANDLER_GUARDRAIL_VIOLATED` | WARNING | Destructive-op guardrail rejected the call (missing `confirm`/`reason`/`actor`); returned `domain_code="guardrail_violated"`. |
 | `MCP_DESTRUCTIVE_OP_EXECUTED` | INFO | Audit trail for a successful destructive operation; carries `actor_agent_id`, `reason`, and the target id. |
-| `MCP_HANDLER_NOT_IMPLEMENTED` | WARNING | Handler returned `not_supported` -- the MCP tool is registered but no service facade is wired yet. |
+| `MCP_HANDLER_NOT_IMPLEMENTED` | WARNING | Handler returned `not_supported` -- the MCP tool is registered but no service facade is wired yet. After META-MCP-2, fires only for tools registered post-PR1 without a concrete handler. |
+| `MCP_HANDLER_SERVICE_FALLBACK` | WARNING | Legacy helper `service_fallback()` emitted; META-MCP-2 removed every call site and the integration sweep at `tests/integration/mcp/test_tool_surface.py` asserts zero emissions. Helper retained for future surgical use. |
+| `MCP_HANDLER_CAPABILITY_GAP` | INFO | Live handler whose underlying primitive does not yet expose the required method; wire envelope matches `not_supported` (`domain_code="not_supported"`) but the event channel distinguishes "primitive gap" from "handler unwired". |
+| `MCP_HANDLER_LAZY_SERVICE_INIT` | DEBUG | Handler constructed its service facade per-call because `app_state` had not wired one. Telemetry for legacy bootstrap paths. |
 | `MCP_HANDLERS_BUILT` | DEBUG (ERROR on duplicate key) | Handler registry successfully composed from the 15 domain modules. |
 
 All MCP handler log calls go through `logger.warning(EVENT, error_type=type(exc).__name__, error=safe_error_description(exc))` on credential-sensitive paths -- never `logger.exception(..., error=str(exc))` -- to avoid leaking secrets through traceback frame-locals (SEC-1).

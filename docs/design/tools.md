@@ -266,7 +266,21 @@ Shared envelope builders live in `src/synthorg/meta/mcp/handlers/common.py`:
 - `not_supported(tool_name, reason)` -- stable `status="error"` /
   `domain_code="not_supported"` envelope for tools whose service facade is
   not yet wired. Emits the `MCP_HANDLER_NOT_IMPLEMENTED` WARNING event so
-  operators can alert on unwired tools.
+  operators can alert on unwired tools. After META-MCP-2 every tool is
+  wired, so this path only fires for tools registered after PR1 that have
+  not yet been given a concrete handler.
+- `service_fallback(tool_name, reason)` -- legacy helper retained in
+  `common.py` for future surgical use. Emits
+  `MCP_HANDLER_SERVICE_FALLBACK`; META-MCP-2 removed every call site and
+  the integration sweep at `tests/integration/mcp/test_tool_surface.py`
+  asserts zero emissions of this event across the full 204-tool surface.
+- `capability_gap(tool_name, reason)` -- live handler whose underlying
+  primitive does not yet expose the required method (e.g. agent
+  `activity_feed`, memory fine-tune orchestrator on a backend that
+  lacks fine-tune support). Identical wire envelope to `not_supported`
+  (`domain_code="not_supported"`) but emits the dedicated
+  `MCP_HANDLER_CAPABILITY_GAP` INFO event so ops telemetry distinguishes
+  "primitive missing method" from "handler unwired".
 - `require_arg(arguments, key, ty)` -- typed required-argument extraction
   that raises `ArgumentValidationError` (ruff `EM101`-safe) on missing or
   mistyped input.

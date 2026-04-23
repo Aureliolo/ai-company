@@ -30,6 +30,7 @@ from synthorg.meta.mcp.handler_protocol import (
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.mcp import (
+    MCP_HANDLER_CAPABILITY_GAP,
     MCP_HANDLER_NOT_IMPLEMENTED,
     MCP_HANDLER_SERVICE_FALLBACK,
 )
@@ -427,12 +428,16 @@ def service_fallback(tool_name: str, reason: str) -> str:
 def capability_gap(tool_name: str, reason: str) -> str:
     """Build a ``not_supported`` envelope for a wired handler with a primitive gap.
 
-    Identical wire shape to :func:`service_fallback`, but emits
-    :data:`MCP_HANDLER_INVOKE_FAILED` + a ``capability_gap`` tag so
-    ops telemetry can distinguish "handler wired, primitive does not
-    yet expose the required method" from "handler unwired"
-    (:func:`make_placeholder_handler`) and from "live handler, but
-    the service facade is still a placeholder" (:func:`service_fallback`).
+    Identical wire shape to :func:`service_fallback`, but emits the
+    dedicated :data:`MCP_HANDLER_CAPABILITY_GAP` event so ops telemetry
+    can distinguish "handler wired, primitive does not yet expose the
+    required method" from "handler unwired"
+    (:func:`make_placeholder_handler`) and from "live handler, but the
+    service facade is still a placeholder" (:func:`service_fallback`).
+
+    ``MCP_HANDLER_SERVICE_FALLBACK`` is reserved for the legacy
+    ``service_fallback`` helper; META-MCP-2 acceptance asserts zero
+    emissions of that event at runtime.
 
     Args:
         tool_name: Full ``synthorg_<domain>_<action>`` name.
@@ -443,10 +448,9 @@ def capability_gap(tool_name: str, reason: str) -> str:
         ``domain_code="not_supported"``.
     """
     logger.info(
-        MCP_HANDLER_SERVICE_FALLBACK,
+        MCP_HANDLER_CAPABILITY_GAP,
         tool_name=tool_name,
         reason=reason,
-        capability_gap=True,
     )
     return _not_supported_envelope(reason)
 

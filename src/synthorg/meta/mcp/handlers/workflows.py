@@ -49,7 +49,7 @@ from synthorg.observability.events.mcp import (
     MCP_HANDLER_GUARDRAIL_VIOLATED,
     MCP_HANDLER_INVOKE_FAILED,
     MCP_HANDLER_INVOKE_SUCCESS,
-    MCP_HANDLER_SERVICE_FALLBACK,
+    MCP_HANDLER_LAZY_SERVICE_INIT,
 )
 
 if TYPE_CHECKING:
@@ -135,9 +135,9 @@ def _service(app_state: Any) -> WorkflowService:
     if cached is not None:
         return cached
     logger.debug(
-        MCP_HANDLER_SERVICE_FALLBACK,
+        MCP_HANDLER_LAZY_SERVICE_INIT,
         tool_name="workflows._service",
-        fallback="persistence",
+        service="workflow_service",
         reason="app_state.workflow_service not wired -- building per-call",
     )
     return WorkflowService(
