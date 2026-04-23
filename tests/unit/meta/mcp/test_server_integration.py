@@ -113,22 +113,23 @@ class TestFullStackInvocation:
     """End-to-end invocation through all layers."""
 
     async def test_invoke_via_unified_server(self) -> None:
+        """End-to-end dispatch through registry + invoker.
+
+        Uses an unknown tool name so the invoker's not-found branch is
+        exercised without needing a live ``app_state`` or depending on
+        any handler being a placeholder.
+        """
         registry = get_registry()
         handlers = build_handler_map()
         invoker = MCPToolInvoker(registry, handlers)
-        # Pick a still-placeholder tool so the end-to-end test exercises
-        # the full registry+invoker+handler path without needing a live
-        # ``app_state``.  Coordination hasn't been wired yet at this
-        # point in META-MCP-1 rollout, so its handlers remain scaffolds.
         result = await invoker.invoke(
-            "synthorg_coordination_coordinate_task",
+            "synthorg_does_not_exist",
             {},
             app_state=None,
         )
-        assert result.is_error is False
+        assert result.is_error is True
         body = json.loads(result.content)
-        assert body["tool"] == "synthorg_coordination_coordinate_task"
-        assert body["status"] == "not_implemented"
+        assert "Unknown tool" in body["error"]
 
     def test_server_config_complete(self) -> None:
         config = get_server_config()

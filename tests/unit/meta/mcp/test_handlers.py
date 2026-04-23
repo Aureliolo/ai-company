@@ -110,25 +110,38 @@ class TestEndToEndInvocation:
     """End-to-end test: registry + handlers + invoker."""
 
     async def test_invoke_placeholder_via_invoker(self) -> None:
-        """End-to-end with a still-placeholder tool.
+        """End-to-end dispatch test with a synthetic placeholder tool.
 
-        As META-MCP-1 rolls out domain handlers, pick a tool whose
-        domain hasn't been wired yet so the end-to-end dispatch test
-        stays free of live service dependencies.
+        Uses an explicit synthetic tool registered into an ad-hoc
+        registry so the test stays stable as domain handlers migrate
+        off the placeholder scaffold.
         """
-        registry = build_full_registry()
-        handlers = build_handler_map()
+        from synthorg.meta.mcp.registry import DomainToolRegistry, MCPToolDef
+
+        synth_tool = MCPToolDef(
+            name="synthorg_synth_placeholder",
+            description="test placeholder",
+            parameters={"type": "object", "properties": {}},
+            capability="synth:read",
+            handler_key="synthorg_synth_placeholder",
+        )
+        registry = DomainToolRegistry()
+        registry.register(synth_tool)
+        registry.freeze()
+
+        placeholder = make_placeholder_handler("synthorg_synth_placeholder")
+        handlers = {"synthorg_synth_placeholder": placeholder}
         invoker = MCPToolInvoker(registry, handlers)
 
         result = await invoker.invoke(
-            "synthorg_scaling_list_decisions",
+            "synthorg_synth_placeholder",
             {"offset": 0, "limit": 10},
             app_state=None,
         )
         assert result.is_error is False
         body = json.loads(result.content)
         assert body["status"] == "not_implemented"
-        assert body["tool"] == "synthorg_scaling_list_decisions"
+        assert body["tool"] == "synthorg_synth_placeholder"
         assert body["arguments_received"]["offset"] == 0
 
     async def test_invoke_unknown_tool(self) -> None:
