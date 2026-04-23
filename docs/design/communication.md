@@ -345,6 +345,25 @@ All metadata fields are nullable except `extra`, which is always present (defaul
 !!! info "Distributed bus backends"
     The `backend` field switches between the in-process `internal` default and the opt-in NATS JetStream backend for multi-process / multi-host deployments. See the [Distributed Runtime design](distributed-runtime.md) for the transport evaluation, stream layout, and migration path.
 
+### Retention and Subscriber Bounds
+
+Both bus backends are bounded on two independent axes so a slow subscriber cannot nuke the channel or leak memory without bound:
+
+| Setting | Scope | In-memory backend | NATS backend |
+|---------|-------|-------------------|--------------|
+| `retention.max_messages_per_channel` | Per-channel history | `collections.deque(maxlen=...)` per channel | JetStream stream `max_msgs_per_subject` |
+| `retention.max_subscriber_queue_size` | Per-(channel, subscriber) in-flight delivery | `asyncio.Queue(maxsize=...)` + drop-newest policy | `ConsumerConfig.max_ack_pending` (JetStream pauses delivery) |
+
+When a slow subscriber's delivery cap is reached:
+
+Internal backend
+:   The publisher's `put_nowait` trips `asyncio.QueueFull`; the framework **drops the incoming envelope** (drop-newest), emits `COMM_SUBSCRIBER_QUEUE_OVERFLOW` at `WARNING` with `channel`, `subscriber`, `queue_size`, `drop_policy=newest`, `backend=memory`. Older queued envelopes are preserved so causality is maintained, and publishers never block.
+
+NATS backend
+:   JetStream stops handing new messages to the pull consumer once `max_ack_pending` is reached. Messages remain in the stream (subject to `max_messages_per_channel`), so when the consumer catches up delivery resumes automatically. The same `COMM_SUBSCRIBER_QUEUE_OVERFLOW` event is emitted (rate-limited) with `backend=nats` so operators see a uniform signal across backends.
+
+The default `max_subscriber_queue_size` is `1024`. Raise it for bursty channels where subscribers are known to catch up within the burst; lower it to surface slow consumers faster.
+
 ---
 
 ## Loop Prevention
