@@ -32,6 +32,16 @@ class ChatRequest(BaseModel):
 logger = get_logger(__name__)
 
 
+def _settings_service_from_state(state: State) -> Any:
+    """Return the settings service from the app state, or ``None``.
+
+    Centralises the ``has_settings_service`` guard used by every
+    ``load_self_improvement_config`` call site in this controller.
+    """
+    app_state = state.app_state
+    return app_state.settings_service if app_state.has_settings_service else None
+
+
 class MetaController(Controller):
     """Self-improvement meta-loop API endpoints.
 
@@ -59,11 +69,9 @@ class MetaController(Controller):
         Returns:
             Current SelfImprovementConfig as dict.
         """
-        app_state = state.app_state
-        settings_svc = (
-            app_state.settings_service if app_state.has_settings_service else None
+        config = await load_self_improvement_config(
+            _settings_service_from_state(state),
         )
-        config = await load_self_improvement_config(settings_svc)
         return ApiResponse[dict[str, Any]](
             data=config.model_dump(),
         )
@@ -88,11 +96,9 @@ class MetaController(Controller):
         from synthorg.meta.rules.builtin import default_rules  # noqa: PLC0415
 
         rules = default_rules()
-        app_state = state.app_state
-        settings_svc = (
-            app_state.settings_service if app_state.has_settings_service else None
+        config = await load_self_improvement_config(
+            _settings_service_from_state(state),
         )
-        config = await load_self_improvement_config(settings_svc)
         disabled = set(config.rules.disabled_rules)
         rule_list: list[dict[str, Any]] = [
             {
@@ -269,11 +275,9 @@ class MetaController(Controller):
         Returns:
             Signal domain summaries.
         """
-        app_state = state.app_state
-        settings_svc = (
-            app_state.settings_service if app_state.has_settings_service else None
+        config = await load_self_improvement_config(
+            _settings_service_from_state(state),
         )
-        config = await load_self_improvement_config(settings_svc)
         domains = [
             "performance",
             "budget",

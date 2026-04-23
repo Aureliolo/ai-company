@@ -160,7 +160,7 @@ def _summarise_tasks(
     The tuple is capped from the tail so the most recent entries win
     when the fleet exceeds *cap*.
     """
-    if not tasks:
+    if not tasks or cap <= 0:
         return "  (none)"
     recent = tasks[-cap:]
     lines: list[str] = []

@@ -277,6 +277,75 @@ def test_usefixtures_decorator_keeps_fixture_live(tmp_path: Path) -> None:
     assert _names(orphans) == set()
 
 
+def test_usefixtures_decorator_with_multiple_names_keeps_all_live(
+    tmp_path: Path,
+) -> None:
+    """``@pytest.mark.usefixtures("a", "b")`` keeps *every* named fixture live.
+
+    The original test only covered the single-argument form; this guards
+    against a regression where only the first argument was collected.
+    """
+    _build_tree(
+        tmp_path,
+        {
+            "conftest.py": (
+                "import pytest\n"
+                "\n"
+                "@pytest.fixture\n"
+                "def side_effect_a():\n"
+                "    return 1\n"
+                "\n"
+                "@pytest.fixture\n"
+                "def side_effect_b():\n"
+                "    return 2\n"
+            ),
+            "test_x.py": (
+                "import pytest\n"
+                "\n"
+                '@pytest.mark.usefixtures("side_effect_a", "side_effect_b")\n'
+                "def test_foo():\n"
+                "    assert True\n"
+            ),
+        },
+    )
+    orphans = _MODULE.find_orphans(tmp_path / "tests")
+    assert _names(orphans) == set()
+
+
+def test_indirect_parametrize_keeps_fixture_live(tmp_path: Path) -> None:
+    """``@pytest.mark.parametrize(..., indirect=["fix"])`` is a reference.
+
+    Indirect parametrization routes the param value through the fixture
+    named in ``indirect``, which counts as a live reference.
+    """
+    _build_tree(
+        tmp_path,
+        {
+            "conftest.py": (
+                "import pytest\n"
+                "\n"
+                "@pytest.fixture\n"
+                "def indirect_fix(request):\n"
+                "    return request.param\n"
+            ),
+            "test_x.py": (
+                "import pytest\n"
+                "\n"
+                "@pytest.mark.parametrize(\n"
+                '    "indirect_fix", [1, 2], indirect=["indirect_fix"],\n'
+                ")\n"
+                "def test_foo(indirect_fix):\n"
+                "    assert indirect_fix in (1, 2)\n"
+            ),
+        },
+    )
+    orphans = _MODULE.find_orphans(tmp_path / "tests")
+    # indirect_fix shows up as a test-function argument, which is the
+    # primary live signal the detector relies on -- the test guards
+    # that future changes keep the parametrize path green.
+    assert _names(orphans) == set()
+
+
 def test_pytest_plugins_imports_are_collected(tmp_path: Path) -> None:
     """Fixtures inside a module named in ``pytest_plugins`` count as live.
 

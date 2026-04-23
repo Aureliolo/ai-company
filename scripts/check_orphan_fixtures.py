@@ -317,7 +317,7 @@ def _collect_references(
 def _file_is_under_plugin_module(
     file_path: Path,
     test_root: Path,
-    plugin_modules: frozenset[str],
+    plugin_modules: frozenset[str] | set[str],
 ) -> bool:
     """Return True iff *file_path* matches any ``pytest_plugins`` entry.
 
@@ -349,6 +349,33 @@ def _iter_test_files(test_root: Path) -> list[Path]:
 def _iter_conftests(test_root: Path) -> list[Path]:
     """Return every ``conftest.py`` under *test_root* (recursive)."""
     return [p for p in test_root.rglob("conftest.py") if p.is_file()]
+
+
+def _filter_orphans(
+    declarations: list[_Declaration],
+    live_names: frozenset[str] | set[str],
+    test_root: Path,
+    plugin_modules: frozenset[str] | set[str],
+) -> list[Orphan]:
+    """Project *declarations* onto ``Orphan`` entries, skipping live ones."""
+    orphans: list[Orphan] = []
+    for decl in declarations:
+        if decl.autouse:
+            continue
+        if decl.name in live_names:
+            continue
+        if _file_is_under_plugin_module(decl.file, test_root, plugin_modules):
+            continue
+        if _line_has_suppression(decl.file, decl.decorator_line):
+            continue
+        orphans.append(
+            Orphan(
+                file=str(decl.file),
+                line=decl.func_line,
+                name=decl.name,
+            )
+        )
+    return orphans
 
 
 def find_orphans(
@@ -385,29 +412,12 @@ def find_orphans(
         | fixture_dep_names
         | _KNOWN_FRAMEWORK_FIXTURES
     )
-
-    orphans: list[Orphan] = []
-    for decl in declarations:
-        if decl.autouse:
-            continue
-        if decl.name in live_names:
-            continue
-        if _file_is_under_plugin_module(
-            decl.file,
-            test_root,
-            references.pytest_plugin_modules,
-        ):
-            continue
-        if _line_has_suppression(decl.file, decl.decorator_line):
-            continue
-        orphans.append(
-            Orphan(
-                file=str(decl.file),
-                line=decl.func_line,
-                name=decl.name,
-            )
-        )
-    return orphans
+    return _filter_orphans(
+        declarations,
+        live_names,
+        test_root,
+        references.pytest_plugin_modules,
+    )
 
 
 # ── CLI ──────────────────────────────────────────────────────────
@@ -423,39 +433,12 @@ def _detect_test_root(project_root: Path) -> Path:
     return project_root / "tests"
 
 
-def main(argv: list[str] | None = None) -> int:
-    """CLI entry point."""
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--test-root",
-        type=Path,
-        default=None,
-        help="Root of the test tree (defaults to <project_root>/tests).",
-    )
-    parser.add_argument(
-        "--force",
-        action="store_true",
-        help=(
-            "Run the scan even when the SYNTHORG_CHECK_ORPHAN_FIXTURES "
-            "env var is unset.  Useful for ad-hoc local invocation."
-        ),
-    )
-    args = parser.parse_args(argv)
-
-    if os.environ.get(_ENV_VAR) != "1" and not args.force:
-        # Opt-in only.  Exit silently so the default pre-push path
-        # stays fast.
-        return 0
-
-    project_root = _resolve_project_root()
-    test_root = args.test_root or _detect_test_root(project_root)
-    if not test_root.is_dir():
-        print(f"test root not found: {test_root}", file=sys.stderr)
-        return 2
-
-    skipped: list[tuple[Path, str]] = []
-    orphans = find_orphans(test_root, skipped=skipped)
-
+def _report_results(
+    orphans: list[Orphan],
+    skipped: list[tuple[Path, str]],
+    project_root: Path,
+) -> int:
+    """Print skip warnings + orphan findings; return the CLI exit code."""
     if skipped:
         print(
             f"\nWARNING: {len(skipped)} file(s) could not be fully scanned "
@@ -491,6 +474,41 @@ def main(argv: list[str] | None = None) -> int:
         file=sys.stderr,
     )
     return 1
+
+
+def main(argv: list[str] | None = None) -> int:
+    """CLI entry point."""
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--test-root",
+        type=Path,
+        default=None,
+        help="Root of the test tree (defaults to <project_root>/tests).",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help=(
+            "Run the scan even when the SYNTHORG_CHECK_ORPHAN_FIXTURES "
+            "env var is unset.  Useful for ad-hoc local invocation."
+        ),
+    )
+    args = parser.parse_args(argv)
+
+    if os.environ.get(_ENV_VAR) != "1" and not args.force:
+        # Opt-in only.  Exit silently so the default pre-push path
+        # stays fast.
+        return 0
+
+    project_root = _resolve_project_root()
+    test_root = args.test_root or _detect_test_root(project_root)
+    if not test_root.is_dir():
+        print(f"test root not found: {test_root}", file=sys.stderr)
+        return 2
+
+    skipped: list[tuple[Path, str]] = []
+    orphans = find_orphans(test_root, skipped=skipped)
+    return _report_results(orphans, skipped, project_root)
 
 
 if __name__ == "__main__":

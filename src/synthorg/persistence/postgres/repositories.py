@@ -31,6 +31,7 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_MESSAGE_HISTORY_FETCHED,
     PERSISTENCE_MESSAGE_SAVE_FAILED,
     PERSISTENCE_MESSAGE_SAVED,
+    PERSISTENCE_TASK_COUNT_FAILED,
     PERSISTENCE_TASK_DELETE_FAILED,
     PERSISTENCE_TASK_DELETED,
     PERSISTENCE_TASK_DESERIALIZE_FAILED,
@@ -150,8 +151,11 @@ class PostgresTaskRepository:
                 await conn.commit()
         except psycopg.Error as exc:
             msg = f"Failed to save task {task.id!r}"
-            logger.exception(
-                PERSISTENCE_TASK_SAVE_FAILED, task_id=task.id, error=str(exc)
+            logger.warning(
+                PERSISTENCE_TASK_SAVE_FAILED,
+                task_id=task.id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         logger.info(PERSISTENCE_TASK_SAVED, task_id=task.id)
@@ -178,10 +182,11 @@ class PostgresTaskRepository:
         except (ValidationError, KeyError, TypeError) as exc:
             task_id = row.get("id", "unknown")
             msg = f"Failed to deserialize task {task_id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_TASK_DESERIALIZE_FAILED,
                 task_id=task_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -199,8 +204,11 @@ class PostgresTaskRepository:
                 row = await cur.fetchone()
         except psycopg.Error as exc:
             msg = f"Failed to fetch task {task_id!r}"
-            logger.exception(
-                PERSISTENCE_TASK_FETCH_FAILED, task_id=task_id, error=str(exc)
+            logger.warning(
+                PERSISTENCE_TASK_FETCH_FAILED,
+                task_id=task_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         if row is None:
@@ -240,8 +248,11 @@ class PostgresTaskRepository:
             query += " WHERE " + " AND ".join(clauses)
         query += " ORDER BY id ASC"
         if limit is not None:
-            query += " LIMIT %s OFFSET %s"
-            params.extend([int(limit), int(offset)])
+            query += " LIMIT %s"
+            params.append(int(limit))
+        if offset:
+            query += " OFFSET %s"
+            params.append(int(offset))
 
         try:
             async with (
@@ -296,7 +307,7 @@ class PostgresTaskRepository:
         except psycopg.Error as exc:
             msg = "Failed to count tasks"
             logger.warning(
-                PERSISTENCE_TASK_LIST_FAILED,
+                PERSISTENCE_TASK_COUNT_FAILED,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
@@ -312,8 +323,11 @@ class PostgresTaskRepository:
                 await conn.commit()
         except psycopg.Error as exc:
             msg = f"Failed to delete task {task_id!r}"
-            logger.exception(
-                PERSISTENCE_TASK_DELETE_FAILED, task_id=task_id, error=str(exc)
+            logger.warning(
+                PERSISTENCE_TASK_DELETE_FAILED,
+                task_id=task_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         logger.info(PERSISTENCE_TASK_DELETED, task_id=task_id, deleted=deleted)

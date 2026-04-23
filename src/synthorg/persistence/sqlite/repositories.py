@@ -29,6 +29,7 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_MESSAGE_HISTORY_FETCHED,
     PERSISTENCE_MESSAGE_SAVE_FAILED,
     PERSISTENCE_MESSAGE_SAVED,
+    PERSISTENCE_TASK_COUNT_FAILED,
     PERSISTENCE_TASK_DELETE_FAILED,
     PERSISTENCE_TASK_DELETED,
     PERSISTENCE_TASK_DESERIALIZE_FAILED,
@@ -123,8 +124,11 @@ ON CONFLICT(id) DO UPDATE SET
             await self._db.commit()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to save task {task.id!r}"
-            logger.exception(
-                PERSISTENCE_TASK_SAVE_FAILED, task_id=task.id, error=str(exc)
+            logger.warning(
+                PERSISTENCE_TASK_SAVE_FAILED,
+                task_id=task.id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         logger.debug(PERSISTENCE_TASK_SAVED, task_id=task.id)
@@ -153,10 +157,11 @@ ON CONFLICT(id) DO UPDATE SET
         ) as exc:
             task_id = row["id"] if row else "unknown"
             msg = f"Failed to deserialize task {task_id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_TASK_DESERIALIZE_FAILED,
                 task_id=task_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -177,10 +182,11 @@ id, title, description, type, priority, project, created_by,
             row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to fetch task {task_id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_TASK_FETCH_FAILED,
                 task_id=task_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         if row is None:
@@ -220,8 +226,11 @@ id, title, description, type, priority, project, created_by,
             query += " WHERE " + " AND ".join(clauses)
         query += " ORDER BY id ASC"
         if limit is not None:
-            query += " LIMIT ? OFFSET ?"
-            params.extend([int(limit), int(offset)])
+            query += " LIMIT ?"
+            params.append(int(limit))
+        if offset:
+            query += " OFFSET ?"
+            params.append(int(offset))
 
         try:
             cursor = await self._db.execute(query, params)
@@ -268,7 +277,7 @@ id, title, description, type, priority, project, created_by,
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to count tasks"
             logger.warning(
-                PERSISTENCE_TASK_LIST_FAILED,
+                PERSISTENCE_TASK_COUNT_FAILED,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
@@ -284,10 +293,11 @@ id, title, description, type, priority, project, created_by,
             await self._db.commit()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to delete task {task_id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_TASK_DELETE_FAILED,
                 task_id=task_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         deleted = cursor.rowcount > 0
@@ -515,10 +525,11 @@ INSERT INTO messages (
             raise QueryError(msg) from exc
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to save message {msg_id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_MESSAGE_SAVE_FAILED,
                 message_id=msg_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         logger.debug(PERSISTENCE_MESSAGE_SAVED, message_id=msg_id)
@@ -542,10 +553,11 @@ INSERT INTO messages (
         ) as exc:
             msg_id = row["id"] if row else "unknown"
             msg = f"Failed to deserialize message {msg_id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_MESSAGE_DESERIALIZE_FAILED,
                 message_id=msg_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -575,10 +587,11 @@ ORDER BY timestamp DESC"""
             rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to fetch message history for channel {channel!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_MESSAGE_HISTORY_FAILED,
                 channel=channel,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         messages = tuple(self._row_to_message(row) for row in rows)

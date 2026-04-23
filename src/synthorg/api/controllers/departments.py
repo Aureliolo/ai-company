@@ -42,7 +42,7 @@ from synthorg.core.company import Department  # noqa: TC001
 from synthorg.core.normalization import find_by_name_ci
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.workflow.ceremony_policy import CeremonyPolicyConfig
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_CEREMONY_POLICY_DEPT_CLEARED,
     API_CEREMONY_POLICY_DEPT_UPDATED,
@@ -128,7 +128,8 @@ async def _load_dept_policies_json(
         logger.warning(
             API_REQUEST_ERROR,
             endpoint="departments.ceremony_policy.load",
-            error=f"failed to load dept_ceremony_policies: {exc}",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         if raise_on_error:
             msg = "Failed to load department ceremony policies"
@@ -191,7 +192,8 @@ async def _get_dept_ceremony_override(
                     API_REQUEST_ERROR,
                     endpoint="departments.ceremony_policy.get",
                     department=department_name,
-                    error=f"Invalid stored override: {exc}",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 msg = f"Corrupt ceremony policy override for {department_name!r}"
                 raise ServiceUnavailableError(msg) from exc
@@ -254,8 +256,8 @@ async def _load_dept_policies_versioned(
         logger.warning(
             API_REQUEST_ERROR,
             endpoint="departments.ceremony_policy.load_versioned",
-            error="failed to load versioned dept_ceremony_policies",
-            exc_info=True,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         msg = "Failed to load department ceremony policies"
         raise ServiceUnavailableError(msg) from exc
@@ -267,7 +269,8 @@ async def _load_dept_policies_versioned(
         logger.warning(
             API_REQUEST_ERROR,
             endpoint="departments.ceremony_policy.load_versioned",
-            error=f"failed to parse dept_ceremony_policies: {exc}",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         msg = "Failed to parse department ceremony policies"
         raise ServiceUnavailableError(msg) from exc

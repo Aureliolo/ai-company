@@ -57,6 +57,10 @@ class FakeTaskRepository:
             result = [t for t in result if t.assigned_to == assigned_to]
         if project is not None:
             result = [t for t in result if t.project == project]
+        if offset:
+            result = result[offset:]
+        if limit is not None:
+            result = result[:limit]
         return tuple(result)
 
     async def count_tasks(

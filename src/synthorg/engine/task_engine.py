@@ -483,6 +483,70 @@ class TaskEngine(TaskEngineLoopsMixin):
             )
             raise TaskInternalError(msg) from exc
 
+    @staticmethod
+    def _validate_pagination(limit: int | None, offset: int) -> None:
+        """Reject negative ``limit`` / ``offset`` before touching the repo."""
+        if limit is not None and limit < 0:
+            msg = f"limit must be non-negative when set; got {limit}"
+            raise ValueError(msg)
+        if offset < 0:
+            msg = f"offset must be non-negative; got {offset}"
+            raise ValueError(msg)
+
+    async def _fetch_tasks(
+        self,
+        *,
+        status: TaskStatus | None,
+        assigned_to: str | None,
+        project: str | None,
+        limit: int | None,
+        offset: int,
+    ) -> tuple[Task, ...]:
+        """Forward the filtered list to the repo with SEC-1-safe logging."""
+        try:
+            return await self._persistence.tasks.list_tasks(
+                status=status,
+                assigned_to=assigned_to,
+                project=project,
+                limit=limit,
+                offset=offset,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            msg = "Failed to list tasks"
+            logger.warning(
+                TASK_ENGINE_READ_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise TaskInternalError(msg) from exc
+
+    async def _count_tasks_filtered(
+        self,
+        *,
+        status: TaskStatus | None,
+        assigned_to: str | None,
+        project: str | None,
+    ) -> int:
+        """Accurate total count with SEC-1-safe logging."""
+        try:
+            return await self._persistence.tasks.count_tasks(
+                status=status,
+                assigned_to=assigned_to,
+                project=project,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            msg = "Failed to count tasks"
+            logger.warning(
+                TASK_ENGINE_READ_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise TaskInternalError(msg) from exc
+
     async def list_tasks(  # noqa: PLR0913
         self,
         *,
@@ -522,30 +586,14 @@ class TaskEngine(TaskEngineLoopsMixin):
             TaskInternalError: If the persistence backend fails.
             ValueError: If ``limit`` is negative or ``offset`` is negative.
         """
-        if limit is not None and limit < 0:
-            msg = f"limit must be non-negative when set; got {limit}"
-            raise ValueError(msg)
-        if offset < 0:
-            msg = f"offset must be non-negative; got {offset}"
-            raise ValueError(msg)
-        try:
-            tasks = await self._persistence.tasks.list_tasks(
-                status=status,
-                assigned_to=assigned_to,
-                project=project,
-                limit=limit,
-                offset=offset,
-            )
-        except MemoryError, RecursionError:
-            raise
-        except Exception as exc:
-            msg = "Failed to list tasks"
-            logger.warning(
-                TASK_ENGINE_READ_FAILED,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise TaskInternalError(msg) from exc
+        self._validate_pagination(limit, offset)
+        tasks = await self._fetch_tasks(
+            status=status,
+            assigned_to=assigned_to,
+            project=project,
+            limit=limit,
+            offset=offset,
+        )
 
         # When the caller paginates at the repo layer, ``tasks`` is
         # already bounded; the safety cap only fires on unpaginated
@@ -569,22 +617,11 @@ class TaskEngine(TaskEngineLoopsMixin):
             # so callers keep accurate totals even after the safety cap.
             return tasks, true_total
 
-        try:
-            total = await self._persistence.tasks.count_tasks(
-                status=status,
-                assigned_to=assigned_to,
-                project=project,
-            )
-        except MemoryError, RecursionError:
-            raise
-        except Exception as exc:
-            msg = "Failed to count tasks"
-            logger.warning(
-                TASK_ENGINE_READ_FAILED,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise TaskInternalError(msg) from exc
+        total = await self._count_tasks_filtered(
+            status=status,
+            assigned_to=assigned_to,
+            project=project,
+        )
         return tasks, total
 
     # -- Background processing ---------------------------------------------

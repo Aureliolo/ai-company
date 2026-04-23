@@ -105,9 +105,20 @@ export async function postChat(question: string): Promise<ChatResponse> {
   if (!trimmed) {
     throw new Error('Question must not be blank')
   }
+  // The /meta/chat endpoint is guarded by
+  // ``per_op_rate_limit_from_policy("meta.chat", key="user")``
+  // (5 req / 60 s / user).  Attach an ``Idempotency-Key`` so the
+  // axios 429 interceptor retries after ``Retry-After`` instead of
+  // surfacing a hard failure on ratelimit bursts -- the server treats
+  // replays of the same key as a no-op, so the retry is safe.
   const response = await apiClient.post<ApiResponse<ChatResponse>>(
     `${BASE}/chat`,
     { question: trimmed },
+    {
+      headers: {
+        'Idempotency-Key': crypto.randomUUID(),
+      },
+    },
   )
   return unwrap(response)
 }

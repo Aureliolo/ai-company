@@ -100,6 +100,55 @@ concurrent writers, and optional capability protocols surface Postgres-native
 features (JSONB analytics, TimescaleDB hypertables) that SQLite callers
 simply do not see.
 
+### Cross-worker CAS on JSON-blob settings
+
+Where runtime state is persisted as a single JSON blob in a settings key
+(`coordination.dept_ceremony_policies` is the canonical example), concurrent
+writers across workers cannot rely on in-process locks.  Instead the controller
+follows a bounded **compare-and-swap** loop:
+
+1. `settings_service.get_versioned(namespace, key)` returns the current
+   `(value, updated_at)` pair.
+2. The controller mutates the parsed value in memory.
+3. `settings_service.set(..., expected_updated_at=updated_at)` writes the
+   new value and raises `VersionConflictError` if the stored `updated_at`
+   has advanced since step 1.
+4. On conflict, the controller re-reads and retries up to
+   `_DEPT_POLICY_CAS_MAX_ATTEMPTS` (currently `3`).  Persistent contention
+   surfaces as HTTP 409 `VersionConflictError` so the caller can retry with
+   fresh state rather than the loop spinning forever.
+
+Frontend callers that mutate CAS-backed settings must handle 409 explicitly
+(surface a retry toast or re-fetch + re-submit).  The pattern is implemented
+in `src/synthorg/api/controllers/departments.py::_mutate_dept_policies_with_retry`
+and should be reused verbatim for any future JSON-blob settings that are
+mutated from multiple workers.
+
+### Task pagination contract
+
+The `TaskRepository` protocol ships two paginated read methods that every
+backend implements:
+
+- `list_tasks(*, status=None, assigned_to=None, project=None, limit=None, offset=0)`
+  returns a `tuple[Task, ...]` ordered by primary key `id` (ascending, stable
+  across calls).  When `limit` is set, both `LIMIT` and `OFFSET` are pushed
+  down to the database so the repository bounds the result set; when `limit`
+  is `None` the legacy "fetch-all" semantics apply and callers rely on the
+  engine-level `_MAX_LIST_RESULTS` safety cap.  `offset > 0` with `limit=None`
+  is honoured by the repository (the `OFFSET` clause is emitted independently
+  of `LIMIT`).
+- `count_tasks(*, status=None, assigned_to=None, project=None)` issues a
+  dedicated `SELECT COUNT(*)` with the same filter semantics and is used
+  when callers need an authoritative total alongside the windowed result
+  set.
+
+`TaskEngine.list_tasks(..., include_total=True)` composes both methods: the
+page comes from `list_tasks` and (when `include_total=True`) the cardinality
+comes from a separate `count_tasks` call.  `include_total=False` skips the
+second round trip entirely -- meant for callers that only need `has_more`
+semantics via an extra page, not an exact total.  Negative `limit` or
+`offset` is rejected at the engine boundary with `ValueError`.
+
 ### Backend capability methods
 
 When an application service needs a subsystem whose construction differs

@@ -66,7 +66,7 @@ class FakeTaskRepository:
             result = [t for t in result if t.assigned_to == assigned_to]
         if project is not None:
             result = [t for t in result if t.project == project]
-        return result
+        return [copy.deepcopy(t) for t in result]
 
     async def delete(self, task_id: str) -> bool:
         return self._tasks.pop(task_id, None) is not None

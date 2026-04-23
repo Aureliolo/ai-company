@@ -450,7 +450,13 @@ class TestListTasksPushDownPagination:
         self,
         persistence: FakePersistence,
     ) -> None:
-        """Passing ``limit`` returns at most that many rows from the repo."""
+        """Passing ``limit`` returns at most that many rows from the repo.
+
+        Spies on the repository to assert ``limit`` / ``offset`` are
+        actually forwarded (push-down), not applied in-memory.
+        """
+        from unittest.mock import AsyncMock
+
         eng = TaskEngine(persistence=persistence)  # type: ignore[arg-type]
         eng.start()
         try:
@@ -459,9 +465,26 @@ class TestListTasksPushDownPagination:
                     make_create_data(title=f"task-{i}"),
                     requested_by="alice",
                 )
+            list_spy = AsyncMock(wraps=persistence.tasks.list_tasks)
+            count_spy = AsyncMock(wraps=persistence.tasks.count_tasks)
+            persistence.tasks.list_tasks = list_spy  # type: ignore[method-assign]
+            persistence.tasks.count_tasks = count_spy  # type: ignore[method-assign]
+
             tasks, total = await eng.list_tasks(limit=2, offset=0)
+
             assert len(tasks) == 2
             assert total == 5  # total reflects full cardinality
+            assert list_spy.await_count == 1
+            # limit + offset forwarded; filter kwargs default to None/None/None.
+            list_spy.assert_awaited_with(
+                status=None,
+                assigned_to=None,
+                project=None,
+                limit=2,
+                offset=0,
+            )
+            # include_total=True (default) triggers exactly one count.
+            assert count_spy.await_count == 1
         finally:
             await eng.stop(timeout=2.0)
 
@@ -470,6 +493,8 @@ class TestListTasksPushDownPagination:
         persistence: FakePersistence,
     ) -> None:
         """``offset=N`` drops the first N rows from the window."""
+        from unittest.mock import AsyncMock
+
         eng = TaskEngine(persistence=persistence)  # type: ignore[arg-type]
         eng.start()
         try:
@@ -478,10 +503,16 @@ class TestListTasksPushDownPagination:
                     make_create_data(title=f"task-{i}"),
                     requested_by="alice",
                 )
+            list_spy = AsyncMock(wraps=persistence.tasks.list_tasks)
+            persistence.tasks.list_tasks = list_spy  # type: ignore[method-assign]
+
             first, _ = await eng.list_tasks(limit=10, offset=0)
             second, _ = await eng.list_tasks(limit=10, offset=2)
             # Ordering is stable (by id) so the offset window is a clean suffix.
             assert [t.id for t in second] == [t.id for t in first][2:]
+            # offset=0 and offset=2 must have been forwarded verbatim.
+            assert list_spy.await_args_list[0].kwargs["offset"] == 0
+            assert list_spy.await_args_list[1].kwargs["offset"] == 2
         finally:
             await eng.stop(timeout=2.0)
 
@@ -490,17 +521,127 @@ class TestListTasksPushDownPagination:
         persistence: FakePersistence,
     ) -> None:
         """``include_total=False`` returns ``None`` and avoids count_tasks."""
+        from unittest.mock import AsyncMock
+
         eng = TaskEngine(persistence=persistence)  # type: ignore[arg-type]
         eng.start()
         try:
             await eng.create_task(make_create_data(), requested_by="alice")
+            count_spy = AsyncMock(wraps=persistence.tasks.count_tasks)
+            persistence.tasks.count_tasks = count_spy  # type: ignore[method-assign]
+
             tasks, total = await eng.list_tasks(
                 limit=10,
                 offset=0,
                 include_total=False,
             )
+
             assert len(tasks) == 1
             assert total is None
+            # Crucially, count_tasks is never called when include_total=False.
+            assert count_spy.await_count == 0
+        finally:
+            await eng.stop(timeout=2.0)
+
+    async def test_zero_limit_returns_empty(
+        self,
+        persistence: FakePersistence,
+    ) -> None:
+        """``limit=0`` returns no rows but total still reflects cardinality."""
+        eng = TaskEngine(persistence=persistence)  # type: ignore[arg-type]
+        eng.start()
+        try:
+            for i in range(3):
+                await eng.create_task(
+                    make_create_data(title=f"task-{i}"),
+                    requested_by="alice",
+                )
+            tasks, total = await eng.list_tasks(limit=0, offset=0)
+            assert tasks == ()
+            assert total == 3
+        finally:
+            await eng.stop(timeout=2.0)
+
+    async def test_offset_beyond_result_set_returns_empty(
+        self,
+        persistence: FakePersistence,
+    ) -> None:
+        """``offset`` past the end of results yields an empty tuple (no error)."""
+        eng = TaskEngine(persistence=persistence)  # type: ignore[arg-type]
+        eng.start()
+        try:
+            for i in range(3):
+                await eng.create_task(
+                    make_create_data(title=f"task-{i}"),
+                    requested_by="alice",
+                )
+            tasks, total = await eng.list_tasks(limit=10, offset=100)
+            assert tasks == ()
+            assert total == 3
+        finally:
+            await eng.stop(timeout=2.0)
+
+    async def test_all_filters_combined_with_pagination(
+        self,
+        persistence: FakePersistence,
+    ) -> None:
+        """``status`` + ``project`` + limit/offset compose correctly.
+
+        ``assigned_to`` is exercised by ``test_limit_slices_repository_result``
+        (default filter is ``None``).  Here the focus is the composition of
+        status + project + pagination on freshly-created tasks.  Tasks in
+        ``CREATED`` status cannot carry an ``assigned_to`` (model invariant),
+        so the filter is verified via status + project instead.
+        """
+        from synthorg.core.enums import TaskStatus
+
+        eng = TaskEngine(persistence=persistence)  # type: ignore[arg-type]
+        eng.start()
+        try:
+            for i in range(6):
+                await eng.create_task(
+                    make_create_data(
+                        title=f"task-{i}",
+                        project="p1",
+                    ),
+                    requested_by="alice",
+                )
+            tasks, total = await eng.list_tasks(
+                status=TaskStatus.CREATED,
+                project="p1",
+                limit=2,
+                offset=1,
+            )
+            assert len(tasks) == 2
+            assert total == 6
+        finally:
+            await eng.stop(timeout=2.0)
+
+    async def test_offset_only_with_no_limit_still_skips_rows(
+        self,
+        persistence: FakePersistence,
+    ) -> None:
+        """``offset`` without ``limit`` must still skip the leading rows.
+
+        Regression test for a push-down bug where ``LIMIT ? OFFSET ?``
+        was only emitted when ``limit`` was set, so ``offset`` got
+        silently dropped for unbounded queries.
+        """
+        eng = TaskEngine(persistence=persistence)  # type: ignore[arg-type]
+        eng.start()
+        try:
+            for i in range(5):
+                await eng.create_task(
+                    make_create_data(title=f"task-{i}"),
+                    requested_by="alice",
+                )
+            full, _ = await eng.list_tasks(limit=10, offset=0)
+            # ``limit=None`` drives the legacy path; offset must still apply.
+            tail_tuple = await persistence.tasks.list_tasks(
+                limit=None,
+                offset=2,
+            )
+            assert [t.id for t in tail_tuple] == [t.id for t in full][2:]
         finally:
             await eng.stop(timeout=2.0)
 
