@@ -1,9 +1,10 @@
 ---
-description: "Manage parallel worktrees: create with prompts, cleanup after merge, status, tree view, rebase"
-argument-hint: "<setup|cleanup|status|tree|rebase> [options]"
+description: "Manage parallel worktrees: create with prompts, cleanup after merge, status, tree view, rebase, launch in Windows Terminal tabs"
+argument-hint: "<setup|cleanup|status|tree|rebase|launch> [options]"
 allowed-tools:
   - Bash
   - Read
+  - Write
   - Glob
   - Grep
   - AskUserQuestion
@@ -224,6 +225,11 @@ Directory suffix is auto-derived from the branch name:
 
    ## Workflow
    - Plan the full implementation before writing any code -- present the plan for approval
+   - **Write the plan incrementally in small sections, not as one huge file.** Large plan files repeatedly fail with partial / truncated responses. Build the plan section-by-section:
+     1. Start with a short outline (section titles only, no body).
+     2. Write each section as a separate small Write/Edit call (one section per tool call, <= ~150 lines per section).
+     3. Prefer many small sections over one long document. Typical sections: Goal, Scope, Files to touch, Phases (each phase its own section), Tests, Acceptance, Risks, Out-of-scope.
+     4. If a section is still too large, split it further (e.g. one section per phase, one section per subsystem). Never attempt a single multi-thousand-line Write.
    - Follow TDD: write tests first, then implement
    - Follow all conventions in CLAUDE.md (immutability, PEP 758, no __future__ imports, structlog logging, etc.)
    - After implementation: create commits on this branch, push with -u, then use /pre-pr-review
@@ -242,10 +248,79 @@ Directory suffix is auto-derived from the branch name:
 
    If there are multiple issues in one worktree that have a natural ordering (from dependency parsing or logical sequence), add an `## Implementation order` section.
 
-6. **Present the output** to the user:
+6. **Save each prompt to disk.** Write the generated prompt verbatim to `<worktree>/.claude/initial-prompt.md` using the Write tool. The user opens each tab with `/worktree launch`, sees the folder in a normal terminal, then runs `claude` and pastes the prompt file's contents. Do not attempt to auto-feed the prompt -- early experiments with `bash launch.sh` / `pwsh -NoExit -File launch.ps1` wrappers ended up replacing the default shell and making the tab look like a bare process rather than a normal terminal; the user rejected that UX.
+
+7. **Present the output** to the user:
    - For each worktree: show the **absolute path** to the worktree directory and a separate `claude` invocation command, followed by the prompt in a code block. Derive the absolute path dynamically by resolving the worktree directory (e.g., using `realpath <dir-path>` or `pwd` from within the worktree) and converting to the platform's native format. On Windows, use backslash paths (e.g., `C:\Users\Aurelio\synthorg-wt-delegation-loop-prevention`).
    - **Note:** The `cd <path> && claude` instruction is for the **user's own terminal** (they will paste it into a new shell). This is NOT a Bash tool invocation -- do not confuse with CLAUDE.md's "never use cd in Bash commands" rule, which applies to Bash tool calls within the skill.
    - End with a count: "N worktrees ready. Go."
+   - On Windows, if `$WT_SESSION` is set (Claude is running inside Windows Terminal), append: "Run `/worktree launch` to open all worktrees as tabs in this window."
+
+---
+
+## Command: `launch`
+
+Open each worktree as a **plain terminal tab** in the current Windows Terminal window. Each tab uses the user's default profile (PowerShell, Git Bash, whatever they normally use) and lands in the worktree directory. The user then manually runs `claude` in each tab. Windows-only.
+
+**Design note (do NOT regress):** Do not pass `claude`, `bash launch.sh`, `pwsh -NoExit -File ...`, or any other command as the wt `new-tab` command. Any command replaces the profile's default commandline, changes the tab's process icon, and breaks the "looks like a normal terminal" expectation that the user explicitly required. Always pass only `-d <path>` (plus `-w 0` and `--title`). This was validated by testing `-d <path>` vs `-d <path> claude` vs `-d <path> bash -c 'claude; exec bash'` -- only the bare `-d <path>` form produced a tab indistinguishable from a manually-opened one.
+
+### Input format
+
+```text
+/worktree launch              # open a tab for every non-main worktree
+/worktree launch <name>       # open just one by dir-suffix (e.g. "tighten-workflow-permissions")
+```
+
+**Input validation:** `<name>` flows into shell commands (the `wt.exe --title` argument and the path-suffix filter). Before using `<name>`, validate it under the general "Input validation" rules at the bottom of this file (see `## Rules` -> `Input validation (CRITICAL)`). In particular, reject any value containing shell metacharacters (`;`, `|`, `&`, `$`, `` ` ``, `(`, `)`), whitespace, or path separators (`/`, `\`). A practical allowlist: `^[a-zA-Z0-9_.-]+$`. Reject and warn if validation fails -- do not execute `wt.exe` with an unvalidated `<name>`.
+
+### Pre-flight
+
+1. **Detect Windows Terminal:**
+
+   ```bash
+   test -n "$WT_SESSION" && echo "in-wt" || echo "not-in-wt"
+   which wt.exe >/dev/null 2>&1 || echo "wt-missing"
+   ```
+
+   - If `wt.exe` is missing: report "Windows Terminal not installed or not on PATH. Cannot launch." and stop.
+   - If `WT_SESSION` is unset: warn "Not running inside Windows Terminal -- tabs will open in a new window." Ask via AskUserQuestion whether to continue.
+
+2. **List worktrees (excluding main):**
+
+   ```bash
+   git worktree list --porcelain
+   ```
+
+   Parse into `(path, branch)` pairs. Skip the main worktree (matches `git rev-parse --show-toplevel`). If filtering by `<name>`, keep only worktrees whose path suffix matches.
+
+### Steps
+
+1. **For each worktree**, derive:
+   - Path in **forward-slash form** (e.g. `C:/Users/Aurelio/synthorg-wt-<slug>`). Windows Terminal's `-d` flag accepts forward slashes natively and this avoids shell escape-sequence risk (e.g. `\t` in a Bash double-quoted string would be interpreted as a tab character, and `\U` / `\N` can trigger warnings or unicode-escape behavior in some shells). Do NOT emit backslash paths from the Bash tool.
+   - Tab title: the dir suffix after `wt-` (e.g. `tighten-workflow-permissions`), truncated to ~30 chars.
+
+2. **Spawn one tab per worktree, sequentially:**
+
+   ```bash
+   wt.exe -w 0 new-tab --title "<title>" -d "<forward-slash-path>"
+   ```
+
+   - `-w 0` targets the current Windows Terminal window (adds a tab, does not open a new window)
+   - `-d <path>` sets the tab's starting directory. Forward slashes work -- wt accepts them and the shell never rewrites them.
+   - No trailing command. The default profile starts naturally.
+   - Keep calls sequential (one Bash call per worktree). Each call returns exit 0 immediately; wt fires-and-forgets.
+
+3. **Report:**
+
+   ```text
+   N tabs opened: <slug1>, <slug2>, ...
+   In each tab, run: claude
+   Then paste the prompt from .claude/initial-prompt.md (or `cat .claude/initial-prompt.md | clip` in PowerShell to copy it first).
+   ```
+
+### Platform note
+
+Non-Windows (macOS, Linux) have different terminal-tab spawning mechanisms (`osascript` for iTerm2 / Terminal.app, `gnome-terminal --tab`, `kitty @ launch --type=tab`, etc.). This subcommand is Windows Terminal only for now. On other platforms, fall back to printing the `cd <path>` commands so the user can do it manually.
 
 ---
 
