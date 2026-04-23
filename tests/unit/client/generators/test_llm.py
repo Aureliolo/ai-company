@@ -75,7 +75,7 @@ class TestLLMGenerator:
     def test_protocol_compatible(self) -> None:
         provider = _StubProvider(content="[]")
         gen = LLMGenerator(
-            provider=cast(CompletionProvider, provider), model="test-model"
+            provider=cast(CompletionProvider, provider), model="test-small-001"
         )
         assert isinstance(gen, RequirementGenerator)
 
@@ -99,7 +99,7 @@ class TestLLMGenerator:
             )
         )
         gen = LLMGenerator(
-            provider=cast(CompletionProvider, provider), model="test-model"
+            provider=cast(CompletionProvider, provider), model="test-small-001"
         )
         result = await gen.generate(_ctx(count=2))
         assert len(result) == 2
@@ -110,7 +110,7 @@ class TestLLMGenerator:
     async def test_returns_empty_on_empty_content(self) -> None:
         provider = _StubProvider(content="")
         gen = LLMGenerator(
-            provider=cast(CompletionProvider, provider), model="test-model"
+            provider=cast(CompletionProvider, provider), model="test-small-001"
         )
         result = await gen.generate(_ctx())
         assert result == ()
@@ -118,7 +118,7 @@ class TestLLMGenerator:
     async def test_returns_empty_on_none_content(self) -> None:
         provider = _StubProvider(content=None)
         gen = LLMGenerator(
-            provider=cast(CompletionProvider, provider), model="test-model"
+            provider=cast(CompletionProvider, provider), model="test-small-001"
         )
         result = await gen.generate(_ctx())
         assert result == ()
@@ -126,7 +126,7 @@ class TestLLMGenerator:
     async def test_returns_empty_on_non_json(self) -> None:
         provider = _StubProvider(content="not json at all")
         gen = LLMGenerator(
-            provider=cast(CompletionProvider, provider), model="test-model"
+            provider=cast(CompletionProvider, provider), model="test-small-001"
         )
         result = await gen.generate(_ctx())
         assert result == ()
@@ -136,7 +136,7 @@ class TestLLMGenerator:
     ) -> None:
         provider = _StubProvider(content='{"title": "nope"}')
         gen = LLMGenerator(
-            provider=cast(CompletionProvider, provider), model="test-model"
+            provider=cast(CompletionProvider, provider), model="test-small-001"
         )
         result = await gen.generate(_ctx())
         assert result == ()
@@ -151,7 +151,7 @@ class TestLLMGenerator:
         )
         provider = _StubProvider(content=wrapped)
         gen = LLMGenerator(
-            provider=cast(CompletionProvider, provider), model="test-model"
+            provider=cast(CompletionProvider, provider), model="test-small-001"
         )
         result = await gen.generate(_ctx(count=1))
         assert len(result) == 1
@@ -168,7 +168,7 @@ class TestLLMGenerator:
             )
         )
         gen = LLMGenerator(
-            provider=cast(CompletionProvider, provider), model="test-model"
+            provider=cast(CompletionProvider, provider), model="test-small-001"
         )
         result = await gen.generate(_ctx(count=3))
         titles = [r.title for r in result]
@@ -211,7 +211,7 @@ class TestLLMGenerator:
 
         gen = LLMGenerator(
             provider=cast(CompletionProvider, _FailingProvider(content=None)),
-            model="test-model",
+            model="test-small-001",
         )
         with pytest.raises(RuntimeError, match="network down"):
             await gen.generate(_ctx())
@@ -227,7 +227,7 @@ class TestSec1LLMGeneratorFences:
         provider = _StubProvider(content="[]")
         gen = LLMGenerator(
             provider=cast(CompletionProvider, provider),
-            model="test-model",
+            model="test-small-001",
         )
         await gen.generate(_ctx())
 
@@ -242,7 +242,7 @@ class TestSec1LLMGeneratorFences:
         provider = _StubProvider(content="[]")
         gen = LLMGenerator(
             provider=cast(CompletionProvider, provider),
-            model="test-model",
+            model="test-small-001",
             temperature=0.0,
             max_tokens=512,
         )
@@ -256,7 +256,7 @@ class TestSec1LLMGeneratorFences:
         provider = _StubProvider(content="[]")
         gen = LLMGenerator(
             provider=cast(CompletionProvider, provider),
-            model="test-model",
+            model="test-small-001",
         )
         await gen.generate(_ctx())
 
@@ -271,7 +271,7 @@ class TestSec1LLMGeneratorFences:
         provider = _StubProvider(content="[]")
         gen = LLMGenerator(
             provider=cast(CompletionProvider, provider),
-            model="test-model",
+            model="test-small-001",
         )
         await gen.generate(
             GenerationContext(
@@ -294,7 +294,7 @@ class TestSec1LLMGeneratorFences:
         provider = _StubProvider(content="[]")
         gen = LLMGenerator(
             provider=cast(CompletionProvider, provider),
-            model="test-model",
+            model="test-small-001",
         )
         await gen.generate(
             GenerationContext(
@@ -319,7 +319,7 @@ class TestSec1LLMGeneratorFences:
         assert "untrusted input from external sources" not in custom_persona
         gen = LLMGenerator(
             provider=cast(CompletionProvider, provider),
-            model="test-model",
+            model="test-small-001",
             persona=custom_persona,
         )
         await gen.generate(_ctx())
@@ -348,7 +348,7 @@ class TestSec1LLMGeneratorFences:
         provider = _StubProvider(content="[]")
         gen = LLMGenerator(
             provider=cast(CompletionProvider, provider),
-            model="test-model",
+            model="test-small-001",
             persona=custom_persona,
         )
         await gen.generate(_ctx())
@@ -374,7 +374,7 @@ class TestLLMGeneratorFinishReasonError:
         provider = _StubProvider(content=None)
         gen = LLMGenerator(
             provider=cast(CompletionProvider, provider),
-            model="test-model",
+            model="test-small-001",
         )
         result = await gen.generate(_ctx())
         assert result == ()
