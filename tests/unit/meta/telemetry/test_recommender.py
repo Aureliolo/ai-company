@@ -1,11 +1,25 @@
 """Unit tests for the threshold recommender."""
 
+from types import MappingProxyType
+
 import pytest
 
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.telemetry.collector import InMemoryAnalyticsCollector
 from synthorg.meta.telemetry.models import AnonymizedOutcomeEvent
-from synthorg.meta.telemetry.recommender import DefaultThresholdRecommender
+from synthorg.meta.telemetry.recommender import (
+    _BUDGET_OVERRUN_DAYS_DEFAULT,
+    _COORDINATION_RATIO_DEFAULT,
+    _ERROR_FINDINGS_DEFAULT,
+    _OVERHEAD_PCT_DEFAULT,
+    _QUALITY_DROP_DEFAULT,
+    _REDUNDANCY_RATE_DEFAULT,
+    _RULE_THRESHOLD_MAP,
+    _SCALING_FAILURE_RATE_DEFAULT,
+    _STRAGGLER_GAP_RATIO_DEFAULT,
+    _SUCCESS_RATE_DEFAULT,
+    DefaultThresholdRecommender,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -206,3 +220,39 @@ class TestDefaultThresholdRecommender:
         assert len(recs) == 2
         # First recommendation should have higher confidence.
         assert recs[0].confidence >= recs[1].confidence
+
+
+class TestRuleThresholdMapStructure:
+    """Invariants on ``_RULE_THRESHOLD_MAP`` (HYG-2 extraction)."""
+
+    def test_map_is_immutable(self) -> None:
+        assert isinstance(_RULE_THRESHOLD_MAP, MappingProxyType)
+        with pytest.raises(TypeError):
+            _RULE_THRESHOLD_MAP["new_rule"] = (  # type: ignore[index]
+                "field",
+                1.0,
+            )
+
+    @pytest.mark.parametrize(
+        ("rule", "expected_default"),
+        [
+            ("quality_declining", _QUALITY_DROP_DEFAULT),
+            ("success_rate_drop", _SUCCESS_RATE_DEFAULT),
+            ("budget_overrun", _BUDGET_OVERRUN_DAYS_DEFAULT),
+            ("coordination_cost_ratio", _COORDINATION_RATIO_DEFAULT),
+            ("coordination_overhead", _OVERHEAD_PCT_DEFAULT),
+            ("straggler_bottleneck", _STRAGGLER_GAP_RATIO_DEFAULT),
+            ("redundancy", _REDUNDANCY_RATE_DEFAULT),
+            ("scaling_failure", _SCALING_FAILURE_RATE_DEFAULT),
+            ("error_spike", _ERROR_FINDINGS_DEFAULT),
+        ],
+    )
+    def test_map_values_reference_named_constants(
+        self,
+        rule: str,
+        expected_default: float,
+    ) -> None:
+        # Identity check: the map must consult the module-level Final so
+        # any future re-tuning edits a single source of truth.
+        _, actual_default = _RULE_THRESHOLD_MAP[rule]
+        assert actual_default is expected_default

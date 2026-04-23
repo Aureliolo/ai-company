@@ -2,7 +2,11 @@
 
 import pytest
 
-from synthorg.budget._optimizer_helpers import _classify_severity
+from synthorg.budget._optimizer_helpers import (
+    _SEVERITY_HIGH_DEVIATION,
+    _SEVERITY_MEDIUM_DEVIATION,
+    _classify_severity,
+)
 from synthorg.budget.optimizer_models import (
     AnomalySeverity,
     CostOptimizerConfig,
@@ -45,6 +49,20 @@ class TestClassifySeverity:
     )
     def test_thresholds(self, deviation: float, expected: AnomalySeverity) -> None:
         assert _classify_severity(deviation) == expected
+
+    def test_boundary_values_reference_named_constants(self) -> None:
+        # Inclusive-boundary contract: values exactly at the named
+        # Final constants must land on the corresponding severity
+        # bucket, with the adjacent value one ulp below landing in the
+        # next lower bucket.  Guards against accidental > vs >= drift
+        # during future re-tuning.
+        high = _SEVERITY_HIGH_DEVIATION
+        medium = _SEVERITY_MEDIUM_DEVIATION
+        assert _classify_severity(high) == AnomalySeverity.HIGH
+        assert _classify_severity(high - 0.001) == AnomalySeverity.MEDIUM
+        assert _classify_severity(medium) == AnomalySeverity.MEDIUM
+        assert _classify_severity(medium - 0.001) == AnomalySeverity.LOW
+        assert _classify_severity(0.0) == AnomalySeverity.LOW
 
 
 # ── Input Validation Tests ───────────────────────────────────────

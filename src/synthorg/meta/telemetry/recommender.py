@@ -4,7 +4,8 @@ Analyzes cross-deployment patterns and suggests threshold
 adjustments for built-in rules based on observed outcomes.
 """
 
-from typing import TYPE_CHECKING
+from types import MappingProxyType
+from typing import TYPE_CHECKING, Final
 
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.telemetry.models import ThresholdRecommendation
@@ -14,29 +15,66 @@ from synthorg.observability.events.cross_deployment import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from synthorg.meta.telemetry.models import AggregatedPattern
     from synthorg.meta.telemetry.protocol import AnalyticsCollector
 
 logger = get_logger(__name__)
 
-# Thresholds for recommendation generation.
-_HIGH_APPROVAL_RATE = 0.7
-_HIGH_SUCCESS_RATE = 0.7
-_LOW_APPROVAL_RATE = 0.3
+# Pattern-level thresholds that gate relax / tighten recommendations.
+_HIGH_APPROVAL_RATE: Final[float] = 0.7
+_HIGH_SUCCESS_RATE: Final[float] = 0.7
+_LOW_APPROVAL_RATE: Final[float] = 0.3
+
+# Built-in rule defaults keyed by source rule name. Each value is the
+# current shipped default for the configurable threshold that the rule
+# consults at runtime; the recommender proposes adjustments relative to
+# these numbers.
+_QUALITY_DROP_DEFAULT: Final[float] = 5.0
+_SUCCESS_RATE_DEFAULT: Final[float] = 0.7
+_BUDGET_OVERRUN_DAYS_DEFAULT: Final[float] = 14.0
+_COORDINATION_RATIO_DEFAULT: Final[float] = 0.4
+_OVERHEAD_PCT_DEFAULT: Final[float] = 35.0
+_STRAGGLER_GAP_RATIO_DEFAULT: Final[float] = 2.0
+_REDUNDANCY_RATE_DEFAULT: Final[float] = 0.3
+_SCALING_FAILURE_RATE_DEFAULT: Final[float] = 0.5
+_ERROR_FINDINGS_DEFAULT: Final[float] = 10.0
+
+# Adjustment coefficients for relax / tighten recommendations.
+_ADJUSTMENT_BASE: Final[float] = 0.1
+_ADJUSTMENT_CONFIDENCE_COEF: Final[float] = 0.1
+_RELAX_CONFIDENCE_DIVISOR: Final[float] = 10.0
+_TIGHTEN_CONFIDENCE_BASE: Final[float] = 0.5
+_TIGHTEN_CONFIDENCE_DIVISOR: Final[float] = 20.0
 
 # Mapping of rule names to their configurable threshold fields
 # and current defaults. Used to generate concrete recommendations.
-_RULE_THRESHOLD_MAP: dict[str, tuple[str, float]] = {
-    "quality_declining": ("quality_drop_threshold", 5.0),
-    "success_rate_drop": ("success_rate_threshold", 0.7),
-    "budget_overrun": ("days_until_exhausted_threshold", 14.0),
-    "coordination_cost_ratio": ("coordination_ratio_threshold", 0.4),
-    "coordination_overhead": ("overhead_pct_threshold", 35.0),
-    "straggler_bottleneck": ("straggler_gap_ratio_threshold", 2.0),
-    "redundancy": ("redundancy_rate_threshold", 0.3),
-    "scaling_failure": ("scaling_failure_rate_threshold", 0.5),
-    "error_spike": ("error_findings_threshold", 10.0),
-}
+_RULE_THRESHOLD_MAP: Mapping[str, tuple[str, float]] = MappingProxyType(
+    {
+        "quality_declining": ("quality_drop_threshold", _QUALITY_DROP_DEFAULT),
+        "success_rate_drop": ("success_rate_threshold", _SUCCESS_RATE_DEFAULT),
+        "budget_overrun": (
+            "days_until_exhausted_threshold",
+            _BUDGET_OVERRUN_DAYS_DEFAULT,
+        ),
+        "coordination_cost_ratio": (
+            "coordination_ratio_threshold",
+            _COORDINATION_RATIO_DEFAULT,
+        ),
+        "coordination_overhead": ("overhead_pct_threshold", _OVERHEAD_PCT_DEFAULT),
+        "straggler_bottleneck": (
+            "straggler_gap_ratio_threshold",
+            _STRAGGLER_GAP_RATIO_DEFAULT,
+        ),
+        "redundancy": ("redundancy_rate_threshold", _REDUNDANCY_RATE_DEFAULT),
+        "scaling_failure": (
+            "scaling_failure_rate_threshold",
+            _SCALING_FAILURE_RATE_DEFAULT,
+        ),
+        "error_spike": ("error_findings_threshold", _ERROR_FINDINGS_DEFAULT),
+    },
+)
 
 
 class DefaultThresholdRecommender:
@@ -138,11 +176,13 @@ class DefaultThresholdRecommender:
         current_default: float,
     ) -> ThresholdRecommendation:
         """Build a recommendation to relax a too-conservative threshold."""
-        adjustment = 0.1 + (0.1 * pattern.avg_confidence)
+        adjustment = _ADJUSTMENT_BASE + (
+            _ADJUSTMENT_CONFIDENCE_COEF * pattern.avg_confidence
+        )
         recommended = current_default * (1.0 + adjustment)
         confidence = min(
             pattern.avg_confidence,
-            pattern.deployment_count / 10.0,
+            pattern.deployment_count / _RELAX_CONFIDENCE_DIVISOR,
             1.0,
         )
         rationale = (
@@ -168,10 +208,13 @@ class DefaultThresholdRecommender:
         current_default: float,
     ) -> ThresholdRecommendation:
         """Build a recommendation to tighten a too-aggressive threshold."""
-        adjustment = 0.1 + (0.1 * (1.0 - pattern.avg_confidence))
+        adjustment = _ADJUSTMENT_BASE + (
+            _ADJUSTMENT_CONFIDENCE_COEF * (1.0 - pattern.avg_confidence)
+        )
         recommended = current_default * (1.0 - adjustment)
         confidence = min(
-            0.5 + (pattern.deployment_count / 20.0),
+            _TIGHTEN_CONFIDENCE_BASE
+            + (pattern.deployment_count / _TIGHTEN_CONFIDENCE_DIVISOR),
             1.0,
         )
         rationale = (

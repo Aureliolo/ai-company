@@ -4,6 +4,7 @@ import pytest
 from pydantic import ValidationError
 
 from synthorg.ontology.config import (
+    _DRIFT_SCORE_DEFAULT,
     DelegationGuardConfig,
     DriftDetectionConfig,
     DriftStrategy,
@@ -86,6 +87,11 @@ class TestDriftDetectionConfig:
         assert c.strategy == DriftStrategy.PASSIVE
         assert c.check_interval > 0
         assert 0.0 <= c.threshold <= 1.0
+
+    def test_threshold_references_named_constant(self) -> None:
+        # Identity check: the field default must consult the module
+        # Final so future re-tuning edits a single source of truth.
+        assert DriftDetectionConfig().threshold == _DRIFT_SCORE_DEFAULT
 
     def test_threshold_range(self) -> None:
         with pytest.raises(ValidationError):
