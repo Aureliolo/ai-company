@@ -96,12 +96,21 @@ class MessageService:
         self,
         *,
         message: Message,
+        actor_id: NotBlankStr,
     ) -> None:
-        """Publish ``message`` onto the bus and audit the send."""
+        """Publish ``message`` onto the bus and audit the send.
+
+        ``actor_id`` is the trusted, handler-supplied identity of the
+        MCP caller; it drives the audit event so a malicious payload
+        cannot spoof ``sender`` in the log.  The payload-side
+        ``message.sender`` is still logged as ``sender`` for
+        observability but is never treated as the authenticated actor.
+        """
         await self._bus.publish(message)
         logger.info(
             COMMUNICATION_MESSAGE_SENT_VIA_MCP,
             channel=message.channel,
+            actor_id=actor_id,
             sender=message.sender,
         )
 

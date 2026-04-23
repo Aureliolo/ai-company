@@ -258,9 +258,10 @@ class TestSetupFacadeService:
 
 
 class TestSimulationFacadeService:
-    async def test_list_returns_empty_without_method(self) -> None:
+    async def test_list_capability_gap_without_method(self) -> None:
         service = SimulationFacadeService(state=SimpleNamespace())  # type: ignore[arg-type]
-        assert await service.list_simulations() == ()
+        with pytest.raises(CapabilityNotSupportedError):
+            await service.list_simulations()
 
     async def test_list_delegates_when_available(self) -> None:
         class _State:
@@ -270,9 +271,10 @@ class TestSimulationFacadeService:
         service = SimulationFacadeService(state=_State())  # type: ignore[arg-type]
         assert await service.list_simulations() == ("a", "b")
 
-    async def test_get_returns_none_without_method(self) -> None:
+    async def test_get_capability_gap_without_method(self) -> None:
         service = SimulationFacadeService(state=SimpleNamespace())  # type: ignore[arg-type]
-        assert await service.get_simulation(NotBlankStr("any")) is None
+        with pytest.raises(CapabilityNotSupportedError):
+            await service.get_simulation(NotBlankStr("any"))
 
     async def test_get_delegates_when_available(self) -> None:
         class _State:

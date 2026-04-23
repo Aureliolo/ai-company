@@ -80,14 +80,16 @@ def _map_capability(tool: str, exc: CapabilityNotSupportedError) -> str:
 
 
 def _actor_name(actor: AgentIdentity | None) -> NotBlankStr:
-    """Return a stable audit identifier (falls back to ``mcp-anonymous``)."""
+    """Return a stable audit identifier, preferring ``actor.id`` over ``name``."""
     if actor is None:
         return NotBlankStr("mcp-anonymous")
+    actor_id = getattr(actor, "id", None)
+    if actor_id is not None:
+        return NotBlankStr(str(actor_id))
     name = getattr(actor, "name", None)
     if isinstance(name, str) and name.strip():
         return NotBlankStr(name)
-    actor_id = getattr(actor, "id", None)
-    return NotBlankStr(str(actor_id) if actor_id else "mcp-anonymous")
+    return NotBlankStr("mcp-anonymous")
 
 
 def _get_str(arguments: dict[str, Any], key: str) -> NotBlankStr | None:

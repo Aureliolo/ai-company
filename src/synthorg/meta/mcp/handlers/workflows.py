@@ -49,7 +49,6 @@ from synthorg.observability.events.mcp import (
     MCP_HANDLER_GUARDRAIL_VIOLATED,
     MCP_HANDLER_INVOKE_FAILED,
     MCP_HANDLER_INVOKE_SUCCESS,
-    MCP_HANDLER_LAZY_SERVICE_INIT,
 )
 
 if TYPE_CHECKING:
@@ -132,8 +131,13 @@ def _service(app_state: Any) -> WorkflowService:
     """
     cached: WorkflowService | None = getattr(app_state, "workflow_service", None)
     if cached is None:
-        logger.error(
-            MCP_HANDLER_LAZY_SERVICE_INIT,
+        # ``MCP_HANDLER_LAZY_SERVICE_INIT`` is a DEBUG-level telemetry
+        # event for lazy-init paths.  This branch is a hard runtime
+        # misconfiguration (the service is never expected to be
+        # ``None`` post-bootstrap), so emit the generic invoke-failed
+        # event at WARNING and then raise.
+        logger.warning(
+            MCP_HANDLER_INVOKE_FAILED,
             tool_name="workflows._service",
             service="workflow_service",
             reason="app_state.workflow_service not wired",

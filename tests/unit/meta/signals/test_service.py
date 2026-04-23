@@ -149,12 +149,10 @@ class TestSignalsServiceSnapshot:
         snapshot_builder: AsyncMock,
     ) -> None:
         now = datetime.now(UTC)
-        snap = await service.get_org_snapshot(
-            since=now - timedelta(hours=1),
-            until=now,
-        )
+        since = now - timedelta(hours=1)
+        snap = await service.get_org_snapshot(since=since, until=now)
         assert isinstance(snap, OrgSignalSnapshot)
-        snapshot_builder.build.assert_awaited_once()
+        snapshot_builder.build.assert_awaited_once_with(since=since, until=now)
 
 
 class TestSignalsServicePerDomain:

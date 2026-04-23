@@ -509,7 +509,7 @@ class RequestsFacadeService:
 
     async def list_requests(self) -> Sequence[_RequestRecord]:
         async with self._lock:
-            snapshot = tuple(self._requests.values())
+            snapshot = tuple(copy.deepcopy(r) for r in self._requests.values())
         return tuple(sorted(snapshot, key=lambda r: r.created_at, reverse=True))
 
     async def get_request(self, request_id: NotBlankStr) -> _RequestRecord | None:
@@ -518,7 +518,8 @@ class RequestsFacadeService:
         except ValueError:
             return None
         async with self._lock:
-            return self._requests.get(key)
+            record = self._requests.get(key)
+            return copy.deepcopy(record) if record is not None else None
 
     async def create_request(
         self,
@@ -541,7 +542,7 @@ class RequestsFacadeService:
             request_id=str(record.id),
             requested_by=requested_by,
         )
-        return record
+        return copy.deepcopy(record)
 
 
 # ── SetupService ────────────────────────────────────────────────────
@@ -581,15 +582,21 @@ class SimulationFacadeService:
 
     async def list_simulations(self) -> Sequence[object]:
         fn = getattr(self._state, "list_scenarios", None)
-        if callable(fn):
-            return tuple(fn())
-        return ()
+        if not callable(fn):
+            raise _capability_missing(
+                "simulation_list",
+                "ClientSimulationState does not expose list_scenarios",
+            )
+        return tuple(fn())
 
     async def get_simulation(self, simulation_id: NotBlankStr) -> object | None:
         fn = getattr(self._state, "get_scenario", None)
-        if callable(fn):
-            return cast("object | None", fn(simulation_id))
-        return None
+        if not callable(fn):
+            raise _capability_missing(
+                "simulation_get",
+                "ClientSimulationState does not expose get_scenario",
+            )
+        return cast("object | None", fn(simulation_id))
 
     async def create_simulation(self) -> None:
         raise _capability_missing(
@@ -639,7 +646,7 @@ class TemplatePackFacadeService:
 
     async def list_packs(self) -> Sequence[_TemplatePackRecord]:
         async with self._lock:
-            snapshot = tuple(self._packs.values())
+            snapshot = tuple(copy.deepcopy(p) for p in self._packs.values())
         return tuple(sorted(snapshot, key=lambda p: p.installed_at, reverse=True))
 
     async def get_pack(self, pack_id: NotBlankStr) -> _TemplatePackRecord | None:
@@ -648,7 +655,8 @@ class TemplatePackFacadeService:
         except ValueError:
             return None
         async with self._lock:
-            return self._packs.get(key)
+            record = self._packs.get(key)
+            return copy.deepcopy(record) if record is not None else None
 
     async def install_pack(
         self,
@@ -671,7 +679,7 @@ class TemplatePackFacadeService:
             pack_name=name,
             actor_id=actor_id,
         )
-        return record
+        return copy.deepcopy(record)
 
     async def uninstall_pack(
         self,

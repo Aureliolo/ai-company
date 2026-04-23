@@ -66,7 +66,7 @@ def _meeting(meeting_id: str = "m-1") -> MeetingRecord:
 def _webhook(name: str = "wh") -> WebhookDefinition:
     return WebhookDefinition(
         name=NotBlankStr(name),
-        issuer=NotBlankStr("github"),
+        issuer=NotBlankStr("test-issuer"),
         verifier_kind=WebhookVerifierKind.HMAC_SHA256,
         secret_ref=NotBlankStr("ref"),
         channel=NotBlankStr("webhooks.inbound"),

@@ -478,7 +478,12 @@ class ArtifactFacadeService:
         # the index and the caller sees the real error.  Use the
         # backend's own storage_ref, not the facade UUID, because the
         # two diverge when the storage backend uses its own scheme.
-        await fn(record.storage_ref)
+        # Treat a falsy return (e.g. ``False`` for "not found" in the
+        # backend) as an actual miss: don't drop the index entry or log
+        # a fake success.
+        storage_removed = await fn(record.storage_ref)
+        if storage_removed is False:
+            return False
         self._index.pop(key, None)
         logger.info(
             ARTIFACT_DELETED_VIA_MCP,

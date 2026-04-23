@@ -86,14 +86,23 @@ _TY_CONNECTION_TYPE = "ConnectionType string"
 
 
 def _actor_name(actor: AgentIdentity | None) -> NotBlankStr:
-    """Return a stable non-blank identifier for audit logging."""
+    """Return a stable audit identifier, preferring ``actor.id``.
+
+    ``actor.id`` is a stable UUID that never changes across agent
+    renames or display-name collisions, so it makes a better audit
+    trail than the mutable display name.  Falls back to ``actor.name``
+    only when no ID is available, and ``"mcp-anonymous"`` when neither
+    is present.
+    """
     if actor is None:
         return NotBlankStr("mcp-anonymous")
+    actor_id = getattr(actor, "id", None)
+    if actor_id is not None:
+        return NotBlankStr(str(actor_id))
     name = getattr(actor, "name", None)
     if isinstance(name, str) and name.strip():
         return NotBlankStr(name)
-    actor_id = getattr(actor, "id", None)
-    return NotBlankStr(str(actor_id) if actor_id else "mcp-anonymous")
+    return NotBlankStr("mcp-anonymous")
 
 
 def _log_invoke_failed(tool: str, exc: Exception) -> None:
@@ -234,12 +243,15 @@ async def _messages_send(
     *,
     app_state: Any,
     arguments: dict[str, Any],
-    actor: AgentIdentity | None = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,
 ) -> str:
     """Publish a new message on a channel (non-destructive write)."""
     try:
         message = _parse_message(arguments)
-        await app_state.message_service.send_message(message=message)
+        await app_state.message_service.send_message(
+            message=message,
+            actor_id=_actor_name(actor),
+        )
         return ok({"id": str(message.id)})
     except Exception as exc:
         _log_invoke_failed("synthorg_messages_send", exc)
@@ -611,6 +623,12 @@ async def _webhooks_create(
             actor_id=_actor_name(actor),
         )
         return ok(stored.model_dump(mode="json"))
+    except KeyError as exc:
+        _log_invoke_failed("synthorg_webhooks_create", exc)
+        return err(exc, domain_code="conflict")
+    except ValueError as exc:
+        _log_invoke_failed("synthorg_webhooks_create", exc)
+        return err(exc, domain_code="conflict")
     except Exception as exc:
         _log_invoke_failed("synthorg_webhooks_create", exc)
         return err(exc)
@@ -638,6 +656,9 @@ async def _webhooks_update(
         missing = LookupError(f"Webhook {definition.id} not found")
         _log_invoke_failed("synthorg_webhooks_update", exc)
         return err(missing, domain_code="not_found")
+    except ValueError as exc:
+        _log_invoke_failed("synthorg_webhooks_update", exc)
+        return err(exc, domain_code="conflict")
     except Exception as exc:
         _log_invoke_failed("synthorg_webhooks_update", exc)
         return err(exc)
@@ -659,6 +680,11 @@ async def _webhooks_delete(
             actor_id=_actor_name(resolved_actor),
             reason=reason,
         )
+        if not removed:
+            return err(
+                LookupError(f"Webhook {webhook_id} not found"),
+                domain_code="not_found",
+            )
         logger.info(
             MCP_DESTRUCTIVE_OP_EXECUTED,
             tool_name=tool,

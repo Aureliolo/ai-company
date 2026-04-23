@@ -79,14 +79,16 @@ def _map_capability(tool: str, exc: CapabilityNotSupportedError) -> str:
 
 
 def _actor_name(actor: AgentIdentity | None) -> NotBlankStr:
-    """Return a stable non-blank identifier for audit logging."""
+    """Return a stable audit identifier, preferring ``actor.id`` over ``name``."""
     if actor is None:
         return NotBlankStr("mcp-anonymous")
+    actor_id = getattr(actor, "id", None)
+    if actor_id is not None:
+        return NotBlankStr(str(actor_id))
     name = getattr(actor, "name", None)
     if isinstance(name, str) and name.strip():
         return NotBlankStr(name)
-    actor_id = getattr(actor, "id", None)
-    return NotBlankStr(str(actor_id) if actor_id else "mcp-anonymous")
+    return NotBlankStr("mcp-anonymous")
 
 
 def _get_str(arguments: dict[str, Any], key: str) -> NotBlankStr | None:
@@ -210,6 +212,8 @@ async def _mcp_catalog_get(
         entry = await app_state.mcp_catalog_facade_service.get_catalog_entry(
             entry_id,
         )
+    except CapabilityNotSupportedError as exc:
+        return _map_capability(tool, exc)
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -291,6 +295,8 @@ async def _oauth_list_providers(
     tool = "synthorg_oauth_list_providers"
     try:
         providers = await app_state.oauth_facade_service.list_providers()
+    except CapabilityNotSupportedError as exc:
+        return _map_capability(tool, exc)
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -319,6 +325,8 @@ async def _oauth_configure_provider(
             scopes=scopes,
             actor_id=_actor_name(actor),
         )
+    except CapabilityNotSupportedError as exc:
+        return _map_capability(tool, exc)
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -349,6 +357,8 @@ async def _oauth_remove_provider(
             provider_name=name,
             removed=removed,
         )
+    except CapabilityNotSupportedError as exc:
+        return _map_capability(tool, exc)
     except GuardrailViolationError as exc:
         _log_guardrail(tool, exc)
         return err(exc)
@@ -416,14 +426,16 @@ async def _clients_create(
     tool = "synthorg_clients_create"
     try:
         name = _require_str(arguments, "name")
-        contact_email = arguments.get("contact_email")
-        notes = arguments.get("notes")
+        contact_email = _get_str(arguments, "contact_email")
+        notes = _get_str(arguments, "notes")
         client = await app_state.client_facade_service.create_client(
             name=name,
             actor_id=_actor_name(actor),
-            contact_email=contact_email if isinstance(contact_email, str) else None,
-            notes=notes if isinstance(notes, str) else None,
+            contact_email=contact_email,
+            notes=notes,
         )
+    except CapabilityNotSupportedError as exc:
+        return _map_capability(tool, exc)
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)

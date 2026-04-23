@@ -48,6 +48,16 @@ _ARG_UNTIL = "until"
 _ARG_METRIC_NAMES = "metric_names"
 _ARG_HORIZON_DAYS = "horizon_days"
 _ARG_SAMPLE_COUNT = "sample_count"
+_MAX_SAMPLE_COUNT = 100
+_TY_POSITIVE_INT_CAP = f"positive int <= {_MAX_SAMPLE_COUNT}"
+
+
+def _reject_oversized_sample_count(value: int) -> None:
+    """Raise ``ArgumentValidationError`` when ``value`` exceeds the cap."""
+    if value > _MAX_SAMPLE_COUNT:
+        raise invalid_argument(_ARG_SAMPLE_COUNT, _TY_POSITIVE_INT_CAP)
+
+
 _ARG_TEMPLATE = "template"
 _ARG_OPTIONS = "options"
 _ARG_REPORT_ID = "report_id"
@@ -169,13 +179,16 @@ def _parse_report_id(arguments: dict[str, Any]) -> UUID:
 
 
 def _actor_name(actor: AgentIdentity | None) -> NotBlankStr:
+    """Return a stable audit identifier, preferring ``actor.id`` over ``name``."""
     if actor is None:
         return NotBlankStr("mcp-anonymous")
+    actor_id = getattr(actor, "id", None)
+    if actor_id is not None:
+        return NotBlankStr(str(actor_id))
     name = getattr(actor, "name", None)
     if isinstance(name, str) and name.strip():
         return NotBlankStr(name)
-    actor_id = getattr(actor, "id", None)
-    return NotBlankStr(str(actor_id) if actor_id else "mcp-anonymous")
+    return NotBlankStr("mcp-anonymous")
 
 
 def _tool(name: str) -> dict[str, str]:
@@ -305,6 +318,10 @@ async def _metrics_history(
             _ARG_SAMPLE_COUNT,
             default=8,
         )
+        # Cap sample_count so a single MCP call cannot fan out an
+        # arbitrary number of concurrent sub-window queries against the
+        # analytics service and its underlying aggregators.
+        _reject_oversized_sample_count(sample_count)
         result = await app_state.analytics_service.get_metric_history(
             since=since,
             until=until,
