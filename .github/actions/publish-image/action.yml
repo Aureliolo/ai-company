@@ -1,0 +1,190 @@
+name: Publish container image
+description: >-
+  Log into GHCR, build the Dockerfile-based container image again (reusing
+  layers from the GHA cache populated by the `build-scan-image` step), push
+  it with SBOM + provenance layers, cosign-sign it keyless via GitHub OIDC,
+  and attest SLSA Level 3 build provenance. Called from a companion
+  publish-only job that carries `packages: write`, `id-token: write`, and
+  `attestations: write`, gated by the `image-push` deployment environment
+  (branch policy `main,v*`).
+
+inputs:
+  image-name:
+    description: "Short image name suffix (e.g. backend, sandbox, sidecar, fine-tune-gpu, fine-tune-cpu)."
+    required: true
+  dockerfile:
+    description: "Path to the Dockerfile (relative to repository root)."
+    required: true
+  context:
+    description: "Docker build context path."
+    required: false
+    default: "."
+  app-version:
+    description: "Application version for the `type=raw` tag on stable `v*` releases."
+    required: true
+  base-image-repo:
+    description: "Base image repository (e.g. ghcr.io/aureliolo/synthorg-backend-base)."
+    required: true
+  base-image-tag:
+    description: "Base image tag from `needs.build-X-base.outputs.tag`."
+    required: true
+  base-image-digest:
+    description: >-
+      Base image digest from `needs.build-X-base-publish.outputs.digest`.
+      Non-empty on the publish path (main / v* refs). Takes precedence over
+      `base-image-tag` for the BASE_IMAGE build-arg.
+    required: false
+    default: ""
+  extra-build-args:
+    description: "Additional Docker build args, one per line (e.g. DEPLOYMENT_ENV, FINE_TUNE_EXTRA)."
+    required: false
+    default: ""
+  platforms:
+    description: "Comma-separated platforms for the push. Defaults to multi-arch (amd64 + arm64)."
+    required: false
+    default: "linux/amd64,linux/arm64"
+  cache-scope:
+    description: "GHA cache scope suffix (empty for non-matrix jobs)."
+    required: false
+    default: ""
+  enable-qemu-arm64:
+    description: >-
+      Set up QEMU arm64 emulation before buildx. Required for multi-arch
+      builds targeting arm64. Pass "false" for amd64-only images
+      (fine-tune).
+    required: false
+    default: "true"
+  ghcr-token:
+    description: "GITHUB_TOKEN for GHCR login -- must come from the caller's `secrets.GITHUB_TOKEN`."
+    required: true
+
+outputs:
+  digest:
+    description: "Pushed multi-arch manifest digest (sha256:...)."
+    value: ${{ steps.push.outputs.digest }}
+
+runs:
+  using: composite
+  steps:
+    - name: Set up QEMU (ARM64 emulation)
+      if: inputs.enable-qemu-arm64 == 'true'
+      uses: docker/setup-qemu-action@ce360397dd3f832beb865e1373c09c0e9f86d70a # v4.0.0
+      with:
+        platforms: arm64
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+      with:
+        driver: docker-container
+        cache-binary: false
+
+    - name: Log in to GHCR
+      uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ inputs.ghcr-token }}
+
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf # v6.0.0
+      with:
+        images: ghcr.io/aureliolo/synthorg-${{ inputs.image-name }}
+        tags: |
+          type=raw,value=${{ inputs.app-version }},enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-dev.') }}
+          type=semver,pattern={{version}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+          type=semver,pattern={{major}}.{{minor}},enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-dev.') }}
+          type=raw,value=dev,enable=${{ startsWith(github.ref, 'refs/tags/v') && contains(github.ref, '-dev.') }}
+          type=sha,prefix=sha-
+
+    # Push-side rebuild: reuses GHA cache populated by build-scan-image for
+    # fast turnaround, but re-emits layers with SBOM + provenance attached
+    # (which changes the manifest digest vs. the scanned image on purpose --
+    # we sign and attest the pushed digest, not the scan digest).
+    - name: Build and push image
+      id: push
+      uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
+      with:
+        context: ${{ inputs.context }}
+        file: ${{ inputs.dockerfile }}
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        build-args: |
+          BASE_IMAGE=${{ inputs.base-image-digest != '' && format('{0}@{1}', inputs.base-image-repo, inputs.base-image-digest) || format('{0}:{1}', inputs.base-image-repo, inputs.base-image-tag) }}
+          ${{ inputs.extra-build-args }}
+        cache-from: ${{ inputs.cache-scope != '' && format('type=gha,scope={0}', inputs.cache-scope) || 'type=gha' }}
+        platforms: ${{ inputs.platforms }}
+        sbom: true
+        provenance: true
+
+    # GitHub releases occasionally 5xx; cosign-installer's internal retry (3
+    # attempts in ~7s) is not enough to ride out a longer outage. Wrap the
+    # install in two continue-on-error attempts with backoff before the
+    # final fail-hard attempt, so a single 10-20s burst of 500s doesn't
+    # kill the run. Mirrors the pattern in publish-apko-base.
+    - name: Install cosign (attempt 1)
+      id: cosign_1
+      continue-on-error: true
+      uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
+
+    - name: Back off before cosign retry 1
+      if: steps.cosign_1.outcome == 'failure'
+      shell: bash
+      run: sleep 15
+
+    - name: Install cosign (attempt 2)
+      if: steps.cosign_1.outcome == 'failure'
+      id: cosign_2
+      continue-on-error: true
+      uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
+
+    - name: Back off before cosign retry 2
+      if: steps.cosign_2.outcome == 'failure'
+      shell: bash
+      run: sleep 30
+
+    - name: Install cosign (final attempt)
+      if: steps.cosign_2.outcome == 'failure'
+      uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
+
+    - name: Sign image
+      shell: bash
+      env:
+        IMAGE_NAME: ${{ inputs.image-name }}
+        DIGEST: ${{ steps.push.outputs.digest }}
+      run: |
+        set -euo pipefail
+        if [ -z "$DIGEST" ]; then
+          echo "::error::Push step did not produce a digest -- cannot sign image"
+          exit 1
+        fi
+        if ! cosign sign --yes "ghcr.io/aureliolo/synthorg-${IMAGE_NAME}@${DIGEST}" 2>&1 | tee /tmp/cosign-out; then
+          if grep -q 'createLogEntryConflict' /tmp/cosign-out; then
+            echo "::notice::Image already signed in transparency log -- skipping"
+          else
+            cat /tmp/cosign-out
+            exit 1
+          fi
+        fi
+
+    - name: Attest build provenance (SLSA Level 3)
+      uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+      with: # zizmor: ignore[template-injection]
+        subject-name: ghcr.io/aureliolo/synthorg-${{ inputs.image-name }}
+        subject-digest: ${{ steps.push.outputs.digest }}
+        push-to-registry: true
+
+    - name: Generate SBOM
+      uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+      with:
+        image: ghcr.io/aureliolo/synthorg-${{ inputs.image-name }}@${{ steps.push.outputs.digest }}
+        format: cyclonedx-json
+        output-file: sbom-${{ inputs.image-name }}.cdx.json
+
+    - name: Upload SBOM artifact
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: sbom-${{ inputs.image-name }}
+        path: sbom-${{ inputs.image-name }}.cdx.json
+        retention-days: 30

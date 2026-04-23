@@ -38,6 +38,11 @@ jobs:
       && github.event.workflow_run.head_repository.full_name == github.repository
       && startsWith(github.event.workflow_run.head_branch, 'v')
     runs-on: ubuntu-latest
+    # `workflow_run` sets `github.ref` to the default branch (main) regardless
+    # of which tag triggered the upstream workflow, so the `release` env's
+    # `main,v*` branch policy matches cleanly. The workflow-level `if:` guard
+    # still enforces that the triggering workflow ran on a tag starting with `v`.
+    environment: release
     permissions:
       actions: read
       contents: write

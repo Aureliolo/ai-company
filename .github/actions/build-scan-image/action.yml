@@ -1,0 +1,222 @@
+name: Build and scan container image
+description: >-
+  Build a Dockerfile-based container image from a signed apko base, run Trivy
+  (JSON + SARIF) at CRITICAL + HIGH, upload SARIF to GitHub Security, and
+  execute the CIS Docker Benchmark. Intended to be called from a job whose
+  only permissions are `contents: read` + `security-events: write` -- no
+  elevated registry perms. The companion `publish-image` action does the
+  login + push + cosign + attest work in a separate environment-gated job.
+
+inputs:
+  image-name:
+    description: >-
+      Short image name suffix (e.g. backend, sandbox, sidecar,
+      fine-tune-gpu, fine-tune-cpu). Combined with
+      `ghcr.io/aureliolo/synthorg-` to form the registry ref and used as
+      the suffix for Trivy report filenames and SARIF categories.
+    required: true
+  display-name:
+    description: "Human-readable name for log messages (e.g. 'Backend', 'Fine-Tune (gpu)')."
+    required: true
+  dockerfile:
+    description: "Path to the Dockerfile (relative to repository root)."
+    required: true
+  context:
+    description: "Docker build context path."
+    required: false
+    default: "."
+  app-version:
+    description: >-
+      Application version from `needs.version.outputs.app_version`. Emitted
+      as the `type=raw` tag on stable `v*` releases.
+    required: true
+  base-image-repo:
+    description: >-
+      Base image repository (e.g. ghcr.io/aureliolo/synthorg-backend-base).
+      Combined with `base-image-digest` (preferred) or `base-image-tag` to
+      form the `BASE_IMAGE` build-arg.
+    required: true
+  base-image-tag:
+    description: "Base image tag from `needs.build-X-base.outputs.tag`."
+    required: true
+  base-image-digest:
+    description: >-
+      Base image digest from `needs.build-X-base-publish.outputs.digest`.
+      Empty on pull-request events (no publish happens). When set, takes
+      precedence over `base-image-tag` for the BASE_IMAGE build-arg.
+    required: false
+    default: ""
+  base-image-artifact-name:
+    description: "Artifact name for the base tarball (PR-path only)."
+    required: true
+  base-image-tarball-name:
+    description: "Tarball filename inside the downloaded artifact (PR-path only)."
+    required: true
+  extra-build-args:
+    description: >-
+      Additional Docker build args, one per line (e.g. DEPLOYMENT_ENV,
+      FINE_TUNE_EXTRA). `BASE_IMAGE` is prepended automatically.
+    required: false
+    default: ""
+  platforms:
+    description: "Comma-separated platforms for the build step. PR builds always target amd64 via `load: true`."
+    required: false
+    default: "linux/amd64"
+  cache-scope:
+    description: >-
+      GHA cache scope suffix. Leave empty for non-matrix jobs. Fine-tune
+      passes the variant name so GPU and CPU do not share a cache layer.
+    required: false
+    default: ""
+  free-disk-space:
+    description: >-
+      Run aggressive disk cleanup before buildx setup. Required for
+      fine-tune images (~4 GB GPU + ~1.7 GB CPU variants overflow the
+      default `ubuntu-latest` runner). Pass the literal string "true" to
+      enable.
+    required: false
+    default: "false"
+
+outputs:
+  scan-ref:
+    description: "Image ref used for Trivy / CIS scans (sha-<short> tag)."
+    value: ${{ steps.scan-ref.outputs.ref }}
+
+runs:
+  using: composite
+  steps:
+    # Fine-tune GPU image is ~4 GB (torch + CUDA wheels). The GHA
+    # ubuntu-latest runner ships with ~14 GB free on /, which is not
+    # enough headroom for buildx to assemble the layer tar + load it
+    # into the daemon + run Trivy. Remove pre-installed toolchains we
+    # do not use to reclaim ~25 GB.
+    - name: Free disk space
+      if: inputs.free-disk-space == 'true'
+      shell: bash
+      run: |
+        df -h /
+        sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+        sudo rm -rf /opt/hostedtoolcache/CodeQL /opt/hostedtoolcache/Python
+        sudo rm -rf /usr/local/share/powershell /usr/local/share/chromium
+        sudo rm -rf /usr/local/lib/node_modules
+        sudo docker image prune --all --force
+        df -h /
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+      with:
+        # `docker` driver is required for `load: true` on PR builds so
+        # Trivy can scan a locally loaded image; `docker-container`
+        # enables `type=gha` layer cache for non-PR builds.
+        driver: ${{ github.event_name == 'pull_request' && 'docker' || 'docker-container' }}
+        cache-binary: false
+
+    - name: Download base image artifact (PR only)
+      if: github.event_name == 'pull_request'
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+      with:
+        name: ${{ inputs.base-image-artifact-name }}
+        path: /tmp
+
+    - name: Load base image (PR only)
+      if: github.event_name == 'pull_request'
+      shell: bash
+      env:
+        BASE_IMAGE_REPO: ${{ inputs.base-image-repo }}
+        BASE_TAG: ${{ inputs.base-image-tag }}
+        BASE_TARBALL: ${{ inputs.base-image-tarball-name }}
+      run: |
+        docker load -i "/tmp/${BASE_TARBALL}"
+        docker tag "${BASE_IMAGE_REPO}:${BASE_TAG}-amd64" "${BASE_IMAGE_REPO}:${BASE_TAG}"
+
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf # v6.0.0
+      with:
+        images: ghcr.io/aureliolo/synthorg-${{ inputs.image-name }}
+        tags: |
+          type=raw,value=${{ inputs.app-version }},enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-dev.') }}
+          type=semver,pattern={{version}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+          type=semver,pattern={{major}}.{{minor}},enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-dev.') }}
+          type=raw,value=dev,enable=${{ startsWith(github.ref, 'refs/tags/v') && contains(github.ref, '-dev.') }}
+          type=sha,prefix=sha-
+
+    - name: Build image
+      uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
+      with:
+        context: ${{ inputs.context }}
+        file: ${{ inputs.dockerfile }}
+        push: false
+        load: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        build-args: |
+          BASE_IMAGE=${{ inputs.base-image-digest != '' && format('{0}@{1}', inputs.base-image-repo, inputs.base-image-digest) || format('{0}:{1}', inputs.base-image-repo, inputs.base-image-tag) }}
+          ${{ inputs.extra-build-args }}
+        cache-from: ${{ github.event_name != 'pull_request' && (inputs.cache-scope != '' && format('type=gha,scope={0}', inputs.cache-scope) || 'type=gha') || '' }}
+        cache-to: ${{ github.event_name != 'pull_request' && (inputs.cache-scope != '' && format('type=gha,mode=max,scope={0}', inputs.cache-scope) || 'type=gha,mode=max') || '' }}
+        platforms: ${{ inputs.platforms }}
+
+    - name: Compute scan image ref
+      id: scan-ref
+      shell: bash
+      env:
+        IMAGE_NAME: ${{ inputs.image-name }}
+      run: echo "ref=ghcr.io/aureliolo/synthorg-${IMAGE_NAME}:sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+    - name: Report image size
+      shell: bash
+      env:
+        SCAN_REF: ${{ steps.scan-ref.outputs.ref }}
+        DISPLAY_NAME: ${{ inputs.display-name }}
+      run: scripts/report-image-size.sh "$SCAN_REF" "$DISPLAY_NAME"
+
+    # Single Trivy run for CRITICAL + HIGH. JSON output lets us fail on
+    # CRITICAL only while still reporting HIGH.
+    - name: Trivy scan
+      uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+      with:
+        image-ref: ${{ steps.scan-ref.outputs.ref }}
+        format: json
+        output: trivy-${{ inputs.image-name }}.json
+        exit-code: "0"
+        severity: CRITICAL,HIGH
+        trivyignores: .github/.trivyignore.yaml
+
+    - name: Evaluate Trivy results
+      shell: bash
+      env:
+        IMAGE_NAME: ${{ inputs.image-name }}
+        DISPLAY_NAME: ${{ inputs.display-name }}
+      run: scripts/evaluate-scan.sh --verbose "trivy-${IMAGE_NAME}.json" "$DISPLAY_NAME"
+
+    - name: Upload Trivy report
+      if: always()
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: trivy-${{ inputs.image-name }}-report
+        path: trivy-${{ inputs.image-name }}.json
+        retention-days: 30
+
+    - name: Trivy SARIF scan
+      if: always()
+      uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+      with:
+        image-ref: ${{ steps.scan-ref.outputs.ref }}
+        format: sarif
+        output: trivy-${{ inputs.image-name }}.sarif
+        exit-code: "0"
+        severity: CRITICAL,HIGH
+        trivyignores: .github/.trivyignore.yaml
+
+    - name: Upload SARIF to GitHub Security
+      if: always()
+      uses: github/codeql-action/upload-sarif@95e58e9a2cdfd71adc6e0353d5c52f41a045d225 # v4.35.2
+      with:
+        sarif_file: trivy-${{ inputs.image-name }}.sarif
+        category: trivy-${{ inputs.image-name }}
+
+    - name: CIS Docker Benchmark
+      uses: ./.github/actions/cis-scan
+      with:
+        image-ref: ${{ steps.scan-ref.outputs.ref }}

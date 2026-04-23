@@ -13,7 +13,8 @@ environment itself. Apply them via `scripts/configure_environments.sh`.
 | Environment | Branch policy | Triggered by |
 |---|---|---|
 | `github-pages` | `main` | `pages.yml` push to main |
-| `release` | `main` | `release.yml` and `dev-release.yml` push to main |
+| `release` | `main`, `v*` | `release.yml` + `dev-release.yml` (main pushes), `cli.yml:cli-release` + `docker.yml:update-release` (v* tag pushes), `finalize-release.yml:publish` (workflow_run on main) |
+| `image-push` | `main`, `v*` | `docker.yml` `*-publish` jobs (4 apko base pushes + 5 app image pushes) on main and v* refs |
 | `apko-lock` | `main` | `apko-lock.yml` schedule + workflow_dispatch |
 | `cloudflare-preview` | _none_ (see below) | `pages-preview.yml` pull_request events |
 | `atlas` | _none_ (see below) | `ci.yml:schema-validate` push + pull_request |
@@ -74,10 +75,66 @@ gh api repos/Aureliolo/synthorg/environments/apko-lock/deployment-branch-policie
   --jq '.branch_policies[].name'
 ```
 
-Expected output for each of `github-pages`, `release`, `apko-lock`:
+Expected output:
 
-- `deployment_branch_policy`: `{"protected_branches": false, "custom_branch_policies": true}`
-- `branch_policies`: `["main"]`
+- `deployment_branch_policy` for every environment: `{"protected_branches": false, "custom_branch_policies": true}`
+- `branch_policies` for `github-pages`, `apko-lock`: `["main"]`
+- `branch_policies` for `release`, `image-push`: `["main", "v*"]`
+
+## Required secrets
+
+Secrets gated by deployment environments are only available to jobs whose
+`github.ref` matches that environment's branch policy. Any job referencing
+`secrets.<NAME>` in its `env:` or step inputs must run under the
+environment that scopes the secret.
+
+### `RELEASE_PLEASE_TOKEN`
+
+A GitHub Personal Access Token consumed by the release pipeline. Scoped
+under the `release` deployment environment.
+
+**Purpose**:
+
+- `release.yml` uses it for the pre-tag creation step, the
+  `googleapis/release-please-action` step, the Release PR branch checkout,
+  and the BSL Change Date `git push`. Each of those steps writes to the
+  repository state (tags, release PR, commits) on behalf of the release
+  bot.
+- `dev-release.yml` uses it to create dev pre-release tags (e.g.
+  `v0.7.2-dev.3`). Unlike the default `GITHUB_TOKEN`, a PAT-authored tag
+  push triggers downstream workflows (docker.yml, cli.yml, etc.), which is
+  the intended behavior -- dev tags must run through the same build-sign-
+  attest pipeline as stable releases.
+
+**Required PAT scopes** (choose one form, whichever your org allows):
+
+- **Classic PAT**: `repo` (full control of private repositories). No org
+  scopes (`admin:org`, `admin:public_key`, `write:packages`, etc.) --
+  narrow to repository-level authority.
+- **Fine-grained PAT**: scope to the `Aureliolo/synthorg` repository only,
+  with these repository permissions:
+  - `Contents: Read and write`
+  - `Pull requests: Read and write`
+  - `Metadata: Read`
+
+The token must NOT carry organization-level permissions. If this repo ever
+moves under an organization, revoke and re-issue a fine-grained token
+scoped to the new repo path rather than granting org admin.
+
+**Rotation**:
+
+- Expiry is owner-tracked; set a calendar reminder 30 days before the PAT
+  expiration.
+- Rotate via repo Settings > Secrets and variables > Actions > click
+  `RELEASE_PLEASE_TOKEN` > update secret. No workflow changes needed.
+- The old token remains valid until its expiry date even after updating
+  the repo secret; revoke the old PAT from the PAT owner's GitHub settings
+  to close the window.
+
+**Access control**: the `release` environment's branch policy (`main`,
+`v*`) is the structural gate. A workflow triggered from any other ref
+cannot read the secret even if it declares `secrets.RELEASE_PLEASE_TOKEN`
+in its YAML.
 
 ## Testing the `apko-lock` gate
 

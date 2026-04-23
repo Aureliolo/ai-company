@@ -67,8 +67,9 @@ echo
 # gate -- see docs/reference/github-environments.md for rationale.
 ENV_CONFIG=(
   "github-pages|main"
-  "release|main"
+  "release|main,v*"
   "apko-lock|main"
+  "image-push|main,v*"
 )
 
 run_gh() {

@@ -249,6 +249,7 @@ jobs:
       needs.build-backend-base.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    environment: image-push
     permissions:
       contents: read
       packages: write
@@ -305,6 +306,7 @@ jobs:
       needs.build-sandbox-base.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    environment: image-push
     permissions:
       contents: read
       packages: write
@@ -361,6 +363,7 @@ jobs:
       needs.build-sidecar-base.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    environment: image-push
     permissions:
       contents: read
       packages: write
@@ -417,6 +420,7 @@ jobs:
       needs.build-fine-tune-base.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    environment: image-push
     permissions:
       contents: read
       packages: write
@@ -459,202 +463,63 @@ jobs:
     timeout-minutes: 60
     permissions:
       contents: read
-      packages: write
-      id-token: write
-      attestations: write
       security-events: write
-    outputs:
-      digest: ${{ steps.push.outputs.digest }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           persist-credentials: false
 
-      - name: Set up QEMU (ARM64 emulation)
-        if: github.event_name != 'pull_request'
-        uses: docker/setup-qemu-action@ce360397dd3f832beb865e1373c09c0e9f86d70a # v4.0.0
+      - name: Build and scan backend image
+        uses: ./.github/actions/build-scan-image
         with:
-          platforms: arm64
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
-        with:
-          driver: ${{ github.event_name == 'pull_request' && 'docker' || 'docker-container' }}
-          cache-binary: false
-
-      - name: Download base image artifact (PR only)
-        if: github.event_name == 'pull_request'
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
-        with:
-          name: ${{ needs.build-backend-base.outputs.artifact-name }}
-          path: /tmp
-
-      - name: Load base image (PR only)
-        if: github.event_name == 'pull_request'
-        env:
-          BASE_TAG: ${{ needs.build-backend-base.outputs.tag }}
-          BASE_TARBALL: ${{ needs.build-backend-base.outputs.tarball-name }}
-        run: |
-          docker load -i "/tmp/${BASE_TARBALL}"
-          docker tag "ghcr.io/aureliolo/synthorg-backend-base:${BASE_TAG}-amd64" "ghcr.io/aureliolo/synthorg-backend-base:${BASE_TAG}"
-
-      - name: Log in to GHCR
-        if: github.event_name != 'pull_request'
-        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf # v6.0.0
-        with:
-          images: ghcr.io/aureliolo/synthorg-backend
-          tags: |
-            type=raw,value=${{ needs.version.outputs.app_version }},enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-dev.') }}
-            type=semver,pattern={{version}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
-            type=semver,pattern={{major}}.{{minor}},enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-dev.') }}
-            type=raw,value=dev,enable=${{ startsWith(github.ref, 'refs/tags/v') && contains(github.ref, '-dev.') }}
-            type=sha,prefix=sha-
-
-      - name: Build image
-        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
-        with:
-          context: .
-          file: docker/backend/Dockerfile
-          push: false
-          load: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          build-args: |
-            BASE_IMAGE=${{ needs.build-backend-base-publish.outputs.digest != '' && format('ghcr.io/aureliolo/synthorg-backend-base@{0}', needs.build-backend-base-publish.outputs.digest) || format('ghcr.io/aureliolo/synthorg-backend-base:{0}', needs.build-backend-base.outputs.tag) }}
+          image-name: backend
+          display-name: Backend
+          dockerfile: docker/backend/Dockerfile
+          app-version: ${{ needs.version.outputs.app_version }}
+          base-image-repo: ghcr.io/aureliolo/synthorg-backend-base
+          base-image-tag: ${{ needs.build-backend-base.outputs.tag }}
+          base-image-digest: ${{ needs.build-backend-base-publish.outputs.digest }}
+          base-image-artifact-name: ${{ needs.build-backend-base.outputs.artifact-name }}
+          base-image-tarball-name: ${{ needs.build-backend-base.outputs.tarball-name }}
+          extra-build-args: |
             DEPLOYMENT_ENV=${{ needs.version.outputs.deployment_env }}
-          cache-from: ${{ github.event_name != 'pull_request' && 'type=gha' || '' }}
-          cache-to: ${{ github.event_name != 'pull_request' && 'type=gha,mode=max' || '' }}
-          platforms: linux/amd64
 
-      - name: Compute scan image ref
-        id: scan-ref
-        run: echo "ref=ghcr.io/aureliolo/synthorg-backend:sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
-
-      - name: Report image size
-        run: scripts/report-image-size.sh "${{ steps.scan-ref.outputs.ref }}" "Backend"
-
-      # Single Trivy run for CRITICAL + HIGH (saves ~30s vs two separate runs).
-      # JSON output lets us fail on CRITICAL only while still reporting HIGH.
-      - name: Trivy scan
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+  build-backend-publish:
+    name: Publish Backend
+    needs: [version, build-backend, build-backend-base, build-backend-base-publish]
+    if: >-
+      !cancelled() &&
+      needs.build-backend.result == 'success' &&
+      needs.build-backend-base-publish.result == 'success' &&
+      (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: image-push
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    outputs:
+      digest: ${{ steps.publish.outputs.digest }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
-          image-ref: ${{ steps.scan-ref.outputs.ref }}
-          format: json
-          output: trivy-backend.json
-          exit-code: "0"
-          severity: CRITICAL,HIGH
-          trivyignores: .github/.trivyignore.yaml
+          persist-credentials: false
 
-      - name: Evaluate Trivy results
-        run: scripts/evaluate-scan.sh --verbose trivy-backend.json "Backend"
-
-      - name: Upload Trivy report (backend)
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - name: Publish backend image
+        id: publish
+        uses: ./.github/actions/publish-image
         with:
-          name: trivy-backend-report
-          path: trivy-backend.json
-          retention-days: 30
-
-      - name: Trivy SARIF scan (backend)
-        if: always()
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          image-ref: ${{ steps.scan-ref.outputs.ref }}
-          format: sarif
-          output: trivy-backend.sarif
-          exit-code: "0"
-          severity: CRITICAL,HIGH
-          trivyignores: .github/.trivyignore.yaml
-
-      - name: Upload SARIF to GitHub Security (backend)
-        if: always()
-        uses: github/codeql-action/upload-sarif@95e58e9a2cdfd71adc6e0353d5c52f41a045d225 # v4.35.2
-        with:
-          sarif_file: trivy-backend.sarif
-          category: trivy-backend
-
-      - name: CIS Docker Benchmark (backend)
-        uses: ./.github/actions/cis-scan
-        with:
-          image-ref: ${{ steps.scan-ref.outputs.ref }}
-
-      # Push only after scans pass -- prevents publishing vulnerable images.
-      # NOTE: This is a separate build invocation from the scan step. GHA cache
-      # ensures deterministic layer content, but the manifest digest differs due
-      # to SBOM + provenance attestation layers added only on push.
-      - name: Push image
-        if: github.event_name != 'pull_request'
-        id: push
-        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
-        with:
-          context: .
-          file: docker/backend/Dockerfile
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          build-args: |
-            BASE_IMAGE=${{ needs.build-backend-base-publish.outputs.digest != '' && format('ghcr.io/aureliolo/synthorg-backend-base@{0}', needs.build-backend-base-publish.outputs.digest) || format('ghcr.io/aureliolo/synthorg-backend-base:{0}', needs.build-backend-base.outputs.tag) }}
+          image-name: backend
+          dockerfile: docker/backend/Dockerfile
+          app-version: ${{ needs.version.outputs.app_version }}
+          base-image-repo: ghcr.io/aureliolo/synthorg-backend-base
+          base-image-tag: ${{ needs.build-backend-base.outputs.tag }}
+          base-image-digest: ${{ needs.build-backend-base-publish.outputs.digest }}
+          extra-build-args: |
             DEPLOYMENT_ENV=${{ needs.version.outputs.deployment_env }}
-          cache-from: type=gha
-          platforms: linux/amd64,linux/arm64
-          sbom: true
-          provenance: true
-
-      - name: Install cosign
-        if: github.event_name != 'pull_request'
-        uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
-
-      - name: Sign image
-        if: github.event_name != 'pull_request'
-        env:
-          DIGEST: ${{ steps.push.outputs.digest }}
-        run: |
-          if [ -z "$DIGEST" ]; then
-            echo "::error::Push step did not produce a digest -- cannot sign image"
-            exit 1
-          fi
-          set -euo pipefail
-          if ! cosign sign --yes ghcr.io/aureliolo/synthorg-backend@${DIGEST} 2>&1 | tee /tmp/cosign-out; then
-            if grep -q 'createLogEntryConflict' /tmp/cosign-out; then
-              echo "::notice::Image already signed in transparency log -- skipping"
-            else
-              cat /tmp/cosign-out
-              exit 1
-            fi
-          fi
-
-      - name: Attest build provenance (SLSA Level 3)
-        if: github.event_name != 'pull_request'
-        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
-        with:
-          subject-name: ghcr.io/aureliolo/synthorg-backend
-          subject-digest: ${{ steps.push.outputs.digest }}
-          push-to-registry: true
-
-      - name: Generate SBOM
-        if: github.event_name != 'pull_request'
-        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
-        with:
-          image: ghcr.io/aureliolo/synthorg-backend@${{ steps.push.outputs.digest }}
-          format: cyclonedx-json
-          output-file: sbom-backend.cdx.json
-
-      - name: Upload SBOM artifact
-        if: github.event_name != 'pull_request'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: sbom-backend
-          path: sbom-backend.cdx.json
-          retention-days: 30
+          ghcr-token: ${{ secrets.GITHUB_TOKEN }}
 
   # =========================================================================
   # Web image -- melange-packaged assets + pure apko (no Dockerfile)
@@ -756,12 +621,7 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
-      packages: write
-      id-token: write
-      attestations: write
       security-events: write
-    outputs:
-      digest: ${{ steps.push.outputs.digest }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
@@ -781,14 +641,6 @@ jobs:
         with:
           # renovate: datasource=github-releases depName=chainguard-dev/apko
           version: v1.2.4
-
-      - name: Log in to GHCR
-        if: github.event_name != 'pull_request'
-        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build web image
         run: |
@@ -844,8 +696,54 @@ jobs:
         with:
           image-ref: ${{ steps.scan-ref.outputs.ref }}
 
-      - name: Push web image (multi-arch manifest)
+      # Hand off the loaded multi-arch apko tarball to the publish-only job.
+      # The publish job re-loads the tarball into its daemon rather than
+      # rebuilding -- apko builds are deterministic, so this saves ~2min
+      # and keeps the scanned bytes identical to the pushed bytes.
+      - name: Upload web image tarball for publish job
         if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: web-image-tarball
+          path: web.tar
+          retention-days: 1
+
+  build-web-publish:
+    name: Publish Web (apko)
+    needs: [version, build-web]
+    if: >-
+      !cancelled() &&
+      needs.build-web.result == 'success' &&
+      (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: image-push
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    outputs:
+      digest: ${{ steps.push.outputs.digest }}
+    steps:
+      - name: Download web image tarball
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: web-image-tarball
+          path: .
+
+      - name: Load image
+        run: |
+          docker load -i web.tar
+
+      - name: Log in to GHCR
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push web image (multi-arch manifest)
         id: push
         env:
           APP_VERSION: ${{ needs.version.outputs.app_version }}
@@ -895,11 +793,9 @@ jobs:
           echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
 
       - name: Install cosign
-        if: github.event_name != 'pull_request'
         uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
 
       - name: Sign image
-        if: github.event_name != 'pull_request'
         env:
           DIGEST: ${{ steps.push.outputs.digest }}
         run: |
@@ -912,7 +808,6 @@ jobs:
           fi
 
       - name: Attest build provenance (SLSA Level 3)
-        if: github.event_name != 'pull_request'
         uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
         with:
           subject-name: ghcr.io/aureliolo/synthorg-web
@@ -920,7 +815,6 @@ jobs:
           push-to-registry: true
 
       - name: Generate SBOM
-        if: github.event_name != 'pull_request'
         uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
         with:
           image: ghcr.io/aureliolo/synthorg-web@${{ steps.push.outputs.digest }}
@@ -928,7 +822,6 @@ jobs:
           output-file: sbom-web.cdx.json
 
       - name: Upload SBOM artifact
-        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: sbom-web
@@ -947,200 +840,59 @@ jobs:
     timeout-minutes: 60
     permissions:
       contents: read
-      packages: write
-      id-token: write
-      attestations: write
       security-events: write
-    outputs:
-      digest: ${{ steps.push.outputs.digest }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           persist-credentials: false
 
-      - name: Set up QEMU (ARM64 emulation)
-        if: github.event_name != 'pull_request'
-        uses: docker/setup-qemu-action@ce360397dd3f832beb865e1373c09c0e9f86d70a # v4.0.0
+      - name: Build and scan sandbox image
+        uses: ./.github/actions/build-scan-image
         with:
-          platforms: arm64
+          image-name: sandbox
+          display-name: Sandbox
+          dockerfile: docker/sandbox/Dockerfile
+          app-version: ${{ needs.version.outputs.app_version }}
+          base-image-repo: ghcr.io/aureliolo/synthorg-sandbox-base
+          base-image-tag: ${{ needs.build-sandbox-base.outputs.tag }}
+          base-image-digest: ${{ needs.build-sandbox-base-publish.outputs.digest }}
+          base-image-artifact-name: ${{ needs.build-sandbox-base.outputs.artifact-name }}
+          base-image-tarball-name: ${{ needs.build-sandbox-base.outputs.tarball-name }}
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+  build-sandbox-publish:
+    name: Publish Sandbox
+    needs: [version, build-sandbox, build-sandbox-base, build-sandbox-base-publish]
+    if: >-
+      !cancelled() &&
+      needs.build-sandbox.result == 'success' &&
+      needs.build-sandbox-base-publish.result == 'success' &&
+      (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: image-push
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    outputs:
+      digest: ${{ steps.publish.outputs.digest }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
-          driver: ${{ github.event_name == 'pull_request' && 'docker' || 'docker-container' }}
-          cache-binary: false
+          persist-credentials: false
 
-      - name: Download base image artifact (PR only)
-        if: github.event_name == 'pull_request'
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+      - name: Publish sandbox image
+        id: publish
+        uses: ./.github/actions/publish-image
         with:
-          name: ${{ needs.build-sandbox-base.outputs.artifact-name }}
-          path: /tmp
-
-      - name: Load base image (PR only)
-        if: github.event_name == 'pull_request'
-        env:
-          BASE_TAG: ${{ needs.build-sandbox-base.outputs.tag }}
-          BASE_TARBALL: ${{ needs.build-sandbox-base.outputs.tarball-name }}
-        run: |
-          docker load -i "/tmp/${BASE_TARBALL}"
-          docker tag "ghcr.io/aureliolo/synthorg-sandbox-base:${BASE_TAG}-amd64" "ghcr.io/aureliolo/synthorg-sandbox-base:${BASE_TAG}"
-
-      - name: Log in to GHCR
-        if: github.event_name != 'pull_request'
-        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf # v6.0.0
-        with:
-          images: ghcr.io/aureliolo/synthorg-sandbox
-          tags: |
-            type=raw,value=${{ needs.version.outputs.app_version }},enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-dev.') }}
-            type=semver,pattern={{version}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
-            type=semver,pattern={{major}}.{{minor}},enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-dev.') }}
-            type=raw,value=dev,enable=${{ startsWith(github.ref, 'refs/tags/v') && contains(github.ref, '-dev.') }}
-            type=sha,prefix=sha-
-
-      # Build locally first, scan, then push only if scans pass
-      - name: Build image
-        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
-        with:
-          context: .
-          file: docker/sandbox/Dockerfile
-          push: false
-          load: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          build-args: |
-            BASE_IMAGE=${{ needs.build-sandbox-base-publish.outputs.digest != '' && format('ghcr.io/aureliolo/synthorg-sandbox-base@{0}', needs.build-sandbox-base-publish.outputs.digest) || format('ghcr.io/aureliolo/synthorg-sandbox-base:{0}', needs.build-sandbox-base.outputs.tag) }}
-          cache-from: ${{ github.event_name != 'pull_request' && 'type=gha' || '' }}
-          cache-to: ${{ github.event_name != 'pull_request' && 'type=gha,mode=max' || '' }}
-          platforms: linux/amd64
-
-      # SHA tag always exists (version/semver tags only on v* tags)
-      - name: Compute scan image ref
-        id: scan-ref
-        run: echo "ref=ghcr.io/aureliolo/synthorg-sandbox:sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
-
-      - name: Report image size
-        run: scripts/report-image-size.sh "${{ steps.scan-ref.outputs.ref }}" "Sandbox"
-
-      # Single Trivy run for CRITICAL + HIGH.
-      - name: Trivy scan
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          image-ref: ${{ steps.scan-ref.outputs.ref }}
-          format: json
-          output: trivy-sandbox.json
-          exit-code: "0"
-          severity: CRITICAL,HIGH
-          trivyignores: .github/.trivyignore.yaml
-
-      - name: Evaluate Trivy results
-        run: scripts/evaluate-scan.sh --verbose trivy-sandbox.json "Sandbox"
-
-      - name: Upload Trivy report (sandbox)
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: trivy-sandbox-report
-          path: trivy-sandbox.json
-          retention-days: 30
-
-      - name: Trivy SARIF scan (sandbox)
-        if: always()
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          image-ref: ${{ steps.scan-ref.outputs.ref }}
-          format: sarif
-          output: trivy-sandbox.sarif
-          exit-code: "0"
-          severity: CRITICAL,HIGH
-          trivyignores: .github/.trivyignore.yaml
-
-      - name: Upload SARIF to GitHub Security (sandbox)
-        if: always()
-        uses: github/codeql-action/upload-sarif@95e58e9a2cdfd71adc6e0353d5c52f41a045d225 # v4.35.2
-        with:
-          sarif_file: trivy-sandbox.sarif
-          category: trivy-sandbox
-
-      - name: CIS Docker Benchmark (sandbox)
-        uses: ./.github/actions/cis-scan
-        with:
-          image-ref: ${{ steps.scan-ref.outputs.ref }}
-
-      # Push only after scans pass -- prevents publishing vulnerable images.
-      # NOTE: Separate build invocation; GHA cache ensures deterministic layers,
-      # but manifest digest differs due to SBOM + provenance attestation layers.
-      - name: Push image
-        if: github.event_name != 'pull_request'
-        id: push
-        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
-        with:
-          context: .
-          file: docker/sandbox/Dockerfile
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          build-args: |
-            BASE_IMAGE=${{ needs.build-sandbox-base-publish.outputs.digest != '' && format('ghcr.io/aureliolo/synthorg-sandbox-base@{0}', needs.build-sandbox-base-publish.outputs.digest) || format('ghcr.io/aureliolo/synthorg-sandbox-base:{0}', needs.build-sandbox-base.outputs.tag) }}
-          cache-from: type=gha
-          platforms: linux/amd64,linux/arm64
-          sbom: true
-          provenance: true
-
-      - name: Install cosign
-        if: github.event_name != 'pull_request'
-        uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
-
-      - name: Sign image
-        if: github.event_name != 'pull_request'
-        env:
-          DIGEST: ${{ steps.push.outputs.digest }}
-        run: |
-          if [ -z "$DIGEST" ]; then
-            echo "::error::Push step did not produce a digest -- cannot sign image"
-            exit 1
-          fi
-          set -euo pipefail
-          if ! cosign sign --yes ghcr.io/aureliolo/synthorg-sandbox@${DIGEST} 2>&1 | tee /tmp/cosign-out; then
-            if grep -q 'createLogEntryConflict' /tmp/cosign-out; then
-              echo "::notice::Image already signed in transparency log -- skipping"
-            else
-              cat /tmp/cosign-out
-              exit 1
-            fi
-          fi
-
-      - name: Attest build provenance (SLSA Level 3)
-        if: github.event_name != 'pull_request'
-        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
-        with:
-          subject-name: ghcr.io/aureliolo/synthorg-sandbox
-          subject-digest: ${{ steps.push.outputs.digest }}
-          push-to-registry: true
-
-      - name: Generate SBOM
-        if: github.event_name != 'pull_request'
-        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
-        with:
-          image: ghcr.io/aureliolo/synthorg-sandbox@${{ steps.push.outputs.digest }}
-          format: cyclonedx-json
-          output-file: sbom-sandbox.cdx.json
-
-      - name: Upload SBOM artifact
-        if: github.event_name != 'pull_request'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: sbom-sandbox
-          path: sbom-sandbox.cdx.json
-          retention-days: 30
+          image-name: sandbox
+          dockerfile: docker/sandbox/Dockerfile
+          app-version: ${{ needs.version.outputs.app_version }}
+          base-image-repo: ghcr.io/aureliolo/synthorg-sandbox-base
+          base-image-tag: ${{ needs.build-sandbox-base.outputs.tag }}
+          base-image-digest: ${{ needs.build-sandbox-base-publish.outputs.digest }}
+          ghcr-token: ${{ secrets.GITHUB_TOKEN }}
 
   build-sidecar:
     name: Build Sidecar
@@ -1154,194 +906,59 @@ jobs:
     timeout-minutes: 60
     permissions:
       contents: read
-      packages: write
-      id-token: write
-      attestations: write
       security-events: write
-    outputs:
-      digest: ${{ steps.push.outputs.digest }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           persist-credentials: false
 
-      - name: Set up QEMU (ARM64 emulation)
-        if: github.event_name != 'pull_request'
-        uses: docker/setup-qemu-action@ce360397dd3f832beb865e1373c09c0e9f86d70a # v4.0.0
+      - name: Build and scan sidecar image
+        uses: ./.github/actions/build-scan-image
         with:
-          platforms: arm64
+          image-name: sidecar
+          display-name: Sidecar
+          dockerfile: docker/sidecar/Dockerfile
+          app-version: ${{ needs.version.outputs.app_version }}
+          base-image-repo: ghcr.io/aureliolo/synthorg-sidecar-base
+          base-image-tag: ${{ needs.build-sidecar-base.outputs.tag }}
+          base-image-digest: ${{ needs.build-sidecar-base-publish.outputs.digest }}
+          base-image-artifact-name: ${{ needs.build-sidecar-base.outputs.artifact-name }}
+          base-image-tarball-name: ${{ needs.build-sidecar-base.outputs.tarball-name }}
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+  build-sidecar-publish:
+    name: Publish Sidecar
+    needs: [version, build-sidecar, build-sidecar-base, build-sidecar-base-publish]
+    if: >-
+      !cancelled() &&
+      needs.build-sidecar.result == 'success' &&
+      needs.build-sidecar-base-publish.result == 'success' &&
+      (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: image-push
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    outputs:
+      digest: ${{ steps.publish.outputs.digest }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
-          driver: ${{ github.event_name == 'pull_request' && 'docker' || 'docker-container' }}
-          cache-binary: false
+          persist-credentials: false
 
-      - name: Download base image artifact (PR only)
-        if: github.event_name == 'pull_request'
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+      - name: Publish sidecar image
+        id: publish
+        uses: ./.github/actions/publish-image
         with:
-          name: ${{ needs.build-sidecar-base.outputs.artifact-name }}
-          path: /tmp
-
-      - name: Load base image (PR only)
-        if: github.event_name == 'pull_request'
-        env:
-          BASE_TAG: ${{ needs.build-sidecar-base.outputs.tag }}
-          BASE_TARBALL: ${{ needs.build-sidecar-base.outputs.tarball-name }}
-        run: |
-          docker load -i "/tmp/${BASE_TARBALL}"
-          docker tag "ghcr.io/aureliolo/synthorg-sidecar-base:${BASE_TAG}-amd64" "ghcr.io/aureliolo/synthorg-sidecar-base:${BASE_TAG}"
-
-      - name: Log in to GHCR
-        if: github.event_name != 'pull_request'
-        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf # v6.0.0
-        with:
-          images: ghcr.io/aureliolo/synthorg-sidecar
-          tags: |
-            type=raw,value=${{ needs.version.outputs.app_version }},enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-dev.') }}
-            type=semver,pattern={{version}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
-            type=semver,pattern={{major}}.{{minor}},enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-dev.') }}
-            type=raw,value=dev,enable=${{ startsWith(github.ref, 'refs/tags/v') && contains(github.ref, '-dev.') }}
-            type=sha,prefix=sha-
-
-      - name: Build image
-        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
-        with:
-          context: .
-          file: docker/sidecar/Dockerfile
-          push: false
-          load: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          build-args: |
-            BASE_IMAGE=${{ needs.build-sidecar-base-publish.outputs.digest != '' && format('ghcr.io/aureliolo/synthorg-sidecar-base@{0}', needs.build-sidecar-base-publish.outputs.digest) || format('ghcr.io/aureliolo/synthorg-sidecar-base:{0}', needs.build-sidecar-base.outputs.tag) }}
-          cache-from: ${{ github.event_name != 'pull_request' && 'type=gha' || '' }}
-          cache-to: ${{ github.event_name != 'pull_request' && 'type=gha,mode=max' || '' }}
-          platforms: linux/amd64
-
-      - name: Compute scan image ref
-        id: scan-ref
-        run: echo "ref=ghcr.io/aureliolo/synthorg-sidecar:sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
-
-      - name: Report image size
-        run: scripts/report-image-size.sh "${{ steps.scan-ref.outputs.ref }}" "Sidecar"
-
-      - name: Trivy scan
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          image-ref: ${{ steps.scan-ref.outputs.ref }}
-          format: json
-          output: trivy-sidecar.json
-          exit-code: "0"
-          severity: CRITICAL,HIGH
-          trivyignores: .github/.trivyignore.yaml
-
-      - name: Evaluate Trivy results
-        run: scripts/evaluate-scan.sh --verbose trivy-sidecar.json "Sidecar"
-
-      - name: Upload Trivy report (sidecar)
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: trivy-sidecar-report
-          path: trivy-sidecar.json
-          retention-days: 30
-
-      - name: Trivy SARIF scan (sidecar)
-        if: always()
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          image-ref: ${{ steps.scan-ref.outputs.ref }}
-          format: sarif
-          output: trivy-sidecar.sarif
-          exit-code: "0"
-          severity: CRITICAL,HIGH
-          trivyignores: .github/.trivyignore.yaml
-
-      - name: Upload SARIF to GitHub Security (sidecar)
-        if: always()
-        uses: github/codeql-action/upload-sarif@95e58e9a2cdfd71adc6e0353d5c52f41a045d225 # v4.35.2
-        with:
-          sarif_file: trivy-sidecar.sarif
-          category: trivy-sidecar
-
-      - name: CIS Docker Benchmark (sidecar)
-        uses: ./.github/actions/cis-scan
-        with:
-          image-ref: ${{ steps.scan-ref.outputs.ref }}
-
-      - name: Push image
-        if: github.event_name != 'pull_request'
-        id: push
-        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
-        with:
-          context: .
-          file: docker/sidecar/Dockerfile
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          build-args: |
-            BASE_IMAGE=${{ needs.build-sidecar-base-publish.outputs.digest != '' && format('ghcr.io/aureliolo/synthorg-sidecar-base@{0}', needs.build-sidecar-base-publish.outputs.digest) || format('ghcr.io/aureliolo/synthorg-sidecar-base:{0}', needs.build-sidecar-base.outputs.tag) }}
-          cache-from: type=gha
-          platforms: linux/amd64,linux/arm64
-          sbom: true
-          provenance: true
-
-      - name: Install cosign
-        if: github.event_name != 'pull_request'
-        uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
-
-      - name: Sign image
-        if: github.event_name != 'pull_request'
-        env:
-          DIGEST: ${{ steps.push.outputs.digest }}
-        run: |
-          if [ -z "$DIGEST" ]; then
-            echo "::error::Push step did not produce a digest -- cannot sign image"
-            exit 1
-          fi
-          set -euo pipefail
-          if ! cosign sign --yes ghcr.io/aureliolo/synthorg-sidecar@${DIGEST} 2>&1 | tee /tmp/cosign-out; then
-            if grep -q 'createLogEntryConflict' /tmp/cosign-out; then
-              echo "::notice::Image already signed in transparency log -- skipping"
-            else
-              cat /tmp/cosign-out
-              exit 1
-            fi
-          fi
-
-      - name: Attest build provenance (SLSA Level 3)
-        if: github.event_name != 'pull_request'
-        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
-        with:
-          subject-name: ghcr.io/aureliolo/synthorg-sidecar
-          subject-digest: ${{ steps.push.outputs.digest }}
-          push-to-registry: true
-
-      - name: Generate SBOM
-        if: github.event_name != 'pull_request'
-        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
-        with:
-          image: ghcr.io/aureliolo/synthorg-sidecar@${{ steps.push.outputs.digest }}
-          format: cyclonedx-json
-          output-file: sbom-sidecar.cdx.json
-
-      - name: Upload SBOM artifact
-        if: github.event_name != 'pull_request'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: sbom-sidecar
-          path: sbom-sidecar.cdx.json
-          retention-days: 30
+          image-name: sidecar
+          dockerfile: docker/sidecar/Dockerfile
+          app-version: ${{ needs.version.outputs.app_version }}
+          base-image-repo: ghcr.io/aureliolo/synthorg-sidecar-base
+          base-image-tag: ${{ needs.build-sidecar-base.outputs.tag }}
+          base-image-digest: ${{ needs.build-sidecar-base-publish.outputs.digest }}
+          ghcr-token: ${{ secrets.GITHUB_TOKEN }}
 
   # Fine-tune ships in two flavors. The matrix builds them in parallel:
   #   - gpu  -> ghcr.io/aureliolo/synthorg-fine-tune-gpu  (bundled CUDA, ~4 GB)
@@ -1368,20 +985,60 @@ jobs:
             extra: fine-tune-cpu
     permissions:
       contents: read
-      packages: write
-      id-token: write
-      attestations: write
       security-events: write
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           persist-credentials: false
 
-      # Fine-tune GPU image is ~4 GB (torch + CUDA wheels). The GHA
-      # ubuntu-latest runner ships with ~14 GB free on /, which is not enough
-      # headroom for buildx to assemble the layer tar + load it into the
-      # daemon + run Trivy. Remove pre-installed toolchains we do not use to
-      # reclaim ~25 GB. Applies to the CPU variant too -- cheap insurance.
+      - name: Build and scan fine-tune image
+        uses: ./.github/actions/build-scan-image
+        with:
+          image-name: fine-tune-${{ matrix.variant }}
+          display-name: "Fine-Tune (${{ matrix.variant }})"
+          dockerfile: docker/fine-tune/Dockerfile
+          app-version: ${{ needs.version.outputs.app_version }}
+          base-image-repo: ghcr.io/aureliolo/synthorg-fine-tune-base
+          base-image-tag: ${{ needs.build-fine-tune-base.outputs.tag }}
+          base-image-digest: ${{ needs.build-fine-tune-base-publish.outputs.digest }}
+          base-image-artifact-name: ${{ needs.build-fine-tune-base.outputs.artifact-name }}
+          base-image-tarball-name: ${{ needs.build-fine-tune-base.outputs.tarball-name }}
+          extra-build-args: |
+            FINE_TUNE_EXTRA=${{ matrix.extra }}
+          cache-scope: fine-tune-${{ matrix.variant }}
+          free-disk-space: "true"
+
+  build-fine-tune-publish:
+    name: Publish Fine-Tune (${{ matrix.variant }})
+    needs: [version, build-fine-tune, build-fine-tune-base, build-fine-tune-base-publish]
+    if: >-
+      !cancelled() &&
+      needs.build-fine-tune.result == 'success' &&
+      needs.build-fine-tune-base-publish.result == 'success' &&
+      (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: gpu
+            extra: fine-tune-gpu
+          - variant: cpu
+            extra: fine-tune-cpu
+    environment: image-push
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      # Fine-tune pushes are ~4 GB (GPU); free disk space here too so buildx
+      # has room to assemble layers during the push-side rebuild.
       - name: Free disk space
         run: |
           df -h /
@@ -1392,194 +1049,35 @@ jobs:
           sudo docker image prune --all --force
           df -h /
 
-      # QEMU ARM64 not needed -- fine-tune is amd64-only (GPU workloads).
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+      - name: Publish fine-tune image
+        id: publish
+        uses: ./.github/actions/publish-image
         with:
-          driver: ${{ github.event_name == 'pull_request' && 'docker' || 'docker-container' }}
-          cache-binary: false
-
-      - name: Download base image artifact (PR only)
-        if: github.event_name == 'pull_request'
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
-        with:
-          name: ${{ needs.build-fine-tune-base.outputs.artifact-name }}
-          path: /tmp
-
-      - name: Load base image (PR only)
-        if: github.event_name == 'pull_request'
-        env:
-          BASE_TAG: ${{ needs.build-fine-tune-base.outputs.tag }}
-          BASE_TARBALL: ${{ needs.build-fine-tune-base.outputs.tarball-name }}
-        run: |
-          docker load -i "/tmp/${BASE_TARBALL}"
-          docker tag "ghcr.io/aureliolo/synthorg-fine-tune-base:${BASE_TAG}-amd64" "ghcr.io/aureliolo/synthorg-fine-tune-base:${BASE_TAG}"
-
-      - name: Log in to GHCR
-        if: github.event_name != 'pull_request'
-        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf # v6.0.0
-        with:
-          images: ghcr.io/aureliolo/synthorg-fine-tune-${{ matrix.variant }}
-          tags: |
-            type=raw,value=${{ needs.version.outputs.app_version }},enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-dev.') }}
-            type=semver,pattern={{version}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
-            type=semver,pattern={{major}}.{{minor}},enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-dev.') }}
-            type=raw,value=dev,enable=${{ startsWith(github.ref, 'refs/tags/v') && contains(github.ref, '-dev.') }}
-            type=sha,prefix=sha-
-
-      - name: Build image
-        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
-        with:
-          context: .
-          file: docker/fine-tune/Dockerfile
-          push: false
-          load: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          build-args: |
-            BASE_IMAGE=${{ needs.build-fine-tune-base-publish.outputs.digest != '' && format('ghcr.io/aureliolo/synthorg-fine-tune-base@{0}', needs.build-fine-tune-base-publish.outputs.digest) || format('ghcr.io/aureliolo/synthorg-fine-tune-base:{0}', needs.build-fine-tune-base.outputs.tag) }}
+          image-name: fine-tune-${{ matrix.variant }}
+          dockerfile: docker/fine-tune/Dockerfile
+          app-version: ${{ needs.version.outputs.app_version }}
+          base-image-repo: ghcr.io/aureliolo/synthorg-fine-tune-base
+          base-image-tag: ${{ needs.build-fine-tune-base.outputs.tag }}
+          base-image-digest: ${{ needs.build-fine-tune-base-publish.outputs.digest }}
+          extra-build-args: |
             FINE_TUNE_EXTRA=${{ matrix.extra }}
-          cache-from: ${{ github.event_name != 'pull_request' && format('type=gha,scope=fine-tune-{0}', matrix.variant) || '' }}
-          cache-to: ${{ github.event_name != 'pull_request' && format('type=gha,mode=max,scope=fine-tune-{0}', matrix.variant) || '' }}
           platforms: linux/amd64
-
-      - name: Compute scan image ref
-        id: scan-ref
-        run: echo "ref=ghcr.io/aureliolo/synthorg-fine-tune-${{ matrix.variant }}:sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
-
-      - name: Report image size
-        run: scripts/report-image-size.sh "${{ steps.scan-ref.outputs.ref }}" "Fine-Tune (${{ matrix.variant }})"
-
-      - name: Trivy scan
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          image-ref: ${{ steps.scan-ref.outputs.ref }}
-          format: json
-          output: trivy-fine-tune-${{ matrix.variant }}.json
-          exit-code: "0"
-          severity: CRITICAL,HIGH
-          trivyignores: .github/.trivyignore.yaml
-
-      - name: Evaluate Trivy results
-        run: scripts/evaluate-scan.sh --verbose "trivy-fine-tune-${{ matrix.variant }}.json" "Fine-Tune (${{ matrix.variant }})"
-
-      - name: Upload Trivy report (fine-tune)
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: trivy-fine-tune-${{ matrix.variant }}-report
-          path: trivy-fine-tune-${{ matrix.variant }}.json
-          retention-days: 30
-
-      - name: Trivy SARIF scan (fine-tune)
-        if: always()
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          image-ref: ${{ steps.scan-ref.outputs.ref }}
-          format: sarif
-          output: trivy-fine-tune-${{ matrix.variant }}.sarif
-          exit-code: "0"
-          severity: CRITICAL,HIGH
-          trivyignores: .github/.trivyignore.yaml
-
-      - name: Upload SARIF to GitHub Security (fine-tune)
-        if: always()
-        uses: github/codeql-action/upload-sarif@95e58e9a2cdfd71adc6e0353d5c52f41a045d225 # v4.35.2
-        with:
-          sarif_file: trivy-fine-tune-${{ matrix.variant }}.sarif
-          category: trivy-fine-tune-${{ matrix.variant }}
-
-      - name: CIS Docker Benchmark (fine-tune)
-        uses: ./.github/actions/cis-scan
-        with:
-          image-ref: ${{ steps.scan-ref.outputs.ref }}
-
-      - name: Push image
-        if: github.event_name != 'pull_request'
-        id: push
-        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
-        with:
-          context: .
-          file: docker/fine-tune/Dockerfile
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          build-args: |
-            BASE_IMAGE=${{ needs.build-fine-tune-base-publish.outputs.digest != '' && format('ghcr.io/aureliolo/synthorg-fine-tune-base@{0}', needs.build-fine-tune-base-publish.outputs.digest) || format('ghcr.io/aureliolo/synthorg-fine-tune-base:{0}', needs.build-fine-tune-base.outputs.tag) }}
-            FINE_TUNE_EXTRA=${{ matrix.extra }}
-          cache-from: ${{ format('type=gha,scope=fine-tune-{0}', matrix.variant) }}
-          platforms: linux/amd64
-          sbom: true
-          provenance: true
-
-      - name: Install cosign
-        if: github.event_name != 'pull_request'
-        uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
-
-      - name: Sign image
-        if: github.event_name != 'pull_request'
-        env:
-          DIGEST: ${{ steps.push.outputs.digest }}
-          IMAGE: ghcr.io/aureliolo/synthorg-fine-tune-${{ matrix.variant }}
-        run: |
-          if [ -z "$DIGEST" ]; then
-            echo "::error::Push step did not produce a digest -- cannot sign image"
-            exit 1
-          fi
-          set -euo pipefail
-          if ! cosign sign --yes "${IMAGE}@${DIGEST}" 2>&1 | tee /tmp/cosign-out; then
-            if grep -q 'createLogEntryConflict' /tmp/cosign-out; then
-              echo "::notice::Image already signed in transparency log -- skipping"
-            else
-              cat /tmp/cosign-out
-              exit 1
-            fi
-          fi
-
-      - name: Attest build provenance (SLSA Level 3)
-        if: github.event_name != 'pull_request'
-        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
-        with:
-          subject-name: ghcr.io/aureliolo/synthorg-fine-tune-${{ matrix.variant }}
-          subject-digest: ${{ steps.push.outputs.digest }}
-          push-to-registry: true
-
-      - name: Generate SBOM
-        if: github.event_name != 'pull_request'
-        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
-        with:
-          image: ghcr.io/aureliolo/synthorg-fine-tune-${{ matrix.variant }}@${{ steps.push.outputs.digest }}
-          format: cyclonedx-json
-          output-file: sbom-fine-tune-${{ matrix.variant }}.cdx.json
-
-      - name: Upload SBOM artifact
-        if: github.event_name != 'pull_request'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: sbom-fine-tune-${{ matrix.variant }}
-          path: sbom-fine-tune-${{ matrix.variant }}.cdx.json
-          retention-days: 30
+          cache-scope: fine-tune-${{ matrix.variant }}
+          enable-qemu-arm64: "false"
+          ghcr-token: ${{ secrets.GITHUB_TOKEN }}
 
       # Matrix jobs can't expose per-variant outputs to `update-release` via
-      # `needs.build-fine-tune.outputs.digest` (only the last matrix run wins).
-      # Write the digest to a file and upload it; update-release reads both.
+      # `needs.build-fine-tune-publish.outputs.digest` (only the last matrix
+      # run wins). Write the digest to a file and upload it; update-release
+      # reads both via the `fine-tune-*-digest` artifact pattern.
       - name: Write digest to file
-        if: github.event_name != 'pull_request' && steps.push.outputs.digest != ''
+        if: steps.publish.outputs.digest != ''
         env:
-          DIGEST: ${{ steps.push.outputs.digest }}
+          DIGEST: ${{ steps.publish.outputs.digest }}
         run: printf '%s' "$DIGEST" > "fine-tune-${{ matrix.variant }}.digest"
 
       - name: Upload digest artifact
-        if: github.event_name != 'pull_request' && steps.push.outputs.digest != ''
+        if: steps.publish.outputs.digest != ''
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: fine-tune-${{ matrix.variant }}-digest
@@ -1599,21 +1097,22 @@ jobs:
       - build-sidecar-base-publish
       - build-fine-tune-base
       - build-fine-tune-base-publish
-      - build-backend
-      - build-web
-      - build-sandbox
-      - build-sidecar
-      - build-fine-tune
+      - build-backend-publish
+      - build-web-publish
+      - build-sandbox-publish
+      - build-sidecar-publish
+      - build-fine-tune-publish
     if: >-
       startsWith(github.ref, 'refs/tags/v') && github.event_name != 'pull_request' &&
       !cancelled() &&
-      needs.build-backend.result == 'success' &&
-      needs.build-web.result == 'success' &&
-      needs.build-sandbox.result == 'success' &&
-      needs.build-sidecar.result == 'success' &&
-      needs.build-fine-tune.result == 'success'
+      needs.build-backend-publish.result == 'success' &&
+      needs.build-web-publish.result == 'success' &&
+      needs.build-sandbox-publish.result == 'success' &&
+      needs.build-sidecar-publish.result == 'success' &&
+      needs.build-fine-tune-publish.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    environment: release
     permissions:
       contents: write
     steps:
@@ -1649,10 +1148,10 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
           TAG: ${{ github.ref_name }}
-          BACKEND_DIGEST: ${{ needs.build-backend.outputs.digest }}
-          WEB_DIGEST: ${{ needs.build-web.outputs.digest }}
-          SANDBOX_DIGEST: ${{ needs.build-sandbox.outputs.digest }}
-          SIDECAR_DIGEST: ${{ needs.build-sidecar.outputs.digest }}
+          BACKEND_DIGEST: ${{ needs.build-backend-publish.outputs.digest }}
+          WEB_DIGEST: ${{ needs.build-web-publish.outputs.digest }}
+          SANDBOX_DIGEST: ${{ needs.build-sandbox-publish.outputs.digest }}
+          SIDECAR_DIGEST: ${{ needs.build-sidecar-publish.outputs.digest }}
           FINE_TUNE_GPU_DIGEST: ${{ steps.ft-digests.outputs.gpu }}
           FINE_TUNE_CPU_DIGEST: ${{ steps.ft-digests.outputs.cpu }}
         run: |

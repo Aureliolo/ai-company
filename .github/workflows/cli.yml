@@ -262,6 +262,11 @@ jobs:
     needs: [cli-lint, cli-test, cli-build, cli-vuln]
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # Environment-gated: the `release` env branch policy (main,v*) prevents
+    # this job from running on feature-branch refs even if triggered via
+    # workflow_dispatch or routing error. Guards the RELEASE_PLEASE_TOKEN
+    # surface and GoReleaser push path.
+    environment: release
     permissions:
       contents: write
       id-token: write
