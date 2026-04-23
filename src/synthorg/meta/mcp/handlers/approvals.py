@@ -29,6 +29,7 @@ from synthorg.meta.mcp.errors import (
     invalid_argument,
 )
 from synthorg.meta.mcp.handlers.common import (
+    coerce_pagination,
     dump_many,
     err,
     ok,
@@ -79,37 +80,12 @@ _TY_NON_BLANK = "non-blank string"
 _TY_STATUS = "ApprovalStatus"
 _TY_RISK = "ApprovalRiskLevel"
 _TY_AGENT = "identified agent"
-_TY_NON_NEG_INT = "non-negative int"
-_TY_POS_INT = "positive int"
 _ARG_STATUS = "status"
 _ARG_ACTOR = "actor"
 _ARG_TITLE = "title"
 _ARG_COMMENT = "comment"
 _ARG_ACTION_TYPE = "action_type"
 _ARG_RISK_LEVEL = "risk_level"
-_ARG_OFFSET = "offset"
-_ARG_LIMIT = "limit"
-
-
-def _coerce_pagination(arguments: dict[str, Any]) -> tuple[int, int]:
-    """Parse offset/limit as ints, routing bad input through invalid_argument.
-
-    Treats missing / empty-string values as defaults (``offset=0``,
-    ``limit=50``).  Non-coercible values raise ``ArgumentValidationError``
-    rather than bubbling up a raw ``ValueError``/``TypeError`` so the
-    envelope stays stable.
-    """
-    raw_offset: Any = arguments.get("offset")
-    raw_limit: Any = arguments.get("limit")
-    try:
-        offset = 0 if raw_offset is None or raw_offset == "" else int(raw_offset)
-    except (TypeError, ValueError) as exc:
-        raise invalid_argument(_ARG_OFFSET, _TY_NON_NEG_INT) from exc
-    try:
-        limit = 50 if raw_limit is None or raw_limit == "" else int(raw_limit)
-    except (TypeError, ValueError) as exc:
-        raise invalid_argument(_ARG_LIMIT, _TY_POS_INT) from exc
-    return offset, limit
 
 
 def _coerce_status(raw: Any) -> ApprovalStatus | None:
@@ -167,7 +143,7 @@ def _log_failed(tool: str, exc: Exception) -> None:
 
 
 def _log_invalid(tool: str, exc: Exception) -> None:
-    logger.info(
+    logger.warning(
         MCP_HANDLER_ARGUMENT_INVALID,
         tool_name=tool,
         error_type=type(exc).__name__,
@@ -213,7 +189,7 @@ async def _list_approvals(
             if not isinstance(action_type_raw, str) or not action_type_raw.strip():
                 raise invalid_argument(_ARG_ACTION_TYPE, _TY_NON_BLANK)
             action_type = action_type_raw
-        offset, limit = _coerce_pagination(arguments)
+        offset, limit = coerce_pagination(arguments)
     except ArgumentValidationError as exc:
         _log_invalid(tool, exc)
         return err(exc)
@@ -444,7 +420,10 @@ async def _reject(
     except ArgumentValidationError as exc:
         _log_invalid(tool, exc)
         return err(exc)
-    except (_NotFoundError, _ConflictError, Exception) as exc:
+    except Exception as exc:
+        # Covers _NotFoundError, _ConflictError, and any other service-layer
+        # failure.  The ``err()`` envelope picks up ``domain_code`` off the
+        # handler-local errors automatically.
         _log_failed(tool, exc)
         return err(exc)
 

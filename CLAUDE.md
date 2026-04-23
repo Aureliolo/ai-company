@@ -157,7 +157,7 @@ Enforced by `scripts/check_web_design_system.py` (PostToolUse hook on every `web
 
 ## MCP Handler Layer
 
-SynthOrg exposes 204 admin tools across 15 domains via its MCP server. Adding a new handler means implementing the `ToolHandler` protocol in `src/synthorg/meta/mcp/handlers/<domain>.py`:
+SynthOrg exposes 204 tools across 15 domains via its MCP server. Tools are classified by capability action (`read_tool` / `write_tool` / `admin_tool`) via the builders in `src/synthorg/meta/mcp/tool_builder.py`; only the `admin_tool` subset is destructive and subject to the guardrail triple. Adding a new handler means implementing the `ToolHandler` protocol in `src/synthorg/meta/mcp/handlers/<domain>.py`:
 
 - **Signature**: `async def _<tool>(*, app_state, arguments, actor: AgentIdentity | None = None) -> str`. The `actor` kwarg threads calling-agent identity through the invoker so destructive-op guardrails can attribute audit records. Handlers that don't care about identity still accept and ignore it.
 - **Envelope**: return a JSON string built by helpers in `src/synthorg/meta/mcp/handlers/common.py` -- `ok(data, pagination=...)` for success, `err(exc)` for caught errors, `not_supported(tool, reason)` when the service facade is not yet wired. Never emit a bare `{"status": "not_implemented"}` payload; `make_placeholder_handler` delegates to `not_supported()` so every unwired tool ships the single agreed envelope.

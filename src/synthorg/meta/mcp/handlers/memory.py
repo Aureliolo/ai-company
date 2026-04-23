@@ -27,6 +27,7 @@ from synthorg.meta.mcp.errors import (
 )
 from synthorg.meta.mcp.handlers.common import (
     PaginationMeta,
+    coerce_pagination,
     dump_many,
     err,
     not_supported,
@@ -52,30 +53,11 @@ logger = get_logger(__name__)
 
 
 _TY_NON_BLANK = "non-blank string"
-_TY_NON_NEG_INT = "non-negative int"
-_TY_POS_INT = "positive int"
 _ARG_CHECKPOINT_ID = "checkpoint_id"
-_ARG_OFFSET = "offset"
-_ARG_LIMIT = "limit"
-
-
-def _coerce_pagination(arguments: dict[str, Any]) -> tuple[int, int]:
-    """Parse offset/limit as ints, raising ``ArgumentValidationError`` on bad input."""
-    raw_offset: Any = arguments.get("offset")
-    raw_limit: Any = arguments.get("limit")
-    try:
-        offset = 0 if raw_offset is None or raw_offset == "" else int(raw_offset)
-    except (TypeError, ValueError) as exc:
-        raise invalid_argument(_ARG_OFFSET, _TY_NON_NEG_INT) from exc
-    try:
-        limit = 50 if raw_limit is None or raw_limit == "" else int(raw_limit)
-    except (TypeError, ValueError) as exc:
-        raise invalid_argument(_ARG_LIMIT, _TY_POS_INT) from exc
-    return offset, limit
 
 
 def _log_invalid(tool: str, exc: Exception) -> None:
-    logger.info(
+    logger.warning(
         MCP_HANDLER_ARGUMENT_INVALID,
         tool_name=tool,
         error_type=type(exc).__name__,
@@ -215,7 +197,7 @@ async def _memory_list_checkpoints(
 ) -> str:
     tool = "synthorg_memory_list_checkpoints"
     try:
-        offset, limit = _coerce_pagination(arguments)
+        offset, limit = coerce_pagination(arguments)
     except ArgumentValidationError as exc:
         _log_invalid(tool, exc)
         return err(exc)

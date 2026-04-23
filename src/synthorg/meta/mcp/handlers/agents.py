@@ -25,6 +25,7 @@ from synthorg.meta.mcp.errors import (
     invalid_argument,
 )
 from synthorg.meta.mcp.handlers.common import (
+    coerce_pagination,
     dump_many,
     err,
     not_supported,
@@ -96,7 +97,7 @@ _WHY_COLLAB_CALIBRATION = (
 
 
 def _log_invalid(tool: str, exc: Exception) -> None:
-    logger.info(
+    logger.warning(
         MCP_HANDLER_ARGUMENT_INVALID,
         tool_name=tool,
         error_type=type(exc).__name__,
@@ -149,9 +150,8 @@ async def _agents_list(
 ) -> str:
     tool = "synthorg_agents_list"
     try:
-        offset = int(arguments.get("offset", 0) or 0)
-        limit = int(arguments.get("limit", 50) or 50)
-    except (TypeError, ValueError) as exc:
+        offset, limit = coerce_pagination(arguments)
+    except ArgumentValidationError as exc:
         _log_invalid(tool, exc)
         return err(exc)
     try:
@@ -428,7 +428,15 @@ async def _collaboration_get_score(
         _log_failed(tool, exc)
         return err(exc)
     logger.debug(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
-    return ok(data={"agent_id": agent_id, "score": score})
+    # ``CollaborationScoreResult`` is a Pydantic model; dump it to JSON-mode
+    # primitives before handing to ``ok()`` since ``ok()`` only ``json.dumps``
+    # the payload and would otherwise raise ``TypeError`` on the real tracker.
+    return ok(
+        data={
+            "agent_id": agent_id,
+            "score": score.model_dump(mode="json"),
+        },
+    )
 
 
 async def _collaboration_get_calibration(

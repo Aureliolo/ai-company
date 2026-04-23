@@ -212,12 +212,15 @@ External tools are integrated via the **Model Context Protocol** (MCP).
 
 ### SynthOrg MCP Tool Surface
 
-SynthOrg exposes its own MCP server offering 204 admin tools across 15 domains
+SynthOrg exposes its own MCP server offering 204 tools across 15 domains
 (agents, tasks, workflows, approvals, budget, memory, quality, organization,
 communication, coordination, analytics, integrations, infrastructure, signals,
-meta). Every tool is handled by an async function in
-`src/synthorg/meta/mcp/handlers/<domain>.py`; handlers shim onto the existing
-service layer rather than reimplementing business logic.
+meta). Tool definitions are classified by capability action via the
+`read_tool` / `write_tool` / `admin_tool` builders
+(`src/synthorg/meta/mcp/tool_builder.py`); only the `admin_tool` subset is
+destructive and subject to the guardrail triple. Every tool is handled by an
+async function in `src/synthorg/meta/mcp/handlers/<domain>.py`; handlers shim
+onto the existing service layer rather than reimplementing business logic.
 
 **Handler Protocol.** Every handler implements
 `ToolHandler.__call__(*, app_state, arguments, actor: AgentIdentity | None = None) -> str`

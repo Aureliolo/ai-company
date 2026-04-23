@@ -6,6 +6,7 @@ Covers tasks and activities controllers.
 from typing import TYPE_CHECKING
 
 from synthorg.meta.mcp.tool_builder import (
+    DESTRUCTIVE_GUARDRAIL_PROPERTIES,
     PAGINATION_PROPERTIES,
     admin_tool,
     read_tool,
@@ -68,17 +69,7 @@ TASK_TOOLS: tuple[MCPToolDef, ...] = (
         "Delete a task (destructive; requires confirm).",
         {
             "task_id": {"type": "string", "description": "Task UUID"},
-            "reason": {
-                "type": "string",
-                "description": "Reason for deletion (non-blank)",
-                "minLength": 1,
-                "pattern": r".*\S.*",
-            },
-            "confirm": {
-                "type": "boolean",
-                "description": "Must be true to proceed",
-                "enum": [True],
-            },
+            **DESTRUCTIVE_GUARDRAIL_PROPERTIES,
         },
         required=("task_id", "reason", "confirm"),
     ),
@@ -98,17 +89,7 @@ TASK_TOOLS: tuple[MCPToolDef, ...] = (
         "Cancel a task (destructive; requires confirm).",
         {
             "task_id": {"type": "string", "description": "Task UUID"},
-            "reason": {
-                "type": "string",
-                "description": "Cancellation reason (non-blank)",
-                "minLength": 1,
-                "pattern": r".*\S.*",
-            },
-            "confirm": {
-                "type": "boolean",
-                "description": "Must be true to proceed",
-                "enum": [True],
-            },
+            **DESTRUCTIVE_GUARDRAIL_PROPERTIES,
         },
         required=("task_id", "reason", "confirm"),
     ),

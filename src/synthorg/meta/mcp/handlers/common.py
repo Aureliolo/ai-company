@@ -73,11 +73,15 @@ def ok(
 ) -> str:
     """Build an ``ok`` success envelope as a JSON string.
 
+    The ``data`` key is always present (even when ``None``) so callers
+    get a stable wire shape regardless of whether the handler has a
+    payload -- e.g. destructive operations that return ``ok()`` after
+    a successful mutation still emit ``{"status": "ok", "data": null}``.
+
     Args:
         data: JSON-serialisable payload (dict / list / scalar / ``None``).
-            When ``None``, no ``data`` key is included.  Pydantic models
-            must be pre-dumped by the caller via ``.model_dump(mode="json")``
-            or the ``dump_many`` helper.
+            Pydantic models must be pre-dumped by the caller via
+            ``.model_dump(mode="json")`` or the ``dump_many`` helper.
         pagination: Optional pagination metadata; present only on
             list/collection responses.
 
@@ -85,9 +89,7 @@ def ok(
         JSON-encoded envelope suitable for direct return from an MCP
         tool handler.
     """
-    body: dict[str, Any] = {"status": "ok"}
-    if data is not None:
-        body["data"] = data
+    body: dict[str, Any] = {"status": "ok", "data": data}
     if pagination is not None:
         body["pagination"] = pagination.model_dump(mode="json")
     return json.dumps(body)
@@ -129,6 +131,78 @@ def err(
     if resolved_code is not None:
         body["domain_code"] = resolved_code
     return json.dumps(body)
+
+
+def coerce_pagination(
+    arguments: dict[str, Any],
+    *,
+    default_limit: int = 50,
+) -> tuple[int, int]:
+    """Parse ``offset``/``limit`` as ints with strict bounds + bool rejection.
+
+    Shared pagination coercion for every handler that accepts a page slice.
+    Each branch raises :class:`ArgumentValidationError` (``domain_code=
+    invalid_argument``) so callers get a stable envelope instead of a raw
+    ``TypeError``/``ValueError``:
+
+    - missing / empty-string value -> default (``offset=0``, ``limit=default_limit``);
+    - ``bool`` literal (``True``/``False``) is rejected even though
+      ``int(True) == 1`` -- booleans are a type confusion, not a valid
+      pagination value;
+    - non-coercible value (non-numeric string, mapping, etc.) -> invalid;
+    - coerced int fails the bound check (``offset >= 0`` / ``limit > 0``)
+      -> invalid.
+
+    Args:
+        arguments: Parsed MCP tool arguments.
+        default_limit: Page size when ``limit`` is missing or empty.
+
+    Returns:
+        Tuple of ``(offset, limit)`` both guaranteed to satisfy the
+        bounds.
+
+    Raises:
+        ArgumentValidationError: On any of the failure modes above.
+    """
+    raw_offset: Any = arguments.get("offset")
+    raw_limit: Any = arguments.get("limit")
+    offset = _coerce_bounded_int(
+        raw_offset,
+        arg_name=_ARG_OFFSET,
+        expected=_TY_NON_NEG_INT,
+        default=0,
+        lower=0,
+    )
+    limit = _coerce_bounded_int(
+        raw_limit,
+        arg_name=_ARG_LIMIT,
+        expected=_TY_POS_INT,
+        default=default_limit,
+        lower=1,
+    )
+    return offset, limit
+
+
+def _coerce_bounded_int(
+    raw: Any,
+    *,
+    arg_name: str,
+    expected: str,
+    default: int,
+    lower: int,
+) -> int:
+    """Coerce ``raw`` to int >= ``lower`` or raise ``ArgumentValidationError``."""
+    if raw is None or raw == "":
+        return default
+    if isinstance(raw, bool):
+        raise invalid_argument(arg_name, expected)
+    try:
+        value = int(raw)
+    except (TypeError, ValueError) as exc:
+        raise invalid_argument(arg_name, expected) from exc
+    if value < lower:
+        raise invalid_argument(arg_name, expected)
+    return value
 
 
 def require_arg[T](arguments: dict[str, Any], key: str, ty: type[T]) -> T:

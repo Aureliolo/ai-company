@@ -23,6 +23,7 @@ from synthorg.meta.mcp.errors import (
     invalid_argument,
 )
 from synthorg.meta.mcp.handlers.common import (
+    coerce_pagination,
     dump_many,
     err,
     not_supported,
@@ -61,7 +62,7 @@ _ARG_ACTOR = "actor"
 
 
 def _log_invalid(tool: str, exc: Exception) -> None:
-    logger.info(
+    logger.warning(
         MCP_HANDLER_ARGUMENT_INVALID,
         tool_name=tool,
         error_type=type(exc).__name__,
@@ -142,12 +143,8 @@ async def _tasks_list(
             raise invalid_argument(_ARG_ASSIGNED_TO, _TY_NON_BLANK)
         if project is not None and not isinstance(project, str):
             raise invalid_argument(_ARG_PROJECT, _TY_NON_BLANK)
-        offset = int(arguments.get("offset", 0) or 0)
-        limit = int(arguments.get("limit", 50) or 50)
+        offset, limit = coerce_pagination(arguments)
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
-        return err(exc)
-    except (TypeError, ValueError) as exc:
         _log_invalid(tool, exc)
         return err(exc)
 

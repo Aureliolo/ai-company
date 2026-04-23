@@ -25,6 +25,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from synthorg.core.agent import AgentIdentity
+from synthorg.hr.performance.models import CollaborationScoreResult
 from synthorg.meta.mcp.domains import build_full_registry
 from synthorg.meta.mcp.handlers import build_handler_map
 from tests.unit.meta.mcp.conftest import make_test_actor
@@ -111,7 +112,13 @@ def fake_app_state() -> SimpleNamespace:
 
     ns.performance_tracker = AsyncMock()
     ns.performance_tracker.get_snapshot.return_value = None
-    ns.performance_tracker.get_collaboration_score.return_value = 0.0
+    ns.performance_tracker.get_collaboration_score.return_value = (
+        CollaborationScoreResult(
+            score=0.0,
+            strategy_name="test-strategy",
+            confidence=0.5,
+        )
+    )
 
     ns.cost_tracker = AsyncMock()
     ns.cost_tracker.get_records.return_value = ()

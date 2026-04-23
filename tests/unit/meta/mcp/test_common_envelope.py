@@ -41,9 +41,10 @@ class _Thing(BaseModel):
 class TestOk:
     """Tests for ``ok`` envelope."""
 
-    def test_bare_ok_has_status_only(self) -> None:
+    def test_bare_ok_includes_null_data(self) -> None:
+        """``ok()`` emits ``data: null`` for a stable wire shape."""
         body = json.loads(ok())
-        assert body == {"status": "ok"}
+        assert body == {"status": "ok", "data": None}
 
     def test_ok_with_data_wraps_payload(self) -> None:
         body = json.loads(ok(data={"a": 1}))

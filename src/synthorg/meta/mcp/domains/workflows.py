@@ -6,6 +6,7 @@ Covers workflows, subworkflows, workflow executions, and workflow versions.
 from typing import TYPE_CHECKING
 
 from synthorg.meta.mcp.tool_builder import (
+    DESTRUCTIVE_GUARDRAIL_PROPERTIES,
     PAGINATION_PROPERTIES,
     admin_tool,
     read_tool,
@@ -53,17 +54,7 @@ WORKFLOW_TOOLS: tuple[MCPToolDef, ...] = (
         "Delete a workflow definition (destructive; requires confirm).",
         {
             "workflow_id": {"type": "string", "description": "Workflow UUID"},
-            "reason": {
-                "type": "string",
-                "description": "Reason (non-blank)",
-                "minLength": 1,
-                "pattern": r".*\S.*",
-            },
-            "confirm": {
-                "type": "boolean",
-                "description": "Must be true to proceed",
-                "enum": [True],
-            },
+            **DESTRUCTIVE_GUARDRAIL_PROPERTIES,
         },
         required=("workflow_id", "reason", "confirm"),
     ),
@@ -113,17 +104,7 @@ WORKFLOW_TOOLS: tuple[MCPToolDef, ...] = (
         "Delete a subworkflow (destructive; requires confirm).",
         {
             "subworkflow_id": {"type": "string", "description": "Subworkflow UUID"},
-            "reason": {
-                "type": "string",
-                "description": "Reason (non-blank)",
-                "minLength": 1,
-                "pattern": r".*\S.*",
-            },
-            "confirm": {
-                "type": "boolean",
-                "description": "Must be true to proceed",
-                "enum": [True],
-            },
+            **DESTRUCTIVE_GUARDRAIL_PROPERTIES,
         },
         required=("subworkflow_id", "reason", "confirm"),
     ),
@@ -163,17 +144,7 @@ WORKFLOW_TOOLS: tuple[MCPToolDef, ...] = (
         "Cancel a running workflow execution (destructive; requires confirm).",
         {
             "execution_id": {"type": "string", "description": "Execution UUID"},
-            "reason": {
-                "type": "string",
-                "description": "Cancellation reason (non-blank)",
-                "minLength": 1,
-                "pattern": r".*\S.*",
-            },
-            "confirm": {
-                "type": "boolean",
-                "description": "Must be true to proceed",
-                "enum": [True],
-            },
+            **DESTRUCTIVE_GUARDRAIL_PROPERTIES,
         },
         required=("execution_id", "reason", "confirm"),
     ),

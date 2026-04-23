@@ -29,6 +29,7 @@ from synthorg.observability.events.mcp import MCP_HANDLER_GUARDRAIL_VIOLATED
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
+    from synthorg.core.agent import AgentIdentity
     from synthorg.meta.mcp.invoker import ToolHandler
 
 logger = get_logger(__name__)
@@ -67,7 +68,7 @@ def _log_guardrail(tool: str, exc: GuardrailViolationError) -> None:
 async def _enforce_destructive(
     tool: str,
     arguments: dict[str, Any],
-    actor: Any,
+    actor: AgentIdentity | None,
     why: str,
 ) -> str:
     try:

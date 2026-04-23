@@ -184,7 +184,7 @@ names. Format: `"<domain>.<noun>.<verb>"` (e.g., `"api.request.started"`).
 | `MCP_SERVER_INVOKE_FAILED` | WARNING | Tool/handler not found, or handler raised an uncaught exception. |
 | `MCP_HANDLER_INVOKE_SUCCESS` | DEBUG | Handler completed its service shim successfully. |
 | `MCP_HANDLER_INVOKE_FAILED` | WARNING | Handler caught a service-layer or domain error and returned an `err(...)` envelope. |
-| `MCP_HANDLER_ARGUMENT_INVALID` | INFO | Caller input failed `require_arg` / pagination / enum coercion; returned `domain_code="invalid_argument"`. |
+| `MCP_HANDLER_ARGUMENT_INVALID` | WARNING | Caller input failed `require_arg` / pagination / enum coercion; returned `domain_code="invalid_argument"`. |
 | `MCP_HANDLER_GUARDRAIL_VIOLATED` | WARNING | Destructive-op guardrail rejected the call (missing `confirm`/`reason`/`actor`); returned `domain_code="guardrail_violated"`. |
 | `MCP_DESTRUCTIVE_OP_EXECUTED` | INFO | Audit trail for a successful destructive operation; carries `actor_agent_id`, `reason`, and the target id. |
 | `MCP_HANDLER_NOT_IMPLEMENTED` | WARNING | Handler returned `not_supported` -- the MCP tool is registered but no service facade is wired yet. |

@@ -22,6 +22,7 @@ import pytest
 import structlog.testing
 
 from synthorg.core.agent import AgentIdentity
+from synthorg.hr.performance.models import CollaborationScoreResult
 from synthorg.meta.mcp.handlers.agents import AGENT_HANDLERS
 from synthorg.observability.events.mcp import (
     MCP_DESTRUCTIVE_OP_EXECUTED,
@@ -54,7 +55,11 @@ def fake_app_state(identity: SimpleNamespace) -> SimpleNamespace:
 
     tracker = AsyncMock()
     tracker.get_snapshot.return_value = None
-    tracker.get_collaboration_score.return_value = 0.75
+    tracker.get_collaboration_score.return_value = CollaborationScoreResult(
+        score=0.75,
+        strategy_name="test-strategy",
+        confidence=0.9,
+    )
 
     return SimpleNamespace(
         agent_registry=registry,
