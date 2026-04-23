@@ -1,11 +1,17 @@
 """Ontology subsystem configuration models."""
 
 from enum import StrEnum
-from typing import Literal, Self
+from typing import Final, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr, validate_unique_strings
+
+# Default divergence score above which a drifted entity definition is
+# flagged for operator attention.  Kept as a module-level constant so
+# the value has a single, grep-discoverable source of truth; the field
+# below re-uses it as its default.
+_DRIFT_SCORE_DEFAULT: Final[float] = 0.3
 
 # ── Strategy enums ──────────────────────────────────────────────
 
@@ -108,7 +114,7 @@ class DriftDetectionConfig(BaseModel):
         description="Seconds between active drift checks",
     )
     threshold: float = Field(
-        default=0.3,
+        default=_DRIFT_SCORE_DEFAULT,
         ge=0.0,
         le=1.0,
         description="Divergence score threshold for flagging drift",

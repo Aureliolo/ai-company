@@ -580,3 +580,31 @@ class TestCommunicationConfigFixtures:
     def test_sample_meeting_type(self, sample_meeting_type: MeetingTypeConfig) -> None:
         assert sample_meeting_type.name == "daily_standup"
         assert sample_meeting_type.frequency == "per_sprint_day"
+
+
+@pytest.mark.unit
+class TestNatsConfigHealthFlushTimeout:
+    """HYG-2: the health-flush timeout is config-driven and bounded."""
+
+    def test_default_is_two_seconds(self) -> None:
+        # Matches the previously-inlined ``timeout=2`` literal in
+        # ``JetStreamMessageBus.health_check`` so the extraction is a
+        # pure refactor -- zero behaviour change on day one.
+        assert NatsConfig().health_flush_timeout_seconds == 2.0
+
+    @pytest.mark.parametrize(
+        "value",
+        [0.0, -0.5, 30.1],
+        ids=["zero", "negative", "above_ceiling"],
+    )
+    def test_out_of_range_rejected(self, value: float) -> None:
+        with pytest.raises(ValidationError, match="health_flush_timeout_seconds"):
+            NatsConfig(health_flush_timeout_seconds=value)
+
+    def test_at_ceiling_accepted(self) -> None:
+        cfg = NatsConfig(health_flush_timeout_seconds=30.0)
+        assert cfg.health_flush_timeout_seconds == 30.0
+
+    def test_custom_value_accepted(self) -> None:
+        cfg = NatsConfig(health_flush_timeout_seconds=1.5)
+        assert cfg.health_flush_timeout_seconds == 1.5

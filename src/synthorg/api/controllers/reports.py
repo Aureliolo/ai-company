@@ -9,7 +9,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 from synthorg.api.dto import ApiResponse
 from synthorg.api.errors import ServiceUnavailableError
 from synthorg.api.guards import require_read_access, require_write_access
-from synthorg.api.rate_limits import per_op_rate_limit
+from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.budget.report_config import ReportPeriod
 from synthorg.observability import get_logger
@@ -115,12 +115,7 @@ class ReportsController(Controller):
         description=("Trigger on-demand report generation for a given period."),
         guards=[
             require_write_access,
-            per_op_rate_limit(
-                "reports.generate",
-                max_requests=5,
-                window_seconds=60,
-                key="user",
-            ),
+            per_op_rate_limit_from_policy("reports.generate", key="user"),
         ],
     )
     async def generate_report(

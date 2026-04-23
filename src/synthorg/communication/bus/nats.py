@@ -112,16 +112,18 @@ class JetStreamMessageBus:
         """Live probe against the NATS server.
 
         Checks that the client is both locally marked running and
-        actually connected, then calls ``nc.flush(timeout=2)`` --
-        which waits for any pending publishes to ack and, when the
-        queue is empty, resolves to a broker round-trip. The
-        2-second budget is deliberately tight so a stuck probe
-        fails fast rather than blocking the health endpoint.
-        Returns ``False`` instead of raising when the probe fails
-        so the caller can treat the bus as degraded without its
-        own ``try``/``except``. Flush exceptions are logged at
-        WARNING with exception type and traceback so operators can
-        distinguish broker-unreachable from client-logic bugs.
+        actually connected, then calls ``nc.flush(timeout=<budget>)``
+        -- which waits for any pending publishes to ack and, when the
+        queue is empty, resolves to a broker round-trip. The flush
+        timeout is read from
+        :class:`NatsConfig.health_flush_timeout_seconds` and is
+        deliberately tight (default 2s) so a stuck probe fails fast
+        rather than blocking the health endpoint.  Returns ``False``
+        instead of raising when the probe fails so the caller can
+        treat the bus as degraded without its own ``try``/``except``.
+        Flush exceptions are logged at WARNING with exception type
+        and traceback so operators can distinguish broker-unreachable
+        from client-logic bugs.
         """
         state = self._state
         if not state.running:
@@ -130,7 +132,15 @@ class JetStreamMessageBus:
         if client is None or not client.is_connected:
             return False
         try:
-            await client.flush(timeout=2)
+            # nats-py's flush() is annotated `timeout: int`, but the
+            # runtime call forwards to ``asyncio.wait_for`` which accepts
+            # floats.  Pass the configured float directly to preserve
+            # sub-second precision (useful for tight probe budgets and
+            # deterministic tests); type: ignore is for the upstream
+            # annotation only.
+            await client.flush(
+                timeout=state.nats_config.health_flush_timeout_seconds,  # type: ignore[arg-type]
+            )
         except MemoryError, RecursionError:
             raise
         except Exception as exc:

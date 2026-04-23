@@ -16,7 +16,7 @@ from synthorg.api.dto import ApiResponse
 from synthorg.api.errors import ApiValidationError, ConflictError, NotFoundError
 from synthorg.api.guards import HumanRole, require_ceo
 from synthorg.api.path_params import PathId  # noqa: TC001
-from synthorg.api.rate_limits import per_op_rate_limit
+from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
@@ -161,12 +161,7 @@ class UserController(Controller):
     @post(
         status_code=201,
         guards=[
-            per_op_rate_limit(
-                "users.create",
-                max_requests=5,
-                window_seconds=60,
-                key="user",
-            ),
+            per_op_rate_limit_from_policy("users.create", key="user"),
         ],
     )
     async def create_user(
@@ -282,12 +277,7 @@ class UserController(Controller):
     @patch(
         "/{user_id:str}",
         guards=[
-            per_op_rate_limit(
-                "users.update_role",
-                max_requests=10,
-                window_seconds=60,
-                key="user",
-            ),
+            per_op_rate_limit_from_policy("users.update_role", key="user"),
         ],
     )
     async def update_user_role(
@@ -365,12 +355,7 @@ class UserController(Controller):
         "/{user_id:str}",
         status_code=HTTP_204_NO_CONTENT,
         guards=[
-            per_op_rate_limit(
-                "users.delete",
-                max_requests=3,
-                window_seconds=60,
-                key="user",
-            ),
+            per_op_rate_limit_from_policy("users.delete", key="user"),
         ],
     )
     async def delete_user(
@@ -451,12 +436,7 @@ class UserController(Controller):
         "/{user_id:str}/org-roles",
         status_code=201,
         guards=[
-            per_op_rate_limit(
-                "users.grant_org_role",
-                max_requests=10,
-                window_seconds=60,
-                key="user",
-            ),
+            per_op_rate_limit_from_policy("users.grant_org_role", key="user"),
         ],
     )
     async def grant_org_role(
@@ -556,12 +536,7 @@ class UserController(Controller):
         "/{user_id:str}/org-roles/{role:str}",
         status_code=HTTP_204_NO_CONTENT,
         guards=[
-            per_op_rate_limit(
-                "users.revoke_org_role",
-                max_requests=10,
-                window_seconds=60,
-                key="user",
-            ),
+            per_op_rate_limit_from_policy("users.revoke_org_role", key="user"),
         ],
     )
     async def revoke_org_role(

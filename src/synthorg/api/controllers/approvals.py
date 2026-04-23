@@ -39,7 +39,7 @@ from synthorg.api.guards import (
 )
 from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
 from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
-from synthorg.api.rate_limits import per_op_rate_limit
+from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.api.ws_models import WsEvent, WsEventType
 from synthorg.core.approval import ApprovalItem
@@ -451,12 +451,7 @@ class ApprovalsController(Controller):
     @post(
         guards=[
             require_write_access,
-            per_op_rate_limit(
-                "approvals.create",
-                max_requests=20,
-                window_seconds=60,
-                key="user",
-            ),
+            per_op_rate_limit_from_policy("approvals.create", key="user"),
         ],
         status_code=201,
     )
@@ -531,12 +526,7 @@ class ApprovalsController(Controller):
         "/{approval_id:str}/approve",
         guards=[
             require_approval_roles,
-            per_op_rate_limit(
-                "approvals.approve",
-                max_requests=100,
-                window_seconds=60,
-                key="user",
-            ),
+            per_op_rate_limit_from_policy("approvals.approve", key="user"),
         ],
         status_code=200,
     )
@@ -595,12 +585,7 @@ class ApprovalsController(Controller):
         "/{approval_id:str}/reject",
         guards=[
             require_approval_roles,
-            per_op_rate_limit(
-                "approvals.reject",
-                max_requests=100,
-                window_seconds=60,
-                key="user",
-            ),
+            per_op_rate_limit_from_policy("approvals.reject", key="user"),
         ],
         status_code=200,
     )

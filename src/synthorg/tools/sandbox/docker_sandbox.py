@@ -341,14 +341,15 @@ class DockerSandbox(DockerSandboxSidecarMixin, DockerSandboxLifecycleMixin):
             self._config.memory_limit,
         )
         nano_cpus = int(self._config.cpu_limit * _NANO_CPUS_MULTIPLIER)
+        tmpfs_spec = f"size={self._config.tmpfs_size},noexec,nosuid"
         host_config: dict[str, Any] = {
             "Binds": [bind_str],
-            "Tmpfs": {"/tmp": "size=64m,noexec,nosuid"},  # noqa: S108
+            "Tmpfs": {"/tmp": tmpfs_spec},  # noqa: S108
             "Memory": memory_bytes,
             "NanoCpus": nano_cpus,
             "NetworkMode": self._config.network,
             "AutoRemove": False,
-            "PidsLimit": 64,
+            "PidsLimit": self._config.pids_limit,
             "ReadonlyRootfs": True,
             "CapDrop": ["ALL"],
             "SecurityOpt": ["no-new-privileges"],

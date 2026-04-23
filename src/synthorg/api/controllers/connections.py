@@ -18,7 +18,7 @@ from synthorg.api.errors import (
 )
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
-from synthorg.api.rate_limits import per_op_rate_limit
+from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.integrations.connections.catalog import _UNSET
 from synthorg.integrations.connections.models import (
     Connection,
@@ -108,12 +108,7 @@ class ConnectionsController(Controller):
         "/",
         guards=[
             require_write_access,
-            per_op_rate_limit(
-                "connections.create",
-                max_requests=20,
-                window_seconds=60,
-                key="user",
-            ),
+            per_op_rate_limit_from_policy("connections.create", key="user"),
         ],
         summary="Create a connection",
     )
@@ -183,12 +178,7 @@ class ConnectionsController(Controller):
         "/{name:str}",
         guards=[
             require_write_access,
-            per_op_rate_limit(
-                "connections.update",
-                max_requests=30,
-                window_seconds=60,
-                key="user",
-            ),
+            per_op_rate_limit_from_policy("connections.update", key="user"),
         ],
         summary="Update a connection",
     )
@@ -235,12 +225,7 @@ class ConnectionsController(Controller):
         "/{name:str}",
         guards=[
             require_write_access,
-            per_op_rate_limit(
-                "connections.delete",
-                max_requests=10,
-                window_seconds=60,
-                key="user",
-            ),
+            per_op_rate_limit_from_policy("connections.delete", key="user"),
         ],
         summary="Delete a connection",
         status_code=200,

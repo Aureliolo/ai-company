@@ -106,6 +106,11 @@ type State struct {
 	SelfUpdateAPITimeout   string `json:"self_update_api_timeout,omitempty"`
 	TUFFetchTimeout        string `json:"tuf_fetch_timeout,omitempty"`
 	AttestationHTTPTimeout string `json:"attestation_http_timeout,omitempty"`
+	ImageVerifyTimeout     string `json:"image_verify_timeout,omitempty"`
+	ImagePullRetryDelay    string `json:"image_pull_retry_delay,omitempty"`
+
+	// Integer strings parsed by strconv.Atoi. Empty = use compiled-in default.
+	ImagePullAttempts string `json:"image_pull_attempts,omitempty"`
 
 	// Download size ceilings in bytes. Zero = use compiled-in default.
 	MaxAPIResponseBytes  int64 `json:"max_api_response_bytes,omitempty"`
@@ -132,6 +137,23 @@ const (
 	DefaultSelfUpdateAPITimeout   = 30 * time.Second
 	DefaultTUFFetchTimeout        = 30 * time.Second
 	DefaultAttestationHTTPTimeout = 30 * time.Second
+	DefaultImageVerifyTimeout     = 120 * time.Second
+	DefaultImagePullRetryDelay    = 2 * time.Second
+	DefaultImagePullAttempts      = 3
+
+	// MinImageVerifyTimeout is the lower bound operators may set for
+	// image-signature verification.  Anything shorter would almost
+	// certainly time out before cosign / SLSA / TUF can complete the
+	// required network I/O, effectively bypassing verification by
+	// silently failing open.  One second is a hard floor, not an
+	// expected value -- typical verification takes 10-60s.
+	MinImageVerifyTimeout = 1 * time.Second
+
+	// MaxImagePullAttempts caps the user-provided retry count so an
+	// operator cannot accidentally wedge ``synthorg start`` behind a
+	// thousand sequential retries.  Kept well above the sensible
+	// operational range (3-5) but finite.
+	MaxImagePullAttempts = 100
 
 	DefaultMaxAPIResponseBytes  int64 = 1 * 1024 * 1024
 	DefaultMaxBinaryBytes       int64 = 256 * 1024 * 1024
@@ -484,6 +506,8 @@ func (s State) validateTunables() error {
 		{"self_update_api_timeout", s.SelfUpdateAPITimeout},
 		{"tuf_fetch_timeout", s.TUFFetchTimeout},
 		{"attestation_http_timeout", s.AttestationHTTPTimeout},
+		{"image_verify_timeout", s.ImageVerifyTimeout},
+		{"image_pull_retry_delay", s.ImagePullRetryDelay},
 	}
 	for _, d := range durations {
 		if d.value == "" {
@@ -495,6 +519,26 @@ func (s State) validateTunables() error {
 		}
 		if parsed <= 0 {
 			return fmt.Errorf("invalid %s %q: must be > 0", d.name, d.value)
+		}
+		// image_verify_timeout has an additional floor: shorter values
+		// would bypass cosign/SLSA verification by silently timing out
+		// before network I/O completes.  Catch it at state-load time so
+		// a persisted config.json fails loudly here rather than deep
+		// inside ResolveTunables on the next `start`.
+		if d.name == "image_verify_timeout" && parsed < MinImageVerifyTimeout {
+			return fmt.Errorf(
+				"invalid %s %q: %v is below the %v minimum floor; a shorter timeout would bypass cosign/SLSA verification by silently timing out",
+				d.name, d.value, parsed, MinImageVerifyTimeout,
+			)
+		}
+	}
+	if s.ImagePullAttempts != "" {
+		n, err := strconv.Atoi(s.ImagePullAttempts)
+		if err != nil {
+			return fmt.Errorf("invalid image_pull_attempts %q: %w", s.ImagePullAttempts, err)
+		}
+		if n < 1 || n > MaxImagePullAttempts {
+			return fmt.Errorf("invalid image_pull_attempts %q: must be in [1, %d]", s.ImagePullAttempts, MaxImagePullAttempts)
 		}
 	}
 	bytes := []struct {

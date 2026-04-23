@@ -27,7 +27,7 @@ from synthorg.api.errors import (
 from synthorg.api.guards import require_approval_roles, require_read_access
 from synthorg.api.pagination import CursorLimit, CursorParam  # noqa: TC001
 from synthorg.api.path_params import PathId  # noqa: TC001
-from synthorg.api.rate_limits.guard import per_op_rate_limit
+from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.communication.conflict_resolution.escalation.models import (
     Escalation,
@@ -122,12 +122,7 @@ class EscalationsController(Controller):
     @get(
         guards=[
             require_read_access,
-            per_op_rate_limit(
-                "escalations.list",
-                max_requests=120,
-                window_seconds=60,
-                key="user",
-            ),
+            per_op_rate_limit_from_policy("escalations.list", key="user"),
         ],
     )
     async def list_escalations(
@@ -172,12 +167,7 @@ class EscalationsController(Controller):
         "/{escalation_id:str}",
         guards=[
             require_read_access,
-            per_op_rate_limit(
-                "escalations.get",
-                max_requests=120,
-                window_seconds=60,
-                key="user",
-            ),
+            per_op_rate_limit_from_policy("escalations.get", key="user"),
         ],
     )
     async def get_escalation(
@@ -210,12 +200,7 @@ class EscalationsController(Controller):
         "/{escalation_id:str}/decision",
         guards=[
             require_approval_roles,
-            per_op_rate_limit(
-                "escalations.decide",
-                max_requests=30,
-                window_seconds=60,
-                key="user",
-            ),
+            per_op_rate_limit_from_policy("escalations.decide", key="user"),
         ],
     )
     async def submit_decision(
@@ -342,12 +327,7 @@ class EscalationsController(Controller):
         "/{escalation_id:str}/cancel",
         guards=[
             require_approval_roles,
-            per_op_rate_limit(
-                "escalations.cancel",
-                max_requests=30,
-                window_seconds=60,
-                key="user",
-            ),
+            per_op_rate_limit_from_policy("escalations.cancel", key="user"),
         ],
     )
     async def cancel_escalation(

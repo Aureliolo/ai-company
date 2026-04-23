@@ -29,6 +29,9 @@ func TestResolveTunables_DefaultsOnEmptyState(t *testing.T) {
 	t.Setenv(EnvRegistryHost, "")
 	t.Setenv(EnvHealthCheckTimeout, "")
 	t.Setenv(EnvMaxBinaryBytes, "")
+	t.Setenv(EnvImageVerifyTimeout, "")
+	t.Setenv(EnvImagePullAttempts, "")
+	t.Setenv(EnvImagePullRetryDelay, "")
 
 	tun, err := ResolveTunables(State{})
 	if err != nil {
@@ -42,6 +45,15 @@ func TestResolveTunables_DefaultsOnEmptyState(t *testing.T) {
 	}
 	if tun.MaxBinaryBytes != DefaultMaxBinaryBytes {
 		t.Errorf("MaxBinaryBytes = %d; want %d", tun.MaxBinaryBytes, DefaultMaxBinaryBytes)
+	}
+	if tun.ImageVerifyTimeout != DefaultImageVerifyTimeout {
+		t.Errorf("ImageVerifyTimeout = %v; want %v", tun.ImageVerifyTimeout, DefaultImageVerifyTimeout)
+	}
+	if tun.ImagePullAttempts != DefaultImagePullAttempts {
+		t.Errorf("ImagePullAttempts = %d; want %d", tun.ImagePullAttempts, DefaultImagePullAttempts)
+	}
+	if tun.ImagePullRetryDelay != DefaultImagePullRetryDelay {
+		t.Errorf("ImagePullRetryDelay = %v; want %v", tun.ImagePullRetryDelay, DefaultImagePullRetryDelay)
 	}
 	if tun.CustomRegistry {
 		t.Error("CustomRegistry = true on empty state; want false")
@@ -86,6 +98,55 @@ func TestResolveTunables_EnvOverridesState(t *testing.T) {
 	}
 	if tun.MaxBinaryBytes != 64*1024*1024 {
 		t.Errorf("MaxBinaryBytes = %d; want %d", tun.MaxBinaryBytes, 64*1024*1024)
+	}
+}
+
+func TestResolveTunables_ImageVerifyTimeoutPrecedence(t *testing.T) {
+	// env > state > default for the image-verify timeout.
+	t.Setenv(EnvImageVerifyTimeout, "45s")
+	s := State{ImageVerifyTimeout: "90s"}
+	tun, err := ResolveTunables(s)
+	if err != nil {
+		t.Fatalf("ResolveTunables: %v", err)
+	}
+	if tun.ImageVerifyTimeout != 45*time.Second {
+		t.Errorf("env wins: ImageVerifyTimeout = %v; want 45s", tun.ImageVerifyTimeout)
+	}
+}
+
+func TestResolveTunables_ImageVerifyTimeoutStateOverridesDefault(t *testing.T) {
+	tun, err := ResolveTunables(State{ImageVerifyTimeout: "30s"})
+	if err != nil {
+		t.Fatalf("ResolveTunables: %v", err)
+	}
+	if tun.ImageVerifyTimeout != 30*time.Second {
+		t.Errorf("state wins: ImageVerifyTimeout = %v; want 30s", tun.ImageVerifyTimeout)
+	}
+}
+
+func TestResolveTunables_ImagePullAttemptsPrecedence(t *testing.T) {
+	// env > state > default for the pull attempts counter.
+	t.Setenv(EnvImagePullAttempts, "7")
+	s := State{ImagePullAttempts: "5"}
+	tun, err := ResolveTunables(s)
+	if err != nil {
+		t.Fatalf("ResolveTunables: %v", err)
+	}
+	if tun.ImagePullAttempts != 7 {
+		t.Errorf("env wins: ImagePullAttempts = %d; want 7", tun.ImagePullAttempts)
+	}
+}
+
+func TestResolveTunables_ImagePullRetryDelayPrecedence(t *testing.T) {
+	// env > state > default for the retry base-delay.
+	t.Setenv(EnvImagePullRetryDelay, "500ms")
+	s := State{ImagePullRetryDelay: "1s"}
+	tun, err := ResolveTunables(s)
+	if err != nil {
+		t.Fatalf("ResolveTunables: %v", err)
+	}
+	if tun.ImagePullRetryDelay != 500*time.Millisecond {
+		t.Errorf("env wins: ImagePullRetryDelay = %v; want 500ms", tun.ImagePullRetryDelay)
 	}
 }
 
@@ -135,6 +196,14 @@ func TestResolveTunables_InvalidValues(t *testing.T) {
 		{"bad registry host", State{RegistryHost: "not valid"}, nil, "registry_host"},
 		{"bad nats url", State{DefaultNATSURL: "http://example.com"}, nil, "default_nats_url"},
 		{"bad stream prefix", State{DefaultNATSStreamPrefix: "lowercase"}, nil, "default_nats_stream_prefix"},
+		{"bad image verify timeout env", State{}, map[string]string{EnvImageVerifyTimeout: "not-a-duration"}, "image_verify_timeout"},
+		{"bad image pull retry delay state", State{ImagePullRetryDelay: "not-a-duration"}, nil, "image_pull_retry_delay"},
+		{"zero image pull attempts env", State{}, map[string]string{EnvImagePullAttempts: "0"}, "image_pull_attempts"},
+		{"negative image pull attempts state", State{ImagePullAttempts: "-1"}, nil, "image_pull_attempts"},
+		{"image pull attempts exceeds ceiling", State{ImagePullAttempts: "999"}, nil, "image_pull_attempts"},
+		{"non-integer image pull attempts env", State{}, map[string]string{EnvImagePullAttempts: "three"}, "image_pull_attempts"},
+		{"image verify timeout below floor env", State{}, map[string]string{EnvImageVerifyTimeout: "1ns"}, "image_verify_timeout"},
+		{"image verify timeout below floor state", State{ImageVerifyTimeout: "500ms"}, nil, "image_verify_timeout"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

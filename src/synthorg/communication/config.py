@@ -169,6 +169,16 @@ class NatsConfig(BaseModel):
         gt=0,
         description="JetStream publish ack wait",
     )
+    health_flush_timeout_seconds: float = Field(
+        default=2.0,
+        gt=0.0,
+        le=30.0,
+        description=(
+            "Timeout in seconds for the NATS health-check flush probe. "
+            "Deliberately tight so a stuck probe fails fast rather than "
+            "blocking the ``/healthz`` endpoint."
+        ),
+    )
 
 
 class MessageBusConfig(BaseModel):
