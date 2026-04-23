@@ -5,7 +5,18 @@ analysis pipeline. These prompts are used for signal analysis,
 proposal generation, regression explanation, and natural
 language explanations of proposals, alerts, and signal
 interactions.
+
+SEC-1 / audit 92: templates that interpolate attacker-controllable
+content (proposal fields, alert fields, free-form user questions,
+signal snapshots) append an ``untrusted_content_directive`` so the
+model treats fenced fields as untrusted data.
 """
+
+from synthorg.engine.prompt_safety import (
+    TAG_CONFIG_VALUE,
+    TAG_TASK_DATA,
+    untrusted_content_directive,
+)
 
 # Signal analysis prompt template.
 SIGNAL_ANALYSIS_PROMPT = """\
@@ -134,7 +145,8 @@ Explain in plain language:
 4. How to verify if it worked
 
 Be conversational and concise. Cite specific signal values.
-"""
+
+""" + untrusted_content_directive((TAG_CONFIG_VALUE, TAG_TASK_DATA))
 
 # Alert explanation prompt template.
 ALERT_EXPLANATION_PROMPT = """\
@@ -159,7 +171,8 @@ Explain:
 4. Recommended immediate actions (if any)
 
 Be direct and actionable.
-"""
+
+""" + untrusted_content_directive((TAG_CONFIG_VALUE, TAG_TASK_DATA))
 
 # Signal correlation prompt template.
 SIGNAL_CORRELATION_PROMPT = """\
@@ -200,4 +213,5 @@ organizational signals, proposals, and alerts.
 
 Answer based on the data provided. If uncertain, say so.
 Be specific and cite which signals support your answer.
-"""
+
+""" + untrusted_content_directive((TAG_TASK_DATA,))

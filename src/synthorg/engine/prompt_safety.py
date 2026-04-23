@@ -1,11 +1,12 @@
 """Prompt-injection-safe delimiters for LLM call sites.
 
-SEC-1 / audit finding 92: seven LLM call sites interpolate
-attacker-controllable strings into prompts (task title/description,
-acceptance criteria, artifact payloads, tool results, code diffs,
-strategic config fields). Without a tagged fence plus a system-prompt
-directive, the model cannot tell instructions from data, and the
-caller has a prompt-injection hole.
+SEC-1 / audit finding 92: LLM call sites interpolate attacker-
+controllable strings into prompts (task title/description,
+acceptance criteria, artifact payloads, tool results, tool
+arguments forwarded to a security evaluator, code diffs,
+strategic config fields). Without a tagged fence plus a system-
+prompt directive, the model cannot tell instructions from data,
+and the caller has a prompt-injection hole.
 
 This module ships two primitives:
 
@@ -39,6 +40,16 @@ TAG_UNTRUSTED_ARTIFACT: Final[str] = "untrusted-artifact"
 
 TAG_TOOL_RESULT: Final[str] = "tool-result"
 """Wrap tool-execution output flowing into the next LLM turn."""
+
+TAG_TOOL_ARGUMENTS: Final[str] = "tool-arguments"
+"""Wrap tool-invocation argument payloads forwarded to a security evaluator.
+
+Distinct from :data:`TAG_TOOL_RESULT`: these are the *inputs* an agent
+is asking to pass to a tool (the about-to-execute payload), not the
+tool's *output*.  The LLM security evaluator treats each argument
+string as attacker-controllable because the agent that produced it
+may itself have been prompt-injected upstream.
+"""
 
 TAG_CODE_DIFF: Final[str] = "code-diff"
 """Wrap merged-code content in the semantic-conflict analyzer."""
