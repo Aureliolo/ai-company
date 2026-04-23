@@ -780,7 +780,7 @@ jobs:
         uses: ./.github/actions/setup-apko
         with:
           # renovate: datasource=github-releases depName=chainguard-dev/apko
-          version: v1.2.4
+          version: v1.2.6
 
       - name: Log in to GHCR
         if: github.event_name != 'pull_request'
