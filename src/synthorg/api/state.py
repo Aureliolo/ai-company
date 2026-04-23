@@ -64,6 +64,8 @@ from synthorg.hr.training.service import TrainingService  # noqa: TC001
 from synthorg.memory.embedding.fine_tune_orchestrator import (
     FineTuneOrchestrator,  # noqa: TC001
 )
+from synthorg.meta.analytics.service import AnalyticsService  # noqa: TC001
+from synthorg.meta.reports.service import ReportsService  # noqa: TC001
 from synthorg.meta.signals.service import SignalsService  # noqa: TC001
 from synthorg.notifications.dispatcher import (
     NotificationDispatcher,  # noqa: TC001
@@ -139,6 +141,7 @@ class AppState(AppStateServicesMixin):
         "_a2a_client",
         "_a2a_peer_registry",
         "_agent_registry",
+        "_analytics_service",
         "_approval_gate",
         "_approval_timeout_scheduler",
         "_artifact_storage",
@@ -188,6 +191,7 @@ class AppState(AppStateServicesMixin):
         "_provider_management",
         "_provider_registry",
         "_refresh_store",
+        "_reports_service",
         "_review_gate_service",
         "_scaling_service",
         "_session_store",
@@ -347,6 +351,8 @@ class AppState(AppStateServicesMixin):
         self._review_gate_service: ReviewGateService | None = None
         self._scaling_service: ScalingService | None = None
         self._signals_service: SignalsService | None = None
+        self._analytics_service: AnalyticsService | None = None
+        self._reports_service: ReportsService | None = None
         self._client_simulation_state: ClientSimulationState | None = None
         self._approval_timeout_scheduler: ApprovalTimeoutScheduler | None = None
         self._session_store: SessionStore | None = None

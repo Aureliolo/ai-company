@@ -36,6 +36,8 @@ from synthorg.hr.training.service import TrainingService  # noqa: TC001
 from synthorg.memory.embedding.fine_tune_orchestrator import (
     FineTuneOrchestrator,  # noqa: TC001
 )
+from synthorg.meta.analytics.service import AnalyticsService  # noqa: TC001
+from synthorg.meta.reports.service import ReportsService  # noqa: TC001
 from synthorg.meta.signals.service import SignalsService  # noqa: TC001
 from synthorg.notifications.dispatcher import (
     NotificationDispatcher,  # noqa: TC001
@@ -768,6 +770,8 @@ class AppStateServicesMixin:
         )
 
     _signals_service: SignalsService | None
+    _analytics_service: AnalyticsService | None
+    _reports_service: ReportsService | None
 
     @property
     def has_signals_service(self) -> bool:
@@ -788,6 +792,48 @@ class AppStateServicesMixin:
             "_signals_service",
             service,
             "SignalsService",
+        )
+
+    @property
+    def has_analytics_service(self) -> bool:
+        """Whether the analytics facade is attached."""
+        return self._analytics_service is not None
+
+    @property
+    def analytics_service(self) -> AnalyticsService:
+        """The analytics facade; raises ``ServiceUnavailableError`` when unset."""
+        return self._require_service(
+            self._analytics_service,
+            "AnalyticsService",
+        )
+
+    def set_analytics_service(self, service: AnalyticsService) -> None:
+        """Attach the analytics facade (once-only)."""
+        self._set_once(
+            "_analytics_service",
+            service,
+            "AnalyticsService",
+        )
+
+    @property
+    def has_reports_service(self) -> bool:
+        """Whether the reports facade is attached."""
+        return self._reports_service is not None
+
+    @property
+    def reports_service(self) -> ReportsService:
+        """The reports facade; raises ``ServiceUnavailableError`` when unset."""
+        return self._require_service(
+            self._reports_service,
+            "ReportsService",
+        )
+
+    def set_reports_service(self, service: ReportsService) -> None:
+        """Attach the reports facade (once-only)."""
+        self._set_once(
+            "_reports_service",
+            service,
+            "ReportsService",
         )
 
     def set_settings_service(self, settings_service: SettingsService) -> None:
