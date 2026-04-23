@@ -63,7 +63,7 @@ class TestConcurrentStart:
             await asyncio.sleep(0)
             return await original_subscribe(channel, subscriber)
 
-        bus.subscribe = _instrumented_subscribe  # type: ignore[method-assign]
+        bus.subscribe = _instrumented_subscribe  # type: ignore[method-assign,assignment]
 
         results = await asyncio.gather(
             bridge.start(),

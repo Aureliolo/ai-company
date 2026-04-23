@@ -16,12 +16,11 @@ import pytest
 from synthorg.communication.bus._nats_consumers import create_pull_consumer
 from synthorg.communication.channel import Channel
 from synthorg.communication.config import (
-    MessageBusBackend,
     MessageBusConfig,
     MessageRetentionConfig,
     NatsConfig,
 )
-from synthorg.communication.enums import ChannelType
+from synthorg.communication.enums import ChannelType, MessageBusBackend
 
 
 def _state_stub(max_subscriber_queue_size: int) -> Any:

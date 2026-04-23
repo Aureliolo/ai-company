@@ -124,7 +124,7 @@ class TestGetCollaborationScoreLocking:
                 return await super().acquire()
 
         tracker._metrics_lock = _CountingLock()
-        await tracker.get_collaboration_score(_AGENT_ID)  # type: ignore[arg-type]
+        await tracker.get_collaboration_score(_AGENT_ID)
 
         assert acquires >= 1, (
             "get_collaboration_score must acquire _metrics_lock for the snapshot"
