@@ -22,11 +22,11 @@ from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,  # noqa: TC001 -- PEP 649 annotation
 )
 from synthorg.meta.mcp.handlers.common import (
+    PaginationMeta,
     capability_gap,
     coerce_pagination,
     err,
     ok,
-    paginate_sequence,
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.mcp import (
@@ -71,9 +71,14 @@ def _custom_rules_service(app_state: Any) -> CustomRulesService:
     """Return the custom-rules service facade.
 
     Prefers ``app_state.custom_rules_service`` when bootstrap has wired
-    one; otherwise builds it per-call from ``app_state.persistence.
-    custom_rules`` and emits ``MCP_HANDLER_LAZY_SERVICE_INIT`` so ops
-    telemetry sees legacy wiring.
+    one; otherwise builds it per-call from
+    ``app_state.persistence.custom_rules`` and emits
+    ``MCP_HANDLER_LAZY_SERVICE_INIT`` so ops telemetry sees legacy
+    wiring.  The per-call fallback mirrors the controller layer in
+    ``api.controllers.custom_rules`` and is retained so handlers keep
+    working on ``AppState`` instances constructed before the
+    ``custom_rules_service`` slot was added; new bootstraps should
+    wire the service up front to skip the fallback log entirely.
     """
     cached = getattr(app_state, "custom_rules_service", None)
     if cached is not None:
@@ -127,13 +132,16 @@ async def _meta_list_rules(
         _log_invalid(tool, exc)
         return err(exc)
     try:
-        rules = await _custom_rules_service(app_state).list_rules()
-        page, meta = paginate_sequence(rules, offset=offset, limit=limit)
+        page, total = await _custom_rules_service(app_state).list_rules(
+            offset=offset,
+            limit=limit,
+        )
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
+    pagination = PaginationMeta(total=total, offset=offset, limit=limit)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
-    return ok(data=[_rule_to_dict(r) for r in page], pagination=meta)
+    return ok(data=[_rule_to_dict(r) for r in page], pagination=pagination)
 
 
 async def _meta_list_mcp_tools(

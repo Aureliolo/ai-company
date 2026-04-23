@@ -9,9 +9,10 @@ contract (``start`` / ``stop`` / ``get_url``):
 
 from typing import TYPE_CHECKING
 
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.communication import (
     COMMUNICATION_TUNNEL_CONNECTED,
+    COMMUNICATION_TUNNEL_PROVIDER_ERROR,
     COMMUNICATION_TUNNEL_STATUS_CHECKED,
 )
 
@@ -48,7 +49,16 @@ class TunnelService:
 
     async def get_status(self) -> TunnelStatus:
         """Return the tunnel's running state + URL."""
-        url = await self._provider.get_url()
+        try:
+            url = await self._provider.get_url()
+        except Exception as exc:
+            logger.warning(
+                COMMUNICATION_TUNNEL_PROVIDER_ERROR,
+                method="get_url",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise
         status = TunnelStatus(running=url is not None, url=url)
         logger.info(
             COMMUNICATION_TUNNEL_STATUS_CHECKED,
@@ -63,7 +73,16 @@ class TunnelService:
         idempotent per the protocol contract; this facade surfaces a
         uniform :class:`TunnelStatus` either way.
         """
-        url = await self._provider.start()
+        try:
+            url = await self._provider.start()
+        except Exception as exc:
+            logger.warning(
+                COMMUNICATION_TUNNEL_PROVIDER_ERROR,
+                method="start",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise
         logger.info(
             COMMUNICATION_TUNNEL_CONNECTED,
             url=url,

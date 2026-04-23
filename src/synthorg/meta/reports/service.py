@@ -85,15 +85,22 @@ class ReportsService:
             Tuple of ``(page, total_count)``.
         """
         async with self._lock:
-            all_reports = tuple(
-                sorted(
-                    self._reports.values(),
-                    key=lambda r: r.generated_at,
+            # Sort by (generated_at, insertion_idx) so equal timestamps
+            # break toward the *later*-inserted report when reversed --
+            # guaranteeing a stable newest-first ordering when two
+            # reports happen to share a timestamp (common in test
+            # harnesses that pin ``datetime.now``).
+            enumerated = tuple(enumerate(self._reports.values()))
+            ordered = tuple(
+                r
+                for _idx, r in sorted(
+                    enumerated,
+                    key=lambda pair: (pair[1].generated_at, pair[0]),
                     reverse=True,
-                ),
+                )
             )
-        total = len(all_reports)
-        page = all_reports[offset : offset + limit]
+        total = len(ordered)
+        page = ordered[offset : offset + limit]
         logger.info(
             REPORT_LISTED,
             offset=offset,

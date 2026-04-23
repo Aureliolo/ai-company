@@ -14,6 +14,7 @@ detection.
 """
 
 import asyncio
+import copy
 from collections import deque
 from typing import TYPE_CHECKING
 
@@ -94,9 +95,12 @@ class InMemoryErrorTaxonomyStore:
         all exceptions except ``MemoryError`` / ``RecursionError``.
         """
         try:
+            # Deep-copy the caller-owned result so a later mutation on
+            # the outside reference cannot corrupt a stored entry.
+            stored = copy.deepcopy(result)
             async with self._lock:
                 evicted = len(self._results) == self._max_results
-                self._results.append(result)
+                self._results.append(stored)
             logger.debug(
                 TAXONOMY_STORE_APPENDED,
                 agent_id=result.agent_id,

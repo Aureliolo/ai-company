@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
+import structlog.testing
 
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.integrations.mcp_services import (
@@ -18,6 +19,7 @@ from synthorg.integrations.mcp_services import (
     OAuthFacadeService,
 )
 from synthorg.meta.mcp.handlers.integrations import INTEGRATION_HANDLERS
+from synthorg.observability.events.mcp import MCP_DESTRUCTIVE_OP_EXECUTED
 from tests.unit.meta.mcp.conftest import make_test_actor
 
 pytestmark = pytest.mark.unit
@@ -56,7 +58,10 @@ def real_clients() -> ClientFacadeService:
 
 @pytest.fixture
 def real_artifacts() -> ArtifactFacadeService:
+    # Storage backend needs an awaitable ``delete`` that returns truthy
+    # so the destructive happy-path test can exercise the real service.
     storage = MagicMock()
+    storage.delete = AsyncMock(return_value=True)
     return ArtifactFacadeService(storage=storage)
 
 
@@ -258,16 +263,22 @@ class TestDestructiveHappyPaths:
         assert installed["status"] == "ok"
 
         uninstall_handler = INTEGRATION_HANDLERS["synthorg_mcp_catalog_uninstall"]
-        response = await uninstall_handler(
-            app_state=fake_app_state,
-            arguments={
-                "installation_id": "inst-1",
-                "reason": "cleanup",
-                "confirm": True,
-            },
-            actor=make_test_actor(),
-        )
+        with structlog.testing.capture_logs() as events:
+            response = await uninstall_handler(
+                app_state=fake_app_state,
+                arguments={
+                    "installation_id": "inst-1",
+                    "reason": "cleanup",
+                    "confirm": True,
+                },
+                actor=make_test_actor(),
+            )
         assert json.loads(response)["status"] == "ok"
+        exec_events = [
+            e for e in events if e.get("event") == MCP_DESTRUCTIVE_OP_EXECUTED
+        ]
+        assert len(exec_events) == 1
+        assert exec_events[0]["tool_name"] == "synthorg_mcp_catalog_uninstall"
 
     async def test_oauth_remove_provider_happy(
         self,
@@ -286,18 +297,24 @@ class TestDestructiveHappyPaths:
             actor=make_test_actor(),
         )
         remove = INTEGRATION_HANDLERS["synthorg_oauth_remove_provider"]
-        response = await remove(
-            app_state=fake_app_state,
-            arguments={
-                "name": "test-provider",
-                "reason": "rotated",
-                "confirm": True,
-            },
-            actor=make_test_actor(),
-        )
+        with structlog.testing.capture_logs() as events:
+            response = await remove(
+                app_state=fake_app_state,
+                arguments={
+                    "name": "test-provider",
+                    "reason": "rotated",
+                    "confirm": True,
+                },
+                actor=make_test_actor(),
+            )
         body = json.loads(response)
         assert body["status"] == "ok"
         assert body["data"] == {"removed": True}
+        exec_events = [
+            e for e in events if e.get("event") == MCP_DESTRUCTIVE_OP_EXECUTED
+        ]
+        assert len(exec_events) == 1
+        assert exec_events[0]["tool_name"] == "synthorg_oauth_remove_provider"
 
     async def test_clients_deactivate_happy(
         self,
@@ -313,18 +330,62 @@ class TestDestructiveHappyPaths:
         )
         client_id = created["data"]["id"]
         deactivate = INTEGRATION_HANDLERS["synthorg_clients_deactivate"]
-        response = await deactivate(
-            app_state=fake_app_state,
-            arguments={
-                "client_id": client_id,
-                "reason": "offboarded",
-                "confirm": True,
-            },
-            actor=make_test_actor(),
-        )
+        with structlog.testing.capture_logs() as events:
+            response = await deactivate(
+                app_state=fake_app_state,
+                arguments={
+                    "client_id": client_id,
+                    "reason": "offboarded",
+                    "confirm": True,
+                },
+                actor=make_test_actor(),
+            )
         body = json.loads(response)
         assert body["status"] == "ok"
         assert body["data"] == {"deactivated": True}
+        exec_events = [
+            e for e in events if e.get("event") == MCP_DESTRUCTIVE_OP_EXECUTED
+        ]
+        assert len(exec_events) == 1
+        assert exec_events[0]["tool_name"] == "synthorg_clients_deactivate"
+
+    async def test_artifacts_delete_happy(
+        self,
+        fake_app_state: SimpleNamespace,
+    ) -> None:
+        create = INTEGRATION_HANDLERS["synthorg_artifacts_create"]
+        created = json.loads(
+            await create(
+                app_state=fake_app_state,
+                arguments={
+                    "name": "report.pdf",
+                    "content_type": "application/pdf",
+                    "size_bytes": 1024,
+                    "storage_ref": "s3://bucket/key",
+                },
+                actor=make_test_actor(),
+            ),
+        )
+        artifact_id = created["data"]["id"]
+        delete = INTEGRATION_HANDLERS["synthorg_artifacts_delete"]
+        with structlog.testing.capture_logs() as events:
+            response = await delete(
+                app_state=fake_app_state,
+                arguments={
+                    "artifact_id": artifact_id,
+                    "reason": "ttl expired",
+                    "confirm": True,
+                },
+                actor=make_test_actor(),
+            )
+        body = json.loads(response)
+        assert body["status"] == "ok"
+        assert body["data"] == {"removed": True}
+        exec_events = [
+            e for e in events if e.get("event") == MCP_DESTRUCTIVE_OP_EXECUTED
+        ]
+        assert len(exec_events) == 1
+        assert exec_events[0]["tool_name"] == "synthorg_artifacts_delete"
 
 
 class TestOntology:

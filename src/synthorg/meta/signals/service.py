@@ -30,10 +30,12 @@ from uuid import uuid4
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.core.types import NotBlankStr
+from synthorg.meta.models import ProposalAltitude
 from synthorg.observability import get_logger
 from synthorg.observability.events.meta import (
     META_PROPOSAL_LISTED,
     META_PROPOSAL_SUBMITTED,
+    META_PROPOSAL_UNKNOWN_ALTITUDE,
 )
 
 if TYPE_CHECKING:
@@ -292,17 +294,34 @@ class SignalsService:
 def _risk_from_altitude(proposal: ImprovementProposal) -> ApprovalRiskLevel:
     """Map proposal altitude to approval risk tier.
 
-    Code modifications are high-risk by default (they change production
-    source); architecture changes are medium; config / prompt tuning
-    are low-to-medium.  This is a coarse mapping and can be refined by
-    downstream guard chains.
+    The mapping is exhaustive over :class:`ProposalAltitude`: code
+    modifications are high-risk (they change production source),
+    architecture changes are medium, prompt and config tuning are low.
+    A new enum member added without a matching branch is a bug in
+    this file; log a warning so ops learn about the gap on the first
+    occurrence and fall through to ``HIGH`` (fail-safe, not fail-silent)
+    rather than silently routing it to ``LOW``.
     """
-    altitude = proposal.altitude.value
-    if altitude == "code_modification":
+    # Exhaustive over every ``ProposalAltitude`` value.  A future enum
+    # member added without a matching branch will trip the runtime
+    # fall-through at the bottom and emit
+    # ``META_PROPOSAL_UNKNOWN_ALTITUDE``; type checkers flag the
+    # fall-through as unreachable, which is the desired signal.
+    altitude = proposal.altitude
+    if altitude is ProposalAltitude.CODE_MODIFICATION:
         return ApprovalRiskLevel.HIGH
-    if altitude == "architecture":
+    if altitude is ProposalAltitude.ARCHITECTURE:
         return ApprovalRiskLevel.MEDIUM
-    return ApprovalRiskLevel.LOW
+    if altitude is ProposalAltitude.PROMPT_TUNING:
+        return ApprovalRiskLevel.LOW
+    if altitude is ProposalAltitude.CONFIG_TUNING:
+        return ApprovalRiskLevel.LOW
+    logger.warning(  # type: ignore[unreachable]
+        META_PROPOSAL_UNKNOWN_ALTITUDE,
+        altitude=str(altitude),
+        proposal_id=str(proposal.id),
+    )
+    return ApprovalRiskLevel.HIGH
 
 
 __all__ = [

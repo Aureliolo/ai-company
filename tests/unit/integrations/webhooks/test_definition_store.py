@@ -1,5 +1,6 @@
 """Tests for the in-memory webhook definition store."""
 
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
@@ -23,13 +24,23 @@ def _definition(
     *,
     name: str = "default",
     issuer: str = "github",
+    created_at: datetime | None = None,
 ) -> WebhookDefinition:
+    if created_at is None:
+        return WebhookDefinition(
+            name=NotBlankStr(name),
+            issuer=NotBlankStr(issuer),
+            verifier_kind=WebhookVerifierKind.HMAC_SHA256,
+            secret_ref=NotBlankStr("ref-1"),
+            channel=NotBlankStr("webhooks.inbound"),
+        )
     return WebhookDefinition(
         name=NotBlankStr(name),
         issuer=NotBlankStr(issuer),
         verifier_kind=WebhookVerifierKind.HMAC_SHA256,
         secret_ref=NotBlankStr("ref-1"),
         channel=NotBlankStr("webhooks.inbound"),
+        created_at=created_at,
     )
 
 
@@ -107,9 +118,14 @@ class TestInMemoryWebhookDefinitionStore:
 
     async def test_list_is_newest_first(self) -> None:
         store = InMemoryWebhookDefinitionStore()
-        first = _definition(name="a")
-        second = _definition(name="b")
+        now = datetime.now(UTC)
+        # Explicit timestamps make newest-first ordering deterministic
+        # even when wall-clock resolution collapses the default factory
+        # values.
+        first = _definition(name="a", created_at=now - timedelta(minutes=5))
+        second = _definition(name="b", created_at=now)
         await store.add(first)
         await store.add(second)
-        listed = await store.list_definitions()
-        assert next(d.name for d in listed) == second.name
+        listed = tuple(await store.list_definitions())
+        assert listed[0].name == second.name
+        assert listed[1].name == first.name

@@ -74,6 +74,10 @@ class InMemoryTelemetryEventCounter:
         # Threading lock because ``on_event`` is synchronous and may
         # be called from any thread the reporter dispatches from.
         self._lock = threading.Lock()
+        # One-shot flag: the buffer is full and we've already logged it
+        # once; further appends keep evicting but we don't re-log on
+        # every call (that would be a log storm at max capacity).
+        self._eviction_logged = False
 
     def on_event(self, event: TelemetryEvent) -> None:
         """Record one telemetry event.
@@ -83,9 +87,13 @@ class InMemoryTelemetryEventCounter:
         """
         try:
             with self._lock:
-                evicted = len(self._events) == self._max_events
+                first_eviction = (
+                    len(self._events) == self._max_events and not self._eviction_logged
+                )
                 self._events.append((event.timestamp, event.event_type))
-            if evicted:
+                if first_eviction:
+                    self._eviction_logged = True
+            if first_eviction:
                 logger.info(
                     TELEMETRY_COUNTER_EVICTED,
                     max_events=self._max_events,

@@ -127,6 +127,8 @@ class _FacadesMixin:
         self._quality_facade_service = None
         self._review_facade_service = None
         self._evaluation_version_service = None
+        self._per_op_rate_limit_config = None
+        self._per_op_concurrency_config = None
 
     # Slot attrs for facade services (populated on concrete AppState).
     _signals_service: SignalsService | None

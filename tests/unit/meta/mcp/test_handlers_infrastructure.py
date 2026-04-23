@@ -81,14 +81,14 @@ def fake_users() -> AsyncMock:
 @pytest.fixture
 def fake_audit() -> AsyncMock:
     service = AsyncMock()
-    service.list_entries = AsyncMock(return_value=())
+    service.list_entries = AsyncMock(return_value=((), 0))
     return service
 
 
 @pytest.fixture
 def fake_events() -> AsyncMock:
     service = AsyncMock()
-    service.list_events = AsyncMock(return_value=())
+    service.list_events = AsyncMock(return_value=((), 0))
     return service
 
 

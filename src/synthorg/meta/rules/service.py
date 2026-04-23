@@ -44,9 +44,33 @@ class CustomRulesService:
     def __init__(self, *, repo: CustomRuleRepository) -> None:
         self._repo = repo
 
-    async def list_rules(self) -> tuple[CustomRuleDefinition, ...]:
-        """List all custom rules."""
-        return await self._repo.list_rules()
+    async def list_rules(
+        self,
+        *,
+        offset: int = 0,
+        limit: int | None = None,
+    ) -> tuple[tuple[CustomRuleDefinition, ...], int]:
+        """Return paginated rules plus the unfiltered total.
+
+        Args:
+            offset: Non-negative page offset.
+            limit: Optional positive page size; ``None`` returns every
+                rule from ``offset`` onwards.
+
+        Raises:
+            ValueError: If ``offset`` is negative, or ``limit`` is
+                provided and non-positive.
+        """
+        if offset < 0:
+            msg = f"offset must be >= 0, got {offset}"
+            raise ValueError(msg)
+        if limit is not None and limit < 1:
+            msg = f"limit must be >= 1 when provided, got {limit}"
+            raise ValueError(msg)
+        all_rules = await self._repo.list_rules()
+        total = len(all_rules)
+        end = total if limit is None else offset + limit
+        return tuple(all_rules[offset:end]), total
 
     async def get(self, rule_id: NotBlankStr) -> CustomRuleDefinition | None:
         """Return a single rule by id, or ``None`` when missing."""

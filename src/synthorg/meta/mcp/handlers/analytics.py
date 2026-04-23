@@ -20,6 +20,8 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
+from pydantic import TypeAdapter, ValidationError
+
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.mcp.errors import ArgumentValidationError, invalid_argument
 from synthorg.meta.mcp.handler_protocol import (
@@ -68,6 +70,9 @@ _TY_WINDOW_ORDER = "earlier than until"
 _TY_POS_INT = "positive int"
 _TY_STR_SEQ = "sequence of strings"
 _TY_REPORT_ID = "UUID string"
+_TY_NON_BLANK = "non-blank string"
+
+_NOT_BLANK_STR_ADAPTER = TypeAdapter(NotBlankStr)
 
 
 def _parse_window(
@@ -405,10 +410,14 @@ async def _reports_generate(
     actor: AgentIdentity | None = None,
 ) -> str:
     try:
-        template = require_arg(arguments, _ARG_TEMPLATE, str)
+        template_raw = require_arg(arguments, _ARG_TEMPLATE, str)
+        try:
+            template = _NOT_BLANK_STR_ADAPTER.validate_python(template_raw)
+        except ValidationError as exc:
+            raise invalid_argument(_ARG_TEMPLATE, _TY_NON_BLANK) from exc
         options = _parse_str_dict(arguments, _ARG_OPTIONS)
         report = await app_state.reports_service.generate_report(
-            template=NotBlankStr(template),
+            template=template,
             author_id=_actor_name(actor),
             options=options,
         )

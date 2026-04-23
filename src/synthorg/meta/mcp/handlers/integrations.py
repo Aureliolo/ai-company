@@ -628,6 +628,8 @@ async def _artifacts_create(
     except ArgumentValidationError as exc:
         _log_invalid(tool, exc)
         return err(exc)
+    except CapabilityNotSupportedError as exc:
+        return _map_capability(tool, exc)
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -665,6 +667,8 @@ async def _artifacts_delete(
     except ArgumentValidationError as exc:
         _log_invalid(tool, exc)
         return err(exc)
+    except CapabilityNotSupportedError as exc:
+        return _map_capability(tool, exc)
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)

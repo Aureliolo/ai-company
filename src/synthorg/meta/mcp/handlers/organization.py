@@ -7,6 +7,7 @@ them surface :class:`CapabilityNotSupportedError` -> typed
 ``not_supported`` envelope.
 """
 
+import copy
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
@@ -137,11 +138,17 @@ def _require_uuid(arguments: dict[str, Any], key: str) -> NotBlankStr:
 
 
 def _require_dict(arguments: dict[str, Any], key: str) -> dict[str, object]:
-    """Extract a required mapping argument or raise ``ArgumentValidationError``."""
+    """Extract a required mapping argument or raise ``ArgumentValidationError``.
+
+    The returned dict is a deep copy so the handler's view is fully
+    decoupled from the caller-supplied payload.  A shallow ``dict(raw)``
+    would still share nested mutable containers (lists, dicts), which
+    a later caller mutation could ripple into.
+    """
     raw = arguments.get(key)
     if not isinstance(raw, dict):
         raise invalid_argument(key, _TY_DICT)
-    return dict(raw)
+    return copy.deepcopy(raw)
 
 
 def _require_str_list(arguments: dict[str, Any], key: str) -> tuple[str, ...]:

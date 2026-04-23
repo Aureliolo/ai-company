@@ -17,35 +17,26 @@ Design:
 
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
+from synthorg.engine.classification.protocol import ClassificationSink
+
 if TYPE_CHECKING:
     from datetime import datetime
 
-    from synthorg.engine.classification.models import ClassificationResult, ErrorFinding
+    from synthorg.engine.classification.models import ErrorFinding
     from synthorg.meta.signal_models import OrgErrorSummary
 
 
 @runtime_checkable
-class ErrorTaxonomyStore(Protocol):
+class ErrorTaxonomyStore(ClassificationSink, Protocol):
     """Stores classification results and produces time-windowed summaries.
 
-    Implementations must be safe to call from multiple concurrent
-    tasks; the in-memory default uses a deque and an ``asyncio.Lock``.
+    Inherits :class:`ClassificationSink` so static typing enforces the
+    sink contract (the store *is* a registered sink; without the
+    inheritance ``ErrorTaxonomyStore`` and ``ClassificationSink`` could
+    silently drift apart).  Implementations must be safe to call from
+    multiple concurrent tasks; the in-memory default uses a deque and
+    an ``asyncio.Lock``.
     """
-
-    async def on_classification(
-        self,
-        result: ClassificationResult,
-    ) -> None:
-        """Append a classification result to the store.
-
-        Best-effort: implementations must log and swallow their own
-        errors (except ``MemoryError`` / ``RecursionError``) so the
-        detector pipeline is never blocked by store failures.
-
-        Args:
-            result: The completed classification result.
-        """
-        ...
 
     async def query_findings(
         self,

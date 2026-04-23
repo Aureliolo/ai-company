@@ -34,7 +34,7 @@ from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.observability import get_logger
 from synthorg.observability.events.backup import (
     BACKUP_DELETED_VIA_MCP,
-    BACKUP_RESTORED_VIA_MCP,
+    BACKUP_RESTORE_TRIGGERED_VIA_MCP,
 )
 from synthorg.observability.events.infrastructure import (
     PROJECT_CREATED_VIA_MCP,
@@ -270,7 +270,7 @@ class BackupFacadeService:
     ) -> Mapping[str, object]:
         await self._service.restore_from_backup(backup_id)
         logger.info(
-            BACKUP_RESTORED_VIA_MCP,
+            BACKUP_RESTORE_TRIGGERED_VIA_MCP,
             backup_id=backup_id,
             actor_id=actor_id,
             reason=reason,
@@ -455,13 +455,14 @@ class ProjectFacadeService:
             return False
         async with self._lock:
             removed = self._projects.pop(key, None) is not None
-        logger.info(
-            PROJECT_DELETED_VIA_MCP,
-            project_id=project_id,
-            actor_id=actor_id,
-            reason=reason,
-            removed=removed,
-        )
+        if removed:
+            logger.info(
+                PROJECT_DELETED_VIA_MCP,
+                project_id=project_id,
+                actor_id=actor_id,
+                reason=reason,
+                removed=removed,
+            )
         return removed
 
 
@@ -694,13 +695,14 @@ class TemplatePackFacadeService:
             return False
         async with self._lock:
             removed = self._packs.pop(key, None) is not None
-        logger.info(
-            TEMPLATE_PACK_UNINSTALLED_VIA_MCP,
-            pack_id=pack_id,
-            actor_id=actor_id,
-            reason=reason,
-            removed=removed,
-        )
+        if removed:
+            logger.info(
+                TEMPLATE_PACK_UNINSTALLED_VIA_MCP,
+                pack_id=pack_id,
+                actor_id=actor_id,
+                reason=reason,
+                removed=removed,
+            )
         return removed
 
 
@@ -713,14 +715,35 @@ class AuditReadService:
     def __init__(self, *, audit_log: AuditLog) -> None:
         self._audit = cast("Any", audit_log)
 
-    async def list_entries(self, *, limit: int = 100) -> Sequence[object]:
+    async def list_entries(
+        self,
+        *,
+        offset: int = 0,
+        limit: int = 100,
+    ) -> tuple[tuple[object, ...], int]:
+        """Return paginated audit entries plus the unfiltered total.
+
+        Raises:
+            ValueError: If ``offset`` is negative or ``limit`` < 1.
+            CapabilityNotSupportedError: If the underlying
+                :class:`AuditLog` does not expose ``list_entries``.
+        """
+        if offset < 0:
+            msg = f"offset must be >= 0, got {offset}"
+            raise ValueError(msg)
+        if limit < 1:
+            msg = f"limit must be >= 1, got {limit}"
+            raise ValueError(msg)
         fn = getattr(self._audit, "list_entries", None)
         if not callable(fn):
             raise _capability_missing(
                 "audit_list",
                 "AuditLog does not expose list_entries",
             )
-        return tuple(fn())[:limit]
+        all_entries = tuple(fn())
+        total = len(all_entries)
+        page = all_entries[offset : offset + limit]
+        return page, total
 
 
 # ── EventsReadService ──────────────────────────────────────────────
@@ -732,14 +755,38 @@ class EventsReadService:
     def __init__(self, *, hub: EventStreamHub) -> None:
         self._hub = cast("Any", hub)
 
-    async def list_events(self, *, limit: int = 100) -> Sequence[object]:
+    async def list_events(
+        self,
+        *,
+        offset: int = 0,
+        limit: int = 100,
+    ) -> tuple[tuple[object, ...], int]:
+        """Return paginated recent events plus the unfiltered total.
+
+        Raises:
+            ValueError: If ``offset`` is negative or ``limit`` < 1.
+            CapabilityNotSupportedError: If the underlying
+                :class:`EventStreamHub` does not expose ``recent_events``.
+        """
+        if offset < 0:
+            msg = f"offset must be >= 0, got {offset}"
+            raise ValueError(msg)
+        if limit < 1:
+            msg = f"limit must be >= 1, got {limit}"
+            raise ValueError(msg)
         fn = getattr(self._hub, "recent_events", None)
         if not callable(fn):
             raise _capability_missing(
                 "events_list",
                 "EventStreamHub does not expose recent_events",
             )
-        return tuple(fn(limit=limit))
+        # ``recent_events`` returns the *newest* ``limit`` events; to
+        # paginate deterministically ask for ``offset + limit`` then
+        # slice so the caller sees a stable window.
+        fetched = tuple(fn(limit=offset + limit))
+        total = len(fetched)
+        page = fetched[offset : offset + limit]
+        return page, total
 
 
 # ── IntegrationHealthService ──────────────────────────────────────

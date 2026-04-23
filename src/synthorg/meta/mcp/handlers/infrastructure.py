@@ -19,6 +19,7 @@ from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,  # noqa: TC001 -- PEP 649 annotation
 )
 from synthorg.meta.mcp.handlers.common import (
+    PaginationMeta,
     coerce_pagination,
     err,
     ok,
@@ -516,21 +517,16 @@ async def _audit_list(
     tool = "synthorg_audit_list"
     try:
         offset, limit = coerce_pagination(arguments)
-        entries = await app_state.audit_read_service.list_entries(
-            limit=offset + limit,
+        page, total = await app_state.audit_read_service.list_entries(
+            offset=offset,
+            limit=limit,
         )
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
-    sequence = tuple(entries)
-    page, pagination = paginate_sequence(
-        sequence,
-        offset=offset,
-        limit=limit,
-        total=len(sequence),
-    )
+    pagination = PaginationMeta(total=total, offset=offset, limit=limit)
     return ok([_to_jsonable(e) for e in page], pagination=pagination)
 
 
@@ -544,21 +540,16 @@ async def _events_list(
     tool = "synthorg_events_list"
     try:
         offset, limit = coerce_pagination(arguments)
-        events = await app_state.events_read_service.list_events(
-            limit=offset + limit,
+        page, total = await app_state.events_read_service.list_events(
+            offset=offset,
+            limit=limit,
         )
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
-    sequence = tuple(events)
-    page, pagination = paginate_sequence(
-        sequence,
-        offset=offset,
-        limit=limit,
-        total=len(sequence),
-    )
+    pagination = PaginationMeta(total=total, offset=offset, limit=limit)
     return ok([_to_jsonable(e) for e in page], pagination=pagination)
 
 
@@ -796,14 +787,15 @@ async def _projects_delete(
             actor_id=_actor_name(resolved_actor),
             reason=reason,
         )
-        logger.info(
-            MCP_DESTRUCTIVE_OP_EXECUTED,
-            tool_name=tool,
-            actor=_actor_name(resolved_actor),
-            reason=reason,
-            project_id=project_id,
-            removed=removed,
-        )
+        if removed:
+            logger.info(
+                MCP_DESTRUCTIVE_OP_EXECUTED,
+                tool_name=tool,
+                actor=_actor_name(resolved_actor),
+                reason=reason,
+                project_id=project_id,
+                removed=removed,
+            )
     except GuardrailViolationError as exc:
         _log_guardrail(tool, exc)
         return err(exc)
@@ -1072,14 +1064,15 @@ async def _template_packs_uninstall(
             actor_id=_actor_name(resolved_actor),
             reason=reason,
         )
-        logger.info(
-            MCP_DESTRUCTIVE_OP_EXECUTED,
-            tool_name=tool,
-            actor=_actor_name(resolved_actor),
-            reason=reason,
-            pack_id=pack_id,
-            removed=removed,
-        )
+        if removed:
+            logger.info(
+                MCP_DESTRUCTIVE_OP_EXECUTED,
+                tool_name=tool,
+                actor=_actor_name(resolved_actor),
+                reason=reason,
+                pack_id=pack_id,
+                removed=removed,
+            )
     except GuardrailViolationError as exc:
         _log_guardrail(tool, exc)
         return err(exc)

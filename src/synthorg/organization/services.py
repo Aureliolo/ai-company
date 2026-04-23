@@ -353,7 +353,7 @@ class DepartmentService:
 
 
 class _TeamRecord:
-    __slots__ = ("created_at", "department_id", "id", "name")
+    __slots__ = ("created_at", "department_id", "id", "name", "updated_at")
 
     def __init__(
         self,
@@ -362,11 +362,13 @@ class _TeamRecord:
         name: str,
         department_id: str | None,
         created_at: datetime,
+        updated_at: datetime | None = None,
     ) -> None:
         self.id = id
         self.name = name
         self.department_id = department_id
         self.created_at = created_at
+        self.updated_at = updated_at if updated_at is not None else created_at
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -374,6 +376,7 @@ class _TeamRecord:
             "name": self.name,
             "department_id": self.department_id,
             "created_at": self.created_at.isoformat(),
+            "updated_at": self.updated_at.isoformat(),
         }
 
 
@@ -479,6 +482,7 @@ class TeamService:
                 record.name = name
             if not isinstance(department_id, UnsetType):
                 record.department_id = department_id
+            record.updated_at = datetime.now(UTC)
             returned = copy.deepcopy(record)
         logger.info(
             TEAM_UPDATED_VIA_MCP,

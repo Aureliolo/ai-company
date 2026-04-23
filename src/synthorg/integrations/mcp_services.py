@@ -181,7 +181,13 @@ class _OAuthProviderRecord:
 
 
 class OAuthFacadeService:
-    """In-process OAuth provider registry."""
+    """In-process OAuth provider registry.
+
+    Mutations are serialised through a single :class:`asyncio.Lock` so
+    concurrent MCP handler calls cannot race on the in-memory dict
+    (check-then-act in :meth:`remove_provider`, unsynchronised writes
+    in :meth:`configure_provider`).
+    """
 
     def __init__(
         self,
@@ -190,9 +196,11 @@ class OAuthFacadeService:
     ) -> None:
         self._token_manager = cast("Any", token_manager) if token_manager else None
         self._providers: dict[str, _OAuthProviderRecord] = {}
+        self._lock = asyncio.Lock()
 
     async def list_providers(self) -> Sequence[_OAuthProviderRecord]:
-        snapshot = tuple(copy.deepcopy(p) for p in self._providers.values())
+        async with self._lock:
+            snapshot = tuple(copy.deepcopy(p) for p in self._providers.values())
         return tuple(sorted(snapshot, key=lambda p: p.created_at, reverse=True))
 
     async def configure_provider(
@@ -213,7 +221,8 @@ class OAuthFacadeService:
             scopes=tuple(scopes),
             created_at=datetime.now(UTC),
         )
-        self._providers[record.name] = record
+        async with self._lock:
+            self._providers[record.name] = record
         logger.info(
             OAUTH_PROVIDER_CONFIGURED_VIA_MCP,
             provider_name=name,
@@ -228,14 +237,16 @@ class OAuthFacadeService:
         actor_id: NotBlankStr,
         reason: NotBlankStr,
     ) -> bool:
-        removed = self._providers.pop(name, None) is not None
-        logger.info(
-            OAUTH_PROVIDER_REMOVED_VIA_MCP,
-            provider_name=name,
-            actor_id=actor_id,
-            reason=reason,
-            removed=removed,
-        )
+        async with self._lock:
+            removed = self._providers.pop(name, None) is not None
+        if removed:
+            logger.info(
+                OAUTH_PROVIDER_REMOVED_VIA_MCP,
+                provider_name=name,
+                actor_id=actor_id,
+                reason=reason,
+                removed=removed,
+            )
         return removed
 
 
