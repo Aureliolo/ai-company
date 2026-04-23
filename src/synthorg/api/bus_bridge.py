@@ -165,10 +165,16 @@ class MessageBusBridge:
             logger.info(API_APP_STARTUP, component="bus_bridge")
             self._running = True
 
+            failed_channels: list[str] = []
             for channel_name in ALL_CHANNELS:
                 try:
                     await self._bus.subscribe(channel_name, _SUBSCRIBER_ID)
                 except OSError, RuntimeError, ConnectionError:
+                    # Track per-channel subscribe failures so we can
+                    # surface incomplete coverage at ERROR with the full
+                    # list -- a single transient failure must not
+                    # silently mask a dead channel from operators.
+                    failed_channels.append(channel_name)
                     logger.warning(
                         API_BUS_BRIDGE_SUBSCRIBE_FAILED,
                         channel=channel_name,
@@ -194,9 +200,25 @@ class MessageBusBridge:
                 logger.error(
                     API_APP_STARTUP,
                     error="bus bridge started with zero active channels",
+                    failed_channels=tuple(failed_channels),
                 )
                 msg = "MessageBusBridge failed to subscribe to any channels"
                 raise RuntimeError(msg)
+
+            if failed_channels:
+                # Started with partial coverage. Keep running (the
+                # healthy channels still serve traffic) but emit at
+                # ERROR so operators see the gap -- a WARNING per
+                # failed channel is not aggregated anywhere and a
+                # silent partial bridge is indistinguishable from a
+                # healthy one from a supervisor perspective.
+                logger.error(
+                    API_APP_STARTUP,
+                    error="bus bridge started with incomplete channel coverage",
+                    active_channels=len(self._tasks),
+                    failed_channels=tuple(failed_channels),
+                    total_channels=len(ALL_CHANNELS),
+                )
 
     async def stop(self) -> None:
         """Cancel all polling tasks.

@@ -1,4 +1,4 @@
-"""TOCTOU race tests for MeetingScheduler.start (issue #1534).
+"""TOCTOU race tests for MeetingScheduler.start.
 
 ``MeetingScheduler.start()`` at ``communication/meeting/scheduler.py``
 (pre-fix, lines 109-148) performs an unsynchronized ``_running``

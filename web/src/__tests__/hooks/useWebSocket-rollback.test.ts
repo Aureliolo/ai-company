@@ -1,5 +1,5 @@
 /**
- * Rollback contract for the useWebSocket handler-wiring loop (issue #1534).
+ * Rollback contract for the useWebSocket handler-wiring loop.
  *
  * If any ``onChannelEvent`` call throws partway through the binding
  * loop, the cleanup function must only deregister the handlers that

@@ -1,4 +1,4 @@
-"""Subscriber-queue bounding tests for the in-memory bus (issue #1534).
+"""Subscriber-queue bounding tests for the in-memory bus.
 
 The un-bounded ``asyncio.Queue()`` at ``bus/memory.py:201`` lets a
 publisher outrun a slow subscriber indefinitely. These tests pin the

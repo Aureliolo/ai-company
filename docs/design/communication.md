@@ -362,7 +362,14 @@ Internal backend
 NATS backend
 :   JetStream stops handing new messages to the pull consumer once `max_ack_pending` is reached. Messages remain in the stream (subject to `max_messages_per_channel`), so when the consumer catches up delivery resumes automatically. The same `COMM_SUBSCRIBER_QUEUE_OVERFLOW` event is emitted (rate-limited) with `backend=nats` so operators see a uniform signal across backends.
 
-The default `max_subscriber_queue_size` is `1024`. Raise it for bursty channels where subscribers are known to catch up within the burst; lower it to surface slow consumers faster.
+The default `max_subscriber_queue_size` is `1024`, capped at `65535`. Raise it for bursty channels where subscribers are known to catch up within the burst; lower it to surface slow consumers faster. The upper limit guards against a misconfiguration or untrusted-config-source DoS.
+
+### Bus Bridge Lifecycle Synchronization
+
+`MessageBusBridge.start()` and `stop()` (the Litestar `ChannelsPlugin` bridge in `api/bus_bridge.py`) run under a dedicated `_lifecycle_lock` so the `_running` check-and-set + the per-channel `subscribe` + poll-task-spawn loop are atomic against concurrent lifecycle calls. A racing `stop()` cannot cancel in-flight subscribes while `start()` is still wiring channels, and two concurrent `start()` calls cannot both pass the `_running=False` check. Partial-subscribe failures are tracked per channel and escalated to `ERROR` with the full list of failed channels so a silent "started with incomplete channel coverage" state is always visible to operators. See `CLAUDE.md` §"Lifecycle synchronization" for the shared pattern.
+
+!!! warning "Slow audit sinks"
+    The drop-newest policy means an audit/security sink that falls behind will silently lose new events. Run audit sinks on dedicated channels with `max_subscriber_queue_size` sized for the worst-case burst, or monitor `COMM_SUBSCRIBER_QUEUE_OVERFLOW` at WARNING and alert on it. Security-critical events should never share a channel with normal traffic.
 
 ---
 

@@ -186,11 +186,18 @@ class MeetingScheduler:
                     if isinstance(result, asyncio.CancelledError):
                         continue
                     if isinstance(result, Exception):
-                        logger.warning(
+                        # Log at ERROR with exc_info so the traceback
+                        # reaches operators -- str(result) alone loses
+                        # the call stack, which is exactly what you
+                        # need to diagnose a periodic-task shutdown
+                        # failure that may have leaked a resource
+                        # (connection, lock, file handle).
+                        logger.error(
                             MEETING_SCHEDULER_ERROR,
                             note="periodic task error during shutdown",
                             error=str(result),
                             error_type=type(result).__name__,
+                            exc_info=result,
                         )
             self._tasks = []
             self._running = False

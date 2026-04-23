@@ -1,5 +1,5 @@
 /**
- * Teardown contract for the theme store's matchMedia listener (issue #1534).
+ * Teardown contract for the theme store's matchMedia listener.
  *
  * The theme store subscribes to a ``prefers-reduced-motion`` MediaQueryList
  * on creation and never removes the listener, which leaks under

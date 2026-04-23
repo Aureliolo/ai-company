@@ -54,6 +54,12 @@ class _NatsState:
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     shutdown_event: asyncio.Event = field(default_factory=asyncio.Event)
     running: bool = False
+    # Last time (``time.monotonic`` seconds) a subscriber queue-overflow
+    # event was emitted for a given ``(channel, subscriber)``. Used to
+    # rate-limit overflow emissions on the NATS receive path so a
+    # persistently-paused consumer does not flood logs. Parity with the
+    # in-memory bus, where every dropped envelope emits.
+    last_overflow_log: dict[tuple[str, str], float] = field(default_factory=dict)
 
 
 def create_state(config: MessageBusConfig) -> _NatsState:

@@ -52,9 +52,9 @@ async def create_pull_consumer(
     durable = durable_name(channel_name, subscriber_id)
     # ``max_ack_pending`` gives the NATS consumer the same
     # per-subscriber bound that the in-memory bus applies to its
-    # asyncio.Queue(maxsize=...). JetStream pauses delivery to a
+    # ``asyncio.Queue(maxsize=...)``. JetStream pauses delivery to a
     # consumer whose unacked count reaches this cap, preventing
-    # broker-side accumulation for a slow agent (#1534).
+    # broker-side accumulation for a slow agent.
     consumer_config = ConsumerConfig(
         durable_name=durable,
         ack_wait=(

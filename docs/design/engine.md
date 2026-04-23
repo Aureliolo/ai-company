@@ -459,13 +459,25 @@ obs_loop -> observers
 
 ### Lifecycle
 
-- **start()**: Spawns two background tasks: the mutation processing loop
-  and the observer dispatch loop.
-- **stop()**: Sets `_running = False`, drains the mutation queue within a
-  configurable timeout, then places a `None` sentinel on the observer
-  queue to signal completion. The observer dispatch loop exits when it
-  dequeues the sentinel. Remaining timeout budget is used for observer
-  drain. Abandoned futures receive a failure result.
+`start()` and `stop()` are both `async` and run under a dedicated
+`_lifecycle_lock` so the `_running` check-and-set and the background
+task spawn / drain sequences are atomic against concurrent lifecycle
+transitions. A `start()` racing an in-flight `stop()` cannot see
+`_running=False` mid-drain and spawn a new processing task that the
+outgoing stop never waits on.
+
+- **start()** (`async`): Acquires `_lifecycle_lock`, verifies
+  `_running is False`, flips the flag, and spawns two background
+  tasks (mutation processing loop + observer dispatch loop). Raises
+  `RuntimeError` if already running. Every call site must `await`.
+- **stop()** (`async`): Acquires `_lifecycle_lock`, sets
+  `_running = False`, drains the mutation queue within the configured
+  `drain_timeout_seconds`, places a `None` sentinel on the observer
+  queue, and drains the observer dispatch loop within the remaining
+  budget. A hard outer deadline (2x the nominal drain budget) bounds
+  the entire stop body so the lifecycle lock can never be held
+  indefinitely even if a drain stage hangs post-cancel. Abandoned
+  futures receive a failure result. Idempotent.
 
 ### AgentEngine <-> TaskEngine Incremental Sync
 

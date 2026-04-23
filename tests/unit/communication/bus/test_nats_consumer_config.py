@@ -1,4 +1,4 @@
-"""NATS subscriber bounding parity tests (issue #1534).
+"""NATS subscriber bounding parity tests.
 
 The in-memory bus bounds each subscriber's in-flight queue via
 ``MessageRetentionConfig.max_subscriber_queue_size``. These tests

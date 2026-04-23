@@ -262,7 +262,7 @@ export const useThemeStore = create<ThemeState>()((set, get) => {
       }
     },
 
-    teardown: () => {
+    teardown: (): void => {
       if (mql && reducedMotionHandler) {
         mql.removeEventListener('change', reducedMotionHandler)
       }
@@ -274,8 +274,10 @@ export const useThemeStore = create<ThemeState>()((set, get) => {
 
 // Dev-only: release the matchMedia listener across Vite Fast Refresh
 // so we do not layer duplicate handlers in the dev loop. In production
-// this branch is dead-code-eliminated by Vite.
-if (import.meta.hot) {
+// Vite dead-code-eliminates this branch; under any non-Vite bundler
+// `import.meta.hot` is `undefined` and the `typeof` guard skips the
+// call safely.
+if (typeof import.meta.hot !== 'undefined' && import.meta.hot) {
   import.meta.hot.dispose(() => {
     useThemeStore.getState().teardown()
   })

@@ -268,6 +268,6 @@ afterEach(() => {
   cancelPendingPersist()
   // Theme store subscribes to a `prefers-reduced-motion` MediaQueryList
   // at factory time; detach the listener here so
-  // `--detect-async-leaks` does not count it per-test (#1534).
+  // `--detect-async-leaks` does not count it per-test.
   useThemeStore.getState().teardown()
 })

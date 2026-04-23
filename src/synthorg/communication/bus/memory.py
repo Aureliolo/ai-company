@@ -526,14 +526,13 @@ class InMemoryMessageBus:
             queue = self._queues.pop(key, None)
             if queue is not None:
                 # Put a sentinel for each pending waiter so all
-                # concurrent receive() calls are woken up.
-                # Safe to use raw put_nowait here even though queues
-                # are now bounded (#1534): the queue has just been
-                # popped from self._queues so no publisher can enqueue
-                # any more envelopes into it, and sentinels are
-                # one-per-waiter (capped at len(_waiters) <= maxsize),
-                # so QueueFull is unreachable. Publishers go through
-                # self._enqueue_or_drop() for the drop-newest policy.
+                # concurrent receive() calls are woken up. Safe to
+                # use raw put_nowait here: the queue was just popped
+                # from self._queues, so no publisher can add more
+                # envelopes. Sentinels are one-per-waiter (capped at
+                # the number of concurrent receive calls), so we
+                # cannot overflow. Publishers enforce drop-newest
+                # policy via _enqueue_or_drop().
                 pending = self._waiters.pop(key, 0)
                 sentinels = max(1, pending)
                 for _ in range(sentinels):

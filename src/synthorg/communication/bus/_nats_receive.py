@@ -29,7 +29,17 @@ from synthorg.observability.events.communication import (
     COMM_BUS_RECEIVE_ERROR,
     COMM_MESSAGE_DELIVERED,
     COMM_RECEIVE_SHUTDOWN,
+    COMM_SUBSCRIBER_QUEUE_OVERFLOW,
 )
+
+_OVERFLOW_LOG_INTERVAL_SECONDS: float = 60.0
+"""Minimum seconds between per-subscriber overflow emissions.
+
+JetStream pauses delivery to a consumer once its unacked count hits
+``max_ack_pending``. Without this rate-limit an observer polling a
+paused consumer would flood logs every poll; once per minute per
+subscriber matches operator dashboard refresh cadence.
+"""
 
 logger = get_logger(__name__)
 
@@ -65,6 +75,52 @@ async def resolve_consumer(
             )
             sub = state.subscriptions[key]
     return sub
+
+
+async def _maybe_log_overflow(
+    state: _NatsState,
+    sub: Any,
+    *,
+    channel_name: str,
+    subscriber_id: str,
+) -> None:
+    """Emit ``COMM_SUBSCRIBER_QUEUE_OVERFLOW`` if the consumer is paused.
+
+    Called from the receive path when a fetch returns empty. Queries
+    ``consumer_info()`` to check whether ``num_ack_pending`` has hit
+    the configured ``max_ack_pending`` cap -- the observable signal
+    that JetStream has paused delivery to this consumer. Rate-limited
+    per ``(channel, subscriber)`` at
+    :data:`_OVERFLOW_LOG_INTERVAL_SECONDS`.
+
+    Best-effort: ``consumer_info()`` failures are swallowed so an
+    observability probe never breaks the receive loop.
+    """
+    cap = state.config.retention.max_subscriber_queue_size
+    key = (channel_name, subscriber_id)
+    now = time.monotonic()
+    last = state.last_overflow_log.get(key, 0.0)
+    if now - last < _OVERFLOW_LOG_INTERVAL_SECONDS:
+        return
+    try:
+        info = await sub.consumer_info()
+    except MemoryError, RecursionError:
+        raise
+    except Exception:
+        return
+    num_pending = getattr(info, "num_ack_pending", 0)
+    if num_pending < cap:
+        return
+    state.last_overflow_log[key] = now
+    logger.warning(
+        COMM_SUBSCRIBER_QUEUE_OVERFLOW,
+        channel=channel_name,
+        subscriber=subscriber_id,
+        queue_size=cap,
+        drop_policy="delivery_paused",
+        backend="nats",
+        num_ack_pending=num_pending,
+    )
 
 
 async def fetch_with_shutdown(
@@ -239,6 +295,12 @@ async def receive_blocking(
         if msgs is None:
             return None
         if not msgs:
+            await _maybe_log_overflow(
+                state,
+                sub,
+                channel_name=channel_name,
+                subscriber_id=subscriber_id,
+            )
             continue
         envelope = await build_envelope(
             msgs,
@@ -275,6 +337,12 @@ async def receive_with_timeout(
         if msgs is None:
             return None
         if not msgs:
+            await _maybe_log_overflow(
+                state,
+                sub,
+                channel_name=channel_name,
+                subscriber_id=subscriber_id,
+            )
             continue
         envelope = await build_envelope(
             msgs,

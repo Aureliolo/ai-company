@@ -129,7 +129,7 @@ class TaskEngine(TaskEngineLoopsMixin):
         task-spawn so concurrent ``start()`` calls yield exactly one
         success, and a ``start()`` racing an in-flight ``stop()``
         cannot spawn a new processing task that escapes the stop's
-        drain (issue #1534 finding #5).
+        drain.
 
         Raises:
             RuntimeError: If already running.
@@ -177,24 +177,54 @@ class TaskEngine(TaskEngineLoopsMixin):
             effective_timeout = (
                 timeout if timeout is not None else self._config.drain_timeout_seconds
             )
-            loop = asyncio.get_running_loop()
-            deadline = loop.time() + effective_timeout
-
-            await self._drain_processing(effective_timeout)
-            # Signal the observer loop that no more events will arrive.
-            # Bounded by remaining budget -- if the queue is full and the
-            # dispatcher is stuck, we skip the sentinel and let
-            # _drain_observer cancel the observer task on timeout.
-            remaining = max(0.0, deadline - loop.time())
-            with contextlib.suppress(TimeoutError):
+            # Outer hard deadline: even if individual drain stages
+            # hang (e.g. a processing task ignores CancelledError or
+            # is stuck in an uninterruptible sync block), the whole
+            # stop sequence is bounded to ~2x the nominal drain
+            # budget. Beyond that, we log CRITICAL and release the
+            # lifecycle lock so subsequent start() calls do not block
+            # forever -- the leaked tasks will be surfaced by the
+            # done-callbacks registered in start().
+            hard_deadline = effective_timeout * 2.0
+            try:
                 await asyncio.wait_for(
-                    self._observer_queue.put(None),
-                    timeout=remaining,
+                    self._drain_all(effective_timeout),
+                    timeout=hard_deadline,
                 )
-            observer_budget = max(0.0, deadline - loop.time())
-            await self._drain_observer(observer_budget)
-
+            except TimeoutError:
+                # TRY400: logger.exception here would append a
+                # TimeoutError traceback with no actionable diagnostic
+                # information beyond the structured fields below.
+                logger.error(  # noqa: TRY400
+                    TASK_ENGINE_STOPPED,
+                    note="stop exceeded hard deadline; lifecycle lock released",
+                    hard_deadline_seconds=hard_deadline,
+                )
+                return
             logger.info(TASK_ENGINE_STOPPED)
+
+    async def _drain_all(self, effective_timeout: float) -> None:
+        """Drain the mutation queue + observer queue within the given budget.
+
+        Extracted from :meth:`stop` so the outer ``asyncio.wait_for``
+        hard-deadline guard has a single awaitable to bound.
+        """
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + effective_timeout
+
+        await self._drain_processing(effective_timeout)
+        # Signal the observer loop that no more events will arrive.
+        # Bounded by remaining budget -- if the queue is full and the
+        # dispatcher is stuck, we skip the sentinel and let
+        # _drain_observer cancel the observer task on timeout.
+        remaining = max(0.0, deadline - loop.time())
+        with contextlib.suppress(TimeoutError):
+            await asyncio.wait_for(
+                self._observer_queue.put(None),
+                timeout=remaining,
+            )
+        observer_budget = max(0.0, deadline - loop.time())
+        await self._drain_observer(observer_budget)
 
     @property
     def is_running(self) -> bool:

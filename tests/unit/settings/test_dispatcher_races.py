@@ -1,4 +1,4 @@
-"""TOCTOU race tests for SettingsChangeDispatcher (issue #1534).
+"""TOCTOU race tests for SettingsChangeDispatcher.
 
 Unlike the bridge and engine, settings/dispatcher.py has a real
 ``await`` between the ``_running`` check and the final ``_running =
@@ -52,6 +52,46 @@ class TestConcurrentStart:
             ]
             assert len(running_tasks) == 1, (
                 f"expected one settings-dispatcher task, got {len(running_tasks)}"
+            )
+        finally:
+            await dispatcher.stop()
+            await bus.stop()
+
+
+@pytest.mark.unit
+class TestStartDuringStop:
+    """``start()`` racing an in-flight ``stop()`` must wait for stop."""
+
+    async def test_start_waits_for_stop_lock_release(self) -> None:
+        """A concurrent start during stop must not spawn a duplicate task.
+
+        With `_lifecycle_lock` guarding both start and stop, the
+        second start observes `_running=False` only after stop has
+        fully released the lock. Invariant at gather completion:
+        exactly one `settings-dispatcher` task exists (the one the
+        winning start spawned).
+        """
+        bus = InMemoryMessageBus(config=MessageBusConfig())
+        await bus.start()
+        dispatcher = SettingsChangeDispatcher(bus, subscribers=())
+        await dispatcher.start()
+
+        stop_coro = dispatcher.stop()
+        start_coro = dispatcher.start()
+        results = await asyncio.gather(stop_coro, start_coro, return_exceptions=True)
+        try:
+            assert not isinstance(results[0], BaseException), (
+                f"stop raised unexpectedly: {results[0]!r}"
+            )
+            assert not isinstance(results[1], BaseException), (
+                f"start raised unexpectedly: {results[1]!r}"
+            )
+            running_tasks = [
+                t for t in asyncio.all_tasks() if t.get_name() == "settings-dispatcher"
+            ]
+            assert len(running_tasks) == 1, (
+                f"expected one settings-dispatcher after start-during-stop, "
+                f"got {len(running_tasks)}"
             )
         finally:
             await dispatcher.stop()

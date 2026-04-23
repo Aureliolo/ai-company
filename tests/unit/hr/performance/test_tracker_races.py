@@ -1,4 +1,4 @@
-"""TOCTOU race tests for PerformanceTracker (issue #1534).
+"""TOCTOU race tests for PerformanceTracker.
 
 Each test is written to fail reliably against the un-synchronized
 implementation and pass once ``_metrics_lock`` is applied to the
@@ -77,6 +77,20 @@ class TestClearConcurrentWithRecord:
                 if i == n_records // 2:
                     tg.create_task(_clear())
 
+        # The specific race symptom we're guarding against is
+        # ``RuntimeError: dictionary changed size during iteration`` /
+        # ``RuntimeError: set changed size during iteration`` --
+        # assert NO RuntimeError of that shape leaks, not just "no
+        # errors at all", so a future regressor that raises a
+        # different exception type doesn't hide the race.
+        dict_iteration_errors = [
+            e
+            for e in errors
+            if isinstance(e, RuntimeError) and "changed size during iteration" in str(e)
+        ]
+        assert dict_iteration_errors == [], (
+            f"dict/set iteration race leaked: {dict_iteration_errors!r}"
+        )
         assert errors == [], f"unexpected exceptions: {errors!r}"
         # Structural invariant: every entry in ``_task_metrics`` is a list
         # of records for that agent id. An interleaved clear-then-append

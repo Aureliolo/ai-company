@@ -62,6 +62,13 @@ export function useWebSocket(options: WebSocketOptions): WebSocketReturn {
     const wsStore = useWebSocketStore.getState()
     const uniqueChannels: WsChannel[] = [...new Set(bindings.map((b) => b.channel))]
 
+    // List of (channel, handler) pairs wired by this effect instance.
+    // Declared before `setup()` so the declaration precedes all reads;
+    // populated during setup and iterated by the cleanup callback.
+    // Kept local to the effect so each mount owns its registration
+    // ledger.
+    const registered: Array<ChannelBinding> = []
+
     const setup = async () => {
       // Clear any stale error from a previous failed setup
       setSetupError(null)
@@ -88,10 +95,10 @@ export function useWebSocket(options: WebSocketOptions): WebSocketReturn {
 
       if (disposedRef.current) return
 
-      // Track the exact (channel, handler) pairs this effect successfully
-      // registered so the cleanup can symmetrically deregister ONLY what
-      // was wired -- if a mid-loop throw aborts setup, we must not
-      // deregister phantom entries that were never registered (#1534).
+      // Track which (channel, handler) pairs we successfully register
+      // so cleanup can roll back ONLY those -- if setup throws
+      // mid-loop, we must not try to deregister bindings that were
+      // never wired.
       for (const binding of bindings) {
         try {
           wsStore.onChannelEvent(binding.channel, binding.handler)
@@ -105,11 +112,6 @@ export function useWebSocket(options: WebSocketOptions): WebSocketReturn {
         }
       }
     }
-
-    // List of (channel, handler) pairs wired by this effect instance.
-    // Populated during setup(); iterated by the cleanup callback. Kept
-    // local to the effect so each mount owns its registration ledger.
-    const registered: Array<ChannelBinding> = []
 
     setup().catch((err) => {
       if (!disposedRef.current) {

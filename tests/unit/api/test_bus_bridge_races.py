@@ -1,4 +1,4 @@
-"""TOCTOU race tests for MessageBusBridge.start (issue #1534).
+"""TOCTOU race tests for MessageBusBridge.start.
 
 The un-synchronized ``start()`` at ``api/bus_bridge.py:148-187`` checks
 ``_running`` then sets it, and then iterates the channel list to
