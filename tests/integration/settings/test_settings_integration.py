@@ -138,3 +138,30 @@ class TestApiSettingsIntegration:
         assert result.rate_limit.time_unit.value == "minute"
         assert result.auth.jwt_expiry_minutes == 1440
         assert result.auth.min_password_length == 12
+
+    async def test_ws_auth_timeout_override_flows_through_bridge(
+        self,
+        settings_service: SettingsService,
+        resolver: ConfigResolver,
+    ) -> None:
+        """Operator override of ``ws_auth_timeout_seconds`` surfaces on the bridge.
+
+        Verifies the restart-required kill-switch wiring: operator writes a
+        value via ``SettingsService``, it reaches ``ApiBridgeConfig`` via
+        ``ConfigResolver.get_api_bridge_config`` (the method
+        ``_apply_bridge_config`` calls at startup).
+        """
+        await settings_service.set("api", "ws_auth_timeout_seconds", "3.5")
+
+        bridge = await resolver.get_api_bridge_config()
+
+        assert bridge.ws_auth_timeout_seconds == pytest.approx(3.5)
+
+    async def test_ws_auth_timeout_default_on_bridge(
+        self,
+        resolver: ConfigResolver,
+    ) -> None:
+        """Default ``ws_auth_timeout_seconds`` is 10.0 when no override exists."""
+        bridge = await resolver.get_api_bridge_config()
+
+        assert bridge.ws_auth_timeout_seconds == pytest.approx(10.0)

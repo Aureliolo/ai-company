@@ -24,7 +24,7 @@ from synthorg.memory.consolidation.strategy import (
 )
 from synthorg.memory.models import MemoryEntry, MemoryQuery
 from synthorg.memory.protocol import MemoryBackend  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.consolidation import (
     ARCHIVAL_ENTRY_STORED,
     ARCHIVAL_FAILED,
@@ -108,12 +108,26 @@ class MemoryConsolidationService:
         is configured and enabled.  Per-entry archival failures are
         logged and skipped -- they do not abort the entire batch.
 
+        Gated by the ``memory.consolidation_enabled`` kill-switch
+        (mirrored to :attr:`ConsolidationConfig.enabled`): when
+        ``False`` the call short-circuits immediately without touching
+        the backend or strategy, so operators can pause consolidation
+        mid-flight without tearing down scheduling.
+
         Args:
             agent_id: Agent whose memories to consolidate.
 
         Returns:
             Consolidation result (including archival count).
         """
+        if not self._config.enabled:
+            logger.info(
+                CONSOLIDATION_SKIPPED,
+                agent_id=agent_id,
+                reason="disabled_by_setting",
+            )
+            return ConsolidationResult()
+
         if self._strategy is None:
             logger.info(CONSOLIDATION_SKIPPED, agent_id=agent_id)
             return ConsolidationResult()
@@ -144,11 +158,11 @@ class MemoryConsolidationService:
                     archival_index=index,
                 )
         except Exception as exc:
-            logger.exception(
+            logger.warning(
                 CONSOLIDATION_FAILED,
                 agent_id=agent_id,
-                error=str(exc),
                 error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise
         else:
@@ -203,11 +217,11 @@ class MemoryConsolidationService:
                         deleted += 1
                 remaining -= len(entries)
         except Exception as exc:
-            logger.exception(
+            logger.warning(
                 MAX_MEMORIES_ENFORCE_FAILED,
                 agent_id=agent_id,
-                error=str(exc),
                 error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise
         else:
@@ -254,6 +268,10 @@ class MemoryConsolidationService:
         """Run full maintenance cycle for an agent.
 
         Orchestrates: retention cleanup -> consolidation -> max enforcement.
+        Gated by the ``memory.consolidation_enabled`` kill-switch: when
+        ``False`` the whole cycle short-circuits (retention, consolidation,
+        and max-memory enforcement all pause together so the scheduler can
+        be resumed without partial state).
 
         Args:
             agent_id: Agent to maintain.
@@ -265,6 +283,15 @@ class MemoryConsolidationService:
         Returns:
             Consolidation result from the consolidation step.
         """
+        if not self._config.enabled:
+            logger.info(
+                CONSOLIDATION_SKIPPED,
+                agent_id=agent_id,
+                reason="disabled_by_setting",
+                scope="maintenance",
+            )
+            return ConsolidationResult()
+
         logger.info(MAINTENANCE_START, agent_id=agent_id)
         try:
             await self.cleanup_retention(
@@ -275,11 +302,11 @@ class MemoryConsolidationService:
             result = await self.run_consolidation(agent_id)
             await self.enforce_max_memories(agent_id)
         except Exception as exc:
-            logger.exception(
+            logger.warning(
                 MAINTENANCE_FAILED,
                 agent_id=agent_id,
-                error=str(exc),
                 error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise
         else:

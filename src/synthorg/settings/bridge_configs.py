@@ -142,6 +142,7 @@ class ApiBridgeConfig(BaseModel):
 
     ticket_cleanup_interval_seconds: float = Field(default=60.0, ge=5.0, le=3600.0)
     ws_ticket_max_pending_per_user: int = Field(default=5, ge=1, le=50)
+    ws_auth_timeout_seconds: float = Field(default=10.0, ge=1.0, le=120.0)
     max_rpm_default: int = Field(default=60, ge=1, le=100_000)
     compression_minimum_size_bytes: int = Field(default=1000, ge=100, le=10_000)
     request_max_body_size_bytes: int = Field(

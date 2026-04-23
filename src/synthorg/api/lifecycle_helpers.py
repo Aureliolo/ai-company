@@ -69,42 +69,94 @@ async def _resolve_ticket_cleanup_interval(app_state: AppState) -> float:
         return 60.0
 
 
+async def _resolve_lifecycle_cleanup_enabled(app_state: AppState) -> bool:
+    """Resolve the lifecycle-cleanup kill-switch, fail-safe to ``True``.
+
+    Operators flip ``api.lifecycle_cleanup_enabled=false`` to pause the
+    WS ticket / session / lockout cleanup loop mid-flight without tearing
+    down the lifespan task.  A settings-backend outage must not mask the
+    operator's intent in either direction -- we pick "keep cleaning" as
+    the safer failure mode because stale tickets and sessions accumulate
+    forever otherwise.
+    """
+    if not app_state.has_config_resolver:
+        return True
+    try:
+        return await app_state.config_resolver.get_bool(
+            SettingNamespace.API.value, "lifecycle_cleanup_enabled"
+        )
+    except asyncio.CancelledError:
+        raise
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        logger.warning(
+            API_WS_TICKET_CLEANUP,
+            error=(
+                "Failed to resolve lifecycle_cleanup_enabled; defaulting to enabled"
+            ),
+            error_type=type(exc).__name__,
+            error_desc=safe_error_description(exc),
+        )
+        return True
+
+
+async def _run_cleanup_tick(app_state: AppState) -> None:
+    """Run one tick of the WS ticket / session / lockout cleanup cycle.
+
+    Split out of :func:`_ticket_cleanup_loop` so the loop itself stays
+    under the McCabe-complexity ceiling: each per-store cleanup is
+    wrapped in a compact try/except that lets the overall cycle keep
+    making progress when any one store fails transiently.
+    """
+    try:
+        app_state.ticket_store.cleanup_expired()
+    except MemoryError, RecursionError:
+        raise
+    except Exception:
+        logger.warning(
+            API_WS_TICKET_CLEANUP,
+            error="Periodic ticket cleanup failed",
+            exc_info=True,
+        )
+    try:
+        if app_state.has_session_store:
+            await app_state.session_store.cleanup_expired()
+    except MemoryError, RecursionError:
+        raise
+    except Exception:
+        logger.warning(
+            API_SESSION_CLEANUP,
+            error="Periodic session cleanup failed",
+            exc_info=True,
+        )
+    try:
+        if app_state.has_lockout_store:
+            await app_state.lockout_store.cleanup_expired()
+    except MemoryError, RecursionError:
+        raise
+    except Exception:
+        logger.warning(
+            API_AUTH_LOCKOUT_CLEANUP,
+            error="Periodic lockout cleanup failed",
+            exc_info=True,
+        )
+
+
 async def _ticket_cleanup_loop(app_state: AppState) -> None:
-    """Periodically prune expired WS tickets and sessions."""
+    """Periodically prune expired WS tickets and sessions.
+
+    Gated by ``api.lifecycle_cleanup_enabled`` (live, per-tick): when
+    the setting is ``False`` every tick short-circuits -- the loop
+    keeps running so operators can re-enable without restarting, but
+    no cleanup work is done.
+    """
     while True:
         await asyncio.sleep(await _resolve_ticket_cleanup_interval(app_state))
-        try:
-            app_state.ticket_store.cleanup_expired()
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
-            logger.warning(
-                API_WS_TICKET_CLEANUP,
-                error="Periodic ticket cleanup failed",
-                exc_info=True,
-            )
-        try:
-            if app_state.has_session_store:
-                await app_state.session_store.cleanup_expired()
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
-            logger.warning(
-                API_SESSION_CLEANUP,
-                error="Periodic session cleanup failed",
-                exc_info=True,
-            )
-        try:
-            if app_state.has_lockout_store:
-                await app_state.lockout_store.cleanup_expired()
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
-            logger.warning(
-                API_AUTH_LOCKOUT_CLEANUP,
-                error="Periodic lockout cleanup failed",
-                exc_info=True,
-            )
+        if not await _resolve_lifecycle_cleanup_enabled(app_state):
+            logger.debug(API_WS_TICKET_CLEANUP, reason="paused_by_setting")
+            continue
+        await _run_cleanup_tick(app_state)
 
 
 _DEFAULT_AUDIT_RETENTION_DAYS = 730
@@ -452,6 +504,23 @@ async def _apply_bridge_config(  # noqa: C901, PLR0912, PLR0915
                 "Failed to apply ws_ticket_max_pending_per_user; using built-in default"
             ),
             exc_info=True,
+        )
+
+    try:
+        app_state.set_ws_auth_timeout_seconds(
+            await app_state.config_resolver.get_float(
+                SettingNamespace.API.value,
+                "ws_auth_timeout_seconds",
+            )
+        )
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        logger.warning(
+            API_APP_STARTUP,
+            error=("Failed to apply ws_auth_timeout_seconds; using built-in default"),
+            error_type=type(exc).__name__,
+            error_desc=safe_error_description(exc),
         )
 
     if app_state.oauth_token_manager is not None:

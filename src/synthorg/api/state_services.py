@@ -282,6 +282,33 @@ class AppStateServicesMixin:
         return self._ticket_store
 
     @property
+    def ws_auth_timeout_seconds(self) -> float:
+        """Return the WebSocket first-message auth-handshake timeout.
+
+        Baked in by ``_apply_bridge_config`` from
+        ``api.ws_auth_timeout_seconds`` (``restart_required=True``);
+        always has a sane built-in default (10.0 s) so the handler
+        never reaches back through the resolver per-connection.
+        """
+        return self._ws_auth_timeout_seconds
+
+    def set_ws_auth_timeout_seconds(self, value: float) -> None:
+        """Bake in the resolved WebSocket auth timeout once at startup.
+
+        Mirrors the ``set_max_pending_per_user`` pattern used by the
+        ticket store: ``_apply_bridge_config`` resolves the setting
+        and calls this setter with the validated value, which is
+        then read by the ``/ws`` handler.
+        """
+        if value < 1.0 or value > 120.0:  # noqa: PLR2004
+            msg = (
+                "ws_auth_timeout_seconds must be between 1.0 and 120.0"
+                f" seconds, got {value}"
+            )
+            raise ValueError(msg)
+        self._ws_auth_timeout_seconds = value
+
+    @property
     def has_session_store(self) -> bool:
         """Check whether the session store is configured."""
         return self._session_store is not None
