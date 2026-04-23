@@ -4,6 +4,7 @@ argument-hint: "<setup|cleanup|status|tree|rebase|launch> [options]"
 allowed-tools:
   - Bash
   - Read
+  - Write
   - Glob
   - Grep
   - AskUserQuestion
@@ -293,23 +294,23 @@ Open each worktree as a **plain terminal tab** in the current Windows Terminal w
 ### Steps
 
 1. **For each worktree**, derive:
-   - Windows-form path (forward slashes → backslashes, e.g. `C:\Users\Aurelio\synthorg-wt-<slug>`)
-   - Tab title: the dir suffix after `wt-` (e.g. `tighten-workflow-permissions`), truncated to ~30 chars
+   - Path in **forward-slash form** (e.g. `C:/Users/Aurelio/synthorg-wt-<slug>`). Windows Terminal's `-d` flag accepts forward slashes natively and this avoids shell escape-sequence risk (e.g. `\t` in a Bash double-quoted string would be interpreted as a tab character, and `\U` / `\N` can trigger warnings or unicode-escape behavior in some shells). Do NOT emit backslash paths from the Bash tool.
+   - Tab title: the dir suffix after `wt-` (e.g. `tighten-workflow-permissions`), truncated to ~30 chars.
 
 2. **Spawn one tab per worktree, sequentially:**
 
    ```bash
-   wt.exe -w 0 new-tab --title "<title>" -d "<windows-path>"
+   wt.exe -w 0 new-tab --title "<title>" -d "<forward-slash-path>"
    ```
 
    - `-w 0` targets the current Windows Terminal window (adds a tab, does not open a new window)
-   - `-d <path>` sets the tab's starting directory -- wt honors the backslash Windows-style path
+   - `-d <path>` sets the tab's starting directory. Forward slashes work -- wt accepts them and the shell never rewrites them.
    - No trailing command. The default profile starts naturally.
    - Keep calls sequential (one Bash call per worktree). Each call returns exit 0 immediately; wt fires-and-forgets.
 
 3. **Report:**
 
-   ```
+   ```text
    N tabs opened: <slug1>, <slug2>, ...
    In each tab, run: claude
    Then paste the prompt from .claude/initial-prompt.md (or `cat .claude/initial-prompt.md | clip` in PowerShell to copy it first).
