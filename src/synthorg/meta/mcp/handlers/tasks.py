@@ -8,6 +8,7 @@ Shims the 8 task tools onto ``app_state.task_engine``
 ``not_supported`` envelope.
 """
 
+import copy
 from collections.abc import Mapping  # noqa: TC003 -- PEP 649 annotation
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
@@ -88,7 +89,7 @@ def _log_guardrail(tool: str, exc: GuardrailViolationError) -> None:
     )
 
 
-def _actor_name(actor: Any) -> str | None:
+def _actor_id(actor: Any) -> str | None:
     """Return a stable audit identifier for ``actor`` (prefers ``.id``)."""
     if actor is None:
         return None
@@ -103,7 +104,7 @@ def _require_non_blank(arguments: dict[str, Any], key: str) -> str:
     raw = require_arg(arguments, key, str)
     if not raw.strip():
         raise invalid_argument(key, _TY_NON_BLANK)
-    return raw
+    return raw.strip()
 
 
 def _coerce_status(
@@ -219,7 +220,7 @@ async def _tasks_update(
 ) -> str:
     tool = "synthorg_tasks_update"
     try:
-        requested_by = _actor_name(actor)
+        requested_by = _actor_id(actor)
         if requested_by is None:
             raise invalid_argument(_ARG_ACTOR, _TY_AGENT)
         task_id = _require_non_blank(arguments, _ARG_TASK_ID)
@@ -265,7 +266,7 @@ async def _tasks_delete(
         _log_guardrail(tool, exc)
         return err(exc)
 
-    requested_by = _actor_name(actor) or "system"
+    requested_by = _actor_id(actor) or "system"
     try:
         await app_state.task_engine.delete_task(
             task_id,
@@ -297,7 +298,7 @@ async def _tasks_transition(
 ) -> str:
     tool = "synthorg_tasks_transition"
     try:
-        requested_by = _actor_name(actor)
+        requested_by = _actor_id(actor)
         if requested_by is None:
             raise invalid_argument(_ARG_ACTOR, _TY_AGENT)
         task_id = _require_non_blank(arguments, _ARG_TASK_ID)
@@ -346,7 +347,7 @@ async def _tasks_cancel(
         _log_guardrail(tool, exc)
         return err(exc)
 
-    requested_by = _actor_name(actor) or "system"
+    requested_by = _actor_id(actor) or "system"
     try:
         task = await app_state.task_engine.cancel_task(
             task_id,
@@ -388,14 +389,16 @@ async def _activities_list(
 
 
 TASK_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(
-    {
-        "synthorg_tasks_list": _tasks_list,
-        "synthorg_tasks_get": _tasks_get,
-        "synthorg_tasks_create": _tasks_create,
-        "synthorg_tasks_update": _tasks_update,
-        "synthorg_tasks_delete": _tasks_delete,
-        "synthorg_tasks_transition": _tasks_transition,
-        "synthorg_tasks_cancel": _tasks_cancel,
-        "synthorg_activities_list": _activities_list,
-    },
+    copy.deepcopy(
+        {
+            "synthorg_tasks_list": _tasks_list,
+            "synthorg_tasks_get": _tasks_get,
+            "synthorg_tasks_create": _tasks_create,
+            "synthorg_tasks_update": _tasks_update,
+            "synthorg_tasks_delete": _tasks_delete,
+            "synthorg_tasks_transition": _tasks_transition,
+            "synthorg_tasks_cancel": _tasks_cancel,
+            "synthorg_activities_list": _activities_list,
+        },
+    ),
 )

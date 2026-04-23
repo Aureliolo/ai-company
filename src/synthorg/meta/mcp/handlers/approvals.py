@@ -15,6 +15,7 @@ rejection.  Create and approve are non-destructive writes and only
 need an actor (to populate ``requested_by`` / ``decided_by``).
 """
 
+import copy
 from collections.abc import Mapping  # noqa: TC003 -- PEP 649 annotation
 from datetime import UTC, datetime
 from types import MappingProxyType
@@ -115,14 +116,19 @@ def _coerce_risk(raw: Any, *, field: str = "risk_level") -> ApprovalRiskLevel | 
 
 
 def _require_non_blank(arguments: dict[str, Any], key: str) -> str:
-    """Extract a non-blank string argument or raise."""
+    """Extract a non-blank string argument, stripped of surrounding whitespace.
+
+    Normalising at the boundary keeps downstream lookups consistent --
+    an ``approval_id`` like ``"  approval-123  "`` would otherwise fail
+    the store's exact-match lookup.
+    """
     raw = require_arg(arguments, key, str)
     if not raw.strip():
         raise invalid_argument(key, _TY_NON_BLANK)
-    return raw
+    return raw.strip()
 
 
-def _actor_name(actor: Any) -> str | None:
+def _actor_id(actor: Any) -> str | None:
     """Return a stable audit identifier for ``actor``.
 
     Prefers ``actor.id`` (a ``UUID`` that never changes over the
@@ -165,9 +171,9 @@ def _log_guardrail(tool: str, exc: GuardrailViolationError) -> None:
     )
 
 
-def _required_actor_name(actor: Any) -> str:
-    """Return ``actor.name`` or raise ``ArgumentValidationError``."""
-    name = _actor_name(actor)
+def _required_actor_id(actor: Any) -> str:
+    """Return the actor's stable id (or name fallback) or raise."""
+    name = _actor_id(actor)
     if name is None:
         raise invalid_argument(_ARG_ACTOR, _TY_AGENT)
     return name
@@ -258,7 +264,7 @@ async def _create_approval(
     tool = "synthorg_approvals_create"
 
     try:
-        requested_by = _required_actor_name(actor)
+        requested_by = _required_actor_id(actor)
         action_type = _require_non_blank(arguments, "action_type")
         description = _require_non_blank(arguments, "description")
         title_raw = arguments.get("title")
@@ -298,27 +304,30 @@ async def _create_approval(
     return ok(data=item.model_dump(mode="json"))
 
 
-async def _decide(  # noqa: PLR0913
+async def _decide(
     *,
     app_state: Any,
     approval_id: str,
     actor: Any,
     target: ApprovalStatus,
     reason: str | None,
-    tool: str,
 ) -> ApprovalItem:
     """Shared approve/reject finalisation.
 
     Fetches the current item, stamps decision fields, and writes via
     ``save_if_pending`` so a concurrent decision cannot race us past
-    first-writer-wins.
+    first-writer-wins.  When ``save_if_pending`` returns ``None`` we
+    re-read the approval to distinguish *gone* (``_NotFoundError``) from
+    *raced to a new state* (``_ConflictError``) -- a silent collapse to
+    "conflict" misleads callers when the item was actually deleted or
+    expired between the fetch and the write.
 
     Raises:
-        _NotFoundError: Approval id does not exist.
+        _NotFoundError: Approval id does not exist or was removed.
         _ConflictError: Item already decided or in-flight save.
         ArgumentValidationError: Actor is missing a decidable name.
     """
-    decided_by = _required_actor_name(actor)
+    decided_by = _required_actor_id(actor)
     existing = await app_state.approval_store.get(approval_id)
     if existing is None:
         msg = f"Approval {approval_id!r} not found"
@@ -339,9 +348,15 @@ async def _decide(  # noqa: PLR0913
         updated,
     )
     if saved is None:
-        msg = f"Approval {approval_id!r} was decided concurrently"
+        current = await app_state.approval_store.get(approval_id)
+        if current is None:
+            msg = f"Approval {approval_id!r} was removed before decision"
+            raise _NotFoundError(msg)
+        msg = (
+            f"Approval {approval_id!r} was decided concurrently "
+            f"(now {current.status.value!s})"
+        )
         raise _ConflictError(msg)
-    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return saved
 
 
@@ -370,7 +385,6 @@ async def _approve(
             actor=actor,
             target=ApprovalStatus.APPROVED,
             reason=comment,
-            tool=tool,
         )
     except ArgumentValidationError as exc:
         _log_invalid(tool, exc)
@@ -385,6 +399,7 @@ async def _approve(
         _log_failed(tool, exc)
         return err(exc)
 
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(data=saved.model_dump(mode="json"))
 
 
@@ -420,7 +435,6 @@ async def _reject(
             actor=actor,
             target=ApprovalStatus.REJECTED,
             reason=reason,
-            tool=tool,
         )
     except ArgumentValidationError as exc:
         _log_invalid(tool, exc)
@@ -439,7 +453,7 @@ async def _reject(
     logger.info(
         MCP_DESTRUCTIVE_OP_EXECUTED,
         tool_name=tool,
-        actor_agent_id=_actor_name(actor),
+        actor_agent_id=_actor_id(actor),
         reason=reason,
         target_id=approval_id,
     )
@@ -447,11 +461,13 @@ async def _reject(
 
 
 APPROVAL_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(
-    {
-        "synthorg_approvals_list": _list_approvals,
-        "synthorg_approvals_get": _get_approval,
-        "synthorg_approvals_create": _create_approval,
-        "synthorg_approvals_approve": _approve,
-        "synthorg_approvals_reject": _reject,
-    },
+    copy.deepcopy(
+        {
+            "synthorg_approvals_list": _list_approvals,
+            "synthorg_approvals_get": _get_approval,
+            "synthorg_approvals_create": _create_approval,
+            "synthorg_approvals_approve": _approve,
+            "synthorg_approvals_reject": _reject,
+        },
+    ),
 )

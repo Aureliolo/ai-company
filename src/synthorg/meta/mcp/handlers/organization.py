@@ -12,6 +12,7 @@ the guardrail triple at the handler boundary even when routed to
 online.
 """
 
+import copy
 from collections.abc import Mapping  # noqa: TC003 -- PEP 649 annotation
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
@@ -99,64 +100,66 @@ def _mk_destructive(tool: str, why: str) -> ToolHandler:
 
 
 ORGANIZATION_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(
-    {
-        "synthorg_company_get": _mk("synthorg_company_get", _WHY_COMPANY),
-        "synthorg_company_update": _mk("synthorg_company_update", _WHY_COMPANY),
-        "synthorg_company_list_departments": _mk(
-            "synthorg_company_list_departments",
-            _WHY_COMPANY,
-        ),
-        "synthorg_company_reorder_departments": _mk(
-            "synthorg_company_reorder_departments",
-            _WHY_COMPANY,
-        ),
-        "synthorg_company_versions_list": _mk(
-            "synthorg_company_versions_list",
-            _WHY_COMPANY,
-        ),
-        "synthorg_company_versions_get": _mk(
-            "synthorg_company_versions_get",
-            _WHY_COMPANY,
-        ),
-        "synthorg_departments_list": _mk(
-            "synthorg_departments_list",
-            _WHY_DEPARTMENTS,
-        ),
-        "synthorg_departments_get": _mk(
-            "synthorg_departments_get",
-            _WHY_DEPARTMENTS,
-        ),
-        "synthorg_departments_create": _mk(
-            "synthorg_departments_create",
-            _WHY_DEPARTMENTS,
-        ),
-        "synthorg_departments_update": _mk(
-            "synthorg_departments_update",
-            _WHY_DEPARTMENTS,
-        ),
-        "synthorg_departments_delete": _mk_destructive(
-            "synthorg_departments_delete",
-            _WHY_DEPARTMENTS,
-        ),
-        "synthorg_departments_get_health": _mk(
-            "synthorg_departments_get_health",
-            _WHY_DEPARTMENTS,
-        ),
-        "synthorg_teams_list": _mk("synthorg_teams_list", _WHY_TEAMS),
-        "synthorg_teams_get": _mk("synthorg_teams_get", _WHY_TEAMS),
-        "synthorg_teams_create": _mk("synthorg_teams_create", _WHY_TEAMS),
-        "synthorg_teams_update": _mk("synthorg_teams_update", _WHY_TEAMS),
-        "synthorg_teams_delete": _mk_destructive(
-            "synthorg_teams_delete",
-            _WHY_TEAMS,
-        ),
-        "synthorg_role_versions_list": _mk(
-            "synthorg_role_versions_list",
-            _WHY_ROLE_VERSIONS,
-        ),
-        "synthorg_role_versions_get": _mk(
-            "synthorg_role_versions_get",
-            _WHY_ROLE_VERSIONS,
-        ),
-    },
+    copy.deepcopy(
+        {
+            "synthorg_company_get": _mk("synthorg_company_get", _WHY_COMPANY),
+            "synthorg_company_update": _mk("synthorg_company_update", _WHY_COMPANY),
+            "synthorg_company_list_departments": _mk(
+                "synthorg_company_list_departments",
+                _WHY_COMPANY,
+            ),
+            "synthorg_company_reorder_departments": _mk(
+                "synthorg_company_reorder_departments",
+                _WHY_COMPANY,
+            ),
+            "synthorg_company_versions_list": _mk(
+                "synthorg_company_versions_list",
+                _WHY_COMPANY,
+            ),
+            "synthorg_company_versions_get": _mk(
+                "synthorg_company_versions_get",
+                _WHY_COMPANY,
+            ),
+            "synthorg_departments_list": _mk(
+                "synthorg_departments_list",
+                _WHY_DEPARTMENTS,
+            ),
+            "synthorg_departments_get": _mk(
+                "synthorg_departments_get",
+                _WHY_DEPARTMENTS,
+            ),
+            "synthorg_departments_create": _mk(
+                "synthorg_departments_create",
+                _WHY_DEPARTMENTS,
+            ),
+            "synthorg_departments_update": _mk(
+                "synthorg_departments_update",
+                _WHY_DEPARTMENTS,
+            ),
+            "synthorg_departments_delete": _mk_destructive(
+                "synthorg_departments_delete",
+                _WHY_DEPARTMENTS,
+            ),
+            "synthorg_departments_get_health": _mk(
+                "synthorg_departments_get_health",
+                _WHY_DEPARTMENTS,
+            ),
+            "synthorg_teams_list": _mk("synthorg_teams_list", _WHY_TEAMS),
+            "synthorg_teams_get": _mk("synthorg_teams_get", _WHY_TEAMS),
+            "synthorg_teams_create": _mk("synthorg_teams_create", _WHY_TEAMS),
+            "synthorg_teams_update": _mk("synthorg_teams_update", _WHY_TEAMS),
+            "synthorg_teams_delete": _mk_destructive(
+                "synthorg_teams_delete",
+                _WHY_TEAMS,
+            ),
+            "synthorg_role_versions_list": _mk(
+                "synthorg_role_versions_list",
+                _WHY_ROLE_VERSIONS,
+            ),
+            "synthorg_role_versions_get": _mk(
+                "synthorg_role_versions_get",
+                _WHY_ROLE_VERSIONS,
+            ),
+        },
+    ),
 )

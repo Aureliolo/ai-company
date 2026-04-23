@@ -16,6 +16,7 @@ guardrail.  ``workflows_delete`` is live; the other two are
 schema layer.
 """
 
+import copy
 from collections.abc import Mapping  # noqa: TC003 -- PEP 649 annotation
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
@@ -48,6 +49,7 @@ from synthorg.observability.events.mcp import (
     MCP_HANDLER_GUARDRAIL_VIOLATED,
     MCP_HANDLER_INVOKE_FAILED,
     MCP_HANDLER_INVOKE_SUCCESS,
+    MCP_HANDLER_SERVICE_FALLBACK,
 )
 
 if TYPE_CHECKING:
@@ -100,7 +102,7 @@ def _log_guardrail(tool: str, exc: GuardrailViolationError) -> None:
     )
 
 
-def _actor_name(actor: Any) -> str | None:
+def _actor_id(actor: Any) -> str | None:
     """Return a stable audit identifier for ``actor`` (prefers ``.id``)."""
     if actor is None:
         return None
@@ -133,7 +135,7 @@ def _service(app_state: Any) -> WorkflowService:
     if cached is not None:
         return cached
     logger.debug(
-        MCP_HANDLER_INVOKE_SUCCESS,
+        MCP_HANDLER_SERVICE_FALLBACK,
         tool_name="workflows._service",
         fallback="persistence",
         reason="app_state.workflow_service not wired -- building per-call",
@@ -162,6 +164,8 @@ async def _workflows_list(
     try:
         items = await _service(app_state).list_definitions()
         page, meta = paginate_sequence(items, offset=offset, limit=limit)
+    except MemoryError, RecursionError:
+        raise
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -183,6 +187,8 @@ async def _workflows_get(
         return err(exc)
     try:
         defn = await _service(app_state).get_definition(def_id)
+    except MemoryError, RecursionError:
+        raise
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -242,6 +248,8 @@ async def _workflows_delete(
 
     try:
         deleted = await _service(app_state).delete_definition(def_id)
+    except MemoryError, RecursionError:
+        raise
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -256,7 +264,7 @@ async def _workflows_delete(
     logger.info(
         MCP_DESTRUCTIVE_OP_EXECUTED,
         tool_name=tool,
-        actor_agent_id=_actor_name(actor),
+        actor_agent_id=_actor_id(actor),
         reason=reason,
         target_id=def_id,
     )
@@ -396,22 +404,24 @@ async def _workflow_versions_get(
 
 
 WORKFLOW_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(
-    {
-        "synthorg_workflows_list": _workflows_list,
-        "synthorg_workflows_get": _workflows_get,
-        "synthorg_workflows_create": _workflows_create,
-        "synthorg_workflows_update": _workflows_update,
-        "synthorg_workflows_delete": _workflows_delete,
-        "synthorg_workflows_validate": _workflows_validate,
-        "synthorg_subworkflows_list": _subworkflows_list,
-        "synthorg_subworkflows_get": _subworkflows_get,
-        "synthorg_subworkflows_create": _subworkflows_create,
-        "synthorg_subworkflows_delete": _subworkflows_delete,
-        "synthorg_workflow_executions_list": _workflow_executions_list,
-        "synthorg_workflow_executions_get": _workflow_executions_get,
-        "synthorg_workflow_executions_start": _workflow_executions_start,
-        "synthorg_workflow_executions_cancel": _workflow_executions_cancel,
-        "synthorg_workflow_versions_list": _workflow_versions_list,
-        "synthorg_workflow_versions_get": _workflow_versions_get,
-    },
+    copy.deepcopy(
+        {
+            "synthorg_workflows_list": _workflows_list,
+            "synthorg_workflows_get": _workflows_get,
+            "synthorg_workflows_create": _workflows_create,
+            "synthorg_workflows_update": _workflows_update,
+            "synthorg_workflows_delete": _workflows_delete,
+            "synthorg_workflows_validate": _workflows_validate,
+            "synthorg_subworkflows_list": _subworkflows_list,
+            "synthorg_subworkflows_get": _subworkflows_get,
+            "synthorg_subworkflows_create": _subworkflows_create,
+            "synthorg_subworkflows_delete": _subworkflows_delete,
+            "synthorg_workflow_executions_list": _workflow_executions_list,
+            "synthorg_workflow_executions_get": _workflow_executions_get,
+            "synthorg_workflow_executions_start": _workflow_executions_start,
+            "synthorg_workflow_executions_cancel": _workflow_executions_cancel,
+            "synthorg_workflow_versions_list": _workflow_versions_list,
+            "synthorg_workflow_versions_get": _workflow_versions_get,
+        },
+    ),
 )

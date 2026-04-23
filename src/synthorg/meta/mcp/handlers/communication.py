@@ -14,6 +14,7 @@ and, where the underlying service is live, emit
 ``MCP_DESTRUCTIVE_OP_EXECUTED`` on success.
 """
 
+import copy
 from collections.abc import Mapping  # noqa: TC003 -- PEP 649 annotation
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
@@ -309,27 +310,29 @@ async def _tunnel_connect(
 
 
 COMMUNICATION_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(
-    {
-        "synthorg_messages_list": _messages_list,
-        "synthorg_messages_get": _messages_get,
-        "synthorg_messages_send": _messages_send,
-        "synthorg_messages_delete": _messages_delete,
-        "synthorg_meetings_list": _meetings_list,
-        "synthorg_meetings_get": _meetings_get,
-        "synthorg_meetings_create": _meetings_create,
-        "synthorg_meetings_update": _meetings_update,
-        "synthorg_meetings_delete": _meetings_delete,
-        "synthorg_connections_list": _connections_list,
-        "synthorg_connections_get": _connections_get,
-        "synthorg_connections_create": _connections_create,
-        "synthorg_connections_delete": _connections_delete,
-        "synthorg_connections_check_health": _connections_check_health,
-        "synthorg_webhooks_list": _webhooks_list,
-        "synthorg_webhooks_get": _webhooks_get,
-        "synthorg_webhooks_create": _webhooks_create,
-        "synthorg_webhooks_update": _webhooks_update,
-        "synthorg_webhooks_delete": _webhooks_delete,
-        "synthorg_tunnel_get_status": _tunnel_get_status,
-        "synthorg_tunnel_connect": _tunnel_connect,
-    },
+    copy.deepcopy(
+        {
+            "synthorg_messages_list": _messages_list,
+            "synthorg_messages_get": _messages_get,
+            "synthorg_messages_send": _messages_send,
+            "synthorg_messages_delete": _messages_delete,
+            "synthorg_meetings_list": _meetings_list,
+            "synthorg_meetings_get": _meetings_get,
+            "synthorg_meetings_create": _meetings_create,
+            "synthorg_meetings_update": _meetings_update,
+            "synthorg_meetings_delete": _meetings_delete,
+            "synthorg_connections_list": _connections_list,
+            "synthorg_connections_get": _connections_get,
+            "synthorg_connections_create": _connections_create,
+            "synthorg_connections_delete": _connections_delete,
+            "synthorg_connections_check_health": _connections_check_health,
+            "synthorg_webhooks_list": _webhooks_list,
+            "synthorg_webhooks_get": _webhooks_get,
+            "synthorg_webhooks_create": _webhooks_create,
+            "synthorg_webhooks_update": _webhooks_update,
+            "synthorg_webhooks_delete": _webhooks_delete,
+            "synthorg_tunnel_get_status": _tunnel_get_status,
+            "synthorg_tunnel_connect": _tunnel_connect,
+        },
+    ),
 )

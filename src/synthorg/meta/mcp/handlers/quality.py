@@ -11,6 +11,7 @@ built via the shared :func:`_mk` factory (same pattern as ``signals``
 and ``organization``) so actor typing stays consistent.
 """
 
+import copy
 from collections.abc import Mapping  # noqa: TC003 -- PEP 649 annotation
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
@@ -55,30 +56,32 @@ def _mk(tool: str, why: str) -> ToolHandler:
 
 
 QUALITY_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(
-    {
-        "synthorg_quality_get_summary": _mk(
-            "synthorg_quality_get_summary",
-            _WHY_QUALITY,
-        ),
-        "synthorg_quality_get_agent_quality": _mk(
-            "synthorg_quality_get_agent_quality",
-            _WHY_QUALITY,
-        ),
-        "synthorg_quality_list_scores": _mk(
-            "synthorg_quality_list_scores",
-            _WHY_QUALITY,
-        ),
-        "synthorg_reviews_list": _mk("synthorg_reviews_list", _WHY_REVIEWS),
-        "synthorg_reviews_get": _mk("synthorg_reviews_get", _WHY_REVIEWS),
-        "synthorg_reviews_create": _mk("synthorg_reviews_create", _WHY_REVIEWS),
-        "synthorg_reviews_update": _mk("synthorg_reviews_update", _WHY_REVIEWS),
-        "synthorg_evaluation_versions_list": _mk(
-            "synthorg_evaluation_versions_list",
-            _WHY_EVAL_VERSIONS,
-        ),
-        "synthorg_evaluation_versions_get": _mk(
-            "synthorg_evaluation_versions_get",
-            _WHY_EVAL_VERSIONS,
-        ),
-    },
+    copy.deepcopy(
+        {
+            "synthorg_quality_get_summary": _mk(
+                "synthorg_quality_get_summary",
+                _WHY_QUALITY,
+            ),
+            "synthorg_quality_get_agent_quality": _mk(
+                "synthorg_quality_get_agent_quality",
+                _WHY_QUALITY,
+            ),
+            "synthorg_quality_list_scores": _mk(
+                "synthorg_quality_list_scores",
+                _WHY_QUALITY,
+            ),
+            "synthorg_reviews_list": _mk("synthorg_reviews_list", _WHY_REVIEWS),
+            "synthorg_reviews_get": _mk("synthorg_reviews_get", _WHY_REVIEWS),
+            "synthorg_reviews_create": _mk("synthorg_reviews_create", _WHY_REVIEWS),
+            "synthorg_reviews_update": _mk("synthorg_reviews_update", _WHY_REVIEWS),
+            "synthorg_evaluation_versions_list": _mk(
+                "synthorg_evaluation_versions_list",
+                _WHY_EVAL_VERSIONS,
+            ),
+            "synthorg_evaluation_versions_get": _mk(
+                "synthorg_evaluation_versions_get",
+                _WHY_EVAL_VERSIONS,
+            ),
+        },
+    ),
 )

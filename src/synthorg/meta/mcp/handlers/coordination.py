@@ -1,14 +1,20 @@
 """Coordination domain MCP handlers.
 
-9 tools across coordination, scaling, and ceremony-policy.  Most shim
-onto services already exposed on ``app_state`` (``scaling_service``,
-``coordination_metrics_store``, ``ceremony_scheduler``); the ones that
-require richer orchestration (``coordinate_task``,
-``scaling_trigger``) return ``not_supported`` via the shared
-:func:`_mk` factory so actor typing stays consistent with the rest of
-the handler surface.
+9 tools across coordination, scaling, and ceremony-policy.  All nine
+handlers currently return a structured ``not_supported`` envelope via
+the shared :func:`_mk` factory -- the backing services
+(``scaling_service``, ``coordination_metrics_store``,
+``ceremony_scheduler``) exist on ``app_state`` but none of them expose
+the read-friendly facade shape the MCP tools expect, and destructive
+entry points (``coordinate_task``, ``scaling_trigger``) are
+orchestrated through the engine loop / self-improvement cycle rather
+than an ad-hoc MCP call.  Centralising on :func:`_mk` keeps actor
+typing consistent across the 9 handlers and makes wiring a future
+``CoordinationService`` / ``ScalingService`` / ``CeremonyPolicyService``
+facade a local change to this module.
 """
 
+import copy
 from collections.abc import Mapping  # noqa: TC003 -- PEP 649 annotation
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
@@ -75,42 +81,44 @@ _WHY_CEREMONY_ACTIVE = (
 
 
 COORDINATION_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(
-    {
-        "synthorg_coordination_coordinate_task": _mk(
-            "synthorg_coordination_coordinate_task",
-            _WHY_COORDINATE_TASK,
-        ),
-        "synthorg_coordination_metrics_list": _mk(
-            "synthorg_coordination_metrics_list",
-            _WHY_METRICS_LIST,
-        ),
-        "synthorg_scaling_list_decisions": _mk(
-            "synthorg_scaling_list_decisions",
-            _WHY_SCALING_LIST,
-        ),
-        "synthorg_scaling_get_decision": _mk(
-            "synthorg_scaling_get_decision",
-            _WHY_SCALING_GET,
-        ),
-        "synthorg_scaling_get_config": _mk(
-            "synthorg_scaling_get_config",
-            _WHY_SCALING_CONFIG,
-        ),
-        "synthorg_scaling_trigger": _mk(
-            "synthorg_scaling_trigger",
-            _WHY_SCALING_TRIGGER,
-        ),
-        "synthorg_ceremony_policy_get": _mk(
-            "synthorg_ceremony_policy_get",
-            _WHY_CEREMONY_GET,
-        ),
-        "synthorg_ceremony_policy_get_resolved": _mk(
-            "synthorg_ceremony_policy_get_resolved",
-            _WHY_CEREMONY_RESOLVED,
-        ),
-        "synthorg_ceremony_policy_get_active_strategy": _mk(
-            "synthorg_ceremony_policy_get_active_strategy",
-            _WHY_CEREMONY_ACTIVE,
-        ),
-    },
+    copy.deepcopy(
+        {
+            "synthorg_coordination_coordinate_task": _mk(
+                "synthorg_coordination_coordinate_task",
+                _WHY_COORDINATE_TASK,
+            ),
+            "synthorg_coordination_metrics_list": _mk(
+                "synthorg_coordination_metrics_list",
+                _WHY_METRICS_LIST,
+            ),
+            "synthorg_scaling_list_decisions": _mk(
+                "synthorg_scaling_list_decisions",
+                _WHY_SCALING_LIST,
+            ),
+            "synthorg_scaling_get_decision": _mk(
+                "synthorg_scaling_get_decision",
+                _WHY_SCALING_GET,
+            ),
+            "synthorg_scaling_get_config": _mk(
+                "synthorg_scaling_get_config",
+                _WHY_SCALING_CONFIG,
+            ),
+            "synthorg_scaling_trigger": _mk(
+                "synthorg_scaling_trigger",
+                _WHY_SCALING_TRIGGER,
+            ),
+            "synthorg_ceremony_policy_get": _mk(
+                "synthorg_ceremony_policy_get",
+                _WHY_CEREMONY_GET,
+            ),
+            "synthorg_ceremony_policy_get_resolved": _mk(
+                "synthorg_ceremony_policy_get_resolved",
+                _WHY_CEREMONY_RESOLVED,
+            ),
+            "synthorg_ceremony_policy_get_active_strategy": _mk(
+                "synthorg_ceremony_policy_get_active_strategy",
+                _WHY_CEREMONY_ACTIVE,
+            ),
+        },
+    ),
 )

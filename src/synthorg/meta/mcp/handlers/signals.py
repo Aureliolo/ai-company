@@ -22,6 +22,7 @@ modules); centralising on the factory keeps actor typing consistent
 across the 9 handlers and removes boilerplate.
 """
 
+import copy
 from collections.abc import Mapping  # noqa: TC003 -- PEP 649 annotation
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
@@ -30,9 +31,12 @@ from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,  # noqa: TC001 -- PEP 649 annotation
 )
 from synthorg.meta.mcp.handlers.common import not_supported
+from synthorg.observability import get_logger
 
 if TYPE_CHECKING:
     from synthorg.core.agent import AgentIdentity
+
+logger = get_logger(__name__)
 
 _WHY_SIGNALS = (
     "signal aggregators live inside SelfImprovementService; no "
@@ -60,42 +64,44 @@ def _mk(tool: str, why: str) -> ToolHandler:
 
 
 SIGNAL_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(
-    {
-        "synthorg_signals_get_org_snapshot": _mk(
-            "synthorg_signals_get_org_snapshot",
-            _WHY_SIGNALS,
-        ),
-        "synthorg_signals_get_performance": _mk(
-            "synthorg_signals_get_performance",
-            _WHY_SIGNALS,
-        ),
-        "synthorg_signals_get_budget": _mk(
-            "synthorg_signals_get_budget",
-            _WHY_SIGNALS,
-        ),
-        "synthorg_signals_get_coordination": _mk(
-            "synthorg_signals_get_coordination",
-            _WHY_SIGNALS,
-        ),
-        "synthorg_signals_get_scaling_history": _mk(
-            "synthorg_signals_get_scaling_history",
-            _WHY_SIGNALS,
-        ),
-        "synthorg_signals_get_error_patterns": _mk(
-            "synthorg_signals_get_error_patterns",
-            _WHY_SIGNALS,
-        ),
-        "synthorg_signals_get_evolution_outcomes": _mk(
-            "synthorg_signals_get_evolution_outcomes",
-            _WHY_SIGNALS,
-        ),
-        "synthorg_signals_get_proposals": _mk(
-            "synthorg_signals_get_proposals",
-            _WHY_PROPOSALS,
-        ),
-        "synthorg_signals_submit_proposal": _mk(
-            "synthorg_signals_submit_proposal",
-            _WHY_PROPOSALS,
-        ),
-    },
+    copy.deepcopy(
+        {
+            "synthorg_signals_get_org_snapshot": _mk(
+                "synthorg_signals_get_org_snapshot",
+                _WHY_SIGNALS,
+            ),
+            "synthorg_signals_get_performance": _mk(
+                "synthorg_signals_get_performance",
+                _WHY_SIGNALS,
+            ),
+            "synthorg_signals_get_budget": _mk(
+                "synthorg_signals_get_budget",
+                _WHY_SIGNALS,
+            ),
+            "synthorg_signals_get_coordination": _mk(
+                "synthorg_signals_get_coordination",
+                _WHY_SIGNALS,
+            ),
+            "synthorg_signals_get_scaling_history": _mk(
+                "synthorg_signals_get_scaling_history",
+                _WHY_SIGNALS,
+            ),
+            "synthorg_signals_get_error_patterns": _mk(
+                "synthorg_signals_get_error_patterns",
+                _WHY_SIGNALS,
+            ),
+            "synthorg_signals_get_evolution_outcomes": _mk(
+                "synthorg_signals_get_evolution_outcomes",
+                _WHY_SIGNALS,
+            ),
+            "synthorg_signals_get_proposals": _mk(
+                "synthorg_signals_get_proposals",
+                _WHY_PROPOSALS,
+            ),
+            "synthorg_signals_submit_proposal": _mk(
+                "synthorg_signals_submit_proposal",
+                _WHY_PROPOSALS,
+            ),
+        },
+    ),
 )

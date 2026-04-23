@@ -6,6 +6,7 @@ need a ``SelfImprovementService`` facade on ``app_state`` that is not
 yet exposed, so they return ``not_supported``.
 """
 
+import copy
 from collections.abc import Mapping  # noqa: TC003 -- PEP 649 annotation
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
@@ -115,11 +116,13 @@ async def _meta_trigger_cycle(
 
 
 META_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(
-    {
-        "synthorg_meta_get_config": _meta_get_config,
-        "synthorg_meta_list_rules": _meta_list_rules,
-        "synthorg_meta_list_mcp_tools": _meta_list_mcp_tools,
-        "synthorg_meta_get_mcp_server_config": _meta_get_mcp_server_config,
-        "synthorg_meta_trigger_cycle": _meta_trigger_cycle,
-    },
+    copy.deepcopy(
+        {
+            "synthorg_meta_get_config": _meta_get_config,
+            "synthorg_meta_list_rules": _meta_list_rules,
+            "synthorg_meta_list_mcp_tools": _meta_list_mcp_tools,
+            "synthorg_meta_get_mcp_server_config": _meta_get_mcp_server_config,
+            "synthorg_meta_trigger_cycle": _meta_trigger_cycle,
+        },
+    ),
 )

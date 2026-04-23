@@ -13,6 +13,7 @@ boundary.  ``delete_checkpoint`` is live; the others are currently
 ``not_supported`` behind the guardrail.
 """
 
+import copy
 from collections.abc import Mapping  # noqa: TC003 -- PEP 649 annotation
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
@@ -84,8 +85,8 @@ def _log_guardrail(tool: str, exc: GuardrailViolationError) -> None:
     )
 
 
-def _actor_name(actor: Any) -> str | None:
-    """Return a stable audit identifier for ``actor``.
+def _actor_id(actor: Any) -> str | None:
+    """Return a stable audit identifier for ``actor`` (prefers ``.id``).
 
     Prefers ``actor.id`` (a ``UUID`` that never changes over the agent's
     lifetime) so destructive-op audit trails stay consistent even when
@@ -144,11 +145,12 @@ def _service(app_state: Any) -> MemoryService:
         run_repo = backend.fine_tune_runs
     except NotImplementedError as exc:
         raise _BackendLacksFineTuneError(_WHY_BACKEND_NO_FINE_TUNE) from exc
+    has_settings = getattr(app_state, "has_settings_service", False)
     return MemoryService(
         checkpoint_repo=checkpoint_repo,
         run_repo=run_repo,
         settings_service=(
-            app_state.settings_service if app_state.has_settings_service else None
+            getattr(app_state, "settings_service", None) if has_settings else None
         ),
     )
 
@@ -367,7 +369,7 @@ async def _memory_delete_checkpoint(  # noqa: PLR0911
     logger.info(
         MCP_DESTRUCTIVE_OP_EXECUTED,
         tool_name=tool,
-        actor_agent_id=_actor_name(actor),
+        actor_agent_id=_actor_id(actor),
         reason=reason,
         target_id=checkpoint_id,
     )
@@ -393,17 +395,19 @@ async def _memory_get_active_embedder(
 
 
 MEMORY_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(
-    {
-        "synthorg_memory_start_fine_tune": _memory_start_fine_tune,
-        "synthorg_memory_resume_fine_tune": _memory_resume_fine_tune,
-        "synthorg_memory_get_fine_tune_status": _memory_get_fine_tune_status,
-        "synthorg_memory_cancel_fine_tune": _memory_cancel_fine_tune,
-        "synthorg_memory_run_preflight": _memory_run_preflight,
-        "synthorg_memory_list_checkpoints": _memory_list_checkpoints,
-        "synthorg_memory_deploy_checkpoint": _memory_deploy_checkpoint,
-        "synthorg_memory_rollback_checkpoint": _memory_rollback_checkpoint,
-        "synthorg_memory_delete_checkpoint": _memory_delete_checkpoint,
-        "synthorg_memory_list_runs": _memory_list_runs,
-        "synthorg_memory_get_active_embedder": _memory_get_active_embedder,
-    },
+    copy.deepcopy(
+        {
+            "synthorg_memory_start_fine_tune": _memory_start_fine_tune,
+            "synthorg_memory_resume_fine_tune": _memory_resume_fine_tune,
+            "synthorg_memory_get_fine_tune_status": _memory_get_fine_tune_status,
+            "synthorg_memory_cancel_fine_tune": _memory_cancel_fine_tune,
+            "synthorg_memory_run_preflight": _memory_run_preflight,
+            "synthorg_memory_list_checkpoints": _memory_list_checkpoints,
+            "synthorg_memory_deploy_checkpoint": _memory_deploy_checkpoint,
+            "synthorg_memory_rollback_checkpoint": _memory_rollback_checkpoint,
+            "synthorg_memory_delete_checkpoint": _memory_delete_checkpoint,
+            "synthorg_memory_list_runs": _memory_list_runs,
+            "synthorg_memory_get_active_embedder": _memory_get_active_embedder,
+        },
+    ),
 )
