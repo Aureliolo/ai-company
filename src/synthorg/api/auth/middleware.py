@@ -19,6 +19,7 @@ from synthorg.api.auth.system_user import SYSTEM_AUDIENCE, SYSTEM_ISSUER
 from synthorg.api.guards import HumanRole
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
+    API_AUTH_COOKIE_NAME_FALLBACK,
     API_AUTH_COOKIE_USED,
     API_AUTH_FAILED,
     API_AUTH_SUCCESS,
@@ -41,9 +42,12 @@ _DEFAULT_COOKIE_NAME = "session"
 def _get_cookie_name(app_state: AppState) -> str:
     """Return the configured session cookie name.
 
-    Falls back to the default ``"session"`` when the config
-    is not available on the app state (e.g. in minimal test
-    fixtures).
+    Falls back to the default ``"session"`` when the config is not
+    available on the app state (e.g. in minimal test fixtures), after
+    logging the failure at WARNING so the fallback is observable.
+    The middleware hot path uses this on every request, so a broken
+    config graph would otherwise silently break cookie lookup for
+    operators with a custom ``auth.cookie_name``.
 
     Args:
         app_state: Application state container.
@@ -53,7 +57,12 @@ def _get_cookie_name(app_state: AppState) -> str:
     """
     try:
         return str(app_state.config.api.auth.cookie_name)
-    except AttributeError, TypeError:
+    except (AttributeError, TypeError) as exc:
+        logger.warning(
+            API_AUTH_COOKIE_NAME_FALLBACK,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
         return _DEFAULT_COOKIE_NAME
 
 

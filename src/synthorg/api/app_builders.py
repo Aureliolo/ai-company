@@ -10,9 +10,12 @@ import tempfile
 from pathlib import Path, PurePath
 from typing import TYPE_CHECKING
 
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.config import DEFAULT_SINKS, LogConfig
-from synthorg.observability.events.api import API_APP_STARTUP
+from synthorg.observability.events.api import (
+    API_APP_STARTUP,
+    API_MEMORY_DIR_TMPROOT_FALLBACK,
+)
 from synthorg.telemetry import TelemetryCollector, TelemetryConfig
 
 if TYPE_CHECKING:
@@ -140,7 +143,12 @@ def _allowed_memory_dir_roots() -> tuple[str, ...]:
     roots: list[str] = [str(Path("/data"))]
     try:
         tmp_root: str | None = str(Path(tempfile.gettempdir()))
-    except OSError, RuntimeError:
+    except (OSError, RuntimeError) as exc:
+        logger.warning(
+            API_MEMORY_DIR_TMPROOT_FALLBACK,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
         tmp_root = None
     if tmp_root is not None:
         roots.append(tmp_root)

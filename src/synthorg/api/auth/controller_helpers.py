@@ -22,8 +22,9 @@ from synthorg.api.auth.cookies import (
 )
 from synthorg.api.auth.models import AuthenticatedUser
 from synthorg.api.auth.session import Session
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
+    API_AUTH_CONFIG_FALLBACK,
     API_AUTH_FAILED,
     API_AUTH_GUARD_SKIPPED,
     API_SESSION_CREATE_FAILED,
@@ -237,9 +238,22 @@ def extract_jti(request: Request[Any, Any, Any]) -> str | None:
 
 
 def get_auth_config(app_state: AppState) -> AuthConfig:
-    """Return the auth config from app state."""
+    """Return the auth config from app state.
+
+    Returns an ``AuthConfig()`` default when the config graph is missing
+    or malformed, after logging the failure at WARNING so the fallback
+    never goes unnoticed.  Caller treats the default as fully valid;
+    the log line is the operator signal that custom auth tuning did
+    not apply.
+    """
     try:
         cfg: AuthConfig = app_state.config.api.auth
-        return cfg  # noqa: TRY300
-    except AttributeError, TypeError:
+    except (AttributeError, TypeError) as exc:
+        logger.warning(
+            API_AUTH_CONFIG_FALLBACK,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
         return AuthConfig()
+    else:
+        return cfg
