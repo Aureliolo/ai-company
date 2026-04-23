@@ -617,15 +617,28 @@ class TestListTasksPushDownPagination:
         finally:
             await eng.stop(timeout=2.0)
 
-    async def test_offset_only_with_no_limit_still_skips_rows(
+    async def test_repo_offset_only_with_no_limit_still_skips_rows(
         self,
         persistence: FakePersistence,
     ) -> None:
-        """``offset`` without ``limit`` must still skip the leading rows.
+        """Repository-direct offset-only semantics must still skip rows.
 
-        Regression test for a push-down bug where ``LIMIT ? OFFSET ?``
-        was only emitted when ``limit`` was set, so ``offset`` got
-        silently dropped for unbounded queries.
+        This is a **repository-contract** regression test, not an engine
+        test: ``TaskEngine.list_tasks`` rejects ``offset > 0`` without a
+        matching ``limit`` (see
+        :meth:`TaskEngine._validate_pagination`), but callers that go
+        straight to ``persistence.tasks.list_tasks`` are a legitimate
+        downstream scenario (ad-hoc admin scripts, future services that
+        don't need the engine's total-count guarantees).  The repository
+        must therefore preserve offset-only semantics: ``limit=None,
+        offset=N`` drops the leading ``N`` rows and returns the rest.
+
+        Regression target: the original push-down implementation only
+        emitted ``LIMIT ? OFFSET ?`` when ``limit`` was set, silently
+        dropping ``offset`` for unbounded queries (and, on SQLite,
+        emitting invalid SQL because ``OFFSET`` requires a preceding
+        ``LIMIT``).  The fake here mirrors that contract so regressions
+        in production repos surface in fake-backed tests too.
         """
         eng = TaskEngine(persistence=persistence)  # type: ignore[arg-type]
         eng.start()
@@ -636,7 +649,8 @@ class TestListTasksPushDownPagination:
                     requested_by="alice",
                 )
             full, _ = await eng.list_tasks(limit=10, offset=0)
-            # ``limit=None`` drives the legacy path; offset must still apply.
+            # Go directly to the repository -- the engine would reject
+            # ``limit=None, offset=2`` at the validation boundary.
             tail_tuple = await persistence.tasks.list_tasks(
                 limit=None,
                 offset=2,

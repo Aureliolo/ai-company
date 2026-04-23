@@ -582,10 +582,11 @@ class PostgresMessageRepository:
             raise DuplicateRecordError(err_msg) from exc
         except psycopg.Error as exc:
             msg = f"Failed to save message {msg_id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_MESSAGE_SAVE_FAILED,
                 message_id=msg_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         logger.info(PERSISTENCE_MESSAGE_SAVED, message_id=msg_id)
@@ -606,10 +607,11 @@ class PostgresMessageRepository:
         except (json.JSONDecodeError, ValidationError, KeyError, TypeError) as exc:
             msg_id = row.get("id", "unknown")
             msg = f"Failed to deserialize message {msg_id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_MESSAGE_DESERIALIZE_FAILED,
                 message_id=msg_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -651,10 +653,11 @@ class PostgresMessageRepository:
                 rows = await cur.fetchall()
         except psycopg.Error as exc:
             msg = f"Failed to fetch message history for channel {channel!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_MESSAGE_HISTORY_FAILED,
                 channel=channel,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         messages = tuple(self._row_to_message(row) for row in rows)
