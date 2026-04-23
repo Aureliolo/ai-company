@@ -93,11 +93,13 @@ def _request(
 def _intake(
     provider: _StubProvider,
     *,
+    task_engine: _FakeTaskEngine | None = None,
     temperature: float | None = None,
     max_tokens: int | None = None,
 ) -> AgentIntake:
+    fake_task_engine = task_engine or _FakeTaskEngine()
     kwargs: dict[str, object] = {
-        "task_engine": cast(TaskEngine, _FakeTaskEngine()),
+        "task_engine": cast(TaskEngine, fake_task_engine),
         "provider": cast(CompletionProvider, provider),
         "model": "test-small-001",
     }
@@ -118,19 +120,28 @@ class TestAgentIntakeBaseline:
         provider = _StubProvider(
             content='{"accepted": true}',
         )
-        intake = _intake(provider)
+        task_engine = _FakeTaskEngine(next_id="task-accept-1")
+        intake = _intake(provider, task_engine=task_engine)
         result = await intake.process(_request())
         assert result.accepted is True
-        assert result.task_id is not None
+        assert result.task_id == "task-accept-1"
+        # Assert the side effect: TaskEngine.create_task was actually
+        # invoked. Guards against a regression where process() stops
+        # calling create_task but still synthesizes an id.
+        assert task_engine.captured_data is not None
 
     async def test_reject_returns_reason(self) -> None:
         provider = _StubProvider(
             content='{"accepted": false, "reason": "out of scope"}',
         )
-        intake = _intake(provider)
+        task_engine = _FakeTaskEngine()
+        intake = _intake(provider, task_engine=task_engine)
         result = await intake.process(_request())
         assert result.accepted is False
         assert result.rejection_reason == "out of scope"
+        # Assert the absence of the side effect: on reject, no task is
+        # created.
+        assert task_engine.captured_data is None
 
 
 # -- SEC-1 fence + CompletionConfig contract (audit 92) --------------------
