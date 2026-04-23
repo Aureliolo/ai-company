@@ -91,6 +91,24 @@ def _require_callable(
     return fn
 
 
+def _split_setting_key(key: str) -> tuple[str, str]:
+    """Split a compound ``namespace.key`` wire identifier into its parts.
+
+    The MCP wire-level ``synthorg_settings_*`` tools accept a single
+    ``key`` argument; :class:`SettingsService` takes ``namespace`` and
+    ``key`` as distinct values.  This helper enforces the boundary and
+    surfaces a typed capability error when the caller omits the
+    namespace (no dot present).
+    """
+    namespace, dot, leaf = key.partition(".")
+    if not dot or not namespace or not leaf:
+        raise _capability_missing(
+            "settings_key_format",
+            f"setting key must be 'namespace.key' (got {key!r})",
+        )
+    return namespace, leaf
+
+
 # ── SettingsReadService ──────────────────────────────────────────────
 
 
@@ -124,14 +142,20 @@ class SettingsReadService:
         value: object,
         actor_id: NotBlankStr,
     ) -> None:
-        """Write ``key``/``value`` and emit the audit event."""
+        """Write ``namespace.key``/``value`` and emit the audit event.
+
+        ``key`` is the compound form ``<namespace>.<key>`` used on the
+        MCP wire; the underlying :class:`SettingsService.set` signature
+        takes ``namespace`` and ``key`` as separate positional args.
+        """
+        namespace, leaf_key = _split_setting_key(key)
         fn = _require_callable(
             self._settings,
             "set",
             "settings_update",
             "SettingsService does not expose a mutator",
         )
-        await fn(key=key, value=value, actor=actor_id)
+        await fn(namespace, leaf_key, str(value))
         logger.info(SETTINGS_VALUE_SET, key=key, actor_id=actor_id)
 
     async def delete_setting(
@@ -141,14 +165,15 @@ class SettingsReadService:
         actor_id: NotBlankStr,
         reason: NotBlankStr,
     ) -> None:
-        """Remove ``key`` from the store and emit the audit event."""
+        """Remove ``namespace.key`` from the store and emit the audit event."""
+        namespace, leaf_key = _split_setting_key(key)
         fn = _require_callable(
             self._settings,
             "delete",
             "settings_delete",
             "SettingsService does not expose delete",
         )
-        await fn(key=key, actor=actor_id)
+        await fn(namespace, leaf_key)
         logger.info(
             SETTINGS_VALUE_DELETED,
             key=key,
