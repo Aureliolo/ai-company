@@ -4,7 +4,6 @@ Hit / miss / evict are emitted inline with the existing debug logs
 so operators can track hit-rate per ``cache_name="mcp_result"``.
 """
 
-from typing import cast
 from unittest.mock import MagicMock
 
 import pytest
@@ -18,15 +17,7 @@ pytestmark = pytest.mark.unit
 
 def _result() -> ToolExecutionResult:
     """Build a minimal ``ToolExecutionResult`` for cache round-trip tests."""
-    return cast(
-        ToolExecutionResult,
-        ToolExecutionResult.model_construct(
-            success=True,
-            output="ok",
-            error=None,
-            duration_ms=0.0,
-        ),
-    )
+    return ToolExecutionResult(content="ok")
 
 
 def test_cache_hit_records_metric(monkeypatch: pytest.MonkeyPatch) -> None:

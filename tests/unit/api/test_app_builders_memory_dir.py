@@ -6,6 +6,7 @@ WARNING so operators can see that only ``/data`` is allowed.
 """
 
 import os
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -28,7 +29,7 @@ class TestAllowedMemoryDirRoots:
             msg = "disk full"
             raise OSError(msg)
 
-        monkeypatch.setattr(app_builders.tempfile, "gettempdir", _boom)
+        monkeypatch.setattr(tempfile, "gettempdir", _boom)
 
         with structlog.testing.capture_logs() as logs:
             roots = app_builders._allowed_memory_dir_roots()
@@ -52,5 +53,5 @@ class TestAllowedMemoryDirRoots:
         assert roots[0] == str(Path("/data"))
         assert len(roots) == 2
         assert os.path.normcase(roots[1]) == os.path.normcase(
-            str(Path(app_builders.tempfile.gettempdir())),
+            str(Path(tempfile.gettempdir())),
         )

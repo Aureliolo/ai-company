@@ -99,8 +99,8 @@ class _SuccessProvider(BaseCompletionProvider):
         config: CompletionConfig | None = None,
     ) -> AsyncIterator[StreamChunk]:
         async def _gen() -> AsyncIterator[StreamChunk]:
-            return
-            yield  # type: ignore[unreachable]
+            if False:
+                yield  # type: ignore[unreachable]
 
         return _gen()
 
@@ -184,11 +184,11 @@ def test_provider_label_defaults_to_class_name() -> None:
     """Subclasses without ``provider_name`` fall back to the class name."""
 
     class _Unbranded(BaseCompletionProvider):
-        async def _do_complete(self, *a: Any, **kw: Any) -> Any: ...  # type: ignore[override]
+        async def _do_complete(self, *a: Any, **kw: Any) -> Any: ...
 
-        async def _do_stream(self, *a: Any, **kw: Any) -> Any: ...  # type: ignore[override]
+        async def _do_stream(self, *a: Any, **kw: Any) -> Any: ...
 
-        async def _do_get_model_capabilities(self, model: str) -> Any: ...  # type: ignore[override]
+        async def _do_get_model_capabilities(self, model: str) -> Any: ...
 
     p = _Unbranded()
     assert p._provider_label() == "_Unbranded"
