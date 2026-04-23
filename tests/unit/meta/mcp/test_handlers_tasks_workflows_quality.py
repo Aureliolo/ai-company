@@ -9,7 +9,6 @@ import pytest
 import structlog.testing
 
 from synthorg.core.agent import AgentIdentity
-from synthorg.meta.mcp.handlers.quality import QUALITY_HANDLERS
 from synthorg.meta.mcp.handlers.tasks import TASK_HANDLERS
 from synthorg.meta.mcp.handlers.workflows import WORKFLOW_HANDLERS
 from synthorg.observability.events.mcp import (
@@ -265,22 +264,6 @@ class TestWorkflowsDelete:
 
 
 # --- quality --------------------------------------------------------------
-
-
-class TestQualitySmoke:
-    """All quality tools currently return ``not_supported``."""
-
-    @pytest.mark.parametrize("tool_name", list(QUALITY_HANDLERS.keys()))
-    async def test_all_return_not_supported(
-        self,
-        tool_name: str,
-    ) -> None:
-        body = _parse(
-            await QUALITY_HANDLERS[tool_name](
-                app_state=None,
-                arguments={},
-                actor=None,
-            ),
-        )
-        assert body["status"] == "error"
-        assert body["domain_code"] == "not_supported"
+# Phase 9 of META-MCP-2 flipped all quality handlers to live shims backed by
+# QualityFacadeService / ReviewFacadeService / EvaluationVersionService;
+# per-tool tests live in test_handlers_quality.py.

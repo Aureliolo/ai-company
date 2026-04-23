@@ -56,6 +56,11 @@ from synthorg.communication.messages.service import MessageService  # noqa: TC00
 from synthorg.config.schema import RootConfig  # noqa: TC001
 from synthorg.engine.approval_gate import ApprovalGate  # noqa: TC001
 from synthorg.engine.coordination.service import MultiAgentCoordinator  # noqa: TC001
+from synthorg.engine.quality.mcp_services import (
+    EvaluationVersionService,  # noqa: TC001
+    QualityFacadeService,  # noqa: TC001
+    ReviewFacadeService,  # noqa: TC001
+)
 from synthorg.engine.review_gate import ReviewGateService  # noqa: TC001
 from synthorg.engine.task_engine import TaskEngine  # noqa: TC001
 from synthorg.engine.workflow.ceremony_scheduler import CeremonyScheduler  # noqa: TC001
@@ -207,6 +212,7 @@ class AppState(AppStateServicesMixin):
         "_escalation_registry",
         "_escalation_store",
         "_escalation_sweeper",
+        "_evaluation_version_service",
         "_event_stream_hub",
         "_events_read_service",
         "_fine_tune_orchestrator",
@@ -240,9 +246,11 @@ class AppState(AppStateServicesMixin):
         "_provider_management",
         "_provider_read_service",
         "_provider_registry",
+        "_quality_facade_service",
         "_refresh_store",
         "_reports_service",
         "_requests_facade_service",
+        "_review_facade_service",
         "_review_gate_service",
         "_role_version_service",
         "_scaling_service",
@@ -441,6 +449,9 @@ class AppState(AppStateServicesMixin):
         self._client_facade_service: ClientFacadeService | None = None
         self._artifact_facade_service: ArtifactFacadeService | None = None
         self._ontology_facade_service: OntologyFacadeService | None = None
+        self._quality_facade_service: QualityFacadeService | None = None
+        self._review_facade_service: ReviewFacadeService | None = None
+        self._evaluation_version_service: EvaluationVersionService | None = None
         self._client_simulation_state: ClientSimulationState | None = None
         self._approval_timeout_scheduler: ApprovalTimeoutScheduler | None = None
         self._session_store: SessionStore | None = None

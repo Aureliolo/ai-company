@@ -34,6 +34,11 @@ from synthorg.communication.delegation.record_store import (
 )
 from synthorg.communication.meetings.service import MeetingService  # noqa: TC001
 from synthorg.communication.messages.service import MessageService  # noqa: TC001
+from synthorg.engine.quality.mcp_services import (
+    EvaluationVersionService,  # noqa: TC001
+    QualityFacadeService,  # noqa: TC001
+    ReviewFacadeService,  # noqa: TC001
+)
 from synthorg.hr.training.service import TrainingService  # noqa: TC001
 from synthorg.infrastructure.services import (
     AuditReadService,  # noqa: TC001
@@ -832,6 +837,9 @@ class AppStateServicesMixin:
     _client_facade_service: ClientFacadeService | None
     _artifact_facade_service: ArtifactFacadeService | None
     _ontology_facade_service: OntologyFacadeService | None
+    _quality_facade_service: QualityFacadeService | None
+    _review_facade_service: ReviewFacadeService | None
+    _evaluation_version_service: EvaluationVersionService | None
 
     @property
     def has_signals_service(self) -> bool:
@@ -1322,6 +1330,71 @@ class AppStateServicesMixin:
             "_ontology_facade_service",
             service,
             "OntologyFacadeService",
+        )
+
+    # ── Quality facades (META-MCP-2 phase 9) ─────────────────
+
+    @property
+    def has_quality_facade_service(self) -> bool:
+        return self._quality_facade_service is not None
+
+    @property
+    def quality_facade_service(self) -> QualityFacadeService:
+        return self._require_service(
+            self._quality_facade_service,
+            "QualityFacadeService",
+        )
+
+    def set_quality_facade_service(
+        self,
+        service: QualityFacadeService,
+    ) -> None:
+        self._set_once(
+            "_quality_facade_service",
+            service,
+            "QualityFacadeService",
+        )
+
+    @property
+    def has_review_facade_service(self) -> bool:
+        return self._review_facade_service is not None
+
+    @property
+    def review_facade_service(self) -> ReviewFacadeService:
+        return self._require_service(
+            self._review_facade_service,
+            "ReviewFacadeService",
+        )
+
+    def set_review_facade_service(
+        self,
+        service: ReviewFacadeService,
+    ) -> None:
+        self._set_once(
+            "_review_facade_service",
+            service,
+            "ReviewFacadeService",
+        )
+
+    @property
+    def has_evaluation_version_service(self) -> bool:
+        return self._evaluation_version_service is not None
+
+    @property
+    def evaluation_version_service(self) -> EvaluationVersionService:
+        return self._require_service(
+            self._evaluation_version_service,
+            "EvaluationVersionService",
+        )
+
+    def set_evaluation_version_service(
+        self,
+        service: EvaluationVersionService,
+    ) -> None:
+        self._set_once(
+            "_evaluation_version_service",
+            service,
+            "EvaluationVersionService",
         )
 
     def set_settings_service(self, settings_service: SettingsService) -> None:
