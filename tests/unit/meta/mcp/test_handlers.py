@@ -18,23 +18,25 @@ pytestmark = pytest.mark.unit
 
 
 class TestPlaceholderHandler:
-    """Tests for the placeholder handler factory."""
+    """Tests for the placeholder handler factory.
 
-    async def test_returns_not_implemented(self) -> None:
+    The scaffold now delegates to the canonical ``not_supported()``
+    envelope so unwired tools emit ``status="error"`` /
+    ``domain_code="not_supported"`` -- the same contract every real
+    handler ships.  The ``MCP_HANDLER_NOT_IMPLEMENTED`` WARNING event
+    continues to fire so ops alerting keeps working.
+    """
+
+    async def test_returns_not_supported_envelope(self) -> None:
         handler = make_placeholder_handler("synthorg_test_get")
         result = await handler(app_state=None, arguments={})
         body = json.loads(result)
-        assert body["status"] == "not_implemented"
-        assert body["tool"] == "synthorg_test_get"
-
-    async def test_echoes_arguments(self) -> None:
-        handler = make_placeholder_handler("synthorg_test_get")
-        result = await handler(app_state=None, arguments={"key": "val"})
-        body = json.loads(result)
-        assert body["arguments_received"] == {"key": "val"}
+        assert body["status"] == "error"
+        assert body["domain_code"] == "not_supported"
+        assert "synthorg_test_get" in body["message"]
 
     async def test_logs_warning_with_handler_not_implemented_event(self) -> None:
-        """Placeholder log is upgraded to WARNING + uses the HYG-1 event.
+        """Placeholder log stays at WARNING + keeps the HYG-1 event name.
 
         Ops alerting depends on this level + name being stable.
         """
@@ -52,10 +54,11 @@ class TestPlaceholderHandler:
         result = await handler(
             app_state=None,
             arguments={},
-            actor=object(),
+            actor=None,
         )
         body = json.loads(result)
-        assert body["status"] == "not_implemented"
+        assert body["status"] == "error"
+        assert body["domain_code"] == "not_supported"
 
 
 class TestMakeHandlersForTools:
@@ -72,7 +75,9 @@ class TestMakeHandlersForTools:
         handlers = make_handlers_for_tools(("tool_a",))
         result = await handlers["tool_a"](app_state=None, arguments={})
         body = json.loads(result)
-        assert body["tool"] == "tool_a"
+        assert body["status"] == "error"
+        assert body["domain_code"] == "not_supported"
+        assert "tool_a" in body["message"]
 
 
 class TestBuildHandlerMap:
@@ -140,9 +145,9 @@ class TestEndToEndInvocation:
         )
         assert result.is_error is False
         body = json.loads(result.content)
-        assert body["status"] == "not_implemented"
-        assert body["tool"] == "synthorg_synth_placeholder"
-        assert body["arguments_received"]["offset"] == 0
+        assert body["status"] == "error"
+        assert body["domain_code"] == "not_supported"
+        assert "synthorg_synth_placeholder" in body["message"]
 
     async def test_invoke_unknown_tool(self) -> None:
         registry = build_full_registry()

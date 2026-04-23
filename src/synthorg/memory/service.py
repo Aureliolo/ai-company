@@ -86,13 +86,26 @@ class MemoryService:
         *,
         limit: int,
         offset: int,
-    ) -> tuple[CheckpointRecord, ...]:
-        """Return a page of checkpoints newest-first."""
-        checkpoints, _ = await self._checkpoints.list_checkpoints(
+    ) -> tuple[tuple[CheckpointRecord, ...], int]:
+        """Return a page of checkpoints newest-first along with the total count.
+
+        Both values are needed so callers (REST controllers, MCP
+        handlers) can attach accurate pagination metadata without
+        reaching past the service boundary.
+
+        Args:
+            limit: Page size.
+            offset: Page offset.
+
+        Returns:
+            Tuple of ``(checkpoints, total)`` where ``total`` is the
+            unfiltered count the repository would return for an
+            unpaginated query.
+        """
+        return await self._checkpoints.list_checkpoints(
             limit=limit,
             offset=offset,
         )
-        return checkpoints
 
     async def get_checkpoint(
         self,

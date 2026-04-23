@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock
 import pytest
 import structlog.testing
 
+from synthorg.core.agent import AgentIdentity
 from synthorg.meta.mcp.handlers.quality import QUALITY_HANDLERS
 from synthorg.meta.mcp.handlers.tasks import TASK_HANDLERS
 from synthorg.meta.mcp.handlers.workflows import WORKFLOW_HANDLERS
@@ -15,13 +16,16 @@ from synthorg.observability.events.mcp import (
     MCP_DESTRUCTIVE_OP_EXECUTED,
     MCP_HANDLER_GUARDRAIL_VIOLATED,
 )
+from tests.unit.meta.mcp.conftest import make_test_actor
 
 pytestmark = pytest.mark.unit
 
 
 def _parse(result: str) -> dict[str, Any]:
     body: dict[str, Any] = json.loads(result)
-    assert body["status"] in {"ok", "error", "not_implemented"}
+    assert body["status"] in {"ok", "error"}, (
+        f"legacy envelope leaked: status={body['status']!r}"
+    )
     return body
 
 
@@ -50,8 +54,8 @@ def task_app_state(task: SimpleNamespace) -> SimpleNamespace:
 
 
 @pytest.fixture
-def actor() -> SimpleNamespace:
-    return SimpleNamespace(name="ops")
+def actor() -> AgentIdentity:
+    return make_test_actor(name="ops")
 
 
 class TestTasksSmoke:
@@ -60,7 +64,7 @@ class TestTasksSmoke:
         self,
         tool_name: str,
         task_app_state: SimpleNamespace,
-        actor: SimpleNamespace,
+        actor: AgentIdentity,
     ) -> None:
         handler = TASK_HANDLERS[tool_name]
         args: dict[str, Any] = {
@@ -91,7 +95,7 @@ class TestTasksCancel:
     async def test_happy_fires_audit(
         self,
         task_app_state: SimpleNamespace,
-        actor: SimpleNamespace,
+        actor: AgentIdentity,
     ) -> None:
         handler = TASK_HANDLERS["synthorg_tasks_cancel"]
         with structlog.testing.capture_logs() as logs:
@@ -108,7 +112,7 @@ class TestTasksCancel:
     async def test_missing_reason(
         self,
         task_app_state: SimpleNamespace,
-        actor: SimpleNamespace,
+        actor: AgentIdentity,
     ) -> None:
         body = _parse(
             await TASK_HANDLERS["synthorg_tasks_cancel"](
@@ -125,7 +129,7 @@ class TestTasksDelete:
     async def test_happy_fires_audit(
         self,
         task_app_state: SimpleNamespace,
-        actor: SimpleNamespace,
+        actor: AgentIdentity,
     ) -> None:
         handler = TASK_HANDLERS["synthorg_tasks_delete"]
         with structlog.testing.capture_logs() as logs:
@@ -142,7 +146,7 @@ class TestTasksDelete:
     async def test_missing_confirm(
         self,
         task_app_state: SimpleNamespace,
-        actor: SimpleNamespace,
+        actor: AgentIdentity,
     ) -> None:
         with structlog.testing.capture_logs() as logs:
             body = _parse(
@@ -160,7 +164,7 @@ class TestTasksCreate:
     async def test_returns_not_supported(
         self,
         task_app_state: SimpleNamespace,
-        actor: SimpleNamespace,
+        actor: AgentIdentity,
     ) -> None:
         body = _parse(
             await TASK_HANDLERS["synthorg_tasks_create"](
@@ -208,7 +212,7 @@ class TestWorkflowsSmoke:
         self,
         tool_name: str,
         workflow_app_state: SimpleNamespace,
-        actor: SimpleNamespace,
+        actor: AgentIdentity,
     ) -> None:
         handler = WORKFLOW_HANDLERS[tool_name]
         args: dict[str, Any] = {
@@ -241,7 +245,7 @@ class TestWorkflowsDelete:
     async def test_happy_fires_audit(
         self,
         workflow_app_state: SimpleNamespace,
-        actor: SimpleNamespace,
+        actor: AgentIdentity,
     ) -> None:
         handler = WORKFLOW_HANDLERS["synthorg_workflows_delete"]
         with structlog.testing.capture_logs() as logs:

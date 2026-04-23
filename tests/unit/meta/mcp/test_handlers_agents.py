@@ -21,11 +21,13 @@ from unittest.mock import AsyncMock
 import pytest
 import structlog.testing
 
+from synthorg.core.agent import AgentIdentity
 from synthorg.meta.mcp.handlers.agents import AGENT_HANDLERS
 from synthorg.observability.events.mcp import (
     MCP_DESTRUCTIVE_OP_EXECUTED,
     MCP_HANDLER_GUARDRAIL_VIOLATED,
 )
+from tests.unit.meta.mcp.conftest import make_test_actor
 
 pytestmark = pytest.mark.unit
 
@@ -61,13 +63,15 @@ def fake_app_state(identity: SimpleNamespace) -> SimpleNamespace:
 
 
 @pytest.fixture
-def actor() -> SimpleNamespace:
-    return SimpleNamespace(name="ops")
+def actor() -> AgentIdentity:
+    return make_test_actor(name="ops")
 
 
 def _parse(result: str) -> dict[str, Any]:
     body: dict[str, Any] = json.loads(result)
-    assert body["status"] in {"ok", "error", "not_implemented"}
+    assert body["status"] in {"ok", "error"}, (
+        f"legacy envelope leaked: status={body['status']!r}"
+    )
     return body
 
 
@@ -82,7 +86,7 @@ class TestAllAgentHandlersReturnValidEnvelope:
         self,
         tool_name: str,
         fake_app_state: SimpleNamespace,
-        actor: SimpleNamespace,
+        actor: AgentIdentity,
     ) -> None:
         handler = AGENT_HANDLERS[tool_name]
         # Minimal arg set likely accepted by each handler; destructive
@@ -147,7 +151,7 @@ class TestAgentsDelete:
         self,
         fake_app_state: SimpleNamespace,
         identity: SimpleNamespace,
-        actor: SimpleNamespace,
+        actor: AgentIdentity,
     ) -> None:
         handler = AGENT_HANDLERS["synthorg_agents_delete"]
         with structlog.testing.capture_logs() as logs:
@@ -169,7 +173,7 @@ class TestAgentsDelete:
     async def test_missing_confirm_blocked(
         self,
         fake_app_state: SimpleNamespace,
-        actor: SimpleNamespace,
+        actor: AgentIdentity,
     ) -> None:
         handler = AGENT_HANDLERS["synthorg_agents_delete"]
         with structlog.testing.capture_logs() as logs:
@@ -208,7 +212,7 @@ class TestAgentsDelete:
     async def test_not_found(
         self,
         fake_app_state: SimpleNamespace,
-        actor: SimpleNamespace,
+        actor: AgentIdentity,
     ) -> None:
         fake_app_state.agent_registry.get_by_name.return_value = None
         handler = AGENT_HANDLERS["synthorg_agents_delete"]

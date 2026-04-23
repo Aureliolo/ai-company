@@ -16,7 +16,8 @@ need an actor (to populate ``requested_by`` / ``decided_by``).
 """
 
 from datetime import UTC, datetime
-from typing import Any
+from types import MappingProxyType
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 from synthorg.api.errors import ConflictError
@@ -43,6 +44,11 @@ from synthorg.observability.events.mcp import (
     MCP_HANDLER_INVOKE_FAILED,
     MCP_HANDLER_INVOKE_SUCCESS,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+    from synthorg.meta.mcp.invoker import ToolHandler
 
 logger = get_logger(__name__)
 
@@ -73,12 +79,37 @@ _TY_NON_BLANK = "non-blank string"
 _TY_STATUS = "ApprovalStatus"
 _TY_RISK = "ApprovalRiskLevel"
 _TY_AGENT = "identified agent"
+_TY_NON_NEG_INT = "non-negative int"
+_TY_POS_INT = "positive int"
 _ARG_STATUS = "status"
 _ARG_ACTOR = "actor"
 _ARG_TITLE = "title"
 _ARG_COMMENT = "comment"
 _ARG_ACTION_TYPE = "action_type"
 _ARG_RISK_LEVEL = "risk_level"
+_ARG_OFFSET = "offset"
+_ARG_LIMIT = "limit"
+
+
+def _coerce_pagination(arguments: dict[str, Any]) -> tuple[int, int]:
+    """Parse offset/limit as ints, routing bad input through invalid_argument.
+
+    Treats missing / empty-string values as defaults (``offset=0``,
+    ``limit=50``).  Non-coercible values raise ``ArgumentValidationError``
+    rather than bubbling up a raw ``ValueError``/``TypeError`` so the
+    envelope stays stable.
+    """
+    raw_offset: Any = arguments.get("offset")
+    raw_limit: Any = arguments.get("limit")
+    try:
+        offset = 0 if raw_offset is None or raw_offset == "" else int(raw_offset)
+    except (TypeError, ValueError) as exc:
+        raise invalid_argument(_ARG_OFFSET, _TY_NON_NEG_INT) from exc
+    try:
+        limit = 50 if raw_limit is None or raw_limit == "" else int(raw_limit)
+    except (TypeError, ValueError) as exc:
+        raise invalid_argument(_ARG_LIMIT, _TY_POS_INT) from exc
+    return offset, limit
 
 
 def _coerce_status(raw: Any) -> ApprovalStatus | None:
@@ -182,8 +213,7 @@ async def _list_approvals(
             if not isinstance(action_type_raw, str) or not action_type_raw.strip():
                 raise invalid_argument(_ARG_ACTION_TYPE, _TY_NON_BLANK)
             action_type = action_type_raw
-        offset = int(arguments.get("offset", 0) or 0)
-        limit = int(arguments.get("limit", 50) or 50)
+        offset, limit = _coerce_pagination(arguments)
     except ArgumentValidationError as exc:
         _log_invalid(tool, exc)
         return err(exc)
@@ -429,10 +459,12 @@ async def _reject(
     return ok(data=saved.model_dump(mode="json"))
 
 
-APPROVAL_HANDLERS: dict[str, Any] = {
-    "synthorg_approvals_list": _list_approvals,
-    "synthorg_approvals_get": _get_approval,
-    "synthorg_approvals_create": _create_approval,
-    "synthorg_approvals_approve": _approve,
-    "synthorg_approvals_reject": _reject,
-}
+APPROVAL_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(
+    {
+        "synthorg_approvals_list": _list_approvals,
+        "synthorg_approvals_get": _get_approval,
+        "synthorg_approvals_create": _create_approval,
+        "synthorg_approvals_approve": _approve,
+        "synthorg_approvals_reject": _reject,
+    },
+)

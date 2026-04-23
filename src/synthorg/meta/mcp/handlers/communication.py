@@ -14,7 +14,8 @@ and, where the underlying service is live, emit
 ``MCP_DESTRUCTIVE_OP_EXECUTED`` on success.
 """
 
-from typing import Any
+from types import MappingProxyType
+from typing import TYPE_CHECKING, Any
 
 from synthorg.meta.mcp.errors import GuardrailViolationError
 from synthorg.meta.mcp.handlers.common import (
@@ -24,6 +25,11 @@ from synthorg.meta.mcp.handlers.common import (
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import MCP_HANDLER_GUARDRAIL_VIOLATED
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+    from synthorg.meta.mcp.invoker import ToolHandler
 
 logger = get_logger(__name__)
 
@@ -300,26 +306,28 @@ async def _tunnel_connect(
     return not_supported("synthorg_tunnel_connect", _WHY_TUNNEL)
 
 
-COMMUNICATION_HANDLERS: dict[str, Any] = {
-    "synthorg_messages_list": _messages_list,
-    "synthorg_messages_get": _messages_get,
-    "synthorg_messages_send": _messages_send,
-    "synthorg_messages_delete": _messages_delete,
-    "synthorg_meetings_list": _meetings_list,
-    "synthorg_meetings_get": _meetings_get,
-    "synthorg_meetings_create": _meetings_create,
-    "synthorg_meetings_update": _meetings_update,
-    "synthorg_meetings_delete": _meetings_delete,
-    "synthorg_connections_list": _connections_list,
-    "synthorg_connections_get": _connections_get,
-    "synthorg_connections_create": _connections_create,
-    "synthorg_connections_delete": _connections_delete,
-    "synthorg_connections_check_health": _connections_check_health,
-    "synthorg_webhooks_list": _webhooks_list,
-    "synthorg_webhooks_get": _webhooks_get,
-    "synthorg_webhooks_create": _webhooks_create,
-    "synthorg_webhooks_update": _webhooks_update,
-    "synthorg_webhooks_delete": _webhooks_delete,
-    "synthorg_tunnel_get_status": _tunnel_get_status,
-    "synthorg_tunnel_connect": _tunnel_connect,
-}
+COMMUNICATION_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(
+    {
+        "synthorg_messages_list": _messages_list,
+        "synthorg_messages_get": _messages_get,
+        "synthorg_messages_send": _messages_send,
+        "synthorg_messages_delete": _messages_delete,
+        "synthorg_meetings_list": _meetings_list,
+        "synthorg_meetings_get": _meetings_get,
+        "synthorg_meetings_create": _meetings_create,
+        "synthorg_meetings_update": _meetings_update,
+        "synthorg_meetings_delete": _meetings_delete,
+        "synthorg_connections_list": _connections_list,
+        "synthorg_connections_get": _connections_get,
+        "synthorg_connections_create": _connections_create,
+        "synthorg_connections_delete": _connections_delete,
+        "synthorg_connections_check_health": _connections_check_health,
+        "synthorg_webhooks_list": _webhooks_list,
+        "synthorg_webhooks_get": _webhooks_get,
+        "synthorg_webhooks_create": _webhooks_create,
+        "synthorg_webhooks_update": _webhooks_update,
+        "synthorg_webhooks_delete": _webhooks_delete,
+        "synthorg_tunnel_get_status": _tunnel_get_status,
+        "synthorg_tunnel_connect": _tunnel_connect,
+    },
+)

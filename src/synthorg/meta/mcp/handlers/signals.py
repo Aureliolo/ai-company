@@ -23,9 +23,15 @@ match the other domains so the facade can drop in without touching
 the MCP layer.
 """
 
-from typing import Any
+from types import MappingProxyType
+from typing import TYPE_CHECKING, Any
 
 from synthorg.meta.mcp.handlers.common import not_supported
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+    from synthorg.meta.mcp.invoker import ToolHandler
 
 _WHY_SIGNALS = (
     "signal aggregators live inside SelfImprovementService; no "
@@ -119,14 +125,16 @@ async def _signals_submit_proposal(
     return not_supported("synthorg_signals_submit_proposal", _WHY_PROPOSALS)
 
 
-SIGNAL_HANDLERS: dict[str, Any] = {
-    "synthorg_signals_get_org_snapshot": _signals_get_org_snapshot,
-    "synthorg_signals_get_performance": _signals_get_performance,
-    "synthorg_signals_get_budget": _signals_get_budget,
-    "synthorg_signals_get_coordination": _signals_get_coordination,
-    "synthorg_signals_get_scaling_history": _signals_get_scaling_history,
-    "synthorg_signals_get_error_patterns": _signals_get_error_patterns,
-    "synthorg_signals_get_evolution_outcomes": _signals_get_evolution_outcomes,
-    "synthorg_signals_get_proposals": _signals_get_proposals,
-    "synthorg_signals_submit_proposal": _signals_submit_proposal,
-}
+SIGNAL_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(
+    {
+        "synthorg_signals_get_org_snapshot": _signals_get_org_snapshot,
+        "synthorg_signals_get_performance": _signals_get_performance,
+        "synthorg_signals_get_budget": _signals_get_budget,
+        "synthorg_signals_get_coordination": _signals_get_coordination,
+        "synthorg_signals_get_scaling_history": _signals_get_scaling_history,
+        "synthorg_signals_get_error_patterns": _signals_get_error_patterns,
+        "synthorg_signals_get_evolution_outcomes": _signals_get_evolution_outcomes,
+        "synthorg_signals_get_proposals": _signals_get_proposals,
+        "synthorg_signals_submit_proposal": _signals_submit_proposal,
+    },
+)

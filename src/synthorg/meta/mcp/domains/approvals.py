@@ -63,11 +63,13 @@ APPROVAL_TOOLS: tuple[MCPToolDef, ...] = (
                 "type": "string",
                 "description": "Short summary of the approval",
                 "minLength": 1,
+                "pattern": r".*\S.*",
             },
             "description": {
                 "type": "string",
                 "description": "Description of the proposed action",
                 "minLength": 1,
+                "pattern": r".*\S.*",
             },
             "risk_level": {
                 "type": "string",
@@ -98,6 +100,7 @@ APPROVAL_TOOLS: tuple[MCPToolDef, ...] = (
                 "type": "string",
                 "description": "Rejection reason (non-blank)",
                 "minLength": 1,
+                "pattern": r".*\S.*",
             },
             "confirm": {
                 "type": "boolean",

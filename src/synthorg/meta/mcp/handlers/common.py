@@ -20,7 +20,7 @@ alert on unwired tools.
 """
 
 import json
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -38,9 +38,9 @@ _ARG_LIMIT = "limit"
 _TY_NON_NEG_INT = "non-negative int"
 _TY_POS_INT = "positive int"
 
-_GR_MISSING_ACTOR = "missing_actor"
-_GR_MISSING_CONFIRM = "missing_confirm"
-_GR_MISSING_REASON = "missing_reason"
+_GR_MISSING_ACTOR: Literal["missing_actor"] = "missing_actor"
+_GR_MISSING_CONFIRM: Literal["missing_confirm"] = "missing_confirm"
+_GR_MISSING_REASON: Literal["missing_reason"] = "missing_reason"
 _GR_MSG_ACTOR = "Destructive operation requires an identified actor"
 _GR_MSG_CONFIRM = "Destructive operation requires 'confirm': true"
 _GR_MSG_REASON = "Destructive operation requires a non-blank 'reason'"
@@ -283,41 +283,34 @@ def not_supported(tool_name: str, reason: str) -> str:
 
 
 def make_placeholder_handler(tool_name: str) -> Any:
-    """Create a placeholder handler that returns a not-implemented message.
+    """Build a placeholder that returns the standard ``not_supported`` envelope.
 
-    Used for tools whose service layer integration is pending.  The
-    handler returns a structured JSON response indicating the tool is
-    registered but not yet wired to the service layer.  Emits at
-    WARNING so ops can alert on unwired tools in production.
+    Used for tools registered after PR1 that haven't been given a real
+    handler yet.  The returned callable delegates to
+    :func:`not_supported` so unwired tools ship the single agreed
+    envelope format (``status="error"``, ``domain_code="not_supported"``)
+    instead of the legacy ``not_implemented`` string.  ``not_supported``
+    also emits the ``MCP_HANDLER_NOT_IMPLEMENTED`` WARNING event, so ops
+    alerting continues to see unwired tools exactly as before.
 
     Args:
-        tool_name: Tool name for the message.
+        tool_name: Tool name for the envelope + log payload.
 
     Returns:
         Async handler function.
     """
+    reason = (
+        f"Tool {tool_name!r} is registered but its service layer "
+        "handler is not yet implemented."
+    )
 
     async def handler(
         *,
         app_state: Any,  # noqa: ARG001
-        arguments: dict[str, Any],
+        arguments: dict[str, Any],  # noqa: ARG001
         actor: Any = None,  # noqa: ARG001
     ) -> str:
-        logger.warning(
-            MCP_HANDLER_NOT_IMPLEMENTED,
-            tool_name=tool_name,
-        )
-        return json.dumps(
-            {
-                "status": "not_implemented",
-                "tool": tool_name,
-                "message": (
-                    f"Tool {tool_name!r} is registered but its service "
-                    f"layer handler is not yet implemented."
-                ),
-                "arguments_received": arguments,
-            }
-        )
+        return not_supported(tool_name, reason)
 
     return handler
 

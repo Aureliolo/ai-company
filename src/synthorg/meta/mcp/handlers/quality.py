@@ -9,9 +9,18 @@ versions have dedicated controllers but no service facade on
 ``app_state``; they return a ``not_supported`` envelope for now.
 """
 
-from typing import Any
+from types import MappingProxyType
+from typing import TYPE_CHECKING, Any
 
 from synthorg.meta.mcp.handlers.common import not_supported
+from synthorg.observability import get_logger
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+    from synthorg.meta.mcp.invoker import ToolHandler
+
+logger = get_logger(__name__)
 
 _WHY_QUALITY = (
     "quality metrics are derived inside performance_tracker's scoring "
@@ -27,17 +36,13 @@ _WHY_EVAL_VERSIONS = (
 )
 
 
-async def _q(tool: str, why: str) -> str:
-    return not_supported(tool, why)
-
-
 async def _quality_get_summary(
     *,
     app_state: Any,  # noqa: ARG001
     arguments: dict[str, Any],  # noqa: ARG001
     actor: Any = None,  # noqa: ARG001
 ) -> str:
-    return await _q("synthorg_quality_get_summary", _WHY_QUALITY)
+    return not_supported("synthorg_quality_get_summary", _WHY_QUALITY)
 
 
 async def _quality_get_agent_quality(
@@ -46,7 +51,7 @@ async def _quality_get_agent_quality(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: Any = None,  # noqa: ARG001
 ) -> str:
-    return await _q("synthorg_quality_get_agent_quality", _WHY_QUALITY)
+    return not_supported("synthorg_quality_get_agent_quality", _WHY_QUALITY)
 
 
 async def _quality_list_scores(
@@ -55,7 +60,7 @@ async def _quality_list_scores(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: Any = None,  # noqa: ARG001
 ) -> str:
-    return await _q("synthorg_quality_list_scores", _WHY_QUALITY)
+    return not_supported("synthorg_quality_list_scores", _WHY_QUALITY)
 
 
 async def _reviews_list(
@@ -64,7 +69,7 @@ async def _reviews_list(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: Any = None,  # noqa: ARG001
 ) -> str:
-    return await _q("synthorg_reviews_list", _WHY_REVIEWS)
+    return not_supported("synthorg_reviews_list", _WHY_REVIEWS)
 
 
 async def _reviews_get(
@@ -73,7 +78,7 @@ async def _reviews_get(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: Any = None,  # noqa: ARG001
 ) -> str:
-    return await _q("synthorg_reviews_get", _WHY_REVIEWS)
+    return not_supported("synthorg_reviews_get", _WHY_REVIEWS)
 
 
 async def _reviews_create(
@@ -82,7 +87,7 @@ async def _reviews_create(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: Any = None,  # noqa: ARG001
 ) -> str:
-    return await _q("synthorg_reviews_create", _WHY_REVIEWS)
+    return not_supported("synthorg_reviews_create", _WHY_REVIEWS)
 
 
 async def _reviews_update(
@@ -91,7 +96,7 @@ async def _reviews_update(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: Any = None,  # noqa: ARG001
 ) -> str:
-    return await _q("synthorg_reviews_update", _WHY_REVIEWS)
+    return not_supported("synthorg_reviews_update", _WHY_REVIEWS)
 
 
 async def _evaluation_versions_list(
@@ -100,7 +105,7 @@ async def _evaluation_versions_list(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: Any = None,  # noqa: ARG001
 ) -> str:
-    return await _q("synthorg_evaluation_versions_list", _WHY_EVAL_VERSIONS)
+    return not_supported("synthorg_evaluation_versions_list", _WHY_EVAL_VERSIONS)
 
 
 async def _evaluation_versions_get(
@@ -109,17 +114,19 @@ async def _evaluation_versions_get(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: Any = None,  # noqa: ARG001
 ) -> str:
-    return await _q("synthorg_evaluation_versions_get", _WHY_EVAL_VERSIONS)
+    return not_supported("synthorg_evaluation_versions_get", _WHY_EVAL_VERSIONS)
 
 
-QUALITY_HANDLERS: dict[str, Any] = {
-    "synthorg_quality_get_summary": _quality_get_summary,
-    "synthorg_quality_get_agent_quality": _quality_get_agent_quality,
-    "synthorg_quality_list_scores": _quality_list_scores,
-    "synthorg_reviews_list": _reviews_list,
-    "synthorg_reviews_get": _reviews_get,
-    "synthorg_reviews_create": _reviews_create,
-    "synthorg_reviews_update": _reviews_update,
-    "synthorg_evaluation_versions_list": _evaluation_versions_list,
-    "synthorg_evaluation_versions_get": _evaluation_versions_get,
-}
+QUALITY_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(
+    {
+        "synthorg_quality_get_summary": _quality_get_summary,
+        "synthorg_quality_get_agent_quality": _quality_get_agent_quality,
+        "synthorg_quality_list_scores": _quality_list_scores,
+        "synthorg_reviews_list": _reviews_list,
+        "synthorg_reviews_get": _reviews_get,
+        "synthorg_reviews_create": _reviews_create,
+        "synthorg_reviews_update": _reviews_update,
+        "synthorg_evaluation_versions_list": _evaluation_versions_list,
+        "synthorg_evaluation_versions_get": _evaluation_versions_get,
+    },
+)

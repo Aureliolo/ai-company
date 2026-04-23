@@ -8,7 +8,8 @@ Shims the 8 task tools onto ``app_state.task_engine``
 ``not_supported`` envelope.
 """
 
-from typing import Any
+from types import MappingProxyType
+from typing import TYPE_CHECKING, Any
 
 from synthorg.core.enums import TaskStatus
 from synthorg.engine.errors import (
@@ -38,6 +39,11 @@ from synthorg.observability.events.mcp import (
     MCP_HANDLER_INVOKE_FAILED,
     MCP_HANDLER_INVOKE_SUCCESS,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+    from synthorg.meta.mcp.invoker import ToolHandler
 
 logger = get_logger(__name__)
 
@@ -97,15 +103,25 @@ def _require_non_blank(arguments: dict[str, Any], key: str) -> str:
     return raw
 
 
-def _coerce_status(raw: Any) -> TaskStatus | None:
+def _coerce_status(
+    raw: Any,
+    *,
+    arg_name: str = _ARG_STATUS,
+) -> TaskStatus | None:
+    """Coerce a string to ``TaskStatus`` or raise ``ArgumentValidationError``.
+
+    ``arg_name`` controls which argument the envelope blames so callers
+    parsing ``status`` vs ``target_status`` get accurate feedback
+    instead of every validation failure pointing at ``"status"``.
+    """
     if raw is None:
         return None
     if not isinstance(raw, str):
-        raise invalid_argument(_ARG_STATUS, _TY_NON_BLANK)
+        raise invalid_argument(arg_name, _TY_NON_BLANK)
     try:
         return TaskStatus(raw)
     except ValueError as exc:
-        raise invalid_argument(_ARG_STATUS, _TY_TASK_STATUS) from exc
+        raise invalid_argument(arg_name, _TY_TASK_STATUS) from exc
 
 
 # --- handlers -------------------------------------------------------------
@@ -292,9 +308,9 @@ async def _tasks_transition(
             raise invalid_argument(_ARG_ACTOR, _TY_AGENT)
         task_id = _require_non_blank(arguments, _ARG_TASK_ID)
         target_raw = _require_non_blank(arguments, _ARG_TARGET)
-        target = _coerce_status(target_raw)
+        target = _coerce_status(target_raw, arg_name=_ARG_TARGET)
         if target is None:
-            raise invalid_argument(_ARG_TARGET, "TaskStatus")
+            raise invalid_argument(_ARG_TARGET, _TY_TASK_STATUS)
     except ArgumentValidationError as exc:
         _log_invalid(tool, exc)
         return err(exc)
@@ -376,13 +392,15 @@ async def _activities_list(
     )
 
 
-TASK_HANDLERS: dict[str, Any] = {
-    "synthorg_tasks_list": _tasks_list,
-    "synthorg_tasks_get": _tasks_get,
-    "synthorg_tasks_create": _tasks_create,
-    "synthorg_tasks_update": _tasks_update,
-    "synthorg_tasks_delete": _tasks_delete,
-    "synthorg_tasks_transition": _tasks_transition,
-    "synthorg_tasks_cancel": _tasks_cancel,
-    "synthorg_activities_list": _activities_list,
-}
+TASK_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(
+    {
+        "synthorg_tasks_list": _tasks_list,
+        "synthorg_tasks_get": _tasks_get,
+        "synthorg_tasks_create": _tasks_create,
+        "synthorg_tasks_update": _tasks_update,
+        "synthorg_tasks_delete": _tasks_delete,
+        "synthorg_tasks_transition": _tasks_transition,
+        "synthorg_tasks_cancel": _tasks_cancel,
+        "synthorg_activities_list": _activities_list,
+    },
+)

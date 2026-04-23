@@ -24,8 +24,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from synthorg.core.agent import AgentIdentity
 from synthorg.meta.mcp.domains import build_full_registry
 from synthorg.meta.mcp.handlers import build_handler_map
+from tests.unit.meta.mcp.conftest import make_test_actor
 
 pytestmark = pytest.mark.unit
 
@@ -156,8 +158,8 @@ def _mkversion_repo() -> AsyncMock:
 
 
 @pytest.fixture
-def actor() -> SimpleNamespace:
-    return SimpleNamespace(name="test-agent")
+def actor() -> AgentIdentity:
+    return make_test_actor()
 
 
 class TestHandlerParity:
@@ -176,17 +178,14 @@ class TestHandlerParity:
         assert not orphans
 
     def test_total_tool_count_matches_plan(self) -> None:
-        """Registry has the documented tool count.
+        """Registry has exactly the documented 204-tool surface.
 
-        Plan called out 203 after cross-checking the 15 domain files;
-        the registry ends up at 204 once all tool definitions are
-        registered (one is an extra tool in one of the domain files
-        that the plan miscounted).  Both numbers are acceptable --
-        this test just guards against accidental tool removal or
-        double-registration.
+        Pinning to the exact count catches accidental tool removal
+        *and* double-registration.  Bump this number only when the
+        MCP tool surface is intentionally grown or shrunk.
         """
         registry = build_full_registry()
-        assert registry.tool_count in {203, 204}
+        assert registry.tool_count == 204
 
 
 class TestNoPlaceholderInProduction:
@@ -205,7 +204,7 @@ class TestNoPlaceholderInProduction:
         self,
         tool_name: str,
         fake_app_state: SimpleNamespace,
-        actor: SimpleNamespace,
+        actor: AgentIdentity,
     ) -> None:
         handlers = build_handler_map()
         handler = handlers[tool_name]
@@ -245,10 +244,10 @@ class TestNoPlaceholderInProduction:
         )
         body = json.loads(result)
         # A handler may legitimately return ``ok`` or ``error`` (any
-        # domain_code).  What it must NOT return is ``not_implemented``
-        # -- that status signals the old placeholder is still wired.
-        assert body["status"] != "not_implemented", (
-            f"{tool_name} still uses the legacy placeholder scaffold"
+        # domain_code).  Pinning to this set catches both the legacy
+        # ``not_implemented`` scaffold and any other malformed status.
+        assert body["status"] in {"ok", "error"}, (
+            f"{tool_name} returned unexpected status {body['status']!r}"
         )
 
 
@@ -277,7 +276,7 @@ class TestDestructiveGuardrails:
         self,
         tool_name: str,
         fake_app_state: SimpleNamespace,
-        actor: SimpleNamespace,
+        actor: AgentIdentity,
     ) -> None:
         handlers = build_handler_map()
         handler = handlers[tool_name]
@@ -299,7 +298,7 @@ class TestDestructiveGuardrails:
         self,
         tool_name: str,
         fake_app_state: SimpleNamespace,
-        actor: SimpleNamespace,
+        actor: AgentIdentity,
     ) -> None:
         handlers = build_handler_map()
         handler = handlers[tool_name]
@@ -336,7 +335,7 @@ class TestDestructiveGuardrails:
         self,
         tool_name: str,
         fake_app_state: SimpleNamespace,
-        actor: SimpleNamespace,
+        actor: AgentIdentity,
     ) -> None:
         """``confirm: "true"`` (string) must fail; truthy-bypass would be a bug."""
         handlers = build_handler_map()

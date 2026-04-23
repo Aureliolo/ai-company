@@ -15,6 +15,7 @@ from uuid import uuid4
 import pytest
 import structlog.testing
 
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.meta.mcp.handlers.approvals import APPROVAL_HANDLERS
@@ -23,6 +24,7 @@ from synthorg.observability.events.mcp import (
     MCP_HANDLER_GUARDRAIL_VIOLATED,
     MCP_HANDLER_INVOKE_FAILED,
 )
+from tests.unit.meta.mcp.conftest import make_test_actor
 
 pytestmark = pytest.mark.unit
 
@@ -65,9 +67,9 @@ def fake_app_state(fake_approval_store: AsyncMock) -> SimpleNamespace:
 
 
 @pytest.fixture
-def actor() -> SimpleNamespace:
-    """Stand-in for ``AgentIdentity`` -- handler only needs ``.name``."""
-    return SimpleNamespace(name="chief-of-staff")
+def actor() -> AgentIdentity:
+    """Minimal AgentIdentity stand-in for handler tests."""
+    return make_test_actor(name="chief-of-staff")
 
 
 # --- list ------------------------------------------------------------------
@@ -221,7 +223,7 @@ class TestApprovalsCreate:
         self,
         fake_app_state: SimpleNamespace,
         fake_approval_store: AsyncMock,
-        actor: SimpleNamespace,
+        actor: AgentIdentity,
     ) -> None:
         fake_approval_store.add.return_value = None
         handler = APPROVAL_HANDLERS["synthorg_approvals_create"]
@@ -266,7 +268,7 @@ class TestApprovalsCreate:
     async def test_create_rejects_invalid_risk_level(
         self,
         fake_app_state: SimpleNamespace,
-        actor: SimpleNamespace,
+        actor: AgentIdentity,
     ) -> None:
         handler = APPROVAL_HANDLERS["synthorg_approvals_create"]
         result = await handler(
@@ -292,7 +294,7 @@ class TestApprovalsApprove:
         self,
         fake_app_state: SimpleNamespace,
         fake_approval_store: AsyncMock,
-        actor: SimpleNamespace,
+        actor: AgentIdentity,
     ) -> None:
         item = _make_item(approval_id="a1")
         fake_approval_store.get.return_value = item
@@ -317,7 +319,7 @@ class TestApprovalsApprove:
         self,
         fake_app_state: SimpleNamespace,
         fake_approval_store: AsyncMock,
-        actor: SimpleNamespace,
+        actor: AgentIdentity,
     ) -> None:
         fake_approval_store.get.return_value = None
         handler = APPROVAL_HANDLERS["synthorg_approvals_approve"]
@@ -335,7 +337,7 @@ class TestApprovalsApprove:
         self,
         fake_app_state: SimpleNamespace,
         fake_approval_store: AsyncMock,
-        actor: SimpleNamespace,
+        actor: AgentIdentity,
     ) -> None:
         item = _make_item(approval_id="a1")
         fake_approval_store.get.return_value = item
@@ -375,7 +377,7 @@ class TestApprovalsReject:
         self,
         fake_app_state: SimpleNamespace,
         fake_approval_store: AsyncMock,
-        actor: SimpleNamespace,
+        actor: AgentIdentity,
     ) -> None:
         item = _make_item(approval_id="a1")
         fake_approval_store.get.return_value = item
@@ -409,7 +411,7 @@ class TestApprovalsReject:
     async def test_reject_without_confirm(
         self,
         fake_app_state: SimpleNamespace,
-        actor: SimpleNamespace,
+        actor: AgentIdentity,
     ) -> None:
         handler = APPROVAL_HANDLERS["synthorg_approvals_reject"]
 
@@ -438,7 +440,7 @@ class TestApprovalsReject:
     async def test_reject_without_reason(
         self,
         fake_app_state: SimpleNamespace,
-        actor: SimpleNamespace,
+        actor: AgentIdentity,
     ) -> None:
         handler = APPROVAL_HANDLERS["synthorg_approvals_reject"]
         result = await handler(
@@ -472,7 +474,7 @@ class TestApprovalsReject:
         self,
         fake_app_state: SimpleNamespace,
         fake_approval_store: AsyncMock,
-        actor: SimpleNamespace,
+        actor: AgentIdentity,
     ) -> None:
         fake_approval_store.get.return_value = None
         handler = APPROVAL_HANDLERS["synthorg_approvals_reject"]

@@ -7,9 +7,18 @@ require richer orchestration (``coordinate_task``,
 ``scaling_trigger``) return ``not_supported``.
 """
 
-from typing import Any
+from types import MappingProxyType
+from typing import TYPE_CHECKING, Any
 
 from synthorg.meta.mcp.handlers.common import not_supported
+from synthorg.observability import get_logger
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+    from synthorg.meta.mcp.invoker import ToolHandler
+
+logger = get_logger(__name__)
 
 
 async def _coordination_coordinate_task(
@@ -128,14 +137,16 @@ async def _ceremony_policy_get_active_strategy(
     )
 
 
-COORDINATION_HANDLERS: dict[str, Any] = {
-    "synthorg_coordination_coordinate_task": _coordination_coordinate_task,
-    "synthorg_coordination_metrics_list": _coordination_metrics_list,
-    "synthorg_scaling_list_decisions": _scaling_list_decisions,
-    "synthorg_scaling_get_decision": _scaling_get_decision,
-    "synthorg_scaling_get_config": _scaling_get_config,
-    "synthorg_scaling_trigger": _scaling_trigger,
-    "synthorg_ceremony_policy_get": _ceremony_policy_get,
-    "synthorg_ceremony_policy_get_resolved": _ceremony_policy_get_resolved,
-    "synthorg_ceremony_policy_get_active_strategy": _ceremony_policy_get_active_strategy,  # noqa: E501
-}
+COORDINATION_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(
+    {
+        "synthorg_coordination_coordinate_task": _coordination_coordinate_task,
+        "synthorg_coordination_metrics_list": _coordination_metrics_list,
+        "synthorg_scaling_list_decisions": _scaling_list_decisions,
+        "synthorg_scaling_get_decision": _scaling_get_decision,
+        "synthorg_scaling_get_config": _scaling_get_config,
+        "synthorg_scaling_trigger": _scaling_trigger,
+        "synthorg_ceremony_policy_get": _ceremony_policy_get,
+        "synthorg_ceremony_policy_get_resolved": _ceremony_policy_get_resolved,
+        "synthorg_ceremony_policy_get_active_strategy": _ceremony_policy_get_active_strategy,  # noqa: E501
+    },
+)

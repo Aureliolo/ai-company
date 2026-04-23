@@ -332,7 +332,7 @@ class MemoryAdminController(Controller):
         limit = min(max(limit, 1), 200)
         offset = max(offset, 0)
         service = _build_memory_service(state.app_state)
-        cps = await service.list_checkpoints(limit=limit, offset=offset)
+        cps, _total = await service.list_checkpoints(limit=limit, offset=offset)
         return ApiResponse(data=cps)
 
     @post(

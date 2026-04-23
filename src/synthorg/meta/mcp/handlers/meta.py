@@ -6,7 +6,8 @@ need a ``SelfImprovementService`` facade on ``app_state`` that is not
 yet exposed, so they return ``not_supported``.
 """
 
-from typing import Any
+from types import MappingProxyType
+from typing import TYPE_CHECKING, Any
 
 from synthorg.meta.mcp.handlers.common import err, not_supported, ok
 from synthorg.observability import get_logger, safe_error_description
@@ -14,6 +15,11 @@ from synthorg.observability.events.mcp import (
     MCP_HANDLER_INVOKE_FAILED,
     MCP_HANDLER_INVOKE_SUCCESS,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+    from synthorg.meta.mcp.invoker import ToolHandler
 
 logger = get_logger(__name__)
 
@@ -106,10 +112,12 @@ async def _meta_trigger_cycle(
     return not_supported("synthorg_meta_trigger_cycle", _WHY_TRIGGER)
 
 
-META_HANDLERS: dict[str, Any] = {
-    "synthorg_meta_get_config": _meta_get_config,
-    "synthorg_meta_list_rules": _meta_list_rules,
-    "synthorg_meta_list_mcp_tools": _meta_list_mcp_tools,
-    "synthorg_meta_get_mcp_server_config": _meta_get_mcp_server_config,
-    "synthorg_meta_trigger_cycle": _meta_trigger_cycle,
-}
+META_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(
+    {
+        "synthorg_meta_get_config": _meta_get_config,
+        "synthorg_meta_list_rules": _meta_list_rules,
+        "synthorg_meta_list_mcp_tools": _meta_list_mcp_tools,
+        "synthorg_meta_get_mcp_server_config": _meta_get_mcp_server_config,
+        "synthorg_meta_trigger_cycle": _meta_trigger_cycle,
+    },
+)

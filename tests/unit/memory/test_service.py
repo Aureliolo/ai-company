@@ -209,8 +209,9 @@ class TestMemoryServiceCheckpoints:
             settings_service=None,
         )
 
-        page = await service.list_checkpoints(limit=limit, offset=offset)
+        page, total = await service.list_checkpoints(limit=limit, offset=offset)
         assert tuple(sorted(c.id for c in page)) == tuple(sorted(expected_ids))
+        assert total == 2
 
     async def test_get_checkpoint_miss_returns_none(self) -> None:
         service = MemoryService(

@@ -5,7 +5,8 @@ Shims the 5 budget tools onto ``app_state.cost_tracker`` +
 All budget tools are reads; none are destructive.
 """
 
-from typing import Any
+from types import MappingProxyType
+from typing import TYPE_CHECKING, Any
 
 from synthorg.meta.mcp.errors import ArgumentValidationError, invalid_argument
 from synthorg.meta.mcp.handlers.common import (
@@ -23,15 +24,38 @@ from synthorg.observability.events.mcp import (
     MCP_HANDLER_INVOKE_SUCCESS,
 )
 
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+    from synthorg.meta.mcp.invoker import ToolHandler
+
 logger = get_logger(__name__)
 
 
 _TY_NON_BLANK = "non-blank string"
 _TY_POS_INT = "positive int"
+_TY_NON_NEG_INT = "non-negative int"
 _ARG_AGENT_ID = "agent_id"
 _ARG_TASK_ID = "task_id"
 _ARG_VERSION = "version_num"
+_ARG_OFFSET = "offset"
+_ARG_LIMIT = "limit"
 _ENTITY_ID = "default"
+
+
+def _coerce_pagination(arguments: dict[str, Any]) -> tuple[int, int]:
+    """Parse offset/limit as ints, raising ``ArgumentValidationError`` on bad input."""
+    raw_offset: Any = arguments.get("offset")
+    raw_limit: Any = arguments.get("limit")
+    try:
+        offset = 0 if raw_offset is None or raw_offset == "" else int(raw_offset)
+    except (TypeError, ValueError) as exc:
+        raise invalid_argument(_ARG_OFFSET, _TY_NON_NEG_INT) from exc
+    try:
+        limit = 50 if raw_limit is None or raw_limit == "" else int(raw_limit)
+    except (TypeError, ValueError) as exc:
+        raise invalid_argument(_ARG_LIMIT, _TY_POS_INT) from exc
+    return offset, limit
 
 
 class _NotFoundError(LookupError):
@@ -99,12 +123,8 @@ async def _budget_list_records(
             not isinstance(task_id, str) or not task_id.strip()
         ):
             raise invalid_argument(_ARG_TASK_ID, _TY_NON_BLANK)
-        offset = int(arguments.get("offset", 0) or 0)
-        limit = int(arguments.get("limit", 50) or 50)
+        offset, limit = _coerce_pagination(arguments)
     except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
-        return err(exc)
-    except (TypeError, ValueError) as exc:
         _log_invalid(tool, exc)
         return err(exc)
 
@@ -158,9 +178,8 @@ async def _budget_versions_list(
 ) -> str:
     tool = "synthorg_budget_versions_list"
     try:
-        offset = int(arguments.get("offset", 0) or 0)
-        limit = int(arguments.get("limit", 50) or 50)
-    except (TypeError, ValueError) as exc:
+        offset, limit = _coerce_pagination(arguments)
+    except ArgumentValidationError as exc:
         _log_invalid(tool, exc)
         return err(exc)
 
@@ -209,10 +228,12 @@ async def _budget_versions_get(
     return ok(data=snapshot.model_dump(mode="json"))
 
 
-BUDGET_HANDLERS: dict[str, Any] = {
-    "synthorg_budget_get_config": _budget_get_config,
-    "synthorg_budget_list_records": _budget_list_records,
-    "synthorg_budget_get_agent_spending": _budget_get_agent_spending,
-    "synthorg_budget_versions_list": _budget_versions_list,
-    "synthorg_budget_versions_get": _budget_versions_get,
-}
+BUDGET_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(
+    {
+        "synthorg_budget_get_config": _budget_get_config,
+        "synthorg_budget_list_records": _budget_list_records,
+        "synthorg_budget_get_agent_spending": _budget_get_agent_spending,
+        "synthorg_budget_versions_list": _budget_versions_list,
+        "synthorg_budget_versions_get": _budget_versions_get,
+    },
+)

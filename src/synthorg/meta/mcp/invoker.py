@@ -19,6 +19,7 @@ from synthorg.tools.base import ToolExecutionResult
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
+    from synthorg.core.agent import AgentIdentity
     from synthorg.meta.mcp.registry import DomainToolRegistry
 
 logger = get_logger(__name__)
@@ -40,7 +41,7 @@ class ToolHandler(Protocol):
         *,
         app_state: Any,
         arguments: dict[str, Any],
-        actor: Any = None,
+        actor: AgentIdentity | None = None,
     ) -> str:
         """Execute the tool logic.
 
@@ -84,7 +85,7 @@ class MCPToolInvoker:
         arguments: dict[str, Any],
         *,
         app_state: Any,
-        actor: Any = None,
+        actor: AgentIdentity | None = None,
     ) -> ToolExecutionResult:
         """Dispatch a tool invocation to its handler.
 

@@ -16,7 +16,8 @@ guardrail.  ``workflows_delete`` is live; the other two are
 schema layer.
 """
 
-from typing import Any
+from types import MappingProxyType
+from typing import TYPE_CHECKING, Any
 
 from synthorg.engine.workflow.service import (
     WorkflowDefinitionNotFoundError,
@@ -44,11 +45,36 @@ from synthorg.observability.events.mcp import (
     MCP_HANDLER_INVOKE_SUCCESS,
 )
 
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+    from synthorg.meta.mcp.invoker import ToolHandler
+
 logger = get_logger(__name__)
 
 
 _TY_NON_BLANK = "non-blank string"
+_TY_NON_NEG_INT = "non-negative int"
+_TY_POS_INT = "positive int"
 _ARG_DEF_ID = "workflow_id"
+_ARG_OFFSET = "offset"
+_ARG_LIMIT = "limit"
+
+
+def _coerce_pagination(arguments: dict[str, Any]) -> tuple[int, int]:
+    """Parse offset/limit as ints, raising ``ArgumentValidationError`` on bad input."""
+    raw_offset: Any = arguments.get("offset")
+    raw_limit: Any = arguments.get("limit")
+    try:
+        offset = 0 if raw_offset is None or raw_offset == "" else int(raw_offset)
+    except (TypeError, ValueError) as exc:
+        raise invalid_argument(_ARG_OFFSET, _TY_NON_NEG_INT) from exc
+    try:
+        limit = 50 if raw_limit is None or raw_limit == "" else int(raw_limit)
+    except (TypeError, ValueError) as exc:
+        raise invalid_argument(_ARG_LIMIT, _TY_POS_INT) from exc
+    return offset, limit
+
 
 _WHY_SUBWORKFLOWS = (
     "subworkflow repository is reached via the subworkflows controller; "
@@ -126,9 +152,8 @@ async def _workflows_list(
 ) -> str:
     tool = "synthorg_workflows_list"
     try:
-        offset = int(arguments.get("offset", 0) or 0)
-        limit = int(arguments.get("limit", 50) or 50)
-    except (TypeError, ValueError) as exc:
+        offset, limit = _coerce_pagination(arguments)
+    except ArgumentValidationError as exc:
         _log_invalid(tool, exc)
         return err(exc)
     try:
@@ -366,21 +391,23 @@ async def _workflow_versions_get(
     return not_supported("synthorg_workflow_versions_get", _WHY_VERSIONS_LIST)
 
 
-WORKFLOW_HANDLERS: dict[str, Any] = {
-    "synthorg_workflows_list": _workflows_list,
-    "synthorg_workflows_get": _workflows_get,
-    "synthorg_workflows_create": _workflows_create,
-    "synthorg_workflows_update": _workflows_update,
-    "synthorg_workflows_delete": _workflows_delete,
-    "synthorg_workflows_validate": _workflows_validate,
-    "synthorg_subworkflows_list": _subworkflows_list,
-    "synthorg_subworkflows_get": _subworkflows_get,
-    "synthorg_subworkflows_create": _subworkflows_create,
-    "synthorg_subworkflows_delete": _subworkflows_delete,
-    "synthorg_workflow_executions_list": _workflow_executions_list,
-    "synthorg_workflow_executions_get": _workflow_executions_get,
-    "synthorg_workflow_executions_start": _workflow_executions_start,
-    "synthorg_workflow_executions_cancel": _workflow_executions_cancel,
-    "synthorg_workflow_versions_list": _workflow_versions_list,
-    "synthorg_workflow_versions_get": _workflow_versions_get,
-}
+WORKFLOW_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(
+    {
+        "synthorg_workflows_list": _workflows_list,
+        "synthorg_workflows_get": _workflows_get,
+        "synthorg_workflows_create": _workflows_create,
+        "synthorg_workflows_update": _workflows_update,
+        "synthorg_workflows_delete": _workflows_delete,
+        "synthorg_workflows_validate": _workflows_validate,
+        "synthorg_subworkflows_list": _subworkflows_list,
+        "synthorg_subworkflows_get": _subworkflows_get,
+        "synthorg_subworkflows_create": _subworkflows_create,
+        "synthorg_subworkflows_delete": _subworkflows_delete,
+        "synthorg_workflow_executions_list": _workflow_executions_list,
+        "synthorg_workflow_executions_get": _workflow_executions_get,
+        "synthorg_workflow_executions_start": _workflow_executions_start,
+        "synthorg_workflow_executions_cancel": _workflow_executions_cancel,
+        "synthorg_workflow_versions_list": _workflow_versions_list,
+        "synthorg_workflow_versions_get": _workflow_versions_get,
+    },
+)

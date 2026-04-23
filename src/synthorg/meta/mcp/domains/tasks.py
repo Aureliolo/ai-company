@@ -72,6 +72,7 @@ TASK_TOOLS: tuple[MCPToolDef, ...] = (
                 "type": "string",
                 "description": "Reason for deletion (non-blank)",
                 "minLength": 1,
+                "pattern": r".*\S.*",
             },
             "confirm": {
                 "type": "boolean",
@@ -101,6 +102,7 @@ TASK_TOOLS: tuple[MCPToolDef, ...] = (
                 "type": "string",
                 "description": "Cancellation reason (non-blank)",
                 "minLength": 1,
+                "pattern": r".*\S.*",
             },
             "confirm": {
                 "type": "boolean",

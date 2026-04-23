@@ -8,9 +8,15 @@ with no single service facade on ``app_state``; every handler returns
 list/get/generate are similarly behind the ``reports`` controller.
 """
 
-from typing import Any
+from types import MappingProxyType
+from typing import TYPE_CHECKING, Any
 
 from synthorg.meta.mcp.handlers.common import not_supported
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+    from synthorg.meta.mcp.invoker import ToolHandler
 
 _WHY_ANALYTICS = (
     "analytics aggregation is orchestrated inside the engine + meta "
@@ -26,17 +32,13 @@ _WHY_REPORTS = (
 )
 
 
-async def _mk(tool: str, why: str) -> str:
-    return not_supported(tool, why)
-
-
 async def _analytics_get_overview(
     *,
     app_state: Any,  # noqa: ARG001
     arguments: dict[str, Any],  # noqa: ARG001
     actor: Any = None,  # noqa: ARG001
 ) -> str:
-    return await _mk("synthorg_analytics_get_overview", _WHY_ANALYTICS)
+    return not_supported("synthorg_analytics_get_overview", _WHY_ANALYTICS)
 
 
 async def _analytics_get_trends(
@@ -45,7 +47,7 @@ async def _analytics_get_trends(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: Any = None,  # noqa: ARG001
 ) -> str:
-    return await _mk("synthorg_analytics_get_trends", _WHY_ANALYTICS)
+    return not_supported("synthorg_analytics_get_trends", _WHY_ANALYTICS)
 
 
 async def _analytics_get_forecast(
@@ -54,7 +56,7 @@ async def _analytics_get_forecast(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: Any = None,  # noqa: ARG001
 ) -> str:
-    return await _mk("synthorg_analytics_get_forecast", _WHY_ANALYTICS)
+    return not_supported("synthorg_analytics_get_forecast", _WHY_ANALYTICS)
 
 
 async def _metrics_get_current(
@@ -63,7 +65,7 @@ async def _metrics_get_current(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: Any = None,  # noqa: ARG001
 ) -> str:
-    return await _mk("synthorg_metrics_get_current", _WHY_METRICS)
+    return not_supported("synthorg_metrics_get_current", _WHY_METRICS)
 
 
 async def _metrics_get_history(
@@ -72,7 +74,7 @@ async def _metrics_get_history(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: Any = None,  # noqa: ARG001
 ) -> str:
-    return await _mk("synthorg_metrics_get_history", _WHY_METRICS)
+    return not_supported("synthorg_metrics_get_history", _WHY_METRICS)
 
 
 async def _reports_list(
@@ -81,7 +83,7 @@ async def _reports_list(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: Any = None,  # noqa: ARG001
 ) -> str:
-    return await _mk("synthorg_reports_list", _WHY_REPORTS)
+    return not_supported("synthorg_reports_list", _WHY_REPORTS)
 
 
 async def _reports_get(
@@ -90,7 +92,7 @@ async def _reports_get(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: Any = None,  # noqa: ARG001
 ) -> str:
-    return await _mk("synthorg_reports_get", _WHY_REPORTS)
+    return not_supported("synthorg_reports_get", _WHY_REPORTS)
 
 
 async def _reports_generate(
@@ -99,16 +101,18 @@ async def _reports_generate(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: Any = None,  # noqa: ARG001
 ) -> str:
-    return await _mk("synthorg_reports_generate", _WHY_REPORTS)
+    return not_supported("synthorg_reports_generate", _WHY_REPORTS)
 
 
-ANALYTICS_HANDLERS: dict[str, Any] = {
-    "synthorg_analytics_get_overview": _analytics_get_overview,
-    "synthorg_analytics_get_trends": _analytics_get_trends,
-    "synthorg_analytics_get_forecast": _analytics_get_forecast,
-    "synthorg_metrics_get_current": _metrics_get_current,
-    "synthorg_metrics_get_history": _metrics_get_history,
-    "synthorg_reports_list": _reports_list,
-    "synthorg_reports_get": _reports_get,
-    "synthorg_reports_generate": _reports_generate,
-}
+ANALYTICS_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(
+    {
+        "synthorg_analytics_get_overview": _analytics_get_overview,
+        "synthorg_analytics_get_trends": _analytics_get_trends,
+        "synthorg_analytics_get_forecast": _analytics_get_forecast,
+        "synthorg_metrics_get_current": _metrics_get_current,
+        "synthorg_metrics_get_history": _metrics_get_history,
+        "synthorg_reports_list": _reports_list,
+        "synthorg_reports_get": _reports_get,
+        "synthorg_reports_generate": _reports_generate,
+    },
+)

@@ -60,6 +60,7 @@ AGENT_TOOLS: tuple[MCPToolDef, ...] = (
                 "type": "string",
                 "description": "Reason for removal (non-blank)",
                 "minLength": 1,
+                "pattern": r".*\S.*",
             },
             "confirm": {
                 "type": "boolean",

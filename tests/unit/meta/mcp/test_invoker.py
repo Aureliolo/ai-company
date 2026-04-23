@@ -6,7 +6,7 @@ import pytest
 
 from synthorg.meta.mcp.invoker import MCPToolInvoker
 from synthorg.meta.mcp.registry import MCPToolDef
-from tests.unit.meta.mcp.conftest import make_tool, registry_with
+from tests.unit.meta.mcp.conftest import make_test_actor, make_tool, registry_with
 
 pytestmark = pytest.mark.unit
 
@@ -126,7 +126,7 @@ class TestMCPToolInvoker:
             captured.append(actor)
             return json.dumps({"ok": True})
 
-        actor_sentinel = object()
+        actor_sentinel = make_test_actor()
         invoker = MCPToolInvoker(registry, {"synthorg_test_get": handler})
         await invoker.invoke(
             "synthorg_test_get",

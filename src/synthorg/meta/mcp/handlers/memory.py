@@ -13,7 +13,8 @@ boundary.  ``delete_checkpoint`` is live; the others are currently
 ``not_supported`` behind the guardrail.
 """
 
-from typing import Any
+from types import MappingProxyType
+from typing import TYPE_CHECKING, Any
 
 from synthorg.memory.service import (
     CheckpointNotFoundError,
@@ -40,12 +41,37 @@ from synthorg.observability.events.mcp import (
     MCP_HANDLER_INVOKE_FAILED,
     MCP_HANDLER_INVOKE_SUCCESS,
 )
+from synthorg.persistence.errors import QueryError
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+    from synthorg.meta.mcp.invoker import ToolHandler
 
 logger = get_logger(__name__)
 
 
 _TY_NON_BLANK = "non-blank string"
+_TY_NON_NEG_INT = "non-negative int"
+_TY_POS_INT = "positive int"
 _ARG_CHECKPOINT_ID = "checkpoint_id"
+_ARG_OFFSET = "offset"
+_ARG_LIMIT = "limit"
+
+
+def _coerce_pagination(arguments: dict[str, Any]) -> tuple[int, int]:
+    """Parse offset/limit as ints, raising ``ArgumentValidationError`` on bad input."""
+    raw_offset: Any = arguments.get("offset")
+    raw_limit: Any = arguments.get("limit")
+    try:
+        offset = 0 if raw_offset is None or raw_offset == "" else int(raw_offset)
+    except (TypeError, ValueError) as exc:
+        raise invalid_argument(_ARG_OFFSET, _TY_NON_NEG_INT) from exc
+    try:
+        limit = 50 if raw_limit is None or raw_limit == "" else int(raw_limit)
+    except (TypeError, ValueError) as exc:
+        raise invalid_argument(_ARG_LIMIT, _TY_POS_INT) from exc
+    return offset, limit
 
 
 def _log_invalid(tool: str, exc: Exception) -> None:
@@ -189,20 +215,12 @@ async def _memory_list_checkpoints(
 ) -> str:
     tool = "synthorg_memory_list_checkpoints"
     try:
-        offset = int(arguments.get("offset", 0) or 0)
-        limit = int(arguments.get("limit", 50) or 50)
-    except (TypeError, ValueError) as exc:
+        offset, limit = _coerce_pagination(arguments)
+    except ArgumentValidationError as exc:
         _log_invalid(tool, exc)
         return err(exc)
     try:
-        # Call the repo directly rather than through ``MemoryService``:
-        # the service drops the repo's total count, which pagination
-        # metadata needs.  Accessing ``app_state.persistence.*`` is the
-        # canonical persistence-boundary entry point.
-        (
-            checkpoints,
-            total,
-        ) = await app_state.persistence.fine_tune_checkpoints.list_checkpoints(
+        checkpoints, total = await _service(app_state).list_checkpoints(
             limit=limit,
             offset=offset,
         )
@@ -280,6 +298,11 @@ async def _memory_delete_checkpoint(
     except CheckpointNotFoundError as exc:
         _log_failed(tool, exc)
         return err(exc, domain_code="not_found")
+    except QueryError as exc:
+        # Active-checkpoint / domain-rule violation -- surface as
+        # ``conflict`` so callers can distinguish from internal errors.
+        _log_failed(tool, exc)
+        return err(exc, domain_code="conflict")
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -312,16 +335,18 @@ async def _memory_get_active_embedder(
     return not_supported("synthorg_memory_get_active_embedder", _WHY_EMBEDDER)
 
 
-MEMORY_HANDLERS: dict[str, Any] = {
-    "synthorg_memory_start_fine_tune": _memory_start_fine_tune,
-    "synthorg_memory_resume_fine_tune": _memory_resume_fine_tune,
-    "synthorg_memory_get_fine_tune_status": _memory_get_fine_tune_status,
-    "synthorg_memory_cancel_fine_tune": _memory_cancel_fine_tune,
-    "synthorg_memory_run_preflight": _memory_run_preflight,
-    "synthorg_memory_list_checkpoints": _memory_list_checkpoints,
-    "synthorg_memory_deploy_checkpoint": _memory_deploy_checkpoint,
-    "synthorg_memory_rollback_checkpoint": _memory_rollback_checkpoint,
-    "synthorg_memory_delete_checkpoint": _memory_delete_checkpoint,
-    "synthorg_memory_list_runs": _memory_list_runs,
-    "synthorg_memory_get_active_embedder": _memory_get_active_embedder,
-}
+MEMORY_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(
+    {
+        "synthorg_memory_start_fine_tune": _memory_start_fine_tune,
+        "synthorg_memory_resume_fine_tune": _memory_resume_fine_tune,
+        "synthorg_memory_get_fine_tune_status": _memory_get_fine_tune_status,
+        "synthorg_memory_cancel_fine_tune": _memory_cancel_fine_tune,
+        "synthorg_memory_run_preflight": _memory_run_preflight,
+        "synthorg_memory_list_checkpoints": _memory_list_checkpoints,
+        "synthorg_memory_deploy_checkpoint": _memory_deploy_checkpoint,
+        "synthorg_memory_rollback_checkpoint": _memory_rollback_checkpoint,
+        "synthorg_memory_delete_checkpoint": _memory_delete_checkpoint,
+        "synthorg_memory_list_runs": _memory_list_runs,
+        "synthorg_memory_get_active_embedder": _memory_get_active_embedder,
+    },
+)

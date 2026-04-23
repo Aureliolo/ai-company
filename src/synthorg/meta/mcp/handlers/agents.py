@@ -15,6 +15,7 @@ Destructive ops
 and emits ``MCP_DESTRUCTIVE_OP_EXECUTED`` on success.
 """
 
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
 from synthorg.hr.errors import AgentNotFoundError
@@ -42,7 +43,10 @@ from synthorg.observability.events.mcp import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from synthorg.core.enums import AutonomyLevel
+    from synthorg.meta.mcp.invoker import ToolHandler
 
 logger = get_logger(__name__)
 
@@ -439,23 +443,25 @@ async def _collaboration_get_calibration(
     )
 
 
-AGENT_HANDLERS: dict[str, Any] = {
-    "synthorg_agents_list": _agents_list,
-    "synthorg_agents_get": _agents_get,
-    "synthorg_agents_create": _agents_create,
-    "synthorg_agents_update": _agents_update,
-    "synthorg_agents_delete": _agents_delete,
-    "synthorg_agents_get_performance": _agents_get_performance,
-    "synthorg_agents_get_activity": _agents_get_activity,
-    "synthorg_agents_get_history": _agents_get_history,
-    "synthorg_agents_get_health": _agents_get_health,
-    "synthorg_personalities_list": _personalities_list,
-    "synthorg_personalities_get": _personalities_get,
-    "synthorg_training_list_sessions": _training_list_sessions,
-    "synthorg_training_get_session": _training_get_session,
-    "synthorg_training_start_session": _training_start_session,
-    "synthorg_autonomy_get": _autonomy_get,
-    "synthorg_autonomy_update": _autonomy_update,
-    "synthorg_collaboration_get_score": _collaboration_get_score,
-    "synthorg_collaboration_get_calibration": _collaboration_get_calibration,
-}
+AGENT_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(
+    {
+        "synthorg_agents_list": _agents_list,
+        "synthorg_agents_get": _agents_get,
+        "synthorg_agents_create": _agents_create,
+        "synthorg_agents_update": _agents_update,
+        "synthorg_agents_delete": _agents_delete,
+        "synthorg_agents_get_performance": _agents_get_performance,
+        "synthorg_agents_get_activity": _agents_get_activity,
+        "synthorg_agents_get_history": _agents_get_history,
+        "synthorg_agents_get_health": _agents_get_health,
+        "synthorg_personalities_list": _personalities_list,
+        "synthorg_personalities_get": _personalities_get,
+        "synthorg_training_list_sessions": _training_list_sessions,
+        "synthorg_training_get_session": _training_get_session,
+        "synthorg_training_start_session": _training_start_session,
+        "synthorg_autonomy_get": _autonomy_get,
+        "synthorg_autonomy_update": _autonomy_update,
+        "synthorg_collaboration_get_score": _collaboration_get_score,
+        "synthorg_collaboration_get_calibration": _collaboration_get_calibration,
+    },
+)

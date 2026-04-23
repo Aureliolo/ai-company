@@ -6,6 +6,10 @@ handler is expected to catch these and return an ``err(...)`` envelope to
 the invoker; they are intentionally *not* system errors.
 """
 
+from typing import Literal
+
+GuardrailCode = Literal["missing_confirm", "missing_reason", "missing_actor"]
+
 
 class ArgumentValidationError(ValueError):
     """Raised when a required handler argument is missing or wrongly typed.
@@ -54,11 +58,15 @@ class GuardrailViolationError(PermissionError):
 
     domain_code = "guardrail_violated"
 
-    def __init__(self, violation: str, message: str) -> None:
+    def __init__(self, violation: GuardrailCode, message: str) -> None:
         """Initialise with a violation code and human-readable message.
 
         Args:
-            violation: Which guardrail failed (see class docstring).
+            violation: Which guardrail failed -- one of
+                ``"missing_confirm"``, ``"missing_reason"``,
+                ``"missing_actor"``.  Typed as a ``Literal`` so
+                typos/callers passing free-form strings are caught at
+                type-check time.
             message: Human-readable explanation.
         """
         super().__init__(message)
@@ -74,6 +82,9 @@ def invalid_argument(name: str, expected: str) -> ArgumentValidationError:
     return ArgumentValidationError(name, expected)
 
 
-def guardrail_violation(violation: str, message: str) -> GuardrailViolationError:
+def guardrail_violation(
+    violation: GuardrailCode,
+    message: str,
+) -> GuardrailViolationError:
     """Build a ``GuardrailViolationError`` with a stable violation code."""
     return GuardrailViolationError(violation, message)
