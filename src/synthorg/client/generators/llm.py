@@ -14,7 +14,7 @@ from synthorg.engine.prompt_safety import (
     untrusted_content_directive,
     wrap_untrusted,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.client import CLIENT_REQUIREMENT_GENERATED
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, CompletionConfig
@@ -56,10 +56,15 @@ class LLMGenerator:
         Args:
             provider: Vendor-agnostic completion provider.
             model: Model identifier passed to the provider.
-            persona: System prompt persona for the generator. If a
-                caller supplies a custom persona, they own its prompt-
-                safety posture -- the default persona already carries
-                the SEC-1 ``untrusted_content_directive``.
+            persona: System prompt persona for the generator. The default
+                ``_DEFAULT_PERSONA`` already carries the SEC-1
+                :func:`untrusted_content_directive` so the model treats
+                ``<task-data>`` fences as untrusted input. **Callers that
+                supply a custom persona MUST append
+                ``untrusted_content_directive((TAG_TASK_DATA,))`` to it**
+                -- otherwise the model loses the directive and the fences
+                become advisory rather than enforced. Prompt-safety
+                posture for custom personas is the caller's responsibility.
             temperature: Sampling temperature (default 0.7 -- creative
                 requirement generation benefits from variety; pin to
                 0.0 for reproducible eval runs).
@@ -109,11 +114,14 @@ class LLMGenerator:
             try:
                 requirements.append(self._to_requirement(item))
             except (KeyError, ValueError, TypeError, ValidationError) as exc:
+                # Scrubbed error description keeps provider-echoed payload
+                # bytes out of log frame-locals (SEC-1 secret redaction).
                 logger.warning(
                     CLIENT_REQUIREMENT_GENERATED,
                     strategy="llm",
                     skipped=True,
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
         logger.debug(
             CLIENT_REQUIREMENT_GENERATED,

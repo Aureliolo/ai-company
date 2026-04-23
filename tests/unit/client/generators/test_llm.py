@@ -308,3 +308,23 @@ class TestSec1LLMGeneratorFences:
         user_msg = next(m for m in messages if m.role.value == "user")
         assert user_msg.content is not None
         assert "<\\/task-data>" in user_msg.content
+
+
+class TestLLMGeneratorFinishReasonError:
+    """Provider returns a response with ``FinishReason.ERROR``."""
+
+    async def test_none_content_yields_empty_tuple_with_warning(self) -> None:
+        """``generate`` returns an empty tuple when the provider responds
+        with ``FinishReason.ERROR`` and ``content=None``.  The warning is
+        emitted via the existing ``CLIENT_REQUIREMENT_GENERATED`` event
+        (``error="no JSON array found in response"``) rather than a raise,
+        so callers can treat empty output as a recoverable state.
+        """
+        provider = _StubProvider(content=None)
+        gen = LLMGenerator(
+            provider=cast(CompletionProvider, provider),
+            model="test-model",
+        )
+        result = await gen.generate(_ctx())
+        assert result == ()
+        assert provider.captured_config is not None

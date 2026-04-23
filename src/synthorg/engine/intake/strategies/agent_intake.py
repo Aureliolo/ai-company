@@ -72,10 +72,15 @@ class AgentIntake:
             model: Model identifier passed to the provider.
             project: Project stamped on created tasks.
             requested_by: Identity recorded as the task creator.
-            persona: System prompt persona for the triage agent. If a
-                caller supplies a custom persona, they own its prompt-
-                safety posture -- the default persona already carries
-                the SEC-1 ``untrusted_content_directive``.
+            persona: System prompt persona for the triage agent. The
+                default ``_DEFAULT_PERSONA`` already carries the SEC-1
+                :func:`untrusted_content_directive` so the model treats
+                ``<task-data>`` fences as untrusted input. **Callers that
+                supply a custom persona MUST append
+                ``untrusted_content_directive((TAG_TASK_DATA,))`` to it**
+                -- otherwise the model loses the directive and the fences
+                become advisory rather than enforced. Prompt-safety
+                posture for custom personas is the caller's responsibility.
             temperature: Sampling temperature (default 0.0 -- triage
                 is classification, determinism wins over diversity).
             max_tokens: Maximum tokens in the triage response.

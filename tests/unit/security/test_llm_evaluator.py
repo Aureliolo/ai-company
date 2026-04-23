@@ -109,9 +109,14 @@ def _make_evaluator(
         provider_configs = {"provider-a": config_a, "provider-b": config_b}
 
     if driver_map is None:
-        mock_driver = AsyncMock()
-        mock_driver.complete = AsyncMock(return_value=_make_completion_response())
-        driver_map = {"provider-a": mock_driver, "provider-b": mock_driver}
+        # Separate AsyncMock per provider so tests that assert on one
+        # driver's calls don't accidentally observe side effects on the
+        # other.
+        driver_a = AsyncMock()
+        driver_a.complete = AsyncMock(return_value=_make_completion_response())
+        driver_b = AsyncMock()
+        driver_b.complete = AsyncMock(return_value=_make_completion_response())
+        driver_map = {"provider-a": driver_a, "provider-b": driver_b}
 
     registry = MagicMock()
     registry.get = MagicMock(side_effect=lambda name: driver_map[name])

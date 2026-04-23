@@ -134,9 +134,15 @@ class TestExplainProposal:
         await chat.explain_proposal(_proposal(), _snap())
         provider.complete.assert_called_once()
         call_args = provider.complete.call_args
-        # model is the second positional arg
-        assert call_args.args[1] == "example-small-001"
-        # config is a keyword arg with temperature and max_tokens
+        # Robust against positional / keyword drift: ``provider.complete``
+        # accepts ``model`` as positional[1] today but may move to a kwarg
+        # in the future -- check both.
+        sent_model = (
+            call_args.kwargs["model"]
+            if "model" in call_args.kwargs
+            else call_args.args[1]
+        )
+        assert sent_model == "example-small-001"
         completion_config = call_args.kwargs["config"]
         assert completion_config.temperature == pytest.approx(0.5)
         assert completion_config.max_tokens == 1500
@@ -301,6 +307,23 @@ class TestSec1ExplainProposalFences:
         assert "<task-data>" in captured
         assert "</task-data>" in captured
 
+    async def test_completion_config_pinned(self) -> None:
+        """Provider receives the configured ``CompletionConfig`` instance."""
+        from synthorg.providers.models import CompletionConfig
+
+        provider = _mock_provider()
+        config = ChiefOfStaffConfig(
+            chat_temperature=0.1,
+            chat_max_tokens=777,
+        )
+        chat = ChiefOfStaffChat(provider=provider, config=config)
+        await chat.explain_proposal(_proposal(), _snap())
+
+        completion_config = provider.complete.call_args.kwargs.get("config")
+        assert isinstance(completion_config, CompletionConfig)
+        assert completion_config.temperature == pytest.approx(0.1)
+        assert completion_config.max_tokens == 777
+
     async def test_breakout_in_title_escaped(self) -> None:
         provider = _mock_provider()
         chat = ChiefOfStaffChat(provider=provider, config=ChiefOfStaffConfig())
@@ -358,6 +381,30 @@ class TestSec1ExplainAlertFences:
         captured = provider.complete.call_args.args[0][0].content
         assert "<\\/task-data>" in captured
 
+    async def test_completion_config_pinned(self) -> None:
+        """``explain_alert`` pins the configured ``CompletionConfig``."""
+        from synthorg.providers.models import CompletionConfig
+
+        provider = _mock_provider()
+        config = ChiefOfStaffConfig(
+            chat_temperature=0.4,
+            chat_max_tokens=333,
+        )
+        chat = ChiefOfStaffChat(provider=provider, config=config)
+        alert = Alert(
+            severity=RuleSeverity.WARNING,
+            alert_type="inflection",
+            description="Budget",
+            affected_domains=("budget",),
+            emitted_at=_NOW,
+        )
+        await chat.explain_alert(alert, _snap())
+
+        completion_config = provider.complete.call_args.kwargs.get("config")
+        assert isinstance(completion_config, CompletionConfig)
+        assert completion_config.temperature == pytest.approx(0.4)
+        assert completion_config.max_tokens == 333
+
 
 class TestSec1AskFences:
     """``ask`` wraps the free-form user question + recent_context."""
@@ -385,3 +432,20 @@ class TestSec1AskFences:
         )
         captured = provider.complete.call_args.args[0][0].content
         assert "<\\/task-data>" in captured
+
+    async def test_completion_config_pinned(self) -> None:
+        """``ask`` pins the configured ``CompletionConfig``."""
+        from synthorg.providers.models import CompletionConfig
+
+        provider = _mock_provider()
+        config = ChiefOfStaffConfig(
+            chat_temperature=0.25,
+            chat_max_tokens=1234,
+        )
+        chat = ChiefOfStaffChat(provider=provider, config=config)
+        await chat.ask(ChatQuery(question="health?"), _snap())
+
+        completion_config = provider.complete.call_args.kwargs.get("config")
+        assert isinstance(completion_config, CompletionConfig)
+        assert completion_config.temperature == pytest.approx(0.25)
+        assert completion_config.max_tokens == 1234

@@ -457,12 +457,26 @@ class TestSec1SemanticDetectorFences:
         assert prompt.count("</task-data>") == 1
         assert "<\\/task-data>" in prompt
 
-    async def test_pins_completion_config(self) -> None:
-        """Provider receives ``CompletionConfig(temperature=0.0, max_tokens=1024)``."""
+    @pytest.mark.parametrize(
+        "cls",
+        [
+            SemanticContradictionDetector,
+            SemanticNumericalVerificationDetector,
+            SemanticMissingReferenceDetector,
+            SemanticCoordinationDetector,
+        ],
+    )
+    async def test_pins_completion_config(self, cls: type) -> None:
+        """Every detector pins ``CompletionConfig(temperature=0.0, max_tokens=1024)``.
+
+        Config pinning is inherited from ``_BaseSemanticDetector`` -- covering
+        all 4 subclasses guards against a subclass overriding ``__init__``
+        without passing through the pinning.
+        """
         from synthorg.providers.models import CompletionConfig
 
         provider = _mock_provider("[]")
-        detector = SemanticContradictionDetector(
+        detector = cls(
             provider=provider,
             model_id="test-small-001",
         )

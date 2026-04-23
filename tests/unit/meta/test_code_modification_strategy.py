@@ -472,3 +472,55 @@ class TestSec1CodeModificationFences:
         # fragment that still looks like `</task-data>`. Assert the final fence
         # has exactly one legitimate closing tag.
         assert prompt.count("</task-data>") == 1
+
+    async def test_call_llm_pins_completion_config(self) -> None:
+        """Provider receives ``CompletionConfig`` pinned from ``_code_config``."""
+        from synthorg.providers.models import CompletionConfig
+
+        provider = _mock_provider(_valid_llm_response())
+        s = CodeModificationStrategy(
+            config=_DEFAULT_CONFIG,
+            provider=provider,
+            scope_validator=_scope_validator(),
+        )
+        await s._call_llm("sample user prompt")
+
+        provider.complete.assert_awaited_once()
+        completion_config = provider.complete.call_args.kwargs.get("config")
+        assert isinstance(completion_config, CompletionConfig)
+        expected_temp = _DEFAULT_CONFIG.code_modification.temperature
+        expected_max = _DEFAULT_CONFIG.code_modification.max_tokens
+        assert completion_config.temperature == pytest.approx(expected_temp)
+        assert completion_config.max_tokens == expected_max
+
+
+class TestCodeModificationResponseEdgeCases:
+    """``_parse_code_changes`` handles empty / malformed LLM output."""
+
+    @pytest.mark.parametrize(
+        "response_content",
+        [
+            "[]",
+            "not valid json",
+            "null",
+            '{"not": "an array"}',
+        ],
+    )
+    async def test_non_array_or_empty_response_returns_no_proposal(
+        self,
+        response_content: str,
+    ) -> None:
+        """Whatever garbage the LLM returns, the strategy produces no
+        proposal rather than raising.  Guards against silent regressions
+        where malformed output would slip through ``_parse_json_array``."""
+        provider = _mock_provider(response_content)
+        s = CodeModificationStrategy(
+            config=_DEFAULT_CONFIG,
+            provider=provider,
+            scope_validator=_scope_validator(),
+        )
+        proposals = await s.propose(
+            snapshot=_snap(),
+            triggered_rules=(_rule(),),
+        )
+        assert proposals == ()
