@@ -17,6 +17,7 @@ from synthorg.observability.events.config import (
     CONFIG_DEPRECATION_NOTICE,
     CONFIG_VALIDATION_FAILED,
 )
+from synthorg.providers.defaults_config import ProviderModelDefaults
 from synthorg.providers.enums import AuthType
 
 logger = get_logger(__name__)
@@ -175,6 +176,14 @@ class ProviderConfig(BaseModel):
     degradation: DegradationConfig = Field(
         default_factory=DegradationConfig,
         description="Degradation strategy when quota exhausted",
+    )
+    defaults: ProviderModelDefaults = Field(
+        default_factory=ProviderModelDefaults,
+        description=(
+            "Last-resort defaults applied when a driver cannot discover "
+            "per-model metadata (currently used by the LiteLLM driver's "
+            "fallback ``max_output_tokens``)."
+        ),
     )
     preset_name: NotBlankStr | None = Field(
         default=None,

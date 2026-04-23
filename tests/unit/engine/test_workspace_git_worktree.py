@@ -892,6 +892,7 @@ class TestGetBaseSources:
             mock_run_git,
             "abc123",
             ("src/main.py", "src/utils.py"),
+            concurrency=2,
         )
 
         assert result == {
@@ -918,6 +919,7 @@ class TestGetBaseSources:
             mock_run_git,
             "abc123",
             ("src/good.py", "src/deleted.py"),
+            concurrency=2,
         )
 
         assert "src/good.py" in result
@@ -934,6 +936,7 @@ class TestGetBaseSources:
             mock_run_git,
             "abc123",
             ("--malicious", "src/good.py"),
+            concurrency=2,
         )
 
         # Only the safe path should be fetched

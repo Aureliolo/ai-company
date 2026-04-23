@@ -142,6 +142,39 @@ class DockerSandboxConfig(BaseModel):
     )
     cpu_limit: float = Field(default=1.0, gt=0, le=16)
     timeout_seconds: float = Field(default=120.0, gt=0, le=600)
+    pids_limit: int = Field(
+        default=64,
+        ge=1,
+        le=1024,
+        description=(
+            "PIDs cap for the main sandbox container. Guards against "
+            "fork-bomb-style runaways from untrusted tool code."
+        ),
+    )
+    tmpfs_size: NotBlankStr = Field(
+        default="64m",
+        description=(
+            "Size of the tmpfs mounted at /tmp inside the sandbox "
+            "container (Docker tmpfs size syntax, e.g. '64m')."
+        ),
+    )
+    sidecar_pids_limit: int = Field(
+        default=32,
+        ge=1,
+        le=1024,
+        description=(
+            "PIDs cap for the network sidecar container. Tighter than "
+            "the main sandbox because the sidecar only runs dnsmasq + "
+            "iptables + a small Python health server."
+        ),
+    )
+    sidecar_tmpfs_size: NotBlankStr = Field(
+        default="8m",
+        description=(
+            "Size of the tmpfs mounted at /tmp inside the network "
+            "sidecar container (Docker tmpfs size syntax, e.g. '8m')."
+        ),
+    )
     mount_mode: Literal["rw", "ro"] = Field(
         default="ro",
         description="Workspace mount mode (read-only by default)",

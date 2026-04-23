@@ -31,7 +31,6 @@ _SIDECAR_HEALTH_POLL_INTERVAL: Final[float] = 0.2
 _SIDECAR_HEALTH_TIMEOUT: Final[float] = 15.0
 _SIDECAR_MEMORY: Final[str] = "64m"
 _SIDECAR_CPU: Final[float] = 0.5
-_SIDECAR_PIDS: Final[int] = 32
 _NANO_CPUS_MULTIPLIER: Final[int] = 1_000_000_000
 
 
@@ -81,6 +80,7 @@ class DockerSandboxSidecarMixin:
 
         memory_bytes = self._parse_memory_limit(_SIDECAR_MEMORY)
         nano_cpus = int(_SIDECAR_CPU * _NANO_CPUS_MULTIPLIER)
+        tmpfs_spec = f"size={self._config.sidecar_tmpfs_size},noexec,nosuid"
 
         config: dict[str, Any] = {
             "Image": self._config.sidecar_image,
@@ -91,12 +91,12 @@ class DockerSandboxSidecarMixin:
                 "CapAdd": ["NET_ADMIN"],
                 "ReadonlyRootfs": True,
                 "Tmpfs": {
-                    "/tmp": "size=8m,noexec,nosuid",  # noqa: S108
+                    "/tmp": tmpfs_spec,  # noqa: S108
                     "/run": "size=1m,nosuid",
                 },
                 "Memory": memory_bytes,
                 "NanoCpus": nano_cpus,
-                "PidsLimit": _SIDECAR_PIDS,
+                "PidsLimit": self._config.sidecar_pids_limit,
                 "AutoRemove": False,
                 "SecurityOpt": ["no-new-privileges"],
             },

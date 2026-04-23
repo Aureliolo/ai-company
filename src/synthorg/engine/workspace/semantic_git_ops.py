@@ -132,27 +132,45 @@ async def get_base_sources(
     base_sha: str,
     files: tuple[str, ...],
     *,
-    concurrency: int = 10,
+    concurrency: int | None = None,
     semaphore: asyncio.Semaphore | None = None,
 ) -> dict[str, str]:
     """Read file contents at a specific commit via parallel git show.
+
+    Exactly one of ``concurrency`` or ``semaphore`` must be
+    supplied.  The previous silent default (``concurrency=10``) was
+    removed to force callers to thread the value from
+    :class:`SemanticAnalysisConfig.git_concurrency` so the function
+    default cannot drift from the config default.
 
     Args:
         run_git: Bound ``_run_git`` method from the strategy.
         base_sha: Commit SHA to read from.
         files: File paths to read.
-        concurrency: Maximum concurrent git show calls (ignored
-            when *semaphore* is provided).
+        concurrency: Maximum concurrent git show calls.  Used to
+            build a fresh semaphore when *semaphore* is ``None``.
         semaphore: Optional shared semaphore for cross-batch
-            concurrency control.
+            concurrency control.  When provided, *concurrency* is
+            ignored.
 
     Returns:
         Mapping of file path to content at the given commit.
         Files that do not exist at the given commit are omitted
         (logged at warning level).
+
+    Raises:
+        ValueError: If neither *concurrency* nor *semaphore* is
+            provided.
     """
+    if semaphore is None and concurrency is None:
+        msg = (
+            "get_base_sources requires either concurrency= or "
+            "semaphore=; pass concurrency from "
+            "SemanticAnalysisConfig.git_concurrency"
+        )
+        raise ValueError(msg)
     sources: dict[str, str] = {}
-    sem = semaphore or asyncio.Semaphore(concurrency)
+    sem = semaphore or asyncio.Semaphore(concurrency or 1)
 
     async def _fetch(fp: str) -> None:
         async with sem:

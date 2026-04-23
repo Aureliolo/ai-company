@@ -44,9 +44,14 @@ class A2AClient:
     Args:
         connection_catalog: Connection catalog for credential
             retrieval.
+        timeout_seconds: HTTP request timeout in seconds.  Required
+            kwarg -- callers must thread the value from
+            :class:`synthorg.a2a.config.A2AConfig.client_timeout_seconds`
+            so the constructor default cannot drift from the config
+            default (pre-alpha: no hidden fallbacks).
         network_validator: SSRF validation (optional; when None,
             SSRF checks are skipped -- test-only).
-        timeout_seconds: HTTP request timeout in seconds.
+        http_client: Optional injected httpx.AsyncClient for tests.
     """
 
     __slots__ = (
@@ -60,8 +65,8 @@ class A2AClient:
         self,
         connection_catalog: Any,
         *,
+        timeout_seconds: float,
         network_validator: Any | None = None,
-        timeout_seconds: float = 30.0,
         http_client: httpx.AsyncClient | None = None,
     ) -> None:
         self._catalog = connection_catalog
