@@ -279,7 +279,7 @@ def _pick_most_severe(
         categories,
         key=lambda s: (-s.avg_severity, -s.count, s.category),
     )
-    return NotBlankStr(ranked[0].category)
+    return ranked[0].category
 
 
 __all__ = [

@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
+import structlog.testing
 
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.infrastructure.services import (
@@ -19,6 +20,7 @@ from synthorg.infrastructure.services import (
     TemplatePackFacadeService,
 )
 from synthorg.meta.mcp.handlers.infrastructure import INFRASTRUCTURE_HANDLERS
+from synthorg.observability.events.mcp import MCP_DESTRUCTIVE_OP_EXECUTED
 from tests.unit.meta.mcp.conftest import make_test_actor
 
 pytestmark = pytest.mark.unit
@@ -49,7 +51,7 @@ def fake_providers() -> AsyncMock:
 @pytest.fixture
 def fake_backup() -> AsyncMock:
     service = AsyncMock()
-    service.list_backups = AsyncMock(return_value=())
+    service.list_backups = AsyncMock(return_value=((), 0))
     service.get_backup = AsyncMock(
         side_effect=LookupError("not found"),
     )
@@ -113,7 +115,7 @@ def fake_setup() -> AsyncMock:
 @pytest.fixture
 def fake_simulation() -> AsyncMock:
     service = AsyncMock()
-    service.list_simulations = AsyncMock(return_value=())
+    service.list_simulations = AsyncMock(return_value=((), 0))
     service.get_simulation = AsyncMock(return_value=None)
     service.create_simulation = AsyncMock(
         side_effect=CapabilityNotSupportedError("simulation_create", "x"),
@@ -265,21 +267,33 @@ class TestBackup:
 
     async def test_delete_guardrails(self, fake_app_state: SimpleNamespace) -> None:
         handler = INFRASTRUCTURE_HANDLERS["synthorg_backup_delete"]
-        response = await handler(
-            app_state=fake_app_state,
-            arguments={"backup_id": "b1", "confirm": True, "reason": "cleanup"},
-            actor=make_test_actor(),
-        )
+        with structlog.testing.capture_logs() as events:
+            response = await handler(
+                app_state=fake_app_state,
+                arguments={"backup_id": "b1", "confirm": True, "reason": "cleanup"},
+                actor=make_test_actor(),
+            )
         assert json.loads(response)["status"] == "ok"
+        exec_events = [
+            e for e in events if e.get("event") == MCP_DESTRUCTIVE_OP_EXECUTED
+        ]
+        assert len(exec_events) == 1
+        assert exec_events[0]["tool_name"] == "synthorg_backup_delete"
 
     async def test_restore_guardrails(self, fake_app_state: SimpleNamespace) -> None:
         handler = INFRASTRUCTURE_HANDLERS["synthorg_backup_restore"]
-        response = await handler(
-            app_state=fake_app_state,
-            arguments={"backup_id": "b1", "confirm": True, "reason": "dr"},
-            actor=make_test_actor(),
-        )
+        with structlog.testing.capture_logs() as events:
+            response = await handler(
+                app_state=fake_app_state,
+                arguments={"backup_id": "b1", "confirm": True, "reason": "dr"},
+                actor=make_test_actor(),
+            )
         assert json.loads(response)["status"] == "ok"
+        exec_events = [
+            e for e in events if e.get("event") == MCP_DESTRUCTIVE_OP_EXECUTED
+        ]
+        assert len(exec_events) == 1
+        assert exec_events[0]["tool_name"] == "synthorg_backup_restore"
 
 
 class TestUsers:

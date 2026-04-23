@@ -232,8 +232,28 @@ class BackupFacadeService:
     def __init__(self, *, service: CoreBackupService) -> None:
         self._service = cast("Any", service)
 
-    async def list_backups(self) -> Sequence[object]:
-        return tuple(await self._service.list_backups())
+    async def list_backups(
+        self,
+        *,
+        offset: int = 0,
+        limit: int | None = None,
+    ) -> tuple[tuple[object, ...], int]:
+        """Return paginated backups plus the unfiltered total.
+
+        Raises:
+            ValueError: If ``offset`` is negative, or ``limit`` is
+                provided and non-positive.
+        """
+        if offset < 0:
+            msg = f"offset must be >= 0, got {offset}"
+            raise ValueError(msg)
+        if limit is not None and limit < 1:
+            msg = f"limit must be >= 1 when provided, got {limit}"
+            raise ValueError(msg)
+        all_backups = tuple(await self._service.list_backups())
+        total = len(all_backups)
+        end = total if limit is None else offset + limit
+        return all_backups[offset:end], total
 
     async def get_backup(self, backup_id: NotBlankStr) -> object:
         return await self._service.get_backup(backup_id)
@@ -373,10 +393,32 @@ class ProjectFacadeService:
         self._projects: dict[UUID, _ProjectRecord] = {}
         self._lock = asyncio.Lock()
 
-    async def list_projects(self) -> Sequence[_ProjectRecord]:
+    async def list_projects(
+        self,
+        *,
+        offset: int = 0,
+        limit: int | None = None,
+    ) -> tuple[tuple[_ProjectRecord, ...], int]:
+        """Return paginated projects newest-first plus the unfiltered total.
+
+        Raises:
+            ValueError: If ``offset`` is negative, or ``limit`` is
+                provided and non-positive.
+        """
+        if offset < 0:
+            msg = f"offset must be >= 0, got {offset}"
+            raise ValueError(msg)
+        if limit is not None and limit < 1:
+            msg = f"limit must be >= 1 when provided, got {limit}"
+            raise ValueError(msg)
         async with self._lock:
             snapshot = tuple(copy.deepcopy(p) for p in self._projects.values())
-        return tuple(sorted(snapshot, key=lambda p: p.created_at, reverse=True))
+        ordered = tuple(
+            sorted(snapshot, key=lambda p: p.created_at, reverse=True),
+        )
+        total = len(ordered)
+        end = total if limit is None else offset + limit
+        return ordered[offset:end], total
 
     async def get_project(self, project_id: NotBlankStr) -> _ProjectRecord | None:
         try:
@@ -508,10 +550,32 @@ class RequestsFacadeService:
         self._requests: dict[UUID, _RequestRecord] = {}
         self._lock = asyncio.Lock()
 
-    async def list_requests(self) -> Sequence[_RequestRecord]:
+    async def list_requests(
+        self,
+        *,
+        offset: int = 0,
+        limit: int | None = None,
+    ) -> tuple[tuple[_RequestRecord, ...], int]:
+        """Return paginated requests newest-first plus the unfiltered total.
+
+        Raises:
+            ValueError: If ``offset`` is negative, or ``limit`` is
+                provided and non-positive.
+        """
+        if offset < 0:
+            msg = f"offset must be >= 0, got {offset}"
+            raise ValueError(msg)
+        if limit is not None and limit < 1:
+            msg = f"limit must be >= 1 when provided, got {limit}"
+            raise ValueError(msg)
         async with self._lock:
             snapshot = tuple(copy.deepcopy(r) for r in self._requests.values())
-        return tuple(sorted(snapshot, key=lambda r: r.created_at, reverse=True))
+        ordered = tuple(
+            sorted(snapshot, key=lambda r: r.created_at, reverse=True),
+        )
+        total = len(ordered)
+        end = total if limit is None else offset + limit
+        return ordered[offset:end], total
 
     async def get_request(self, request_id: NotBlankStr) -> _RequestRecord | None:
         try:
@@ -581,14 +645,36 @@ class SimulationFacadeService:
     def __init__(self, *, state: ClientSimulationState) -> None:
         self._state = cast("Any", state)
 
-    async def list_simulations(self) -> Sequence[object]:
+    async def list_simulations(
+        self,
+        *,
+        offset: int = 0,
+        limit: int | None = None,
+    ) -> tuple[tuple[object, ...], int]:
+        """Return paginated simulation scenarios plus the unfiltered total.
+
+        Raises:
+            ValueError: If ``offset`` is negative, or ``limit`` is
+                provided and non-positive.
+            CapabilityNotSupportedError: If the state object does not
+                expose ``list_scenarios``.
+        """
+        if offset < 0:
+            msg = f"offset must be >= 0, got {offset}"
+            raise ValueError(msg)
+        if limit is not None and limit < 1:
+            msg = f"limit must be >= 1 when provided, got {limit}"
+            raise ValueError(msg)
         fn = getattr(self._state, "list_scenarios", None)
         if not callable(fn):
             raise _capability_missing(
                 "simulation_list",
                 "ClientSimulationState does not expose list_scenarios",
             )
-        return tuple(fn())
+        all_scenarios = tuple(fn())
+        total = len(all_scenarios)
+        end = total if limit is None else offset + limit
+        return all_scenarios[offset:end], total
 
     async def get_simulation(self, simulation_id: NotBlankStr) -> object | None:
         fn = getattr(self._state, "get_scenario", None)
@@ -645,10 +731,32 @@ class TemplatePackFacadeService:
         self._packs: dict[UUID, _TemplatePackRecord] = {}
         self._lock = asyncio.Lock()
 
-    async def list_packs(self) -> Sequence[_TemplatePackRecord]:
+    async def list_packs(
+        self,
+        *,
+        offset: int = 0,
+        limit: int | None = None,
+    ) -> tuple[tuple[_TemplatePackRecord, ...], int]:
+        """Return paginated packs newest-first plus the unfiltered total.
+
+        Raises:
+            ValueError: If ``offset`` is negative, or ``limit`` is
+                provided and non-positive.
+        """
+        if offset < 0:
+            msg = f"offset must be >= 0, got {offset}"
+            raise ValueError(msg)
+        if limit is not None and limit < 1:
+            msg = f"limit must be >= 1 when provided, got {limit}"
+            raise ValueError(msg)
         async with self._lock:
             snapshot = tuple(copy.deepcopy(p) for p in self._packs.values())
-        return tuple(sorted(snapshot, key=lambda p: p.installed_at, reverse=True))
+        ordered = tuple(
+            sorted(snapshot, key=lambda p: p.installed_at, reverse=True),
+        )
+        total = len(ordered)
+        end = total if limit is None else offset + limit
+        return ordered[offset:end], total
 
     async def get_pack(self, pack_id: NotBlankStr) -> _TemplatePackRecord | None:
         try:
@@ -763,6 +871,10 @@ class EventsReadService:
     ) -> tuple[tuple[object, ...], int]:
         """Return paginated recent events plus the unfiltered total.
 
+        Fetches the hub's full retained buffer so ``total`` reflects
+        the true count (not just ``offset + limit``), then slices the
+        requested window.
+
         Raises:
             ValueError: If ``offset`` is negative or ``limit`` < 1.
             CapabilityNotSupportedError: If the underlying
@@ -780,12 +892,12 @@ class EventsReadService:
                 "events_list",
                 "EventStreamHub does not expose recent_events",
             )
-        # ``recent_events`` returns the *newest* ``limit`` events; to
-        # paginate deterministically ask for ``offset + limit`` then
-        # slice so the caller sees a stable window.
-        fetched = tuple(fn(limit=offset + limit))
-        total = len(fetched)
-        page = fetched[offset : offset + limit]
+        # Ask for every retained event so ``total`` is the hub's full
+        # retention count rather than the pagination window size.  The
+        # hub keeps a bounded ring buffer so this is not unbounded.
+        all_events = tuple(fn())
+        total = len(all_events)
+        page = all_events[offset : offset + limit]
         return page, total
 
 

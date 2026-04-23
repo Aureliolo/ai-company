@@ -144,9 +144,13 @@ class InMemoryTelemetryEventCounter:
             return len(self._events)
 
     async def clear(self) -> None:
-        """Drop all stored events."""
+        """Drop all stored events and reset the eviction log sentinel."""
         with self._lock:
             self._events.clear()
+            # Reset the one-shot eviction flag so a future saturation
+            # after this clear re-emits TELEMETRY_COUNTER_EVICTED; left
+            # set it would mask re-saturation as silent.
+            self._eviction_logged = False
 
 
 def _validate_window(since: datetime, until: datetime) -> None:

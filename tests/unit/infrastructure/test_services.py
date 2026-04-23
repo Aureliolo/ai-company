@@ -54,9 +54,10 @@ class TestProjectFacadeService:
             description=NotBlankStr("d2"),
             actor_id=NotBlankStr("alice"),
         )
-        listed = await service.list_projects()
-        assert listed[0].id == second.id
-        assert listed[1].id == first.id
+        page, total = await service.list_projects()
+        assert total == 2
+        assert page[0].id == second.id
+        assert page[1].id == first.id
 
     async def test_update_patches_fields(self) -> None:
         service = ProjectFacadeService()
@@ -160,9 +161,10 @@ class TestRequestsFacadeService:
             body=NotBlankStr("b"),
             requested_by=NotBlankStr("alice"),
         )
-        listed = await service.list_requests()
-        assert listed[0].id == second.id
-        assert listed[1].id == first.id
+        page, total = await service.list_requests()
+        assert total == 2
+        assert page[0].id == second.id
+        assert page[1].id == first.id
 
     async def test_get_invalid_uuid_returns_none(self) -> None:
         service = RequestsFacadeService()
@@ -233,9 +235,10 @@ class TestTemplatePackFacadeService:
             version=NotBlankStr("1"),
             actor_id=NotBlankStr("alice"),
         )
-        listed = await service.list_packs()
-        assert listed[0].id == second.id
-        assert listed[1].id == first.id
+        page, total = await service.list_packs()
+        assert total == 2
+        assert page[0].id == second.id
+        assert page[1].id == first.id
 
 
 # ── SetupFacadeService ─────────────────────────────────────────────
@@ -269,7 +272,9 @@ class TestSimulationFacadeService:
                 return ("a", "b")
 
         service = SimulationFacadeService(state=_State())  # type: ignore[arg-type]
-        assert await service.list_simulations() == ("a", "b")
+        page, total = await service.list_simulations()
+        assert page == ("a", "b")
+        assert total == 2
 
     async def test_get_capability_gap_without_method(self) -> None:
         service = SimulationFacadeService(state=SimpleNamespace())  # type: ignore[arg-type]

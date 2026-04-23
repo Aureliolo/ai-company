@@ -129,13 +129,14 @@ class MCPCatalogFacadeService:
                 "McpInstallationRepository does not expose uninstall",
             )
         removed = bool(await fn(installation_id=installation_id))
-        logger.info(
-            MCP_CATALOG_UNINSTALLED_VIA_MCP,
-            installation_id=installation_id,
-            actor_id=actor_id,
-            reason=reason,
-            removed=removed,
-        )
+        if removed:
+            logger.info(
+                MCP_CATALOG_UNINSTALLED_VIA_MCP,
+                installation_id=installation_id,
+                actor_id=actor_id,
+                reason=reason,
+                removed=removed,
+            )
         return removed
 
 

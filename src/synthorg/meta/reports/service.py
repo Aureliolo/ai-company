@@ -83,7 +83,16 @@ class ReportsService:
 
         Returns:
             Tuple of ``(page, total_count)``.
+
+        Raises:
+            ValueError: If ``offset`` is negative or ``limit`` < 1.
         """
+        if offset < 0:
+            msg = f"offset must be >= 0, got {offset}"
+            raise ValueError(msg)
+        if limit < 1:
+            msg = f"limit must be >= 1, got {limit}"
+            raise ValueError(msg)
         async with self._lock:
             # Sort by (generated_at, insertion_idx) so equal timestamps
             # break toward the *later*-inserted report when reversed --

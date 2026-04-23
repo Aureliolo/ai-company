@@ -23,7 +23,7 @@ pytestmark = pytest.mark.unit
 def _definition(
     *,
     name: str = "default",
-    issuer: str = "github",
+    issuer: str = "test-provider",
     created_at: datetime | None = None,
 ) -> WebhookDefinition:
     if created_at is None:

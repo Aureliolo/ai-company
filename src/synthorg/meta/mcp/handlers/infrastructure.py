@@ -23,7 +23,6 @@ from synthorg.meta.mcp.handlers.common import (
     coerce_pagination,
     err,
     ok,
-    paginate_sequence,
     require_arg,
     require_destructive_guardrails,
 )
@@ -375,13 +374,11 @@ async def _backup_list(
     tool = "synthorg_backup_list"
     try:
         offset, limit = coerce_pagination(arguments)
-        backups = await app_state.backup_facade_service.list_backups()
-        page, pagination = paginate_sequence(
-            backups,
+        page, total = await app_state.backup_facade_service.list_backups(
             offset=offset,
             limit=limit,
-            total=len(backups),
         )
+        pagination = PaginationMeta(total=total, offset=offset, limit=limit)
         return ok([_to_jsonable(b) for b in page], pagination=pagination)
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
@@ -681,13 +678,11 @@ async def _projects_list(
     tool = "synthorg_projects_list"
     try:
         offset, limit = coerce_pagination(arguments)
-        projects = await app_state.project_facade_service.list_projects()
-        page, pagination = paginate_sequence(
-            projects,
+        page, total = await app_state.project_facade_service.list_projects(
             offset=offset,
             limit=limit,
-            total=len(projects),
         )
+        pagination = PaginationMeta(total=total, offset=offset, limit=limit)
         return ok([p.to_dict() for p in page], pagination=pagination)
     except Exception as exc:
         _log_failed(tool, exc)
@@ -818,13 +813,11 @@ async def _requests_list(
     tool = "synthorg_requests_list"
     try:
         offset, limit = coerce_pagination(arguments)
-        requests = await app_state.requests_facade_service.list_requests()
-        page, pagination = paginate_sequence(
-            requests,
+        page, total = await app_state.requests_facade_service.list_requests(
             offset=offset,
             limit=limit,
-            total=len(requests),
         )
+        pagination = PaginationMeta(total=total, offset=offset, limit=limit)
         return ok([r.to_dict() for r in page], pagination=pagination)
     except Exception as exc:
         _log_failed(tool, exc)
@@ -925,13 +918,11 @@ async def _simulations_list(
     tool = "synthorg_simulations_list"
     try:
         offset, limit = coerce_pagination(arguments)
-        sims = await app_state.simulation_facade_service.list_simulations()
-        page, pagination = paginate_sequence(
-            sims,
+        page, total = await app_state.simulation_facade_service.list_simulations(
             offset=offset,
             limit=limit,
-            total=len(sims),
         )
+        pagination = PaginationMeta(total=total, offset=offset, limit=limit)
         return ok([_to_jsonable(s) for s in page], pagination=pagination)
     except Exception as exc:
         _log_failed(tool, exc)
@@ -991,13 +982,11 @@ async def _template_packs_list(
     tool = "synthorg_template_packs_list"
     try:
         offset, limit = coerce_pagination(arguments)
-        packs = await app_state.template_pack_facade_service.list_packs()
-        page, pagination = paginate_sequence(
-            packs,
+        page, total = await app_state.template_pack_facade_service.list_packs(
             offset=offset,
             limit=limit,
-            total=len(packs),
         )
+        pagination = PaginationMeta(total=total, offset=offset, limit=limit)
         return ok([p.to_dict() for p in page], pagination=pagination)
     except Exception as exc:
         _log_failed(tool, exc)
