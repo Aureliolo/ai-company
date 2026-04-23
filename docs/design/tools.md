@@ -233,15 +233,27 @@ calling agent identity through the invoker so destructive-op guardrails can
 enforce attribution; handlers that don't care about identity accept it and
 ignore it.
 
-**Envelope Contract.** Every handler returns a JSON string with one of two
-shapes:
+**Envelope Contract.** Every handler returns a JSON string. Success envelope
+(data is always present, pagination appears only on list/collection responses):
 
 ```json
-// success
-{"status": "ok", "data": <payload>, "pagination"?: {"total": N, "offset": N, "limit": N}}
+{
+  "status": "ok",
+  "data": {"example": "payload"},
+  "pagination": {"total": 100, "offset": 0, "limit": 50}
+}
+```
 
-// handler-caught error
-{"status": "error", "error_type": "<ClassName>", "message": "<safe>", "domain_code": "<code>"}
+Handler-caught error envelope (domain_code identifies the error class for
+programmatic dispatch):
+
+```json
+{
+  "status": "error",
+  "error_type": "ArgumentValidationError",
+  "message": "Argument 'approval_id' missing or not a non-blank string",
+  "domain_code": "invalid_argument"
+}
 ```
 
 Shared envelope builders live in `src/synthorg/meta/mcp/handlers/common.py`:

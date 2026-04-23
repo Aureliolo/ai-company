@@ -239,6 +239,7 @@ async def _agents_delete(
         _log_failed(tool, exc)
         return err(exc)
 
+    logger.debug(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     logger.info(
         MCP_DESTRUCTIVE_OP_EXECUTED,
         tool_name=tool,

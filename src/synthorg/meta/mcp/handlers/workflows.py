@@ -231,6 +231,7 @@ async def _workflows_delete(
         _log_failed(tool, missing)
         return err(missing, domain_code="not_found")
 
+    logger.debug(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     logger.info(
         MCP_DESTRUCTIVE_OP_EXECUTED,
         tool_name=tool,

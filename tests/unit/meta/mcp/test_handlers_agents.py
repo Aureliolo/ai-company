@@ -5,8 +5,10 @@ don't yet expose a clean read method (personality registry, activity
 feed, etc.).  The unit suite here covers:
 
 - Every handler is callable with an empty/minimal arg dict and returns
-  a syntactically valid envelope (``status`` is ``ok``/``error``/
-  ``not_implemented``).  This is the regression guard.
+  a syntactically valid envelope (``status`` is ``"ok"`` or
+  ``"error"``; the legacy ``"not_implemented"`` status is explicitly
+  rejected by the ``_parse`` helper below).  This is the regression
+  guard.
 - For tools that DO have a clean service shim, a happy-path test
   exercises the service call.
 - ``synthorg_agents_delete`` gets the full destructive-op workout

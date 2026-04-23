@@ -231,6 +231,12 @@ async def _memory_deploy_checkpoint(
     except CheckpointNotFoundError as exc:
         _log_failed(tool, exc)
         return err(exc, domain_code="not_found")
+    except QueryError as exc:
+        # Persistence-layer failure during deploy (e.g. the checkpoint
+        # was activated but the re-read failed) -- surface as a
+        # ``conflict`` so callers distinguish from internal errors.
+        _log_failed(tool, exc)
+        return err(exc, domain_code="conflict")
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -289,6 +295,7 @@ async def _memory_delete_checkpoint(
         _log_failed(tool, exc)
         return err(exc)
 
+    logger.debug(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     logger.info(
         MCP_DESTRUCTIVE_OP_EXECUTED,
         tool_name=tool,

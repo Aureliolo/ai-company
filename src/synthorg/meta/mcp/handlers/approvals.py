@@ -427,7 +427,10 @@ async def _reject(
         _log_failed(tool, exc)
         return err(exc)
 
-    # Audit event fires exactly once per successful reject.
+    # Emit both the handler-success telemetry *and* the destructive-op
+    # audit event so "all handler successes" dashboards still see this
+    # path and the audit trail carries full attribution.
+    logger.debug(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     logger.info(
         MCP_DESTRUCTIVE_OP_EXECUTED,
         tool_name=tool,
