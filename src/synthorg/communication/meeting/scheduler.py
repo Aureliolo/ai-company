@@ -76,6 +76,7 @@ class MeetingScheduler:
         "_cooldown_lock",
         "_event_publisher",
         "_last_triggered",
+        "_lifecycle_lock",
         "_orchestrator",
         "_resolver",
         "_running",
@@ -97,6 +98,12 @@ class MeetingScheduler:
         self._event_publisher = event_publisher
         self._clock = clock or time.monotonic
         self._cooldown_lock = asyncio.Lock()
+        # Serializes start() / stop() so the _running check-and-set
+        # and the per-type periodic-task spawn loop are atomic
+        # against concurrent lifecycle calls. Scoped separately from
+        # _cooldown_lock so trigger_event() is never blocked by a
+        # lifecycle transition.
+        self._lifecycle_lock = asyncio.Lock()
         self._tasks: list[asyncio.Task[None]] = []
         self._running = False
         self._last_triggered: dict[str, float] = {}
@@ -111,74 +118,84 @@ class MeetingScheduler:
 
         No-op if ``config.enabled`` is False.
 
+        Holds ``_lifecycle_lock`` across the full body so the check-and-set
+        on ``_running`` and the per-type task-spawn loop are atomic
+        against concurrent ``start()`` / ``stop()`` calls.
+
         Raises:
             SchedulerAlreadyRunningError: If the scheduler is already running.
         """
-        if self._running:
-            logger.warning(
-                MEETING_SCHEDULER_ERROR,
-                reason="already_running",
-            )
-            msg = "Meeting scheduler is already running"
-            raise SchedulerAlreadyRunningError(msg)
+        async with self._lifecycle_lock:
+            if self._running:
+                logger.warning(
+                    MEETING_SCHEDULER_ERROR,
+                    reason="already_running",
+                )
+                msg = "Meeting scheduler is already running"
+                raise SchedulerAlreadyRunningError(msg)
 
-        if not self._config.enabled:
+            if not self._config.enabled:
+                logger.info(
+                    MEETING_SCHEDULER_STARTED,
+                    enabled=False,
+                )
+                return
+
+            self._running = True
+
+            scheduled = self.get_scheduled_types()
+            self._tasks = []
+            for mt in scheduled:
+                task = asyncio.create_task(
+                    self._run_periodic(mt),
+                    name=f"meeting-{mt.name}",
+                )
+                task.add_done_callback(
+                    log_task_exceptions(
+                        logger,
+                        MEETING_SCHEDULER_TASK_DIED,
+                        meeting_type=mt.name,
+                    ),
+                )
+                self._tasks.append(task)
+
             logger.info(
                 MEETING_SCHEDULER_STARTED,
-                enabled=False,
+                periodic_count=len(scheduled),
+                triggered_count=len(self.get_triggered_types()),
             )
-            return
-
-        self._running = True
-
-        scheduled = self.get_scheduled_types()
-        self._tasks = []
-        for mt in scheduled:
-            task = asyncio.create_task(
-                self._run_periodic(mt),
-                name=f"meeting-{mt.name}",
-            )
-            task.add_done_callback(
-                log_task_exceptions(
-                    logger,
-                    MEETING_SCHEDULER_TASK_DIED,
-                    meeting_type=mt.name,
-                ),
-            )
-            self._tasks.append(task)
-
-        logger.info(
-            MEETING_SCHEDULER_STARTED,
-            periodic_count=len(scheduled),
-            triggered_count=len(self.get_triggered_types()),
-        )
 
     async def stop(self) -> None:
-        """Cancel all periodic tasks and wait for completion."""
-        if not self._running:
-            return
+        """Cancel all periodic tasks and wait for completion.
 
-        for task in self._tasks:
-            task.cancel()
-        if self._tasks:
-            results = await asyncio.gather(
-                *self._tasks,
-                return_exceptions=True,
-            )
-            for result in results:
-                if isinstance(result, asyncio.CancelledError):
-                    continue
-                if isinstance(result, Exception):
-                    logger.warning(
-                        MEETING_SCHEDULER_ERROR,
-                        note="periodic task error during shutdown",
-                        error=str(result),
-                        error_type=type(result).__name__,
-                    )
-        self._tasks = []
-        self._running = False
+        Holds ``_lifecycle_lock`` so ``stop()`` cannot race a
+        partially-constructed ``start()``.
+        """
+        async with self._lifecycle_lock:
+            if not self._running:
+                return
 
-        logger.info(MEETING_SCHEDULER_STOPPED)
+            for task in self._tasks:
+                task.cancel()
+            if self._tasks:
+                results = await asyncio.gather(
+                    *self._tasks,
+                    return_exceptions=True,
+                )
+                for result in results:
+                    if isinstance(result, asyncio.CancelledError):
+                        continue
+                    if isinstance(result, Exception):
+                        logger.warning(
+                            MEETING_SCHEDULER_ERROR,
+                            note="periodic task error during shutdown",
+                            error=str(result),
+                            error_type=type(result).__name__,
+                        )
+            self._tasks = []
+            self._running = False
+
+            logger.info(MEETING_SCHEDULER_STOPPED)
 
     async def trigger_event(
         self,
