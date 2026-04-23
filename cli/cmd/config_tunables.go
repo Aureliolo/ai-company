@@ -49,6 +49,16 @@ func applyTunableConfigValue(state *config.State, key, value string) (bool, erro
 		return true, setDuration(value, "tuf_fetch_timeout", &state.TUFFetchTimeout)
 	case "attestation_http_timeout":
 		return true, setDuration(value, "attestation_http_timeout", &state.AttestationHTTPTimeout)
+	case "image_verify_timeout":
+		return true, setDuration(value, "image_verify_timeout", &state.ImageVerifyTimeout)
+	case "image_pull_retry_delay":
+		return true, setDuration(value, "image_pull_retry_delay", &state.ImagePullRetryDelay)
+	case "image_pull_attempts":
+		return true, setIntInRange(
+			value, "image_pull_attempts",
+			1, config.MaxImagePullAttempts,
+			&state.ImagePullAttempts,
+		)
 	case "max_api_response_bytes":
 		return true, setByteSize(value, "max_api_response_bytes", &state.MaxAPIResponseBytes)
 	case "max_binary_bytes":
@@ -92,6 +102,12 @@ func resetTunableConfigValue(state *config.State, key string) bool {
 		state.TUFFetchTimeout = ""
 	case "attestation_http_timeout":
 		state.AttestationHTTPTimeout = ""
+	case "image_verify_timeout":
+		state.ImageVerifyTimeout = ""
+	case "image_pull_retry_delay":
+		state.ImagePullRetryDelay = ""
+	case "image_pull_attempts":
+		state.ImagePullAttempts = ""
 	case "max_api_response_bytes":
 		state.MaxAPIResponseBytes = 0
 	case "max_binary_bytes":
@@ -137,6 +153,12 @@ func tunableConfigGetValue(state config.State, key string) (string, bool) {
 		return displayOrFallback(state.TUFFetchTimeout, config.DefaultTUFFetchTimeout.String()), true
 	case "attestation_http_timeout":
 		return displayOrFallback(state.AttestationHTTPTimeout, config.DefaultAttestationHTTPTimeout.String()), true
+	case "image_verify_timeout":
+		return displayOrFallback(state.ImageVerifyTimeout, config.DefaultImageVerifyTimeout.String()), true
+	case "image_pull_retry_delay":
+		return displayOrFallback(state.ImagePullRetryDelay, config.DefaultImagePullRetryDelay.String()), true
+	case "image_pull_attempts":
+		return displayOrFallback(state.ImagePullAttempts, strconv.Itoa(config.DefaultImagePullAttempts)), true
 	case "max_api_response_bytes":
 		return int64OrDefault(state.MaxAPIResponseBytes, config.DefaultMaxAPIResponseBytes), true
 	case "max_binary_bytes":
@@ -179,6 +201,12 @@ func tunableEnvVarForKey(key string) string {
 		return EnvTUFFetchTimeout
 	case "attestation_http_timeout":
 		return EnvAttestationHTTPTimeout
+	case "image_verify_timeout":
+		return EnvImageVerifyTimeout
+	case "image_pull_retry_delay":
+		return EnvImagePullRetryDelay
+	case "image_pull_attempts":
+		return EnvImagePullAttempts
 	case "max_api_response_bytes":
 		return EnvMaxAPIResponseBytes
 	case "max_binary_bytes":
@@ -248,6 +276,23 @@ func setDuration(value, key string, target *string) error {
 		return fmt.Errorf("invalid %s %q: must be > 0", key, value)
 	}
 	*target = d.String()
+	return nil
+}
+
+// setIntInRange parses value as a decimal integer, validates it lies
+// in [minValue, maxValue], and writes the normalized decimal string
+// into target. Stored as a string so config.json stays empty when the
+// operator never sets the key -- matching the convention used for
+// durations and byte sizes.
+func setIntInRange(value, key string, minValue, maxValue int, target *string) error {
+	n, err := strconv.Atoi(value)
+	if err != nil {
+		return fmt.Errorf("invalid %s %q: %w", key, value, err)
+	}
+	if n < minValue || n > maxValue {
+		return fmt.Errorf("invalid %s %q: must be in [%d, %d]", key, value, minValue, maxValue)
+	}
+	*target = strconv.Itoa(n)
 	return nil
 }
 

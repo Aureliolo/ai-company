@@ -8,7 +8,7 @@ and stateless.
 import math
 import statistics
 from collections import defaultdict
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.budget._aggregation import (
     compute_cost_per_1k,
@@ -206,17 +206,28 @@ def _detect_spike_anomaly(  # noqa: PLR0913
     )
 
 
+# Deviation factors expressed in units of standard deviation (sigma)
+# when applied to cost / token aggregates.  3.0 sigma (~0.3% tail under
+# a normal distribution) is the canonical outlier threshold for HIGH;
+# 2.0 sigma (~2.3% tail) is MEDIUM.  Tuned for cost-anomaly detection
+# -- raise the bars to reduce alert fatigue, lower them to catch
+# smaller drifts.
+_SEVERITY_HIGH_DEVIATION: Final[float] = 3.0
+_SEVERITY_MEDIUM_DEVIATION: Final[float] = 2.0
+
+
 def _classify_severity(value: float) -> AnomalySeverity:
     """Classify anomaly severity from a deviation factor or spike ratio.
 
     Args:
         value: A deviation factor (sigma) or spike ratio used to
-            determine severity.  Thresholds: >= 3.0 -> HIGH,
-            >= 2.0 -> MEDIUM, else LOW.
+            determine severity.  Thresholds: ``>= _SEVERITY_HIGH_DEVIATION``
+            -> HIGH, ``>= _SEVERITY_MEDIUM_DEVIATION`` -> MEDIUM,
+            else LOW.
     """
-    if value >= 3.0:  # noqa: PLR2004
+    if value >= _SEVERITY_HIGH_DEVIATION:
         return AnomalySeverity.HIGH
-    if value >= 2.0:  # noqa: PLR2004
+    if value >= _SEVERITY_MEDIUM_DEVIATION:
         return AnomalySeverity.MEDIUM
     return AnomalySeverity.LOW
 

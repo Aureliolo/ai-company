@@ -1,6 +1,7 @@
 """Docker sandbox configuration model."""
 
 import os
+import re
 from typing import Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -26,6 +27,12 @@ _SANDBOX_IMAGE_ENV_VAR = "SYNTHORG_SANDBOX_IMAGE"
 _FALLBACK_SANDBOX_IMAGE = "ghcr.io/aureliolo/synthorg-sandbox:latest"
 _SIDECAR_IMAGE_ENV_VAR = "SYNTHORG_SIDECAR_IMAGE"
 _FALLBACK_SIDECAR_IMAGE = "ghcr.io/aureliolo/synthorg-sidecar:latest"
+
+# Docker tmpfs size syntax: positive integer, optional k/m/g suffix
+# (case-insensitive).  Rejects leading zeros, negatives, and unknown
+# suffixes so malformed values fail at config-load time rather than
+# surfacing as opaque Docker API errors at container creation.
+_TMPFS_SIZE_PATTERN = re.compile(r"^[1-9]\d*[kmg]?$", re.IGNORECASE)
 
 
 def _default_sandbox_image() -> str:
@@ -142,6 +149,39 @@ class DockerSandboxConfig(BaseModel):
     )
     cpu_limit: float = Field(default=1.0, gt=0, le=16)
     timeout_seconds: float = Field(default=120.0, gt=0, le=600)
+    pids_limit: int = Field(
+        default=64,
+        ge=1,
+        le=1024,
+        description=(
+            "PIDs cap for the main sandbox container. Guards against "
+            "fork-bomb-style runaways from untrusted tool code."
+        ),
+    )
+    tmpfs_size: NotBlankStr = Field(
+        default="64m",
+        description=(
+            "Size of the tmpfs mounted at /tmp inside the sandbox "
+            "container (Docker tmpfs size syntax, e.g. '64m')."
+        ),
+    )
+    sidecar_pids_limit: int = Field(
+        default=32,
+        ge=1,
+        le=1024,
+        description=(
+            "PIDs cap for the network sidecar container. Tighter than "
+            "the main sandbox because the sidecar only runs dnsmasq + "
+            "iptables + a small Python health server."
+        ),
+    )
+    sidecar_tmpfs_size: NotBlankStr = Field(
+        default="8m",
+        description=(
+            "Size of the tmpfs mounted at /tmp inside the network "
+            "sidecar container (Docker tmpfs size syntax, e.g. '8m')."
+        ),
+    )
     mount_mode: Literal["rw", "ro"] = Field(
         default="ro",
         description="Workspace mount mode (read-only by default)",
@@ -211,6 +251,34 @@ class DockerSandboxConfig(BaseModel):
             msg = f"Memory limit must be positive, got: {self.memory_limit!r}"
             logger.warning(CONFIG_VALIDATION_FAILED, field="memory_limit", reason=msg)
             raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_tmpfs_sizes(self) -> Self:
+        """Validate that tmpfs_size fields use Docker-compatible syntax.
+
+        Both ``tmpfs_size`` and ``sidecar_tmpfs_size`` are interpolated
+        directly into Docker tmpfs mount specs, so fail fast at config
+        load time rather than surfacing as an opaque Docker API error
+        during container creation.  Accepts a positive integer with an
+        optional ``k``/``m``/``g`` suffix (case-insensitive); rejects
+        leading zeros, negatives, zero, and unknown suffixes.
+        """
+        for field_name, value in (
+            ("tmpfs_size", self.tmpfs_size),
+            ("sidecar_tmpfs_size", self.sidecar_tmpfs_size),
+        ):
+            if _TMPFS_SIZE_PATTERN.fullmatch(value.strip()) is None:
+                msg = (
+                    f"{field_name} must be a positive integer with an "
+                    f"optional k/m/g suffix, got: {value!r}"
+                )
+                logger.warning(
+                    CONFIG_VALIDATION_FAILED,
+                    field=field_name,
+                    reason=msg,
+                )
+                raise ValueError(msg)
         return self
 
     @model_validator(mode="after")

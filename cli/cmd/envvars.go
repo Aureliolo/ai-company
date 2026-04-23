@@ -44,6 +44,9 @@ const (
 	EnvSelfUpdateAPITimeout   = config.EnvSelfUpdateAPITimeout
 	EnvTUFFetchTimeout        = config.EnvTUFFetchTimeout
 	EnvAttestationHTTPTimeout = config.EnvAttestationHTTPTimeout
+	EnvImageVerifyTimeout     = config.EnvImageVerifyTimeout
+	EnvImagePullAttempts      = config.EnvImagePullAttempts
+	EnvImagePullRetryDelay    = config.EnvImagePullRetryDelay
 	EnvMaxAPIResponseBytes    = config.EnvMaxAPIResponseBytes
 	EnvMaxBinaryBytes         = config.EnvMaxBinaryBytes
 	EnvMaxArchiveEntryBytes   = config.EnvMaxArchiveEntryBytes

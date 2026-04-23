@@ -14,7 +14,7 @@ from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.errors import ConflictError, NotFoundError
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
-from synthorg.api.rate_limits.guard import per_op_rate_limit
+from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.api.ws_models import WsEventType
 from synthorg.client.config import SimulationRunnerConfig
@@ -222,12 +222,7 @@ class SimulationController(Controller):
         "/",
         guards=[
             require_write_access,
-            per_op_rate_limit(
-                "simulations.create",
-                max_requests=30,
-                window_seconds=3600,
-                key="user",
-            ),
+            per_op_rate_limit_from_policy("simulations.create", key="user"),
         ],
         status_code=201,
     )

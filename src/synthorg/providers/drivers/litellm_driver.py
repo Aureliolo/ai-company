@@ -266,16 +266,18 @@ class LiteLLMDriver(BaseCompletionProvider):
         """Build ``ModelCapabilities`` from config + LiteLLM info.
 
         Queries LiteLLM's model registry for metadata (tool support,
-        vision, max output tokens).  Falls back to 4096 max output
-        tokens if LiteLLM has no data.  The final ``max_output_tokens``
-        is capped at the model's configured ``max_context``.
+        vision, max output tokens).  Falls back to
+        :class:`ProviderModelDefaults.fallback_max_output_tokens` when
+        LiteLLM has no data.  The final ``max_output_tokens`` is
+        capped at the model's configured ``max_context``.
         """
         model_config = self._resolve_model(model)
         litellm_model = f"{self._routing_key}/{model_config.id}"
         info = self._get_litellm_model_info(litellm_model)
 
+        fallback = self._config.defaults.fallback_max_output_tokens
         max_output = int(
-            info.get("max_output_tokens", 0) or info.get("max_tokens", 0) or 4096,
+            info.get("max_output_tokens", 0) or info.get("max_tokens", 0) or fallback,
         )
         supports_streaming = bool(info.get("supports_streaming", True))
         supports_tools = bool(

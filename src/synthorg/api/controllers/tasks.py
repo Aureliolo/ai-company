@@ -24,7 +24,7 @@ from synthorg.api.errors import (
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
 from synthorg.api.path_params import PathId  # noqa: TC001
-from synthorg.api.rate_limits import per_op_rate_limit
+from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.enums import TaskStatus  # noqa: TC001
 from synthorg.core.task import Task  # noqa: TC001
@@ -235,12 +235,7 @@ class TaskController(Controller):
     @post(
         guards=[
             require_write_access,
-            per_op_rate_limit(
-                "tasks.create",
-                max_requests=50,
-                window_seconds=60,
-                key="user",
-            ),
+            per_op_rate_limit_from_policy("tasks.create", key="user"),
         ],
         status_code=201,
     )
@@ -301,12 +296,7 @@ class TaskController(Controller):
         "/{task_id:str}",
         guards=[
             require_write_access,
-            per_op_rate_limit(
-                "tasks.update",
-                max_requests=100,
-                window_seconds=60,
-                key="user",
-            ),
+            per_op_rate_limit_from_policy("tasks.update", key="user"),
         ],
     )
     async def update_task(
@@ -356,12 +346,7 @@ class TaskController(Controller):
         "/{task_id:str}/transition",
         guards=[
             require_write_access,
-            per_op_rate_limit(
-                "tasks.transition",
-                max_requests=100,
-                window_seconds=60,
-                key="user",
-            ),
+            per_op_rate_limit_from_policy("tasks.transition", key="user"),
         ],
     )
     async def transition_task(
@@ -418,12 +403,7 @@ class TaskController(Controller):
         "/{task_id:str}",
         guards=[
             require_write_access,
-            per_op_rate_limit(
-                "tasks.delete",
-                max_requests=20,
-                window_seconds=60,
-                key="user",
-            ),
+            per_op_rate_limit_from_policy("tasks.delete", key="user"),
         ],
         status_code=HTTP_204_NO_CONTENT,
     )
@@ -461,12 +441,7 @@ class TaskController(Controller):
         "/{task_id:str}/cancel",
         guards=[
             require_write_access,
-            per_op_rate_limit(
-                "tasks.cancel",
-                max_requests=50,
-                window_seconds=60,
-                key="user",
-            ),
+            per_op_rate_limit_from_policy("tasks.cancel", key="user"),
         ],
     )
     async def cancel_task(

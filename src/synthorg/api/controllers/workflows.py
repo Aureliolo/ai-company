@@ -31,7 +31,7 @@ from synthorg.api.errors import NotFoundError
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
 from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
-from synthorg.api.rate_limits import per_op_rate_limit
+from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.core.enums import WorkflowType
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.blueprint_loader import list_blueprints
@@ -170,10 +170,8 @@ class WorkflowController(Controller):
         "/from-blueprint",
         guards=[
             require_write_access,
-            per_op_rate_limit(
+            per_op_rate_limit_from_policy(
                 "workflows.create_from_blueprint",
-                max_requests=20,
-                window_seconds=60,
                 key="user",
             ),
         ],
@@ -262,12 +260,7 @@ class WorkflowController(Controller):
     @post(
         guards=[
             require_write_access,
-            per_op_rate_limit(
-                "workflows.create",
-                max_requests=20,
-                window_seconds=60,
-                key="user",
-            ),
+            per_op_rate_limit_from_policy("workflows.create", key="user"),
         ],
     )
     async def create_workflow(
@@ -358,12 +351,7 @@ class WorkflowController(Controller):
         "/{workflow_id:str}",
         guards=[
             require_write_access,
-            per_op_rate_limit(
-                "workflows.update",
-                max_requests=30,
-                window_seconds=60,
-                key="user",
-            ),
+            per_op_rate_limit_from_policy("workflows.update", key="user"),
         ],
     )
     async def update_workflow(  # noqa: PLR0911 -- enumerate distinct HTTP error paths explicitly
@@ -466,12 +454,7 @@ class WorkflowController(Controller):
         "/{workflow_id:str}",
         guards=[
             require_write_access,
-            per_op_rate_limit(
-                "workflows.delete",
-                max_requests=10,
-                window_seconds=60,
-                key="user",
-            ),
+            per_op_rate_limit_from_policy("workflows.delete", key="user"),
         ],
         status_code=HTTP_204_NO_CONTENT,
     )

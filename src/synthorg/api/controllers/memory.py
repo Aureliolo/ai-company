@@ -15,7 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import HumanRole, require_roles
-from synthorg.api.rate_limits import per_op_concurrency, per_op_rate_limit
+from synthorg.api.rate_limits import per_op_concurrency, per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.embedding.fine_tune import FineTuneStage
@@ -137,12 +137,7 @@ class MemoryAdminController(Controller):
     @post(
         "/fine-tune",
         guards=[
-            per_op_rate_limit(
-                "memory.fine_tune",
-                max_requests=2,
-                window_seconds=3600,
-                key="user",
-            ),
+            per_op_rate_limit_from_policy("memory.fine_tune", key="user"),
         ],
         opt=per_op_concurrency(
             "memory.fine_tune",
@@ -187,12 +182,7 @@ class MemoryAdminController(Controller):
     @post(
         "/fine-tune/resume/{run_id:str}",
         guards=[
-            per_op_rate_limit(
-                "memory.fine_tune_resume",
-                max_requests=5,
-                window_seconds=3600,
-                key="user",
-            ),
+            per_op_rate_limit_from_policy("memory.fine_tune_resume", key="user"),
         ],
         # Shares the inflight bucket with ``memory.fine_tune`` so a user
         # cannot resume while a fresh start is still in flight; the
@@ -261,12 +251,7 @@ class MemoryAdminController(Controller):
     @post(
         "/fine-tune/cancel",
         guards=[
-            per_op_rate_limit(
-                "memory.fine_tune_cancel",
-                max_requests=10,
-                window_seconds=3600,
-                key="user",
-            ),
+            per_op_rate_limit_from_policy("memory.fine_tune_cancel", key="user"),
         ],
     )
     async def cancel_fine_tune(
@@ -285,10 +270,8 @@ class MemoryAdminController(Controller):
     @post(
         "/fine-tune/preflight",
         guards=[
-            per_op_rate_limit(
+            per_op_rate_limit_from_policy(
                 "memory.fine_tune_preflight",
-                max_requests=50,
-                window_seconds=60,
                 key="user",
             ),
         ],
@@ -338,10 +321,8 @@ class MemoryAdminController(Controller):
     @post(
         "/fine-tune/checkpoints/{checkpoint_id:str}/deploy",
         guards=[
-            per_op_rate_limit(
+            per_op_rate_limit_from_policy(
                 "memory.checkpoint_deploy",
-                max_requests=2,
-                window_seconds=3600,
                 key="user",
             ),
         ],
@@ -382,10 +363,8 @@ class MemoryAdminController(Controller):
     @post(
         "/fine-tune/checkpoints/{checkpoint_id:str}/rollback",
         guards=[
-            per_op_rate_limit(
+            per_op_rate_limit_from_policy(
                 "memory.checkpoint_rollback",
-                max_requests=2,
-                window_seconds=3600,
                 key="user",
             ),
         ],
@@ -425,10 +404,8 @@ class MemoryAdminController(Controller):
         "/fine-tune/checkpoints/{checkpoint_id:str}",
         status_code=200,
         guards=[
-            per_op_rate_limit(
+            per_op_rate_limit_from_policy(
                 "memory.checkpoint_delete",
-                max_requests=20,
-                window_seconds=60,
                 key="user",
             ),
         ],

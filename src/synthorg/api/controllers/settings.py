@@ -25,7 +25,7 @@ from synthorg.api.concurrency import check_if_match, compute_etag
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_ceo_or_manager, require_read_access
 from synthorg.api.path_params import PathKey, PathNamespace  # noqa: TC001
-from synthorg.api.rate_limits.guard import per_op_rate_limit
+from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
@@ -352,12 +352,7 @@ class SettingsController(Controller):
         "/{namespace:str}/{key:str}",
         guards=[
             require_ceo_or_manager,
-            per_op_rate_limit(
-                "settings.update",
-                max_requests=60,
-                window_seconds=60,
-                key="user",
-            ),
+            per_op_rate_limit_from_policy("settings.update", key="user"),
         ],
     )
     async def update_setting(
@@ -412,12 +407,7 @@ class SettingsController(Controller):
         "/{namespace:str}/{key:str}",
         guards=[
             require_ceo_or_manager,
-            per_op_rate_limit(
-                "settings.delete",
-                max_requests=60,
-                window_seconds=60,
-                key="user",
-            ),
+            per_op_rate_limit_from_policy("settings.delete", key="user"),
         ],
         status_code=HTTP_204_NO_CONTENT,
     )

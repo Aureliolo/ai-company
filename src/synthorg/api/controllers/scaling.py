@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from synthorg.api.dto import ApiResponse, PaginatedResponse, PaginationMeta
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
-from synthorg.api.rate_limits import per_op_rate_limit
+from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.scaling.enums import ScalingStrategyName
@@ -287,10 +287,8 @@ class ScalingController(Controller):
         "/evaluate",
         guards=[
             require_write_access,
-            per_op_rate_limit(
+            per_op_rate_limit_from_policy(
                 "scaling.trigger_evaluation",
-                max_requests=10,
-                window_seconds=60,
                 key="user",
             ),
         ],
@@ -334,12 +332,7 @@ class ScalingController(Controller):
         "/strategies/{strategy_name:str}",
         guards=[
             require_write_access,
-            per_op_rate_limit(
-                "scaling.update_strategy",
-                max_requests=30,
-                window_seconds=60,
-                key="user",
-            ),
+            per_op_rate_limit_from_policy("scaling.update_strategy", key="user"),
         ],
     )
     async def update_strategy(
@@ -408,12 +401,7 @@ class ScalingController(Controller):
         "/priority",
         guards=[
             require_write_access,
-            per_op_rate_limit(
-                "scaling.update_priority",
-                max_requests=30,
-                window_seconds=60,
-                key="user",
-            ),
+            per_op_rate_limit_from_policy("scaling.update_priority", key="user"),
         ],
     )
     async def update_priority(

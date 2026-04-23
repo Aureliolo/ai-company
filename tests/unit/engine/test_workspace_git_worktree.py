@@ -892,6 +892,7 @@ class TestGetBaseSources:
             mock_run_git,
             "abc123",
             ("src/main.py", "src/utils.py"),
+            concurrency=2,
         )
 
         assert result == {
@@ -918,6 +919,7 @@ class TestGetBaseSources:
             mock_run_git,
             "abc123",
             ("src/good.py", "src/deleted.py"),
+            concurrency=2,
         )
 
         assert "src/good.py" in result
@@ -934,11 +936,57 @@ class TestGetBaseSources:
             mock_run_git,
             "abc123",
             ("--malicious", "src/good.py"),
+            concurrency=2,
         )
 
         # Only the safe path should be fetched
         assert "--malicious" not in result
         assert "src/good.py" in result
+
+    @pytest.mark.unit
+    async def test_missing_concurrency_and_semaphore_raises(self) -> None:
+        """HYG-2 contract: one of concurrency= or semaphore= is required.
+
+        The previous silent default (concurrency=10) was removed so the
+        function cannot drift from
+        ``SemanticAnalysisConfig.git_concurrency``.  A caller that
+        passes neither must fail loud with a message pointing at the
+        config field.
+        """
+        mock_run_git = AsyncMock()
+        with pytest.raises(
+            ValueError,
+            match=r"get_base_sources requires either concurrency",
+        ):
+            await get_base_sources(
+                mock_run_git,
+                "abc123",
+                ("src/main.py",),
+            )
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("concurrency", [0, -1])
+    async def test_non_positive_concurrency_raises(
+        self,
+        concurrency: int,
+    ) -> None:
+        """Non-positive concurrency must fail loud.
+
+        ``asyncio.Semaphore(0)`` deadlocks every fetch task; negative
+        values raise at Semaphore construction but the error message
+        is opaque.  Validate at call time instead.
+        """
+        mock_run_git = AsyncMock()
+        with pytest.raises(
+            ValueError,
+            match=r"concurrency must be > 0",
+        ):
+            await get_base_sources(
+                mock_run_git,
+                "abc123",
+                ("src/main.py",),
+                concurrency=concurrency,
+            )
 
 
 # ---------------------------------------------------------------------------

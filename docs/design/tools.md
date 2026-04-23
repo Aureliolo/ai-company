@@ -84,6 +84,10 @@ isolation for high-risk tools.
         memory_limit: "512m"
         cpu_limit: "1.0"
         timeout_seconds: 120
+        pids_limit: 64                     # PID cap (main container) -- guards against fork-bomb runaways
+        tmpfs_size: "64m"                  # tmpfs mounted at /tmp in the main container
+        sidecar_pids_limit: 32             # PID cap for the stdio sidecar helper
+        sidecar_tmpfs_size: "8m"           # tmpfs for the stdio sidecar helper
         mount_mode: "ro"                   # read-only by default
         auto_remove: true                  # ephemeral -- container removed after execution
       k8s:                                 # planned -- per-agent pod isolation

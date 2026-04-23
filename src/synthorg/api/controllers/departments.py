@@ -34,7 +34,7 @@ from synthorg.api.guards import (
 )
 from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
 from synthorg.api.path_params import PathName  # noqa: TC001
-from synthorg.api.rate_limits import per_op_rate_limit
+from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.api.ws_models import WsEventType
 from synthorg.config.schema import AgentConfig  # noqa: TC001
@@ -385,12 +385,7 @@ class DepartmentController(Controller):
         "/",
         guards=[
             require_org_mutation(),
-            per_op_rate_limit(
-                "departments.create",
-                max_requests=10,
-                window_seconds=60,
-                key="user",
-            ),
+            per_op_rate_limit_from_policy("departments.create", key="user"),
         ],
         status_code=201,
     )
@@ -427,12 +422,7 @@ class DepartmentController(Controller):
         "/{name:str}",
         guards=[
             require_org_mutation(department_param="name"),
-            per_op_rate_limit(
-                "departments.update",
-                max_requests=20,
-                window_seconds=60,
-                key="user",
-            ),
+            per_op_rate_limit_from_policy("departments.update", key="user"),
         ],
     )
     async def update_department(
@@ -485,12 +475,7 @@ class DepartmentController(Controller):
         "/{name:str}",
         guards=[
             require_org_mutation(department_param="name"),
-            per_op_rate_limit(
-                "departments.delete",
-                max_requests=5,
-                window_seconds=60,
-                key="user",
-            ),
+            per_op_rate_limit_from_policy("departments.delete", key="user"),
         ],
         status_code=HTTP_204_NO_CONTENT,
     )
@@ -525,10 +510,8 @@ class DepartmentController(Controller):
         "/{name:str}/reorder-agents",
         guards=[
             require_org_mutation(department_param="name"),
-            per_op_rate_limit(
+            per_op_rate_limit_from_policy(
                 "departments.reorder_agents",
-                max_requests=30,
-                window_seconds=60,
                 key="user",
             ),
         ],
@@ -655,10 +638,8 @@ class DepartmentController(Controller):
         "/{name:str}/ceremony-policy",
         guards=[
             require_org_mutation(department_param="name"),
-            per_op_rate_limit(
+            per_op_rate_limit_from_policy(
                 "departments.update_ceremony_policy",
-                max_requests=20,
-                window_seconds=60,
                 key="user",
             ),
         ],
@@ -722,10 +703,8 @@ class DepartmentController(Controller):
         "/{name:str}/ceremony-policy",
         guards=[
             require_org_mutation(department_param="name"),
-            per_op_rate_limit(
+            per_op_rate_limit_from_policy(
                 "departments.delete_ceremony_policy",
-                max_requests=10,
-                window_seconds=60,
                 key="user",
             ),
         ],

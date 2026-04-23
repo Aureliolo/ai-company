@@ -608,9 +608,14 @@ func verifyAndPinForUpdate(ctx context.Context, state config.State, tag, safeDir
 	}
 
 	sp := out.StartSpinner("Verifying container image signatures...")
+	// Precedence: --timeout flag wins if supplied (operator-level
+	// intent for this invocation); otherwise fall back to the
+	// resolved config.Tunables.ImageVerifyTimeout.  The tunable is
+	// validated at PersistentPreRunE so an unparseable override
+	// fails fast before we reach this code.
 	verifyTimeout, _ := time.ParseDuration(updateTimeout)
 	if verifyTimeout <= 0 {
-		verifyTimeout = 90 * time.Second
+		verifyTimeout = GetGlobalOpts(ctx).Tunables.ImageVerifyTimeout
 	}
 	verifyCtx, cancel := context.WithTimeout(ctx, verifyTimeout)
 	defer cancel()

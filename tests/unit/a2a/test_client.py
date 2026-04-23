@@ -7,7 +7,12 @@ import pytest
 import respx
 
 from synthorg.a2a.client import A2AClient, A2AClientError
+from synthorg.a2a.config import A2AConfig
 from synthorg.a2a.models import A2ATaskState
+
+# Share the shipped default so the tests never diverge from the config
+# contract if the A2AConfig default is ever re-tuned.
+_A2A_DEFAULT_TIMEOUT = A2AConfig().client_timeout_seconds
 
 
 def _mock_catalog(
@@ -36,6 +41,7 @@ def _make_client(
     """Create a client with an injected httpx client (no real I/O)."""
     return A2AClient(
         catalog or _mock_catalog(),
+        timeout_seconds=_A2A_DEFAULT_TIMEOUT,
         http_client=httpx.AsyncClient(),
     )
 
@@ -351,6 +357,7 @@ class TestA2AClient:
         http_client = AsyncMock(spec=httpx.AsyncClient)
         client = A2AClient(
             _mock_catalog(),
+            timeout_seconds=_A2A_DEFAULT_TIMEOUT,
             http_client=http_client,
         )
         await client.aclose()
@@ -359,7 +366,10 @@ class TestA2AClient:
     @pytest.mark.unit
     async def test_aclose_none_client(self) -> None:
         """aclose() is a no-op when no HTTP client."""
-        client = A2AClient(_mock_catalog())
+        client = A2AClient(
+            _mock_catalog(),
+            timeout_seconds=_A2A_DEFAULT_TIMEOUT,
+        )
         await client.aclose()  # should not raise
 
     @pytest.mark.unit
@@ -371,6 +381,7 @@ class TestA2AClient:
         validator = MagicMock()
         client = A2AClient(
             catalog,
+            timeout_seconds=_A2A_DEFAULT_TIMEOUT,
             network_validator=validator,
         )
 
@@ -396,6 +407,7 @@ class TestA2AClient:
         validator = MagicMock()
         client = A2AClient(
             catalog,
+            timeout_seconds=_A2A_DEFAULT_TIMEOUT,
             network_validator=validator,
         )
 
@@ -407,3 +419,31 @@ class TestA2AClient:
             pytest.raises(A2AClientError, match=r"SSRF.*cannot parse"),
         ):
             await client.send_message("peer-a", {})
+
+
+class TestA2AClientTimeoutContract:
+    """The ``timeout_seconds`` kwarg is required -- no silent default."""
+
+    @pytest.mark.unit
+    def test_construct_without_timeout_raises(self) -> None:
+        # Pre-alpha contract: callers must thread the value from
+        # A2AConfig.client_timeout_seconds so the constructor cannot
+        # drift from the config default.
+        with pytest.raises(TypeError, match=r"timeout_seconds"):
+            A2AClient(_mock_catalog())  # type: ignore[call-arg]
+
+    @pytest.mark.unit
+    def test_construct_with_explicit_timeout_succeeds(self) -> None:
+        client = A2AClient(
+            _mock_catalog(),
+            timeout_seconds=_A2A_DEFAULT_TIMEOUT,
+        )
+        assert client is not None  # constructed without error
+
+    @pytest.mark.unit
+    def test_construct_with_positional_timeout_raises(self) -> None:
+        # The `*` kw-only marker on __init__ prevents callers from
+        # passing timeout positionally, which would reintroduce the
+        # silent-default drift this contract is meant to prevent.
+        with pytest.raises(TypeError):
+            A2AClient(_mock_catalog(), _A2A_DEFAULT_TIMEOUT)  # type: ignore[misc]
