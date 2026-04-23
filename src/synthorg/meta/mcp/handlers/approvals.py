@@ -18,7 +18,7 @@ need an actor (to populate ``requested_by`` / ``decided_by``).
 from collections.abc import Mapping  # noqa: TC003 -- PEP 649 annotation
 from datetime import UTC, datetime
 from types import MappingProxyType
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 from synthorg.api.errors import ConflictError
@@ -49,6 +49,9 @@ from synthorg.observability.events.mcp import (
     MCP_HANDLER_INVOKE_FAILED,
     MCP_HANDLER_INVOKE_SUCCESS,
 )
+
+if TYPE_CHECKING:
+    from synthorg.core.agent import AgentIdentity
 
 logger = get_logger(__name__)
 
@@ -177,7 +180,7 @@ async def _list_approvals(
     *,
     app_state: Any,
     arguments: dict[str, Any],
-    actor: Any = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Handler: ``synthorg_approvals_list``."""
     tool = "synthorg_approvals_list"
@@ -197,7 +200,9 @@ async def _list_approvals(
         _log_invalid(tool, exc)
         return err(exc)
 
-    # Service call (isolated so domain errors log at WARNING).
+    # Service call (isolated so domain errors log at WARNING).  Argument
+    # validation is already complete above, so any failure here is a
+    # service-layer problem -- a single ``except Exception`` is enough.
     try:
         items = await app_state.approval_store.list_items(
             status=status,
@@ -205,9 +210,6 @@ async def _list_approvals(
             action_type=action_type,
         )
         page, meta = paginate_sequence(items, offset=offset, limit=limit)
-    except ArgumentValidationError as exc:
-        _log_invalid(tool, exc)
-        return err(exc)
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -220,7 +222,7 @@ async def _get_approval(
     *,
     app_state: Any,
     arguments: dict[str, Any],
-    actor: Any = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Handler: ``synthorg_approvals_get``."""
     tool = "synthorg_approvals_get"
@@ -250,7 +252,7 @@ async def _create_approval(
     *,
     app_state: Any,
     arguments: dict[str, Any],
-    actor: Any = None,
+    actor: AgentIdentity | None = None,
 ) -> str:
     """Handler: ``synthorg_approvals_create``."""
     tool = "synthorg_approvals_create"
@@ -347,7 +349,7 @@ async def _approve(
     *,
     app_state: Any,
     arguments: dict[str, Any],
-    actor: Any = None,
+    actor: AgentIdentity | None = None,
 ) -> str:
     """Handler: ``synthorg_approvals_approve``."""
     tool = "synthorg_approvals_approve"
@@ -390,7 +392,7 @@ async def _reject(
     *,
     app_state: Any,
     arguments: dict[str, Any],
-    actor: Any = None,
+    actor: AgentIdentity | None = None,
 ) -> str:
     """Handler: ``synthorg_approvals_reject`` (destructive).
 

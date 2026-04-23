@@ -11,7 +11,7 @@ app_states).  All budget tools are reads; none are destructive.
 
 from collections.abc import Mapping  # noqa: TC003 -- PEP 649 annotation
 from types import MappingProxyType
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from synthorg.budget.version_service import BudgetConfigVersionsService
 from synthorg.meta.mcp.errors import ArgumentValidationError, invalid_argument
@@ -33,6 +33,9 @@ from synthorg.observability.events.mcp import (
     MCP_HANDLER_INVOKE_FAILED,
     MCP_HANDLER_INVOKE_SUCCESS,
 )
+
+if TYPE_CHECKING:
+    from synthorg.core.agent import AgentIdentity
 
 logger = get_logger(__name__)
 
@@ -100,7 +103,7 @@ async def _budget_get_config(
     *,
     app_state: Any,
     arguments: dict[str, Any],  # noqa: ARG001
-    actor: Any = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     tool = "synthorg_budget_get_config"
     try:
@@ -116,7 +119,7 @@ async def _budget_list_records(
     *,
     app_state: Any,
     arguments: dict[str, Any],
-    actor: Any = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     tool = "synthorg_budget_list_records"
     try:
@@ -152,7 +155,7 @@ async def _budget_get_agent_spending(
     *,
     app_state: Any,
     arguments: dict[str, Any],
-    actor: Any = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     tool = "synthorg_budget_get_agent_spending"
     try:
@@ -181,7 +184,7 @@ async def _budget_versions_list(
     *,
     app_state: Any,
     arguments: dict[str, Any],
-    actor: Any = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     tool = "synthorg_budget_versions_list"
     try:
@@ -209,7 +212,7 @@ async def _budget_versions_get(
     *,
     app_state: Any,
     arguments: dict[str, Any],
-    actor: Any = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     tool = "synthorg_budget_versions_get"
     try:

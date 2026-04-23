@@ -10,11 +10,10 @@ Shims the 8 task tools onto ``app_state.task_engine``
 
 from collections.abc import Mapping  # noqa: TC003 -- PEP 649 annotation
 from types import MappingProxyType
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from synthorg.core.enums import TaskStatus
 from synthorg.engine.errors import (
-    TaskInternalError,
     TaskMutationError,
     TaskNotFoundError,
 )
@@ -44,6 +43,9 @@ from synthorg.observability.events.mcp import (
     MCP_HANDLER_INVOKE_FAILED,
     MCP_HANDLER_INVOKE_SUCCESS,
 )
+
+if TYPE_CHECKING:
+    from synthorg.core.agent import AgentIdentity
 
 logger = get_logger(__name__)
 
@@ -132,7 +134,7 @@ async def _tasks_list(
     *,
     app_state: Any,
     arguments: dict[str, Any],
-    actor: Any = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     tool = "synthorg_tasks_list"
     try:
@@ -160,9 +162,6 @@ async def _tasks_list(
             limit=limit,
             total=total,
         )
-    except TaskInternalError as exc:
-        _log_failed(tool, exc)
-        return err(exc)
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -174,7 +173,7 @@ async def _tasks_get(
     *,
     app_state: Any,
     arguments: dict[str, Any],
-    actor: Any = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     tool = "synthorg_tasks_get"
     try:
@@ -184,9 +183,6 @@ async def _tasks_get(
         return err(exc)
     try:
         task = await app_state.task_engine.get_task(task_id)
-    except TaskInternalError as exc:
-        _log_failed(tool, exc)
-        return err(exc)
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -202,7 +198,7 @@ async def _tasks_create(
     *,
     app_state: Any,  # noqa: ARG001
     arguments: dict[str, Any],  # noqa: ARG001
-    actor: Any = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     # CreateTaskData requires type/priority/complexity/budget_limit/created_by
     # that the current MCP schema does not expose; promoting task creation
@@ -219,7 +215,7 @@ async def _tasks_update(
     *,
     app_state: Any,
     arguments: dict[str, Any],
-    actor: Any = None,
+    actor: AgentIdentity | None = None,
 ) -> str:
     tool = "synthorg_tasks_update"
     try:
@@ -255,7 +251,7 @@ async def _tasks_delete(
     *,
     app_state: Any,
     arguments: dict[str, Any],
-    actor: Any = None,
+    actor: AgentIdentity | None = None,
 ) -> str:
     tool = "synthorg_tasks_delete"
     try:
@@ -297,7 +293,7 @@ async def _tasks_transition(
     *,
     app_state: Any,
     arguments: dict[str, Any],
-    actor: Any = None,
+    actor: AgentIdentity | None = None,
 ) -> str:
     tool = "synthorg_tasks_transition"
     try:
@@ -336,7 +332,7 @@ async def _tasks_cancel(
     *,
     app_state: Any,
     arguments: dict[str, Any],
-    actor: Any = None,
+    actor: AgentIdentity | None = None,
 ) -> str:
     tool = "synthorg_tasks_cancel"
     try:
@@ -382,7 +378,7 @@ async def _activities_list(
     *,
     app_state: Any,  # noqa: ARG001
     arguments: dict[str, Any],  # noqa: ARG001
-    actor: Any = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     return not_supported(
         "synthorg_activities_list",

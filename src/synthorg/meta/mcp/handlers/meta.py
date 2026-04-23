@@ -8,7 +8,10 @@ yet exposed, so they return ``not_supported``.
 
 from collections.abc import Mapping  # noqa: TC003 -- PEP 649 annotation
 from types import MappingProxyType
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from synthorg.core.agent import AgentIdentity
 
 from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,  # noqa: TC001 -- PEP 649 annotation
@@ -50,7 +53,7 @@ async def _meta_get_config(
     *,
     app_state: Any,  # noqa: ARG001
     arguments: dict[str, Any],  # noqa: ARG001
-    actor: Any = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     return not_supported("synthorg_meta_get_config", _WHY_CONFIG)
 
@@ -59,7 +62,7 @@ async def _meta_list_rules(
     *,
     app_state: Any,  # noqa: ARG001
     arguments: dict[str, Any],  # noqa: ARG001
-    actor: Any = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     return not_supported("synthorg_meta_list_rules", _WHY_RULES)
 
@@ -68,7 +71,7 @@ async def _meta_list_mcp_tools(
     *,
     app_state: Any,  # noqa: ARG001
     arguments: dict[str, Any],  # noqa: ARG001
-    actor: Any = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     tool = "synthorg_meta_list_mcp_tools"
     # Deferred import breaks the handlers->server->handlers import cycle.
@@ -88,7 +91,7 @@ async def _meta_get_mcp_server_config(
     *,
     app_state: Any,  # noqa: ARG001
     arguments: dict[str, Any],  # noqa: ARG001
-    actor: Any = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     tool = "synthorg_meta_get_mcp_server_config"
     from synthorg.meta.mcp.server import get_server_config  # noqa: PLC0415
@@ -106,7 +109,7 @@ async def _meta_trigger_cycle(
     *,
     app_state: Any,  # noqa: ARG001
     arguments: dict[str, Any],  # noqa: ARG001
-    actor: Any = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     return not_supported("synthorg_meta_trigger_cycle", _WHY_TRIGGER)
 

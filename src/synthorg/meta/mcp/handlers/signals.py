@@ -16,21 +16,23 @@ store, evolution outcome store, telemetry collector) and a proposal
 store for the write path.
 
 Until that facade ships as its own dedicated work item, every signal
-handler returns a structured ``not_supported`` envelope with a stable
-reason.  The MCP tool surface stays registered, the placeholder log
-noise remains visible to ops, and the handler signature + test shape
-match the other domains so the facade can drop in without touching
-the MCP layer.
+handler returns a structured ``not_supported`` envelope via the shared
+:func:`_mk` factory (mirroring the ``organization`` and ``integrations``
+modules); centralising on the factory keeps actor typing consistent
+across the 9 handlers and removes boilerplate.
 """
 
 from collections.abc import Mapping  # noqa: TC003 -- PEP 649 annotation
 from types import MappingProxyType
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,  # noqa: TC001 -- PEP 649 annotation
 )
 from synthorg.meta.mcp.handlers.common import not_supported
+
+if TYPE_CHECKING:
+    from synthorg.core.agent import AgentIdentity
 
 _WHY_SIGNALS = (
     "signal aggregators live inside SelfImprovementService; no "
@@ -43,97 +45,57 @@ _WHY_PROPOSALS = (
 )
 
 
-async def _signals_get_org_snapshot(
-    *,
-    app_state: Any,  # noqa: ARG001
-    arguments: dict[str, Any],  # noqa: ARG001
-    actor: Any = None,  # noqa: ARG001
-) -> str:
-    return not_supported("synthorg_signals_get_org_snapshot", _WHY_SIGNALS)
+def _mk(tool: str, why: str) -> ToolHandler:
+    """Build a ``not_supported`` handler with ToolHandler-conformant typing."""
 
+    async def handler(
+        *,
+        app_state: Any,  # noqa: ARG001
+        arguments: dict[str, Any],  # noqa: ARG001
+        actor: AgentIdentity | None = None,  # noqa: ARG001
+    ) -> str:
+        return not_supported(tool, why)
 
-async def _signals_get_performance(
-    *,
-    app_state: Any,  # noqa: ARG001
-    arguments: dict[str, Any],  # noqa: ARG001
-    actor: Any = None,  # noqa: ARG001
-) -> str:
-    return not_supported("synthorg_signals_get_performance", _WHY_SIGNALS)
-
-
-async def _signals_get_budget(
-    *,
-    app_state: Any,  # noqa: ARG001
-    arguments: dict[str, Any],  # noqa: ARG001
-    actor: Any = None,  # noqa: ARG001
-) -> str:
-    return not_supported("synthorg_signals_get_budget", _WHY_SIGNALS)
-
-
-async def _signals_get_coordination(
-    *,
-    app_state: Any,  # noqa: ARG001
-    arguments: dict[str, Any],  # noqa: ARG001
-    actor: Any = None,  # noqa: ARG001
-) -> str:
-    return not_supported("synthorg_signals_get_coordination", _WHY_SIGNALS)
-
-
-async def _signals_get_scaling_history(
-    *,
-    app_state: Any,  # noqa: ARG001
-    arguments: dict[str, Any],  # noqa: ARG001
-    actor: Any = None,  # noqa: ARG001
-) -> str:
-    return not_supported("synthorg_signals_get_scaling_history", _WHY_SIGNALS)
-
-
-async def _signals_get_error_patterns(
-    *,
-    app_state: Any,  # noqa: ARG001
-    arguments: dict[str, Any],  # noqa: ARG001
-    actor: Any = None,  # noqa: ARG001
-) -> str:
-    return not_supported("synthorg_signals_get_error_patterns", _WHY_SIGNALS)
-
-
-async def _signals_get_evolution_outcomes(
-    *,
-    app_state: Any,  # noqa: ARG001
-    arguments: dict[str, Any],  # noqa: ARG001
-    actor: Any = None,  # noqa: ARG001
-) -> str:
-    return not_supported("synthorg_signals_get_evolution_outcomes", _WHY_SIGNALS)
-
-
-async def _signals_get_proposals(
-    *,
-    app_state: Any,  # noqa: ARG001
-    arguments: dict[str, Any],  # noqa: ARG001
-    actor: Any = None,  # noqa: ARG001
-) -> str:
-    return not_supported("synthorg_signals_get_proposals", _WHY_PROPOSALS)
-
-
-async def _signals_submit_proposal(
-    *,
-    app_state: Any,  # noqa: ARG001
-    arguments: dict[str, Any],  # noqa: ARG001
-    actor: Any = None,  # noqa: ARG001
-) -> str:
-    return not_supported("synthorg_signals_submit_proposal", _WHY_PROPOSALS)
+    return handler
 
 
 SIGNAL_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(
     {
-        "synthorg_signals_get_org_snapshot": _signals_get_org_snapshot,
-        "synthorg_signals_get_performance": _signals_get_performance,
-        "synthorg_signals_get_budget": _signals_get_budget,
-        "synthorg_signals_get_coordination": _signals_get_coordination,
-        "synthorg_signals_get_scaling_history": _signals_get_scaling_history,
-        "synthorg_signals_get_error_patterns": _signals_get_error_patterns,
-        "synthorg_signals_get_evolution_outcomes": _signals_get_evolution_outcomes,
-        "synthorg_signals_get_proposals": _signals_get_proposals,
-        "synthorg_signals_submit_proposal": _signals_submit_proposal,
+        "synthorg_signals_get_org_snapshot": _mk(
+            "synthorg_signals_get_org_snapshot",
+            _WHY_SIGNALS,
+        ),
+        "synthorg_signals_get_performance": _mk(
+            "synthorg_signals_get_performance",
+            _WHY_SIGNALS,
+        ),
+        "synthorg_signals_get_budget": _mk(
+            "synthorg_signals_get_budget",
+            _WHY_SIGNALS,
+        ),
+        "synthorg_signals_get_coordination": _mk(
+            "synthorg_signals_get_coordination",
+            _WHY_SIGNALS,
+        ),
+        "synthorg_signals_get_scaling_history": _mk(
+            "synthorg_signals_get_scaling_history",
+            _WHY_SIGNALS,
+        ),
+        "synthorg_signals_get_error_patterns": _mk(
+            "synthorg_signals_get_error_patterns",
+            _WHY_SIGNALS,
+        ),
+        "synthorg_signals_get_evolution_outcomes": _mk(
+            "synthorg_signals_get_evolution_outcomes",
+            _WHY_SIGNALS,
+        ),
+        "synthorg_signals_get_proposals": _mk(
+            "synthorg_signals_get_proposals",
+            _WHY_PROPOSALS,
+        ),
+        "synthorg_signals_submit_proposal": _mk(
+            "synthorg_signals_submit_proposal",
+            _WHY_PROPOSALS,
+        ),
     },
 )

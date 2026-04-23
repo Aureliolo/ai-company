@@ -135,7 +135,7 @@ async def _health_check(
     *,
     app_state: Any,
     arguments: dict[str, Any],  # noqa: ARG001
-    actor: Any = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     """Live health-check shim.
 
@@ -148,9 +148,7 @@ async def _health_check(
         data = {
             "task_engine": app_state.has_task_engine,
             "cost_tracker": app_state.has_cost_tracker,
-            "approval_store": bool(
-                getattr(app_state, "approval_store", None) is not None,
-            ),
+            "approval_store": getattr(app_state, "approval_store", None) is not None,
             "agent_registry": app_state.has_agent_registry,
         }
     except Exception as exc:

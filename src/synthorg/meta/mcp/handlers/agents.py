@@ -48,6 +48,7 @@ from synthorg.observability.events.mcp import (
 )
 
 if TYPE_CHECKING:
+    from synthorg.core.agent import AgentIdentity
     from synthorg.core.enums import AutonomyLevel
 
 logger = get_logger(__name__)
@@ -141,10 +142,12 @@ def _actor_name(actor: Any) -> str | None:
 
 
 def _require_non_blank(arguments: dict[str, Any], key: str) -> str:
+    """Extract a non-blank string argument, stripped of surrounding whitespace."""
     raw = require_arg(arguments, key, str)
-    if not raw.strip():
+    stripped = raw.strip()
+    if not stripped:
         raise invalid_argument(key, _TY_NON_BLANK)
-    return raw
+    return stripped
 
 
 # --- Agent CRUD -----------------------------------------------------------
@@ -154,7 +157,7 @@ async def _agents_list(
     *,
     app_state: Any,
     arguments: dict[str, Any],
-    actor: Any = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     tool = "synthorg_agents_list"
     try:
@@ -176,7 +179,7 @@ async def _agents_get(
     *,
     app_state: Any,
     arguments: dict[str, Any],
-    actor: Any = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     tool = "synthorg_agents_get"
     try:
@@ -201,7 +204,7 @@ async def _agents_create(
     *,
     app_state: Any,  # noqa: ARG001
     arguments: dict[str, Any],  # noqa: ARG001
-    actor: Any = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     return not_supported("synthorg_agents_create", _WHY_CREATE)
 
@@ -210,7 +213,7 @@ async def _agents_update(
     *,
     app_state: Any,  # noqa: ARG001
     arguments: dict[str, Any],  # noqa: ARG001
-    actor: Any = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     return not_supported("synthorg_agents_update", _WHY_UPDATE)
 
@@ -219,7 +222,7 @@ async def _agents_delete(
     *,
     app_state: Any,
     arguments: dict[str, Any],
-    actor: Any = None,
+    actor: AgentIdentity | None = None,
 ) -> str:
     tool = "synthorg_agents_delete"
     try:
@@ -265,7 +268,7 @@ async def _agents_get_performance(
     *,
     app_state: Any,
     arguments: dict[str, Any],
-    actor: Any = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     tool = "synthorg_agents_get_performance"
     try:
@@ -285,9 +288,9 @@ async def _agents_get_performance(
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     if snapshot is None:
         return ok(data=None)
-    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(data=snapshot.model_dump(mode="json"))
 
 
@@ -295,7 +298,7 @@ async def _agents_get_activity(
     *,
     app_state: Any,  # noqa: ARG001
     arguments: dict[str, Any],  # noqa: ARG001
-    actor: Any = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     return not_supported("synthorg_agents_get_activity", _WHY_ACTIVITY)
 
@@ -304,7 +307,7 @@ async def _agents_get_history(
     *,
     app_state: Any,  # noqa: ARG001
     arguments: dict[str, Any],  # noqa: ARG001
-    actor: Any = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     return not_supported("synthorg_agents_get_history", _WHY_HISTORY)
 
@@ -313,7 +316,7 @@ async def _agents_get_health(
     *,
     app_state: Any,  # noqa: ARG001
     arguments: dict[str, Any],  # noqa: ARG001
-    actor: Any = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     return not_supported("synthorg_agents_get_health", _WHY_HEALTH)
 
@@ -325,7 +328,7 @@ async def _personalities_list(
     *,
     app_state: Any,  # noqa: ARG001
     arguments: dict[str, Any],  # noqa: ARG001
-    actor: Any = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     return not_supported("synthorg_personalities_list", _WHY_PERSONALITIES)
 
@@ -334,7 +337,7 @@ async def _personalities_get(
     *,
     app_state: Any,  # noqa: ARG001
     arguments: dict[str, Any],  # noqa: ARG001
-    actor: Any = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     return not_supported("synthorg_personalities_get", _WHY_PERSONALITIES)
 
@@ -346,7 +349,7 @@ async def _training_list_sessions(
     *,
     app_state: Any,  # noqa: ARG001
     arguments: dict[str, Any],  # noqa: ARG001
-    actor: Any = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     return not_supported("synthorg_training_list_sessions", _WHY_TRAINING_LIST)
 
@@ -355,7 +358,7 @@ async def _training_get_session(
     *,
     app_state: Any,  # noqa: ARG001
     arguments: dict[str, Any],  # noqa: ARG001
-    actor: Any = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     return not_supported("synthorg_training_get_session", _WHY_TRAINING_LIST)
 
@@ -364,7 +367,7 @@ async def _training_start_session(
     *,
     app_state: Any,  # noqa: ARG001
     arguments: dict[str, Any],  # noqa: ARG001
-    actor: Any = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     return not_supported("synthorg_training_start_session", _WHY_TRAINING_START)
 
@@ -376,7 +379,7 @@ async def _autonomy_get(
     *,
     app_state: Any,
     arguments: dict[str, Any],
-    actor: Any = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     tool = "synthorg_autonomy_get"
     try:
@@ -409,7 +412,7 @@ async def _autonomy_update(
     *,
     app_state: Any,  # noqa: ARG001
     arguments: dict[str, Any],  # noqa: ARG001
-    actor: Any = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     return not_supported("synthorg_autonomy_update", _WHY_AUTONOMY_UPDATE)
 
@@ -421,7 +424,7 @@ async def _collaboration_get_score(
     *,
     app_state: Any,
     arguments: dict[str, Any],
-    actor: Any = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     tool = "synthorg_collaboration_get_score"
     try:
@@ -452,7 +455,7 @@ async def _collaboration_get_calibration(
     *,
     app_state: Any,  # noqa: ARG001
     arguments: dict[str, Any],  # noqa: ARG001
-    actor: Any = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     return not_supported(
         "synthorg_collaboration_get_calibration",

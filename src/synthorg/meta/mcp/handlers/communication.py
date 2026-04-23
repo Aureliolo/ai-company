@@ -87,7 +87,7 @@ async def _messages_list(
     *,
     app_state: Any,  # noqa: ARG001
     arguments: dict[str, Any],  # noqa: ARG001
-    actor: Any = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     return not_supported("synthorg_messages_list", _WHY_MESSAGES)
 
@@ -96,7 +96,7 @@ async def _messages_get(
     *,
     app_state: Any,  # noqa: ARG001
     arguments: dict[str, Any],  # noqa: ARG001
-    actor: Any = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     return not_supported("synthorg_messages_get", _WHY_MESSAGES)
 
@@ -105,7 +105,7 @@ async def _messages_send(
     *,
     app_state: Any,  # noqa: ARG001
     arguments: dict[str, Any],  # noqa: ARG001
-    actor: Any = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     return not_supported("synthorg_messages_send", _WHY_MESSAGES)
 
@@ -114,7 +114,7 @@ async def _messages_delete(
     *,
     app_state: Any,  # noqa: ARG001
     arguments: dict[str, Any],
-    actor: Any = None,
+    actor: AgentIdentity | None = None,
 ) -> str:
     return await _enforce_destructive(
         "synthorg_messages_delete",
@@ -131,7 +131,7 @@ async def _meetings_list(
     *,
     app_state: Any,  # noqa: ARG001
     arguments: dict[str, Any],  # noqa: ARG001
-    actor: Any = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     return not_supported(
         "synthorg_meetings_list",
@@ -144,7 +144,7 @@ async def _meetings_get(
     *,
     app_state: Any,  # noqa: ARG001
     arguments: dict[str, Any],  # noqa: ARG001
-    actor: Any = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     return not_supported("synthorg_meetings_get", _WHY_MEETING_WRITE)
 
@@ -153,7 +153,7 @@ async def _meetings_create(
     *,
     app_state: Any,  # noqa: ARG001
     arguments: dict[str, Any],  # noqa: ARG001
-    actor: Any = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     return not_supported("synthorg_meetings_create", _WHY_MEETING_WRITE)
 
@@ -162,7 +162,7 @@ async def _meetings_update(
     *,
     app_state: Any,  # noqa: ARG001
     arguments: dict[str, Any],  # noqa: ARG001
-    actor: Any = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     return not_supported("synthorg_meetings_update", _WHY_MEETING_WRITE)
 
@@ -171,7 +171,7 @@ async def _meetings_delete(
     *,
     app_state: Any,  # noqa: ARG001
     arguments: dict[str, Any],
-    actor: Any = None,
+    actor: AgentIdentity | None = None,
 ) -> str:
     return await _enforce_destructive(
         "synthorg_meetings_delete",
@@ -188,7 +188,7 @@ async def _connections_list(
     *,
     app_state: Any,  # noqa: ARG001
     arguments: dict[str, Any],  # noqa: ARG001
-    actor: Any = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     return not_supported("synthorg_connections_list", _WHY_CONNECTIONS)
 
@@ -197,7 +197,7 @@ async def _connections_get(
     *,
     app_state: Any,  # noqa: ARG001
     arguments: dict[str, Any],  # noqa: ARG001
-    actor: Any = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     return not_supported("synthorg_connections_get", _WHY_CONNECTIONS)
 
@@ -206,7 +206,7 @@ async def _connections_create(
     *,
     app_state: Any,  # noqa: ARG001
     arguments: dict[str, Any],  # noqa: ARG001
-    actor: Any = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     return not_supported("synthorg_connections_create", _WHY_CONNECTIONS)
 
@@ -215,7 +215,7 @@ async def _connections_delete(
     *,
     app_state: Any,  # noqa: ARG001
     arguments: dict[str, Any],
-    actor: Any = None,
+    actor: AgentIdentity | None = None,
 ) -> str:
     return await _enforce_destructive(
         "synthorg_connections_delete",
@@ -229,7 +229,7 @@ async def _connections_check_health(
     *,
     app_state: Any,  # noqa: ARG001
     arguments: dict[str, Any],  # noqa: ARG001
-    actor: Any = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     return not_supported("synthorg_connections_check_health", _WHY_CONNECTIONS)
 
@@ -241,7 +241,7 @@ async def _webhooks_list(
     *,
     app_state: Any,  # noqa: ARG001
     arguments: dict[str, Any],  # noqa: ARG001
-    actor: Any = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     return not_supported("synthorg_webhooks_list", _WHY_WEBHOOKS)
 
@@ -250,7 +250,7 @@ async def _webhooks_get(
     *,
     app_state: Any,  # noqa: ARG001
     arguments: dict[str, Any],  # noqa: ARG001
-    actor: Any = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     return not_supported("synthorg_webhooks_get", _WHY_WEBHOOKS)
 
@@ -259,7 +259,7 @@ async def _webhooks_create(
     *,
     app_state: Any,  # noqa: ARG001
     arguments: dict[str, Any],  # noqa: ARG001
-    actor: Any = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     return not_supported("synthorg_webhooks_create", _WHY_WEBHOOKS)
 
@@ -268,7 +268,7 @@ async def _webhooks_update(
     *,
     app_state: Any,  # noqa: ARG001
     arguments: dict[str, Any],  # noqa: ARG001
-    actor: Any = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     return not_supported("synthorg_webhooks_update", _WHY_WEBHOOKS)
 
@@ -277,7 +277,7 @@ async def _webhooks_delete(
     *,
     app_state: Any,  # noqa: ARG001
     arguments: dict[str, Any],
-    actor: Any = None,
+    actor: AgentIdentity | None = None,
 ) -> str:
     return await _enforce_destructive(
         "synthorg_webhooks_delete",
@@ -294,7 +294,7 @@ async def _tunnel_get_status(
     *,
     app_state: Any,  # noqa: ARG001
     arguments: dict[str, Any],  # noqa: ARG001
-    actor: Any = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     return not_supported("synthorg_tunnel_get_status", _WHY_TUNNEL)
 
@@ -303,7 +303,7 @@ async def _tunnel_connect(
     *,
     app_state: Any,  # noqa: ARG001
     arguments: dict[str, Any],  # noqa: ARG001
-    actor: Any = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     return not_supported("synthorg_tunnel_connect", _WHY_TUNNEL)
 

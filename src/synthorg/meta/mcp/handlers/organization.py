@@ -63,7 +63,7 @@ def _log_guardrail(tool: str, exc: GuardrailViolationError) -> None:
 async def _enforce_destructive(
     tool: str,
     arguments: dict[str, Any],
-    actor: Any,
+    actor: AgentIdentity | None,
     why: str,
 ) -> str:
     try:

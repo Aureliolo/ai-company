@@ -18,7 +18,7 @@ schema layer.
 
 from collections.abc import Mapping  # noqa: TC003 -- PEP 649 annotation
 from types import MappingProxyType
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from synthorg.engine.workflow.service import (
     WorkflowDefinitionNotFoundError,
@@ -49,6 +49,9 @@ from synthorg.observability.events.mcp import (
     MCP_HANDLER_INVOKE_FAILED,
     MCP_HANDLER_INVOKE_SUCCESS,
 )
+
+if TYPE_CHECKING:
+    from synthorg.core.agent import AgentIdentity
 
 logger = get_logger(__name__)
 
@@ -109,10 +112,11 @@ def _actor_name(actor: Any) -> str | None:
 
 
 def _require_non_blank(arguments: dict[str, Any], key: str) -> str:
+    """Extract a non-blank string argument, stripped of surrounding whitespace."""
     raw = arguments.get(key)
     if not isinstance(raw, str) or not raw.strip():
         raise invalid_argument(key, _TY_NON_BLANK)
-    return raw
+    return raw.strip()
 
 
 def _service(app_state: Any) -> WorkflowService:
@@ -121,11 +125,19 @@ def _service(app_state: Any) -> WorkflowService:
     Prefers ``app_state.workflow_service`` when bootstrap has wired one
     (keeps handlers off ``persistence.*``).  Falls back to per-call
     construction from the persistence backend for app_states that have
-    not adopted the cached-service pattern yet.
+    not adopted the cached-service pattern yet; the fallback path emits
+    a DEBUG log so deployments using the legacy wiring are observable
+    in telemetry.
     """
     cached: WorkflowService | None = getattr(app_state, "workflow_service", None)
     if cached is not None:
         return cached
+    logger.debug(
+        MCP_HANDLER_INVOKE_SUCCESS,
+        tool_name="workflows._service",
+        fallback="persistence",
+        reason="app_state.workflow_service not wired -- building per-call",
+    )
     return WorkflowService(
         definition_repo=app_state.persistence.workflow_definitions,
         version_repo=app_state.persistence.workflow_versions,
@@ -139,7 +151,7 @@ async def _workflows_list(
     *,
     app_state: Any,
     arguments: dict[str, Any],
-    actor: Any = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     tool = "synthorg_workflows_list"
     try:
@@ -161,7 +173,7 @@ async def _workflows_get(
     *,
     app_state: Any,
     arguments: dict[str, Any],
-    actor: Any = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     tool = "synthorg_workflows_get"
     try:
@@ -188,7 +200,7 @@ async def _workflows_create(
     *,
     app_state: Any,  # noqa: ARG001
     arguments: dict[str, Any],  # noqa: ARG001
-    actor: Any = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     return not_supported(
         "synthorg_workflows_create",
@@ -201,7 +213,7 @@ async def _workflows_update(
     *,
     app_state: Any,  # noqa: ARG001
     arguments: dict[str, Any],  # noqa: ARG001
-    actor: Any = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     return not_supported(
         "synthorg_workflows_update",
@@ -214,7 +226,7 @@ async def _workflows_delete(
     *,
     app_state: Any,
     arguments: dict[str, Any],
-    actor: Any = None,
+    actor: AgentIdentity | None = None,
 ) -> str:
     tool = "synthorg_workflows_delete"
     try:
@@ -255,7 +267,7 @@ async def _workflows_validate(
     *,
     app_state: Any,  # noqa: ARG001
     arguments: dict[str, Any],  # noqa: ARG001
-    actor: Any = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     return not_supported(
         "synthorg_workflows_validate",
@@ -275,7 +287,7 @@ async def _subworkflows_list(
     *,
     app_state: Any,  # noqa: ARG001
     arguments: dict[str, Any],  # noqa: ARG001
-    actor: Any = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     return await _subworkflow_placeholder("synthorg_subworkflows_list")
 
@@ -284,7 +296,7 @@ async def _subworkflows_get(
     *,
     app_state: Any,  # noqa: ARG001
     arguments: dict[str, Any],  # noqa: ARG001
-    actor: Any = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     return await _subworkflow_placeholder("synthorg_subworkflows_get")
 
@@ -293,7 +305,7 @@ async def _subworkflows_create(
     *,
     app_state: Any,  # noqa: ARG001
     arguments: dict[str, Any],  # noqa: ARG001
-    actor: Any = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     return await _subworkflow_placeholder("synthorg_subworkflows_create")
 
@@ -302,7 +314,7 @@ async def _subworkflows_delete(
     *,
     app_state: Any,  # noqa: ARG001
     arguments: dict[str, Any],
-    actor: Any = None,
+    actor: AgentIdentity | None = None,
 ) -> str:
     tool = "synthorg_subworkflows_delete"
     try:
@@ -324,7 +336,7 @@ async def _workflow_executions_list(
     *,
     app_state: Any,  # noqa: ARG001
     arguments: dict[str, Any],  # noqa: ARG001
-    actor: Any = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     return await _executions_placeholder("synthorg_workflow_executions_list")
 
@@ -333,7 +345,7 @@ async def _workflow_executions_get(
     *,
     app_state: Any,  # noqa: ARG001
     arguments: dict[str, Any],  # noqa: ARG001
-    actor: Any = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     return await _executions_placeholder("synthorg_workflow_executions_get")
 
@@ -342,7 +354,7 @@ async def _workflow_executions_start(
     *,
     app_state: Any,  # noqa: ARG001
     arguments: dict[str, Any],  # noqa: ARG001
-    actor: Any = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     return await _executions_placeholder("synthorg_workflow_executions_start")
 
@@ -351,7 +363,7 @@ async def _workflow_executions_cancel(
     *,
     app_state: Any,  # noqa: ARG001
     arguments: dict[str, Any],
-    actor: Any = None,
+    actor: AgentIdentity | None = None,
 ) -> str:
     tool = "synthorg_workflow_executions_cancel"
     try:
@@ -369,7 +381,7 @@ async def _workflow_versions_list(
     *,
     app_state: Any,  # noqa: ARG001
     arguments: dict[str, Any],  # noqa: ARG001
-    actor: Any = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     return not_supported("synthorg_workflow_versions_list", _WHY_VERSIONS_LIST)
 
@@ -378,7 +390,7 @@ async def _workflow_versions_get(
     *,
     app_state: Any,  # noqa: ARG001
     arguments: dict[str, Any],  # noqa: ARG001
-    actor: Any = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     return not_supported("synthorg_workflow_versions_get", _WHY_VERSIONS_LIST)
 

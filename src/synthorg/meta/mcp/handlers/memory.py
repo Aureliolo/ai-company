@@ -15,7 +15,7 @@ boundary.  ``delete_checkpoint`` is live; the others are currently
 
 from collections.abc import Mapping  # noqa: TC003 -- PEP 649 annotation
 from types import MappingProxyType
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from synthorg.memory.service import (
     CheckpointNotFoundError,
@@ -47,6 +47,9 @@ from synthorg.observability.events.mcp import (
     MCP_HANDLER_INVOKE_SUCCESS,
 )
 from synthorg.persistence.errors import QueryError
+
+if TYPE_CHECKING:
+    from synthorg.core.agent import AgentIdentity
 
 logger = get_logger(__name__)
 
@@ -189,7 +192,7 @@ async def _memory_start_fine_tune(
     *,
     app_state: Any,  # noqa: ARG001
     arguments: dict[str, Any],  # noqa: ARG001
-    actor: Any = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     return not_supported("synthorg_memory_start_fine_tune", _WHY_FINE_TUNE_START)
 
@@ -198,7 +201,7 @@ async def _memory_resume_fine_tune(
     *,
     app_state: Any,  # noqa: ARG001
     arguments: dict[str, Any],  # noqa: ARG001
-    actor: Any = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     return not_supported("synthorg_memory_resume_fine_tune", _WHY_FINE_TUNE_START)
 
@@ -207,7 +210,7 @@ async def _memory_get_fine_tune_status(
     *,
     app_state: Any,  # noqa: ARG001
     arguments: dict[str, Any],  # noqa: ARG001
-    actor: Any = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     return not_supported(
         "synthorg_memory_get_fine_tune_status",
@@ -219,7 +222,7 @@ async def _memory_cancel_fine_tune(
     *,
     app_state: Any,  # noqa: ARG001
     arguments: dict[str, Any],
-    actor: Any = None,
+    actor: AgentIdentity | None = None,
 ) -> str:
     tool = "synthorg_memory_cancel_fine_tune"
     try:
@@ -234,7 +237,7 @@ async def _memory_run_preflight(
     *,
     app_state: Any,  # noqa: ARG001
     arguments: dict[str, Any],  # noqa: ARG001
-    actor: Any = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     return not_supported(
         "synthorg_memory_run_preflight",
@@ -246,7 +249,7 @@ async def _memory_list_checkpoints(
     *,
     app_state: Any,
     arguments: dict[str, Any],
-    actor: Any = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     tool = "synthorg_memory_list_checkpoints"
     try:
@@ -275,7 +278,7 @@ async def _memory_deploy_checkpoint(
     *,
     app_state: Any,
     arguments: dict[str, Any],
-    actor: Any = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     tool = "synthorg_memory_deploy_checkpoint"
     try:
@@ -309,7 +312,7 @@ async def _memory_rollback_checkpoint(
     *,
     app_state: Any,  # noqa: ARG001
     arguments: dict[str, Any],
-    actor: Any = None,
+    actor: AgentIdentity | None = None,
 ) -> str:
     tool = "synthorg_memory_rollback_checkpoint"
     try:
@@ -328,7 +331,7 @@ async def _memory_delete_checkpoint(  # noqa: PLR0911
     *,
     app_state: Any,
     arguments: dict[str, Any],
-    actor: Any = None,
+    actor: AgentIdentity | None = None,
 ) -> str:
     tool = "synthorg_memory_delete_checkpoint"
     try:
@@ -375,7 +378,7 @@ async def _memory_list_runs(
     *,
     app_state: Any,  # noqa: ARG001
     arguments: dict[str, Any],  # noqa: ARG001
-    actor: Any = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     return not_supported("synthorg_memory_list_runs", _WHY_RUNS)
 
@@ -384,7 +387,7 @@ async def _memory_get_active_embedder(
     *,
     app_state: Any,  # noqa: ARG001
     arguments: dict[str, Any],  # noqa: ARG001
-    actor: Any = None,  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     return not_supported("synthorg_memory_get_active_embedder", _WHY_EMBEDDER)
 
