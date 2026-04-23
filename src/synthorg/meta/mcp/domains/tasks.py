@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 from synthorg.meta.mcp.tool_builder import (
     PAGINATION_PROPERTIES,
+    admin_tool,
     read_tool,
     write_tool,
 )
@@ -61,14 +62,24 @@ TASK_TOOLS: tuple[MCPToolDef, ...] = (
         },
         required=("task_id", "updates"),
     ),
-    write_tool(
+    admin_tool(
         "tasks",
         "delete",
-        "Delete a task.",
+        "Delete a task (destructive; requires confirm).",
         {
             "task_id": {"type": "string", "description": "Task UUID"},
+            "reason": {
+                "type": "string",
+                "description": "Reason for deletion (non-blank)",
+                "minLength": 1,
+            },
+            "confirm": {
+                "type": "boolean",
+                "description": "Must be true to proceed",
+                "enum": [True],
+            },
         },
-        required=("task_id",),
+        required=("task_id", "reason", "confirm"),
     ),
     write_tool(
         "tasks",
@@ -80,15 +91,24 @@ TASK_TOOLS: tuple[MCPToolDef, ...] = (
         },
         required=("task_id", "target_status"),
     ),
-    write_tool(
+    admin_tool(
         "tasks",
         "cancel",
-        "Cancel a task with a reason.",
+        "Cancel a task (destructive; requires confirm).",
         {
             "task_id": {"type": "string", "description": "Task UUID"},
-            "reason": {"type": "string", "description": "Cancellation reason"},
+            "reason": {
+                "type": "string",
+                "description": "Cancellation reason (non-blank)",
+                "minLength": 1,
+            },
+            "confirm": {
+                "type": "boolean",
+                "description": "Must be true to proceed",
+                "enum": [True],
+            },
         },
-        required=("task_id",),
+        required=("task_id", "reason", "confirm"),
     ),
     # --- Activities ---
     read_tool(

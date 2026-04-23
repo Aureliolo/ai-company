@@ -118,16 +118,16 @@ class TestFullStackInvocation:
         invoker = MCPToolInvoker(registry, handlers)
         # Pick a still-placeholder tool so the end-to-end test exercises
         # the full registry+invoker+handler path without needing a live
-        # ``app_state``.  Workflows haven't been wired yet at this point
-        # in META-MCP-1 rollout, so its handler is the stub scaffold.
+        # ``app_state``.  Coordination hasn't been wired yet at this
+        # point in META-MCP-1 rollout, so its handlers remain scaffolds.
         result = await invoker.invoke(
-            "synthorg_workflows_list",
-            {"offset": 0, "limit": 10},
+            "synthorg_coordination_coordinate_task",
+            {},
             app_state=None,
         )
         assert result.is_error is False
         body = json.loads(result.content)
-        assert body["tool"] == "synthorg_workflows_list"
+        assert body["tool"] == "synthorg_coordination_coordinate_task"
         assert body["status"] == "not_implemented"
 
     def test_server_config_complete(self) -> None:

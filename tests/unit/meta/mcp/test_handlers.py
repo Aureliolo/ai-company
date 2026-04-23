@@ -110,19 +110,25 @@ class TestEndToEndInvocation:
     """End-to-end test: registry + handlers + invoker."""
 
     async def test_invoke_placeholder_via_invoker(self) -> None:
+        """End-to-end with a still-placeholder tool.
+
+        As META-MCP-1 rolls out domain handlers, pick a tool whose
+        domain hasn't been wired yet so the end-to-end dispatch test
+        stays free of live service dependencies.
+        """
         registry = build_full_registry()
         handlers = build_handler_map()
         invoker = MCPToolInvoker(registry, handlers)
 
         result = await invoker.invoke(
-            "synthorg_tasks_list",
+            "synthorg_scaling_list_decisions",
             {"offset": 0, "limit": 10},
             app_state=None,
         )
         assert result.is_error is False
         body = json.loads(result.content)
         assert body["status"] == "not_implemented"
-        assert body["tool"] == "synthorg_tasks_list"
+        assert body["tool"] == "synthorg_scaling_list_decisions"
         assert body["arguments_received"]["offset"] == 0
 
     async def test_invoke_unknown_tool(self) -> None:
