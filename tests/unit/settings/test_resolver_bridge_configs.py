@@ -97,6 +97,7 @@ _HAPPY_CASES: tuple[
         {
             ("api", "ticket_cleanup_interval_seconds"): "60.0",
             ("api", "ws_ticket_max_pending_per_user"): "5",
+            ("api", "ws_auth_timeout_seconds"): "10.0",
             ("api", "max_rpm_default"): "60",
             ("api", "compression_minimum_size_bytes"): "1000",
             ("api", "request_max_body_size_bytes"): "52428800",
@@ -108,6 +109,7 @@ _HAPPY_CASES: tuple[
         {
             "ticket_cleanup_interval_seconds": 60.0,
             "ws_ticket_max_pending_per_user": 5,
+            "ws_auth_timeout_seconds": 10.0,
             "max_rpm_default": 60,
             "compression_minimum_size_bytes": 1000,
             "request_max_body_size_bytes": 52_428_800,
@@ -309,6 +311,7 @@ async def test_get_api_bridge_config_rejects_out_of_range(
         {
             ("api", "ticket_cleanup_interval_seconds"): "60.0",
             ("api", "ws_ticket_max_pending_per_user"): "5",
+            ("api", "ws_auth_timeout_seconds"): "10.0",
             ("api", "max_rpm_default"): "60",
             ("api", "compression_minimum_size_bytes"): "1000",
             # 10 GiB - way over the 512 MiB cap.
