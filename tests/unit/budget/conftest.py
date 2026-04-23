@@ -28,7 +28,6 @@ from synthorg.budget.quota import (
     SubscriptionConfig,
 )
 from synthorg.budget.quota_tracker import QuotaTracker
-from synthorg.budget.reports import ReportGenerator
 from synthorg.budget.risk_config import RiskBudgetAlertConfig, RiskBudgetConfig
 from synthorg.budget.risk_record import RiskRecord
 from synthorg.budget.spending_summary import (
@@ -446,38 +445,3 @@ def make_resolver(
             existing_alias = index.get(m.alias, ())
             index[m.alias] = (*existing_alias, m)
     return ModelResolver(index)
-
-
-# ── CFO / CostOptimizer fixtures ─────────────────────────────────
-
-
-@pytest.fixture
-def cost_optimizer_config() -> CostOptimizerConfig:
-    """Default CostOptimizerConfig for tests."""
-    return CostOptimizerConfig()
-
-
-@pytest.fixture
-def cost_optimizer(
-    budget_config_for_tracker: BudgetConfig,
-    cost_tracker: CostTracker,
-    cost_optimizer_config: CostOptimizerConfig,
-) -> CostOptimizer:
-    """CostOptimizer wired with tracker and config."""
-    return CostOptimizer(
-        cost_tracker=cost_tracker,
-        budget_config=budget_config_for_tracker,
-        config=cost_optimizer_config,
-    )
-
-
-@pytest.fixture
-def report_generator(
-    budget_config_for_tracker: BudgetConfig,
-    cost_tracker: CostTracker,
-) -> ReportGenerator:
-    """ReportGenerator wired with tracker and config."""
-    return ReportGenerator(
-        cost_tracker=cost_tracker,
-        budget_config=budget_config_for_tracker,
-    )

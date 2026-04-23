@@ -2,12 +2,6 @@
 
 import pytest
 
-from synthorg.communication.meeting.config import (
-    MeetingProtocolConfig,
-    PositionPapersConfig,
-    RoundRobinConfig,
-    StructuredPhasesConfig,
-)
 from synthorg.communication.meeting.models import (
     AgentResponse,
     MeetingAgenda,
@@ -114,27 +108,3 @@ def participant_ids() -> tuple[str, ...]:
 def meeting_id() -> str:
     """Default meeting ID for tests."""
     return "meeting-001"
-
-
-@pytest.fixture
-def default_round_robin_config() -> RoundRobinConfig:
-    """Default round-robin configuration."""
-    return RoundRobinConfig()
-
-
-@pytest.fixture
-def default_position_papers_config() -> PositionPapersConfig:
-    """Default position papers configuration."""
-    return PositionPapersConfig()
-
-
-@pytest.fixture
-def default_structured_phases_config() -> StructuredPhasesConfig:
-    """Default structured phases configuration."""
-    return StructuredPhasesConfig()
-
-
-@pytest.fixture
-def default_protocol_config() -> MeetingProtocolConfig:
-    """Default meeting protocol configuration."""
-    return MeetingProtocolConfig()

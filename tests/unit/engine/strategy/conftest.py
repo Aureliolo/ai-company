@@ -72,15 +72,3 @@ def make_agent(
         hiring_date=date(2026, 1, 1),
         strategic_output_mode=strategic_output_mode,
     )
-
-
-@pytest.fixture
-def c_suite_agent() -> AgentIdentity:
-    """C-suite agent fixture."""
-    return make_agent()
-
-
-@pytest.fixture
-def mid_agent() -> AgentIdentity:
-    """Mid-level agent fixture."""
-    return make_agent(level=SeniorityLevel.MID, name="Mid Agent")

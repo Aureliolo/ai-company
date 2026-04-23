@@ -86,8 +86,19 @@ class _FakeTaskRepository:
         status: TaskStatus | None = None,
         assigned_to: str | None = None,
         project: str | None = None,
+        limit: int | None = None,
+        offset: int = 0,
     ) -> tuple[Task, ...]:
         return ()
+
+    async def count_tasks(
+        self,
+        *,
+        status: TaskStatus | None = None,
+        assigned_to: str | None = None,
+        project: str | None = None,
+    ) -> int:
+        return 0
 
     async def delete(self, task_id: str) -> bool:
         return False

@@ -60,3 +60,20 @@ _r.register(
         yaml_path="meta.outcome_store.default_limit",
     )
 )
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.META,
+        key="self_improvement",
+        type=SettingType.JSON,
+        default="{}",
+        description=(
+            "Runtime overrides for the SelfImprovementConfig model."
+            "  Empty object means 'use code defaults'.  Keys are merged"
+            " onto the default via model_copy."
+        ),
+        group="Self-Improvement",
+        level=SettingLevel.ADVANCED,
+        yaml_path="meta.self_improvement",
+    )
+)

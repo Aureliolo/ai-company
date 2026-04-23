@@ -194,11 +194,6 @@ company_name: ${UNDEFINED_VAR}
 
 
 @pytest.fixture
-def sample_root_config() -> RootConfig:
-    return RootConfig(company_name="Test Corp")
-
-
-@pytest.fixture
 def tmp_config_file(tmp_path: Path) -> ConfigFileFactory:
     def _create(content: str, name: str = "config.yaml") -> Path:
         path = tmp_path / name

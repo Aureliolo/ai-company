@@ -17,7 +17,7 @@ from synthorg.budget.errors import MixedCurrencyAggregationError
 from synthorg.communication.message import Message
 from synthorg.core.enums import TaskStatus  # noqa: TC001
 from synthorg.core.task import Task
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_COST_RECORD_AGGREGATE_FAILED,
     PERSISTENCE_COST_RECORD_AGGREGATED,
@@ -215,10 +215,16 @@ class PostgresTaskRepository:
         status: TaskStatus | None = None,
         assigned_to: str | None = None,
         project: str | None = None,
+        limit: int | None = None,
+        offset: int = 0,
     ) -> tuple[Task, ...]:
-        """List tasks with optional filters."""
+        """List tasks with optional filters and pagination.
+
+        Ordering is deterministic on the primary key ``id`` so paginated
+        callers see stable windows.
+        """
         clauses: list[str] = []
-        params: list[str] = []
+        params: list[object] = []
         if status is not None:
             clauses.append("status = %s")
             params.append(status.value)
@@ -232,6 +238,10 @@ class PostgresTaskRepository:
         query = f"SELECT {self._TASK_COLUMNS} FROM tasks"  # noqa: S608
         if clauses:
             query += " WHERE " + " AND ".join(clauses)
+        query += " ORDER BY id ASC"
+        if limit is not None:
+            query += " LIMIT %s OFFSET %s"
+            params.extend([int(limit), int(offset)])
 
         try:
             async with (
@@ -247,6 +257,47 @@ class PostgresTaskRepository:
         tasks = tuple(self._row_to_task(row) for row in rows)
         logger.debug(PERSISTENCE_TASK_LISTED, count=len(tasks))
         return tasks
+
+    async def count_tasks(
+        self,
+        *,
+        status: TaskStatus | None = None,
+        assigned_to: str | None = None,
+        project: str | None = None,
+    ) -> int:
+        """Count tasks matching the given filters."""
+        clauses: list[str] = []
+        params: list[object] = []
+        if status is not None:
+            clauses.append("status = %s")
+            params.append(status.value)
+        if assigned_to is not None:
+            clauses.append("assigned_to = %s")
+            params.append(assigned_to)
+        if project is not None:
+            clauses.append("project = %s")
+            params.append(project)
+
+        query = "SELECT COUNT(*) AS c FROM tasks"
+        if clauses:
+            query += " WHERE " + " AND ".join(clauses)
+
+        try:
+            async with (
+                self._pool.connection() as conn,
+                conn.cursor(row_factory=dict_row) as cur,
+            ):
+                await cur.execute(query, params)
+                row = await cur.fetchone()
+        except psycopg.Error as exc:
+            msg = "Failed to count tasks"
+            logger.warning(
+                PERSISTENCE_TASK_LIST_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        return int(row["c"]) if row is not None else 0
 
     async def delete(self, task_id: str) -> bool:
         """Delete a task by ID."""

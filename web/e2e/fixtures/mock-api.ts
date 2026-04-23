@@ -1,4 +1,5 @@
 import type { Page } from '@playwright/test'
+import { DEFAULT_CURRENCY } from '@/utils/currencies'
 
 /**
  * Mock all API endpoints with deterministic data for screenshot testing.
@@ -74,7 +75,7 @@ export async function mockApiRoutes(page: Page) {
         total_cost: 127.43,
         budget_remaining: 372.57,
         budget_used_percent: 25.5,
-        currency: 'EUR',
+        currency: DEFAULT_CURRENCY,
         cost_7d_trend: [
           { timestamp: '2026-03-23T00:00:00Z', value: 15.2 },
           { timestamp: '2026-03-24T00:00:00Z', value: 18.7 },

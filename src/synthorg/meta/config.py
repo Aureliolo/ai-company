@@ -5,7 +5,7 @@ disabled by default, mandatory approval gate, conservative
 thresholds.
 """
 
-from typing import Literal, Self
+from typing import TYPE_CHECKING, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -14,6 +14,9 @@ from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.meta.models import EvolutionMode, RolloutStrategyType
 from synthorg.meta.telemetry.config import CrossDeploymentAnalyticsConfig
 from synthorg.observability import get_logger
+
+if TYPE_CHECKING:
+    from synthorg.settings.service import SettingsService
 
 logger = get_logger(__name__)
 
@@ -314,3 +317,57 @@ class SelfImprovementConfig(BaseModel):
             msg = "code_modification_enabled requires: " + ", ".join(missing)
             raise ValueError(msg)
         return self
+
+
+async def load_self_improvement_config(
+    settings_service: SettingsService | None,
+) -> SelfImprovementConfig:
+    """Load ``SelfImprovementConfig`` from settings with safe-default fallback.
+
+    Reads the ``meta.self_improvement`` JSON setting (an empty object by
+    default) and merges it onto :class:`SelfImprovementConfig`'s code
+    defaults.  Unknown keys, malformed JSON, or a missing settings
+    service all return the pure default config so the controller
+    never fails on read.
+
+    Args:
+        settings_service: The application's settings service, or None
+            when unavailable (tests, degraded mode).
+
+    Returns:
+        A fully-constructed :class:`SelfImprovementConfig`.
+    """
+    if settings_service is None:
+        return SelfImprovementConfig()
+    try:
+        entry = await settings_service.get("meta", "self_improvement")
+    except MemoryError, RecursionError:
+        raise
+    except Exception:
+        logger.warning(
+            "meta.self_improvement_load_failed",
+            reason="settings_get_error",
+            exc_info=True,
+        )
+        return SelfImprovementConfig()
+    raw = entry.value or "{}"
+    try:
+        import json as _json  # noqa: PLC0415 -- lazy stdlib import
+
+        overrides = _json.loads(raw)
+    except ValueError, TypeError:
+        logger.warning(
+            "meta.self_improvement_load_failed",
+            reason="json_decode_error",
+        )
+        return SelfImprovementConfig()
+    if not isinstance(overrides, dict) or not overrides:
+        return SelfImprovementConfig()
+    try:
+        return SelfImprovementConfig(**overrides)
+    except ValueError, TypeError:
+        logger.warning(
+            "meta.self_improvement_load_failed",
+            reason="model_validation_failed",
+        )
+        return SelfImprovementConfig()

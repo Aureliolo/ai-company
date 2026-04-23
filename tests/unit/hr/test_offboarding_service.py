@@ -47,6 +47,8 @@ class FakeTaskRepository:
         status: TaskStatus | None = None,
         assigned_to: str | None = None,
         project: str | None = None,
+        limit: int | None = None,
+        offset: int = 0,
     ) -> tuple[Task, ...]:
         result = list(self._tasks.values())
         if status is not None:
@@ -56,6 +58,22 @@ class FakeTaskRepository:
         if project is not None:
             result = [t for t in result if t.project == project]
         return tuple(result)
+
+    async def count_tasks(
+        self,
+        *,
+        status: TaskStatus | None = None,
+        assigned_to: str | None = None,
+        project: str | None = None,
+    ) -> int:
+        result = list(self._tasks.values())
+        if status is not None:
+            result = [t for t in result if t.status == status]
+        if assigned_to is not None:
+            result = [t for t in result if t.assigned_to == assigned_to]
+        if project is not None:
+            result = [t for t in result if t.project == project]
+        return len(result)
 
     async def delete(self, task_id: str) -> bool:
         return self._tasks.pop(task_id, None) is not None

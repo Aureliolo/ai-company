@@ -483,29 +483,40 @@ class TaskEngine(TaskEngineLoopsMixin):
             )
             raise TaskInternalError(msg) from exc
 
-    async def list_tasks(
+    async def list_tasks(  # noqa: PLR0913
         self,
         *,
         status: TaskStatus | None = None,
         assigned_to: str | None = None,
         project: str | None = None,
-    ) -> tuple[tuple[Task, ...], int]:
-        """List tasks directly from persistence (bypass queue).
+        limit: int | None = None,
+        offset: int = 0,
+        include_total: bool = True,
+    ) -> tuple[tuple[Task, ...], int | None]:
+        """List tasks with push-down pagination.
 
-        Returns a tuple of ``(tasks, total)`` where *total* is the true
-        count before any safety cap is applied.  When the result set
-        exceeds ``_MAX_LIST_RESULTS``, the returned tuple is truncated
-        but *total* reflects the real cardinality so pagination metadata
-        stays accurate.
+        Callers that pass ``limit`` get the requested window straight
+        out of the repository (no 10k safety truncation because the
+        repo itself bounds the result).  Callers that pass ``limit=None``
+        keep the legacy behaviour: fetch everything and apply the
+        ``_MAX_LIST_RESULTS`` safety cap in-memory as defense-in-depth.
 
         Args:
             status: Filter by status.
             assigned_to: Filter by assignee.
             project: Filter by project.
+            limit: Max rows to return; ``None`` retains the safety-capped
+                "fetch all" semantics for legacy callers.
+            offset: Rows to skip before the returned window.
+            include_total: When ``True`` issue an additional ``count_tasks``
+                call and return the true total; when ``False`` the
+                second tuple element is ``None`` and the extra round
+                trip is skipped (used by callers that only need
+                ``has_more``).
 
         Returns:
-            ``(tasks, total)`` -- *tasks* may be capped at
-            ``_MAX_LIST_RESULTS``; *total* is the true count.
+            ``(tasks, total)`` where ``total`` is ``None`` iff
+            ``include_total`` is ``False``.
 
         Raises:
             TaskInternalError: If the persistence backend fails.
@@ -515,6 +526,8 @@ class TaskEngine(TaskEngineLoopsMixin):
                 status=status,
                 assigned_to=assigned_to,
                 project=project,
+                limit=limit,
+                offset=offset,
             )
         except MemoryError, RecursionError:
             raise
@@ -525,20 +538,54 @@ class TaskEngine(TaskEngineLoopsMixin):
                 error=msg,
             )
             raise TaskInternalError(msg) from exc
-        total = len(tasks)
-        if total > self._MAX_LIST_RESULTS:
+
+        # When the caller paginates at the repo layer, ``tasks`` is
+        # already bounded; the safety cap only fires on unpaginated
+        # "fetch all" calls.  Capture the true pre-cap size so the
+        # returned ``total`` still reflects real cardinality even when
+        # the tuple is truncated.
+        true_total = len(tasks)
+        if limit is None and true_total > self._MAX_LIST_RESULTS:
             logger.warning(
                 TASK_ENGINE_LIST_CAPPED,
-                actual_total=total,
+                actual_total=true_total,
                 cap=self._MAX_LIST_RESULTS,
             )
-            return tasks[: self._MAX_LIST_RESULTS], total
+            tasks = tasks[: self._MAX_LIST_RESULTS]
+
+        if not include_total:
+            return tasks, None
+
+        if limit is None:
+            # Full-fetch path: the pre-truncation count is authoritative
+            # so callers keep accurate totals even after the safety cap.
+            return tasks, true_total
+
+        try:
+            total = await self._persistence.tasks.count_tasks(
+                status=status,
+                assigned_to=assigned_to,
+                project=project,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            msg = f"Failed to count tasks: {exc}"
+            logger.exception(
+                TASK_ENGINE_READ_FAILED,
+                error=msg,
+            )
+            raise TaskInternalError(msg) from exc
         return tasks, total
 
     # -- Background processing ---------------------------------------------
 
     _MAX_LIST_RESULTS: int = 10_000
-    """Safety cap on ``list_tasks`` results (pagination TODO)."""
+    """Defense-in-depth cap on unpaginated ``list_tasks`` calls.
+
+    Applies only when ``limit is None``; paginated callers bypass the
+    cap because the repository already bounds the result set.
+    """
 
     _POLL_INTERVAL_SECONDS: float = 0.5
     """How often background loops check for shutdown."""

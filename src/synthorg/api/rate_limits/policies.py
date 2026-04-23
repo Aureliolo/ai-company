@@ -72,6 +72,8 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     "escalations.list": (120, 60),
     # meetings
     "meetings.create": (20, 60),
+    # meta
+    "meta.chat": (5, 60),
     # memory
     "memory.checkpoint_delete": (20, 60),
     "memory.checkpoint_deploy": (2, 3600),

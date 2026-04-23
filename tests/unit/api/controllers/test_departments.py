@@ -86,3 +86,86 @@ class TestDepartmentControllerDbOverride:
             assert detail_resp.status_code == 200
             detail = detail_resp.json()
             assert detail["data"]["name"] == "db-dept"
+
+
+@pytest.mark.integration
+class TestDepartmentCeremonyPolicyCas:
+    """Ceremony-policy overrides use settings-service CAS for cross-worker safety.
+
+    Two concurrent writers must both land without lost updates, and a
+    persistent CAS miss must surface as ``VersionConflictError`` after
+    the bounded retry exhausts.
+    """
+
+    async def test_concurrent_overrides_both_land_no_lost_update(
+        self,
+        fake_persistence: FakePersistenceBackend,
+    ) -> None:
+        """Writer A and writer B both complete; final state contains both."""
+        import asyncio
+        from types import SimpleNamespace
+
+        from synthorg.api.controllers.departments import (
+            _load_dept_policies_versioned,
+            _mutate_dept_policies_with_retry,
+        )
+
+        config = RootConfig(company_name="test")
+        settings_service = SettingsService(
+            repository=fake_persistence.settings,
+            registry=get_registry(),
+            config=config,
+        )
+        app_state = SimpleNamespace(
+            has_settings_service=True,
+            settings_service=settings_service,
+        )
+
+        policy_a: dict[str, Any] = {"strategy": "task_driven"}
+        policy_b: dict[str, Any] = {"strategy": "calendar"}
+
+        # Drive both mutations concurrently.  One must win CAS first; the
+        # loser observes VersionConflictError internally and retries.
+        await asyncio.gather(
+            _mutate_dept_policies_with_retry(app_state, "dept-a", policy_a),  # type: ignore[arg-type]
+            _mutate_dept_policies_with_retry(app_state, "dept-b", policy_b),  # type: ignore[arg-type]
+        )
+
+        final, _ = await _load_dept_policies_versioned(app_state)  # type: ignore[arg-type]
+        assert final == {"dept-a": policy_a, "dept-b": policy_b}
+
+    async def test_retry_exhausted_surfaces_version_conflict(
+        self,
+        fake_persistence: FakePersistenceBackend,
+    ) -> None:
+        """Sustained CAS misses surface the last conflict after retry cap."""
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock
+
+        from synthorg.api.controllers.departments import (
+            _mutate_dept_policies_with_retry,
+        )
+        from synthorg.api.errors import VersionConflictError
+
+        config = RootConfig(company_name="test")
+        settings_service = SettingsService(
+            repository=fake_persistence.settings,
+            registry=get_registry(),
+            config=config,
+        )
+        # Force every set() to raise VersionConflictError so the retry
+        # loop runs to exhaustion.
+        settings_service.set = AsyncMock(  # type: ignore[method-assign]
+            side_effect=VersionConflictError("forced conflict"),
+        )
+        app_state = SimpleNamespace(
+            has_settings_service=True,
+            settings_service=settings_service,
+        )
+
+        with pytest.raises(VersionConflictError):
+            await _mutate_dept_policies_with_retry(
+                app_state,  # type: ignore[arg-type]
+                "dept-a",
+                {"strategy": "task_driven"},
+            )

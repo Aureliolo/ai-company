@@ -6,8 +6,6 @@ import pytest
 
 from synthorg.communication.conflict_resolution.config import (
     ConflictResolutionConfig,
-    DebateConfig,
-    HybridConfig,
 )
 from synthorg.communication.conflict_resolution.models import (
     Conflict,
@@ -146,30 +144,6 @@ def hierarchy() -> HierarchyResolver:
 
 
 @pytest.fixture
-def sample_conflict() -> Conflict:
-    """A standard architecture conflict between two agents."""
-    return make_conflict()
-
-
-@pytest.fixture
-def sample_resolution() -> ConflictResolution:
-    """A standard authority-based resolution."""
-    return make_resolution()
-
-
-@pytest.fixture
 def default_config() -> ConflictResolutionConfig:
     """Default conflict resolution config."""
     return ConflictResolutionConfig()
-
-
-@pytest.fixture
-def debate_config() -> DebateConfig:
-    """Default debate config."""
-    return DebateConfig()
-
-
-@pytest.fixture
-def hybrid_config() -> HybridConfig:
-    """Default hybrid config."""
-    return HybridConfig()

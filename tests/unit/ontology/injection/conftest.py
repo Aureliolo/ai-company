@@ -5,7 +5,6 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from synthorg.ontology.config import OntologyInjectionConfig
 from synthorg.ontology.models import (
     EntityDefinition,
     EntityField,
@@ -125,9 +124,3 @@ def mock_backend(
         side_effect=get_version_manifest,
     )
     return backend
-
-
-@pytest.fixture
-def injection_config() -> OntologyInjectionConfig:
-    """Default injection configuration."""
-    return OntologyInjectionConfig()

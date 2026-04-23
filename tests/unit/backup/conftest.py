@@ -4,28 +4,12 @@ from pathlib import Path
 
 import pytest
 
-from synthorg.backup.config import BackupConfig, RetentionConfig
+from synthorg.backup.config import RetentionConfig
 from synthorg.backup.models import (
     BackupComponent,
     BackupManifest,
     BackupTrigger,
 )
-
-
-@pytest.fixture
-def backup_config() -> BackupConfig:
-    """BackupConfig with sensible defaults for testing."""
-    return BackupConfig(
-        enabled=True,
-        path="/data/backups",
-        schedule_hours=6,
-        compression=True,
-        include=(
-            BackupComponent.PERSISTENCE,
-            BackupComponent.MEMORY,
-            BackupComponent.CONFIG,
-        ),
-    )
 
 
 @pytest.fixture

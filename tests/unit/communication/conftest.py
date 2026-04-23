@@ -192,31 +192,3 @@ def sample_meeting_type() -> MeetingTypeConfig:
 @pytest.fixture
 def sample_communication_config() -> CommunicationConfig:
     return CommunicationConfig()
-
-
-@pytest.fixture
-def sample_subscription() -> Subscription:
-    return Subscription(
-        channel_name="#engineering",
-        subscriber_id="agent-a",
-        subscribed_at=datetime(2026, 3, 7, 10, 0, tzinfo=UTC),
-    )
-
-
-@pytest.fixture
-def sample_delivery_envelope(
-    sample_message: Message,
-) -> DeliveryEnvelope:
-    return DeliveryEnvelope(
-        message=sample_message,
-        channel_name="#backend",
-        delivered_at=datetime(2026, 3, 7, 10, 1, tzinfo=UTC),
-    )
-
-
-@pytest.fixture
-def sample_bus_config() -> MessageBusConfig:
-    return MessageBusConfig(
-        channels=("#test-channel",),
-        retention=MessageRetentionConfig(max_messages_per_channel=100),
-    )
