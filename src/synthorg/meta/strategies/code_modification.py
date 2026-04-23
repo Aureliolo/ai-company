@@ -340,8 +340,9 @@ class CodeModificationStrategy:
         # SEC-1 / audit 92: rule metadata (name, severity, description) is
         # set by admins / custom-rule authors and reaches the LLM verbatim;
         # signal_context values are rule-driven but may carry agent-shaped
-        # payloads. Both go inside untrusted fences declared by
-        # ``_SYSTEM_PROMPT``.
+        # payloads. ``allowed_paths`` is config-driven and ``manifest``
+        # embeds file names from that config. All go inside untrusted
+        # fences declared by ``_SYSTEM_PROMPT``.
         fenced_rule_name = wrap_untrusted(TAG_CONFIG_VALUE, rule_match.rule_name)
         fenced_severity = wrap_untrusted(
             TAG_CONFIG_VALUE,
@@ -355,6 +356,11 @@ class CodeModificationStrategy:
             TAG_TASK_DATA,
             json.dumps(rule_match.signal_context, default=str),
         )
+        fenced_allowed_paths = wrap_untrusted(
+            TAG_CONFIG_VALUE,
+            ", ".join(self._code_config.allowed_paths),
+        )
+        fenced_manifest = wrap_untrusted(TAG_TASK_DATA, manifest)
         return (
             f"Signal pattern detected: {fenced_rule_name}\n"
             f"Severity: {fenced_severity}\n"
@@ -368,10 +374,9 @@ class CodeModificationStrategy:
             f"- Budget spend: {budget.total_spend:.2f} {DEFAULT_CURRENCY}\n"
             f"- Coordination ratio: {budget.coordination_ratio:.1%}\n"
             f"\n"
-            f"Allowed modification paths: "
-            f"{', '.join(self._code_config.allowed_paths)}\n"
+            f"Allowed modification paths: {fenced_allowed_paths}\n"
             f"\n"
-            f"{manifest}\n"
+            f"{fenced_manifest}\n"
             f"\n"
             f"Propose concrete code changes to improve the framework "
             f"and address this signal pattern. For MODIFY or DELETE "

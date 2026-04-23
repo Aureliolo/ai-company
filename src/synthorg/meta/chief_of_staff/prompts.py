@@ -53,7 +53,8 @@ Return a JSON array of improvement opportunities:
     "signal_evidence": "Which signals support this"
   }}
 ]
-"""
+
+""" + untrusted_content_directive((TAG_CONFIG_VALUE, TAG_TASK_DATA))
 
 # Proposal generation prompt template.
 PROPOSAL_GENERATION_PROMPT = """\
@@ -83,7 +84,8 @@ Include:
 - How to rollback if it doesn't
 
 Be conservative. Propose the smallest change that could help.
-"""
+
+""" + untrusted_content_directive((TAG_CONFIG_VALUE, TAG_TASK_DATA))
 
 # Regression explanation prompt template.
 REGRESSION_EXPLANATION_PROMPT = """\
@@ -108,7 +110,8 @@ Changes: {proposal_changes}
 
 Explain what likely caused the regression and recommend
 whether to rollback or adjust the change.
-"""
+
+""" + untrusted_content_directive((TAG_CONFIG_VALUE, TAG_TASK_DATA))
 
 # ── Advanced capability prompts ───────────────────────────────────
 
@@ -190,7 +193,8 @@ Identify:
 3. Second-order effects worth monitoring
 
 Return a structured analysis in plain language.
-"""
+
+""" + untrusted_content_directive((TAG_TASK_DATA,))
 
 # Free-form chat query prompt template.
 CHAT_QUERY_PROMPT = """\

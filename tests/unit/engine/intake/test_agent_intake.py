@@ -205,6 +205,10 @@ class TestSec1AgentIntakeFences:
         user_msg = next(m for m in messages if m.role.value == "user")
         assert user_msg.content is not None
         assert "<\\/task-data>" in user_msg.content
+        # Negative assertion: the raw injected fragment must not survive
+        # verbatim -- this catches partial-escape regressions where only
+        # part of the closing tag is escaped.
+        assert hacked not in user_msg.content
 
     async def test_breakout_in_description_escaped(self) -> None:
         provider = _StubProvider(content='{"accepted": true}')
@@ -222,3 +226,60 @@ class TestSec1AgentIntakeFences:
         user_msg = next(m for m in messages if m.role.value == "user")
         assert user_msg.content is not None
         assert "<\\/task-data>" in user_msg.content
+        # Negative assertion: the raw injected fragment must not survive
+        # verbatim -- this catches partial-escape regressions where only
+        # part of the closing tag is escaped.
+        assert hacked_desc not in user_msg.content
+
+    async def test_custom_persona_without_directive_gets_normalized(self) -> None:
+        """SEC-1: a caller-supplied persona that lacks the untrusted-
+        content directive is normalized at ``__init__`` so the system
+        prompt still carries the directive.
+        """
+        provider = _StubProvider(content='{"accepted": true}')
+        custom_persona = "You are a minimalist triage agent. Return JSON only."
+        assert "untrusted input from external sources" not in custom_persona
+        intake = AgentIntake(
+            task_engine=cast(TaskEngine, _FakeTaskEngine()),
+            provider=cast(CompletionProvider, provider),
+            model="test-model",
+            persona=custom_persona,
+        )
+        await intake.process(_request())
+
+        messages = provider.captured_messages
+        assert messages is not None
+        system_msg = next(m for m in messages if m.role.value == "system")
+        assert system_msg.content is not None
+        # The original persona text is preserved verbatim.
+        assert custom_persona in system_msg.content
+        # The directive was appended automatically.
+        assert "untrusted input from external sources" in system_msg.content
+        assert "<task-data>" in system_msg.content
+
+    async def test_custom_persona_with_directive_not_duplicated(self) -> None:
+        """SEC-1 normalization is idempotent: if the caller already
+        appended the directive, it is not duplicated.
+        """
+        from synthorg.engine.prompt_safety import (
+            TAG_TASK_DATA,
+            untrusted_content_directive,
+        )
+
+        directive = untrusted_content_directive((TAG_TASK_DATA,))
+        custom_persona = f"You are a minimalist triage agent.\n\n{directive}"
+        provider = _StubProvider(content='{"accepted": true}')
+        intake = AgentIntake(
+            task_engine=cast(TaskEngine, _FakeTaskEngine()),
+            provider=cast(CompletionProvider, provider),
+            model="test-model",
+            persona=custom_persona,
+        )
+        await intake.process(_request())
+
+        messages = provider.captured_messages
+        assert messages is not None
+        system_msg = next(m for m in messages if m.role.value == "system")
+        assert system_msg.content is not None
+        # Directive appears exactly once, not twice.
+        assert system_msg.content.count(directive) == 1

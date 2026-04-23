@@ -74,13 +74,10 @@ class AgentIntake:
             requested_by: Identity recorded as the task creator.
             persona: System prompt persona for the triage agent. The
                 default ``_DEFAULT_PERSONA`` already carries the SEC-1
-                :func:`untrusted_content_directive` so the model treats
-                ``<task-data>`` fences as untrusted input. **Callers that
-                supply a custom persona MUST append
-                ``untrusted_content_directive((TAG_TASK_DATA,))`` to it**
-                -- otherwise the model loses the directive and the fences
-                become advisory rather than enforced. Prompt-safety
-                posture for custom personas is the caller's responsibility.
+                :func:`untrusted_content_directive`. If a caller supplies
+                a custom persona that lacks the directive, the directive
+                is appended automatically so ``<task-data>`` fences keep
+                their enforced-untrusted semantics.
             temperature: Sampling temperature (default 0.0 -- triage
                 is classification, determinism wins over diversity).
             max_tokens: Maximum tokens in the triage response.
@@ -90,7 +87,13 @@ class AgentIntake:
         self._model = model
         self._project = project
         self._requested_by = requested_by
-        self._persona = persona
+        # SEC-1: normalize the persona to always carry the untrusted-
+        # content directive. A caller-supplied persona without it would
+        # silently weaken fence semantics.
+        directive = untrusted_content_directive((TAG_TASK_DATA,))
+        self._persona = (
+            persona if directive in persona else f"{persona.rstrip()}\n\n{directive}"
+        )
         # SEC-1 fingerprint: pin temperature + max_tokens at construction
         # so downstream tests can assert a stable call shape.
         self._completion_config = CompletionConfig(

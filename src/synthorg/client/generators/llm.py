@@ -58,13 +58,10 @@ class LLMGenerator:
             model: Model identifier passed to the provider.
             persona: System prompt persona for the generator. The default
                 ``_DEFAULT_PERSONA`` already carries the SEC-1
-                :func:`untrusted_content_directive` so the model treats
-                ``<task-data>`` fences as untrusted input. **Callers that
-                supply a custom persona MUST append
-                ``untrusted_content_directive((TAG_TASK_DATA,))`` to it**
-                -- otherwise the model loses the directive and the fences
-                become advisory rather than enforced. Prompt-safety
-                posture for custom personas is the caller's responsibility.
+                :func:`untrusted_content_directive`. If a caller supplies
+                a custom persona that lacks the directive, the directive
+                is appended automatically so ``<task-data>`` fences keep
+                their enforced-untrusted semantics.
             temperature: Sampling temperature (default 0.7 -- creative
                 requirement generation benefits from variety; pin to
                 0.0 for reproducible eval runs).
@@ -72,7 +69,14 @@ class LLMGenerator:
         """
         self._provider = provider
         self._model = model
-        self._persona = persona
+        # SEC-1: ensure the persona always carries the untrusted-content
+        # directive. A caller-supplied persona without it would silently
+        # weaken fence semantics; normalize by appending the directive
+        # when missing.
+        directive = untrusted_content_directive((TAG_TASK_DATA,))
+        self._persona = (
+            persona if directive in persona else f"{persona.rstrip()}\n\n{directive}"
+        )
         # SEC-1 fingerprint: pin temperature + max_tokens so test suites
         # can assert a stable call shape across provider-default changes.
         self._completion_config = CompletionConfig(
