@@ -140,9 +140,13 @@ class InMemoryErrorTaxonomyStore:
         in_window = [
             r for r in reversed(snapshot) if _in_window(r.classified_at, since, until)
         ]
+        # Deep-copy each finding before returning so callers cannot
+        # mutate stored history via ``object.__setattr__`` side-channels
+        # (the models are ``frozen=True`` for normal attribute access,
+        # but the deep copy makes the read API defensively read-only).
         findings: list[ErrorFinding] = []
         for result in in_window:
-            findings.extend(result.findings)
+            findings.extend(copy.deepcopy(f) for f in result.findings)
         return tuple(findings)
 
     async def summarize(
@@ -251,13 +255,18 @@ def _build_category_summaries(
 def _estimate_trend(*, newer: int, older: int) -> TrendDirection:
     """Compare newer-half vs older-half finding counts.
 
-    When the newer half has more findings, errors are rising, so the
-    health trend is DECLINING.  When the older half has more, errors
-    are falling, so the trend is IMPROVING.  Equal counts, or one side
-    empty with nothing to compare to, collapse to STABLE.
+    Returns:
+        DECLINING when ``newer > older`` (errors are rising, health is
+        declining); IMPROVING when ``older > newer`` (errors are
+        falling); STABLE only when the two halves have equal counts
+        (including the both-zero case).
+
+    A single-sided bucket -- e.g. ``newer=N`` with ``older=0`` -- is
+    treated the same as any other comparison: a one-sided spike reads
+    as DECLINING, a one-sided recovery reads as IMPROVING.  That
+    matches what an operator actually wants to see when a fresh burst
+    of errors shows up (or stops).
     """
-    if newer == 0 and older == 0:
-        return TrendDirection.STABLE
     if newer > older:
         return TrendDirection.DECLINING
     if older > newer:

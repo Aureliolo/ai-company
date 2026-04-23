@@ -67,11 +67,13 @@ class TestInMemoryWebhookDefinitionStore:
         store = InMemoryWebhookDefinitionStore()
         original = _definition()
         await store.add(original)
-        updated = original.model_copy(update={"issuer": NotBlankStr("stripe")})
+        updated = original.model_copy(
+            update={"issuer": NotBlankStr("test-provider-updated")}
+        )
         await store.replace(updated)
         fetched = await store.get_by_id(NotBlankStr(str(original.id)))
         assert fetched is not None
-        assert fetched.issuer == "stripe"
+        assert fetched.issuer == "test-provider-updated"
 
     async def test_replace_unknown_id_raises(self) -> None:
         store = InMemoryWebhookDefinitionStore()
@@ -96,11 +98,13 @@ class TestInMemoryWebhookDefinitionStore:
         store = InMemoryWebhookDefinitionStore()
         original = _definition(name="gamma")
         await store.add(original)
-        updated = original.model_copy(update={"issuer": NotBlankStr("stripe")})
+        updated = original.model_copy(
+            update={"issuer": NotBlankStr("test-provider-updated")}
+        )
         await store.replace(updated)
         fetched = await store.get_by_id(NotBlankStr(str(original.id)))
         assert fetched is not None
-        assert fetched.issuer == "stripe"
+        assert fetched.issuer == "test-provider-updated"
         assert fetched.name == "gamma"
 
     async def test_delete_returns_true_when_present(self) -> None:

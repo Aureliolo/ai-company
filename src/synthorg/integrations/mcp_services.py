@@ -516,7 +516,10 @@ class ArtifactFacadeService:
             # backend) as an actual miss: don't drop the index entry or
             # log a fake success.
             storage_removed = await fn(record.storage_ref)
-            if storage_removed is False:
+            # Any falsy return (``False``, ``None``, ``0``) is treated
+            # as a miss so the index entry stays put and no audit
+            # event fires; only a truthy confirmation drops the row.
+            if not storage_removed:
                 return False
             self._index.pop(key, None)
         logger.info(

@@ -665,24 +665,24 @@ class SimulationFacadeService:
         if limit is not None and limit < 1:
             msg = f"limit must be >= 1 when provided, got {limit}"
             raise ValueError(msg)
-        fn = getattr(self._state, "list_scenarios", None)
-        if not callable(fn):
-            raise _capability_missing(
-                "simulation_list",
-                "ClientSimulationState does not expose list_scenarios",
-            )
+        fn = _require_callable(
+            self._state,
+            "list_scenarios",
+            "simulation_list",
+            "ClientSimulationState does not expose list_scenarios",
+        )
         all_scenarios = tuple(fn())
         total = len(all_scenarios)
         end = total if limit is None else offset + limit
         return all_scenarios[offset:end], total
 
     async def get_simulation(self, simulation_id: NotBlankStr) -> object | None:
-        fn = getattr(self._state, "get_scenario", None)
-        if not callable(fn):
-            raise _capability_missing(
-                "simulation_get",
-                "ClientSimulationState does not expose get_scenario",
-            )
+        fn = _require_callable(
+            self._state,
+            "get_scenario",
+            "simulation_get",
+            "ClientSimulationState does not expose get_scenario",
+        )
         return cast("object | None", fn(simulation_id))
 
     async def create_simulation(self) -> None:
