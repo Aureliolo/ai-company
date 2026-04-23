@@ -13,7 +13,7 @@
   "pre-commit": {
     "enabled": true
   },
-  "schedule": ["before 7am"],
+  "schedule": ["before 7am on saturday"],
   "timezone": "Etc/UTC",
   "labels": ["dependencies"],
   "reviewers": ["Aureliolo"],
@@ -146,7 +146,7 @@
   ],
   "lockFileMaintenance": {
     "enabled": true,
-    "schedule": ["before 5am on monday"]
+    "schedule": ["before 7am on saturday"]
   },
   "customManagers": [
     {
