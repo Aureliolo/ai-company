@@ -14,10 +14,14 @@ delete, backup_restore, template_packs_uninstall) enforce the
 guardrail triple so auditing stays uniform when service facades land.
 """
 
+from collections.abc import Mapping  # noqa: TC003 -- PEP 649 annotation
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
 from synthorg.meta.mcp.errors import GuardrailViolationError
+from synthorg.meta.mcp.handler_protocol import (
+    ToolHandler,  # noqa: TC001 -- PEP 649 annotation
+)
 from synthorg.meta.mcp.handlers.common import (
     err,
     not_supported,
@@ -32,10 +36,7 @@ from synthorg.observability.events.mcp import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-
     from synthorg.core.agent import AgentIdentity
-    from synthorg.meta.mcp.invoker import ToolHandler
 
 logger = get_logger(__name__)
 
@@ -155,7 +156,7 @@ async def _health_check(
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
-    logger.debug(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(data=data)
 
 

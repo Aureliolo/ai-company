@@ -7,16 +7,15 @@ require richer orchestration (``coordinate_task``,
 ``scaling_trigger``) return ``not_supported``.
 """
 
+from collections.abc import Mapping  # noqa: TC003 -- PEP 649 annotation
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
+from synthorg.meta.mcp.handler_protocol import (
+    ToolHandler,  # noqa: TC001 -- PEP 649 annotation
+)
 from synthorg.meta.mcp.handlers.common import not_supported
 from synthorg.observability import get_logger
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
-
-    from synthorg.meta.mcp.invoker import ToolHandler
 
 logger = get_logger(__name__)
 

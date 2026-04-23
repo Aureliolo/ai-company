@@ -15,6 +15,7 @@ Destructive ops
 and emits ``MCP_DESTRUCTIVE_OP_EXECUTED`` on success.
 """
 
+from collections.abc import Mapping  # noqa: TC003 -- PEP 649 annotation
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
@@ -23,6 +24,9 @@ from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
     GuardrailViolationError,
     invalid_argument,
+)
+from synthorg.meta.mcp.handler_protocol import (
+    ToolHandler,  # noqa: TC001 -- PEP 649 annotation
 )
 from synthorg.meta.mcp.handlers.common import (
     coerce_pagination,
@@ -44,10 +48,7 @@ from synthorg.observability.events.mcp import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-
     from synthorg.core.enums import AutonomyLevel
-    from synthorg.meta.mcp.invoker import ToolHandler
 
 logger = get_logger(__name__)
 
@@ -123,13 +124,20 @@ def _log_guardrail(tool: str, exc: GuardrailViolationError) -> None:
 
 
 def _actor_name(actor: Any) -> str | None:
+    """Return a stable audit identifier for ``actor``.
+
+    Prefers ``actor.id`` (a ``UUID`` that never changes over the agent's
+    lifetime) so destructive-op audit trails stay consistent even when
+    the display name is later edited.  Falls back to ``actor.name`` only
+    when id is absent.
+    """
     if actor is None:
         return None
-    name = getattr(actor, "name", None)
-    if isinstance(name, str) and name:
-        return name
     agent_id = getattr(actor, "id", None)
-    return str(agent_id) if agent_id is not None else None
+    if agent_id is not None:
+        return str(agent_id)
+    name = getattr(actor, "name", None)
+    return name if isinstance(name, str) and name else None
 
 
 def _require_non_blank(arguments: dict[str, Any], key: str) -> str:
@@ -160,7 +168,7 @@ async def _agents_list(
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
-    logger.debug(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(data=dump_many(page), pagination=meta)
 
 
@@ -185,7 +193,7 @@ async def _agents_get(
         missing = AgentNotFoundError(f"Agent {name!r} not found")
         _log_failed(tool, missing)
         return err(missing, domain_code="not_found")
-    logger.debug(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(data=identity.model_dump(mode="json"))
 
 
@@ -239,7 +247,7 @@ async def _agents_delete(
         _log_failed(tool, exc)
         return err(exc)
 
-    logger.debug(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     logger.info(
         MCP_DESTRUCTIVE_OP_EXECUTED,
         tool_name=tool,
@@ -279,7 +287,7 @@ async def _agents_get_performance(
         return err(exc)
     if snapshot is None:
         return ok(data=None)
-    logger.debug(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(data=snapshot.model_dump(mode="json"))
 
 
@@ -387,7 +395,7 @@ async def _autonomy_get(
         return err(missing, domain_code="not_found")
 
     level: AutonomyLevel | None = identity.autonomy_level
-    logger.debug(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(
         data={
             "agent_id": str(identity.id),
@@ -428,7 +436,7 @@ async def _collaboration_get_score(
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
-    logger.debug(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     # ``CollaborationScoreResult`` is a Pydantic model; dump it to JSON-mode
     # primitives before handing to ``ok()`` since ``ok()`` only ``json.dumps``
     # the payload and would otherwise raise ``TypeError`` on the real tracker.

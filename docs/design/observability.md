@@ -182,7 +182,7 @@ names. Format: `"<domain>.<noun>.<verb>"` (e.g., `"api.request.started"`).
 | `MCP_SERVER_INVOKE_START` | DEBUG | Invoker dispatches a tool call. |
 | `MCP_SERVER_INVOKE_SUCCESS` | DEBUG | Handler returned without exception. |
 | `MCP_SERVER_INVOKE_FAILED` | WARNING | Tool/handler not found, or handler raised an uncaught exception. |
-| `MCP_HANDLER_INVOKE_SUCCESS` | DEBUG | Handler completed its service shim successfully. |
+| `MCP_HANDLER_INVOKE_SUCCESS` | INFO | Handler completed its service shim successfully (state transition -- every tool invocation that mutates or produces a result is auditable). |
 | `MCP_HANDLER_INVOKE_FAILED` | WARNING | Handler caught a service-layer or domain error and returned an `err(...)` envelope. |
 | `MCP_HANDLER_ARGUMENT_INVALID` | WARNING | Caller input failed `require_arg` / pagination / enum coercion; returned `domain_code="invalid_argument"`. |
 | `MCP_HANDLER_GUARDRAIL_VIOLATED` | WARNING | Destructive-op guardrail rejected the call (missing `confirm`/`reason`/`actor`); returned `domain_code="guardrail_violated"`. |

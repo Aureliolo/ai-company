@@ -1,15 +1,23 @@
 """Budget domain MCP handlers.
 
-Shims the 5 budget tools onto ``app_state.cost_tracker`` +
-``app_state.config_resolver`` + ``app_state.persistence.budget_config_versions``.
-All budget tools are reads; none are destructive.
+Shims the 5 budget tools onto ``app_state.cost_tracker`` and
+``app_state.config_resolver``.  Version-history reads route through a
+:class:`~synthorg.budget.version_service.BudgetConfigVersionsService`
+facade obtained via :func:`_versions_service` (which prefers
+``app_state.budget_versions_service`` when bootstrap has wired one and
+falls back to per-call construction for compatibility with legacy
+app_states).  All budget tools are reads; none are destructive.
 """
 
+from collections.abc import Mapping  # noqa: TC003 -- PEP 649 annotation
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from synthorg.budget.version_service import BudgetConfigVersionsService
 from synthorg.meta.mcp.errors import ArgumentValidationError, invalid_argument
+from synthorg.meta.mcp.handler_protocol import (
+    ToolHandler,  # noqa: TC001 -- PEP 649 annotation
+)
 from synthorg.meta.mcp.handlers.common import (
     PaginationMeta,
     coerce_pagination,
@@ -25,11 +33,6 @@ from synthorg.observability.events.mcp import (
     MCP_HANDLER_INVOKE_FAILED,
     MCP_HANDLER_INVOKE_SUCCESS,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
-
-    from synthorg.meta.mcp.invoker import ToolHandler
 
 logger = get_logger(__name__)
 
@@ -105,7 +108,7 @@ async def _budget_get_config(
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
-    logger.debug(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(data=config.model_dump(mode="json"))
 
 
@@ -141,7 +144,7 @@ async def _budget_list_records(
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
-    logger.debug(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(data=dump_many(page), pagination=meta)
 
 
@@ -164,7 +167,7 @@ async def _budget_get_agent_spending(
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
-    logger.debug(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(
         data={
             "agent_id": agent_id,
@@ -198,7 +201,7 @@ async def _budget_versions_list(
     # The service already returned the requested page; build the
     # envelope meta directly with the repo's true total count.
     meta = PaginationMeta(total=total, offset=offset, limit=limit)
-    logger.debug(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(data=dump_many(versions), pagination=meta)
 
 
@@ -228,7 +231,7 @@ async def _budget_versions_get(
         )
         _log_failed(tool, missing)
         return err(missing)
-    logger.debug(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(data=snapshot.model_dump(mode="json"))
 
 

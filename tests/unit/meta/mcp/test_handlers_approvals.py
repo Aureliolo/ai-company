@@ -242,7 +242,10 @@ class TestApprovalsCreate:
 
         assert body["status"] == "ok"
         assert body["data"]["action_type"] == "deploy"
-        assert body["data"]["requested_by"] == "chief-of-staff"
+        # actor.id (UUID string) is preferred over actor.name for a
+        # stable audit identifier; we just verify the field is populated
+        # with the fixture actor's UUID rather than a display name.
+        assert body["data"]["requested_by"] == str(actor.id)
         fake_approval_store.add.assert_awaited_once()
 
     async def test_create_requires_actor(
@@ -312,7 +315,7 @@ class TestApprovalsApprove:
 
         assert body["status"] == "ok"
         assert body["data"]["status"] == "approved"
-        assert body["data"]["decided_by"] == "chief-of-staff"
+        assert body["data"]["decided_by"] == str(actor.id)
         assert body["data"]["decision_reason"] == "LGTM"
 
     async def test_approve_not_found(
@@ -399,12 +402,12 @@ class TestApprovalsReject:
         assert body["status"] == "ok"
         assert body["data"]["status"] == "rejected"
         assert body["data"]["decision_reason"] == "violates policy X"
-        assert body["data"]["decided_by"] == "chief-of-staff"
+        assert body["data"]["decided_by"] == str(actor.id)
 
         # Audit event fires with the full attribution payload.
         audit = [e for e in logs if e.get("event") == MCP_DESTRUCTIVE_OP_EXECUTED]
         assert len(audit) == 1
-        assert audit[0]["actor_agent_id"] == "chief-of-staff"
+        assert audit[0]["actor_agent_id"] == str(actor.id)
         assert audit[0]["reason"] == "violates policy X"
         assert audit[0]["target_id"] == "a1"
 

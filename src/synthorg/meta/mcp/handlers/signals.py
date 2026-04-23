@@ -23,15 +23,14 @@ match the other domains so the facade can drop in without touching
 the MCP layer.
 """
 
+from collections.abc import Mapping  # noqa: TC003 -- PEP 649 annotation
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
+from synthorg.meta.mcp.handler_protocol import (
+    ToolHandler,  # noqa: TC001 -- PEP 649 annotation
+)
 from synthorg.meta.mcp.handlers.common import not_supported
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
-
-    from synthorg.meta.mcp.invoker import ToolHandler
 
 _WHY_SIGNALS = (
     "signal aggregators live inside SelfImprovementService; no "

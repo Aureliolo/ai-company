@@ -14,10 +14,14 @@ and, where the underlying service is live, emit
 ``MCP_DESTRUCTIVE_OP_EXECUTED`` on success.
 """
 
+from collections.abc import Mapping  # noqa: TC003 -- PEP 649 annotation
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
 from synthorg.meta.mcp.errors import GuardrailViolationError
+from synthorg.meta.mcp.handler_protocol import (
+    ToolHandler,  # noqa: TC001 -- PEP 649 annotation
+)
 from synthorg.meta.mcp.handlers.common import (
     err,
     not_supported,
@@ -27,10 +31,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import MCP_HANDLER_GUARDRAIL_VIOLATED
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-
     from synthorg.core.agent import AgentIdentity
-    from synthorg.meta.mcp.invoker import ToolHandler
 
 logger = get_logger(__name__)
 

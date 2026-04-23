@@ -6,8 +6,9 @@ registered handler functions, with structured error mapping.
 
 import json
 from copy import deepcopy
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any
 
+from synthorg.meta.mcp.handler_protocol import ToolHandler
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.mcp import (
     MCP_SERVER_INVOKE_FAILED,
@@ -25,38 +26,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-class ToolHandler(Protocol):
-    """Protocol for MCP tool handler functions.
-
-    Handlers receive the application state, parsed arguments, and the
-    calling actor identity (when available), returning a
-    JSON-serialized string result.  The ``actor`` argument is threaded
-    from the invoker so destructive-op guardrails can enforce
-    attribution; handlers that don't care about identity accept it and
-    ignore it.
-    """
-
-    async def __call__(
-        self,
-        *,
-        app_state: Any,
-        arguments: dict[str, Any],
-        actor: AgentIdentity | None = None,
-    ) -> str:
-        """Execute the tool logic.
-
-        Args:
-            app_state: Application state providing service access.
-            arguments: Parsed tool arguments from the MCP call.
-            actor: Calling agent identity (typically
-                ``AgentIdentity``), or ``None`` when the invoker was
-                not supplied one.  Destructive-op handlers require
-                non-``None``.
-
-        Returns:
-            JSON-serialized result string.
-        """
-        ...
+__all__ = ["MCPToolInvoker", "ToolHandler"]
 
 
 class MCPToolInvoker:

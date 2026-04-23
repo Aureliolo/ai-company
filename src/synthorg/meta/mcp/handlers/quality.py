@@ -9,16 +9,15 @@ versions have dedicated controllers but no service facade on
 ``app_state``; they return a ``not_supported`` envelope for now.
 """
 
+from collections.abc import Mapping  # noqa: TC003 -- PEP 649 annotation
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
+from synthorg.meta.mcp.handler_protocol import (
+    ToolHandler,  # noqa: TC001 -- PEP 649 annotation
+)
 from synthorg.meta.mcp.handlers.common import not_supported
 from synthorg.observability import get_logger
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
-
-    from synthorg.meta.mcp.invoker import ToolHandler
 
 logger = get_logger(__name__)
 

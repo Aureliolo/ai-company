@@ -16,8 +16,9 @@ guardrail.  ``workflows_delete`` is live; the other two are
 schema layer.
 """
 
+from collections.abc import Mapping  # noqa: TC003 -- PEP 649 annotation
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from synthorg.engine.workflow.service import (
     WorkflowDefinitionNotFoundError,
@@ -27,6 +28,9 @@ from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
     GuardrailViolationError,
     invalid_argument,
+)
+from synthorg.meta.mcp.handler_protocol import (
+    ToolHandler,  # noqa: TC001 -- PEP 649 annotation
 )
 from synthorg.meta.mcp.handlers.common import (
     coerce_pagination,
@@ -45,11 +49,6 @@ from synthorg.observability.events.mcp import (
     MCP_HANDLER_INVOKE_FAILED,
     MCP_HANDLER_INVOKE_SUCCESS,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
-
-    from synthorg.meta.mcp.invoker import ToolHandler
 
 logger = get_logger(__name__)
 
@@ -99,13 +98,14 @@ def _log_guardrail(tool: str, exc: GuardrailViolationError) -> None:
 
 
 def _actor_name(actor: Any) -> str | None:
+    """Return a stable audit identifier for ``actor`` (prefers ``.id``)."""
     if actor is None:
         return None
-    name = getattr(actor, "name", None)
-    if isinstance(name, str) and name:
-        return name
     agent_id = getattr(actor, "id", None)
-    return str(agent_id) if agent_id is not None else None
+    if agent_id is not None:
+        return str(agent_id)
+    name = getattr(actor, "name", None)
+    return name if isinstance(name, str) and name else None
 
 
 def _require_non_blank(arguments: dict[str, Any], key: str) -> str:
@@ -153,7 +153,7 @@ async def _workflows_list(
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
-    logger.debug(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(data=dump_many(page), pagination=meta)
 
 
@@ -180,7 +180,7 @@ async def _workflows_get(
         )
         _log_failed(tool, missing)
         return err(missing, domain_code="not_found")
-    logger.debug(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(data=defn.model_dump(mode="json"))
 
 
@@ -240,7 +240,7 @@ async def _workflows_delete(
         _log_failed(tool, missing)
         return err(missing, domain_code="not_found")
 
-    logger.debug(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     logger.info(
         MCP_DESTRUCTIVE_OP_EXECUTED,
         tool_name=tool,

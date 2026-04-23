@@ -15,9 +15,10 @@ rejection.  Create and approve are non-destructive writes and only
 need an actor (to populate ``requested_by`` / ``decided_by``).
 """
 
+from collections.abc import Mapping  # noqa: TC003 -- PEP 649 annotation
 from datetime import UTC, datetime
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any
+from typing import Any
 from uuid import uuid4
 
 from synthorg.api.errors import ConflictError
@@ -27,6 +28,9 @@ from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
     GuardrailViolationError,
     invalid_argument,
+)
+from synthorg.meta.mcp.handler_protocol import (
+    ToolHandler,  # noqa: TC001 -- PEP 649 annotation
 )
 from synthorg.meta.mcp.handlers.common import (
     coerce_pagination,
@@ -45,11 +49,6 @@ from synthorg.observability.events.mcp import (
     MCP_HANDLER_INVOKE_FAILED,
     MCP_HANDLER_INVOKE_SUCCESS,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
-
-    from synthorg.meta.mcp.invoker import ToolHandler
 
 logger = get_logger(__name__)
 
@@ -121,16 +120,20 @@ def _require_non_blank(arguments: dict[str, Any], key: str) -> str:
 
 
 def _actor_name(actor: Any) -> str | None:
-    """Extract the decision-carrying name from an actor object."""
+    """Return a stable audit identifier for ``actor``.
+
+    Prefers ``actor.id`` (a ``UUID`` that never changes over the
+    agent's lifetime) so ``decided_by`` audit records stay consistent
+    even when the display name is later edited.  Falls back to
+    ``actor.name`` only when id is absent.
+    """
     if actor is None:
         return None
-    name = getattr(actor, "name", None)
-    if isinstance(name, str) and name:
-        return name
-    # ``AgentIdentity.id`` is a UUID; fall back to its string form so
-    # ``decided_by`` always carries *something* attributable.
     agent_id = getattr(actor, "id", None)
-    return str(agent_id) if agent_id is not None else None
+    if agent_id is not None:
+        return str(agent_id)
+    name = getattr(actor, "name", None)
+    return name if isinstance(name, str) and name else None
 
 
 def _log_failed(tool: str, exc: Exception) -> None:
@@ -209,7 +212,7 @@ async def _list_approvals(
         _log_failed(tool, exc)
         return err(exc)
 
-    logger.debug(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(data=dump_many(page), pagination=meta)
 
 
@@ -239,7 +242,7 @@ async def _get_approval(
         _log_failed(tool, missing)
         return err(missing)
 
-    logger.debug(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(data=item.model_dump(mode="json"))
 
 
@@ -289,7 +292,7 @@ async def _create_approval(
         _log_failed(tool, exc)
         return err(exc)
 
-    logger.debug(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(data=item.model_dump(mode="json"))
 
 
@@ -336,7 +339,7 @@ async def _decide(  # noqa: PLR0913
     if saved is None:
         msg = f"Approval {approval_id!r} was decided concurrently"
         raise _ConflictError(msg)
-    logger.debug(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return saved
 
 
@@ -430,7 +433,7 @@ async def _reject(
     # Emit both the handler-success telemetry *and* the destructive-op
     # audit event so "all handler successes" dashboards still see this
     # path and the audit trail carries full attribution.
-    logger.debug(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     logger.info(
         MCP_DESTRUCTIVE_OP_EXECUTED,
         tool_name=tool,

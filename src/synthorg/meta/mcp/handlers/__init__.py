@@ -28,7 +28,7 @@ from synthorg.observability.events.mcp import MCP_HANDLERS_BUILT
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-    from synthorg.meta.mcp.invoker import ToolHandler
+    from synthorg.meta.mcp.handler_protocol import ToolHandler
 
 logger = get_logger(__name__)
 

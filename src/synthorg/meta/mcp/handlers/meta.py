@@ -6,20 +6,19 @@ need a ``SelfImprovementService`` facade on ``app_state`` that is not
 yet exposed, so they return ``not_supported``.
 """
 
+from collections.abc import Mapping  # noqa: TC003 -- PEP 649 annotation
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
+from synthorg.meta.mcp.handler_protocol import (
+    ToolHandler,  # noqa: TC001 -- PEP 649 annotation
+)
 from synthorg.meta.mcp.handlers.common import err, not_supported, ok
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.mcp import (
     MCP_HANDLER_INVOKE_FAILED,
     MCP_HANDLER_INVOKE_SUCCESS,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
-
-    from synthorg.meta.mcp.invoker import ToolHandler
 
 logger = get_logger(__name__)
 
@@ -81,7 +80,7 @@ async def _meta_list_mcp_tools(
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
-    logger.debug(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(data=tools)
 
 
@@ -99,7 +98,7 @@ async def _meta_get_mcp_server_config(
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
-    logger.debug(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(data=config)
 
 

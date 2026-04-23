@@ -13,8 +13,9 @@ boundary.  ``delete_checkpoint`` is live; the others are currently
 ``not_supported`` behind the guardrail.
 """
 
+from collections.abc import Mapping  # noqa: TC003 -- PEP 649 annotation
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from synthorg.memory.service import (
     CheckpointNotFoundError,
@@ -24,6 +25,9 @@ from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
     GuardrailViolationError,
     invalid_argument,
+)
+from synthorg.meta.mcp.handler_protocol import (
+    ToolHandler,  # noqa: TC001 -- PEP 649 annotation
 )
 from synthorg.meta.mcp.handlers.common import (
     PaginationMeta,
@@ -43,11 +47,6 @@ from synthorg.observability.events.mcp import (
     MCP_HANDLER_INVOKE_SUCCESS,
 )
 from synthorg.persistence.errors import QueryError
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
-
-    from synthorg.meta.mcp.invoker import ToolHandler
 
 logger = get_logger(__name__)
 
@@ -100,10 +99,16 @@ def _actor_name(actor: Any) -> str | None:
 
 
 def _require_non_blank(arguments: dict[str, Any], key: str) -> str:
+    """Extract a non-blank string argument, stripped of surrounding whitespace.
+
+    Normalising at the boundary keeps downstream service lookups
+    consistent -- a ``checkpoint_id`` like ``"  cp-123  "`` would
+    otherwise fail the repository's exact-match lookup.
+    """
     raw = arguments.get(key)
     if not isinstance(raw, str) or not raw.strip():
         raise invalid_argument(key, _TY_NON_BLANK)
-    return raw
+    return raw.strip()
 
 
 class _BackendLacksFineTuneError(Exception):
@@ -148,6 +153,11 @@ def _service(app_state: Any) -> MemoryService:
 _WHY_FINE_TUNE_START = (
     "fine-tune pipeline orchestration needs a TrainingPlan and a "
     "worker handle; no MCP-native schema exists yet"
+)
+_WHY_FINE_TUNE_CANCEL = (
+    "fine-tune cancellation needs the orchestrator run_id + cancel "
+    "token context MCP does not yet plumb through; use the fine-tune "
+    "controller"
 )
 _WHY_FINE_TUNE_PREFLIGHT = (
     "preflight validation runs inside the fine-tune controller; no "
@@ -217,7 +227,7 @@ async def _memory_cancel_fine_tune(
     except GuardrailViolationError as exc:
         _log_guardrail(tool, exc)
         return err(exc)
-    return not_supported(tool, _WHY_FINE_TUNE_START)
+    return not_supported(tool, _WHY_FINE_TUNE_CANCEL)
 
 
 async def _memory_run_preflight(
@@ -257,7 +267,7 @@ async def _memory_list_checkpoints(
         _log_failed(tool, exc)
         return err(exc)
     meta = PaginationMeta(total=total, offset=offset, limit=limit)
-    logger.debug(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(data=dump_many(checkpoints), pagination=meta)
 
 
@@ -291,7 +301,7 @@ async def _memory_deploy_checkpoint(
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
-    logger.debug(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     return ok(data=cp.model_dump(mode="json"))
 
 
@@ -350,7 +360,7 @@ async def _memory_delete_checkpoint(  # noqa: PLR0911
         _log_failed(tool, exc)
         return err(exc)
 
-    logger.debug(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
     logger.info(
         MCP_DESTRUCTIVE_OP_EXECUTED,
         tool_name=tool,
