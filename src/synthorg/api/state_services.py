@@ -32,7 +32,14 @@ from synthorg.communication.conflict_resolution.escalation.sweeper import (
 from synthorg.communication.delegation.record_store import (
     DelegationRecordStore,  # noqa: TC001
 )
+from synthorg.communication.meetings.service import MeetingService  # noqa: TC001
+from synthorg.communication.messages.service import MessageService  # noqa: TC001
 from synthorg.hr.training.service import TrainingService  # noqa: TC001
+from synthorg.integrations.connections.mcp_service import (
+    ConnectionService,  # noqa: TC001
+)
+from synthorg.integrations.tunnel.mcp_service import TunnelService  # noqa: TC001
+from synthorg.integrations.webhooks.service import WebhookService  # noqa: TC001
 from synthorg.memory.embedding.fine_tune_orchestrator import (
     FineTuneOrchestrator,  # noqa: TC001
 )
@@ -772,6 +779,11 @@ class AppStateServicesMixin:
     _signals_service: SignalsService | None
     _analytics_service: AnalyticsService | None
     _reports_service: ReportsService | None
+    _message_service: MessageService | None
+    _meeting_service: MeetingService | None
+    _connection_service: ConnectionService | None
+    _webhook_service: WebhookService | None
+    _tunnel_service: TunnelService | None
 
     @property
     def has_signals_service(self) -> bool:
@@ -835,6 +847,76 @@ class AppStateServicesMixin:
             service,
             "ReportsService",
         )
+
+    @property
+    def has_message_service(self) -> bool:
+        """Whether the message facade is attached."""
+        return self._message_service is not None
+
+    @property
+    def message_service(self) -> MessageService:
+        """The message facade; raises ``ServiceUnavailableError`` when unset."""
+        return self._require_service(self._message_service, "MessageService")
+
+    def set_message_service(self, service: MessageService) -> None:
+        """Attach the message facade (once-only)."""
+        self._set_once("_message_service", service, "MessageService")
+
+    @property
+    def has_meeting_service(self) -> bool:
+        """Whether the meeting facade is attached."""
+        return self._meeting_service is not None
+
+    @property
+    def meeting_service(self) -> MeetingService:
+        """The meeting facade; raises ``ServiceUnavailableError`` when unset."""
+        return self._require_service(self._meeting_service, "MeetingService")
+
+    def set_meeting_service(self, service: MeetingService) -> None:
+        """Attach the meeting facade (once-only)."""
+        self._set_once("_meeting_service", service, "MeetingService")
+
+    @property
+    def has_connection_service(self) -> bool:
+        """Whether the connection facade is attached."""
+        return self._connection_service is not None
+
+    @property
+    def connection_service(self) -> ConnectionService:
+        """The connection facade; raises ``ServiceUnavailableError`` when unset."""
+        return self._require_service(self._connection_service, "ConnectionService")
+
+    def set_connection_service(self, service: ConnectionService) -> None:
+        """Attach the connection facade (once-only)."""
+        self._set_once("_connection_service", service, "ConnectionService")
+
+    @property
+    def has_webhook_service(self) -> bool:
+        """Whether the webhook facade is attached."""
+        return self._webhook_service is not None
+
+    @property
+    def webhook_service(self) -> WebhookService:
+        """The webhook facade; raises ``ServiceUnavailableError`` when unset."""
+        return self._require_service(self._webhook_service, "WebhookService")
+
+    def set_webhook_service(self, service: WebhookService) -> None:
+        """Attach the webhook facade (once-only)."""
+        self._set_once("_webhook_service", service, "WebhookService")
+
+    @property
+    def has_tunnel_service(self) -> bool:
+        """Whether the tunnel facade is attached."""
+        return self._tunnel_service is not None
+
+    @property
+    def tunnel_service(self) -> TunnelService:
+        """The tunnel facade; raises ``ServiceUnavailableError`` when unset."""
+        return self._require_service(self._tunnel_service, "TunnelService")
+
+    def set_tunnel_service(self, service: TunnelService) -> None:
+        """Attach the tunnel facade (once-only)."""
+        self._set_once("_tunnel_service", service, "TunnelService")
 
     def set_settings_service(self, settings_service: SettingsService) -> None:
         """Set settings service and rebuild derived services."""

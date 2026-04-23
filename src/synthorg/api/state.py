@@ -51,6 +51,8 @@ from synthorg.communication.meeting.orchestrator import (
     MeetingOrchestrator,  # noqa: TC001
 )
 from synthorg.communication.meeting.scheduler import MeetingScheduler  # noqa: TC001
+from synthorg.communication.meetings.service import MeetingService  # noqa: TC001
+from synthorg.communication.messages.service import MessageService  # noqa: TC001
 from synthorg.config.schema import RootConfig  # noqa: TC001
 from synthorg.engine.approval_gate import ApprovalGate  # noqa: TC001
 from synthorg.engine.coordination.service import MultiAgentCoordinator  # noqa: TC001
@@ -61,6 +63,11 @@ from synthorg.hr.performance.tracker import PerformanceTracker  # noqa: TC001
 from synthorg.hr.registry import AgentRegistryService  # noqa: TC001
 from synthorg.hr.scaling.service import ScalingService  # noqa: TC001
 from synthorg.hr.training.service import TrainingService  # noqa: TC001
+from synthorg.integrations.connections.mcp_service import (
+    ConnectionService,  # noqa: TC001
+)
+from synthorg.integrations.tunnel.mcp_service import TunnelService  # noqa: TC001
+from synthorg.integrations.webhooks.service import WebhookService  # noqa: TC001
 from synthorg.memory.embedding.fine_tune_orchestrator import (
     FineTuneOrchestrator,  # noqa: TC001
 )
@@ -153,6 +160,7 @@ class AppState(AppStateServicesMixin):
         "_client_simulation_state",
         "_config_resolver",
         "_connection_catalog",
+        "_connection_service",
         "_coordination_metrics_store",
         "_coordinator",
         "_cost_tracker",
@@ -175,7 +183,9 @@ class AppState(AppStateServicesMixin):
         "_mcp_installations_repo",
         "_meeting_orchestrator",
         "_meeting_scheduler",
+        "_meeting_service",
         "_message_bus",
+        "_message_service",
         "_model_router",
         "_notification_dispatcher",
         "_oauth_token_manager",
@@ -206,9 +216,11 @@ class AppState(AppStateServicesMixin):
         "_training_service",
         "_trust_service",
         "_tunnel_provider",
+        "_tunnel_service",
         "_user_presence",
         "_webhook_event_bridge",
         "_webhook_replay_protector",
+        "_webhook_service",
         "approval_store",
         "config",
         "startup_time",
@@ -353,6 +365,11 @@ class AppState(AppStateServicesMixin):
         self._signals_service: SignalsService | None = None
         self._analytics_service: AnalyticsService | None = None
         self._reports_service: ReportsService | None = None
+        self._message_service: MessageService | None = None
+        self._meeting_service: MeetingService | None = None
+        self._connection_service: ConnectionService | None = None
+        self._webhook_service: WebhookService | None = None
+        self._tunnel_service: TunnelService | None = None
         self._client_simulation_state: ClientSimulationState | None = None
         self._approval_timeout_scheduler: ApprovalTimeoutScheduler | None = None
         self._session_store: SessionStore | None = None

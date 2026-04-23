@@ -1,0 +1,110 @@
+"""ConnectionService -- MCP facade over :class:`ConnectionCatalog`.
+
+Thin pass-through wrapper that exposes the catalog's CRUD + health
+surface through a typed service facade so MCP handlers stay parse/
+dispatch/wrap.  All mutations are audit-logged on the facade (single
+owner of audit logging, per the persistence-boundary convention).
+"""
+
+from typing import TYPE_CHECKING
+
+from synthorg.observability import get_logger
+from synthorg.observability.events.communication import (
+    COMMUNICATION_CONNECTION_CREATED,
+    COMMUNICATION_CONNECTION_DELETED,
+    COMMUNICATION_CONNECTION_HEALTH_CHECKED,
+)
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from synthorg.core.types import NotBlankStr
+    from synthorg.integrations.connections.catalog import ConnectionCatalog
+    from synthorg.integrations.connections.models import Connection, ConnectionType
+
+logger = get_logger(__name__)
+
+
+class ConnectionService:
+    """Facade wrapping :class:`ConnectionCatalog` for the MCP surface.
+
+    Args:
+        catalog: The connection catalog (already on ``AppState``).
+    """
+
+    def __init__(self, *, catalog: ConnectionCatalog) -> None:
+        self._catalog = catalog
+
+    async def list_connections(self) -> Sequence[Connection]:
+        """Return all known connections."""
+        return tuple(await self._catalog.list_all())
+
+    async def get_connection(
+        self,
+        name: NotBlankStr,
+    ) -> Connection | None:
+        """Return a connection by name or ``None``."""
+        return await self._catalog.get(name)
+
+    async def create_connection(  # noqa: PLR0913
+        self,
+        *,
+        name: NotBlankStr,
+        connection_type: ConnectionType,
+        auth_method: NotBlankStr,
+        credentials: dict[str, str],
+        actor_id: NotBlankStr,
+        base_url: str | None = None,
+        metadata: dict[str, str] | None = None,
+    ) -> Connection:
+        """Create and return a new connection, auditing the event."""
+        connection = await self._catalog.create(
+            name=name,
+            connection_type=connection_type,
+            auth_method=auth_method,
+            credentials=credentials,
+            base_url=base_url,
+            metadata=metadata,
+        )
+        logger.info(
+            COMMUNICATION_CONNECTION_CREATED,
+            connection_name=name,
+            connection_type=str(connection_type),
+            actor_id=actor_id,
+        )
+        return connection
+
+    async def delete_connection(
+        self,
+        *,
+        name: NotBlankStr,
+        actor_id: NotBlankStr,
+        reason: NotBlankStr,
+    ) -> None:
+        """Delete a connection, auditing the event."""
+        await self._catalog.delete(name)
+        logger.info(
+            COMMUNICATION_CONNECTION_DELETED,
+            connection_name=name,
+            actor_id=actor_id,
+            reason=reason,
+        )
+
+    async def check_health(
+        self,
+        *,
+        name: NotBlankStr,
+    ) -> Connection | None:
+        """Probe the catalog for the latest health status."""
+        connection = await self._catalog.get(name)
+        logger.info(
+            COMMUNICATION_CONNECTION_HEALTH_CHECKED,
+            connection_name=name,
+            found=connection is not None,
+        )
+        return connection
+
+
+__all__ = [
+    "ConnectionService",
+]
