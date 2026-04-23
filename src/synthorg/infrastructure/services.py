@@ -470,13 +470,24 @@ class ProjectFacadeService:
             record = self._projects.get(key)
             if record is None:
                 return None
-            if name is not None:
-                record.name = name
-            if description is not None:
-                record.description = description
-            if metadata is not None:
-                record.metadata = dict(metadata)
-            returned = copy.deepcopy(record)
+            # Copy-on-write: build a new ``_ProjectRecord`` with the
+            # overrides applied and replace the dict entry, rather
+            # than mutating the stored object in place.  That keeps
+            # any deepcopy returned from a prior ``get``/``list`` call
+            # decoupled from subsequent updates.
+            refreshed = _ProjectRecord(
+                id=record.id,
+                name=name if name is not None else record.name,
+                description=(
+                    description if description is not None else record.description
+                ),
+                created_at=record.created_at,
+                metadata=(
+                    dict(metadata) if metadata is not None else dict(record.metadata)
+                ),
+            )
+            self._projects[key] = refreshed
+            returned = copy.deepcopy(refreshed)
         logger.info(
             PROJECT_UPDATED_VIA_MCP,
             project_id=project_id,

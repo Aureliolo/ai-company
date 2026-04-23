@@ -115,10 +115,29 @@ class TestCompany:
         handler = ORGANIZATION_HANDLERS["synthorg_company_reorder_departments"]
         response = await handler(
             app_state=fake_app_state,
-            arguments={"department_ids": ["a", "b"]},
+            arguments={
+                "department_ids": [
+                    "11111111-1111-1111-1111-111111111111",
+                    "22222222-2222-2222-2222-222222222222",
+                ],
+            },
             actor=make_test_actor(),
         )
         assert json.loads(response)["status"] == "ok"
+
+    async def test_reorder_rejects_non_uuid(
+        self,
+        fake_app_state: SimpleNamespace,
+    ) -> None:
+        handler = ORGANIZATION_HANDLERS["synthorg_company_reorder_departments"]
+        response = await handler(
+            app_state=fake_app_state,
+            arguments={"department_ids": ["a", "b"]},
+            actor=make_test_actor(),
+        )
+        payload = json.loads(response)
+        assert payload["status"] == "error"
+        assert payload["domain_code"] == "invalid_argument"
 
     async def test_versions_list(self, fake_app_state: SimpleNamespace) -> None:
         handler = ORGANIZATION_HANDLERS["synthorg_company_versions_list"]

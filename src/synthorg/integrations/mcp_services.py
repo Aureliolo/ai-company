@@ -135,7 +135,6 @@ class MCPCatalogFacadeService:
                 installation_id=installation_id,
                 actor_id=actor_id,
                 reason=reason,
-                removed=removed,
             )
         return removed
 

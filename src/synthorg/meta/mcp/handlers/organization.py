@@ -162,6 +162,24 @@ def _require_str_list(arguments: dict[str, Any], key: str) -> tuple[str, ...]:
     return tuple(raw)
 
 
+def _require_uuid_list(
+    arguments: dict[str, Any],
+    key: str,
+) -> tuple[NotBlankStr, ...]:
+    """Extract a required sequence of UUID-shaped strings.
+
+    Each entry is validated with :func:`UUID` so malformed IDs never
+    reach the mutation service.
+    """
+    entries = _require_str_list(arguments, key)
+    for entry in entries:
+        try:
+            UUID(entry)
+        except ValueError as exc:
+            raise invalid_argument(key, _TY_UUID) from exc
+    return tuple(NotBlankStr(e) for e in entries)
+
+
 def _to_jsonable(value: Any) -> Any:
     """Coerce a Pydantic / ``to_dict`` value into a JSON-serialisable form."""
     dump_fn = getattr(value, "model_dump", None)
@@ -250,7 +268,7 @@ async def _company_reorder_departments(
     """Replace the department display order with the supplied sequence."""
     tool = "synthorg_company_reorder_departments"
     try:
-        ids = _require_str_list(arguments, "department_ids")
+        ids = _require_uuid_list(arguments, "department_ids")
         await app_state.company_read_service.reorder_departments(
             department_ids=ids,
             actor_id=_actor_name(actor),
