@@ -157,7 +157,14 @@ class ReportsService:
         since: datetime,
         until: datetime,
     ) -> tuple[str, dict[str, object]]:
-        """Dispatch to the template-specific render helper."""
+        """Dispatch to the template-specific render helper.
+
+        Every template in :data:`_SUPPORTED_TEMPLATES` must be matched
+        explicitly below.  Unknown templates raise instead of silently
+        falling through to a default renderer, which would mask bugs
+        when a new template is added to the allowlist without a
+        matching branch here.
+        """
         if template == "org_overview":
             overview = await self._analytics.get_overview(since=since, until=until)
             return ("Org overview", overview.model_dump(mode="json"))
@@ -167,8 +174,11 @@ class ReportsService:
                 until=until,
             )
             return ("Metrics snapshot", snapshot.model_dump(mode="json"))
-        trends = await self._analytics.get_trends(since=since, until=until)
-        return ("Trend summary", trends.model_dump(mode="json"))
+        if template == "trend_summary":
+            trends = await self._analytics.get_trends(since=since, until=until)
+            return ("Trend summary", trends.model_dump(mode="json"))
+        msg = f"_render has no branch for allowed template {template!r}"
+        raise RuntimeError(msg)
 
     # ── Test helper ──────────────────────────────────────────────────
 

@@ -14,7 +14,7 @@ growing this module.
 """
 
 import asyncio
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from synthorg.core.types import NotBlankStr
@@ -226,5 +226,3 @@ class AnalyticsService:
 __all__ = [
     "AnalyticsService",
 ]
-
-_ = timedelta  # imported for docstring reference; keep pyflakes quiet.

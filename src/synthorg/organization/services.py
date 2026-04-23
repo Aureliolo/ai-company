@@ -8,6 +8,7 @@ durable repositories land.
 """
 
 import asyncio
+import copy
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, cast
 from uuid import UUID, uuid4
@@ -124,7 +125,7 @@ class CompanyReadService:
 
 
 class _DepartmentRecord:
-    __slots__ = ("created_at", "description", "id", "name")
+    __slots__ = ("created_at", "description", "id", "name", "updated_at")
 
     def __init__(
         self,
@@ -138,6 +139,7 @@ class _DepartmentRecord:
         self.name = name
         self.description = description
         self.created_at = created_at
+        self.updated_at = created_at
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -145,6 +147,7 @@ class _DepartmentRecord:
             "name": self.name,
             "description": self.description,
             "created_at": self.created_at.isoformat(),
+            "updated_at": self.updated_at.isoformat(),
         }
 
 
@@ -163,7 +166,7 @@ class DepartmentService:
 
     async def list_departments(self) -> Sequence[_DepartmentRecord]:
         async with self._lock:
-            snapshot = tuple(self._departments.values())
+            snapshot = tuple(copy.deepcopy(d) for d in self._departments.values())
         return tuple(sorted(snapshot, key=lambda d: d.created_at, reverse=True))
 
     async def get_department(
@@ -175,7 +178,8 @@ class DepartmentService:
         except ValueError:
             return None
         async with self._lock:
-            return self._departments.get(key)
+            record = self._departments.get(key)
+            return copy.deepcopy(record) if record is not None else None
 
     async def create_department(
         self,
@@ -197,7 +201,7 @@ class DepartmentService:
             department_id=str(record.id),
             actor_id=actor_id,
         )
-        return record
+        return copy.deepcopy(record)
 
     async def update_department(
         self,
@@ -219,12 +223,14 @@ class DepartmentService:
                 record.name = name
             if description is not None:
                 record.description = description
+            record.updated_at = datetime.now(UTC)
+            returned = copy.deepcopy(record)
         logger.info(
             DEPARTMENT_UPDATED_VIA_MCP,
             department_id=department_id,
             actor_id=actor_id,
         )
-        return record
+        return returned
 
     async def delete_department(
         self,
@@ -258,7 +264,7 @@ class DepartmentService:
         return {
             "status": "healthy",
             "department_id": str(record.id),
-            "last_update": record.created_at.isoformat(),
+            "last_update": record.updated_at.isoformat(),
         }
 
 
@@ -303,7 +309,7 @@ class TeamService:
 
     async def list_teams(self) -> Sequence[_TeamRecord]:
         async with self._lock:
-            snapshot = tuple(self._teams.values())
+            snapshot = tuple(copy.deepcopy(t) for t in self._teams.values())
         return tuple(sorted(snapshot, key=lambda t: t.created_at, reverse=True))
 
     async def get_team(self, team_id: NotBlankStr) -> _TeamRecord | None:
@@ -312,7 +318,8 @@ class TeamService:
         except ValueError:
             return None
         async with self._lock:
-            return self._teams.get(key)
+            record = self._teams.get(key)
+            return copy.deepcopy(record) if record is not None else None
 
     async def create_team(
         self,
@@ -334,7 +341,7 @@ class TeamService:
             team_id=str(record.id),
             actor_id=actor_id,
         )
-        return record
+        return copy.deepcopy(record)
 
     async def update_team(
         self,
@@ -356,12 +363,13 @@ class TeamService:
                 record.name = name
             if department_id is not None:
                 record.department_id = department_id
+            returned = copy.deepcopy(record)
         logger.info(
             TEAM_UPDATED_VIA_MCP,
             team_id=team_id,
             actor_id=actor_id,
         )
-        return record
+        return returned
 
     async def delete_team(
         self,

@@ -28,6 +28,7 @@ from synthorg.meta.mcp.handlers.common import (
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.mcp import (
     MCP_DESTRUCTIVE_OP_EXECUTED,
+    MCP_HANDLER_CAPABILITY_GAP,
     MCP_HANDLER_GUARDRAIL_VIOLATED,
     MCP_HANDLER_INVOKE_FAILED,
 )
@@ -65,9 +66,13 @@ def _log_guardrail(tool: str, exc: GuardrailViolationError) -> None:
 
 
 def _map_capability(tool: str, exc: CapabilityNotSupportedError) -> str:
-    """Translate a facade-side capability gap into a typed error envelope."""
+    """Translate a facade-side capability gap into a typed error envelope.
+
+    Emits :data:`MCP_HANDLER_CAPABILITY_GAP` so capability telemetry is
+    distinct from invoke failures.
+    """
     logger.info(
-        MCP_HANDLER_INVOKE_FAILED,
+        MCP_HANDLER_CAPABILITY_GAP,
         tool_name=tool,
         capability=exc.capability,
     )

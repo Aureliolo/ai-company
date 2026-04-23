@@ -7,6 +7,7 @@ EvaluationVersionService surfaces evaluation-config version history.
 """
 
 import asyncio
+import copy
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, cast
 from uuid import UUID, uuid4
@@ -59,6 +60,8 @@ class QualityFacadeService:
         fn = getattr(self._tracker, "get_snapshot", None)
         if callable(fn):
             snapshot = fn(agent_id)
+            if hasattr(snapshot, "__await__"):
+                snapshot = await snapshot
             dump_fn = getattr(snapshot, "model_dump", None)
             if callable(dump_fn):
                 return cast("Mapping[str, object]", dump_fn(mode="json"))
@@ -134,7 +137,9 @@ class ReviewFacadeService:
 
     Mutations are serialised through a single :class:`asyncio.Lock` so
     concurrent MCP handler calls cannot race on the in-memory dict
-    (check-then-act in :meth:`update_review`).
+    (check-then-act in :meth:`update_review`).  Records are deep-copied
+    on every return so callers cannot mutate the canonical instance
+    and bypass the audit-logged update path.
     """
 
     def __init__(self) -> None:
@@ -143,7 +148,7 @@ class ReviewFacadeService:
 
     async def list_reviews(self) -> Sequence[_ReviewRecord]:
         async with self._lock:
-            snapshot = tuple(self._reviews.values())
+            snapshot = tuple(copy.deepcopy(r) for r in self._reviews.values())
         return tuple(sorted(snapshot, key=lambda r: r.created_at, reverse=True))
 
     async def get_review(self, review_id: NotBlankStr) -> _ReviewRecord | None:
@@ -152,7 +157,8 @@ class ReviewFacadeService:
         except ValueError:
             return None
         async with self._lock:
-            return self._reviews.get(key)
+            record = self._reviews.get(key)
+            return copy.deepcopy(record) if record is not None else None
 
     async def create_review(
         self,
@@ -178,7 +184,7 @@ class ReviewFacadeService:
             task_id=task_id,
             verdict=verdict,
         )
-        return record
+        return copy.deepcopy(record)
 
     async def update_review(
         self,
@@ -201,12 +207,13 @@ class ReviewFacadeService:
             if comments is not None:
                 record.comments = comments
             record.updated_at = datetime.now(UTC)
+            returned = copy.deepcopy(record)
         logger.info(
             REVIEW_UPDATED_VIA_MCP,
             review_id=review_id,
             actor_id=actor_id,
         )
-        return record
+        return returned
 
 
 # ── EvaluationVersionService ─────────────────────────────────────

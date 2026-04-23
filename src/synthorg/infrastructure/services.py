@@ -25,6 +25,7 @@ facade's role and the method names are self-documenting pass-throughs.
 """
 
 import asyncio
+import copy
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, cast
 from uuid import UUID, uuid4
@@ -374,7 +375,7 @@ class ProjectFacadeService:
 
     async def list_projects(self) -> Sequence[_ProjectRecord]:
         async with self._lock:
-            snapshot = tuple(self._projects.values())
+            snapshot = tuple(copy.deepcopy(p) for p in self._projects.values())
         return tuple(sorted(snapshot, key=lambda p: p.created_at, reverse=True))
 
     async def get_project(self, project_id: NotBlankStr) -> _ProjectRecord | None:
@@ -383,7 +384,8 @@ class ProjectFacadeService:
         except ValueError:
             return None
         async with self._lock:
-            return self._projects.get(key)
+            record = self._projects.get(key)
+            return copy.deepcopy(record) if record is not None else None
 
     async def create_project(
         self,
@@ -407,7 +409,7 @@ class ProjectFacadeService:
             project_id=str(record.id),
             actor_id=actor_id,
         )
-        return record
+        return copy.deepcopy(record)
 
     async def update_project(
         self,
@@ -432,12 +434,13 @@ class ProjectFacadeService:
                 record.description = description
             if metadata is not None:
                 record.metadata = dict(metadata)
+            returned = copy.deepcopy(record)
         logger.info(
             PROJECT_UPDATED_VIA_MCP,
             project_id=project_id,
             actor_id=actor_id,
         )
-        return record
+        return returned
 
     async def delete_project(
         self,

@@ -4,9 +4,13 @@ import asyncio
 from typing import TYPE_CHECKING
 from uuid import UUID
 
+from synthorg.observability import get_logger
+
 if TYPE_CHECKING:
     from synthorg.core.types import NotBlankStr
     from synthorg.integrations.webhooks.models import WebhookDefinition
+
+logger = get_logger(__name__)
 
 
 class InMemoryWebhookDefinitionStore:

@@ -1,4 +1,4 @@
-"""Smoke + destructive-op tests for tasks/workflows/quality handlers."""
+"""Smoke + destructive-op tests for tasks and workflows handlers."""
 
 import json
 from types import SimpleNamespace

@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from synthorg.core.types import NotBlankStr
-from synthorg.meta.mcp.errors import invalid_argument
+from synthorg.meta.mcp.errors import ArgumentValidationError, invalid_argument
 from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,  # noqa: TC001 -- PEP 649 annotation
 )
@@ -198,6 +198,8 @@ async def _analytics_overview(
             until=until,
         )
         return ok(result.model_dump(mode="json"))
+    except ArgumentValidationError as exc:
+        return err(exc)
     except Exception as exc:
         logger.warning(
             MCP_HANDLER_INVOKE_FAILED,
@@ -222,6 +224,8 @@ async def _analytics_trends(
             metric_names=metric_names,
         )
         return ok(result.model_dump(mode="json"))
+    except ArgumentValidationError as exc:
+        return err(exc)
     except Exception as exc:
         logger.warning(
             MCP_HANDLER_INVOKE_FAILED,
@@ -250,6 +254,8 @@ async def _analytics_forecast(
             horizon_days=horizon_days,
         )
         return ok(result.model_dump(mode="json"))
+    except ArgumentValidationError as exc:
+        return err(exc)
     except Exception as exc:
         logger.warning(
             MCP_HANDLER_INVOKE_FAILED,
@@ -274,6 +280,8 @@ async def _metrics_current(
             metric_names=metric_names,
         )
         return ok(result.model_dump(mode="json"))
+    except ArgumentValidationError as exc:
+        return err(exc)
     except Exception as exc:
         logger.warning(
             MCP_HANDLER_INVOKE_FAILED,
@@ -304,6 +312,8 @@ async def _metrics_history(
             sample_count=sample_count,
         )
         return ok(result.model_dump(mode="json"))
+    except ArgumentValidationError as exc:
+        return err(exc)
     except Exception as exc:
         logger.warning(
             MCP_HANDLER_INVOKE_FAILED,
@@ -335,6 +345,8 @@ async def _reports_list(
             total=total,
         )
         return ok(dump_many(page), pagination=pagination)
+    except ArgumentValidationError as exc:
+        return err(exc)
     except Exception as exc:
         logger.warning(
             MCP_HANDLER_INVOKE_FAILED,
@@ -357,6 +369,8 @@ async def _reports_get(
             missing = LookupError(f"Report {report_id} not found")
             return err(missing, domain_code="not_found")
         return ok(report.model_dump(mode="json"))
+    except ArgumentValidationError as exc:
+        return err(exc)
     except Exception as exc:
         logger.warning(
             MCP_HANDLER_INVOKE_FAILED,
@@ -381,6 +395,8 @@ async def _reports_generate(
             options=options,
         )
         return ok(report.model_dump(mode="json"))
+    except ArgumentValidationError as exc:
+        return err(exc)
     except ValueError as exc:
         return err(exc, domain_code="invalid_argument")
     except Exception as exc:

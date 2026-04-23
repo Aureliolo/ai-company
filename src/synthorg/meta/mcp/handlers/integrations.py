@@ -27,6 +27,7 @@ from synthorg.meta.mcp.handlers.common import (
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.mcp import (
     MCP_DESTRUCTIVE_OP_EXECUTED,
+    MCP_HANDLER_CAPABILITY_GAP,
     MCP_HANDLER_GUARDRAIL_VIOLATED,
     MCP_HANDLER_INVOKE_FAILED,
 )
@@ -64,9 +65,13 @@ def _log_guardrail(tool: str, exc: GuardrailViolationError) -> None:
 
 
 def _map_capability(tool: str, exc: CapabilityNotSupportedError) -> str:
-    """Translate a facade-side capability gap into a typed error envelope."""
+    """Translate a facade-side capability gap into a typed error envelope.
+
+    Emits :data:`MCP_HANDLER_CAPABILITY_GAP` so capability telemetry is
+    distinct from invoke failures.
+    """
     logger.info(
-        MCP_HANDLER_INVOKE_FAILED,
+        MCP_HANDLER_CAPABILITY_GAP,
         tool_name=tool,
         capability=exc.capability,
     )
@@ -112,8 +117,8 @@ def _require_uuid(arguments: dict[str, Any], key: str) -> NotBlankStr:
     return NotBlankStr(value)
 
 
-def _require_list_str(arguments: dict[str, Any], key: str) -> tuple[str, ...]:
-    """Extract an optional sequence of strings, defaulting to ``()`` when absent."""
+def _get_list_str(arguments: dict[str, Any], key: str) -> tuple[str, ...]:
+    """Extract an optional sequence of strings; returns ``()`` when absent."""
     raw = arguments.get(key)
     if raw in (None, ""):
         return ()
@@ -297,7 +302,7 @@ async def _oauth_configure_provider(
         client_id = _require_str(arguments, "client_id")
         authorize_url = _require_str(arguments, "authorize_url")
         token_url = _require_str(arguments, "token_url")
-        scopes = _require_list_str(arguments, "scopes")
+        scopes = _get_list_str(arguments, "scopes")
         record = await app_state.oauth_facade_service.configure_provider(
             name=name,
             client_id=client_id,

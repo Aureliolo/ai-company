@@ -24,7 +24,10 @@ from synthorg.meta.mcp.handlers.common import (
     require_arg,
 )
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.mcp import MCP_HANDLER_INVOKE_FAILED
+from synthorg.observability.events.mcp import (
+    MCP_HANDLER_CAPABILITY_GAP,
+    MCP_HANDLER_INVOKE_FAILED,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -48,9 +51,13 @@ def _log_failed(tool: str, exc: Exception) -> None:
 
 
 def _map_capability(tool: str, exc: CapabilityNotSupportedError) -> str:
-    """Translate a facade-side capability gap into a typed error envelope."""
+    """Translate a facade-side capability gap into a typed error envelope.
+
+    Emits :data:`MCP_HANDLER_CAPABILITY_GAP` so capability telemetry is
+    distinct from invoke failures.
+    """
     logger.info(
-        MCP_HANDLER_INVOKE_FAILED,
+        MCP_HANDLER_CAPABILITY_GAP,
         tool_name=tool,
         capability=exc.capability,
     )

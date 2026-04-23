@@ -146,7 +146,7 @@ class TestOAuth:
         response = await configure(
             app_state=fake_app_state,
             arguments={
-                "name": "github",
+                "name": "test-provider",
                 "client_id": "c",
                 "authorize_url": "https://example.test/auth",
                 "token_url": "https://example.test/token",
@@ -167,7 +167,7 @@ class TestOAuth:
         handler = INTEGRATION_HANDLERS["synthorg_oauth_remove_provider"]
         response = await handler(
             app_state=fake_app_state,
-            arguments={"name": "github"},
+            arguments={"name": "test-provider"},
             actor=make_test_actor(),
         )
         assert json.loads(response)["domain_code"] == "guardrail_violated"

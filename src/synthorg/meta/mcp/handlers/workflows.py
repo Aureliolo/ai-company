@@ -5,14 +5,14 @@ versions.  Reads on the core definitions shim to
 :class:`synthorg.engine.workflow.service.WorkflowService` via the
 persistence repos on ``app_state.persistence``.  Subworkflows,
 executions, and versions do not currently have an orchestration
-service exposed on ``app_state``; they return ``service_fallback`` so the
+service exposed on ``app_state``; they return ``capability_gap`` so the
 tool stays registered and visible to ops until a dedicated service
 lands.
 
 Destructive ops: ``workflows_delete``, ``subworkflows_delete``, and
 ``workflow_executions_cancel`` all require the full destructive-op
-guardrail.  ``workflows_delete`` is live; the other two are
-``service_fallback`` for now but still enforce the guardrail at the
+guardrail.  ``workflows_delete`` is live; the other two return
+``capability_gap`` for now but still enforce the guardrail at the
 schema layer.
 """
 

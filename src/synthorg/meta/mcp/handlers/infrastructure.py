@@ -29,6 +29,7 @@ from synthorg.meta.mcp.handlers.common import (
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.mcp import (
     MCP_DESTRUCTIVE_OP_EXECUTED,
+    MCP_HANDLER_CAPABILITY_GAP,
     MCP_HANDLER_GUARDRAIL_VIOLATED,
     MCP_HANDLER_INVOKE_FAILED,
     MCP_HANDLER_INVOKE_SUCCESS,
@@ -68,9 +69,13 @@ def _log_guardrail(tool: str, exc: GuardrailViolationError) -> None:
 
 
 def _map_capability(tool: str, exc: CapabilityNotSupportedError) -> str:
-    """Translate a facade-side capability gap into a typed error envelope."""
+    """Translate a facade-side capability gap into a typed error envelope.
+
+    Emits :data:`MCP_HANDLER_CAPABILITY_GAP` at INFO so capability
+    telemetry is not classified as an invoke failure.
+    """
     logger.info(
-        MCP_HANDLER_INVOKE_FAILED,
+        MCP_HANDLER_CAPABILITY_GAP,
         tool_name=tool,
         capability=exc.capability,
     )
@@ -504,14 +509,23 @@ async def _audit_list(
     """Return recent audit log entries (paginated)."""
     tool = "synthorg_audit_list"
     try:
-        _, limit = coerce_pagination(arguments)
-        entries = await app_state.audit_read_service.list_entries(limit=limit)
+        offset, limit = coerce_pagination(arguments)
+        entries = await app_state.audit_read_service.list_entries(
+            limit=offset + limit,
+        )
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
-    return ok([_to_jsonable(e) for e in entries])
+    sequence = tuple(entries)
+    page, pagination = paginate_sequence(
+        sequence,
+        offset=offset,
+        limit=limit,
+        total=len(sequence),
+    )
+    return ok([_to_jsonable(e) for e in page], pagination=pagination)
 
 
 async def _events_list(
@@ -523,14 +537,23 @@ async def _events_list(
     """Return recent events from the event-stream hub."""
     tool = "synthorg_events_list"
     try:
-        _, limit = coerce_pagination(arguments)
-        events = await app_state.events_read_service.list_events(limit=limit)
+        offset, limit = coerce_pagination(arguments)
+        events = await app_state.events_read_service.list_events(
+            limit=offset + limit,
+        )
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
-    return ok([_to_jsonable(e) for e in events])
+    sequence = tuple(events)
+    page, pagination = paginate_sequence(
+        sequence,
+        offset=offset,
+        limit=limit,
+        total=len(sequence),
+    )
+    return ok([_to_jsonable(e) for e in page], pagination=pagination)
 
 
 # ── users ───────────────────────────────────────────────────────────
@@ -629,6 +652,13 @@ async def _users_delete(
             user_id=user_id,
             actor_id=_actor_name(resolved_actor),
             reason=reason,
+        )
+        logger.info(
+            MCP_DESTRUCTIVE_OP_EXECUTED,
+            tool_name=tool,
+            actor=_actor_name(resolved_actor),
+            reason=reason,
+            user_id=user_id,
         )
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)

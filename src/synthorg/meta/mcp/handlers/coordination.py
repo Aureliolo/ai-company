@@ -1,7 +1,7 @@
 """Coordination domain MCP handlers.
 
 9 tools across coordination, scaling, and ceremony-policy.  All nine
-handlers currently return a structured ``service_fallback`` envelope via
+handlers currently return a structured ``capability_gap`` envelope via
 the shared :func:`_mk` factory -- the backing services
 (``scaling_service``, ``coordination_metrics_store``,
 ``ceremony_scheduler``) exist on ``app_state`` but none of them expose
@@ -32,7 +32,7 @@ logger = get_logger(__name__)
 
 
 def _mk(tool: str, why: str) -> ToolHandler:
-    """Build a ``service_fallback`` handler with ToolHandler-conformant typing."""
+    """Build a ``capability_gap`` handler with ToolHandler-conformant typing."""
 
     async def handler(
         *,

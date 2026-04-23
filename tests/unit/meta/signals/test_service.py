@@ -1,7 +1,6 @@
 """Tests for the SignalsService facade."""
 
 from datetime import UTC, datetime, timedelta
-from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
@@ -105,54 +104,39 @@ def snapshot_builder() -> AsyncMock:
     return builder
 
 
+def _aggregator_with(summary: object) -> AsyncMock:
+    """Return an AsyncMock aggregator whose ``.aggregate()`` yields ``summary``."""
+    agg = AsyncMock()
+    agg.aggregate = AsyncMock(return_value=summary)
+    return agg
+
+
 @pytest.fixture
 def service(approval_store: AsyncMock, snapshot_builder: AsyncMock) -> SignalsService:
-    aggregators: dict[str, AsyncMock] = {}
-    for name in (
-        "performance",
-        "budget",
-        "coordination",
-        "scaling",
-        "errors",
-        "evolution",
-        "telemetry",
-    ):
-        aggregators[name] = AsyncMock()
-        aggregators[name].aggregate = AsyncMock(return_value=SimpleNamespace())
-    # Give each its canonical return type so model_dump works in handler.
-    aggregators["performance"].aggregate = AsyncMock(
-        return_value=OrgPerformanceSummary(
-            avg_quality_score=0.0,
-            avg_success_rate=0.0,
-            avg_collaboration_score=0.0,
-            agent_count=0,
-        ),
-    )
-    aggregators["budget"].aggregate = AsyncMock(
-        return_value=OrgBudgetSummary(
-            total_spend=0.0,
-            productive_ratio=0.0,
-            coordination_ratio=0.0,
-            system_ratio=0.0,
-            forecast_confidence=0.0,
-            orchestration_overhead=0.0,
-        ),
-    )
-    aggregators["coordination"].aggregate = AsyncMock(
-        return_value=OrgCoordinationSummary(),
-    )
-    aggregators["scaling"].aggregate = AsyncMock(return_value=OrgScalingSummary())
-    aggregators["errors"].aggregate = AsyncMock(return_value=OrgErrorSummary())
-    aggregators["evolution"].aggregate = AsyncMock(return_value=OrgEvolutionSummary())
-    aggregators["telemetry"].aggregate = AsyncMock(return_value=OrgTelemetrySummary())
     return SignalsService(
-        performance=aggregators["performance"],
-        budget=aggregators["budget"],
-        coordination=aggregators["coordination"],
-        scaling=aggregators["scaling"],
-        errors=aggregators["errors"],
-        evolution=aggregators["evolution"],
-        telemetry=aggregators["telemetry"],
+        performance=_aggregator_with(
+            OrgPerformanceSummary(
+                avg_quality_score=0.0,
+                avg_success_rate=0.0,
+                avg_collaboration_score=0.0,
+                agent_count=0,
+            ),
+        ),
+        budget=_aggregator_with(
+            OrgBudgetSummary(
+                total_spend=0.0,
+                productive_ratio=0.0,
+                coordination_ratio=0.0,
+                system_ratio=0.0,
+                forecast_confidence=0.0,
+                orchestration_overhead=0.0,
+            ),
+        ),
+        coordination=_aggregator_with(OrgCoordinationSummary()),
+        scaling=_aggregator_with(OrgScalingSummary()),
+        errors=_aggregator_with(OrgErrorSummary()),
+        evolution=_aggregator_with(OrgEvolutionSummary()),
+        telemetry=_aggregator_with(OrgTelemetrySummary()),
         snapshot_builder=snapshot_builder,
         approval_store=approval_store,
     )

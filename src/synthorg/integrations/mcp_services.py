@@ -62,18 +62,24 @@ class MCPCatalogFacadeService:
 
     async def list_catalog(self) -> Sequence[object]:
         fn = getattr(self._catalog, "list_entries", None)
-        if callable(fn):
-            return tuple(await fn())
-        return ()
+        if not callable(fn):
+            raise _capability(
+                "mcp_catalog_list",
+                "CatalogService does not expose list_entries",
+            )
+        return tuple(await fn())
 
     async def search_catalog(
         self,
         query: NotBlankStr,
     ) -> Sequence[object]:
         fn = getattr(self._catalog, "search", None)
-        if callable(fn):
-            return tuple(await fn(query))
-        return ()
+        if not callable(fn):
+            raise _capability(
+                "mcp_catalog_search",
+                "CatalogService does not expose search",
+            )
+        return tuple(await fn(query))
 
     async def get_catalog_entry(
         self,
@@ -81,7 +87,10 @@ class MCPCatalogFacadeService:
     ) -> object | None:
         fn = getattr(self._catalog, "get_entry", None)
         if not callable(fn):
-            return None
+            raise _capability(
+                "mcp_catalog_get",
+                "CatalogService does not expose get_entry",
+            )
         return cast("object | None", await fn(entry_id))
 
     async def install_catalog_entry(
@@ -460,8 +469,10 @@ class ArtifactFacadeService:
         if callable(fn):
             # Delete from storage FIRST so the index and storage cannot
             # diverge silently -- if storage fails, the record stays in
-            # the index and the caller sees the real error.
-            await fn(str(key))
+            # the index and the caller sees the real error.  Use the
+            # backend's own storage_ref, not the facade UUID, because the
+            # two diverge when the storage backend uses its own scheme.
+            await fn(record.storage_ref)
         self._index.pop(key, None)
         logger.info(
             ARTIFACT_DELETED_VIA_MCP,
@@ -484,9 +495,12 @@ class OntologyFacadeService:
 
     async def list_entities(self) -> Sequence[object]:
         fn = getattr(self._ontology, "list_entities", None)
-        if callable(fn):
-            return tuple(await fn())
-        return ()
+        if not callable(fn):
+            raise _capability(
+                "ontology_list_entities",
+                "OntologyService does not expose list_entities",
+            )
+        return tuple(await fn())
 
     async def get_entity(
         self,
@@ -494,7 +508,10 @@ class OntologyFacadeService:
     ) -> object | None:
         fn = getattr(self._ontology, "get_entity", None)
         if not callable(fn):
-            return None
+            raise _capability(
+                "ontology_get_entity",
+                "OntologyService does not expose get_entity",
+            )
         return cast("object | None", await fn(entity_id))
 
     async def get_relationships(

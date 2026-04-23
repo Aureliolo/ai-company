@@ -45,7 +45,13 @@ class WebhookDefinitionStore(Protocol):
         ...
 
     async def replace(self, definition: WebhookDefinition) -> None:
-        """Replace an existing definition (by ID)."""
+        """Replace an existing definition (by ID).
+
+        Raises:
+            KeyError: If no definition with the given ID exists.
+            ValueError: If another definition with the same name
+                already exists under a different ID.
+        """
         ...
 
     async def delete(self, definition_id: NotBlankStr) -> bool:

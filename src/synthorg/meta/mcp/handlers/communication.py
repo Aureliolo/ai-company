@@ -46,6 +46,7 @@ from synthorg.meta.mcp.handlers.common import (
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.mcp import (
     MCP_DESTRUCTIVE_OP_EXECUTED,
+    MCP_HANDLER_CAPABILITY_GAP,
     MCP_HANDLER_GUARDRAIL_VIOLATED,
     MCP_HANDLER_INVOKE_FAILED,
 )
@@ -172,7 +173,7 @@ def _map_capability_not_supported(
 ) -> str:
     """Translate facade-side capability gap into a typed envelope."""
     logger.info(
-        MCP_HANDLER_INVOKE_FAILED,
+        MCP_HANDLER_CAPABILITY_GAP,
         tool_name=tool,
         capability=exc.capability,
     )
@@ -391,7 +392,7 @@ async def _meetings_delete(
     """Capability gap: meeting records are append-only by design."""
     tool = "synthorg_meetings_delete"
     try:
-        require_destructive_guardrails(arguments, actor)
+        _reason, _resolved_actor = require_destructive_guardrails(arguments, actor)
         try:
             await app_state.meeting_service.delete_meeting()
         except CapabilityNotSupportedError as exc:
@@ -632,11 +633,19 @@ async def _webhooks_update(
     """Update an existing webhook definition by ID."""
     try:
         definition = _parse_webhook_definition(arguments, require_id=True)
+    except Exception as exc:
+        _log_invoke_failed("synthorg_webhooks_update", exc)
+        return err(exc)
+    try:
         stored = await app_state.webhook_service.update_webhook(
             definition=definition,
             actor_id=_actor_name(actor),
         )
         return ok(stored.model_dump(mode="json"))
+    except KeyError as exc:
+        missing = LookupError(f"Webhook {definition.id} not found")
+        _log_invoke_failed("synthorg_webhooks_update", exc)
+        return err(missing, domain_code="not_found")
     except Exception as exc:
         _log_invoke_failed("synthorg_webhooks_update", exc)
         return err(exc)

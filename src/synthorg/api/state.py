@@ -51,16 +51,9 @@ from synthorg.communication.meeting.orchestrator import (
     MeetingOrchestrator,  # noqa: TC001
 )
 from synthorg.communication.meeting.scheduler import MeetingScheduler  # noqa: TC001
-from synthorg.communication.meetings.service import MeetingService  # noqa: TC001
-from synthorg.communication.messages.service import MessageService  # noqa: TC001
 from synthorg.config.schema import RootConfig  # noqa: TC001
 from synthorg.engine.approval_gate import ApprovalGate  # noqa: TC001
 from synthorg.engine.coordination.service import MultiAgentCoordinator  # noqa: TC001
-from synthorg.engine.quality.mcp_services import (
-    EvaluationVersionService,  # noqa: TC001
-    QualityFacadeService,  # noqa: TC001
-    ReviewFacadeService,  # noqa: TC001
-)
 from synthorg.engine.review_gate import ReviewGateService  # noqa: TC001
 from synthorg.engine.task_engine import TaskEngine  # noqa: TC001
 from synthorg.engine.workflow.ceremony_scheduler import CeremonyScheduler  # noqa: TC001
@@ -68,38 +61,9 @@ from synthorg.hr.performance.tracker import PerformanceTracker  # noqa: TC001
 from synthorg.hr.registry import AgentRegistryService  # noqa: TC001
 from synthorg.hr.scaling.service import ScalingService  # noqa: TC001
 from synthorg.hr.training.service import TrainingService  # noqa: TC001
-from synthorg.infrastructure.services import (
-    AuditReadService,  # noqa: TC001
-    BackupFacadeService,  # noqa: TC001
-    EventsReadService,  # noqa: TC001
-    IntegrationHealthFacadeService,  # noqa: TC001
-    ProjectFacadeService,  # noqa: TC001
-    ProviderReadService,  # noqa: TC001
-    RequestsFacadeService,  # noqa: TC001
-    SettingsReadService,  # noqa: TC001
-    SetupFacadeService,  # noqa: TC001
-    SimulationFacadeService,  # noqa: TC001
-    TemplatePackFacadeService,  # noqa: TC001
-    UserFacadeService,  # noqa: TC001
-)
-from synthorg.integrations.connections.mcp_service import (
-    ConnectionService,  # noqa: TC001
-)
-from synthorg.integrations.mcp_services import (
-    ArtifactFacadeService,  # noqa: TC001
-    ClientFacadeService,  # noqa: TC001
-    MCPCatalogFacadeService,  # noqa: TC001
-    OAuthFacadeService,  # noqa: TC001
-    OntologyFacadeService,  # noqa: TC001
-)
-from synthorg.integrations.tunnel.mcp_service import TunnelService  # noqa: TC001
-from synthorg.integrations.webhooks.service import WebhookService  # noqa: TC001
 from synthorg.memory.embedding.fine_tune_orchestrator import (
     FineTuneOrchestrator,  # noqa: TC001
 )
-from synthorg.meta.analytics.service import AnalyticsService  # noqa: TC001
-from synthorg.meta.reports.service import ReportsService  # noqa: TC001
-from synthorg.meta.signals.service import SignalsService  # noqa: TC001
 from synthorg.notifications.dispatcher import (
     NotificationDispatcher,  # noqa: TC001
 )
@@ -113,12 +77,6 @@ from synthorg.ontology.drift.service import DriftDetectionService  # noqa: TC001
 from synthorg.ontology.drift.store import DriftReportStore  # noqa: TC001
 from synthorg.ontology.service import OntologyService  # noqa: TC001
 from synthorg.ontology.sync import OntologyOrgMemorySync  # noqa: TC001
-from synthorg.organization.services import (
-    CompanyReadService,  # noqa: TC001
-    DepartmentService,  # noqa: TC001
-    RoleVersionService,  # noqa: TC001
-    TeamService,  # noqa: TC001
-)
 from synthorg.persistence.artifact_storage import (
     ArtifactStorageBackend,  # noqa: TC001
 )
@@ -418,40 +376,7 @@ class AppState(AppStateServicesMixin):
         )
         self._review_gate_service: ReviewGateService | None = None
         self._scaling_service: ScalingService | None = None
-        self._signals_service: SignalsService | None = None
-        self._analytics_service: AnalyticsService | None = None
-        self._reports_service: ReportsService | None = None
-        self._message_service: MessageService | None = None
-        self._meeting_service: MeetingService | None = None
-        self._connection_service: ConnectionService | None = None
-        self._webhook_service: WebhookService | None = None
-        self._tunnel_service: TunnelService | None = None
-        self._settings_read_service: SettingsReadService | None = None
-        self._provider_read_service: ProviderReadService | None = None
-        self._backup_facade_service: BackupFacadeService | None = None
-        self._user_facade_service: UserFacadeService | None = None
-        self._project_facade_service: ProjectFacadeService | None = None
-        self._requests_facade_service: RequestsFacadeService | None = None
-        self._setup_facade_service: SetupFacadeService | None = None
-        self._simulation_facade_service: SimulationFacadeService | None = None
-        self._template_pack_facade_service: TemplatePackFacadeService | None = None
-        self._audit_read_service: AuditReadService | None = None
-        self._events_read_service: EventsReadService | None = None
-        self._integration_health_facade_service: (
-            IntegrationHealthFacadeService | None
-        ) = None
-        self._company_read_service: CompanyReadService | None = None
-        self._department_service: DepartmentService | None = None
-        self._team_service: TeamService | None = None
-        self._role_version_service: RoleVersionService | None = None
-        self._mcp_catalog_facade_service: MCPCatalogFacadeService | None = None
-        self._oauth_facade_service: OAuthFacadeService | None = None
-        self._client_facade_service: ClientFacadeService | None = None
-        self._artifact_facade_service: ArtifactFacadeService | None = None
-        self._ontology_facade_service: OntologyFacadeService | None = None
-        self._quality_facade_service: QualityFacadeService | None = None
-        self._review_facade_service: ReviewFacadeService | None = None
-        self._evaluation_version_service: EvaluationVersionService | None = None
+        self._init_facade_service_slots()
         self._client_simulation_state: ClientSimulationState | None = None
         self._approval_timeout_scheduler: ApprovalTimeoutScheduler | None = None
         self._session_store: SessionStore | None = None
