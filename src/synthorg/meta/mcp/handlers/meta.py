@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,  # noqa: TC001 -- PEP 649 annotation
 )
-from synthorg.meta.mcp.handlers.common import err, ok, service_fallback
+from synthorg.meta.mcp.handlers.common import capability_gap, err, ok
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.mcp import (
     MCP_HANDLER_INVOKE_FAILED,
@@ -56,7 +56,7 @@ async def _meta_get_config(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return service_fallback("synthorg_meta_get_config", _WHY_CONFIG)
+    return capability_gap("synthorg_meta_get_config", _WHY_CONFIG)
 
 
 async def _meta_list_rules(
@@ -65,7 +65,7 @@ async def _meta_list_rules(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return service_fallback("synthorg_meta_list_rules", _WHY_RULES)
+    return capability_gap("synthorg_meta_list_rules", _WHY_RULES)
 
 
 async def _meta_list_mcp_tools(
@@ -116,7 +116,7 @@ async def _meta_trigger_cycle(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return service_fallback("synthorg_meta_trigger_cycle", _WHY_TRIGGER)
+    return capability_gap("synthorg_meta_trigger_cycle", _WHY_TRIGGER)
 
 
 META_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(

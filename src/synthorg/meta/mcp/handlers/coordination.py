@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING, Any
 from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,  # noqa: TC001 -- PEP 649 annotation
 )
-from synthorg.meta.mcp.handlers.common import service_fallback
+from synthorg.meta.mcp.handlers.common import capability_gap
 from synthorg.observability import get_logger
 
 if TYPE_CHECKING:
@@ -40,7 +40,7 @@ def _mk(tool: str, why: str) -> ToolHandler:
         arguments: dict[str, Any],  # noqa: ARG001
         actor: AgentIdentity | None = None,  # noqa: ARG001
     ) -> str:
-        return service_fallback(tool, why)
+        return capability_gap(tool, why)
 
     return handler
 

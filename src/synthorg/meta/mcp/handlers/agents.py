@@ -30,6 +30,7 @@ from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,  # noqa: TC001 -- PEP 649 annotation
 )
 from synthorg.meta.mcp.handlers.common import (
+    capability_gap,
     coerce_pagination,
     dump_many,
     err,
@@ -37,7 +38,6 @@ from synthorg.meta.mcp.handlers.common import (
     paginate_sequence,
     require_arg,
     require_destructive_guardrails,
-    service_fallback,
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.mcp import (
@@ -207,7 +207,7 @@ async def _agents_create(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return service_fallback("synthorg_agents_create", _WHY_CREATE)
+    return capability_gap("synthorg_agents_create", _WHY_CREATE)
 
 
 async def _agents_update(
@@ -216,7 +216,7 @@ async def _agents_update(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return service_fallback("synthorg_agents_update", _WHY_UPDATE)
+    return capability_gap("synthorg_agents_update", _WHY_UPDATE)
 
 
 async def _agents_delete(
@@ -301,7 +301,7 @@ async def _agents_get_activity(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return service_fallback("synthorg_agents_get_activity", _WHY_ACTIVITY)
+    return capability_gap("synthorg_agents_get_activity", _WHY_ACTIVITY)
 
 
 async def _agents_get_history(
@@ -310,7 +310,7 @@ async def _agents_get_history(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return service_fallback("synthorg_agents_get_history", _WHY_HISTORY)
+    return capability_gap("synthorg_agents_get_history", _WHY_HISTORY)
 
 
 async def _agents_get_health(
@@ -319,7 +319,7 @@ async def _agents_get_health(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return service_fallback("synthorg_agents_get_health", _WHY_HEALTH)
+    return capability_gap("synthorg_agents_get_health", _WHY_HEALTH)
 
 
 # --- Personalities --------------------------------------------------------
@@ -331,7 +331,7 @@ async def _personalities_list(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return service_fallback("synthorg_personalities_list", _WHY_PERSONALITIES)
+    return capability_gap("synthorg_personalities_list", _WHY_PERSONALITIES)
 
 
 async def _personalities_get(
@@ -340,7 +340,7 @@ async def _personalities_get(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return service_fallback("synthorg_personalities_get", _WHY_PERSONALITIES)
+    return capability_gap("synthorg_personalities_get", _WHY_PERSONALITIES)
 
 
 # --- Training -------------------------------------------------------------
@@ -352,7 +352,7 @@ async def _training_list_sessions(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return service_fallback("synthorg_training_list_sessions", _WHY_TRAINING_LIST)
+    return capability_gap("synthorg_training_list_sessions", _WHY_TRAINING_LIST)
 
 
 async def _training_get_session(
@@ -361,7 +361,7 @@ async def _training_get_session(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return service_fallback("synthorg_training_get_session", _WHY_TRAINING_LIST)
+    return capability_gap("synthorg_training_get_session", _WHY_TRAINING_LIST)
 
 
 async def _training_start_session(
@@ -370,7 +370,7 @@ async def _training_start_session(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return service_fallback("synthorg_training_start_session", _WHY_TRAINING_START)
+    return capability_gap("synthorg_training_start_session", _WHY_TRAINING_START)
 
 
 # --- Autonomy -------------------------------------------------------------
@@ -415,7 +415,7 @@ async def _autonomy_update(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return service_fallback("synthorg_autonomy_update", _WHY_AUTONOMY_UPDATE)
+    return capability_gap("synthorg_autonomy_update", _WHY_AUTONOMY_UPDATE)
 
 
 # --- Collaboration --------------------------------------------------------
@@ -458,7 +458,7 @@ async def _collaboration_get_calibration(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return service_fallback(
+    return capability_gap(
         "synthorg_collaboration_get_calibration",
         _WHY_COLLAB_CALIBRATION,
     )

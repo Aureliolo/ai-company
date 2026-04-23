@@ -424,6 +424,33 @@ def service_fallback(tool_name: str, reason: str) -> str:
     return _not_supported_envelope(reason)
 
 
+def capability_gap(tool_name: str, reason: str) -> str:
+    """Build a ``not_supported`` envelope for a wired handler with a primitive gap.
+
+    Identical wire shape to :func:`service_fallback`, but emits
+    :data:`MCP_HANDLER_INVOKE_FAILED` + a ``capability_gap`` tag so
+    ops telemetry can distinguish "handler wired, primitive does not
+    yet expose the required method" from "handler unwired"
+    (:func:`make_placeholder_handler`) and from "live handler, but
+    the service facade is still a placeholder" (:func:`service_fallback`).
+
+    Args:
+        tool_name: Full ``synthorg_<domain>_<action>`` name.
+        reason: Short operator-readable reason.
+
+    Returns:
+        JSON-encoded error envelope with ``status="error"``,
+        ``domain_code="not_supported"``.
+    """
+    logger.info(
+        MCP_HANDLER_SERVICE_FALLBACK,
+        tool_name=tool_name,
+        reason=reason,
+        capability_gap=True,
+    )
+    return _not_supported_envelope(reason)
+
+
 def make_placeholder_handler(tool_name: str) -> ToolHandler:
     """Build a placeholder that returns the standard ``not_supported`` envelope.
 

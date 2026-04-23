@@ -34,13 +34,13 @@ from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,  # noqa: TC001 -- PEP 649 annotation
 )
 from synthorg.meta.mcp.handlers.common import (
+    capability_gap,
     coerce_pagination,
     dump_many,
     err,
     ok,
     paginate_sequence,
     require_destructive_guardrails,
-    service_fallback,
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.mcp import (
@@ -208,7 +208,7 @@ async def _workflows_create(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return service_fallback(
+    return capability_gap(
         "synthorg_workflows_create",
         "workflow definition creation requires the full "
         "WorkflowDefinition schema; use the REST API",
@@ -221,7 +221,7 @@ async def _workflows_update(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return service_fallback(
+    return capability_gap(
         "synthorg_workflows_update",
         "workflow definition updates need the full WorkflowDefinition "
         "with optimistic-concurrency revision; use the REST API",
@@ -277,7 +277,7 @@ async def _workflows_validate(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return service_fallback(
+    return capability_gap(
         "synthorg_workflows_validate",
         "workflow validation runs inside the validation middleware; "
         "no standalone validator is exposed on app_state",
@@ -288,7 +288,7 @@ async def _workflows_validate(
 
 
 async def _subworkflow_placeholder(tool_name: str) -> str:
-    return service_fallback(tool_name, _WHY_SUBWORKFLOWS)
+    return capability_gap(tool_name, _WHY_SUBWORKFLOWS)
 
 
 async def _subworkflows_list(
@@ -330,14 +330,14 @@ async def _subworkflows_delete(
     except GuardrailViolationError as exc:
         _log_guardrail(tool, exc)
         return err(exc)
-    return service_fallback(tool, _WHY_SUBWORKFLOWS)
+    return capability_gap(tool, _WHY_SUBWORKFLOWS)
 
 
 # --- workflow executions --------------------------------------------------
 
 
 async def _executions_placeholder(tool_name: str) -> str:
-    return service_fallback(tool_name, _WHY_EXECUTIONS)
+    return capability_gap(tool_name, _WHY_EXECUTIONS)
 
 
 async def _workflow_executions_list(
@@ -379,7 +379,7 @@ async def _workflow_executions_cancel(
     except GuardrailViolationError as exc:
         _log_guardrail(tool, exc)
         return err(exc)
-    return service_fallback(tool, _WHY_EXECUTIONS)
+    return capability_gap(tool, _WHY_EXECUTIONS)
 
 
 # --- workflow version history --------------------------------------------
@@ -391,7 +391,7 @@ async def _workflow_versions_list(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return service_fallback("synthorg_workflow_versions_list", _WHY_VERSIONS_LIST)
+    return capability_gap("synthorg_workflow_versions_list", _WHY_VERSIONS_LIST)
 
 
 async def _workflow_versions_get(
@@ -400,7 +400,7 @@ async def _workflow_versions_get(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return service_fallback("synthorg_workflow_versions_get", _WHY_VERSIONS_LIST)
+    return capability_gap("synthorg_workflow_versions_get", _WHY_VERSIONS_LIST)
 
 
 WORKFLOW_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(
