@@ -64,9 +64,12 @@ class CompanyReadService:
 
     async def list_departments(self) -> Sequence[object]:
         fn = getattr(self._org, "list_departments", None)
-        if callable(fn):
-            return tuple(await fn())
-        return ()
+        if not callable(fn):
+            raise _capability(
+                "company_list_departments",
+                "OrgMutationService does not expose list_departments",
+            )
+        return tuple(await fn())
 
     async def reorder_departments(
         self,
@@ -89,14 +92,20 @@ class CompanyReadService:
 
     async def list_versions(self) -> Sequence[object]:
         fn = getattr(self._org, "list_company_versions", None)
-        if callable(fn):
-            return tuple(await fn())
-        return ()
+        if not callable(fn):
+            raise _capability(
+                "company_list_versions",
+                "OrgMutationService does not expose list_company_versions",
+            )
+        return tuple(await fn())
 
     async def get_version(self, version_id: NotBlankStr) -> object | None:
         fn = getattr(self._org, "get_company_version", None)
         if not callable(fn):
-            return None
+            raise _capability(
+                "company_get_version",
+                "OrgMutationService does not expose get_company_version",
+            )
         return cast("object | None", await fn(version_id))
 
 
@@ -373,10 +382,16 @@ class RoleVersionService:
         role_name: NotBlankStr | None = None,
     ) -> Sequence[object]:
         if self._org is None:
-            return ()
+            raise _capability(
+                "role_versions_list",
+                "OrgMutationService not wired on app_state",
+            )
         fn = getattr(self._org, "list_role_versions", None)
         if not callable(fn):
-            return ()
+            raise _capability(
+                "role_versions_list",
+                "OrgMutationService does not expose list_role_versions",
+            )
         return tuple(await fn(role_name=role_name))
 
     async def get_version(
@@ -384,10 +399,16 @@ class RoleVersionService:
         version_id: NotBlankStr,
     ) -> object | None:
         if self._org is None:
-            return None
+            raise _capability(
+                "role_versions_get",
+                "OrgMutationService not wired on app_state",
+            )
         fn = getattr(self._org, "get_role_version", None)
         if not callable(fn):
-            return None
+            raise _capability(
+                "role_versions_get",
+                "OrgMutationService does not expose get_role_version",
+            )
         return cast("object | None", await fn(version_id))
 
 

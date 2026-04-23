@@ -52,6 +52,7 @@ def _log_failed(tool: str, exc: Exception) -> None:
     logger.warning(
         MCP_HANDLER_INVOKE_FAILED,
         tool_name=tool,
+        error_type=type(exc).__name__,
         error=safe_error_description(exc),
     )
 

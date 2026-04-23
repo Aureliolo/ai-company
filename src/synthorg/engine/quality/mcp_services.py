@@ -74,7 +74,10 @@ class QualityFacadeService:
             if hasattr(result, "__await__"):
                 result = await result
             return tuple(result)
-        return ()
+        raise _capability(
+            "quality_scores",
+            "PerformanceTracker does not expose list_quality_scores",
+        )
 
 
 # ── ReviewFacadeService ───────────────────────────────────────────

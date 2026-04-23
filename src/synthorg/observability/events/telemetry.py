@@ -31,3 +31,4 @@ TELEMETRY_EVENT_DEPLOYMENT_SHUTDOWN: Final[str] = "deployment.shutdown"
 # Event counter + subscription (META-MCP-2: feeds SignalsService telemetry aggregator).
 TELEMETRY_SUBSCRIBER_FAILED: Final[str] = "telemetry.subscriber.failed"
 TELEMETRY_COUNTER_EVICTED: Final[str] = "telemetry.counter.evicted"
+TELEMETRY_COUNTER_RECORD_FAILED: Final[str] = "telemetry.counter.record_failed"

@@ -443,24 +443,24 @@ class ArtifactFacadeService:
             key = UUID(artifact_id)
         except ValueError:
             return False
-        removed = self._index.pop(key, None) is not None
+        record = self._index.get(key)
+        if record is None:
+            return False
         fn = getattr(self._storage, "delete", None)
-        if callable(fn) and removed:
-            try:
-                await fn(str(key))
-            except Exception:
-                logger.exception(
-                    "integrations.artifact_storage_delete_failed",
-                    artifact_id=artifact_id,
-                )
+        if callable(fn):
+            # Delete from storage FIRST so the index and storage cannot
+            # diverge silently -- if storage fails, the record stays in
+            # the index and the caller sees the real error.
+            await fn(str(key))
+        self._index.pop(key, None)
         logger.info(
             "integrations.artifact_deleted_via_mcp",
             artifact_id=artifact_id,
             actor_id=actor_id,
             reason=reason,
-            removed=removed,
+            removed=True,
         )
-        return removed
+        return True
 
 
 # ── OntologyFacadeService ──────────────────────────────────────────

@@ -18,8 +18,11 @@ from collections import deque
 from typing import TYPE_CHECKING
 
 from synthorg.meta.signal_models import OrgTelemetrySummary
-from synthorg.observability import get_logger
-from synthorg.observability.events.telemetry import TELEMETRY_COUNTER_EVICTED
+from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.telemetry import (
+    TELEMETRY_COUNTER_EVICTED,
+    TELEMETRY_COUNTER_RECORD_FAILED,
+)
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -89,10 +92,12 @@ class InMemoryTelemetryEventCounter:
                 )
         except MemoryError, RecursionError:
             raise
-        except Exception:
-            logger.exception(
-                "telemetry.counter.record_failed",
+        except Exception as exc:
+            logger.warning(
+                TELEMETRY_COUNTER_RECORD_FAILED,
                 event_type=getattr(event, "event_type", "<unknown>"),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
 
     async def summarize(

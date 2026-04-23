@@ -24,7 +24,7 @@ from synthorg.meta.signal_models import (
     OrgErrorSummary,
     TrendDirection,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.classification import (
     TAXONOMY_STORE_APPEND_FAILED,
     TAXONOMY_STORE_APPENDED,
@@ -58,6 +58,16 @@ _SEVERITY_SCORE: dict[ErrorSeverity, float] = {
     ErrorSeverity.MEDIUM: 2.0,
     ErrorSeverity.HIGH: 3.0,
 }
+# Enforce exhaustive coverage at module load so adding a new severity
+# without updating the score dict fails fast instead of raising KeyError
+# deep inside an aggregation loop.
+if set(_SEVERITY_SCORE.keys()) != set(ErrorSeverity):
+    _SEVERITY_MISSING = set(ErrorSeverity) - set(_SEVERITY_SCORE.keys())
+    _SEVERITY_MSG = (
+        f"_SEVERITY_SCORE must cover every ErrorSeverity enum value; "
+        f"missing: {sorted(v.name for v in _SEVERITY_MISSING)}"
+    )
+    raise RuntimeError(_SEVERITY_MSG)
 """Scoring for severity-weighted averages."""
 
 
@@ -100,11 +110,13 @@ class InMemoryErrorTaxonomyStore:
                 )
         except MemoryError, RecursionError:
             raise
-        except Exception:
-            logger.exception(
+        except Exception as exc:
+            logger.warning(
                 TAXONOMY_STORE_APPEND_FAILED,
                 agent_id=result.agent_id,
                 task_id=result.task_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
 
     async def query_findings(
