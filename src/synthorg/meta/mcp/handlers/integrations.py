@@ -3,12 +3,12 @@
 21 tools spanning the MCP server catalog, OAuth providers, external
 clients, artifacts, and the ontology.  Service coverage is uneven and
 most paths don't have a clean public-facing method on ``app_state``
-for the MCP shim to call; all handlers return a ``not_supported``
+for the MCP shim to call; all handlers return a ``service_fallback``
 envelope with a stable reason string, keeping the full tool surface
 visible to ops.
 
 Destructive ops enforce the standard guardrail triple even when they
-currently route to ``not_supported``, so auditing behaviour stays
+currently route to ``service_fallback``, so auditing behaviour stays
 uniform once services come online.
 """
 
@@ -23,8 +23,8 @@ from synthorg.meta.mcp.handler_protocol import (
 )
 from synthorg.meta.mcp.handlers.common import (
     err,
-    not_supported,
     require_destructive_guardrails,
+    service_fallback,
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import MCP_HANDLER_GUARDRAIL_VIOLATED
@@ -77,7 +77,7 @@ async def _enforce_destructive(
     except GuardrailViolationError as exc:
         _log_guardrail(tool, exc)
         return err(exc)
-    return not_supported(tool, why)
+    return service_fallback(tool, why)
 
 
 def _mk(tool: str, why: str) -> ToolHandler:
@@ -87,7 +87,7 @@ def _mk(tool: str, why: str) -> ToolHandler:
         arguments: dict[str, Any],  # noqa: ARG001
         actor: AgentIdentity | None = None,  # noqa: ARG001
     ) -> str:
-        return not_supported(tool, why)
+        return service_fallback(tool, why)
 
     return handler
 

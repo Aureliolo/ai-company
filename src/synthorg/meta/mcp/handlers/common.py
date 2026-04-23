@@ -26,7 +26,10 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.meta.mcp.errors import guardrail_violation, invalid_argument
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.mcp import MCP_HANDLER_NOT_IMPLEMENTED
+from synthorg.observability.events.mcp import (
+    MCP_HANDLER_NOT_IMPLEMENTED,
+    MCP_HANDLER_SERVICE_FALLBACK,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
@@ -324,14 +327,25 @@ def paginate_sequence[T](
     return page, PaginationMeta(total=resolved_total, offset=offset, limit=limit)
 
 
-def not_supported(tool_name: str, reason: str) -> str:
-    """Build a ``not_supported`` error envelope and log it at WARNING.
+def _not_supported_envelope(reason: str) -> str:
+    """Build the shared ``not_supported`` JSON envelope string."""
+    body: dict[str, Any] = {
+        "status": "error",
+        "error_type": "NotSupportedInMCP",
+        "message": reason,
+        "domain_code": _DC_NOT_SUPPORTED,
+    }
+    return json.dumps(body)
 
-    Used by handlers whose underlying service layer does not yet expose
-    a matching method.  The handler is real (not a placeholder) but its
-    semantic behaviour is to cleanly reject the call with an explanation.
-    Ops alerting treats these the same as placeholders -- one WARNING
-    event per invocation -- so unfulfilled tools stay visible.
+
+def not_supported(tool_name: str, reason: str) -> str:
+    """Build a ``not_supported`` envelope for unwired placeholder tools.
+
+    Used by :func:`make_placeholder_handler` for tools that are
+    registered but have no concrete handler implementation yet.  Emits
+    :data:`MCP_HANDLER_NOT_IMPLEMENTED` so ops alerting can distinguish
+    pure placeholders from concrete handlers that happen to lack a
+    service facade (the latter use :func:`service_fallback`).
 
     Args:
         tool_name: Full ``synthorg_<domain>_<action>`` name.
@@ -347,13 +361,36 @@ def not_supported(tool_name: str, reason: str) -> str:
         tool_name=tool_name,
         reason=reason,
     )
-    body: dict[str, Any] = {
-        "status": "error",
-        "error_type": "NotSupportedInMCP",
-        "message": reason,
-        "domain_code": _DC_NOT_SUPPORTED,
-    }
-    return json.dumps(body)
+    return _not_supported_envelope(reason)
+
+
+def service_fallback(tool_name: str, reason: str) -> str:
+    """Build a ``not_supported`` envelope for concrete service-fallback handlers.
+
+    Used by real handler implementations whose underlying service layer
+    does not yet expose a matching method.  Emits
+    :data:`MCP_HANDLER_SERVICE_FALLBACK` so ops telemetry can
+    distinguish these "live handler, missing facade" events from pure
+    placeholder handlers (which emit
+    :data:`MCP_HANDLER_NOT_IMPLEMENTED` via :func:`not_supported`).
+    The response envelope is byte-for-byte identical to
+    :func:`not_supported`; only the emitted event differs.
+
+    Args:
+        tool_name: Full ``synthorg_<domain>_<action>`` name.
+        reason: Short operator-readable reason (which method / backlog
+            link).
+
+    Returns:
+        JSON-encoded error envelope with
+        ``status="error"``, ``domain_code="not_supported"``.
+    """
+    logger.warning(
+        MCP_HANDLER_SERVICE_FALLBACK,
+        tool_name=tool_name,
+        reason=reason,
+    )
+    return _not_supported_envelope(reason)
 
 
 def make_placeholder_handler(tool_name: str) -> Any:

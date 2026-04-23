@@ -3,12 +3,12 @@
 19 tools across company, departments, teams, and role-version history.
 ``app_state.org_mutation_service`` covers most mutations but expects
 full entity payloads; reads go through the api controllers without a
-service facade.  Every handler returns ``not_supported`` until an
+service facade.  Every handler returns ``service_fallback`` until an
 OrgReadService + OrgWriteService pair is added to ``app_state``.
 
 Destructive deletes (``departments.delete``, ``teams.delete``) enforce
 the guardrail triple at the handler boundary even when routed to
-``not_supported`` so the audit surface is uniform once services come
+``service_fallback`` so the audit surface is uniform once services come
 online.
 """
 
@@ -23,8 +23,8 @@ from synthorg.meta.mcp.handler_protocol import (
 )
 from synthorg.meta.mcp.handlers.common import (
     err,
-    not_supported,
     require_destructive_guardrails,
+    service_fallback,
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import MCP_HANDLER_GUARDRAIL_VIOLATED
@@ -72,7 +72,7 @@ async def _enforce_destructive(
     except GuardrailViolationError as exc:
         _log_guardrail(tool, exc)
         return err(exc)
-    return not_supported(tool, why)
+    return service_fallback(tool, why)
 
 
 def _mk(tool: str, why: str) -> ToolHandler:
@@ -82,7 +82,7 @@ def _mk(tool: str, why: str) -> ToolHandler:
         arguments: dict[str, Any],  # noqa: ARG001
         actor: AgentIdentity | None = None,  # noqa: ARG001
     ) -> str:
-        return not_supported(tool, why)
+        return service_fallback(tool, why)
 
     return handler
 

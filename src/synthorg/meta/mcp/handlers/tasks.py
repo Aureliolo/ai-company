@@ -5,7 +5,7 @@ Shims the 8 task tools onto ``app_state.task_engine``
 ``cancel`` are destructive and enforce the standard
 ``confirm=True`` + non-blank ``reason`` + non-``None`` ``actor`` triple.
 ``activities_list`` has no dedicated service method; it returns a
-``not_supported`` envelope.
+``service_fallback`` envelope.
 """
 
 import copy
@@ -30,11 +30,11 @@ from synthorg.meta.mcp.handlers.common import (
     coerce_pagination,
     dump_many,
     err,
-    not_supported,
     ok,
     paginate_sequence,
     require_arg,
     require_destructive_guardrails,
+    service_fallback,
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.mcp import (
@@ -204,7 +204,7 @@ async def _tasks_create(
     # CreateTaskData requires type/priority/complexity/budget_limit/created_by
     # that the current MCP schema does not expose; promoting task creation
     # to a first-class MCP tool is a separate design task.
-    return not_supported(
+    return service_fallback(
         "synthorg_tasks_create",
         "task creation requires the full CreateTaskData schema "
         "(type, priority, complexity, budget_limit); use the "
@@ -275,6 +275,9 @@ async def _tasks_delete(
     except TaskNotFoundError as exc:
         _log_failed(tool, exc)
         return err(exc, domain_code="not_found")
+    except TaskMutationError as exc:
+        _log_failed(tool, exc)
+        return err(exc)
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -381,7 +384,7 @@ async def _activities_list(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return not_supported(
+    return service_fallback(
         "synthorg_activities_list",
         "activity feed is assembled in hr.activity module; no streaming "
         "endpoint is exposed on app_state",

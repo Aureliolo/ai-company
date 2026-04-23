@@ -16,7 +16,7 @@ store, evolution outcome store, telemetry collector) and a proposal
 store for the write path.
 
 Until that facade ships as its own dedicated work item, every signal
-handler returns a structured ``not_supported`` envelope via the shared
+handler returns a structured ``service_fallback`` envelope via the shared
 :func:`_mk` factory (mirroring the ``organization`` and ``integrations``
 modules); centralising on the factory keeps actor typing consistent
 across the 9 handlers and removes boilerplate.
@@ -30,7 +30,7 @@ from typing import TYPE_CHECKING, Any
 from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,  # noqa: TC001 -- PEP 649 annotation
 )
-from synthorg.meta.mcp.handlers.common import not_supported
+from synthorg.meta.mcp.handlers.common import service_fallback
 from synthorg.observability import get_logger
 
 if TYPE_CHECKING:
@@ -50,7 +50,7 @@ _WHY_PROPOSALS = (
 
 
 def _mk(tool: str, why: str) -> ToolHandler:
-    """Build a ``not_supported`` handler with ToolHandler-conformant typing."""
+    """Build a ``service_fallback`` handler with ToolHandler-conformant typing."""
 
     async def handler(
         *,
@@ -58,7 +58,7 @@ def _mk(tool: str, why: str) -> ToolHandler:
         arguments: dict[str, Any],  # noqa: ARG001
         actor: AgentIdentity | None = None,  # noqa: ARG001
     ) -> str:
-        return not_supported(tool, why)
+        return service_fallback(tool, why)
 
     return handler
 

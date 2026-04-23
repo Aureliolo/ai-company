@@ -6,7 +6,7 @@ history.  The quality subsystem in the engine is protocol-based
 store is reached via ``performance_tracker.quality_override_store``,
 which is not designed as a read surface.  Reviews and evaluation
 versions have dedicated controllers but no service facade on
-``app_state``; every handler returns a ``not_supported`` envelope
+``app_state``; every handler returns a ``service_fallback`` envelope
 built via the shared :func:`_mk` factory (same pattern as ``signals``
 and ``organization``) so actor typing stays consistent.
 """
@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, Any
 from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,  # noqa: TC001 -- PEP 649 annotation
 )
-from synthorg.meta.mcp.handlers.common import not_supported
+from synthorg.meta.mcp.handlers.common import service_fallback
 from synthorg.observability import get_logger
 
 if TYPE_CHECKING:
@@ -42,7 +42,7 @@ _WHY_EVAL_VERSIONS = (
 
 
 def _mk(tool: str, why: str) -> ToolHandler:
-    """Build a ``not_supported`` handler with ToolHandler-conformant typing."""
+    """Build a ``service_fallback`` handler with ToolHandler-conformant typing."""
 
     async def handler(
         *,
@@ -50,7 +50,7 @@ def _mk(tool: str, why: str) -> ToolHandler:
         arguments: dict[str, Any],  # noqa: ARG001
         actor: AgentIdentity | None = None,  # noqa: ARG001
     ) -> str:
-        return not_supported(tool, why)
+        return service_fallback(tool, why)
 
     return handler
 

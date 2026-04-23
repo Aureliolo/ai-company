@@ -3,7 +3,7 @@
 5 tools.  Two are live -- ``list_mcp_tools`` reflects the registry and
 ``get_mcp_server_config`` returns the server metadata.  The others
 need a ``SelfImprovementService`` facade on ``app_state`` that is not
-yet exposed, so they return ``not_supported``.
+yet exposed, so they return ``service_fallback``.
 """
 
 import copy
@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,  # noqa: TC001 -- PEP 649 annotation
 )
-from synthorg.meta.mcp.handlers.common import err, not_supported, ok
+from synthorg.meta.mcp.handlers.common import err, ok, service_fallback
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.mcp import (
     MCP_HANDLER_INVOKE_FAILED,
@@ -56,7 +56,7 @@ async def _meta_get_config(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return not_supported("synthorg_meta_get_config", _WHY_CONFIG)
+    return service_fallback("synthorg_meta_get_config", _WHY_CONFIG)
 
 
 async def _meta_list_rules(
@@ -65,7 +65,7 @@ async def _meta_list_rules(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return not_supported("synthorg_meta_list_rules", _WHY_RULES)
+    return service_fallback("synthorg_meta_list_rules", _WHY_RULES)
 
 
 async def _meta_list_mcp_tools(
@@ -75,17 +75,20 @@ async def _meta_list_mcp_tools(
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     tool = "synthorg_meta_list_mcp_tools"
-    # Deferred import breaks the handlers->server->handlers import cycle.
-    from synthorg.meta.mcp.server import get_registry  # noqa: PLC0415
-
     try:
+        # Deferred import breaks the handlers->server->handlers import
+        # cycle; kept inside the try so ImportError / circular-import
+        # surfaces through the same error envelope as runtime failures.
+        from synthorg.meta.mcp.server import get_registry  # noqa: PLC0415
+
         registry = get_registry()
         tools = list(registry.get_tool_definitions())
+        response = ok(data=tools)
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
-    return ok(data=tools)
+    return response
 
 
 async def _meta_get_mcp_server_config(
@@ -95,15 +98,16 @@ async def _meta_get_mcp_server_config(
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
     tool = "synthorg_meta_get_mcp_server_config"
-    from synthorg.meta.mcp.server import get_server_config  # noqa: PLC0415
-
     try:
+        from synthorg.meta.mcp.server import get_server_config  # noqa: PLC0415
+
         config = get_server_config()
+        response = ok(data=config)
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
-    return ok(data=config)
+    return response
 
 
 async def _meta_trigger_cycle(
@@ -112,7 +116,7 @@ async def _meta_trigger_cycle(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return not_supported("synthorg_meta_trigger_cycle", _WHY_TRIGGER)
+    return service_fallback("synthorg_meta_trigger_cycle", _WHY_TRIGGER)
 
 
 META_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(

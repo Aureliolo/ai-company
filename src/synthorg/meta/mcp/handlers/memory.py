@@ -5,12 +5,12 @@
 the persistence backend.  The fine-tune pipeline orchestration
 methods (start/resume/cancel/run_preflight/deploy) require additional
 state not exposed through a clean MCP arg set, so they return
-``not_supported`` until a dedicated design pass lands.
+``service_fallback`` until a dedicated design pass lands.
 
 Destructive ops: ``cancel_fine_tune``, ``rollback_checkpoint``, and
 ``delete_checkpoint`` all enforce the guardrail triple at the handler
 boundary.  ``delete_checkpoint`` is live; the others are currently
-``not_supported`` behind the guardrail.
+``service_fallback`` behind the guardrail.
 """
 
 import copy
@@ -35,9 +35,9 @@ from synthorg.meta.mcp.handlers.common import (
     coerce_pagination,
     dump_many,
     err,
-    not_supported,
     ok,
     require_destructive_guardrails,
+    service_fallback,
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.mcp import (
@@ -129,7 +129,7 @@ def _service(app_state: Any) -> MemoryService:
     hit an unsupported backend (e.g. Postgres, which does not yet
     expose ``fine_tune_checkpoints``) raise
     :class:`_BackendLacksFineTuneError` so the calling handler can return a
-    clean ``not_supported`` envelope instead of bubbling up a
+    clean ``service_fallback`` envelope instead of bubbling up a
     ``NotImplementedError``.
 
     Raises:
@@ -196,7 +196,7 @@ async def _memory_start_fine_tune(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return not_supported("synthorg_memory_start_fine_tune", _WHY_FINE_TUNE_START)
+    return service_fallback("synthorg_memory_start_fine_tune", _WHY_FINE_TUNE_START)
 
 
 async def _memory_resume_fine_tune(
@@ -205,7 +205,7 @@ async def _memory_resume_fine_tune(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return not_supported("synthorg_memory_resume_fine_tune", _WHY_FINE_TUNE_START)
+    return service_fallback("synthorg_memory_resume_fine_tune", _WHY_FINE_TUNE_START)
 
 
 async def _memory_get_fine_tune_status(
@@ -214,7 +214,7 @@ async def _memory_get_fine_tune_status(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return not_supported(
+    return service_fallback(
         "synthorg_memory_get_fine_tune_status",
         _WHY_FINE_TUNE_STATUS,
     )
@@ -232,7 +232,7 @@ async def _memory_cancel_fine_tune(
     except GuardrailViolationError as exc:
         _log_guardrail(tool, exc)
         return err(exc)
-    return not_supported(tool, _WHY_FINE_TUNE_CANCEL)
+    return service_fallback(tool, _WHY_FINE_TUNE_CANCEL)
 
 
 async def _memory_run_preflight(
@@ -241,7 +241,7 @@ async def _memory_run_preflight(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return not_supported(
+    return service_fallback(
         "synthorg_memory_run_preflight",
         _WHY_FINE_TUNE_PREFLIGHT,
     )
@@ -262,7 +262,7 @@ async def _memory_list_checkpoints(
     try:
         service = _service(app_state)
     except _BackendLacksFineTuneError:
-        return not_supported(tool, _WHY_BACKEND_NO_FINE_TUNE)
+        return service_fallback(tool, _WHY_BACKEND_NO_FINE_TUNE)
     try:
         checkpoints, total = await service.list_checkpoints(
             limit=limit,
@@ -291,7 +291,7 @@ async def _memory_deploy_checkpoint(
     try:
         service = _service(app_state)
     except _BackendLacksFineTuneError:
-        return not_supported(tool, _WHY_BACKEND_NO_FINE_TUNE)
+        return service_fallback(tool, _WHY_BACKEND_NO_FINE_TUNE)
     try:
         cp = await service.deploy_checkpoint(checkpoint_id)
     except CheckpointNotFoundError as exc:
@@ -322,7 +322,7 @@ async def _memory_rollback_checkpoint(
     except GuardrailViolationError as exc:
         _log_guardrail(tool, exc)
         return err(exc)
-    return not_supported(
+    return service_fallback(
         tool,
         "rollback requires prior-active capture; only the fine-tune "
         "controller has access to that context today",
@@ -350,7 +350,7 @@ async def _memory_delete_checkpoint(  # noqa: PLR0911
     try:
         service = _service(app_state)
     except _BackendLacksFineTuneError:
-        return not_supported(tool, _WHY_BACKEND_NO_FINE_TUNE)
+        return service_fallback(tool, _WHY_BACKEND_NO_FINE_TUNE)
     try:
         await service.delete_checkpoint(checkpoint_id)
     except CheckpointNotFoundError as exc:
@@ -382,7 +382,7 @@ async def _memory_list_runs(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return not_supported("synthorg_memory_list_runs", _WHY_RUNS)
+    return service_fallback("synthorg_memory_list_runs", _WHY_RUNS)
 
 
 async def _memory_get_active_embedder(
@@ -391,7 +391,7 @@ async def _memory_get_active_embedder(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return not_supported("synthorg_memory_get_active_embedder", _WHY_EMBEDDER)
+    return service_fallback("synthorg_memory_get_active_embedder", _WHY_EMBEDDER)
 
 
 MEMORY_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(

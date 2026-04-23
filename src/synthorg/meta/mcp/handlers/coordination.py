@@ -1,7 +1,7 @@
 """Coordination domain MCP handlers.
 
 9 tools across coordination, scaling, and ceremony-policy.  All nine
-handlers currently return a structured ``not_supported`` envelope via
+handlers currently return a structured ``service_fallback`` envelope via
 the shared :func:`_mk` factory -- the backing services
 (``scaling_service``, ``coordination_metrics_store``,
 ``ceremony_scheduler``) exist on ``app_state`` but none of them expose
@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING, Any
 from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,  # noqa: TC001 -- PEP 649 annotation
 )
-from synthorg.meta.mcp.handlers.common import not_supported
+from synthorg.meta.mcp.handlers.common import service_fallback
 from synthorg.observability import get_logger
 
 if TYPE_CHECKING:
@@ -32,7 +32,7 @@ logger = get_logger(__name__)
 
 
 def _mk(tool: str, why: str) -> ToolHandler:
-    """Build a ``not_supported`` handler with ToolHandler-conformant typing."""
+    """Build a ``service_fallback`` handler with ToolHandler-conformant typing."""
 
     async def handler(
         *,
@@ -40,7 +40,7 @@ def _mk(tool: str, why: str) -> ToolHandler:
         arguments: dict[str, Any],  # noqa: ARG001
         actor: AgentIdentity | None = None,  # noqa: ARG001
     ) -> str:
-        return not_supported(tool, why)
+        return service_fallback(tool, why)
 
     return handler
 

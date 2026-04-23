@@ -6,7 +6,7 @@ sandbox tunnel.  Service coverage is uneven:
 - ``meetings.*`` leans on ``app_state.meeting_scheduler``.
 - ``messages.*``, ``connections.*``, ``webhooks.*``, and ``tunnel.*``
   all live in their own API controllers without a consolidated service
-  facade on ``app_state``; handlers return ``not_supported`` until a
+  facade on ``app_state``; handlers return ``service_fallback`` until a
   facade lands.
 
 Destructive ops (``*_delete``) require the standard guardrail triple
@@ -25,8 +25,8 @@ from synthorg.meta.mcp.handler_protocol import (
 )
 from synthorg.meta.mcp.handlers.common import (
     err,
-    not_supported,
     require_destructive_guardrails,
+    service_fallback,
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import MCP_HANDLER_GUARDRAIL_VIOLATED
@@ -78,7 +78,7 @@ async def _enforce_destructive(
     except GuardrailViolationError as exc:
         _log_guardrail(tool, exc)
         return err(exc)
-    return not_supported(tool, why)
+    return service_fallback(tool, why)
 
 
 # --- messages -------------------------------------------------------------
@@ -90,7 +90,7 @@ async def _messages_list(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return not_supported("synthorg_messages_list", _WHY_MESSAGES)
+    return service_fallback("synthorg_messages_list", _WHY_MESSAGES)
 
 
 async def _messages_get(
@@ -99,7 +99,7 @@ async def _messages_get(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return not_supported("synthorg_messages_get", _WHY_MESSAGES)
+    return service_fallback("synthorg_messages_get", _WHY_MESSAGES)
 
 
 async def _messages_send(
@@ -108,7 +108,7 @@ async def _messages_send(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return not_supported("synthorg_messages_send", _WHY_MESSAGES)
+    return service_fallback("synthorg_messages_send", _WHY_MESSAGES)
 
 
 async def _messages_delete(
@@ -134,7 +134,7 @@ async def _meetings_list(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return not_supported(
+    return service_fallback(
         "synthorg_meetings_list",
         "meeting history reads via the meetings REST controller; no "
         "list method is exposed on MeetingScheduler",
@@ -147,7 +147,7 @@ async def _meetings_get(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return not_supported("synthorg_meetings_get", _WHY_MEETING_WRITE)
+    return service_fallback("synthorg_meetings_get", _WHY_MEETING_WRITE)
 
 
 async def _meetings_create(
@@ -156,7 +156,7 @@ async def _meetings_create(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return not_supported("synthorg_meetings_create", _WHY_MEETING_WRITE)
+    return service_fallback("synthorg_meetings_create", _WHY_MEETING_WRITE)
 
 
 async def _meetings_update(
@@ -165,7 +165,7 @@ async def _meetings_update(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return not_supported("synthorg_meetings_update", _WHY_MEETING_WRITE)
+    return service_fallback("synthorg_meetings_update", _WHY_MEETING_WRITE)
 
 
 async def _meetings_delete(
@@ -191,7 +191,7 @@ async def _connections_list(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return not_supported("synthorg_connections_list", _WHY_CONNECTIONS)
+    return service_fallback("synthorg_connections_list", _WHY_CONNECTIONS)
 
 
 async def _connections_get(
@@ -200,7 +200,7 @@ async def _connections_get(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return not_supported("synthorg_connections_get", _WHY_CONNECTIONS)
+    return service_fallback("synthorg_connections_get", _WHY_CONNECTIONS)
 
 
 async def _connections_create(
@@ -209,7 +209,7 @@ async def _connections_create(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return not_supported("synthorg_connections_create", _WHY_CONNECTIONS)
+    return service_fallback("synthorg_connections_create", _WHY_CONNECTIONS)
 
 
 async def _connections_delete(
@@ -232,7 +232,7 @@ async def _connections_check_health(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return not_supported("synthorg_connections_check_health", _WHY_CONNECTIONS)
+    return service_fallback("synthorg_connections_check_health", _WHY_CONNECTIONS)
 
 
 # --- webhooks -------------------------------------------------------------
@@ -244,7 +244,7 @@ async def _webhooks_list(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return not_supported("synthorg_webhooks_list", _WHY_WEBHOOKS)
+    return service_fallback("synthorg_webhooks_list", _WHY_WEBHOOKS)
 
 
 async def _webhooks_get(
@@ -253,7 +253,7 @@ async def _webhooks_get(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return not_supported("synthorg_webhooks_get", _WHY_WEBHOOKS)
+    return service_fallback("synthorg_webhooks_get", _WHY_WEBHOOKS)
 
 
 async def _webhooks_create(
@@ -262,7 +262,7 @@ async def _webhooks_create(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return not_supported("synthorg_webhooks_create", _WHY_WEBHOOKS)
+    return service_fallback("synthorg_webhooks_create", _WHY_WEBHOOKS)
 
 
 async def _webhooks_update(
@@ -271,7 +271,7 @@ async def _webhooks_update(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return not_supported("synthorg_webhooks_update", _WHY_WEBHOOKS)
+    return service_fallback("synthorg_webhooks_update", _WHY_WEBHOOKS)
 
 
 async def _webhooks_delete(
@@ -297,7 +297,7 @@ async def _tunnel_get_status(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return not_supported("synthorg_tunnel_get_status", _WHY_TUNNEL)
+    return service_fallback("synthorg_tunnel_get_status", _WHY_TUNNEL)
 
 
 async def _tunnel_connect(
@@ -306,7 +306,7 @@ async def _tunnel_connect(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return not_supported("synthorg_tunnel_connect", _WHY_TUNNEL)
+    return service_fallback("synthorg_tunnel_connect", _WHY_TUNNEL)
 
 
 COMMUNICATION_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(

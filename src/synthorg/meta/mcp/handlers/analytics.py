@@ -4,7 +4,7 @@
 historical metrics snapshots, and reports.  The analytics stack is
 aggregator-based (``meta/signals/*.py`` + scattered controller logic)
 with no single service facade on ``app_state``; every handler returns
-``not_supported`` via the shared :func:`_mk` factory until a dedicated
+``service_fallback`` via the shared :func:`_mk` factory until a dedicated
 analytics service lands.  Reports list/get/generate are similarly
 behind the ``reports`` controller.
 """
@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Any
 from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,  # noqa: TC001 -- PEP 649 annotation
 )
-from synthorg.meta.mcp.handlers.common import not_supported
+from synthorg.meta.mcp.handlers.common import service_fallback
 from synthorg.observability import get_logger
 
 if TYPE_CHECKING:
@@ -40,7 +40,7 @@ _WHY_REPORTS = (
 
 
 def _mk(tool: str, why: str) -> ToolHandler:
-    """Build a ``not_supported`` handler with ToolHandler-conformant typing."""
+    """Build a ``service_fallback`` handler with ToolHandler-conformant typing."""
 
     async def handler(
         *,
@@ -48,7 +48,7 @@ def _mk(tool: str, why: str) -> ToolHandler:
         arguments: dict[str, Any],  # noqa: ARG001
         actor: AgentIdentity | None = None,  # noqa: ARG001
     ) -> str:
-        return not_supported(tool, why)
+        return service_fallback(tool, why)
 
     return handler
 

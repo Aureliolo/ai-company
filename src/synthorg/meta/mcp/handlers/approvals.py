@@ -200,7 +200,7 @@ async def _list_approvals(
         if action_type_raw is not None:
             if not isinstance(action_type_raw, str) or not action_type_raw.strip():
                 raise invalid_argument(_ARG_ACTION_TYPE, _TY_NON_BLANK)
-            action_type = action_type_raw
+            action_type = action_type_raw.strip()
         offset, limit = coerce_pagination(arguments)
     except ArgumentValidationError as exc:
         _log_invalid(tool, exc)

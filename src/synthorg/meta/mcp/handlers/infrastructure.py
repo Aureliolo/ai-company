@@ -8,7 +8,7 @@ controllers; ``app_state`` exposes ``backup_service``,
 but not in the read-friendly facade shape the MCP tools expect.
 
 For now, ``synthorg_health_check`` returns a live aggregation from
-``app_state`` and every other handler returns ``not_supported`` with a
+``app_state`` and every other handler returns ``service_fallback`` with a
 stable reason.  Destructive writes (backup/settings/users/projects
 delete, backup_restore, template_packs_uninstall) enforce the
 guardrail triple so auditing stays uniform when service facades land.
@@ -25,9 +25,9 @@ from synthorg.meta.mcp.handler_protocol import (
 )
 from synthorg.meta.mcp.handlers.common import (
     err,
-    not_supported,
     ok,
     require_destructive_guardrails,
+    service_fallback,
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.mcp import (
@@ -105,7 +105,7 @@ async def _enforce_destructive(
     except GuardrailViolationError as exc:
         _log_guardrail(tool, exc)
         return err(exc)
-    return not_supported(tool, why)
+    return service_fallback(tool, why)
 
 
 def _mk(tool: str, why: str) -> ToolHandler:
@@ -115,7 +115,7 @@ def _mk(tool: str, why: str) -> ToolHandler:
         arguments: dict[str, Any],  # noqa: ARG001
         actor: AgentIdentity | None = None,  # noqa: ARG001
     ) -> str:
-        return not_supported(tool, why)
+        return service_fallback(tool, why)
 
     return handler
 
