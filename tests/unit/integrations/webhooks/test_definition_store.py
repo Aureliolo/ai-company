@@ -68,6 +68,30 @@ class TestInMemoryWebhookDefinitionStore:
         with pytest.raises(KeyError):
             await store.replace(orphan)
 
+    async def test_replace_rejects_name_collision_with_other_id(self) -> None:
+        store = InMemoryWebhookDefinitionStore()
+        first = _definition(name="alpha")
+        second = _definition(name="beta")
+        await store.add(first)
+        await store.add(second)
+        clashing = second.model_copy(update={"name": first.name})
+        with pytest.raises(ValueError, match="already exists"):
+            await store.replace(clashing)
+        fetched = await store.get_by_id(NotBlankStr(str(second.id)))
+        assert fetched is not None
+        assert fetched.name == "beta"
+
+    async def test_replace_allows_same_name_same_id(self) -> None:
+        store = InMemoryWebhookDefinitionStore()
+        original = _definition(name="gamma")
+        await store.add(original)
+        updated = original.model_copy(update={"issuer": NotBlankStr("stripe")})
+        await store.replace(updated)
+        fetched = await store.get_by_id(NotBlankStr(str(original.id)))
+        assert fetched is not None
+        assert fetched.issuer == "stripe"
+        assert fetched.name == "gamma"
+
     async def test_delete_returns_true_when_present(self) -> None:
         store = InMemoryWebhookDefinitionStore()
         definition = _definition()

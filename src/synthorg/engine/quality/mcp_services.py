@@ -6,12 +6,17 @@ scoring surface; ReviewFacadeService is an in-process review queue;
 EvaluationVersionService surfaces evaluation-config version history.
 """
 
+import asyncio
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, cast
 from uuid import UUID, uuid4
 
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.observability import get_logger
+from synthorg.observability.events.quality import (
+    REVIEW_CREATED_VIA_MCP,
+    REVIEW_UPDATED_VIA_MCP,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -125,22 +130,29 @@ class _ReviewRecord:
 
 
 class ReviewFacadeService:
-    """In-process review-queue facade."""
+    """In-process review-queue facade.
+
+    Mutations are serialised through a single :class:`asyncio.Lock` so
+    concurrent MCP handler calls cannot race on the in-memory dict
+    (check-then-act in :meth:`update_review`).
+    """
 
     def __init__(self) -> None:
         self._reviews: dict[UUID, _ReviewRecord] = {}
+        self._lock = asyncio.Lock()
 
     async def list_reviews(self) -> Sequence[_ReviewRecord]:
-        return tuple(
-            sorted(self._reviews.values(), key=lambda r: r.created_at, reverse=True),
-        )
+        async with self._lock:
+            snapshot = tuple(self._reviews.values())
+        return tuple(sorted(snapshot, key=lambda r: r.created_at, reverse=True))
 
     async def get_review(self, review_id: NotBlankStr) -> _ReviewRecord | None:
         try:
             key = UUID(review_id)
         except ValueError:
             return None
-        return self._reviews.get(key)
+        async with self._lock:
+            return self._reviews.get(key)
 
     async def create_review(
         self,
@@ -158,9 +170,10 @@ class ReviewFacadeService:
             comments=comments,
             created_at=datetime.now(UTC),
         )
-        self._reviews[record.id] = record
+        async with self._lock:
+            self._reviews[record.id] = record
         logger.info(
-            "quality.review_created_via_mcp",
+            REVIEW_CREATED_VIA_MCP,
             review_id=str(record.id),
             task_id=task_id,
             verdict=verdict,
@@ -179,16 +192,17 @@ class ReviewFacadeService:
             key = UUID(review_id)
         except ValueError:
             return None
-        record = self._reviews.get(key)
-        if record is None:
-            return None
-        if verdict is not None:
-            record.verdict = verdict
-        if comments is not None:
-            record.comments = comments
-        record.updated_at = datetime.now(UTC)
+        async with self._lock:
+            record = self._reviews.get(key)
+            if record is None:
+                return None
+            if verdict is not None:
+                record.verdict = verdict
+            if comments is not None:
+                record.comments = comments
+            record.updated_at = datetime.now(UTC)
         logger.info(
-            "quality.review_updated_via_mcp",
+            REVIEW_UPDATED_VIA_MCP,
             review_id=review_id,
             actor_id=actor_id,
         )

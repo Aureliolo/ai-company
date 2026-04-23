@@ -15,6 +15,16 @@ from uuid import UUID, uuid4
 
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.observability import get_logger
+from synthorg.observability.events.integrations import (
+    ARTIFACT_CREATED_VIA_MCP,
+    ARTIFACT_DELETED_VIA_MCP,
+    CLIENT_CREATED_VIA_MCP,
+    CLIENT_DEACTIVATED_VIA_MCP,
+    MCP_CATALOG_INSTALLED_VIA_MCP,
+    MCP_CATALOG_UNINSTALLED_VIA_MCP,
+    OAUTH_PROVIDER_CONFIGURED_VIA_MCP,
+    OAUTH_PROVIDER_REMOVED_VIA_MCP,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -88,7 +98,7 @@ class MCPCatalogFacadeService:
             )
         result = await fn(entry_id=entry_id, actor=actor_id)
         logger.info(
-            "integrations.mcp_catalog_installed_via_mcp",
+            MCP_CATALOG_INSTALLED_VIA_MCP,
             entry_id=entry_id,
             actor_id=actor_id,
         )
@@ -109,7 +119,7 @@ class MCPCatalogFacadeService:
             )
         removed = bool(await fn(installation_id=installation_id))
         logger.info(
-            "integrations.mcp_catalog_uninstalled_via_mcp",
+            MCP_CATALOG_UNINSTALLED_VIA_MCP,
             installation_id=installation_id,
             actor_id=actor_id,
             reason=reason,
@@ -195,7 +205,7 @@ class OAuthFacadeService:
         )
         self._providers[record.name] = record
         logger.info(
-            "integrations.oauth_provider_configured_via_mcp",
+            OAUTH_PROVIDER_CONFIGURED_VIA_MCP,
             provider_name=name,
             actor_id=actor_id,
         )
@@ -210,7 +220,7 @@ class OAuthFacadeService:
     ) -> bool:
         removed = self._providers.pop(name, None) is not None
         logger.info(
-            "integrations.oauth_provider_removed_via_mcp",
+            OAUTH_PROVIDER_REMOVED_VIA_MCP,
             provider_name=name,
             actor_id=actor_id,
             reason=reason,
@@ -297,7 +307,7 @@ class ClientFacadeService:
         )
         self._clients[record.id] = record
         logger.info(
-            "integrations.client_created_via_mcp",
+            CLIENT_CREATED_VIA_MCP,
             client_id=str(record.id),
             actor_id=actor_id,
         )
@@ -319,7 +329,7 @@ class ClientFacadeService:
             return False
         record.active = False
         logger.info(
-            "integrations.client_deactivated_via_mcp",
+            CLIENT_DEACTIVATED_VIA_MCP,
             client_id=client_id,
             actor_id=actor_id,
             reason=reason,
@@ -425,7 +435,7 @@ class ArtifactFacadeService:
         )
         self._index[record.id] = record
         logger.info(
-            "integrations.artifact_created_via_mcp",
+            ARTIFACT_CREATED_VIA_MCP,
             artifact_id=str(record.id),
             actor_id=actor_id,
             size_bytes=size_bytes,
@@ -454,7 +464,7 @@ class ArtifactFacadeService:
             await fn(str(key))
         self._index.pop(key, None)
         logger.info(
-            "integrations.artifact_deleted_via_mcp",
+            ARTIFACT_DELETED_VIA_MCP,
             artifact_id=artifact_id,
             actor_id=actor_id,
             reason=reason,

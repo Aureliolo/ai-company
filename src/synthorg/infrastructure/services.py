@@ -19,20 +19,35 @@ introspect capabilities at runtime (``getattr`` + ``callable``
 checks) without fighting protocol-type narrowing when the primitive
 is still evolving.
 
-Method-level docstrings are intentionally thin (``# ruff: noqa: D102, EM101, EM102, E501, TRY003``
+Method-level docstrings are intentionally thin (``# ruff: noqa: D102, EM101, E501``
 at module scope) because the class-level docstrings describe the
 facade's role and the method names are self-documenting pass-throughs.
 """
 
+import asyncio
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, cast
 from uuid import UUID, uuid4
 
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.observability import get_logger
+from synthorg.observability.events.backup import (
+    BACKUP_DELETED_VIA_MCP,
+    BACKUP_RESTORED_VIA_MCP,
+)
+from synthorg.observability.events.infrastructure import (
+    PROJECT_CREATED_VIA_MCP,
+    PROJECT_DELETED_VIA_MCP,
+    PROJECT_UPDATED_VIA_MCP,
+    REQUEST_CREATED_VIA_MCP,
+)
 from synthorg.observability.events.settings import (
     SETTINGS_VALUE_DELETED,
     SETTINGS_VALUE_SET,
+)
+from synthorg.observability.events.template import (
+    TEMPLATE_PACK_INSTALLED_VIA_MCP,
+    TEMPLATE_PACK_UNINSTALLED_VIA_MCP,
 )
 
 if TYPE_CHECKING:
@@ -239,7 +254,7 @@ class BackupFacadeService:
     ) -> None:
         await self._service.delete_backup(backup_id)
         logger.info(
-            "backup.deleted_via_mcp",
+            BACKUP_DELETED_VIA_MCP,
             backup_id=backup_id,
             actor_id=actor_id,
             reason=reason,
@@ -253,7 +268,7 @@ class BackupFacadeService:
         reason: NotBlankStr,
     ) -> Mapping[str, object]:
         logger.info(
-            "backup.restore_via_mcp",
+            BACKUP_RESTORED_VIA_MCP,
             backup_id=backup_id,
             actor_id=actor_id,
             reason=reason,
@@ -346,26 +361,29 @@ class _ProjectRecord:
 
 
 class ProjectFacadeService:
-    """In-process project CRUD facade."""
+    """In-process project CRUD facade.
+
+    Mutations are serialised through a single :class:`asyncio.Lock` so
+    concurrent MCP handler calls cannot race on the in-memory dict
+    (check-then-act in :meth:`update_project` and :meth:`delete_project`).
+    """
 
     def __init__(self) -> None:
         self._projects: dict[UUID, _ProjectRecord] = {}
+        self._lock = asyncio.Lock()
 
     async def list_projects(self) -> Sequence[_ProjectRecord]:
-        return tuple(
-            sorted(
-                self._projects.values(),
-                key=lambda p: p.created_at,
-                reverse=True,
-            ),
-        )
+        async with self._lock:
+            snapshot = tuple(self._projects.values())
+        return tuple(sorted(snapshot, key=lambda p: p.created_at, reverse=True))
 
     async def get_project(self, project_id: NotBlankStr) -> _ProjectRecord | None:
         try:
             key = UUID(project_id)
         except ValueError:
             return None
-        return self._projects.get(key)
+        async with self._lock:
+            return self._projects.get(key)
 
     async def create_project(
         self,
@@ -382,9 +400,10 @@ class ProjectFacadeService:
             created_at=datetime.now(UTC),
             metadata=metadata,
         )
-        self._projects[record.id] = record
+        async with self._lock:
+            self._projects[record.id] = record
         logger.info(
-            "projects.created_via_mcp",
+            PROJECT_CREATED_VIA_MCP,
             project_id=str(record.id),
             actor_id=actor_id,
         )
@@ -403,17 +422,18 @@ class ProjectFacadeService:
             key = UUID(project_id)
         except ValueError:
             return None
-        record = self._projects.get(key)
-        if record is None:
-            return None
-        if name is not None:
-            record.name = name
-        if description is not None:
-            record.description = description
-        if metadata is not None:
-            record.metadata = dict(metadata)
+        async with self._lock:
+            record = self._projects.get(key)
+            if record is None:
+                return None
+            if name is not None:
+                record.name = name
+            if description is not None:
+                record.description = description
+            if metadata is not None:
+                record.metadata = dict(metadata)
         logger.info(
-            "projects.updated_via_mcp",
+            PROJECT_UPDATED_VIA_MCP,
             project_id=project_id,
             actor_id=actor_id,
         )
@@ -430,9 +450,10 @@ class ProjectFacadeService:
             key = UUID(project_id)
         except ValueError:
             return False
-        removed = self._projects.pop(key, None) is not None
+        async with self._lock:
+            removed = self._projects.pop(key, None) is not None
         logger.info(
-            "projects.deleted_via_mcp",
+            PROJECT_DELETED_VIA_MCP,
             project_id=project_id,
             actor_id=actor_id,
             reason=reason,
@@ -473,26 +494,28 @@ class _RequestRecord:
 
 
 class RequestsFacadeService:
-    """In-process operator-request facade."""
+    """In-process operator-request facade.
+
+    Mutations are serialised through a single :class:`asyncio.Lock` so
+    concurrent MCP handler calls cannot race on the in-memory dict.
+    """
 
     def __init__(self) -> None:
         self._requests: dict[UUID, _RequestRecord] = {}
+        self._lock = asyncio.Lock()
 
     async def list_requests(self) -> Sequence[_RequestRecord]:
-        return tuple(
-            sorted(
-                self._requests.values(),
-                key=lambda r: r.created_at,
-                reverse=True,
-            ),
-        )
+        async with self._lock:
+            snapshot = tuple(self._requests.values())
+        return tuple(sorted(snapshot, key=lambda r: r.created_at, reverse=True))
 
     async def get_request(self, request_id: NotBlankStr) -> _RequestRecord | None:
         try:
             key = UUID(request_id)
         except ValueError:
             return None
-        return self._requests.get(key)
+        async with self._lock:
+            return self._requests.get(key)
 
     async def create_request(
         self,
@@ -508,9 +531,10 @@ class RequestsFacadeService:
             requested_by=requested_by,
             created_at=datetime.now(UTC),
         )
-        self._requests[record.id] = record
+        async with self._lock:
+            self._requests[record.id] = record
         logger.info(
-            "requests.created_via_mcp",
+            REQUEST_CREATED_VIA_MCP,
             request_id=str(record.id),
             requested_by=requested_by,
         )
@@ -600,26 +624,28 @@ class _TemplatePackRecord:
 
 
 class TemplatePackFacadeService:
-    """In-process template-pack registry."""
+    """In-process template-pack registry.
+
+    Mutations are serialised through a single :class:`asyncio.Lock` so
+    concurrent MCP handler calls cannot race on the in-memory dict.
+    """
 
     def __init__(self) -> None:
         self._packs: dict[UUID, _TemplatePackRecord] = {}
+        self._lock = asyncio.Lock()
 
     async def list_packs(self) -> Sequence[_TemplatePackRecord]:
-        return tuple(
-            sorted(
-                self._packs.values(),
-                key=lambda p: p.installed_at,
-                reverse=True,
-            ),
-        )
+        async with self._lock:
+            snapshot = tuple(self._packs.values())
+        return tuple(sorted(snapshot, key=lambda p: p.installed_at, reverse=True))
 
     async def get_pack(self, pack_id: NotBlankStr) -> _TemplatePackRecord | None:
         try:
             key = UUID(pack_id)
         except ValueError:
             return None
-        return self._packs.get(key)
+        async with self._lock:
+            return self._packs.get(key)
 
     async def install_pack(
         self,
@@ -634,9 +660,10 @@ class TemplatePackFacadeService:
             version=version,
             installed_at=datetime.now(UTC),
         )
-        self._packs[record.id] = record
+        async with self._lock:
+            self._packs[record.id] = record
         logger.info(
-            "template_packs.installed_via_mcp",
+            TEMPLATE_PACK_INSTALLED_VIA_MCP,
             pack_id=str(record.id),
             pack_name=name,
             actor_id=actor_id,
@@ -654,9 +681,10 @@ class TemplatePackFacadeService:
             key = UUID(pack_id)
         except ValueError:
             return False
-        removed = self._packs.pop(key, None) is not None
+        async with self._lock:
+            removed = self._packs.pop(key, None) is not None
         logger.info(
-            "template_packs.uninstalled_via_mcp",
+            TEMPLATE_PACK_UNINSTALLED_VIA_MCP,
             pack_id=pack_id,
             actor_id=actor_id,
             reason=reason,

@@ -46,14 +46,17 @@ _TY_LIST = "sequence of strings"
 
 
 def _log_failed(tool: str, exc: Exception) -> None:
+    """Emit ``MCP_HANDLER_INVOKE_FAILED`` at WARNING with safe error context."""
     logger.warning(
         MCP_HANDLER_INVOKE_FAILED,
         tool_name=tool,
+        error_type=type(exc).__name__,
         error=safe_error_description(exc),
     )
 
 
 def _log_guardrail(tool: str, exc: GuardrailViolationError) -> None:
+    """Emit ``MCP_HANDLER_GUARDRAIL_VIOLATED`` for destructive-op rejections."""
     logger.warning(
         MCP_HANDLER_GUARDRAIL_VIOLATED,
         tool_name=tool,
@@ -62,6 +65,7 @@ def _log_guardrail(tool: str, exc: GuardrailViolationError) -> None:
 
 
 def _map_capability(tool: str, exc: CapabilityNotSupportedError) -> str:
+    """Translate a facade-side capability gap into a typed error envelope."""
     logger.info(
         MCP_HANDLER_INVOKE_FAILED,
         tool_name=tool,
@@ -71,6 +75,7 @@ def _map_capability(tool: str, exc: CapabilityNotSupportedError) -> str:
 
 
 def _actor_name(actor: AgentIdentity | None) -> NotBlankStr:
+    """Return a stable audit identifier (falls back to ``mcp-anonymous``)."""
     if actor is None:
         return NotBlankStr("mcp-anonymous")
     name = getattr(actor, "name", None)
@@ -81,6 +86,7 @@ def _actor_name(actor: AgentIdentity | None) -> NotBlankStr:
 
 
 def _get_str(arguments: dict[str, Any], key: str) -> NotBlankStr | None:
+    """Extract an optional non-blank string argument; returns ``None`` when absent."""
     raw = arguments.get(key)
     if raw in (None, ""):
         return None
@@ -90,6 +96,7 @@ def _get_str(arguments: dict[str, Any], key: str) -> NotBlankStr | None:
 
 
 def _require_str(arguments: dict[str, Any], key: str) -> NotBlankStr:
+    """Extract a required non-blank string or raise ``ArgumentValidationError``."""
     value = _get_str(arguments, key)
     if value is None:
         raise invalid_argument(key, _TY_STRING)
@@ -97,6 +104,7 @@ def _require_str(arguments: dict[str, Any], key: str) -> NotBlankStr:
 
 
 def _require_uuid(arguments: dict[str, Any], key: str) -> NotBlankStr:
+    """Extract a required UUID-shaped string or raise ``ArgumentValidationError``."""
     value = require_arg(arguments, key, str)
     try:
         UUID(value)
@@ -106,6 +114,7 @@ def _require_uuid(arguments: dict[str, Any], key: str) -> NotBlankStr:
 
 
 def _require_dict(arguments: dict[str, Any], key: str) -> dict[str, object]:
+    """Extract a required mapping argument or raise ``ArgumentValidationError``."""
     raw = arguments.get(key)
     if not isinstance(raw, dict):
         raise invalid_argument(key, _TY_DICT)
@@ -113,6 +122,7 @@ def _require_dict(arguments: dict[str, Any], key: str) -> dict[str, object]:
 
 
 def _require_str_list(arguments: dict[str, Any], key: str) -> tuple[str, ...]:
+    """Extract a required sequence of non-blank strings, or raise on error."""
     raw = arguments.get(key)
     if not isinstance(raw, (list, tuple)):
         raise invalid_argument(key, _TY_LIST)
@@ -123,6 +133,7 @@ def _require_str_list(arguments: dict[str, Any], key: str) -> tuple[str, ...]:
 
 
 def _to_jsonable(value: Any) -> Any:
+    """Coerce a Pydantic / ``to_dict`` value into a JSON-serialisable form."""
     dump_fn = getattr(value, "model_dump", None)
     if callable(dump_fn):
         return dump_fn(mode="json")
@@ -141,6 +152,7 @@ async def _company_get(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Return the current company record."""
     tool = "synthorg_company_get"
     try:
         company = await app_state.company_read_service.get_company()
@@ -158,6 +170,7 @@ async def _company_update(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
+    """Apply a payload patch to the company record (non-destructive write)."""
     tool = "synthorg_company_update"
     try:
         payload = _require_dict(arguments, "payload")
@@ -179,6 +192,7 @@ async def _company_list_departments(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """List every department attached to the company."""
     tool = "synthorg_company_list_departments"
     try:
         departments = await app_state.company_read_service.list_departments()
@@ -194,6 +208,7 @@ async def _company_reorder_departments(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
+    """Replace the department display order with the supplied sequence."""
     tool = "synthorg_company_reorder_departments"
     try:
         ids = _require_str_list(arguments, "department_ids")
@@ -215,6 +230,7 @@ async def _company_versions_list(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """List every snapshot in the company version history."""
     tool = "synthorg_company_versions_list"
     try:
         versions = await app_state.company_read_service.list_versions()
@@ -230,6 +246,7 @@ async def _company_versions_get(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Fetch a single company version snapshot by ID."""
     tool = "synthorg_company_versions_get"
     try:
         version_id = _require_str(arguments, "version_id")
@@ -254,6 +271,7 @@ async def _departments_list(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Return a paginated slice of departments."""
     tool = "synthorg_departments_list"
     try:
         offset, limit = coerce_pagination(arguments)
@@ -276,6 +294,7 @@ async def _departments_get(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Fetch a single department by UUID."""
     tool = "synthorg_departments_get"
     try:
         department_id = _require_uuid(arguments, "department_id")
@@ -297,6 +316,7 @@ async def _departments_create(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
+    """Create a new department record (non-destructive write)."""
     tool = "synthorg_departments_create"
     try:
         name = _require_str(arguments, "name")
@@ -318,6 +338,7 @@ async def _departments_update(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
+    """Update name / description on an existing department (partial patch)."""
     tool = "synthorg_departments_update"
     try:
         department_id = _require_uuid(arguments, "department_id")
@@ -346,6 +367,7 @@ async def _departments_delete(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
+    """Delete a department (destructive; enforces confirm + reason + actor)."""
     tool = "synthorg_departments_delete"
     try:
         reason, resolved_actor = require_destructive_guardrails(arguments, actor)
@@ -378,6 +400,7 @@ async def _departments_get_health(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Return a lightweight health summary for a single department."""
     tool = "synthorg_departments_get_health"
     try:
         department_id = _require_uuid(arguments, "department_id")
@@ -397,6 +420,7 @@ async def _teams_list(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Return a paginated slice of teams."""
     tool = "synthorg_teams_list"
     try:
         offset, limit = coerce_pagination(arguments)
@@ -419,6 +443,7 @@ async def _teams_get(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Fetch a single team by UUID."""
     tool = "synthorg_teams_get"
     try:
         team_id = _require_uuid(arguments, "team_id")
@@ -440,6 +465,7 @@ async def _teams_create(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
+    """Create a new team record (non-destructive write)."""
     tool = "synthorg_teams_create"
     try:
         name = _require_str(arguments, "name")
@@ -461,6 +487,7 @@ async def _teams_update(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
+    """Update name / department on an existing team (partial patch)."""
     tool = "synthorg_teams_update"
     try:
         team_id = _require_uuid(arguments, "team_id")
@@ -489,6 +516,7 @@ async def _teams_delete(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
+    """Delete a team (destructive; enforces confirm + reason + actor)."""
     tool = "synthorg_teams_delete"
     try:
         reason, resolved_actor = require_destructive_guardrails(arguments, actor)
@@ -524,6 +552,7 @@ async def _role_versions_list(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """List role-version snapshots, optionally filtered by role name."""
     tool = "synthorg_role_versions_list"
     try:
         role_name = _get_str(arguments, "role_name")
@@ -542,6 +571,7 @@ async def _role_versions_get(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Fetch a single role-version snapshot by ID."""
     tool = "synthorg_role_versions_get"
     try:
         version_id = _require_str(arguments, "version_id")

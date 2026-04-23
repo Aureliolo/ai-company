@@ -7,12 +7,23 @@ where it already owns the flow; other paths use in-memory stores until
 durable repositories land.
 """
 
+import asyncio
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, cast
 from uuid import UUID, uuid4
 
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.observability import get_logger
+from synthorg.observability.events.company import (
+    COMPANY_UPDATED_VIA_MCP,
+    DEPARTMENT_CREATED_VIA_MCP,
+    DEPARTMENT_DELETED_VIA_MCP,
+    DEPARTMENT_UPDATED_VIA_MCP,
+    DEPARTMENTS_REORDERED_VIA_MCP,
+    TEAM_CREATED_VIA_MCP,
+    TEAM_DELETED_VIA_MCP,
+    TEAM_UPDATED_VIA_MCP,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -59,7 +70,7 @@ class CompanyReadService:
                 "OrgMutationService does not expose update_company",
             )
         result = await fn(payload=dict(payload), actor=actor_id)
-        logger.info("organization.company_updated_via_mcp", actor_id=actor_id)
+        logger.info(COMPANY_UPDATED_VIA_MCP, actor_id=actor_id)
         return result
 
     async def list_departments(self) -> Sequence[object]:
@@ -85,7 +96,7 @@ class CompanyReadService:
             )
         await fn(department_ids=tuple(department_ids), actor=actor_id)
         logger.info(
-            "organization.departments_reordered_via_mcp",
+            DEPARTMENTS_REORDERED_VIA_MCP,
             actor_id=actor_id,
             count=len(department_ids),
         )
@@ -138,19 +149,22 @@ class _DepartmentRecord:
 
 
 class DepartmentService:
-    """Department CRUD + health."""
+    """Department CRUD + health.
+
+    Mutations are serialised through a single :class:`asyncio.Lock` so
+    concurrent MCP handler calls cannot race on the in-memory dict
+    (check-then-act in :meth:`update_department` and
+    :meth:`delete_department`).
+    """
 
     def __init__(self) -> None:
         self._departments: dict[UUID, _DepartmentRecord] = {}
+        self._lock = asyncio.Lock()
 
     async def list_departments(self) -> Sequence[_DepartmentRecord]:
-        return tuple(
-            sorted(
-                self._departments.values(),
-                key=lambda d: d.created_at,
-                reverse=True,
-            ),
-        )
+        async with self._lock:
+            snapshot = tuple(self._departments.values())
+        return tuple(sorted(snapshot, key=lambda d: d.created_at, reverse=True))
 
     async def get_department(
         self,
@@ -160,7 +174,8 @@ class DepartmentService:
             key = UUID(department_id)
         except ValueError:
             return None
-        return self._departments.get(key)
+        async with self._lock:
+            return self._departments.get(key)
 
     async def create_department(
         self,
@@ -175,9 +190,10 @@ class DepartmentService:
             description=description,
             created_at=datetime.now(UTC),
         )
-        self._departments[record.id] = record
+        async with self._lock:
+            self._departments[record.id] = record
         logger.info(
-            "organization.department_created_via_mcp",
+            DEPARTMENT_CREATED_VIA_MCP,
             department_id=str(record.id),
             actor_id=actor_id,
         )
@@ -195,15 +211,16 @@ class DepartmentService:
             key = UUID(department_id)
         except ValueError:
             return None
-        record = self._departments.get(key)
-        if record is None:
-            return None
-        if name is not None:
-            record.name = name
-        if description is not None:
-            record.description = description
+        async with self._lock:
+            record = self._departments.get(key)
+            if record is None:
+                return None
+            if name is not None:
+                record.name = name
+            if description is not None:
+                record.description = description
         logger.info(
-            "organization.department_updated_via_mcp",
+            DEPARTMENT_UPDATED_VIA_MCP,
             department_id=department_id,
             actor_id=actor_id,
         )
@@ -220,9 +237,10 @@ class DepartmentService:
             key = UUID(department_id)
         except ValueError:
             return False
-        removed = self._departments.pop(key, None) is not None
+        async with self._lock:
+            removed = self._departments.pop(key, None) is not None
         logger.info(
-            "organization.department_deleted_via_mcp",
+            DEPARTMENT_DELETED_VIA_MCP,
             department_id=department_id,
             actor_id=actor_id,
             reason=reason,
@@ -273,26 +291,28 @@ class _TeamRecord:
 
 
 class TeamService:
-    """Team CRUD."""
+    """Team CRUD.
+
+    Mutations are serialised through a single :class:`asyncio.Lock` so
+    concurrent MCP handler calls cannot race on the in-memory dict.
+    """
 
     def __init__(self) -> None:
         self._teams: dict[UUID, _TeamRecord] = {}
+        self._lock = asyncio.Lock()
 
     async def list_teams(self) -> Sequence[_TeamRecord]:
-        return tuple(
-            sorted(
-                self._teams.values(),
-                key=lambda t: t.created_at,
-                reverse=True,
-            ),
-        )
+        async with self._lock:
+            snapshot = tuple(self._teams.values())
+        return tuple(sorted(snapshot, key=lambda t: t.created_at, reverse=True))
 
     async def get_team(self, team_id: NotBlankStr) -> _TeamRecord | None:
         try:
             key = UUID(team_id)
         except ValueError:
             return None
-        return self._teams.get(key)
+        async with self._lock:
+            return self._teams.get(key)
 
     async def create_team(
         self,
@@ -307,9 +327,10 @@ class TeamService:
             department_id=department_id,
             created_at=datetime.now(UTC),
         )
-        self._teams[record.id] = record
+        async with self._lock:
+            self._teams[record.id] = record
         logger.info(
-            "organization.team_created_via_mcp",
+            TEAM_CREATED_VIA_MCP,
             team_id=str(record.id),
             actor_id=actor_id,
         )
@@ -327,15 +348,16 @@ class TeamService:
             key = UUID(team_id)
         except ValueError:
             return None
-        record = self._teams.get(key)
-        if record is None:
-            return None
-        if name is not None:
-            record.name = name
-        if department_id is not None:
-            record.department_id = department_id
+        async with self._lock:
+            record = self._teams.get(key)
+            if record is None:
+                return None
+            if name is not None:
+                record.name = name
+            if department_id is not None:
+                record.department_id = department_id
         logger.info(
-            "organization.team_updated_via_mcp",
+            TEAM_UPDATED_VIA_MCP,
             team_id=team_id,
             actor_id=actor_id,
         )
@@ -352,9 +374,10 @@ class TeamService:
             key = UUID(team_id)
         except ValueError:
             return False
-        removed = self._teams.pop(key, None) is not None
+        async with self._lock:
+            removed = self._teams.pop(key, None) is not None
         logger.info(
-            "organization.team_deleted_via_mcp",
+            TEAM_DELETED_VIA_MCP,
             team_id=team_id,
             actor_id=actor_id,
             reason=reason,

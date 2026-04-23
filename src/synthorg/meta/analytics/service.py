@@ -13,6 +13,7 @@ caching strategy plugs in behind :class:`SignalsService` rather than
 growing this module.
 """
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
@@ -192,23 +193,33 @@ class AnalyticsService:
             msg = "since must be earlier than until"
             raise ValueError(msg)
         step = (until - since) / sample_count
-        points: list[MetricsHistoryPoint] = []
-        for i in range(sample_count):
-            window_end = since + step * (i + 1)
-            snapshot = await self.get_current_metrics(
-                since=since + step * i,
+        sample_windows = tuple(
+            (since + step * i, since + step * (i + 1)) for i in range(sample_count)
+        )
+
+        async def sample(
+            window_start: datetime,
+            window_end: datetime,
+        ) -> MetricsSnapshot:
+            return await self.get_current_metrics(
+                since=window_start,
                 until=window_end,
                 metric_names=metric_names,
             )
-            points.append(
-                MetricsHistoryPoint(
-                    timestamp=window_end.astimezone(UTC),
-                    values=snapshot.metrics,
-                ),
+
+        async with asyncio.TaskGroup() as tg:
+            tasks = [tg.create_task(sample(w[0], w[1])) for w in sample_windows]
+
+        points = tuple(
+            MetricsHistoryPoint(
+                timestamp=w[1].astimezone(UTC),
+                values=task.result().metrics,
             )
+            for w, task in zip(sample_windows, tasks, strict=True)
+        )
         return MetricsHistory(
             metric_names=tuple(NotBlankStr(n) for n in metric_names),
-            points=tuple(points),
+            points=points,
         )
 
 

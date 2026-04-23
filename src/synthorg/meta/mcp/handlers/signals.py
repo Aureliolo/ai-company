@@ -33,7 +33,10 @@ from synthorg.meta.mcp.handlers.common import (
 )
 from synthorg.meta.models import ImprovementProposal
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.mcp import MCP_HANDLER_INVOKE_FAILED
+from synthorg.observability.events.mcp import (
+    MCP_DESTRUCTIVE_OP_EXECUTED,
+    MCP_HANDLER_INVOKE_FAILED,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -121,6 +124,17 @@ def _tool(name: str) -> dict[str, str]:
     return {"tool": name}
 
 
+def _actor_id(actor: AgentIdentity | None) -> str | None:
+    """Return a stable audit identifier for ``actor`` (prefers ``.id``)."""
+    if actor is None:
+        return None
+    agent_id = getattr(actor, "id", None)
+    if agent_id is not None:
+        return str(agent_id)
+    name = getattr(actor, "name", None)
+    return name if isinstance(name, str) and name else None
+
+
 async def _snapshot(
     *,
     app_state: Any,
@@ -204,6 +218,7 @@ async def _submit_proposal(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
+    tool_name = "synthorg_signals_submit_proposal"
     try:
         reason, resolved_actor = require_destructive_guardrails(arguments, actor)
         proposal = _parse_proposal(arguments)
@@ -212,11 +227,19 @@ async def _submit_proposal(
             actor=resolved_actor,
             reason=reason,
         )
+        logger.info(
+            MCP_DESTRUCTIVE_OP_EXECUTED,
+            tool_name=tool_name,
+            actor_agent_id=_actor_id(resolved_actor),
+            reason=reason,
+            target_id=str(item.id),
+        )
         return ok(item.model_dump(mode="json"))
     except Exception as exc:
         logger.warning(
             MCP_HANDLER_INVOKE_FAILED,
-            **_tool("synthorg_signals_submit_proposal"),
+            **_tool(tool_name),
+            error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
         return err(exc)

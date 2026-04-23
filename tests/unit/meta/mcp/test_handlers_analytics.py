@@ -124,7 +124,9 @@ class TestAnalyticsTrends:
             app_state=fake_app_state,
             arguments={"since": _iso(-60)},
         )
-        assert json.loads(response)["status"] == "error"
+        payload = json.loads(response)
+        assert payload["status"] == "error"
+        assert payload["domain_code"] == "invalid_argument"
 
     async def test_happy_path(
         self,
@@ -159,7 +161,9 @@ class TestMetricsHandlers:
             app_state=fake_app_state,
             arguments={"since": _iso(-60), "until": _iso()},
         )
-        assert json.loads(response)["status"] == "error"
+        payload = json.loads(response)
+        assert payload["status"] == "error"
+        assert payload["domain_code"] == "invalid_argument"
 
     async def test_history_ok(
         self,
@@ -212,7 +216,9 @@ class TestReportsHandlers:
             app_state=fake_app_state,
             arguments={"report_id": "not-a-uuid"},
         )
-        assert json.loads(response)["status"] == "error"
+        payload = json.loads(response)
+        assert payload["status"] == "error"
+        assert payload["domain_code"] == "invalid_argument"
 
     async def test_generate_happy_path(
         self,

@@ -85,6 +85,7 @@ _TY_CONNECTION_TYPE = "ConnectionType string"
 
 
 def _actor_name(actor: AgentIdentity | None) -> NotBlankStr:
+    """Return a stable non-blank identifier for audit logging."""
     if actor is None:
         return NotBlankStr("mcp-anonymous")
     name = getattr(actor, "name", None)
@@ -95,6 +96,7 @@ def _actor_name(actor: AgentIdentity | None) -> NotBlankStr:
 
 
 def _log_invoke_failed(tool: str, exc: Exception) -> None:
+    """Emit ``MCP_HANDLER_INVOKE_FAILED`` at WARNING with safe error context."""
     logger.warning(
         MCP_HANDLER_INVOKE_FAILED,
         tool_name=tool,
@@ -104,6 +106,7 @@ def _log_invoke_failed(tool: str, exc: Exception) -> None:
 
 
 def _log_guardrail(tool: str, exc: GuardrailViolationError) -> None:
+    """Emit ``MCP_HANDLER_GUARDRAIL_VIOLATED`` for destructive-op rejections."""
     logger.warning(
         MCP_HANDLER_GUARDRAIL_VIOLATED,
         tool_name=tool,
@@ -112,6 +115,7 @@ def _log_guardrail(tool: str, exc: GuardrailViolationError) -> None:
 
 
 def _get_str(arguments: dict[str, Any], key: str) -> NotBlankStr | None:
+    """Extract an optional non-blank string argument."""
     raw = arguments.get(key)
     if raw in (None, ""):
         return None
@@ -121,6 +125,7 @@ def _get_str(arguments: dict[str, Any], key: str) -> NotBlankStr | None:
 
 
 def _require_str(arguments: dict[str, Any], key: str) -> NotBlankStr:
+    """Extract a required non-blank string or raise ``ArgumentValidationError``."""
     value = _get_str(arguments, key)
     if value is None:
         raise invalid_argument(key, _TY_STRING)
@@ -128,6 +133,7 @@ def _require_str(arguments: dict[str, Any], key: str) -> NotBlankStr:
 
 
 def _get_dict(arguments: dict[str, Any], key: str) -> dict[str, str] | None:
+    """Extract an optional ``dict[str, str]`` argument."""
     raw = arguments.get(key)
     if raw in (None, ""):
         return None
@@ -142,6 +148,7 @@ def _get_dict(arguments: dict[str, Any], key: str) -> dict[str, str] | None:
 
 
 def _require_dict(arguments: dict[str, Any], key: str) -> dict[str, str]:
+    """Extract a required ``dict[str, str]`` argument or raise."""
     value = _get_dict(arguments, key)
     if value is None:
         raise invalid_argument(key, _TY_DICT)
@@ -181,6 +188,7 @@ async def _messages_list(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """List messages on a channel (paginated)."""
     try:
         channel = _get_str(arguments, _ARG_CHANNEL)
         messages = await app_state.message_service.list_messages(channel=channel)
@@ -203,6 +211,7 @@ async def _messages_get(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Fetch a single message by channel + message ID."""
     try:
         channel = _require_str(arguments, _ARG_CHANNEL)
         message_id = _require_str(arguments, _ARG_MESSAGE_ID)
@@ -227,6 +236,7 @@ async def _messages_send(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Publish a new message on a channel (non-destructive write)."""
     try:
         message = _parse_message(arguments)
         await app_state.message_service.send_message(message=message)
@@ -242,6 +252,7 @@ async def _messages_delete(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
+    """Capability gap: message store is append-only by design."""
     tool = "synthorg_messages_delete"
     try:
         reason, resolved_actor = require_destructive_guardrails(arguments, actor)
@@ -293,6 +304,7 @@ async def _meetings_list(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """List meeting records (paginated, optionally filtered)."""
     try:
         status = _parse_meeting_status(arguments)
         meeting_type = _get_str(arguments, _ARG_MEETING_TYPE)
@@ -319,6 +331,7 @@ async def _meetings_get(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Fetch a single meeting record by ID."""
     try:
         meeting_id = _require_str(arguments, _ARG_MEETING_ID)
         record = await app_state.meeting_service.get_meeting(meeting_id)
@@ -339,6 +352,7 @@ async def _meetings_create(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Capability gap: meetings are produced by the engine, not ad-hoc created."""
     tool = "synthorg_meetings_create"
     try:
         await app_state.meeting_service.create_meeting()
@@ -356,6 +370,7 @@ async def _meetings_update(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Capability gap: meeting records are updated by the engine only."""
     tool = "synthorg_meetings_update"
     try:
         await app_state.meeting_service.update_meeting()
@@ -373,6 +388,7 @@ async def _meetings_delete(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
+    """Capability gap: meeting records are append-only by design."""
     tool = "synthorg_meetings_delete"
     try:
         require_destructive_guardrails(arguments, actor)
@@ -406,6 +422,7 @@ async def _connections_list(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """List external-system connections (paginated)."""
     try:
         connections = await app_state.connection_service.list_connections()
         offset, limit = coerce_pagination(arguments)
@@ -427,6 +444,7 @@ async def _connections_get(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Fetch a single connection by name."""
     try:
         name = _require_str(arguments, _ARG_NAME)
         connection = await app_state.connection_service.get_connection(name)
@@ -447,6 +465,7 @@ async def _connections_create(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
+    """Create a new external connection (non-destructive write)."""
     try:
         name = _require_str(arguments, _ARG_NAME)
         connection_type = _parse_connection_type(arguments)
@@ -475,6 +494,7 @@ async def _connections_delete(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
+    """Delete a connection (destructive; enforces guardrails)."""
     tool = "synthorg_connections_delete"
     try:
         reason, resolved_actor = require_destructive_guardrails(arguments, actor)
@@ -506,6 +526,7 @@ async def _connections_check_health(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Run an on-demand health probe against a connection."""
     try:
         name = _require_str(arguments, _ARG_NAME)
         connection = await app_state.connection_service.check_health(name=name)
@@ -546,6 +567,7 @@ async def _webhooks_list(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """List registered webhook definitions (paginated)."""
     try:
         definitions = await app_state.webhook_service.list_webhooks()
         offset, limit = coerce_pagination(arguments)
@@ -567,6 +589,7 @@ async def _webhooks_get(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Fetch a single webhook definition by ID."""
     try:
         webhook_id = _require_str(arguments, _ARG_WEBHOOK_ID)
         definition = await app_state.webhook_service.get_webhook(webhook_id)
@@ -587,6 +610,7 @@ async def _webhooks_create(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
+    """Register a new webhook definition (non-destructive write)."""
     try:
         definition = _parse_webhook_definition(arguments, require_id=False)
         stored = await app_state.webhook_service.create_webhook(
@@ -605,6 +629,7 @@ async def _webhooks_update(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
+    """Update an existing webhook definition by ID."""
     try:
         definition = _parse_webhook_definition(arguments, require_id=True)
         stored = await app_state.webhook_service.update_webhook(
@@ -623,6 +648,7 @@ async def _webhooks_delete(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
+    """Delete a webhook definition (destructive; enforces guardrails)."""
     tool = "synthorg_webhooks_delete"
     try:
         reason, resolved_actor = require_destructive_guardrails(arguments, actor)
@@ -658,6 +684,7 @@ async def _tunnel_get_status(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Return the current tunnel service status."""
     try:
         status = await app_state.tunnel_service.get_status()
         return ok(status.to_dict())
@@ -672,6 +699,7 @@ async def _tunnel_connect(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Trigger a tunnel reconnect attempt."""
     try:
         status = await app_state.tunnel_service.connect()
         return ok(status.to_dict())

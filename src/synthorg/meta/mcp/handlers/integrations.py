@@ -45,6 +45,7 @@ _TY_INT = "non-negative int"
 
 
 def _log_failed(tool: str, exc: Exception) -> None:
+    """Emit ``MCP_HANDLER_INVOKE_FAILED`` at WARNING with safe error context."""
     logger.warning(
         MCP_HANDLER_INVOKE_FAILED,
         tool_name=tool,
@@ -54,6 +55,7 @@ def _log_failed(tool: str, exc: Exception) -> None:
 
 
 def _log_guardrail(tool: str, exc: GuardrailViolationError) -> None:
+    """Emit ``MCP_HANDLER_GUARDRAIL_VIOLATED`` for destructive-op rejections."""
     logger.warning(
         MCP_HANDLER_GUARDRAIL_VIOLATED,
         tool_name=tool,
@@ -62,6 +64,7 @@ def _log_guardrail(tool: str, exc: GuardrailViolationError) -> None:
 
 
 def _map_capability(tool: str, exc: CapabilityNotSupportedError) -> str:
+    """Translate a facade-side capability gap into a typed error envelope."""
     logger.info(
         MCP_HANDLER_INVOKE_FAILED,
         tool_name=tool,
@@ -71,6 +74,7 @@ def _map_capability(tool: str, exc: CapabilityNotSupportedError) -> str:
 
 
 def _actor_name(actor: AgentIdentity | None) -> NotBlankStr:
+    """Return a stable non-blank identifier for audit logging."""
     if actor is None:
         return NotBlankStr("mcp-anonymous")
     name = getattr(actor, "name", None)
@@ -81,6 +85,7 @@ def _actor_name(actor: AgentIdentity | None) -> NotBlankStr:
 
 
 def _get_str(arguments: dict[str, Any], key: str) -> NotBlankStr | None:
+    """Extract an optional non-blank string argument."""
     raw = arguments.get(key)
     if raw in (None, ""):
         return None
@@ -90,6 +95,7 @@ def _get_str(arguments: dict[str, Any], key: str) -> NotBlankStr | None:
 
 
 def _require_str(arguments: dict[str, Any], key: str) -> NotBlankStr:
+    """Extract a required non-blank string or raise ``ArgumentValidationError``."""
     value = _get_str(arguments, key)
     if value is None:
         raise invalid_argument(key, _TY_STRING)
@@ -97,6 +103,7 @@ def _require_str(arguments: dict[str, Any], key: str) -> NotBlankStr:
 
 
 def _require_uuid(arguments: dict[str, Any], key: str) -> NotBlankStr:
+    """Extract a required UUID-shaped string or raise ``ArgumentValidationError``."""
     value = require_arg(arguments, key, str)
     try:
         UUID(value)
@@ -106,6 +113,7 @@ def _require_uuid(arguments: dict[str, Any], key: str) -> NotBlankStr:
 
 
 def _require_list_str(arguments: dict[str, Any], key: str) -> tuple[str, ...]:
+    """Extract an optional sequence of strings, defaulting to ``()`` when absent."""
     raw = arguments.get(key)
     if raw in (None, ""):
         return ()
@@ -118,6 +126,7 @@ def _require_list_str(arguments: dict[str, Any], key: str) -> tuple[str, ...]:
 
 
 def _require_int(arguments: dict[str, Any], key: str) -> int:
+    """Extract a required non-negative int (rejects bool) or raise."""
     raw = arguments.get(key)
     if isinstance(raw, bool) or not isinstance(raw, int) or raw < 0:
         raise invalid_argument(key, _TY_INT)
@@ -125,6 +134,7 @@ def _require_int(arguments: dict[str, Any], key: str) -> int:
 
 
 def _to_jsonable(value: Any) -> Any:
+    """Coerce a Pydantic / ``to_dict`` value into a JSON-serialisable form."""
     dump_fn = getattr(value, "model_dump", None)
     if callable(dump_fn):
         return dump_fn(mode="json")
@@ -143,6 +153,7 @@ async def _mcp_catalog_list(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """List available MCP catalog entries (paginated)."""
     tool = "synthorg_mcp_catalog_list"
     try:
         entries = await app_state.mcp_catalog_facade_service.list_catalog()
@@ -160,6 +171,7 @@ async def _mcp_catalog_search(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Search MCP catalog entries by query string."""
     tool = "synthorg_mcp_catalog_search"
     try:
         query = _require_str(arguments, "query")
@@ -178,6 +190,7 @@ async def _mcp_catalog_get(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Fetch a single MCP catalog entry by ID."""
     tool = "synthorg_mcp_catalog_get"
     try:
         entry_id = _require_str(arguments, "entry_id")
@@ -201,6 +214,7 @@ async def _mcp_catalog_install(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
+    """Install an MCP catalog entry (non-destructive create)."""
     tool = "synthorg_mcp_catalog_install"
     try:
         entry_id = _require_str(arguments, "entry_id")
@@ -222,6 +236,7 @@ async def _mcp_catalog_uninstall(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
+    """Uninstall an MCP catalog entry (destructive; enforces guardrails)."""
     tool = "synthorg_mcp_catalog_uninstall"
     try:
         reason, resolved_actor = require_destructive_guardrails(arguments, actor)
@@ -259,6 +274,7 @@ async def _oauth_list_providers(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """List configured OAuth providers."""
     tool = "synthorg_oauth_list_providers"
     try:
         providers = await app_state.oauth_facade_service.list_providers()
@@ -274,6 +290,7 @@ async def _oauth_configure_provider(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
+    """Configure an OAuth provider (creates or updates credentials)."""
     tool = "synthorg_oauth_configure_provider"
     try:
         name = _require_str(arguments, "name")
@@ -301,6 +318,7 @@ async def _oauth_remove_provider(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
+    """Remove an OAuth provider (destructive; enforces guardrails)."""
     tool = "synthorg_oauth_remove_provider"
     try:
         reason, resolved_actor = require_destructive_guardrails(arguments, actor)
@@ -336,6 +354,7 @@ async def _clients_list(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """List registered client applications."""
     tool = "synthorg_clients_list"
     try:
         offset, limit = coerce_pagination(arguments)
@@ -358,6 +377,7 @@ async def _clients_get(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Fetch a single client by ID."""
     tool = "synthorg_clients_get"
     try:
         client_id = _require_uuid(arguments, "client_id")
@@ -379,6 +399,7 @@ async def _clients_create(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
+    """Create a new client application (non-destructive write)."""
     tool = "synthorg_clients_create"
     try:
         name = _require_str(arguments, "name")
@@ -402,6 +423,7 @@ async def _clients_deactivate(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
+    """Deactivate a client (destructive; enforces guardrails)."""
     tool = "synthorg_clients_deactivate"
     try:
         reason, resolved_actor = require_destructive_guardrails(arguments, actor)
@@ -434,6 +456,7 @@ async def _clients_get_satisfaction(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Return the client satisfaction score (roll-up over recent interactions)."""
     tool = "synthorg_clients_get_satisfaction"
     try:
         client_id = _require_uuid(arguments, "client_id")
@@ -453,6 +476,7 @@ async def _artifacts_list(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """List recorded artifacts (paginated)."""
     tool = "synthorg_artifacts_list"
     try:
         offset, limit = coerce_pagination(arguments)
@@ -475,6 +499,7 @@ async def _artifacts_get(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Fetch a single artifact by ID."""
     tool = "synthorg_artifacts_get"
     try:
         artifact_id = _require_uuid(arguments, "artifact_id")
@@ -496,6 +521,7 @@ async def _artifacts_create(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
+    """Record a new artifact (non-destructive write)."""
     tool = "synthorg_artifacts_create"
     try:
         name = _require_str(arguments, "name")
@@ -521,6 +547,7 @@ async def _artifacts_delete(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
+    """Delete an artifact (destructive; enforces guardrails)."""
     tool = "synthorg_artifacts_delete"
     try:
         reason, resolved_actor = require_destructive_guardrails(arguments, actor)
@@ -556,6 +583,7 @@ async def _ontology_list_entities(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """List known ontology entity types."""
     tool = "synthorg_ontology_list_entities"
     try:
         entities = await app_state.ontology_facade_service.list_entities()
@@ -571,6 +599,7 @@ async def _ontology_get_entity(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Fetch a single ontology entity by ID."""
     tool = "synthorg_ontology_get_entity"
     try:
         entity_id = _require_str(arguments, "entity_id")
@@ -592,6 +621,7 @@ async def _ontology_get_relationships(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Return the relationship graph for a single ontology entity."""
     tool = "synthorg_ontology_get_relationships"
     try:
         entity_id = _require_str(arguments, "entity_id")
@@ -610,6 +640,7 @@ async def _ontology_search(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Search ontology entities by query string."""
     tool = "synthorg_ontology_search"
     try:
         query = _require_str(arguments, "query")

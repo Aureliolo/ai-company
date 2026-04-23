@@ -38,6 +38,7 @@ _TY_UUID = "UUID string"
 
 
 def _log_failed(tool: str, exc: Exception) -> None:
+    """Emit ``MCP_HANDLER_INVOKE_FAILED`` at WARNING with safe error context."""
     logger.warning(
         MCP_HANDLER_INVOKE_FAILED,
         tool_name=tool,
@@ -47,6 +48,7 @@ def _log_failed(tool: str, exc: Exception) -> None:
 
 
 def _map_capability(tool: str, exc: CapabilityNotSupportedError) -> str:
+    """Translate a facade-side capability gap into a typed error envelope."""
     logger.info(
         MCP_HANDLER_INVOKE_FAILED,
         tool_name=tool,
@@ -56,6 +58,7 @@ def _map_capability(tool: str, exc: CapabilityNotSupportedError) -> str:
 
 
 def _actor_name(actor: AgentIdentity | None) -> NotBlankStr:
+    """Return a stable non-blank identifier for audit logging."""
     if actor is None:
         return NotBlankStr("mcp-anonymous")
     name = getattr(actor, "name", None)
@@ -66,6 +69,7 @@ def _actor_name(actor: AgentIdentity | None) -> NotBlankStr:
 
 
 def _get_str(arguments: dict[str, Any], key: str) -> NotBlankStr | None:
+    """Extract an optional non-blank string argument."""
     raw = arguments.get(key)
     if raw in (None, ""):
         return None
@@ -75,6 +79,7 @@ def _get_str(arguments: dict[str, Any], key: str) -> NotBlankStr | None:
 
 
 def _require_str(arguments: dict[str, Any], key: str) -> NotBlankStr:
+    """Extract a required non-blank string or raise ``ArgumentValidationError``."""
     value = _get_str(arguments, key)
     if value is None:
         raise invalid_argument(key, _TY_STRING)
@@ -82,6 +87,7 @@ def _require_str(arguments: dict[str, Any], key: str) -> NotBlankStr:
 
 
 def _require_uuid(arguments: dict[str, Any], key: str) -> NotBlankStr:
+    """Extract a required UUID-shaped string or raise ``ArgumentValidationError``."""
     value = require_arg(arguments, key, str)
     try:
         UUID(value)
@@ -91,6 +97,7 @@ def _require_uuid(arguments: dict[str, Any], key: str) -> NotBlankStr:
 
 
 def _to_jsonable(value: Any) -> Any:
+    """Coerce a Pydantic / ``to_dict`` value into a JSON-serialisable form."""
     dump_fn = getattr(value, "model_dump", None)
     if callable(dump_fn):
         return dump_fn(mode="json")
@@ -109,6 +116,7 @@ async def _quality_get_summary(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Return the org-wide quality summary."""
     tool = "synthorg_quality_get_summary"
     try:
         summary = await app_state.quality_facade_service.get_summary()
@@ -126,6 +134,7 @@ async def _quality_get_agent_quality(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Return the quality profile for a single agent."""
     tool = "synthorg_quality_get_agent_quality"
     try:
         agent_id = _require_str(arguments, "agent_id")
@@ -146,6 +155,7 @@ async def _quality_list_scores(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """List individual quality scores (paginated)."""
     tool = "synthorg_quality_list_scores"
     try:
         agent_id = _get_str(arguments, "agent_id")
@@ -167,6 +177,7 @@ async def _reviews_list(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """List queued review records (paginated)."""
     tool = "synthorg_reviews_list"
     try:
         offset, limit = coerce_pagination(arguments)
@@ -189,6 +200,7 @@ async def _reviews_get(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Fetch a single review by ID."""
     tool = "synthorg_reviews_get"
     try:
         review_id = _require_uuid(arguments, "review_id")
@@ -210,6 +222,7 @@ async def _reviews_create(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
+    """Create a new review record (non-destructive write)."""
     tool = "synthorg_reviews_create"
     try:
         task_id = _require_str(arguments, "task_id")
@@ -233,6 +246,7 @@ async def _reviews_update(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
+    """Update verdict / comments on an existing review."""
     tool = "synthorg_reviews_update"
     try:
         review_id = _require_uuid(arguments, "review_id")
@@ -264,6 +278,7 @@ async def _evaluation_versions_list(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """List evaluation-config version snapshots."""
     tool = "synthorg_evaluation_versions_list"
     try:
         versions = await app_state.evaluation_version_service.list_versions()
@@ -279,6 +294,7 @@ async def _evaluation_versions_get(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Fetch a single evaluation-config version by ID."""
     tool = "synthorg_evaluation_versions_get"
     try:
         version_id = _require_str(arguments, "version_id")

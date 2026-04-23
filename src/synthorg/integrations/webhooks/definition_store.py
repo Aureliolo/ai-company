@@ -60,11 +60,20 @@ class InMemoryWebhookDefinitionStore:
             self._by_id[definition.id] = definition
 
     async def replace(self, definition: WebhookDefinition) -> None:
-        """Replace an existing definition (by ID)."""
+        """Replace an existing definition (by ID).
+
+        Enforces the same name-uniqueness invariant as :meth:`add`:
+        another definition with the same name under a different ID is
+        rejected so :meth:`get_by_name` stays deterministic.
+        """
         async with self._lock:
             if definition.id not in self._by_id:
                 msg = f"WebhookDefinition id not found: {definition.id}"
                 raise KeyError(msg)
+            for existing in self._by_id.values():
+                if existing.name == definition.name and existing.id != definition.id:
+                    msg = f"WebhookDefinition name already exists: {definition.name!r}"
+                    raise ValueError(msg)
             self._by_id[definition.id] = definition
 
     async def delete(self, definition_id: NotBlankStr) -> bool:
