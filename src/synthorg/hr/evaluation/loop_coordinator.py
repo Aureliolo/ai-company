@@ -387,64 +387,54 @@ class EvalLoopCoordinator:
         override = self._config.pattern_action_map or {}
         actions: list[NotBlankStr] = []
         for pattern in patterns:
-            if ":" not in pattern:
+            reason, mapped, extra = self._classify_pattern(pattern, override)
+            if mapped is None:
                 logger.warning(
                     EVAL_LOOP_ACTION_PROPOSED,
                     action_count=0,
-                    reason="malformed_pattern",
+                    reason=reason,
                     pattern=pattern,
+                    **extra,
                 )
                 continue
-            kind, pillar = pattern.split(":", 1)
-            if kind not in _SUPPORTED_PATTERN_KINDS:
-                # A future detector may emit non-``weakness`` prefixes
-                # (e.g. ``"strength:intelligence"``). Until a mapping
-                # for that kind is wired, skip with a WARNING so the
-                # unknown prefix cannot silently bypass the mapping.
-                logger.warning(
-                    EVAL_LOOP_ACTION_PROPOSED,
-                    action_count=0,
-                    reason="unknown_pattern_kind",
-                    pattern=pattern,
-                    kind=kind,
-                )
-                continue
-            mapped = override.get(pillar) or _DEFAULT_PATTERN_ACTIONS.get(pillar)
-            if not mapped:
-                logger.warning(
-                    EVAL_LOOP_ACTION_PROPOSED,
-                    action_count=0,
-                    reason="unmapped_pattern",
-                    pattern=pattern,
-                    pillar=pillar,
-                )
-                continue
-            # ``mapped`` is statically ``NotBlankStr`` (narrowed by the
-            # truthiness check above from ``str | None``); since
-            # ``NotBlankStr`` erases to ``str`` at runtime, we append
-            # directly without a redundant cast.
             actions.append(mapped)
 
-        # Deduplicate action ids while preserving first-seen order so
-        # two distinct weak pillars that happen to share an action
-        # identifier (e.g. an operator override collapsing two pillars
-        # onto ``"escalate_to_engineer"``) don't trigger the same
-        # remediation twice.
-        seen: set[NotBlankStr] = set()
-        unique_actions: list[NotBlankStr] = []
-        for action in actions:
-            if action in seen:
-                continue
-            seen.add(action)
-            unique_actions.append(action)
-
+        # ``dict.fromkeys`` preserves first-seen order while
+        # deduplicating -- two distinct weak pillars that share an
+        # action id (e.g. an override collapsing two pillars onto
+        # ``"escalate_to_engineer"``) should not fire the remediation
+        # twice.
+        unique_actions = tuple(dict.fromkeys(actions))
         if unique_actions:
             logger.info(
                 EVAL_LOOP_ACTION_PROPOSED,
                 action_count=len(unique_actions),
-                actions=unique_actions,
+                actions=list(unique_actions),
             )
-        return tuple(unique_actions)
+        return unique_actions
+
+    @staticmethod
+    def _classify_pattern(
+        pattern: str,
+        override: dict[str, NotBlankStr],
+    ) -> tuple[str, NotBlankStr | None, dict[str, str]]:
+        """Map a pattern token to (reason, mapped_action, extra_log_fields).
+
+        Returns ``mapped_action=None`` with a non-empty ``reason`` for
+        every skip path (malformed / unknown kind / unmapped). The
+        caller logs the WARNING once with ``reason`` + ``extra`` so
+        ``_propose_actions`` stays under the 50-line ceiling without
+        duplicating log-shape code.
+        """
+        if ":" not in pattern:
+            return ("malformed_pattern", None, {})
+        kind, pillar = pattern.split(":", 1)
+        if kind not in _SUPPORTED_PATTERN_KINDS:
+            return ("unknown_pattern_kind", None, {"kind": kind})
+        mapped = override.get(pillar) or _DEFAULT_PATTERN_ACTIONS.get(pillar)
+        if not mapped:
+            return ("unmapped_pattern", None, {"pillar": pillar})
+        return ("", mapped, {})
 
     async def _run_benchmarks(self) -> tuple[BenchmarkRunResult, ...]:
         """Run all registered benchmarks concurrently.
