@@ -50,12 +50,24 @@ AGENT_TOOLS: tuple[MCPToolDef, ...] = (
         },
         required=("agent_name", "updates"),
     ),
-    write_tool(
+    admin_tool(
         "agents",
         "delete",
-        "Remove an agent from the organization.",
-        _AGENT_NAME,
-        required=("agent_name",),
+        "Remove an agent from the organization (destructive; requires confirm).",
+        {
+            **_AGENT_NAME,
+            "reason": {
+                "type": "string",
+                "description": "Reason for removal (non-blank)",
+                "minLength": 1,
+            },
+            "confirm": {
+                "type": "boolean",
+                "description": "Must be true to proceed",
+                "enum": [True],
+            },
+        },
+        required=("agent_name", "reason", "confirm"),
     ),
     # --- Agent observability ---
     read_tool(

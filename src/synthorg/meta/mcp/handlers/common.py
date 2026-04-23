@@ -45,6 +45,8 @@ _GR_MSG_ACTOR = "Destructive operation requires an identified actor"
 _GR_MSG_CONFIRM = "Destructive operation requires 'confirm': true"
 _GR_MSG_REASON = "Destructive operation requires a non-blank 'reason'"
 
+_DC_NOT_SUPPORTED = "not_supported"
+
 
 class PaginationMeta(BaseModel):
     """Pagination metadata attached to list/collection responses.
@@ -246,6 +248,38 @@ def paginate_sequence[T](
     resolved_total = total if total is not None else len(seq)
     page = list(seq[offset : offset + limit])
     return page, PaginationMeta(total=resolved_total, offset=offset, limit=limit)
+
+
+def not_supported(tool_name: str, reason: str) -> str:
+    """Build a ``not_supported`` error envelope and log it at WARNING.
+
+    Used by handlers whose underlying service layer does not yet expose
+    a matching method.  The handler is real (not a placeholder) but its
+    semantic behaviour is to cleanly reject the call with an explanation.
+    Ops alerting treats these the same as placeholders -- one WARNING
+    event per invocation -- so unfulfilled tools stay visible.
+
+    Args:
+        tool_name: Full ``synthorg_<domain>_<action>`` name.
+        reason: Short operator-readable reason (which method / backlog
+            link).
+
+    Returns:
+        JSON-encoded error envelope with
+        ``status="error"``, ``domain_code="not_supported"``.
+    """
+    logger.warning(
+        MCP_HANDLER_NOT_IMPLEMENTED,
+        tool_name=tool_name,
+        reason=reason,
+    )
+    body: dict[str, Any] = {
+        "status": "error",
+        "error_type": "NotSupportedInMCP",
+        "message": reason,
+        "domain_code": _DC_NOT_SUPPORTED,
+    }
+    return json.dumps(body)
 
 
 def make_placeholder_handler(tool_name: str) -> Any:

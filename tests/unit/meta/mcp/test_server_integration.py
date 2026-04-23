@@ -116,14 +116,19 @@ class TestFullStackInvocation:
         registry = get_registry()
         handlers = build_handler_map()
         invoker = MCPToolInvoker(registry, handlers)
+        # Pick a still-placeholder tool so the end-to-end test exercises
+        # the full registry+invoker+handler path without needing a live
+        # ``app_state``.  Workflows haven't been wired yet at this point
+        # in META-MCP-1 rollout, so its handler is the stub scaffold.
         result = await invoker.invoke(
-            "synthorg_agents_list",
+            "synthorg_workflows_list",
             {"offset": 0, "limit": 10},
             app_state=None,
         )
         assert result.is_error is False
         body = json.loads(result.content)
-        assert body["tool"] == "synthorg_agents_list"
+        assert body["tool"] == "synthorg_workflows_list"
+        assert body["status"] == "not_implemented"
 
     def test_server_config_complete(self) -> None:
         config = get_server_config()

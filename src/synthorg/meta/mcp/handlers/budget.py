@@ -1,13 +1,220 @@
-"""Budget domain handlers."""
+"""Budget domain MCP handlers.
 
-from synthorg.meta.mcp.handlers.common import make_handlers_for_tools
+Shims the 5 budget tools onto ``app_state.cost_tracker`` +
+``app_state.config_resolver`` + ``app_state.persistence.budget_config_versions``.
+All budget tools are reads; none are destructive.
+"""
 
-BUDGET_HANDLERS: dict[str, object] = make_handlers_for_tools(
-    (
-        "synthorg_budget_get_config",
-        "synthorg_budget_list_records",
-        "synthorg_budget_get_agent_spending",
-        "synthorg_budget_versions_list",
-        "synthorg_budget_versions_get",
-    )
+from typing import Any
+
+from synthorg.meta.mcp.errors import ArgumentValidationError, invalid_argument
+from synthorg.meta.mcp.handlers.common import (
+    dump_many,
+    err,
+    ok,
+    paginate_sequence,
+    require_arg,
 )
+from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.mcp import (
+    MCP_HANDLER_ARGUMENT_INVALID,
+    MCP_HANDLER_INVOKE_FAILED,
+    MCP_HANDLER_INVOKE_SUCCESS,
+)
+
+logger = get_logger(__name__)
+
+
+_TY_NON_BLANK = "non-blank string"
+_TY_POS_INT = "positive int"
+_ARG_AGENT_ID = "agent_id"
+_ARG_TASK_ID = "task_id"
+_ARG_VERSION = "version_num"
+_ENTITY_ID = "default"
+
+
+class _NotFoundError(LookupError):
+    """Handler-local not-found signal (budget config version missing)."""
+
+    domain_code = "not_found"
+
+
+def _log_failed(tool: str, exc: Exception) -> None:
+    logger.warning(
+        MCP_HANDLER_INVOKE_FAILED,
+        tool_name=tool,
+        error_type=type(exc).__name__,
+        error=safe_error_description(exc),
+    )
+
+
+def _log_invalid(tool: str, exc: Exception) -> None:
+    logger.info(
+        MCP_HANDLER_ARGUMENT_INVALID,
+        tool_name=tool,
+        error_type=type(exc).__name__,
+        error=safe_error_description(exc),
+    )
+
+
+def _require_non_blank(arguments: dict[str, Any], key: str) -> str:
+    raw = require_arg(arguments, key, str)
+    if not raw.strip():
+        raise invalid_argument(key, _TY_NON_BLANK)
+    return raw
+
+
+async def _budget_get_config(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],  # noqa: ARG001
+    actor: Any = None,  # noqa: ARG001
+) -> str:
+    tool = "synthorg_budget_get_config"
+    try:
+        config = await app_state.config_resolver.get_budget_config()
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    logger.debug(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    return ok(data=config.model_dump(mode="json"))
+
+
+async def _budget_list_records(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: Any = None,  # noqa: ARG001
+) -> str:
+    tool = "synthorg_budget_list_records"
+    try:
+        agent_id = arguments.get("agent_id")
+        task_id = arguments.get("task_id")
+        if agent_id is not None and (
+            not isinstance(agent_id, str) or not agent_id.strip()
+        ):
+            raise invalid_argument(_ARG_AGENT_ID, _TY_NON_BLANK)
+        if task_id is not None and (
+            not isinstance(task_id, str) or not task_id.strip()
+        ):
+            raise invalid_argument(_ARG_TASK_ID, _TY_NON_BLANK)
+        offset = int(arguments.get("offset", 0) or 0)
+        limit = int(arguments.get("limit", 50) or 50)
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
+    except (TypeError, ValueError) as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
+
+    try:
+        records = await app_state.cost_tracker.get_records(
+            agent_id=agent_id,
+            task_id=task_id,
+        )
+        page, meta = paginate_sequence(records, offset=offset, limit=limit)
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    logger.debug(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    return ok(data=dump_many(page), pagination=meta)
+
+
+async def _budget_get_agent_spending(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: Any = None,  # noqa: ARG001
+) -> str:
+    tool = "synthorg_budget_get_agent_spending"
+    try:
+        agent_id = _require_non_blank(arguments, _ARG_AGENT_ID)
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
+
+    try:
+        total = await app_state.cost_tracker.get_agent_cost(agent_id)
+        config = await app_state.config_resolver.get_budget_config()
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    logger.debug(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    return ok(
+        data={
+            "agent_id": agent_id,
+            "total_cost": total,
+            "currency": config.currency,
+        },
+    )
+
+
+async def _budget_versions_list(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: Any = None,  # noqa: ARG001
+) -> str:
+    tool = "synthorg_budget_versions_list"
+    try:
+        offset = int(arguments.get("offset", 0) or 0)
+        limit = int(arguments.get("limit", 50) or 50)
+    except (TypeError, ValueError) as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
+
+    try:
+        repo = app_state.persistence.budget_config_versions
+        versions = await repo.list_versions(_ENTITY_ID, limit=limit, offset=offset)
+        total = await repo.count_versions(_ENTITY_ID)
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    _, meta = paginate_sequence(
+        versions,
+        offset=offset,
+        limit=limit,
+        total=total,
+    )
+    logger.debug(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    return ok(data=dump_many(versions), pagination=meta)
+
+
+async def _budget_versions_get(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: Any = None,  # noqa: ARG001
+) -> str:
+    tool = "synthorg_budget_versions_get"
+    try:
+        version_num = require_arg(arguments, _ARG_VERSION, int)
+        if version_num < 1:
+            raise invalid_argument(_ARG_VERSION, _TY_POS_INT)
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
+
+    try:
+        repo = app_state.persistence.budget_config_versions
+        snapshot = await repo.get_version(_ENTITY_ID, version_num)
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    if snapshot is None:
+        missing = _NotFoundError(
+            f"Budget config version {version_num} not found",
+        )
+        _log_failed(tool, missing)
+        return err(missing)
+    logger.debug(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    return ok(data=snapshot.model_dump(mode="json"))
+
+
+BUDGET_HANDLERS: dict[str, Any] = {
+    "synthorg_budget_get_config": _budget_get_config,
+    "synthorg_budget_list_records": _budget_list_records,
+    "synthorg_budget_get_agent_spending": _budget_get_agent_spending,
+    "synthorg_budget_versions_list": _budget_versions_list,
+    "synthorg_budget_versions_get": _budget_versions_get,
+}
