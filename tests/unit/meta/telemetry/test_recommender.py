@@ -252,7 +252,10 @@ class TestRuleThresholdMapStructure:
         rule: str,
         expected_default: float,
     ) -> None:
-        # Identity check: the map must consult the module-level Final so
-        # any future re-tuning edits a single source of truth.
+        # Value equality ties the map to the module-level Final constants
+        # so re-tuning a named constant automatically updates the map.
+        # A value check is more robust than ``is`` because CPython's
+        # float-interning behaviour for small floats is not guaranteed
+        # by the language spec.
         _, actual_default = _RULE_THRESHOLD_MAP[rule]
-        assert actual_default is expected_default
+        assert actual_default == expected_default

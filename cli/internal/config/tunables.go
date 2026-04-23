@@ -163,6 +163,12 @@ func ResolveTunables(s State) (Tunables, error) {
 	if t.ImageVerifyTimeout, err = resolveDuration(EnvImageVerifyTimeout, s.ImageVerifyTimeout, t.ImageVerifyTimeout); err != nil {
 		return Tunables{}, fmt.Errorf("image_verify_timeout: %w", err)
 	}
+	if t.ImageVerifyTimeout < MinImageVerifyTimeout {
+		return Tunables{}, fmt.Errorf(
+			"image_verify_timeout: %v is below the %v minimum floor; a shorter timeout would bypass cosign/SLSA verification by silently timing out",
+			t.ImageVerifyTimeout, MinImageVerifyTimeout,
+		)
+	}
 	if t.ImagePullRetryDelay, err = resolveDuration(EnvImagePullRetryDelay, s.ImagePullRetryDelay, t.ImagePullRetryDelay); err != nil {
 		return Tunables{}, fmt.Errorf("image_pull_retry_delay: %w", err)
 	}

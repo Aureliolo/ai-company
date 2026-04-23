@@ -943,6 +943,27 @@ class TestGetBaseSources:
         assert "--malicious" not in result
         assert "src/good.py" in result
 
+    @pytest.mark.unit
+    async def test_missing_concurrency_and_semaphore_raises(self) -> None:
+        """HYG-2 contract: one of concurrency= or semaphore= is required.
+
+        The previous silent default (concurrency=10) was removed so the
+        function cannot drift from
+        ``SemanticAnalysisConfig.git_concurrency``.  A caller that
+        passes neither must fail loud with a message pointing at the
+        config field.
+        """
+        mock_run_git = AsyncMock()
+        with pytest.raises(
+            ValueError,
+            match=r"get_base_sources requires either concurrency",
+        ):
+            await get_base_sources(
+                mock_run_git,
+                "abc123",
+                ("src/main.py",),
+            )
+
 
 # ---------------------------------------------------------------------------
 # _run_semantic_analysis

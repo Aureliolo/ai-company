@@ -202,6 +202,8 @@ func TestResolveTunables_InvalidValues(t *testing.T) {
 		{"negative image pull attempts state", State{ImagePullAttempts: "-1"}, nil, "image_pull_attempts"},
 		{"image pull attempts exceeds ceiling", State{ImagePullAttempts: "999"}, nil, "image_pull_attempts"},
 		{"non-integer image pull attempts env", State{}, map[string]string{EnvImagePullAttempts: "three"}, "image_pull_attempts"},
+		{"image verify timeout below floor env", State{}, map[string]string{EnvImageVerifyTimeout: "1ns"}, "image_verify_timeout"},
+		{"image verify timeout below floor state", State{ImageVerifyTimeout: "500ms"}, nil, "image_verify_timeout"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

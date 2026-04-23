@@ -33,6 +33,21 @@ def test_controllers_directory_discovered() -> None:
     assert files, f"no controller files discovered at {_CONTROLLERS_DIR}"
 
 
+def _call_target_name(node: ast.Call) -> str | None:
+    """Return the final attribute name of a call target, or ``None``.
+
+    Handles both bare-name calls (``foo(...)``) and attribute-access
+    calls (``module.foo(...)`` / ``pkg.sub.foo(...)``).  Returning the
+    *final* segment lets a single regex catch aliased imports, module
+    re-exports, and attribute-chain access uniformly.
+    """
+    if isinstance(node.func, ast.Name):
+        return node.func.id
+    if isinstance(node.func, ast.Attribute):
+        return node.func.attr
+    return None
+
+
 def test_no_residual_bare_per_op_rate_limit_calls() -> None:
     """No controller may call the primitive decorator directly."""
     offenders: list[str] = []
@@ -42,8 +57,7 @@ def test_no_residual_bare_per_op_rate_limit_calls() -> None:
             f"{path.name}:{node.lineno}"
             for node in ast.walk(tree)
             if isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Name)
-            and node.func.id == "per_op_rate_limit"
+            and _call_target_name(node) == "per_op_rate_limit"
         )
     assert not offenders, (
         "Controllers must use per_op_rate_limit_from_policy instead "

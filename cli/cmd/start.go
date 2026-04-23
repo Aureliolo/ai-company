@@ -366,6 +366,15 @@ func pullAllImages(ctx context.Context, info docker.Info, safeDir string, state 
 	return refreshed, pullErr
 }
 
+// maxPullBackoff caps the exponential-backoff delay between image-pull
+// retries.  Guards against int64 overflow when operators set
+// ImagePullAttempts to a high value: “baseDelay << (attempt - 1)“
+// with a 2-second base and >=62 attempts would overflow time.Duration
+// (int64 nanoseconds) and yield a negative delay that time.After
+// resolves immediately, effectively disabling the backoff.  Saturating
+// at 5 minutes keeps the retry schedule bounded and predictable.
+const maxPullBackoff = 5 * time.Minute
+
 // dockerPullWithRetry pulls an image with retries for transient failures.
 // The caller supplies attempts (> 0) and baseDelay (exponential backoff
 // seed) so the values flow from the resolved
@@ -387,7 +396,7 @@ func dockerPullWithRetry(
 		if attempt == attempts || ctx.Err() != nil {
 			break
 		}
-		backoff := baseDelay << (attempt - 1)
+		backoff := computePullBackoff(baseDelay, attempt)
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
@@ -395,6 +404,33 @@ func dockerPullWithRetry(
 		}
 	}
 	return lastErr
+}
+
+// computePullBackoff returns “baseDelay << (attempt - 1)“ saturated
+// at maxPullBackoff and guarded against int64 overflow.  Attempt is
+// 1-indexed.
+func computePullBackoff(baseDelay time.Duration, attempt int) time.Duration {
+	// Any baseDelay <= 0 from a misconfigured caller collapses to the
+	// ceiling immediately -- better than a zero-wait tight retry loop.
+	if baseDelay <= 0 {
+		return maxPullBackoff
+	}
+	// Compute the shift amount that would exceed the ceiling so we
+	// can bail out before int64 overflow.  The ceiling is checked
+	// against every candidate backoff.
+	shift := max(attempt-1, 0)
+	// math.MaxInt64 / baseDelay gives the largest multiplier that
+	// stays in range; log2 of that caps the safe shift.
+	for range shift {
+		if baseDelay > maxPullBackoff/2 {
+			return maxPullBackoff
+		}
+		baseDelay *= 2
+	}
+	if baseDelay > maxPullBackoff {
+		return maxPullBackoff
+	}
+	return baseDelay
 }
 
 // pullStartAndWait pulls images, starts containers, and waits for health.

@@ -94,9 +94,9 @@ No corresponding flag -- settable via env var or `config set`:
 | `SYNTHORG_MAX_API_RESPONSE_BYTES` | Maximum bytes for API/checksum downloads (accepts `1MiB`, `1048576`) |
 | `SYNTHORG_MAX_BINARY_BYTES` | Maximum bytes for CLI binary archive downloads (accepts `256MiB`) |
 | `SYNTHORG_MAX_ARCHIVE_ENTRY_BYTES` | Maximum bytes per archive entry during extraction (accepts `128MiB`) |
-| `SYNTHORG_IMAGE_VERIFY_TIMEOUT` | Context timeout for the cosign + SLSA verification pass during `start` and `update` (duration, default `120s`) |
+| `SYNTHORG_IMAGE_VERIFY_TIMEOUT` | Context timeout for the cosign + SLSA verification pass during `start` and `update`. Duration, default `120s`, hard minimum `1s` (shorter values would bypass verification by silently timing out before cosign/SLSA/TUF completes network I/O) |
 | `SYNTHORG_IMAGE_PULL_ATTEMPTS` | Retry count for transient `docker pull` failures on standalone images (integer in `[1, 100]`, default `3`) |
-| `SYNTHORG_IMAGE_PULL_RETRY_DELAY` | Base backoff between pull retries (exponential: N-th retry waits `delay << (N-1)`). Duration, default `2s` |
+| `SYNTHORG_IMAGE_PULL_RETRY_DELAY` | Base backoff between pull retries. Exponential: N-th retry waits `delay * 2^(N-1)` seconds (e.g. `2s` base → 2s, 4s, 8s, 16s, ...), saturated at a 5 min ceiling to guard against overflow when `image_pull_attempts` is large. Duration, default `2s` |
 | `SYNTHORG_FINE_TUNE_HEALTH_PORT` | Override fine-tune container health server port (integer in `[1, 65535]`, default `15002`). Env-only: read directly by the fine-tune Python runner, so it is **not** exposed as a `synthorg config set` key and does not trigger compose regeneration. |
 
 ### Hardcoded network literals (audit rationale)

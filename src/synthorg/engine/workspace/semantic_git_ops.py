@@ -170,7 +170,10 @@ async def get_base_sources(
         )
         raise ValueError(msg)
     sources: dict[str, str] = {}
-    sem = semaphore or asyncio.Semaphore(concurrency or 1)
+    # ``concurrency`` is guaranteed non-None at this point (the guard
+    # above rejected the both-None case) when ``semaphore`` is None,
+    # so the ``semaphore or ...`` short-circuit is unambiguous.
+    sem = semaphore or asyncio.Semaphore(concurrency)  # type: ignore[arg-type]
 
     async def _fetch(fp: str) -> None:
         async with sem:
