@@ -63,6 +63,20 @@ from synthorg.hr.performance.tracker import PerformanceTracker  # noqa: TC001
 from synthorg.hr.registry import AgentRegistryService  # noqa: TC001
 from synthorg.hr.scaling.service import ScalingService  # noqa: TC001
 from synthorg.hr.training.service import TrainingService  # noqa: TC001
+from synthorg.infrastructure.services import (
+    AuditReadService,  # noqa: TC001
+    BackupFacadeService,  # noqa: TC001
+    EventsReadService,  # noqa: TC001
+    IntegrationHealthFacadeService,  # noqa: TC001
+    ProjectFacadeService,  # noqa: TC001
+    ProviderReadService,  # noqa: TC001
+    RequestsFacadeService,  # noqa: TC001
+    SettingsReadService,  # noqa: TC001
+    SetupFacadeService,  # noqa: TC001
+    SimulationFacadeService,  # noqa: TC001
+    TemplatePackFacadeService,  # noqa: TC001
+    UserFacadeService,  # noqa: TC001
+)
 from synthorg.integrations.connections.mcp_service import (
     ConnectionService,  # noqa: TC001
 )
@@ -153,7 +167,9 @@ class AppState(AppStateServicesMixin):
         "_approval_timeout_scheduler",
         "_artifact_storage",
         "_audit_log",
+        "_audit_read_service",
         "_auth_service",
+        "_backup_facade_service",
         "_backup_service",
         "_bridge_config_applied",
         "_ceremony_scheduler",
@@ -175,8 +191,10 @@ class AppState(AppStateServicesMixin):
         "_escalation_store",
         "_escalation_sweeper",
         "_event_stream_hub",
+        "_events_read_service",
         "_fine_tune_orchestrator",
         "_health_prober_service",
+        "_integration_health_facade_service",
         "_interrupt_store",
         "_lockout_store",
         "_mcp_catalog_service",
@@ -196,20 +214,27 @@ class AppState(AppStateServicesMixin):
         "_per_op_rate_limit_config",
         "_performance_tracker",
         "_persistence",
+        "_project_facade_service",
         "_prometheus_collector",
         "_provider_health_tracker",
         "_provider_management",
+        "_provider_read_service",
         "_provider_registry",
         "_refresh_store",
         "_reports_service",
+        "_requests_facade_service",
         "_review_gate_service",
         "_scaling_service",
         "_session_store",
+        "_settings_read_service",
         "_settings_service",
+        "_setup_facade_service",
         "_shutdown_requested",
         "_signals_service",
+        "_simulation_facade_service",
         "_task_engine",
         "_telemetry_collector",
+        "_template_pack_facade_service",
         "_ticket_store",
         "_tool_invocation_tracker",
         "_trace_handler",
@@ -217,6 +242,7 @@ class AppState(AppStateServicesMixin):
         "_trust_service",
         "_tunnel_provider",
         "_tunnel_service",
+        "_user_facade_service",
         "_user_presence",
         "_webhook_event_bridge",
         "_webhook_replay_protector",
@@ -370,6 +396,20 @@ class AppState(AppStateServicesMixin):
         self._connection_service: ConnectionService | None = None
         self._webhook_service: WebhookService | None = None
         self._tunnel_service: TunnelService | None = None
+        self._settings_read_service: SettingsReadService | None = None
+        self._provider_read_service: ProviderReadService | None = None
+        self._backup_facade_service: BackupFacadeService | None = None
+        self._user_facade_service: UserFacadeService | None = None
+        self._project_facade_service: ProjectFacadeService | None = None
+        self._requests_facade_service: RequestsFacadeService | None = None
+        self._setup_facade_service: SetupFacadeService | None = None
+        self._simulation_facade_service: SimulationFacadeService | None = None
+        self._template_pack_facade_service: TemplatePackFacadeService | None = None
+        self._audit_read_service: AuditReadService | None = None
+        self._events_read_service: EventsReadService | None = None
+        self._integration_health_facade_service: (
+            IntegrationHealthFacadeService | None
+        ) = None
         self._client_simulation_state: ClientSimulationState | None = None
         self._approval_timeout_scheduler: ApprovalTimeoutScheduler | None = None
         self._session_store: SessionStore | None = None

@@ -35,6 +35,20 @@ from synthorg.communication.delegation.record_store import (
 from synthorg.communication.meetings.service import MeetingService  # noqa: TC001
 from synthorg.communication.messages.service import MessageService  # noqa: TC001
 from synthorg.hr.training.service import TrainingService  # noqa: TC001
+from synthorg.infrastructure.services import (
+    AuditReadService,  # noqa: TC001
+    BackupFacadeService,  # noqa: TC001
+    EventsReadService,  # noqa: TC001
+    IntegrationHealthFacadeService,  # noqa: TC001
+    ProjectFacadeService,  # noqa: TC001
+    ProviderReadService,  # noqa: TC001
+    RequestsFacadeService,  # noqa: TC001
+    SettingsReadService,  # noqa: TC001
+    SetupFacadeService,  # noqa: TC001
+    SimulationFacadeService,  # noqa: TC001
+    TemplatePackFacadeService,  # noqa: TC001
+    UserFacadeService,  # noqa: TC001
+)
 from synthorg.integrations.connections.mcp_service import (
     ConnectionService,  # noqa: TC001
 )
@@ -784,6 +798,18 @@ class AppStateServicesMixin:
     _connection_service: ConnectionService | None
     _webhook_service: WebhookService | None
     _tunnel_service: TunnelService | None
+    _settings_read_service: SettingsReadService | None
+    _provider_read_service: ProviderReadService | None
+    _backup_facade_service: BackupFacadeService | None
+    _user_facade_service: UserFacadeService | None
+    _project_facade_service: ProjectFacadeService | None
+    _requests_facade_service: RequestsFacadeService | None
+    _setup_facade_service: SetupFacadeService | None
+    _simulation_facade_service: SimulationFacadeService | None
+    _template_pack_facade_service: TemplatePackFacadeService | None
+    _audit_read_service: AuditReadService | None
+    _events_read_service: EventsReadService | None
+    _integration_health_facade_service: IntegrationHealthFacadeService | None
 
     @property
     def has_signals_service(self) -> bool:
@@ -917,6 +943,207 @@ class AppStateServicesMixin:
     def set_tunnel_service(self, service: TunnelService) -> None:
         """Attach the tunnel facade (once-only)."""
         self._set_once("_tunnel_service", service, "TunnelService")
+
+    # ── Infrastructure facades (META-MCP-2 phase 6) ─────────────────
+    # ruff: noqa: D102 -- trivial getter/setter pass-throughs; the
+    # class docstring covers the pattern.
+
+    @property
+    def has_settings_read_service(self) -> bool:
+        return self._settings_read_service is not None
+
+    @property
+    def settings_read_service(self) -> SettingsReadService:
+        return self._require_service(
+            self._settings_read_service,
+            "SettingsReadService",
+        )
+
+    def set_settings_read_service(
+        self,
+        service: SettingsReadService,
+    ) -> None:
+        self._set_once("_settings_read_service", service, "SettingsReadService")
+
+    @property
+    def has_provider_read_service(self) -> bool:
+        return self._provider_read_service is not None
+
+    @property
+    def provider_read_service(self) -> ProviderReadService:
+        return self._require_service(
+            self._provider_read_service,
+            "ProviderReadService",
+        )
+
+    def set_provider_read_service(
+        self,
+        service: ProviderReadService,
+    ) -> None:
+        self._set_once("_provider_read_service", service, "ProviderReadService")
+
+    @property
+    def has_backup_facade_service(self) -> bool:
+        return self._backup_facade_service is not None
+
+    @property
+    def backup_facade_service(self) -> BackupFacadeService:
+        return self._require_service(
+            self._backup_facade_service,
+            "BackupFacadeService",
+        )
+
+    def set_backup_facade_service(
+        self,
+        service: BackupFacadeService,
+    ) -> None:
+        self._set_once("_backup_facade_service", service, "BackupFacadeService")
+
+    @property
+    def has_user_facade_service(self) -> bool:
+        return self._user_facade_service is not None
+
+    @property
+    def user_facade_service(self) -> UserFacadeService:
+        return self._require_service(self._user_facade_service, "UserFacadeService")
+
+    def set_user_facade_service(self, service: UserFacadeService) -> None:
+        self._set_once("_user_facade_service", service, "UserFacadeService")
+
+    @property
+    def has_project_facade_service(self) -> bool:
+        return self._project_facade_service is not None
+
+    @property
+    def project_facade_service(self) -> ProjectFacadeService:
+        return self._require_service(
+            self._project_facade_service,
+            "ProjectFacadeService",
+        )
+
+    def set_project_facade_service(
+        self,
+        service: ProjectFacadeService,
+    ) -> None:
+        self._set_once("_project_facade_service", service, "ProjectFacadeService")
+
+    @property
+    def has_requests_facade_service(self) -> bool:
+        return self._requests_facade_service is not None
+
+    @property
+    def requests_facade_service(self) -> RequestsFacadeService:
+        return self._require_service(
+            self._requests_facade_service,
+            "RequestsFacadeService",
+        )
+
+    def set_requests_facade_service(
+        self,
+        service: RequestsFacadeService,
+    ) -> None:
+        self._set_once("_requests_facade_service", service, "RequestsFacadeService")
+
+    @property
+    def has_setup_facade_service(self) -> bool:
+        return self._setup_facade_service is not None
+
+    @property
+    def setup_facade_service(self) -> SetupFacadeService:
+        return self._require_service(self._setup_facade_service, "SetupFacadeService")
+
+    def set_setup_facade_service(
+        self,
+        service: SetupFacadeService,
+    ) -> None:
+        self._set_once("_setup_facade_service", service, "SetupFacadeService")
+
+    @property
+    def has_simulation_facade_service(self) -> bool:
+        return self._simulation_facade_service is not None
+
+    @property
+    def simulation_facade_service(self) -> SimulationFacadeService:
+        return self._require_service(
+            self._simulation_facade_service,
+            "SimulationFacadeService",
+        )
+
+    def set_simulation_facade_service(
+        self,
+        service: SimulationFacadeService,
+    ) -> None:
+        self._set_once(
+            "_simulation_facade_service",
+            service,
+            "SimulationFacadeService",
+        )
+
+    @property
+    def has_template_pack_facade_service(self) -> bool:
+        return self._template_pack_facade_service is not None
+
+    @property
+    def template_pack_facade_service(self) -> TemplatePackFacadeService:
+        return self._require_service(
+            self._template_pack_facade_service,
+            "TemplatePackFacadeService",
+        )
+
+    def set_template_pack_facade_service(
+        self,
+        service: TemplatePackFacadeService,
+    ) -> None:
+        self._set_once(
+            "_template_pack_facade_service",
+            service,
+            "TemplatePackFacadeService",
+        )
+
+    @property
+    def has_audit_read_service(self) -> bool:
+        return self._audit_read_service is not None
+
+    @property
+    def audit_read_service(self) -> AuditReadService:
+        return self._require_service(self._audit_read_service, "AuditReadService")
+
+    def set_audit_read_service(self, service: AuditReadService) -> None:
+        self._set_once("_audit_read_service", service, "AuditReadService")
+
+    @property
+    def has_events_read_service(self) -> bool:
+        return self._events_read_service is not None
+
+    @property
+    def events_read_service(self) -> EventsReadService:
+        return self._require_service(self._events_read_service, "EventsReadService")
+
+    def set_events_read_service(self, service: EventsReadService) -> None:
+        self._set_once("_events_read_service", service, "EventsReadService")
+
+    @property
+    def has_integration_health_facade_service(self) -> bool:
+        return self._integration_health_facade_service is not None
+
+    @property
+    def integration_health_facade_service(
+        self,
+    ) -> IntegrationHealthFacadeService:
+        return self._require_service(
+            self._integration_health_facade_service,
+            "IntegrationHealthFacadeService",
+        )
+
+    def set_integration_health_facade_service(
+        self,
+        service: IntegrationHealthFacadeService,
+    ) -> None:
+        self._set_once(
+            "_integration_health_facade_service",
+            service,
+            "IntegrationHealthFacadeService",
+        )
 
     def set_settings_service(self, settings_service: SettingsService) -> None:
         """Set settings service and rebuild derived services."""

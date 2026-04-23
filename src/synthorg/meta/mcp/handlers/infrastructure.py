@@ -2,86 +2,56 @@
 
 40 tools spanning health, settings, providers, backup, audit, events,
 users, projects, requests, setup, simulations, template packs, and
-integration health.  The backing services are spread across many
-controllers; ``app_state`` exposes ``backup_service``,
-``provider_registry``, ``settings_service``, ``auth_service``, etc.,
-but not in the read-friendly facade shape the MCP tools expect.
-
-For now, ``synthorg_health_check`` returns a live aggregation from
-``app_state`` and every other handler returns ``service_fallback`` with a
-stable reason.  Destructive writes (backup/settings/users/projects
-delete, backup_restore, template_packs_uninstall) enforce the
-guardrail triple so auditing stays uniform when service facades land.
+integration health.  All handlers shim through the corresponding
+facade on :class:`AppState`; capability gaps raise typed
+``not_supported`` via :class:`CapabilityNotSupportedError`.
 """
 
-import copy
-from collections.abc import Mapping  # noqa: TC003 -- PEP 649 annotation
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
+from uuid import UUID
 
-from synthorg.meta.mcp.errors import GuardrailViolationError
+from synthorg.backup.models import BackupTrigger
+from synthorg.communication.mcp_errors import CapabilityNotSupportedError
+from synthorg.core.types import NotBlankStr
+from synthorg.meta.mcp.errors import GuardrailViolationError, invalid_argument
 from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,  # noqa: TC001 -- PEP 649 annotation
 )
 from synthorg.meta.mcp.handlers.common import (
+    coerce_pagination,
     err,
     ok,
+    paginate_sequence,
+    require_arg,
     require_destructive_guardrails,
-    service_fallback,
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.mcp import (
+    MCP_DESTRUCTIVE_OP_EXECUTED,
     MCP_HANDLER_GUARDRAIL_VIOLATED,
     MCP_HANDLER_INVOKE_FAILED,
     MCP_HANDLER_INVOKE_SUCCESS,
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from synthorg.core.agent import AgentIdentity
 
 logger = get_logger(__name__)
 
-
-_WHY_SETTINGS = (
-    "settings CRUD goes through settings_service; no MCP-friendly "
-    "schema or bulk-read method is exposed yet"
-)
-_WHY_PROVIDERS = (
-    "provider list/health/test lives in providers controller; no "
-    "ProviderService facade on app_state"
-)
-_WHY_BACKUP = (
-    "backup operations go through backup_service with a full config "
-    "payload; no MCP-native schema"
-)
-_WHY_AUDIT = "audit trail is served by the audit controller; no facade on app_state"
-_WHY_EVENTS = "event log is served by the events controller; no facade on app_state"
-_WHY_USERS = "user CRUD goes through auth_service; no MCP-friendly read/write schema"
-_WHY_PROJECTS = (
-    "project CRUD goes through the projects controller; no facade on app_state"
-)
-_WHY_REQUESTS = "request CRUD lives in the requests controller; no facade on app_state"
-_WHY_SETUP = (
-    "setup status + initialization run through the setup controller; "
-    "no facade on app_state"
-)
-_WHY_SIMULATIONS = (
-    "simulation CRUD lives in the simulations controller; no facade on app_state"
-)
-_WHY_TEMPLATE_PACKS = (
-    "template pack install/uninstall lives in template_packs "
-    "controller; no facade on app_state"
-)
-_WHY_INTEGRATION_HEALTH = (
-    "integration health rolls up status via health_prober_service; no MCP read facade"
-)
+_TY_STRING = "non-blank string"
+_TY_DICT = "mapping of str -> str"
+_TY_UUID = "UUID string"
+_TY_BACKUP_TRIGGER = "BackupTrigger string"
+_ARG_TRIGGER = "trigger"
 
 
 def _log_failed(tool: str, exc: Exception) -> None:
     logger.warning(
         MCP_HANDLER_INVOKE_FAILED,
         tool_name=tool,
-        error_type=type(exc).__name__,
         error=safe_error_description(exc),
     )
 
@@ -94,42 +64,65 @@ def _log_guardrail(tool: str, exc: GuardrailViolationError) -> None:
     )
 
 
-async def _enforce_destructive(
-    tool: str,
-    arguments: dict[str, Any],
-    actor: AgentIdentity | None,
-    why: str,
-) -> str:
+def _map_capability(tool: str, exc: CapabilityNotSupportedError) -> str:
+    logger.info(
+        MCP_HANDLER_INVOKE_FAILED,
+        tool_name=tool,
+        capability=exc.capability,
+    )
+    return err(exc, domain_code=exc.domain_code)
+
+
+def _actor_name(actor: AgentIdentity | None) -> NotBlankStr:
+    if actor is None:
+        return NotBlankStr("mcp-anonymous")
+    name = getattr(actor, "name", None)
+    if isinstance(name, str) and name.strip():
+        return NotBlankStr(name)
+    actor_id = getattr(actor, "id", None)
+    return NotBlankStr(str(actor_id) if actor_id else "mcp-anonymous")
+
+
+def _get_str(arguments: dict[str, Any], key: str) -> NotBlankStr | None:
+    raw = arguments.get(key)
+    if raw in (None, ""):
+        return None
+    if not isinstance(raw, str) or not raw.strip():
+        raise invalid_argument(key, _TY_STRING)
+    return NotBlankStr(raw)
+
+
+def _require_str(arguments: dict[str, Any], key: str) -> NotBlankStr:
+    value = _get_str(arguments, key)
+    if value is None:
+        raise invalid_argument(key, _TY_STRING)
+    return value
+
+
+def _get_dict(arguments: dict[str, Any], key: str) -> dict[str, str] | None:
+    raw = arguments.get(key)
+    if raw in (None, ""):
+        return None
+    if not isinstance(raw, dict):
+        raise invalid_argument(key, _TY_DICT)
+    out: dict[str, str] = {}
+    for k, v in raw.items():
+        if not isinstance(k, str) or not isinstance(v, str):
+            raise invalid_argument(key, _TY_DICT)
+        out[k] = v
+    return out
+
+
+def _require_uuid(arguments: dict[str, Any], key: str) -> str:
+    value = require_arg(arguments, key, str)
     try:
-        require_destructive_guardrails(arguments, actor)
-    except GuardrailViolationError as exc:
-        _log_guardrail(tool, exc)
-        return err(exc)
-    return service_fallback(tool, why)
+        UUID(value)
+    except ValueError as exc:
+        raise invalid_argument(key, _TY_UUID) from exc
+    return value
 
 
-def _mk(tool: str, why: str) -> ToolHandler:
-    async def handler(
-        *,
-        app_state: Any,  # noqa: ARG001
-        arguments: dict[str, Any],  # noqa: ARG001
-        actor: AgentIdentity | None = None,  # noqa: ARG001
-    ) -> str:
-        return service_fallback(tool, why)
-
-    return handler
-
-
-def _mk_destructive(tool: str, why: str) -> ToolHandler:
-    async def handler(
-        *,
-        app_state: Any,  # noqa: ARG001
-        arguments: dict[str, Any],
-        actor: AgentIdentity | None = None,
-    ) -> str:
-        return await _enforce_destructive(tool, arguments, actor, why)
-
-    return handler
+# ── health ──────────────────────────────────────────────────────────
 
 
 async def _health_check(
@@ -138,12 +131,6 @@ async def _health_check(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    """Live health-check shim.
-
-    Returns a minimal live snapshot of the services known to be wired
-    on ``app_state``.  The individual ``has_*`` probes are cheap and
-    don't trigger network calls.
-    """
     tool = "synthorg_health_check"
     try:
         data = {
@@ -159,121 +146,951 @@ async def _health_check(
     return ok(data=data)
 
 
+# ── settings ────────────────────────────────────────────────────────
+
+
+async def _settings_list(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
+) -> str:
+    tool = "synthorg_settings_list"
+    try:
+        result = await app_state.settings_read_service.list_settings()
+    except CapabilityNotSupportedError as exc:
+        return _map_capability(tool, exc)
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    return ok(dict(result))
+
+
+async def _settings_get(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,  # noqa: ARG001
+) -> str:
+    tool = "synthorg_settings_get"
+    try:
+        key = _require_str(arguments, "key")
+        result = await app_state.settings_read_service.get_setting(key)
+    except CapabilityNotSupportedError as exc:
+        return _map_capability(tool, exc)
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    return ok({"key": key, "value": result})
+
+
+async def _settings_update(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,
+) -> str:
+    tool = "synthorg_settings_update"
+    try:
+        key = _require_str(arguments, "key")
+        value = arguments.get("value")
+        await app_state.settings_read_service.update_setting(
+            key=key,
+            value=value,
+            actor_id=_actor_name(actor),
+        )
+    except CapabilityNotSupportedError as exc:
+        return _map_capability(tool, exc)
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    return ok(None)
+
+
+async def _settings_delete(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,
+) -> str:
+    tool = "synthorg_settings_delete"
+    try:
+        reason, resolved_actor = require_destructive_guardrails(arguments, actor)
+        key = _require_str(arguments, "key")
+        await app_state.settings_read_service.delete_setting(
+            key=key,
+            actor_id=_actor_name(resolved_actor),
+            reason=reason,
+        )
+        logger.info(
+            MCP_DESTRUCTIVE_OP_EXECUTED,
+            tool_name=tool,
+            actor=_actor_name(resolved_actor),
+            reason=reason,
+            key=key,
+        )
+    except CapabilityNotSupportedError as exc:
+        return _map_capability(tool, exc)
+    except GuardrailViolationError as exc:
+        _log_guardrail(tool, exc)
+        return err(exc)
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    return ok(None)
+
+
+# ── providers ───────────────────────────────────────────────────────
+
+
+async def _providers_list(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
+) -> str:
+    tool = "synthorg_providers_list"
+    try:
+        providers = await app_state.provider_read_service.list_providers()
+    except CapabilityNotSupportedError as exc:
+        return _map_capability(tool, exc)
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    return ok([_to_jsonable(p) for p in providers])
+
+
+async def _providers_get(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,  # noqa: ARG001
+) -> str:
+    tool = "synthorg_providers_get"
+    try:
+        provider_id = _require_str(arguments, "provider_id")
+        provider = await app_state.provider_read_service.get_provider(provider_id)
+    except CapabilityNotSupportedError as exc:
+        return _map_capability(tool, exc)
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    if provider is None:
+        return err(
+            LookupError(f"Provider {provider_id} not found"),
+            domain_code="not_found",
+        )
+    return ok(_to_jsonable(provider))
+
+
+async def _providers_get_health(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,  # noqa: ARG001
+) -> str:
+    tool = "synthorg_providers_get_health"
+    try:
+        provider_id = _get_str(arguments, "provider_id")
+        result = await app_state.provider_read_service.get_health(provider_id)
+    except CapabilityNotSupportedError as exc:
+        return _map_capability(tool, exc)
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    return ok({k: _to_jsonable(v) for k, v in dict(result).items()})
+
+
+async def _providers_test_connection(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,  # noqa: ARG001
+) -> str:
+    tool = "synthorg_providers_test_connection"
+    try:
+        provider_id = _require_str(arguments, "provider_id")
+        result = await app_state.provider_read_service.test_connection(provider_id)
+    except CapabilityNotSupportedError as exc:
+        return _map_capability(tool, exc)
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    return ok({k: _to_jsonable(v) for k, v in dict(result).items()})
+
+
+def _to_jsonable(value: Any) -> Any:
+    """Best-effort JSON-safe serialisation for facade returns.
+
+    Pydantic models are dumped via ``model_dump``; other values pass
+    through.  Keeps handlers thin when the underlying primitive
+    returns a non-uniform shape.
+    """
+    dump_fn = getattr(value, "model_dump", None)
+    if callable(dump_fn):
+        return dump_fn(mode="json")
+    return value
+
+
+# ── backup ──────────────────────────────────────────────────────────
+
+
+async def _backup_list(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,  # noqa: ARG001
+) -> str:
+    tool = "synthorg_backup_list"
+    try:
+        offset, limit = coerce_pagination(arguments)
+        backups = await app_state.backup_facade_service.list_backups()
+        page, pagination = paginate_sequence(
+            backups,
+            offset=offset,
+            limit=limit,
+            total=len(backups),
+        )
+        return ok([_to_jsonable(b) for b in page], pagination=pagination)
+    except CapabilityNotSupportedError as exc:
+        return _map_capability(tool, exc)
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+
+
+async def _backup_get(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,  # noqa: ARG001
+) -> str:
+    tool = "synthorg_backup_get"
+    try:
+        backup_id = _require_str(arguments, "backup_id")
+        manifest = await app_state.backup_facade_service.get_backup(backup_id)
+    except CapabilityNotSupportedError as exc:
+        return _map_capability(tool, exc)
+    except LookupError as exc:
+        return err(exc, domain_code="not_found")
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    return ok(_to_jsonable(manifest))
+
+
+async def _backup_create(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,  # noqa: ARG001
+) -> str:
+    tool = "synthorg_backup_create"
+    try:
+        trigger_raw = require_arg(arguments, _ARG_TRIGGER, str)
+        try:
+            trigger = BackupTrigger(trigger_raw)
+        except ValueError as exc:
+            raise invalid_argument(_ARG_TRIGGER, _TY_BACKUP_TRIGGER) from exc
+        manifest = await app_state.backup_facade_service.create_backup(
+            trigger=trigger,
+        )
+    except CapabilityNotSupportedError as exc:
+        return _map_capability(tool, exc)
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    return ok(_to_jsonable(manifest))
+
+
+async def _backup_delete(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,
+) -> str:
+    tool = "synthorg_backup_delete"
+    try:
+        reason, resolved_actor = require_destructive_guardrails(arguments, actor)
+        backup_id = _require_str(arguments, "backup_id")
+        await app_state.backup_facade_service.delete_backup(
+            backup_id=backup_id,
+            actor_id=_actor_name(resolved_actor),
+            reason=reason,
+        )
+        logger.info(
+            MCP_DESTRUCTIVE_OP_EXECUTED,
+            tool_name=tool,
+            actor=_actor_name(resolved_actor),
+            reason=reason,
+            backup_id=backup_id,
+        )
+    except CapabilityNotSupportedError as exc:
+        return _map_capability(tool, exc)
+    except GuardrailViolationError as exc:
+        _log_guardrail(tool, exc)
+        return err(exc)
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    return ok(None)
+
+
+async def _backup_restore(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,
+) -> str:
+    tool = "synthorg_backup_restore"
+    try:
+        reason, resolved_actor = require_destructive_guardrails(arguments, actor)
+        backup_id = _require_str(arguments, "backup_id")
+        result = await app_state.backup_facade_service.restore_backup(
+            backup_id=backup_id,
+            actor_id=_actor_name(resolved_actor),
+            reason=reason,
+        )
+        logger.info(
+            MCP_DESTRUCTIVE_OP_EXECUTED,
+            tool_name=tool,
+            actor=_actor_name(resolved_actor),
+            reason=reason,
+            backup_id=backup_id,
+        )
+    except CapabilityNotSupportedError as exc:
+        return _map_capability(tool, exc)
+    except GuardrailViolationError as exc:
+        _log_guardrail(tool, exc)
+        return err(exc)
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    return ok(dict(result))
+
+
+# ── audit + events ──────────────────────────────────────────────────
+
+
+async def _audit_list(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,  # noqa: ARG001
+) -> str:
+    tool = "synthorg_audit_list"
+    try:
+        _, limit = coerce_pagination(arguments)
+        entries = await app_state.audit_read_service.list_entries(limit=limit)
+    except CapabilityNotSupportedError as exc:
+        return _map_capability(tool, exc)
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    return ok([_to_jsonable(e) for e in entries])
+
+
+async def _events_list(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,  # noqa: ARG001
+) -> str:
+    tool = "synthorg_events_list"
+    try:
+        _, limit = coerce_pagination(arguments)
+        events = await app_state.events_read_service.list_events(limit=limit)
+    except CapabilityNotSupportedError as exc:
+        return _map_capability(tool, exc)
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    return ok([_to_jsonable(e) for e in events])
+
+
+# ── users ───────────────────────────────────────────────────────────
+
+
+async def _users_list(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
+) -> str:
+    tool = "synthorg_users_list"
+    try:
+        users = await app_state.user_facade_service.list_users()
+    except CapabilityNotSupportedError as exc:
+        return _map_capability(tool, exc)
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    return ok([_to_jsonable(u) for u in users])
+
+
+async def _users_get(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,  # noqa: ARG001
+) -> str:
+    tool = "synthorg_users_get"
+    try:
+        user_id = _require_str(arguments, "user_id")
+        user = await app_state.user_facade_service.get_user(user_id)
+    except CapabilityNotSupportedError as exc:
+        return _map_capability(tool, exc)
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    if user is None:
+        return err(
+            LookupError(f"User {user_id} not found"),
+            domain_code="not_found",
+        )
+    return ok(_to_jsonable(user))
+
+
+async def _users_create(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
+) -> str:
+    tool = "synthorg_users_create"
+    try:
+        await app_state.user_facade_service.create_user()
+    except CapabilityNotSupportedError as exc:
+        return _map_capability(tool, exc)
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    return ok(None)
+
+
+async def _users_update(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
+) -> str:
+    tool = "synthorg_users_update"
+    try:
+        await app_state.user_facade_service.update_user()
+    except CapabilityNotSupportedError as exc:
+        return _map_capability(tool, exc)
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    return ok(None)
+
+
+async def _users_delete(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,
+) -> str:
+    tool = "synthorg_users_delete"
+    try:
+        reason, resolved_actor = require_destructive_guardrails(arguments, actor)
+        user_id = _require_str(arguments, "user_id")
+        await app_state.user_facade_service.delete_user(
+            user_id=user_id,
+            actor_id=_actor_name(resolved_actor),
+            reason=reason,
+        )
+    except CapabilityNotSupportedError as exc:
+        return _map_capability(tool, exc)
+    except GuardrailViolationError as exc:
+        _log_guardrail(tool, exc)
+        return err(exc)
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    return ok(None)
+
+
+# ── projects ────────────────────────────────────────────────────────
+
+
+async def _projects_list(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,  # noqa: ARG001
+) -> str:
+    tool = "synthorg_projects_list"
+    try:
+        offset, limit = coerce_pagination(arguments)
+        projects = await app_state.project_facade_service.list_projects()
+        page, pagination = paginate_sequence(
+            projects,
+            offset=offset,
+            limit=limit,
+            total=len(projects),
+        )
+        return ok([p.to_dict() for p in page], pagination=pagination)
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+
+
+async def _projects_get(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,  # noqa: ARG001
+) -> str:
+    tool = "synthorg_projects_get"
+    try:
+        project_id = _require_uuid(arguments, "project_id")
+        project = await app_state.project_facade_service.get_project(project_id)
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    if project is None:
+        return err(
+            LookupError(f"Project {project_id} not found"),
+            domain_code="not_found",
+        )
+    return ok(project.to_dict())
+
+
+async def _projects_create(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,
+) -> str:
+    tool = "synthorg_projects_create"
+    try:
+        name = _require_str(arguments, "name")
+        description = _require_str(arguments, "description")
+        metadata = _get_dict(arguments, "metadata")
+        project = await app_state.project_facade_service.create_project(
+            name=name,
+            description=description,
+            actor_id=_actor_name(actor),
+            metadata=metadata,
+        )
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    return ok(project.to_dict())
+
+
+async def _projects_update(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,
+) -> str:
+    tool = "synthorg_projects_update"
+    try:
+        project_id = _require_uuid(arguments, "project_id")
+        name = _get_str(arguments, "name")
+        description = _get_str(arguments, "description")
+        metadata = _get_dict(arguments, "metadata")
+        project = await app_state.project_facade_service.update_project(
+            project_id=project_id,
+            actor_id=_actor_name(actor),
+            name=name,
+            description=description,
+            metadata=metadata,
+        )
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    if project is None:
+        return err(
+            LookupError(f"Project {project_id} not found"),
+            domain_code="not_found",
+        )
+    return ok(project.to_dict())
+
+
+async def _projects_delete(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,
+) -> str:
+    tool = "synthorg_projects_delete"
+    try:
+        reason, resolved_actor = require_destructive_guardrails(arguments, actor)
+        project_id = _require_uuid(arguments, "project_id")
+        removed = await app_state.project_facade_service.delete_project(
+            project_id=project_id,
+            actor_id=_actor_name(resolved_actor),
+            reason=reason,
+        )
+        logger.info(
+            MCP_DESTRUCTIVE_OP_EXECUTED,
+            tool_name=tool,
+            actor=_actor_name(resolved_actor),
+            reason=reason,
+            project_id=project_id,
+            removed=removed,
+        )
+    except GuardrailViolationError as exc:
+        _log_guardrail(tool, exc)
+        return err(exc)
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    return ok({"removed": removed})
+
+
+# ── requests ────────────────────────────────────────────────────────
+
+
+async def _requests_list(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,  # noqa: ARG001
+) -> str:
+    tool = "synthorg_requests_list"
+    try:
+        offset, limit = coerce_pagination(arguments)
+        requests = await app_state.requests_facade_service.list_requests()
+        page, pagination = paginate_sequence(
+            requests,
+            offset=offset,
+            limit=limit,
+            total=len(requests),
+        )
+        return ok([r.to_dict() for r in page], pagination=pagination)
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+
+
+async def _requests_get(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,  # noqa: ARG001
+) -> str:
+    tool = "synthorg_requests_get"
+    try:
+        request_id = _require_uuid(arguments, "request_id")
+        record = await app_state.requests_facade_service.get_request(request_id)
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    if record is None:
+        return err(
+            LookupError(f"Request {request_id} not found"),
+            domain_code="not_found",
+        )
+    return ok(record.to_dict())
+
+
+async def _requests_create(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,
+) -> str:
+    tool = "synthorg_requests_create"
+    try:
+        title = _require_str(arguments, "title")
+        body = _require_str(arguments, "body")
+        record = await app_state.requests_facade_service.create_request(
+            title=title,
+            body=body,
+            requested_by=_actor_name(actor),
+        )
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    return ok(record.to_dict())
+
+
+# ── setup ───────────────────────────────────────────────────────────
+
+
+async def _setup_get_status(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
+) -> str:
+    tool = "synthorg_setup_get_status"
+    try:
+        status = await app_state.setup_facade_service.get_status()
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    return ok(dict(status))
+
+
+async def _setup_initialize(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
+) -> str:
+    tool = "synthorg_setup_initialize"
+    try:
+        await app_state.setup_facade_service.initialize()
+    except CapabilityNotSupportedError as exc:
+        return _map_capability(tool, exc)
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    return ok(None)
+
+
+# ── simulations ─────────────────────────────────────────────────────
+
+
+async def _simulations_list(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,  # noqa: ARG001
+) -> str:
+    tool = "synthorg_simulations_list"
+    try:
+        offset, limit = coerce_pagination(arguments)
+        sims = await app_state.simulation_facade_service.list_simulations()
+        page, pagination = paginate_sequence(
+            sims,
+            offset=offset,
+            limit=limit,
+            total=len(sims),
+        )
+        return ok([_to_jsonable(s) for s in page], pagination=pagination)
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+
+
+async def _simulations_get(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,  # noqa: ARG001
+) -> str:
+    tool = "synthorg_simulations_get"
+    try:
+        sim_id = _require_str(arguments, "simulation_id")
+        sim = await app_state.simulation_facade_service.get_simulation(sim_id)
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    if sim is None:
+        return err(
+            LookupError(f"Simulation {sim_id} not found"),
+            domain_code="not_found",
+        )
+    return ok(_to_jsonable(sim))
+
+
+async def _simulations_create(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
+) -> str:
+    tool = "synthorg_simulations_create"
+    try:
+        await app_state.simulation_facade_service.create_simulation()
+    except CapabilityNotSupportedError as exc:
+        return _map_capability(tool, exc)
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    return ok(None)
+
+
+# ── template packs ─────────────────────────────────────────────────
+
+
+async def _template_packs_list(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,  # noqa: ARG001
+) -> str:
+    tool = "synthorg_template_packs_list"
+    try:
+        offset, limit = coerce_pagination(arguments)
+        packs = await app_state.template_pack_facade_service.list_packs()
+        page, pagination = paginate_sequence(
+            packs,
+            offset=offset,
+            limit=limit,
+            total=len(packs),
+        )
+        return ok([p.to_dict() for p in page], pagination=pagination)
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+
+
+async def _template_packs_get(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,  # noqa: ARG001
+) -> str:
+    tool = "synthorg_template_packs_get"
+    try:
+        pack_id = _require_uuid(arguments, "pack_id")
+        pack = await app_state.template_pack_facade_service.get_pack(pack_id)
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    if pack is None:
+        return err(
+            LookupError(f"Template pack {pack_id} not found"),
+            domain_code="not_found",
+        )
+    return ok(pack.to_dict())
+
+
+async def _template_packs_install(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,
+) -> str:
+    tool = "synthorg_template_packs_install"
+    try:
+        name = _require_str(arguments, "name")
+        version = _require_str(arguments, "version")
+        pack = await app_state.template_pack_facade_service.install_pack(
+            name=name,
+            version=version,
+            actor_id=_actor_name(actor),
+        )
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    return ok(pack.to_dict())
+
+
+async def _template_packs_uninstall(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,
+) -> str:
+    tool = "synthorg_template_packs_uninstall"
+    try:
+        reason, resolved_actor = require_destructive_guardrails(arguments, actor)
+        pack_id = _require_uuid(arguments, "pack_id")
+        removed = await app_state.template_pack_facade_service.uninstall_pack(
+            pack_id=pack_id,
+            actor_id=_actor_name(resolved_actor),
+            reason=reason,
+        )
+        logger.info(
+            MCP_DESTRUCTIVE_OP_EXECUTED,
+            tool_name=tool,
+            actor=_actor_name(resolved_actor),
+            reason=reason,
+            pack_id=pack_id,
+            removed=removed,
+        )
+    except GuardrailViolationError as exc:
+        _log_guardrail(tool, exc)
+        return err(exc)
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    return ok({"removed": removed})
+
+
+# ── integration health ────────────────────────────────────────────
+
+
+async def _integration_health_get_all(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
+) -> str:
+    tool = "synthorg_integration_health_get_all"
+    try:
+        snapshot = await app_state.integration_health_facade_service.get_all()
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    return ok({k: _to_jsonable(v) for k, v in dict(snapshot).items()})
+
+
+async def _integration_health_get(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,  # noqa: ARG001
+) -> str:
+    tool = "synthorg_integration_health_get"
+    try:
+        integration_id = _require_str(arguments, "integration_id")
+        status = await app_state.integration_health_facade_service.get_one(
+            integration_id,
+        )
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    if status is None:
+        return err(
+            LookupError(f"Integration {integration_id} not found"),
+            domain_code="not_found",
+        )
+    return ok(_to_jsonable(status))
+
+
+# ── dispatch table ─────────────────────────────────────────────────
+
+
 INFRASTRUCTURE_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(
-    copy.deepcopy(
-        {
-            "synthorg_health_check": _health_check,
-            "synthorg_settings_list": _mk("synthorg_settings_list", _WHY_SETTINGS),
-            "synthorg_settings_get": _mk("synthorg_settings_get", _WHY_SETTINGS),
-            "synthorg_settings_update": _mk(
-                "synthorg_settings_update",
-                _WHY_SETTINGS,
-            ),
-            "synthorg_settings_delete": _mk_destructive(
-                "synthorg_settings_delete",
-                _WHY_SETTINGS,
-            ),
-            "synthorg_providers_list": _mk(
-                "synthorg_providers_list",
-                _WHY_PROVIDERS,
-            ),
-            "synthorg_providers_get": _mk(
-                "synthorg_providers_get",
-                _WHY_PROVIDERS,
-            ),
-            "synthorg_providers_get_health": _mk(
-                "synthorg_providers_get_health",
-                _WHY_PROVIDERS,
-            ),
-            "synthorg_providers_test_connection": _mk(
-                "synthorg_providers_test_connection",
-                _WHY_PROVIDERS,
-            ),
-            "synthorg_backup_create": _mk("synthorg_backup_create", _WHY_BACKUP),
-            "synthorg_backup_list": _mk("synthorg_backup_list", _WHY_BACKUP),
-            "synthorg_backup_get": _mk("synthorg_backup_get", _WHY_BACKUP),
-            "synthorg_backup_delete": _mk_destructive(
-                "synthorg_backup_delete",
-                _WHY_BACKUP,
-            ),
-            "synthorg_backup_restore": _mk_destructive(
-                "synthorg_backup_restore",
-                _WHY_BACKUP,
-            ),
-            "synthorg_audit_list": _mk("synthorg_audit_list", _WHY_AUDIT),
-            "synthorg_events_list": _mk("synthorg_events_list", _WHY_EVENTS),
-            "synthorg_users_list": _mk("synthorg_users_list", _WHY_USERS),
-            "synthorg_users_get": _mk("synthorg_users_get", _WHY_USERS),
-            "synthorg_users_create": _mk("synthorg_users_create", _WHY_USERS),
-            "synthorg_users_update": _mk("synthorg_users_update", _WHY_USERS),
-            "synthorg_users_delete": _mk_destructive(
-                "synthorg_users_delete",
-                _WHY_USERS,
-            ),
-            "synthorg_projects_list": _mk("synthorg_projects_list", _WHY_PROJECTS),
-            "synthorg_projects_get": _mk("synthorg_projects_get", _WHY_PROJECTS),
-            "synthorg_projects_create": _mk(
-                "synthorg_projects_create",
-                _WHY_PROJECTS,
-            ),
-            "synthorg_projects_update": _mk(
-                "synthorg_projects_update",
-                _WHY_PROJECTS,
-            ),
-            "synthorg_projects_delete": _mk_destructive(
-                "synthorg_projects_delete",
-                _WHY_PROJECTS,
-            ),
-            "synthorg_requests_list": _mk("synthorg_requests_list", _WHY_REQUESTS),
-            "synthorg_requests_get": _mk("synthorg_requests_get", _WHY_REQUESTS),
-            "synthorg_requests_create": _mk(
-                "synthorg_requests_create",
-                _WHY_REQUESTS,
-            ),
-            "synthorg_setup_get_status": _mk(
-                "synthorg_setup_get_status",
-                _WHY_SETUP,
-            ),
-            "synthorg_setup_initialize": _mk(
-                "synthorg_setup_initialize",
-                _WHY_SETUP,
-            ),
-            "synthorg_simulations_list": _mk(
-                "synthorg_simulations_list",
-                _WHY_SIMULATIONS,
-            ),
-            "synthorg_simulations_get": _mk(
-                "synthorg_simulations_get",
-                _WHY_SIMULATIONS,
-            ),
-            "synthorg_simulations_create": _mk(
-                "synthorg_simulations_create",
-                _WHY_SIMULATIONS,
-            ),
-            "synthorg_template_packs_list": _mk(
-                "synthorg_template_packs_list",
-                _WHY_TEMPLATE_PACKS,
-            ),
-            "synthorg_template_packs_get": _mk(
-                "synthorg_template_packs_get",
-                _WHY_TEMPLATE_PACKS,
-            ),
-            "synthorg_template_packs_install": _mk(
-                "synthorg_template_packs_install",
-                _WHY_TEMPLATE_PACKS,
-            ),
-            "synthorg_template_packs_uninstall": _mk_destructive(
-                "synthorg_template_packs_uninstall",
-                _WHY_TEMPLATE_PACKS,
-            ),
-            "synthorg_integration_health_get_all": _mk(
-                "synthorg_integration_health_get_all",
-                _WHY_INTEGRATION_HEALTH,
-            ),
-            "synthorg_integration_health_get": _mk(
-                "synthorg_integration_health_get",
-                _WHY_INTEGRATION_HEALTH,
-            ),
-        },
-    ),
+    {
+        "synthorg_health_check": _health_check,
+        "synthorg_settings_list": _settings_list,
+        "synthorg_settings_get": _settings_get,
+        "synthorg_settings_update": _settings_update,
+        "synthorg_settings_delete": _settings_delete,
+        "synthorg_providers_list": _providers_list,
+        "synthorg_providers_get": _providers_get,
+        "synthorg_providers_get_health": _providers_get_health,
+        "synthorg_providers_test_connection": _providers_test_connection,
+        "synthorg_backup_create": _backup_create,
+        "synthorg_backup_list": _backup_list,
+        "synthorg_backup_get": _backup_get,
+        "synthorg_backup_delete": _backup_delete,
+        "synthorg_backup_restore": _backup_restore,
+        "synthorg_audit_list": _audit_list,
+        "synthorg_events_list": _events_list,
+        "synthorg_users_list": _users_list,
+        "synthorg_users_get": _users_get,
+        "synthorg_users_create": _users_create,
+        "synthorg_users_update": _users_update,
+        "synthorg_users_delete": _users_delete,
+        "synthorg_projects_list": _projects_list,
+        "synthorg_projects_get": _projects_get,
+        "synthorg_projects_create": _projects_create,
+        "synthorg_projects_update": _projects_update,
+        "synthorg_projects_delete": _projects_delete,
+        "synthorg_requests_list": _requests_list,
+        "synthorg_requests_get": _requests_get,
+        "synthorg_requests_create": _requests_create,
+        "synthorg_setup_get_status": _setup_get_status,
+        "synthorg_setup_initialize": _setup_initialize,
+        "synthorg_simulations_list": _simulations_list,
+        "synthorg_simulations_get": _simulations_get,
+        "synthorg_simulations_create": _simulations_create,
+        "synthorg_template_packs_list": _template_packs_list,
+        "synthorg_template_packs_get": _template_packs_get,
+        "synthorg_template_packs_install": _template_packs_install,
+        "synthorg_template_packs_uninstall": _template_packs_uninstall,
+        "synthorg_integration_health_get_all": _integration_health_get_all,
+        "synthorg_integration_health_get": _integration_health_get,
+    },
 )
