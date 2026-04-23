@@ -108,9 +108,11 @@ ensure_environment() {
   local env_name="$1"
   echo "==> ${env_name}"
   # PUT is idempotent: creates or updates the environment with branch-policy enabled.
+  # `-F` (uppercase) sends typed fields so booleans stay as JSON `true` / `false`;
+  # `-f` (lowercase) stringifies them, which the API rejects with HTTP 422.
   run_gh --method PUT "repos/${REPO}/environments/${env_name}" \
-    -f 'deployment_branch_policy[protected_branches]=false' \
-    -f 'deployment_branch_policy[custom_branch_policies]=true'
+    -F 'deployment_branch_policy[protected_branches]=false' \
+    -F 'deployment_branch_policy[custom_branch_policies]=true'
 }
 
 # Prints `name<TAB>id` for each current branch policy on the environment.
