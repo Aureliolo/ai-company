@@ -64,6 +64,7 @@ from synthorg.hr.training.service import TrainingService  # noqa: TC001
 from synthorg.memory.embedding.fine_tune_orchestrator import (
     FineTuneOrchestrator,  # noqa: TC001
 )
+from synthorg.meta.signals.service import SignalsService  # noqa: TC001
 from synthorg.notifications.dispatcher import (
     NotificationDispatcher,  # noqa: TC001
 )
@@ -192,6 +193,7 @@ class AppState(AppStateServicesMixin):
         "_session_store",
         "_settings_service",
         "_shutdown_requested",
+        "_signals_service",
         "_task_engine",
         "_telemetry_collector",
         "_ticket_store",
@@ -344,6 +346,7 @@ class AppState(AppStateServicesMixin):
         )
         self._review_gate_service: ReviewGateService | None = None
         self._scaling_service: ScalingService | None = None
+        self._signals_service: SignalsService | None = None
         self._client_simulation_state: ClientSimulationState | None = None
         self._approval_timeout_scheduler: ApprovalTimeoutScheduler | None = None
         self._session_store: SessionStore | None = None

@@ -36,6 +36,7 @@ from synthorg.hr.training.service import TrainingService  # noqa: TC001
 from synthorg.memory.embedding.fine_tune_orchestrator import (
     FineTuneOrchestrator,  # noqa: TC001
 )
+from synthorg.meta.signals.service import SignalsService  # noqa: TC001
 from synthorg.notifications.dispatcher import (
     NotificationDispatcher,  # noqa: TC001
 )
@@ -764,6 +765,29 @@ class AppStateServicesMixin:
             "_mcp_installations_repo",
             repo,
             "MCP installations repository",
+        )
+
+    _signals_service: SignalsService | None
+
+    @property
+    def has_signals_service(self) -> bool:
+        """Whether the signals facade is attached."""
+        return self._signals_service is not None
+
+    @property
+    def signals_service(self) -> SignalsService:
+        """The signals facade; raises ``ServiceUnavailableError`` when unset."""
+        return self._require_service(
+            self._signals_service,
+            "SignalsService",
+        )
+
+    def set_signals_service(self, service: SignalsService) -> None:
+        """Attach the signals facade (once-only)."""
+        self._set_once(
+            "_signals_service",
+            service,
+            "SignalsService",
         )
 
     def set_settings_service(self, settings_service: SettingsService) -> None:

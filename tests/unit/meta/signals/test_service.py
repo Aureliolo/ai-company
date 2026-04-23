@@ -1,0 +1,279 @@
+"""Tests for the SignalsService facade."""
+
+from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
+from uuid import uuid4
+
+import pytest
+
+from synthorg.core.approval import ApprovalItem
+from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
+from synthorg.meta.models import (
+    ConfigChange,
+    ImprovementProposal,
+    ProposalAltitude,
+    ProposalRationale,
+    RollbackOperation,
+    RollbackPlan,
+)
+from synthorg.meta.signal_models import (
+    OrgBudgetSummary,
+    OrgCoordinationSummary,
+    OrgErrorSummary,
+    OrgEvolutionSummary,
+    OrgPerformanceSummary,
+    OrgScalingSummary,
+    OrgSignalSnapshot,
+    OrgTelemetrySummary,
+)
+from synthorg.meta.signals.service import SignalsService
+from tests.unit.meta.mcp.conftest import make_test_actor
+
+pytestmark = pytest.mark.unit
+
+
+def _empty_snapshot() -> OrgSignalSnapshot:
+    return OrgSignalSnapshot(
+        performance=OrgPerformanceSummary(
+            avg_quality_score=0.0,
+            avg_success_rate=0.0,
+            avg_collaboration_score=0.0,
+            agent_count=0,
+        ),
+        budget=OrgBudgetSummary(
+            total_spend=0.0,
+            productive_ratio=0.0,
+            coordination_ratio=0.0,
+            system_ratio=0.0,
+            forecast_confidence=0.0,
+            orchestration_overhead=0.0,
+        ),
+        coordination=OrgCoordinationSummary(),
+        scaling=OrgScalingSummary(),
+        errors=OrgErrorSummary(),
+        evolution=OrgEvolutionSummary(),
+        telemetry=OrgTelemetrySummary(),
+    )
+
+
+def _proposal() -> ImprovementProposal:
+    return ImprovementProposal(
+        altitude=ProposalAltitude.CONFIG_TUNING,
+        title="test",
+        description="description",
+        rationale=ProposalRationale(
+            signal_summary="noisy errors",
+            pattern_detected="high error rate",
+            expected_impact="fewer errors",
+            confidence_reasoning="backed by samples",
+        ),
+        rollback_plan=RollbackPlan(
+            operations=(
+                RollbackOperation(
+                    operation_type="revert_config",
+                    target="a.b",
+                    description="revert",
+                ),
+            ),
+            validation_check="config reverted",
+        ),
+        confidence=0.8,
+        config_changes=(
+            ConfigChange(
+                path="a.b",
+                old_value=1,
+                new_value=2,
+                description="tune value",
+            ),
+        ),
+    )
+
+
+@pytest.fixture
+def approval_store() -> AsyncMock:
+    store = AsyncMock()
+    store.list_items = AsyncMock(return_value=())
+    store.add = AsyncMock(return_value=None)
+    return store
+
+
+@pytest.fixture
+def snapshot_builder() -> AsyncMock:
+    builder = AsyncMock()
+    builder.build = AsyncMock(return_value=_empty_snapshot())
+    return builder
+
+
+@pytest.fixture
+def service(approval_store: AsyncMock, snapshot_builder: AsyncMock) -> SignalsService:
+    aggregators: dict[str, AsyncMock] = {}
+    for name in (
+        "performance",
+        "budget",
+        "coordination",
+        "scaling",
+        "errors",
+        "evolution",
+        "telemetry",
+    ):
+        aggregators[name] = AsyncMock()
+        aggregators[name].aggregate = AsyncMock(return_value=SimpleNamespace())
+    # Give each its canonical return type so model_dump works in handler.
+    aggregators["performance"].aggregate = AsyncMock(
+        return_value=OrgPerformanceSummary(
+            avg_quality_score=0.0,
+            avg_success_rate=0.0,
+            avg_collaboration_score=0.0,
+            agent_count=0,
+        ),
+    )
+    aggregators["budget"].aggregate = AsyncMock(
+        return_value=OrgBudgetSummary(
+            total_spend=0.0,
+            productive_ratio=0.0,
+            coordination_ratio=0.0,
+            system_ratio=0.0,
+            forecast_confidence=0.0,
+            orchestration_overhead=0.0,
+        ),
+    )
+    aggregators["coordination"].aggregate = AsyncMock(
+        return_value=OrgCoordinationSummary(),
+    )
+    aggregators["scaling"].aggregate = AsyncMock(return_value=OrgScalingSummary())
+    aggregators["errors"].aggregate = AsyncMock(return_value=OrgErrorSummary())
+    aggregators["evolution"].aggregate = AsyncMock(return_value=OrgEvolutionSummary())
+    aggregators["telemetry"].aggregate = AsyncMock(return_value=OrgTelemetrySummary())
+    return SignalsService(
+        performance=aggregators["performance"],
+        budget=aggregators["budget"],
+        coordination=aggregators["coordination"],
+        scaling=aggregators["scaling"],
+        errors=aggregators["errors"],
+        evolution=aggregators["evolution"],
+        telemetry=aggregators["telemetry"],
+        snapshot_builder=snapshot_builder,
+        approval_store=approval_store,
+    )
+
+
+class TestSignalsServiceSnapshot:
+    async def test_delegates_to_builder(
+        self,
+        service: SignalsService,
+        snapshot_builder: AsyncMock,
+    ) -> None:
+        now = datetime.now(UTC)
+        snap = await service.get_org_snapshot(
+            since=now - timedelta(hours=1),
+            until=now,
+        )
+        assert isinstance(snap, OrgSignalSnapshot)
+        snapshot_builder.build.assert_awaited_once()
+
+
+class TestSignalsServicePerDomain:
+    @pytest.mark.parametrize(
+        ("method", "expected_type"),
+        [
+            ("get_performance", OrgPerformanceSummary),
+            ("get_budget", OrgBudgetSummary),
+            ("get_coordination", OrgCoordinationSummary),
+            ("get_scaling_history", OrgScalingSummary),
+            ("get_error_patterns", OrgErrorSummary),
+            ("get_evolution_outcomes", OrgEvolutionSummary),
+            ("get_telemetry", OrgTelemetrySummary),
+        ],
+    )
+    async def test_returns_expected_summary_type(
+        self,
+        service: SignalsService,
+        method: str,
+        expected_type: type,
+    ) -> None:
+        now = datetime.now(UTC)
+        result = await getattr(service, method)(
+            since=now - timedelta(hours=1),
+            until=now,
+        )
+        assert isinstance(result, expected_type)
+
+
+class TestSignalsServiceProposals:
+    async def test_list_proposals_filters_by_action_type(
+        self,
+        service: SignalsService,
+        approval_store: AsyncMock,
+    ) -> None:
+        await service.list_proposals()
+        approval_store.list_items.assert_awaited_once()
+        kwargs = approval_store.list_items.call_args.kwargs
+        assert kwargs["action_type"] == "signals.proposal"
+
+    async def test_list_proposals_orders_newest_first(
+        self,
+        service: SignalsService,
+        approval_store: AsyncMock,
+    ) -> None:
+        older = _approval_item(
+            created_at=datetime.now(UTC) - timedelta(hours=2),
+        )
+        newer = _approval_item(
+            created_at=datetime.now(UTC) - timedelta(minutes=5),
+        )
+        approval_store.list_items = AsyncMock(return_value=(older, newer))
+        result = await service.list_proposals()
+        assert result[0] is newer
+        assert result[1] is older
+
+    async def test_submit_proposal_persists(
+        self,
+        service: SignalsService,
+        approval_store: AsyncMock,
+    ) -> None:
+        proposal = _proposal()
+        actor = make_test_actor(name="cos")
+        item = await service.submit_proposal(
+            proposal=proposal,
+            actor=actor,
+            reason="ship",
+        )
+        approval_store.add.assert_awaited_once()
+        assert item.action_type == "signals.proposal"
+        assert item.requested_by == "cos"
+        assert item.metadata["proposal_id"] == str(proposal.id)
+
+    async def test_submit_proposal_rejects_actor_without_identity(
+        self,
+        service: SignalsService,
+    ) -> None:
+        proposal = _proposal()
+
+        class _AnonActor:
+            id = None
+            name = ""
+
+        with pytest.raises(ValueError, match="non-blank name or id"):
+            await service.submit_proposal(
+                proposal=proposal,
+                actor=_AnonActor(),  # type: ignore[arg-type]
+                reason="ship",
+            )
+
+
+def _approval_item(
+    *,
+    created_at: datetime,
+    approval_id: str | None = None,
+) -> ApprovalItem:
+    return ApprovalItem(
+        id=approval_id or f"p-{uuid4().hex}",
+        action_type="signals.proposal",
+        title="t",
+        description="d",
+        requested_by="r",
+        risk_level=ApprovalRiskLevel.LOW,
+        status=ApprovalStatus.PENDING,
+        created_at=created_at,
+    )
