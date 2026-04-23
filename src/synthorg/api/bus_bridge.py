@@ -65,6 +65,11 @@ class MessageBusBridge:
         self._config_resolver = config_resolver
         self._tasks: list[asyncio.Task[None]] = []
         self._running: bool = False
+        # Serializes start() / stop() so the check-and-set on
+        # _running is atomic against concurrent lifecycle calls.
+        # Does not gate publish / receive (those use the underlying
+        # bus lock) so normal traffic is not serialized here.
+        self._lifecycle_lock = asyncio.Lock()
         # Resolver-failure warnings are logged only on the first
         # failure in a run of failures to avoid flooding logs during
         # a prolonged settings outage. The flag is cleared on the
@@ -142,75 +147,88 @@ class MessageBusBridge:
     async def start(self) -> None:
         """Start polling tasks for each channel.
 
+        The entire body runs under ``_lifecycle_lock`` so the
+        check-and-set on ``_running`` is atomic against concurrent
+        ``start()`` / ``stop()`` calls, and the per-channel
+        subscribe + task-spawn loop cannot interleave with a racing
+        lifecycle transition.
+
         Raises:
             RuntimeError: If the bridge is already running.
         """
-        if self._running:
-            msg = "MessageBusBridge is already running"
-            logger.warning(API_APP_STARTUP, error=msg)
-            raise RuntimeError(msg)
+        async with self._lifecycle_lock:
+            if self._running:
+                msg = "MessageBusBridge is already running"
+                logger.warning(API_APP_STARTUP, error=msg)
+                raise RuntimeError(msg)
 
-        logger.info(API_APP_STARTUP, component="bus_bridge")
-        self._running = True
+            logger.info(API_APP_STARTUP, component="bus_bridge")
+            self._running = True
 
-        for channel_name in ALL_CHANNELS:
-            try:
-                await self._bus.subscribe(channel_name, _SUBSCRIBER_ID)
-            except OSError, RuntimeError, ConnectionError:
-                logger.warning(
-                    API_BUS_BRIDGE_SUBSCRIBE_FAILED,
-                    channel=channel_name,
-                    subscriber_id=_SUBSCRIBER_ID,
-                    exc_info=True,
+            for channel_name in ALL_CHANNELS:
+                try:
+                    await self._bus.subscribe(channel_name, _SUBSCRIBER_ID)
+                except OSError, RuntimeError, ConnectionError:
+                    logger.warning(
+                        API_BUS_BRIDGE_SUBSCRIBE_FAILED,
+                        channel=channel_name,
+                        subscriber_id=_SUBSCRIBER_ID,
+                        exc_info=True,
+                    )
+                    continue
+                task = asyncio.create_task(
+                    self._poll_channel(channel_name),
+                    name=f"bridge-{channel_name}",
                 )
-                continue
-            task = asyncio.create_task(
-                self._poll_channel(channel_name),
-                name=f"bridge-{channel_name}",
-            )
-            task.add_done_callback(
-                log_task_exceptions(
-                    logger,
-                    API_BRIDGE_CHANNEL_DEAD,
-                    channel=channel_name,
-                ),
-            )
-            self._tasks.append(task)
+                task.add_done_callback(
+                    log_task_exceptions(
+                        logger,
+                        API_BRIDGE_CHANNEL_DEAD,
+                        channel=channel_name,
+                    ),
+                )
+                self._tasks.append(task)
 
-        if not self._tasks:
-            self._running = False
-            logger.error(
-                API_APP_STARTUP,
-                error="bus bridge started with zero active channels",
-            )
-            msg = "MessageBusBridge failed to subscribe to any channels"
-            raise RuntimeError(msg)
+            if not self._tasks:
+                self._running = False
+                logger.error(
+                    API_APP_STARTUP,
+                    error="bus bridge started with zero active channels",
+                )
+                msg = "MessageBusBridge failed to subscribe to any channels"
+                raise RuntimeError(msg)
 
     async def stop(self) -> None:
-        """Cancel all polling tasks."""
-        if not self._running:
-            return
+        """Cancel all polling tasks.
 
-        logger.info(API_APP_SHUTDOWN, component="bus_bridge")
-        for task in self._tasks:
-            task.cancel()
-        if self._tasks:
-            results = await asyncio.gather(
-                *self._tasks,
-                return_exceptions=True,
-            )
-            for result in results:
-                if isinstance(result, asyncio.CancelledError):
-                    continue
-                if isinstance(result, BaseException):
-                    logger.warning(
-                        API_APP_SHUTDOWN,
-                        component="bus_bridge",
-                        error=str(result),
-                        exc_info=result,
-                    )
-        self._tasks.clear()
-        self._running = False
+        Holds ``_lifecycle_lock`` so ``stop()`` cannot race a
+        partially-constructed ``start()`` (e.g. ``_running=True`` but
+        some channels still mid-subscribe).
+        """
+        async with self._lifecycle_lock:
+            if not self._running:
+                return
+
+            logger.info(API_APP_SHUTDOWN, component="bus_bridge")
+            for task in self._tasks:
+                task.cancel()
+            if self._tasks:
+                results = await asyncio.gather(
+                    *self._tasks,
+                    return_exceptions=True,
+                )
+                for result in results:
+                    if isinstance(result, asyncio.CancelledError):
+                        continue
+                    if isinstance(result, BaseException):
+                        logger.warning(
+                            API_APP_SHUTDOWN,
+                            component="bus_bridge",
+                            error=str(result),
+                            exc_info=result,
+                        )
+            self._tasks.clear()
+            self._running = False
 
     async def _poll_channel(self, channel_name: str) -> None:
         """Poll a single channel and publish to Litestar.
