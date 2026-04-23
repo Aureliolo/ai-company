@@ -45,7 +45,7 @@ class TestInFlightResolution:
         persistence.tasks.save = slow_save  # type: ignore[method-assign]
 
         eng = TaskEngine(persistence=persistence)  # type: ignore[arg-type]
-        eng.start()
+        await eng.start()
 
         # Submit a task that will block in slow_save
         blocked = asyncio.create_task(
@@ -101,7 +101,7 @@ class TestProcessOneExceptionHandling:
             persistence=persistence,  # type: ignore[arg-type]
             config=config,
         )
-        eng.start()
+        await eng.start()
         try:
             mutation = CreateTaskMutation(
                 request_id="req-1",
@@ -135,7 +135,7 @@ class TestSnapshotPublishFailure:
             message_bus=failing_bus,  # type: ignore[arg-type]
             config=config,
         )
-        eng.start()
+        await eng.start()
         try:
             task = await eng.create_task(
                 make_create_data(),
@@ -220,7 +220,7 @@ class TestProcessingLoopResilience:
         persistence.tasks.save = fail_first_save  # type: ignore[method-assign]
 
         eng = TaskEngine(persistence=persistence)  # type: ignore[arg-type]
-        eng.start()
+        await eng.start()
         try:
             # First mutation fails
             m1 = CreateTaskMutation(

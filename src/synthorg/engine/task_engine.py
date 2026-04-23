@@ -122,38 +122,50 @@ class TaskEngine(TaskEngineLoopsMixin):
 
     # -- Lifecycle ---------------------------------------------------------
 
-    def start(self) -> None:
+    async def start(self) -> None:
         """Spawn the background processing loop.
+
+        Holds ``_lifecycle_lock`` across the check-and-set +
+        task-spawn so concurrent ``start()`` calls yield exactly one
+        success, and a ``start()`` racing an in-flight ``stop()``
+        cannot spawn a new processing task that escapes the stop's
+        drain (issue #1534 finding #5).
 
         Raises:
             RuntimeError: If already running.
         """
-        if self._running:
-            msg = "TaskEngine is already running"
-            logger.warning(TASK_ENGINE_STARTED, error=msg)
-            raise RuntimeError(msg)
-        self._running = True
-        self._processing_task = asyncio.create_task(
-            self._processing_loop(),
-            name="task-engine-loop",
-        )
-        self._processing_task.add_done_callback(
-            log_task_exceptions(logger, TASK_ENGINE_LOOP_DIED),
-        )
-        self._observer_task = asyncio.create_task(
-            self._observer_dispatch_loop(),
-            name="task-engine-observer-dispatcher",
-        )
-        self._observer_task.add_done_callback(
-            log_task_exceptions(logger, TASK_ENGINE_OBSERVER_LOOP_DIED),
-        )
-        logger.info(
-            TASK_ENGINE_STARTED,
-            max_queue_size=self._config.max_queue_size,
-        )
+        async with self._lifecycle_lock:
+            if self._running:
+                msg = "TaskEngine is already running"
+                logger.warning(TASK_ENGINE_STARTED, error=msg)
+                raise RuntimeError(msg)
+            self._running = True
+            self._processing_task = asyncio.create_task(
+                self._processing_loop(),
+                name="task-engine-loop",
+            )
+            self._processing_task.add_done_callback(
+                log_task_exceptions(logger, TASK_ENGINE_LOOP_DIED),
+            )
+            self._observer_task = asyncio.create_task(
+                self._observer_dispatch_loop(),
+                name="task-engine-observer-dispatcher",
+            )
+            self._observer_task.add_done_callback(
+                log_task_exceptions(logger, TASK_ENGINE_OBSERVER_LOOP_DIED),
+            )
+            logger.info(
+                TASK_ENGINE_STARTED,
+                max_queue_size=self._config.max_queue_size,
+            )
 
     async def stop(self, *, timeout: float | None = None) -> None:  # noqa: ASYNC109
         """Stop the engine and drain pending mutations and observer events.
+
+        Holds ``_lifecycle_lock`` across the entire stop body --
+        including the drain awaits -- so a concurrent ``start()``
+        cannot see ``_running=False`` mid-drain and spawn a new
+        processing task that stop never waits on.
 
         Args:
             timeout: Seconds to wait for drain (default: config value).
@@ -162,27 +174,27 @@ class TaskEngine(TaskEngineLoopsMixin):
             if not self._running:
                 return
             self._running = False
-        effective_timeout = (
-            timeout if timeout is not None else self._config.drain_timeout_seconds
-        )
-        loop = asyncio.get_running_loop()
-        deadline = loop.time() + effective_timeout
-
-        await self._drain_processing(effective_timeout)
-        # Signal the observer loop that no more events will arrive.
-        # Bounded by remaining budget -- if the queue is full and the
-        # dispatcher is stuck, we skip the sentinel and let
-        # _drain_observer cancel the observer task on timeout.
-        remaining = max(0.0, deadline - loop.time())
-        with contextlib.suppress(TimeoutError):
-            await asyncio.wait_for(
-                self._observer_queue.put(None),
-                timeout=remaining,
+            effective_timeout = (
+                timeout if timeout is not None else self._config.drain_timeout_seconds
             )
-        observer_budget = max(0.0, deadline - loop.time())
-        await self._drain_observer(observer_budget)
+            loop = asyncio.get_running_loop()
+            deadline = loop.time() + effective_timeout
 
-        logger.info(TASK_ENGINE_STOPPED)
+            await self._drain_processing(effective_timeout)
+            # Signal the observer loop that no more events will arrive.
+            # Bounded by remaining budget -- if the queue is full and the
+            # dispatcher is stuck, we skip the sentinel and let
+            # _drain_observer cancel the observer task on timeout.
+            remaining = max(0.0, deadline - loop.time())
+            with contextlib.suppress(TimeoutError):
+                await asyncio.wait_for(
+                    self._observer_queue.put(None),
+                    timeout=remaining,
+                )
+            observer_budget = max(0.0, deadline - loop.time())
+            await self._drain_observer(observer_budget)
+
+            logger.info(TASK_ENGINE_STOPPED)
 
     @property
     def is_running(self) -> bool:

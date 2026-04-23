@@ -467,7 +467,7 @@ async def engine(
         persistence=persistence,  # type: ignore[arg-type]
         config=config,
     )
-    eng.start()
+    await eng.start()
     yield eng
     await eng.stop(timeout=2.0)
 
@@ -485,7 +485,7 @@ async def engine_with_bus(
         message_bus=message_bus,  # type: ignore[arg-type]
         config=config,
     )
-    eng.start()
+    await eng.start()
     yield eng
     await eng.stop(timeout=2.0)
     await message_bus.stop()

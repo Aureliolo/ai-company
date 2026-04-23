@@ -176,7 +176,7 @@ class TestDeleteSnapshotEvent:
                     raise TimeoutError(msg)
                 await asyncio.sleep(0)
 
-        eng.start()
+        await eng.start()
         try:
             task = await eng.create_task(
                 make_create_data(),
@@ -267,7 +267,7 @@ class TestCreateTaskTypedErrorDispatch:
             persistence=persistence,  # type: ignore[arg-type]
             config=config,
         )
-        eng.start()
+        await eng.start()
         try:
             with pytest.raises(TaskInternalError):
                 await eng.create_task(
@@ -307,7 +307,7 @@ class TestSnapshotReasonPropagation:
             message_bus=message_bus,  # type: ignore[arg-type]
             config=config,
         )
-        eng.start()
+        await eng.start()
         try:
             task = await eng.create_task(
                 make_create_data(),
@@ -344,7 +344,7 @@ class TestSnapshotReasonPropagation:
             message_bus=message_bus,  # type: ignore[arg-type]
             config=config,
         )
-        eng.start()
+        await eng.start()
         try:
             task = await eng.create_task(
                 make_create_data(),
@@ -386,7 +386,7 @@ class TestSnapshotReasonPropagation:
             message_bus=message_bus,  # type: ignore[arg-type]
             config=config,
         )
-        eng.start()
+        await eng.start()
         try:
             await eng.create_task(
                 make_create_data(),
@@ -413,7 +413,7 @@ class TestSnapshotReasonPropagation:
             message_bus=message_bus,  # type: ignore[arg-type]
             config=config,
         )
-        eng.start()
+        await eng.start()
         try:
             task = await eng.create_task(
                 make_create_data(),
@@ -460,7 +460,7 @@ class TestMemoryErrorReRaise:
             persistence=persistence,  # type: ignore[arg-type]
             config=config,
         )
-        eng.start()
+        await eng.start()
         try:
             mutation = CreateTaskMutation(
                 request_id="req-oom",
@@ -497,7 +497,7 @@ class TestMemoryErrorReRaise:
             persistence=persistence,  # type: ignore[arg-type]
             config=config,
         )
-        eng.start()
+        await eng.start()
         try:
             mutation = CreateTaskMutation(
                 request_id="req-recurse",

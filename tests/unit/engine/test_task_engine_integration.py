@@ -54,7 +54,7 @@ class TestSnapshotPublishing:
             message_bus=failing_bus,  # type: ignore[arg-type]
             config=config,
         )
-        eng.start()
+        await eng.start()
         try:
             task = await eng.create_task(
                 make_create_data(),
@@ -78,7 +78,7 @@ class TestSnapshotPublishing:
             message_bus=message_bus,  # type: ignore[arg-type]
             config=no_snap_config,
         )
-        eng.start()
+        await eng.start()
         try:
             await eng.create_task(
                 make_create_data(),
@@ -95,7 +95,7 @@ class TestSnapshotPublishing:
     ) -> None:
         """Tasks submitted before stop() are processed during drain."""
         eng = TaskEngine(persistence=persistence)  # type: ignore[arg-type]
-        eng.start()
+        await eng.start()
 
         # Submit concurrently using structured concurrency
         async with asyncio.TaskGroup() as tg:
@@ -299,7 +299,7 @@ class TestDrainTimeout:
         persistence.tasks.save = slow_save  # type: ignore[method-assign]
 
         eng = TaskEngine(persistence=persistence)  # type: ignore[arg-type]
-        eng.start()
+        await eng.start()
 
         # Submit a task -- it'll block in slow_save, holding the processing loop
         blocked_task = asyncio.create_task(

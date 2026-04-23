@@ -22,7 +22,7 @@ class TestTaskEngineLifecycle:
         eng = TaskEngine(persistence=persistence)  # type: ignore[arg-type]
         initial = eng.is_running
         assert not initial
-        eng.start()
+        await eng.start()
         assert eng.is_running
         await eng.stop(timeout=2.0)
         assert not eng.is_running
@@ -32,9 +32,9 @@ class TestTaskEngineLifecycle:
         persistence: FakePersistence,
     ) -> None:
         eng = TaskEngine(persistence=persistence)  # type: ignore[arg-type]
-        eng.start()
+        await eng.start()
         with pytest.raises(RuntimeError, match="already running"):
-            eng.start()
+            await eng.start()
         await eng.stop(timeout=2.0)
 
     async def test_stop_idempotent(
@@ -42,7 +42,7 @@ class TestTaskEngineLifecycle:
         persistence: FakePersistence,
     ) -> None:
         eng = TaskEngine(persistence=persistence)  # type: ignore[arg-type]
-        eng.start()
+        await eng.start()
         await eng.stop(timeout=2.0)
         await eng.stop(timeout=2.0)  # no error
 
@@ -51,9 +51,9 @@ class TestTaskEngineLifecycle:
         persistence: FakePersistence,
     ) -> None:
         eng = TaskEngine(persistence=persistence)  # type: ignore[arg-type]
-        eng.start()
+        await eng.start()
         await eng.stop(timeout=2.0)
-        eng.start()
+        await eng.start()
         assert eng.is_running
         await eng.stop(timeout=2.0)
 

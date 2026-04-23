@@ -489,7 +489,7 @@ async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
             started_settings_dispatcher = True
         if task_engine is not None and task_engine.is_running is not True:
             try:
-                task_engine.start()
+                await task_engine.start()
             except Exception:
                 logger.exception(
                     API_APP_STARTUP,
