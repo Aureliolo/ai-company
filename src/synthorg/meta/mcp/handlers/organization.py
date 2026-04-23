@@ -97,12 +97,23 @@ def _map_capability(tool: str, exc: CapabilityNotSupportedError) -> str:
 
 
 def _actor_name(actor: AgentIdentity | None) -> NotBlankStr:
-    """Return a stable audit identifier, preferring ``actor.id`` over ``name``."""
+    """Return a stable audit identifier, preferring ``actor.id`` over ``name``.
+
+    A string ``actor.id`` is only accepted when it is non-blank after
+    stripping; empty / whitespace-only strings fall through to
+    ``actor.name`` and finally to ``"mcp-anonymous"`` so audit rows
+    never record a blank actor.  Non-string ``actor.id`` values (e.g.
+    UUID instances, integers) are accepted via ``str(...)`` unchanged.
+    """
     if actor is None:
         return NotBlankStr("mcp-anonymous")
     actor_id = getattr(actor, "id", None)
     if actor_id is not None:
-        return NotBlankStr(str(actor_id))
+        if isinstance(actor_id, str):
+            if actor_id.strip():
+                return NotBlankStr(actor_id)
+        else:
+            return NotBlankStr(str(actor_id))
     name = getattr(actor, "name", None)
     if isinstance(name, str) and name.strip():
         return NotBlankStr(name)

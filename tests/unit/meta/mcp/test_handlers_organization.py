@@ -167,6 +167,45 @@ class TestCompany:
         response = await handler(app_state=fake_app_state, arguments={})
         assert json.loads(response)["domain_code"] == "not_supported"
 
+    async def test_list_departments_capability_gap(
+        self,
+        fake_app_state: SimpleNamespace,
+        fake_company: AsyncMock,
+    ) -> None:
+        fake_company.list_departments = AsyncMock(
+            side_effect=CapabilityNotSupportedError("company_list_departments", "x"),
+        )
+        handler = ORGANIZATION_HANDLERS["synthorg_company_list_departments"]
+        response = await handler(app_state=fake_app_state, arguments={})
+        assert json.loads(response)["domain_code"] == "not_supported"
+
+    async def test_versions_list_capability_gap(
+        self,
+        fake_app_state: SimpleNamespace,
+        fake_company: AsyncMock,
+    ) -> None:
+        fake_company.list_versions = AsyncMock(
+            side_effect=CapabilityNotSupportedError("company_list_versions", "x"),
+        )
+        handler = ORGANIZATION_HANDLERS["synthorg_company_versions_list"]
+        response = await handler(app_state=fake_app_state, arguments={})
+        assert json.loads(response)["domain_code"] == "not_supported"
+
+    async def test_versions_get_capability_gap(
+        self,
+        fake_app_state: SimpleNamespace,
+        fake_company: AsyncMock,
+    ) -> None:
+        fake_company.get_version = AsyncMock(
+            side_effect=CapabilityNotSupportedError("company_get_version", "x"),
+        )
+        handler = ORGANIZATION_HANDLERS["synthorg_company_versions_get"]
+        response = await handler(
+            app_state=fake_app_state,
+            arguments={"version_id": "v-1"},
+        )
+        assert json.loads(response)["domain_code"] == "not_supported"
+
 
 class TestDepartments:
     async def test_create_and_get(self, fake_app_state: SimpleNamespace) -> None:
@@ -345,3 +384,30 @@ class TestRoleVersions:
             arguments={"version_id": "v1"},
         )
         assert json.loads(response)["domain_code"] == "not_found"
+
+    async def test_list_capability_gap(
+        self,
+        fake_app_state: SimpleNamespace,
+        fake_role_version: AsyncMock,
+    ) -> None:
+        fake_role_version.list_versions = AsyncMock(
+            side_effect=CapabilityNotSupportedError("role_versions_list", "x"),
+        )
+        handler = ORGANIZATION_HANDLERS["synthorg_role_versions_list"]
+        response = await handler(app_state=fake_app_state, arguments={})
+        assert json.loads(response)["domain_code"] == "not_supported"
+
+    async def test_get_capability_gap(
+        self,
+        fake_app_state: SimpleNamespace,
+        fake_role_version: AsyncMock,
+    ) -> None:
+        fake_role_version.get_version = AsyncMock(
+            side_effect=CapabilityNotSupportedError("role_versions_get", "x"),
+        )
+        handler = ORGANIZATION_HANDLERS["synthorg_role_versions_get"]
+        response = await handler(
+            app_state=fake_app_state,
+            arguments={"version_id": "v1"},
+        )
+        assert json.loads(response)["domain_code"] == "not_supported"

@@ -101,24 +101,21 @@ class SettingsReadService:
         self._settings = cast("Any", settings)
 
     async def list_settings(self) -> Mapping[str, object]:
-        """Return a snapshot of all settings as a mapping."""
+        """Return a mapping of all resolved settings keyed by ``namespace.key``."""
         fn = _require_callable(
             self._settings,
-            "snapshot",
+            "get_all",
             "settings_list",
-            "SettingsService does not expose snapshot()",
+            "SettingsService does not expose get_all()",
         )
-        return dict(fn())
+        entries = await fn()
+        return {
+            f"{e.definition.namespace}.{e.definition.key}": e.value for e in entries
+        }
 
     async def get_setting(self, key: NotBlankStr) -> object | None:
-        """Return the current value for ``key`` or ``None`` if absent."""
-        fn = _require_callable(
-            self._settings,
-            "snapshot",
-            "settings_get",
-            "SettingsService does not expose snapshot()",
-        )
-        return dict(fn()).get(key)
+        """Return the resolved value for ``namespace.key`` or ``None`` if absent."""
+        return (await self.list_settings()).get(key)
 
     async def update_setting(
         self,
