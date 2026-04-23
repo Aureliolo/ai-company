@@ -5,9 +5,13 @@ from typing import TYPE_CHECKING
 
 from synthorg.core.enums import TaskStatus
 from synthorg.engine.review.models import ReviewStageResult, ReviewVerdict
+from synthorg.observability import get_logger
+from synthorg.observability.events.review_pipeline import REVIEW_STAGE_DECIDED
 
 if TYPE_CHECKING:
     from synthorg.core.task import Task
+
+logger = get_logger(__name__)
 
 
 class InternalReviewStage:
@@ -45,6 +49,14 @@ class InternalReviewStage:
         failure = self._first_failure(task)
         duration_ms = max(0, (time.perf_counter_ns() - start_ns) // 1_000_000)
         if failure is not None:
+            logger.info(
+                REVIEW_STAGE_DECIDED,
+                stage=self._NAME,
+                task_id=task.id,
+                verdict=ReviewVerdict.FAIL.value,
+                reason=failure,
+                duration_ms=duration_ms,
+            )
             return ReviewStageResult(
                 stage_name=self._NAME,
                 verdict=ReviewVerdict.FAIL,
@@ -52,6 +64,14 @@ class InternalReviewStage:
                 duration_ms=duration_ms,
                 metadata={"require_all_criteria_met": self._require_all_criteria_met},
             )
+        logger.info(
+            REVIEW_STAGE_DECIDED,
+            stage=self._NAME,
+            task_id=task.id,
+            verdict=ReviewVerdict.PASS.value,
+            criteria_count=len(task.acceptance_criteria),
+            duration_ms=duration_ms,
+        )
         return ReviewStageResult(
             stage_name=self._NAME,
             verdict=ReviewVerdict.PASS,

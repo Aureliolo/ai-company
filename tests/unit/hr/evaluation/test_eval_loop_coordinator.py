@@ -1,12 +1,18 @@
 """Tests for EvalLoopCoordinator."""
 
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from synthorg.hr.evaluation.config import EvalLoopConfig
-from synthorg.hr.evaluation.loop_coordinator import EvalLoopCoordinator
+from synthorg.hr.evaluation.loop_coordinator import (
+    _DEFAULT_PATTERN_ACTIONS,
+    EvalLoopCoordinator,
+)
+from synthorg.hr.evaluation.models import EvaluationReport
 
 
 def _make_coordinator(
@@ -104,7 +110,7 @@ class TestEvalLoopCoordinatorRunCycle:
         assert report.window_end >= before
         assert report.window_start < report.window_end
 
-    async def test_run_cycle_stubs_return_empty(self) -> None:
+    async def test_run_cycle_no_reports_no_patterns(self) -> None:
         coordinator = _make_coordinator()
         report = await coordinator.run_cycle(window=timedelta(hours=1))
         assert report.observations == ()
@@ -163,3 +169,237 @@ class TestEvalLoopCoordinatorCollectAgentIds:
             since=datetime(2020, 1, 1, tzinfo=UTC),
         )
         assert ids == ()
+
+
+def _make_pillar_score(pillar: str, score: float) -> Any:
+    """Build a concrete test double with the shape ``_identify_patterns`` reads.
+
+    Using ``SimpleNamespace`` (not ``MagicMock``) means a typo on the
+    accessor side (``score.pillar.valye``, ``score.scroe``) raises
+    ``AttributeError`` instead of silently returning another MagicMock,
+    catching contract drift in the tests themselves.
+    """
+    return SimpleNamespace(
+        pillar=SimpleNamespace(value=pillar),
+        score=score,
+    )
+
+
+def _make_report(
+    agent_id: str,
+    *pillar_scores: tuple[str, float],
+) -> EvaluationReport:
+    """Build a concrete report test double for ``_identify_patterns``.
+
+    The coordinator only reads ``agent_id`` and ``pillar_scores`` off
+    the report, so a structural stub is sufficient. We cast to the
+    real type so call sites don't need per-call ``type: ignore`` hints
+    while still preserving strict attribute-access checking inside
+    the test (hand-built ``SimpleNamespace`` objects raise on typos
+    rather than silently returning more mocks).
+    """
+    stub = SimpleNamespace(
+        agent_id=agent_id,
+        pillar_scores=tuple(_make_pillar_score(p, s) for p, s in pillar_scores),
+    )
+    return cast(EvaluationReport, stub)
+
+
+@pytest.mark.unit
+class TestEvalLoopCoordinatorIdentifyPatterns:
+    """_identify_patterns() clustering behaviour."""
+
+    async def test_disabled_pattern_identifier_returns_empty(self) -> None:
+        config = EvalLoopConfig(pattern_identifier_enabled=False)
+        coordinator = _make_coordinator(config=config)
+        report = _make_report("a", ("intelligence", 1.0))
+        assert await coordinator._identify_patterns((report,)) == ()
+
+    async def test_empty_reports_returns_empty(self) -> None:
+        coordinator = _make_coordinator()
+        assert await coordinator._identify_patterns(()) == ()
+
+    async def test_clusters_pillars_below_threshold(self) -> None:
+        config = EvalLoopConfig(
+            pattern_weakness_threshold=5.0,
+            pattern_min_agents=2,
+        )
+        coordinator = _make_coordinator(config=config)
+        reports = (
+            _make_report("a", ("intelligence", 2.0), ("efficiency", 8.0)),
+            _make_report("b", ("intelligence", 3.0), ("efficiency", 7.0)),
+            _make_report("c", ("intelligence", 9.0), ("efficiency", 9.0)),
+        )
+        patterns = await coordinator._identify_patterns(reports)
+        assert patterns == ("weakness:intelligence",)
+
+    async def test_sorts_patterns_by_count_desc_then_name(self) -> None:
+        config = EvalLoopConfig(
+            pattern_weakness_threshold=5.0,
+            pattern_min_agents=2,
+        )
+        coordinator = _make_coordinator(config=config)
+        reports = (
+            _make_report("a", ("intelligence", 1.0), ("governance", 1.0)),
+            _make_report("b", ("intelligence", 2.0), ("governance", 2.0)),
+            _make_report("c", ("governance", 2.0)),  # governance has 3 weak agents
+        )
+        patterns = await coordinator._identify_patterns(reports)
+        # governance first (3 weak), then intelligence (2 weak)
+        assert patterns == ("weakness:governance", "weakness:intelligence")
+
+    async def test_skips_pillars_below_min_agents(self) -> None:
+        config = EvalLoopConfig(
+            pattern_weakness_threshold=5.0,
+            pattern_min_agents=3,
+        )
+        coordinator = _make_coordinator(config=config)
+        reports = (
+            _make_report("a", ("intelligence", 1.0)),
+            _make_report("b", ("intelligence", 2.0)),
+        )
+        assert await coordinator._identify_patterns(reports) == ()
+
+    async def test_duplicate_pillar_in_same_report_counts_once(self) -> None:
+        """A single agent report with a duplicated pillar counts once.
+
+        Regression: pre-fix the loop incremented ``weak_counts``
+        per ``pillar_score`` entry, so a report that listed the same
+        pillar twice (defensive -- the model does not enforce
+        uniqueness) would inflate the weak-agent count and
+        spuriously satisfy ``pattern_min_agents``. Post-fix the
+        coordinator collapses per-agent pillars into a set first.
+        """
+        config = EvalLoopConfig(
+            pattern_weakness_threshold=5.0,
+            pattern_min_agents=2,
+        )
+        coordinator = _make_coordinator(config=config)
+        # One agent, one pillar listed twice. min_agents=2 means the
+        # pillar should NOT be promoted to a pattern, because only one
+        # agent is actually weak on it.
+        reports = (
+            _make_report(
+                "a",
+                ("intelligence", 1.0),
+                ("intelligence", 2.0),
+            ),
+        )
+        patterns = await coordinator._identify_patterns(reports)
+        assert patterns == (), (
+            "Duplicate pillar entries from the same agent must not inflate "
+            f"weak_counts; got {patterns!r}"
+        )
+
+
+@pytest.mark.unit
+class TestEvalLoopCoordinatorProposeActions:
+    """_propose_actions() mapping behaviour."""
+
+    async def test_empty_patterns_returns_empty(self) -> None:
+        coordinator = _make_coordinator()
+        assert await coordinator._propose_actions(()) == ()
+
+    async def test_maps_known_pillars_to_default_actions(self) -> None:
+        """Known pillars resolve to the source-of-truth default mapping.
+
+        Tracks ``_DEFAULT_PATTERN_ACTIONS`` rather than hard-coding the
+        action strings so edits to that mapping do not silently drift
+        this test's expectation.
+        """
+        coordinator = _make_coordinator()
+        actions = await coordinator._propose_actions(
+            ("weakness:intelligence", "weakness:governance"),
+        )
+        assert actions == (
+            _DEFAULT_PATTERN_ACTIONS["intelligence"],
+            _DEFAULT_PATTERN_ACTIONS["governance"],
+        )
+
+    async def test_override_beats_default(self) -> None:
+        config = EvalLoopConfig(
+            pattern_action_map={"intelligence": "custom_action"},
+        )
+        coordinator = _make_coordinator(config=config)
+        actions = await coordinator._propose_actions(
+            ("weakness:intelligence",),
+        )
+        assert actions == ("custom_action",)
+
+    async def test_unknown_pattern_skipped(self) -> None:
+        import structlog
+
+        from synthorg.observability.events.eval_loop import (
+            EVAL_LOOP_ACTION_PROPOSED,
+        )
+
+        coordinator = _make_coordinator()
+        with structlog.testing.capture_logs() as cap:
+            actions = await coordinator._propose_actions(
+                ("weakness:unknown",),
+            )
+        assert actions == ()
+        # Assert the warning-path contract: an operator grepping the
+        # logs for ``reason="unmapped_pattern"`` must find the event.
+        unmapped = [
+            rec
+            for rec in cap
+            if rec.get("event") == EVAL_LOOP_ACTION_PROPOSED
+            and rec.get("reason") == "unmapped_pattern"
+        ]
+        assert len(unmapped) == 1, f"expected one unmapped_pattern warning; got {cap!r}"
+
+    async def test_malformed_pattern_skipped(self) -> None:
+        import structlog
+
+        from synthorg.observability.events.eval_loop import (
+            EVAL_LOOP_ACTION_PROPOSED,
+        )
+
+        coordinator = _make_coordinator()
+        # No colon means unparseable; the coordinator logs a warning
+        # (EVAL_LOOP_ACTION_PROPOSED with reason="malformed_pattern")
+        # and skips the entry rather than emitting a bogus action.
+        with structlog.testing.capture_logs() as cap:
+            actions = await coordinator._propose_actions(
+                ("justatoken",),
+            )
+        assert actions == ()
+        malformed = [
+            rec
+            for rec in cap
+            if rec.get("event") == EVAL_LOOP_ACTION_PROPOSED
+            and rec.get("reason") == "malformed_pattern"
+        ]
+        assert len(malformed) == 1, (
+            f"expected one malformed_pattern warning; got {cap!r}"
+        )
+
+    async def test_empty_pillar_after_colon_skipped(self) -> None:
+        """``"weakness:"`` (colon but empty pillar) is treated as unmapped.
+
+        The coordinator splits on ``":"`` so the pillar name ends up
+        empty; neither the operator override nor
+        ``_DEFAULT_PATTERN_ACTIONS`` has an entry keyed by ``""``.
+        The expected behaviour is a WARNING-logged skip with
+        ``reason="unmapped_pattern"`` -- there is no action for an
+        empty pillar name and silently dropping it would hide
+        configuration bugs.
+        """
+        import structlog
+
+        from synthorg.observability.events.eval_loop import (
+            EVAL_LOOP_ACTION_PROPOSED,
+        )
+
+        coordinator = _make_coordinator()
+        with structlog.testing.capture_logs() as cap:
+            actions = await coordinator._propose_actions(("weakness:",))
+        assert actions == ()
+        unmapped = [
+            rec
+            for rec in cap
+            if rec.get("event") == EVAL_LOOP_ACTION_PROPOSED
+            and rec.get("reason") == "unmapped_pattern"
+        ]
+        assert len(unmapped) == 1, f"expected one unmapped_pattern warning; got {cap!r}"

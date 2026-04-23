@@ -263,3 +263,59 @@ class TestApiErrorMetadata:
             class _BadError(ApiError):
                 error_category = ErrorCategory.AUTH
                 error_code = ErrorCode.INTERNAL_ERROR  # 8xxx != auth
+
+
+class TestResourceNotFoundFactory:
+    """``resource_not_found`` builds NotFoundError with structured codes."""
+
+    def test_default_code_is_generic(self) -> None:
+        from synthorg.api.errors import resource_not_found
+
+        err = resource_not_found("task", "abc-123")
+        assert isinstance(err, NotFoundError)
+        assert err.error_code == ErrorCode.RESOURCE_NOT_FOUND
+        assert err.status_code == 404
+        assert "task 'abc-123' not found" in str(err)
+
+    def test_custom_not_found_code_preserved(self) -> None:
+        from synthorg.api.errors import resource_not_found
+
+        err = resource_not_found("task", "abc", code=ErrorCode.TASK_NOT_FOUND)
+        assert err.error_code == ErrorCode.TASK_NOT_FOUND
+        assert err.status_code == 404
+
+    def test_rejects_non_not_found_code(self) -> None:
+        """Factory refuses codes outside the 3xxx NOT_FOUND band.
+
+        A 404 response carrying an AUTH or VALIDATION machine code
+        would break client error-routing; the factory enforces the
+        category invariant at the construction boundary.
+        """
+        from synthorg.api.errors import resource_not_found
+
+        with pytest.raises(ValueError, match="NOT_FOUND"):
+            resource_not_found(
+                "task",
+                "abc",
+                code=ErrorCode.UNAUTHORIZED,  # 1000 -- auth, not NOT_FOUND
+            )
+
+    def test_rejects_validation_code(self) -> None:
+        from synthorg.api.errors import resource_not_found
+
+        with pytest.raises(ValueError, match="NOT_FOUND"):
+            resource_not_found(
+                "task",
+                "abc",
+                code=ErrorCode.VALIDATION_ERROR,  # 2000 -- validation
+            )
+
+    def test_every_not_found_code_in_taxonomy_is_accepted(self) -> None:
+        """Smoke test: every declared 3xxx code round-trips the factory."""
+        from synthorg.api.errors import resource_not_found
+
+        for code in ErrorCode:
+            if code.value // 1000 != 3:
+                continue
+            err = resource_not_found("thing", "id", code=code)
+            assert err.error_code == code

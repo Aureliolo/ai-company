@@ -179,11 +179,10 @@ ever written stays written, verbatim).
 
 Credentials flow exclusively through the **hands** plane (tool execution) via the sandbox credential proxy (`tools/sandbox/`).  They never enter the **brain** plane (`AgentContext`, turn records, conversation history) or the **session** plane (observability events, replay).
 
-Three enforcement points maintain this boundary:
+Two enforcement points maintain this boundary:
 
 1. **Task metadata validator** -- `engine/_validation.py::validate_task_metadata()` runs at the engine input boundary before execution begins.  It recursively scans all dict keys in `Task.metadata` (including nested dicts and dicts inside lists), rejecting any key matching credential patterns (`token`, `secret`, `api_key`, `password`, `bearer`) with an `EXECUTION_CREDENTIAL_ISOLATION_VIOLATION` error event (`execution.credential_isolation.violation`) and raises `ExecutionStateError`.
 2. **Sandbox credential manager** -- `tools/sandbox/credential_manager.py::SandboxCredentialManager` strips 14 credential-like patterns from environment variable overrides before they enter sandbox containers.  Stripped keys are logged via `SANDBOX_CREDENTIAL_STRIPPED`.
-3. **Auth proxy (planned)** -- `tools/sandbox/auth_proxy.py::SandboxAuthProxy` is the planned enforcement point for outbound header injection.  Once implemented, it will intercept outgoing HTTP requests from sandbox containers and inject authentication headers from SynthOrg's provider store at execution time, so credentials never enter the container.
 
 See also: [Engine > Brain / Hands / Session](agent-execution.md#brain--hands--session).
 

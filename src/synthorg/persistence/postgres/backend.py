@@ -15,7 +15,7 @@ backend: callers get Pydantic models back either way.
 
 import asyncio
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from psycopg.rows import dict_row
 from pydantic import BaseModel
@@ -38,10 +38,10 @@ from synthorg.persistence.fine_tune_protocol import (
     FineTuneRunRepository,  # noqa: TC001
 )
 from synthorg.persistence.integration_stubs import (
-    StubConnectionRepository,
-    StubConnectionSecretRepository,
-    StubOAuthStateRepository,
-    StubWebhookReceiptRepository,
+    InMemoryConnectionRepository,
+    InMemoryConnectionSecretRepository,
+    InMemoryOAuthStateRepository,
+    InMemoryWebhookReceiptRepository,
 )
 from synthorg.persistence.postgres.agent_state_repo import (
     PostgresAgentStateRepository,
@@ -55,6 +55,9 @@ from synthorg.persistence.postgres.checkpoint_repo import (
 )
 from synthorg.persistence.postgres.circuit_breaker_repo import (
     PostgresCircuitBreakerStateRepository,
+)
+from synthorg.persistence.postgres.custom_rule_repo import (
+    PostgresCustomRuleRepository,
 )
 from synthorg.persistence.postgres.decision_repo import PostgresDecisionRepository
 from synthorg.persistence.postgres.heartbeat_repo import (
@@ -232,13 +235,14 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         self._sessions: PostgresSessionRepository | None = None
         self._refresh_tokens: PostgresRefreshTokenRepository | None = None
         self._mcp_installations: PostgresMcpInstallationRepository | None = None
+        self._custom_rules: PostgresCustomRuleRepository | None = None
         self._org_facts: PostgresOrgFactRepository | None = None
         self._ontology_entities: PostgresOntologyEntityRepository | None = None
         self._ontology_drift: PostgresOntologyDriftReportRepository | None = None
-        self._connections_stub = StubConnectionRepository()
-        self._connection_secrets_stub = StubConnectionSecretRepository()
-        self._oauth_states_stub = StubOAuthStateRepository()
-        self._webhook_receipts_stub = StubWebhookReceiptRepository()
+        self._connections_stub = InMemoryConnectionRepository()
+        self._connection_secrets_stub = InMemoryConnectionSecretRepository()
+        self._oauth_states_stub = InMemoryOAuthStateRepository()
+        self._webhook_receipts_stub = InMemoryWebhookReceiptRepository()
         self._project_cost_aggregates: PostgresProjectCostAggregateRepository | None = (
             None
         )
@@ -282,6 +286,7 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         self._sessions = None
         self._refresh_tokens = None
         self._mcp_installations = None
+        self._custom_rules = None
         self._org_facts = None
         self._ontology_entities = None
         self._ontology_drift = None
@@ -358,6 +363,7 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         self._sessions = PostgresSessionRepository(pool)
         self._refresh_tokens = PostgresRefreshTokenRepository(pool)
         self._mcp_installations = PostgresMcpInstallationRepository(pool)
+        self._custom_rules = PostgresCustomRuleRepository(pool)
         self._org_facts = PostgresOrgFactRepository(pool)
         self._ontology_entities = PostgresOntologyEntityRepository(pool)
         self._ontology_drift = PostgresOntologyDriftReportRepository(pool)
@@ -608,22 +614,22 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         raise NotImplementedError(msg)
 
     @property
-    def connections(self) -> StubConnectionRepository:
+    def connections(self) -> InMemoryConnectionRepository:
         """Repository for external service connection persistence."""
         return self._connections_stub
 
     @property
-    def connection_secrets(self) -> StubConnectionSecretRepository:
+    def connection_secrets(self) -> InMemoryConnectionSecretRepository:
         """Repository for encrypted connection secret persistence."""
         return self._connection_secrets_stub
 
     @property
-    def oauth_states(self) -> StubOAuthStateRepository:
+    def oauth_states(self) -> InMemoryOAuthStateRepository:
         """Repository for transient OAuth state persistence."""
         return self._oauth_states_stub
 
     @property
-    def webhook_receipts(self) -> StubWebhookReceiptRepository:
+    def webhook_receipts(self) -> InMemoryWebhookReceiptRepository:
         """Repository for webhook receipt log persistence."""
         return self._webhook_receipts_stub
 
@@ -644,23 +650,9 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         )
 
     @property
-    def custom_rules(self) -> Any:
-        """Repository for custom signal rule persistence.
-
-        Not yet implemented for Postgres.
-
-        Raises:
-            NotImplementedError: Custom rules are not supported by
-                the Postgres backend yet.
-        """
-        msg = "custom_rules repository not yet ported to Postgres"
-        logger.warning(
-            PERSISTENCE_BACKEND_NOT_CONNECTED,
-            repository="custom_rules",
-            backend="postgres",
-            error=msg,
-        )
-        raise NotImplementedError(msg)
+    def custom_rules(self) -> PostgresCustomRuleRepository:
+        """Repository for custom signal rule persistence."""
+        return self._require_connected(self._custom_rules, "custom_rules")
 
     @property
     def sessions(self) -> PostgresSessionRepository:

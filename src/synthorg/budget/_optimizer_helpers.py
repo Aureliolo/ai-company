@@ -10,6 +10,13 @@ import statistics
 from collections import defaultdict
 from typing import TYPE_CHECKING
 
+from synthorg.budget._aggregation import (
+    compute_cost_per_1k,
+    group_by_agent,
+    sum_cost,
+    sum_tokens,
+)
+from synthorg.budget._tracker_helpers import _assert_single_currency
 from synthorg.budget.currency import DEFAULT_CURRENCY, format_cost
 from synthorg.budget.enums import BudgetAlertLevel
 from synthorg.budget.optimizer_models import (
@@ -50,21 +57,20 @@ def _build_efficiency_from_records(
     lower_bound_factor: float,
 ) -> EfficiencyAnalysis:
     """Build an EfficiencyAnalysis from pre-fetched records."""
-    by_agent: dict[str, list[CostRecord]] = defaultdict(list)
-    for r in records:
-        by_agent[r.agent_id].append(r)
-
+    # Same-currency invariant: records that share aggregations must
+    # also share a currency so the resulting ``global_avg`` + per-
+    # agent ``cost_per_1k`` comparisons are meaningful. Mixed input
+    # raises ``MixedCurrencyAggregationError`` (HTTP 409) upstream.
+    _assert_single_currency(records)
+    by_agent = group_by_agent(records)
     global_avg = _compute_global_avg_cost_per_1k(records)
 
     agent_efficiencies: list[AgentEfficiency] = []
     for agent_id in sorted(by_agent):
         agent_records = by_agent[agent_id]
-        total_cost = round(
-            math.fsum(r.cost for r in agent_records),
-            BUDGET_ROUNDING_PRECISION,
-        )
-        total_tokens = sum(r.input_tokens + r.output_tokens for r in agent_records)
-        cost_per_1k = _compute_cost_per_1k(total_cost, total_tokens)
+        total_cost = sum_cost(agent_records)
+        total_tokens = sum_tokens(agent_records)
+        cost_per_1k = compute_cost_per_1k(total_cost, total_tokens)
         rating = _rate_efficiency(
             cost_per_1k,
             global_avg,
@@ -217,9 +223,7 @@ def _classify_severity(value: float) -> AnomalySeverity:
 
 def _compute_cost_per_1k(total_cost: float, total_tokens: int) -> float:
     """Compute cost per 1000 tokens, returning 0 for zero tokens."""
-    if total_tokens == 0:
-        return 0.0
-    return round(total_cost / total_tokens * 1000, BUDGET_ROUNDING_PRECISION)
+    return compute_cost_per_1k(total_cost, total_tokens)
 
 
 def _rate_efficiency(
@@ -242,9 +246,7 @@ def _compute_global_avg_cost_per_1k(
     records: Sequence[CostRecord],
 ) -> float:
     """Compute global average cost per 1000 tokens across all records."""
-    total_cost = math.fsum(r.cost for r in records)
-    total_tokens = sum(r.input_tokens + r.output_tokens for r in records)
-    return _compute_cost_per_1k(total_cost, total_tokens)
+    return compute_cost_per_1k(sum_cost(records), sum_tokens(records))
 
 
 def _find_most_used_model(
@@ -383,7 +385,4 @@ def _group_records_by_agent(
     records: Sequence[CostRecord],
 ) -> dict[str, list[CostRecord]]:
     """Group records by agent_id for efficient per-agent iteration."""
-    by_agent: dict[str, list[CostRecord]] = defaultdict(list)
-    for r in records:
-        by_agent[r.agent_id].append(r)
-    return by_agent
+    return group_by_agent(records)

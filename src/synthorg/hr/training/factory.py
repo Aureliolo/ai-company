@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 from synthorg.hr.training.models import ContentType
 from synthorg.observability import get_logger
+from synthorg.observability.events.training import HR_TRAINING_CONFIG_INVALID
 
 if TYPE_CHECKING:
     from synthorg.approval.protocol import ApprovalStoreProtocol
@@ -44,7 +45,12 @@ def _coerce_positive_int(
         return default
     if isinstance(value, bool):
         msg = f"{field_name} must be a positive integer, got bool"
-        logger.warning(msg, field_name=field_name, value=value)
+        logger.warning(
+            HR_TRAINING_CONFIG_INVALID,
+            field=field_name,
+            expected="positive_int",
+            value_type="bool",
+        )
         raise TypeError(msg)
     if isinstance(value, int):
         coerced = value
@@ -53,15 +59,31 @@ def _coerce_positive_int(
             coerced = int(value)
         except ValueError as exc:
             msg = f"{field_name} must be a positive integer, got {value!r}"
-            logger.warning(msg, field_name=field_name, value=value)
+            logger.warning(
+                HR_TRAINING_CONFIG_INVALID,
+                field=field_name,
+                expected="positive_int",
+                value_type="str",
+                value_repr=repr(value),
+            )
             raise ValueError(msg) from exc
     else:
         msg = f"{field_name} must be a positive integer, got {type(value).__name__}"
-        logger.warning(msg, field_name=field_name, value_type=type(value).__name__)
+        logger.warning(
+            HR_TRAINING_CONFIG_INVALID,
+            field=field_name,
+            expected="positive_int",
+            value_type=type(value).__name__,
+        )
         raise TypeError(msg)
     if coerced <= 0:
         msg = f"{field_name} must be > 0, got {coerced}"
-        logger.warning(msg, field_name=field_name, value=coerced)
+        logger.warning(
+            HR_TRAINING_CONFIG_INVALID,
+            field=field_name,
+            expected="positive",
+            value=coerced,
+        )
         raise ValueError(msg)
     return coerced
 

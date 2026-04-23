@@ -120,3 +120,39 @@ class PushMetrics:
             ["kind"],
             registry=registry,
         )
+
+        # -- Escalation queue depth (per department) -----------------
+        self.escalation_queue_depth = Gauge(
+            f"{prefix}_escalation_queue_depth",
+            "Pending escalations awaiting decision",
+            ["department"],
+            registry=registry,
+        )
+
+        # -- Agent identity change counter ---------------------------
+        self.agent_identity_changes = PromCounter(
+            f"{prefix}_agent_identity_version_changes_total",
+            "Agent identity version changes",
+            ["agent_id", "change_type"],
+            registry=registry,
+        )
+
+        # -- Workflow execution duration histogram -------------------
+        # The ``workflow_definition_id`` label is the stable workflow
+        # definition identifier (NOT a per-execution id) to keep
+        # cardinality bounded by the number of workflows an operator
+        # has defined.
+        #
+        # Workflows can be anywhere from a few seconds (quick
+        # classification routines) to hours (multi-phase roadmaps).
+        # Prometheus's default buckets top out around 10s, which
+        # would collapse p95/p99 for anything long-running. The
+        # explicit buckets below span sub-second to 1h so quantiles
+        # stay meaningful across both regimes.
+        self.workflow_execution_duration = Histogram(
+            f"{prefix}_workflow_execution_seconds",
+            "Workflow execution duration",
+            ["workflow_definition_id", "status"],
+            buckets=(0.5, 1.0, 5.0, 10.0, 30.0, 60.0, 300.0, 600.0, 1800.0, 3600.0),
+            registry=registry,
+        )

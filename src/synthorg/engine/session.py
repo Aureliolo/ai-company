@@ -41,6 +41,7 @@ from synthorg.observability.events.session import (
     SESSION_REPLAY_NO_EVENTS,
     SESSION_REPLAY_PARTIAL,
     SESSION_REPLAY_START,
+    SESSION_TASK_STATUS_CHANGED,
 )
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, TokenUsage, add_token_usage
@@ -284,12 +285,21 @@ def _apply_transition_event(
     """Apply a task-transition event to the context."""
     target = event.data.get("target_status")
     if target is not None and ctx.task_execution is not None:
+        from_status = ctx.task_execution.status
+        new_status = TaskStatus(str(target))
+        task_id = ctx.task_execution.task.id
         ctx = ctx.model_copy(
             update={
                 "task_execution": ctx.task_execution.model_copy(
-                    update={"status": TaskStatus(str(target))},
+                    update={"status": new_status},
                 ),
             },
+        )
+        logger.info(
+            SESSION_TASK_STATUS_CHANGED,
+            task_id=task_id,
+            from_status=from_status.value,
+            to_status=new_status.value,
         )
     return ctx
 

@@ -5,7 +5,7 @@ Creates a ``SecretBackend`` instance from configuration.
 
 import os
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, assert_never
 
 from synthorg.integrations.config import SecretBackendConfig  # noqa: TC001
 from synthorg.observability import get_logger
@@ -239,8 +239,15 @@ def create_secret_backend(
         A configured ``SecretBackend`` instance.
 
     Raises:
-        ValueError: If the backend type is unknown or misconfigured.
-        NotImplementedError: If the backend type is a stub.
+        ValueError: If the backend type is misconfigured (missing
+            ``db_path`` for ``encrypted_sqlite`` or missing
+            ``pg_pool`` for ``encrypted_postgres``).
+        AssertionError: Raised by ``typing.assert_never`` if a
+            ``backend_type`` value outside the exhaustive ``Literal``
+            union somehow reaches the factory (e.g. a call site
+            bypasses the type-check via ``cast`` or raw ``str``).
+            Normally unreachable -- the ``Literal`` union is
+            checked statically at every call site.
     """
     backend_type = config.backend_type
 
@@ -275,24 +282,16 @@ def create_secret_backend(
     if backend_type == "env_var":
         return EnvVarSecretBackend(config=config.env_var)
 
-    stub_backends = {
-        "secret_manager_vault",
-        "secret_manager_cloud_a",
-        "secret_manager_cloud_b",
-    }
-    if backend_type in stub_backends:
-        logger.error(
-            SECRET_BACKEND_UNAVAILABLE,
-            backend=backend_type,
-            error="backend type not yet implemented",
-        )
-        msg = f"{backend_type} secret backend not yet implemented"
-        raise NotImplementedError(msg)
-
-    logger.error(
+    # The Literal union on ``SecretBackendConfig.backend_type`` is
+    # exhaustive; the ``assert_never`` marks this branch unreachable
+    # so a future backend discriminator added without wiring a
+    # factory path fails type-check at the call site. The ERROR log
+    # below gives operators runtime context if this defensive branch
+    # is ever hit (e.g. a call site bypasses the type-check via
+    # ``cast`` or raw ``str``).
+    logger.error(  # type: ignore[unreachable]
         SECRET_BACKEND_UNAVAILABLE,
-        backend=backend_type,
-        error="unknown backend type",
+        backend=str(backend_type),
+        reason="unreachable_backend_type",
     )
-    msg = f"Unknown secret backend type: {backend_type}"
-    raise ValueError(msg)
+    assert_never(backend_type)

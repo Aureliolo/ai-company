@@ -1,7 +1,5 @@
 """Tests for the task lifecycle state machine transitions."""
 
-from unittest.mock import patch
-
 import pytest
 import structlog
 
@@ -193,8 +191,12 @@ class TestTransitionLogging:
             validate_transition(TaskStatus.CREATED, TaskStatus.COMPLETED)
         events = [e for e in cap if e.get("event") == TASK_TRANSITION_INVALID]
         assert len(events) == 1
-        assert events[0]["current_status"] == "created"
-        assert events[0]["target_status"] == "completed"
+        # Generic ``current_state``/``target_state`` keys replace the old
+        # ``current_status``/``target_status`` names so Kanban columns,
+        # sprint phases, and client-request statuses all log with the
+        # same field shape in the shared StateMachine helper.
+        assert events[0]["current_state"] == "created"
+        assert events[0]["target_state"] == "completed"
 
 
 # ── Guard / missing entry edge cases ────────────────────────────
@@ -212,12 +214,27 @@ class TestTransitionGuardEdgeCases:
         assert missing == set(), "Module guard should have caught this at import time"
 
     def test_validate_transition_with_missing_entry(self) -> None:
-        """validate_transition raises ValueError when current status is absent."""
-        with (
-            patch.dict(
-                "synthorg.core.task_transitions.VALID_TRANSITIONS",
-                clear=True,
-            ),
-            pytest.raises(ValueError, match="has no entry"),
-        ):
-            validate_transition(TaskStatus.CREATED, TaskStatus.ASSIGNED)
+        """``StateMachine.validate`` raises ValueError when state is absent.
+
+        Patching ``VALID_TRANSITIONS`` via ``patch.dict`` no longer
+        changes the module-level ``StateMachine`` behaviour because
+        the helper deep-copies + wraps the table in
+        ``MappingProxyType`` at construction (per the CLAUDE.md
+        immutability convention for non-Pydantic registries). We
+        therefore reproduce the scenario by building a fresh
+        ``StateMachine`` with an empty table and calling ``validate``
+        directly -- this still exercises the missing-entry guard.
+        """
+        from synthorg.core.state_machine import StateMachine
+        from synthorg.observability.events.task import (
+            TASK_TRANSITION_CONFIG_ERROR,
+        )
+
+        empty_machine: StateMachine[TaskStatus] = StateMachine(
+            {},
+            name="task_status",
+            invalid_event=TASK_TRANSITION_INVALID,
+            config_event=TASK_TRANSITION_CONFIG_ERROR,
+        )
+        with pytest.raises(ValueError, match="has no entry"):
+            empty_machine.validate(TaskStatus.CREATED, TaskStatus.ASSIGNED)

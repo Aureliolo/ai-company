@@ -6,6 +6,9 @@ rollup → update parent task.
 """
 
 import time
+from collections.abc import (
+    Callable,  # noqa: TC003 -- runtime-read by typing.get_type_hints()
+)
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
@@ -22,7 +25,7 @@ from synthorg.engine.coordination.models import (
 )
 from synthorg.engine.errors import CoordinationPhaseError
 from synthorg.engine.task_engine_models import TransitionTaskMutation
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.coordination import (
     COORDINATION_CLEANUP_FAILED,
     COORDINATION_COMPLETED,
@@ -76,11 +79,29 @@ class MultiAgentCoordinator:
         task_engine: Optional task engine for parent status updates.
         performance_tracker: Optional tracker for recording per-agent
             coordination contributions.
+        coordination_chain: Optional ``CoordinationMiddlewareChain``
+            that runs ``before_decompose`` / ``after_decompose`` /
+            ``before_dispatch`` / ``after_rollup`` /
+            ``before_update_parent`` hooks around the pipeline.
+            ``coordinate()`` invokes each hook via the corresponding
+            ``run_*`` method on the chain, so middleware implementers
+            must define all five hooks (though each may be a no-op).
+            ``None`` disables middleware entirely.
+        default_topology_provider: Optional callable returning the
+            topology to fall back on when ``routing_result.decisions``
+            is empty. Passed as a callable (rather than a frozen
+            :class:`CoordinationTopology`) so operators can wire it
+            to a settings-store reader and runtime changes to
+            ``coordination.default_topology`` take effect without
+            rebuilding the coordinator. Falls back to
+            ``CoordinationTopology.SAS`` (the historical default)
+            when ``None`` is supplied.
     """
 
     __slots__ = (
         "_coordination_chain",
         "_decomposition_service",
+        "_default_topology_provider",
         "_parallel_executor",
         "_performance_tracker",
         "_routing_service",
@@ -98,6 +119,7 @@ class MultiAgentCoordinator:
         task_engine: TaskEngine | None = None,
         performance_tracker: PerformanceTracker | None = None,
         coordination_chain: CoordinationMiddlewareChain | None = None,
+        default_topology_provider: Callable[[], CoordinationTopology] | None = None,
     ) -> None:
         self._decomposition_service = decomposition_service
         self._routing_service = routing_service
@@ -106,6 +128,12 @@ class MultiAgentCoordinator:
         self._task_engine = task_engine
         self._performance_tracker = performance_tracker
         self._coordination_chain = coordination_chain
+        # Callable provider instead of a frozen value so operators
+        # can wire a settings-store reader here and runtime changes
+        # to ``coordination.default_topology`` take effect without
+        # rebuilding the coordinator. Falls back to ``SAS`` (the
+        # historical default) when no provider is supplied.
+        self._default_topology_provider = default_topology_provider
 
     async def coordinate(  # noqa: PLR0912, PLR0915, C901
         self,
@@ -177,13 +205,13 @@ class MultiAgentCoordinator:
             # Phase 2: Route
             routing_result = self._phase_route(context, decomp_result, phases)
 
-            # Phase 3: Resolve topology
-            topology = self._resolve_topology(routing_result)
-
-            # Phase 4: Validate -- fail if all unroutable
-            self._validate_routing(routing_result, phases)
-
-            # Middleware: before_dispatch
+            # Middleware: before_dispatch.  Runs BEFORE validation +
+            # topology resolution so that any routing mutations the
+            # middleware applies (e.g. re-routing unassigned subtasks,
+            # enriching topology metadata) are included in the inputs
+            # those two phases consume.  Previously the order was
+            # validate -> resolve -> middleware, which meant middleware
+            # edits to ``routing_result`` never influenced topology.
             if mw_chain is not None:
                 mw_ctx = mw_ctx.model_copy(
                     update={
@@ -192,9 +220,90 @@ class MultiAgentCoordinator:
                     },
                 )
                 mw_ctx = await mw_chain.run_before_dispatch(mw_ctx)
-                # Propagate middleware-mutated routing
                 if mw_ctx.routing_result is not None:
                     routing_result = mw_ctx.routing_result
+
+            # Phase 3: Validate -- fail fast if all subtasks are
+            # unroutable. Runs BEFORE resolving topology so the
+            # deterministic routing error surfaces without first
+            # calling ``default_topology_provider()`` (which may read
+            # runtime settings or raise).
+            self._validate_routing(routing_result, phases)
+
+            # Phase 4: Resolve topology (only reached for dispatchable
+            # work). Wrapped in try/except because
+            # ``default_topology_provider()`` may read runtime settings
+            # or raise -- any failure must surface as a failed
+            # coordination phase with a proper ``CoordinationPhaseError``
+            # + partial_phases so the caller sees the partial pipeline
+            # instead of an opaque traceback.
+            topology_phase = "resolve_topology"
+            topology_start = time.monotonic()
+            try:
+                topology = self._resolve_topology(routing_result)
+            except CoordinationPhaseError as phase_exc:
+                # ``_resolve_topology`` raises ``CoordinationPhaseError``
+                # for mixed-topology routing but does NOT append a phase
+                # marker itself -- record the failure here so the phase
+                # list surfaces the topology-resolution step, mirroring
+                # the decomposition/routing/dispatch handlers below.
+                # Re-raise a NEW ``CoordinationPhaseError`` carrying
+                # the updated ``partial_phases`` so callers can see
+                # which phases completed before the failure (the
+                # original exception was raised before this phase
+                # marker existed in ``phases``).
+                elapsed = time.monotonic() - topology_start
+                # Always log at WARNING before re-raising. This covers
+                # both (a) mixed-topology errors ``_resolve_topology``
+                # logs internally AND (b) provider-originated failures
+                # raised by ``default_topology_provider()`` or any
+                # future topology-resolution subsystem that did not
+                # log before raising. One entry per failure path is
+                # the coding-guideline contract.
+                logger.warning(
+                    COORDINATION_PHASE_FAILED,
+                    phase=topology_phase,
+                    error_type=type(phase_exc).__name__,
+                    error=safe_error_description(phase_exc),
+                    empty_routing_decisions=not routing_result.decisions,
+                )
+                phases.append(
+                    CoordinationPhaseResult(
+                        phase=topology_phase,
+                        success=False,
+                        duration_seconds=elapsed,
+                        error=safe_error_description(phase_exc),
+                    )
+                )
+                raise CoordinationPhaseError(
+                    str(phase_exc),
+                    phase=topology_phase,
+                    partial_phases=tuple(phases),
+                ) from phase_exc
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
+                elapsed = time.monotonic() - topology_start
+                logger.warning(
+                    COORDINATION_PHASE_FAILED,
+                    phase=topology_phase,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                phases.append(
+                    CoordinationPhaseResult(
+                        phase=topology_phase,
+                        success=False,
+                        duration_seconds=elapsed,
+                        error=safe_error_description(exc),
+                    )
+                )
+                msg = f"Topology resolution failed: {safe_error_description(exc)}"
+                raise CoordinationPhaseError(
+                    msg,
+                    phase=topology_phase,
+                    partial_phases=tuple(phases),
+                ) from exc
 
             # Phase 5: Dispatch (workspace setup -> execute -> merge)
             dispatch_result = await self._phase_dispatch(
@@ -258,10 +367,11 @@ class MultiAgentCoordinator:
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            logger.exception(
+            logger.warning(
                 COORDINATION_FAILED,
                 parent_task_id=task.id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise
 
@@ -288,7 +398,7 @@ class MultiAgentCoordinator:
             logger.warning(
                 COORDINATION_CLEANUP_FAILED,
                 parent_task_id=task.id,
-                error=str(attr_exc),
+                error=safe_error_description(attr_exc),
                 context="post_completion_attribution_build",
             )
 
@@ -303,7 +413,7 @@ class MultiAgentCoordinator:
                 logger.warning(
                     COORDINATION_CLEANUP_FAILED,
                     parent_task_id=task.id,
-                    error=str(tracker_exc),
+                    error=safe_error_description(tracker_exc),
                     context="post_completion_tracker_write",
                 )
 
@@ -333,16 +443,17 @@ class MultiAgentCoordinator:
             logger.warning(
                 COORDINATION_PHASE_FAILED,
                 phase=phase_name,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             phase = CoordinationPhaseResult(
                 phase=phase_name,
                 success=False,
                 duration_seconds=elapsed,
-                error=str(exc),
+                error=safe_error_description(exc),
             )
             phases.append(phase)
-            msg = f"Decomposition failed: {exc}"
+            msg = f"Decomposition failed: {safe_error_description(exc)}"
             raise CoordinationPhaseError(
                 msg,
                 phase=phase_name,
@@ -389,16 +500,17 @@ class MultiAgentCoordinator:
             logger.warning(
                 COORDINATION_PHASE_FAILED,
                 phase=phase_name,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             phase = CoordinationPhaseResult(
                 phase=phase_name,
                 success=False,
                 duration_seconds=elapsed,
-                error=str(exc),
+                error=safe_error_description(exc),
             )
             phases.append(phase)
-            msg = f"Routing failed: {exc}"
+            msg = f"Routing failed: {safe_error_description(exc)}"
             raise CoordinationPhaseError(
                 msg,
                 phase=phase_name,
@@ -449,7 +561,11 @@ class MultiAgentCoordinator:
                     phase="resolve_topology",
                 )
         else:
-            topology = CoordinationTopology.SAS
+            topology = (
+                self._default_topology_provider()
+                if self._default_topology_provider is not None
+                else CoordinationTopology.SAS
+            )
 
         # AUTO should have been resolved by TopologySelector; fallback
         if topology == CoordinationTopology.AUTO:
@@ -530,16 +646,17 @@ class MultiAgentCoordinator:
             logger.warning(
                 COORDINATION_PHASE_FAILED,
                 phase=phase_name,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             phase = CoordinationPhaseResult(
                 phase=phase_name,
                 success=False,
                 duration_seconds=elapsed,
-                error=str(exc),
+                error=safe_error_description(exc),
             )
             phases.append(phase)
-            msg = f"Dispatch failed: {exc}"
+            msg = f"Dispatch failed: {safe_error_description(exc)}"
             raise CoordinationPhaseError(
                 msg,
                 phase=phase_name,
@@ -595,14 +712,15 @@ class MultiAgentCoordinator:
             logger.warning(
                 COORDINATION_PHASE_FAILED,
                 phase=phase_name,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             phases.append(
                 CoordinationPhaseResult(
                     phase=phase_name,
                     success=False,
                     duration_seconds=elapsed,
-                    error=str(exc),
+                    error=safe_error_description(exc),
                 )
             )
             return None
@@ -695,13 +813,14 @@ class MultiAgentCoordinator:
             logger.warning(
                 COORDINATION_PHASE_FAILED,
                 phase=phase_name,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             phases.append(
                 CoordinationPhaseResult(
                     phase=phase_name,
                     success=False,
                     duration_seconds=elapsed,
-                    error=str(exc),
+                    error=safe_error_description(exc),
                 )
             )

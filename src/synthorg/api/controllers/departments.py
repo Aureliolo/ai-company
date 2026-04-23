@@ -39,6 +39,7 @@ from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.api.ws_models import WsEventType
 from synthorg.config.schema import AgentConfig  # noqa: TC001
 from synthorg.core.company import Department  # noqa: TC001
+from synthorg.core.normalization import find_by_name_ci
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.workflow.ceremony_policy import CeremonyPolicyConfig
 from synthorg.observability import get_logger
@@ -79,10 +80,9 @@ async def _require_department_exists(
         logger.warning(API_SERVICE_UNAVAILABLE, service="config_resolver")
         raise ServiceUnavailableError(msg)
     departments = await app_state.config_resolver.get_departments()
-    name_lower = name.lower()
-    for dept in departments:
-        if dept.name.lower() == name_lower:
-            return dept.name
+    found = find_by_name_ci(departments, name)
+    if found is not None:
+        return found.name
     msg = f"Department {name!r} not found"
     logger.warning(API_RESOURCE_NOT_FOUND, resource="department", name=name)
     raise NotFoundError(msg)
@@ -374,10 +374,9 @@ class DepartmentController(Controller):
         """
         app_state: AppState = state.app_state
         departments = await app_state.config_resolver.get_departments()
-        name_lower = name.lower()
-        for dept in departments:
-            if dept.name.lower() == name_lower:
-                return ApiResponse(data=dept)
+        found = find_by_name_ci(departments, name)
+        if found is not None:
+            return ApiResponse(data=found)
         msg = f"Department {name!r} not found"
         logger.warning(API_RESOURCE_NOT_FOUND, resource="department", name=name)
         raise NotFoundError(msg)
@@ -596,8 +595,8 @@ class DepartmentController(Controller):
 
         # Fetch departments and agents (both are config reads)
         departments = await app_state.config_resolver.get_departments()
-        dept_by_name = {dept.name.lower(): dept for dept in departments}
-        if name.lower() not in dept_by_name:
+        dept = find_by_name_ci(departments, name)
+        if dept is None:
             msg = f"Department {name!r} not found"
             logger.warning(
                 API_RESOURCE_NOT_FOUND,
@@ -605,8 +604,6 @@ class DepartmentController(Controller):
                 name=name,
             )
             raise NotFoundError(msg)
-
-        dept = dept_by_name[name.lower()]
         canonical_name = dept.name
 
         agents = await app_state.config_resolver.get_agents()

@@ -89,9 +89,6 @@ class SecretBackendConfig(BaseModel):
     #   - ``encrypted_sqlite``: Fernet ciphertext in a SQLite DB (default)
     #   - ``encrypted_postgres``: Fernet ciphertext in a Postgres table
     #   - ``env_var``: read-only environment variable backend
-    #   - ``secret_manager_vault``: HashiCorp Vault adapter (stub)
-    #   - ``secret_manager_cloud_a``: AWS Secrets Manager adapter (stub)
-    #   - ``secret_manager_cloud_b``: Azure Key Vault adapter (stub)
     #
     # ``encrypted_sqlite`` is the config default so a bare install with
     # SQLite persistence just works. ``create_app`` auto-promotes this
@@ -102,9 +99,6 @@ class SecretBackendConfig(BaseModel):
         "encrypted_sqlite",
         "encrypted_postgres",
         "env_var",
-        "secret_manager_vault",
-        "secret_manager_cloud_a",
-        "secret_manager_cloud_b",
     ] = "encrypted_sqlite"
     encrypted_sqlite: EncryptedSqliteConfig = Field(
         default_factory=EncryptedSqliteConfig,
