@@ -5,6 +5,7 @@ import { afterAll, afterEach, beforeAll, vi } from 'vitest'
 import { MotionGlobalConfig } from 'motion/react'
 import { setupServer } from 'msw/node'
 import { useToastStore } from '@/stores/toast'
+import { useThemeStore } from '@/stores/theme'
 import { cancelPendingPersist } from '@/stores/notifications'
 import { defaultHandlers } from '@/mocks/handlers'
 
@@ -265,4 +266,8 @@ afterEach(() => {
   // Notifications store debounces localStorage persistence with a 300ms
   // setTimeout; drop any pending handle so it does not outlive the test.
   cancelPendingPersist()
+  // Theme store subscribes to a `prefers-reduced-motion` MediaQueryList
+  // at factory time; detach the listener here so
+  // `--detect-async-leaks` does not count it per-test (#1534).
+  useThemeStore.getState().teardown()
 })

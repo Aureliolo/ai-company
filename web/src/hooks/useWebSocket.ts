@@ -88,15 +88,28 @@ export function useWebSocket(options: WebSocketOptions): WebSocketReturn {
 
       if (disposedRef.current) return
 
+      // Track the exact (channel, handler) pairs this effect successfully
+      // registered so the cleanup can symmetrically deregister ONLY what
+      // was wired -- if a mid-loop throw aborts setup, we must not
+      // deregister phantom entries that were never registered (#1534).
       for (const binding of bindings) {
         try {
           wsStore.onChannelEvent(binding.channel, binding.handler)
+          registered.push(binding)
         } catch (err) {
           setSetupError('WebSocket handler setup failed.')
           log.error('Handler wiring failed:', err)
+          // Stop wiring further bindings -- cleanup will roll back
+          // the ones we already registered via the `registered` list.
+          return
         }
       }
     }
+
+    // List of (channel, handler) pairs wired by this effect instance.
+    // Populated during setup(); iterated by the cleanup callback. Kept
+    // local to the effect so each mount owns its registration ledger.
+    const registered: Array<ChannelBinding> = []
 
     setup().catch((err) => {
       if (!disposedRef.current) {
@@ -107,10 +120,12 @@ export function useWebSocket(options: WebSocketOptions): WebSocketReturn {
 
     return () => {
       disposedRef.current = true
-      // Only remove handlers -- do NOT unsubscribe channels globally since
-      // other hook instances may share the same channels. The store's
-      // handler set deduplication ensures cleanup is safe per-handler.
-      for (const binding of bindings) {
+      // Only remove handlers we actually registered -- do NOT iterate
+      // the full bindings list because a mid-loop throw may have left
+      // later bindings unregistered. The store's handler set
+      // deduplication ensures cleanup is safe per-handler; symmetry
+      // here prevents stale phantom cleanups across reconnects.
+      for (const binding of registered) {
         try {
           wsStore.offChannelEvent(binding.channel, binding.handler)
         } catch (err) {

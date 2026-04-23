@@ -32,6 +32,15 @@ export interface ThemeState extends ThemePreferences {
   setSidebarMode: (value: SidebarMode) => void
   setPopoverOpen: (open: boolean) => void
   reset: () => void
+  /**
+   * Detach the matchMedia listener installed at store creation.
+   * Called from the global afterEach in test-setup.tsx so
+   * `--detect-async-leaks` does not count the listener against the
+   * per-test leak budget. Also invoked from Vite's `import.meta.hot`
+   * dispose hook to avoid leaking listeners across Fast Refresh
+   * cycles in dev. Idempotent.
+   */
+  teardown: () => void
 }
 
 // ---------------------------------------------------------------------------
@@ -174,10 +183,15 @@ export const useThemeStore = create<ThemeState>()((set, get) => {
     log.warn('Failed to apply initial theme classes:', err)
   }
 
-  // Listen for reduced-motion changes
+  // Listen for reduced-motion changes. Capture both the MediaQueryList
+  // and the change handler in closure-scoped refs so `teardown()` can
+  // call `removeEventListener` with the same handler identity. Set to
+  // `null` after teardown so a second call is a no-op.
+  let mql: MediaQueryList | null = null
+  let reducedMotionHandler: ((e: MediaQueryListEvent) => void) | null = null
   if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
-    const mql = window.matchMedia('(prefers-reduced-motion: reduce)')
-    mql.addEventListener('change', (e) => {
+    mql = window.matchMedia('(prefers-reduced-motion: reduce)')
+    reducedMotionHandler = (e) => {
       set({ reducedMotionDetected: e.matches })
       // Follow OS reduced-motion preference: always switch to minimal when
       // OS requests it; revert to default when OS lifts the preference
@@ -191,7 +205,8 @@ export const useThemeStore = create<ThemeState>()((set, get) => {
         applyThemeClasses(prefs)
         set({ animation: newAnimation })
       }
-    })
+    }
+    mql.addEventListener('change', reducedMotionHandler)
   }
 
   return {
@@ -246,5 +261,22 @@ export const useThemeStore = create<ThemeState>()((set, get) => {
         log.warn('Failed to clear stored preferences:', err)
       }
     },
+
+    teardown: () => {
+      if (mql && reducedMotionHandler) {
+        mql.removeEventListener('change', reducedMotionHandler)
+      }
+      mql = null
+      reducedMotionHandler = null
+    },
   }
 })
+
+// Dev-only: release the matchMedia listener across Vite Fast Refresh
+// so we do not layer duplicate handlers in the dev loop. In production
+// this branch is dead-code-eliminated by Vite.
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    useThemeStore.getState().teardown()
+  })
+}
