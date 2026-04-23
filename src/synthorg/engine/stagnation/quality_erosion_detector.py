@@ -17,6 +17,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.stagnation import (
     QUALITY_STAGNATION_DETECTED,
     STAGNATION_CHECK_PERFORMED,
+    STAGNATION_QUALITY_EROSION_CONFIG_ERROR,
 )
 
 from .models import (
@@ -51,7 +52,12 @@ class QualityErosionDetector:
     ) -> None:
         if not 0.0 <= threshold <= 1.0:
             msg = f"threshold must be in [0.0, 1.0], got {threshold}"
-            logger.warning(msg, threshold=threshold)
+            logger.warning(
+                STAGNATION_QUALITY_EROSION_CONFIG_ERROR,
+                field="threshold",
+                value=threshold,
+                bounds=(0.0, 1.0),
+            )
             raise ValueError(msg)
         if not _MIN_WINDOW_SIZE <= window_size <= _MAX_WINDOW_SIZE:
             msg = (
@@ -59,7 +65,12 @@ class QualityErosionDetector:
                 f"[{_MIN_WINDOW_SIZE}, {_MAX_WINDOW_SIZE}], "
                 f"got {window_size}"
             )
-            logger.warning(msg, window_size=window_size)
+            logger.warning(
+                STAGNATION_QUALITY_EROSION_CONFIG_ERROR,
+                field="window_size",
+                value=window_size,
+                bounds=(_MIN_WINDOW_SIZE, _MAX_WINDOW_SIZE),
+            )
             raise ValueError(msg)
         self._threshold = threshold
         self._window_size = window_size

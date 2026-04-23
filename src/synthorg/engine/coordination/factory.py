@@ -25,6 +25,7 @@ from synthorg.observability.events.decomposition import (
 
 if TYPE_CHECKING:
     from synthorg.config.schema import TaskAssignmentConfig
+    from synthorg.core.enums import CoordinationTopology
     from synthorg.core.task import Task
     from synthorg.engine.agent_engine import AgentEngine
     from synthorg.engine.coordination.section_config import (
@@ -211,6 +212,13 @@ def build_coordinator(  # noqa: PLR0913
         shutdown_manager=shutdown_manager,
     )
 
+    # Capture the config object itself (not ``config.topology`` by
+    # value) so that when settings subscribers mutate the coordination
+    # config at runtime, the coordinator's topology fallback picks up
+    # the new value without requiring a coordinator rebuild.
+    def _topology_provider() -> CoordinationTopology:
+        return config.topology
+
     coordinator = MultiAgentCoordinator(
         decomposition_service=decomposition_service,
         routing_service=routing_service,
@@ -220,6 +228,7 @@ def build_coordinator(  # noqa: PLR0913
         ),
         task_engine=task_engine,
         performance_tracker=performance_tracker,
+        default_topology_provider=_topology_provider,
     )
 
     logger.debug(

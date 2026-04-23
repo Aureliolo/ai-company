@@ -409,8 +409,7 @@ class TestBaseCompletionProviderResilience:
 
     async def test_rate_limited_call_acquires_and_releases(self) -> None:
         """_rate_limited_call acquires before and releases after the call."""
-        mock_limiter = MagicMock(spec=RateLimiter)
-        mock_limiter.acquire = AsyncMock()
+        mock_limiter = MagicMock(spec_set=RateLimiter)
         mock_limiter.is_enabled = True
 
         provider = _ConcreteProvider()
@@ -424,8 +423,7 @@ class TestBaseCompletionProviderResilience:
 
     async def test_rate_limit_error_with_retry_after_triggers_pause(self) -> None:
         """RateLimitError with retry_after triggers rate_limiter.pause."""
-        mock_limiter = MagicMock(spec=RateLimiter)
-        mock_limiter.acquire = AsyncMock()
+        mock_limiter = MagicMock(spec_set=RateLimiter)
         mock_limiter.is_enabled = True
 
         provider = _RateLimitProvider(retry_after=5.0)
@@ -449,8 +447,7 @@ class TestBaseCompletionProviderResilience:
         """Semaphore slot is released even when a non-RateLimitError is raised."""
         from synthorg.providers.errors import ProviderTimeoutError
 
-        mock_limiter = MagicMock(spec=RateLimiter)
-        mock_limiter.acquire = AsyncMock()
+        mock_limiter = MagicMock(spec_set=RateLimiter)
         mock_limiter.is_enabled = True
 
         provider = _RateLimitProvider(retry_after=None)
@@ -468,8 +465,7 @@ class TestBaseCompletionProviderResilience:
 
     async def test_stream_holds_rate_limiter_until_consumed(self) -> None:
         """Streaming holds the rate limiter slot until the stream is fully consumed."""
-        mock_limiter = MagicMock(spec=RateLimiter)
-        mock_limiter.acquire = AsyncMock()
+        mock_limiter = MagicMock(spec_set=RateLimiter)
         mock_limiter.is_enabled = True
 
         provider = _ConcreteProvider()
@@ -491,8 +487,7 @@ class TestBaseCompletionProviderResilience:
 
     async def test_stream_releases_rate_limiter_on_early_close(self) -> None:
         """Rate limiter slot is released when the stream is closed early."""
-        mock_limiter = MagicMock(spec=RateLimiter)
-        mock_limiter.acquire = AsyncMock()
+        mock_limiter = MagicMock(spec_set=RateLimiter)
         mock_limiter.is_enabled = True
 
         provider = _ConcreteProvider()

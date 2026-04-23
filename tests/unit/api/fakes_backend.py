@@ -14,10 +14,10 @@ from synthorg.hr.training.models import TrainingPlan, TrainingPlanStatus, Traini
 from synthorg.meta.rules.custom import CustomRuleDefinition
 from synthorg.persistence.errors import DuplicateRecordError
 from synthorg.persistence.integration_stubs import (
-    StubConnectionRepository,
-    StubConnectionSecretRepository,
-    StubOAuthStateRepository,
-    StubWebhookReceiptRepository,
+    InMemoryConnectionRepository,
+    InMemoryConnectionSecretRepository,
+    InMemoryOAuthStateRepository,
+    InMemoryWebhookReceiptRepository,
 )
 from synthorg.security.rules.risk_override import RiskTierOverride
 from synthorg.security.ssrf_violation import SsrfViolation, SsrfViolationStatus
@@ -409,10 +409,10 @@ class FakePersistenceBackend:
         self._training_plans_repo = FakeTrainingPlanRepository()
         self._training_results_repo = FakeTrainingResultRepository()
         self._custom_rules_repo = FakeCustomRuleRepository()
-        self._connections_stub = StubConnectionRepository()
-        self._connection_secrets_stub = StubConnectionSecretRepository()
-        self._oauth_states_stub = StubOAuthStateRepository()
-        self._webhook_receipts_stub = StubWebhookReceiptRepository()
+        self._connections_stub = InMemoryConnectionRepository()
+        self._connection_secrets_stub = InMemoryConnectionSecretRepository()
+        self._oauth_states_stub = InMemoryOAuthStateRepository()
+        self._webhook_receipts_stub = InMemoryWebhookReceiptRepository()
         # Legacy flat KV store for get_setting/set_setting (pre-namespaced).
         # The `settings` property returns `_settings_repo` (namespaced repo).
         self._settings: dict[str, str] = {}
@@ -605,23 +605,23 @@ class FakePersistenceBackend:
         return self._circuit_breaker_state
 
     @property
-    def connections(self) -> StubConnectionRepository:
-        """Stub connection repository."""
+    def connections(self) -> InMemoryConnectionRepository:
+        """In-memory connection repository."""
         return self._connections_stub
 
     @property
-    def connection_secrets(self) -> StubConnectionSecretRepository:
-        """Stub connection secret repository."""
+    def connection_secrets(self) -> InMemoryConnectionSecretRepository:
+        """In-memory connection secret repository."""
         return self._connection_secrets_stub
 
     @property
-    def oauth_states(self) -> StubOAuthStateRepository:
-        """Stub OAuth state repository."""
+    def oauth_states(self) -> InMemoryOAuthStateRepository:
+        """In-memory OAuth state repository."""
         return self._oauth_states_stub
 
     @property
-    def webhook_receipts(self) -> StubWebhookReceiptRepository:
-        """Stub webhook receipt repository."""
+    def webhook_receipts(self) -> InMemoryWebhookReceiptRepository:
+        """In-memory webhook receipt repository."""
         return self._webhook_receipts_stub
 
     @property

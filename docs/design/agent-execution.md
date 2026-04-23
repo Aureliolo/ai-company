@@ -591,7 +591,7 @@ The engine's architecture maps onto three decoupled planes. Each plane has a dis
 | Plane | SynthOrg Modules | Purpose |
 |-------|-----------------|---------|
 | **Brain** | `engine/agent_engine.py`, `AgentContext`, loop protocol (`ReactLoop`, `PlanExecuteLoop`, `HybridLoop`) | Inference loop, middleware, decision-making.  Stateless between turns -- all state lives in the immutable `AgentContext`. |
-| **Hands** | `ToolInvoker`, `tools/sandbox/`, `SandboxCredentialManager`, auth proxy | Tool execution, side effects, credential scope.  Credentials flow exclusively through the sandbox credential proxy -- never through the agent context or turn records. |
+| **Hands** | `ToolInvoker`, `tools/sandbox/`, `SandboxCredentialManager`, `engine/_validation.py::validate_task_metadata` | Tool execution, side effects, credential scope.  Credentials are stripped at the engine input boundary (task metadata validator) and at the sandbox boundary (credential manager) -- they never enter the brain or session planes. |
 | **Session** | `observability/events/`, `engine/session.py` (`Session.replay`), checkpoint/resume | Durable event history, replay, audit.  Every significant action emits a structured event; the event stream is the session's source of truth. |
 
 ### Resilience Property
@@ -604,11 +604,10 @@ This is lighter-weight than full checkpoint/resume (`checkpoint/resume.py`), whi
 
 ### Credential Isolation Boundary
 
-Credentials never enter the brain or session planes.  Three enforcement points:
+Credentials never enter the brain or session planes.  Two enforcement points:
 
 1. **Task metadata validator** (`engine/_validation.py::validate_task_metadata`) -- rejects `Task.metadata` keys matching credential patterns (token, secret, api_key, password, bearer) at the engine input boundary before execution starts.
 2. **Sandbox credential manager** (`tools/sandbox/credential_manager.py`) -- strips credential-like environment variables before they enter sandbox containers.
-3. **Auth proxy** (`tools/sandbox/auth_proxy.py`) -- injects authentication headers at tool execution time via a local HTTP proxy, so credentials never transit through the agent context.
 
 See also: [Security > Credential Isolation Boundary](security.md#credential-isolation-boundary).
 

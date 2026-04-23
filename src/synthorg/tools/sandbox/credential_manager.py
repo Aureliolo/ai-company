@@ -3,9 +3,6 @@
 Audits environment variable overrides to strip credential-like keys
 before they enter sandbox containers.  Provides a sanitization API
 and a reporting variant that lists which keys were stripped.
-
-The auth proxy (routing LLM traffic through SynthOrg's provider layer)
-is managed separately via :mod:`synthorg.tools.sandbox.auth_proxy`.
 """
 
 import re

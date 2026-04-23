@@ -331,6 +331,10 @@ jobs:
           node-version: 24.15.0
           cache: npm
           cache-dependency-path: web/package-lock.json
+      - name: Set up Python + uv (OpenAPI export)
+        uses: ./.github/actions/setup-python-uv
+      - name: Export OpenAPI schema for type codegen
+        run: uv run python scripts/export_openapi.py
       - run: npm ci
         working-directory: web
       - run: npm run type-check
@@ -354,6 +358,10 @@ jobs:
           node-version: 24.15.0
           cache: npm
           cache-dependency-path: web/package-lock.json
+      - name: Set up Python + uv (OpenAPI export)
+        uses: ./.github/actions/setup-python-uv
+      - name: Export OpenAPI schema for type codegen
+        run: uv run python scripts/export_openapi.py
       - run: npm ci
         working-directory: web
       - name: Run Vitest + gate on async-leak baseline
@@ -503,6 +511,10 @@ jobs:
           node-version: 24.15.0
           cache: npm
           cache-dependency-path: web/package-lock.json
+      - name: Set up Python + uv (OpenAPI export)
+        uses: ./.github/actions/setup-python-uv
+      - name: Export OpenAPI schema for type codegen
+        run: uv run python scripts/export_openapi.py
       - run: npm ci
         working-directory: web
       - name: Production build

@@ -28,3 +28,9 @@ CLIENT_FEEDBACK_SINK_FAILED: Final[str] = "client.feedback.sink_failed"
 # Factory dispatch events -------------------------------------------------
 
 CLIENT_FACTORY_UNKNOWN_STRATEGY: Final[str] = "client.factory.unknown_strategy"
+
+CLIENT_REQUEST_TRANSITION: Final[str] = "client.request.transition"
+CLIENT_REQUEST_TRANSITION_INVALID: Final[str] = "client.request.transition_invalid"
+CLIENT_REQUEST_TRANSITION_CONFIG_ERROR: Final[str] = (
+    "client.request.transition_config_error"
+)

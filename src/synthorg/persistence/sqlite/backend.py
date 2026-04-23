@@ -32,10 +32,10 @@ from synthorg.observability.events.persistence import (
 from synthorg.persistence import atlas
 from synthorg.persistence.errors import PersistenceConnectionError
 from synthorg.persistence.integration_stubs import (
-    StubConnectionRepository,
-    StubConnectionSecretRepository,
-    StubOAuthStateRepository,
-    StubWebhookReceiptRepository,
+    InMemoryConnectionRepository,
+    InMemoryConnectionSecretRepository,
+    InMemoryOAuthStateRepository,
+    InMemoryWebhookReceiptRepository,
 )
 from synthorg.persistence.sqlite.agent_state_repo import (
     SQLiteAgentStateRepository,
@@ -222,10 +222,10 @@ class SQLitePersistenceBackend:
         # across ``build_lockouts`` calls, otherwise ``is_locked`` is
         # always False on a freshly-built instance.
         self._lockouts: SQLiteLockoutRepository | None = None
-        self._connections_stub = StubConnectionRepository()
-        self._connection_secrets_stub = StubConnectionSecretRepository()
-        self._oauth_states_stub = StubOAuthStateRepository()
-        self._webhook_receipts_stub = StubWebhookReceiptRepository()
+        self._connections_stub = InMemoryConnectionRepository()
+        self._connection_secrets_stub = InMemoryConnectionSecretRepository()
+        self._oauth_states_stub = InMemoryOAuthStateRepository()
+        self._webhook_receipts_stub = InMemoryWebhookReceiptRepository()
 
     def _clear_state(self) -> None:
         """Reset connection and repository references to ``None``."""
@@ -763,22 +763,22 @@ class SQLitePersistenceBackend:
         )
 
     @property
-    def connections(self) -> StubConnectionRepository:
+    def connections(self) -> InMemoryConnectionRepository:
         """Repository for external service connection persistence."""
         return self._connections_stub
 
     @property
-    def connection_secrets(self) -> StubConnectionSecretRepository:
+    def connection_secrets(self) -> InMemoryConnectionSecretRepository:
         """Repository for encrypted connection secret persistence."""
         return self._connection_secrets_stub
 
     @property
-    def oauth_states(self) -> StubOAuthStateRepository:
+    def oauth_states(self) -> InMemoryOAuthStateRepository:
         """Repository for transient OAuth state persistence."""
         return self._oauth_states_stub
 
     @property
-    def webhook_receipts(self) -> StubWebhookReceiptRepository:
+    def webhook_receipts(self) -> InMemoryWebhookReceiptRepository:
         """Repository for webhook receipt log persistence."""
         return self._webhook_receipts_stub
 

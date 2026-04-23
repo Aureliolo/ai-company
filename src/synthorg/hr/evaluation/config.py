@@ -11,6 +11,10 @@ from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from synthorg.core.types import (
+    NotBlankStr,  # noqa: TC001 -- runtime-read by Pydantic validator
+)
+
 
 class IntelligenceConfig(BaseModel):
     """Intelligence/Accuracy pillar configuration.
@@ -226,9 +230,18 @@ class EvalLoopConfig(BaseModel):
 
     Attributes:
         enabled: Whether evaluation cycles are active.
-        pattern_identifier_enabled: Enable pattern detection (stub).
+        pattern_identifier_enabled: Enable pattern detection.
         benchmark_on_cycle: Run external benchmarks each cycle.
         max_concurrent_benchmarks: Limit parallel benchmark execution.
+        pattern_weakness_threshold: Pillar score below which the pillar
+            is considered weak for an agent (0.0-10.0). Default 5.0.
+        pattern_min_agents: Minimum number of agents weak in a pillar
+            before that pillar is emitted as a pattern. Default 3.
+        pattern_action_map: Optional operator override for the
+            pillar-to-action mapping used by ``_propose_actions``.
+            Keys are ``EvaluationPillar`` values; values are free-form
+            action identifiers. Unknown pillars fall back to the
+            shipped default map.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -238,8 +251,8 @@ class EvalLoopConfig(BaseModel):
         description="Whether evaluation cycles are active",
     )
     pattern_identifier_enabled: bool = Field(
-        default=False,
-        description="Enable pattern detection (stub, future enhancement)",
+        default=True,
+        description="Enable pillar-weakness pattern identification",
     )
     benchmark_on_cycle: bool = Field(
         default=False,
@@ -250,6 +263,25 @@ class EvalLoopConfig(BaseModel):
         ge=1,
         le=10,
         description="Limit parallel benchmark execution",
+    )
+    pattern_weakness_threshold: float = Field(
+        default=5.0,
+        ge=0.0,
+        le=10.0,
+        description="Pillar score below which the pillar is weak for an agent",
+    )
+    pattern_min_agents: int = Field(
+        default=3,
+        ge=1,
+        description="Minimum weak-agent count before a pillar becomes a pattern",
+    )
+    pattern_action_map: dict[str, NotBlankStr] | None = Field(
+        default=None,
+        description=(
+            "Operator override for pillar-to-action mapping. Values are "
+            "validated as ``NotBlankStr`` so blank or whitespace-only "
+            "action identifiers are rejected at config load."
+        ),
     )
 
 

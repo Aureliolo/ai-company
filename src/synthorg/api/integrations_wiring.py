@@ -28,7 +28,7 @@ if TYPE_CHECKING:
     )
     from synthorg.integrations.mcp_catalog.service import CatalogService
     from synthorg.integrations.oauth.token_manager import OAuthTokenManager
-    from synthorg.integrations.tunnel.ngrok_adapter import NgrokAdapter
+    from synthorg.integrations.tunnel.protocol import TunnelProvider
     from synthorg.persistence.protocol import PersistenceBackend
 
 logger = get_logger(__name__)
@@ -41,7 +41,7 @@ class IntegrationsBundle:
     connection_catalog: ConnectionCatalog | None = None
     oauth_token_manager: OAuthTokenManager | None = None
     health_prober_service: HealthProberService | None = None
-    tunnel_provider: NgrokAdapter | None = None
+    tunnel_provider: TunnelProvider | None = None
     webhook_event_bridge: WebhookEventBridge | None = None
     mcp_catalog_service: CatalogService | None = None
     mcp_installations_repo: McpInstallationRepository | None = None

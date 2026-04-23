@@ -87,6 +87,16 @@ log aggregation and telemetry export:
 | HTTP | Batched POST to a configurable URL | JSON array | Ship log batches to any JSON-accepting endpoint |
 | OTLP | HTTP POST to an OpenTelemetry collector | OTLP JSON | Map structlog events to OTLP log records with correlation IDs as trace context |
 
+### OTLP transport: HTTP only
+
+SynthOrg ships only the **HTTP** OTLP exporter (`opentelemetry.exporter.otlp.proto.http`). The gRPC transport is not supported. The rationale is operational:
+
+- HTTP is a single lightweight dependency on `protobuf` + `requests`; the gRPC transport pulls in `grpcio` (roughly a 30 MB wheel) that most operators do not already have installed.
+- OTLP/HTTP and OTLP/gRPC share the same payload schema, so switching later is a dependency change rather than a protocol redesign.
+- Every OpenTelemetry collector supports both; operators who prefer gRPC can run a side-car collector and point SynthOrg at its HTTP receiver.
+
+If a concrete deployment needs gRPC directly, file an enhancement issue with the target environment -- there is no open design blocker, only a missing dependency opt-in.
+
 The HTTP sink sends raw JSON arrays.  Backends that expect different payload formats
 (e.g., Grafana Loki's `/loki/api/v1/push`, Elasticsearch's `/_bulk`) require a
 collector/proxy (Promtail, Logstash, Vector, etc.) to translate the payload.
@@ -243,6 +253,36 @@ Changes take effect without restart -- the `ObservabilitySettingsSubscriber` reb
 logging pipeline via `configure_logging()` (idempotent) when any of the four observability
 settings change (`root_log_level`, `enable_correlation`, `sink_overrides`, or `custom_sinks`).
 Custom sink file paths cannot collide with default sink paths (reserved even if disabled).
+
+---
+
+## Prometheus Metrics Inventory
+
+The `/metrics` endpoint exposes business and infrastructure metrics under the `synthorg_` prefix. Canonical set maintained by `observability/prometheus_collector.py` + `observability/prometheus_push_metrics.py`. All label value sets are bounded (validated against `prometheus_labels` allowlists) to keep Prometheus TSDB cardinality predictable.
+
+**Business health**
+
+- `synthorg_escalation_queue_depth{department}` -- gauge; pending escalations awaiting decision, per department.
+- `synthorg_agent_identity_version_changes_total{agent_id, change_type}` -- counter; emitted on each agent identity change. `change_type` is one of `created`, `updated`, `rolled_back`, `archived`.
+- `synthorg_workflow_execution_seconds{workflow_definition_id, status}` -- histogram; wall-clock duration of completed workflow executions. `workflow_definition_id` is the stable workflow **definition** id (bounded by defined workflows); passing an execution id would explode cardinality.
+
+**Cost + tokens**
+
+- `synthorg_provider_tokens_total{provider, model, direction}` -- counter; input/output token consumption.
+- `synthorg_provider_cost_total{provider, model}` -- counter; accumulated cost in the configured currency.
+
+**Latency**
+
+- `synthorg_api_request_duration_seconds{method, route, status_class}` -- histogram; per-route HTTP handler duration.
+- `synthorg_task_duration_seconds{outcome}` + `synthorg_task_runs_total{outcome}` -- task execution.
+- `synthorg_tool_duration_seconds{tool_name, outcome}` + `synthorg_tool_invocations_total{tool_name, outcome}` -- tool invocation.
+
+**Audit chain + OTLP health**
+
+- `synthorg_audit_chain_appends_total{status}`, `synthorg_audit_chain_depth`, `synthorg_audit_chain_last_append_timestamp_seconds`.
+- `synthorg_otlp_export_batches_total{kind, outcome}`, `synthorg_otlp_export_dropped_records_total{kind}`.
+
+See the ready-to-import [Grafana dashboard](../../monitoring/grafana/synthorg-overview.json) and the [monitoring guide](../guides/monitoring.md) for PromQL queries, alert rules, and expected ranges for each metric.
 
 ---
 

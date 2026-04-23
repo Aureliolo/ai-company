@@ -13,6 +13,7 @@ const TaskBoardPage = lazy(() => import('@/pages/TaskBoardPage'))
 const TaskDetailPage = lazy(() => import('@/pages/TaskDetailPage'))
 const BudgetPage = lazy(() => import('@/pages/BudgetPage'))
 const BudgetForecastPage = lazy(() => import('@/pages/BudgetForecastPage'))
+const ReportsPage = lazy(() => import('@/pages/ReportsPage'))
 const ApprovalsPage = lazy(() => import('@/pages/ApprovalsPage'))
 const ScalingPage = lazy(() => import('@/pages/ScalingPage'))
 const MetaPage = lazy(() => import('@/pages/MetaPage'))
@@ -120,6 +121,7 @@ export const router = createBrowserRouter([
               { path: 'tasks/:taskId', element: <TaskDetailPage /> },
               { path: 'budget', element: <BudgetPage /> },
               { path: 'budget/forecast', element: <BudgetForecastPage /> },
+              { path: 'reports', element: <ReportsPage /> },
               { path: 'approvals', element: <ApprovalsPage /> },
               { path: 'scaling', element: <ScalingPage /> },
               { path: ROUTES.META.slice(1), element: <MetaPage /> },

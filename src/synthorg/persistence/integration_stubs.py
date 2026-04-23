@@ -1,9 +1,18 @@
-"""Stub repository implementations for integration tables.
+"""In-memory repository implementations for integration tables.
 
-These in-memory stubs allow the persistence backends to satisfy
-the ``PersistenceBackend`` protocol immediately.  Full SQLite and
-Postgres implementations will replace these as integration features
-are exercised.
+.. warning::
+    These are **process-local, non-durable** repositories. Data lives
+    only in the current Python process, is not replicated across
+    replicas, and is lost on restart. Use them for local development,
+    tests, and single-process dev servers only -- **never** for
+    production. The ``PersistenceBackend`` protocol routes integration
+    domains here while SQLite / Postgres repositories for connections,
+    connection secrets, OAuth state, and webhook receipts are still
+    being built (see issue #1517 / HYG-3).
+
+When the durable drivers land, these classes move to the test-only
+fakes directory and the production ``PersistenceBackend`` wires in
+the real SQLite / Postgres repos directly.
 
 All reads return deep copies so callers cannot mutate internal
 state by holding references to returned models. Even though the
@@ -22,8 +31,8 @@ from synthorg.integrations.connections.models import (
 )
 
 
-class StubConnectionRepository:
-    """In-memory stub for ConnectionRepository."""
+class InMemoryConnectionRepository:
+    """In-memory ``ConnectionRepository`` implementation."""
 
     def __init__(self) -> None:
         self._store: dict[str, Connection] = {}
@@ -57,8 +66,8 @@ class StubConnectionRepository:
         return self._store.pop(name, None) is not None
 
 
-class StubConnectionSecretRepository:
-    """In-memory stub for ConnectionSecretRepository."""
+class InMemoryConnectionSecretRepository:
+    """In-memory ``ConnectionSecretRepository`` implementation."""
 
     def __init__(self) -> None:
         self._store: dict[str, bytes] = {}
@@ -81,8 +90,8 @@ class StubConnectionSecretRepository:
         return self._store.pop(secret_id, None) is not None
 
 
-class StubOAuthStateRepository:
-    """In-memory stub for OAuthStateRepository."""
+class InMemoryOAuthStateRepository:
+    """In-memory ``OAuthStateRepository`` implementation."""
 
     def __init__(self) -> None:
         self._store: dict[str, OAuthState] = {}
@@ -101,12 +110,12 @@ class StubOAuthStateRepository:
         return self._store.pop(state_token, None) is not None
 
     async def cleanup_expired(self) -> int:
-        """No-op for stub."""
+        """In-memory: no durable TTL enforcement; callers may run GC."""
         return 0
 
 
-class StubWebhookReceiptRepository:
-    """In-memory stub for WebhookReceiptRepository."""
+class InMemoryWebhookReceiptRepository:
+    """In-memory ``WebhookReceiptRepository`` implementation."""
 
     def __init__(self) -> None:
         self._store: list[WebhookReceipt] = []
@@ -136,5 +145,5 @@ class StubWebhookReceiptRepository:
         self,
         retention_days: int,  # noqa: ARG002
     ) -> int:
-        """No-op for stub."""
+        """In-memory: no retention policy; callers may truncate."""
         return 0

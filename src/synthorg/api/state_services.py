@@ -77,7 +77,7 @@ if TYPE_CHECKING:
     )
     from synthorg.integrations.mcp_catalog.service import CatalogService
     from synthorg.integrations.oauth.token_manager import OAuthTokenManager
-    from synthorg.integrations.tunnel.ngrok_adapter import NgrokAdapter
+    from synthorg.integrations.tunnel.protocol import TunnelProvider
 
 logger = get_logger(__name__)
 
@@ -127,7 +127,7 @@ class AppStateServicesMixin:
     _model_router: ModelRouter | None
     _backup_service: BackupService | None
     _connection_catalog: ConnectionCatalog | None
-    _tunnel_provider: NgrokAdapter | None
+    _tunnel_provider: TunnelProvider | None
     _oauth_token_manager: OAuthTokenManager | None
     _health_prober_service: HealthProberService | None
     _webhook_event_bridge: WebhookEventBridge | None
@@ -616,7 +616,7 @@ class AppStateServicesMixin:
         return self._tunnel_provider is not None
 
     @property
-    def tunnel_provider(self) -> NgrokAdapter:
+    def tunnel_provider(self) -> TunnelProvider:
         """Return tunnel provider or raise 503."""
         return self._require_service(
             self._tunnel_provider,

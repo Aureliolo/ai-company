@@ -15,6 +15,7 @@ export const ROUTES = {
   TASK_DETAIL: '/tasks/:taskId',
   BUDGET: '/budget',
   BUDGET_FORECAST: '/budget/forecast',
+  REPORTS: '/reports',
   APPROVALS: '/approvals',
   SCALING: '/scaling',
   META: '/meta',

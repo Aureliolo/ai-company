@@ -17,6 +17,8 @@ loop:
 import asyncio
 import time
 from datetime import UTC, datetime, timedelta
+from types import MappingProxyType
+from typing import Final
 from uuid import uuid4
 
 from synthorg.core.types import NotBlankStr
@@ -25,6 +27,7 @@ from synthorg.hr.evaluation.config import EvalLoopConfig
 from synthorg.hr.evaluation.dogfooding_dataset_builder import (
     DogfoodingDatasetBuilder,  # noqa: TC001
 )
+from synthorg.hr.evaluation.enums import EvaluationPillar
 from synthorg.hr.evaluation.evaluator import EvaluationService  # noqa: TC001
 from synthorg.hr.evaluation.external_benchmark_models import (
     BenchmarkRunResult,
@@ -38,14 +41,74 @@ from synthorg.hr.performance.tracker import PerformanceTracker  # noqa: TC001
 from synthorg.hr.training.service import TrainingService  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.eval_loop import (
+    EVAL_LOOP_ACTION_PROPOSED,
     EVAL_LOOP_AGENT_EVAL_FAILED,
     EVAL_LOOP_BENCHMARK_FAILED,
+    EVAL_LOOP_CONFIG_DRIFT,
     EVAL_LOOP_CYCLE_COMPLETE,
     EVAL_LOOP_CYCLE_FAILED,
     EVAL_LOOP_CYCLE_START,
+    EVAL_LOOP_PATTERN_IDENTIFIED,
 )
 
 logger = get_logger(__name__)
+
+# Keys + values are both identifier fields -- type them as
+# ``NotBlankStr`` so a future edit that leaves a blank / whitespace-
+# only action id is rejected statically. The values in this literal
+# mapping are non-blank by construction, but Pydantic validates
+# them at config-load time when operators override the mapping via
+# ``EvalLoopConfig.pattern_action_map`` (see that field).
+# Keys are plain ``str`` to match ``EvalLoopConfig.pattern_action_map``
+# (``dict[str, NotBlankStr]``): pattern keys come from
+# ``EvaluationPillar.value`` (already non-blank by construction) and
+# lookup sites ``.get(pillar)`` against both the default and the
+# operator override, so the two containers must agree on key type.
+# Values stay ``NotBlankStr`` so blank action ids are rejected
+# statically + at Pydantic config-load time.
+_DEFAULT_PATTERN_ACTIONS: Final[MappingProxyType[str, NotBlankStr]] = MappingProxyType(
+    {
+        EvaluationPillar.INTELLIGENCE.value: "increase_review_depth",
+        EvaluationPillar.EFFICIENCY.value: "tighten_cost_budget",
+        EvaluationPillar.RESILIENCE.value: "add_recovery_training",
+        EvaluationPillar.GOVERNANCE.value: "expand_audit_coverage",
+        EvaluationPillar.EXPERIENCE.value: "improve_tone_training",
+    },
+)
+
+# Fail-fast drift guard: if a new ``EvaluationPillar`` is added but
+# ``_DEFAULT_PATTERN_ACTIONS`` isn't updated, module import raises so
+# ``_identify_patterns`` / ``_propose_actions`` can never run against
+# an incomplete mapping (which would silently drop actions for the
+# missing pillar). The check runs at import time (equivalent of a
+# unit test) so the guard is exercised every time the module loads.
+_EXPECTED_PATTERN_KEYS: Final[frozenset[str]] = frozenset(
+    p.value for p in EvaluationPillar
+)
+if set(_DEFAULT_PATTERN_ACTIONS.keys()) != _EXPECTED_PATTERN_KEYS:
+    _missing = _EXPECTED_PATTERN_KEYS - set(_DEFAULT_PATTERN_ACTIONS.keys())
+    _extra = set(_DEFAULT_PATTERN_ACTIONS.keys()) - _EXPECTED_PATTERN_KEYS
+    _msg = (
+        "_DEFAULT_PATTERN_ACTIONS drifted from EvaluationPillar enum: "
+        f"missing={sorted(_missing)!r}, extra={sorted(_extra)!r}"
+    )
+    # Log before raising so operators observing the structured log
+    # stream see the drift details alongside whatever process-level
+    # error surface the ``ImportError`` lands on (CI failure, import
+    # crash at module load, etc.).
+    logger.error(
+        EVAL_LOOP_CONFIG_DRIFT,
+        reason="default_pattern_actions_drift",
+        missing=sorted(_missing),
+        extra=sorted(_extra),
+    )
+    raise ImportError(_msg)
+
+# Pattern kinds the ``_propose_actions`` mapper understands.  Any
+# pattern whose prefix is not in this set is logged + skipped so a
+# drifted detector cannot silently emit bogus actions via an unknown
+# prefix (e.g. ``"strength:intelligence"``).
+_SUPPORTED_PATTERN_KINDS: Final[frozenset[str]] = frozenset({"weakness"})
 
 
 class EvalLoopCoordinator:
@@ -222,31 +285,156 @@ class EvalLoopCoordinator:
 
     async def _identify_patterns(
         self,
-        _reports: tuple[EvaluationReport, ...],
+        reports: tuple[EvaluationReport, ...],
     ) -> tuple[NotBlankStr, ...]:
-        """Stub pattern identifier.
+        """Identify pillar-weakness patterns across agents.
 
-        Future: cluster failure modes across evaluation reports
-        and identify recurring patterns.
+        For each report, count pillars scoring below
+        ``config.pattern_weakness_threshold``. Pillars with at least
+        ``config.pattern_min_agents`` weak agents are returned as
+        deterministic patterns ordered by weak-count (desc) then
+        pillar name (asc) for stable output.
+
+        Args:
+            reports: Per-agent evaluation reports from the current cycle.
 
         Returns:
-            Empty tuple (stub).
+            Patterns in the form ``"weakness:<pillar>"``.
         """
-        return ()
+        if not self._config.pattern_identifier_enabled or not reports:
+            return ()
+
+        threshold = self._config.pattern_weakness_threshold
+        # Track unique weak agents per pillar (``pillar -> set[agent_id]``)
+        # so the count reflects the number of distinct agents weak on a
+        # pillar -- not the number of per-pillar score entries. This
+        # protects against both (a) duplicate pillar entries within a
+        # single report (defensive -- the model does not enforce
+        # uniqueness) and (b) the same agent producing multiple reports
+        # in the cycle window, which Counter-based arithmetic would
+        # double-count.
+        weak_agents_per_pillar: dict[str, set[str]] = {}
+        for report in reports:
+            weak_pillars = {
+                score.pillar.value
+                for score in report.pillar_scores
+                if score.score < threshold
+            }
+            for pillar in weak_pillars:
+                weak_agents_per_pillar.setdefault(pillar, set()).add(report.agent_id)
+
+        min_agents = self._config.pattern_min_agents
+        qualifying = [
+            (pillar, len(agents))
+            for pillar, agents in weak_agents_per_pillar.items()
+            if len(agents) >= min_agents
+        ]
+        qualifying.sort(key=lambda item: (-item[1], item[0]))
+
+        # ``NotBlankStr`` is ``Annotated[str, ...]`` -- it erases to
+        # plain ``str`` at runtime and mypy considers the cast
+        # redundant. The f-string is never empty since every
+        # ``pillar`` comes from a non-empty ``EvaluationPillar.value``
+        # constant, so the declared ``tuple[NotBlankStr, ...]``
+        # return type is satisfied structurally.
+        patterns = tuple(f"weakness:{pillar}" for pillar, _ in qualifying)
+        if patterns:
+            logger.info(
+                EVAL_LOOP_PATTERN_IDENTIFIED,
+                pattern_count=len(patterns),
+                patterns=list(patterns),
+                threshold=threshold,
+                min_agents=min_agents,
+            )
+        return patterns
 
     async def _propose_actions(
         self,
-        _patterns: tuple[NotBlankStr, ...],
+        patterns: tuple[NotBlankStr, ...],
     ) -> tuple[NotBlankStr, ...]:
-        """Stub action proposer.
+        """Map identified patterns to action identifiers.
 
-        Future: generate targeted training plans from identified
-        patterns and feed them to ``TrainingService``.
+        Uses :data:`_DEFAULT_PATTERN_ACTIONS` keyed by
+        :class:`EvaluationPillar` by default. Operators may override
+        entries via ``config.pattern_action_map`` -- keys are pillar
+        values, values are free-form action ids.
+
+        Patterns are skipped (with a WARNING-level log via
+        ``EVAL_LOOP_ACTION_PROPOSED``) in three cases:
+
+        * ``reason="malformed_pattern"`` -- no ``:`` separator.
+        * ``reason="unknown_pattern_kind"`` -- the prefix before the
+          ``:`` is not in :data:`_SUPPORTED_PATTERN_KINDS` (e.g. a
+          future detector emitting ``"strength:intelligence"`` is
+          skipped until a mapping for that kind is wired).
+        * ``reason="unmapped_pattern"`` -- neither the operator
+          override nor :data:`_DEFAULT_PATTERN_ACTIONS` defines a
+          mapping for the pillar.
+
+        Operators chasing missing ``proposed_actions`` can grep the
+        structured logs for those reasons to see which patterns were
+        dropped and why.
+
+        Args:
+            patterns: Patterns returned by :meth:`_identify_patterns`.
 
         Returns:
-            Empty tuple (stub).
+            Ordered tuple of action identifiers.
         """
-        return ()
+        if not patterns:
+            return ()
+
+        override = self._config.pattern_action_map or {}
+        actions: list[NotBlankStr] = []
+        for pattern in patterns:
+            reason, mapped, extra = self._classify_pattern(pattern, override)
+            if mapped is None:
+                logger.warning(
+                    EVAL_LOOP_ACTION_PROPOSED,
+                    action_count=0,
+                    reason=reason,
+                    pattern=pattern,
+                    **extra,
+                )
+                continue
+            actions.append(mapped)
+
+        # ``dict.fromkeys`` preserves first-seen order while
+        # deduplicating -- two distinct weak pillars that share an
+        # action id (e.g. an override collapsing two pillars onto
+        # ``"escalate_to_engineer"``) should not fire the remediation
+        # twice.
+        unique_actions = tuple(dict.fromkeys(actions))
+        if unique_actions:
+            logger.info(
+                EVAL_LOOP_ACTION_PROPOSED,
+                action_count=len(unique_actions),
+                actions=list(unique_actions),
+            )
+        return unique_actions
+
+    @staticmethod
+    def _classify_pattern(
+        pattern: str,
+        override: dict[str, NotBlankStr],
+    ) -> tuple[str, NotBlankStr | None, dict[str, str]]:
+        """Map a pattern token to (reason, mapped_action, extra_log_fields).
+
+        Returns ``mapped_action=None`` with a non-empty ``reason`` for
+        every skip path (malformed / unknown kind / unmapped). The
+        caller logs the WARNING once with ``reason`` + ``extra`` so
+        ``_propose_actions`` stays under the 50-line ceiling without
+        duplicating log-shape code.
+        """
+        if ":" not in pattern:
+            return ("malformed_pattern", None, {})
+        kind, pillar = pattern.split(":", 1)
+        if kind not in _SUPPORTED_PATTERN_KINDS:
+            return ("unknown_pattern_kind", None, {"kind": kind})
+        mapped = override.get(pillar) or _DEFAULT_PATTERN_ACTIONS.get(pillar)
+        if not mapped:
+            return ("unmapped_pattern", None, {"pillar": pillar})
+        return ("", mapped, {})
 
     async def _run_benchmarks(self) -> tuple[BenchmarkRunResult, ...]:
         """Run all registered benchmarks concurrently.
