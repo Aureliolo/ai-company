@@ -205,8 +205,9 @@ class TestSignalsServiceProposals:
             created_at=datetime.now(UTC) - timedelta(minutes=5),
         )
         approval_store.list_items = AsyncMock(return_value=(older, newer))
-        result = await service.list_proposals()
-        assert [item.id for item in result] == [newer.id, older.id]
+        page, total = await service.list_proposals()
+        assert [item.id for item in page] == [newer.id, older.id]
+        assert total == 2
 
     async def test_submit_proposal_persists(
         self,

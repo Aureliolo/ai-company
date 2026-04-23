@@ -3,9 +3,9 @@
 :class:`CapabilityNotSupportedError` is raised by a facade method whose
 underlying primitive does not yet expose the required operation.  The
 MCP handler layer catches it and emits a typed ``err(...,
-domain_code="not_supported")`` envelope -- different from the legacy
-:func:`service_fallback` path because the request reached a real
-service before the gap was detected.
+domain_code="not_supported")`` envelope -- different from the
+:func:`capability_gap` placeholder path because the request reached a
+real service before the gap was detected.
 """
 
 

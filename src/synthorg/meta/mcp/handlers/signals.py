@@ -24,11 +24,11 @@ from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,  # noqa: TC001 -- PEP 649 annotation
 )
 from synthorg.meta.mcp.handlers.common import (
+    PaginationMeta,
     coerce_pagination,
     dump_many,
     err,
     ok,
-    paginate_sequence,
     require_destructive_guardrails,
 )
 from synthorg.meta.models import ImprovementProposal
@@ -195,13 +195,12 @@ async def _list_proposals(
     try:
         offset, limit = _parse_pagination(arguments)
         status = _parse_status(arguments)
-        items = await app_state.signals_service.list_proposals(status=status)
-        page, pagination_meta = paginate_sequence(
-            items,
+        page, total = await app_state.signals_service.list_proposals(
+            status=status,
             offset=offset,
             limit=limit,
-            total=len(items),
         )
+        pagination_meta = PaginationMeta(total=total, offset=offset, limit=limit)
         return ok(dump_many(page), pagination=pagination_meta)
     except Exception as exc:
         logger.warning(

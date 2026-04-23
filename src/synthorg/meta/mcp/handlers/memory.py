@@ -5,12 +5,12 @@
 the persistence backend.  The fine-tune pipeline orchestration
 methods (start/resume/cancel/run_preflight/deploy) require additional
 state not exposed through a clean MCP arg set, so they return
-``service_fallback`` until a dedicated design pass lands.
+``capability_gap`` until a dedicated design pass lands.
 
 Destructive ops: ``cancel_fine_tune``, ``rollback_checkpoint``, and
 ``delete_checkpoint`` all enforce the guardrail triple at the handler
 boundary.  ``delete_checkpoint`` is live; the others are currently
-``service_fallback`` behind the guardrail.
+``capability_gap`` behind the guardrail.
 """
 
 import copy
@@ -129,7 +129,7 @@ def _service(app_state: Any) -> MemoryService:
     hit an unsupported backend (e.g. Postgres, which does not yet
     expose ``fine_tune_checkpoints``) raise
     :class:`_BackendLacksFineTuneError` so the calling handler can return a
-    clean ``service_fallback`` envelope instead of bubbling up a
+    clean ``capability_gap`` envelope instead of bubbling up a
     ``NotImplementedError``.
 
     Raises:

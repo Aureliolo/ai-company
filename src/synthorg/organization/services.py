@@ -36,6 +36,31 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
+class UnsetType:
+    """Sentinel type for "field not provided" distinct from ``None``.
+
+    Used by update operations where ``None`` is a legitimate value the
+    caller may want to persist (e.g. clearing a ``department_id``) and
+    must be distinguished from "leave this field unchanged".
+    """
+
+    _instance: UnsetType | None = None
+
+    def __new__(cls) -> UnsetType:
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
+    def __repr__(self) -> str:
+        return "UNSET"
+
+    def __bool__(self) -> bool:
+        return False
+
+
+UNSET = UnsetType()
+
+
 def _capability(capability: str, detail: str) -> CapabilityNotSupportedError:
     return CapabilityNotSupportedError(capability, detail)
 
@@ -349,8 +374,14 @@ class TeamService:
         team_id: NotBlankStr,
         actor_id: NotBlankStr,
         name: NotBlankStr | None = None,
-        department_id: NotBlankStr | None = None,
+        department_id: NotBlankStr | None | UnsetType = UNSET,
     ) -> _TeamRecord | None:
+        """Update a team; ``department_id=None`` clears the field.
+
+        The default ``department_id=UNSET`` sentinel means "leave
+        unchanged"; pass ``department_id=None`` explicitly to clear a
+        team's department assignment.
+        """
         try:
             key = UUID(team_id)
         except ValueError:
@@ -361,7 +392,7 @@ class TeamService:
                 return None
             if name is not None:
                 record.name = name
-            if department_id is not None:
+            if not isinstance(department_id, UnsetType):
                 record.department_id = department_id
             returned = copy.deepcopy(record)
         logger.info(

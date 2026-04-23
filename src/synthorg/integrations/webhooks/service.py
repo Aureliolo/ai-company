@@ -38,7 +38,18 @@ class WebhookService:
         offset: int = 0,
         limit: int | None = None,
     ) -> tuple[Sequence[WebhookDefinition], int]:
-        """Return paginated definitions newest-first + unfiltered total."""
+        """Return paginated definitions newest-first + unfiltered total.
+
+        Raises:
+            ValueError: If ``offset`` is negative, or if ``limit`` is
+                provided and non-positive.
+        """
+        if offset < 0:
+            msg = f"offset must be >= 0, got {offset}"
+            raise ValueError(msg)
+        if limit is not None and limit < 1:
+            msg = f"limit must be >= 1 when provided, got {limit}"
+            raise ValueError(msg)
         definitions = tuple(await self._store.list_definitions())
         total = len(definitions)
         end = total if limit is None else offset + limit
@@ -93,8 +104,15 @@ class WebhookService:
         actor_id: NotBlankStr,
         reason: NotBlankStr,
     ) -> bool:
-        """Remove a definition; returns ``True`` when one was removed."""
+        """Remove a definition; returns ``True`` when one was removed.
+
+        The audit event is only emitted when something was actually
+        deleted; a miss returns ``False`` without logging a destructive
+        operation that never happened.
+        """
         removed = await self._store.delete(definition_id)
+        if not removed:
+            return False
         logger.info(
             COMMUNICATION_WEBHOOK_DELETED,
             webhook_id=definition_id,

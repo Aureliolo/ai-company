@@ -75,13 +75,38 @@ class QualityFacadeService:
         self,
         *,
         agent_id: NotBlankStr | None = None,
-    ) -> Sequence[object]:
+        offset: int = 0,
+        limit: int | None = None,
+    ) -> tuple[tuple[object, ...], int]:
+        """Return paginated quality scores + unfiltered total.
+
+        Args:
+            agent_id: Optional agent identifier filter.
+            offset: Non-negative page offset.
+            limit: Optional positive page size; ``None`` returns every
+                score from ``offset`` onwards.
+
+        Raises:
+            ValueError: If ``offset`` is negative, or ``limit`` is
+                provided and non-positive.
+            CapabilityNotSupportedError: If the underlying tracker does
+                not expose ``list_quality_scores``.
+        """
+        if offset < 0:
+            msg = f"offset must be >= 0, got {offset}"
+            raise ValueError(msg)
+        if limit is not None and limit < 1:
+            msg = f"limit must be >= 1 when provided, got {limit}"
+            raise ValueError(msg)
         fn = getattr(self._tracker, "list_quality_scores", None)
         if callable(fn):
             result = fn(agent_id) if agent_id else fn()
             if hasattr(result, "__await__"):
                 result = await result
-            return tuple(result)
+            items = tuple(result)
+            total = len(items)
+            end = total if limit is None else offset + limit
+            return items[offset:end], total
         raise _capability(
             "quality_scores",
             "PerformanceTracker does not expose list_quality_scores",
@@ -146,10 +171,37 @@ class ReviewFacadeService:
         self._reviews: dict[UUID, _ReviewRecord] = {}
         self._lock = asyncio.Lock()
 
-    async def list_reviews(self) -> Sequence[_ReviewRecord]:
+    async def list_reviews(
+        self,
+        *,
+        offset: int = 0,
+        limit: int | None = None,
+    ) -> tuple[tuple[_ReviewRecord, ...], int]:
+        """Return paginated reviews newest-first plus the unfiltered total.
+
+        Args:
+            offset: Non-negative page offset.
+            limit: Optional positive page size; ``None`` returns every
+                review from ``offset`` onwards.
+
+        Raises:
+            ValueError: If ``offset`` is negative, or ``limit`` is
+                provided and non-positive.
+        """
+        if offset < 0:
+            msg = f"offset must be >= 0, got {offset}"
+            raise ValueError(msg)
+        if limit is not None and limit < 1:
+            msg = f"limit must be >= 1 when provided, got {limit}"
+            raise ValueError(msg)
         async with self._lock:
             snapshot = tuple(copy.deepcopy(r) for r in self._reviews.values())
-        return tuple(sorted(snapshot, key=lambda r: r.created_at, reverse=True))
+        ordered = tuple(
+            sorted(snapshot, key=lambda r: r.created_at, reverse=True),
+        )
+        total = len(ordered)
+        end = total if limit is None else offset + limit
+        return ordered[offset:end], total
 
     async def get_review(self, review_id: NotBlankStr) -> _ReviewRecord | None:
         try:
@@ -232,10 +284,16 @@ class EvaluationVersionService:
     async def list_versions(self) -> Sequence[object]:
         repo = getattr(self._persistence, "evaluation_config_versions", None)
         if repo is None:
-            return ()
+            raise _capability(
+                "evaluation_versions_list",
+                "persistence backend does not expose evaluation_config_versions",
+            )
         fn = getattr(repo, "list_versions", None)
         if not callable(fn):
-            return ()
+            raise _capability(
+                "evaluation_versions_list",
+                "evaluation_config_versions repository does not expose list_versions",
+            )
         return tuple(await fn())
 
     async def get_version(
@@ -244,10 +302,16 @@ class EvaluationVersionService:
     ) -> object | None:
         repo = getattr(self._persistence, "evaluation_config_versions", None)
         if repo is None:
-            return None
+            raise _capability(
+                "evaluation_versions_get",
+                "persistence backend does not expose evaluation_config_versions",
+            )
         fn = getattr(repo, "get_version", None)
         if not callable(fn):
-            return None
+            raise _capability(
+                "evaluation_versions_get",
+                "evaluation_config_versions repository does not expose get_version",
+            )
         return cast("object | None", await fn(version_id))
 
 

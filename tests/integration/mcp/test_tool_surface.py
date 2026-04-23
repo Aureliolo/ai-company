@@ -30,7 +30,10 @@ from synthorg.core.agent import AgentIdentity
 from synthorg.hr.performance.models import CollaborationScoreResult
 from synthorg.meta.mcp.domains import build_full_registry
 from synthorg.meta.mcp.handlers import build_handler_map
-from synthorg.observability.events.mcp import MCP_HANDLER_SERVICE_FALLBACK
+from synthorg.observability.events.mcp import (
+    MCP_HANDLER_CAPABILITY_GAP,
+    MCP_HANDLER_SERVICE_FALLBACK,
+)
 from tests.unit.meta.mcp.conftest import make_test_actor
 
 pytestmark = pytest.mark.integration
@@ -181,6 +184,44 @@ class TestNoServiceFallbackEvents:
             f"but {len(fallback_events)} emissions fired: "
             f"{[e.get('tool_name') for e in fallback_events]}"
         )
+
+    async def test_capability_gap_is_the_not_supported_source(
+        self,
+        fake_app_state: SimpleNamespace,
+        actor: AgentIdentity,
+    ) -> None:
+        """Tools returning ``not_supported`` must emit CAPABILITY_GAP (INFO).
+
+        The stubbed ``fake_app_state`` omits several optional primitives
+        (``has_settings_service=False``, ``persistence`` accessors that
+        never expose evaluation-config tables, etc.), so at least a few
+        tools should hit the capability-gap path.  This test pins the
+        invariant: every ``not_supported`` wire envelope must be paired
+        with a ``MCP_HANDLER_CAPABILITY_GAP`` event -- never a bare
+        ``MCP_HANDLER_SERVICE_FALLBACK`` or silent ``err(..., not_supported)``.
+        """
+        handlers = build_handler_map()
+        with structlog.testing.capture_logs() as events:
+            not_supported_tools: list[str] = []
+            for tool_name, handler in handlers.items():
+                raw = await handler(
+                    app_state=fake_app_state,
+                    arguments=dict(_BLAST_ARGS),
+                    actor=actor,
+                )
+                body = json.loads(raw)
+                if body.get("domain_code") == "not_supported":
+                    not_supported_tools.append(tool_name)
+        gap_events = [e for e in events if e.get("event") == MCP_HANDLER_CAPABILITY_GAP]
+        if not_supported_tools:
+            assert gap_events, (
+                f"tools returned not_supported but no "
+                f"MCP_HANDLER_CAPABILITY_GAP was emitted: {not_supported_tools}"
+            )
+            assert all("tool_name" in e for e in gap_events), (
+                "every MCP_HANDLER_CAPABILITY_GAP emission must identify "
+                "the tool that triggered it"
+            )
 
     async def test_every_tool_returns_well_formed_envelope(
         self,

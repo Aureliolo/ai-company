@@ -12,6 +12,7 @@ from typing import Self
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.meta.models import ProposalAltitude  # noqa: TC001
 
 
 class EvolutionOutcomeRecord(BaseModel):
@@ -32,7 +33,7 @@ class EvolutionOutcomeRecord(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     agent_id: NotBlankStr
-    axis: NotBlankStr
+    axis: ProposalAltitude
     applied: bool
     proposed_at: AwareDatetime
     recorded_at: AwareDatetime = Field(

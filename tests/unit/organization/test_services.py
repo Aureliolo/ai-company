@@ -186,6 +186,37 @@ class TestTeamService:
         assert updated.department_id == "new-home"
         assert updated.name == "migrators"
 
+    async def test_update_clears_department_when_none_passed(self) -> None:
+        service = TeamService()
+        created = await service.create_team(
+            name=NotBlankStr("keepers"),
+            actor_id=NotBlankStr("alice"),
+            department_id=NotBlankStr("legacy"),
+        )
+        cleared = await service.update_team(
+            team_id=NotBlankStr(str(created.id)),
+            actor_id=NotBlankStr("bob"),
+            department_id=None,
+        )
+        assert cleared is not None
+        assert cleared.department_id is None
+
+    async def test_update_preserves_department_when_unset(self) -> None:
+        service = TeamService()
+        created = await service.create_team(
+            name=NotBlankStr("keepers"),
+            actor_id=NotBlankStr("alice"),
+            department_id=NotBlankStr("legacy"),
+        )
+        preserved = await service.update_team(
+            team_id=NotBlankStr(str(created.id)),
+            actor_id=NotBlankStr("bob"),
+            name=NotBlankStr("renamed"),
+        )
+        assert preserved is not None
+        assert preserved.department_id == "legacy"
+        assert preserved.name == "renamed"
+
     async def test_update_missing_returns_none(self) -> None:
         service = TeamService()
         result = await service.update_team(

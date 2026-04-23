@@ -32,6 +32,7 @@ from synthorg.observability.events.mcp import (
     MCP_HANDLER_GUARDRAIL_VIOLATED,
     MCP_HANDLER_INVOKE_FAILED,
 )
+from synthorg.organization.services import UNSET, UnsetType
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -499,7 +500,13 @@ async def _teams_update(
     try:
         team_id = _require_uuid(arguments, "team_id")
         name = _get_str(arguments, "name")
-        department_id = _get_str(arguments, "department_id")
+        if "department_id" in arguments:
+            department_id: NotBlankStr | None | UnsetType = _get_str(
+                arguments,
+                "department_id",
+            )
+        else:
+            department_id = UNSET
         record = await app_state.team_service.update_team(
             team_id=team_id,
             actor_id=_actor_name(actor),

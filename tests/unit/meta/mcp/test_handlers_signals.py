@@ -81,7 +81,7 @@ def fake_signals_service() -> AsyncMock:
     service.get_scaling_history = AsyncMock(return_value=OrgScalingSummary())
     service.get_error_patterns = AsyncMock(return_value=OrgErrorSummary())
     service.get_evolution_outcomes = AsyncMock(return_value=OrgEvolutionSummary())
-    service.list_proposals = AsyncMock(return_value=())
+    service.list_proposals = AsyncMock(return_value=((), 0))
     service.submit_proposal = AsyncMock(
         return_value=ApprovalItem(
             id="proposal-1",
@@ -196,16 +196,19 @@ class TestProposalsList:
     ) -> None:
         fake_signals_service.list_proposals = AsyncMock(
             return_value=(
-                ApprovalItem(
-                    id="p-1",
-                    action_type="signals.proposal",
-                    title="t",
-                    description="d",
-                    requested_by="r",
-                    risk_level=ApprovalRiskLevel.LOW,
-                    status=ApprovalStatus.PENDING,
-                    created_at=datetime.now(UTC),
+                (
+                    ApprovalItem(
+                        id="p-1",
+                        action_type="signals.proposal",
+                        title="t",
+                        description="d",
+                        requested_by="r",
+                        risk_level=ApprovalRiskLevel.LOW,
+                        status=ApprovalStatus.PENDING,
+                        created_at=datetime.now(UTC),
+                    ),
                 ),
+                1,
             ),
         )
         handler = SIGNAL_HANDLERS["synthorg_signals_get_proposals"]
@@ -344,6 +347,7 @@ class TestSubmitProposalGuardrails:
         fake_signals_service: AsyncMock,
     ) -> None:
         handler = SIGNAL_HANDLERS["synthorg_signals_submit_proposal"]
+        actor = make_test_actor()
         response = await handler(
             app_state=fake_app_state,
             arguments={
@@ -351,11 +355,15 @@ class TestSubmitProposalGuardrails:
                 "confirm": True,
                 "reason": "ship this change",
             },
-            actor=make_test_actor(),
+            actor=actor,
         )
         payload = json.loads(response)
         assert payload["status"] == "ok"
         fake_signals_service.submit_proposal.assert_awaited_once()
+        call_kwargs = fake_signals_service.submit_proposal.call_args.kwargs
+        assert call_kwargs["actor"] is actor
+        assert call_kwargs["reason"] == "ship this change"
+        assert call_kwargs["proposal"].title == "test"
 
     async def test_invalid_proposal_rejected(
         self,

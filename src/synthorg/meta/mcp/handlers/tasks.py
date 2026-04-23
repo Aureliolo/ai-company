@@ -5,7 +5,7 @@ Shims the 8 task tools onto ``app_state.task_engine``
 ``cancel`` are destructive and enforce the standard
 ``confirm=True`` + non-blank ``reason`` + non-``None`` ``actor`` triple.
 ``activities_list`` has no dedicated service method; it returns a
-``service_fallback`` envelope.
+``capability_gap`` envelope.
 """
 
 import copy

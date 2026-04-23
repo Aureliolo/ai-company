@@ -469,6 +469,8 @@ async def _clients_deactivate(
     except GuardrailViolationError as exc:
         _log_guardrail(tool, exc)
         return err(exc)
+    except CapabilityNotSupportedError as exc:
+        return _map_capability(tool, exc)
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -612,6 +614,8 @@ async def _ontology_list_entities(
     tool = "synthorg_ontology_list_entities"
     try:
         entities = await app_state.ontology_facade_service.list_entities()
+    except CapabilityNotSupportedError as exc:
+        return _map_capability(tool, exc)
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -629,6 +633,8 @@ async def _ontology_get_entity(
     try:
         entity_id = _require_str(arguments, "entity_id")
         entity = await app_state.ontology_facade_service.get_entity(entity_id)
+    except CapabilityNotSupportedError as exc:
+        return _map_capability(tool, exc)
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -653,6 +659,8 @@ async def _ontology_get_relationships(
         result = await app_state.ontology_facade_service.get_relationships(
             entity_id,
         )
+    except CapabilityNotSupportedError as exc:
+        return _map_capability(tool, exc)
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -670,6 +678,8 @@ async def _ontology_search(
     try:
         query = _require_str(arguments, "query")
         result = await app_state.ontology_facade_service.search(query)
+    except CapabilityNotSupportedError as exc:
+        return _map_capability(tool, exc)
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)

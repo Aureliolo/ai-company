@@ -114,6 +114,25 @@ class TestInMemoryErrorTaxonomyStoreWindowing:
         )
         assert len(findings) == 1
 
+    async def test_query_window_is_upper_bound_exclusive(self) -> None:
+        """``until`` is exclusive -- findings recorded at exactly ``until`` excluded."""
+        store = InMemoryErrorTaxonomyStore()
+        now = datetime.now(UTC)
+        at_until = now
+        at_since = now - timedelta(hours=1)
+        just_after_since = now - timedelta(minutes=59)
+        await store.on_classification(_result(_finding(), classified_at=at_since))
+        await store.on_classification(
+            _result(_finding(), classified_at=just_after_since),
+        )
+        await store.on_classification(_result(_finding(), classified_at=at_until))
+        findings = await store.query_findings(
+            since=at_since,
+            until=at_until,
+        )
+        # since is inclusive, until is exclusive -> two matches, not three
+        assert len(findings) == 2
+
     async def test_query_rejects_naive_datetimes(self) -> None:
         store = InMemoryErrorTaxonomyStore()
         with pytest.raises(ValueError, match="timezone-aware"):

@@ -23,7 +23,7 @@ def fake_quality() -> AsyncMock:
     service = AsyncMock()
     service.get_summary = AsyncMock(return_value={"avg": 8.0})
     service.get_agent_quality = AsyncMock(return_value={"agent_id": "a1"})
-    service.list_scores = AsyncMock(return_value=())
+    service.list_scores = AsyncMock(return_value=((), 0))
     return service
 
 

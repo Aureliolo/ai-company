@@ -189,26 +189,47 @@ class SignalsService:
         self,
         *,
         status: ApprovalStatus | None = None,
-    ) -> tuple[ApprovalItem, ...]:
+        offset: int = 0,
+        limit: int | None = None,
+    ) -> tuple[tuple[ApprovalItem, ...], int]:
         """Return proposals (approval items) flagged as signals-originated.
 
         Args:
             status: Optional approval status filter.
+            offset: Starting offset (inclusive) into the ordered set.
+            limit: Maximum number of items to return; ``None`` returns
+                every item from ``offset`` onwards.
 
         Returns:
-            Matching approval items ordered by creation (newest first).
+            Tuple of ``(page, total)`` where ``page`` is the slice of
+            items newest-first and ``total`` is the unfiltered count
+            before slicing so callers never have to reconstruct it.
+
+        Raises:
+            ValueError: If ``offset`` is negative, or ``limit`` is
+                provided and non-positive.
         """
+        if offset < 0:
+            msg = f"offset must be >= 0, got {offset}"
+            raise ValueError(msg)
+        if limit is not None and limit < 1:
+            msg = f"limit must be >= 1 when provided, got {limit}"
+            raise ValueError(msg)
         items = await self._approval_store.list_items(
             status=status,
             action_type=NotBlankStr(_PROPOSAL_ACTION_TYPE),
         )
         ordered = tuple(sorted(items, key=lambda a: a.created_at, reverse=True))
+        total = len(ordered)
+        end = total if limit is None else offset + limit
+        page = ordered[offset:end]
         logger.info(
             META_PROPOSAL_LISTED,
-            count=len(ordered),
+            count=len(page),
+            total=total,
             status=status.value if status is not None else None,
         )
-        return ordered
+        return page, total
 
     # ── Proposal write (destructive) ─────────────────────────────────
 

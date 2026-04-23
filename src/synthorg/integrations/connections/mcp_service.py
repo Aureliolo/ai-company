@@ -41,7 +41,18 @@ class ConnectionService:
         offset: int = 0,
         limit: int | None = None,
     ) -> tuple[Sequence[Connection], int]:
-        """Return paginated connections and the unfiltered total."""
+        """Return paginated connections and the unfiltered total.
+
+        Raises:
+            ValueError: If ``offset`` is negative, or if ``limit`` is
+                provided and non-positive.
+        """
+        if offset < 0:
+            msg = f"offset must be >= 0, got {offset}"
+            raise ValueError(msg)
+        if limit is not None and limit < 1:
+            msg = f"limit must be >= 1 when provided, got {limit}"
+            raise ValueError(msg)
         connections = tuple(await self._catalog.list_all())
         total = len(connections)
         end = total if limit is None else offset + limit

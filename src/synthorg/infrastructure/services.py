@@ -715,9 +715,12 @@ class AuditReadService:
 
     async def list_entries(self, *, limit: int = 100) -> Sequence[object]:
         fn = getattr(self._audit, "list_entries", None)
-        if callable(fn):
-            return tuple(fn())[:limit]
-        return ()
+        if not callable(fn):
+            raise _capability_missing(
+                "audit_list",
+                "AuditLog does not expose list_entries",
+            )
+        return tuple(fn())[:limit]
 
 
 # ── EventsReadService ──────────────────────────────────────────────
@@ -731,9 +734,12 @@ class EventsReadService:
 
     async def list_events(self, *, limit: int = 100) -> Sequence[object]:
         fn = getattr(self._hub, "recent_events", None)
-        if callable(fn):
-            return tuple(fn(limit=limit))
-        return ()
+        if not callable(fn):
+            raise _capability_missing(
+                "events_list",
+                "EventStreamHub does not expose recent_events",
+            )
+        return tuple(fn(limit=limit))
 
 
 # ── IntegrationHealthService ──────────────────────────────────────
@@ -747,9 +753,12 @@ class IntegrationHealthFacadeService:
 
     async def get_all(self) -> Mapping[str, object]:
         fn = getattr(self._prober, "snapshot", None)
-        if callable(fn):
-            return dict(fn())
-        return {}
+        if not callable(fn):
+            raise _capability_missing(
+                "integration_health_list",
+                "HealthProberService does not expose snapshot",
+            )
+        return dict(fn())
 
     async def get_one(self, integration_id: NotBlankStr) -> object | None:
         snapshot = await self.get_all()

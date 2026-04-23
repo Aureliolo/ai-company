@@ -9,6 +9,7 @@ primitive yet exists) and raises
 not yet implement.
 """
 
+import asyncio
 import copy
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, cast
@@ -412,9 +413,11 @@ class ArtifactFacadeService:
     def __init__(self, *, storage: ArtifactStorageBackend) -> None:
         self._storage = cast("Any", storage)
         self._index: dict[UUID, _ArtifactRecord] = {}
+        self._lock = asyncio.Lock()
 
     async def list_artifacts(self) -> Sequence[_ArtifactRecord]:
-        snapshot = tuple(copy.deepcopy(a) for a in self._index.values())
+        async with self._lock:
+            snapshot = tuple(copy.deepcopy(a) for a in self._index.values())
         return tuple(sorted(snapshot, key=lambda a: a.created_at, reverse=True))
 
     async def get_artifact(self, artifact_id: NotBlankStr) -> _ArtifactRecord | None:
@@ -422,8 +425,9 @@ class ArtifactFacadeService:
             key = UUID(artifact_id)
         except ValueError:
             return None
-        record = self._index.get(key)
-        return copy.deepcopy(record) if record is not None else None
+        async with self._lock:
+            record = self._index.get(key)
+            return copy.deepcopy(record) if record is not None else None
 
     async def create_artifact(
         self,
@@ -442,7 +446,8 @@ class ArtifactFacadeService:
             storage_ref=storage_ref,
             created_at=datetime.now(UTC),
         )
-        self._index[record.id] = record
+        async with self._lock:
+            self._index[record.id] = record
         logger.info(
             ARTIFACT_CREATED_VIA_MCP,
             artifact_id=str(record.id),
@@ -462,29 +467,36 @@ class ArtifactFacadeService:
             key = UUID(artifact_id)
         except ValueError:
             return False
-        record = self._index.get(key)
-        if record is None:
-            return False
-        fn = getattr(self._storage, "delete", None)
-        if not callable(fn):
-            raise _capability(
-                "artifact_delete",
-                "ArtifactStorageBackend does not expose delete; refusing to "
-                "drop the index entry silently since the blob would be "
-                "orphaned.",
-            )
-        # Delete from storage FIRST so the index and storage cannot
-        # diverge silently -- if storage fails, the record stays in
-        # the index and the caller sees the real error.  Use the
-        # backend's own storage_ref, not the facade UUID, because the
-        # two diverge when the storage backend uses its own scheme.
-        # Treat a falsy return (e.g. ``False`` for "not found" in the
-        # backend) as an actual miss: don't drop the index entry or log
-        # a fake success.
-        storage_removed = await fn(record.storage_ref)
-        if storage_removed is False:
-            return False
-        self._index.pop(key, None)
+        # Serialise the index read + storage delete + index pop so two
+        # concurrent deletes of the same artifact cannot race: without
+        # the lock, both coroutines could read the same record, both
+        # call ``storage.delete`` (potentially raising for the second),
+        # and only one ``pop`` would succeed while the other logs a
+        # spurious success.
+        async with self._lock:
+            record = self._index.get(key)
+            if record is None:
+                return False
+            fn = getattr(self._storage, "delete", None)
+            if not callable(fn):
+                raise _capability(
+                    "artifact_delete",
+                    "ArtifactStorageBackend does not expose delete; refusing "
+                    "to drop the index entry silently since the blob would be "
+                    "orphaned.",
+                )
+            # Delete from storage FIRST so the index and storage cannot
+            # diverge silently -- if storage fails, the record stays in
+            # the index and the caller sees the real error.  Use the
+            # backend's own storage_ref, not the facade UUID, because the
+            # two diverge when the storage backend uses its own scheme.
+            # Treat a falsy return (e.g. ``False`` for "not found" in the
+            # backend) as an actual miss: don't drop the index entry or
+            # log a fake success.
+            storage_removed = await fn(record.storage_ref)
+            if storage_removed is False:
+                return False
+            self._index.pop(key, None)
         logger.info(
             ARTIFACT_DELETED_VIA_MCP,
             artifact_id=artifact_id,

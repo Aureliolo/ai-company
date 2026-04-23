@@ -63,9 +63,10 @@ class TestReviewFacadeService:
             reviewer_id=NotBlankStr("r"),
             verdict=NotBlankStr("reject"),
         )
-        listed = await service.list_reviews()
-        assert listed[0].id == second.id
-        assert listed[1].id == first.id
+        page, total = await service.list_reviews()
+        assert total == 2
+        assert page[0].id == second.id
+        assert page[1].id == first.id
 
     async def test_update_patches_fields(self) -> None:
         service = ReviewFacadeService()
@@ -109,25 +110,29 @@ class TestReviewFacadeService:
 
 
 class TestEvaluationVersionService:
-    async def test_list_versions_empty_when_unwired(self) -> None:
+    async def test_list_versions_capability_gap_when_unwired(self) -> None:
         service = EvaluationVersionService(persistence=None)
-        assert await service.list_versions() == ()
+        with pytest.raises(CapabilityNotSupportedError):
+            await service.list_versions()
 
-    async def test_get_version_none_when_unwired(self) -> None:
+    async def test_get_version_capability_gap_when_unwired(self) -> None:
         service = EvaluationVersionService(persistence=None)
-        assert await service.get_version(NotBlankStr("v1")) is None
+        with pytest.raises(CapabilityNotSupportedError):
+            await service.get_version(NotBlankStr("v1"))
 
-    async def test_list_versions_empty_without_accessor(self) -> None:
+    async def test_list_versions_capability_gap_without_accessor(self) -> None:
         service = EvaluationVersionService(
             persistence=SimpleNamespace(),
         )
-        assert await service.list_versions() == ()
+        with pytest.raises(CapabilityNotSupportedError):
+            await service.list_versions()
 
-    async def test_get_version_none_without_accessor(self) -> None:
+    async def test_get_version_capability_gap_without_accessor(self) -> None:
         service = EvaluationVersionService(
             persistence=SimpleNamespace(),
         )
-        assert await service.get_version(NotBlankStr("v1")) is None
+        with pytest.raises(CapabilityNotSupportedError):
+            await service.get_version(NotBlankStr("v1"))
 
     async def test_list_versions_delegates_when_available(self) -> None:
         class _Repo:

@@ -28,6 +28,7 @@ from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.models import ConnectionType
 from synthorg.integrations.webhooks.models import WebhookDefinition
 from synthorg.meta.mcp.errors import (
+    ArgumentValidationError,
     GuardrailViolationError,
     invalid_argument,
 )
@@ -46,6 +47,7 @@ from synthorg.meta.mcp.handlers.common import (
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.mcp import (
     MCP_DESTRUCTIVE_OP_EXECUTED,
+    MCP_HANDLER_ARGUMENT_INVALID,
     MCP_HANDLER_CAPABILITY_GAP,
     MCP_HANDLER_GUARDRAIL_VIOLATED,
     MCP_HANDLER_INVOKE_FAILED,
@@ -103,6 +105,16 @@ def _actor_name(actor: AgentIdentity | None) -> NotBlankStr:
     if isinstance(name, str) and name.strip():
         return NotBlankStr(name)
     return NotBlankStr("mcp-anonymous")
+
+
+def _log_invalid(tool: str, exc: ArgumentValidationError) -> None:
+    """Emit ``MCP_HANDLER_ARGUMENT_INVALID`` at WARNING for client-input errors."""
+    logger.warning(
+        MCP_HANDLER_ARGUMENT_INVALID,
+        tool_name=tool,
+        error_type=type(exc).__name__,
+        error=safe_error_description(exc),
+    )
 
 
 def _log_invoke_failed(tool: str, exc: Exception) -> None:
@@ -209,6 +221,9 @@ async def _messages_list(
         )
         pagination = PaginationMeta(total=total, offset=offset, limit=limit)
         return ok(dump_many(messages), pagination=pagination)
+    except ArgumentValidationError as exc:
+        _log_invalid("synthorg_messages_list", exc)
+        return err(exc)
     except Exception as exc:
         _log_invoke_failed("synthorg_messages_list", exc)
         return err(exc)
@@ -234,6 +249,9 @@ async def _messages_get(
                 domain_code="not_found",
             )
         return ok(message.model_dump(mode="json"))
+    except ArgumentValidationError as exc:
+        _log_invalid("synthorg_messages_get", exc)
+        return err(exc)
     except Exception as exc:
         _log_invoke_failed("synthorg_messages_get", exc)
         return err(exc)
@@ -253,6 +271,9 @@ async def _messages_send(
             actor_id=_actor_name(actor),
         )
         return ok({"id": str(message.id)})
+    except ArgumentValidationError as exc:
+        _log_invalid("synthorg_messages_send", exc)
+        return err(exc)
     except Exception as exc:
         _log_invoke_failed("synthorg_messages_send", exc)
         return err(exc)
@@ -289,6 +310,9 @@ async def _messages_delete(
         return ok({"removed": removed})
     except GuardrailViolationError as exc:
         _log_guardrail(tool, exc)
+        return err(exc)
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
         return err(exc)
     except Exception as exc:
         _log_invoke_failed(tool, exc)
@@ -329,6 +353,9 @@ async def _meetings_list(
         )
         pagination = PaginationMeta(total=total, offset=offset, limit=limit)
         return ok(dump_many(records), pagination=pagination)
+    except ArgumentValidationError as exc:
+        _log_invalid("synthorg_meetings_list", exc)
+        return err(exc)
     except Exception as exc:
         _log_invoke_failed("synthorg_meetings_list", exc)
         return err(exc)
@@ -350,6 +377,9 @@ async def _meetings_get(
                 domain_code="not_found",
             )
         return ok(record.model_dump(mode="json"))
+    except ArgumentValidationError as exc:
+        _log_invalid("synthorg_meetings_get", exc)
+        return err(exc)
     except Exception as exc:
         _log_invoke_failed("synthorg_meetings_get", exc)
         return err(exc)
@@ -440,6 +470,9 @@ async def _connections_list(
         )
         pagination = PaginationMeta(total=total, offset=offset, limit=limit)
         return ok(dump_many(connections), pagination=pagination)
+    except ArgumentValidationError as exc:
+        _log_invalid("synthorg_connections_list", exc)
+        return err(exc)
     except Exception as exc:
         _log_invoke_failed("synthorg_connections_list", exc)
         return err(exc)
@@ -461,6 +494,9 @@ async def _connections_get(
                 domain_code="not_found",
             )
         return ok(connection.model_dump(mode="json"))
+    except ArgumentValidationError as exc:
+        _log_invalid("synthorg_connections_get", exc)
+        return err(exc)
     except Exception as exc:
         _log_invoke_failed("synthorg_connections_get", exc)
         return err(exc)
@@ -490,6 +526,9 @@ async def _connections_create(
             metadata=metadata,
         )
         return ok(connection.model_dump(mode="json"))
+    except ArgumentValidationError as exc:
+        _log_invalid("synthorg_connections_create", exc)
+        return err(exc)
     except Exception as exc:
         _log_invoke_failed("synthorg_connections_create", exc)
         return err(exc)
@@ -522,6 +561,9 @@ async def _connections_delete(
     except GuardrailViolationError as exc:
         _log_guardrail(tool, exc)
         return err(exc)
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
     except Exception as exc:
         _log_invoke_failed(tool, exc)
         return err(exc)
@@ -543,6 +585,9 @@ async def _connections_check_health(
                 domain_code="not_found",
             )
         return ok(connection.model_dump(mode="json"))
+    except ArgumentValidationError as exc:
+        _log_invalid("synthorg_connections_check_health", exc)
+        return err(exc)
     except Exception as exc:
         _log_invoke_failed("synthorg_connections_check_health", exc)
         return err(exc)
@@ -583,6 +628,9 @@ async def _webhooks_list(
         )
         pagination = PaginationMeta(total=total, offset=offset, limit=limit)
         return ok(dump_many(definitions), pagination=pagination)
+    except ArgumentValidationError as exc:
+        _log_invalid("synthorg_webhooks_list", exc)
+        return err(exc)
     except Exception as exc:
         _log_invoke_failed("synthorg_webhooks_list", exc)
         return err(exc)
@@ -604,6 +652,9 @@ async def _webhooks_get(
                 domain_code="not_found",
             )
         return ok(definition.model_dump(mode="json"))
+    except ArgumentValidationError as exc:
+        _log_invalid("synthorg_webhooks_get", exc)
+        return err(exc)
     except Exception as exc:
         _log_invoke_failed("synthorg_webhooks_get", exc)
         return err(exc)
@@ -623,6 +674,9 @@ async def _webhooks_create(
             actor_id=_actor_name(actor),
         )
         return ok(stored.model_dump(mode="json"))
+    except ArgumentValidationError as exc:
+        _log_invalid("synthorg_webhooks_create", exc)
+        return err(exc)
     except KeyError as exc:
         _log_invoke_failed("synthorg_webhooks_create", exc)
         return err(exc, domain_code="conflict")
@@ -643,6 +697,9 @@ async def _webhooks_update(
     """Update an existing webhook definition by ID."""
     try:
         definition = _parse_webhook_definition(arguments, require_id=True)
+    except ArgumentValidationError as exc:
+        _log_invalid("synthorg_webhooks_update", exc)
+        return err(exc)
     except Exception as exc:
         _log_invoke_failed("synthorg_webhooks_update", exc)
         return err(exc)
@@ -696,6 +753,9 @@ async def _webhooks_delete(
         return ok({"removed": removed})
     except GuardrailViolationError as exc:
         _log_guardrail(tool, exc)
+        return err(exc)
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
         return err(exc)
     except Exception as exc:
         _log_invoke_failed(tool, exc)

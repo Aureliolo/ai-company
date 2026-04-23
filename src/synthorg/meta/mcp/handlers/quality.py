@@ -17,10 +17,10 @@ from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,  # noqa: TC001 -- PEP 649 annotation
 )
 from synthorg.meta.mcp.handlers.common import (
+    PaginationMeta,
     coerce_pagination,
     err,
     ok,
-    paginate_sequence,
     require_arg,
 )
 from synthorg.observability import get_logger, safe_error_description
@@ -38,6 +38,25 @@ logger = get_logger(__name__)
 
 _TY_STRING = "non-blank string"
 _TY_UUID = "UUID string"
+_TY_OPTIONAL_STRING = "string or null"
+
+
+def _get_optional_str(arguments: dict[str, Any], key: str) -> str | None:
+    """Return ``arguments[key]`` as ``str`` / ``None``, rejecting other types.
+
+    An absent key and an explicit ``null`` are both returned as ``None``.
+    A value of any other non-string type raises ``ArgumentValidationError``
+    so invalid ``comments`` payloads surface as typed ``invalid_argument``
+    envelopes instead of being silently dropped.
+    """
+    if key not in arguments:
+        return None
+    raw = arguments[key]
+    if raw is None:
+        return None
+    if not isinstance(raw, str):
+        raise invalid_argument(key, _TY_OPTIONAL_STRING)
+    return raw
 
 
 def _log_failed(tool: str, exc: Exception) -> None:
@@ -167,14 +186,18 @@ async def _quality_list_scores(
     """List individual quality scores (paginated)."""
     tool = "synthorg_quality_list_scores"
     try:
+        offset, limit = coerce_pagination(arguments)
         agent_id = _get_str(arguments, "agent_id")
-        scores = await app_state.quality_facade_service.list_scores(
+        page, total = await app_state.quality_facade_service.list_scores(
             agent_id=agent_id,
+            offset=offset,
+            limit=limit,
         )
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
-    return ok([_to_jsonable(s) for s in scores])
+    pagination = PaginationMeta(total=total, offset=offset, limit=limit)
+    return ok([_to_jsonable(s) for s in page], pagination=pagination)
 
 
 # ── reviews ────────────────────────────────────────────────────────
@@ -190,13 +213,11 @@ async def _reviews_list(
     tool = "synthorg_reviews_list"
     try:
         offset, limit = coerce_pagination(arguments)
-        reviews = await app_state.review_facade_service.list_reviews()
-        page, pagination = paginate_sequence(
-            reviews,
+        page, total = await app_state.review_facade_service.list_reviews(
             offset=offset,
             limit=limit,
-            total=len(reviews),
         )
+        pagination = PaginationMeta(total=total, offset=offset, limit=limit)
         return ok([r.to_dict() for r in page], pagination=pagination)
     except Exception as exc:
         _log_failed(tool, exc)
@@ -236,12 +257,12 @@ async def _reviews_create(
     try:
         task_id = _require_str(arguments, "task_id")
         verdict = _require_str(arguments, "verdict")
-        comments = arguments.get("comments")
+        comments = _get_optional_str(arguments, "comments")
         record = await app_state.review_facade_service.create_review(
             task_id=task_id,
             reviewer_id=_actor_name(actor),
             verdict=verdict,
-            comments=comments if isinstance(comments, str) else None,
+            comments=comments,
         )
     except Exception as exc:
         _log_failed(tool, exc)
@@ -260,11 +281,11 @@ async def _reviews_update(
     try:
         review_id = _require_uuid(arguments, "review_id")
         verdict = _get_str(arguments, "verdict")
-        comments = arguments.get("comments")
+        comments = _get_optional_str(arguments, "comments")
         record = await app_state.review_facade_service.update_review(
             review_id=review_id,
             verdict=verdict,
-            comments=comments if isinstance(comments, str) else None,
+            comments=comments,
             actor_id=_actor_name(actor),
         )
     except Exception as exc:

@@ -72,6 +72,12 @@ class MessageService:
         callers can navigate.  Passing ``channel=None`` returns
         ``((), 0)`` -- an empty page -- without touching persistence.
         """
+        if offset < 0:
+            msg = f"offset must be >= 0, got {offset}"
+            raise ValueError(msg)
+        if limit is not None and limit < 1:
+            msg = f"limit must be >= 1 when provided, got {limit}"
+            raise ValueError(msg)
         if channel is None:
             return ((), 0)
         history = tuple(await self._persistence.messages.get_history(channel))

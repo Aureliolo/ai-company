@@ -66,7 +66,17 @@ class MeetingService:
         count for the applied filter (status / meeting_type) so the
         handler can build the pagination envelope without slicing a
         second time.
+
+        Raises:
+            ValueError: If ``offset`` is negative, or if ``limit`` is
+                provided and non-positive.
         """
+        if offset < 0:
+            msg = f"offset must be >= 0, got {offset}"
+            raise ValueError(msg)
+        if limit is not None and limit < 1:
+            msg = f"limit must be >= 1 when provided, got {limit}"
+            raise ValueError(msg)
         records = self._orchestrator.get_records()
         if status is not None:
             records = tuple(r for r in records if r.status == status)

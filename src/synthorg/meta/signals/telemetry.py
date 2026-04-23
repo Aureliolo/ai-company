@@ -23,8 +23,6 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_EMPTY = OrgTelemetrySummary()
-
 
 class TelemetrySignalAggregator:
     """Aggregates telemetry events into org-wide summaries.
@@ -60,7 +58,7 @@ class TelemetrySignalAggregator:
             wired or the window contains no events.
         """
         if self._counter is None:
-            return _EMPTY
+            return OrgTelemetrySummary()
         try:
             summary = await self._counter.summarize(since=since, until=until)
             logger.info(
@@ -73,5 +71,5 @@ class TelemetrySignalAggregator:
                 META_SIGNAL_AGGREGATION_FAILED,
                 domain="telemetry",
             )
-            return _EMPTY
+            return OrgTelemetrySummary()
         return summary

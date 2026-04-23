@@ -41,6 +41,8 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+_MAX_HISTORY_SAMPLE_COUNT = 128
+
 
 class AnalyticsService:
     """Read-only analytics view built on top of :class:`SignalsService`.
@@ -82,6 +84,9 @@ class AnalyticsService:
         The underlying ``OrgPerformanceSummary`` already carries trend
         directions per metric; this method filters / projects them.
         """
+        if since >= until:
+            msg = "since must be earlier than until"
+            raise ValueError(msg)
         perf: OrgPerformanceSummary = await self._signals.get_performance(
             since=since,
             until=until,
@@ -191,6 +196,12 @@ class AnalyticsService:
         """
         if sample_count < 1:
             msg = f"sample_count must be >= 1, got {sample_count}"
+            raise ValueError(msg)
+        if sample_count > _MAX_HISTORY_SAMPLE_COUNT:
+            msg = (
+                f"sample_count must be <= {_MAX_HISTORY_SAMPLE_COUNT}, "
+                f"got {sample_count}"
+            )
             raise ValueError(msg)
         if since >= until:
             msg = "since must be earlier than until"

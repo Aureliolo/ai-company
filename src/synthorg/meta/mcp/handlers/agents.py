@@ -5,7 +5,7 @@ Shims the 18 agent tools onto the existing HR services -- ``agent_registry``
 Tools whose underlying service surface is not yet exposed on
 ``app_state`` (personality registry, rich update, activity feed,
 health aggregation, autonomy mutation) return a structured
-``service_fallback`` envelope so the tool stays visible to ops without
+``capability_gap`` envelope so the tool stays visible to ops without
 pretending a service call succeeded.
 
 Destructive ops
