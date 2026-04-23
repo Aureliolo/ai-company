@@ -93,12 +93,22 @@ class TestErr:
         body = json.loads(err(RuntimeError("oops")))
         assert "domain_code" not in body
 
-    def test_err_message_never_leaks_secret_format(self) -> None:
-        # safe_error_description() is the only thing producing ``message``.
+    def test_err_message_never_leaks_secret_format(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # ``err`` must funnel every message through
+        # ``safe_error_description`` so a future refactor that forgets the
+        # sanitizer cannot leak raw ``str(exc)`` payloads.  Replace the
+        # sanitizer with a unique sentinel and assert exact equality so
+        # the test fails loudly on regression.
+        sentinel = "__SANITIZER_SENTINEL__"
+        monkeypatch.setattr(
+            "synthorg.meta.mcp.handlers.common.safe_error_description",
+            lambda _exc: sentinel,
+        )
         body = json.loads(err(ValueError("secret=abc123 token=xyz")))
-        assert isinstance(body["message"], str)
-        # The point of this test is that ``err`` passes through the safe
-        # wrapper -- exact redaction is owned by observability tests.
+        assert body["message"] == sentinel
 
 
 class TestRequireArg:

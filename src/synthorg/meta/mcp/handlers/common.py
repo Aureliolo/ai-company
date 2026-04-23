@@ -25,6 +25,9 @@ from typing import TYPE_CHECKING, Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.meta.mcp.errors import guardrail_violation, invalid_argument
+from synthorg.meta.mcp.handler_protocol import (
+    ToolHandler,  # noqa: TC001 -- runtime annotation on placeholder factories
+)
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.mcp import (
     MCP_HANDLER_NOT_IMPLEMENTED,
@@ -33,6 +36,8 @@ from synthorg.observability.events.mcp import (
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
+
+    from synthorg.core.agent import AgentIdentity
 
 logger = get_logger(__name__)
 
@@ -194,8 +199,17 @@ def _coerce_bounded_int(
     default: int,
     lower: int,
 ) -> int:
-    """Coerce ``raw`` to int >= ``lower`` or raise ``ArgumentValidationError``."""
+    """Coerce ``raw`` to int >= ``lower`` or raise ``ArgumentValidationError``.
+
+    The ``default`` is validated through the same gate so a caller
+    passing ``default=0`` or ``default=True`` cannot smuggle an invalid
+    value past the check when ``raw`` is missing.
+    """
     if raw is None or raw == "":
+        if isinstance(default, bool) or not isinstance(default, int):
+            raise invalid_argument(arg_name, expected)
+        if default < lower:
+            raise invalid_argument(arg_name, expected)
         return default
     if isinstance(raw, bool):
         raise invalid_argument(arg_name, expected)
@@ -410,7 +424,7 @@ def service_fallback(tool_name: str, reason: str) -> str:
     return _not_supported_envelope(reason)
 
 
-def make_placeholder_handler(tool_name: str) -> Any:
+def make_placeholder_handler(tool_name: str) -> ToolHandler:
     """Build a placeholder that returns the standard ``not_supported`` envelope.
 
     Used for tools registered after PR1 that haven't been given a real
@@ -425,7 +439,7 @@ def make_placeholder_handler(tool_name: str) -> Any:
         tool_name: Tool name for the envelope + log payload.
 
     Returns:
-        Async handler function.
+        ``ToolHandler`` conforming async handler function.
     """
     reason = (
         f"Tool {tool_name!r} is registered but its service layer "
@@ -436,7 +450,7 @@ def make_placeholder_handler(tool_name: str) -> Any:
         *,
         app_state: Any,  # noqa: ARG001
         arguments: dict[str, Any],  # noqa: ARG001
-        actor: Any = None,  # noqa: ARG001
+        actor: AgentIdentity | None = None,  # noqa: ARG001
     ) -> str:
         return not_supported(tool_name, reason)
 
@@ -445,7 +459,7 @@ def make_placeholder_handler(tool_name: str) -> Any:
 
 def make_handlers_for_tools(
     tool_names: tuple[str, ...],
-) -> dict[str, Any]:
+) -> dict[str, ToolHandler]:
     """Create placeholder handlers for a set of tool names.
 
     Args:
