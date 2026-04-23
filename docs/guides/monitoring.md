@@ -5,7 +5,7 @@ description: Prometheus metric inventory, suggested PromQL queries, Grafana dash
 
 # Monitoring & Dashboards
 
-SynthOrg exposes runtime telemetry via a Prometheus `/metrics` endpoint plus structured JSON logs. This guide walks through the metric surface, a ready-to-import Grafana dashboard, and suggested alert rules. For the raw metric implementation, see `src/synthorg/observability/prometheus_collector.py`.
+SynthOrg exposes runtime telemetry via a Prometheus `/metrics` endpoint plus structured JSON logs. This guide walks through every metric the application emits, a ready-to-import Grafana dashboard, and suggested alert rules. The canonical metric registration lives in `src/synthorg/observability/prometheus_collector.py` (pull-refreshed families) and `src/synthorg/observability/prometheus_push_metrics.py` (push-updated families); bounded label allowlists live in `src/synthorg/observability/prometheus_labels.py`.
 
 ## Scraping
 
@@ -23,49 +23,97 @@ The endpoint is unauthenticated by default; put it behind your normal scrape-ACL
 
 ## Metric inventory
 
+### Info
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `synthorg_app` | Info | `version` | Application build info. |
+
 ### Coordination (push-updated per multi-agent run)
 
 | Metric | Type | Labels | Description |
 |--------|------|--------|-------------|
-| `synthorg_coordination_efficiency` | Gauge | -- | 0.0-1.0 efficiency ratio |
-| `synthorg_coordination_overhead_percent` | Gauge | -- | % of wall time spent coordinating |
+| `synthorg_coordination_efficiency` | Gauge | -- | 0.0-1.0 efficiency ratio. |
+| `synthorg_coordination_overhead_percent` | Gauge | -- | % of wall time spent coordinating. |
 
 ### Cost & budget (pull-refreshed at scrape)
 
 | Metric | Type | Labels | Description |
 |--------|------|--------|-------------|
-| `synthorg_cost_total` | Gauge | -- | Total accumulated cost |
-| `synthorg_budget_used_percent` | Gauge | -- | Monthly budget utilisation |
-| `synthorg_budget_monthly_cost` | Gauge | -- | Monthly budget in configured currency |
-| `synthorg_budget_daily_used_percent` | Gauge | -- | Daily utilisation (prorated) |
-| `synthorg_agent_cost_total` | Gauge | `agent_id` | Per-agent accumulated cost |
-| `synthorg_agent_budget_used_percent` | Gauge | `agent_id` | Per-agent daily utilisation |
+| `synthorg_cost_total` | Gauge | -- | Total accumulated cost. |
+| `synthorg_budget_used_percent` | Gauge | -- | Monthly budget utilisation. |
+| `synthorg_budget_monthly_cost` | Gauge | -- | Monthly budget in configured currency. |
+| `synthorg_budget_daily_used_percent` | Gauge | -- | Daily utilisation (prorated). |
+| `synthorg_agent_cost_total` | Gauge | `agent_id` | Per-agent accumulated cost. |
+| `synthorg_agent_budget_used_percent` | Gauge | `agent_id` | Per-agent daily utilisation. |
 
 ### Agents & tasks
 
 | Metric | Type | Labels | Description |
 |--------|------|--------|-------------|
-| `synthorg_active_agents_total` | Gauge | `status`, `trust_level` | Active agent count by status |
-| `synthorg_tasks_total` | Gauge | `status`, `agent` | Task count per status per agent |
+| `synthorg_active_agents_total` | Gauge | `status`, `trust_level` | Active agent count by status. |
+| `synthorg_tasks_total` | Gauge | `status`, `agent` | Task count per status per agent. |
+| `synthorg_task_runs_total` | Counter | `outcome` | Task completions by bounded outcome (`succeeded` / `failed` / `cancelled`). |
+| `synthorg_task_duration_seconds` | Histogram | `outcome` | Task execution duration by outcome (buckets 0.1s-600s). |
 
-### Providers & tools
-
-| Metric | Type | Labels | Description |
-|--------|------|--------|-------------|
-| `synthorg_provider_tokens_total` | Counter | `provider`, `model`, `direction` | Input/output tokens by model |
-| `synthorg_provider_cost_total` | Counter | `provider`, `model` | Cost per provider call |
-| `synthorg_api_requests_total` | Counter | `method`, `route`, `status_class` | API request rate |
-| `synthorg_tool_invocations_total` | Counter | `tool_name`, `outcome` | Tool invocations by outcome |
-
-### HYG-1 additions
+### Providers
 
 | Metric | Type | Labels | Description |
 |--------|------|--------|-------------|
-| `synthorg_escalation_queue_depth` | Gauge | `department` | Pending escalations awaiting decision |
-| `synthorg_agent_identity_version_changes_total` | Counter | `agent_id`, `change_type` | Identity-version lifecycle events. ``change_type`` is bounded to ``created`` / ``updated`` / ``rolled_back`` / ``archived`` by the collector (``VALID_IDENTITY_CHANGE_TYPES``). |
-| `synthorg_workflow_execution_seconds` | Histogram | `workflow_definition_id`, `status` | Workflow execution duration (``workflow_definition_id`` is the stable definition id, bounded). ``status`` is bounded to ``completed`` / ``failed`` / ``cancelled`` / ``timeout`` by the collector (``VALID_WORKFLOW_EXECUTION_STATUSES``). |
+| `synthorg_provider_tokens_total` | Counter | `provider`, `model`, `direction` | Input/output tokens by model (`direction` bounded to `input`/`output`). |
+| `synthorg_provider_cost_total` | Counter | `provider`, `model` | Cost per provider call. |
+| `synthorg_provider_errors_total` | Counter | `provider`, `model`, `error_class` | Provider-call failures classified by `rate_limit` / `timeout` / `connection` / `internal` / `invalid_request` / `auth` / `content_filter` / `not_found` / `other`. |
 
-Bounded-label values are enforced at record time in `src/synthorg/observability/prometheus_labels.py` -- PromQL filters that reference values outside the lists above will never match data.
+### Tools
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `synthorg_tool_invocations_total` | Counter | `tool_name`, `outcome` | Tool invocations by bounded outcome (`success` / `error` / `timeout`). |
+| `synthorg_tool_duration_seconds` | Histogram | `tool_name`, `outcome` | Tool invocation duration (buckets 5ms-120s). |
+
+### API
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `synthorg_api_request_duration_seconds` | Histogram | `method`, `route`, `status_class` | HTTP request handler duration (buckets 5ms-10s). The auto-emitted `_count` series is the per-label request counter -- use it for request-rate PromQL. |
+| `synthorg_api_error_classification_total` | Counter | `category`, `status_class` | 4xx/5xx response counter partitioned by RFC 9457 category (`auth` / `validation` / `not_found` / `conflict` / `rate_limit` / `budget_exhausted` / `provider_error` / `internal`) and status class. |
+
+### Caches
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `synthorg_cache_operations_total` | Counter | `cache_name`, `outcome` | In-process cache operations (`cache_name` bounded to `mcp_result` / `reranker`; `outcome` bounded to `hit` / `miss` / `evict`). |
+
+### Security
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `synthorg_security_evaluations_total` | Counter | `verdict` | Pre-tool security verdicts (`verdict` bounded to `allow` / `deny` / `escalate` / `output_scan`). |
+
+### Audit chain
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `synthorg_audit_chain_appends_total` | Counter | `status` | Audit chain append operations (`status` bounded to `signed` / `fallback` / `error`). |
+| `synthorg_audit_chain_depth` | Gauge | -- | Current hash chain length. |
+| `synthorg_audit_chain_last_append_timestamp_seconds` | Gauge | -- | Unix timestamp of the most recent append. |
+
+### OTLP export health
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `synthorg_otlp_export_batches_total` | Counter | `kind`, `outcome` | Export batches by kind (`logs` / `traces`) and outcome (`success` / `failure`). |
+| `synthorg_otlp_export_dropped_records_total` | Counter | `kind` | Records dropped because the queue was full or the retry budget exhausted. |
+
+### Escalation + identity + workflow
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `synthorg_escalation_queue_depth` | Gauge | `department` | Pending escalations awaiting decision. |
+| `synthorg_agent_identity_version_changes_total` | Counter | `agent_id`, `change_type` | Identity-version lifecycle events (`change_type` bounded to `created` / `updated` / `rolled_back` / `archived`). |
+| `synthorg_workflow_execution_seconds` | Histogram | `workflow_definition_id`, `status` | Workflow execution duration (`status` bounded to `completed` / `failed` / `cancelled` / `timeout`; buckets 0.5s-3600s). |
+
+Bounded-label values are enforced at record time in `src/synthorg/observability/prometheus_labels.py` -- PromQL filters that reference values outside those allowlists will never match data.
 
 ## Suggested PromQL queries
 
@@ -113,11 +161,69 @@ sum by (change_type) (rate(synthorg_agent_identity_version_changes_total[5m]))
 
 ```promql
 # 5xx rate as a fraction of total
-sum(rate(synthorg_api_requests_total{status_class="5xx"}[5m]))
-  / sum(rate(synthorg_api_requests_total[5m]))
+sum(rate(synthorg_api_request_duration_seconds_count{status_class="5xx"}[5m]))
+  / sum(rate(synthorg_api_request_duration_seconds_count[5m]))
 
-# Request rate by status class
-sum by (status_class) (rate(synthorg_api_requests_total[1m]))
+# Request rate by status class (histogram's auto-emitted _count series)
+sum by (status_class) (rate(synthorg_api_request_duration_seconds_count[1m]))
+
+# Error rate by RFC 9457 category
+sum by (category) (rate(synthorg_api_error_classification_total[5m]))
+
+# 5xx rate by category (internal vs rate_limit vs provider_error, etc.)
+sum by (category) (rate(synthorg_api_error_classification_total{status_class="5xx"}[5m]))
+```
+
+### Provider health
+
+```promql
+# Provider error rate per class (hot loop: rate_limit + timeout + connection)
+sum by (provider, error_class) (rate(synthorg_provider_errors_total[5m]))
+
+# Ratio of errors to token usage per provider (failures per successful call)
+sum by (provider) (rate(synthorg_provider_errors_total[5m]))
+  / clamp_min(sum by (provider) (rate(synthorg_provider_tokens_total[5m])), 1)
+```
+
+### Cache hit rate
+
+```promql
+# Hit rate per cache (0.0-1.0)
+sum by (cache_name) (rate(synthorg_cache_operations_total{outcome="hit"}[5m]))
+  / clamp_min(sum by (cache_name) (rate(synthorg_cache_operations_total[5m])), 1)
+
+# Eviction spike (may indicate undersized cache)
+sum by (cache_name) (rate(synthorg_cache_operations_total{outcome="evict"}[5m]))
+```
+
+### Security posture
+
+```promql
+# Denial rate (should be low; spike indicates policy tightening or attack)
+rate(synthorg_security_evaluations_total{verdict="deny"}[5m])
+
+# Escalation rate per minute
+rate(synthorg_security_evaluations_total{verdict="escalate"}[1m])
+```
+
+### Audit chain health
+
+```promql
+# Append-error rate (non-zero = signing pipeline is broken)
+rate(synthorg_audit_chain_appends_total{status="error"}[5m])
+
+# Seconds since last append (flat line for > 5m is suspicious)
+time() - synthorg_audit_chain_last_append_timestamp_seconds
+```
+
+### OTLP export health
+
+```promql
+# Export-failure rate per kind
+sum by (kind) (rate(synthorg_otlp_export_batches_total{outcome="failure"}[5m]))
+
+# Dropped records per kind (queue overflow or retries exhausted)
+sum by (kind) (rate(synthorg_otlp_export_dropped_records_total[5m]))
 ```
 
 ## Grafana dashboard
@@ -133,7 +239,10 @@ Panels included:
 5. Agent identity changes (timeseries, by `change_type`)
 6. Workflow execution p95 (timeseries, by status)
 7. Per-agent cost (table, top 25)
-8. API request rate (timeseries, by status class)
+8. API request rate (timeseries, by status class, from `..._duration_seconds_count`)
+9. Provider error rate (timeseries, by `error_class`)
+10. Cache hit rate (timeseries, 0-1 per `cache_name`)
+11. API error categories (timeseries, stacked by `category`)
 
 To install via the Grafana UI: `Dashboards → New → Import → Upload JSON file`. Via the provisioning API: `POST /api/dashboards/db` with `{"dashboard": <file>, "overwrite": true, "inputs": [...]}`.
 
@@ -163,4 +272,5 @@ Logfire's Prometheus integration can scrape the same `/metrics` endpoint directl
 - [Observability design](../design/observability.md) -- sink layout, correlation IDs, per-domain routing
 - [Reference: errors](../reference/errors.md) -- RFC 9457 error categories
 - `src/synthorg/observability/prometheus_collector.py` -- canonical metric registration
+- `src/synthorg/observability/prometheus_push_metrics.py` -- push-updated metric families
 - `src/synthorg/observability/prometheus_labels.py` -- bounded label value sets
