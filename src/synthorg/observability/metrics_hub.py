@@ -20,7 +20,7 @@ registered so call sites remain safe when metrics are disabled.
 import weakref
 from typing import TYPE_CHECKING, ParamSpec, TypeVar
 
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.metrics import (
     METRICS_COLLECTOR_ACTIVATED,
     METRICS_COLLECTOR_DEACTIVATED,
@@ -97,11 +97,12 @@ def _safe_record(
                 # would mask a programming bug; let it propagate
                 # so the caller sees the wiring mistake.
                 raise
-            except Exception:
+            except Exception as exc:
                 logger.warning(
                     event,
                     hub_method=method,
-                    exc_info=True,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 return None
 

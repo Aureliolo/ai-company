@@ -121,3 +121,67 @@ class TestResolveLifecycleCleanupEnabled:
             )
             is True
         )
+
+
+@pytest.mark.unit
+class TestRunCleanupTickExceptionIsolation:
+    """Each per-store cleanup failure is isolated from the others."""
+
+    async def test_ticket_cleanup_failure_does_not_block_session_or_lockout(
+        self,
+    ) -> None:
+        """``ticket_store.cleanup_expired`` raising still runs session + lockout."""
+        ticket_store = SimpleNamespace(
+            cleanup_expired=MagicMock(side_effect=RuntimeError("ticket exploded")),
+        )
+        session_store = SimpleNamespace(cleanup_expired=AsyncMock(return_value=None))
+        lockout_store = SimpleNamespace(cleanup_expired=AsyncMock(return_value=None))
+        app_state = SimpleNamespace(
+            ticket_store=ticket_store,
+            session_store=session_store,
+            lockout_store=lockout_store,
+            has_session_store=True,
+            has_lockout_store=True,
+        )
+
+        await lifecycle_helpers._run_cleanup_tick(app_state)  # type: ignore[arg-type]
+
+        # Ticket raised -- but session and lockout still ran to completion.
+        ticket_store.cleanup_expired.assert_called_once()
+        session_store.cleanup_expired.assert_awaited_once()
+        lockout_store.cleanup_expired.assert_awaited_once()
+
+    async def test_session_cleanup_failure_does_not_block_lockout(self) -> None:
+        """``session_store.cleanup_expired`` raising still runs lockout cleanup."""
+        ticket_store = SimpleNamespace(cleanup_expired=MagicMock(return_value=None))
+        session_store = SimpleNamespace(
+            cleanup_expired=AsyncMock(side_effect=RuntimeError("sessions gone")),
+        )
+        lockout_store = SimpleNamespace(cleanup_expired=AsyncMock(return_value=None))
+        app_state = SimpleNamespace(
+            ticket_store=ticket_store,
+            session_store=session_store,
+            lockout_store=lockout_store,
+            has_session_store=True,
+            has_lockout_store=True,
+        )
+
+        await lifecycle_helpers._run_cleanup_tick(app_state)  # type: ignore[arg-type]
+
+        ticket_store.cleanup_expired.assert_called_once()
+        session_store.cleanup_expired.assert_awaited_once()
+        lockout_store.cleanup_expired.assert_awaited_once()
+
+    async def test_memory_error_propagates_from_cleanup_tick(self) -> None:
+        """``MemoryError`` escapes the cleanup tick -- OOM must not be swallowed."""
+        ticket_store = SimpleNamespace(
+            cleanup_expired=MagicMock(side_effect=MemoryError),
+        )
+        app_state = SimpleNamespace(
+            ticket_store=ticket_store,
+            has_session_store=False,
+            has_lockout_store=False,
+        )
+
+        with pytest.raises(MemoryError):
+            await lifecycle_helpers._run_cleanup_tick(app_state)  # type: ignore[arg-type]

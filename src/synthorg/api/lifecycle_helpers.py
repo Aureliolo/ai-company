@@ -57,14 +57,15 @@ async def _resolve_ticket_cleanup_interval(app_state: AppState) -> float:
         raise
     except MemoryError, RecursionError:
         raise
-    except Exception:
+    except Exception as exc:
         logger.warning(
             API_WS_TICKET_CLEANUP,
             error=(
                 "Failed to resolve ticket_cleanup_interval_seconds;"
                 " falling back to 60.0 seconds"
             ),
-            exc_info=True,
+            error_type=type(exc).__name__,
+            error_desc=safe_error_description(exc),
         )
         return 60.0
 
@@ -113,33 +114,36 @@ async def _run_cleanup_tick(app_state: AppState) -> None:
         app_state.ticket_store.cleanup_expired()
     except MemoryError, RecursionError:
         raise
-    except Exception:
+    except Exception as exc:
         logger.warning(
             API_WS_TICKET_CLEANUP,
             error="Periodic ticket cleanup failed",
-            exc_info=True,
+            error_type=type(exc).__name__,
+            error_desc=safe_error_description(exc),
         )
     try:
         if app_state.has_session_store:
             await app_state.session_store.cleanup_expired()
     except MemoryError, RecursionError:
         raise
-    except Exception:
+    except Exception as exc:
         logger.warning(
             API_SESSION_CLEANUP,
             error="Periodic session cleanup failed",
-            exc_info=True,
+            error_type=type(exc).__name__,
+            error_desc=safe_error_description(exc),
         )
     try:
         if app_state.has_lockout_store:
             await app_state.lockout_store.cleanup_expired()
     except MemoryError, RecursionError:
         raise
-    except Exception:
+    except Exception as exc:
         logger.warning(
             API_AUTH_LOCKOUT_CLEANUP,
             error="Periodic lockout cleanup failed",
-            exc_info=True,
+            error_type=type(exc).__name__,
+            error_desc=safe_error_description(exc),
         )
 
 

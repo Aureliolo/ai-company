@@ -16,8 +16,16 @@ import pytest
 from synthorg.providers.base import BaseCompletionProvider
 from synthorg.providers.enums import FinishReason, MessageRole
 from synthorg.providers.errors import (
+    AuthenticationError,
+    ContentFilterError,
+    DriverNotRegisteredError,
+    InvalidRequestError,
+    ModelNotFoundError,
     ProviderConnectionError,
+    ProviderInternalError,
+    ProviderTimeoutError,
     RateLimitError,
+    classify_provider_error,
 )
 from synthorg.providers.models import (
     ChatMessage,
@@ -124,12 +132,12 @@ async def test_complete_emits_provider_error_with_classification(
     with pytest.raises(RateLimitError):
         await provider.complete(
             [ChatMessage(role=MessageRole.USER, content="hi")],
-            "example-large-001",
+            "test-large-001",
         )
 
     recorder.assert_called_once_with(
         provider="errp",
-        model="example-large-001",
+        model="test-large-001",
         error_class="rate_limit",
     )
 
@@ -151,12 +159,12 @@ async def test_stream_emits_provider_error_with_classification(
     with pytest.raises(ProviderConnectionError):
         await provider.stream(
             [ChatMessage(role=MessageRole.USER, content="hi")],
-            "example-large-001",
+            "test-large-001",
         )
 
     recorder.assert_called_once_with(
         provider="errp",
-        model="example-large-001",
+        model="test-large-001",
         error_class="connection",
     )
 
@@ -174,7 +182,7 @@ async def test_success_does_not_emit_error_metric(
     provider = _SuccessProvider()
     result = await provider.complete(
         [ChatMessage(role=MessageRole.USER, content="hi")],
-        "example-large-001",
+        "test-large-001",
     )
     assert result.content == "hello"
     recorder.assert_not_called()
@@ -192,3 +200,47 @@ def test_provider_label_defaults_to_class_name() -> None:
 
     p = _Unbranded()
     assert p._provider_label() == "_Unbranded"
+
+
+# -- classify_provider_error mapping coverage (#1538) -----------------------
+#
+# Covers every ProviderError subclass in ``_ERROR_CLASS_MAP`` plus the
+# fallback paths for unmapped ``ProviderError`` subclasses and entirely
+# unknown exception types. Keeps the Prometheus label set bounded by
+# proof: any change to the map that loses a subclass mapping fails here.
+
+
+@pytest.mark.parametrize(
+    ("exc_factory", "expected_label"),
+    [
+        (lambda: RateLimitError("rate"), "rate_limit"),
+        (lambda: ProviderTimeoutError("slow"), "timeout"),
+        (lambda: ProviderConnectionError("no route"), "connection"),
+        (lambda: ProviderInternalError("5xx"), "internal"),
+        (lambda: InvalidRequestError("bad req"), "invalid_request"),
+        (lambda: AuthenticationError("no creds"), "auth"),
+        (lambda: ContentFilterError("blocked"), "content_filter"),
+        (lambda: ModelNotFoundError("missing"), "not_found"),
+    ],
+)
+def test_classify_provider_error_maps_every_canonical_subclass(
+    exc_factory: Any,
+    expected_label: str,
+) -> None:
+    """Each canonical ``ProviderError`` subclass maps to its bounded label."""
+    assert classify_provider_error(exc_factory()) == expected_label
+
+
+def test_classify_provider_error_unmapped_subclass_returns_other() -> None:
+    """``ProviderError`` subclasses outside the map fall into the ``other`` bucket."""
+    assert classify_provider_error(DriverNotRegisteredError("absent")) == "other"
+
+
+def test_classify_provider_error_unknown_exception_returns_other() -> None:
+    """Arbitrary non-``ProviderError`` exceptions also bucket to ``other``."""
+
+    class _NeverSeenError(Exception):
+        pass
+
+    assert classify_provider_error(_NeverSeenError("boom")) == "other"
+    assert classify_provider_error(ValueError("stdlib")) == "other"

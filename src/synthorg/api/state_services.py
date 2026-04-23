@@ -298,12 +298,21 @@ class AppStateServicesMixin:
         Mirrors the ``set_max_pending_per_user`` pattern used by the
         ticket store: ``_apply_bridge_config`` resolves the setting
         and calls this setter with the validated value, which is
-        then read by the ``/ws`` handler.
+        then read by the ``/ws`` handler. Bounds mirror the
+        ``ApiBridgeConfig.ws_auth_timeout_seconds`` Pydantic field;
+        the shared ``WS_AUTH_TIMEOUT_{MIN,MAX}_SECONDS`` constants
+        keep the two sites aligned (DRY).
         """
-        if value < 1.0 or value > 120.0:  # noqa: PLR2004
+        from synthorg.settings.bridge_configs import (  # noqa: PLC0415
+            WS_AUTH_TIMEOUT_MAX_SECONDS,
+            WS_AUTH_TIMEOUT_MIN_SECONDS,
+        )
+
+        if value < WS_AUTH_TIMEOUT_MIN_SECONDS or value > WS_AUTH_TIMEOUT_MAX_SECONDS:
             msg = (
-                "ws_auth_timeout_seconds must be between 1.0 and 120.0"
-                f" seconds, got {value}"
+                "ws_auth_timeout_seconds must be between"
+                f" {WS_AUTH_TIMEOUT_MIN_SECONDS} and"
+                f" {WS_AUTH_TIMEOUT_MAX_SECONDS} seconds, got {value}"
             )
             raise ValueError(msg)
         self._ws_auth_timeout_seconds = value
