@@ -13,7 +13,7 @@ from litestar.exceptions import ClientException, NotFoundException
 from litestar.status_codes import HTTP_409_CONFLICT, HTTP_501_NOT_IMPLEMENTED
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.api.dto import ApiResponse
+from synthorg.api.dto import ApiResponse, PaginatedResponse, PaginationMeta
 from synthorg.api.guards import HumanRole, require_roles
 from synthorg.api.rate_limits import per_op_concurrency, per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
@@ -310,13 +310,20 @@ class MemoryAdminController(Controller):
         state: State,
         limit: int = 50,
         offset: int = 0,
-    ) -> ApiResponse[tuple[CheckpointRecord, ...]]:
+    ) -> PaginatedResponse[CheckpointRecord]:
         """List fine-tuning checkpoints."""
         limit = min(max(limit, 1), 200)
         offset = max(offset, 0)
         service = _build_memory_service(state.app_state)
-        cps = await service.list_checkpoints(limit=limit, offset=offset)
-        return ApiResponse(data=cps)
+        cps, total = await service.list_checkpoints(limit=limit, offset=offset)
+        meta = PaginationMeta(
+            limit=limit,
+            offset=offset,
+            total=total,
+            has_more=(offset + len(cps)) < total,
+            next_cursor=None,
+        )
+        return PaginatedResponse(data=cps, pagination=meta)
 
     @post(
         "/fine-tune/checkpoints/{checkpoint_id:str}/deploy",

@@ -5,7 +5,7 @@ keyed by tool name (matching ``MCPToolDef.handler_key``).
 """
 
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from synthorg.meta.mcp.handlers.agents import AGENT_HANDLERS
 from synthorg.meta.mcp.handlers.analytics import ANALYTICS_HANDLERS
@@ -28,11 +28,11 @@ from synthorg.observability.events.mcp import MCP_HANDLERS_BUILT
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-    from synthorg.meta.mcp.invoker import ToolHandler
+    from synthorg.meta.mcp.handler_protocol import ToolHandler
 
 logger = get_logger(__name__)
 
-_ALL_HANDLER_MAPS: tuple[dict[str, Any], ...] = (
+_ALL_HANDLER_MAPS: tuple[Mapping[str, ToolHandler], ...] = (
     SIGNAL_HANDLERS,
     AGENT_HANDLERS,
     TASK_HANDLERS,

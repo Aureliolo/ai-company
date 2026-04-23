@@ -214,6 +214,86 @@ External tools are integrated via the **Model Context Protocol** (MCP).
   `isError` maps 1:1 to `is_error`
   ([Decision Log](../architecture/decisions.md) D18)
 
+### SynthOrg MCP Tool Surface
+
+SynthOrg exposes its own MCP server offering 204 tools across 15 domains
+(agents, tasks, workflows, approvals, budget, memory, quality, organization,
+communication, coordination, analytics, integrations, infrastructure, signals,
+meta). Tool definitions are classified by capability action via the
+`read_tool` / `write_tool` / `admin_tool` builders
+(`src/synthorg/meta/mcp/tool_builder.py`); only the `admin_tool` subset is
+destructive and subject to the guardrail triple. Every tool is handled by an
+async function in `src/synthorg/meta/mcp/handlers/<domain>.py`; handlers shim
+onto the existing service layer rather than reimplementing business logic.
+
+**Handler Protocol.** Every handler implements
+`ToolHandler.__call__(*, app_state, arguments, actor: AgentIdentity | None = None) -> str`
+(see `src/synthorg/meta/mcp/invoker.py`). The `actor` argument threads the
+calling agent identity through the invoker so destructive-op guardrails can
+enforce attribution; handlers that don't care about identity accept it and
+ignore it.
+
+**Envelope Contract.** Every handler returns a JSON string. Success envelope
+(data is always present, pagination appears only on list/collection responses):
+
+```json
+{
+  "status": "ok",
+  "data": {"example": "payload"},
+  "pagination": {"total": 100, "offset": 0, "limit": 50}
+}
+```
+
+Handler-caught error envelope (domain_code identifies the error class for
+programmatic dispatch):
+
+```json
+{
+  "status": "error",
+  "error_type": "ArgumentValidationError",
+  "message": "Argument 'approval_id' missing or not a non-blank string",
+  "domain_code": "invalid_argument"
+}
+```
+
+Shared envelope builders live in `src/synthorg/meta/mcp/handlers/common.py`:
+
+- `ok(data, *, pagination=None)` -- success envelope with optional
+  `PaginationMeta` metadata (frozen Pydantic model, `allow_inf_nan=False`).
+- `err(exc, *, domain_code=None)` -- error envelope; `message` always goes
+  through `safe_error_description(exc)` (SEC-1) and `domain_code` falls back
+  to `exc.domain_code` when present.
+- `not_supported(tool_name, reason)` -- stable `status="error"` /
+  `domain_code="not_supported"` envelope for tools whose service facade is
+  not yet wired. Emits the `MCP_HANDLER_NOT_IMPLEMENTED` WARNING event so
+  operators can alert on unwired tools.
+- `require_arg(arguments, key, ty)` -- typed required-argument extraction
+  that raises `ArgumentValidationError` (ruff `EM101`-safe) on missing or
+  mistyped input.
+- `require_destructive_guardrails(arguments, actor)` -- single source of
+  truth for the destructive-op precondition triple: non-`None` `actor`,
+  literal `confirm=True`, non-blank `reason`. Raises
+  `GuardrailViolationError` with a typed `violation` code
+  (`"missing_actor"` / `"missing_confirm"` / `"missing_reason"`).
+
+**Domain Codes.** Handlers set stable wire codes so callers can dispatch
+programmatically: `invalid_argument`, `guardrail_violated`, `not_supported`,
+`not_found`, `conflict` (e.g. active-checkpoint delete), plus any
+domain-specific codes set via the `domain_code` kwarg on `err(...)`.
+
+**Registry Immutability.** Each domain handler module exports an
+`XXX_HANDLERS: Mapping[str, ToolHandler]` constant wrapped in
+`MappingProxyType` to enforce read-only access;
+`build_handler_map()` in `src/synthorg/meta/mcp/handlers/__init__.py`
+merges them and raises on duplicate keys.
+
+**Schema-Level Validation.** Destructive-op schemas in
+`src/synthorg/meta/mcp/domains/*.py` enforce the `reason` field as a
+non-whitespace string via `"minLength": 1` + `"pattern": r".*\S.*"`, and the
+`confirm` field as literal `True` via JSON Schema `"enum": [True]`. Handler
+guardrails run regardless so validation stays uniform once services come
+online.
+
 ## Progressive Tool Disclosure
 
 When the tool inventory exceeds ~30 tools, loading every full definition into the LLM

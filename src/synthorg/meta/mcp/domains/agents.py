@@ -6,6 +6,7 @@ Covers agents, personalities, and training controllers.
 from typing import TYPE_CHECKING
 
 from synthorg.meta.mcp.tool_builder import (
+    DESTRUCTIVE_GUARDRAIL_PROPERTIES,
     PAGINATION_PROPERTIES,
     admin_tool,
     read_tool,
@@ -50,12 +51,12 @@ AGENT_TOOLS: tuple[MCPToolDef, ...] = (
         },
         required=("agent_name", "updates"),
     ),
-    write_tool(
+    admin_tool(
         "agents",
         "delete",
-        "Remove an agent from the organization.",
-        _AGENT_NAME,
-        required=("agent_name",),
+        "Remove an agent from the organization (destructive; requires confirm).",
+        {**_AGENT_NAME, **DESTRUCTIVE_GUARDRAIL_PROPERTIES},
+        required=("agent_name", "reason", "confirm"),
     ),
     # --- Agent observability ---
     read_tool(

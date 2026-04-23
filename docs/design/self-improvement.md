@@ -101,9 +101,11 @@ src/synthorg/meta/
     registry.py        -- MCPToolDef model + DomainToolRegistry
     scoping.py         -- MCPToolScoper (wildcard capability matching)
     invoker.py         -- MCPToolInvoker (handler dispatch + error mapping)
+    errors.py          -- ArgumentValidationError + GuardrailViolationError
     tool_builder.py    -- read_tool / write_tool / admin_tool builders
-    domains/           -- 15 domain tool definition modules (~204 tools)
-    handlers/          -- 15 domain handler modules + common factory
+    domains/           -- 15 domain tool definition modules (204 tools)
+    handlers/          -- 15 domain handler modules + common envelope helpers
+                         (ok / err / not_supported / require_destructive_guardrails)
 
   chief_of_staff/      -- Interactive agent role + advanced capabilities
     role.py            -- CustomRole definition

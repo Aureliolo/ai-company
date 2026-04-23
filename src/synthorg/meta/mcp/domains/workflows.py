@@ -6,7 +6,9 @@ Covers workflows, subworkflows, workflow executions, and workflow versions.
 from typing import TYPE_CHECKING
 
 from synthorg.meta.mcp.tool_builder import (
+    DESTRUCTIVE_GUARDRAIL_PROPERTIES,
     PAGINATION_PROPERTIES,
+    admin_tool,
     read_tool,
     write_tool,
 )
@@ -46,14 +48,15 @@ WORKFLOW_TOOLS: tuple[MCPToolDef, ...] = (
         },
         required=("workflow_id", "updates"),
     ),
-    write_tool(
+    admin_tool(
         "workflows",
         "delete",
-        "Delete a workflow definition.",
+        "Delete a workflow definition (destructive; requires confirm).",
         {
             "workflow_id": {"type": "string", "description": "Workflow UUID"},
+            **DESTRUCTIVE_GUARDRAIL_PROPERTIES,
         },
-        required=("workflow_id",),
+        required=("workflow_id", "reason", "confirm"),
     ),
     read_tool(
         "workflows",
@@ -95,14 +98,15 @@ WORKFLOW_TOOLS: tuple[MCPToolDef, ...] = (
         },
         required=("workflow_id", "name"),
     ),
-    write_tool(
+    admin_tool(
         "subworkflows",
         "delete",
-        "Delete a subworkflow.",
+        "Delete a subworkflow (destructive; requires confirm).",
         {
             "subworkflow_id": {"type": "string", "description": "Subworkflow UUID"},
+            **DESTRUCTIVE_GUARDRAIL_PROPERTIES,
         },
-        required=("subworkflow_id",),
+        required=("subworkflow_id", "reason", "confirm"),
     ),
     # --- Workflow executions ---
     read_tool(
@@ -134,14 +138,15 @@ WORKFLOW_TOOLS: tuple[MCPToolDef, ...] = (
         },
         required=("workflow_id",),
     ),
-    write_tool(
+    admin_tool(
         "workflow_executions",
         "cancel",
-        "Cancel a running workflow execution.",
+        "Cancel a running workflow execution (destructive; requires confirm).",
         {
             "execution_id": {"type": "string", "description": "Execution UUID"},
+            **DESTRUCTIVE_GUARDRAIL_PROPERTIES,
         },
-        required=("execution_id",),
+        required=("execution_id", "reason", "confirm"),
     ),
     # --- Workflow versions ---
     read_tool(

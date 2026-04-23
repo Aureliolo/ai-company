@@ -31,6 +31,33 @@ PAGINATION_PROPERTIES: dict[str, Any] = {
 """Shared pagination schema with bounds for all domain list tools."""
 
 
+DESTRUCTIVE_GUARDRAIL_PROPERTIES: dict[str, Any] = {
+    "reason": {
+        "type": "string",
+        "description": "Reason for the destructive action (non-blank)",
+        "minLength": 1,
+        "pattern": r".*\S.*",
+    },
+    "confirm": {
+        "type": "boolean",
+        "description": "Must be true to proceed",
+        "enum": [True],
+    },
+}
+"""Shared ``reason`` + ``confirm`` schema for every ``admin_tool`` destructive op.
+
+Every destructive tool's admin schema spreads ``**DESTRUCTIVE_GUARDRAIL_PROPERTIES``
+into its ``properties`` dict and lists ``"reason"`` + ``"confirm"`` in
+``required``, so the wire-level contract (non-whitespace reason, literal
+``True`` confirm) stays uniform across every delete/cancel/reject tool and
+matches the ``require_destructive_guardrails()`` handler-side check exactly.
+"""
+
+
+DESTRUCTIVE_GUARDRAIL_REQUIRED: tuple[str, ...] = ("reason", "confirm")
+"""Required-field names that accompany :data:`DESTRUCTIVE_GUARDRAIL_PROPERTIES`."""
+
+
 def _make_parameters(
     properties: dict[str, Any] | None = None,
     *,

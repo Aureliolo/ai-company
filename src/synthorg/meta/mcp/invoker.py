@@ -6,9 +6,10 @@ registered handler functions, with structured error mapping.
 
 import json
 from copy import deepcopy
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any
 
-from synthorg.observability import get_logger
+from synthorg.meta.mcp.handler_protocol import ToolHandler
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.mcp import (
     MCP_SERVER_INVOKE_FAILED,
     MCP_SERVER_INVOKE_START,
@@ -19,34 +20,13 @@ from synthorg.tools.base import ToolExecutionResult
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
+    from synthorg.core.agent import AgentIdentity
     from synthorg.meta.mcp.registry import DomainToolRegistry
 
 logger = get_logger(__name__)
 
 
-class ToolHandler(Protocol):
-    """Protocol for MCP tool handler functions.
-
-    Handlers receive the application state and parsed arguments,
-    returning a JSON-serialized string result.
-    """
-
-    async def __call__(
-        self,
-        *,
-        app_state: Any,
-        arguments: dict[str, Any],
-    ) -> str:
-        """Execute the tool logic.
-
-        Args:
-            app_state: Application state providing service access.
-            arguments: Parsed tool arguments from the MCP call.
-
-        Returns:
-            JSON-serialized result string.
-        """
-        ...
+__all__ = ["MCPToolInvoker", "ToolHandler"]
 
 
 class MCPToolInvoker:
@@ -75,6 +55,7 @@ class MCPToolInvoker:
         arguments: dict[str, Any],
         *,
         app_state: Any,
+        actor: AgentIdentity | None = None,
     ) -> ToolExecutionResult:
         """Dispatch a tool invocation to its handler.
 
@@ -89,6 +70,11 @@ class MCPToolInvoker:
             tool_name: Name of the MCP tool to invoke.
             arguments: Tool call arguments.
             app_state: Application state for service access.
+            actor: Calling agent identity (typically
+                ``AgentIdentity``), threaded to the handler for
+                destructive-op attribution.  Defaults to ``None``;
+                destructive handlers will reject with a
+                ``guardrail_violated`` error envelope.
 
         Returns:
             ``ToolExecutionResult`` with the handler's JSON output
@@ -133,17 +119,21 @@ class MCPToolInvoker:
             result = await handler(
                 app_state=app_state,
                 arguments=deepcopy(arguments),
+                actor=actor,
             )
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
             error_type = type(exc).__name__
+            # SEC-1: safe_error_description avoids leaking secrets that
+            # str(exc) would expose (httpx POST bodies, Fernet payloads,
+            # OAuth refresh tokens).  exc_info is intentionally omitted
+            # for the same reason -- frame locals can carry credentials.
             logger.warning(
                 MCP_SERVER_INVOKE_FAILED,
                 tool_name=tool_name,
-                error=str(exc),
                 error_type=error_type,
-                exc_info=exc,
+                error=safe_error_description(exc),
             )
             return ToolExecutionResult(
                 content=json.dumps(

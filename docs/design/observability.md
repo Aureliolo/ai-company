@@ -175,6 +175,23 @@ api, budget, risk_budget, reporting, blueprint, workflow_version, tool, git, eng
 (e.g., `API_REQUEST_STARTED`, `BUDGET_RECORD_ADDED`) for consistent, grep-friendly event
 names. Format: `"<domain>.<noun>.<verb>"` (e.g., `"api.request.started"`).
 
+**MCP handler events (`observability/events/mcp.py`):**
+
+| Constant | Level | When fired |
+|----------|-------|------------|
+| `MCP_SERVER_INVOKE_START` | DEBUG | Invoker dispatches a tool call. |
+| `MCP_SERVER_INVOKE_SUCCESS` | DEBUG | Handler returned without exception. |
+| `MCP_SERVER_INVOKE_FAILED` | WARNING | Tool/handler not found, or handler raised an uncaught exception. |
+| `MCP_HANDLER_INVOKE_SUCCESS` | INFO | Handler completed its service shim successfully (state transition -- every tool invocation that mutates or produces a result is auditable). |
+| `MCP_HANDLER_INVOKE_FAILED` | WARNING | Handler caught a service-layer or domain error and returned an `err(...)` envelope. |
+| `MCP_HANDLER_ARGUMENT_INVALID` | WARNING | Caller input failed `require_arg` / pagination / enum coercion; returned `domain_code="invalid_argument"`. |
+| `MCP_HANDLER_GUARDRAIL_VIOLATED` | WARNING | Destructive-op guardrail rejected the call (missing `confirm`/`reason`/`actor`); returned `domain_code="guardrail_violated"`. |
+| `MCP_DESTRUCTIVE_OP_EXECUTED` | INFO | Audit trail for a successful destructive operation; carries `actor_agent_id`, `reason`, and the target id. |
+| `MCP_HANDLER_NOT_IMPLEMENTED` | WARNING | Handler returned `not_supported` -- the MCP tool is registered but no service facade is wired yet. |
+| `MCP_HANDLERS_BUILT` | DEBUG (ERROR on duplicate key) | Handler registry successfully composed from the 15 domain modules. |
+
+All MCP handler log calls go through `logger.warning(EVENT, error_type=type(exc).__name__, error=safe_error_description(exc))` on credential-sensitive paths -- never `logger.exception(..., error=str(exc))` -- to avoid leaking secrets through traceback frame-locals (SEC-1).
+
 ### Uvicorn Integration
 
 Uvicorn's default access logger is **disabled** (`access_log=False`, `log_config=None`).

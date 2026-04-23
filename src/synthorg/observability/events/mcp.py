@@ -42,3 +42,14 @@ MCP_HANDLER_NOT_IMPLEMENTED: Final[str] = "mcp.handler.not_implemented"
 MCP_REGISTRY_BUILT: Final[str] = "mcp.registry.built"
 MCP_HANDLERS_BUILT: Final[str] = "mcp.handlers.built"
 MCP_TOOL_BUILDER_INVALID_REQUIRED: Final[str] = "mcp.tool_builder.invalid_required"
+
+# Handler-side events emitted by real (non-placeholder) tool handlers.
+# Every service-shim handler logs one of these; the ``MCP_SERVER_*`` set
+# above covers the invoker layer.  ``MCP_HANDLER_NOT_IMPLEMENTED`` is
+# declared once at the ``MCP_SERVER_INVOKE_*`` block above.
+MCP_HANDLER_INVOKE_SUCCESS: Final[str] = "mcp.handler.invoke_success"
+MCP_HANDLER_INVOKE_FAILED: Final[str] = "mcp.handler.invoke_failed"
+MCP_HANDLER_GUARDRAIL_VIOLATED: Final[str] = "mcp.handler.guardrail_violated"
+MCP_HANDLER_ARGUMENT_INVALID: Final[str] = "mcp.handler.argument_invalid"
+MCP_HANDLER_SERVICE_FALLBACK: Final[str] = "mcp.handler.service_fallback"
+MCP_DESTRUCTIVE_OP_EXECUTED: Final[str] = "mcp.destructive_op.executed"

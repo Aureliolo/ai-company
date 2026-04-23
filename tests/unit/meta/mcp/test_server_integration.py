@@ -113,17 +113,23 @@ class TestFullStackInvocation:
     """End-to-end invocation through all layers."""
 
     async def test_invoke_via_unified_server(self) -> None:
+        """End-to-end dispatch through registry + invoker.
+
+        Uses an unknown tool name so the invoker's not-found branch is
+        exercised without needing a live ``app_state`` or depending on
+        any handler being a placeholder.
+        """
         registry = get_registry()
         handlers = build_handler_map()
         invoker = MCPToolInvoker(registry, handlers)
         result = await invoker.invoke(
-            "synthorg_agents_list",
-            {"offset": 0, "limit": 10},
+            "synthorg_does_not_exist",
+            {},
             app_state=None,
         )
-        assert result.is_error is False
+        assert result.is_error is True
         body = json.loads(result.content)
-        assert body["tool"] == "synthorg_agents_list"
+        assert "Unknown tool" in body["error"]
 
     def test_server_config_complete(self) -> None:
         config = get_server_config()
