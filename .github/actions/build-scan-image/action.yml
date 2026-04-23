@@ -245,9 +245,16 @@ runs:
       run: |
         SHORT_SHA="${GITHUB_SHA::7}"
         if [ "$EVENT_NAME" = "pull_request" ]; then
+          # PR path builds with `load: true` + metadata tags; the
+          # sha-<short> entry from type=sha,prefix=sha- is the canonical
+          # reference.
           echo "ref=ghcr.io/aureliolo/synthorg-${IMAGE_NAME}:sha-${SHORT_SHA}" >> "$GITHUB_OUTPUT"
         else
-          echo "ref=ghcr.io/aureliolo/synthorg-${IMAGE_NAME}:sha-${GITHUB_SHA}-amd64" >> "$GITHUB_OUTPUT"
+          # Non-PR path loads the tarball under its internal
+          # `scan-<full-sha>-amd64` tag; scans target that exact loaded
+          # image. The public `sha-<short>-*` / semver tags come later
+          # when publish-image re-tags + pushes.
+          echo "ref=ghcr.io/aureliolo/synthorg-${IMAGE_NAME}:scan-${GITHUB_SHA}-amd64" >> "$GITHUB_OUTPUT"
         fi
 
     - name: Report image size
