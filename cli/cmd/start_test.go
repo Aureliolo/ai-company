@@ -164,3 +164,49 @@ func TestDockerPullWithRetryBackoff(t *testing.T) {
 		t.Errorf("retry backoff not applied: elapsed=%v, expected at least 10ms", elapsed)
 	}
 }
+
+func TestComputePullBackoff(t *testing.T) {
+	// Direct unit tests for the overflow-guarded exponential backoff
+	// helper.  HYG-2 introduced the 5-minute saturation ceiling to
+	// guard against int64 overflow at high attempt counts; without
+	// dedicated coverage, a regression in the shift-loop math would
+	// only surface via the integration retry test which is
+	// deliberately capped at 2s for speed.
+	const ceiling = 5 * time.Minute
+
+	tests := []struct {
+		name      string
+		baseDelay time.Duration
+		attempt   int
+		want      time.Duration
+	}{
+		{"attempt_1_no_shift", 2 * time.Second, 1, 2 * time.Second},
+		{"attempt_2_doubles", 2 * time.Second, 2, 4 * time.Second},
+		{"attempt_3_quadruples", 2 * time.Second, 3, 8 * time.Second},
+		{"attempt_4_octuples", 2 * time.Second, 4, 16 * time.Second},
+		{"attempt_8_saturates_below_ceiling", 2 * time.Second, 8, 256 * time.Second},
+		{"attempt_9_hits_ceiling", 2 * time.Second, 9, ceiling},
+		{"attempt_max_saturates", 2 * time.Second, 100, ceiling},
+		{"zero_base_collapses_to_ceiling", 0, 1, ceiling},
+		{"negative_base_collapses_to_ceiling", -time.Second, 5, ceiling},
+		{"zero_attempt_is_treated_as_one", 2 * time.Second, 0, 2 * time.Second},
+		{"negative_attempt_is_treated_as_one", 2 * time.Second, -5, 2 * time.Second},
+		{"small_base_small_attempt", 10 * time.Millisecond, 3, 40 * time.Millisecond},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := computePullBackoff(tc.baseDelay, tc.attempt)
+			if got != tc.want {
+				t.Errorf("computePullBackoff(%v, %d) = %v, want %v",
+					tc.baseDelay, tc.attempt, got, tc.want)
+			}
+			if got > ceiling {
+				t.Errorf("computePullBackoff exceeded ceiling: got %v", got)
+			}
+			if got < 0 {
+				t.Errorf("computePullBackoff returned negative duration (overflow?): %v", got)
+			}
+		})
+	}
+}

@@ -12,6 +12,7 @@ Operator overrides continue to flow through
 the runtime tuning surface.
 """
 
+import copy
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Final
 
@@ -151,7 +152,7 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
 }
 
 RATE_LIMIT_POLICIES: Final[Mapping[str, tuple[int, int]]] = MappingProxyType(
-    _POLICIES,
+    copy.deepcopy(_POLICIES),
 )
 """Immutable view of the per-operation rate-limit policy registry."""
 

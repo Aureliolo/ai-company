@@ -1,6 +1,7 @@
 """Docker sandbox configuration model."""
 
 import os
+import re
 from typing import Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -26,6 +27,12 @@ _SANDBOX_IMAGE_ENV_VAR = "SYNTHORG_SANDBOX_IMAGE"
 _FALLBACK_SANDBOX_IMAGE = "ghcr.io/aureliolo/synthorg-sandbox:latest"
 _SIDECAR_IMAGE_ENV_VAR = "SYNTHORG_SIDECAR_IMAGE"
 _FALLBACK_SIDECAR_IMAGE = "ghcr.io/aureliolo/synthorg-sidecar:latest"
+
+# Docker tmpfs size syntax: positive integer, optional k/m/g suffix
+# (case-insensitive).  Rejects leading zeros, negatives, and unknown
+# suffixes so malformed values fail at config-load time rather than
+# surfacing as opaque Docker API errors at container creation.
+_TMPFS_SIZE_PATTERN = re.compile(r"^[1-9]\d*[kmg]?$", re.IGNORECASE)
 
 
 def _default_sandbox_image() -> str:
@@ -244,6 +251,34 @@ class DockerSandboxConfig(BaseModel):
             msg = f"Memory limit must be positive, got: {self.memory_limit!r}"
             logger.warning(CONFIG_VALIDATION_FAILED, field="memory_limit", reason=msg)
             raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_tmpfs_sizes(self) -> Self:
+        """Validate that tmpfs_size fields use Docker-compatible syntax.
+
+        Both ``tmpfs_size`` and ``sidecar_tmpfs_size`` are interpolated
+        directly into Docker tmpfs mount specs, so fail fast at config
+        load time rather than surfacing as an opaque Docker API error
+        during container creation.  Accepts a positive integer with an
+        optional ``k``/``m``/``g`` suffix (case-insensitive); rejects
+        leading zeros, negatives, zero, and unknown suffixes.
+        """
+        for field_name, value in (
+            ("tmpfs_size", self.tmpfs_size),
+            ("sidecar_tmpfs_size", self.sidecar_tmpfs_size),
+        ):
+            if _TMPFS_SIZE_PATTERN.fullmatch(value.strip()) is None:
+                msg = (
+                    f"{field_name} must be a positive integer with an "
+                    f"optional k/m/g suffix, got: {value!r}"
+                )
+                logger.warning(
+                    CONFIG_VALIDATION_FAILED,
+                    field=field_name,
+                    reason=msg,
+                )
+                raise ValueError(msg)
         return self
 
     @model_validator(mode="after")

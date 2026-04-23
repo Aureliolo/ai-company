@@ -439,3 +439,11 @@ class TestA2AClientTimeoutContract:
             timeout_seconds=_A2A_DEFAULT_TIMEOUT,
         )
         assert client is not None  # constructed without error
+
+    @pytest.mark.unit
+    def test_construct_with_positional_timeout_raises(self) -> None:
+        # The `*` kw-only marker on __init__ prevents callers from
+        # passing timeout positionally, which would reintroduce the
+        # silent-default drift this contract is meant to prevent.
+        with pytest.raises(TypeError):
+            A2AClient(_mock_catalog(), _A2A_DEFAULT_TIMEOUT)  # type: ignore[misc]

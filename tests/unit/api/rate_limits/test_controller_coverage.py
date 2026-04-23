@@ -72,9 +72,9 @@ def test_every_policy_lookup_resolves() -> None:
     for path in _controller_files():
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         for node in ast.walk(tree):
-            if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)):
+            if not isinstance(node, ast.Call):
                 continue
-            if node.func.id != "per_op_rate_limit_from_policy":
+            if _call_target_name(node) != "per_op_rate_limit_from_policy":
                 continue
             if not node.args:
                 continue

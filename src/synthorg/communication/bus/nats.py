@@ -19,7 +19,6 @@ synthorg[distributed]``). Importing this module raises
 ``ImportError`` if the package is not installed.
 """
 
-import math
 from collections.abc import Sequence  # noqa: TC003
 from typing import TYPE_CHECKING
 
@@ -133,12 +132,15 @@ class JetStreamMessageBus:
         if client is None or not client.is_connected:
             return False
         try:
-            # nats-py's flush() takes an integer timeout.  Round up so a
-            # fractional budget (e.g. 2.5s) never collapses to zero,
-            # which would make the probe report healthy without
-            # actually waiting on an ack.
-            timeout_int = math.ceil(state.nats_config.health_flush_timeout_seconds)
-            await client.flush(timeout=timeout_int)
+            # nats-py's flush() is annotated `timeout: int`, but the
+            # runtime call forwards to ``asyncio.wait_for`` which accepts
+            # floats.  Pass the configured float directly to preserve
+            # sub-second precision (useful for tight probe budgets and
+            # deterministic tests); type: ignore is for the upstream
+            # annotation only.
+            await client.flush(
+                timeout=state.nats_config.health_flush_timeout_seconds,  # type: ignore[arg-type]
+            )
         except MemoryError, RecursionError:
             raise
         except Exception as exc:

@@ -592,17 +592,14 @@ class TestNatsConfigHealthFlushTimeout:
         # pure refactor -- zero behaviour change on day one.
         assert NatsConfig().health_flush_timeout_seconds == 2.0
 
-    def test_zero_rejected(self) -> None:
+    @pytest.mark.parametrize(
+        "value",
+        [0.0, -0.5, 30.1],
+        ids=["zero", "negative", "above_ceiling"],
+    )
+    def test_out_of_range_rejected(self, value: float) -> None:
         with pytest.raises(ValidationError, match="health_flush_timeout_seconds"):
-            NatsConfig(health_flush_timeout_seconds=0.0)
-
-    def test_negative_rejected(self) -> None:
-        with pytest.raises(ValidationError, match="health_flush_timeout_seconds"):
-            NatsConfig(health_flush_timeout_seconds=-0.5)
-
-    def test_exceeds_ceiling_rejected(self) -> None:
-        with pytest.raises(ValidationError, match="health_flush_timeout_seconds"):
-            NatsConfig(health_flush_timeout_seconds=30.1)
+            NatsConfig(health_flush_timeout_seconds=value)
 
     def test_at_ceiling_accepted(self) -> None:
         cfg = NatsConfig(health_flush_timeout_seconds=30.0)

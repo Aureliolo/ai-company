@@ -223,6 +223,10 @@ class TestDockerSandboxConfigBounds:
         with pytest.raises(ValidationError, match="sidecar_pids_limit"):
             DockerSandboxConfig(sidecar_pids_limit=0)
 
+    def test_sidecar_pids_limit_exceeds_max_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="sidecar_pids_limit"):
+            DockerSandboxConfig(sidecar_pids_limit=1025)
+
     def test_blank_tmpfs_size_rejected(self) -> None:
         with pytest.raises(ValidationError):
             DockerSandboxConfig(tmpfs_size="")
@@ -230,6 +234,31 @@ class TestDockerSandboxConfigBounds:
     def test_blank_sidecar_tmpfs_size_rejected(self) -> None:
         with pytest.raises(ValidationError):
             DockerSandboxConfig(sidecar_tmpfs_size="")
+
+    @pytest.mark.parametrize(
+        "value",
+        ["064m", "-5m", "1t", "abc", "1.5g", "0"],
+    )
+    def test_malformed_tmpfs_size_rejected(self, value: str) -> None:
+        with pytest.raises(ValidationError, match="tmpfs_size"):
+            DockerSandboxConfig(tmpfs_size=value)
+
+    @pytest.mark.parametrize(
+        "value",
+        ["064m", "-5m", "1t", "abc", "1.5g", "0"],
+    )
+    def test_malformed_sidecar_tmpfs_size_rejected(self, value: str) -> None:
+        with pytest.raises(ValidationError, match="sidecar_tmpfs_size"):
+            DockerSandboxConfig(sidecar_tmpfs_size=value)
+
+    @pytest.mark.parametrize(
+        "value",
+        ["1", "1k", "64m", "8G", "1024K", "512M"],
+    )
+    def test_well_formed_tmpfs_size_accepted(self, value: str) -> None:
+        config = DockerSandboxConfig(tmpfs_size=value, sidecar_tmpfs_size=value)
+        assert config.tmpfs_size == value
+        assert config.sidecar_tmpfs_size == value
 
     def test_custom_pids_and_tmpfs_accepted(self) -> None:
         # Operators tightening or widening the limits should work

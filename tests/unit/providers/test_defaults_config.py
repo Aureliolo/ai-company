@@ -22,17 +22,14 @@ class TestProviderModelDefaults:
         with pytest.raises(ValidationError):
             cfg.fallback_max_output_tokens = 8192  # type: ignore[misc]
 
-    def test_zero_rejected(self) -> None:
+    @pytest.mark.parametrize(
+        "value",
+        [0, -1, 32_769],
+        ids=["zero", "negative", "above_ceiling"],
+    )
+    def test_invalid_fallback_max_output_tokens(self, value: int) -> None:
         with pytest.raises(ValidationError, match="fallback_max_output_tokens"):
-            ProviderModelDefaults(fallback_max_output_tokens=0)
-
-    def test_negative_rejected(self) -> None:
-        with pytest.raises(ValidationError, match="fallback_max_output_tokens"):
-            ProviderModelDefaults(fallback_max_output_tokens=-1)
-
-    def test_exceeds_ceiling_rejected(self) -> None:
-        with pytest.raises(ValidationError, match="fallback_max_output_tokens"):
-            ProviderModelDefaults(fallback_max_output_tokens=32_769)
+            ProviderModelDefaults(fallback_max_output_tokens=value)
 
     def test_at_ceiling_accepted(self) -> None:
         cfg = ProviderModelDefaults(fallback_max_output_tokens=32_768)

@@ -4,6 +4,7 @@ Analyzes cross-deployment patterns and suggests threshold
 adjustments for built-in rules based on observed outcomes.
 """
 
+import copy
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Final
 
@@ -23,6 +24,11 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 # Pattern-level thresholds that gate relax / tighten recommendations.
+# Empirically tuned from v0.6.x rollout data: 0.7 approval / success
+# marks "proposals are landing cleanly" (relax candidate), 0.3 approval
+# marks "proposals are being routinely rejected" (tighten candidate).
+# Both bounds are deliberate -- adjust here rather than duplicating
+# inline in the recommendation logic below.
 _HIGH_APPROVAL_RATE: Final[float] = 0.7
 _HIGH_SUCCESS_RATE: Final[float] = 0.7
 _LOW_APPROVAL_RATE: Final[float] = 0.3
@@ -51,29 +57,34 @@ _TIGHTEN_CONFIDENCE_DIVISOR: Final[float] = 20.0
 # Mapping of rule names to their configurable threshold fields
 # and current defaults. Used to generate concrete recommendations.
 _RULE_THRESHOLD_MAP: Mapping[str, tuple[str, float]] = MappingProxyType(
-    {
-        "quality_declining": ("quality_drop_threshold", _QUALITY_DROP_DEFAULT),
-        "success_rate_drop": ("success_rate_threshold", _SUCCESS_RATE_DEFAULT),
-        "budget_overrun": (
-            "days_until_exhausted_threshold",
-            _BUDGET_OVERRUN_DAYS_DEFAULT,
-        ),
-        "coordination_cost_ratio": (
-            "coordination_ratio_threshold",
-            _COORDINATION_RATIO_DEFAULT,
-        ),
-        "coordination_overhead": ("overhead_pct_threshold", _OVERHEAD_PCT_DEFAULT),
-        "straggler_bottleneck": (
-            "straggler_gap_ratio_threshold",
-            _STRAGGLER_GAP_RATIO_DEFAULT,
-        ),
-        "redundancy": ("redundancy_rate_threshold", _REDUNDANCY_RATE_DEFAULT),
-        "scaling_failure": (
-            "scaling_failure_rate_threshold",
-            _SCALING_FAILURE_RATE_DEFAULT,
-        ),
-        "error_spike": ("error_findings_threshold", _ERROR_FINDINGS_DEFAULT),
-    },
+    copy.deepcopy(
+        {
+            "quality_declining": ("quality_drop_threshold", _QUALITY_DROP_DEFAULT),
+            "success_rate_drop": ("success_rate_threshold", _SUCCESS_RATE_DEFAULT),
+            "budget_overrun": (
+                "days_until_exhausted_threshold",
+                _BUDGET_OVERRUN_DAYS_DEFAULT,
+            ),
+            "coordination_cost_ratio": (
+                "coordination_ratio_threshold",
+                _COORDINATION_RATIO_DEFAULT,
+            ),
+            "coordination_overhead": (
+                "overhead_pct_threshold",
+                _OVERHEAD_PCT_DEFAULT,
+            ),
+            "straggler_bottleneck": (
+                "straggler_gap_ratio_threshold",
+                _STRAGGLER_GAP_RATIO_DEFAULT,
+            ),
+            "redundancy": ("redundancy_rate_threshold", _REDUNDANCY_RATE_DEFAULT),
+            "scaling_failure": (
+                "scaling_failure_rate_threshold",
+                _SCALING_FAILURE_RATE_DEFAULT,
+            ),
+            "error_spike": ("error_findings_threshold", _ERROR_FINDINGS_DEFAULT),
+        },
+    ),
 )
 
 

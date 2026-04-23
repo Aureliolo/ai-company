@@ -206,6 +206,12 @@ def _detect_spike_anomaly(  # noqa: PLR0913
     )
 
 
+# Deviation factors expressed in units of standard deviation (sigma)
+# when applied to cost / token aggregates.  3.0 sigma (~0.3% tail under
+# a normal distribution) is the canonical outlier threshold for HIGH;
+# 2.0 sigma (~2.3% tail) is MEDIUM.  Tuned for cost-anomaly detection
+# -- raise the bars to reduce alert fatigue, lower them to catch
+# smaller drifts.
 _SEVERITY_HIGH_DEVIATION: Final[float] = 3.0
 _SEVERITY_MEDIUM_DEVIATION: Final[float] = 2.0
 

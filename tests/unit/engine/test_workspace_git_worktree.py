@@ -964,6 +964,30 @@ class TestGetBaseSources:
                 ("src/main.py",),
             )
 
+    @pytest.mark.unit
+    @pytest.mark.parametrize("concurrency", [0, -1])
+    async def test_non_positive_concurrency_raises(
+        self,
+        concurrency: int,
+    ) -> None:
+        """Non-positive concurrency must fail loud.
+
+        ``asyncio.Semaphore(0)`` deadlocks every fetch task; negative
+        values raise at Semaphore construction but the error message
+        is opaque.  Validate at call time instead.
+        """
+        mock_run_git = AsyncMock()
+        with pytest.raises(
+            ValueError,
+            match=r"concurrency must be > 0",
+        ):
+            await get_base_sources(
+                mock_run_git,
+                "abc123",
+                ("src/main.py",),
+                concurrency=concurrency,
+            )
+
 
 # ---------------------------------------------------------------------------
 # _run_semantic_analysis

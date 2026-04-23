@@ -520,6 +520,17 @@ func (s State) validateTunables() error {
 		if parsed <= 0 {
 			return fmt.Errorf("invalid %s %q: must be > 0", d.name, d.value)
 		}
+		// image_verify_timeout has an additional floor: shorter values
+		// would bypass cosign/SLSA verification by silently timing out
+		// before network I/O completes.  Catch it at state-load time so
+		// a persisted config.json fails loudly here rather than deep
+		// inside ResolveTunables on the next `start`.
+		if d.name == "image_verify_timeout" && parsed < MinImageVerifyTimeout {
+			return fmt.Errorf(
+				"invalid %s %q: %v is below the %v minimum floor; a shorter timeout would bypass cosign/SLSA verification by silently timing out",
+				d.name, d.value, parsed, MinImageVerifyTimeout,
+			)
+		}
 	}
 	if s.ImagePullAttempts != "" {
 		n, err := strconv.Atoi(s.ImagePullAttempts)

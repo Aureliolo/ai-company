@@ -8,7 +8,7 @@ keep the worktree strategy module under the 800-line budget.
 import asyncio
 import re
 from types import MappingProxyType
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from synthorg.engine.workspace.semantic_analyzer import filter_files
 from synthorg.observability import get_logger
@@ -137,18 +137,19 @@ async def get_base_sources(
 ) -> dict[str, str]:
     """Read file contents at a specific commit via parallel git show.
 
-    Exactly one of ``concurrency`` or ``semaphore`` must be
-    supplied.  The previous silent default (``concurrency=10``) was
-    removed to force callers to thread the value from
+    Provide ``semaphore`` or a positive ``concurrency`` value.  The
+    previous silent default (``concurrency=10``) was removed to force
+    callers to thread the value from
     :class:`SemanticAnalysisConfig.git_concurrency` so the function
-    default cannot drift from the config default.
+    default cannot drift from the config default.  When ``semaphore``
+    is provided, ``concurrency`` is ignored.
 
     Args:
         run_git: Bound ``_run_git`` method from the strategy.
         base_sha: Commit SHA to read from.
         files: File paths to read.
-        concurrency: Maximum concurrent git show calls.  Used to
-            build a fresh semaphore when *semaphore* is ``None``.
+        concurrency: Maximum concurrent git show calls.  Must be ``> 0``.
+            Used to build a fresh semaphore when *semaphore* is ``None``.
         semaphore: Optional shared semaphore for cross-batch
             concurrency control.  When provided, *concurrency* is
             ignored.
@@ -160,7 +161,9 @@ async def get_base_sources(
 
     Raises:
         ValueError: If neither *concurrency* nor *semaphore* is
-            provided.
+            provided, or if *concurrency* is non-positive when used
+            to build a semaphore (``asyncio.Semaphore(0)`` would
+            deadlock every fetch task).
     """
     if semaphore is None and concurrency is None:
         msg = (
@@ -169,11 +172,22 @@ async def get_base_sources(
             "SemanticAnalysisConfig.git_concurrency"
         )
         raise ValueError(msg)
+    if semaphore is None and concurrency is not None and concurrency <= 0:
+        msg = (
+            f"get_base_sources concurrency must be > 0, got {concurrency}; "
+            "asyncio.Semaphore(0) would deadlock every fetch task"
+        )
+        raise ValueError(msg)
     sources: dict[str, str] = {}
-    # ``concurrency`` is guaranteed non-None at this point (the guard
-    # above rejected the both-None case) when ``semaphore`` is None,
-    # so the ``semaphore or ...`` short-circuit is unambiguous.
-    sem = semaphore or asyncio.Semaphore(concurrency)  # type: ignore[arg-type]
+    # ``concurrency`` is guaranteed non-None and positive when
+    # ``semaphore is None`` (both guards above rejected the invalid
+    # cases); the cast keeps the type checker happy without a bare
+    # ``assert`` which would be stripped under -O.
+    sem = (
+        semaphore
+        if semaphore is not None
+        else asyncio.Semaphore(cast("int", concurrency))
+    )
 
     async def _fetch(fp: str) -> None:
         async with sem:
