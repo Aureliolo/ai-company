@@ -519,7 +519,7 @@ jobs:
             type=sha,prefix=sha-
 
       - name: Build image
-        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
+        uses: ./.github/actions/docker-build-push-retry
         with:
           context: .
           file: docker/backend/Dockerfile
@@ -594,7 +594,7 @@ jobs:
       - name: Push image
         if: github.event_name != 'pull_request'
         id: push
-        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
+        uses: ./.github/actions/docker-build-push-retry
         with:
           context: .
           file: docker/backend/Dockerfile
@@ -1008,7 +1008,7 @@ jobs:
 
       # Build locally first, scan, then push only if scans pass
       - name: Build image
-        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
+        uses: ./.github/actions/docker-build-push-retry
         with:
           context: .
           file: docker/sandbox/Dockerfile
@@ -1081,7 +1081,7 @@ jobs:
       - name: Push image
         if: github.event_name != 'pull_request'
         id: push
-        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
+        uses: ./.github/actions/docker-build-push-retry
         with:
           context: .
           file: docker/sandbox/Dockerfile
@@ -1214,7 +1214,7 @@ jobs:
             type=sha,prefix=sha-
 
       - name: Build image
-        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
+        uses: ./.github/actions/docker-build-push-retry
         with:
           context: .
           file: docker/sidecar/Dockerfile
@@ -1282,7 +1282,7 @@ jobs:
       - name: Push image
         if: github.event_name != 'pull_request'
         id: push
-        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
+        uses: ./.github/actions/docker-build-push-retry
         with:
           context: .
           file: docker/sidecar/Dockerfile
@@ -1437,7 +1437,7 @@ jobs:
             type=sha,prefix=sha-
 
       - name: Build image
-        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
+        uses: ./.github/actions/docker-build-push-retry
         with:
           context: .
           file: docker/fine-tune/Dockerfile
@@ -1506,7 +1506,7 @@ jobs:
       - name: Push image
         if: github.event_name != 'pull_request'
         id: push
-        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
+        uses: ./.github/actions/docker-build-push-retry
         with:
           context: .
           file: docker/fine-tune/Dockerfile

@@ -1,0 +1,110 @@
+name: Docker build and push with retry
+description: >
+  Wraps docker/build-push-action with one automatic retry on transient
+  GHCR/GHA-cache 5xx failures. Forwards the final digest so downstream
+  sign/attest/SBOM steps do not have to know which attempt succeeded.
+
+inputs:
+  context:
+    description: Build context path
+    required: false
+    default: "."
+  file:
+    description: Dockerfile path
+    required: true
+  push:
+    description: Whether to push the image to the registry
+    required: false
+    default: "false"
+  load:
+    description: Whether to load the image into the local Docker daemon
+    required: false
+    default: "false"
+  tags:
+    description: Image tags (newline-separated)
+    required: true
+  labels:
+    description: Image labels (newline-separated)
+    required: false
+    default: ""
+  build-args:
+    description: Build arguments (newline-separated KEY=VALUE)
+    required: false
+    default: ""
+  cache-from:
+    description: Cache source spec (e.g. type=gha)
+    required: false
+    default: ""
+  cache-to:
+    description: Cache destination spec (e.g. type=gha,mode=max)
+    required: false
+    default: ""
+  platforms:
+    description: Target platforms
+    required: false
+    default: ""
+  sbom:
+    description: Whether to generate an SBOM
+    required: false
+    default: "false"
+  provenance:
+    description: Whether to generate provenance
+    required: false
+    default: "false"
+  retry-delay-seconds:
+    description: Seconds to wait between attempt 1 and attempt 2
+    required: false
+    default: "30"
+
+outputs:
+  digest:
+    description: Image digest (from whichever attempt succeeded)
+    value: ${{ steps.try-first.outcome == 'success' && steps.try-first.outputs.digest || steps.try-retry.outputs.digest }}
+
+runs:
+  using: composite
+  steps:
+    - name: Build/push attempt 1
+      id: try-first
+      continue-on-error: true
+      uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
+      with:
+        context: ${{ inputs.context }}
+        file: ${{ inputs.file }}
+        push: ${{ inputs.push }}
+        load: ${{ inputs.load }}
+        tags: ${{ inputs.tags }}
+        labels: ${{ inputs.labels }}
+        build-args: ${{ inputs.build-args }}
+        cache-from: ${{ inputs.cache-from }}
+        cache-to: ${{ inputs.cache-to }}
+        platforms: ${{ inputs.platforms }}
+        sbom: ${{ inputs.sbom }}
+        provenance: ${{ inputs.provenance }}
+
+    - name: Pause before retry
+      if: steps.try-first.outcome == 'failure'
+      shell: bash
+      env:
+        RETRY_DELAY: ${{ inputs.retry-delay-seconds }}
+      run: |
+        echo "::warning::docker build/push attempt 1 failed (likely transient GHCR/GHA-cache 5xx). Retrying in ${RETRY_DELAY}s."
+        sleep "${RETRY_DELAY}"
+
+    - name: Build/push attempt 2 (retry)
+      id: try-retry
+      if: steps.try-first.outcome == 'failure'
+      uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
+      with:
+        context: ${{ inputs.context }}
+        file: ${{ inputs.file }}
+        push: ${{ inputs.push }}
+        load: ${{ inputs.load }}
+        tags: ${{ inputs.tags }}
+        labels: ${{ inputs.labels }}
+        build-args: ${{ inputs.build-args }}
+        cache-from: ${{ inputs.cache-from }}
+        cache-to: ${{ inputs.cache-to }}
+        platforms: ${{ inputs.platforms }}
+        sbom: ${{ inputs.sbom }}
+        provenance: ${{ inputs.provenance }}
