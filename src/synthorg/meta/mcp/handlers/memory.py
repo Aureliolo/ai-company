@@ -83,13 +83,20 @@ def _log_guardrail(tool: str, exc: GuardrailViolationError) -> None:
 
 
 def _actor_name(actor: Any) -> str | None:
+    """Return a stable audit identifier for ``actor``.
+
+    Prefers ``actor.id`` (a ``UUID`` that never changes over the agent's
+    lifetime) so destructive-op audit trails stay consistent even when
+    the display name is later edited.  Falls back to ``actor.name`` only
+    when id is absent.
+    """
     if actor is None:
         return None
-    name = getattr(actor, "name", None)
-    if isinstance(name, str) and name:
-        return name
     agent_id = getattr(actor, "id", None)
-    return str(agent_id) if agent_id is not None else None
+    if agent_id is not None:
+        return str(agent_id)
+    name = getattr(actor, "name", None)
+    return name if isinstance(name, str) and name else None
 
 
 def _require_non_blank(arguments: dict[str, Any], key: str) -> str:
@@ -99,12 +106,39 @@ def _require_non_blank(arguments: dict[str, Any], key: str) -> str:
     return raw
 
 
+class _BackendLacksFineTuneError(Exception):
+    """Raised when the active persistence backend lacks fine-tune repos."""
+
+
 def _service(app_state: Any) -> MemoryService:
-    """Build a per-call :class:`MemoryService`."""
+    """Return the memory service facade.
+
+    Prefers ``app_state.memory_service`` when bootstrap has wired one
+    (keeps handlers off ``persistence.*``).  Falls back to per-call
+    construction from the persistence backend for app_states that have
+    not adopted the cached-service pattern yet.  Accessor calls that
+    hit an unsupported backend (e.g. Postgres, which does not yet
+    expose ``fine_tune_checkpoints``) raise
+    :class:`_BackendLacksFineTuneError` so the calling handler can return a
+    clean ``not_supported`` envelope instead of bubbling up a
+    ``NotImplementedError``.
+
+    Raises:
+        _BackendLacksFineTuneError: If the backend does not implement the
+            fine-tune repositories.
+    """
+    cached: MemoryService | None = getattr(app_state, "memory_service", None)
+    if cached is not None:
+        return cached
     backend = app_state.persistence
+    try:
+        checkpoint_repo = backend.fine_tune_checkpoints
+        run_repo = backend.fine_tune_runs
+    except NotImplementedError as exc:
+        raise _BackendLacksFineTuneError(_WHY_BACKEND_NO_FINE_TUNE) from exc
     return MemoryService(
-        checkpoint_repo=backend.fine_tune_checkpoints,
-        run_repo=backend.fine_tune_runs,
+        checkpoint_repo=checkpoint_repo,
+        run_repo=run_repo,
         settings_service=(
             app_state.settings_service if app_state.has_settings_service else None
         ),
@@ -119,6 +153,10 @@ _WHY_FINE_TUNE_PREFLIGHT = (
     "preflight validation runs inside the fine-tune controller; no "
     "standalone service method is exposed"
 )
+_WHY_FINE_TUNE_STATUS = (
+    "fine-tune status queries require the orchestrator run_id context "
+    "that MCP does not yet plumb through; use the fine-tune controller"
+)
 _WHY_RUNS = (
     "fine-tune run listing is served by the fine-tune controller; "
     "MemoryService does not expose a list method yet"
@@ -126,6 +164,11 @@ _WHY_RUNS = (
 _WHY_EMBEDDER = (
     "active-embedder metadata is read from settings_service; no "
     "dedicated query method on MemoryService"
+)
+_WHY_BACKEND_NO_FINE_TUNE = (
+    "fine-tune repositories are not supported by the active "
+    "persistence backend (SQLite-only today); switch backends or use "
+    "the fine-tune controller"
 )
 
 
@@ -158,7 +201,7 @@ async def _memory_get_fine_tune_status(
 ) -> str:
     return not_supported(
         "synthorg_memory_get_fine_tune_status",
-        _WHY_RUNS,
+        _WHY_FINE_TUNE_STATUS,
     )
 
 
@@ -202,7 +245,11 @@ async def _memory_list_checkpoints(
         _log_invalid(tool, exc)
         return err(exc)
     try:
-        checkpoints, total = await _service(app_state).list_checkpoints(
+        service = _service(app_state)
+    except _BackendLacksFineTuneError:
+        return not_supported(tool, _WHY_BACKEND_NO_FINE_TUNE)
+    try:
+        checkpoints, total = await service.list_checkpoints(
             limit=limit,
             offset=offset,
         )
@@ -227,7 +274,11 @@ async def _memory_deploy_checkpoint(
         _log_invalid(tool, exc)
         return err(exc)
     try:
-        cp = await _service(app_state).deploy_checkpoint(checkpoint_id)
+        service = _service(app_state)
+    except _BackendLacksFineTuneError:
+        return not_supported(tool, _WHY_BACKEND_NO_FINE_TUNE)
+    try:
+        cp = await service.deploy_checkpoint(checkpoint_id)
     except CheckpointNotFoundError as exc:
         _log_failed(tool, exc)
         return err(exc, domain_code="not_found")
@@ -263,7 +314,7 @@ async def _memory_rollback_checkpoint(
     )
 
 
-async def _memory_delete_checkpoint(
+async def _memory_delete_checkpoint(  # noqa: PLR0911
     *,
     app_state: Any,
     arguments: dict[str, Any],
@@ -282,7 +333,11 @@ async def _memory_delete_checkpoint(
         return err(exc)
 
     try:
-        await _service(app_state).delete_checkpoint(checkpoint_id)
+        service = _service(app_state)
+    except _BackendLacksFineTuneError:
+        return not_supported(tool, _WHY_BACKEND_NO_FINE_TUNE)
+    try:
+        await service.delete_checkpoint(checkpoint_id)
     except CheckpointNotFoundError as exc:
         _log_failed(tool, exc)
         return err(exc, domain_code="not_found")

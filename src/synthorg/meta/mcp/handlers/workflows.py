@@ -116,7 +116,16 @@ def _require_non_blank(arguments: dict[str, Any], key: str) -> str:
 
 
 def _service(app_state: Any) -> WorkflowService:
-    """Build a per-call :class:`WorkflowService` from persistence repos."""
+    """Return the workflow service facade.
+
+    Prefers ``app_state.workflow_service`` when bootstrap has wired one
+    (keeps handlers off ``persistence.*``).  Falls back to per-call
+    construction from the persistence backend for app_states that have
+    not adopted the cached-service pattern yet.
+    """
+    cached: WorkflowService | None = getattr(app_state, "workflow_service", None)
+    if cached is not None:
+        return cached
     return WorkflowService(
         definition_repo=app_state.persistence.workflow_definitions,
         version_repo=app_state.persistence.workflow_versions,

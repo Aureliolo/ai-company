@@ -42,13 +42,21 @@ _ARG_VERSION = "version_num"
 
 
 def _versions_service(app_state: Any) -> BudgetConfigVersionsService:
-    """Build a per-call :class:`BudgetConfigVersionsService` facade.
+    """Return the budget-versions service facade.
 
-    Mirrors the per-call construction pattern used by
-    :func:`synthorg.meta.mcp.handlers.memory._service`: instantiate the
-    service from the persistence primitive on ``app_state`` so the
-    handler only ever talks to the service API, never the repository.
+    Prefers ``app_state.budget_versions_service`` when bootstrap has
+    wired one (keeps the handler off ``persistence.*``).  Falls back to
+    per-call construction from the persistence primitive for app_states
+    that have not adopted the cached-service pattern yet, mirroring the
+    :func:`synthorg.meta.mcp.handlers.memory._service` pattern.
     """
+    cached: BudgetConfigVersionsService | None = getattr(
+        app_state,
+        "budget_versions_service",
+        None,
+    )
+    if cached is not None:
+        return cached
     return BudgetConfigVersionsService(
         version_repo=app_state.persistence.budget_config_versions,
     )
