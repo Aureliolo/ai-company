@@ -51,6 +51,10 @@ class TestNatsBusHealthCheck:
         client.flush.assert_not_called()
 
     async def test_returns_false_and_logs_when_flush_raises(self) -> None:
+        # SEC-1 (#1538): flush exceptions log ``error_type`` +
+        # ``error=safe_error_description(exc)``; no ``exc_info=True``
+        # because serialized traceback frame-locals can leak the
+        # credentials embedded in the NATS connection URL.
         bus = _make_bus()
         bus._state.running = True
         client = MagicMock()
@@ -65,7 +69,9 @@ class TestNatsBusHealthCheck:
         assert call_args.args[0] == COMM_BUS_HEALTH_CHECK_FAILED
         assert call_args.kwargs["phase"] == "flush"
         assert call_args.kwargs["error_type"] == "TimeoutError"
-        assert call_args.kwargs["exc_info"] is True
+        assert isinstance(call_args.kwargs["error"], str)
+        assert call_args.kwargs["error"]
+        assert "exc_info" not in call_args.kwargs
 
     async def test_returns_true_when_flush_succeeds(self) -> None:
         bus = _make_bus()
