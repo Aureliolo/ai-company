@@ -1,11 +1,13 @@
 name: Build and scan container image
 description: >-
-  Build a Dockerfile-based container image from a signed apko base, run Trivy
-  (JSON + SARIF) at CRITICAL + HIGH, upload SARIF to GitHub Security, and
-  execute the CIS Docker Benchmark. Intended to be called from a job whose
+  Build a Dockerfile-based container image from a signed apko base, scan
+  amd64 with Trivy (JSON + SARIF) at CRITICAL + HIGH, upload SARIF to
+  GitHub Security, and execute the CIS Docker Benchmark. On non-PR events
+  the build emits per-arch docker-archive tarballs (uploaded as artifacts)
+  so the companion `publish-image` action can push the *exact scanned
+  bytes* instead of rebuilding. Intended to be called from a job whose
   only permissions are `contents: read` + `security-events: write` -- no
-  elevated registry perms. The companion `publish-image` action does the
-  login + push + cosign + attest work in a separate environment-gated job.
+  elevated registry perms.
 
 inputs:
   image-name:
@@ -47,21 +49,32 @@ inputs:
     required: false
     default: ""
   base-image-artifact-name:
-    description: "Artifact name for the base tarball (PR-path only)."
-    required: true
+    description: >-
+      Artifact name for the base tarball. Only consumed on the PR path to
+      load the signed apko base without re-pulling from GHCR; callers on
+      push/tag events may leave this empty since the base is referenced
+      by digest instead.
+    required: false
+    default: ""
   base-image-tarball-name:
-    description: "Tarball filename inside the downloaded artifact (PR-path only)."
-    required: true
+    description: >-
+      Tarball filename inside the downloaded artifact. Same PR-path-only
+      semantics as `base-image-artifact-name`.
+    required: false
+    default: ""
   extra-build-args:
     description: >-
       Additional Docker build args, one per line (e.g. DEPLOYMENT_ENV,
       FINE_TUNE_EXTRA). `BASE_IMAGE` is prepended automatically.
     required: false
     default: ""
-  platforms:
-    description: "Comma-separated platforms for the build step. PR builds always target amd64 via `load: true`."
+  enable-arm64:
+    description: >-
+      Build an arm64 tarball in addition to amd64 on non-PR events. Set
+      "false" for images that ship amd64-only (e.g. fine-tune variants
+      bundle CUDA wheels / torch with no arm64 coverage).
     required: false
-    default: "linux/amd64"
+    default: "true"
   cache-scope:
     description: >-
       GHA cache scope suffix. Leave empty for non-matrix jobs. Fine-tune
@@ -79,8 +92,14 @@ inputs:
 
 outputs:
   scan-ref:
-    description: "Image ref used for Trivy / CIS scans (sha-<short> tag)."
+    description: "Image ref used for Trivy / CIS scans (sha-<short>-amd64 tag)."
     value: ${{ steps.scan-ref.outputs.ref }}
+  amd64-artifact-name:
+    description: "Artifact name holding the amd64 docker-archive tarball (non-PR events only)."
+    value: scan-image-${{ inputs.image-name }}-amd64
+  arm64-artifact-name:
+    description: "Artifact name holding the arm64 docker-archive tarball (non-PR + enable-arm64 only)."
+    value: scan-image-${{ inputs.image-name }}-arm64
 
 runs:
   using: composite
@@ -102,12 +121,21 @@ runs:
         sudo docker image prune --all --force
         df -h /
 
+    # Required on non-PR events when building the arm64 tarball on an
+    # amd64 runner. PR builds are amd64-only and skip QEMU.
+    - name: Set up QEMU (ARM64 emulation)
+      if: github.event_name != 'pull_request' && inputs.enable-arm64 == 'true'
+      uses: docker/setup-qemu-action@ce360397dd3f832beb865e1373c09c0e9f86d70a # v4.0.0
+      with:
+        platforms: arm64
+
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
       with:
         # `docker` driver is required for `load: true` on PR builds so
         # Trivy can scan a locally loaded image; `docker-container`
-        # enables `type=gha` layer cache for non-PR builds.
+        # enables `type=gha` layer cache + `type=docker` archive output
+        # for the tarball handoff on non-PR builds.
         driver: ${{ github.event_name == 'pull_request' && 'docker' || 'docker-container' }}
         cache-binary: false
 
@@ -141,7 +169,11 @@ runs:
           type=raw,value=dev,enable=${{ startsWith(github.ref, 'refs/tags/v') && contains(github.ref, '-dev.') }}
           type=sha,prefix=sha-
 
-    - name: Build image
+    # PR path: buildx `driver: docker` + `load: true` produces a single
+    # amd64 image in the local daemon for scanning. No tarball is
+    # persisted -- PR builds never feed the publish-image action.
+    - name: Build image (PR, loaded for scan)
+      if: github.event_name == 'pull_request'
       uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
       with:
         context: ${{ inputs.context }}
@@ -153,16 +185,70 @@ runs:
         build-args: |
           BASE_IMAGE=${{ inputs.base-image-digest != '' && format('{0}@{1}', inputs.base-image-repo, inputs.base-image-digest) || format('{0}:{1}', inputs.base-image-repo, inputs.base-image-tag) }}
           ${{ inputs.extra-build-args }}
-        cache-from: ${{ github.event_name != 'pull_request' && (inputs.cache-scope != '' && format('type=gha,scope={0}', inputs.cache-scope) || 'type=gha') || '' }}
-        cache-to: ${{ github.event_name != 'pull_request' && (inputs.cache-scope != '' && format('type=gha,mode=max,scope={0}', inputs.cache-scope) || 'type=gha,mode=max') || '' }}
-        platforms: ${{ inputs.platforms }}
+        platforms: linux/amd64
 
+    # Non-PR path: build each arch to its own docker-archive tarball so
+    # the publish-image action can push the exact scanned bytes instead
+    # of rebuilding. `outputs: type=docker,dest=...` is single-platform
+    # (docker-archive format requires one manifest), so we emit two
+    # tarballs and reassemble the multi-arch manifest at push time.
+    - name: Build amd64 tarball (non-PR)
+      if: github.event_name != 'pull_request'
+      uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
+      with:
+        context: ${{ inputs.context }}
+        file: ${{ inputs.dockerfile }}
+        outputs: type=docker,dest=/tmp/scan-image-${{ inputs.image-name }}-amd64.tar
+        tags: ghcr.io/aureliolo/synthorg-${{ inputs.image-name }}:scan-${{ github.sha }}-amd64
+        labels: ${{ steps.meta.outputs.labels }}
+        build-args: |
+          BASE_IMAGE=${{ inputs.base-image-digest != '' && format('{0}@{1}', inputs.base-image-repo, inputs.base-image-digest) || format('{0}:{1}', inputs.base-image-repo, inputs.base-image-tag) }}
+          ${{ inputs.extra-build-args }}
+        cache-from: ${{ inputs.cache-scope != '' && format('type=gha,scope={0}-amd64', inputs.cache-scope) || 'type=gha,scope=amd64' }}
+        cache-to: ${{ inputs.cache-scope != '' && format('type=gha,mode=max,scope={0}-amd64', inputs.cache-scope) || 'type=gha,mode=max,scope=amd64' }}
+        platforms: linux/amd64
+
+    - name: Load amd64 image for scanning (non-PR)
+      if: github.event_name != 'pull_request'
+      shell: bash
+      env:
+        IMAGE_NAME: ${{ inputs.image-name }}
+      run: |
+        docker load -i "/tmp/scan-image-${IMAGE_NAME}-amd64.tar"
+
+    - name: Build arm64 tarball (non-PR, multi-arch)
+      if: github.event_name != 'pull_request' && inputs.enable-arm64 == 'true'
+      uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
+      with:
+        context: ${{ inputs.context }}
+        file: ${{ inputs.dockerfile }}
+        outputs: type=docker,dest=/tmp/scan-image-${{ inputs.image-name }}-arm64.tar
+        tags: ghcr.io/aureliolo/synthorg-${{ inputs.image-name }}:scan-${{ github.sha }}-arm64
+        labels: ${{ steps.meta.outputs.labels }}
+        build-args: |
+          BASE_IMAGE=${{ inputs.base-image-digest != '' && format('{0}@{1}', inputs.base-image-repo, inputs.base-image-digest) || format('{0}:{1}', inputs.base-image-repo, inputs.base-image-tag) }}
+          ${{ inputs.extra-build-args }}
+        cache-from: ${{ inputs.cache-scope != '' && format('type=gha,scope={0}-arm64', inputs.cache-scope) || 'type=gha,scope=arm64' }}
+        cache-to: ${{ inputs.cache-scope != '' && format('type=gha,mode=max,scope={0}-arm64', inputs.cache-scope) || 'type=gha,mode=max,scope=arm64' }}
+        platforms: linux/arm64
+
+    # Scan ref uses the amd64-tagged image so both paths (PR = load:true,
+    # non-PR = load from archive) resolve the same short-SHA tag. Scans
+    # only target amd64; arm64 parity is covered by the identical
+    # Dockerfile + pinned base-image-digest + reproducible build-args.
     - name: Compute scan image ref
       id: scan-ref
       shell: bash
       env:
         IMAGE_NAME: ${{ inputs.image-name }}
-      run: echo "ref=ghcr.io/aureliolo/synthorg-${IMAGE_NAME}:sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+        EVENT_NAME: ${{ github.event_name }}
+      run: |
+        SHORT_SHA="${GITHUB_SHA::7}"
+        if [ "$EVENT_NAME" = "pull_request" ]; then
+          echo "ref=ghcr.io/aureliolo/synthorg-${IMAGE_NAME}:sha-${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+        else
+          echo "ref=ghcr.io/aureliolo/synthorg-${IMAGE_NAME}:sha-${GITHUB_SHA}-amd64" >> "$GITHUB_OUTPUT"
+        fi
 
     - name: Report image size
       shell: bash
@@ -220,3 +306,23 @@ runs:
       uses: ./.github/actions/cis-scan
       with:
         image-ref: ${{ steps.scan-ref.outputs.ref }}
+
+    # Hand off the scanned tarballs to the publish-only job. The publish
+    # job docker-loads these exact bytes and re-tags + pushes them
+    # without rebuilding, guaranteeing the pushed digest covers the
+    # same filesystem Trivy + CIS scanned.
+    - name: Upload amd64 image tarball (non-PR)
+      if: github.event_name != 'pull_request'
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: scan-image-${{ inputs.image-name }}-amd64
+        path: /tmp/scan-image-${{ inputs.image-name }}-amd64.tar
+        retention-days: 1
+
+    - name: Upload arm64 image tarball (non-PR, multi-arch)
+      if: github.event_name != 'pull_request' && inputs.enable-arm64 == 'true'
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: scan-image-${{ inputs.image-name }}-arm64
+        path: /tmp/scan-image-${{ inputs.image-name }}-arm64.tar
+        retention-days: 1

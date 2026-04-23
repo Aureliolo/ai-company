@@ -1,10 +1,12 @@
 name: Publish container image
 description: >-
-  Log into GHCR, build the Dockerfile-based container image again (reusing
-  layers from the GHA cache populated by the `build-scan-image` step), push
-  it with SBOM + provenance layers, cosign-sign it keyless via GitHub OIDC,
-  and attest SLSA Level 3 build provenance. Called from a companion
-  publish-only job that carries `packages: write`, `id-token: write`, and
+  Download the per-arch docker-archive tarballs emitted by
+  `build-scan-image`, log into GHCR, push them unchanged to the registry,
+  assemble a multi-arch manifest list, cosign-sign it keyless via GitHub
+  OIDC, attest SLSA Level 3 build provenance, and emit a CycloneDX SBOM.
+  Because the pushed bytes are the exact bytes Trivy + CIS scanned, there
+  is no rebuild-vs-scan digest drift. Called from a companion publish-only
+  job that carries `packages: write`, `id-token: write`, and
   `attestations: write`, gated by the `image-push` deployment environment
   (branch policy `main,v*`).
 
@@ -12,46 +14,13 @@ inputs:
   image-name:
     description: "Short image name suffix (e.g. backend, sandbox, sidecar, fine-tune-gpu, fine-tune-cpu)."
     required: true
-  dockerfile:
-    description: "Path to the Dockerfile (relative to repository root)."
-    required: true
-  context:
-    description: "Docker build context path."
-    required: false
-    default: "."
   app-version:
     description: "Application version for the `type=raw` tag on stable `v*` releases."
     required: true
-  base-image-repo:
-    description: "Base image repository (e.g. ghcr.io/aureliolo/synthorg-backend-base)."
-    required: true
-  base-image-tag:
-    description: "Base image tag from `needs.build-X-base.outputs.tag`."
-    required: true
-  base-image-digest:
+  enable-arm64:
     description: >-
-      Base image digest from `needs.build-X-base-publish.outputs.digest`.
-      Non-empty on the publish path (main / v* refs). Takes precedence over
-      `base-image-tag` for the BASE_IMAGE build-arg.
-    required: false
-    default: ""
-  extra-build-args:
-    description: "Additional Docker build args, one per line (e.g. DEPLOYMENT_ENV, FINE_TUNE_EXTRA)."
-    required: false
-    default: ""
-  platforms:
-    description: "Comma-separated platforms for the push. Defaults to multi-arch (amd64 + arm64)."
-    required: false
-    default: "linux/amd64,linux/arm64"
-  cache-scope:
-    description: "GHA cache scope suffix (empty for non-matrix jobs)."
-    required: false
-    default: ""
-  enable-qemu-arm64:
-    description: >-
-      Set up QEMU arm64 emulation before buildx. Required for multi-arch
-      builds targeting arm64. Pass "false" for amd64-only images
-      (fine-tune).
+      Download and push the arm64 tarball alongside amd64. Set "false" for
+      images that ship amd64-only (e.g. fine-tune variants).
     required: false
     default: "true"
   ghcr-token:
@@ -60,23 +29,46 @@ inputs:
 
 outputs:
   digest:
-    description: "Pushed multi-arch manifest digest (sha256:...)."
+    description: "Pushed multi-arch manifest digest (sha256:...) for the sha-<short> tag."
     value: ${{ steps.push.outputs.digest }}
 
 runs:
   using: composite
   steps:
-    - name: Set up QEMU (ARM64 emulation)
-      if: inputs.enable-qemu-arm64 == 'true'
-      uses: docker/setup-qemu-action@ce360397dd3f832beb865e1373c09c0e9f86d70a # v4.0.0
+    - name: Download amd64 image tarball
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
       with:
-        platforms: arm64
+        name: scan-image-${{ inputs.image-name }}-amd64
+        path: /tmp
 
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+    - name: Download arm64 image tarball
+      if: inputs.enable-arm64 == 'true'
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
       with:
-        driver: docker-container
-        cache-binary: false
+        name: scan-image-${{ inputs.image-name }}-arm64
+        path: /tmp
+
+    - name: Load scanned image tarballs and re-tag for registry
+      shell: bash
+      env:
+        IMAGE_NAME: ${{ inputs.image-name }}
+        ENABLE_ARM64: ${{ inputs.enable-arm64 }}
+      run: |
+        set -euo pipefail
+        REPO="ghcr.io/aureliolo/synthorg-${IMAGE_NAME}"
+        SHORT_SHA="${GITHUB_SHA::7}"
+
+        # Tarballs embed the internal `scan-<full_sha>-<arch>` tag used
+        # during build-scan-image. Re-tag to the public short-SHA form
+        # (matching build-web) before push; the scan tag is never
+        # published to GHCR.
+        docker load -i "/tmp/scan-image-${IMAGE_NAME}-amd64.tar"
+        docker tag "${REPO}:scan-${GITHUB_SHA}-amd64" "${REPO}:sha-${SHORT_SHA}-amd64"
+
+        if [ "$ENABLE_ARM64" = "true" ]; then
+          docker load -i "/tmp/scan-image-${IMAGE_NAME}-arm64.tar"
+          docker tag "${REPO}:scan-${GITHUB_SHA}-arm64" "${REPO}:sha-${SHORT_SHA}-arm64"
+        fi
 
     - name: Log in to GHCR
       uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
@@ -97,26 +89,58 @@ runs:
           type=raw,value=dev,enable=${{ startsWith(github.ref, 'refs/tags/v') && contains(github.ref, '-dev.') }}
           type=sha,prefix=sha-
 
-    # Push-side rebuild: reuses GHA cache populated by build-scan-image for
-    # fast turnaround, but re-emits layers with SBOM + provenance attached
-    # (which changes the manifest digest vs. the scanned image on purpose --
-    # we sign and attest the pushed digest, not the scan digest).
-    - name: Build and push image
+    # Push the loaded per-arch images to GHCR under their -amd64 / -arm64
+    # tags, then assemble one multi-arch manifest list per desired tag
+    # (sha-short, semver, raw, dev). This mirrors the build-web publish
+    # path: push scanned bytes, never rebuild. `--amend` on manifest
+    # create keeps re-runs safe since a prior success would otherwise
+    # fail with "manifest already exists".
+    - name: Push per-arch images and assemble manifest list
       id: push
-      uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
-      with:
-        context: ${{ inputs.context }}
-        file: ${{ inputs.dockerfile }}
-        push: true
-        tags: ${{ steps.meta.outputs.tags }}
-        labels: ${{ steps.meta.outputs.labels }}
-        build-args: |
-          BASE_IMAGE=${{ inputs.base-image-digest != '' && format('{0}@{1}', inputs.base-image-repo, inputs.base-image-digest) || format('{0}:{1}', inputs.base-image-repo, inputs.base-image-tag) }}
-          ${{ inputs.extra-build-args }}
-        cache-from: ${{ inputs.cache-scope != '' && format('type=gha,scope={0}', inputs.cache-scope) || 'type=gha' }}
-        platforms: ${{ inputs.platforms }}
-        sbom: true
-        provenance: true
+      shell: bash
+      env:
+        IMAGE_NAME: ${{ inputs.image-name }}
+        ENABLE_ARM64: ${{ inputs.enable-arm64 }}
+        META_TAGS: ${{ steps.meta.outputs.tags }}
+      run: |
+        set -euo pipefail
+        REPO="ghcr.io/aureliolo/synthorg-${IMAGE_NAME}"
+        SHORT_SHA="${GITHUB_SHA::7}"
+
+        docker push "${REPO}:sha-${SHORT_SHA}-amd64"
+        if [ "$ENABLE_ARM64" = "true" ]; then
+          docker push "${REPO}:sha-${SHORT_SHA}-arm64"
+        fi
+
+        DIGEST=""
+        while IFS= read -r full_tag; do
+          [ -z "$full_tag" ] && continue
+          # metadata-action emits fully-qualified refs (repo:tag); strip
+          # the repo prefix so we can reapply it to the per-arch sources.
+          t="${full_tag#${REPO}:}"
+
+          if [ "$ENABLE_ARM64" = "true" ]; then
+            docker manifest create --amend "${REPO}:${t}" \
+              "${REPO}:sha-${SHORT_SHA}-amd64" \
+              "${REPO}:sha-${SHORT_SHA}-arm64"
+          else
+            docker manifest create --amend "${REPO}:${t}" \
+              "${REPO}:sha-${SHORT_SHA}-amd64"
+          fi
+          PUSH_OUT=$(docker manifest push "${REPO}:${t}")
+
+          # Capture the manifest digest of the sha-<short> tag as the
+          # canonical output -- that is what cosign + attest will sign.
+          if [ "$t" = "sha-${SHORT_SHA}" ]; then
+            DIGEST="$PUSH_OUT"
+          fi
+        done <<< "$META_TAGS"
+
+        if [ -z "$DIGEST" ]; then
+          echo "::error::metadata-action did not emit a sha-${SHORT_SHA} tag -- cannot compute signing digest"
+          exit 1
+        fi
+        echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
 
     # GitHub releases occasionally 5xx; cosign-installer's internal retry (3
     # attempts in ~7s) is not enough to ride out a longer outage. Wrap the
@@ -163,7 +187,6 @@ runs:
           if grep -q 'createLogEntryConflict' /tmp/cosign-out; then
             echo "::notice::Image already signed in transparency log -- skipping"
           else
-            cat /tmp/cosign-out
             exit 1
           fi
         fi

@@ -15,7 +15,9 @@ on:
       - ".dockerignore"
       - ".github/workflows/docker.yml"
       - ".github/actions/build-apko-base/**"
+      - ".github/actions/build-scan-image/**"
       - ".github/actions/cis-scan/**"
+      - ".github/actions/publish-image/**"
       - ".github/actions/setup-apko/**"
       - ".github/actions/setup-python-uv/**"
       - "scripts/cis-scan.sh"
@@ -66,7 +68,9 @@ jobs:
               - '.dockerignore'
               - '.github/workflows/docker.yml'
               - '.github/actions/build-apko-base/**'
+              - '.github/actions/build-scan-image/**'
               - '.github/actions/cis-scan/**'
+              - '.github/actions/publish-image/**'
               - '.github/actions/setup-apko/**'
               - 'scripts/cis-scan.sh'
             sandbox:
@@ -74,7 +78,9 @@ jobs:
               - '.dockerignore'
               - '.github/workflows/docker.yml'
               - '.github/actions/build-apko-base/**'
+              - '.github/actions/build-scan-image/**'
               - '.github/actions/cis-scan/**'
+              - '.github/actions/publish-image/**'
               - '.github/actions/setup-apko/**'
               - 'scripts/cis-scan.sh'
             sidecar:
@@ -82,7 +88,9 @@ jobs:
               - '.dockerignore'
               - '.github/workflows/docker.yml'
               - '.github/actions/build-apko-base/**'
+              - '.github/actions/build-scan-image/**'
               - '.github/actions/cis-scan/**'
+              - '.github/actions/publish-image/**'
               - '.github/actions/setup-apko/**'
               - 'scripts/cis-scan.sh'
             fine-tune:
@@ -93,7 +101,9 @@ jobs:
               - '.dockerignore'
               - '.github/workflows/docker.yml'
               - '.github/actions/build-apko-base/**'
+              - '.github/actions/build-scan-image/**'
               - '.github/actions/cis-scan/**'
+              - '.github/actions/publish-image/**'
               - '.github/actions/setup-apko/**'
               - 'scripts/cis-scan.sh'
             web:
@@ -486,11 +496,10 @@ jobs:
 
   build-backend-publish:
     name: Publish Backend
-    needs: [version, build-backend, build-backend-base, build-backend-base-publish]
+    needs: [version, build-backend]
     if: >-
       !cancelled() &&
       needs.build-backend.result == 'success' &&
-      needs.build-backend-base-publish.result == 'success' &&
       (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -512,13 +521,7 @@ jobs:
         uses: ./.github/actions/publish-image
         with:
           image-name: backend
-          dockerfile: docker/backend/Dockerfile
           app-version: ${{ needs.version.outputs.app_version }}
-          base-image-repo: ghcr.io/aureliolo/synthorg-backend-base
-          base-image-tag: ${{ needs.build-backend-base.outputs.tag }}
-          base-image-digest: ${{ needs.build-backend-base-publish.outputs.digest }}
-          extra-build-args: |
-            DEPLOYMENT_ENV=${{ needs.version.outputs.deployment_env }}
           ghcr-token: ${{ secrets.GITHUB_TOKEN }}
 
   # =========================================================================
@@ -804,7 +807,7 @@ jobs:
           if ! cosign sign --yes ghcr.io/aureliolo/synthorg-web@${DIGEST} 2>&1 | tee /tmp/cosign-out; then
             if grep -q 'createLogEntryConflict' /tmp/cosign-out; then
               echo "::notice::Image already signed -- skipping"
-            else cat /tmp/cosign-out; exit 1; fi
+            else exit 1; fi
           fi
 
       - name: Attest build provenance (SLSA Level 3)
@@ -861,11 +864,10 @@ jobs:
 
   build-sandbox-publish:
     name: Publish Sandbox
-    needs: [version, build-sandbox, build-sandbox-base, build-sandbox-base-publish]
+    needs: [version, build-sandbox]
     if: >-
       !cancelled() &&
       needs.build-sandbox.result == 'success' &&
-      needs.build-sandbox-base-publish.result == 'success' &&
       (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -887,11 +889,7 @@ jobs:
         uses: ./.github/actions/publish-image
         with:
           image-name: sandbox
-          dockerfile: docker/sandbox/Dockerfile
           app-version: ${{ needs.version.outputs.app_version }}
-          base-image-repo: ghcr.io/aureliolo/synthorg-sandbox-base
-          base-image-tag: ${{ needs.build-sandbox-base.outputs.tag }}
-          base-image-digest: ${{ needs.build-sandbox-base-publish.outputs.digest }}
           ghcr-token: ${{ secrets.GITHUB_TOKEN }}
 
   build-sidecar:
@@ -927,11 +925,10 @@ jobs:
 
   build-sidecar-publish:
     name: Publish Sidecar
-    needs: [version, build-sidecar, build-sidecar-base, build-sidecar-base-publish]
+    needs: [version, build-sidecar]
     if: >-
       !cancelled() &&
       needs.build-sidecar.result == 'success' &&
-      needs.build-sidecar-base-publish.result == 'success' &&
       (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -953,11 +950,7 @@ jobs:
         uses: ./.github/actions/publish-image
         with:
           image-name: sidecar
-          dockerfile: docker/sidecar/Dockerfile
           app-version: ${{ needs.version.outputs.app_version }}
-          base-image-repo: ghcr.io/aureliolo/synthorg-sidecar-base
-          base-image-tag: ${{ needs.build-sidecar-base.outputs.tag }}
-          base-image-digest: ${{ needs.build-sidecar-base-publish.outputs.digest }}
           ghcr-token: ${{ secrets.GITHUB_TOKEN }}
 
   # Fine-tune ships in two flavors. The matrix builds them in parallel:
@@ -1005,16 +998,16 @@ jobs:
           base-image-tarball-name: ${{ needs.build-fine-tune-base.outputs.tarball-name }}
           extra-build-args: |
             FINE_TUNE_EXTRA=${{ matrix.extra }}
+          enable-arm64: "false"
           cache-scope: fine-tune-${{ matrix.variant }}
           free-disk-space: "true"
 
   build-fine-tune-publish:
     name: Publish Fine-Tune (${{ matrix.variant }})
-    needs: [version, build-fine-tune, build-fine-tune-base, build-fine-tune-base-publish]
+    needs: [version, build-fine-tune]
     if: >-
       !cancelled() &&
       needs.build-fine-tune.result == 'success' &&
-      needs.build-fine-tune-base-publish.result == 'success' &&
       (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -1037,8 +1030,9 @@ jobs:
         with:
           persist-credentials: false
 
-      # Fine-tune pushes are ~4 GB (GPU); free disk space here too so buildx
-      # has room to assemble layers during the push-side rebuild.
+      # Fine-tune tarballs are large (~4 GB GPU, ~1.7 GB CPU). Reclaim
+      # headroom on the runner before `docker load` doubles the disk
+      # usage (archive + daemon copy).
       - name: Free disk space
         run: |
           df -h /
@@ -1054,16 +1048,8 @@ jobs:
         uses: ./.github/actions/publish-image
         with:
           image-name: fine-tune-${{ matrix.variant }}
-          dockerfile: docker/fine-tune/Dockerfile
           app-version: ${{ needs.version.outputs.app_version }}
-          base-image-repo: ghcr.io/aureliolo/synthorg-fine-tune-base
-          base-image-tag: ${{ needs.build-fine-tune-base.outputs.tag }}
-          base-image-digest: ${{ needs.build-fine-tune-base-publish.outputs.digest }}
-          extra-build-args: |
-            FINE_TUNE_EXTRA=${{ matrix.extra }}
-          platforms: linux/amd64
-          cache-scope: fine-tune-${{ matrix.variant }}
-          enable-qemu-arm64: "false"
+          enable-arm64: "false"
           ghcr-token: ${{ secrets.GITHUB_TOKEN }}
 
       # Matrix jobs can't expose per-variant outputs to `update-release` via

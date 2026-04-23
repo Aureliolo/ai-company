@@ -75,11 +75,15 @@ gh api repos/Aureliolo/synthorg/environments/apko-lock/deployment-branch-policie
   --jq '.branch_policies[].name'
 ```
 
-Expected output:
+Expected output for the reconciled environments (`github-pages`, `apko-lock`,
+`release`, `image-push`):
 
-- `deployment_branch_policy` for every environment: `{"protected_branches": false, "custom_branch_policies": true}`
+- `deployment_branch_policy`: `{"protected_branches": false, "custom_branch_policies": true}`
 - `branch_policies` for `github-pages`, `apko-lock`: `["main"]`
 - `branch_policies` for `release`, `image-push`: `["main", "v*"]`
+
+`cloudflare-preview` and `atlas` are intentionally excluded from the
+`custom_branch_policies` expectation -- see the rationale above.
 
 ## Required secrets
 
@@ -106,16 +110,19 @@ under the `release` deployment environment.
   the intended behavior -- dev tags must run through the same build-sign-
   attest pipeline as stable releases.
 
-**Required PAT scopes** (choose one form, whichever your org allows):
+**Required PAT scopes** (fine-grained is strongly preferred):
 
-- **Classic PAT**: `repo` (full control of private repositories). No org
-  scopes (`admin:org`, `admin:public_key`, `write:packages`, etc.) --
-  narrow to repository-level authority.
-- **Fine-grained PAT**: scope to the `Aureliolo/synthorg` repository only,
-  with these repository permissions:
+- **Fine-grained PAT (preferred)**: scope to the `Aureliolo/synthorg`
+  repository only, with these repository permissions:
   - `Contents: Read and write`
   - `Pull requests: Read and write`
   - `Metadata: Read`
+- **Classic PAT (discouraged)**: requires the `repo` scope, which grants
+  full control of **all** private repositories the owner can access --
+  there is no way to narrow it to a single repo. Only use a classic PAT
+  if your org restricts fine-grained PATs. No org scopes (`admin:org`,
+  `admin:public_key`, `write:packages`, etc.) -- keep the blast radius at
+  repository-level authority.
 
 The token must NOT carry organization-level permissions. If this repo ever
 moves under an organization, revoke and re-issue a fine-grained token
@@ -125,11 +132,14 @@ scoped to the new repo path rather than granting org admin.
 
 - Expiry is owner-tracked; set a calendar reminder 30 days before the PAT
   expiration.
-- Rotate via repo Settings > Secrets and variables > Actions > click
-  `RELEASE_PLEASE_TOKEN` > update secret. No workflow changes needed.
+- `RELEASE_PLEASE_TOKEN` is scoped to the `release` **deployment
+  environment**, not the repo-level Actions secret store. Rotate via repo
+  Settings > Environments > `release` > Environment secrets > click
+  `RELEASE_PLEASE_TOKEN` > update secret. Updating the repo-level Actions
+  secret of the same name has no effect on the gated release jobs.
 - The old token remains valid until its expiry date even after updating
-  the repo secret; revoke the old PAT from the PAT owner's GitHub settings
-  to close the window.
+  the environment secret; revoke the old PAT from the PAT owner's GitHub
+  settings to close the window.
 
 **Access control**: the `release` environment's branch policy (`main`,
 `v*`) is the structural gate. A workflow triggered from any other ref
