@@ -52,6 +52,13 @@ from synthorg.infrastructure.services import (
 from synthorg.integrations.connections.mcp_service import (
     ConnectionService,  # noqa: TC001
 )
+from synthorg.integrations.mcp_services import (
+    ArtifactFacadeService,  # noqa: TC001
+    ClientFacadeService,  # noqa: TC001
+    MCPCatalogFacadeService,  # noqa: TC001
+    OAuthFacadeService,  # noqa: TC001
+    OntologyFacadeService,  # noqa: TC001
+)
 from synthorg.integrations.tunnel.mcp_service import TunnelService  # noqa: TC001
 from synthorg.integrations.webhooks.service import WebhookService  # noqa: TC001
 from synthorg.memory.embedding.fine_tune_orchestrator import (
@@ -820,6 +827,11 @@ class AppStateServicesMixin:
     _department_service: DepartmentService | None
     _team_service: TeamService | None
     _role_version_service: RoleVersionService | None
+    _mcp_catalog_facade_service: MCPCatalogFacadeService | None
+    _oauth_facade_service: OAuthFacadeService | None
+    _client_facade_service: ClientFacadeService | None
+    _artifact_facade_service: ArtifactFacadeService | None
+    _ontology_facade_service: OntologyFacadeService | None
 
     @property
     def has_signals_service(self) -> bool:
@@ -1212,6 +1224,105 @@ class AppStateServicesMixin:
         service: RoleVersionService,
     ) -> None:
         self._set_once("_role_version_service", service, "RoleVersionService")
+
+    # ── Integration facades (META-MCP-2 phase 8) ─────────────────
+
+    @property
+    def has_mcp_catalog_facade_service(self) -> bool:
+        return self._mcp_catalog_facade_service is not None
+
+    @property
+    def mcp_catalog_facade_service(self) -> MCPCatalogFacadeService:
+        return self._require_service(
+            self._mcp_catalog_facade_service,
+            "MCPCatalogFacadeService",
+        )
+
+    def set_mcp_catalog_facade_service(
+        self,
+        service: MCPCatalogFacadeService,
+    ) -> None:
+        self._set_once(
+            "_mcp_catalog_facade_service",
+            service,
+            "MCPCatalogFacadeService",
+        )
+
+    @property
+    def has_oauth_facade_service(self) -> bool:
+        return self._oauth_facade_service is not None
+
+    @property
+    def oauth_facade_service(self) -> OAuthFacadeService:
+        return self._require_service(
+            self._oauth_facade_service,
+            "OAuthFacadeService",
+        )
+
+    def set_oauth_facade_service(
+        self,
+        service: OAuthFacadeService,
+    ) -> None:
+        self._set_once("_oauth_facade_service", service, "OAuthFacadeService")
+
+    @property
+    def has_client_facade_service(self) -> bool:
+        return self._client_facade_service is not None
+
+    @property
+    def client_facade_service(self) -> ClientFacadeService:
+        return self._require_service(
+            self._client_facade_service,
+            "ClientFacadeService",
+        )
+
+    def set_client_facade_service(
+        self,
+        service: ClientFacadeService,
+    ) -> None:
+        self._set_once("_client_facade_service", service, "ClientFacadeService")
+
+    @property
+    def has_artifact_facade_service(self) -> bool:
+        return self._artifact_facade_service is not None
+
+    @property
+    def artifact_facade_service(self) -> ArtifactFacadeService:
+        return self._require_service(
+            self._artifact_facade_service,
+            "ArtifactFacadeService",
+        )
+
+    def set_artifact_facade_service(
+        self,
+        service: ArtifactFacadeService,
+    ) -> None:
+        self._set_once(
+            "_artifact_facade_service",
+            service,
+            "ArtifactFacadeService",
+        )
+
+    @property
+    def has_ontology_facade_service(self) -> bool:
+        return self._ontology_facade_service is not None
+
+    @property
+    def ontology_facade_service(self) -> OntologyFacadeService:
+        return self._require_service(
+            self._ontology_facade_service,
+            "OntologyFacadeService",
+        )
+
+    def set_ontology_facade_service(
+        self,
+        service: OntologyFacadeService,
+    ) -> None:
+        self._set_once(
+            "_ontology_facade_service",
+            service,
+            "OntologyFacadeService",
+        )
 
     def set_settings_service(self, settings_service: SettingsService) -> None:
         """Set settings service and rebuild derived services."""

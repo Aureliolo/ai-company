@@ -80,6 +80,13 @@ from synthorg.infrastructure.services import (
 from synthorg.integrations.connections.mcp_service import (
     ConnectionService,  # noqa: TC001
 )
+from synthorg.integrations.mcp_services import (
+    ArtifactFacadeService,  # noqa: TC001
+    ClientFacadeService,  # noqa: TC001
+    MCPCatalogFacadeService,  # noqa: TC001
+    OAuthFacadeService,  # noqa: TC001
+    OntologyFacadeService,  # noqa: TC001
+)
 from synthorg.integrations.tunnel.mcp_service import TunnelService  # noqa: TC001
 from synthorg.integrations.webhooks.service import WebhookService  # noqa: TC001
 from synthorg.memory.embedding.fine_tune_orchestrator import (
@@ -171,6 +178,7 @@ class AppState(AppStateServicesMixin):
         "_analytics_service",
         "_approval_gate",
         "_approval_timeout_scheduler",
+        "_artifact_facade_service",
         "_artifact_storage",
         "_audit_log",
         "_audit_read_service",
@@ -179,6 +187,7 @@ class AppState(AppStateServicesMixin):
         "_backup_service",
         "_bridge_config_applied",
         "_ceremony_scheduler",
+        "_client_facade_service",
         "_client_simulation_state",
         "_company_read_service",
         "_config_resolver",
@@ -205,6 +214,7 @@ class AppState(AppStateServicesMixin):
         "_integration_health_facade_service",
         "_interrupt_store",
         "_lockout_store",
+        "_mcp_catalog_facade_service",
         "_mcp_catalog_service",
         "_mcp_installations_repo",
         "_meeting_orchestrator",
@@ -214,7 +224,9 @@ class AppState(AppStateServicesMixin):
         "_message_service",
         "_model_router",
         "_notification_dispatcher",
+        "_oauth_facade_service",
         "_oauth_token_manager",
+        "_ontology_facade_service",
         "_ontology_service",
         "_ontology_sync_service",
         "_org_mutation_service",
@@ -424,6 +436,11 @@ class AppState(AppStateServicesMixin):
         self._department_service: DepartmentService | None = None
         self._team_service: TeamService | None = None
         self._role_version_service: RoleVersionService | None = None
+        self._mcp_catalog_facade_service: MCPCatalogFacadeService | None = None
+        self._oauth_facade_service: OAuthFacadeService | None = None
+        self._client_facade_service: ClientFacadeService | None = None
+        self._artifact_facade_service: ArtifactFacadeService | None = None
+        self._ontology_facade_service: OntologyFacadeService | None = None
         self._client_simulation_state: ClientSimulationState | None = None
         self._approval_timeout_scheduler: ApprovalTimeoutScheduler | None = None
         self._session_store: SessionStore | None = None
