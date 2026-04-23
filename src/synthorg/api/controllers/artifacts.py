@@ -17,7 +17,7 @@ from synthorg.api.errors import (
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
 from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
-from synthorg.api.rate_limits.guard import per_op_rate_limit
+from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.ws_models import WsEventType
 from synthorg.core.artifact import Artifact
 from synthorg.core.enums import ArtifactType
@@ -321,12 +321,7 @@ class ArtifactController(Controller):
         "/{artifact_id:str}/content",
         guards=[
             require_write_access,
-            per_op_rate_limit(
-                "artifacts.upload",
-                max_requests=10,
-                window_seconds=60,
-                key="user",
-            ),
+            per_op_rate_limit_from_policy("artifacts.upload", key="user"),
         ],
         media_type="application/json",
     )

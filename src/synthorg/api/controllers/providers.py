@@ -51,7 +51,7 @@ from synthorg.api.errors import (
 )
 from synthorg.api.guards import require_ceo_or_manager, require_read_access
 from synthorg.api.path_params import PathName  # noqa: TC001
-from synthorg.api.rate_limits import per_op_concurrency, per_op_rate_limit
+from synthorg.api.rate_limits import per_op_concurrency, per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
@@ -98,12 +98,7 @@ class ProviderController(Controller):
         "/probe-preset",
         guards=[
             require_ceo_or_manager,
-            per_op_rate_limit(
-                "providers.probe",
-                max_requests=10,
-                window_seconds=60,
-                key="user",
-            ),
+            per_op_rate_limit_from_policy("providers.probe", key="user"),
         ],
     )
     async def probe_preset(
@@ -256,12 +251,7 @@ class ProviderController(Controller):
         "/",
         guards=[
             require_ceo_or_manager,
-            per_op_rate_limit(
-                "providers.create",
-                max_requests=10,
-                window_seconds=60,
-                key="user",
-            ),
+            per_op_rate_limit_from_policy("providers.create", key="user"),
         ],
     )
     async def create_provider(
@@ -311,10 +301,8 @@ class ProviderController(Controller):
         "/from-preset",
         guards=[
             require_ceo_or_manager,
-            per_op_rate_limit(
+            per_op_rate_limit_from_policy(
                 "providers.create_from_preset",
-                max_requests=10,
-                window_seconds=60,
                 key="user",
             ),
         ],
@@ -363,12 +351,7 @@ class ProviderController(Controller):
         "/{name:str}",
         guards=[
             require_ceo_or_manager,
-            per_op_rate_limit(
-                "providers.update",
-                max_requests=20,
-                window_seconds=60,
-                key="user",
-            ),
+            per_op_rate_limit_from_policy("providers.update", key="user"),
         ],
     )
     async def update_provider(
@@ -417,12 +400,7 @@ class ProviderController(Controller):
         "/{name:str}",
         guards=[
             require_ceo_or_manager,
-            per_op_rate_limit(
-                "providers.delete",
-                max_requests=5,
-                window_seconds=60,
-                key="user",
-            ),
+            per_op_rate_limit_from_policy("providers.delete", key="user"),
         ],
         status_code=HTTP_204_NO_CONTENT,
     )
@@ -455,10 +433,8 @@ class ProviderController(Controller):
         "/{name:str}/discover-models",
         guards=[
             require_ceo_or_manager,
-            per_op_rate_limit(
+            per_op_rate_limit_from_policy(
                 "providers.discover_models",
-                max_requests=5,
-                window_seconds=60,
                 key="user",
             ),
         ],
@@ -517,12 +493,7 @@ class ProviderController(Controller):
         "/{name:str}/test",
         guards=[
             require_ceo_or_manager,
-            per_op_rate_limit(
-                "providers.test",
-                max_requests=20,
-                window_seconds=60,
-                key="user",
-            ),
+            per_op_rate_limit_from_policy("providers.test", key="user"),
         ],
     )
     async def test_connection(
@@ -590,10 +561,8 @@ class ProviderController(Controller):
         "/discovery-policy/entries",
         guards=[
             require_ceo_or_manager,
-            per_op_rate_limit(
+            per_op_rate_limit_from_policy(
                 "providers.allowlist_add",
-                max_requests=50,
-                window_seconds=60,
                 key="user",
             ),
         ],
@@ -627,10 +596,8 @@ class ProviderController(Controller):
         "/discovery-policy/remove-entry",
         guards=[
             require_ceo_or_manager,
-            per_op_rate_limit(
+            per_op_rate_limit_from_policy(
                 "providers.allowlist_remove",
-                max_requests=50,
-                window_seconds=60,
                 key="user",
             ),
         ],
@@ -666,12 +633,7 @@ class ProviderController(Controller):
         "/{name:str}/models/pull",
         guards=[
             require_ceo_or_manager,
-            per_op_rate_limit(
-                "providers.pull_model",
-                max_requests=5,
-                window_seconds=300,
-                key="user",
-            ),
+            per_op_rate_limit_from_policy("providers.pull_model", key="user"),
         ],
         opt=per_op_concurrency(
             "providers.pull_model",
@@ -751,12 +713,7 @@ class ProviderController(Controller):
         "/{name:str}/models/{model_id:path}",
         guards=[
             require_ceo_or_manager,
-            per_op_rate_limit(
-                "providers.delete_model",
-                max_requests=20,
-                window_seconds=60,
-                key="user",
-            ),
+            per_op_rate_limit_from_policy("providers.delete_model", key="user"),
         ],
         status_code=HTTP_204_NO_CONTENT,
     )
@@ -815,10 +772,8 @@ class ProviderController(Controller):
         "/{name:str}/models/{model_id:path}/config",
         guards=[
             require_ceo_or_manager,
-            per_op_rate_limit(
+            per_op_rate_limit_from_policy(
                 "providers.update_model_config",
-                max_requests=50,
-                window_seconds=60,
                 key="user",
             ),
         ],

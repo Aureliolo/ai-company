@@ -13,7 +13,7 @@ from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.errors import ConflictError, NotFoundError
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
-from synthorg.api.rate_limits import per_op_rate_limit
+from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.api.ws_models import WsEventType
 from synthorg.client.models import (
@@ -170,12 +170,7 @@ class RequestController(Controller):
         "/",
         guards=[
             require_write_access,
-            per_op_rate_limit(
-                "requests.create",
-                max_requests=30,
-                window_seconds=60,
-                key="user",
-            ),
+            per_op_rate_limit_from_policy("requests.create", key="user"),
         ],
         status_code=201,
     )
@@ -205,12 +200,7 @@ class RequestController(Controller):
         "/{request_id:str}/scope",
         guards=[
             require_write_access,
-            per_op_rate_limit(
-                "requests.update_scope",
-                max_requests=50,
-                window_seconds=60,
-                key="user",
-            ),
+            per_op_rate_limit_from_policy("requests.update_scope", key="user"),
         ],
     )
     async def scope_request(
@@ -298,12 +288,7 @@ class RequestController(Controller):
         "/{request_id:str}/approve",
         guards=[
             require_write_access,
-            per_op_rate_limit(
-                "requests.approve",
-                max_requests=100,
-                window_seconds=60,
-                key="user",
-            ),
+            per_op_rate_limit_from_policy("requests.approve", key="user"),
         ],
     )
     async def approve_request(
@@ -358,12 +343,7 @@ class RequestController(Controller):
         "/{request_id:str}/reject",
         guards=[
             require_write_access,
-            per_op_rate_limit(
-                "requests.reject",
-                max_requests=100,
-                window_seconds=60,
-                key="user",
-            ),
+            per_op_rate_limit_from_policy("requests.reject", key="user"),
         ],
     )
     async def reject_request(

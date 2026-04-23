@@ -33,7 +33,7 @@ from synthorg.api.pagination import (
     paginate_cursor,
 )
 from synthorg.api.path_params import PathName  # noqa: TC001
-from synthorg.api.rate_limits import per_op_rate_limit
+from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
@@ -183,12 +183,7 @@ class OntologyController(Controller):
         "/entities",
         guards=[
             require_write_access,
-            per_op_rate_limit(
-                "ontology.create_entity",
-                max_requests=20,
-                window_seconds=60,
-                key="user",
-            ),
+            per_op_rate_limit_from_policy("ontology.create_entity", key="user"),
         ],
         status_code=201,
     )
@@ -246,12 +241,7 @@ class OntologyController(Controller):
         "/entities/{name:str}",
         guards=[
             require_write_access,
-            per_op_rate_limit(
-                "ontology.update_entity",
-                max_requests=30,
-                window_seconds=60,
-                key="user",
-            ),
+            per_op_rate_limit_from_policy("ontology.update_entity", key="user"),
         ],
     )
     async def update_entity(
@@ -326,12 +316,7 @@ class OntologyController(Controller):
         "/entities/{name:str}",
         guards=[
             require_write_access,
-            per_op_rate_limit(
-                "ontology.delete_entity",
-                max_requests=10,
-                window_seconds=60,
-                key="user",
-            ),
+            per_op_rate_limit_from_policy("ontology.delete_entity", key="user"),
         ],
         status_code=HTTP_204_NO_CONTENT,
     )
@@ -505,12 +490,7 @@ class OntologyController(Controller):
         "/drift/check",
         guards=[
             require_write_access,
-            per_op_rate_limit(
-                "ontology.drift_check",
-                max_requests=5,
-                window_seconds=60,
-                key="user",
-            ),
+            per_op_rate_limit_from_policy("ontology.drift_check", key="user"),
         ],
     )
     async def trigger_drift_check(
@@ -542,12 +522,7 @@ class OntologyController(Controller):
         "/admin/derive",
         guards=[
             require_write_access,
-            per_op_rate_limit(
-                "ontology.admin_derive",
-                max_requests=5,
-                window_seconds=60,
-                key="user",
-            ),
+            per_op_rate_limit_from_policy("ontology.admin_derive", key="user"),
         ],
     )
     async def admin_derive(
@@ -563,10 +538,8 @@ class OntologyController(Controller):
         "/admin/sync-org-memory",
         guards=[
             require_write_access,
-            per_op_rate_limit(
+            per_op_rate_limit_from_policy(
                 "ontology.admin_sync_org_memory",
-                max_requests=5,
-                window_seconds=60,
                 key="user",
             ),
         ],

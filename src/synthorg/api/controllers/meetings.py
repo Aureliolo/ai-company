@@ -12,7 +12,7 @@ from synthorg.api.errors import ApiValidationError, NotFoundError
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
 from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
-from synthorg.api.rate_limits import per_op_rate_limit
+from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.communication.meeting.enums import MeetingStatus  # noqa: TC001
 from synthorg.communication.meeting.models import MeetingRecord
 from synthorg.core.types import NotBlankStr  # noqa: TC001
@@ -239,12 +239,7 @@ class MeetingController(Controller):
         "/trigger",
         guards=[
             require_write_access,
-            per_op_rate_limit(
-                "meetings.create",
-                max_requests=20,
-                window_seconds=60,
-                key="user",
-            ),
+            per_op_rate_limit_from_policy("meetings.create", key="user"),
         ],
         status_code=200,
     )

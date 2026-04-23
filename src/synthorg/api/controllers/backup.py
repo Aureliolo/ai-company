@@ -22,7 +22,7 @@ from synthorg.api.pagination import (
     encode_countless_seek_meta,
 )
 from synthorg.api.path_params import PathId  # noqa: TC001
-from synthorg.api.rate_limits.guard import per_op_rate_limit
+from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.backup.errors import (
     BackupError,
@@ -199,12 +199,7 @@ class BackupController(Controller):
     @post(
         "/restore",
         guards=[
-            per_op_rate_limit(
-                "admin.backup_restore",
-                max_requests=3,
-                window_seconds=3600,
-                key="user",
-            ),
+            per_op_rate_limit_from_policy("admin.backup_restore", key="user"),
         ],
     )
     async def restore_backup(

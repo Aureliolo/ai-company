@@ -12,7 +12,7 @@ from synthorg.api.dto import (
 from synthorg.api.errors import NotFoundError
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.path_params import PathId  # noqa: TC001
-from synthorg.api.rate_limits import per_op_rate_limit
+from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.engine.errors import (
     WorkflowConditionEvalError,
     WorkflowDefinitionInvalidError,
@@ -67,12 +67,7 @@ class WorkflowExecutionController(Controller):
         "/activate/{workflow_id:str}",
         guards=[
             require_write_access,
-            per_op_rate_limit(
-                "workflows.activate",
-                max_requests=10,
-                window_seconds=60,
-                key="user",
-            ),
+            per_op_rate_limit_from_policy("workflows.activate", key="user"),
         ],
         status_code=201,
     )
@@ -213,12 +208,7 @@ class WorkflowExecutionController(Controller):
         "/{execution_id:str}/cancel",
         guards=[
             require_write_access,
-            per_op_rate_limit(
-                "workflows.cancel",
-                max_requests=50,
-                window_seconds=60,
-                key="user",
-            ),
+            per_op_rate_limit_from_policy("workflows.cancel", key="user"),
         ],
     )
     async def cancel_execution(
