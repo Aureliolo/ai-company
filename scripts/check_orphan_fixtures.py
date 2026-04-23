@@ -149,15 +149,27 @@ class _Declaration:
     autouse: bool
 
 
-def _collect_declarations(conftest_path: Path) -> list[_Declaration]:
-    """Return every pytest fixture declared in *conftest_path*."""
+def _collect_declarations(
+    conftest_path: Path,
+    skipped: list[tuple[Path, str]] | None = None,
+) -> list[_Declaration]:
+    """Return every pytest fixture declared in *conftest_path*.
+
+    Unreadable or unparseable files are appended to *skipped* (when
+    provided) as ``(path, reason)`` so the caller can surface the
+    incomplete scan instead of silently dropping files.
+    """
     try:
         source = conftest_path.read_text(encoding="utf-8")
-    except OSError, UnicodeDecodeError:
+    except (OSError, UnicodeDecodeError) as exc:
+        if skipped is not None:
+            skipped.append((conftest_path, f"read failed: {type(exc).__name__}"))
         return []
     try:
         tree = ast.parse(source, filename=str(conftest_path))
-    except SyntaxError:
+    except SyntaxError as exc:
+        if skipped is not None:
+            skipped.append((conftest_path, f"parse failed: line {exc.lineno}"))
         return []
     declarations: list[_Declaration] = []
     for node in ast.walk(tree):
@@ -266,17 +278,29 @@ class _References:
     imported_names: frozenset[str]
 
 
-def _collect_references(test_files: list[Path]) -> _References:
-    """Walk every ``*.py`` under the test tree and collect references."""
+def _collect_references(
+    test_files: list[Path],
+    skipped: list[tuple[Path, str]] | None = None,
+) -> _References:
+    """Walk every ``*.py`` under the test tree and collect references.
+
+    Unreadable or unparseable files are recorded in *skipped* (when
+    provided) so the scan result never pretends a corrupted file was
+    fully analysed.
+    """
     visitor = _ReferenceVisitor()
     for path in test_files:
         try:
             source = path.read_text(encoding="utf-8")
-        except OSError, UnicodeDecodeError:
+        except (OSError, UnicodeDecodeError) as exc:
+            if skipped is not None:
+                skipped.append((path, f"read failed: {type(exc).__name__}"))
             continue
         try:
             tree = ast.parse(source, filename=str(path))
-        except SyntaxError:
+        except SyntaxError as exc:
+            if skipped is not None:
+                skipped.append((path, f"parse failed: line {exc.lineno}"))
             continue
         visitor.visit(tree)
     return _References(
@@ -327,17 +351,28 @@ def _iter_conftests(test_root: Path) -> list[Path]:
     return [p for p in test_root.rglob("conftest.py") if p.is_file()]
 
 
-def find_orphans(test_root: Path) -> list[Orphan]:
+def find_orphans(
+    test_root: Path,
+    skipped: list[tuple[Path, str]] | None = None,
+) -> list[Orphan]:
     """Return every orphan fixture under *test_root*.
 
     Two-pass scan: first collect every fixture declaration under
     ``conftest.py`` files, then walk the whole test tree to gather
     references, then difference.
+
+    Args:
+        test_root: Root of the test tree to scan.
+        skipped: Optional list that receives ``(path, reason)`` entries
+            for every file that could not be read or parsed.  When
+            ``None`` (default), unreadable files are silently ignored
+            so the existing call sites keep working.  The CLI entry
+            point passes a list so the report surfaces these gaps.
     """
     declarations: list[_Declaration] = []
     for conftest in _iter_conftests(test_root):
-        declarations.extend(_collect_declarations(conftest))
-    references = _collect_references(_iter_test_files(test_root))
+        declarations.extend(_collect_declarations(conftest, skipped=skipped))
+    references = _collect_references(_iter_test_files(test_root), skipped=skipped)
 
     # Fixture-to-fixture dependencies are themselves references.
     fixture_dep_names: set[str] = set()
@@ -418,7 +453,24 @@ def main(argv: list[str] | None = None) -> int:
         print(f"test root not found: {test_root}", file=sys.stderr)
         return 2
 
-    orphans = find_orphans(test_root)
+    skipped: list[tuple[Path, str]] = []
+    orphans = find_orphans(test_root, skipped=skipped)
+
+    if skipped:
+        print(
+            f"\nWARNING: {len(skipped)} file(s) could not be fully scanned "
+            "-- orphan detection may be incomplete for fixtures defined "
+            "in or referenced by these files:",
+            file=sys.stderr,
+        )
+        for path, reason in skipped:
+            try:
+                rel = path.resolve().relative_to(project_root.resolve())
+                display = rel.as_posix()
+            except ValueError:
+                display = str(path)
+            print(f"  {display}: {reason}", file=sys.stderr)
+
     if not orphans:
         return 0
 

@@ -490,6 +490,59 @@ class TestBuildUserMessageContentSummaries:
         assert "x" * 60 not in msg
         assert "..." in msg
 
+    def test_truncation_boundary_exact(self) -> None:
+        """Content at exactly the cap length is NOT truncated (no ``...``)."""
+        from synthorg.engine.evolution.proposers.separate_analyzer import (
+            _build_user_message,
+        )
+
+        cap = 50
+        exact = "x" * cap
+        memories = (self._memory(mem_id="mem-exact", content=exact),)
+        context = EvolutionContext(
+            agent_id=NotBlankStr("a"),
+            identity=self._identity(),
+            performance_snapshot=None,
+            recent_task_results=(),
+            recent_procedural_memories=memories,
+        )
+        msg = _build_user_message(
+            NotBlankStr("a"),
+            context,
+            memory_content_max_chars=cap,
+        )
+        # The exact-length case lands verbatim inside the ``repr()``
+        # output; the truncation marker must NOT be appended.
+        assert f"{'x' * cap!r}" in msg
+        assert "..." not in msg
+
+    def test_truncation_boundary_one_over(self) -> None:
+        """Content one character past the cap IS truncated with ``...``."""
+        from synthorg.engine.evolution.proposers.separate_analyzer import (
+            _build_user_message,
+        )
+
+        cap = 50
+        over = "x" * (cap + 1)
+        memories = (self._memory(mem_id="mem-over", content=over),)
+        context = EvolutionContext(
+            agent_id=NotBlankStr("a"),
+            identity=self._identity(),
+            performance_snapshot=None,
+            recent_task_results=(),
+            recent_procedural_memories=memories,
+        )
+        msg = _build_user_message(
+            NotBlankStr("a"),
+            context,
+            memory_content_max_chars=cap,
+        )
+        assert "x" * cap in msg
+        # The original ``cap+1`` characters must NOT appear consecutively
+        # -- the cap-th x is followed by ``...`` instead.
+        assert "x" * (cap + 1) not in msg
+        assert "..." in msg
+
     def test_fence_breakout_attempt_is_escaped(self) -> None:
         """Memory content containing ``</task-fact>`` cannot break the fence.
 

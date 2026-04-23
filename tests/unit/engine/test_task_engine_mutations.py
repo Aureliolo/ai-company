@@ -439,6 +439,98 @@ class TestListTasksSafetyCap:
             await eng.stop(timeout=2.0)
 
 
+# ── list_tasks push-down pagination ───────────────────────────
+
+
+@pytest.mark.unit
+class TestListTasksPushDownPagination:
+    """``list_tasks`` exposes ``limit`` / ``offset`` / ``include_total``."""
+
+    async def test_limit_slices_repository_result(
+        self,
+        persistence: FakePersistence,
+    ) -> None:
+        """Passing ``limit`` returns at most that many rows from the repo."""
+        eng = TaskEngine(persistence=persistence)  # type: ignore[arg-type]
+        eng.start()
+        try:
+            for i in range(5):
+                await eng.create_task(
+                    make_create_data(title=f"task-{i}"),
+                    requested_by="alice",
+                )
+            tasks, total = await eng.list_tasks(limit=2, offset=0)
+            assert len(tasks) == 2
+            assert total == 5  # total reflects full cardinality
+        finally:
+            await eng.stop(timeout=2.0)
+
+    async def test_offset_skips_leading_rows(
+        self,
+        persistence: FakePersistence,
+    ) -> None:
+        """``offset=N`` drops the first N rows from the window."""
+        eng = TaskEngine(persistence=persistence)  # type: ignore[arg-type]
+        eng.start()
+        try:
+            for i in range(5):
+                await eng.create_task(
+                    make_create_data(title=f"task-{i}"),
+                    requested_by="alice",
+                )
+            first, _ = await eng.list_tasks(limit=10, offset=0)
+            second, _ = await eng.list_tasks(limit=10, offset=2)
+            # Ordering is stable (by id) so the offset window is a clean suffix.
+            assert [t.id for t in second] == [t.id for t in first][2:]
+        finally:
+            await eng.stop(timeout=2.0)
+
+    async def test_include_total_false_skips_count(
+        self,
+        persistence: FakePersistence,
+    ) -> None:
+        """``include_total=False`` returns ``None`` and avoids count_tasks."""
+        eng = TaskEngine(persistence=persistence)  # type: ignore[arg-type]
+        eng.start()
+        try:
+            await eng.create_task(make_create_data(), requested_by="alice")
+            tasks, total = await eng.list_tasks(
+                limit=10,
+                offset=0,
+                include_total=False,
+            )
+            assert len(tasks) == 1
+            assert total is None
+        finally:
+            await eng.stop(timeout=2.0)
+
+    async def test_negative_limit_rejected(
+        self,
+        persistence: FakePersistence,
+    ) -> None:
+        """Negative ``limit`` fails fast with ``ValueError``."""
+        eng = TaskEngine(persistence=persistence)  # type: ignore[arg-type]
+        eng.start()
+        try:
+            with pytest.raises(ValueError, match="non-negative"):
+                await eng.list_tasks(limit=-1)
+        finally:
+            await eng.stop(timeout=2.0)
+
+    async def test_negative_offset_rejected(
+        self,
+        persistence: FakePersistence,
+    ) -> None:
+        """Negative ``offset`` fails fast with ``ValueError``."""
+        eng = TaskEngine(persistence=persistence)  # type: ignore[arg-type]
+        eng.start()
+        try:
+            with pytest.raises(ValueError, match="non-negative"):
+                await eng.list_tasks(offset=-1)
+        finally:
+            await eng.stop(timeout=2.0)
+
+
 # ── Cancel not found ─────────────────────────────────────────
 
 

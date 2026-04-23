@@ -13,7 +13,8 @@ from synthorg.core.types import NotBlankStr
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.meta.models import EvolutionMode, RolloutStrategyType
 from synthorg.meta.telemetry.config import CrossDeploymentAnalyticsConfig
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.meta import META_SELF_IMPROVEMENT_LOAD_FAILED
 
 if TYPE_CHECKING:
     from synthorg.settings.service import SettingsService
@@ -343,11 +344,12 @@ async def load_self_improvement_config(
         entry = await settings_service.get("meta", "self_improvement")
     except MemoryError, RecursionError:
         raise
-    except Exception:
+    except Exception as exc:
         logger.warning(
-            "meta.self_improvement_load_failed",
+            META_SELF_IMPROVEMENT_LOAD_FAILED,
             reason="settings_get_error",
-            exc_info=True,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         return SelfImprovementConfig()
     raw = entry.value or "{}"
@@ -355,19 +357,23 @@ async def load_self_improvement_config(
         import json as _json  # noqa: PLC0415 -- lazy stdlib import
 
         overrides = _json.loads(raw)
-    except ValueError, TypeError:
+    except (ValueError, TypeError) as exc:
         logger.warning(
-            "meta.self_improvement_load_failed",
+            META_SELF_IMPROVEMENT_LOAD_FAILED,
             reason="json_decode_error",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         return SelfImprovementConfig()
     if not isinstance(overrides, dict) or not overrides:
         return SelfImprovementConfig()
     try:
         return SelfImprovementConfig(**overrides)
-    except ValueError, TypeError:
+    except (ValueError, TypeError) as exc:
         logger.warning(
-            "meta.self_improvement_load_failed",
+            META_SELF_IMPROVEMENT_LOAD_FAILED,
             reason="model_validation_failed",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         return SelfImprovementConfig()

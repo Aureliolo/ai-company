@@ -228,7 +228,11 @@ id, title, description, type, priority, project, created_by,
             rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to list tasks"
-            logger.exception(PERSISTENCE_TASK_LIST_FAILED, error=str(exc))
+            logger.warning(
+                PERSISTENCE_TASK_LIST_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             raise QueryError(msg) from exc
         tasks = tuple(self._row_to_task(row) for row in rows)
         logger.debug(PERSISTENCE_TASK_LISTED, count=len(tasks))

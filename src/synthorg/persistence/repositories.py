@@ -107,9 +107,11 @@ class TaskRepository(Protocol):
                 Paired with ``limit`` for cursor/offset pagination.
 
         Returns:
-            Matching tasks as a tuple.  Ordering is deterministic
-            (``created_at`` ascending, tie-breaking on ``id``) so
-            limit/offset windows do not jitter across calls.
+            Matching tasks as a tuple.  Ordering is deterministic on
+            the primary key ``id`` (ascending) so limit/offset windows
+            do not jitter across calls; the ``Task`` model has no
+            ``created_at`` field so primary-key order is the only
+            stable backend-agnostic signal available.
 
         Raises:
             PersistenceError: If the operation fails.

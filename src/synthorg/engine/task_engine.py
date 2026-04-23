@@ -38,7 +38,7 @@ from synthorg.engine.task_engine_models import (
     UpdateTaskMutation,
 )
 from synthorg.engine.task_engine_version import VersionTracker
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.background_tasks import log_task_exceptions
 from synthorg.observability.events.task_engine import (
     TASK_ENGINE_CREATED,
@@ -520,7 +520,14 @@ class TaskEngine(TaskEngineLoopsMixin):
 
         Raises:
             TaskInternalError: If the persistence backend fails.
+            ValueError: If ``limit`` is negative or ``offset`` is negative.
         """
+        if limit is not None and limit < 0:
+            msg = f"limit must be non-negative when set; got {limit}"
+            raise ValueError(msg)
+        if offset < 0:
+            msg = f"offset must be non-negative; got {offset}"
+            raise ValueError(msg)
         try:
             tasks = await self._persistence.tasks.list_tasks(
                 status=status,
@@ -532,10 +539,11 @@ class TaskEngine(TaskEngineLoopsMixin):
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            msg = f"Failed to list tasks: {exc}"
-            logger.exception(
+            msg = "Failed to list tasks"
+            logger.warning(
                 TASK_ENGINE_READ_FAILED,
-                error=msg,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise TaskInternalError(msg) from exc
 
@@ -570,10 +578,11 @@ class TaskEngine(TaskEngineLoopsMixin):
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            msg = f"Failed to count tasks: {exc}"
-            logger.exception(
+            msg = "Failed to count tasks"
+            logger.warning(
                 TASK_ENGINE_READ_FAILED,
-                error=msg,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise TaskInternalError(msg) from exc
         return tasks, total

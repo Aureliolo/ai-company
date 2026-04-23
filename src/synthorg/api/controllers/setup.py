@@ -98,7 +98,7 @@ from synthorg.api.errors import ApiValidationError
 from synthorg.api.guards import require_ceo, require_read_access
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.setup import (
     SETUP_AGENT_CREATED,
     SETUP_AGENT_MODEL_UPDATED,
@@ -124,26 +124,29 @@ logger = get_logger(__name__)
 async def _read_has_gpu_setting(settings_svc: SettingsService) -> bool | None:
     """Return the operator-owned ``api/setup_has_gpu`` boolean.
 
-    Returns ``None`` on read failure so ``infer_deployment_tier`` falls
-    back to its default (``assumes GPU available`` for local presets).
+    Returns ``None`` on read failure (logged at WARNING with exception
+    type + scrubbed description) or if the value is unparseable.
     """
     try:
         entry = await settings_svc.get("api", "setup_has_gpu")
     except MemoryError, RecursionError:
         raise
-    except Exception:
+    except Exception as exc:
         logger.warning(
             SETUP_COMPLETE_CHECK_ERROR,
             check="read_has_gpu",
-            exc_info=True,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         return None
     raw = (entry.value or "").strip().lower()
-    if raw in {"true", "1", "yes"}:
-        return True
-    if raw in {"false", "0", "no", ""}:
-        return False
-    return None
+    match raw:
+        case "true" | "1" | "yes":
+            return True
+        case "false" | "0" | "no" | "":
+            return False
+        case _:
+            return None
 
 
 # ── Controller ───────────────────────────────────────────────

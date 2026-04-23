@@ -151,3 +151,11 @@ META_ABTEST_GROUP_AGGREGATOR_SNAPSHOT_FAILED: Final[str] = (
 META_REGRESSION_STATISTICAL_INSUFFICIENT_DATA: Final[str] = (
     "meta.regression.statistical_insufficient_data"
 )
+
+# -- SelfImprovementConfig loader diagnostics ------------------------------
+
+META_SELF_IMPROVEMENT_LOAD_FAILED: Final[str] = "meta.self_improvement.load_failed"
+"""Emitted when ``load_self_improvement_config`` cannot read or parse the
+``meta.self_improvement`` settings override and falls back to code
+defaults.  Always logged at WARNING so operators can audit silent
+fallbacks."""

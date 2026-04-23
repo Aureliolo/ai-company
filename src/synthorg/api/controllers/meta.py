@@ -59,11 +59,11 @@ class MetaController(Controller):
         Returns:
             Current SelfImprovementConfig as dict.
         """
-        config = await load_self_improvement_config(
-            state.app_state.settings_service
-            if state.app_state.has_settings_service
-            else None,
+        app_state = state.app_state
+        settings_svc = (
+            app_state.settings_service if app_state.has_settings_service else None
         )
+        config = await load_self_improvement_config(settings_svc)
         return ApiResponse[dict[str, Any]](
             data=config.model_dump(),
         )
@@ -88,11 +88,11 @@ class MetaController(Controller):
         from synthorg.meta.rules.builtin import default_rules  # noqa: PLC0415
 
         rules = default_rules()
-        config = await load_self_improvement_config(
-            state.app_state.settings_service
-            if state.app_state.has_settings_service
-            else None,
+        app_state = state.app_state
+        settings_svc = (
+            app_state.settings_service if app_state.has_settings_service else None
         )
+        config = await load_self_improvement_config(settings_svc)
         disabled = set(config.rules.disabled_rules)
         rule_list: list[dict[str, Any]] = [
             {
@@ -269,11 +269,11 @@ class MetaController(Controller):
         Returns:
             Signal domain summaries.
         """
-        config = await load_self_improvement_config(
-            state.app_state.settings_service
-            if state.app_state.has_settings_service
-            else None,
+        app_state = state.app_state
+        settings_svc = (
+            app_state.settings_service if app_state.has_settings_service else None
         )
+        config = await load_self_improvement_config(settings_svc)
         domains = [
             "performance",
             "budget",

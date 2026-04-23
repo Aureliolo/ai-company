@@ -128,8 +128,7 @@ async def _load_dept_policies_json(
         logger.warning(
             API_REQUEST_ERROR,
             endpoint="departments.ceremony_policy.load",
-            error="failed to load dept_ceremony_policies",
-            exc_info=True,
+            error=f"failed to load dept_ceremony_policies: {exc}",
         )
         if raise_on_error:
             msg = "Failed to load department ceremony policies"
@@ -320,8 +319,8 @@ async def _mutate_dept_policies_with_retry(
     ``_DEPT_POLICY_CAS_MAX_ATTEMPTS`` times on
     :class:`VersionConflictError` before surfacing the last conflict.
     """
-    last_conflict: VersionConflictError | None = None
-    for _ in range(_DEPT_POLICY_CAS_MAX_ATTEMPTS):
+    last_attempt = _DEPT_POLICY_CAS_MAX_ATTEMPTS - 1
+    for attempt in range(_DEPT_POLICY_CAS_MAX_ATTEMPTS):
         policies, expected = await _load_dept_policies_versioned(app_state)
         policies[department_name] = (
             None if new_value is None else copy.deepcopy(new_value)
@@ -332,34 +331,14 @@ async def _mutate_dept_policies_with_retry(
                 policies,
                 expected_updated_at=expected,
             )
-        except VersionConflictError as exc:
-            last_conflict = exc
+        except VersionConflictError:
+            # Re-raise on the final attempt so the caller sees HTTP 409;
+            # otherwise re-read and retry against the new ``updated_at``.
+            if attempt == last_attempt:
+                raise
             continue
         else:
             return
-    # Exhausted retries without a successful write; surface the most
-    # recent conflict so the caller maps to HTTP 409.
-    if last_conflict is None:  # unreachable by the loop semantics
-        msg = "CAS retry loop exited without recording a conflict"
-        raise ServiceUnavailableError(msg)
-    raise last_conflict
-
-
-async def _set_dept_ceremony_override(
-    app_state: AppState,
-    department_name: NotBlankStr,
-    policy: dict[str, Any],
-) -> None:
-    """Set the ceremony policy override for a department via CAS retry."""
-    await _mutate_dept_policies_with_retry(app_state, department_name, policy)
-
-
-async def _clear_dept_ceremony_override(
-    app_state: AppState,
-    department_name: NotBlankStr,
-) -> None:
-    """Persist the explicit-inherit sentinel for a department via CAS retry."""
-    await _mutate_dept_policies_with_retry(app_state, department_name, None)
 
 
 # ── Controller ────────────────────────────────────────────────
@@ -735,7 +714,7 @@ class DepartmentController(Controller):
         clean_data = validated.model_dump(mode="json", exclude_none=True)
 
         # Merge into the dept_ceremony_policies JSON setting
-        await _set_dept_ceremony_override(app_state, canonical, clean_data)
+        await _mutate_dept_policies_with_retry(app_state, canonical, clean_data)
 
         logger.info(
             API_CEREMONY_POLICY_DEPT_UPDATED,
@@ -774,7 +753,7 @@ class DepartmentController(Controller):
         """
         app_state: AppState = state.app_state
         canonical = await _require_department_exists(app_state, name)
-        await _clear_dept_ceremony_override(app_state, canonical)
+        await _mutate_dept_policies_with_retry(app_state, canonical, None)
         logger.info(
             API_CEREMONY_POLICY_DEPT_CLEARED,
             department=canonical,
