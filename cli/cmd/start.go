@@ -345,7 +345,11 @@ func pullAllImages(ctx context.Context, info docker.Info, safeDir string, state 
 			if it.compose {
 				err = composeRunQuiet(ctx, info, safeDir, "pull", it.name)
 			} else {
-				err = dockerPullWithRetry(ctx, info, it.ref, sandboxPullAttempts)
+				tun := GetGlobalOpts(ctx).Tunables
+				err = dockerPullWithRetry(
+					ctx, info, it.ref,
+					tun.ImagePullAttempts, tun.ImagePullRetryDelay,
+				)
 			}
 			if err != nil {
 				lb.UpdateLine(idx, ui.IconError)
@@ -363,7 +367,16 @@ func pullAllImages(ctx context.Context, info docker.Info, safeDir string, state 
 }
 
 // dockerPullWithRetry pulls an image with retries for transient failures.
-func dockerPullWithRetry(ctx context.Context, info docker.Info, imageRef string, attempts int) error {
+// The caller supplies attempts (> 0) and baseDelay (exponential backoff
+// seed) so the values flow from the resolved
+// config.Tunables rather than being pinned by package-level constants.
+func dockerPullWithRetry(
+	ctx context.Context,
+	info docker.Info,
+	imageRef string,
+	attempts int,
+	baseDelay time.Duration,
+) error {
 	var lastErr error
 	for attempt := 1; attempt <= attempts; attempt++ {
 		if err := dockerRunQuiet(ctx, info, "pull", imageRef); err == nil {
@@ -374,7 +387,7 @@ func dockerPullWithRetry(ctx context.Context, info docker.Info, imageRef string,
 		if attempt == attempts || ctx.Err() != nil {
 			break
 		}
-		backoff := sandboxPullRetryDelay << (attempt - 1)
+		backoff := baseDelay << (attempt - 1)
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
@@ -425,12 +438,6 @@ func composeServiceNames(state config.State) []string {
 	return services
 }
 
-// sandboxPullAttempts bounds retries for transient standalone image pulls.
-const sandboxPullAttempts = 3
-
-// sandboxPullRetryDelay is the base backoff between pull retries.
-var sandboxPullRetryDelay = 2 * time.Second
-
 // dockerRunQuiet runs a docker command with output captured in a buffer.
 // Mirrors composeRunQuiet but shells out to `docker` directly via the
 // resolved binary path from docker.Info -- used for operations that
@@ -469,7 +476,7 @@ func verifyAndPinImages(ctx context.Context, _ *cobra.Command, state config.Stat
 	}
 	lb := out.NewLiveBox("Verify SynthOrg Images", labels)
 
-	verifyCtx, cancel := context.WithTimeout(ctx, 120*time.Second)
+	verifyCtx, cancel := context.WithTimeout(ctx, GetGlobalOpts(ctx).Tunables.ImageVerifyTimeout)
 	defer cancel()
 	results, err := verify.VerifyImages(verifyCtx, verify.VerifyOptions{
 		Images: imageRefs,

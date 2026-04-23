@@ -106,6 +106,11 @@ type State struct {
 	SelfUpdateAPITimeout   string `json:"self_update_api_timeout,omitempty"`
 	TUFFetchTimeout        string `json:"tuf_fetch_timeout,omitempty"`
 	AttestationHTTPTimeout string `json:"attestation_http_timeout,omitempty"`
+	ImageVerifyTimeout     string `json:"image_verify_timeout,omitempty"`
+	ImagePullRetryDelay    string `json:"image_pull_retry_delay,omitempty"`
+
+	// Integer strings parsed by strconv.Atoi. Empty = use compiled-in default.
+	ImagePullAttempts string `json:"image_pull_attempts,omitempty"`
 
 	// Download size ceilings in bytes. Zero = use compiled-in default.
 	MaxAPIResponseBytes  int64 `json:"max_api_response_bytes,omitempty"`
@@ -132,6 +137,15 @@ const (
 	DefaultSelfUpdateAPITimeout   = 30 * time.Second
 	DefaultTUFFetchTimeout        = 30 * time.Second
 	DefaultAttestationHTTPTimeout = 30 * time.Second
+	DefaultImageVerifyTimeout     = 120 * time.Second
+	DefaultImagePullRetryDelay    = 2 * time.Second
+	DefaultImagePullAttempts      = 3
+
+	// MaxImagePullAttempts caps the user-provided retry count so an
+	// operator cannot accidentally wedge ``synthorg start`` behind a
+	// thousand sequential retries.  Kept well above the sensible
+	// operational range (3-5) but finite.
+	MaxImagePullAttempts = 100
 
 	DefaultMaxAPIResponseBytes  int64 = 1 * 1024 * 1024
 	DefaultMaxBinaryBytes       int64 = 256 * 1024 * 1024

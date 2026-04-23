@@ -26,6 +26,9 @@ const (
 	EnvSelfUpdateAPITimeout   = "SYNTHORG_SELF_UPDATE_API_TIMEOUT"
 	EnvTUFFetchTimeout        = "SYNTHORG_TUF_FETCH_TIMEOUT"
 	EnvAttestationHTTPTimeout = "SYNTHORG_ATTESTATION_HTTP_TIMEOUT"
+	EnvImageVerifyTimeout     = "SYNTHORG_IMAGE_VERIFY_TIMEOUT"
+	EnvImagePullAttempts      = "SYNTHORG_IMAGE_PULL_ATTEMPTS"
+	EnvImagePullRetryDelay    = "SYNTHORG_IMAGE_PULL_RETRY_DELAY"
 	EnvMaxAPIResponseBytes    = "SYNTHORG_MAX_API_RESPONSE_BYTES"
 	EnvMaxBinaryBytes         = "SYNTHORG_MAX_BINARY_BYTES"
 	EnvMaxArchiveEntryBytes   = "SYNTHORG_MAX_ARCHIVE_ENTRY_BYTES"
@@ -51,6 +54,9 @@ type Tunables struct {
 	SelfUpdateAPITimeout   time.Duration
 	TUFFetchTimeout        time.Duration
 	AttestationHTTPTimeout time.Duration
+	ImageVerifyTimeout     time.Duration
+	ImagePullRetryDelay    time.Duration
+	ImagePullAttempts      int
 
 	MaxAPIResponseBytes  int64
 	MaxBinaryBytes       int64
@@ -82,6 +88,9 @@ func DefaultTunables() Tunables {
 		SelfUpdateAPITimeout:    DefaultSelfUpdateAPITimeout,
 		TUFFetchTimeout:         DefaultTUFFetchTimeout,
 		AttestationHTTPTimeout:  DefaultAttestationHTTPTimeout,
+		ImageVerifyTimeout:      DefaultImageVerifyTimeout,
+		ImagePullRetryDelay:     DefaultImagePullRetryDelay,
+		ImagePullAttempts:       DefaultImagePullAttempts,
 		MaxAPIResponseBytes:     DefaultMaxAPIResponseBytes,
 		MaxBinaryBytes:          DefaultMaxBinaryBytes,
 		MaxArchiveEntryBytes:    DefaultMaxArchiveEntryBytes,
@@ -151,6 +160,15 @@ func ResolveTunables(s State) (Tunables, error) {
 	if t.AttestationHTTPTimeout, err = resolveDuration(EnvAttestationHTTPTimeout, s.AttestationHTTPTimeout, t.AttestationHTTPTimeout); err != nil {
 		return Tunables{}, fmt.Errorf("attestation_http_timeout: %w", err)
 	}
+	if t.ImageVerifyTimeout, err = resolveDuration(EnvImageVerifyTimeout, s.ImageVerifyTimeout, t.ImageVerifyTimeout); err != nil {
+		return Tunables{}, fmt.Errorf("image_verify_timeout: %w", err)
+	}
+	if t.ImagePullRetryDelay, err = resolveDuration(EnvImagePullRetryDelay, s.ImagePullRetryDelay, t.ImagePullRetryDelay); err != nil {
+		return Tunables{}, fmt.Errorf("image_pull_retry_delay: %w", err)
+	}
+	if t.ImagePullAttempts, err = resolveInt(EnvImagePullAttempts, s.ImagePullAttempts, t.ImagePullAttempts, 1, MaxImagePullAttempts); err != nil {
+		return Tunables{}, fmt.Errorf("image_pull_attempts: %w", err)
+	}
 
 	// Byte sizes.
 	if t.MaxAPIResponseBytes, err = resolveBytes(EnvMaxAPIResponseBytes, s.MaxAPIResponseBytes, t.MaxAPIResponseBytes); err != nil {
@@ -207,6 +225,33 @@ func resolveDuration(envName, stateValue string, def time.Duration) (time.Durati
 			return 0, fmt.Errorf("state %q: must be > 0", v)
 		}
 		return d, nil
+	}
+	return def, nil
+}
+
+// resolveInt returns the first valid integer from env > state > def.
+// Both env and state values must parse as integers and fall within
+// [minValue, maxValue] (inclusive); empty values are skipped.
+func resolveInt(envName, stateValue string, def, minValue, maxValue int) (int, error) {
+	if v := strings.TrimSpace(os.Getenv(envName)); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			return 0, fmt.Errorf("env %s=%q: %w", envName, v, err)
+		}
+		if n < minValue || n > maxValue {
+			return 0, fmt.Errorf("env %s=%q: must be in [%d, %d]", envName, v, minValue, maxValue)
+		}
+		return n, nil
+	}
+	if v := strings.TrimSpace(stateValue); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			return 0, fmt.Errorf("state %q: %w", v, err)
+		}
+		if n < minValue || n > maxValue {
+			return 0, fmt.Errorf("state %q: must be in [%d, %d]", v, minValue, maxValue)
+		}
+		return n, nil
 	}
 	return def, nil
 }

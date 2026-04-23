@@ -137,12 +137,14 @@ func TestDockerRunQuiet(t *testing.T) {
 }
 
 func TestDockerPullWithRetryBackoff(t *testing.T) {
-	// Deliberately serial: this test mutates the package-level
-	// sandboxPullRetryDelay, which would race with any other parallel test
-	// that exercises dockerPullWithRetry.
-	original := sandboxPullRetryDelay
-	sandboxPullRetryDelay = 5 * time.Millisecond
-	defer func() { sandboxPullRetryDelay = original }()
+	// attempts + baseDelay are now function parameters (HYG-2): the
+	// caller in start.go threads them from the resolved
+	// config.Tunables, and tests supply their own deterministic
+	// values without mutating package-level state.
+	const (
+		testAttempts  = 3
+		testBaseDelay = 5 * time.Millisecond
+	)
 
 	// Force failure by pointing DockerPath at a non-existent binary.
 	info := docker.Info{DockerPath: "/nonexistent/docker-binary-that-does-not-exist"}
@@ -150,7 +152,7 @@ func TestDockerPullWithRetryBackoff(t *testing.T) {
 	start := time.Now()
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	err := dockerPullWithRetry(ctx, info, "fake-image:latest", sandboxPullAttempts)
+	err := dockerPullWithRetry(ctx, info, "fake-image:latest", testAttempts, testBaseDelay)
 	elapsed := time.Since(start)
 
 	if err == nil {
