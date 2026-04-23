@@ -70,6 +70,12 @@ from synthorg.ontology.drift.service import DriftDetectionService  # noqa: TC001
 from synthorg.ontology.drift.store import DriftReportStore  # noqa: TC001
 from synthorg.ontology.service import OntologyService  # noqa: TC001
 from synthorg.ontology.sync import OntologyOrgMemorySync  # noqa: TC001
+from synthorg.organization.services import (
+    CompanyReadService,  # noqa: TC001
+    DepartmentService,  # noqa: TC001
+    RoleVersionService,  # noqa: TC001
+    TeamService,  # noqa: TC001
+)
 from synthorg.persistence.auth_protocol import (
     LockoutRepository as LockoutStore,  # noqa: TC001
 )
@@ -810,6 +816,10 @@ class AppStateServicesMixin:
     _audit_read_service: AuditReadService | None
     _events_read_service: EventsReadService | None
     _integration_health_facade_service: IntegrationHealthFacadeService | None
+    _company_read_service: CompanyReadService | None
+    _department_service: DepartmentService | None
+    _team_service: TeamService | None
+    _role_version_service: RoleVersionService | None
 
     @property
     def has_signals_service(self) -> bool:
@@ -1144,6 +1154,64 @@ class AppStateServicesMixin:
             service,
             "IntegrationHealthFacadeService",
         )
+
+    # ── Organization facades (META-MCP-2 phase 7) ─────────────────
+
+    @property
+    def has_company_read_service(self) -> bool:
+        return self._company_read_service is not None
+
+    @property
+    def company_read_service(self) -> CompanyReadService:
+        return self._require_service(
+            self._company_read_service,
+            "CompanyReadService",
+        )
+
+    def set_company_read_service(
+        self,
+        service: CompanyReadService,
+    ) -> None:
+        self._set_once("_company_read_service", service, "CompanyReadService")
+
+    @property
+    def has_department_service(self) -> bool:
+        return self._department_service is not None
+
+    @property
+    def department_service(self) -> DepartmentService:
+        return self._require_service(self._department_service, "DepartmentService")
+
+    def set_department_service(self, service: DepartmentService) -> None:
+        self._set_once("_department_service", service, "DepartmentService")
+
+    @property
+    def has_team_service(self) -> bool:
+        return self._team_service is not None
+
+    @property
+    def team_service(self) -> TeamService:
+        return self._require_service(self._team_service, "TeamService")
+
+    def set_team_service(self, service: TeamService) -> None:
+        self._set_once("_team_service", service, "TeamService")
+
+    @property
+    def has_role_version_service(self) -> bool:
+        return self._role_version_service is not None
+
+    @property
+    def role_version_service(self) -> RoleVersionService:
+        return self._require_service(
+            self._role_version_service,
+            "RoleVersionService",
+        )
+
+    def set_role_version_service(
+        self,
+        service: RoleVersionService,
+    ) -> None:
+        self._set_once("_role_version_service", service, "RoleVersionService")
 
     def set_settings_service(self, settings_service: SettingsService) -> None:
         """Set settings service and rebuild derived services."""

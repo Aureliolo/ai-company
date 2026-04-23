@@ -1,0 +1,399 @@
+# ruff: noqa: D102, EM101
+"""Organization facades for the MCP handler layer.
+
+Company read/versions, department CRUD + health, team CRUD, and
+role-version history.  Writes route through ``org_mutation_service``
+where it already owns the flow; other paths use in-memory stores until
+durable repositories land.
+"""
+
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any, cast
+from uuid import UUID, uuid4
+
+from synthorg.communication.mcp_errors import CapabilityNotSupportedError
+from synthorg.observability import get_logger
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping, Sequence
+
+    from synthorg.api.services.org_mutations import OrgMutationService
+    from synthorg.core.types import NotBlankStr
+
+
+logger = get_logger(__name__)
+
+
+def _capability(capability: str, detail: str) -> CapabilityNotSupportedError:
+    return CapabilityNotSupportedError(capability, detail)
+
+
+# ── CompanyReadService ──────────────────────────────────────────────
+
+
+class CompanyReadService:
+    """Read + light mutation facade over the company/org surface."""
+
+    def __init__(self, *, org_mutation: OrgMutationService) -> None:
+        self._org = cast("Any", org_mutation)
+
+    async def get_company(self) -> object:
+        fn = getattr(self._org, "get_company", None)
+        if callable(fn):
+            return await fn()
+        raise _capability(
+            "company_get",
+            "OrgMutationService does not expose get_company",
+        )
+
+    async def update_company(
+        self,
+        *,
+        payload: Mapping[str, object],
+        actor_id: NotBlankStr,
+    ) -> object:
+        fn = getattr(self._org, "update_company", None)
+        if not callable(fn):
+            raise _capability(
+                "company_update",
+                "OrgMutationService does not expose update_company",
+            )
+        result = await fn(payload=dict(payload), actor=actor_id)
+        logger.info("organization.company_updated_via_mcp", actor_id=actor_id)
+        return result
+
+    async def list_departments(self) -> Sequence[object]:
+        fn = getattr(self._org, "list_departments", None)
+        if callable(fn):
+            return tuple(await fn())
+        return ()
+
+    async def reorder_departments(
+        self,
+        *,
+        department_ids: Sequence[str],
+        actor_id: NotBlankStr,
+    ) -> None:
+        fn = getattr(self._org, "reorder_departments", None)
+        if not callable(fn):
+            raise _capability(
+                "company_reorder_departments",
+                "OrgMutationService does not expose reorder_departments",
+            )
+        await fn(department_ids=tuple(department_ids), actor=actor_id)
+        logger.info(
+            "organization.departments_reordered_via_mcp",
+            actor_id=actor_id,
+            count=len(department_ids),
+        )
+
+    async def list_versions(self) -> Sequence[object]:
+        fn = getattr(self._org, "list_company_versions", None)
+        if callable(fn):
+            return tuple(await fn())
+        return ()
+
+    async def get_version(self, version_id: NotBlankStr) -> object | None:
+        fn = getattr(self._org, "get_company_version", None)
+        if not callable(fn):
+            return None
+        return cast("object | None", await fn(version_id))
+
+
+# ── DepartmentService ───────────────────────────────────────────────
+
+
+class _DepartmentRecord:
+    __slots__ = ("created_at", "description", "id", "name")
+
+    def __init__(
+        self,
+        *,
+        id: UUID,  # noqa: A002
+        name: str,
+        description: str,
+        created_at: datetime,
+    ) -> None:
+        self.id = id
+        self.name = name
+        self.description = description
+        self.created_at = created_at
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "id": str(self.id),
+            "name": self.name,
+            "description": self.description,
+            "created_at": self.created_at.isoformat(),
+        }
+
+
+class DepartmentService:
+    """Department CRUD + health."""
+
+    def __init__(self) -> None:
+        self._departments: dict[UUID, _DepartmentRecord] = {}
+
+    async def list_departments(self) -> Sequence[_DepartmentRecord]:
+        return tuple(
+            sorted(
+                self._departments.values(),
+                key=lambda d: d.created_at,
+                reverse=True,
+            ),
+        )
+
+    async def get_department(
+        self,
+        department_id: NotBlankStr,
+    ) -> _DepartmentRecord | None:
+        try:
+            key = UUID(department_id)
+        except ValueError:
+            return None
+        return self._departments.get(key)
+
+    async def create_department(
+        self,
+        *,
+        name: NotBlankStr,
+        description: NotBlankStr,
+        actor_id: NotBlankStr,
+    ) -> _DepartmentRecord:
+        record = _DepartmentRecord(
+            id=uuid4(),
+            name=name,
+            description=description,
+            created_at=datetime.now(UTC),
+        )
+        self._departments[record.id] = record
+        logger.info(
+            "organization.department_created_via_mcp",
+            department_id=str(record.id),
+            actor_id=actor_id,
+        )
+        return record
+
+    async def update_department(
+        self,
+        *,
+        department_id: NotBlankStr,
+        actor_id: NotBlankStr,
+        name: NotBlankStr | None = None,
+        description: NotBlankStr | None = None,
+    ) -> _DepartmentRecord | None:
+        try:
+            key = UUID(department_id)
+        except ValueError:
+            return None
+        record = self._departments.get(key)
+        if record is None:
+            return None
+        if name is not None:
+            record.name = name
+        if description is not None:
+            record.description = description
+        logger.info(
+            "organization.department_updated_via_mcp",
+            department_id=department_id,
+            actor_id=actor_id,
+        )
+        return record
+
+    async def delete_department(
+        self,
+        *,
+        department_id: NotBlankStr,
+        actor_id: NotBlankStr,
+        reason: NotBlankStr,
+    ) -> bool:
+        try:
+            key = UUID(department_id)
+        except ValueError:
+            return False
+        removed = self._departments.pop(key, None) is not None
+        logger.info(
+            "organization.department_deleted_via_mcp",
+            department_id=department_id,
+            actor_id=actor_id,
+            reason=reason,
+            removed=removed,
+        )
+        return removed
+
+    async def get_health(
+        self,
+        department_id: NotBlankStr,
+    ) -> Mapping[str, object]:
+        record = await self.get_department(department_id)
+        if record is None:
+            return {"status": "unknown", "reason": "not_found"}
+        return {
+            "status": "healthy",
+            "department_id": str(record.id),
+            "last_update": record.created_at.isoformat(),
+        }
+
+
+# ── TeamService ─────────────────────────────────────────────────────
+
+
+class _TeamRecord:
+    __slots__ = ("created_at", "department_id", "id", "name")
+
+    def __init__(
+        self,
+        *,
+        id: UUID,  # noqa: A002
+        name: str,
+        department_id: str | None,
+        created_at: datetime,
+    ) -> None:
+        self.id = id
+        self.name = name
+        self.department_id = department_id
+        self.created_at = created_at
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "id": str(self.id),
+            "name": self.name,
+            "department_id": self.department_id,
+            "created_at": self.created_at.isoformat(),
+        }
+
+
+class TeamService:
+    """Team CRUD."""
+
+    def __init__(self) -> None:
+        self._teams: dict[UUID, _TeamRecord] = {}
+
+    async def list_teams(self) -> Sequence[_TeamRecord]:
+        return tuple(
+            sorted(
+                self._teams.values(),
+                key=lambda t: t.created_at,
+                reverse=True,
+            ),
+        )
+
+    async def get_team(self, team_id: NotBlankStr) -> _TeamRecord | None:
+        try:
+            key = UUID(team_id)
+        except ValueError:
+            return None
+        return self._teams.get(key)
+
+    async def create_team(
+        self,
+        *,
+        name: NotBlankStr,
+        actor_id: NotBlankStr,
+        department_id: NotBlankStr | None = None,
+    ) -> _TeamRecord:
+        record = _TeamRecord(
+            id=uuid4(),
+            name=name,
+            department_id=department_id,
+            created_at=datetime.now(UTC),
+        )
+        self._teams[record.id] = record
+        logger.info(
+            "organization.team_created_via_mcp",
+            team_id=str(record.id),
+            actor_id=actor_id,
+        )
+        return record
+
+    async def update_team(
+        self,
+        *,
+        team_id: NotBlankStr,
+        actor_id: NotBlankStr,
+        name: NotBlankStr | None = None,
+        department_id: NotBlankStr | None = None,
+    ) -> _TeamRecord | None:
+        try:
+            key = UUID(team_id)
+        except ValueError:
+            return None
+        record = self._teams.get(key)
+        if record is None:
+            return None
+        if name is not None:
+            record.name = name
+        if department_id is not None:
+            record.department_id = department_id
+        logger.info(
+            "organization.team_updated_via_mcp",
+            team_id=team_id,
+            actor_id=actor_id,
+        )
+        return record
+
+    async def delete_team(
+        self,
+        *,
+        team_id: NotBlankStr,
+        actor_id: NotBlankStr,
+        reason: NotBlankStr,
+    ) -> bool:
+        try:
+            key = UUID(team_id)
+        except ValueError:
+            return False
+        removed = self._teams.pop(key, None) is not None
+        logger.info(
+            "organization.team_deleted_via_mcp",
+            team_id=team_id,
+            actor_id=actor_id,
+            reason=reason,
+            removed=removed,
+        )
+        return removed
+
+
+# ── RoleVersionService ──────────────────────────────────────────────
+
+
+class RoleVersionService:
+    """Read facade for the role-version snapshot history."""
+
+    def __init__(
+        self,
+        *,
+        org_mutation: OrgMutationService | None = None,
+    ) -> None:
+        self._org = cast("Any", org_mutation) if org_mutation is not None else None
+
+    async def list_versions(
+        self,
+        *,
+        role_name: NotBlankStr | None = None,
+    ) -> Sequence[object]:
+        if self._org is None:
+            return ()
+        fn = getattr(self._org, "list_role_versions", None)
+        if not callable(fn):
+            return ()
+        return tuple(await fn(role_name=role_name))
+
+    async def get_version(
+        self,
+        version_id: NotBlankStr,
+    ) -> object | None:
+        if self._org is None:
+            return None
+        fn = getattr(self._org, "get_role_version", None)
+        if not callable(fn):
+            return None
+        return cast("object | None", await fn(version_id))
+
+
+__all__ = [
+    "CompanyReadService",
+    "DepartmentService",
+    "RoleVersionService",
+    "TeamService",
+]

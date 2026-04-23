@@ -101,6 +101,12 @@ from synthorg.ontology.drift.service import DriftDetectionService  # noqa: TC001
 from synthorg.ontology.drift.store import DriftReportStore  # noqa: TC001
 from synthorg.ontology.service import OntologyService  # noqa: TC001
 from synthorg.ontology.sync import OntologyOrgMemorySync  # noqa: TC001
+from synthorg.organization.services import (
+    CompanyReadService,  # noqa: TC001
+    DepartmentService,  # noqa: TC001
+    RoleVersionService,  # noqa: TC001
+    TeamService,  # noqa: TC001
+)
 from synthorg.persistence.artifact_storage import (
     ArtifactStorageBackend,  # noqa: TC001
 )
@@ -174,6 +180,7 @@ class AppState(AppStateServicesMixin):
         "_bridge_config_applied",
         "_ceremony_scheduler",
         "_client_simulation_state",
+        "_company_read_service",
         "_config_resolver",
         "_connection_catalog",
         "_connection_service",
@@ -182,6 +189,7 @@ class AppState(AppStateServicesMixin):
         "_cost_tracker",
         "_cursor_secret",
         "_delegation_record_store",
+        "_department_service",
         "_distributed_task_queue",
         "_drift_detection_service",
         "_drift_report_store",
@@ -224,6 +232,7 @@ class AppState(AppStateServicesMixin):
         "_reports_service",
         "_requests_facade_service",
         "_review_gate_service",
+        "_role_version_service",
         "_scaling_service",
         "_session_store",
         "_settings_read_service",
@@ -233,6 +242,7 @@ class AppState(AppStateServicesMixin):
         "_signals_service",
         "_simulation_facade_service",
         "_task_engine",
+        "_team_service",
         "_telemetry_collector",
         "_template_pack_facade_service",
         "_ticket_store",
@@ -410,6 +420,10 @@ class AppState(AppStateServicesMixin):
         self._integration_health_facade_service: (
             IntegrationHealthFacadeService | None
         ) = None
+        self._company_read_service: CompanyReadService | None = None
+        self._department_service: DepartmentService | None = None
+        self._team_service: TeamService | None = None
+        self._role_version_service: RoleVersionService | None = None
         self._client_simulation_state: ClientSimulationState | None = None
         self._approval_timeout_scheduler: ApprovalTimeoutScheduler | None = None
         self._session_store: SessionStore | None = None

@@ -1,56 +1,56 @@
 """Organization domain MCP handlers.
 
 19 tools across company, departments, teams, and role-version history.
-``app_state.org_mutation_service`` covers most mutations but expects
-full entity payloads; reads go through the api controllers without a
-service facade.  Every handler returns ``service_fallback`` until an
-OrgReadService + OrgWriteService pair is added to ``app_state``.
-
-Destructive deletes (``departments.delete``, ``teams.delete``) enforce
-the guardrail triple at the handler boundary even when routed to
-``service_fallback`` so the audit surface is uniform once services come
-online.
+Each handler shims through the corresponding facade on
+:class:`AppState`; operations whose underlying primitive cannot satisfy
+them surface :class:`CapabilityNotSupportedError` -> typed
+``not_supported`` envelope.
 """
 
-import copy
-from collections.abc import Mapping  # noqa: TC003 -- PEP 649 annotation
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
+from uuid import UUID
 
-from synthorg.meta.mcp.errors import GuardrailViolationError
+from synthorg.communication.mcp_errors import CapabilityNotSupportedError
+from synthorg.core.types import NotBlankStr
+from synthorg.meta.mcp.errors import GuardrailViolationError, invalid_argument
 from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,  # noqa: TC001 -- PEP 649 annotation
 )
 from synthorg.meta.mcp.handlers.common import (
+    coerce_pagination,
     err,
+    ok,
+    paginate_sequence,
+    require_arg,
     require_destructive_guardrails,
-    service_fallback,
 )
-from synthorg.observability import get_logger
-from synthorg.observability.events.mcp import MCP_HANDLER_GUARDRAIL_VIOLATED
+from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.mcp import (
+    MCP_DESTRUCTIVE_OP_EXECUTED,
+    MCP_HANDLER_GUARDRAIL_VIOLATED,
+    MCP_HANDLER_INVOKE_FAILED,
+)
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from synthorg.core.agent import AgentIdentity
 
 logger = get_logger(__name__)
 
+_TY_STRING = "non-blank string"
+_TY_UUID = "UUID string"
+_TY_DICT = "mapping of str -> object"
+_TY_LIST = "sequence of strings"
 
-_WHY_COMPANY = (
-    "company config read/write goes through company controller + "
-    "org_mutation_service; no consolidated CompanyService facade on "
-    "app_state"
-)
-_WHY_DEPARTMENTS = (
-    "department CRUD goes through the departments controller; no "
-    "DepartmentService facade on app_state"
-)
-_WHY_TEAMS = (
-    "team CRUD goes through the teams controller; no TeamService facade on app_state"
-)
-_WHY_ROLE_VERSIONS = (
-    "role-version history reads go through the role_versions "
-    "controller; no service facade on app_state"
-)
+
+def _log_failed(tool: str, exc: Exception) -> None:
+    logger.warning(
+        MCP_HANDLER_INVOKE_FAILED,
+        tool_name=tool,
+        error=safe_error_description(exc),
+    )
 
 
 def _log_guardrail(tool: str, exc: GuardrailViolationError) -> None:
@@ -61,105 +61,525 @@ def _log_guardrail(tool: str, exc: GuardrailViolationError) -> None:
     )
 
 
-async def _enforce_destructive(
-    tool: str,
-    arguments: dict[str, Any],
-    actor: AgentIdentity | None,
-    why: str,
-) -> str:
+def _map_capability(tool: str, exc: CapabilityNotSupportedError) -> str:
+    logger.info(
+        MCP_HANDLER_INVOKE_FAILED,
+        tool_name=tool,
+        capability=exc.capability,
+    )
+    return err(exc, domain_code=exc.domain_code)
+
+
+def _actor_name(actor: AgentIdentity | None) -> NotBlankStr:
+    if actor is None:
+        return NotBlankStr("mcp-anonymous")
+    name = getattr(actor, "name", None)
+    if isinstance(name, str) and name.strip():
+        return NotBlankStr(name)
+    actor_id = getattr(actor, "id", None)
+    return NotBlankStr(str(actor_id) if actor_id else "mcp-anonymous")
+
+
+def _get_str(arguments: dict[str, Any], key: str) -> NotBlankStr | None:
+    raw = arguments.get(key)
+    if raw in (None, ""):
+        return None
+    if not isinstance(raw, str) or not raw.strip():
+        raise invalid_argument(key, _TY_STRING)
+    return NotBlankStr(raw)
+
+
+def _require_str(arguments: dict[str, Any], key: str) -> NotBlankStr:
+    value = _get_str(arguments, key)
+    if value is None:
+        raise invalid_argument(key, _TY_STRING)
+    return value
+
+
+def _require_uuid(arguments: dict[str, Any], key: str) -> NotBlankStr:
+    value = require_arg(arguments, key, str)
     try:
-        require_destructive_guardrails(arguments, actor)
+        UUID(value)
+    except ValueError as exc:
+        raise invalid_argument(key, _TY_UUID) from exc
+    return NotBlankStr(value)
+
+
+def _require_dict(arguments: dict[str, Any], key: str) -> dict[str, object]:
+    raw = arguments.get(key)
+    if not isinstance(raw, dict):
+        raise invalid_argument(key, _TY_DICT)
+    return dict(raw)
+
+
+def _require_str_list(arguments: dict[str, Any], key: str) -> tuple[str, ...]:
+    raw = arguments.get(key)
+    if not isinstance(raw, (list, tuple)):
+        raise invalid_argument(key, _TY_LIST)
+    for item in raw:
+        if not isinstance(item, str) or not item.strip():
+            raise invalid_argument(key, _TY_LIST)
+    return tuple(raw)
+
+
+def _to_jsonable(value: Any) -> Any:
+    dump_fn = getattr(value, "model_dump", None)
+    if callable(dump_fn):
+        return dump_fn(mode="json")
+    to_dict = getattr(value, "to_dict", None)
+    if callable(to_dict):
+        return to_dict()
+    return value
+
+
+# ── company ─────────────────────────────────────────────────────────
+
+
+async def _company_get(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
+) -> str:
+    tool = "synthorg_company_get"
+    try:
+        company = await app_state.company_read_service.get_company()
+    except CapabilityNotSupportedError as exc:
+        return _map_capability(tool, exc)
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    return ok(_to_jsonable(company))
+
+
+async def _company_update(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,
+) -> str:
+    tool = "synthorg_company_update"
+    try:
+        payload = _require_dict(arguments, "payload")
+        result = await app_state.company_read_service.update_company(
+            payload=payload,
+            actor_id=_actor_name(actor),
+        )
+    except CapabilityNotSupportedError as exc:
+        return _map_capability(tool, exc)
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    return ok(_to_jsonable(result))
+
+
+async def _company_list_departments(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
+) -> str:
+    tool = "synthorg_company_list_departments"
+    try:
+        departments = await app_state.company_read_service.list_departments()
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    return ok([_to_jsonable(d) for d in departments])
+
+
+async def _company_reorder_departments(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,
+) -> str:
+    tool = "synthorg_company_reorder_departments"
+    try:
+        ids = _require_str_list(arguments, "department_ids")
+        await app_state.company_read_service.reorder_departments(
+            department_ids=ids,
+            actor_id=_actor_name(actor),
+        )
+    except CapabilityNotSupportedError as exc:
+        return _map_capability(tool, exc)
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    return ok(None)
+
+
+async def _company_versions_list(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
+) -> str:
+    tool = "synthorg_company_versions_list"
+    try:
+        versions = await app_state.company_read_service.list_versions()
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    return ok([_to_jsonable(v) for v in versions])
+
+
+async def _company_versions_get(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,  # noqa: ARG001
+) -> str:
+    tool = "synthorg_company_versions_get"
+    try:
+        version_id = _require_str(arguments, "version_id")
+        version = await app_state.company_read_service.get_version(version_id)
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    if version is None:
+        return err(
+            LookupError(f"Version {version_id} not found"),
+            domain_code="not_found",
+        )
+    return ok(_to_jsonable(version))
+
+
+# ── departments ─────────────────────────────────────────────────────
+
+
+async def _departments_list(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,  # noqa: ARG001
+) -> str:
+    tool = "synthorg_departments_list"
+    try:
+        offset, limit = coerce_pagination(arguments)
+        departments = await app_state.department_service.list_departments()
+        page, pagination = paginate_sequence(
+            departments,
+            offset=offset,
+            limit=limit,
+            total=len(departments),
+        )
+        return ok([d.to_dict() for d in page], pagination=pagination)
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+
+
+async def _departments_get(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,  # noqa: ARG001
+) -> str:
+    tool = "synthorg_departments_get"
+    try:
+        department_id = _require_uuid(arguments, "department_id")
+        record = await app_state.department_service.get_department(department_id)
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    if record is None:
+        return err(
+            LookupError(f"Department {department_id} not found"),
+            domain_code="not_found",
+        )
+    return ok(record.to_dict())
+
+
+async def _departments_create(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,
+) -> str:
+    tool = "synthorg_departments_create"
+    try:
+        name = _require_str(arguments, "name")
+        description = _require_str(arguments, "description")
+        record = await app_state.department_service.create_department(
+            name=name,
+            description=description,
+            actor_id=_actor_name(actor),
+        )
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    return ok(record.to_dict())
+
+
+async def _departments_update(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,
+) -> str:
+    tool = "synthorg_departments_update"
+    try:
+        department_id = _require_uuid(arguments, "department_id")
+        name = _get_str(arguments, "name")
+        description = _get_str(arguments, "description")
+        record = await app_state.department_service.update_department(
+            department_id=department_id,
+            actor_id=_actor_name(actor),
+            name=name,
+            description=description,
+        )
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    if record is None:
+        return err(
+            LookupError(f"Department {department_id} not found"),
+            domain_code="not_found",
+        )
+    return ok(record.to_dict())
+
+
+async def _departments_delete(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,
+) -> str:
+    tool = "synthorg_departments_delete"
+    try:
+        reason, resolved_actor = require_destructive_guardrails(arguments, actor)
+        department_id = _require_uuid(arguments, "department_id")
+        removed = await app_state.department_service.delete_department(
+            department_id=department_id,
+            actor_id=_actor_name(resolved_actor),
+            reason=reason,
+        )
+        logger.info(
+            MCP_DESTRUCTIVE_OP_EXECUTED,
+            tool_name=tool,
+            actor=_actor_name(resolved_actor),
+            reason=reason,
+            department_id=department_id,
+            removed=removed,
+        )
     except GuardrailViolationError as exc:
         _log_guardrail(tool, exc)
         return err(exc)
-    return service_fallback(tool, why)
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    return ok({"removed": removed})
 
 
-def _mk(tool: str, why: str) -> ToolHandler:
-    async def handler(
-        *,
-        app_state: Any,  # noqa: ARG001
-        arguments: dict[str, Any],  # noqa: ARG001
-        actor: AgentIdentity | None = None,  # noqa: ARG001
-    ) -> str:
-        return service_fallback(tool, why)
+async def _departments_get_health(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,  # noqa: ARG001
+) -> str:
+    tool = "synthorg_departments_get_health"
+    try:
+        department_id = _require_uuid(arguments, "department_id")
+        result = await app_state.department_service.get_health(department_id)
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    return ok(dict(result))
 
-    return handler
+
+# ── teams ───────────────────────────────────────────────────────────
 
 
-def _mk_destructive(tool: str, why: str) -> ToolHandler:
-    async def handler(
-        *,
-        app_state: Any,  # noqa: ARG001
-        arguments: dict[str, Any],
-        actor: AgentIdentity | None = None,
-    ) -> str:
-        return await _enforce_destructive(tool, arguments, actor, why)
+async def _teams_list(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,  # noqa: ARG001
+) -> str:
+    tool = "synthorg_teams_list"
+    try:
+        offset, limit = coerce_pagination(arguments)
+        teams = await app_state.team_service.list_teams()
+        page, pagination = paginate_sequence(
+            teams,
+            offset=offset,
+            limit=limit,
+            total=len(teams),
+        )
+        return ok([t.to_dict() for t in page], pagination=pagination)
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
 
-    return handler
+
+async def _teams_get(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,  # noqa: ARG001
+) -> str:
+    tool = "synthorg_teams_get"
+    try:
+        team_id = _require_uuid(arguments, "team_id")
+        record = await app_state.team_service.get_team(team_id)
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    if record is None:
+        return err(
+            LookupError(f"Team {team_id} not found"),
+            domain_code="not_found",
+        )
+    return ok(record.to_dict())
+
+
+async def _teams_create(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,
+) -> str:
+    tool = "synthorg_teams_create"
+    try:
+        name = _require_str(arguments, "name")
+        department_id = _get_str(arguments, "department_id")
+        record = await app_state.team_service.create_team(
+            name=name,
+            actor_id=_actor_name(actor),
+            department_id=department_id,
+        )
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    return ok(record.to_dict())
+
+
+async def _teams_update(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,
+) -> str:
+    tool = "synthorg_teams_update"
+    try:
+        team_id = _require_uuid(arguments, "team_id")
+        name = _get_str(arguments, "name")
+        department_id = _get_str(arguments, "department_id")
+        record = await app_state.team_service.update_team(
+            team_id=team_id,
+            actor_id=_actor_name(actor),
+            name=name,
+            department_id=department_id,
+        )
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    if record is None:
+        return err(
+            LookupError(f"Team {team_id} not found"),
+            domain_code="not_found",
+        )
+    return ok(record.to_dict())
+
+
+async def _teams_delete(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,
+) -> str:
+    tool = "synthorg_teams_delete"
+    try:
+        reason, resolved_actor = require_destructive_guardrails(arguments, actor)
+        team_id = _require_uuid(arguments, "team_id")
+        removed = await app_state.team_service.delete_team(
+            team_id=team_id,
+            actor_id=_actor_name(resolved_actor),
+            reason=reason,
+        )
+        logger.info(
+            MCP_DESTRUCTIVE_OP_EXECUTED,
+            tool_name=tool,
+            actor=_actor_name(resolved_actor),
+            reason=reason,
+            team_id=team_id,
+            removed=removed,
+        )
+    except GuardrailViolationError as exc:
+        _log_guardrail(tool, exc)
+        return err(exc)
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    return ok({"removed": removed})
+
+
+# ── role versions ──────────────────────────────────────────────────
+
+
+async def _role_versions_list(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,  # noqa: ARG001
+) -> str:
+    tool = "synthorg_role_versions_list"
+    try:
+        role_name = _get_str(arguments, "role_name")
+        versions = await app_state.role_version_service.list_versions(
+            role_name=role_name,
+        )
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    return ok([_to_jsonable(v) for v in versions])
+
+
+async def _role_versions_get(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,  # noqa: ARG001
+) -> str:
+    tool = "synthorg_role_versions_get"
+    try:
+        version_id = _require_str(arguments, "version_id")
+        version = await app_state.role_version_service.get_version(version_id)
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    if version is None:
+        return err(
+            LookupError(f"Version {version_id} not found"),
+            domain_code="not_found",
+        )
+    return ok(_to_jsonable(version))
+
+
+# ── dispatch table ─────────────────────────────────────────────────
 
 
 ORGANIZATION_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(
-    copy.deepcopy(
-        {
-            "synthorg_company_get": _mk("synthorg_company_get", _WHY_COMPANY),
-            "synthorg_company_update": _mk("synthorg_company_update", _WHY_COMPANY),
-            "synthorg_company_list_departments": _mk(
-                "synthorg_company_list_departments",
-                _WHY_COMPANY,
-            ),
-            "synthorg_company_reorder_departments": _mk(
-                "synthorg_company_reorder_departments",
-                _WHY_COMPANY,
-            ),
-            "synthorg_company_versions_list": _mk(
-                "synthorg_company_versions_list",
-                _WHY_COMPANY,
-            ),
-            "synthorg_company_versions_get": _mk(
-                "synthorg_company_versions_get",
-                _WHY_COMPANY,
-            ),
-            "synthorg_departments_list": _mk(
-                "synthorg_departments_list",
-                _WHY_DEPARTMENTS,
-            ),
-            "synthorg_departments_get": _mk(
-                "synthorg_departments_get",
-                _WHY_DEPARTMENTS,
-            ),
-            "synthorg_departments_create": _mk(
-                "synthorg_departments_create",
-                _WHY_DEPARTMENTS,
-            ),
-            "synthorg_departments_update": _mk(
-                "synthorg_departments_update",
-                _WHY_DEPARTMENTS,
-            ),
-            "synthorg_departments_delete": _mk_destructive(
-                "synthorg_departments_delete",
-                _WHY_DEPARTMENTS,
-            ),
-            "synthorg_departments_get_health": _mk(
-                "synthorg_departments_get_health",
-                _WHY_DEPARTMENTS,
-            ),
-            "synthorg_teams_list": _mk("synthorg_teams_list", _WHY_TEAMS),
-            "synthorg_teams_get": _mk("synthorg_teams_get", _WHY_TEAMS),
-            "synthorg_teams_create": _mk("synthorg_teams_create", _WHY_TEAMS),
-            "synthorg_teams_update": _mk("synthorg_teams_update", _WHY_TEAMS),
-            "synthorg_teams_delete": _mk_destructive(
-                "synthorg_teams_delete",
-                _WHY_TEAMS,
-            ),
-            "synthorg_role_versions_list": _mk(
-                "synthorg_role_versions_list",
-                _WHY_ROLE_VERSIONS,
-            ),
-            "synthorg_role_versions_get": _mk(
-                "synthorg_role_versions_get",
-                _WHY_ROLE_VERSIONS,
-            ),
-        },
-    ),
+    {
+        "synthorg_company_get": _company_get,
+        "synthorg_company_update": _company_update,
+        "synthorg_company_list_departments": _company_list_departments,
+        "synthorg_company_reorder_departments": _company_reorder_departments,
+        "synthorg_company_versions_list": _company_versions_list,
+        "synthorg_company_versions_get": _company_versions_get,
+        "synthorg_departments_list": _departments_list,
+        "synthorg_departments_get": _departments_get,
+        "synthorg_departments_create": _departments_create,
+        "synthorg_departments_update": _departments_update,
+        "synthorg_departments_delete": _departments_delete,
+        "synthorg_departments_get_health": _departments_get_health,
+        "synthorg_teams_list": _teams_list,
+        "synthorg_teams_get": _teams_get,
+        "synthorg_teams_create": _teams_create,
+        "synthorg_teams_update": _teams_update,
+        "synthorg_teams_delete": _teams_delete,
+        "synthorg_role_versions_list": _role_versions_list,
+        "synthorg_role_versions_get": _role_versions_get,
+    },
 )
