@@ -12,7 +12,7 @@ from uuid import UUID
 
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.core.types import NotBlankStr
-from synthorg.meta.mcp.errors import invalid_argument
+from synthorg.meta.mcp.errors import ArgumentValidationError, invalid_argument
 from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,  # noqa: TC001 -- PEP 649 annotation
 )
@@ -25,6 +25,7 @@ from synthorg.meta.mcp.handlers.common import (
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.mcp import (
+    MCP_HANDLER_ARGUMENT_INVALID,
     MCP_HANDLER_CAPABILITY_GAP,
     MCP_HANDLER_INVOKE_FAILED,
 )
@@ -57,6 +58,16 @@ def _get_optional_str(arguments: dict[str, Any], key: str) -> str | None:
     if not isinstance(raw, str):
         raise invalid_argument(key, _TY_OPTIONAL_STRING)
     return raw
+
+
+def _log_invalid(tool: str, exc: ArgumentValidationError) -> None:
+    """Emit ``MCP_HANDLER_ARGUMENT_INVALID`` at WARNING for client-input errors."""
+    logger.warning(
+        MCP_HANDLER_ARGUMENT_INVALID,
+        tool_name=tool,
+        error_type=type(exc).__name__,
+        error=safe_error_description(exc),
+    )
 
 
 def _log_failed(tool: str, exc: Exception) -> None:
@@ -150,6 +161,9 @@ async def _quality_get_summary(
         summary = await app_state.quality_facade_service.get_summary()
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -171,6 +185,9 @@ async def _quality_get_agent_quality(
         )
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -193,6 +210,9 @@ async def _quality_list_scores(
             offset=offset,
             limit=limit,
         )
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -219,6 +239,9 @@ async def _reviews_list(
         )
         pagination = PaginationMeta(total=total, offset=offset, limit=limit)
         return ok([r.to_dict() for r in page], pagination=pagination)
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -235,6 +258,9 @@ async def _reviews_get(
     try:
         review_id = _require_uuid(arguments, "review_id")
         record = await app_state.review_facade_service.get_review(review_id)
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -264,6 +290,9 @@ async def _reviews_create(
             verdict=verdict,
             comments=comments,
         )
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -288,6 +317,9 @@ async def _reviews_update(
             comments=comments,
             actor_id=_actor_name(actor),
         )
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -312,6 +344,9 @@ async def _evaluation_versions_list(
     tool = "synthorg_evaluation_versions_list"
     try:
         versions = await app_state.evaluation_version_service.list_versions()
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -331,6 +366,9 @@ async def _evaluation_versions_get(
         version = await app_state.evaluation_version_service.get_version(
             version_id,
         )
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)

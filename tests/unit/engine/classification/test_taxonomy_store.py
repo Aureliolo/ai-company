@@ -106,13 +106,19 @@ class TestInMemoryErrorTaxonomyStoreWindowing:
         now = datetime.now(UTC)
         before = now - timedelta(hours=2)
         inside = now - timedelta(minutes=30)
-        await store.on_classification(_result(_finding(), classified_at=before))
-        await store.on_classification(_result(_finding(), classified_at=inside))
+        await store.on_classification(
+            _result(_finding(description="before"), classified_at=before),
+        )
+        await store.on_classification(
+            _result(_finding(description="inside"), classified_at=inside),
+        )
         findings = await store.query_findings(
             since=now - timedelta(hours=1),
             until=now,
         )
+        # Exactly the "inside" finding survives the window filter
         assert len(findings) == 1
+        assert findings[0].description == "inside"
 
     async def test_query_window_is_upper_bound_exclusive(self) -> None:
         """``until`` is exclusive -- findings recorded at exactly ``until`` excluded."""
@@ -121,17 +127,27 @@ class TestInMemoryErrorTaxonomyStoreWindowing:
         at_until = now
         at_since = now - timedelta(hours=1)
         just_after_since = now - timedelta(minutes=59)
-        await store.on_classification(_result(_finding(), classified_at=at_since))
         await store.on_classification(
-            _result(_finding(), classified_at=just_after_since),
+            _result(_finding(description="at_since"), classified_at=at_since),
         )
-        await store.on_classification(_result(_finding(), classified_at=at_until))
+        await store.on_classification(
+            _result(
+                _finding(description="just_after_since"),
+                classified_at=just_after_since,
+            ),
+        )
+        await store.on_classification(
+            _result(_finding(description="at_until"), classified_at=at_until),
+        )
         findings = await store.query_findings(
             since=at_since,
             until=at_until,
         )
         # since is inclusive, until is exclusive -> two matches, not three
         assert len(findings) == 2
+        returned = {f.description for f in findings}
+        assert returned == {"at_since", "just_after_since"}
+        assert "at_until" not in returned
 
     async def test_query_rejects_naive_datetimes(self) -> None:
         store = InMemoryErrorTaxonomyStore()
@@ -285,10 +301,44 @@ class TestInMemoryErrorTaxonomyStoreSummarize:
 class TestInMemoryErrorTaxonomyStoreSinkContract:
     """on_classification is best-effort and never raises."""
 
-    async def test_swallows_unexpected_errors(self) -> None:
+    async def test_happy_path_records_result(self) -> None:
         store = InMemoryErrorTaxonomyStore()
-        # Valid result; should not raise.
         await store.on_classification(
             _result(_finding(), classified_at=datetime.now(UTC)),
         )
         assert await store.count() == 1
+
+    async def test_swallows_unexpected_errors(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Deliberate internal failure must not propagate out of the sink.
+
+        The sink contract is best-effort: even if the append path blows
+        up (serialization bug, OOM short of MemoryError, etc.) the
+        self-improvement cycle must not stall.  Patch the internal
+        ``_lock.__aenter__`` to raise so the ``except Exception`` arm
+        in ``on_classification`` is exercised and the failure is
+        recorded via ``TAXONOMY_STORE_APPEND_FAILED`` rather than
+        re-raised.
+        """
+
+        class _BoomError(RuntimeError):
+            """Marker class for the simulated append failure."""
+
+        store = InMemoryErrorTaxonomyStore()
+        boom = _BoomError("synthetic append failure")
+
+        class _BoomLock:
+            async def __aenter__(self) -> None:
+                raise boom
+
+            async def __aexit__(self, *_exc: object) -> None:
+                return None
+
+        monkeypatch.setattr(store, "_lock", _BoomLock())
+        await store.on_classification(
+            _result(_finding(), classified_at=datetime.now(UTC)),
+        )
+        # No crash; nothing was appended because the lock itself blew up
+        # before the deque mutation.

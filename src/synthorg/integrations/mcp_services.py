@@ -283,13 +283,20 @@ class _ClientRecord:
 
 
 class ClientFacadeService:
-    """In-process external-client CRUD facade."""
+    """In-process external-client CRUD facade.
+
+    Mutations are serialised through a single :class:`asyncio.Lock` so
+    concurrent MCP handler calls cannot race on the in-memory dict
+    (notably the check-then-act in :meth:`deactivate_client`).
+    """
 
     def __init__(self) -> None:
         self._clients: dict[UUID, _ClientRecord] = {}
+        self._lock = asyncio.Lock()
 
     async def list_clients(self) -> Sequence[_ClientRecord]:
-        snapshot = tuple(copy.deepcopy(c) for c in self._clients.values())
+        async with self._lock:
+            snapshot = tuple(copy.deepcopy(c) for c in self._clients.values())
         return tuple(sorted(snapshot, key=lambda c: c.created_at, reverse=True))
 
     async def get_client(self, client_id: NotBlankStr) -> _ClientRecord | None:
@@ -297,8 +304,9 @@ class ClientFacadeService:
             key = UUID(client_id)
         except ValueError:
             return None
-        record = self._clients.get(key)
-        return copy.deepcopy(record) if record is not None else None
+        async with self._lock:
+            record = self._clients.get(key)
+            return copy.deepcopy(record) if record is not None else None
 
     async def create_client(
         self,
@@ -315,7 +323,8 @@ class ClientFacadeService:
             notes=notes,
             created_at=datetime.now(UTC),
         )
-        self._clients[record.id] = record
+        async with self._lock:
+            self._clients[record.id] = record
         logger.info(
             CLIENT_CREATED_VIA_MCP,
             client_id=str(record.id),
@@ -334,16 +343,17 @@ class ClientFacadeService:
             key = UUID(client_id)
         except ValueError:
             return False
-        record = self._clients.get(key)
-        if record is None:
-            return False
-        record.active = False
-        logger.info(
-            CLIENT_DEACTIVATED_VIA_MCP,
-            client_id=client_id,
-            actor_id=actor_id,
-            reason=reason,
-        )
+        async with self._lock:
+            record = self._clients.get(key)
+            if record is None:
+                return False
+            record.active = False
+            logger.info(
+                CLIENT_DEACTIVATED_VIA_MCP,
+                client_id=client_id,
+                actor_id=actor_id,
+                reason=reason,
+            )
         return True
 
     async def get_satisfaction(
@@ -542,18 +552,24 @@ class OntologyFacadeService:
         entity_id: NotBlankStr,
     ) -> Sequence[object]:
         fn = getattr(self._ontology, "get_relationships", None)
-        if callable(fn):
-            return tuple(await fn(entity_id))
-        return ()
+        if not callable(fn):
+            raise _capability(
+                "ontology_get_relationships",
+                "OntologyService does not expose get_relationships",
+            )
+        return tuple(await fn(entity_id))
 
     async def search(
         self,
         query: NotBlankStr,
     ) -> Sequence[object]:
         fn = getattr(self._ontology, "search", None)
-        if callable(fn):
-            return tuple(await fn(query))
-        return ()
+        if not callable(fn):
+            raise _capability(
+                "ontology_search",
+                "OntologyService does not expose search",
+            )
+        return tuple(await fn(query))
 
 
 __all__ = [

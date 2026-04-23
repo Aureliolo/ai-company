@@ -13,21 +13,26 @@ from uuid import UUID
 
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.core.types import NotBlankStr
-from synthorg.meta.mcp.errors import GuardrailViolationError, invalid_argument
+from synthorg.meta.mcp.errors import (
+    ArgumentValidationError,
+    GuardrailViolationError,
+    invalid_argument,
+)
 from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,  # noqa: TC001 -- PEP 649 annotation
 )
 from synthorg.meta.mcp.handlers.common import (
+    PaginationMeta,
     coerce_pagination,
     err,
     ok,
-    paginate_sequence,
     require_arg,
     require_destructive_guardrails,
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.mcp import (
     MCP_DESTRUCTIVE_OP_EXECUTED,
+    MCP_HANDLER_ARGUMENT_INVALID,
     MCP_HANDLER_CAPABILITY_GAP,
     MCP_HANDLER_GUARDRAIL_VIOLATED,
     MCP_HANDLER_INVOKE_FAILED,
@@ -45,6 +50,16 @@ _TY_STRING = "non-blank string"
 _TY_UUID = "UUID string"
 _TY_DICT = "mapping of str -> object"
 _TY_LIST = "sequence of strings"
+
+
+def _log_invalid(tool: str, exc: ArgumentValidationError) -> None:
+    """Emit ``MCP_HANDLER_ARGUMENT_INVALID`` at WARNING for client-input errors."""
+    logger.warning(
+        MCP_HANDLER_ARGUMENT_INVALID,
+        tool_name=tool,
+        error_type=type(exc).__name__,
+        error=safe_error_description(exc),
+    )
 
 
 def _log_failed(tool: str, exc: Exception) -> None:
@@ -166,6 +181,9 @@ async def _company_get(
         company = await app_state.company_read_service.get_company()
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -188,6 +206,9 @@ async def _company_update(
         )
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -204,6 +225,9 @@ async def _company_list_departments(
     tool = "synthorg_company_list_departments"
     try:
         departments = await app_state.company_read_service.list_departments()
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -226,6 +250,9 @@ async def _company_reorder_departments(
         )
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -242,6 +269,9 @@ async def _company_versions_list(
     tool = "synthorg_company_versions_list"
     try:
         versions = await app_state.company_read_service.list_versions()
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -259,6 +289,9 @@ async def _company_versions_get(
     try:
         version_id = _require_str(arguments, "version_id")
         version = await app_state.company_read_service.get_version(version_id)
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -283,14 +316,15 @@ async def _departments_list(
     tool = "synthorg_departments_list"
     try:
         offset, limit = coerce_pagination(arguments)
-        departments = await app_state.department_service.list_departments()
-        page, pagination = paginate_sequence(
-            departments,
+        page, total = await app_state.department_service.list_departments(
             offset=offset,
             limit=limit,
-            total=len(departments),
         )
+        pagination = PaginationMeta(total=total, offset=offset, limit=limit)
         return ok([d.to_dict() for d in page], pagination=pagination)
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -307,6 +341,9 @@ async def _departments_get(
     try:
         department_id = _require_uuid(arguments, "department_id")
         record = await app_state.department_service.get_department(department_id)
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -334,6 +371,9 @@ async def _departments_create(
             description=description,
             actor_id=_actor_name(actor),
         )
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -358,6 +398,9 @@ async def _departments_update(
             name=name,
             description=description,
         )
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -385,16 +428,20 @@ async def _departments_delete(
             actor_id=_actor_name(resolved_actor),
             reason=reason,
         )
-        logger.info(
-            MCP_DESTRUCTIVE_OP_EXECUTED,
-            tool_name=tool,
-            actor=_actor_name(resolved_actor),
-            reason=reason,
-            department_id=department_id,
-            removed=removed,
-        )
+        if removed:
+            logger.info(
+                MCP_DESTRUCTIVE_OP_EXECUTED,
+                tool_name=tool,
+                actor=_actor_name(resolved_actor),
+                reason=reason,
+                department_id=department_id,
+                removed=removed,
+            )
     except GuardrailViolationError as exc:
         _log_guardrail(tool, exc)
+        return err(exc)
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
         return err(exc)
     except Exception as exc:
         _log_failed(tool, exc)
@@ -413,6 +460,9 @@ async def _departments_get_health(
     try:
         department_id = _require_uuid(arguments, "department_id")
         result = await app_state.department_service.get_health(department_id)
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -432,14 +482,15 @@ async def _teams_list(
     tool = "synthorg_teams_list"
     try:
         offset, limit = coerce_pagination(arguments)
-        teams = await app_state.team_service.list_teams()
-        page, pagination = paginate_sequence(
-            teams,
+        page, total = await app_state.team_service.list_teams(
             offset=offset,
             limit=limit,
-            total=len(teams),
         )
+        pagination = PaginationMeta(total=total, offset=offset, limit=limit)
         return ok([t.to_dict() for t in page], pagination=pagination)
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -456,6 +507,9 @@ async def _teams_get(
     try:
         team_id = _require_uuid(arguments, "team_id")
         record = await app_state.team_service.get_team(team_id)
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -483,6 +537,9 @@ async def _teams_create(
             actor_id=_actor_name(actor),
             department_id=department_id,
         )
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -513,6 +570,9 @@ async def _teams_update(
             name=name,
             department_id=department_id,
         )
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -540,16 +600,20 @@ async def _teams_delete(
             actor_id=_actor_name(resolved_actor),
             reason=reason,
         )
-        logger.info(
-            MCP_DESTRUCTIVE_OP_EXECUTED,
-            tool_name=tool,
-            actor=_actor_name(resolved_actor),
-            reason=reason,
-            team_id=team_id,
-            removed=removed,
-        )
+        if removed:
+            logger.info(
+                MCP_DESTRUCTIVE_OP_EXECUTED,
+                tool_name=tool,
+                actor=_actor_name(resolved_actor),
+                reason=reason,
+                team_id=team_id,
+                removed=removed,
+            )
     except GuardrailViolationError as exc:
         _log_guardrail(tool, exc)
+        return err(exc)
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
         return err(exc)
     except Exception as exc:
         _log_failed(tool, exc)
@@ -573,6 +637,9 @@ async def _role_versions_list(
         versions = await app_state.role_version_service.list_versions(
             role_name=role_name,
         )
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -590,6 +657,9 @@ async def _role_versions_get(
     try:
         version_id = _require_str(arguments, "version_id")
         version = await app_state.role_version_service.get_version(version_id)
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)

@@ -100,7 +100,14 @@ class ConnectionService:
         actor_id: NotBlankStr,
         reason: NotBlankStr,
     ) -> None:
-        """Delete a connection, auditing the event."""
+        """Delete a connection, auditing the event on actual removal.
+
+        The underlying :meth:`ConnectionCatalog.delete` raises
+        :class:`ConnectionNotFoundError` when the connection does not
+        exist, so the audit event is only emitted when a row was
+        actually removed -- the ``await`` below re-raises the miss
+        before reaching the ``logger.info`` call.
+        """
         await self._catalog.delete(name)
         logger.info(
             COMMUNICATION_CONNECTION_DELETED,

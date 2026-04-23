@@ -222,6 +222,16 @@ class TestNoServiceFallbackEvents:
                 "every MCP_HANDLER_CAPABILITY_GAP emission must identify "
                 "the tool that triggered it"
             )
+            gap_tool_names = {e["tool_name"] for e in gap_events}
+            not_supported_tool_set = set(not_supported_tools)
+            assert gap_tool_names == not_supported_tool_set, (
+                f"1:1 mismatch between not_supported envelopes and "
+                f"MCP_HANDLER_CAPABILITY_GAP events. "
+                f"Envelope-but-no-event: "
+                f"{sorted(not_supported_tool_set - gap_tool_names)}. "
+                f"Event-but-no-envelope: "
+                f"{sorted(gap_tool_names - not_supported_tool_set)}."
+            )
 
     async def test_every_tool_returns_well_formed_envelope(
         self,

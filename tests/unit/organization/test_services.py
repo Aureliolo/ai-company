@@ -49,9 +49,10 @@ class TestDepartmentService:
             description=NotBlankStr("second"),
             actor_id=NotBlankStr("alice"),
         )
-        records = await service.list_departments()
-        assert records[0].id == second.id
-        assert records[1].id == first.id
+        page, total = await service.list_departments()
+        assert total == 2
+        assert page[0].id == second.id
+        assert page[1].id == first.id
 
     async def test_update_partial_patch(self) -> None:
         service = DepartmentService()
@@ -167,9 +168,10 @@ class TestTeamService:
             name=NotBlankStr("second"),
             actor_id=NotBlankStr("alice"),
         )
-        teams = await service.list_teams()
-        assert teams[0].id == second.id
-        assert teams[1].id == first.id
+        page, total = await service.list_teams()
+        assert total == 2
+        assert page[0].id == second.id
+        assert page[1].id == first.id
 
     async def test_update_reassigns_department(self) -> None:
         service = TeamService()

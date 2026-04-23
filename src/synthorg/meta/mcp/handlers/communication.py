@@ -300,13 +300,14 @@ async def _messages_delete(
             )
         except CapabilityNotSupportedError as exc:
             return _map_capability_not_supported(tool, exc)
-        logger.info(
-            MCP_DESTRUCTIVE_OP_EXECUTED,
-            tool_name=tool,
-            actor=_actor_name(resolved_actor),
-            reason=reason,
-            removed=removed,
-        )
+        if removed:
+            logger.info(
+                MCP_DESTRUCTIVE_OP_EXECUTED,
+                tool_name=tool,
+                actor=_actor_name(resolved_actor),
+                reason=reason,
+                removed=removed,
+            )
         return ok({"removed": removed})
     except GuardrailViolationError as exc:
         _log_guardrail(tool, exc)

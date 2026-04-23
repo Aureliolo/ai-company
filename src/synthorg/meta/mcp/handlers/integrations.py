@@ -12,7 +12,11 @@ from uuid import UUID
 
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.core.types import NotBlankStr
-from synthorg.meta.mcp.errors import GuardrailViolationError, invalid_argument
+from synthorg.meta.mcp.errors import (
+    ArgumentValidationError,
+    GuardrailViolationError,
+    invalid_argument,
+)
 from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,  # noqa: TC001 -- PEP 649 annotation
 )
@@ -27,6 +31,7 @@ from synthorg.meta.mcp.handlers.common import (
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.mcp import (
     MCP_DESTRUCTIVE_OP_EXECUTED,
+    MCP_HANDLER_ARGUMENT_INVALID,
     MCP_HANDLER_CAPABILITY_GAP,
     MCP_HANDLER_GUARDRAIL_VIOLATED,
     MCP_HANDLER_INVOKE_FAILED,
@@ -43,6 +48,16 @@ _TY_STRING = "non-blank string"
 _TY_UUID = "UUID string"
 _TY_LIST = "sequence of strings"
 _TY_INT = "non-negative int"
+
+
+def _log_invalid(tool: str, exc: ArgumentValidationError) -> None:
+    """Emit ``MCP_HANDLER_ARGUMENT_INVALID`` at WARNING for client-input errors."""
+    logger.warning(
+        MCP_HANDLER_ARGUMENT_INVALID,
+        tool_name=tool,
+        error_type=type(exc).__name__,
+        error=safe_error_description(exc),
+    )
 
 
 def _log_failed(tool: str, exc: Exception) -> None:
@@ -167,6 +182,9 @@ async def _mcp_catalog_list(
         entries = await app_state.mcp_catalog_facade_service.list_catalog()
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -193,6 +211,9 @@ async def _mcp_catalog_search(
         entries = await app_state.mcp_catalog_facade_service.search_catalog(query)
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -214,6 +235,9 @@ async def _mcp_catalog_get(
         )
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -241,6 +265,9 @@ async def _mcp_catalog_install(
         )
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -263,18 +290,22 @@ async def _mcp_catalog_uninstall(
             actor_id=_actor_name(resolved_actor),
             reason=reason,
         )
-        logger.info(
-            MCP_DESTRUCTIVE_OP_EXECUTED,
-            tool_name=tool,
-            actor=_actor_name(resolved_actor),
-            reason=reason,
-            installation_id=installation_id,
-            removed=removed,
-        )
+        if removed:
+            logger.info(
+                MCP_DESTRUCTIVE_OP_EXECUTED,
+                tool_name=tool,
+                actor=_actor_name(resolved_actor),
+                reason=reason,
+                installation_id=installation_id,
+                removed=removed,
+            )
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
     except GuardrailViolationError as exc:
         _log_guardrail(tool, exc)
+        return err(exc)
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
         return err(exc)
     except Exception as exc:
         _log_failed(tool, exc)
@@ -297,6 +328,9 @@ async def _oauth_list_providers(
         providers = await app_state.oauth_facade_service.list_providers()
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -327,6 +361,9 @@ async def _oauth_configure_provider(
         )
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -349,18 +386,22 @@ async def _oauth_remove_provider(
             actor_id=_actor_name(resolved_actor),
             reason=reason,
         )
-        logger.info(
-            MCP_DESTRUCTIVE_OP_EXECUTED,
-            tool_name=tool,
-            actor=_actor_name(resolved_actor),
-            reason=reason,
-            provider_name=name,
-            removed=removed,
-        )
+        if removed:
+            logger.info(
+                MCP_DESTRUCTIVE_OP_EXECUTED,
+                tool_name=tool,
+                actor=_actor_name(resolved_actor),
+                reason=reason,
+                provider_name=name,
+                removed=removed,
+            )
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
     except GuardrailViolationError as exc:
         _log_guardrail(tool, exc)
+        return err(exc)
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
         return err(exc)
     except Exception as exc:
         _log_failed(tool, exc)
@@ -389,6 +430,9 @@ async def _clients_list(
             total=len(clients),
         )
         return ok([c.to_dict() for c in page], pagination=pagination)
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -405,6 +449,9 @@ async def _clients_get(
     try:
         client_id = _require_uuid(arguments, "client_id")
         client = await app_state.client_facade_service.get_client(client_id)
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -436,6 +483,9 @@ async def _clients_create(
         )
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -458,19 +508,23 @@ async def _clients_deactivate(
             actor_id=_actor_name(resolved_actor),
             reason=reason,
         )
-        logger.info(
-            MCP_DESTRUCTIVE_OP_EXECUTED,
-            tool_name=tool,
-            actor=_actor_name(resolved_actor),
-            reason=reason,
-            client_id=client_id,
-            deactivated=deactivated,
-        )
+        if deactivated:
+            logger.info(
+                MCP_DESTRUCTIVE_OP_EXECUTED,
+                tool_name=tool,
+                actor=_actor_name(resolved_actor),
+                reason=reason,
+                client_id=client_id,
+                deactivated=deactivated,
+            )
     except GuardrailViolationError as exc:
         _log_guardrail(tool, exc)
         return err(exc)
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -488,6 +542,9 @@ async def _clients_get_satisfaction(
     try:
         client_id = _require_uuid(arguments, "client_id")
         result = await app_state.client_facade_service.get_satisfaction(client_id)
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -515,6 +572,9 @@ async def _artifacts_list(
             total=len(artifacts),
         )
         return ok([a.to_dict() for a in page], pagination=pagination)
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -531,6 +591,9 @@ async def _artifacts_get(
     try:
         artifact_id = _require_uuid(arguments, "artifact_id")
         artifact = await app_state.artifact_facade_service.get_artifact(artifact_id)
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -562,6 +625,9 @@ async def _artifacts_create(
             storage_ref=storage_ref,
             actor_id=_actor_name(actor),
         )
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -584,16 +650,20 @@ async def _artifacts_delete(
             actor_id=_actor_name(resolved_actor),
             reason=reason,
         )
-        logger.info(
-            MCP_DESTRUCTIVE_OP_EXECUTED,
-            tool_name=tool,
-            actor=_actor_name(resolved_actor),
-            reason=reason,
-            artifact_id=artifact_id,
-            removed=removed,
-        )
+        if removed:
+            logger.info(
+                MCP_DESTRUCTIVE_OP_EXECUTED,
+                tool_name=tool,
+                actor=_actor_name(resolved_actor),
+                reason=reason,
+                artifact_id=artifact_id,
+                removed=removed,
+            )
     except GuardrailViolationError as exc:
         _log_guardrail(tool, exc)
+        return err(exc)
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
         return err(exc)
     except Exception as exc:
         _log_failed(tool, exc)
@@ -616,6 +686,9 @@ async def _ontology_list_entities(
         entities = await app_state.ontology_facade_service.list_entities()
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -635,6 +708,9 @@ async def _ontology_get_entity(
         entity = await app_state.ontology_facade_service.get_entity(entity_id)
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -661,6 +737,9 @@ async def _ontology_get_relationships(
         )
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -680,6 +759,9 @@ async def _ontology_search(
         result = await app_state.ontology_facade_service.search(query)
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)

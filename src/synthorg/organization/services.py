@@ -1,10 +1,18 @@
-# ruff: noqa: D102, EM101
+# ruff: noqa: EM101
 """Organization facades for the MCP handler layer.
 
 Company read/versions, department CRUD + health, team CRUD, and
 role-version history.  Writes route through ``org_mutation_service``
 where it already owns the flow; other paths use in-memory stores until
 durable repositories land.
+
+The file-level ``EM101`` suppression is intentional: every capability
+gap in this module is raised via the :func:`_capability` factory which
+builds a :class:`CapabilityNotSupportedError` from a short identifier
+and operator-readable reason -- both string literals by design so
+capability telemetry (logged via :data:`MCP_HANDLER_CAPABILITY_GAP`)
+has a stable, grep-able message.  Hoisting them to ``msg = ...``
+locals would obscure the one-line intent with no runtime benefit.
 """
 
 import asyncio
@@ -13,6 +21,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, cast
 from uuid import UUID, uuid4
 
+from synthorg.api.dto_org import UpdateCompanyRequest
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.observability import get_logger
 from synthorg.observability.events.company import (
@@ -75,6 +84,7 @@ class CompanyReadService:
         self._org = cast("Any", org_mutation)
 
     async def get_company(self) -> object:
+        """Return the company snapshot or raise if the capability is missing."""
         fn = getattr(self._org, "get_company", None)
         if callable(fn):
             return await fn()
@@ -89,17 +99,27 @@ class CompanyReadService:
         payload: Mapping[str, object],
         actor_id: NotBlankStr,
     ) -> object:
+        """Apply a partial company-settings update.
+
+        The payload is validated against :class:`UpdateCompanyRequest`
+        here so unknown keys are rejected before reaching the mutation
+        service.  The call then matches the target signature
+        ``update_company(data, *, saved_by=...)`` -- ``actor_id`` is
+        recorded as ``saved_by`` in the persisted snapshot.
+        """
         fn = getattr(self._org, "update_company", None)
         if not callable(fn):
             raise _capability(
                 "company_update",
                 "OrgMutationService does not expose update_company",
             )
-        result = await fn(payload=dict(payload), actor=actor_id)
+        data = UpdateCompanyRequest.model_validate(dict(payload))
+        result = await fn(data, saved_by=actor_id)
         logger.info(COMPANY_UPDATED_VIA_MCP, actor_id=actor_id)
         return result
 
     async def list_departments(self) -> Sequence[object]:
+        """Return the company's departments."""
         fn = getattr(self._org, "list_departments", None)
         if not callable(fn):
             raise _capability(
@@ -114,6 +134,7 @@ class CompanyReadService:
         department_ids: Sequence[str],
         actor_id: NotBlankStr,
     ) -> None:
+        """Apply a new department ordering, auditing the change."""
         fn = getattr(self._org, "reorder_departments", None)
         if not callable(fn):
             raise _capability(
@@ -128,6 +149,7 @@ class CompanyReadService:
         )
 
     async def list_versions(self) -> Sequence[object]:
+        """Return all company-snapshot versions."""
         fn = getattr(self._org, "list_company_versions", None)
         if not callable(fn):
             raise _capability(
@@ -137,6 +159,7 @@ class CompanyReadService:
         return tuple(await fn())
 
     async def get_version(self, version_id: NotBlankStr) -> object | None:
+        """Fetch a single company-snapshot version by id."""
         fn = getattr(self._org, "get_company_version", None)
         if not callable(fn):
             raise _capability(
@@ -189,15 +212,43 @@ class DepartmentService:
         self._departments: dict[UUID, _DepartmentRecord] = {}
         self._lock = asyncio.Lock()
 
-    async def list_departments(self) -> Sequence[_DepartmentRecord]:
+    async def list_departments(
+        self,
+        *,
+        offset: int = 0,
+        limit: int | None = None,
+    ) -> tuple[tuple[_DepartmentRecord, ...], int]:
+        """Return paginated departments newest-first plus unfiltered total.
+
+        Args:
+            offset: Non-negative page offset.
+            limit: Optional positive page size; ``None`` returns every
+                department from ``offset`` onwards.
+
+        Raises:
+            ValueError: If ``offset`` is negative, or ``limit`` is
+                provided and non-positive.
+        """
+        if offset < 0:
+            msg = f"offset must be >= 0, got {offset}"
+            raise ValueError(msg)
+        if limit is not None and limit < 1:
+            msg = f"limit must be >= 1 when provided, got {limit}"
+            raise ValueError(msg)
         async with self._lock:
             snapshot = tuple(copy.deepcopy(d) for d in self._departments.values())
-        return tuple(sorted(snapshot, key=lambda d: d.created_at, reverse=True))
+        ordered = tuple(
+            sorted(snapshot, key=lambda d: d.created_at, reverse=True),
+        )
+        total = len(ordered)
+        end = total if limit is None else offset + limit
+        return ordered[offset:end], total
 
     async def get_department(
         self,
         department_id: NotBlankStr,
     ) -> _DepartmentRecord | None:
+        """Fetch a single department by UUID or ``None`` if not found."""
         try:
             key = UUID(department_id)
         except ValueError:
@@ -213,6 +264,7 @@ class DepartmentService:
         description: NotBlankStr,
         actor_id: NotBlankStr,
     ) -> _DepartmentRecord:
+        """Create a department, auditing the event on success."""
         record = _DepartmentRecord(
             id=uuid4(),
             name=name,
@@ -236,6 +288,7 @@ class DepartmentService:
         name: NotBlankStr | None = None,
         description: NotBlankStr | None = None,
     ) -> _DepartmentRecord | None:
+        """Patch a department's ``name`` / ``description`` in place."""
         try:
             key = UUID(department_id)
         except ValueError:
@@ -264,25 +317,28 @@ class DepartmentService:
         actor_id: NotBlankStr,
         reason: NotBlankStr,
     ) -> bool:
+        """Remove a department; emit the audit event only on real removal."""
         try:
             key = UUID(department_id)
         except ValueError:
             return False
         async with self._lock:
             removed = self._departments.pop(key, None) is not None
-        logger.info(
-            DEPARTMENT_DELETED_VIA_MCP,
-            department_id=department_id,
-            actor_id=actor_id,
-            reason=reason,
-            removed=removed,
-        )
+        if removed:
+            logger.info(
+                DEPARTMENT_DELETED_VIA_MCP,
+                department_id=department_id,
+                actor_id=actor_id,
+                reason=reason,
+                removed=removed,
+            )
         return removed
 
     async def get_health(
         self,
         department_id: NotBlankStr,
     ) -> Mapping[str, object]:
+        """Return a summary health payload for the department."""
         record = await self.get_department(department_id)
         if record is None:
             return {"status": "unknown", "reason": "not_found"}
@@ -332,12 +388,40 @@ class TeamService:
         self._teams: dict[UUID, _TeamRecord] = {}
         self._lock = asyncio.Lock()
 
-    async def list_teams(self) -> Sequence[_TeamRecord]:
+    async def list_teams(
+        self,
+        *,
+        offset: int = 0,
+        limit: int | None = None,
+    ) -> tuple[tuple[_TeamRecord, ...], int]:
+        """Return paginated teams newest-first plus unfiltered total.
+
+        Args:
+            offset: Non-negative page offset.
+            limit: Optional positive page size; ``None`` returns every
+                team from ``offset`` onwards.
+
+        Raises:
+            ValueError: If ``offset`` is negative, or ``limit`` is
+                provided and non-positive.
+        """
+        if offset < 0:
+            msg = f"offset must be >= 0, got {offset}"
+            raise ValueError(msg)
+        if limit is not None and limit < 1:
+            msg = f"limit must be >= 1 when provided, got {limit}"
+            raise ValueError(msg)
         async with self._lock:
             snapshot = tuple(copy.deepcopy(t) for t in self._teams.values())
-        return tuple(sorted(snapshot, key=lambda t: t.created_at, reverse=True))
+        ordered = tuple(
+            sorted(snapshot, key=lambda t: t.created_at, reverse=True),
+        )
+        total = len(ordered)
+        end = total if limit is None else offset + limit
+        return ordered[offset:end], total
 
     async def get_team(self, team_id: NotBlankStr) -> _TeamRecord | None:
+        """Fetch a single team by UUID or ``None`` if not found."""
         try:
             key = UUID(team_id)
         except ValueError:
@@ -353,6 +437,7 @@ class TeamService:
         actor_id: NotBlankStr,
         department_id: NotBlankStr | None = None,
     ) -> _TeamRecord:
+        """Create a team, auditing the event on success."""
         record = _TeamRecord(
             id=uuid4(),
             name=name,
@@ -409,19 +494,21 @@ class TeamService:
         actor_id: NotBlankStr,
         reason: NotBlankStr,
     ) -> bool:
+        """Remove a team; emit the audit event only on real removal."""
         try:
             key = UUID(team_id)
         except ValueError:
             return False
         async with self._lock:
             removed = self._teams.pop(key, None) is not None
-        logger.info(
-            TEAM_DELETED_VIA_MCP,
-            team_id=team_id,
-            actor_id=actor_id,
-            reason=reason,
-            removed=removed,
-        )
+        if removed:
+            logger.info(
+                TEAM_DELETED_VIA_MCP,
+                team_id=team_id,
+                actor_id=actor_id,
+                reason=reason,
+                removed=removed,
+            )
         return removed
 
 
@@ -443,6 +530,7 @@ class RoleVersionService:
         *,
         role_name: NotBlankStr | None = None,
     ) -> Sequence[object]:
+        """Return role-snapshot versions, optionally filtered by role name."""
         if self._org is None:
             raise _capability(
                 "role_versions_list",
@@ -460,6 +548,7 @@ class RoleVersionService:
         self,
         version_id: NotBlankStr,
     ) -> object | None:
+        """Fetch a single role-snapshot version by id."""
         if self._org is None:
             raise _capability(
                 "role_versions_get",
