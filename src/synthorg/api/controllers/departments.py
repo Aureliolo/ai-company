@@ -1,9 +1,8 @@
 """Department controller -- listing, health, ceremony policy, and CRUD mutations."""
 
-import asyncio
 import copy
 import json
-from typing import Any
+from typing import Any, Final
 
 from litestar import Controller, Request, Response, delete, get, patch, post, put
 from litestar.datastructures import State  # noqa: TC002
@@ -27,6 +26,7 @@ from synthorg.api.errors import (
     ApiValidationError,
     NotFoundError,
     ServiceUnavailableError,
+    VersionConflictError,
 )
 from synthorg.api.guards import (
     require_org_mutation,
@@ -42,7 +42,7 @@ from synthorg.core.company import Department  # noqa: TC001
 from synthorg.core.normalization import find_by_name_ci
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.workflow.ceremony_policy import CeremonyPolicyConfig
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_CEREMONY_POLICY_DEPT_CLEARED,
     API_CEREMONY_POLICY_DEPT_UPDATED,
@@ -128,8 +128,8 @@ async def _load_dept_policies_json(
         logger.warning(
             API_REQUEST_ERROR,
             endpoint="departments.ceremony_policy.load",
-            error="failed to load dept_ceremony_policies",
-            exc_info=True,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         if raise_on_error:
             msg = "Failed to load department ceremony policies"
@@ -147,45 +147,6 @@ async def _load_dept_policies_json(
             raise ServiceUnavailableError(msg)
         return {}
     return parsed
-
-
-async def _save_dept_policies_json(
-    app_state: AppState,
-    policies: dict[str, Any],
-) -> None:
-    """Persist the dept_ceremony_policies JSON setting.
-
-    Args:
-        app_state: Application state with settings service.
-        policies: Full department overrides dict.
-
-    Raises:
-        ServiceUnavailableError: If the settings service is not
-            available.
-    """
-    if not app_state.has_settings_service:
-        msg = "Settings service not available"
-        logger.warning(API_SERVICE_UNAVAILABLE, service="settings")
-        raise ServiceUnavailableError(msg)
-    try:
-        await app_state.settings_service.set(
-            "coordination",
-            "dept_ceremony_policies",
-            json.dumps(policies, separators=(",", ":")),
-        )
-    except MemoryError, RecursionError:
-        raise
-    except ServiceUnavailableError:
-        raise
-    except Exception as exc:
-        logger.warning(
-            API_REQUEST_ERROR,
-            endpoint="departments.ceremony_policy.save",
-            error="failed to persist dept_ceremony_policies",
-            exc_info=True,
-        )
-        msg = "Failed to save department ceremony policies"
-        raise ServiceUnavailableError(msg) from exc
 
 
 async def _get_dept_ceremony_override(
@@ -231,7 +192,8 @@ async def _get_dept_ceremony_override(
                     API_REQUEST_ERROR,
                     endpoint="departments.ceremony_policy.get",
                     department=department_name,
-                    error=f"Invalid stored override: {exc}",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 msg = f"Corrupt ceremony policy override for {department_name!r}"
                 raise ServiceUnavailableError(msg) from exc
@@ -256,65 +218,130 @@ async def _get_dept_ceremony_override(
     raise NotFoundError(msg)
 
 
-# Serializes concurrent read-modify-write operations on the
-# dept_ceremony_policies JSON blob.  The asyncio.Lock is sufficient
-# because Litestar runs in a single-process, single-event-loop
-# deployment model -- all concurrent requests share the same loop.
-# TODO: multi-worker deployment requires settings-service CAS or per-dept keys
-_dept_policy_lock = asyncio.Lock()
+# Cross-worker concurrency on the ``dept_ceremony_policies`` JSON blob
+# is handled via settings-service CAS (compare-and-swap on ``updated_at``).
+# Every mutation reads the current versioned value, mutates in-memory,
+# then writes with ``expected_updated_at``; a losing writer gets
+# ``VersionConflictError`` and retries.  ``_DEPT_POLICY_CAS_MAX_ATTEMPTS``
+# bounds the retry so a sustained contention burst surfaces instead of
+# spinning forever.
+_DEPT_POLICY_CAS_MAX_ATTEMPTS: Final[int] = 3
 
 
-async def _set_dept_ceremony_override(
+async def _load_dept_policies_versioned(
     app_state: AppState,
-    department_name: NotBlankStr,
-    policy: dict[str, Any],
-) -> None:
-    """Set the ceremony policy override for a department.
+) -> tuple[dict[str, Any], str]:
+    """Load policies JSON with its ``updated_at`` for CAS.
 
-    Args:
-        app_state: Application state.
-        department_name: Department name.
-        policy: Validated ceremony policy dict.
+    Bypasses the fallback chain -- CAS only cares about DB state.
+    Returns ``({}, "")`` when the setting has no persisted value yet
+    (first-write semantics).
 
     Raises:
-        ServiceUnavailableError: If the settings service or JSON
-            blob cannot be loaded (prevents data loss from
-            writing over unreadable state).
+        ServiceUnavailableError: If the settings service is unavailable
+            or the persisted JSON is corrupt.
     """
-    async with _dept_policy_lock:
-        policies = await _load_dept_policies_json(
-            app_state,
-            raise_on_error=True,
+    if not app_state.has_settings_service:
+        msg = "Settings service not available"
+        logger.warning(API_SERVICE_UNAVAILABLE, service="settings")
+        raise ServiceUnavailableError(msg)
+    try:
+        value, updated_at = await app_state.settings_service.get_versioned(
+            "coordination",
+            "dept_ceremony_policies",
         )
-        policies[department_name] = copy.deepcopy(policy)
-        await _save_dept_policies_json(app_state, policies)
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        logger.warning(
+            API_REQUEST_ERROR,
+            endpoint="departments.ceremony_policy.load_versioned",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        msg = "Failed to load department ceremony policies"
+        raise ServiceUnavailableError(msg) from exc
+    if not value:
+        return {}, ""
+    try:
+        parsed = json.loads(value)
+    except (ValueError, TypeError) as exc:
+        logger.warning(
+            API_REQUEST_ERROR,
+            endpoint="departments.ceremony_policy.load_versioned",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        msg = "Failed to parse department ceremony policies"
+        raise ServiceUnavailableError(msg) from exc
+    if not isinstance(parsed, dict):
+        msg = f"dept_ceremony_policies is not a dict: {type(parsed).__name__}"
+        logger.warning(
+            API_REQUEST_ERROR,
+            endpoint="departments.ceremony_policy.load_versioned",
+            error=msg,
+        )
+        raise ServiceUnavailableError(msg)
+    return parsed, updated_at
 
 
-async def _clear_dept_ceremony_override(
+async def _save_dept_policies_with_cas(
     app_state: AppState,
-    department_name: NotBlankStr,
+    policies: dict[str, Any],
+    *,
+    expected_updated_at: str,
 ) -> None:
-    """Clear the ceremony policy override for a department.
-
-    Persists a ``None`` sentinel so the department explicitly
-    inherits the project-level policy, even if the config YAML
-    defines a ``ceremony_policy`` for the department.
-
-    Args:
-        app_state: Application state.
-        department_name: Department name.
+    """Persist the dept_ceremony_policies JSON with CAS.
 
     Raises:
-        ServiceUnavailableError: If the settings service or JSON
-            blob cannot be loaded.
+        ServiceUnavailableError: If the settings service is not available.
+        VersionConflictError: If the persisted ``updated_at`` no longer
+            matches ``expected_updated_at`` (concurrent writer won).
     """
-    async with _dept_policy_lock:
-        policies = await _load_dept_policies_json(
-            app_state,
-            raise_on_error=True,
+    if not app_state.has_settings_service:
+        msg = "Settings service not available"
+        logger.warning(API_SERVICE_UNAVAILABLE, service="settings")
+        raise ServiceUnavailableError(msg)
+    await app_state.settings_service.set(
+        "coordination",
+        "dept_ceremony_policies",
+        json.dumps(policies, separators=(",", ":")),
+        expected_updated_at=expected_updated_at,
+    )
+
+
+async def _mutate_dept_policies_with_retry(
+    app_state: AppState,
+    department_name: NotBlankStr,
+    new_value: dict[str, Any] | None,
+) -> None:
+    """Read-modify-write the policies JSON with bounded CAS retry.
+
+    ``new_value`` of ``None`` persists the explicit-inherit sentinel;
+    a dict sets the override.  Retries up to
+    ``_DEPT_POLICY_CAS_MAX_ATTEMPTS`` times on
+    :class:`VersionConflictError` before surfacing the last conflict.
+    """
+    last_attempt = _DEPT_POLICY_CAS_MAX_ATTEMPTS - 1
+    for attempt in range(_DEPT_POLICY_CAS_MAX_ATTEMPTS):
+        policies, expected = await _load_dept_policies_versioned(app_state)
+        policies[department_name] = (
+            None if new_value is None else copy.deepcopy(new_value)
         )
-        policies[department_name] = None
-        await _save_dept_policies_json(app_state, policies)
+        try:
+            await _save_dept_policies_with_cas(
+                app_state,
+                policies,
+                expected_updated_at=expected,
+            )
+        except VersionConflictError:
+            # Re-raise on the final attempt so the caller sees HTTP 409;
+            # otherwise re-read and retry against the new ``updated_at``.
+            if attempt == last_attempt:
+                raise
+            continue
+        else:
+            return
 
 
 # ── Controller ────────────────────────────────────────────────
@@ -690,7 +717,7 @@ class DepartmentController(Controller):
         clean_data = validated.model_dump(mode="json", exclude_none=True)
 
         # Merge into the dept_ceremony_policies JSON setting
-        await _set_dept_ceremony_override(app_state, canonical, clean_data)
+        await _mutate_dept_policies_with_retry(app_state, canonical, clean_data)
 
         logger.info(
             API_CEREMONY_POLICY_DEPT_UPDATED,
@@ -729,7 +756,7 @@ class DepartmentController(Controller):
         """
         app_state: AppState = state.app_state
         canonical = await _require_department_exists(app_state, name)
-        await _clear_dept_ceremony_override(app_state, canonical)
+        await _mutate_dept_policies_with_retry(app_state, canonical, None)
         logger.info(
             API_CEREMONY_POLICY_DEPT_CLEARED,
             department=canonical,

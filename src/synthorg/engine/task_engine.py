@@ -38,7 +38,7 @@ from synthorg.engine.task_engine_models import (
     UpdateTaskMutation,
 )
 from synthorg.engine.task_engine_version import VersionTracker
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.background_tasks import log_task_exceptions
 from synthorg.observability.events.task_engine import (
     TASK_ENGINE_CREATED,
@@ -483,35 +483,69 @@ class TaskEngine(TaskEngineLoopsMixin):
             )
             raise TaskInternalError(msg) from exc
 
-    async def list_tasks(
+    @staticmethod
+    def _validate_pagination(limit: int | None, offset: int) -> None:
+        """Reject negative or ill-composed pagination before touching the repo.
+
+        ``offset > 0`` without a matching ``limit`` is rejected: the
+        legacy fallback computes ``total = len(tasks)``, which would
+        undercount the full cardinality once the offset has skipped
+        leading rows.  Callers that want offset must pass an explicit
+        ``limit`` so the engine can route through the paginated branch
+        that issues a dedicated ``count_tasks`` round-trip.
+        """
+        if limit is not None and limit < 0:
+            msg = f"limit must be non-negative when set; got {limit}"
+            raise ValueError(msg)
+        if offset < 0:
+            msg = f"offset must be non-negative; got {offset}"
+            raise ValueError(msg)
+        if limit is None and offset > 0:
+            msg = (
+                f"offset ({offset}) requires an explicit limit; "
+                "pass `limit` to use offset-based pagination"
+            )
+            raise ValueError(msg)
+
+    async def _fetch_tasks(
         self,
         *,
-        status: TaskStatus | None = None,
-        assigned_to: str | None = None,
-        project: str | None = None,
-    ) -> tuple[tuple[Task, ...], int]:
-        """List tasks directly from persistence (bypass queue).
-
-        Returns a tuple of ``(tasks, total)`` where *total* is the true
-        count before any safety cap is applied.  When the result set
-        exceeds ``_MAX_LIST_RESULTS``, the returned tuple is truncated
-        but *total* reflects the real cardinality so pagination metadata
-        stays accurate.
-
-        Args:
-            status: Filter by status.
-            assigned_to: Filter by assignee.
-            project: Filter by project.
-
-        Returns:
-            ``(tasks, total)`` -- *tasks* may be capped at
-            ``_MAX_LIST_RESULTS``; *total* is the true count.
-
-        Raises:
-            TaskInternalError: If the persistence backend fails.
-        """
+        status: TaskStatus | None,
+        assigned_to: str | None,
+        project: str | None,
+        limit: int | None,
+        offset: int,
+    ) -> tuple[Task, ...]:
+        """Forward the filtered list to the repo with SEC-1-safe logging."""
         try:
-            tasks = await self._persistence.tasks.list_tasks(
+            return await self._persistence.tasks.list_tasks(
+                status=status,
+                assigned_to=assigned_to,
+                project=project,
+                limit=limit,
+                offset=offset,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            msg = "Failed to list tasks"
+            logger.warning(
+                TASK_ENGINE_READ_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise TaskInternalError(msg) from exc
+
+    async def _count_tasks_filtered(
+        self,
+        *,
+        status: TaskStatus | None,
+        assigned_to: str | None,
+        project: str | None,
+    ) -> int:
+        """Accurate total count with SEC-1-safe logging."""
+        try:
+            return await self._persistence.tasks.count_tasks(
                 status=status,
                 assigned_to=assigned_to,
                 project=project,
@@ -519,26 +553,103 @@ class TaskEngine(TaskEngineLoopsMixin):
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            msg = f"Failed to list tasks: {exc}"
-            logger.exception(
+            msg = "Failed to count tasks"
+            logger.warning(
                 TASK_ENGINE_READ_FAILED,
-                error=msg,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise TaskInternalError(msg) from exc
-        total = len(tasks)
-        if total > self._MAX_LIST_RESULTS:
+
+    async def list_tasks(  # noqa: PLR0913
+        self,
+        *,
+        status: TaskStatus | None = None,
+        assigned_to: str | None = None,
+        project: str | None = None,
+        limit: int | None = None,
+        offset: int = 0,
+        include_total: bool = True,
+    ) -> tuple[tuple[Task, ...], int | None]:
+        """List tasks with push-down pagination.
+
+        Callers that pass ``limit`` get the requested window straight
+        out of the repository (no 10k safety truncation because the
+        repo itself bounds the result).  Callers that pass ``limit=None``
+        keep the legacy behaviour: fetch everything and apply the
+        ``_MAX_LIST_RESULTS`` safety cap in-memory as defense-in-depth.
+
+        Args:
+            status: Filter by status.
+            assigned_to: Filter by assignee.
+            project: Filter by project.
+            limit: Max rows to return; ``None`` retains the safety-capped
+                "fetch all" semantics for legacy callers.
+            offset: Rows to skip before the returned window.
+            include_total: When ``True`` issue an additional ``count_tasks``
+                call and return the true total; when ``False`` the
+                second tuple element is ``None`` and the extra round
+                trip is skipped (used by callers that only need
+                ``has_more``).
+
+        Returns:
+            ``(tasks, total)`` where ``total`` is ``None`` iff
+            ``include_total`` is ``False``.
+
+        Raises:
+            TaskInternalError: If the persistence backend fails.
+            ValueError: If ``limit`` is negative, ``offset`` is negative,
+                or ``offset > 0`` is passed without an explicit ``limit``
+                (offset-based pagination requires a paired limit so the
+                returned total stays accurate; see
+                :meth:`_validate_pagination`).
+        """
+        self._validate_pagination(limit, offset)
+        tasks = await self._fetch_tasks(
+            status=status,
+            assigned_to=assigned_to,
+            project=project,
+            limit=limit,
+            offset=offset,
+        )
+
+        # When the caller paginates at the repo layer, ``tasks`` is
+        # already bounded; the safety cap only fires on unpaginated
+        # "fetch all" calls.  Capture the true pre-cap size so the
+        # returned ``total`` still reflects real cardinality even when
+        # the tuple is truncated.
+        true_total = len(tasks)
+        if limit is None and true_total > self._MAX_LIST_RESULTS:
             logger.warning(
                 TASK_ENGINE_LIST_CAPPED,
-                actual_total=total,
+                actual_total=true_total,
                 cap=self._MAX_LIST_RESULTS,
             )
-            return tasks[: self._MAX_LIST_RESULTS], total
+            tasks = tasks[: self._MAX_LIST_RESULTS]
+
+        if not include_total:
+            return tasks, None
+
+        if limit is None:
+            # Full-fetch path: the pre-truncation count is authoritative
+            # so callers keep accurate totals even after the safety cap.
+            return tasks, true_total
+
+        total = await self._count_tasks_filtered(
+            status=status,
+            assigned_to=assigned_to,
+            project=project,
+        )
         return tasks, total
 
     # -- Background processing ---------------------------------------------
 
     _MAX_LIST_RESULTS: int = 10_000
-    """Safety cap on ``list_tasks`` results (pagination TODO)."""
+    """Defense-in-depth cap on unpaginated ``list_tasks`` calls.
+
+    Applies only when ``limit is None``; paginated callers bypass the
+    cap because the repository already bounds the result set.
+    """
 
     _POLL_INTERVAL_SECONDS: float = 0.5
     """How often background loops check for shutdown."""

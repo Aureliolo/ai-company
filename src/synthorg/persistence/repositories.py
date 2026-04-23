@@ -91,8 +91,41 @@ class TaskRepository(Protocol):
         status: TaskStatus | None = None,
         assigned_to: NotBlankStr | None = None,
         project: NotBlankStr | None = None,
+        limit: int | None = None,
+        offset: int = 0,
     ) -> tuple[Task, ...]:
-        """List tasks with optional filters.
+        """List tasks with optional filters and pagination.
+
+        Args:
+            status: Filter by task status.
+            assigned_to: Filter by assignee agent ID.
+            project: Filter by project ID.
+            limit: Maximum rows to return.  ``None`` means "no
+                repository-level cap" (the caller remains free to
+                impose a safety cap above).
+            offset: Rows to skip before the window (``0`` = no offset).
+                Paired with ``limit`` for cursor/offset pagination.
+
+        Returns:
+            Matching tasks as a tuple.  Ordering is deterministic on
+            the primary key ``id`` (ascending) so limit/offset windows
+            do not jitter across calls; the ``Task`` model has no
+            ``created_at`` field so primary-key order is the only
+            stable backend-agnostic signal available.
+
+        Raises:
+            PersistenceError: If the operation fails.
+        """
+        ...
+
+    async def count_tasks(
+        self,
+        *,
+        status: TaskStatus | None = None,
+        assigned_to: NotBlankStr | None = None,
+        project: NotBlankStr | None = None,
+    ) -> int:
+        """Count tasks matching the given filters.
 
         Args:
             status: Filter by task status.
@@ -100,7 +133,7 @@ class TaskRepository(Protocol):
             project: Filter by project ID.
 
         Returns:
-            Matching tasks as a tuple.
+            Total number of matching tasks.
 
         Raises:
             PersistenceError: If the operation fails.

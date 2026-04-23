@@ -7,12 +7,18 @@ the agent being evolved does NOT propose its own changes.
 
 import json
 import re
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 from pydantic import ValidationError
 
 from synthorg.engine.evolution.models import (
     AdaptationProposal,
+)
+from synthorg.engine.prompt_safety import (
+    TAG_TASK_FACT,
+    TAG_UNTRUSTED_ARTIFACT,
+    untrusted_content_directive,
+    wrap_untrusted,
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.evolution import (
@@ -31,6 +37,14 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+_UNTRUSTED_TAGS: Final[tuple[str, ...]] = (TAG_TASK_FACT, TAG_UNTRUSTED_ARTIFACT)
+
+_DEFAULT_SUMMARY_CAP: Final[int] = 5
+"""How many recent tasks and memories to summarise in the prompt."""
+
+_MEMORY_CONTENT_MAX_CHARS: Final[int] = 500
+"""Per-memory content truncation so long memories cannot blow the prompt."""
+
 _SYSTEM_PROMPT = (
     "You are an agent evolution analyst. Given an agent's current "
     "identity, performance data, and recent task results, propose "
@@ -44,7 +58,8 @@ _SYSTEM_PROMPT = (
     '- "confidence": Your confidence (0.0-1.0)\n'
     '- "source": "failure", "success", "inflection", or "scheduled"\n\n'
     "Return an empty proposals list if no adaptations are warranted.\n"
-    "Respond ONLY with the JSON object, no markdown or explanation."
+    "Respond ONLY with the JSON object, no markdown or explanation.\n\n"
+    + untrusted_content_directive(_UNTRUSTED_TAGS)
 )
 
 _JSON_FENCE_PATTERN = re.compile(
@@ -135,15 +150,84 @@ def _validate_proposals_list(
     return proposals_data
 
 
+def _summarise_tasks(
+    tasks: tuple[Any, ...],
+    *,
+    cap: int,
+) -> str:
+    """Render up to *cap* recent tasks as compact summary lines.
+
+    The tuple is capped from the tail so the most recent entries win
+    when the fleet exceeds *cap*.
+    """
+    if not tasks or cap <= 0:
+        return "  (none)"
+    recent = tasks[-cap:]
+    lines: list[str] = []
+    for record in recent:
+        quality = (
+            f"{record.quality_score:.2f}" if record.quality_score is not None else "n/a"
+        )
+        outcome = "success" if record.is_success else "failure"
+        lines.append(
+            f"  - task_id={record.task_id} type={record.task_type.value} "
+            f"outcome={outcome} quality={quality} "
+            f"duration={record.duration_seconds:.0f}s "
+            f"turns={record.turns_used} tokens={record.tokens_used}"
+        )
+    return "\n".join(lines)
+
+
+def _summarise_memories(
+    memories: tuple[Any, ...],
+    *,
+    cap: int,
+    content_max_chars: int,
+) -> str:
+    """Render up to *cap* procedural memories with truncated content.
+
+    Content strings are clamped at code-point boundaries to
+    ``content_max_chars`` characters so a single oversized memory
+    cannot balloon the prompt.
+    """
+    if not memories or cap <= 0:
+        return "  (none)"
+    recent = memories[-cap:]
+    lines: list[str] = []
+    for entry in recent:
+        raw = entry.content
+        clipped = (
+            raw if len(raw) <= content_max_chars else raw[:content_max_chars] + "..."
+        )
+        lines.append(
+            f"  - memory_id={entry.id} category={entry.category.value} "
+            f"content={clipped!r}"
+        )
+    return "\n".join(lines)
+
+
 def _build_user_message(
     agent_id: NotBlankStr,
     context: EvolutionContext,
+    *,
+    summary_cap: int = _DEFAULT_SUMMARY_CAP,
+    memory_content_max_chars: int = _MEMORY_CONTENT_MAX_CHARS,
 ) -> str:
     """Format the context into a user message for the proposer LLM.
+
+    Per-item summaries of recent tasks (id, type, outcome, quality,
+    duration, turns, tokens) and procedural memories (id, category,
+    truncated content) are included so the model has real signal
+    instead of just counts.  The entire block is wrapped in a
+    :data:`TAG_TASK_FACT` fence and the system prompt carries the
+    matching :func:`untrusted_content_directive` so the model treats
+    everything inside as untrusted data.
 
     Args:
         agent_id: Target agent identifier.
         context: Evolution context with identity, performance, and memory data.
+        summary_cap: Per-list cap for the per-item summaries.
+        memory_content_max_chars: Max characters of memory content to inline.
 
     Returns:
         Formatted user message string.
@@ -161,30 +245,28 @@ def _build_user_message(
             f"{context.performance_snapshot.overall_collaboration_score}"
         )
 
-    # TODO: Pass actual task/memory content instead of just counts.
-    # Currently the LLM only sees the count of recent tasks and procedural
-    # memories, not their actual content. This is a limitation that should be
-    # addressed in a follow-up feature to provide richer context for proposals.
-    tasks_str = (
-        f"{len(context.recent_task_results)} recent tasks"
-        if context.recent_task_results
-        else "No recent task data"
+    tasks_block = _summarise_tasks(
+        context.recent_task_results,
+        cap=summary_cap,
     )
-    memories_str = (
-        f"{len(context.recent_procedural_memories)} procedural memories"
-        if context.recent_procedural_memories
-        else "No procedural memories"
+    memories_block = _summarise_memories(
+        context.recent_procedural_memories,
+        cap=summary_cap,
+        content_max_chars=memory_content_max_chars,
     )
 
-    return (
-        "[BEGIN EVOLUTION CONTEXT]\n"
+    body = (
         f"Agent ID: {agent_id}\n"
         f"Identity: {identity_str}\n"
         f"Performance: {perf_str}\n"
-        f"Recent Tasks: {tasks_str}\n"
-        f"Procedural Memories: {memories_str}\n"
-        "[END EVOLUTION CONTEXT]"
+        f"Recent Tasks ({len(context.recent_task_results)} total, "
+        f"showing last {min(summary_cap, len(context.recent_task_results))}):\n"
+        f"{tasks_block}\n"
+        f"Procedural Memories ({len(context.recent_procedural_memories)} total, "
+        f"showing last {min(summary_cap, len(context.recent_procedural_memories))}):\n"
+        f"{memories_block}"
     )
+    return wrap_untrusted(TAG_TASK_FACT, body)
 
 
 class SeparateAnalyzerProposer:
@@ -208,9 +290,21 @@ class SeparateAnalyzerProposer:
         model: str,
         temperature: float = 0.3,
         max_tokens: int = 2000,
+        summary_cap: int = _DEFAULT_SUMMARY_CAP,
     ) -> None:
+        if summary_cap < 0:
+            msg = f"summary_cap must be non-negative; got {summary_cap}"
+            logger.warning(
+                EVOLUTION_PROPOSER_INIT,
+                proposer="separate_analyzer",
+                model=model,
+                summary_cap=summary_cap,
+                error=msg,
+            )
+            raise ValueError(msg)
         self._provider = provider
         self._model = model
+        self._summary_cap = summary_cap
         self._completion_config = CompletionConfig(
             temperature=temperature,
             max_tokens=max_tokens,
@@ -221,6 +315,7 @@ class SeparateAnalyzerProposer:
             model=model,
             temperature=temperature,
             max_tokens=max_tokens,
+            summary_cap=summary_cap,
         )
 
     @property
@@ -249,7 +344,11 @@ class SeparateAnalyzerProposer:
                 ChatMessage(role=MessageRole.SYSTEM, content=_SYSTEM_PROMPT),
                 ChatMessage(
                     role=MessageRole.USER,
-                    content=_build_user_message(agent_id, context),
+                    content=_build_user_message(
+                        agent_id,
+                        context,
+                        summary_cap=self._summary_cap,
+                    ),
                 ),
             ]
             response = await self._provider.complete(

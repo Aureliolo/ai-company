@@ -5,11 +5,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from synthorg.tools.base import ToolExecutionResult
 from synthorg.tools.mcp.cache import MCPResultCache
 from synthorg.tools.mcp.client import MCPClient
-from synthorg.tools.mcp.config import MCPConfig, MCPServerConfig
-from synthorg.tools.mcp.models import MCPRawResult, MCPToolInfo
+from synthorg.tools.mcp.config import MCPServerConfig
+from synthorg.tools.mcp.models import MCPToolInfo
 
 # ── Sample configs ───────────────────────────────────────────────
 
@@ -22,38 +21,6 @@ def stdio_server_config() -> MCPServerConfig:
         transport="stdio",
         command="echo",
         args=("hello",),
-    )
-
-
-@pytest.fixture
-def http_server_config() -> MCPServerConfig:
-    """Minimal streamable HTTP server config."""
-    return MCPServerConfig(
-        name="test-http",
-        transport="streamable_http",
-        url="http://localhost:8080/mcp",
-    )
-
-
-@pytest.fixture
-def disabled_server_config() -> MCPServerConfig:
-    """Disabled server config."""
-    return MCPServerConfig(
-        name="test-disabled",
-        transport="stdio",
-        command="noop",
-        enabled=False,
-    )
-
-
-@pytest.fixture
-def sample_mcp_config(
-    stdio_server_config: MCPServerConfig,
-    http_server_config: MCPServerConfig,
-) -> MCPConfig:
-    """Config with two enabled servers."""
-    return MCPConfig(
-        servers=(stdio_server_config, http_server_config),
     )
 
 
@@ -72,18 +39,6 @@ def sample_tool_info() -> MCPToolInfo:
         },
         server_name="test-server",
     )
-
-
-@pytest.fixture
-def sample_raw_result() -> MCPRawResult:
-    """Sample raw MCP result with no content."""
-    return MCPRawResult()
-
-
-@pytest.fixture
-def sample_execution_result() -> ToolExecutionResult:
-    """Sample tool execution result."""
-    return ToolExecutionResult(content="hello world")
 
 
 # ── Mock MCP session ─────────────────────────────────────────────
@@ -129,20 +84,6 @@ def _make_mock_call_tool_result(
     result.isError = is_error
     result.structuredContent = structured_content
     return result
-
-
-@pytest.fixture
-def mock_session() -> AsyncMock:
-    """Mock MCP ClientSession."""
-    session = AsyncMock()
-    session.initialize = AsyncMock()
-    session.list_tools = AsyncMock(
-        return_value=_make_mock_list_tools_result(),
-    )
-    session.call_tool = AsyncMock(
-        return_value=_make_mock_call_tool_result(),
-    )
-    return session
 
 
 @pytest.fixture

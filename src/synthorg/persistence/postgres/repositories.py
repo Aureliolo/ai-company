@@ -17,7 +17,7 @@ from synthorg.budget.errors import MixedCurrencyAggregationError
 from synthorg.communication.message import Message
 from synthorg.core.enums import TaskStatus  # noqa: TC001
 from synthorg.core.task import Task
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_COST_RECORD_AGGREGATE_FAILED,
     PERSISTENCE_COST_RECORD_AGGREGATED,
@@ -31,6 +31,8 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_MESSAGE_HISTORY_FETCHED,
     PERSISTENCE_MESSAGE_SAVE_FAILED,
     PERSISTENCE_MESSAGE_SAVED,
+    PERSISTENCE_TASK_COUNT_FAILED,
+    PERSISTENCE_TASK_COUNTED,
     PERSISTENCE_TASK_DELETE_FAILED,
     PERSISTENCE_TASK_DELETED,
     PERSISTENCE_TASK_DESERIALIZE_FAILED,
@@ -150,8 +152,11 @@ class PostgresTaskRepository:
                 await conn.commit()
         except psycopg.Error as exc:
             msg = f"Failed to save task {task.id!r}"
-            logger.exception(
-                PERSISTENCE_TASK_SAVE_FAILED, task_id=task.id, error=str(exc)
+            logger.warning(
+                PERSISTENCE_TASK_SAVE_FAILED,
+                task_id=task.id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         logger.info(PERSISTENCE_TASK_SAVED, task_id=task.id)
@@ -178,10 +183,11 @@ class PostgresTaskRepository:
         except (ValidationError, KeyError, TypeError) as exc:
             task_id = row.get("id", "unknown")
             msg = f"Failed to deserialize task {task_id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_TASK_DESERIALIZE_FAILED,
                 task_id=task_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -199,8 +205,11 @@ class PostgresTaskRepository:
                 row = await cur.fetchone()
         except psycopg.Error as exc:
             msg = f"Failed to fetch task {task_id!r}"
-            logger.exception(
-                PERSISTENCE_TASK_FETCH_FAILED, task_id=task_id, error=str(exc)
+            logger.warning(
+                PERSISTENCE_TASK_FETCH_FAILED,
+                task_id=task_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         if row is None:
@@ -215,10 +224,16 @@ class PostgresTaskRepository:
         status: TaskStatus | None = None,
         assigned_to: str | None = None,
         project: str | None = None,
+        limit: int | None = None,
+        offset: int = 0,
     ) -> tuple[Task, ...]:
-        """List tasks with optional filters."""
+        """List tasks with optional filters and pagination.
+
+        Ordering is deterministic on the primary key ``id`` so paginated
+        callers see stable windows.
+        """
         clauses: list[str] = []
-        params: list[str] = []
+        params: list[object] = []
         if status is not None:
             clauses.append("status = %s")
             params.append(status.value)
@@ -232,6 +247,13 @@ class PostgresTaskRepository:
         query = f"SELECT {self._TASK_COLUMNS} FROM tasks"  # noqa: S608
         if clauses:
             query += " WHERE " + " AND ".join(clauses)
+        query += " ORDER BY id ASC"
+        if limit is not None:
+            query += " LIMIT %s"
+            params.append(int(limit))
+        if offset:
+            query += " OFFSET %s"
+            params.append(int(offset))
 
         try:
             async with (
@@ -242,11 +264,58 @@ class PostgresTaskRepository:
                 rows = await cur.fetchall()
         except psycopg.Error as exc:
             msg = "Failed to list tasks"
-            logger.exception(PERSISTENCE_TASK_LIST_FAILED, error=str(exc))
+            logger.warning(
+                PERSISTENCE_TASK_LIST_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             raise QueryError(msg) from exc
         tasks = tuple(self._row_to_task(row) for row in rows)
         logger.debug(PERSISTENCE_TASK_LISTED, count=len(tasks))
         return tasks
+
+    async def count_tasks(
+        self,
+        *,
+        status: TaskStatus | None = None,
+        assigned_to: str | None = None,
+        project: str | None = None,
+    ) -> int:
+        """Count tasks matching the given filters."""
+        clauses: list[str] = []
+        params: list[object] = []
+        if status is not None:
+            clauses.append("status = %s")
+            params.append(status.value)
+        if assigned_to is not None:
+            clauses.append("assigned_to = %s")
+            params.append(assigned_to)
+        if project is not None:
+            clauses.append("project = %s")
+            params.append(project)
+
+        query = "SELECT COUNT(*) AS c FROM tasks"
+        if clauses:
+            query += " WHERE " + " AND ".join(clauses)
+
+        try:
+            async with (
+                self._pool.connection() as conn,
+                conn.cursor(row_factory=dict_row) as cur,
+            ):
+                await cur.execute(query, params)
+                row = await cur.fetchone()
+        except psycopg.Error as exc:
+            msg = "Failed to count tasks"
+            logger.warning(
+                PERSISTENCE_TASK_COUNT_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        total = int(row["c"]) if row is not None else 0
+        logger.debug(PERSISTENCE_TASK_COUNTED, count=total)
+        return total
 
     async def delete(self, task_id: str) -> bool:
         """Delete a task by ID."""
@@ -257,8 +326,11 @@ class PostgresTaskRepository:
                 await conn.commit()
         except psycopg.Error as exc:
             msg = f"Failed to delete task {task_id!r}"
-            logger.exception(
-                PERSISTENCE_TASK_DELETE_FAILED, task_id=task_id, error=str(exc)
+            logger.warning(
+                PERSISTENCE_TASK_DELETE_FAILED,
+                task_id=task_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         logger.info(PERSISTENCE_TASK_DELETED, task_id=task_id, deleted=deleted)
@@ -510,10 +582,11 @@ class PostgresMessageRepository:
             raise DuplicateRecordError(err_msg) from exc
         except psycopg.Error as exc:
             msg = f"Failed to save message {msg_id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_MESSAGE_SAVE_FAILED,
                 message_id=msg_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         logger.info(PERSISTENCE_MESSAGE_SAVED, message_id=msg_id)
@@ -534,10 +607,11 @@ class PostgresMessageRepository:
         except (json.JSONDecodeError, ValidationError, KeyError, TypeError) as exc:
             msg_id = row.get("id", "unknown")
             msg = f"Failed to deserialize message {msg_id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_MESSAGE_DESERIALIZE_FAILED,
                 message_id=msg_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -579,10 +653,11 @@ class PostgresMessageRepository:
                 rows = await cur.fetchall()
         except psycopg.Error as exc:
             msg = f"Failed to fetch message history for channel {channel!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_MESSAGE_HISTORY_FAILED,
                 channel=channel,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         messages = tuple(self._row_to_message(row) for row in rows)

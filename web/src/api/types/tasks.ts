@@ -84,6 +84,10 @@ export interface TaskFilters {
   status?: TaskStatus
   assigned_to?: string
   project?: string
-  offset?: number
+  // Page size passed through as the ``limit`` query param.  Pagination
+  // is cursor-based on the server (opaque ``cursor`` token), so there
+  // is no ``offset`` field -- callers consume ``nextCursor`` from the
+  // previous response instead.
   limit?: number
+  cursor?: string
 }

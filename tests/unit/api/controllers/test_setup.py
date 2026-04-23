@@ -1537,3 +1537,7 @@ class TestListPersonalityPresets:
             assert isinstance(preset["name"], str)
             assert isinstance(preset["description"], str)
             assert preset["name"].strip() != ""
+
+
+# ``TestReadHasGpuSetting`` moved to test_setup_has_gpu.py to keep this
+# file under the project's file-length guideline.

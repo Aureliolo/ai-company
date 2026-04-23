@@ -86,3 +86,157 @@ class TestDepartmentControllerDbOverride:
             assert detail_resp.status_code == 200
             detail = detail_resp.json()
             assert detail["data"]["name"] == "db-dept"
+
+
+@pytest.mark.integration
+class TestDepartmentCeremonyPolicyCas:
+    """Ceremony-policy overrides use settings-service CAS for cross-worker safety.
+
+    Two concurrent writers must both land without lost updates, and a
+    persistent CAS miss must surface as ``VersionConflictError`` after
+    the bounded retry exhausts.
+    """
+
+    async def test_concurrent_overrides_both_land_no_lost_update(
+        self,
+        fake_persistence: FakePersistenceBackend,
+    ) -> None:
+        """Writer A and writer B both complete; final state contains both."""
+        import asyncio
+        from types import SimpleNamespace
+
+        from synthorg.api.controllers.departments import (
+            _load_dept_policies_versioned,
+            _mutate_dept_policies_with_retry,
+        )
+
+        config = RootConfig(company_name="test")
+        settings_service = SettingsService(
+            repository=fake_persistence.settings,
+            registry=get_registry(),
+            config=config,
+        )
+        app_state = SimpleNamespace(
+            has_settings_service=True,
+            settings_service=settings_service,
+        )
+
+        policy_a: dict[str, Any] = {"strategy": "task_driven"}
+        policy_b: dict[str, Any] = {"strategy": "calendar"}
+
+        # Drive both mutations concurrently.  One must win CAS first; the
+        # loser observes VersionConflictError internally and retries.
+        await asyncio.gather(
+            _mutate_dept_policies_with_retry(app_state, "dept-a", policy_a),  # type: ignore[arg-type]
+            _mutate_dept_policies_with_retry(app_state, "dept-b", policy_b),  # type: ignore[arg-type]
+        )
+
+        final, _ = await _load_dept_policies_versioned(app_state)  # type: ignore[arg-type]
+        assert final == {"dept-a": policy_a, "dept-b": policy_b}
+
+    async def test_retry_recovers_after_transient_version_conflict(
+        self,
+        fake_persistence: FakePersistenceBackend,
+    ) -> None:
+        """A single CAS miss triggers retry + success, not a hard failure.
+
+        Wraps ``settings_service.set`` with a side-effect that raises
+        ``VersionConflictError`` on the first call and delegates to the
+        real implementation afterwards.  This exercises the retry loop
+        deterministically (no thread timing) and asserts the second
+        attempt actually persists the mutation.
+        """
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock
+
+        from synthorg.api.controllers.departments import (
+            _load_dept_policies_versioned,
+            _mutate_dept_policies_with_retry,
+        )
+        from synthorg.api.errors import VersionConflictError
+
+        config = RootConfig(company_name="test")
+        settings_service = SettingsService(
+            repository=fake_persistence.settings,
+            registry=get_registry(),
+            config=config,
+        )
+        app_state = SimpleNamespace(
+            has_settings_service=True,
+            settings_service=settings_service,
+        )
+        policy = {"strategy": "task_driven"}
+
+        original_set = settings_service.set
+        call_count = {"n": 0}
+
+        async def flaky_set(*args: Any, **kwargs: Any) -> Any:
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                msg = "transient conflict"
+                raise VersionConflictError(msg)
+            return await original_set(*args, **kwargs)
+
+        settings_service.set = AsyncMock(  # type: ignore[method-assign]
+            side_effect=flaky_set,
+        )
+
+        await _mutate_dept_policies_with_retry(
+            app_state,  # type: ignore[arg-type]
+            "dept-a",
+            policy,
+        )
+
+        final, _ = await _load_dept_policies_versioned(app_state)  # type: ignore[arg-type]
+        # ``dept-a`` must be persisted after the successful retry; any
+        # entries from a prior test on the same fixture can coexist
+        # because the focus of this test is retry semantics, not
+        # tear-down.
+        assert final.get("dept-a") == policy
+        # Exactly one retry -- the first call conflicted, the second
+        # landed.  Guards against a regression that either fails fast
+        # without retrying or spins past the conflict.
+        assert call_count["n"] == 2
+
+    async def test_retry_exhausted_surfaces_version_conflict(
+        self,
+        fake_persistence: FakePersistenceBackend,
+    ) -> None:
+        """Sustained CAS misses surface the last conflict after retry cap.
+
+        Also asserts the retry loop is bounded by
+        ``_DEPT_POLICY_CAS_MAX_ATTEMPTS``.
+        """
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock
+
+        from synthorg.api.controllers.departments import (
+            _DEPT_POLICY_CAS_MAX_ATTEMPTS,
+            _mutate_dept_policies_with_retry,
+        )
+        from synthorg.api.errors import VersionConflictError
+
+        config = RootConfig(company_name="test")
+        settings_service = SettingsService(
+            repository=fake_persistence.settings,
+            registry=get_registry(),
+            config=config,
+        )
+        # Force every set() to raise VersionConflictError so the retry
+        # loop runs to exhaustion.
+        set_mock = AsyncMock(side_effect=VersionConflictError("forced conflict"))
+        settings_service.set = set_mock  # type: ignore[method-assign]
+        app_state = SimpleNamespace(
+            has_settings_service=True,
+            settings_service=settings_service,
+        )
+
+        with pytest.raises(VersionConflictError):
+            await _mutate_dept_policies_with_retry(
+                app_state,  # type: ignore[arg-type]
+                "dept-a",
+                {"strategy": "task_driven"},
+            )
+
+        # Retry loop must be bounded exactly by the configured cap.
+        assert set_mock.await_count == _DEPT_POLICY_CAS_MAX_ATTEMPTS

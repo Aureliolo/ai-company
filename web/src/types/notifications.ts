@@ -179,8 +179,15 @@ export const CATEGORY_CONFIGS: Record<NotificationCategory, CategoryConfig> = {
     label: 'Task blocked',
     group: 'tasks',
   },
-  // TODO: providers.* and connection.* categories will be wired when
-  // the backend emits provider health and WS connection events.
+  // `connection.*` categories are driven by the frontend itself:
+  // `useGlobalNotifications` enqueues `connection.lost` on WS setup
+  // failure and `connection.exhausted` on reconnect budget exhaustion.
+  // `providers.*` categories are catalogued here but not yet emitted
+  // by the backend -- the provider health tracker has transition data
+  // but no WebSocket notification sink ships today.  See
+  // `useGlobalNotifications.ts` GLOBAL_CHANNELS for the live
+  // subscription list and the backlog note tracking the provider
+  // health -> WS notification bridge.
   'providers.down': {
     severity: 'error',
     defaultRoutes: ['drawer', 'toast', 'browser'],

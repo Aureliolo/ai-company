@@ -2,7 +2,7 @@ ci:
   autoupdate_schedule: never
   autofix_prs: true
   autofix_commit_msg: "style: auto-fix pre-commit hooks"
-  skip: [commitizen, gitleaks, hadolint-docker, caddy-validate, no-em-dashes, no-redundant-timeout, mypy, pytest-unit, golangci-lint, go-vet, go-test, eslint-web, check-push-rebased, check-single-migration-per-pr, check-no-modify-migration, forbidden-literals, persistence-boundary, no-new-logger-exception-str-exc]
+  skip: [commitizen, gitleaks, hadolint-docker, caddy-validate, no-em-dashes, no-redundant-timeout, mypy, pytest-unit, golangci-lint, go-vet, go-test, eslint-web, check-push-rebased, check-single-migration-per-pr, check-no-modify-migration, forbidden-literals, persistence-boundary, no-new-logger-exception-str-exc, orphan-fixtures]
 
 default_install_hook_types: [pre-commit, commit-msg, pre-push]
 
@@ -36,6 +36,14 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
         types: []
+      - id: orphan-fixtures
+        name: orphan pytest fixtures (opt-in via SYNTHORG_CHECK_ORPHAN_FIXTURES=1)
+        entry: uv run python scripts/check_orphan_fixtures.py
+        language: system
+        files: ^tests/.*\.py$
+        pass_filenames: false
+        stages: [pre-push]
+        always_run: true
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:

@@ -15,7 +15,6 @@ from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.hr.promotion.config import (
     ModelMappingConfig,
     PromotionApprovalConfig,
-    PromotionConfig,
     PromotionCriteriaConfig,
 )
 from synthorg.hr.registry import AgentRegistryService
@@ -105,12 +104,6 @@ def registry() -> AgentRegistryService:
 def tracker() -> PerformanceTracker:
     """Create a fresh performance tracker."""
     return PerformanceTracker()
-
-
-@pytest.fixture
-def promotion_config() -> PromotionConfig:
-    """Create a default promotion config."""
-    return PromotionConfig()
 
 
 @pytest.fixture

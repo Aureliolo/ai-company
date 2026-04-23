@@ -7,10 +7,14 @@ selection, company creation, name locale configuration, agent management
 
 import asyncio
 import json
+from typing import TYPE_CHECKING
 
 from litestar import Controller, get, post, put
 from litestar.datastructures import State  # noqa: TC002
 from litestar.status_codes import HTTP_200_OK, HTTP_201_CREATED
+
+if TYPE_CHECKING:
+    from synthorg.settings.service import SettingsService
 
 from synthorg.api.controllers.setup_agents import (
     agent_dict_to_summary,
@@ -94,7 +98,7 @@ from synthorg.api.errors import ApiValidationError
 from synthorg.api.guards import require_ceo, require_read_access
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.setup import (
     SETUP_AGENT_CREATED,
     SETUP_AGENT_MODEL_UPDATED,
@@ -115,6 +119,34 @@ from synthorg.observability.events.setup import (
 )
 
 logger = get_logger(__name__)
+
+
+async def _read_has_gpu_setting(settings_svc: SettingsService) -> bool | None:
+    """Return the operator-owned ``api/setup_has_gpu`` boolean.
+
+    Returns ``None`` on read failure (logged at WARNING with exception
+    type + scrubbed description) or if the value is unparseable.
+    """
+    try:
+        entry = await settings_svc.get("api", "setup_has_gpu")
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        logger.warning(
+            SETUP_COMPLETE_CHECK_ERROR,
+            check="read_has_gpu",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return None
+    raw = (entry.value or "").strip().lower()
+    match raw:
+        case "true" | "1" | "yes":
+            return True
+        case "false" | "0" | "no" | "":
+            return False
+        case _:
+            return None
 
 
 # ── Controller ───────────────────────────────────────────────
@@ -758,13 +790,22 @@ class SetupController(Controller):
 
         # Auto-select embedding model from configured providers.
         # Best-effort: does not block setup completion on failure.
-        # TODO(#1001): forward provider_preset_name and has_gpu from
-        # the setup context so tier inference uses real hardware info.
+        # The preset hint comes from the first registered provider
+        # (when operators use preset names verbatim as provider names,
+        # which is the wizard default); ``has_gpu`` is an operator-
+        # owned boolean read from the api/setup_has_gpu setting.  Both
+        # are optional hints for ``infer_deployment_tier`` and degrade
+        # gracefully when absent.
+        provider_names = app_state.provider_registry.list_providers()
+        provider_preset_name = provider_names[0] if provider_names else None
+        has_gpu = await _read_has_gpu_setting(settings_svc)
         try:
             model_ids = await _collect_model_ids(app_state)
             await auto_select_embedder(
                 settings_svc=settings_svc,
                 available_model_ids=model_ids,
+                provider_preset_name=provider_preset_name,
+                has_gpu=has_gpu,
             )
         except MemoryError, RecursionError:
             raise

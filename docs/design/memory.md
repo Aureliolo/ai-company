@@ -355,6 +355,13 @@ Key findings:
 - Three deployment tiers are recommended: full-resource (7-12B), mid-resource (1-4B), and
   CPU-only (< 1B)
 
+**Tier inference inputs** (`auto_select_embedder`):
+
+- **`provider_preset_name`** -- first registered provider name, read from the provider registry at setup-completion time.  When operators use preset names verbatim as provider names (the wizard default), the preset hint steers tier selection; otherwise tier inference falls back to heuristic defaults.
+- **`api.setup.has_gpu`** (yaml path; setting key `setup_has_gpu` under namespace `API`) -- operator-owned boolean, default `"false"`, advanced level.  Flipped by the setup wizard (or directly by an operator) and read via `_read_has_gpu_setting(settings_service)`.  Accepts `true`/`1`/`yes` (→ True) and `false`/`0`/`no`/empty (→ False), case-insensitive; any other value returns `None` (unknown) silently, while a settings-service read failure logs a WARNING and also returns `None`.  There is no platform probe today -- the signal is operator-declared, not auto-detected.
+
+Tier fallback is not a single CPU/GPU switch.  `auto_select_embedder` uses preset-name and capability heuristics to pick a `GPU_CONSUMER` or `GPU_FULL` tier when `has_gpu` is `True` or `None`; the tier only collapses to the CPU-only default when the operator has selected a local/self-hosted preset *and* has explicitly set `has_gpu=False`.  Missing or unparseable inputs degrade gracefully and never block setup completion.
+
 ### Domain-Specific Embedding Fine-Tuning
 
 Domain-specific fine-tuning can improve retrieval quality by 10-27% over base models

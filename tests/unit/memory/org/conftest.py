@@ -1,10 +1,6 @@
 """Shared pytest fixtures and helpers for org memory tests."""
 
-from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
-
-import aiosqlite  # lint-allow: persistence-boundary -- in-memory test fixture
-import pytest
 
 from synthorg.core.enums import AutonomyLevel, OrgFactCategory, SeniorityLevel
 from synthorg.memory.org.models import OrgFact, OrgFactAuthor
@@ -74,20 +70,6 @@ CREATE TABLE IF NOT EXISTS org_facts_snapshot (
     version INTEGER NOT NULL
 )
 """
-
-
-@pytest.fixture
-async def connected_store() -> AsyncGenerator[SQLiteOrgFactRepository]:
-    """Fixture providing an org fact repo bound to an in-memory DB."""
-    db = await aiosqlite.connect(":memory:")
-    db.row_factory = aiosqlite.Row
-    await db.execute(_OP_LOG_DDL)
-    await db.execute(_SNAPSHOT_DDL)
-    await db.commit()
-    try:
-        yield SQLiteOrgFactRepository(db)
-    finally:
-        await db.close()
 
 
 # Keep the old export name so tests that aliased it don't break.

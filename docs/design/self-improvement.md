@@ -191,6 +191,28 @@ All thresholds are configurable via constructor arguments.
 
 ## Configuration
 
+### Runtime override setting (`meta.self_improvement`)
+
+`SelfImprovementConfig` ships with safe defaults in code.  Operators can override any subset at runtime via the `meta.self_improvement` JSON setting (namespace `META`, advanced level, default `"{}"`).  The loader `load_self_improvement_config(settings_service)`:
+
+- reads the JSON blob,
+- performs a shallow merge onto the defaults (unknown keys are dropped, malformed JSON falls back to pure defaults),
+- logs `META_SELF_IMPROVEMENT_LOAD_FAILED` at WARNING on every fallback path so operators can audit silent defaults.
+
+Example override (enable the master switch + tighten the cadence):
+
+```json
+{"enabled": true, "schedule": {"cycle_interval_hours": 72}}
+```
+
+Every meta-loop entry point (`GET /meta/config`, `GET /meta/rules`, `GET /meta/signals`) calls the loader at request time, so setting changes are picked up without a server restart.
+
+### Interactive endpoints
+
+- **`POST /meta/chat`** (Chief of Staff conversational entry point): rate-limited via `per_op_rate_limit_from_policy("meta.chat", key="user")` at **5 requests per 60 seconds per authenticated user**.  The policy is defined in `api/rate_limits/policies.py` under the `meta.chat` key.  Clients exceeding the limit receive HTTP 429 with `Retry-After`; clients that want automatic retry on 429 must attach an `Idempotency-Key` header.
+
+### YAML defaults
+
 ```yaml
 self_improvement:
   enabled: false                    # Master switch (opt-in)

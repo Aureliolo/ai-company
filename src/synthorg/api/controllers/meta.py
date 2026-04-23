@@ -11,8 +11,9 @@ from synthorg.api.controllers.custom_rules import rule_to_dict
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_org_mutation, require_read_access
 from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
+from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.meta.config import SelfImprovementConfig
+from synthorg.meta.config import load_self_improvement_config
 from synthorg.meta.mcp.server import get_server_config
 from synthorg.meta.mcp.tools import get_tool_definitions
 from synthorg.observability import get_logger
@@ -31,6 +32,16 @@ class ChatRequest(BaseModel):
 logger = get_logger(__name__)
 
 
+def _settings_service_from_state(state: State) -> Any:
+    """Return the settings service from the app state, or ``None``.
+
+    Centralises the ``has_settings_service`` guard used by every
+    ``load_self_improvement_config`` call site in this controller.
+    """
+    app_state = state.app_state
+    return app_state.settings_service if app_state.has_settings_service else None
+
+
 class MetaController(Controller):
     """Self-improvement meta-loop API endpoints.
 
@@ -44,15 +55,23 @@ class MetaController(Controller):
     guards = [require_read_access]  # noqa: RUF012
 
     @get("/config")
-    async def get_config(self) -> ApiResponse[dict[str, Any]]:
+    async def get_config(
+        self,
+        state: State,
+    ) -> ApiResponse[dict[str, Any]]:
         """Get current self-improvement configuration.
+
+        Reads the runtime-tunable portion from the ``meta.self_improvement``
+        setting and merges it onto :class:`SelfImprovementConfig`'s code
+        defaults.  A missing, empty, or malformed setting falls back to
+        pure defaults.
 
         Returns:
             Current SelfImprovementConfig as dict.
         """
-        # TODO: inject runtime config via Litestar DI once persistence
-        # layer is wired. Until then, returns defaults.
-        config = SelfImprovementConfig()
+        config = await load_self_improvement_config(
+            _settings_service_from_state(state),
+        )
         return ApiResponse[dict[str, Any]](
             data=config.model_dump(),
         )
@@ -77,8 +96,9 @@ class MetaController(Controller):
         from synthorg.meta.rules.builtin import default_rules  # noqa: PLC0415
 
         rules = default_rules()
-        # TODO: inject runtime config via Litestar DI.
-        config = SelfImprovementConfig()
+        config = await load_self_improvement_config(
+            _settings_service_from_state(state),
+        )
         disabled = set(config.rules.disabled_rules)
         rule_list: list[dict[str, Any]] = [
             {
@@ -167,8 +187,11 @@ class MetaController(Controller):
         Returns:
             Paginated A/B test summaries.
         """
-        # TODO: wire to actual A/B test state once observation
-        # loop and persistence are implemented.
+        # A/B test registry (protocol + in-memory + SQLite + Postgres
+        # conformance parity) is a dedicated follow-up: ABTestRollout
+        # runs as a one-shot coroutine today, so there is nothing
+        # durable to query.  The empty page is safe while the backlog
+        # lands; see HYG-3 PR description for the concrete scope.
         empty: tuple[dict[str, Any], ...] = ()
         page, meta = paginate_cursor(
             empty,
@@ -191,7 +214,9 @@ class MetaController(Controller):
         Returns:
             A/B test detail including group metrics and verdict.
         """
-        # TODO: wire to actual A/B test state.
+        # A/B test registry not yet implemented -- every proposal id
+        # currently lacks a durable A/B record.  See get /ab-tests
+        # above for the scoped follow-up note.
         msg = f"No active A/B test for proposal {proposal_id}"
         raise NotFoundException(msg)
 
@@ -240,6 +265,7 @@ class MetaController(Controller):
     @get("/signals")
     async def get_signals(
         self,
+        state: State,
     ) -> ApiResponse[dict[str, Any]]:
         """Get signal domain summaries.
 
@@ -249,7 +275,9 @@ class MetaController(Controller):
         Returns:
             Signal domain summaries.
         """
-        config = SelfImprovementConfig()
+        config = await load_self_improvement_config(
+            _settings_service_from_state(state),
+        )
         domains = [
             "performance",
             "budget",
@@ -266,9 +294,13 @@ class MetaController(Controller):
             },
         )
 
-    # TODO: add per-endpoint rate limiting before wiring LLM
-    # provider (resource-intensive call needs throttling).
-    @post("/chat", guards=[require_org_mutation()])
+    @post(
+        "/chat",
+        guards=[
+            require_org_mutation(),
+            per_op_rate_limit_from_policy("meta.chat", key="user"),
+        ],
+    )
     async def chat(
         self,
         data: ChatRequest,  # noqa: ARG002

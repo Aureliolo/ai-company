@@ -3,8 +3,6 @@
 from typing import TYPE_CHECKING, Any
 from unittest.mock import MagicMock
 
-import pytest
-
 from synthorg.config.schema import ProviderConfig, ProviderModelConfig
 from synthorg.core.resilience_config import RateLimiterConfig, RetryConfig
 
@@ -53,12 +51,6 @@ def make_provider_config(  # noqa: PLR0913
         retry=retry or RetryConfig(max_retries=0),
         rate_limiter=rate_limiter or RateLimiterConfig(),
     )
-
-
-@pytest.fixture
-def sample_provider_config() -> ProviderConfig:
-    """Standard two-model provider config."""
-    return make_provider_config()
 
 
 # ── Mock LiteLLM response objects ────────────────────────────────

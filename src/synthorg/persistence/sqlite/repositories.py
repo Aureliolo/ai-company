@@ -15,7 +15,7 @@ from synthorg.budget.errors import MixedCurrencyAggregationError
 from synthorg.communication.message import Message
 from synthorg.core.enums import TaskStatus  # noqa: TC001
 from synthorg.core.task import Task
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_COST_RECORD_AGGREGATE_FAILED,
     PERSISTENCE_COST_RECORD_AGGREGATED,
@@ -29,6 +29,8 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_MESSAGE_HISTORY_FETCHED,
     PERSISTENCE_MESSAGE_SAVE_FAILED,
     PERSISTENCE_MESSAGE_SAVED,
+    PERSISTENCE_TASK_COUNT_FAILED,
+    PERSISTENCE_TASK_COUNTED,
     PERSISTENCE_TASK_DELETE_FAILED,
     PERSISTENCE_TASK_DELETED,
     PERSISTENCE_TASK_DESERIALIZE_FAILED,
@@ -123,8 +125,11 @@ ON CONFLICT(id) DO UPDATE SET
             await self._db.commit()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to save task {task.id!r}"
-            logger.exception(
-                PERSISTENCE_TASK_SAVE_FAILED, task_id=task.id, error=str(exc)
+            logger.warning(
+                PERSISTENCE_TASK_SAVE_FAILED,
+                task_id=task.id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         logger.debug(PERSISTENCE_TASK_SAVED, task_id=task.id)
@@ -153,10 +158,11 @@ ON CONFLICT(id) DO UPDATE SET
         ) as exc:
             task_id = row["id"] if row else "unknown"
             msg = f"Failed to deserialize task {task_id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_TASK_DESERIALIZE_FAILED,
                 task_id=task_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -177,10 +183,11 @@ id, title, description, type, priority, project, created_by,
             row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to fetch task {task_id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_TASK_FETCH_FAILED,
                 task_id=task_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         if row is None:
@@ -195,10 +202,16 @@ id, title, description, type, priority, project, created_by,
         status: TaskStatus | None = None,
         assigned_to: str | None = None,
         project: str | None = None,
+        limit: int | None = None,
+        offset: int = 0,
     ) -> tuple[Task, ...]:
-        """List tasks with optional filters."""
+        """List tasks with optional filters and pagination.
+
+        Ordering is deterministic on the primary key ``id`` so paginated
+        callers see stable windows.
+        """
         clauses: list[str] = []
-        params: list[str] = []
+        params: list[object] = []
         if status is not None:
             clauses.append("status = ?")
             params.append(status.value)
@@ -212,17 +225,73 @@ id, title, description, type, priority, project, created_by,
         query = f"SELECT {self._TASK_COLUMNS} FROM tasks"  # noqa: S608
         if clauses:
             query += " WHERE " + " AND ".join(clauses)
+        query += " ORDER BY id ASC"
+        if limit is not None:
+            query += " LIMIT ?"
+            params.append(int(limit))
+            if offset:
+                query += " OFFSET ?"
+                params.append(int(offset))
+        elif offset:
+            # SQLite rejects ``OFFSET`` without a preceding ``LIMIT``;
+            # ``LIMIT -1`` is the documented idiom for "no limit" so
+            # offset-only calls produce valid SQL.
+            query += " LIMIT -1 OFFSET ?"
+            params.append(int(offset))
 
         try:
             cursor = await self._db.execute(query, params)
             rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to list tasks"
-            logger.exception(PERSISTENCE_TASK_LIST_FAILED, error=str(exc))
+            logger.warning(
+                PERSISTENCE_TASK_LIST_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             raise QueryError(msg) from exc
         tasks = tuple(self._row_to_task(row) for row in rows)
         logger.debug(PERSISTENCE_TASK_LISTED, count=len(tasks))
         return tasks
+
+    async def count_tasks(
+        self,
+        *,
+        status: TaskStatus | None = None,
+        assigned_to: str | None = None,
+        project: str | None = None,
+    ) -> int:
+        """Count tasks matching the given filters."""
+        clauses: list[str] = []
+        params: list[object] = []
+        if status is not None:
+            clauses.append("status = ?")
+            params.append(status.value)
+        if assigned_to is not None:
+            clauses.append("assigned_to = ?")
+            params.append(assigned_to)
+        if project is not None:
+            clauses.append("project = ?")
+            params.append(project)
+
+        query = "SELECT COUNT(*) FROM tasks"
+        if clauses:
+            query += " WHERE " + " AND ".join(clauses)
+
+        try:
+            cursor = await self._db.execute(query, params)
+            row = await cursor.fetchone()
+        except (sqlite3.Error, aiosqlite.Error) as exc:
+            msg = "Failed to count tasks"
+            logger.warning(
+                PERSISTENCE_TASK_COUNT_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        total = int(row[0]) if row is not None else 0
+        logger.debug(PERSISTENCE_TASK_COUNTED, count=total)
+        return total
 
     async def delete(self, task_id: str) -> bool:
         """Delete a task by ID."""
@@ -233,10 +302,11 @@ id, title, description, type, priority, project, created_by,
             await self._db.commit()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to delete task {task_id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_TASK_DELETE_FAILED,
                 task_id=task_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         deleted = cursor.rowcount > 0
@@ -464,10 +534,11 @@ INSERT INTO messages (
             raise QueryError(msg) from exc
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to save message {msg_id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_MESSAGE_SAVE_FAILED,
                 message_id=msg_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         logger.debug(PERSISTENCE_MESSAGE_SAVED, message_id=msg_id)
@@ -491,10 +562,11 @@ INSERT INTO messages (
         ) as exc:
             msg_id = row["id"] if row else "unknown"
             msg = f"Failed to deserialize message {msg_id!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_MESSAGE_DESERIALIZE_FAILED,
                 message_id=msg_id,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
 
@@ -524,10 +596,11 @@ ORDER BY timestamp DESC"""
             rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to fetch message history for channel {channel!r}"
-            logger.exception(
+            logger.warning(
                 PERSISTENCE_MESSAGE_HISTORY_FAILED,
                 channel=channel,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
         messages = tuple(self._row_to_message(row) for row in rows)

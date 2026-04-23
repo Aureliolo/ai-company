@@ -29,7 +29,6 @@ from synthorg.core.company import (
     WorkflowHandoff,
 )
 from synthorg.core.enums import (
-    ArtifactType,
     Complexity,
     DepartmentName,
     MemoryLevel,
@@ -275,16 +274,6 @@ def sample_company(sample_department: Department) -> Company:
         departments=(sample_department,),
         config=CompanyConfig(budget_monthly=100.0),
     )
-
-
-@pytest.fixture
-def sample_expected_artifact() -> ExpectedArtifact:
-    return ExpectedArtifact(type=ArtifactType.CODE, path="src/auth/")
-
-
-@pytest.fixture
-def sample_acceptance_criterion() -> AcceptanceCriterion:
-    return AcceptanceCriterion(description="Unit tests pass with >80% coverage")
 
 
 @pytest.fixture

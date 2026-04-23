@@ -53,15 +53,37 @@ class FakeTaskRepository:
         status: TaskStatus | None = None,
         assigned_to: str | None = None,
         project: str | None = None,
+        limit: int | None = None,
+        offset: int = 0,
     ) -> tuple[Task, ...]:
-        result = list(self._tasks.values())
+        result = self._filtered(status, assigned_to, project)
+        if limit is None:
+            return tuple(result[offset:])
+        return tuple(result[offset : offset + limit])
+
+    async def count_tasks(
+        self,
+        *,
+        status: TaskStatus | None = None,
+        assigned_to: str | None = None,
+        project: str | None = None,
+    ) -> int:
+        return len(self._filtered(status, assigned_to, project))
+
+    def _filtered(
+        self,
+        status: TaskStatus | None,
+        assigned_to: str | None,
+        project: str | None,
+    ) -> list[Task]:
+        result = sorted(self._tasks.values(), key=lambda t: t.id)
         if status is not None:
             result = [t for t in result if t.status == status]
         if assigned_to is not None:
             result = [t for t in result if t.assigned_to == assigned_to]
         if project is not None:
             result = [t for t in result if t.project == project]
-        return tuple(result)
+        return result
 
     async def delete(self, task_id: str) -> bool:
         return self._tasks.pop(task_id, None) is not None

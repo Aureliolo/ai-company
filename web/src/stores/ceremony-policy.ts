@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 
+import { ApiRequestError } from '@/api/client'
 import * as ceremonyApi from '@/api/endpoints/ceremony-policy'
 import type {
   ActiveCeremonyStrategy,
@@ -7,6 +8,27 @@ import type {
   ResolvedCeremonyPolicyResponse,
 } from '@/api/types/ceremony-policy'
 import { getErrorMessage } from '@/utils/errors'
+
+/**
+ * Friendly message for the CAS conflict raised by the department
+ * ceremony-policy endpoints when two operators save simultaneously.
+ *
+ * The backend uses a bounded compare-and-swap loop against the
+ * ``coordination.dept_ceremony_policies`` JSON blob and surfaces a
+ * ``VersionConflictError`` (HTTP 409, ``error_category: "conflict"``)
+ * once the retry cap is exhausted.  See
+ * ``docs/design/persistence.md`` → "Cross-worker CAS on JSON-blob
+ * settings".
+ */
+const CEREMONY_POLICY_CONFLICT_MESSAGE =
+  'Another operator updated this department\'s ceremony policy at the same time. Reload the page and reapply your change.'
+
+function describeCeremonyPolicySaveError(err: unknown): string {
+  if (err instanceof ApiRequestError && err.errorDetail?.error_category === 'conflict') {
+    return CEREMONY_POLICY_CONFLICT_MESSAGE
+  }
+  return getErrorMessage(err)
+}
 
 interface CeremonyPolicyState {
   /** Resolved ceremony policy with field origins (may include department overlay). */
@@ -98,7 +120,7 @@ export const useCeremonyPolicyStore = create<CeremonyPolicyState>()((set, get) =
       updated.set(name, saved)
       set({ departmentPolicies: updated, saving: false })
     } catch (err) {
-      set({ saveError: getErrorMessage(err), saving: false })
+      set({ saveError: describeCeremonyPolicySaveError(err), saving: false })
     }
   },
 
@@ -111,7 +133,7 @@ export const useCeremonyPolicyStore = create<CeremonyPolicyState>()((set, get) =
       updated.set(name, null)
       set({ departmentPolicies: updated, saving: false })
     } catch (err) {
-      set({ saveError: getErrorMessage(err), saving: false })
+      set({ saveError: describeCeremonyPolicySaveError(err), saving: false })
     }
   },
 }))
