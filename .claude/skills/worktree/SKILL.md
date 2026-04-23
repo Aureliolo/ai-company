@@ -271,6 +271,8 @@ Open each worktree as a **plain terminal tab** in the current Windows Terminal w
 /worktree launch <name>       # open just one by dir-suffix (e.g. "tighten-workflow-permissions")
 ```
 
+**Input validation:** `<name>` flows into shell commands (the `wt.exe --title` argument and the path-suffix filter). Before using `<name>`, validate it under the general "Input validation" rules at the bottom of this file (see `## Rules` -> `Input validation (CRITICAL)`). In particular, reject any value containing shell metacharacters (`;`, `|`, `&`, `$`, `` ` ``, `(`, `)`), whitespace, or path separators (`/`, `\`). A practical allowlist: `^[a-zA-Z0-9_.-]+$`. Reject and warn if validation fails -- do not execute `wt.exe` with an unvalidated `<name>`.
+
 ### Pre-flight
 
 1. **Detect Windows Terminal:**
