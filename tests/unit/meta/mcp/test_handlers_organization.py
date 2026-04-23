@@ -212,6 +212,49 @@ class TestDepartments:
         )
         assert json.loads(response)["status"] == "ok"
 
+    async def test_update_patches_existing(
+        self,
+        fake_app_state: SimpleNamespace,
+    ) -> None:
+        create = ORGANIZATION_HANDLERS["synthorg_departments_create"]
+        created = json.loads(
+            await create(
+                app_state=fake_app_state,
+                arguments={"name": "original", "description": "v1"},
+                actor=make_test_actor(),
+            ),
+        )
+        dept_id = created["data"]["id"]
+        update = ORGANIZATION_HANDLERS["synthorg_departments_update"]
+        response = await update(
+            app_state=fake_app_state,
+            arguments={"department_id": dept_id, "name": "renamed"},
+            actor=make_test_actor(),
+        )
+        body = json.loads(response)
+        assert body["status"] == "ok"
+        assert body["data"]["name"] == "renamed"
+
+    async def test_get_not_found(self, fake_app_state: SimpleNamespace) -> None:
+        handler = ORGANIZATION_HANDLERS["synthorg_departments_get"]
+        response = await handler(
+            app_state=fake_app_state,
+            arguments={"department_id": str(uuid4())},
+        )
+        assert json.loads(response)["domain_code"] == "not_found"
+
+    async def test_update_not_found(
+        self,
+        fake_app_state: SimpleNamespace,
+    ) -> None:
+        handler = ORGANIZATION_HANDLERS["synthorg_departments_update"]
+        response = await handler(
+            app_state=fake_app_state,
+            arguments={"department_id": str(uuid4()), "name": "ghost"},
+            actor=make_test_actor(),
+        )
+        assert json.loads(response)["domain_code"] == "not_found"
+
 
 class TestTeams:
     async def test_create_and_get(self, fake_app_state: SimpleNamespace) -> None:
@@ -244,6 +287,49 @@ class TestTeams:
             actor=make_test_actor(),
         )
         assert json.loads(response)["domain_code"] == "guardrail_violated"
+
+    async def test_update_patches_existing(
+        self,
+        fake_app_state: SimpleNamespace,
+    ) -> None:
+        create = ORGANIZATION_HANDLERS["synthorg_teams_create"]
+        created = json.loads(
+            await create(
+                app_state=fake_app_state,
+                arguments={"name": "old-name"},
+                actor=make_test_actor(),
+            ),
+        )
+        team_id = created["data"]["id"]
+        update = ORGANIZATION_HANDLERS["synthorg_teams_update"]
+        response = await update(
+            app_state=fake_app_state,
+            arguments={"team_id": team_id, "name": "new-name"},
+            actor=make_test_actor(),
+        )
+        body = json.loads(response)
+        assert body["status"] == "ok"
+        assert body["data"]["name"] == "new-name"
+
+    async def test_get_not_found(self, fake_app_state: SimpleNamespace) -> None:
+        handler = ORGANIZATION_HANDLERS["synthorg_teams_get"]
+        response = await handler(
+            app_state=fake_app_state,
+            arguments={"team_id": str(uuid4())},
+        )
+        assert json.loads(response)["domain_code"] == "not_found"
+
+    async def test_update_not_found(
+        self,
+        fake_app_state: SimpleNamespace,
+    ) -> None:
+        handler = ORGANIZATION_HANDLERS["synthorg_teams_update"]
+        response = await handler(
+            app_state=fake_app_state,
+            arguments={"team_id": str(uuid4()), "name": "ghost"},
+            actor=make_test_actor(),
+        )
+        assert json.loads(response)["domain_code"] == "not_found"
 
 
 class TestRoleVersions:

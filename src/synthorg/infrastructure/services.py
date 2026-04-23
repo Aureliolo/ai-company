@@ -1,4 +1,4 @@
-# ruff: noqa: D102, EM101, E501
+# ruff: noqa: EM101, E501
 """Infrastructure facades for the MCP handler layer.
 
 Thin per-subdomain facades used by the infrastructure MCP tools
@@ -19,9 +19,10 @@ introspect capabilities at runtime (``getattr`` + ``callable``
 checks) without fighting protocol-type narrowing when the primitive
 is still evolving.
 
-Method-level docstrings are intentionally thin (``# ruff: noqa: D102, EM101, E501``
-at module scope) because the class-level docstrings describe the
-facade's role and the method names are self-documenting pass-throughs.
+The file-level ``EM101`` / ``E501`` suppressions are intentional:
+capability-gap messages are string literals wired through
+:func:`_capability_missing`, and the long-form capability descriptions
+read better on one line for grep-ability than broken across multiple.
 """
 
 import asyncio
@@ -100,6 +101,7 @@ class SettingsReadService:
         self._settings = cast("Any", settings)
 
     async def list_settings(self) -> Mapping[str, object]:
+        """Return a snapshot of all settings as a mapping."""
         fn = _require_callable(
             self._settings,
             "snapshot",
@@ -109,6 +111,7 @@ class SettingsReadService:
         return dict(fn())
 
     async def get_setting(self, key: NotBlankStr) -> object | None:
+        """Return the current value for ``key`` or ``None`` if absent."""
         fn = _require_callable(
             self._settings,
             "snapshot",
@@ -124,6 +127,7 @@ class SettingsReadService:
         value: object,
         actor_id: NotBlankStr,
     ) -> None:
+        """Write ``key``/``value`` and emit the audit event."""
         fn = _require_callable(
             self._settings,
             "set",
@@ -140,6 +144,7 @@ class SettingsReadService:
         actor_id: NotBlankStr,
         reason: NotBlankStr,
     ) -> None:
+        """Remove ``key`` from the store and emit the audit event."""
         fn = _require_callable(
             self._settings,
             "delete",
@@ -173,6 +178,7 @@ class ProviderReadService:
         self._management = cast("Any", management)
 
     async def list_providers(self) -> Sequence[object]:
+        """Return every registered provider record."""
         fn = _require_callable(
             self._registry,
             "list_providers",
@@ -182,6 +188,7 @@ class ProviderReadService:
         return tuple(fn())
 
     async def get_provider(self, provider_id: NotBlankStr) -> object | None:
+        """Return the provider record for ``provider_id`` or ``None``."""
         fn = _require_callable(
             self._registry,
             "get_provider",
@@ -194,6 +201,7 @@ class ProviderReadService:
         self,
         provider_id: NotBlankStr | None = None,
     ) -> Mapping[str, object]:
+        """Return health status for one provider or every registered provider."""
         status_fn = _require_callable(
             self._health,
             "get_status",
@@ -214,6 +222,7 @@ class ProviderReadService:
         self,
         provider_id: NotBlankStr,
     ) -> Mapping[str, object]:
+        """Run a connectivity test against ``provider_id`` and return its result."""
         fn = _require_callable(
             self._management,
             "test_provider",
@@ -256,6 +265,7 @@ class BackupFacadeService:
         return all_backups[offset:end], total
 
     async def get_backup(self, backup_id: NotBlankStr) -> object:
+        """Fetch a single backup by id."""
         return await self._service.get_backup(backup_id)
 
     async def create_backup(
@@ -264,6 +274,7 @@ class BackupFacadeService:
         trigger: object,
         components: object = None,
     ) -> object:
+        """Request a new backup for the given ``trigger``/``components``."""
         return await self._service.create_backup(trigger=trigger, components=components)
 
     async def delete_backup(
@@ -273,6 +284,7 @@ class BackupFacadeService:
         actor_id: NotBlankStr,
         reason: NotBlankStr,
     ) -> None:
+        """Delete ``backup_id`` and emit the audit event on success."""
         await self._service.delete_backup(backup_id)
         logger.info(
             BACKUP_DELETED_VIA_MCP,
@@ -288,6 +300,7 @@ class BackupFacadeService:
         actor_id: NotBlankStr,
         reason: NotBlankStr,
     ) -> Mapping[str, object]:
+        """Trigger a restore from ``backup_id`` and emit the audit event."""
         await self._service.restore_from_backup(backup_id)
         logger.info(
             BACKUP_RESTORE_TRIGGERED_VIA_MCP,
@@ -308,6 +321,7 @@ class UserFacadeService:
         self._auth = cast("Any", auth_service)
 
     async def list_users(self) -> Sequence[object]:
+        """Return every user record exposed by the auth service."""
         fn = _require_callable(
             self._auth,
             "list_users",
@@ -317,6 +331,7 @@ class UserFacadeService:
         return tuple(await fn())
 
     async def get_user(self, user_id: NotBlankStr) -> object | None:
+        """Return the user record for ``user_id`` or ``None`` if absent."""
         fn = _require_callable(
             self._auth,
             "get_user",
@@ -326,12 +341,14 @@ class UserFacadeService:
         return cast("object | None", await fn(user_id))
 
     async def create_user(self) -> None:
+        """Capability gap -- user onboarding flow owns user creation."""
         raise _capability_missing(
             "user_create",
             "users are provisioned via the onboarding flow, not MCP",
         )
 
     async def update_user(self) -> None:
+        """Capability gap -- auth controller owns user mutations."""
         raise _capability_missing(
             "user_update",
             "user mutations go through the auth controller, not MCP",
@@ -344,6 +361,7 @@ class UserFacadeService:
         actor_id: NotBlankStr,  # noqa: ARG002
         reason: NotBlankStr,  # noqa: ARG002
     ) -> None:
+        """Capability gap -- deletion flows through the operator workflow."""
         raise _capability_missing(
             "user_delete",
             "user deletion is a protected operator workflow",
@@ -421,6 +439,7 @@ class ProjectFacadeService:
         return ordered[offset:end], total
 
     async def get_project(self, project_id: NotBlankStr) -> _ProjectRecord | None:
+        """Fetch a project by UUID or ``None`` if absent."""
         try:
             key = UUID(project_id)
         except ValueError:
@@ -437,6 +456,7 @@ class ProjectFacadeService:
         actor_id: NotBlankStr,
         metadata: Mapping[str, str] | None = None,
     ) -> _ProjectRecord:
+        """Create a project, auditing the event on success."""
         record = _ProjectRecord(
             id=uuid4(),
             name=name,
@@ -462,6 +482,7 @@ class ProjectFacadeService:
         description: NotBlankStr | None = None,
         metadata: Mapping[str, str] | None = None,
     ) -> _ProjectRecord | None:
+        """Apply overrides via copy-on-write; return ``None`` if project missing."""
         try:
             key = UUID(project_id)
         except ValueError:
@@ -502,6 +523,7 @@ class ProjectFacadeService:
         actor_id: NotBlankStr,
         reason: NotBlankStr,
     ) -> bool:
+        """Remove a project; only audit when a row was actually dropped."""
         try:
             key = UUID(project_id)
         except ValueError:
@@ -589,6 +611,7 @@ class RequestsFacadeService:
         return ordered[offset:end], total
 
     async def get_request(self, request_id: NotBlankStr) -> _RequestRecord | None:
+        """Fetch a request record by UUID or ``None`` if absent."""
         try:
             key = UUID(request_id)
         except ValueError:
@@ -604,6 +627,7 @@ class RequestsFacadeService:
         body: NotBlankStr,
         requested_by: NotBlankStr,
     ) -> _RequestRecord:
+        """Create a ledger request, auditing the event on success."""
         record = _RequestRecord(
             id=uuid4(),
             title=title,
@@ -631,6 +655,7 @@ class SetupFacadeService:
         self._initialised_at: datetime | None = None
 
     async def get_status(self) -> Mapping[str, object]:
+        """Return the initialisation status + timestamp (when initialised)."""
         return {
             "initialised": self._initialised_at is not None,
             "initialised_at": (
@@ -641,6 +666,7 @@ class SetupFacadeService:
         }
 
     async def initialize(self) -> None:
+        """Capability gap -- setup runs through the controller + CLI wizard."""
         raise _capability_missing(
             "setup_initialize",
             "initialisation is driven through the setup controller + CLI wizard",
@@ -688,6 +714,7 @@ class SimulationFacadeService:
         return all_scenarios[offset:end], total
 
     async def get_simulation(self, simulation_id: NotBlankStr) -> object | None:
+        """Fetch a scenario by id or ``None`` if absent."""
         fn = _require_callable(
             self._state,
             "get_scenario",
@@ -697,6 +724,7 @@ class SimulationFacadeService:
         return cast("object | None", fn(simulation_id))
 
     async def create_simulation(self) -> None:
+        """Capability gap -- scenarios are loaded from config at start-up."""
         raise _capability_missing(
             "simulation_create",
             "simulation scenarios are loaded from config at start-up",
@@ -770,6 +798,7 @@ class TemplatePackFacadeService:
         return ordered[offset:end], total
 
     async def get_pack(self, pack_id: NotBlankStr) -> _TemplatePackRecord | None:
+        """Fetch an installed pack by UUID or ``None`` if absent."""
         try:
             key = UUID(pack_id)
         except ValueError:
@@ -785,6 +814,7 @@ class TemplatePackFacadeService:
         version: NotBlankStr,
         actor_id: NotBlankStr,
     ) -> _TemplatePackRecord:
+        """Install a template pack, auditing the event on success."""
         record = _TemplatePackRecord(
             id=uuid4(),
             name=name,
@@ -808,6 +838,7 @@ class TemplatePackFacadeService:
         actor_id: NotBlankStr,
         reason: NotBlankStr,
     ) -> bool:
+        """Remove a pack; only emit the audit event on actual removal."""
         try:
             key = UUID(pack_id)
         except ValueError:
@@ -922,6 +953,7 @@ class IntegrationHealthFacadeService:
         self._prober = cast("Any", prober)
 
     async def get_all(self) -> Mapping[str, object]:
+        """Return the full integration-health snapshot."""
         fn = getattr(self._prober, "snapshot", None)
         if not callable(fn):
             raise _capability_missing(
@@ -931,6 +963,7 @@ class IntegrationHealthFacadeService:
         return dict(fn())
 
     async def get_one(self, integration_id: NotBlankStr) -> object | None:
+        """Return the health entry for ``integration_id`` or ``None``."""
         snapshot = await self.get_all()
         return snapshot.get(integration_id)
 
