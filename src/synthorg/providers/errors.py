@@ -7,7 +7,7 @@ exception types.
 
 import math
 from types import MappingProxyType
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Final
 
 from synthorg.api.errors import ErrorCategory, ErrorCode
 
@@ -224,3 +224,34 @@ class ProviderValidationError(ProviderError):
     """Provider configuration failed validation."""
 
     is_retryable = False
+
+
+_ERROR_CLASS_MAP: Final[dict[type[BaseException], str]] = {
+    RateLimitError: "rate_limit",
+    ProviderTimeoutError: "timeout",
+    ProviderConnectionError: "connection",
+    ProviderInternalError: "internal",
+    InvalidRequestError: "invalid_request",
+    AuthenticationError: "auth",
+    ContentFilterError: "content_filter",
+    ModelNotFoundError: "not_found",
+}
+
+
+def classify_provider_error(exc: BaseException) -> str:
+    """Map *exc* onto one of :data:`VALID_PROVIDER_ERROR_CLASSES`.
+
+    Uses a direct-type lookup first (cheapest), then falls back to
+    ``isinstance`` for the hierarchy so subclasses of the canonical
+    provider-error types are bucketed with their parents.  Unknown
+    exception types map to ``"other"`` -- the Prometheus label set
+    stays bounded regardless of what the provider driver raises.
+    """
+    exc_type = type(exc)
+    direct = _ERROR_CLASS_MAP.get(exc_type)
+    if direct is not None:
+        return direct
+    for cls, label in _ERROR_CLASS_MAP.items():
+        if isinstance(exc, cls):
+            return label
+    return "other"

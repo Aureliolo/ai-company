@@ -15,7 +15,10 @@ from synthorg.observability.events.mcp import (
     MCP_CACHE_HIT,
     MCP_CACHE_MISS,
 )
+from synthorg.observability.metrics_hub import record_cache_operation
 from synthorg.tools.base import ToolExecutionResult  # noqa: TC001
+
+_CACHE_NAME = "mcp_result"
 
 logger = get_logger(__name__)
 
@@ -65,6 +68,7 @@ class MCPResultCache:
         entry = self._cache.get(key)
         if entry is None:
             logger.debug(MCP_CACHE_MISS, tool_name=tool_name)
+            record_cache_operation(cache_name=_CACHE_NAME, outcome="miss")
             return None
 
         timestamp, result = entry
@@ -75,10 +79,12 @@ class MCPResultCache:
                 tool_name=tool_name,
                 reason="expired",
             )
+            record_cache_operation(cache_name=_CACHE_NAME, outcome="miss")
             return None
 
         self._cache.move_to_end(key)
         logger.debug(MCP_CACHE_HIT, tool_name=tool_name)
+        record_cache_operation(cache_name=_CACHE_NAME, outcome="hit")
         return copy.deepcopy(result)
 
     def put(
@@ -110,6 +116,7 @@ class MCPResultCache:
                 MCP_CACHE_EVICT,
                 evicted_tool=evicted_key[0],
             )
+            record_cache_operation(cache_name=_CACHE_NAME, outcome="evict")
 
         if self._max_size > 0:
             self._cache[key] = (time.monotonic(), copy.deepcopy(result))

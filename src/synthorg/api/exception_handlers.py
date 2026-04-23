@@ -54,6 +54,7 @@ from synthorg.observability.events.api import (
     API_REQUEST_ERROR,
     API_ROUTE_NOT_FOUND,
 )
+from synthorg.observability.metrics_hub import record_api_error
 from synthorg.ontology.errors import OntologyError
 from synthorg.persistence.errors import (
     DuplicateRecordError,
@@ -199,6 +200,12 @@ def _build_response(  # noqa: PLR0913
     Wrapped in a defensive try/except because this runs inside
     exception handlers -- a failure here would lose the original error.
     """
+    # Every 4xx/5xx response emits a classification counter so
+    # operators can observe error-category rates without digging
+    # through logs. Record here (before response build) so a
+    # response-build failure still emits the metric.
+    if status_code >= 400:  # noqa: PLR2004
+        record_api_error(category=error_category.value, status_code=status_code)
     try:
         if _wants_problem_json(request):
             logger.debug(
