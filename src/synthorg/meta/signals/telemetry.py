@@ -1,18 +1,25 @@
 """Telemetry signal aggregator.
 
-Wraps the telemetry pipeline to produce an OrgTelemetrySummary
-with event counts and top event types.
+Queries the :class:`TelemetryEventCounter` for event counts within the
+observation window and returns a populated :class:`OrgTelemetrySummary`.
+A missing counter (dev/test mode) yields an empty summary via the
+safe-default path rather than raising.
 """
 
 from typing import TYPE_CHECKING
 
 from synthorg.core.types import NotBlankStr
-from synthorg.meta.models import OrgTelemetrySummary
+from synthorg.meta.signal_models import OrgTelemetrySummary
 from synthorg.observability import get_logger
-from synthorg.observability.events.meta import META_SIGNAL_AGGREGATION_COMPLETED
+from synthorg.observability.events.meta import (
+    META_SIGNAL_AGGREGATION_COMPLETED,
+    META_SIGNAL_AGGREGATION_FAILED,
+)
 
 if TYPE_CHECKING:
     from datetime import datetime
+
+    from synthorg.telemetry.event_counter_protocol import TelemetryEventCounter
 
 logger = get_logger(__name__)
 
@@ -20,7 +27,16 @@ _EMPTY = OrgTelemetrySummary()
 
 
 class TelemetrySignalAggregator:
-    """Aggregates telemetry events into org-wide summaries."""
+    """Aggregates telemetry events into org-wide summaries.
+
+    Args:
+        counter: Optional event counter to query.  When ``None`` (dev/
+            test mode without a telemetry counter), aggregation yields
+            an empty summary rather than failing.
+    """
+
+    def __init__(self, counter: TelemetryEventCounter | None = None) -> None:
+        self._counter = counter
 
     @property
     def domain(self) -> NotBlankStr:
@@ -40,11 +56,22 @@ class TelemetrySignalAggregator:
             until: End of observation window.
 
         Returns:
-            Org-wide telemetry summary.
+            Org-wide telemetry summary; empty when no counter is
+            wired or the window contains no events.
         """
-        _ = since, until  # Will be used by real implementation.
-        logger.info(
-            META_SIGNAL_AGGREGATION_COMPLETED,
-            domain="telemetry",
-        )
-        return _EMPTY
+        if self._counter is None:
+            return _EMPTY
+        try:
+            summary = await self._counter.summarize(since=since, until=until)
+            logger.info(
+                META_SIGNAL_AGGREGATION_COMPLETED,
+                domain="telemetry",
+                event_count=summary.event_count,
+            )
+        except Exception:
+            logger.exception(
+                META_SIGNAL_AGGREGATION_FAILED,
+                domain="telemetry",
+            )
+            return _EMPTY
+        return summary
