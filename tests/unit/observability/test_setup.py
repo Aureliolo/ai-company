@@ -71,10 +71,14 @@ class TestConfigureLogging:
         root = logging.getLogger()
         assert len(root.handlers) == 1
 
-    def test_root_logger_set_to_debug(self) -> None:
+    def test_root_logger_defaults_to_info(self) -> None:
+        # Root logger default flipped DEBUG -> INFO (2026-04-23, #1538):
+        # DEBUG on root leaked verbose payloads through HTTP sinks and
+        # wasted bandwidth.  Operators set ``observability.root_level=debug``
+        # explicitly when they need the full event stream.
         configure_logging(_console_only_config())
         root = logging.getLogger()
-        assert root.level == logging.DEBUG
+        assert root.level == logging.INFO
 
     def test_custom_root_level_applied(self) -> None:
         config = LogConfig(

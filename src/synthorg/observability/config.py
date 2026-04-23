@@ -534,8 +534,15 @@ class LogConfig(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     root_level: LogLevel = Field(
-        default=LogLevel.DEBUG,
-        description="Root logger level",
+        default=LogLevel.INFO,
+        description=(
+            "Root logger level. Defaults to INFO so HTTP log sinks do not"
+            " leak verbose payloads or burn bandwidth on sampled streams;"
+            " set to DEBUG explicitly (settings: observability.root_level)"
+            " when operators need the full event stream. Per-logger"
+            " overrides still force DEBUG on synthorg.engine /"
+            " synthorg.memory so agent traces stay detailed."
+        ),
     )
     logger_levels: tuple[tuple[NotBlankStr, LogLevel], ...] = Field(
         default=(),

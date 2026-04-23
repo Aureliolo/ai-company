@@ -35,8 +35,14 @@ _r.register(
         namespace=SettingNamespace.COMPANY,
         key="autonomy_level",
         type=SettingType.ENUM,
-        default="semi",
-        description="Default company-wide autonomy level",
+        default="supervised",
+        description=(
+            "Default company-wide autonomy level. Fresh installs ship with"
+            " 'supervised' so most state-mutating agent actions queue for"
+            " approval before execution; raise to 'semi' or 'full' once"
+            " operators trust the organization. Rank: full > semi >"
+            " supervised > locked."
+        ),
         group="General",
         enum_values=(
             "full",

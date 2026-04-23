@@ -7,6 +7,10 @@ description: Performance tracking configuration, structured logging with 11 defa
 
 Observability in SynthOrg spans three concerns: performance tracking (quality scoring weights, LLM judge, trend detection), structured logging (11 default sinks with per-domain routing, correlation IDs, sensitive-field redaction), and metrics export (Prometheus `/metrics` + OTLP). All three are configured through the same settings subsystem and refresh without restart where safe.
 
+### Breaking defaults (2026-04-23)
+
+- **Root logger level: `DEBUG` → `INFO`.** DEBUG on root leaked verbose payloads through HTTP log sinks and burned bandwidth on sampled streams. Per-logger overrides still force DEBUG on `synthorg.engine` / `synthorg.memory` so agent traces stay detailed. Operators who rely on the old behavior must set `observability.root_level=debug` explicitly (settings service or `logging.root_level: DEBUG` in the company YAML).
+
 ---
 
 ## Performance Tracking Configuration
