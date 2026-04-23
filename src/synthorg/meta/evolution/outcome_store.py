@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING
 
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.evolution.outcome_models import EvolutionOutcomeRecord
+from synthorg.meta.models import ProposalAltitude
 from synthorg.meta.signal_models import EvolutionOutcomeSummary, OrgEvolutionSummary
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.evolution import (
@@ -73,9 +74,10 @@ class InMemoryEvolutionOutcomeStore:
         blocked by a store failure.
         """
         try:
+            altitude = ProposalAltitude(axis)
             record = EvolutionOutcomeRecord(
                 agent_id=agent_id,
-                axis=axis,
+                axis=altitude,
                 applied=applied,
                 proposed_at=proposed_at,
             )
