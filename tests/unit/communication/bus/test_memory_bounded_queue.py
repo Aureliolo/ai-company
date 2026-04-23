@@ -6,9 +6,10 @@ drop-newest policy and the ``COMM_SUBSCRIBER_QUEUE_OVERFLOW`` signal
 so a regression to unbounded behavior is immediately visible.
 """
 
-import logging
+from datetime import UTC, datetime
 
 import pytest
+import structlog.testing
 
 from synthorg.communication.bus.memory import InMemoryMessageBus
 from synthorg.communication.config import (
@@ -32,6 +33,7 @@ def _message(channel: str, sender: str, to: str, idx: int) -> Message:
             "parts": [{"type": "text", "text": f"msg-{idx}"}],
             "type": MessageType.TASK_UPDATE,
             "priority": MessagePriority.NORMAL,
+            "timestamp": datetime.now(UTC),
         }
     )
 
@@ -40,10 +42,7 @@ def _message(channel: str, sender: str, to: str, idx: int) -> Message:
 class TestBoundedSubscriberQueue:
     """The subscriber queue must be bounded by ``max_subscriber_queue_size``."""
 
-    async def test_publish_drops_newest_on_overflow(
-        self,
-        caplog: pytest.LogCaptureFixture,
-    ) -> None:
+    async def test_publish_drops_newest_on_overflow(self) -> None:
         """Once a subscriber queue is full, further publishes drop newest.
 
         Invariants:
@@ -68,36 +67,32 @@ class TestBoundedSubscriberQueue:
         subscriber = "agent-slow-001"
         await bus.subscribe(channel, subscriber)
 
-        caplog.set_level(logging.WARNING)
-        total = max_queue_size + overflow_count
-        for idx in range(total):
-            # Publisher never blocks or raises on an overflowed
-            # subscriber -- slow consumer must not nuke the channel.
-            await bus.publish(
-                _message(channel, sender="alice", to=subscriber, idx=idx),
-            )
+        with structlog.testing.capture_logs() as captured:
+            total = max_queue_size + overflow_count
+            for idx in range(total):
+                # Publisher never blocks or raises on an overflowed
+                # subscriber -- slow consumer must not nuke the channel.
+                await bus.publish(
+                    _message(channel, sender="alice", to=subscriber, idx=idx),
+                )
 
         queue = bus._queues[(channel, subscriber)]
         assert queue.qsize() == max_queue_size, (
             f"expected queue to hold {max_queue_size} envelopes, got {queue.qsize()}"
         )
 
-        overflow_records = [
-            r
-            for r in caplog.records
-            if COMM_SUBSCRIBER_QUEUE_OVERFLOW in r.getMessage()
+        overflow_events = [
+            e for e in captured if e.get("event") == COMM_SUBSCRIBER_QUEUE_OVERFLOW
         ]
-        assert len(overflow_records) == overflow_count, (
-            f"expected {overflow_count} overflow events, "
-            f"got {len(overflow_records)}: {[r.getMessage() for r in caplog.records]}"
+        assert len(overflow_events) == overflow_count, (
+            f"expected {overflow_count} overflow events, got {captured!r}"
         )
-        for record in overflow_records:
-            msg = record.getMessage()
-            assert "drop_policy" in msg, msg
-            assert "newest" in msg, msg
-            assert "backend" in msg, msg
-            assert "memory" in msg, msg
-            assert channel in msg, msg
+        for event in overflow_events:
+            assert event["drop_policy"] == "newest", event
+            assert event["backend"] == "memory", event
+            assert event["channel"] == channel, event
+            assert event["subscriber"] == subscriber, event
+            assert event["log_level"] == "warning", event
 
         await bus.stop()
 

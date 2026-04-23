@@ -74,6 +74,13 @@ COMM_SEND_DIRECT_INVALID: Final[str] = "communication.message.send_direct_invali
 # Shutdown
 COMM_BUS_SHUTDOWN_SIGNAL: Final[str] = "communication.bus.shutdown_signal"
 
+# Subscriber delivery overflow (issue #1534)
+# Both backends emit this when a subscriber cannot keep up with
+# inbound traffic. In-memory bus: dropped the incoming envelope
+# (drop_policy=newest). NATS: the pull consumer reached its
+# ``max_ack_pending`` cap and JetStream is pausing delivery.
+COMM_SUBSCRIBER_QUEUE_OVERFLOW: Final[str] = "communication.subscriber.queue_overflow"
+
 # Tool: email sending
 COMM_TOOL_EMAIL_SEND_START: Final[str] = "communication.tool.email.send_start"
 COMM_TOOL_EMAIL_SEND_SUCCESS: Final[str] = "communication.tool.email.send_success"

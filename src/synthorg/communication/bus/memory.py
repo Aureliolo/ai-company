@@ -48,6 +48,7 @@ from synthorg.observability.events.communication import (
     COMM_RECEIVE_SHUTDOWN,
     COMM_RECEIVE_UNSUBSCRIBED,
     COMM_SEND_DIRECT_INVALID,
+    COMM_SUBSCRIBER_QUEUE_OVERFLOW,
     COMM_SUBSCRIPTION_CREATED,
     COMM_SUBSCRIPTION_NOT_FOUND,
     COMM_SUBSCRIPTION_REMOVED,
@@ -195,11 +196,43 @@ class InMemoryMessageBus:
         channel_name: str,
         subscriber_id: str,
     ) -> asyncio.Queue[DeliveryEnvelope | None]:
-        """Get or create a per-(channel, subscriber) queue."""
+        """Get or create a per-(channel, subscriber) queue.
+
+        Bounded by ``retention.max_subscriber_queue_size`` so a slow
+        subscriber cannot leak unbounded memory. Overflow is handled
+        by :meth:`_enqueue_or_drop` with a drop-newest policy.
+        """
         return self._queues.setdefault(
             (channel_name, subscriber_id),
-            asyncio.Queue(),
+            asyncio.Queue(maxsize=self._config.retention.max_subscriber_queue_size),
         )
+
+    def _enqueue_or_drop(
+        self,
+        queue: asyncio.Queue[DeliveryEnvelope | None],
+        envelope: DeliveryEnvelope,
+        *,
+        channel_name: str,
+        subscriber_id: str,
+    ) -> None:
+        """Enqueue an envelope or drop it (newest) on overflow.
+
+        Emits ``COMM_SUBSCRIBER_QUEUE_OVERFLOW`` at WARNING when the
+        subscriber's queue is full so operators can tell the difference
+        between ``receive`` returning ``None`` on shutdown vs. messages
+        being silently dropped upstream.
+        """
+        try:
+            queue.put_nowait(envelope)
+        except asyncio.QueueFull:
+            logger.warning(
+                COMM_SUBSCRIBER_QUEUE_OVERFLOW,
+                channel=channel_name,
+                subscriber=subscriber_id,
+                queue_size=queue.maxsize,
+                drop_policy="newest",
+                backend="memory",
+            )
 
     async def publish(
         self,
@@ -237,7 +270,12 @@ class InMemoryMessageBus:
                     channel_name=channel_name,
                     delivered_at=now,
                 )
-                queue.put_nowait(envelope)
+                self._enqueue_or_drop(
+                    queue,
+                    envelope,
+                    channel_name=channel_name,
+                    subscriber_id=sub_id,
+                )
                 logger.debug(
                     COMM_MESSAGE_DELIVERED,
                     channel=channel_name,
@@ -395,7 +433,12 @@ class InMemoryMessageBus:
                 channel_name=channel_name,
                 delivered_at=now,
             )
-            self._queues[(channel_name, agent_id)].put_nowait(envelope)
+            self._enqueue_or_drop(
+                self._queues[(channel_name, agent_id)],
+                envelope,
+                channel_name=channel_name,
+                subscriber_id=agent_id,
+            )
             logger.debug(
                 COMM_MESSAGE_DELIVERED,
                 channel=channel_name,
@@ -484,8 +527,13 @@ class InMemoryMessageBus:
             if queue is not None:
                 # Put a sentinel for each pending waiter so all
                 # concurrent receive() calls are woken up.
-                # Safe to use put_nowait: queues are unbounded
-                # (maxsize=0), so QueueFull cannot be raised.
+                # Safe to use raw put_nowait here even though queues
+                # are now bounded (#1534): the queue has just been
+                # popped from self._queues so no publisher can enqueue
+                # any more envelopes into it, and sentinels are
+                # one-per-waiter (capped at len(_waiters) <= maxsize),
+                # so QueueFull is unreachable. Publishers go through
+                # self._enqueue_or_drop() for the drop-newest policy.
                 pending = self._waiters.pop(key, 0)
                 sentinels = max(1, pending)
                 for _ in range(sentinels):

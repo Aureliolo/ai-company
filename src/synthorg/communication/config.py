@@ -46,10 +46,20 @@ _DEFAULT_CHANNELS: tuple[str, ...] = (
 
 
 class MessageRetentionConfig(BaseModel):
-    """Retention settings for channel message history.
+    """Retention settings for channel message history and subscriber delivery.
 
     Attributes:
-        max_messages_per_channel: Maximum messages kept per channel.
+        max_messages_per_channel: Maximum messages kept per channel
+            (both backends -- in-memory deque, NATS stream
+            ``max_msgs_per_subject``).
+        max_subscriber_queue_size: Maximum in-flight envelopes per
+            (channel, subscriber). In-memory backend applies a
+            drop-newest policy with ``COMM_SUBSCRIBER_QUEUE_OVERFLOW``
+            emission when the cap is hit. NATS backend wires this
+            value into ``ConsumerConfig.max_ack_pending`` so JetStream
+            pauses delivery to a consumer whose unacked count reaches
+            the cap. The same configuration surface keeps the two
+            backends at parity (issue #1534).
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -58,6 +68,15 @@ class MessageRetentionConfig(BaseModel):
         default=1000,
         gt=0,
         description="Maximum messages kept per channel",
+    )
+    max_subscriber_queue_size: int = Field(
+        default=1024,
+        gt=0,
+        description=(
+            "Maximum in-flight envelopes per (channel, subscriber). "
+            "In-memory bus: hard cap with drop-newest policy. "
+            "NATS: ConsumerConfig.max_ack_pending."
+        ),
     )
 
 
