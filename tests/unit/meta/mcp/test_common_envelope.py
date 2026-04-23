@@ -130,10 +130,24 @@ class TestRequireArg:
             require_arg({"x": True}, "x", int)
 
 
+class _StubActor:
+    """Minimal actor-like object carrying an audit-usable identifier.
+
+    The destructive-op guardrail rejects actors without a stable
+    identifier so audit trails always have real attribution; tests use
+    this stub to satisfy that check without pulling in the full
+    ``AgentIdentity`` model.
+    """
+
+    def __init__(self, *, name: str = "test-actor") -> None:
+        self.name = name
+        self.id = None  # id missing -- name fallback exercised
+
+
 class TestGuardrails:
     """Tests for destructive-op guardrail enforcement."""
 
-    _ACTOR = object()  # any non-None sentinel suffices at this layer
+    _ACTOR = _StubActor()
 
     def test_returns_reason_and_actor_on_success(self) -> None:
         reason, actor = require_destructive_guardrails(
@@ -188,6 +202,42 @@ class TestGuardrails:
                 {"confirm": "true", "reason": "x"},
                 self._ACTOR,
             )
+
+    def test_rejects_unattributable_actor(self) -> None:
+        # Opaque actors without ``.id`` or a non-blank ``.name`` produce
+        # destructive-op audit entries with no real attribution; the
+        # guardrail must reject them the same way it rejects ``None``.
+        opaque = object()
+        with pytest.raises(GuardrailViolationError) as ei:
+            require_destructive_guardrails(
+                {"confirm": True, "reason": "approved"},
+                opaque,
+            )
+        assert ei.value.violation == "missing_actor"
+
+    def test_rejects_blank_name_actor(self) -> None:
+        # A ``name`` attribute of whitespace is not a usable identifier.
+        blank = _StubActor(name="   ")
+        with pytest.raises(GuardrailViolationError) as ei:
+            require_destructive_guardrails(
+                {"confirm": True, "reason": "approved"},
+                blank,
+            )
+        assert ei.value.violation == "missing_actor"
+
+    def test_accepts_actor_with_id_only(self) -> None:
+        # An actor with ``.id`` set but no ``.name`` still attributes the
+        # destructive op.
+        class _IdOnly:
+            id = "actor-uuid-1234"
+            name = None
+
+        reason, actor = require_destructive_guardrails(
+            {"confirm": True, "reason": "approved"},
+            _IdOnly(),
+        )
+        assert reason == "approved"
+        assert actor.id == "actor-uuid-1234"
 
 
 class TestDumpMany:

@@ -236,6 +236,21 @@ def require_arg[T](arguments: dict[str, Any], key: str, ty: type[T]) -> T:
     return value
 
 
+def _actor_has_identifier(actor: Any) -> bool:
+    """Return ``True`` when ``actor`` carries an audit-usable identifier.
+
+    The destructive-op audit trail is meaningless without a stable
+    identifier, so we accept either a non-``None`` ``.id`` attribute
+    (typically a ``UUID``) or a non-blank ``.name`` string.  A bare
+    object that lacks both is treated as "unattributable" and rejected
+    alongside ``actor is None``.
+    """
+    if getattr(actor, "id", None) is not None:
+        return True
+    name = getattr(actor, "name", None)
+    return isinstance(name, str) and bool(name.strip())
+
+
 def require_destructive_guardrails(
     arguments: dict[str, Any],
     actor: Any,
@@ -247,7 +262,9 @@ def require_destructive_guardrails(
     tool's handler calls this helper first.
 
     Preconditions, in order:
-    1. ``actor`` is not ``None`` (the invoker thread-through populated it);
+    1. ``actor`` is not ``None`` *and* carries an audit-usable
+       identifier (``.id`` or a non-blank ``.name``) so the
+       ``MCP_DESTRUCTIVE_OP_EXECUTED`` event has real attribution;
     2. ``arguments["confirm"]`` is the Python literal ``True`` (not
        truthy-but-non-bool);
     3. ``arguments["reason"]`` is a non-blank string.
@@ -264,7 +281,7 @@ def require_destructive_guardrails(
         GuardrailViolationError: On any precondition failure.  The
             ``violation`` attribute distinguishes the failure mode.
     """
-    if actor is None:
+    if actor is None or not _actor_has_identifier(actor):
         raise guardrail_violation(_GR_MISSING_ACTOR, _GR_MSG_ACTOR)
     confirm = arguments.get("confirm")
     if not isinstance(confirm, bool) or confirm is not True:
