@@ -225,9 +225,26 @@ export const useProjectsStore = create<ProjectsState>()((set) => ({
     })
   },
 
-  // Event payload ignored -- all events trigger a full refetch.
-  // Incremental updates are not worth the complexity given 30s polling.
-  updateFromWsEvent: () => {
+  // PROJECT_DELETED: drop the row locally before the full refetch lands so
+  // the UI reflects the delete immediately. Other event types fall through
+  // to a full refetch -- incremental updates are not worth the complexity
+  // given 30s polling.
+  updateFromWsEvent: (event: WsEvent) => {
+    if (event.event_type === 'project.deleted') {
+      const payload = event.payload as { project_id?: unknown }
+      const deletedId = typeof payload.project_id === 'string' ? payload.project_id : null
+      if (deletedId) {
+        set((state) => {
+          const filtered = state.projects.filter((p) => p.id !== deletedId)
+          return {
+            projects: filtered,
+            totalProjects: filtered.length !== state.projects.length
+              ? Math.max(0, state.totalProjects - 1)
+              : state.totalProjects,
+          }
+        })
+      }
+    }
     useProjectsStore.getState().fetchProjects()
   },
 }))

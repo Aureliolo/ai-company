@@ -15,7 +15,7 @@ export const WS_EVENT_TYPE_VALUES = [
   'meeting.started', 'meeting.completed', 'meeting.failed',
   'coordination.started', 'coordination.phase_completed', 'coordination.completed', 'coordination.failed',
   'artifact.created', 'artifact.deleted', 'artifact.content_uploaded',
-  'project.created', 'project.status_changed',
+  'project.created', 'project.deleted', 'project.status_changed',
   'memory.fine_tune.progress', 'memory.fine_tune.stage_changed', 'memory.fine_tune.completed', 'memory.fine_tune.failed',
   'company.updated',
   'department.created', 'department.updated', 'department.deleted', 'departments.reordered',

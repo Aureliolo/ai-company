@@ -160,7 +160,7 @@ export function ProvidersStep() {
       {probeGlobalError && (
         <ErrorBanner
           title="Provider probe did not complete"
-          description={`${probeGlobalError}. Retry to try again, or skip to configure providers manually below.`}
+          description={`${probeGlobalError} Retry to try again, or skip to configure providers manually below.`}
           onRetry={handleReprobe}
         />
       )}
@@ -169,7 +169,7 @@ export function ProvidersStep() {
         <ErrorBanner
           severity="warning"
           title={`Probe failed for ${Object.keys(probeErrors).length} preset${Object.keys(probeErrors).length === 1 ? '' : 's'}`}
-          description={`Ensure the provider is running, then retry. You can also skip the probe and configure it manually using the Add Provider button below. Failed: ${Object.entries(probeErrors).map(([name, msg]) => `${name} (${msg})`).join('; ')}`}
+          description={`Ensure the provider is running, then retry. You can also skip the probe and configure it manually using the Add Provider button below. ${Object.entries(probeErrors).map(([name, msg]) => `${name}: ${msg}`).join(' | ')}`}
           onRetry={handleReprobe}
         />
       )}

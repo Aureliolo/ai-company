@@ -152,4 +152,32 @@ describe('Drawer', () => {
       expect(content.className).toMatch(/p-0/)
     })
   })
+
+  describe('width prop', () => {
+    it('defaults to the "default" variant when width is omitted', () => {
+      render(<Drawer open={true} onClose={() => {}} title="Test">Content</Drawer>)
+      const popup = screen.getByRole('dialog')
+      expect(popup.className).toMatch(/w-\[var\(--so-drawer-width-default\)\]/)
+    })
+
+    it('applies the narrow width token when width="narrow"', () => {
+      render(
+        <Drawer open={true} onClose={() => {}} title="Test" width="narrow">
+          Content
+        </Drawer>,
+      )
+      const popup = screen.getByRole('dialog')
+      expect(popup.className).toMatch(/w-\[var\(--so-drawer-width-narrow\)\]/)
+    })
+
+    it('applies the wide width token when width="wide"', () => {
+      render(
+        <Drawer open={true} onClose={() => {}} title="Test" width="wide">
+          Content
+        </Drawer>,
+      )
+      const popup = screen.getByRole('dialog')
+      expect(popup.className).toMatch(/w-\[var\(--so-drawer-width-wide\)\]/)
+    })
+  })
 })
