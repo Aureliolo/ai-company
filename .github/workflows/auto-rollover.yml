@@ -114,9 +114,11 @@ jobs:
         if: steps.check.outputs.needed == 'true'
         env:
           # PAT (not GITHUB_TOKEN) is required so the resulting commit
-          # triggers downstream release.yml + dev-release.yml workflows.
-          # Commits created via the Git Data API inherit the PAT owner's
-          # signature (verified on this repo).
+          # triggers downstream release.yml + dev-release.yml workflows
+          # (GITHUB_TOKEN-authored commits are suppressed by GitHub's
+          # anti-recursion rule). Git Data API commits are signed by
+          # GitHub when the PAT owner has vigilant mode enabled -- this
+          # matches release-please's own signature pattern on this repo.
           GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
           NEXT_VERSION: ${{ steps.check.outputs.next_version }}
         run: |

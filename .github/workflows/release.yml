@@ -62,10 +62,11 @@ jobs:
             exit 0
           fi
 
-          # Commit via the GitHub Contents API so the commit ships with a
-          # GitHub-verified signature (branch protection requires signed
-          # commits on main, and the squash-merge carries the trailer / body
-          # metadata through to main regardless).
+          # Commit via the GitHub Contents API so the commit is verified
+          # in the release PR UI -- matches release-please's own commits
+          # on the same PR and avoids Unverified badges mid-review.
+          # (The eventual squash-merge produces a fresh GitHub-signed
+          # commit on main regardless of this step's signature.)
           BLOB_SHA=$(git rev-parse HEAD:LICENSE)
           jq -n \
             --arg msg "chore: update BSL Change Date to $new_date" \
