@@ -63,7 +63,28 @@ def _fake_state_with_rollback(checkpoint_id: str) -> SimpleNamespace:
 
 
 def _fake_state_with_delete(checkpoint_id: str) -> SimpleNamespace:
+    """Bare-persistence app state used by the ``_service()`` fallback path.
+
+    The handler exercises the unwired-service route through
+    :func:`_service` (no ``memory_service`` on the state). That code
+    path constructs a :class:`MemoryService` from
+    ``persistence.fine_tune_checkpoints`` + ``.fine_tune_runs`` +
+    optional ``settings_service`` -- every attribute must be present on
+    the stub or ``_service()`` raises and the destructive-op audit
+    event never fires.
+    """
     ns = SimpleNamespace()
+
+    existing_checkpoint = SimpleNamespace(
+        id=checkpoint_id,
+        model_dump=lambda mode="json": {
+            "checkpoint_id": checkpoint_id,
+            "status": "active",
+        },
+    )
+
+    async def _get_checkpoint(cid: str) -> SimpleNamespace | None:
+        return existing_checkpoint if cid == checkpoint_id else None
 
     async def _delete_checkpoint(cid: str) -> bool:
         assert cid == checkpoint_id
@@ -71,12 +92,16 @@ def _fake_state_with_delete(checkpoint_id: str) -> SimpleNamespace:
 
     persistence = SimpleNamespace(
         fine_tune_checkpoints=SimpleNamespace(
+            get_checkpoint=_get_checkpoint,
             delete_checkpoint=_delete_checkpoint,
         ),
+        fine_tune_runs=SimpleNamespace(),
     )
     ns.persistence = persistence
-    # No memory_service needed -- delete_checkpoint routes through persistence
+    # No memory_service wired; ``_service()`` builds one from the
+    # persistence backend on demand (main's established fallback path).
     ns.has_memory_service = False
+    ns.has_settings_service = False
     return ns
 
 
