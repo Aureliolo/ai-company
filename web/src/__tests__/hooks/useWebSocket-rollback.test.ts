@@ -141,6 +141,7 @@ describe('useWebSocket registration rollback', () => {
     const handlerB = vi.fn()
 
     const unsubscribeSpy = vi.spyOn(store, 'unsubscribe')
+    const onChannelSpy = vi.spyOn(store, 'onChannelEvent')
 
     const first = renderHook(() =>
       useWebSocket({ bindings: [{ channel: 'tasks', handler: handlerA }] }),
@@ -150,9 +151,12 @@ describe('useWebSocket registration rollback', () => {
     )
 
     // Wait for both effect setups to reach the registration phase.
+    // One binding per hook => 2 successful ``onChannelEvent`` calls
+    // when both setups have settled; without this concrete assertion
+    // the waitFor predicate would be a trivial truthy check and
+    // ``first.unmount()`` could race the second hook's ``setup()``.
     await vi.waitFor(() => {
-      const handlers = useWebSocketStore.getState()
-      expect(typeof handlers.subscribe).toBe('function')
+      expect(onChannelSpy).toHaveBeenCalledTimes(2)
     })
 
     first.unmount()

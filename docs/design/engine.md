@@ -467,9 +467,14 @@ transitions. A `start()` racing an in-flight `stop()` cannot see
 outgoing stop never waits on.
 
 - **start()** (`async`): Acquires `_lifecycle_lock`, verifies
-  `_running is False`, flips the flag, and spawns two background
-  tasks (mutation processing loop + observer dispatch loop). Raises
-  `RuntimeError` if already running. Every call site must `await`.
+  `_running is False`, spawns the two background tasks (mutation
+  processing loop + observer dispatch loop) *first*, and only then
+  commits `_running = True` under `_admission_lock` so `submit()`
+  callers cannot observe a "running" engine before both loops are
+  attached. This ordering is load-bearing -- a `submit()` that saw
+  `_running=True` before the loops were wired would enqueue work with
+  no dispatcher ever picking it up. Raises `RuntimeError` if already
+  running. Every call site must `await`.
 - **stop()** (`async`): Acquires `_lifecycle_lock`, sets
   `_running = False` under a separate `_admission_lock` so new
   `submit()` calls fast-fail immediately, drains the mutation queue

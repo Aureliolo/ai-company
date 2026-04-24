@@ -478,17 +478,27 @@ async def engine_with_bus(
     message_bus: FakeMessageBus,
     config: TaskEngineConfig,
 ) -> AsyncIterator[TaskEngine]:
-    """Create and start a TaskEngine with a message bus."""
+    """Create and start a TaskEngine with a message bus.
+
+    Wraps the engine lifecycle in a try/finally so ``message_bus.stop()``
+    always runs -- otherwise a failure in ``eng.start()`` or
+    ``eng.stop()`` would leave the bus alive across the rest of the
+    worker, leaking state between tests.
+    """
     await message_bus.start()
     eng = TaskEngine(
         persistence=persistence,  # type: ignore[arg-type]
         message_bus=message_bus,  # type: ignore[arg-type]
         config=config,
     )
-    await eng.start()
-    yield eng
-    await eng.stop(timeout=2.0)
-    await message_bus.stop()
+    try:
+        await eng.start()
+        yield eng
+    finally:
+        try:
+            await eng.stop(timeout=2.0)
+        finally:
+            await message_bus.stop()
 
 
 # ---------------------------------------------------------------------------

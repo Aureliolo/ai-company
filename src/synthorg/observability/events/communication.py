@@ -37,14 +37,14 @@ COMM_BATCH_PUBLISHED: Final[str] = "communication.message.batch_published"
 COMM_SUBSCRIPTION_CREATED: Final[str] = "communication.subscription.created"
 COMM_SUBSCRIPTION_REMOVED: Final[str] = "communication.subscription.removed"
 COMM_SUBSCRIPTION_NOT_FOUND: Final[str] = "communication.subscription.not_found"
+# Client-side ``Subscription`` reference dropped after losing a concurrent
+# subscribe race on the same ``(channel, subscriber)`` durable consumer. This
+# is NOT a real unsubscribe -- the server-side consumer remains bound to the
+# winning coroutine -- so it must not be counted as ``COMM_SUBSCRIPTION_REMOVED``
+# in metrics, alerts, or audit trails.
 COMM_DUPLICATE_SUBSCRIPTION_DISCARDED: Final[str] = (
     "communication.subscription.duplicate_discarded"
 )
-"""Client-side ``Subscription`` reference dropped after losing a concurrent
-subscribe race on the same ``(channel, subscriber)`` durable consumer. This
-is NOT a real unsubscribe -- the server-side consumer remains bound to the
-winning coroutine -- so it must not be counted as ``COMM_SUBSCRIPTION_REMOVED``
-in metrics, alerts, or audit trails."""
 
 # History
 COMM_HISTORY_QUERIED: Final[str] = "communication.history.queried"

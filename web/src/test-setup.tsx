@@ -262,14 +262,20 @@ if (typeof window !== 'undefined' && typeof window.matchMedia !== 'function') {
 // still visible after a dialog closes) should inline its own assertion
 // within the test body, never rely on post-teardown state.
 beforeEach(() => {
-  // Pair the afterEach ``teardown()`` below with a ``reattach()``
-  // here so the theme store's ``prefers-reduced-motion`` listener
-  // is restored for every test. Without this, the singleton store
-  // would stop reacting to OS preference changes after the first
-  // test's afterEach ran, and any subsequent test that exercises
-  // reduced-motion reactivity would false-pass silently. The reattach
-  // picks up whichever ``window.matchMedia`` mock the test body
-  // installs later (the listener itself is lazy on ``mql.matches``).
+  // Reattach the theme store's ``prefers-reduced-motion`` listener
+  // for every test, paired with the ``teardown()`` in ``afterEach``
+  // below. Without this, the singleton store would stop reacting to
+  // OS preference changes after the first test's afterEach ran, and
+  // any subsequent test that exercises reduced-motion reactivity
+  // would false-pass silently.
+  //
+  // ``beforeEach`` runs BEFORE the test body, so it cannot pick up a
+  // ``window.matchMedia`` mock that the test installs later in the
+  // body. Tests that need runtime reactivity against a mocked
+  // ``matchMedia`` must call ``useThemeStore.getState().reattach()``
+  // themselves after installing their mock -- this beforeEach only
+  // restores the listener against whatever ``matchMedia`` is present
+  // at the moment it runs (typically the default ``test-setup`` mock).
   useThemeStore.getState().reattach()
 })
 

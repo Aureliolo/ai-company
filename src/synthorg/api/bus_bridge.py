@@ -355,12 +355,31 @@ class MessageBusBridge:
                 task.cancel()
             if self._tasks:
                 results: list[BaseException | None]
+
+                # Spawn the drain as a separate task and ``shield`` it
+                # from the outer ``wait_for`` cancellation: if a
+                # poller suppresses ``CancelledError`` and keeps
+                # running, ``wait_for(gather(...))`` would block
+                # INSIDE the lifecycle lock waiting for the
+                # suppressed cancellation to take effect -- the hard
+                # deadline would be soft. With ``shield``, the outer
+                # ``wait_for`` times out the *wait* only; the shielded
+                # drain keeps running in the background but does not
+                # prevent ``stop()`` from exiting and releasing
+                # ``_lifecycle_lock``. Same pattern as
+                # ``MeetingScheduler.stop()``.
+                async def _drain() -> list[BaseException | None]:
+                    return await asyncio.gather(
+                        *self._tasks,
+                        return_exceptions=True,
+                    )
+
+                drain_task: asyncio.Task[list[BaseException | None]] = (
+                    asyncio.create_task(_drain())
+                )
                 try:
                     results = await asyncio.wait_for(
-                        asyncio.gather(
-                            *self._tasks,
-                            return_exceptions=True,
-                        ),
+                        asyncio.shield(drain_task),
                         timeout=_STOP_DRAIN_TIMEOUT_SECONDS,
                     )
                 except TimeoutError:

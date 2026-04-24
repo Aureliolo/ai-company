@@ -259,7 +259,21 @@ class TaskEngine(TaskEngineLoopsMixin):
 
         Args:
             timeout: Seconds to wait for drain (default: config value).
+                Must be positive when provided; ``None`` means "use the
+                config default".
+
+        Raises:
+            ValueError: If ``timeout`` is not ``None`` and ``<= 0``.
         """
+        # Validate at the system boundary so callers with a bad
+        # argument never mutate lifecycle state. A zero / negative
+        # timeout would otherwise immediately trip ``asyncio.wait_for``
+        # and mark the engine ``_unrestartable`` even though nothing
+        # actually hung -- the fresh instance rule exists for genuine
+        # hung drains, not for malformed input.
+        if timeout is not None and timeout <= 0:
+            msg = f"stop() timeout must be > 0, got {timeout!r}"
+            raise ValueError(msg)
         async with self._lifecycle_lock:
             if not self._running:
                 return
