@@ -27,6 +27,7 @@ read better on one line for grep-ability than broken across multiple.
 
 import asyncio
 import copy
+import json
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, cast
 from uuid import UUID, uuid4
@@ -155,7 +156,13 @@ class SettingsReadService:
             "settings_update",
             "SettingsService does not expose a mutator",
         )
-        await fn(namespace, leaf_key, str(value))
+        # ``SettingsService.set`` expects a string value; JSON-typed
+        # inputs on the MCP wire (bool, int, list, dict) must
+        # round-trip through ``json.dumps`` so downstream validators
+        # see the canonical form (``"true"``, ``"[1,2]"``) rather than
+        # Python-repr (``"True"``, ``"[1, 2]"``).
+        encoded = value if isinstance(value, str) else json.dumps(value)
+        await fn(namespace, leaf_key, encoded)
         logger.info(SETTINGS_VALUE_SET, key=key, actor_id=actor_id)
 
     async def delete_setting(
