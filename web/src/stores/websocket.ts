@@ -506,10 +506,24 @@ export const useWebSocketStore = create<WebSocketState>()((set) => {
         }
       }
       if (options?.unsubscribe !== false && channels.length > 0) {
-        try {
-          self.unsubscribe([...channels])
-        } catch (err) {
-          log.error('rollbackSubscriptions: unsubscribe failed:', err)
+        // Only unsubscribe channels that no longer have any handler
+        // registrations. Multiple ``useWebSocket`` hooks can share a
+        // channel, so an unmount that blindly unsubscribes every
+        // channel in its own binding set would cut off broadcast
+        // traffic for sibling hooks that are still mounted. Consult
+        // the module-scope ``channelHandlers`` map after the per-
+        // binding ``offChannelEvent`` calls above have pruned this
+        // hook's own entries; any channel with a non-empty Set is
+        // still in use by another subscriber.
+        const channelsToUnsubscribe = [...new Set(channels)].filter(
+          (channel) => (channelHandlers.get(channel)?.size ?? 0) === 0,
+        )
+        if (channelsToUnsubscribe.length > 0) {
+          try {
+            self.unsubscribe(channelsToUnsubscribe)
+          } catch (err) {
+            log.error('rollbackSubscriptions: unsubscribe failed:', err)
+          }
         }
       }
     },

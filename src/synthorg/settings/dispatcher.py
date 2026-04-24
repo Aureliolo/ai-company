@@ -158,8 +158,17 @@ class SettingsChangeDispatcher:
                     )
                 except Exception:
                     # Best-effort rollback -- a failed unsubscribe
-                    # during already-failed start() should not mask
-                    # the original exception below.
+                    # during already-failed start() leaves the bus with
+                    # a stale ``__settings_dispatcher__`` registration
+                    # on ``#settings``. Mark the dispatcher as
+                    # half-stopped (``_running=True`` + ``_stop_failed
+                    # =True``) so a subsequent ``stop()`` still runs
+                    # the clean-stop unsubscribe instead of early-
+                    # returning on ``_running=False`` and leaking the
+                    # subscription. The original start() exception is
+                    # still raised below.
+                    self._running = True
+                    self._stop_failed = True
                     logger.warning(
                         SETTINGS_DISPATCHER_START_REJECTED,
                         error="rollback unsubscribe failed during start() cleanup",
@@ -187,8 +196,17 @@ class SettingsChangeDispatcher:
                 self._task.cancel()
                 with contextlib.suppress(asyncio.CancelledError):
                     try:
+                        # ``asyncio.shield`` guarantees the hard
+                        # deadline applies to the wait only, not to the
+                        # underlying task. Without the shield, a poll
+                        # task that swallows ``CancelledError`` would
+                        # keep the outer ``wait_for`` blocked inside
+                        # ``_lifecycle_lock`` forever; the shield lets
+                        # the wait time out so ``stop()`` can release
+                        # the lock and mark the dispatcher unrestartable
+                        # even if the task itself refuses to exit.
                         await asyncio.wait_for(
-                            self._task,
+                            asyncio.shield(self._task),
                             timeout=_STOP_DRAIN_TIMEOUT_SECONDS,
                         )
                     except TimeoutError:

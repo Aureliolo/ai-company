@@ -118,12 +118,56 @@ describe('useWebSocket registration rollback', () => {
     // subscribed to (``uniqueChannels`` from the bindings), even the
     // ones where handler wiring aborted mid-loop. Without this the
     // store would keep routing broadcast traffic to the unmounted
-    // view through channels we handed it at subscribe time.
+    // view through channels we handed it at subscribe time. With the
+    // shared-channel guard in ``rollbackSubscriptions``, every channel
+    // in this test lands in the unsubscribe arg because no sibling
+    // hook is keeping a handler alive -- the next test covers the
+    // sibling case.
     expect(unsubscribeSpy).toHaveBeenCalledWith([
       'tasks',
       'agents',
       'approvals',
       'meetings',
     ])
+  })
+
+  it('does not unsubscribe a channel that another hook still holds', async () => {
+    // Two hook mounts share the ``tasks`` channel. Unmounting the
+    // first must leave ``tasks`` subscribed on the store because the
+    // second hook's handler is still registered; otherwise the second
+    // hook stops receiving broadcast traffic mid-session.
+    const store = useWebSocketStore.getState()
+    const handlerA = vi.fn()
+    const handlerB = vi.fn()
+
+    const unsubscribeSpy = vi.spyOn(store, 'unsubscribe')
+
+    const first = renderHook(() =>
+      useWebSocket({ bindings: [{ channel: 'tasks', handler: handlerA }] }),
+    )
+    const second = renderHook(() =>
+      useWebSocket({ bindings: [{ channel: 'tasks', handler: handlerB }] }),
+    )
+
+    // Wait for both effect setups to reach the registration phase.
+    await vi.waitFor(() => {
+      const handlers = useWebSocketStore.getState()
+      expect(typeof handlers.subscribe).toBe('function')
+    })
+
+    first.unmount()
+
+    // The first unmount must NOT unsubscribe ``tasks`` because the
+    // second hook still has its handler registered. Assert
+    // ``unsubscribe`` either was not called or was called only with
+    // an empty-after-filtering set -- the production shape is "not
+    // called at all" after filtering because the only channel in the
+    // first hook's binding set is shared with the second hook.
+    expect(unsubscribeSpy).not.toHaveBeenCalled()
+
+    // When the second hook unmounts, ``tasks`` should finally be
+    // unsubscribed -- no remaining handlers.
+    second.unmount()
+    expect(unsubscribeSpy).toHaveBeenCalledWith(['tasks'])
   })
 })

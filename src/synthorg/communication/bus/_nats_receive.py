@@ -88,7 +88,7 @@ async def resolve_consumer(
     return sub
 
 
-async def _maybe_log_overflow(  # noqa: C901, PLR0912  -- linear flow, not branching
+async def _maybe_log_overflow(  # noqa: C901, PLR0912, PLR0915  -- linear flow, not branching
     state: _NatsState,
     sub: Any,
     *,
@@ -157,6 +157,11 @@ async def _maybe_log_overflow(  # noqa: C901, PLR0912  -- linear flow, not branc
             return_when=asyncio.FIRST_COMPLETED,
         )
     except BaseException:
+        # Non-emission path -- release the provisional slot before
+        # re-raising so a CancelledError (or other system error) here
+        # does not suppress the next real overflow warning for
+        # ``_OVERFLOW_LOG_INTERVAL_SECONDS``.
+        state.last_overflow_log.pop(key, None)
         probe_task.cancel()
         shutdown_task.cancel()
         raise
@@ -172,6 +177,8 @@ async def _maybe_log_overflow(  # noqa: C901, PLR0912  -- linear flow, not branc
         except asyncio.CancelledError:
             pass
         except MemoryError, RecursionError:
+            # Non-emission path -- release the slot before re-raising.
+            state.last_overflow_log.pop(key, None)
             raise
         except Exception:  # noqa: S110  -- probe is best-effort; loser-task result discarded
             pass
@@ -188,6 +195,8 @@ async def _maybe_log_overflow(  # noqa: C901, PLR0912  -- linear flow, not branc
     try:
         info = probe_task.result()
     except MemoryError, RecursionError:
+        # Non-emission path -- release the slot before re-raising.
+        state.last_overflow_log.pop(key, None)
         raise
     except Exception:
         # Probe RPC failure -- release the slot so the next empty

@@ -12,7 +12,7 @@ import time
 from collections import deque
 from collections.abc import Sequence  # noqa: TC003
 from datetime import UTC, datetime
-from typing import Final, NoReturn
+from typing import Final, NoReturn, cast
 
 from synthorg.communication.channel import Channel
 from synthorg.communication.config import MessageBusConfig  # noqa: TC001
@@ -108,7 +108,15 @@ class InMemoryMessageBus:
         self._queues: dict[tuple[str, str], asyncio.Queue[DeliveryEnvelope | None]] = {}
         self._history: dict[str, deque[Message]] = {}
         self._known_agents: set[str] = set()
-        self._waiters: dict[tuple[str, str], int] = {}
+        # Per-waiter one-shot futures keyed by (channel, subscriber).
+        # ``receive()`` appends a future on entry and removes it on
+        # exit; ``unsubscribe()`` pops the set and sets each future so
+        # every active waiter wakes up without relying on fitting
+        # sentinels into a bounded queue. Using futures (rather than
+        # an int counter + sentinel puts) means ``unsubscribe`` never
+        # blocks on queue backpressure even if waiter count exceeds
+        # ``max_subscriber_queue_size``.
+        self._waiters: dict[tuple[str, str], set[asyncio.Future[None]]] = {}
         self._running = False
         self._shutdown_event = asyncio.Event()
         self._idle_poll_count: int = 0
@@ -525,8 +533,7 @@ class InMemoryMessageBus:
             MessageBusNotRunningError: If not running.
             NotSubscribedError: If the agent is not subscribed.
         """
-        pending = 0
-        queue: asyncio.Queue[DeliveryEnvelope | None] | None = None
+        waiters: set[asyncio.Future[None]] = set()
         async with self._lock:
             self._require_running()
             if channel_name not in self._channels:
@@ -539,24 +546,17 @@ class InMemoryMessageBus:
                 update={"subscribers": new_subs},
             )
             key = (channel_name, subscriber_id)
-            queue = self._queues.pop(key, None)
-            if queue is not None:
-                pending = self._waiters.pop(key, 0)
-        # Wake up every pending ``receive()`` by putting one sentinel
-        # per actual waiter. Done OUTSIDE the lock so ``await
-        # queue.put(None)`` can yield and let waiters drain space if
-        # ``pending > queue.maxsize``. The queue is already removed
-        # from ``self._queues``, so no new ``receive()`` can attach;
-        # existing waiters see each sentinel and return ``None``.
-        # Drain any buffered envelopes first so the sentinel puts
-        # never have to contend with backlog for slots. Use ``pending``
-        # (not ``max(1, pending)``) so a subscriber with no live
-        # waiters does not get a spurious sentinel enqueued.
-        if queue is not None and pending:
-            while not queue.empty():
-                queue.get_nowait()
-            for _ in range(pending):
-                await queue.put(None)
+            self._queues.pop(key, None)
+            waiters = self._waiters.pop(key, set())
+        # Wake every pending ``receive()`` by resolving its per-waiter
+        # future. No sentinel puts, no bounded-queue backpressure --
+        # ``unsubscribe()`` cannot block regardless of how many
+        # waiters are active. ``set_result(None)`` on an already-done
+        # future is illegal, so guard against the rare case where a
+        # concurrent shutdown / timeout already resolved the future.
+        for waiter in waiters:
+            if not waiter.done():
+                waiter.set_result(None)
         logger.info(
             COMM_SUBSCRIPTION_REMOVED,
             channel=channel_name,
@@ -595,6 +595,7 @@ class InMemoryMessageBus:
             NotSubscribedError: If the subscriber is not subscribed
                 (for TOPIC and DIRECT channels).
         """
+        unsub_future: asyncio.Future[None] = asyncio.get_running_loop().create_future()
         async with self._lock:
             self._require_running()
             if channel_name not in self._channels:
@@ -607,24 +608,24 @@ class InMemoryMessageBus:
                 _raise_not_subscribed(channel_name, subscriber_id)
             queue = self._ensure_queue(channel_name, subscriber_id)
             key = (channel_name, subscriber_id)
-            self._waiters[key] = self._waiters.get(key, 0) + 1
+            self._waiters.setdefault(key, set()).add(unsub_future)
         try:
-            result = await self._await_with_shutdown(queue, timeout)
+            result = await self._await_with_shutdown(queue, timeout, unsub_future)
         finally:
-            # Decrement outside the lock: no ``await`` separates the
-            # read and write of ``_waiters``, so no other coroutine
-            # can interleave in a single-threaded asyncio event loop.
-            # The asymmetry with the lock-guarded increment is
-            # intentional -- the decrement must happen after
-            # _await_with_shutdown completes.
-            current = self._waiters.get(key)
-            if current is None:
-                # Key was removed (e.g. by unsubscribe); don't recreate.
-                pass
-            elif current <= 1:
-                self._waiters.pop(key, None)
-            else:
-                self._waiters[key] = current - 1
+            # Remove this waiter's future from the active set so the
+            # next ``unsubscribe`` only targets still-live waiters.
+            # No ``await`` separates the read and write of
+            # ``_waiters``, so no other coroutine can interleave on
+            # the single-threaded asyncio event loop. The asymmetry
+            # with the lock-guarded add is intentional -- the remove
+            # must run after ``_await_with_shutdown`` completes,
+            # which means after at least one ``await`` already
+            # released the lock.
+            active = self._waiters.get(key)
+            if active is not None:
+                active.discard(unsub_future)
+                if not active:
+                    self._waiters.pop(key, None)
         if result is None:
             await self._log_receive_null(channel_name, subscriber_id)
         return result
@@ -673,12 +674,17 @@ class InMemoryMessageBus:
         self,
         queue: asyncio.Queue[DeliveryEnvelope | None],
         timeout: float | None,  # noqa: ASYNC109
+        unsub_future: asyncio.Future[None],
     ) -> DeliveryEnvelope | None:
-        """Await next envelope, returning ``None`` on timeout or shutdown.
+        """Await next envelope, returning ``None`` on timeout, shutdown, or unsubscribe.
 
         Args:
             queue: The subscriber's delivery queue.
             timeout: Seconds to wait (``None`` = indefinitely).
+            unsub_future: Per-waiter one-shot future that ``unsubscribe()``
+                resolves to wake this receive. Resolving the future is
+                how the caller cancels an in-flight receive without
+                needing to send a sentinel through the bounded queue.
 
         Returns:
             The next envelope, or ``None``.
@@ -687,9 +693,18 @@ class InMemoryMessageBus:
         shutdown_task = asyncio.create_task(
             self._shutdown_event.wait(),
         )
+        # ``asyncio.wait`` requires awaitables of the same type. Cast
+        # the heterogeneous {get_task, shutdown_task, unsub_future} set
+        # through ``asyncio.Future[object]`` so the type checker is
+        # happy; at runtime all three are valid awaitables for wait().
+        wait_set: set[asyncio.Future[object]] = {
+            cast("asyncio.Future[object]", get_task),
+            cast("asyncio.Future[object]", shutdown_task),
+            cast("asyncio.Future[object]", unsub_future),
+        }
         try:
             done, _ = await asyncio.wait(
-                {get_task, shutdown_task},
+                wait_set,
                 timeout=timeout,
                 return_when=asyncio.FIRST_COMPLETED,
             )
@@ -705,6 +720,10 @@ class InMemoryMessageBus:
             shutdown_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await shutdown_task
+        # ``unsub_future`` is owned by ``receive()``; do not cancel it
+        # here. If it is not in ``done`` it stays pending for the
+        # remainder of the receive -- ``receive()``'s ``finally``
+        # removes it from ``_waiters`` regardless.
         if get_task in done and not get_task.cancelled():
             return get_task.result()
         return None

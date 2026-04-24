@@ -60,6 +60,35 @@ class TestConcurrentStart:
             participant_resolver=MagicMock(),
         )
 
+        # Force both ``start()`` callers into the lifecycle-lock
+        # critical section concurrently via a barrier on ``acquire()``.
+        # Without this the sync check-and-set on ``_running`` runs in
+        # one scheduler turn and the second caller sees the flag
+        # already flipped -- which *also* produces exactly one success
+        # and one failure, but does not exercise the contention window
+        # the lock is there to defend. The barrier guarantees both
+        # callers attempt ``acquire()`` before either wins, so a
+        # regression that removes the lock would allow both to proceed
+        # past the check before either commits the set.
+        #
+        # The barrier only applies to the first two ``acquire()`` calls
+        # (the two concurrent ``start()`` invocations). Subsequent
+        # calls -- specifically the ``stop()`` in ``finally`` -- skip
+        # the barrier so the cleanup path does not deadlock on a
+        # barrier waiting for a second party that will never arrive.
+        barrier = asyncio.Barrier(2)
+        acquire_count = 0
+
+        class _CoordinatedLock(asyncio.Lock):
+            async def acquire(self) -> bool:  # type: ignore[override]
+                nonlocal acquire_count
+                acquire_count += 1
+                if acquire_count <= 2:
+                    await barrier.wait()
+                return await super().acquire()
+
+        scheduler._lifecycle_lock = _CoordinatedLock()
+
         results = await asyncio.gather(
             scheduler.start(),
             scheduler.start(),

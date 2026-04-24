@@ -249,13 +249,17 @@ class MessageBusBridge:
                     except Exception:
                         # Best-effort unsubscribe -- if the bus backend
                         # itself is broken, the subscribe rollback may
-                        # also fail, but we still record the channel as
-                        # failed so start() can surface it.
+                        # also fail. Only drop the channel from
+                        # ``subscribed_channels`` when unsubscribe
+                        # actually succeeds so the outer rollback (or a
+                        # later ``stop()``) still has a record of the
+                        # channel that needs cleanup.
                         try:
                             await self._bus.unsubscribe(
                                 channel_name,
                                 _SUBSCRIBER_ID,
                             )
+                            subscribed_channels.remove(channel_name)
                         except Exception:
                             logger.warning(
                                 API_BUS_BRIDGE_SUBSCRIBE_FAILED,
@@ -264,7 +268,6 @@ class MessageBusBridge:
                                 phase="rollback_unsubscribe_failed",
                                 exc_info=True,
                             )
-                        subscribed_channels.remove(channel_name)
                         failed_channels.append(channel_name)
                         logger.warning(
                             API_BUS_BRIDGE_SUBSCRIBE_FAILED,

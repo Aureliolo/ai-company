@@ -623,14 +623,18 @@ async def _safe_shutdown(  # noqa: PLR0913, PLR0912, C901
             service="meeting_scheduler",
         )
     if task_engine is not None:
-        # ``TaskEngine.stop`` accepts an explicit drain timeout; pass
-        # the budget through so both the queue drain and the outer
-        # ``wait_for`` cap converge on the same deadline.
+        # ``TaskEngine.stop`` uses an internal hard deadline of
+        # ``2 * effective_timeout`` before it sets ``_unrestartable``
+        # and raises ``TimeoutError``. The outer ``_try_stop`` wait
+        # must exceed that bound (plus a small slack) so a hung drain
+        # actually reaches the unrestartable guard instead of being
+        # cancelled by the outer wait -- otherwise a later ``start()``
+        # could attach a second loop pair on top of orphaned tasks.
         await _try_stop(
             task_engine.stop(timeout=_TASK_ENGINE_SHUTDOWN_SECONDS),
             API_APP_SHUTDOWN,
             "Failed to stop task engine",
-            timeout=_TASK_ENGINE_SHUTDOWN_SECONDS + 1.0,
+            timeout=_TASK_ENGINE_SHUTDOWN_SECONDS * 2.0 + 1.0,
             service="task_engine",
         )
     if performance_tracker is not None:

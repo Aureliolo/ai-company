@@ -25,8 +25,10 @@ from synthorg.observability.events.inflection import (
     PERF_INFLECTION_EMISSION_FAILED,
 )
 from synthorg.observability.events.performance import (
+    PERF_BACKGROUND_TASK_FAILED,
     PERF_INFLECTION_SINK_BIND_REJECTED,
     PERF_INFLECTION_SINK_BOUND,
+    PERF_INFLECTION_SINK_CLEARED,
     PERF_LLM_SAMPLE_FAILED,
     PERF_METRIC_RECORDED,
     PERF_OVERRIDE_APPLIED,
@@ -225,7 +227,30 @@ class PerformanceTracker:
             self._background_tasks.clear()
         for t in tasks:
             t.cancel()
-        await asyncio.gather(*tasks, return_exceptions=True)
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        # Preserve system-error signals: ``_maybe_sample`` and
+        # ``_do_emit_inflections`` explicitly re-raise MemoryError /
+        # RecursionError (and other BaseException subclasses other
+        # than CancelledError). Discarding them here would silently
+        # mask OS-level failures; log unexpected non-cancellation
+        # exceptions and re-raise the first BaseException seen so the
+        # lifecycle layer can surface it.
+        system_error: BaseException | None = None
+        for result in results:
+            if not isinstance(result, BaseException):
+                continue
+            if isinstance(result, asyncio.CancelledError):
+                continue
+            if isinstance(result, Exception):
+                logger.warning(
+                    PERF_BACKGROUND_TASK_FAILED,
+                    error_type=type(result).__name__,
+                )
+                continue
+            if system_error is None:
+                system_error = result
+        if system_error is not None:
+            raise system_error
 
     async def aclear(self) -> None:
         """Async-safe reset of all recorded metrics.
@@ -721,11 +746,10 @@ class PerformanceTracker:
             msg = "Inflection sink is already configured"
             raise ValueError(msg)
         self._inflection_sink = value
-        logger.info(
-            PERF_INFLECTION_SINK_BOUND,
-            path="sync_setter",
-            cleared=value is None,
-        )
+        if value is None:
+            logger.info(PERF_INFLECTION_SINK_CLEARED, path="sync_setter")
+        else:
+            logger.info(PERF_INFLECTION_SINK_BOUND, path="sync_setter")
 
     async def set_inflection_sink(self, value: InflectionSink | None) -> None:
         """Atomically set the inflection sink under ``_metrics_lock``.
@@ -752,11 +776,10 @@ class PerformanceTracker:
                 msg = "Inflection sink is already configured"
                 raise ValueError(msg)
             self._inflection_sink = value
-            logger.info(
-                PERF_INFLECTION_SINK_BOUND,
-                path="async_setter",
-                cleared=value is None,
-            )
+            if value is None:
+                logger.info(PERF_INFLECTION_SINK_CLEARED, path="async_setter")
+            else:
+                logger.info(PERF_INFLECTION_SINK_BOUND, path="async_setter")
 
     def _schedule_sampling(
         self,
