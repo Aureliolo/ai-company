@@ -272,7 +272,19 @@ class MemoryService:
 
         The MCP surface needs both the page and the unfiltered total so
         ``PaginationMeta`` can be attached without a second round trip.
+
+        Raises:
+            ValueError: If ``offset`` is negative or ``limit`` is not
+                strictly positive. Enforcing the bounds here keeps
+                invalid paging inputs from reaching the repository
+                where the error mode is backend-specific.
         """
+        if offset < 0:
+            msg = f"offset must be >= 0, got {offset}"
+            raise ValueError(msg)
+        if limit < 1:
+            msg = f"limit must be >= 1, got {limit}"
+            raise ValueError(msg)
         return await self._runs.list_runs(limit=limit, offset=offset)
 
     # ── Fine-tune lifecycle ────────────────────────────────────────
@@ -646,14 +658,16 @@ def _check_source_dir_exists(source_dir: str) -> PreflightCheck:
             status="fail",
             message=NotBlankStr(f"Source path is not a directory: {source_dir}"),
         )
-    # Verify the runner can actually read it -- the pass message below
-    # claims "readable", so enforce that here rather than implying it.
-    if not os.access(path, os.R_OK):
+    # Verify the runner can actually read AND traverse the directory.
+    # R_OK alone is insufficient: a directory without execute/search
+    # permission cannot be entered, so the runner would fail to open
+    # any file inside even though ``R_OK`` passed.
+    if not os.access(path, os.R_OK | os.X_OK):
         return PreflightCheck(
             name=NotBlankStr("source_dir_exists"),
             status="fail",
             message=NotBlankStr(
-                f"Source directory is not readable: {source_dir}",
+                f"Source directory is not readable or not traversable: {source_dir}",
             ),
         )
     return PreflightCheck(
@@ -700,14 +714,27 @@ def _check_output_dir_writable(output_dir: str) -> PreflightCheck:
             ),
             detail="The runner will attempt to create it at pipeline start.",
         )
-    # Real permission check -- existence alone does not imply the runner
-    # can save checkpoints to ``probe``.
-    if not os.access(probe, os.W_OK):
+    # Probe must be a directory -- a path that exists but resolves
+    # to a regular file cannot serve as the checkpoint output dir
+    # and would fail deep inside the runner where the error is
+    # harder to act on.
+    if not probe.is_dir():
         return PreflightCheck(
             name=NotBlankStr("output_dir_writable"),
             status="fail",
             message=NotBlankStr(
-                f"Output directory is not writable: {probe}",
+                f"Output directory path is not a directory: {probe}",
+            ),
+        )
+    # Require both write and execute/search permissions: writing a
+    # new checkpoint file requires traversing into the directory
+    # first, so W_OK alone is insufficient.
+    if not os.access(probe, os.W_OK | os.X_OK):
+        return PreflightCheck(
+            name=NotBlankStr("output_dir_writable"),
+            status="fail",
+            message=NotBlankStr(
+                f"Output directory is not writable or not traversable: {probe}",
             ),
         )
     return PreflightCheck(

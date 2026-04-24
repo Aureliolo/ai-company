@@ -179,9 +179,15 @@ class TestNoSignal:
 
 
 class TestWindowPicking:
-    """When multiple windows have data, the densest wins."""
+    """When multiple windows have data, the tightest populated wins.
 
-    async def test_selects_highest_data_point_window(self) -> None:
+    Picking the shortest populated horizon (tracker order is
+    shortest-to-longest) keeps the verdict responsive to fresh dips --
+    a recent regression would otherwise be averaged out against
+    months of older successes in the 30d / 90d horizons.
+    """
+
+    async def test_selects_tightest_populated_window(self) -> None:
         windows = (
             _window(
                 window_size="7d",
@@ -203,8 +209,11 @@ class TestWindowPicking:
 
         report = await service.get_agent_health(NotBlankStr("agent-xyz"))
 
-        assert report.recent_window == "30d"
-        assert report.status == "unavailable"
+        # 7d is populated and tighter -- even though 30d has more data
+        # points, 7d is the one that reacts fastest to fresh
+        # regressions.
+        assert report.recent_window == "7d"
+        assert report.status == "healthy"
 
     async def test_skips_empty_windows_even_if_listed_first(self) -> None:
         windows = (

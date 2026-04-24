@@ -26,6 +26,7 @@ sweep layers the acceptance criteria on top:
 """
 
 import json
+from collections import Counter
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
@@ -241,15 +242,19 @@ class TestNoServiceFallbackEvents:
             assert all("tool_name" in e for e in gap_events), (
                 "every capability event must identify the tool that triggered it"
             )
-            gap_tool_names = {e["tool_name"] for e in gap_events}
-            not_supported_tool_set = set(not_supported_tools)
-            assert gap_tool_names == not_supported_tool_set, (
+            # Use Counter, not set, so a tool that emits the envelope
+            # once but emits CAPABILITY_GAP / NOT_IMPLEMENTED twice
+            # fails the invariant. The test is about strict 1:1
+            # envelope-to-event pairing.
+            gap_tool_counts = Counter(e["tool_name"] for e in gap_events)
+            not_supported_counts = Counter(not_supported_tools)
+            assert gap_tool_counts == not_supported_counts, (
                 f"1:1 mismatch between not_supported envelopes and "
                 f"capability events. "
                 f"Envelope-but-no-event: "
-                f"{sorted(not_supported_tool_set - gap_tool_names)}. "
+                f"{sorted(set(not_supported_counts) - set(gap_tool_counts))}. "
                 f"Event-but-no-envelope: "
-                f"{sorted(gap_tool_names - not_supported_tool_set)}."
+                f"{sorted(set(gap_tool_counts) - set(not_supported_counts))}."
             )
 
     async def test_every_tool_returns_well_formed_envelope(

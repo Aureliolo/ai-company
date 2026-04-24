@@ -177,6 +177,28 @@ class TestListVersions:
         assert total == 2
         assert page == ()
 
+    async def test_negative_offset_rejects(self) -> None:
+        identity = _make_identity()
+        service = AgentVersionService(version_repo=_FakeVersionRepo([]))
+
+        with pytest.raises(ValueError, match="offset"):
+            await service.list_versions(
+                NotBlankStr(str(identity.id)),
+                offset=-1,
+                limit=10,
+            )
+
+    async def test_non_positive_limit_rejects(self) -> None:
+        identity = _make_identity()
+        service = AgentVersionService(version_repo=_FakeVersionRepo([]))
+
+        with pytest.raises(ValueError, match="limit"):
+            await service.list_versions(
+                NotBlankStr(str(identity.id)),
+                offset=0,
+                limit=0,
+            )
+
 
 class TestGetVersion:
     """Existence + missing version."""

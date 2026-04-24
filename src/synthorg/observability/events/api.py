@@ -3,6 +3,7 @@
 from typing import Final
 
 API_REQUEST_STARTED: Final[str] = "api.request.started"
+API_STATE_SERVICE_ATTACHED: Final[str] = "api.state.service_attached"
 API_REQUEST_COMPLETED: Final[str] = "api.request.completed"
 API_REQUEST_ERROR: Final[str] = "api.request.error"
 API_HEALTH_CHECK: Final[str] = "api.health.check"

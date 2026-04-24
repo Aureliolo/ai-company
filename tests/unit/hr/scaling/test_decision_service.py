@@ -104,6 +104,20 @@ class TestListDecisions:
         assert total == 0
         assert page == ()
 
+    async def test_negative_offset_rejects(self) -> None:
+        svc = _FakeScalingService()
+        service = ScalingDecisionService(scaling=svc)  # type: ignore[arg-type]
+
+        with pytest.raises(ValueError, match="offset"):
+            await service.list_decisions(offset=-1, limit=1)
+
+    async def test_non_positive_limit_rejects(self) -> None:
+        svc = _FakeScalingService()
+        service = ScalingDecisionService(scaling=svc)  # type: ignore[arg-type]
+
+        with pytest.raises(ValueError, match="limit"):
+            await service.list_decisions(offset=0, limit=0)
+
 
 class TestGetDecision:
     async def test_returns_match(self) -> None:

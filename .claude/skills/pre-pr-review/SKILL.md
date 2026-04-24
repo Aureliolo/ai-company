@@ -685,10 +685,12 @@ mkdir -p .claude _audit/pre-pr-review
 touch .claude/pre-pr-review-active.lock
 ```
 
-While the lock exists, only writes under `_audit/` (for the triage
-table + per-agent notes) and the lock itself are permitted. Any
-attempt to patch source files during Phase 4-6 is a hard deny from
-the hook.
+While the lock exists, the hook denies the `Edit` and `Write` tools
+for targets outside `_audit/` and the lock file itself. That is the
+exact scope: other mutation paths (for example, `Bash` commands that
+write via redirection or `sed -i`) are not covered by this hook --
+the project's broader `check_bash_no_write.sh` hook is what blocks
+those, independently of the triage gate.
 
 Launch ALL selected agents **in parallel** using the Task tool. **Do NOT use `run_in_background`** -- launch them as regular parallel Task calls so results arrive together.
 

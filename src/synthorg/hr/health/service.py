@@ -172,18 +172,22 @@ def _report_from_snapshot(
 def _pick_recent_window(
     windows: tuple[WindowMetrics, ...],
 ) -> WindowMetrics | None:
-    """Return the window with the most data points (proxy for "recent").
+    """Return the tightest populated window ("most recent" signal).
 
     The tracker emits one window per configured rolling period (7d /
-    30d / 90d / ...). We pick the one with the most data points so
-    the verdict reflects the highest-signal window that actually has
-    observations. When two windows tie, the *first* wins -- preserves
-    the tracker's configured order.
+    30d / 90d / ...) in order from shortest to longest. For a
+    "current health" verdict we want the smallest window that still
+    has observations -- that's the one most responsive to recent
+    regressions. Picking the window with the largest
+    ``data_point_count`` (the previous behaviour) biased toward the
+    longest horizon and masked a fresh dip behind months of older
+    successes. We now iterate in the tracker's configured order and
+    take the first populated window.
     """
-    candidates = [w for w in windows if w.data_point_count > 0]
-    if not candidates:
-        return None
-    return max(candidates, key=lambda w: w.data_point_count)
+    for window in windows:
+        if window.data_point_count > 0:
+            return window
+    return None
 
 
 def _verdict(success_rate: float) -> HealthStatus:
