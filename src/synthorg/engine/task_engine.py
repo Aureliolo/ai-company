@@ -152,8 +152,13 @@ class TaskEngine(TaskEngineLoopsMixin):
         """
         async with self._lifecycle_lock:
             if self._unrestartable:
+                # ``_unrestartable`` is set by ``stop()`` for BOTH the
+                # hard-deadline (``TimeoutError``) path AND the caller
+                # mid-drain cancellation (``CancelledError``) path.
+                # Keep the message neutral so operators are not pointed
+                # at the wrong failure mode.
                 msg = (
-                    "TaskEngine is unrestartable after a timed-out stop; "
+                    "TaskEngine is unrestartable after a failed stop drain; "
                     "construct a fresh TaskEngine instead"
                 )
                 # Use the dedicated rejection event so a rejected

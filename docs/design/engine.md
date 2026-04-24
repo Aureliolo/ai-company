@@ -492,7 +492,7 @@ outgoing stop never waits on.
     (b) is interrupted mid-drain by caller cancellation (`CancelledError`),
     the engine sets `_unrestartable = True` and re-raises the originating
     exception. Every subsequent `start()` on that instance raises
-    `RuntimeError("TaskEngine is unrestartable after a timed-out stop; construct a fresh TaskEngine instead")`.
+    `RuntimeError("TaskEngine is unrestartable after a failed stop drain; construct a fresh TaskEngine instead")`.
     This is intentional: the
     orphaned processing / observer tasks that ignored cancellation are
     still holding the engine's `_queue` and `_observer_queue`, so

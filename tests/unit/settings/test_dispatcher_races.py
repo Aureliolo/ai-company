@@ -138,9 +138,16 @@ class TestStartDuringStop:
                 stop_holding_lock.set()
                 raise
 
-        # Swap the poll task: cancel the original cleanly, then
-        # install ours in its place so stop()'s ``await self._task``
-        # drains our signalling task instead.
+        # Swap the poll task: detach the production
+        # ``add_done_callback(self._on_task_done)`` from the original
+        # task BEFORE cancelling it, then install ours in its place.
+        # Without the detach, the original task's done-callback can
+        # race the manual state surgery below and flip ``_running``
+        # off (or touch state) after we've swapped in the signalling
+        # task -- making the test timing-sensitive. Adding a fresh
+        # done-callback to the replacement task keeps the lifecycle
+        # hooks consistent with normal operation.
+        original_task.remove_done_callback(dispatcher._on_task_done)
         original_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await original_task
@@ -148,9 +155,11 @@ class TestStartDuringStop:
             signalling_poll(),
             name="settings-dispatcher",
         )
+        dispatcher._task.add_done_callback(dispatcher._on_task_done)
         # Re-mark the dispatcher as running so stop() proceeds past
-        # its early-return guard (the cancel above would have flipped
-        # _running off via _on_task_done once the event loop yields).
+        # its early-return guard (the detached-and-cancelled original
+        # task cannot flip ``_running`` off since we removed the
+        # callback before cancelling).
         dispatcher._running = True
 
         stop_task = asyncio.create_task(dispatcher.stop())

@@ -51,6 +51,29 @@ def _snapshot_content(bus: FakeMessageBus, index: int = 0) -> str:
     return msg.text  # type: ignore[attr-defined,no-any-return]
 
 
+async def _wait_for_publish(
+    bus: FakeMessageBus,
+    *,
+    count: int = 1,
+    timeout: float = 2.0,  # noqa: ASYNC109
+) -> None:
+    """Wait until ``bus.published`` reaches ``count`` or ``timeout`` elapses.
+
+    Deterministic alternative to ``await asyncio.sleep(0)`` which only
+    yields a single scheduler turn and can race the async publish path
+    under CI load. Module-scoped so every test that asserts on
+    ``message_bus.published`` can call it without the boilerplate of a
+    local helper.
+    """
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout
+    while len(bus.published) < count:
+        if loop.time() > deadline:
+            msg = f"Expected {count} publish(es) did not arrive within {timeout}s"
+            raise TimeoutError(msg)
+        await asyncio.sleep(0)
+
+
 # ── FIFO ordering guarantee ─────────────────────────────────
 
 
@@ -162,20 +185,6 @@ class TestDeleteSnapshotEvent:
             message_bus=message_bus,  # type: ignore[arg-type]
             config=config,
         )
-
-        async def _wait_for_publish(
-            bus: FakeMessageBus,
-            *,
-            count: int = 1,
-            timeout: float = 2.0,  # noqa: ASYNC109
-        ) -> None:
-            loop = asyncio.get_running_loop()
-            deadline = loop.time() + timeout
-            while len(bus.published) < count:
-                if loop.time() > deadline:
-                    msg = "Expected publish did not arrive"
-                    raise TimeoutError(msg)
-                await asyncio.sleep(0)
 
         await eng.start()
         try:
@@ -314,7 +323,7 @@ class TestSnapshotReasonPropagation:
                 make_create_data(),
                 requested_by="alice",
             )
-            await asyncio.sleep(0)
+            await _wait_for_publish(message_bus)
             message_bus.published.clear()
 
             await eng.transition_task(
@@ -324,7 +333,7 @@ class TestSnapshotReasonPropagation:
                 reason="Manager assigned",
                 assigned_to="bob",
             )
-            await asyncio.sleep(0)
+            await _wait_for_publish(message_bus)
 
             assert len(message_bus.published) == 1
             event = TaskStateChanged.model_validate_json(
@@ -358,7 +367,7 @@ class TestSnapshotReasonPropagation:
                 reason="Assigning",
                 assigned_to="bob",
             )
-            await asyncio.sleep(0)
+            await _wait_for_publish(message_bus, count=2)
             message_bus.published.clear()
 
             await eng.cancel_task(
@@ -366,7 +375,7 @@ class TestSnapshotReasonPropagation:
                 requested_by="alice",
                 reason="Budget cut",
             )
-            await asyncio.sleep(0)
+            await _wait_for_publish(message_bus)
 
             assert len(message_bus.published) == 1
             event = TaskStateChanged.model_validate_json(
@@ -393,7 +402,7 @@ class TestSnapshotReasonPropagation:
                 make_create_data(),
                 requested_by="alice",
             )
-            await asyncio.sleep(0)
+            await _wait_for_publish(message_bus)
 
             assert len(message_bus.published) == 1
             event = TaskStateChanged.model_validate_json(
@@ -420,7 +429,7 @@ class TestSnapshotReasonPropagation:
                 make_create_data(),
                 requested_by="alice",
             )
-            await asyncio.sleep(0)
+            await _wait_for_publish(message_bus)
             message_bus.published.clear()
 
             await eng.update_task(
@@ -428,7 +437,7 @@ class TestSnapshotReasonPropagation:
                 {"title": "Updated"},
                 requested_by="alice",
             )
-            await asyncio.sleep(0)
+            await _wait_for_publish(message_bus)
 
             assert len(message_bus.published) == 1
             event = TaskStateChanged.model_validate_json(
@@ -482,11 +491,11 @@ class TestMemoryErrorReRaise:
         finally:
             # Use the public lifecycle API so any remaining background
             # tasks are drained. The processing task has already died
-            # with the system error under test; ``stop()`` may re-raise
-            # that error during the drain, so swallow ``Exception`` to
-            # keep teardown best-effort (system errors / CancelledError
-            # are outside this suppressor by design).
-            with contextlib.suppress(Exception):
+            # with the ``MemoryError`` under test; ``stop()`` re-raises
+            # that error during the drain, so narrow the suppressor to
+            # that specific error only -- a broader ``suppress(Exception)``
+            # would mask unrelated ``stop()`` regressions.
+            with contextlib.suppress(MemoryError):
                 await eng.stop(timeout=2.0)
 
     async def test_recursion_error_propagates_through_process_one(
@@ -518,13 +527,10 @@ class TestMemoryErrorReRaise:
             with pytest.raises(RecursionError):
                 await eng._processing_task
         finally:
-            # Use the public lifecycle API so any remaining background
-            # tasks are drained. The processing task has already died
-            # with the system error under test; ``stop()`` may re-raise
-            # that error during the drain, so swallow ``Exception`` to
-            # keep teardown best-effort (system errors / CancelledError
-            # are outside this suppressor by design).
-            with contextlib.suppress(Exception):
+            # Narrow teardown suppressor to the specific error under
+            # test (see sibling test). A broader ``suppress(Exception)``
+            # would hide unrelated ``stop()`` regressions.
+            with contextlib.suppress(RecursionError):
                 await eng.stop(timeout=2.0)
 
 
