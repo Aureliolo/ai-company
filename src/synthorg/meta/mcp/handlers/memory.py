@@ -47,7 +47,7 @@ from synthorg.observability.events.mcp import (
     MCP_HANDLER_INVOKE_FAILED,
     MCP_HANDLER_INVOKE_SUCCESS,
 )
-from synthorg.persistence.errors import QueryError
+from synthorg.persistence.errors import PersistenceConnectionError, QueryError
 
 if TYPE_CHECKING:
     from synthorg.core.agent import AgentIdentity
@@ -125,16 +125,20 @@ def _service(app_state: Any) -> MemoryService:
     Prefers ``app_state.memory_service`` when bootstrap has wired one
     (keeps handlers off ``persistence.*``).  Falls back to per-call
     construction from the persistence backend for app_states that have
-    not adopted the cached-service pattern yet.  Accessor calls that
-    hit an unsupported backend (e.g. Postgres, which does not yet
-    expose ``fine_tune_checkpoints``) raise
-    :class:`_BackendLacksFineTuneError` so the calling handler can return a
-    clean ``capability_gap`` envelope instead of bubbling up a
-    ``NotImplementedError``.
+    not adopted the cached-service pattern yet.  Accessor calls raise
+    :class:`_BackendLacksFineTuneError` so the calling handler can
+    return a clean ``capability_gap`` envelope instead of bubbling up
+    a raw backend exception.  Two conditions trigger this:
+
+    * The backend's implementation of a fine-tune property raises
+      ``NotImplementedError`` (legacy / partial backend).
+    * The backend is not yet connected, and the property's
+      ``_require_connected`` guard raises
+      :class:`~synthorg.persistence.errors.PersistenceConnectionError`.
 
     Raises:
-        _BackendLacksFineTuneError: If the backend does not implement the
-            fine-tune repositories.
+        _BackendLacksFineTuneError: If the backend does not implement
+            the fine-tune repositories *or* is not currently connected.
     """
     cached: MemoryService | None = getattr(app_state, "memory_service", None)
     if cached is not None:
@@ -143,7 +147,7 @@ def _service(app_state: Any) -> MemoryService:
     try:
         checkpoint_repo = backend.fine_tune_checkpoints
         run_repo = backend.fine_tune_runs
-    except NotImplementedError as exc:
+    except (NotImplementedError, PersistenceConnectionError) as exc:
         raise _BackendLacksFineTuneError(_WHY_BACKEND_NO_FINE_TUNE) from exc
     has_settings = getattr(app_state, "has_settings_service", False)
     return MemoryService(
@@ -181,9 +185,10 @@ _WHY_EMBEDDER = (
     "dedicated query method on MemoryService"
 )
 _WHY_BACKEND_NO_FINE_TUNE = (
-    "fine-tune repositories are not supported by the active "
-    "persistence backend (SQLite-only today); switch backends or use "
-    "the fine-tune controller"
+    "fine-tune repositories are not exposed by the active persistence "
+    "backend; ensure the backend is connected and exposes "
+    "fine_tune_runs + fine_tune_checkpoints (both SQLite and Postgres "
+    "do today)"
 )
 
 

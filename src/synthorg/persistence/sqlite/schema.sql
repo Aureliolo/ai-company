@@ -1,8 +1,61 @@
--- SynthOrg consolidated schema -- single source of truth.
+-- SynthOrg SQLite schema -- single source of truth for the sqlite backend.
 --
--- This file defines the desired database state. Atlas diffs it
+-- This file defines the desired database state for SQLite. Atlas diffs it
 -- against the current DB to generate versioned migrations.
--- Do NOT execute this file directly -- use `atlas migrate diff`.
+-- Do NOT execute this file directly -- use `atlas migrate diff --env sqlite`.
+--
+-- This is the SQLite-native sibling of src/synthorg/persistence/postgres/schema.sql.
+-- Both schemas describe the same logical data model but use each engine's
+-- native types.  The conformance suite at tests/conformance/persistence/
+-- exercises every repository against both backends so the divergences
+-- below are kept honest by parametrized tests, not just by review.
+--
+-- SQLite-side encoding for fields that Postgres stores natively:
+--   * TEXT carrying ``json.dumps(...)`` for fields that Postgres
+--     stores as JSONB.  Affected columns:
+--       workflow_definitions.{inputs, outputs, nodes, edges},
+--       workflow_definition_versions.snapshot,
+--       custom_presets.config_json,
+--       fine_tune_runs.{config_json, stages_completed},
+--       fine_tune_checkpoints.{eval_metrics_json, backup_config_json},
+--       agent_identity_versions.snapshot,
+--       audit_entries.matched_rules,
+--       messages.{attachments, metadata},
+--       lifecycle_events.metadata,
+--       parked_contexts.{context_json, metadata},
+--       tasks.{task_structure, reviewers, dependencies,
+--              artifacts_expected, acceptance_criteria,
+--              delegation_chain},
+--       training_plans.{enabled_content_types, volume_caps,
+--                       override_sources},
+--       training_results.{source_agents_used, items_extracted,
+--                         items_after_curation, items_after_guards,
+--                         items_stored, pending_approvals, errors},
+--       users.{org_roles, scoped_departments},
+--       custom_rules.target_altitudes,
+--       conflict_escalations.conflict_json,
+--       (and any future JSONB column added to the Postgres schema).
+--   * TEXT carrying ISO-8601 strings (with explicit ``+00:00`` or ``Z``
+--     suffix; CHECK constraints enforce the suffix on version-snapshot
+--     timestamps) for fields that Postgres stores as TIMESTAMPTZ.
+--     Repositories normalise to UTC at write time so lexicographic
+--     ordering matches chronological ordering.
+--   * INTEGER 0/1 for fields that Postgres stores as BOOLEAN
+--     (e.g. is_subworkflow, is_active, must_change_password, revoked,
+--      health_check_enabled, skip_training, require_review,
+--      review_pending, loop_triggered).
+--   * INTEGER for fields that Postgres stores as BIGINT;
+--     REAL for DOUBLE PRECISION.
+--   * No native equivalent for the GIN indexes Postgres builds over
+--     JSONB columns (audit_entries.matched_rules,
+--      messages.metadata, lifecycle_events.metadata,
+--      conflict_escalations.conflict_json).  SQLite falls back to a
+--     full-table scan for JSON containment queries; the Postgres
+--     ``query_jsonb_contains`` capability protocol is intentionally
+--     unimplemented on SQLite repositories.
+--
+-- Repositories at the Python level return identical Pydantic models
+-- from both backends; only the wire serialisation differs.
 
 -- ── Tasks ─────────────────────────────────────────────────────
 CREATE TABLE tasks (

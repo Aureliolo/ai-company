@@ -5,10 +5,12 @@ so the controller stays thin (parse / shape / return) and the raw
 ``app_state.persistence.get_db()`` handle stays inside the persistence
 package where it belongs.
 
-The service operates on SQLite today because the fine-tuning pipeline is
-SQLite-only (Postgres does not yet expose a matching repository); the
-abstraction is ready to grow a Postgres sibling without touching the
-controller.
+The service is backend-agnostic: both SQLite and Postgres expose the
+``FineTuneRunRepository`` + ``FineTuneCheckpointRepository`` protocols
+via ``PersistenceBackend.fine_tune_runs`` and
+``PersistenceBackend.fine_tune_checkpoints``, and the parametrized
+conformance suite at ``tests/conformance/persistence/`` exercises both
+arms on every run.
 """
 
 import json
@@ -68,7 +70,7 @@ class MemoryService:
         run_repo: FineTuneRunRepository,
         settings_service: SettingsService | None,
     ) -> None:
-        """Initialise with repository + settings dependencies.
+        """Initialize with repository + settings dependencies.
 
         Args:
             checkpoint_repo: Fine-tune checkpoint persistence.
