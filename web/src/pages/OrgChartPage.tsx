@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import {
   Background,
   MiniMap,
@@ -8,10 +8,14 @@ import {
   type Edge,
   type Node,
 } from '@xyflow/react'
+import { toPng } from 'html-to-image'
 import { GitBranch, Loader2 } from 'lucide-react'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { Link, useNavigate } from 'react-router'
 import { createLogger } from '@/lib/logger'
+import { useToastStore } from '@/stores/toast'
+import { formatDateOnly } from '@/utils/format'
+import { sanitizeForLog } from '@/utils/logging'
 import { useOrgChartData } from '@/hooks/useOrgChartData'
 import { useRegisterCommands } from '@/hooks/useCommandPalette'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
@@ -202,6 +206,62 @@ function OrgChartInner() {
     saveViewport(viewport)
   }, [])
 
+  // Ref to the ReactFlow wrapper so html-to-image can snapshot the chart.
+  // Using the class selector fallback as a defence-in-depth because the
+  // wrapper receives the `.react-flow` class from ReactFlow itself.
+  const flowWrapperRef = useRef<HTMLDivElement | null>(null)
+  const [exporting, setExporting] = useState(false)
+
+  const handleExportPng = useCallback(async () => {
+    const target =
+      flowWrapperRef.current?.querySelector<HTMLElement>('.react-flow') ??
+      flowWrapperRef.current
+    if (!target) return
+    // Fit before snapshot so the PNG captures the full graph rather than
+    // whatever pan/zoom the user happens to have.
+    fitView({ padding: 0.2, duration: 0 })
+    setExporting(true)
+    try {
+      // Read the live page background from a computed style so the PNG
+      // matches whichever theme token is active. NO hardcoded colors --
+      // the design system forbids them.
+      const backgroundColor = getComputedStyle(document.body).backgroundColor
+      const dataUrl = await toPng(target, {
+        backgroundColor: backgroundColor || undefined,
+        pixelRatio: 2,
+        cacheBust: true,
+      })
+      const link = document.createElement('a')
+      link.href = dataUrl
+      link.download = `org-chart-${formatDateOnly(new Date())}.png`
+      link.click()
+      useToastStore.getState().add({
+        variant: 'success',
+        title: 'Org chart exported',
+      })
+    } catch (err) {
+      log.error('Org chart PNG export failed:', sanitizeForLog(err))
+      useToastStore.getState().add({
+        variant: 'error',
+        title: 'Export failed',
+        description:
+          'Could not render the chart to PNG. Try again, or use Print for a fallback.',
+      })
+    } finally {
+      setExporting(false)
+    }
+  }, [fitView])
+
+  const handlePrint = useCallback(() => {
+    // Fit-to-view before print so the user sees the full chart in the
+    // print preview rather than whatever viewport they had zoomed to.
+    fitView({ padding: 0.2, duration: 0 })
+    // Delay by a frame so the fit animation settles before print.
+    requestAnimationFrame(() => {
+      window.print()
+    })
+  }, [fitView])
+
   const renderedNodes = useMemo(() => {
     return sourceNodes.map((n) => {
       const isDropTarget = dragOverDeptId !== null && n.type === 'department' && n.id === dragOverDeptId
@@ -297,6 +357,8 @@ function OrgChartInner() {
           onFitView={() => fitView({ padding: 0.2 })}
           onZoomIn={() => zoomIn()}
           onZoomOut={() => zoomOut()}
+          onExportPng={exporting ? undefined : handleExportPng}
+          onPrint={handlePrint}
         />
         {(commLoading || view.transitioning) && viewMode === 'force' && (
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -306,7 +368,11 @@ function OrgChartInner() {
         )}
       </div>
 
-      <div className="relative flex-1 rounded-lg border border-border">
+      <div
+        ref={flowWrapperRef}
+        className="relative flex-1 rounded-lg border border-border print:border-0"
+        data-testid="org-chart-canvas"
+      >
         <ReactFlow
           aria-label="Organization chart"
           nodes={renderedNodes}
