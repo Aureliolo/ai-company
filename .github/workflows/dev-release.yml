@@ -31,6 +31,16 @@ jobs:
     permissions:
       contents: write
     steps:
+      # Belt-and-braces with the `on: push: branches: [main]` trigger.
+      # Fails fast if the workflow is ever invoked from another ref before
+      # the RELEASE_PLEASE_TOKEN is exposed via `env:` in later steps.
+      - name: Validate trigger branch
+        run: |
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "::error::dev-release.yml must only run on refs/heads/main, got: $GITHUB_REF"
+            exit 1
+          fi
+
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           fetch-depth: 0

@@ -15,6 +15,17 @@ jobs:
       contents: write
       pull-requests: write
     steps:
+      # Belt-and-braces with the `on: push: branches: [main]` trigger.
+      # Fails fast if the workflow is ever invoked from another ref (e.g. a
+      # future `workflow_dispatch` addition or an unexpected routing event)
+      # before the RELEASE_PLEASE_TOKEN is exposed via `env:`.
+      - name: Validate trigger branch
+        run: |
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "::error::release.yml must only run on refs/heads/main, got: $GITHUB_REF"
+            exit 1
+          fi
+
       # Draft releases don't create git tags, and force-tag-creation requires
       # release-please >= 17.2.0 (action v4.4.0 bundles 17.1.3).
       # Pre-create the tag so RP finds it. Remove once googleapis/release-please-action#1187 ships.

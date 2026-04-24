@@ -1,0 +1,386 @@
+name: Build and scan container image
+description: >-
+  Build a Dockerfile-based container image from a signed apko base, scan
+  amd64 with Trivy (JSON + SARIF) at CRITICAL + HIGH, upload SARIF to
+  GitHub Security, and execute the CIS Docker Benchmark. On non-PR events
+  the build emits per-arch docker-archive tarballs (uploaded as artifacts)
+  so the companion `publish-image` action can push the *exact scanned
+  bytes* instead of rebuilding. Intended to be called from a job whose
+  only permissions are `contents: read` + `security-events: write` -- no
+  elevated registry perms.
+
+inputs:
+  image-name:
+    description: >-
+      Short image name suffix (e.g. backend, sandbox, sidecar,
+      fine-tune-gpu, fine-tune-cpu). Combined with
+      `ghcr.io/aureliolo/synthorg-` to form the registry ref and used as
+      the suffix for Trivy report filenames and SARIF categories.
+    required: true
+  display-name:
+    description: "Human-readable name for log messages (e.g. 'Backend', 'Fine-Tune (gpu)')."
+    required: true
+  dockerfile:
+    description: "Path to the Dockerfile (relative to repository root)."
+    required: true
+  context:
+    description: "Docker build context path."
+    required: false
+    default: "."
+  app-version:
+    description: >-
+      Application version from `needs.version.outputs.app_version`. Emitted
+      as the `type=raw` tag on stable `v*` releases.
+    required: true
+  base-image-repo:
+    description: >-
+      Base image repository (e.g. ghcr.io/aureliolo/synthorg-backend-base).
+      Combined with `base-image-digest` (preferred) or `base-image-tag` to
+      form the `BASE_IMAGE` build-arg.
+    required: true
+  base-image-tag:
+    description: "Base image tag from `needs.build-X-base.outputs.tag`."
+    required: true
+  base-image-digest:
+    description: >-
+      Base image digest from `needs.build-X-base-publish.outputs.digest`.
+      Empty on pull-request events (no publish happens). When set, takes
+      precedence over `base-image-tag` for the BASE_IMAGE build-arg.
+    required: false
+    default: ""
+  base-image-artifact-name:
+    description: >-
+      Artifact name for the base tarball. Only consumed on the PR path to
+      load the signed apko base without re-pulling from GHCR; callers on
+      push/tag events may leave this empty since the base is referenced
+      by digest instead.
+    required: false
+    default: ""
+  base-image-tarball-name:
+    description: >-
+      Tarball filename inside the downloaded artifact. Same PR-path-only
+      semantics as `base-image-artifact-name`.
+    required: false
+    default: ""
+  extra-build-args:
+    description: >-
+      Additional Docker build args, one per line (e.g. DEPLOYMENT_ENV,
+      FINE_TUNE_EXTRA). `BASE_IMAGE` is prepended automatically.
+    required: false
+    default: ""
+  enable-arm64:
+    description: >-
+      Build an arm64 tarball in addition to amd64 on non-PR events. Set
+      "false" for images that ship amd64-only (e.g. fine-tune variants
+      bundle CUDA wheels / torch with no arm64 coverage).
+    required: false
+    default: "true"
+  cache-scope:
+    description: >-
+      GHA cache scope suffix. Leave empty for non-matrix jobs. Fine-tune
+      passes the variant name so GPU and CPU do not share a cache layer.
+    required: false
+    default: ""
+  free-disk-space:
+    description: >-
+      Run aggressive disk cleanup before buildx setup. Required for
+      fine-tune images (~4 GB GPU + ~1.7 GB CPU variants overflow the
+      default `ubuntu-latest` runner). Pass the literal string "true" to
+      enable.
+    required: false
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    # Fine-tune GPU image is ~4 GB (torch + CUDA wheels). The GHA
+    # ubuntu-latest runner ships with ~14 GB free on /, which is not
+    # enough headroom for buildx to assemble the layer tar + load it
+    # into the daemon + run Trivy. Remove pre-installed toolchains we
+    # do not use to reclaim ~25 GB.
+    - name: Free disk space
+      if: inputs.free-disk-space == 'true'
+      shell: bash
+      run: |
+        df -h /
+        sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+        sudo rm -rf /opt/hostedtoolcache/CodeQL /opt/hostedtoolcache/Python
+        sudo rm -rf /usr/local/share/powershell /usr/local/share/chromium
+        sudo rm -rf /usr/local/lib/node_modules
+        sudo docker image prune --all --force
+        df -h /
+
+    # Required on non-PR events when building the arm64 tarball on an
+    # amd64 runner. PR builds are amd64-only and skip QEMU.
+    - name: Set up QEMU (ARM64 emulation)
+      if: github.event_name != 'pull_request' && inputs.enable-arm64 == 'true'
+      uses: docker/setup-qemu-action@ce360397dd3f832beb865e1373c09c0e9f86d70a # v4.0.0
+      with:
+        platforms: arm64
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+      with:
+        # `docker` driver is required for `load: true` on PR builds so
+        # Trivy can scan a locally loaded image; `docker-container`
+        # enables `type=gha` layer cache + `type=docker` archive output
+        # for the tarball handoff on non-PR builds.
+        driver: ${{ github.event_name == 'pull_request' && 'docker' || 'docker-container' }}
+        cache-binary: false
+
+    - name: Download base image artifact (PR only)
+      if: github.event_name == 'pull_request'
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+      with:
+        name: ${{ inputs.base-image-artifact-name }}
+        path: /tmp
+
+    - name: Load base image (PR only)
+      if: github.event_name == 'pull_request'
+      shell: bash
+      env:
+        BASE_IMAGE_REPO: ${{ inputs.base-image-repo }}
+        BASE_TAG: ${{ inputs.base-image-tag }}
+        BASE_TARBALL: ${{ inputs.base-image-tarball-name }}
+      run: |
+        docker load -i "/tmp/${BASE_TARBALL}"
+        docker tag "${BASE_IMAGE_REPO}:${BASE_TAG}-amd64" "${BASE_IMAGE_REPO}:${BASE_TAG}"
+
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf # v6.0.0
+      with:
+        images: ghcr.io/aureliolo/synthorg-${{ inputs.image-name }}
+        tags: |
+          type=raw,value=${{ inputs.app-version }},enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-dev.') }}
+          type=semver,pattern={{version}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+          type=semver,pattern={{major}}.{{minor}},enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-dev.') }}
+          type=raw,value=dev,enable=${{ startsWith(github.ref, 'refs/tags/v') && contains(github.ref, '-dev.') }}
+          type=sha,prefix=sha-
+
+    # PR path: buildx `driver: docker` + `load: true` produces a single
+    # amd64 image in the local daemon for scanning. No tarball is
+    # persisted -- PR builds never feed the publish-image action.
+    - name: Build image (PR, loaded for scan)
+      if: github.event_name == 'pull_request'
+      uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
+      with:
+        context: ${{ inputs.context }}
+        file: ${{ inputs.dockerfile }}
+        push: false
+        load: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        build-args: |
+          BASE_IMAGE=${{ inputs.base-image-digest != '' && format('{0}@{1}', inputs.base-image-repo, inputs.base-image-digest) || format('{0}:{1}', inputs.base-image-repo, inputs.base-image-tag) }}
+          ${{ inputs.extra-build-args }}
+        platforms: linux/amd64
+
+    # Non-PR path: build each arch to its own docker-archive tarball so
+    # the publish-image action can push the exact scanned bytes instead
+    # of rebuilding. `outputs: type=docker,dest=...` is single-platform
+    # (docker-archive format requires one manifest), so we emit two
+    # tarballs and reassemble the multi-arch manifest at push time.
+    - name: Build amd64 tarball (non-PR)
+      if: github.event_name != 'pull_request'
+      uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
+      with:
+        context: ${{ inputs.context }}
+        file: ${{ inputs.dockerfile }}
+        outputs: type=docker,dest=/tmp/scan-image-${{ inputs.image-name }}-amd64.tar
+        tags: ghcr.io/aureliolo/synthorg-${{ inputs.image-name }}:scan-${{ github.sha }}-amd64
+        labels: ${{ steps.meta.outputs.labels }}
+        build-args: |
+          BASE_IMAGE=${{ inputs.base-image-digest != '' && format('{0}@{1}', inputs.base-image-repo, inputs.base-image-digest) || format('{0}:{1}', inputs.base-image-repo, inputs.base-image-tag) }}
+          ${{ inputs.extra-build-args }}
+        cache-from: ${{ inputs.cache-scope != '' && format('type=gha,scope={0}-amd64', inputs.cache-scope) || 'type=gha,scope=amd64' }}
+        cache-to: ${{ inputs.cache-scope != '' && format('type=gha,mode=max,scope={0}-amd64', inputs.cache-scope) || 'type=gha,mode=max,scope=amd64' }}
+        platforms: linux/amd64
+
+    - name: Load amd64 image for scanning (non-PR)
+      if: github.event_name != 'pull_request'
+      shell: bash
+      env:
+        IMAGE_NAME: ${{ inputs.image-name }}
+      run: |
+        docker load -i "/tmp/scan-image-${IMAGE_NAME}-amd64.tar"
+
+    - name: Build arm64 tarball (non-PR, multi-arch)
+      if: github.event_name != 'pull_request' && inputs.enable-arm64 == 'true'
+      uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
+      with:
+        context: ${{ inputs.context }}
+        file: ${{ inputs.dockerfile }}
+        outputs: type=docker,dest=/tmp/scan-image-${{ inputs.image-name }}-arm64.tar
+        tags: ghcr.io/aureliolo/synthorg-${{ inputs.image-name }}:scan-${{ github.sha }}-arm64
+        labels: ${{ steps.meta.outputs.labels }}
+        build-args: |
+          BASE_IMAGE=${{ inputs.base-image-digest != '' && format('{0}@{1}', inputs.base-image-repo, inputs.base-image-digest) || format('{0}:{1}', inputs.base-image-repo, inputs.base-image-tag) }}
+          ${{ inputs.extra-build-args }}
+        cache-from: ${{ inputs.cache-scope != '' && format('type=gha,scope={0}-arm64', inputs.cache-scope) || 'type=gha,scope=arm64' }}
+        cache-to: ${{ inputs.cache-scope != '' && format('type=gha,mode=max,scope={0}-arm64', inputs.cache-scope) || 'type=gha,mode=max,scope=arm64' }}
+        platforms: linux/arm64
+
+    # arm64 scans run under QEMU emulation (set up at the top of this
+    # action). Both architectures go through the same Trivy + CIS gate
+    # before publish-image pushes them, so neither arch ships unscanned.
+    - name: Load arm64 image for scanning (non-PR, multi-arch)
+      if: github.event_name != 'pull_request' && inputs.enable-arm64 == 'true'
+      shell: bash
+      env:
+        IMAGE_NAME: ${{ inputs.image-name }}
+      run: |
+        docker load -i "/tmp/scan-image-${IMAGE_NAME}-arm64.tar"
+
+    # Scan ref. PR path = single amd64 image built via `load: true`.
+    # Non-PR path = two tarball-loaded refs (amd64 always; arm64 when
+    # enable-arm64). Each arch is scanned independently so the published
+    # multi-arch manifest never includes bytes that bypassed the gate.
+    - name: Compute scan image refs
+      id: scan-ref
+      shell: bash
+      env:
+        IMAGE_NAME: ${{ inputs.image-name }}
+        EVENT_NAME: ${{ github.event_name }}
+      run: |
+        SHORT_SHA="${GITHUB_SHA::7}"
+        if [ "$EVENT_NAME" = "pull_request" ]; then
+          echo "ref_amd64=ghcr.io/aureliolo/synthorg-${IMAGE_NAME}:sha-${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+          echo "ref_arm64=" >> "$GITHUB_OUTPUT"
+        else
+          echo "ref_amd64=ghcr.io/aureliolo/synthorg-${IMAGE_NAME}:scan-${GITHUB_SHA}-amd64" >> "$GITHUB_OUTPUT"
+          echo "ref_arm64=ghcr.io/aureliolo/synthorg-${IMAGE_NAME}:scan-${GITHUB_SHA}-arm64" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Report image size (amd64)
+      shell: bash
+      env:
+        SCAN_REF: ${{ steps.scan-ref.outputs.ref_amd64 }}
+        DISPLAY_NAME: ${{ inputs.display-name }}
+      run: scripts/report-image-size.sh "$SCAN_REF" "$DISPLAY_NAME"
+
+    - name: Report image size (arm64)
+      if: github.event_name != 'pull_request' && inputs.enable-arm64 == 'true'
+      shell: bash
+      env:
+        SCAN_REF: ${{ steps.scan-ref.outputs.ref_arm64 }}
+        DISPLAY_NAME: ${{ inputs.display-name }}
+      run: scripts/report-image-size.sh "$SCAN_REF" "$DISPLAY_NAME (arm64)"
+
+    # Trivy JSON + SARIF + CIS benchmark per arch. JSON feeds
+    # evaluate-scan.sh (fails on CRITICAL, warns on HIGH). SARIF goes to
+    # GitHub Security for both arches with distinct categories.
+    - name: Trivy scan (amd64)
+      uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+      with:
+        image-ref: ${{ steps.scan-ref.outputs.ref_amd64 }}
+        format: json
+        output: trivy-${{ inputs.image-name }}-amd64.json
+        exit-code: "0"
+        severity: CRITICAL,HIGH
+        trivyignores: .github/.trivyignore.yaml
+
+    - name: Evaluate Trivy results (amd64)
+      shell: bash
+      env:
+        IMAGE_NAME: ${{ inputs.image-name }}
+        DISPLAY_NAME: ${{ inputs.display-name }}
+      run: scripts/evaluate-scan.sh --verbose "trivy-${IMAGE_NAME}-amd64.json" "$DISPLAY_NAME"
+
+    - name: Trivy scan (arm64)
+      if: github.event_name != 'pull_request' && inputs.enable-arm64 == 'true'
+      uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+      with:
+        image-ref: ${{ steps.scan-ref.outputs.ref_arm64 }}
+        format: json
+        output: trivy-${{ inputs.image-name }}-arm64.json
+        exit-code: "0"
+        severity: CRITICAL,HIGH
+        trivyignores: .github/.trivyignore.yaml
+
+    - name: Evaluate Trivy results (arm64)
+      if: github.event_name != 'pull_request' && inputs.enable-arm64 == 'true'
+      shell: bash
+      env:
+        IMAGE_NAME: ${{ inputs.image-name }}
+        DISPLAY_NAME: ${{ inputs.display-name }}
+      run: scripts/evaluate-scan.sh --verbose "trivy-${IMAGE_NAME}-arm64.json" "$DISPLAY_NAME (arm64)"
+
+    - name: Upload Trivy reports
+      if: always()
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: trivy-${{ inputs.image-name }}-report
+        path: trivy-${{ inputs.image-name }}-*.json
+        retention-days: 30
+        if-no-files-found: ignore
+
+    - name: Trivy SARIF scan (amd64)
+      if: always()
+      uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+      with:
+        image-ref: ${{ steps.scan-ref.outputs.ref_amd64 }}
+        format: sarif
+        output: trivy-${{ inputs.image-name }}-amd64.sarif
+        exit-code: "0"
+        severity: CRITICAL,HIGH
+        trivyignores: .github/.trivyignore.yaml
+
+    - name: Upload SARIF amd64 to GitHub Security
+      if: always()
+      uses: github/codeql-action/upload-sarif@95e58e9a2cdfd71adc6e0353d5c52f41a045d225 # v4.35.2
+      with:
+        sarif_file: trivy-${{ inputs.image-name }}-amd64.sarif
+        category: trivy-${{ inputs.image-name }}-amd64
+
+    - name: Trivy SARIF scan (arm64)
+      if: always() && github.event_name != 'pull_request' && inputs.enable-arm64 == 'true'
+      uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+      with:
+        image-ref: ${{ steps.scan-ref.outputs.ref_arm64 }}
+        format: sarif
+        output: trivy-${{ inputs.image-name }}-arm64.sarif
+        exit-code: "0"
+        severity: CRITICAL,HIGH
+        trivyignores: .github/.trivyignore.yaml
+
+    - name: Upload SARIF arm64 to GitHub Security
+      if: always() && github.event_name != 'pull_request' && inputs.enable-arm64 == 'true'
+      uses: github/codeql-action/upload-sarif@95e58e9a2cdfd71adc6e0353d5c52f41a045d225 # v4.35.2
+      with:
+        sarif_file: trivy-${{ inputs.image-name }}-arm64.sarif
+        category: trivy-${{ inputs.image-name }}-arm64
+
+    - name: CIS Docker Benchmark (amd64)
+      uses: ./.github/actions/cis-scan
+      with:
+        image-ref: ${{ steps.scan-ref.outputs.ref_amd64 }}
+
+    - name: CIS Docker Benchmark (arm64)
+      if: github.event_name != 'pull_request' && inputs.enable-arm64 == 'true'
+      uses: ./.github/actions/cis-scan
+      with:
+        image-ref: ${{ steps.scan-ref.outputs.ref_arm64 }}
+
+    # Hand off the scanned tarballs to the publish-only job. The publish
+    # job docker-loads these exact bytes and re-tags + pushes them
+    # without rebuilding, guaranteeing the pushed digest covers the
+    # same filesystem Trivy + CIS scanned.
+    # 7-day retention covers approval delays on the environment-gated
+    # publish-image jobs: 1-day would expire the tarball before a
+    # deferred `image-push` approval lands, breaking the publish chain.
+    - name: Upload amd64 image tarball (non-PR)
+      if: github.event_name != 'pull_request'
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: scan-image-${{ inputs.image-name }}-amd64
+        path: /tmp/scan-image-${{ inputs.image-name }}-amd64.tar
+        retention-days: 7
+
+    - name: Upload arm64 image tarball (non-PR, multi-arch)
+      if: github.event_name != 'pull_request' && inputs.enable-arm64 == 'true'
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: scan-image-${{ inputs.image-name }}-arm64
+        path: /tmp/scan-image-${{ inputs.image-name }}-arm64.tar
+        retention-days: 7
