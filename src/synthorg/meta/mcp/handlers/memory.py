@@ -25,6 +25,7 @@ Destructive ops. ``cancel_fine_tune``, ``rollback_checkpoint``, and
 boundary and emit :data:`MCP_DESTRUCTIVE_OP_EXECUTED` on success.
 """
 
+import copy
 from collections.abc import Mapping  # noqa: TC003 -- PEP 649 annotation
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
@@ -602,17 +603,19 @@ def _parse_fine_tune_plan(arguments: dict[str, Any]) -> FineTunePlan:
 
 
 MEMORY_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(
-    {
-        "synthorg_memory_start_fine_tune": _memory_start_fine_tune,
-        "synthorg_memory_resume_fine_tune": _memory_resume_fine_tune,
-        "synthorg_memory_get_fine_tune_status": _memory_get_fine_tune_status,
-        "synthorg_memory_cancel_fine_tune": _memory_cancel_fine_tune,
-        "synthorg_memory_run_preflight": _memory_run_preflight,
-        "synthorg_memory_list_checkpoints": _memory_list_checkpoints,
-        "synthorg_memory_deploy_checkpoint": _memory_deploy_checkpoint,
-        "synthorg_memory_rollback_checkpoint": _memory_rollback_checkpoint,
-        "synthorg_memory_delete_checkpoint": _memory_delete_checkpoint,
-        "synthorg_memory_list_runs": _memory_list_runs,
-        "synthorg_memory_get_active_embedder": _memory_get_active_embedder,
-    },
+    copy.deepcopy(
+        {
+            "synthorg_memory_start_fine_tune": _memory_start_fine_tune,
+            "synthorg_memory_resume_fine_tune": _memory_resume_fine_tune,
+            "synthorg_memory_get_fine_tune_status": _memory_get_fine_tune_status,
+            "synthorg_memory_cancel_fine_tune": _memory_cancel_fine_tune,
+            "synthorg_memory_run_preflight": _memory_run_preflight,
+            "synthorg_memory_list_checkpoints": _memory_list_checkpoints,
+            "synthorg_memory_deploy_checkpoint": _memory_deploy_checkpoint,
+            "synthorg_memory_rollback_checkpoint": _memory_rollback_checkpoint,
+            "synthorg_memory_delete_checkpoint": _memory_delete_checkpoint,
+            "synthorg_memory_list_runs": _memory_list_runs,
+            "synthorg_memory_get_active_embedder": _memory_get_active_embedder,
+        },
+    ),
 )

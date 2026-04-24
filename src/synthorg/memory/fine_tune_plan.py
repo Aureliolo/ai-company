@@ -29,6 +29,9 @@ from synthorg.memory.embedding.fine_tune_models import (
     FineTuneExecutionConfig,
     FineTuneRequest,
 )
+from synthorg.observability import get_logger
+
+logger = get_logger(__name__)
 
 # Minimum length of a path with a Windows drive letter prefix ("C:").
 # Declared before the class that uses it so the path-traversal check

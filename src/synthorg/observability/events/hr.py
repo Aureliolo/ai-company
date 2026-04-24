@@ -50,6 +50,7 @@ HR_ARCHIVAL_ENTRY_FAILED: Final[str] = "hr.archival.entry_failed"
 
 HR_ACTIVITY_REDACTION_MISMATCH: Final[str] = "hr.activity.redaction_pattern_mismatch"
 HR_ACTIVITY_AGENT_FETCHED: Final[str] = "hr.activity.agent_fetched"
+HR_ACTIVITY_SOURCE_FETCH_FAILED: Final[str] = "hr.activity.source_fetch_failed"
 
 # ── Health aggregation ────────────────────────────────────────
 

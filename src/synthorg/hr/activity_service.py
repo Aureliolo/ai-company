@@ -24,8 +24,11 @@ from typing import TYPE_CHECKING
 from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.core.types import NotBlankStr  # noqa: TC001 -- runtime annotation
 from synthorg.hr.activity import ActivityEvent, merge_activity_timeline
-from synthorg.observability import get_logger
-from synthorg.observability.events.hr import HR_ACTIVITY_AGENT_FETCHED
+from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.hr import (
+    HR_ACTIVITY_AGENT_FETCHED,
+    HR_ACTIVITY_SOURCE_FETCH_FAILED,
+)
 
 if TYPE_CHECKING:
     from synthorg.budget.tracker import CostTracker
@@ -38,6 +41,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 _DEFAULT_WINDOW_HOURS: int = 168  # 7 days -- matches API controller cap.
+_MAX_WINDOW_HOURS: int = 720  # 30 days -- upper cap for pathological queries.
 _LIFECYCLE_CAP: int = 1000
 
 
@@ -97,7 +101,24 @@ class ActivityFeedService:
 
         Returns:
             Tuple of ``(page, total)``.
+
+        Raises:
+            ValueError: If ``offset`` is negative, ``limit`` is not
+                strictly positive, or ``window_hours`` is outside
+                ``[1, _MAX_WINDOW_HOURS]``.
         """
+        if offset < 0:
+            msg = f"offset must be >= 0, got {offset}"
+            raise ValueError(msg)
+        if limit < 1:
+            msg = f"limit must be >= 1, got {limit}"
+            raise ValueError(msg)
+        if window_hours < 1 or window_hours > _MAX_WINDOW_HOURS:
+            msg = (
+                f"window_hours must be between 1 and {_MAX_WINDOW_HOURS}, "
+                f"got {window_hours}"
+            )
+            raise ValueError(msg)
         now = datetime.now(UTC)
         since = now - timedelta(hours=window_hours)
         agent_key = str(agent_id)
@@ -171,7 +192,19 @@ class ActivityFeedService:
             )
         except MemoryError, RecursionError:
             raise
-        except Exception:
+        except Exception as exc:
+            # Log so operators can distinguish "no records" from
+            # "fetch failed"; the caller still gets an empty tuple
+            # so the merge proceeds with the remaining sources.
+            logger.warning(
+                HR_ACTIVITY_SOURCE_FETCH_FAILED,
+                source="cost_tracker",
+                agent_id=agent_id,
+                since=since.isoformat(),
+                until=now.isoformat(),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             return ()
 
     async def _fetch_tools(
@@ -195,7 +228,16 @@ class ActivityFeedService:
             )
         except MemoryError, RecursionError:
             raise
-        except Exception:
+        except Exception as exc:
+            logger.warning(
+                HR_ACTIVITY_SOURCE_FETCH_FAILED,
+                source="tool_invocation_tracker",
+                agent_id=agent_id,
+                since=since.isoformat(),
+                until=now.isoformat(),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             return ()
 
     async def _fetch_delegations(
@@ -223,7 +265,16 @@ class ActivityFeedService:
                 )
             except MemoryError, RecursionError:
                 raise
-            except Exception:
+            except Exception as exc:
+                logger.warning(
+                    HR_ACTIVITY_SOURCE_FETCH_FAILED,
+                    source="delegation_store.delegator",
+                    agent_id=agent_id,
+                    since=since.isoformat(),
+                    until=now.isoformat(),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
                 return ()
 
         async def _safe_delegatee() -> tuple:  # type: ignore[type-arg]
@@ -236,7 +287,16 @@ class ActivityFeedService:
                 )
             except MemoryError, RecursionError:
                 raise
-            except Exception:
+            except Exception as exc:
+                logger.warning(
+                    HR_ACTIVITY_SOURCE_FETCH_FAILED,
+                    source="delegation_store.delegatee",
+                    agent_id=agent_id,
+                    since=since.isoformat(),
+                    until=now.isoformat(),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
                 return ()
 
         async with asyncio.TaskGroup() as tg:

@@ -66,7 +66,17 @@ class ScalingDecisionService:
 
         Returns:
             Tuple of ``(page, total)`` with newest-first ordering.
+
+        Raises:
+            ValueError: If ``offset`` is negative or ``limit`` is not
+                strictly positive.
         """
+        if offset < 0:
+            msg = f"offset must be >= 0, got {offset}"
+            raise ValueError(msg)
+        if limit < 1:
+            msg = f"limit must be >= 1, got {limit}"
+            raise ValueError(msg)
         decisions = self._scaling.get_recent_decisions()
         # ``get_recent_decisions`` returns oldest-first (deque order).
         # Reverse for the MCP surface so handlers get newest-first.

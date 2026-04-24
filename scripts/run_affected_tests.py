@@ -232,12 +232,13 @@ def _check_timing_regression(  # noqa: PLR0911 -- branching by data shape
         and test_count is not None
         and test_count > 0
     )
-    if (
-        have_per_test
-        and threshold_ratio is not None
-        and baseline_test_count is not None
-        and test_count is not None
-    ):
+    if have_per_test:
+        # have_per_test already narrows to non-None, positive values,
+        # but the type-narrowing flow doesn't propagate across the
+        # conjunction so re-assert the invariants inline for mypy.
+        assert threshold_ratio is not None  # noqa: S101
+        assert baseline_test_count is not None  # noqa: S101
+        assert test_count is not None  # noqa: S101
         baseline_per_test = baseline_secs / baseline_test_count
         current_per_test = elapsed / test_count
         max_per_test = baseline_per_test * threshold_ratio
@@ -314,26 +315,33 @@ def _run_pytest(paths: list[str], *, run_all: bool = False) -> int:
         "-q",
     ]
     start = time.monotonic()
-    # Capture stdout so we can parse the "N passed" summary for the
-    # per-test-cost regression guard; tee to our stdout so the user
-    # still sees live pytest output.
-    result = subprocess.run(
+    # Stream pytest stdout line-by-line so users see live progress
+    # (subprocess.run + capture_output buffers everything until the
+    # process exits, which hides the ~90s full suite behind silence).
+    # We still tee into a buffer so the "N passed" summary line is
+    # available to ``_parse_test_count`` below.
+    with subprocess.Popen(
         cmd,
         cwd=_REPO_ROOT,
-        check=False,
-        capture_output=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
         text=True,
-    )
+        bufsize=1,
+    ) as proc:
+        stdout_lines: list[str] = []
+        assert proc.stdout is not None  # noqa: S101 -- guaranteed by PIPE above
+        for line in proc.stdout:
+            sys.stdout.write(line)
+            sys.stdout.flush()
+            stdout_lines.append(line)
+        returncode = proc.wait()
     elapsed = time.monotonic() - start
-    if result.stdout:
-        sys.stdout.write(result.stdout)
-    if result.stderr:
-        sys.stderr.write(result.stderr)
-    test_count = _parse_test_count(result.stdout or "")
+    captured_stdout = "".join(stdout_lines)
+    test_count = _parse_test_count(captured_stdout)
     if _check_timing_regression(elapsed, run_all=run_all, test_count=test_count):
         # Regression detected -- block the push even if tests passed.
-        return max(result.returncode, 1)
-    return result.returncode
+        return max(returncode, 1)
+    return returncode
 
 
 def main() -> int:

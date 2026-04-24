@@ -15,6 +15,7 @@ stripped-down unit environments); production deployments wire the
 services in the application bootstrap.
 """
 
+import copy
 from collections.abc import Mapping  # noqa: TC003 -- PEP 649 annotation
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
@@ -35,6 +36,7 @@ from synthorg.meta.mcp.handlers.common import (
     dump_many,
     err,
     ok,
+    require_arg,
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.mcp import (
@@ -71,10 +73,19 @@ def _log_failed(tool: str, exc: Exception) -> None:
 
 
 def _require_non_blank(arguments: dict[str, Any], key: str) -> str:
-    raw = arguments.get(key)
-    if not isinstance(raw, str) or not raw.strip():
+    """Extract a non-blank string via the shared typed-extraction path.
+
+    Delegates type-checking to :func:`require_arg` (raises
+    ``ArgumentValidationError`` with a clear ``expected`` string on a
+    missing key or type mismatch) and then enforces non-blankness with
+    the same ``invalid_argument`` helper the rest of the handler
+    layer uses.
+    """
+    raw = require_arg(arguments, key, str)
+    trimmed = raw.strip()
+    if not trimmed:
         raise invalid_argument(key, _TY_NON_BLANK)
-    return raw.strip()
+    return trimmed
 
 
 _WHY_COORDINATION_NOT_WIRED = (
@@ -355,17 +366,19 @@ def _require_non_blank_value(value: Any, arg_name: str) -> str:
 
 
 COORDINATION_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(
-    {
-        "synthorg_coordination_coordinate_task": _coordination_coordinate_task,
-        "synthorg_coordination_metrics_list": _coordination_metrics_list,
-        "synthorg_scaling_list_decisions": _scaling_list_decisions,
-        "synthorg_scaling_get_decision": _scaling_get_decision,
-        "synthorg_scaling_get_config": _scaling_get_config,
-        "synthorg_scaling_trigger": _scaling_trigger,
-        "synthorg_ceremony_policy_get": _ceremony_policy_get,
-        "synthorg_ceremony_policy_get_resolved": _ceremony_policy_get_resolved,
-        "synthorg_ceremony_policy_get_active_strategy": (
-            _ceremony_policy_get_active_strategy
-        ),
-    },
+    copy.deepcopy(
+        {
+            "synthorg_coordination_coordinate_task": _coordination_coordinate_task,
+            "synthorg_coordination_metrics_list": _coordination_metrics_list,
+            "synthorg_scaling_list_decisions": _scaling_list_decisions,
+            "synthorg_scaling_get_decision": _scaling_get_decision,
+            "synthorg_scaling_get_config": _scaling_get_config,
+            "synthorg_scaling_trigger": _scaling_trigger,
+            "synthorg_ceremony_policy_get": _ceremony_policy_get,
+            "synthorg_ceremony_policy_get_resolved": _ceremony_policy_get_resolved,
+            "synthorg_ceremony_policy_get_active_strategy": (
+                _ceremony_policy_get_active_strategy
+            ),
+        },
+    ),
 )
