@@ -71,8 +71,8 @@ data/             # Shared data files (competitors.yaml for comparison page)
 ## Releasing
 
 - **Automated by Release Please**: every push to `main` creates/updates a release PR with changelog
-- **Version bumping** (pre-1.0): `fix:`/`feat:` = patch, `feat!:`/`BREAKING CHANGE` = minor. Post-1.0: standard semver
-- **`Release-As` trailer**: add `Release-As: 0.4.0` as the **final paragraph** of the PR body (separated by blank line). Mid-body placement is silently ignored.
+- **Version bumping**: `always-bump-patch` strategy -- every release bumps patch (e.g. 0.5.3 -> 0.5.4), regardless of commit type. `auto-rollover.yml` detects when the last stable patch is 9 and creates an empty `Release-As: 0.(X+1).0` commit to preserve the 0.X.9 -> 0.(X+1).0 pattern automatically.
+- **`Release-As` trailer**: add `Release-As: 1.0.0` as the **final paragraph** of the PR body (separated by blank line) for exception bumps (1.0 graduation, explicit version jumps). Mid-body placement is silently ignored.
 - **Release flow**: merge release PR -> draft Release + tag -> Docker + CLI workflows attach assets -> finalize-release publishes
 - **Dev channel**: every push to `main` (except Release Please bumps) creates a dev pre-release (e.g. `v0.4.7-dev.3`) via `dev-release.yml`. Users opt in with `synthorg config set channel dev`. Dev releases flow through the same Docker + CLI pipelines as stable releases. All dev releases and tags are deleted when a stable release is published.
 - **Config**: `.github/release-please-config.json`, `.github/.release-please-manifest.json` (do not edit manually)
@@ -93,6 +93,7 @@ data/             # Shared data files (competitors.yaml for comparison page)
 - **Dependency review**: `dependency-review.yml` -- license allow-list (permissive + weak-copyleft), per-package GPL exemptions for dev-only tool deps (golangci-lint), PR comment summaries
 - **CLA**: `cla.yml` -- contributor-assistant check on PRs, signatures in `.github/cla-signatures.json`
 - **Release**: `release.yml` -- Release Please creates draft release PR. Uses `RELEASE_PLEASE_TOKEN` (PAT; scope documented in [docs/reference/github-environments.md](./github-environments.md#release_please_token)). Gated by the `release` deployment environment. First step is an explicit `refs/heads/main` guard before the token is exposed.
+- **Auto Rollover**: `auto-rollover.yml` -- detects when the last stable tag's patch is 9 and appends an empty commit with `Release-As: 0.(minor+1).0` trailer so Release Please targets the minor bump. Skips Release Please release commits and any commit that already carries a `Release-As:` trailer (including its own). Gated by the `release` deployment environment; uses `RELEASE_PLEASE_TOKEN` so the new commit triggers downstream Release + Dev Release workflows.
 - **Dev Release**: `dev-release.yml` -- creates semver dev tags (e.g. `v0.4.7-dev.3`) and draft pre-releases on every push to main (skips Release Please version-bump commits). Tags trigger existing Docker + CLI workflows for full build/scan/sign pipeline. Gated by the `release` deployment environment with the same `refs/heads/main` branch-validation guard. Incrementally prunes old dev pre-releases (keeps 5 most recent); finalize-release deletes all remaining when a stable release is published.
 - **Finalize Release**: `finalize-release.yml` -- publishes draft after Docker + CLI workflows succeed for tag. Gated by the `release` deployment environment. Immutable releases enabled. Handles both stable and dev releases. Deletes all dev pre-releases and tags when a stable release is published.
 
