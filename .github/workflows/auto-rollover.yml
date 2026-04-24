@@ -31,36 +31,26 @@ jobs:
       contents: write
       pull-requests: read
     steps:
-      # Belt-and-braces with the `on: push: branches: [main]` trigger.
-      - name: Validate trigger branch
-        run: |
-          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
-            echo "::error::auto-rollover.yml must only run on refs/heads/main, got: $GITHUB_REF"
-            exit 1
-          fi
-
-      # Mint installation token for the `synthorg-release-bot` App. The
-      # rollover commit is pushed directly to main, which enforces signed
-      # commits via branch protection. App-token-authored Git Data API
-      # commits are GitHub-signed (`verified: true, reason: "valid"`) AND
-      # trigger downstream Release + Dev Release workflows -- the two
-      # constraints PAT + GITHUB_TOKEN could not satisfy together.
-      # A missing RELEASE_BOT_APP_ID / RELEASE_BOT_APP_PRIVATE_KEY secret
-      # fails this step fast with an informative error, so we no longer
-      # need the prior "Validate token" preflight.
-      - name: Mint release-bot App token
-        id: app-token
-        uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v3.1.1
-        with:
-          app-id: ${{ secrets.RELEASE_BOT_APP_ID }}
-          private-key: ${{ secrets.RELEASE_BOT_APP_PRIVATE_KEY }}
-          owner: ${{ github.repository_owner }}
-          repositories: synthorg
-
+      # Full-history checkout: the "Check if rollover is needed" step
+      # walks git tags via `git tag --sort=-v:refname` and compares the
+      # last stable tag's commit against HEAD, which requires complete
+      # history.
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           fetch-depth: 0
           persist-credentials: false
+
+      # Shared setup: validate ref is refs/heads/main and mint the
+      # synthorg-release-bot App installation token. The minted token
+      # is needed so the rollover commit on main is GitHub-signed (main
+      # enforces signed commits via branch protection) AND triggers the
+      # downstream Release + Dev Release workflows.
+      - name: Release runner setup
+        id: setup
+        uses: ./.github/actions/release-runner-setup
+        with:
+          app-id: ${{ secrets.RELEASE_BOT_APP_ID }}
+          app-private-key: ${{ secrets.RELEASE_BOT_APP_PRIVATE_KEY }}
 
       - name: Check if rollover is needed
         id: check
@@ -126,7 +116,7 @@ jobs:
           # tokens). Git Data API commits from an App token are signed
           # with GitHub's internal key, attributed to the App's bot
           # identity, and verify as `{verified: true, reason: "valid"}`.
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GH_TOKEN: ${{ steps.setup.outputs.token }}
           NEXT_VERSION: ${{ steps.check.outputs.next_version }}
         run: |
           set -euo pipefail

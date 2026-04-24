@@ -15,36 +15,28 @@ jobs:
       contents: write
       pull-requests: write
     steps:
-      # Belt-and-braces with the `on: push: branches: [main]` trigger.
-      # Fails fast if the workflow is ever invoked from another ref (e.g. a
-      # future `workflow_dispatch` addition or an unexpected routing event)
-      # before the App token is minted.
-      - name: Validate trigger branch
-        run: |
-          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
-            echo "::error::release.yml must only run on refs/heads/main, got: $GITHUB_REF"
-            exit 1
-          fi
+      # Minimal checkout of main required so `./.github/actions/...`
+      # paths resolve on the runner disk. `fetch-depth: 1` is enough;
+      # release-please works via REST API, not the local working tree.
+      # The subsequent BSL-date step does its own checkout of the
+      # release-please PR branch when applicable.
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
 
-      # Mint a short-lived installation token for the `synthorg-release-bot`
-      # GitHub App. App-token-authored API commits are GitHub-signed (verify
-      # via `gh api .../commits/<sha> --jq '.commit.verification'` -> expect
-      # `verified: true, reason: "valid"`) AND trigger downstream workflows
-      # -- the two constraints PAT + GITHUB_TOKEN could not satisfy together.
-      # See docs/reference/github-environments.md for provisioning.
-      - name: Mint release-bot App token
-        id: app-token
-        uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v3.1.1
+      # Shared setup: validate ref is refs/heads/main and mint the
+      # synthorg-release-bot App installation token.
+      - name: Release runner setup
+        id: setup
+        uses: ./.github/actions/release-runner-setup
         with:
           app-id: ${{ secrets.RELEASE_BOT_APP_ID }}
-          private-key: ${{ secrets.RELEASE_BOT_APP_PRIVATE_KEY }}
-          owner: ${{ github.repository_owner }}
-          repositories: synthorg
+          app-private-key: ${{ secrets.RELEASE_BOT_APP_PRIVATE_KEY }}
 
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5
         id: release
         with:
-          token: ${{ steps.app-token.outputs.token }}
+          token: ${{ steps.setup.outputs.token }}
           config-file: .github/release-please-config.json
           manifest-file: .github/.release-please-manifest.json
 
