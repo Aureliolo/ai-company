@@ -2,7 +2,7 @@ ci:
   autoupdate_schedule: never
   autofix_prs: true
   autofix_commit_msg: "style: auto-fix pre-commit hooks"
-  skip: [commitizen, gitleaks, hadolint-docker, caddy-validate, no-em-dashes, no-redundant-timeout, mypy, pytest-unit, golangci-lint, go-vet, go-test, eslint-web, check-push-rebased, check-single-migration-per-pr, check-no-modify-migration, forbidden-literals, persistence-boundary, no-new-logger-exception-str-exc, orphan-fixtures]
+  skip: [commitizen, gitleaks, hadolint-docker, caddy-validate, no-em-dashes, no-redundant-timeout, mypy, pytest-unit, golangci-lint, go-vet, go-test, eslint-web, check-push-rebased, check-single-migration-per-pr, check-no-modify-migration, forbidden-literals, persistence-boundary, no-new-logger-exception-str-exc, orphan-fixtures, no-release-please-token, workflow-shell-git-commits]
 
 default_install_hook_types: [pre-commit, commit-msg, pre-push]
 
@@ -124,6 +124,20 @@ repos:
         args: [run, python, scripts/check_logger_exception_str_exc.py]
         language: system
         files: ^src/synthorg/.*\.py$
+
+      - id: no-release-please-token
+        name: forbid new RELEASE_PLEASE_TOKEN references (#1555)
+        entry: uv
+        args: [run, python, scripts/check_no_release_please_token.py]
+        language: system
+        files: ^\.github/.*\.ya?ml$
+
+      - id: workflow-shell-git-commits
+        name: block shell git commit+push in workflows (must mint App token)
+        entry: uv
+        args: [run, python, scripts/check_workflow_shell_git_commits.py]
+        language: system
+        files: ^\.github/workflows/.*\.ya?ml$
 
       - id: mypy
         name: mypy type-check (affected modules)
