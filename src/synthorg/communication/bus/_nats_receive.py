@@ -102,6 +102,14 @@ async def _maybe_log_overflow(
     last = state.last_overflow_log.get(key, 0.0)
     if now - last < _OVERFLOW_LOG_INTERVAL_SECONDS:
         return
+    # Claim the rate-limit slot *before* awaiting ``consumer_info()``
+    # so concurrent callers on the same ``(channel, subscriber)`` key
+    # cannot all pass the window check and pile on duplicate probes
+    # + log entries. The timestamp is cleared only on a caller that
+    # actually observes a healthy (non-paused) consumer, so the next
+    # genuine overflow after a recovery window is still reported
+    # within ``_OVERFLOW_LOG_INTERVAL_SECONDS``.
+    state.last_overflow_log[key] = now
     try:
         info = await sub.consumer_info()
     except MemoryError, RecursionError:
@@ -111,7 +119,6 @@ async def _maybe_log_overflow(
     num_pending = getattr(info, "num_ack_pending", 0)
     if num_pending < cap:
         return
-    state.last_overflow_log[key] = now
     logger.warning(
         COMM_SUBSCRIBER_QUEUE_OVERFLOW,
         channel=channel_name,

@@ -41,6 +41,18 @@ export interface ThemeState extends ThemePreferences {
    * cycles in dev. Idempotent.
    */
   teardown: () => void
+  /**
+   * Re-attach the `prefers-reduced-motion` matchMedia listener after
+   * a prior `teardown()`. Idempotent: calling it while the listener
+   * is already attached is a no-op. Needed because the store is a
+   * Zustand singleton whose closure refs are permanently nulled by
+   * `teardown()`; without this method, tests running after the
+   * global `afterEach` have a store that no longer reacts to OS
+   * reduced-motion preference changes. Tests that exercise runtime
+   * reduced-motion reactivity should call `reattach()` after
+   * mocking `window.matchMedia`.
+   */
+  reattach: () => void
 }
 
 // ---------------------------------------------------------------------------
@@ -186,10 +198,19 @@ export const useThemeStore = create<ThemeState>()((set, get) => {
   // Listen for reduced-motion changes. Capture both the MediaQueryList
   // and the change handler in closure-scoped refs so `teardown()` can
   // call `removeEventListener` with the same handler identity. Set to
-  // `null` after teardown so a second call is a no-op.
+  // `null` after teardown so a second call is a no-op -- and so
+  // `reattach()` can re-install a fresh pair without duplicate adds.
   let mql: MediaQueryList | null = null
   let reducedMotionHandler: ((e: MediaQueryListEvent) => void) | null = null
-  if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
+
+  // Install the listener against the current `window.matchMedia`.
+  // Factored out so both the initial store creation AND `reattach()`
+  // drive the same code path. Idempotent: a second call while the
+  // listener is still attached is a no-op, which keeps the
+  // `--detect-async-leaks` per-test add/remove count symmetric.
+  const attachReducedMotionListener = (): void => {
+    if (mql && reducedMotionHandler) return
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return
     mql = window.matchMedia('(prefers-reduced-motion: reduce)')
     reducedMotionHandler = (e) => {
       set({ reducedMotionDetected: e.matches })
@@ -208,6 +229,8 @@ export const useThemeStore = create<ThemeState>()((set, get) => {
     }
     mql.addEventListener('change', reducedMotionHandler)
   }
+
+  attachReducedMotionListener()
 
   return {
     ...initial,
@@ -268,6 +291,10 @@ export const useThemeStore = create<ThemeState>()((set, get) => {
       }
       mql = null
       reducedMotionHandler = null
+    },
+
+    reattach: (): void => {
+      attachReducedMotionListener()
     },
   }
 })

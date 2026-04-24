@@ -38,6 +38,14 @@ _BOOTSTRAP_ERROR_BACKOFF: Final[float] = 1.0
 _BOOTSTRAP_MAX_CONSECUTIVE_ERRORS: Final[int] = 30
 """Fallback error budget used before the settings resolver is ready."""
 _SETTINGS_CHANNEL: Final[str] = "#settings"
+_STOP_DRAIN_TIMEOUT_SECONDS: Final[float] = 10.0
+"""Hard deadline for the ``stop()`` drain.
+
+Per CLAUDE.md ``## Code Conventions`` > Lifecycle synchronization:
+services whose ``stop()`` drains across ``await`` boundaries must
+wrap the drain in ``asyncio.wait_for`` so the lifecycle lock cannot
+be held indefinitely if the polling task ignores cancellation.
+"""
 
 # Legacy aliases (retain name-compat for callers reaching into this module).
 _POLL_TIMEOUT = _BOOTSTRAP_POLL_TIMEOUT
@@ -127,8 +135,29 @@ class SettingsChangeDispatcher:
 
             if self._task is not None:
                 self._task.cancel()
-                with contextlib.suppress(asyncio.CancelledError):
-                    await self._task
+                with contextlib.suppress(asyncio.CancelledError, TimeoutError):
+                    try:
+                        await asyncio.wait_for(
+                            self._task,
+                            timeout=_STOP_DRAIN_TIMEOUT_SECONDS,
+                        )
+                    except TimeoutError:
+                        # Drain exceeded the hard deadline -- release
+                        # the lifecycle lock so a subsequent start()
+                        # is not blocked forever by a poll task that
+                        # ignored cancellation. Re-raised to the
+                        # enclosing suppress() for a clean exit.
+                        # TRY400: logger.exception here would append a
+                        # TimeoutError traceback with no actionable
+                        # diagnostic beyond the structured fields below.
+                        logger.error(  # noqa: TRY400
+                            SETTINGS_DISPATCHER_STOPPED,
+                            error=(
+                                "stop exceeded hard deadline; lifecycle lock released"
+                            ),
+                            timeout_seconds=_STOP_DRAIN_TIMEOUT_SECONDS,
+                        )
+                        raise
                 self._task = None
 
             self._running = False

@@ -73,4 +73,36 @@ describe('useThemeStore teardown', () => {
     store.teardown() // must not throw or double-remove
     expect(attachedListeners.size).toBe(0)
   })
+
+  it('reattach() re-installs the listener after a prior teardown()', () => {
+    const store = useThemeStore.getState()
+    // teardown clears the closure refs so reattach is observably a
+    // fresh addEventListener against the current window.matchMedia
+    // (which the test has already swapped to the instrumented fake).
+    store.teardown()
+    expect(attachedListeners.size).toBe(0)
+
+    const addsBefore = addCalls
+    store.reattach()
+    expect(addCalls).toBe(addsBefore + 1)
+    expect(attachedListeners.size).toBe(1)
+  })
+
+  it('reattach() is idempotent while the listener is already attached', () => {
+    const store = useThemeStore.getState()
+    store.teardown()
+    store.reattach()
+    const addsAfterFirst = addCalls
+    store.reattach() // second call while attached must be a no-op
+    expect(addCalls).toBe(addsAfterFirst)
+    expect(attachedListeners.size).toBe(1)
+  })
+
+  it('reattach() then teardown() returns to a detached state', () => {
+    const store = useThemeStore.getState()
+    store.teardown()
+    store.reattach()
+    store.teardown()
+    expect(attachedListeners.size).toBe(0)
+  })
 })

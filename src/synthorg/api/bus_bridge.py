@@ -35,6 +35,14 @@ _POLL_TIMEOUT: Final[float] = 1.0
 """Fallback poll timeout used when no resolver is wired in."""
 _MAX_CONSECUTIVE_ERRORS: Final[int] = 30
 """Fallback error budget used when no resolver is wired in."""
+_STOP_DRAIN_TIMEOUT_SECONDS: Final[float] = 10.0
+"""Hard deadline for the ``stop()`` drain.
+
+Per CLAUDE.md ``## Code Conventions`` > Lifecycle synchronization:
+services whose ``stop()`` drains across ``await`` boundaries must
+wrap the drain in ``asyncio.wait_for`` so the lifecycle lock cannot
+be held indefinitely if a polling task ignores cancellation.
+"""
 
 
 class MessageBusBridge:
@@ -235,10 +243,33 @@ class MessageBusBridge:
             for task in self._tasks:
                 task.cancel()
             if self._tasks:
-                results = await asyncio.gather(
-                    *self._tasks,
-                    return_exceptions=True,
-                )
+                results: list[BaseException | None]
+                try:
+                    results = await asyncio.wait_for(
+                        asyncio.gather(
+                            *self._tasks,
+                            return_exceptions=True,
+                        ),
+                        timeout=_STOP_DRAIN_TIMEOUT_SECONDS,
+                    )
+                except TimeoutError:
+                    # Drain exceeded the hard deadline -- release the
+                    # lifecycle lock so a subsequent start() is not
+                    # blocked forever by a task that ignored cancellation.
+                    # The orphaned tasks stay referenced on the event
+                    # loop until the process exits; this is preferable
+                    # to a livelock of the lifecycle lock.
+                    # TRY400: logger.exception here would append a
+                    # TimeoutError traceback with no actionable diagnostic
+                    # information beyond the structured fields below.
+                    logger.error(  # noqa: TRY400
+                        API_APP_SHUTDOWN,
+                        component="bus_bridge",
+                        error="stop exceeded hard deadline; lifecycle lock released",
+                        timeout_seconds=_STOP_DRAIN_TIMEOUT_SECONDS,
+                        pending_tasks=sum(1 for t in self._tasks if not t.done()),
+                    )
+                    results = []
                 for result in results:
                     if isinstance(result, asyncio.CancelledError):
                         continue

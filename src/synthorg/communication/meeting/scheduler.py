@@ -55,6 +55,15 @@ logger = get_logger(__name__)
 # Minimum participants required for a meeting (leader + at least 1 other).
 _MIN_PARTICIPANTS: int = 2
 
+_STOP_DRAIN_TIMEOUT_SECONDS: float = 10.0
+"""Hard deadline for the ``stop()`` drain.
+
+Per CLAUDE.md ``## Code Conventions`` > Lifecycle synchronization:
+services whose ``stop()`` drains across ``await`` boundaries must
+wrap the drain in ``asyncio.wait_for`` so the lifecycle lock cannot
+be held indefinitely if a periodic task ignores cancellation.
+"""
+
 
 class MeetingScheduler:
     """Background service for scheduling and triggering meetings.
@@ -178,10 +187,29 @@ class MeetingScheduler:
             for task in self._tasks:
                 task.cancel()
             if self._tasks:
-                results = await asyncio.gather(
-                    *self._tasks,
-                    return_exceptions=True,
-                )
+                results: list[BaseException | None]
+                try:
+                    results = await asyncio.wait_for(
+                        asyncio.gather(
+                            *self._tasks,
+                            return_exceptions=True,
+                        ),
+                        timeout=_STOP_DRAIN_TIMEOUT_SECONDS,
+                    )
+                except TimeoutError:
+                    # Drain exceeded the hard deadline -- release the
+                    # lifecycle lock so a subsequent start() is not
+                    # blocked forever by a task that ignored cancellation.
+                    # TRY400: logger.exception here would append a
+                    # TimeoutError traceback with no actionable diagnostic
+                    # information beyond the structured fields below.
+                    logger.error(  # noqa: TRY400
+                        MEETING_SCHEDULER_ERROR,
+                        note="stop exceeded hard deadline; lifecycle lock released",
+                        timeout_seconds=_STOP_DRAIN_TIMEOUT_SECONDS,
+                        pending_tasks=sum(1 for t in self._tasks if not t.done()),
+                    )
+                    results = []
                 for result in results:
                     if isinstance(result, asyncio.CancelledError):
                         continue
