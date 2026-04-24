@@ -1,8 +1,43 @@
 import { http, HttpResponse } from 'msw'
+// Value import (not `import type`): the test files in this suite
+// consistently value-import endpoint symbols when they appear inside
+// `paginatedFor<typeof X>(...)` calls. Both forms compile with TS6
+// in this project, but the value import keeps the convention
+// consistent with users.test.ts / agents.test.ts / etc.
+import { listIntegrationHealth } from '@/api/endpoints/integration-health'
 import type { Connection, HealthReport } from '@/api/types/integrations'
 import { useConnectionsStore } from '@/stores/connections'
-import { apiError, apiSuccess, voidSuccess } from '@/mocks/handlers'
+import {
+  apiError,
+  apiSuccess,
+  emptyPage,
+  paginatedFor,
+  voidSuccess,
+} from '@/mocks/handlers'
+import type { PaginatedResult } from '@/api/client'
 import { server } from '@/test-setup'
+
+function singlePage(reports: readonly HealthReport[]): PaginatedResult<HealthReport> {
+  // Match the endpoint default page size + the MSW mock's default
+  // (web/src/mocks/handlers/integration-health.ts) so test fixtures
+  // do not drift from the wire contract.
+  const limit = 50
+  return {
+    data: [...reports],
+    total: reports.length,
+    offset: 0,
+    limit,
+    nextCursor: null,
+    hasMore: false,
+    pagination: {
+      total: reports.length,
+      offset: 0,
+      limit,
+      next_cursor: null,
+      has_more: false,
+    },
+  }
+}
 
 const sampleConnection: Connection = {
   id: 'conn-primary-github',
@@ -38,7 +73,9 @@ describe('useConnectionsStore', () => {
         HttpResponse.json(apiSuccess([sampleConnection])),
       ),
       http.get('/api/v1/integrations/health', () =>
-        HttpResponse.json(apiSuccess([sampleReport])),
+        HttpResponse.json(
+          paginatedFor<typeof listIntegrationHealth>(singlePage([sampleReport])),
+        ),
       ),
     )
 
@@ -56,7 +93,9 @@ describe('useConnectionsStore', () => {
         HttpResponse.json(apiError('Network down')),
       ),
       http.get('/api/v1/integrations/health', () =>
-        HttpResponse.json(apiSuccess([])),
+        HttpResponse.json(
+          paginatedFor<typeof listIntegrationHealth>(emptyPage<HealthReport>()),
+        ),
       ),
     )
 

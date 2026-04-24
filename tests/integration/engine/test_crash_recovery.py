@@ -21,7 +21,7 @@ from synthorg.engine.loop_protocol import TerminationReason
 from synthorg.engine.task_execution import TaskExecution
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncIterator, Mapping
 
     from synthorg.providers.capabilities import ModelCapabilities
     from synthorg.providers.models import (
@@ -75,6 +75,12 @@ class _FailingProvider:
             cost_per_1k_input=0.01,
             cost_per_1k_output=0.03,
         )
+
+    async def batch_get_capabilities(
+        self,
+        models: tuple[str, ...],
+    ) -> Mapping[str, ModelCapabilities | None]:
+        return {m: await self.get_model_capabilities(m) for m in models}
 
 
 def _make_identity() -> AgentIdentity:

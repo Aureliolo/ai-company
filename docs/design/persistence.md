@@ -81,6 +81,22 @@ inventory is the set of properties / factory methods on
 concrete repositories live alongside the dialect-specific backends in
 ``src/synthorg/persistence/{sqlite,postgres}/``.
 
+The dialect-specific subdirectories share a third sibling at
+``src/synthorg/persistence/_shared/``.  This is the canonical home for
+backend-agnostic serialization, deserialization, error-classification,
+and timestamp-normalization logic that both SQLite and Postgres repos
+would otherwise duplicate (current modules: ``audit.py``,
+``custom_rule.py``, plus the shared ``normalize_utc`` helper exported
+from ``__init__.py``).  Backend repos pass driver-specific bits (SQL
+placeholder style, JSON wrappers, predicates that classify duplicate-key
+errors) into the helpers as callables, so the helpers stay portable and
+the conformance tests at
+``tests/conformance/persistence/test_*_repository.py`` exercise the
+canonical contract on both backends in a single parametrized pass.
+Adding a new shared helper: extract the duplicated logic, add a
+``test_*_helpers.py`` unit suite alongside it, and add a conformance
+test that runs against both backends.
+
 Every concrete repository implements its matching protocol; application code
 depends on the protocol, not the implementation.  Switching backends is a
 configuration change (``PersistenceConfig.backend``) rather than a code change,
@@ -148,6 +164,38 @@ comes from a separate `count_tasks` call.  `include_total=False` skips the
 second round trip entirely -- meant for callers that only need `has_more`
 semantics via an extra page, not an exact total.  Negative `limit` or
 `offset` is rejected at the engine boundary with `ValueError`.
+
+### Cursor-paginated list endpoints
+
+List endpoints standardize on the `paginate_cursor` helper in
+`src/synthorg/api/pagination.py` and return `PaginatedResponse[T]` with
+the wire envelope documented in `web/CLAUDE.md`
+(``PaginationMeta { limit, next_cursor, has_more, total, offset }``).
+Cursors are HMAC-signed offsets bound to a per-deployment secret
+(`SYNTHORG_PAGINATION_CURSOR_SECRET`), so a tampered cursor surfaces as
+HTTP 400 `InvalidCursorError` without leaking internal IDs or counts.
+
+The contract requires every paginated endpoint to feed `paginate_cursor`
+a **deterministically-sorted** sequence so cursor offsets remain stable
+across calls.  The sort key MUST be **total** -- ties on the visible
+sort fields create page-boundary drift (a request for the next page can
+return a row already on the previous page, or skip a row entirely).
+When the natural sort fields are not unique, append the entity's stable
+identifier as a final tie-breaker.  Currently paginated endpoints and
+their sort keys:
+
+| Endpoint                              | Sort key                                              |
+|---------------------------------------|-------------------------------------------------------|
+| `GET /api/v1/users`                   | `id` (already unique)                                 |
+| `GET /api/v1/subworkflows`            | `(name, latest_version, subworkflow_id)`              |
+| `GET /api/v1/integrations/health`     | connection name (unique within the catalog)           |
+| `GET /api/v1/settings`                | `(definition.namespace, definition.key)` (unique pair)|
+
+The integration-health endpoint additionally probes only the
+connections on the current page (a 100-connection catalog stops paying
+100 upstream probes per request).  Frontend stores reach the wire
+envelope through `unwrapPaginated` (single page) or `paginateAll` (full
+snapshot via cursor walk), both in `web/src/api/client.ts`.
 
 ### Backend capability methods
 

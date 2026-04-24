@@ -16,9 +16,12 @@ from litestar.params import Parameter
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from synthorg.api.controllers._workflow_helpers import get_auth_user_id
-from synthorg.api.dto import ApiResponse
+from synthorg.api.cursor import InvalidCursorError, decode_keyset_cursor
+from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_read_access, require_write_access
+from synthorg.api.pagination import CursorLimit, CursorParam, encode_keyset_meta
 from synthorg.api.path_params import PathId  # noqa: TC001
+from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.enums import WorkflowType
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.errors import (
@@ -31,8 +34,12 @@ from synthorg.engine.workflow.definition import (
     WorkflowIODeclaration,
     WorkflowNode,
 )
-from synthorg.engine.workflow.subworkflow_registry import SubworkflowRegistry
-from synthorg.observability import get_logger
+from synthorg.engine.workflow.subworkflow_registry import (
+    SubworkflowRegistry,
+    encode_subworkflow_keyset,
+)
+from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.api import API_CURSOR_INVALID
 from synthorg.observability.events.workflow_definition import (
     SUBWORKFLOW_INVALID_REQUEST,
 )
@@ -112,15 +119,89 @@ class SubworkflowController(Controller):
     async def list_subworkflows(
         self,
         state: State,
-    ) -> Response[ApiResponse[tuple[SubworkflowSummary, ...]]]:
-        """List every unique subworkflow in the registry (latest per id)."""
+        cursor: CursorParam = None,
+        limit: CursorLimit = 50,
+    ) -> PaginatedResponse[SubworkflowSummary]:
+        """List subworkflows with keyset-based cursor pagination.
+
+        Sorted by ``(name, latest_version, subworkflow_id)`` -- the
+        ``subworkflow_id`` tail is the required tie-breaker so two
+        summaries sharing ``(name, latest_version)`` cannot drift
+        between pages.  The cursor encodes a JSON-serialised triple
+        ``["name", "latest_version", "subworkflow_id"]`` (see
+        :func:`encode_subworkflow_keyset`); a naive
+        ``f"{name}|{version}|{id}"`` join could collide whenever any
+        component contains the delimiter, since ``NotBlankStr`` does
+        not forbid pipes / colons / etc.  The next page reads where
+        the composite sort key tuple ``(name, latest_version,
+        subworkflow_id)`` is strictly greater than the decoded
+        triple.  Keyset contract is stable under concurrent inserts
+        and deletes.
+
+        Args:
+            state: Application state.
+            cursor: Opaque keyset cursor from a previous page.
+            limit: Page size (default 50, max defined by ``MAX_LIMIT``).
+
+        Returns:
+            Paginated response of subworkflow summaries.
+
+        Raises:
+            InvalidCursorError: HTTP 400 -- malformed, tampered, or
+                signed by a different secret.
+        """
+        app_state: AppState = state.app_state
         registry = _registry(state)
-        summaries = await registry.list_all()
-        return Response(
-            content=ApiResponse[tuple[SubworkflowSummary, ...]](
-                data=summaries,
-            ),
+        try:
+            after_key = (
+                decode_keyset_cursor(cursor, secret=app_state.cursor_secret)
+                if cursor is not None
+                else None
+            )
+        except InvalidCursorError:
+            # The cursor is attacker-controlled input and may carry
+            # secret fragments from tampering attempts -- log only
+            # the failure reason, never the cursor itself.  Mirrors
+            # ``paginate_cursor`` in ``api/pagination.py``.
+            logger.warning(
+                API_CURSOR_INVALID,
+                reason="subworkflow_cursor_decode_failed",
+            )
+            raise
+        try:
+            page, has_more = await registry.list_page(
+                after_key=after_key,
+                limit=limit,
+            )
+        except ValueError as exc:
+            # The decoded ``after_key`` is HMAC-signed by the server,
+            # but the structural-validity check inside the registry
+            # (decode the JSON triple) still raises ``ValueError`` on
+            # any tampered / hand-crafted payload that survived the
+            # signature step. Surface as HTTP 400 instead of letting
+            # it bubble up as a 500 -- the cursor is attacker-
+            # controllable input.
+            logger.warning(
+                API_CURSOR_INVALID,
+                reason="subworkflow_keyset_payload_malformed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            msg = "subworkflow keyset cursor payload is malformed"
+            raise InvalidCursorError(msg) from exc
+        # JSON-encode the composite sort key so names containing
+        # ``|``/``:``/etc. cannot collide with the cursor delimiter
+        # (NotBlankStr does not forbid separator characters).
+        next_after_key = (
+            encode_subworkflow_keyset(page[-1]) if has_more and page else None
         )
+        meta = encode_keyset_meta(
+            next_after_key=next_after_key,
+            has_more=has_more,
+            limit=limit,
+            secret=app_state.cursor_secret,
+        )
+        return PaginatedResponse(data=page, pagination=meta)
 
     @get("/search", guards=[require_read_access])
     async def search_subworkflows(

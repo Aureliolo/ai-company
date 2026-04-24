@@ -5,15 +5,17 @@ the ``_do_*`` hooks.  The base class handles input validation,
 automatic retry, rate limiting, and provides a cost-computation helper.
 """
 
+import asyncio
 import math
 import time
 from abc import ABC, abstractmethod
-from collections.abc import AsyncIterator, Callable, Coroutine
+from collections.abc import AsyncIterator, Callable, Coroutine, Mapping
 from typing import Any, TypeVar
 
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
+    PROVIDER_BATCH_CAPABILITIES_PARTIAL,
     PROVIDER_CALL_ERROR,
     PROVIDER_CALL_START,
     PROVIDER_CALL_SUCCESS,
@@ -255,6 +257,43 @@ class BaseCompletionProvider(ABC):
         """
         self._validate_model(model)
         return await self._do_get_model_capabilities(model)
+
+    async def batch_get_capabilities(
+        self,
+        models: tuple[str, ...],
+    ) -> Mapping[str, ModelCapabilities | None]:
+        """Fan out capability lookups across many models in parallel.
+
+        The default implementation runs ``get_model_capabilities`` per
+        model concurrently via :class:`asyncio.TaskGroup`. Per-model
+        failures degrade to ``None`` entries so a single bad model id
+        does not poison the whole batch. ``MemoryError`` and
+        ``RecursionError`` propagate unchanged.
+
+        Subclasses that expose a cheaper bulk source (e.g. a static
+        preset catalog) should override this to avoid the per-model
+        round trip.
+        """
+        if not models:
+            return {}
+
+        async def _one(m: str) -> tuple[str, ModelCapabilities | None]:
+            try:
+                return m, await self.get_model_capabilities(m)
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
+                logger.warning(
+                    PROVIDER_BATCH_CAPABILITIES_PARTIAL,
+                    model=m,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                return m, None
+
+        async with asyncio.TaskGroup() as tg:
+            tasks = [tg.create_task(_one(m)) for m in models]
+        return dict(t.result() for t in tasks)
 
     # -- Hooks (subclasses implement) ---------------------------------
 

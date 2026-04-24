@@ -785,6 +785,92 @@ class TestGetModelCapabilities:
         assert caps.max_output_tokens == 1024
 
 
+@pytest.mark.unit
+class TestBatchGetCapabilities:
+    """LiteLLMDriver overrides ``batch_get_capabilities`` for zero-fanout I/O."""
+
+    async def test_returns_per_model_capabilities_for_known_ids(self) -> None:
+        config = make_provider_config(
+            models=(
+                ProviderModelConfig(
+                    id="model-a",
+                    max_context=1024,
+                    cost_per_1k_input=0.001,
+                    cost_per_1k_output=0.002,
+                ),
+                ProviderModelConfig(
+                    id="model-b",
+                    max_context=2048,
+                    cost_per_1k_input=0.003,
+                    cost_per_1k_output=0.004,
+                ),
+            ),
+        )
+        driver = _make_driver(config=config)
+        with patch(_PATCH_MODEL_INFO, return_value={}):
+            result = await driver.batch_get_capabilities(("model-a", "model-b"))
+
+        assert set(result) == {"model-a", "model-b"}
+        assert result["model-a"] is not None
+        assert result["model-a"].model_id == "model-a"
+        assert result["model-a"].max_context_tokens == 1024
+        assert result["model-b"] is not None
+        assert result["model-b"].model_id == "model-b"
+        assert result["model-b"].max_context_tokens == 2048
+
+    async def test_unknown_model_id_is_none(self) -> None:
+        driver = _make_driver()
+        with patch(_PATCH_MODEL_INFO, return_value={}):
+            result = await driver.batch_get_capabilities(("medium", "ghost-model"))
+
+        assert result["medium"] is not None
+        assert result["ghost-model"] is None
+
+    async def test_litellm_lookup_failure_does_not_break_batch(self) -> None:
+        # _get_litellm_model_info catches all exceptions internally and returns
+        # an empty dict, so a raising lookup should still yield capabilities
+        # (built from preset config + defaults), not a None entry.
+        driver = _make_driver()
+        with patch(_PATCH_MODEL_INFO, side_effect=RuntimeError("registry down")):
+            result = await driver.batch_get_capabilities(("medium",))
+
+        assert result["medium"] is not None
+        assert result["medium"].model_id == "test-model-001"
+
+    async def test_empty_input_returns_empty_dict(self) -> None:
+        driver = _make_driver()
+        result = await driver.batch_get_capabilities(())
+        assert result == {}
+
+    async def test_called_once_per_model_no_extra_lookups(self) -> None:
+        config = make_provider_config(
+            models=(
+                ProviderModelConfig(
+                    id="m1",
+                    max_context=1024,
+                    cost_per_1k_input=0.001,
+                    cost_per_1k_output=0.002,
+                ),
+                ProviderModelConfig(
+                    id="m2",
+                    max_context=1024,
+                    cost_per_1k_input=0.001,
+                    cost_per_1k_output=0.002,
+                ),
+                ProviderModelConfig(
+                    id="m3",
+                    max_context=1024,
+                    cost_per_1k_input=0.001,
+                    cost_per_1k_output=0.002,
+                ),
+            ),
+        )
+        driver = _make_driver(config=config)
+        with patch(_PATCH_MODEL_INFO, return_value={}) as info_mock:
+            await driver.batch_get_capabilities(("m1", "m2", "m3"))
+        assert info_mock.call_count == 3
+
+
 # ── Helpers ──────────────────────────────────────────────────────
 
 

@@ -16,10 +16,12 @@ import pytest
 
 from synthorg.meta.models import ProposalAltitude, RuleSeverity
 from synthorg.meta.rules.custom import Comparator, CustomRuleDefinition
+from synthorg.persistence._shared.custom_rule import (
+    normalize_utc as _ensure_tz,
+)
 from synthorg.persistence.errors import ConstraintViolationError, QueryError
 from synthorg.persistence.postgres.custom_rule_repo import (
     PostgresCustomRuleRepository,
-    _ensure_tz,
     _row_to_definition,
 )
 

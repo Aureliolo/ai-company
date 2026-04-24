@@ -33,7 +33,7 @@ from synthorg.providers.models import (
 from synthorg.providers.protocol import CompletionProvider
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncIterator, Mapping
     from pathlib import Path
 
 _TEST_MODEL = "test-model-001"
@@ -101,6 +101,13 @@ class ScriptedProvider:
             cost_per_1k_input=0.01,
             cost_per_1k_output=0.03,
         )
+
+    async def batch_get_capabilities(
+        self,
+        models: tuple[str, ...],
+    ) -> Mapping[str, ModelCapabilities | None]:
+        """Return capabilities for each requested model."""
+        return {m: await self.get_model_capabilities(m) for m in models}
 
 
 # Verify ScriptedProvider satisfies the CompletionProvider protocol.

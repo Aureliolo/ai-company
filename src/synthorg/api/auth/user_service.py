@@ -67,6 +67,66 @@ class UserService:
         logger.debug(API_USER_LISTED, count=len(users))
         return users
 
+    async def list_users_page(
+        self,
+        *,
+        after_id: NotBlankStr | None,
+        limit: int,
+    ) -> tuple[tuple[User, ...], bool]:
+        """Return a single keyset page of users plus an ``has_more`` flag.
+
+        The repository keyset-paginates by ``id`` so cursor pages stay
+        stable under concurrent inserts and deletes.  We over-fetch by
+        one row so the caller can detect ``has_more`` without paying a
+        separate ``COUNT(*)`` round-trip per request -- the wire
+        contract surfaces the unknown total as ``pagination.total =
+        null`` and the dashboard derives display counts from
+        ``data.length`` (see ``web/CLAUDE.md`` cursor-pagination
+        section).
+
+        Args:
+            after_id: ``None`` for the first page; the previous
+                page's last ``id`` for follow-up pages (decoded from
+                the cursor).
+            limit: Page size requested by the caller.
+
+        Returns:
+            ``(page, has_more)`` where ``page`` is at most ``limit``
+            users in ascending ``id`` order and ``has_more`` is
+            ``True`` when an additional row was observed past the
+            requested page.
+        """
+        # Over-fetch by one row to detect has_more without a COUNT.
+        try:
+            rows = await self._repo.list_users_paginated(
+                after_id=after_id,
+                limit=limit + 1,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            # All persistence error paths must log at WARNING with
+            # context before re-raising; the repository already logs
+            # the SQL error, but the service-level event lets us slice
+            # logs by API_USER_* events without joining tables.
+            logger.warning(
+                API_USER_LISTED,
+                after_id=after_id,
+                limit=limit,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise
+        has_more = len(rows) > limit
+        page = rows[:limit]
+        logger.debug(
+            API_USER_LISTED,
+            count=len(page),
+            after_id=after_id,
+            has_more=has_more,
+        )
+        return page, has_more
+
     async def create(self, user: User) -> User:
         """Persist a freshly-constructed user."""
         await self._repo.save(user)

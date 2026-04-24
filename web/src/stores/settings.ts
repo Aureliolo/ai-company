@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 
+import { paginateAll } from '@/api/client'
 import * as settingsApi from '@/api/endpoints/settings'
 import type { SettingDefinition, SettingEntry, SettingNamespace } from '@/api/types/settings'
 import type { WsEvent } from '@/api/types/websocket'
@@ -8,6 +9,16 @@ import { getErrorMessage } from '@/utils/errors'
 import { createLogger } from '@/lib/logger'
 
 const log = createLogger('settings')
+
+/** Page size used by every settings list call in this store. */
+const SETTINGS_PAGE_LIMIT = 200
+
+/** Walk every page of the settings list endpoint into a single array. */
+function fetchAllSettingsEntries(): Promise<SettingEntry[]> {
+  return paginateAll<SettingEntry>((cursor) =>
+    settingsApi.getAllSettings({ cursor, limit: SETTINGS_PAGE_LIMIT }),
+  )
+}
 
 const CURRENCY_PATTERN = /^[A-Z]{3}$/
 // Minimal BCP 47 sanity check; full validation is the backend's job.
@@ -131,7 +142,7 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
     try {
       const [schemaResult, entriesResult] = await Promise.allSettled([
         settingsApi.getSchema(),
-        settingsApi.getAllSettings(),
+        fetchAllSettingsEntries(),
       ])
       const schema = schemaResult.status === 'fulfilled' ? schemaResult.value : get().schema
       const entries = entriesResult.status === 'fulfilled' ? entriesResult.value : get().entries
@@ -161,7 +172,7 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
     // Skip if saves are in progress to avoid overwriting fresh data
     if (get().savingKeys.size > 0) return
     // Let errors propagate to usePolling's error tracking
-    const entries = await settingsApi.getAllSettings()
+    const entries = await fetchAllSettingsEntries()
     // Re-check: a save may have started during the fetch
     if (get().savingKeys.size > 0) return
     const patch: Partial<SettingsState> = { entries, error: null }
@@ -229,7 +240,7 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
     // Reset succeeded -- refetch entries to get the resolved default.
     let refreshedEntries: SettingEntry[] | undefined
     try {
-      refreshedEntries = await settingsApi.getAllSettings()
+      refreshedEntries = await fetchAllSettingsEntries()
     } catch (err) {
       // Reset applied but refetch failed -- UI is stale until next poll cycle
       log.warn('Post-reset refetch failed; data will refresh at next poll', err)

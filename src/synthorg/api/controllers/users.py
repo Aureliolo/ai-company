@@ -12,9 +12,11 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 from synthorg.api.auth.config import AuthConfig
 from synthorg.api.auth.models import AuthenticatedUser, OrgRole, User
 from synthorg.api.auth.user_service import UserService
-from synthorg.api.dto import ApiResponse
+from synthorg.api.cursor import decode_keyset_cursor
+from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.errors import ApiValidationError, ConflictError, NotFoundError
 from synthorg.api.guards import HumanRole, require_ceo
+from synthorg.api.pagination import CursorLimit, CursorParam, encode_keyset_meta
 from synthorg.api.path_params import PathId  # noqa: TC001
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
@@ -239,18 +241,52 @@ class UserController(Controller):
     async def list_users(
         self,
         state: State,
-    ) -> ApiResponse[tuple[UserResponse, ...]]:
-        """List all human users (excludes system user).
+        cursor: CursorParam = None,
+        limit: CursorLimit = 50,
+    ) -> PaginatedResponse[UserResponse]:
+        """List human users with keyset-based cursor pagination.
+
+        Sorted by user ``id`` so cursor pages stay stable under
+        concurrent inserts and deletes -- offset-based pagination
+        could duplicate or skip rows when the visible window shifts
+        between fetches.  The cursor encodes the last ``id`` returned;
+        the next page reads ``WHERE id > after_id``.  Pagination is
+        pushed into the SQL layer via
+        :meth:`UserService.list_users_page` (no COUNT round-trip per
+        request -- ``pagination.total`` is ``null``).
 
         Args:
             state: Application state.
+            cursor: Opaque keyset cursor from a previous page.
+            limit: Page size (default 50, max defined by ``MAX_LIMIT``).
 
         Returns:
-            Tuple of user responses.
+            Paginated response of user entries.
+
+        Raises:
+            InvalidCursorError: HTTP 400 -- malformed, tampered, or
+                signed by a different secret.
         """
-        users = await _service(state).list_users()
-        return ApiResponse(
-            data=tuple(_to_response(u) for u in users),
+        app_state: AppState = state.app_state
+        after_id = (
+            decode_keyset_cursor(cursor, secret=app_state.cursor_secret)
+            if cursor is not None
+            else None
+        )
+        page, has_more = await _service(state).list_users_page(
+            after_id=after_id,
+            limit=limit,
+        )
+        next_after_key = page[-1].id if has_more and page else None
+        meta = encode_keyset_meta(
+            next_after_key=next_after_key,
+            has_more=has_more,
+            limit=limit,
+            secret=app_state.cursor_secret,
+        )
+        return PaginatedResponse(
+            data=tuple(_to_response(u) for u in page),
+            pagination=meta,
         )
 
     @get("/{user_id:str}")

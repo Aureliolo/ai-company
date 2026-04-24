@@ -15,6 +15,7 @@ here (``MAX_WORKFLOW_DEPTH``).  ``WorkflowConfig.max_subworkflow_depth``
 overrides it at runtime.
 """
 
+import json
 from typing import TYPE_CHECKING
 
 from packaging.version import InvalidVersion, Version
@@ -43,6 +44,40 @@ logger = get_logger(__name__)
 
 MAX_WORKFLOW_DEPTH = 16
 """Default maximum runtime subworkflow nesting depth."""
+
+_SUBWORKFLOW_KEYSET_ARITY = 3
+
+
+def encode_subworkflow_keyset(summary: SubworkflowSummary) -> str:
+    """Encode a summary's composite sort key as a JSON-safe string.
+
+    The composite key is ``(name, latest_version, subworkflow_id)``.
+    A naive ``f"{name}|{version}|{id}"`` join can collide whenever any
+    component contains the delimiter -- ``NotBlankStr`` does not
+    forbid pipes, colons, or other separator characters.  JSON-encoding
+    the tuple gives an unambiguous round-trip regardless of content.
+    """
+    return json.dumps(
+        [summary.name, summary.latest_version, summary.subworkflow_id],
+        separators=(",", ":"),
+    )
+
+
+def _decode_subworkflow_keyset(after_key: str) -> tuple[str, str, str]:
+    """Reverse of :func:`encode_subworkflow_keyset`.
+
+    Tolerates malformed inputs by raising ``ValueError`` -- the
+    controller catches this through the cursor decode layer.
+    """
+    parsed = json.loads(after_key)
+    if (
+        not isinstance(parsed, list)
+        or len(parsed) != _SUBWORKFLOW_KEYSET_ARITY
+        or not all(isinstance(part, str) for part in parsed)
+    ):
+        msg = "subworkflow keyset cursor must encode [name, version, id]"
+        raise ValueError(msg)
+    return parsed[0], parsed[1], parsed[2]
 
 
 class SubworkflowRegistry:
@@ -150,6 +185,63 @@ class SubworkflowRegistry:
     async def list_all(self) -> tuple[SubworkflowSummary, ...]:
         """Return summaries for every unique subworkflow in the registry."""
         return await self._repo.list_summaries()
+
+    async def list_page(
+        self,
+        *,
+        after_key: str | None,
+        limit: int,
+    ) -> tuple[tuple[SubworkflowSummary, ...], bool]:
+        """Return a single keyset page of summaries plus an ``has_more`` flag.
+
+        Sorted by ``(name, latest_version, subworkflow_id)`` -- the
+        ``subworkflow_id`` tail is the unique tie-breaker so cursor
+        pages stay total when two subworkflows share a name +
+        latest_version.  The cursor encodes the composite sort key as
+        a JSON-encoded ``[name, version, id]`` triple
+        (see :func:`encode_subworkflow_keyset`); a naive
+        ``f"{name}|{version}|{id}"`` join could collide whenever any
+        component contains the delimiter, since ``NotBlankStr`` does
+        not forbid pipes / colons / etc.  The next page is sliced
+        where the composite sort key tuple is strictly greater than
+        the decoded ``after_key`` tuple.
+
+        Slices in the registry rather than the SQL layer because
+        ``SubworkflowSummary.version_count`` requires aggregating
+        every version row per subworkflow.  A true SQL push-down
+        would need a window-function query plus a secondary fetch of
+        the page's versions, which is a substantial per-backend
+        rewrite for a list whose typical row count is small.  Revisit
+        if subworkflow rosters grow large enough that the full-fetch
+        dominates request latency.
+
+        Args:
+            after_key: ``None`` for the first page; the previous
+                page's last composite sort key for follow-up pages.
+            limit: Page size requested.
+
+        Returns:
+            ``(page, has_more)`` where ``page`` is at most ``limit``
+            summaries in canonical sort order and ``has_more`` is
+            ``True`` when an additional summary was observed past the
+            requested page.
+        """
+        all_summaries = await self._repo.list_summaries()
+        sorted_summaries = sorted(
+            all_summaries,
+            key=lambda s: (s.name, s.latest_version, s.subworkflow_id),
+        )
+        if after_key is not None:
+            after_tuple = _decode_subworkflow_keyset(after_key)
+            sorted_summaries = [
+                s
+                for s in sorted_summaries
+                if (s.name, s.latest_version, s.subworkflow_id) > after_tuple
+            ]
+        # Over-fetch by one to detect has_more without a separate count.
+        page = sorted_summaries[: limit + 1]
+        has_more = len(page) > limit
+        return tuple(page[:limit]), has_more
 
     async def search(
         self,

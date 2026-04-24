@@ -10,15 +10,17 @@ from datetime import UTC, datetime
 from litestar import Controller, get
 from litestar.datastructures import State  # noqa: TC002
 
-from synthorg.api.dto import ApiResponse
+from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.errors import NotFoundError
 from synthorg.api.guards import require_read_access
+from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
+from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.integrations.connections.catalog import ConnectionCatalog  # noqa: TC001
 from synthorg.integrations.connections.models import ConnectionStatus
 from synthorg.integrations.errors import ConnectionNotFoundError
 from synthorg.integrations.health.models import HealthReport
 from synthorg.integrations.health.service import check_connection_health
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.integrations import HEALTH_CHECK_FAILED
 
 logger = get_logger(__name__)
@@ -39,16 +41,21 @@ async def _safe_check(
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
+        # SEC-1: connection health checks can surface exceptions whose
+        # str() embeds response bodies (including auth headers or OAuth
+        # refresh tokens from the connection catalog). Log via
+        # safe_error_description + error_type; never attach exc_info
+        # (frame-locals can carry credential material).
         logger.warning(
             HEALTH_CHECK_FAILED,
             connection_name=name,
-            error=str(exc),
-            exc_info=True,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         return HealthReport(
             connection_name=name,
             status=ConnectionStatus.UNKNOWN,
-            error_detail=f"Health check raised unexpectedly: {exc}",
+            error_detail=(f"Health check raised unexpectedly: {type(exc).__name__}"),
             checked_at=datetime.now(UTC),
         )
 
@@ -67,24 +74,44 @@ class IntegrationHealthController(Controller):
     async def aggregate_health(
         self,
         state: State,
-    ) -> ApiResponse[tuple[HealthReport, ...]]:
-        """Return cached health reports for all connections.
+        cursor: CursorParam = None,
+        limit: CursorLimit = 50,
+    ) -> PaginatedResponse[HealthReport]:
+        """Return paginated health reports for connections.
 
-        Runs per-connection checks concurrently via
-        ``asyncio.TaskGroup`` so total latency is bounded by the
-        slowest check rather than the sum of all checks.
+        Connections are sorted by name for deterministic cursor pages,
+        then probed concurrently for the requested page only -- a 100-
+        connection catalog does not pay 100 upstream probes per
+        request.
+
+        Args:
+            state: Application state.
+            cursor: Opaque pagination cursor from a previous page.
+            limit: Page size (default 50, max defined by ``MAX_LIMIT``).
+
+        Returns:
+            Paginated response of health reports for the page's
+            connections.
         """
-        catalog: ConnectionCatalog = state["app_state"].connection_catalog
+        app_state: AppState = state.app_state
+        catalog: ConnectionCatalog = app_state.connection_catalog
         connections = await catalog.list_all()
-        if not connections:
-            return ApiResponse(data=())
+        sorted_conns = tuple(sorted(connections, key=lambda c: c.name))
+        page_conns, meta = paginate_cursor(
+            sorted_conns,
+            limit=limit,
+            cursor=cursor,
+            secret=app_state.cursor_secret,
+        )
+        if not page_conns:
+            return PaginatedResponse(data=(), pagination=meta)
 
         async with asyncio.TaskGroup() as tg:
             tasks = [
-                tg.create_task(_safe_check(catalog, conn.name)) for conn in connections
+                tg.create_task(_safe_check(catalog, conn.name)) for conn in page_conns
             ]
         reports = tuple(task.result() for task in tasks)
-        return ApiResponse(data=reports)
+        return PaginatedResponse(data=reports, pagination=meta)
 
     @get(
         "/{connection_name:str}",

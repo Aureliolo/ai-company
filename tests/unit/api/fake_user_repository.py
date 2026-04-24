@@ -9,6 +9,7 @@ import copy
 from synthorg.api.auth.models import OrgRole, User
 from synthorg.api.auth.system_user import is_system_user
 from synthorg.api.guards import HumanRole
+from synthorg.core.types import NotBlankStr
 from synthorg.persistence.constraint_tokens import (
     IDX_SINGLE_CEO,
     LAST_CEO_TRIGGER,
@@ -97,6 +98,20 @@ class FakeUserRepository:
         return tuple(
             copy.deepcopy(u) for u in self._users.values() if u.role != HumanRole.SYSTEM
         )
+
+    async def list_users_paginated(
+        self,
+        *,
+        after_id: NotBlankStr | None,
+        limit: int,
+    ) -> tuple[User, ...]:
+        all_humans = sorted(
+            (u for u in self._users.values() if u.role != HumanRole.SYSTEM),
+            key=lambda u: u.id,
+        )
+        if after_id is not None:
+            all_humans = [u for u in all_humans if u.id > after_id]
+        return tuple(copy.deepcopy(u) for u in all_humans[:limit])
 
     async def count(self) -> int:
         return sum(1 for u in self._users.values() if u.role != HumanRole.SYSTEM)

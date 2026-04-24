@@ -1,3 +1,4 @@
+import { paginateAll } from '@/api/client'
 import {
   checkConnectionHealth,
   listConnections,
@@ -25,7 +26,9 @@ export function createListActions(set: ConnectionsSet, get: ConnectionsGet) {
       try {
         const [connections, healthReports] = await Promise.all([
           listConnections(),
-          listIntegrationHealth().catch((err) => {
+          paginateAll<HealthReport>((cursor) =>
+            listIntegrationHealth({ cursor, limit: 200 }),
+          ).catch((err) => {
             log.warn('Health aggregate fetch failed:', getErrorMessage(err))
             return null
           }),
