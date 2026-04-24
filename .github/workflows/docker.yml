@@ -709,7 +709,9 @@ jobs:
         with:
           name: web-image-tarball
           path: web.tar
-          retention-days: 1
+          # 7-day retention so the env-gated `build-web-publish` job can
+          # still download after an approval delay.
+          retention-days: 7
 
   build-web-publish:
     name: Publish Web (apko)

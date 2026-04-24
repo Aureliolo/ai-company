@@ -232,11 +232,22 @@ runs:
         cache-to: ${{ inputs.cache-scope != '' && format('type=gha,mode=max,scope={0}-arm64', inputs.cache-scope) || 'type=gha,mode=max,scope=arm64' }}
         platforms: linux/arm64
 
-    # Scan ref uses the amd64-tagged image so both paths (PR = load:true,
-    # non-PR = load from archive) resolve the same short-SHA tag. Scans
-    # only target amd64; arm64 parity is covered by the identical
-    # Dockerfile + pinned base-image-digest + reproducible build-args.
-    - name: Compute scan image ref
+    # arm64 scans run under QEMU emulation (set up at the top of this
+    # action). Both architectures go through the same Trivy + CIS gate
+    # before publish-image pushes them, so neither arch ships unscanned.
+    - name: Load arm64 image for scanning (non-PR, multi-arch)
+      if: github.event_name != 'pull_request' && inputs.enable-arm64 == 'true'
+      shell: bash
+      env:
+        IMAGE_NAME: ${{ inputs.image-name }}
+      run: |
+        docker load -i "/tmp/scan-image-${IMAGE_NAME}-arm64.tar"
+
+    # Scan ref. PR path = single amd64 image built via `load: true`.
+    # Non-PR path = two tarball-loaded refs (amd64 always; arm64 when
+    # enable-arm64). Each arch is scanned independently so the published
+    # multi-arch manifest never includes bytes that bypassed the gate.
+    - name: Compute scan image refs
       id: scan-ref
       shell: bash
       env:
@@ -245,86 +256,141 @@ runs:
       run: |
         SHORT_SHA="${GITHUB_SHA::7}"
         if [ "$EVENT_NAME" = "pull_request" ]; then
-          # PR path builds with `load: true` + metadata tags; the
-          # sha-<short> entry from type=sha,prefix=sha- is the canonical
-          # reference.
           echo "ref=ghcr.io/aureliolo/synthorg-${IMAGE_NAME}:sha-${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+          echo "ref_amd64=ghcr.io/aureliolo/synthorg-${IMAGE_NAME}:sha-${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+          echo "ref_arm64=" >> "$GITHUB_OUTPUT"
         else
-          # Non-PR path loads the tarball under its internal
-          # `scan-<full-sha>-amd64` tag; scans target that exact loaded
-          # image. The public `sha-<short>-*` / semver tags come later
-          # when publish-image re-tags + pushes.
-          echo "ref=ghcr.io/aureliolo/synthorg-${IMAGE_NAME}:scan-${GITHUB_SHA}-amd64" >> "$GITHUB_OUTPUT"
+          AMD64_REF="ghcr.io/aureliolo/synthorg-${IMAGE_NAME}:scan-${GITHUB_SHA}-amd64"
+          ARM64_REF="ghcr.io/aureliolo/synthorg-${IMAGE_NAME}:scan-${GITHUB_SHA}-arm64"
+          echo "ref=${AMD64_REF}" >> "$GITHUB_OUTPUT"
+          echo "ref_amd64=${AMD64_REF}" >> "$GITHUB_OUTPUT"
+          echo "ref_arm64=${ARM64_REF}" >> "$GITHUB_OUTPUT"
         fi
 
-    - name: Report image size
+    - name: Report image size (amd64)
       shell: bash
       env:
-        SCAN_REF: ${{ steps.scan-ref.outputs.ref }}
+        SCAN_REF: ${{ steps.scan-ref.outputs.ref_amd64 }}
         DISPLAY_NAME: ${{ inputs.display-name }}
       run: scripts/report-image-size.sh "$SCAN_REF" "$DISPLAY_NAME"
 
-    # Single Trivy run for CRITICAL + HIGH. JSON output lets us fail on
-    # CRITICAL only while still reporting HIGH.
-    - name: Trivy scan
+    - name: Report image size (arm64)
+      if: github.event_name != 'pull_request' && inputs.enable-arm64 == 'true'
+      shell: bash
+      env:
+        SCAN_REF: ${{ steps.scan-ref.outputs.ref_arm64 }}
+        DISPLAY_NAME: ${{ inputs.display-name }}
+      run: scripts/report-image-size.sh "$SCAN_REF" "$DISPLAY_NAME (arm64)"
+
+    # Trivy JSON + SARIF + CIS benchmark per arch. JSON feeds
+    # evaluate-scan.sh (fails on CRITICAL, warns on HIGH). SARIF goes to
+    # GitHub Security for both arches with distinct categories.
+    - name: Trivy scan (amd64)
       uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
       with:
-        image-ref: ${{ steps.scan-ref.outputs.ref }}
+        image-ref: ${{ steps.scan-ref.outputs.ref_amd64 }}
         format: json
-        output: trivy-${{ inputs.image-name }}.json
+        output: trivy-${{ inputs.image-name }}-amd64.json
         exit-code: "0"
         severity: CRITICAL,HIGH
         trivyignores: .github/.trivyignore.yaml
 
-    - name: Evaluate Trivy results
+    - name: Evaluate Trivy results (amd64)
       shell: bash
       env:
         IMAGE_NAME: ${{ inputs.image-name }}
         DISPLAY_NAME: ${{ inputs.display-name }}
-      run: scripts/evaluate-scan.sh --verbose "trivy-${IMAGE_NAME}.json" "$DISPLAY_NAME"
+      run: scripts/evaluate-scan.sh --verbose "trivy-${IMAGE_NAME}-amd64.json" "$DISPLAY_NAME"
 
-    - name: Upload Trivy report
-      if: always()
-      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-      with:
-        name: trivy-${{ inputs.image-name }}-report
-        path: trivy-${{ inputs.image-name }}.json
-        retention-days: 30
-
-    - name: Trivy SARIF scan
-      if: always()
+    - name: Trivy scan (arm64)
+      if: github.event_name != 'pull_request' && inputs.enable-arm64 == 'true'
       uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
       with:
-        image-ref: ${{ steps.scan-ref.outputs.ref }}
-        format: sarif
-        output: trivy-${{ inputs.image-name }}.sarif
+        image-ref: ${{ steps.scan-ref.outputs.ref_arm64 }}
+        format: json
+        output: trivy-${{ inputs.image-name }}-arm64.json
         exit-code: "0"
         severity: CRITICAL,HIGH
         trivyignores: .github/.trivyignore.yaml
 
-    - name: Upload SARIF to GitHub Security
+    - name: Evaluate Trivy results (arm64)
+      if: github.event_name != 'pull_request' && inputs.enable-arm64 == 'true'
+      shell: bash
+      env:
+        IMAGE_NAME: ${{ inputs.image-name }}
+        DISPLAY_NAME: ${{ inputs.display-name }}
+      run: scripts/evaluate-scan.sh --verbose "trivy-${IMAGE_NAME}-arm64.json" "$DISPLAY_NAME (arm64)"
+
+    - name: Upload Trivy reports
+      if: always()
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: trivy-${{ inputs.image-name }}-report
+        path: trivy-${{ inputs.image-name }}-*.json
+        retention-days: 30
+        if-no-files-found: ignore
+
+    - name: Trivy SARIF scan (amd64)
+      if: always()
+      uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+      with:
+        image-ref: ${{ steps.scan-ref.outputs.ref_amd64 }}
+        format: sarif
+        output: trivy-${{ inputs.image-name }}-amd64.sarif
+        exit-code: "0"
+        severity: CRITICAL,HIGH
+        trivyignores: .github/.trivyignore.yaml
+
+    - name: Upload SARIF amd64 to GitHub Security
       if: always()
       uses: github/codeql-action/upload-sarif@95e58e9a2cdfd71adc6e0353d5c52f41a045d225 # v4.35.2
       with:
-        sarif_file: trivy-${{ inputs.image-name }}.sarif
-        category: trivy-${{ inputs.image-name }}
+        sarif_file: trivy-${{ inputs.image-name }}-amd64.sarif
+        category: trivy-${{ inputs.image-name }}-amd64
 
-    - name: CIS Docker Benchmark
+    - name: Trivy SARIF scan (arm64)
+      if: always() && github.event_name != 'pull_request' && inputs.enable-arm64 == 'true'
+      uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+      with:
+        image-ref: ${{ steps.scan-ref.outputs.ref_arm64 }}
+        format: sarif
+        output: trivy-${{ inputs.image-name }}-arm64.sarif
+        exit-code: "0"
+        severity: CRITICAL,HIGH
+        trivyignores: .github/.trivyignore.yaml
+
+    - name: Upload SARIF arm64 to GitHub Security
+      if: always() && github.event_name != 'pull_request' && inputs.enable-arm64 == 'true'
+      uses: github/codeql-action/upload-sarif@95e58e9a2cdfd71adc6e0353d5c52f41a045d225 # v4.35.2
+      with:
+        sarif_file: trivy-${{ inputs.image-name }}-arm64.sarif
+        category: trivy-${{ inputs.image-name }}-arm64
+
+    - name: CIS Docker Benchmark (amd64)
       uses: ./.github/actions/cis-scan
       with:
-        image-ref: ${{ steps.scan-ref.outputs.ref }}
+        image-ref: ${{ steps.scan-ref.outputs.ref_amd64 }}
+
+    - name: CIS Docker Benchmark (arm64)
+      if: github.event_name != 'pull_request' && inputs.enable-arm64 == 'true'
+      uses: ./.github/actions/cis-scan
+      with:
+        image-ref: ${{ steps.scan-ref.outputs.ref_arm64 }}
 
     # Hand off the scanned tarballs to the publish-only job. The publish
     # job docker-loads these exact bytes and re-tags + pushes them
     # without rebuilding, guaranteeing the pushed digest covers the
     # same filesystem Trivy + CIS scanned.
+    # 7-day retention covers approval delays on the environment-gated
+    # publish-image jobs: 1-day would expire the tarball before a
+    # deferred `image-push` approval lands, breaking the publish chain.
     - name: Upload amd64 image tarball (non-PR)
       if: github.event_name != 'pull_request'
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
         name: scan-image-${{ inputs.image-name }}-amd64
         path: /tmp/scan-image-${{ inputs.image-name }}-amd64.tar
-        retention-days: 1
+        retention-days: 7
 
     - name: Upload arm64 image tarball (non-PR, multi-arch)
       if: github.event_name != 'pull_request' && inputs.enable-arm64 == 'true'
@@ -332,4 +398,4 @@ runs:
       with:
         name: scan-image-${{ inputs.image-name }}-arm64
         path: /tmp/scan-image-${{ inputs.image-name }}-arm64.tar
-        retention-days: 1
+        retention-days: 7
