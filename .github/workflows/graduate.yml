@@ -68,6 +68,18 @@ jobs:
             echo "::error::reason must be non-empty"
             exit 1
           fi
+          # reason lands verbatim in the commit body. Reject control
+          # characters so no newline/carriage-return injection can fake a
+          # Git trailer. Reject trailer-shaped lines anywhere in the
+          # value for belt-and-braces against post-sanitisation bypasses.
+          if printf '%s' "$REASON" | grep -qE $'[\r\n\t]'; then
+            echo "::error::reason must not contain newlines, carriage returns, or tabs"
+            exit 1
+          fi
+          if printf '%s' "$REASON" | grep -qE '^[A-Z][A-Za-z-]+:'; then
+            echo "::error::reason must not start with a Git-trailer-like token (e.g. 'Release-As:', 'Co-authored-by:')"
+            exit 1
+          fi
 
           # Last stable: strip pre-release tags and take the highest.
           LAST_STABLE=$(git tag --sort=-v:refname --list 'v[0-9]*.[0-9]*.[0-9]*' \

@@ -157,10 +157,29 @@ jobs:
           trap 'rm -rf "$TMP"' EXIT
 
           # GoReleaser-emitted archive name: synthorg_<ver>_Linux_x86_64.tar.gz.
+          # The companion `checksums.txt` is cosign-signed + SLSA-attested
+          # (cli.yml "Sign checksums with cosign" step) so trusting its
+          # contents is reasonable for a smoke-test gate. We pull that
+          # file alongside the archive and verify SHA-256 before exec.
           VER="${TAG#v}"
           ASSET="synthorg_${VER}_Linux_x86_64.tar.gz"
           gh release download "$TAG" --repo "$GITHUB_REPOSITORY" \
             --pattern "$ASSET" --dir "$TMP"
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern 'checksums.txt' --dir "$TMP"
+
+          EXPECTED=$(grep -E "  ${ASSET}$" "$TMP/checksums.txt" | awk '{print $1}')
+          if [ -z "$EXPECTED" ] || ! [[ "$EXPECTED" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "::error::Could not extract SHA-256 for $ASSET from checksums.txt; blocking publish"
+            exit 1
+          fi
+          ACTUAL=$(sha256sum "$TMP/$ASSET" | awk '{print $1}')
+          if [ "$EXPECTED" != "$ACTUAL" ]; then
+            echo "::error::Checksum mismatch for $ASSET (expected $EXPECTED, got $ACTUAL); blocking publish"
+            exit 1
+          fi
+          echo "Checksum verified for $ASSET"
+
           tar -xzf "$TMP/$ASSET" -C "$TMP"
 
           VERSION_OUT=$("$TMP/synthorg" --version 2>&1 || true)
