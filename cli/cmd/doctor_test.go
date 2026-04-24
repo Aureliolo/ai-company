@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bytes"
 	"strings"
 	"testing"
 
@@ -235,5 +236,23 @@ func TestClassifyDoctor(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestDoctorRejectsExtraArgs(t *testing.T) {
+	// Cannot run in parallel: rootCmd.SetArgs mutates shared state.
+	var out bytes.Buffer
+	rootCmd.SetOut(&out)
+	rootCmd.SetErr(&out)
+	defer rootCmd.SetArgs(nil)
+
+	rootCmd.SetArgs([]string{"doctor", "bogus"})
+	err := rootCmd.Execute()
+	if err == nil {
+		t.Fatal("expected error for unexpected positional arg, got nil")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "unknown command") && !strings.Contains(msg, "accepts 0 arg") {
+		t.Fatalf("expected NoArgs rejection, got: %v", err)
 	}
 }
