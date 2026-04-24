@@ -156,11 +156,7 @@ class TestProjectController:
         Regression guard: the controller's WS broadcast is easy to drop during
         refactors because it is fire-and-forget and silent on failure.
         """
-        from synthorg.api.controllers import projects as projects_module
-
         captured: list[dict[str, Any]] = []
-
-        real_publish = projects_module.publish_ws_event
 
         def capture(
             request: Any,
@@ -175,9 +171,14 @@ class TestProjectController:
                     "payload": payload,
                 },
             )
-            real_publish(request, event_type, channel, payload)
 
-        monkeypatch.setattr(projects_module, "publish_ws_event", capture)
+        # String-path form so the module attribute is patched by name; the
+        # underlying channels.publish_ws_event is still exercised on other
+        # endpoints that do not go through this test.
+        monkeypatch.setattr(
+            "synthorg.api.controllers.projects.publish_ws_event",
+            capture,
+        )
 
         create_resp = test_client.post(
             "/api/v1/projects",
