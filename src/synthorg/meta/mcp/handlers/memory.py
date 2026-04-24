@@ -352,6 +352,9 @@ async def _memory_deploy_checkpoint(
         _log_failed(tool, exc)
         return err(exc, domain_code="not_found")
     except QueryError as exc:
+        # Persistence-layer failure during deploy (e.g. the checkpoint
+        # was activated but the re-read failed) -- surface as
+        # ``conflict`` so callers distinguish from internal errors.
         _log_failed(tool, exc)
         return err(exc, domain_code="conflict")
     except Exception as exc:
@@ -441,6 +444,8 @@ async def _memory_delete_checkpoint(  # noqa: PLR0911
         _log_failed(tool, exc)
         return err(exc, domain_code="not_found")
     except QueryError as exc:
+        # Active-checkpoint / domain-rule violation -- surface as
+        # ``conflict`` so callers can distinguish from internal errors.
         _log_failed(tool, exc)
         return err(exc, domain_code="conflict")
     except Exception as exc:

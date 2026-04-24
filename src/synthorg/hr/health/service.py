@@ -18,9 +18,9 @@ available window so health reacts quickly to regressions without
 constantly redefining "recent" on its own.
 """
 
-from typing import TYPE_CHECKING, Final, Literal
+from typing import TYPE_CHECKING, Final, Literal, Self
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic runtime
 from synthorg.observability import get_logger
@@ -84,6 +84,23 @@ class AgentHealthReport(BaseModel):
         ge=0,
         description="Failed-task count in the recent window",
     )
+
+    @model_validator(mode="after")
+    def _validate_counts(self) -> Self:
+        """Reject reports where failed_count > task_count.
+
+        The verdict logic derives status from the success rate, which
+        would be negative if failed exceeded total. Enforcing the
+        invariant at construction time means any report handed to a
+        handler is already well-formed.
+        """
+        if self.recent_failed_count > self.recent_task_count:
+            msg = (
+                f"recent_failed_count ({self.recent_failed_count}) cannot "
+                f"exceed recent_task_count ({self.recent_task_count})"
+            )
+            raise ValueError(msg)
+        return self
 
 
 class AgentHealthService:

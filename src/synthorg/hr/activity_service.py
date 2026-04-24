@@ -13,8 +13,8 @@ graceful-degradation + role-based cost redaction that are specific
 to the HTTP surface. Those concerns are intentionally not mirrored
 here; MCP callers are already admin-scoped.
 
-Sibling PR #1528 (META-MCP-3) will add a task-scoped entry point
-(``get_task_activity``) on the same class.
+A task-scoped entry point (``get_task_activity``) is a planned
+extension on the same class for the task-centric MCP tools.
 """
 
 import asyncio
@@ -154,14 +154,25 @@ class ActivityFeedService:
         since: datetime,
         now: datetime,
     ) -> tuple:  # type: ignore[type-arg]
-        """Best-effort cost record fetch; empty on missing tracker."""
+        """Best-effort cost record fetch; empty on any failure.
+
+        Wraps the underlying tracker call so a single failing source
+        cannot cancel the sibling fetches running in the same
+        ``TaskGroup`` (CLAUDE.md async convention for independent
+        best-effort workers).
+        """
         if self._cost_tracker is None:
             return ()
-        return await self._cost_tracker.get_records(
-            agent_id=agent_id,
-            start=since,
-            end=now,
-        )
+        try:
+            return await self._cost_tracker.get_records(
+                agent_id=agent_id,
+                start=since,
+                end=now,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            return ()
 
     async def _fetch_tools(
         self,
@@ -169,14 +180,23 @@ class ActivityFeedService:
         since: datetime,
         now: datetime,
     ) -> tuple:  # type: ignore[type-arg]
-        """Best-effort tool invocation fetch; empty on missing tracker."""
+        """Best-effort tool invocation fetch; empty on any failure.
+
+        Same resilience pattern as :meth:`_fetch_costs`: a single
+        tracker failure must not abort the whole activity merge.
+        """
         if self._tool_invocation_tracker is None:
             return ()
-        return await self._tool_invocation_tracker.get_records(
-            agent_id=agent_id,
-            start=since,
-            end=now,
-        )
+        try:
+            return await self._tool_invocation_tracker.get_records(
+                agent_id=agent_id,
+                start=since,
+                end=now,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            return ()
 
     async def _fetch_delegations(
         self,
@@ -184,24 +204,44 @@ class ActivityFeedService:
         since: datetime,
         now: datetime,
     ) -> tuple:  # type: ignore[type-arg]
-        """Best-effort delegation fetch; returns ``(sent, received)``."""
+        """Best-effort delegation fetch; returns ``(sent, received)``.
+
+        Both fetches are independent best-effort workers -- neither
+        direction's failure should abort the sibling. Wraps each task
+        body per the CLAUDE.md async convention.
+        """
         if self._delegation_store is None:
             return (), ()
+
+        async def _safe_delegator() -> tuple:  # type: ignore[type-arg]
+            assert self._delegation_store is not None  # noqa: S101
+            try:
+                return await self._delegation_store.get_records_as_delegator(
+                    agent_id,
+                    start=since,
+                    end=now,
+                )
+            except MemoryError, RecursionError:
+                raise
+            except Exception:
+                return ()
+
+        async def _safe_delegatee() -> tuple:  # type: ignore[type-arg]
+            assert self._delegation_store is not None  # noqa: S101
+            try:
+                return await self._delegation_store.get_records_as_delegatee(
+                    agent_id,
+                    start=since,
+                    end=now,
+                )
+            except MemoryError, RecursionError:
+                raise
+            except Exception:
+                return ()
+
         async with asyncio.TaskGroup() as tg:
-            sent_task = tg.create_task(
-                self._delegation_store.get_records_as_delegator(
-                    agent_id,
-                    start=since,
-                    end=now,
-                ),
-            )
-            recv_task = tg.create_task(
-                self._delegation_store.get_records_as_delegatee(
-                    agent_id,
-                    start=since,
-                    end=now,
-                ),
-            )
+            sent_task = tg.create_task(_safe_delegator())
+            recv_task = tg.create_task(_safe_delegatee())
         return sent_task.result(), recv_task.result()
 
 
