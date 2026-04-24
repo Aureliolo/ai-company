@@ -22,9 +22,10 @@ from pydantic import (
 )
 
 from synthorg.api.concurrency import check_if_match, compute_etag
+from synthorg.api.cursor import decode_cursor
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_ceo_or_manager, require_read_access
-from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
+from synthorg.api.pagination import CursorLimit, CursorParam, encode_repo_seek_meta
 from synthorg.api.path_params import PathKey, PathNamespace  # noqa: TC001
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
@@ -288,7 +289,10 @@ class SettingsController(Controller):
         """List settings with resolved values, paginated.
 
         Sensitive values are masked. Sorted by ``(namespace, key)`` for
-        deterministic cursor pages.
+        deterministic cursor pages. Pagination is pushed into
+        :meth:`SettingsService.get_page`, so the controller only pays
+        the resolve cost for the rows it actually returns instead of
+        materialising every setting on every request.
 
         Args:
             state: Application state.
@@ -297,19 +301,25 @@ class SettingsController(Controller):
 
         Returns:
             Paginated response of resolved setting entries.
+
+        Raises:
+            InvalidCursorError: HTTP 400 -- malformed, tampered, or
+                stale cursor.
         """
         app_state: AppState = state.app_state
-        entries = await app_state.settings_service.get_all()
-        sorted_entries = tuple(
-            sorted(
-                entries,
-                key=lambda e: (e.definition.namespace, e.definition.key),
-            ),
-        )
-        page, meta = paginate_cursor(
-            sorted_entries,
+        if cursor is None:
+            offset = 0
+        else:
+            offset = decode_cursor(cursor, secret=app_state.cursor_secret)
+        page, total = await app_state.settings_service.get_page(
             limit=limit,
-            cursor=cursor,
+            offset=offset,
+        )
+        meta = encode_repo_seek_meta(
+            offset=offset,
+            page_len=len(page),
+            total=total,
+            limit=limit,
             secret=app_state.cursor_secret,
         )
         return PaginatedResponse(data=page, pagination=meta)

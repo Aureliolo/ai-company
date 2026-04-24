@@ -22,6 +22,8 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
+from pydantic import ValidationError
+
 from synthorg.meta.models import ProposalAltitude, RuleSeverity
 from synthorg.meta.rules.custom import Comparator, CustomRuleDefinition
 from synthorg.observability import get_logger, safe_error_description
@@ -90,7 +92,13 @@ def row_to_custom_rule(row: dict[str, Any]) -> CustomRuleDefinition:
             created_at=_coerce_datetime(row["created_at"]),
             updated_at=_coerce_datetime(row["updated_at"]),
         )
-    except (json.JSONDecodeError, ValueError, TypeError, KeyError) as exc:
+    except (
+        ValidationError,
+        json.JSONDecodeError,
+        ValueError,
+        TypeError,
+        KeyError,
+    ) as exc:
         row_id = (
             str(row.get("id", "<unknown>")) if isinstance(row, dict) else "<unknown>"
         )

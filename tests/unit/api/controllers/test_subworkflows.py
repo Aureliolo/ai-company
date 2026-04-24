@@ -117,7 +117,8 @@ class TestSubworkflowCrud:
         )
 
         first = test_client.get(
-            "/api/v1/subworkflows?limit=2",
+            "/api/v1/subworkflows",
+            params={"limit": 2},
             headers=make_auth_headers("ceo"),
         ).json()
         assert len(first["data"]) == 2
@@ -126,7 +127,8 @@ class TestSubworkflowCrud:
         assert cursor is not None
 
         second = test_client.get(
-            f"/api/v1/subworkflows?limit=2&cursor={cursor}",
+            "/api/v1/subworkflows",
+            params={"limit": 2, "cursor": cursor},
             headers=make_auth_headers("ceo"),
         ).json()
         assert len(second["data"]) == 1
@@ -154,7 +156,8 @@ class TestSubworkflowCrud:
         )
 
         body = test_client.get(
-            "/api/v1/subworkflows?limit=1",
+            "/api/v1/subworkflows",
+            params={"limit": 1},
             headers=make_auth_headers("ceo"),
         ).json()
         assert [s["subworkflow_id"] for s in body["data"]] == ["sub-a"]
@@ -162,7 +165,8 @@ class TestSubworkflowCrud:
         assert cursor is not None
 
         second = test_client.get(
-            f"/api/v1/subworkflows?limit=1&cursor={cursor}",
+            "/api/v1/subworkflows",
+            params={"limit": 1, "cursor": cursor},
             headers=make_auth_headers("ceo"),
         ).json()
         assert [s["subworkflow_id"] for s in second["data"]] == ["sub-b"]

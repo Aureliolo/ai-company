@@ -151,6 +151,43 @@ class SubworkflowRegistry:
         """Return summaries for every unique subworkflow in the registry."""
         return await self._repo.list_summaries()
 
+    async def list_page(
+        self,
+        *,
+        limit: int,
+        offset: int,
+    ) -> tuple[tuple[SubworkflowSummary, ...], int]:
+        """Return a single page of summaries plus the authoritative total.
+
+        Sorted by ``(name, latest_version, subworkflow_id)`` -- the
+        ``subworkflow_id`` tail is required as a stable tie-breaker so
+        cursor pages stay total when two subworkflows share a name +
+        latest_version.
+
+        The current implementation slices in the registry rather than
+        the SQL layer because ``SubworkflowSummary.version_count``
+        requires aggregating every version row per subworkflow. A true
+        SQL push-down would need a window-function query plus a
+        secondary fetch of the page's versions, which is a substantial
+        per-backend rewrite for a list whose typical row count is
+        small. Revisit if subworkflow rosters grow large enough that
+        the full-fetch dominates request latency.
+
+        Args:
+            limit: Page size (rows to return).
+            offset: Number of rows to skip (decoded from the cursor).
+
+        Returns:
+            ``(page, total)`` where ``page`` is the requested slice and
+            ``total`` is the unique-subworkflow count.
+        """
+        all_summaries = await self._repo.list_summaries()
+        sorted_summaries = sorted(
+            all_summaries,
+            key=lambda s: (s.name, s.latest_version, s.subworkflow_id),
+        )
+        return tuple(sorted_summaries[offset : offset + limit]), len(sorted_summaries)
+
     async def search(
         self,
         query: NotBlankStr,

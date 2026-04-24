@@ -98,6 +98,18 @@ class FakeUserRepository:
             copy.deepcopy(u) for u in self._users.values() if u.role != HumanRole.SYSTEM
         )
 
+    async def list_users_paginated(
+        self,
+        *,
+        limit: int,
+        offset: int,
+    ) -> tuple[User, ...]:
+        all_humans = sorted(
+            (u for u in self._users.values() if u.role != HumanRole.SYSTEM),
+            key=lambda u: u.id,
+        )
+        return tuple(copy.deepcopy(u) for u in all_humans[offset : offset + limit])
+
     async def count(self) -> int:
         return sum(1 for u in self._users.values() if u.role != HumanRole.SYSTEM)
 

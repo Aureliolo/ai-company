@@ -370,6 +370,54 @@ class SettingsService:
             entries.append(entry)
         return tuple(entries)
 
+    async def get_page(
+        self,
+        *,
+        limit: int,
+        offset: int,
+    ) -> tuple[tuple[SettingEntry, ...], int]:
+        """Resolve a single page of settings sorted by ``(namespace, key)``.
+
+        Slices the in-memory definition registry before resolving DB
+        overrides, so the controller only pays the resolve cost for the
+        rows it actually returns.  ``(namespace, key)`` is the
+        deterministic sort key that the cursor pagination contract
+        requires (every definition is unique on that pair).
+
+        Args:
+            limit: Page size (rows to return).
+            offset: Number of rows to skip (decoded from the cursor).
+
+        Returns:
+            ``(page, total)`` where ``page`` is the requested slice in
+            ``(namespace, key)`` order and ``total`` is the full
+            definition count.
+        """
+        sorted_defs = sorted(
+            self._registry.list_all(),
+            key=lambda d: (d.namespace, d.key),
+        )
+        total = len(sorted_defs)
+        page_defs = sorted_defs[offset : offset + limit]
+        if not page_defs:
+            return (), total
+
+        # Single DB round-trip for the override values; bounded by the
+        # number of overridden settings (typically << total definition
+        # count) so we keep the existing batch shape.
+        db_rows = await self._repository.get_all()
+        db_lookup: dict[tuple[str, str], tuple[str, str]] = {
+            (ns, k): (v, ts) for ns, k, v, ts in db_rows
+        }
+        entries = tuple(
+            self._resolve_with_db_lookup(
+                defn,
+                db_lookup.get((defn.namespace, defn.key)),
+            )
+            for defn in page_defs
+        )
+        return entries, total
+
     def _resolve_fallback(
         self,
         definition: SettingDefinition,

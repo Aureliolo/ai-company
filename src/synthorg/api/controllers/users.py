@@ -12,10 +12,11 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 from synthorg.api.auth.config import AuthConfig
 from synthorg.api.auth.models import AuthenticatedUser, OrgRole, User
 from synthorg.api.auth.user_service import UserService
+from synthorg.api.cursor import decode_cursor
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.errors import ApiValidationError, ConflictError, NotFoundError
 from synthorg.api.guards import HumanRole, require_ceo
-from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
+from synthorg.api.pagination import CursorLimit, CursorParam, encode_repo_seek_meta
 from synthorg.api.path_params import PathId  # noqa: TC001
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
@@ -245,7 +246,10 @@ class UserController(Controller):
     ) -> PaginatedResponse[UserResponse]:
         """List human users with cursor-based pagination.
 
-        Sorted by user id for deterministic cursor pages.
+        Sorted by user id for deterministic cursor pages. Pagination
+        is pushed into the SQL layer via
+        :meth:`UserService.list_users_page`, so the controller no
+        longer materialises the full user table on every request.
 
         Args:
             state: Application state.
@@ -254,14 +258,25 @@ class UserController(Controller):
 
         Returns:
             Paginated response of user entries.
+
+        Raises:
+            InvalidCursorError: HTTP 400 -- malformed, tampered, or
+                stale cursor.
         """
         app_state: AppState = state.app_state
-        users = await _service(state).list_users()
-        sorted_users = tuple(sorted(users, key=lambda u: u.id))
-        page, meta = paginate_cursor(
-            sorted_users,
+        if cursor is None:
+            offset = 0
+        else:
+            offset = decode_cursor(cursor, secret=app_state.cursor_secret)
+        page, total = await _service(state).list_users_page(
             limit=limit,
-            cursor=cursor,
+            offset=offset,
+        )
+        meta = encode_repo_seek_meta(
+            offset=offset,
+            page_len=len(page),
+            total=total,
+            limit=limit,
             secret=app_state.cursor_secret,
         )
         return PaginatedResponse(

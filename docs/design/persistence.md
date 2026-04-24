@@ -83,8 +83,8 @@ concrete repositories live alongside the dialect-specific backends in
 
 The dialect-specific subdirectories share a third sibling at
 ``src/synthorg/persistence/_shared/``.  This is the canonical home for
-backend-agnostic serialisation, deserialisation, error-classification,
-and timestamp-normalisation logic that both SQLite and Postgres repos
+backend-agnostic serialization, deserialization, error-classification,
+and timestamp-normalization logic that both SQLite and Postgres repos
 would otherwise duplicate (current modules: ``audit.py``,
 ``custom_rule.py``, plus the shared ``normalize_utc`` helper exported
 from ``__init__.py``).  Backend repos pass driver-specific bits (SQL
@@ -167,7 +167,7 @@ semantics via an extra page, not an exact total.  Negative `limit` or
 
 ### Cursor-paginated list endpoints
 
-List endpoints standardise on the `paginate_cursor` helper in
+List endpoints standardize on the `paginate_cursor` helper in
 `src/synthorg/api/pagination.py` and return `PaginatedResponse[T]` with
 the wire envelope documented in `web/CLAUDE.md`
 (``PaginationMeta { limit, next_cursor, has_more, total, offset }``).

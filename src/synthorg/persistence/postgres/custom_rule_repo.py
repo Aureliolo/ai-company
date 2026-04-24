@@ -80,8 +80,12 @@ class PostgresCustomRuleRepository:
                 with a different existing rule.
             QueryError: If the database operation fails.
         """
-        altitudes_json = serialize_altitudes(rule)
         try:
+            # Serialize inside the guarded path so any helper failure
+            # is wrapped in QueryError / ConstraintViolationError like
+            # the rest of the repository, instead of leaking a raw
+            # exception that bypasses the structured save-failed log.
+            altitudes_json = serialize_altitudes(rule)
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(
                     """

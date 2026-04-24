@@ -138,7 +138,16 @@ def row_to_audit_entry(row: dict[str, object]) -> AuditEntry:
         elif isinstance(ts, str):
             parsed["timestamp"] = normalize_utc(datetime.fromisoformat(ts))
         return AuditEntry.model_validate(parsed)
-    except (ValidationError, json.JSONDecodeError, KeyError, TypeError) as exc:
+    except (
+        ValidationError,
+        json.JSONDecodeError,
+        ValueError,
+        KeyError,
+        TypeError,
+    ) as exc:
+        # ValueError covers ``datetime.fromisoformat()`` failures on
+        # malformed persisted timestamps so they take the same
+        # structured-log path as JSON / validation errors.
         row_id = row.get("id", "<unknown>")
         msg = f"Failed to deserialize audit entry {row_id!r}"
         logger.warning(

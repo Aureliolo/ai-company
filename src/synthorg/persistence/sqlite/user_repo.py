@@ -16,7 +16,7 @@ from synthorg.api.auth.models import ApiKey, OrgRole, User
 from synthorg.api.auth.system_user import is_system_user
 from synthorg.api.guards import HumanRole
 from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_API_KEY_DELETE_FAILED,
     PERSISTENCE_API_KEY_DELETED,
@@ -304,6 +304,51 @@ ON CONFLICT(id) DO UPDATE SET
         except (ValueError, TypeError, ValidationError) as exc:
             msg = "Failed to deserialize users"
             logger.exception(PERSISTENCE_USER_LIST_FAILED, error=str(exc))
+            raise QueryError(msg) from exc
+        logger.debug(PERSISTENCE_USER_LISTED, count=len(users))
+        return users
+
+    async def list_users_paginated(
+        self,
+        *,
+        limit: int,
+        offset: int,
+    ) -> tuple[User, ...]:
+        """Return a single page of human users sorted by ``id``.
+
+        Sort key is ``id`` (not ``created_at``) so cursor pages stay
+        stable when bulk imports collide on the same timestamp.
+
+        Args:
+            limit: Page size (rows to return).
+            offset: Number of rows to skip.
+
+        Raises:
+            QueryError: If the database query or deserialization fails.
+        """
+        try:
+            cursor = await self._db.execute(
+                "SELECT * FROM users WHERE role != ? ORDER BY id LIMIT ? OFFSET ?",
+                (HumanRole.SYSTEM.value, limit, offset),
+            )
+            rows = await cursor.fetchall()
+        except (sqlite3.Error, aiosqlite.Error) as exc:
+            msg = "Failed to list users (paginated)"
+            logger.warning(
+                PERSISTENCE_USER_LIST_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        try:
+            users = tuple(_row_to_user(row) for row in rows)
+        except (ValueError, TypeError, ValidationError) as exc:
+            msg = "Failed to deserialize users (paginated)"
+            logger.warning(
+                PERSISTENCE_USER_LIST_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             raise QueryError(msg) from exc
         logger.debug(PERSISTENCE_USER_LISTED, count=len(users))
         return users

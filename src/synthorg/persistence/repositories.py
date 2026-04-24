@@ -451,6 +451,32 @@ class UserRepository(Protocol):
         """
         ...
 
+    async def list_users_paginated(
+        self,
+        *,
+        limit: int,
+        offset: int,
+    ) -> tuple[User, ...]:
+        """List a page of human users ordered by ``id`` (excludes system).
+
+        Pushes pagination into the data layer so the ``GET /users``
+        controller no longer materialises the full user table on every
+        request.  ``id`` is the sort key so cursor pages stay stable
+        across calls (timestamps can collide on bulk imports).
+
+        Args:
+            limit: Maximum rows to return (clamped at the
+                pagination layer; repository trusts the value).
+            offset: Number of rows to skip (always >= 0).
+
+        Returns:
+            Page of users in ``id`` order.
+
+        Raises:
+            PersistenceError: If the operation fails.
+        """
+        ...
+
     async def count(self) -> int:
         """Count the number of human users (excludes the system user).
 

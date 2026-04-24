@@ -19,7 +19,7 @@ from synthorg.api.auth.models import ApiKey, OrgRole, User
 from synthorg.api.auth.system_user import is_system_user
 from synthorg.api.guards import HumanRole
 from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_API_KEY_DELETE_FAILED,
     PERSISTENCE_API_KEY_DELETED,
@@ -244,6 +244,45 @@ class PostgresUserRepository:
         except (ValueError, TypeError, KeyError, ValidationError) as exc:
             msg = "Failed to deserialize users"
             logger.exception(PERSISTENCE_USER_LIST_FAILED, error=str(exc))
+            raise QueryError(msg) from exc
+        logger.debug(PERSISTENCE_USER_LISTED, count=len(users))
+        return users
+
+    async def list_users_paginated(
+        self,
+        *,
+        limit: int,
+        offset: int,
+    ) -> tuple[User, ...]:
+        """Return a single page of human users sorted by ``id``."""
+        try:
+            async with (
+                self._pool.connection() as conn,
+                conn.cursor(row_factory=dict_row) as cur,
+            ):
+                await cur.execute(
+                    "SELECT * FROM users WHERE role != %s "
+                    "ORDER BY id LIMIT %s OFFSET %s",
+                    (HumanRole.SYSTEM.value, limit, offset),
+                )
+                rows = await cur.fetchall()
+        except psycopg.Error as exc:
+            msg = "Failed to list users (paginated)"
+            logger.warning(
+                PERSISTENCE_USER_LIST_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        try:
+            users = tuple(_row_to_user(row) for row in rows)
+        except (ValueError, TypeError, KeyError, ValidationError) as exc:
+            msg = "Failed to deserialize users (paginated)"
+            logger.warning(
+                PERSISTENCE_USER_LIST_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             raise QueryError(msg) from exc
         logger.debug(PERSISTENCE_USER_LISTED, count=len(users))
         return users

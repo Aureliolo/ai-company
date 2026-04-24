@@ -17,10 +17,64 @@ function resetStore() {
   useSubworkflowsStore.setState({
     subworkflows: [],
     listLoading: false,
+    loadingMore: false,
     listError: null,
     searchQuery: '',
+    nextCursor: null,
+    hasMore: false,
   })
   useToastStore.getState().dismissAll()
+}
+
+function buildSummary(
+  overrides: Partial<SubworkflowSummary> = {},
+): SubworkflowSummary {
+  return {
+    subworkflow_id: 'sub-default',
+    latest_version: '1.0.0',
+    name: 'Default',
+    description: '',
+    input_count: 0,
+    output_count: 0,
+    version_count: 1,
+    ...overrides,
+  }
+}
+
+function pageOf(
+  summaries: readonly SubworkflowSummary[],
+  cursor: string | null = null,
+): {
+  data: SubworkflowSummary[]
+  total: number | null
+  offset: number
+  limit: number
+  nextCursor: string | null
+  hasMore: boolean
+  pagination: {
+    total: number | null
+    offset: number
+    limit: number
+    next_cursor: string | null
+    has_more: boolean
+  }
+} {
+  const limit = 50
+  return {
+    data: [...summaries],
+    total: summaries.length,
+    offset: 0,
+    limit,
+    nextCursor: cursor,
+    hasMore: cursor !== null,
+    pagination: {
+      total: summaries.length,
+      offset: 0,
+      limit,
+      next_cursor: cursor,
+      has_more: cursor !== null,
+    },
+  }
 }
 
 beforeEach(() => {
@@ -115,7 +169,9 @@ describe('fetchSubworkflows', () => {
       }),
       http.get('/api/v1/subworkflows', () => {
         listCalls += 1
-        return HttpResponse.json(apiSuccess([]))
+        return HttpResponse.json(
+          paginatedFor<typeof listSubworkflows>(emptyPage<SubworkflowSummary>()),
+        )
       }),
     )
 
@@ -124,6 +180,86 @@ describe('fetchSubworkflows', () => {
 
     expect(searchCalls).toBe(1)
     expect(searchQuery).toBe('needle')
+    expect(listCalls).toBe(0)
+  })
+
+  it('captures cursor + hasMore from the first page', async () => {
+    const sub = buildSummary({ subworkflow_id: 'sub-1' })
+    server.use(
+      http.get('/api/v1/subworkflows', () =>
+        HttpResponse.json(
+          paginatedFor<typeof listSubworkflows>(pageOf([sub], 'cursor-2')),
+        ),
+      ),
+    )
+    await useSubworkflowsStore.getState().fetchSubworkflows()
+    const state = useSubworkflowsStore.getState()
+    expect(state.subworkflows).toHaveLength(1)
+    expect(state.nextCursor).toBe('cursor-2')
+    expect(state.hasMore).toBe(true)
+  })
+})
+
+describe('fetchMoreSubworkflows', () => {
+  it('appends the next page to the existing list', async () => {
+    const subA = buildSummary({ subworkflow_id: 'sub-a' })
+    const subB = buildSummary({ subworkflow_id: 'sub-b' })
+    let cursorSeen: string | null = null
+    server.use(
+      http.get('/api/v1/subworkflows', ({ request }) => {
+        cursorSeen = new URL(request.url).searchParams.get('cursor')
+        return HttpResponse.json(
+          paginatedFor<typeof listSubworkflows>(pageOf([subB])),
+        )
+      }),
+    )
+    useSubworkflowsStore.setState({
+      subworkflows: [subA],
+      nextCursor: 'cursor-2',
+      hasMore: true,
+    })
+    await useSubworkflowsStore.getState().fetchMoreSubworkflows()
+    const state = useSubworkflowsStore.getState()
+    expect(cursorSeen).toBe('cursor-2')
+    expect(state.subworkflows.map((s) => s.subworkflow_id)).toEqual([
+      'sub-a',
+      'sub-b',
+    ])
+    expect(state.hasMore).toBe(false)
+    expect(state.nextCursor).toBeNull()
+  })
+
+  it('is a no-op while a search query is active', async () => {
+    let listCalls = 0
+    server.use(
+      http.get('/api/v1/subworkflows', () => {
+        listCalls += 1
+        return HttpResponse.json(
+          paginatedFor<typeof listSubworkflows>(emptyPage<SubworkflowSummary>()),
+        )
+      }),
+    )
+    useSubworkflowsStore.setState({
+      searchQuery: 'needle',
+      nextCursor: 'cursor-2',
+      hasMore: true,
+    })
+    await useSubworkflowsStore.getState().fetchMoreSubworkflows()
+    expect(listCalls).toBe(0)
+  })
+
+  it('is a no-op when there are no more pages', async () => {
+    let listCalls = 0
+    server.use(
+      http.get('/api/v1/subworkflows', () => {
+        listCalls += 1
+        return HttpResponse.json(
+          paginatedFor<typeof listSubworkflows>(emptyPage<SubworkflowSummary>()),
+        )
+      }),
+    )
+    useSubworkflowsStore.setState({ nextCursor: null, hasMore: false })
+    await useSubworkflowsStore.getState().fetchMoreSubworkflows()
     expect(listCalls).toBe(0)
   })
 

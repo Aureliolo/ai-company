@@ -256,6 +256,15 @@ class _FakeUserRepository:
     async def list_users(self) -> tuple[User, ...]:
         return ()
 
+    async def list_users_paginated(
+        self,
+        *,
+        limit: int,
+        offset: int,
+    ) -> tuple[User, ...]:
+        del limit, offset
+        return ()
+
     async def count(self) -> int:
         return 0
 

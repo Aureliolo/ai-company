@@ -16,9 +16,10 @@ from litestar.params import Parameter
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from synthorg.api.controllers._workflow_helpers import get_auth_user_id
+from synthorg.api.cursor import decode_cursor
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_read_access, require_write_access
-from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
+from synthorg.api.pagination import CursorLimit, CursorParam, encode_repo_seek_meta
 from synthorg.api.path_params import PathId  # noqa: TC001
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.enums import WorkflowType
@@ -120,11 +121,13 @@ class SubworkflowController(Controller):
         """List subworkflows with cursor-based pagination.
 
         Sorted by ``(name, latest_version, subworkflow_id)`` for
-        deterministic cursor pages. ``subworkflow_id`` is the
-        unique tie-breaker -- without it, two summaries sharing
-        ``(name, latest_version)`` could drift between pages
-        depending on the underlying ``list_all()`` ordering, producing
-        duplicates or skips when clients follow ``next_cursor``.
+        deterministic cursor pages -- ``subworkflow_id`` is the
+        required tie-breaker so two summaries sharing
+        ``(name, latest_version)`` cannot drift between pages.
+
+        Pagination is pushed into :meth:`SubworkflowRegistry.list_page`
+        so the controller no longer materialises and re-sorts the
+        full summary tuple on every request.
 
         Args:
             state: Application state.
@@ -133,20 +136,23 @@ class SubworkflowController(Controller):
 
         Returns:
             Paginated response of subworkflow summaries.
+
+        Raises:
+            InvalidCursorError: HTTP 400 -- malformed, tampered, or
+                stale cursor.
         """
         app_state: AppState = state.app_state
         registry = _registry(state)
-        summaries = await registry.list_all()
-        sorted_summaries = tuple(
-            sorted(
-                summaries,
-                key=lambda s: (s.name, s.latest_version, s.subworkflow_id),
-            ),
-        )
-        page, meta = paginate_cursor(
-            sorted_summaries,
+        if cursor is None:
+            offset = 0
+        else:
+            offset = decode_cursor(cursor, secret=app_state.cursor_secret)
+        page, total = await registry.list_page(limit=limit, offset=offset)
+        meta = encode_repo_seek_meta(
+            offset=offset,
+            page_len=len(page),
+            total=total,
             limit=limit,
-            cursor=cursor,
             secret=app_state.cursor_secret,
         )
         return PaginatedResponse(data=page, pagination=meta)

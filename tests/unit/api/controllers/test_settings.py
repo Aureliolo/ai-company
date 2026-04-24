@@ -55,7 +55,8 @@ class TestSettingsController:
         self, test_client: TestClient[Any], auth_headers: dict[str, str]
     ) -> None:
         first = test_client.get(
-            "/api/v1/settings?limit=3",
+            "/api/v1/settings",
+            params={"limit": 3},
             headers=auth_headers,
         )
         assert first.status_code == 200, first.text
@@ -67,10 +68,11 @@ class TestSettingsController:
         assert cursor is not None
 
         second = test_client.get(
-            f"/api/v1/settings?limit=3&cursor={cursor}",
+            "/api/v1/settings",
+            params={"limit": 3, "cursor": cursor},
             headers=auth_headers,
         )
-        assert second.status_code == 200
+        assert second.status_code == 200, second.text
         second_body = second.json()
         second_ids = [
             (e["definition"]["namespace"], e["definition"]["key"])
@@ -90,14 +92,20 @@ class TestSettingsController:
     def test_list_all_settings_stable_ordering(
         self, test_client: TestClient[Any], auth_headers: dict[str, str]
     ) -> None:
-        first = test_client.get(
-            "/api/v1/settings?limit=5",
+        first_resp = test_client.get(
+            "/api/v1/settings",
+            params={"limit": 5},
             headers=auth_headers,
-        ).json()["data"]
-        second = test_client.get(
-            "/api/v1/settings?limit=5",
+        )
+        assert first_resp.status_code == 200, first_resp.text
+        first = first_resp.json()["data"]
+        second_resp = test_client.get(
+            "/api/v1/settings",
+            params={"limit": 5},
             headers=auth_headers,
-        ).json()["data"]
+        )
+        assert second_resp.status_code == 200, second_resp.text
+        second = second_resp.json()["data"]
         assert first == second
 
     def test_get_namespace_settings(

@@ -110,13 +110,18 @@ class TestRowToAuditEntry:
         data = entry.model_dump(mode="json")
         return {**data, "matched_rules": matched_rules}
 
-    def test_handles_string_matched_rules(self) -> None:
-        row = self._row(matched_rules='["rule-a","rule-b"]')
-        entry = row_to_audit_entry(row)
-        assert entry.matched_rules == ("rule-a", "rule-b")
-
-    def test_handles_native_list_matched_rules(self) -> None:
-        row = self._row(matched_rules=["rule-a", "rule-b"])
+    @pytest.mark.parametrize(
+        "matched_rules",
+        [
+            pytest.param('["rule-a","rule-b"]', id="json_string"),
+            pytest.param(["rule-a", "rule-b"], id="native_list"),
+        ],
+    )
+    def test_handles_matched_rules(self, matched_rules: object) -> None:
+        # Both encodings (SQLite TEXT JSON string + Postgres JSONB
+        # native list) must round-trip through the helper to the same
+        # tuple, so the conformance contract is shape-agnostic.
+        row = self._row(matched_rules=matched_rules)
         entry = row_to_audit_entry(row)
         assert entry.matched_rules == ("rule-a", "rule-b")
 
