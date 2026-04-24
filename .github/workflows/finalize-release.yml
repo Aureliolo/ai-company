@@ -163,14 +163,17 @@ jobs:
           trap 'rm -rf "$TMP"' EXIT
 
           # GoReleaser name_template in cli/.goreleaser.yml is
-          # ``synthorg_{{ .Os }}_{{ .Arch }}`` (OS + Arch only, no version),
-          # so the Linux amd64 archive is ``synthorg_Linux_x86_64.tar.gz``.
-          # The companion ``checksums.txt`` is cosign-signed + SLSA-attested
+          # ``synthorg_{{ .Os }}_{{ .Arch }}`` -- GoReleaser substitutes
+          # GOOS / GOARCH lowercase, so the Linux amd64 archive is
+          # published as ``synthorg_linux_amd64.tar.gz``. Verified against
+          # the v0.7.2 release assets list; the prior ``Linux_x86_64``
+          # spelling never existed on any published release. The
+          # companion ``checksums.txt`` is cosign-signed + SLSA-attested
           # (cli.yml "Sign checksums with cosign" step) so trusting its
           # contents is reasonable for a smoke-test gate. We pull that
           # file alongside the archive and verify SHA-256 before exec.
           VER="${TAG#v}"
-          ASSET="synthorg_Linux_x86_64.tar.gz"
+          ASSET="synthorg_linux_amd64.tar.gz"
           gh release download "$TAG" --repo "$GITHUB_REPOSITORY" \
             --pattern "$ASSET" --dir "$TMP"
           gh release download "$TAG" --repo "$GITHUB_REPOSITORY" \
@@ -190,8 +193,19 @@ jobs:
 
           tar -xzf "$TMP/$ASSET" -C "$TMP"
 
-          VERSION_OUT=$("$TMP/synthorg" --version 2>&1 || true)
+          # Capture BOTH the binary's stdout/stderr AND its exit code.
+          # The prior ``|| true`` let a crashing binary that happened to
+          # print the version before dying silently pass the grep below;
+          # ``set +e`` + explicit rc check blocks that path.
+          set +e
+          VERSION_OUT=$("$TMP/synthorg" --version 2>&1)
+          version_rc=$?
+          set -e
           echo "CLI --version output: $VERSION_OUT"
+          if [ "$version_rc" -ne 0 ]; then
+            echo "::error::synthorg --version exited non-zero (rc=$version_rc); blocking publish"
+            exit 1
+          fi
           if ! printf '%s\n' "$VERSION_OUT" | grep -qF "$VER"; then
             echo "::error::CLI --version output does not contain '$VER'; blocking publish"
             exit 1

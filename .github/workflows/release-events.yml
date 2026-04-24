@@ -98,11 +98,28 @@ jobs:
           - **signing-failure** -- `test-signing.yml` detected a regression.
           EOF
           )
-            ISSUE_NUMBER=$(gh issue create --title "$TITLE" \
+            # ``gh issue create`` prints the issue URL to stdout (its
+            # ``--json`` flag support has been historically inconsistent
+            # across gh versions; parsing the URL works on every
+            # version). Extract the trailing issue number from
+            # ``https://github.com/owner/repo/issues/<N>``.
+            ISSUE_URL=$(gh issue create --title "$TITLE" \
               --label "$LABEL" \
-              --body "$ISSUE_BODY" \
-              --json number --jq '.number')
+              --body "$ISSUE_BODY")
+            ISSUE_NUMBER="${ISSUE_URL##*/}"
             echo "Created tracking issue #$ISSUE_NUMBER"
+          fi
+
+          # Pin the rolling-events issue for visibility -- same
+          # best-effort pattern as test-signing.yml / release-pipeline-
+          # health.yml report-failure jobs. A repo holds at most 3
+          # pinned issues; the release automation's tracking set fits
+          # under that cap (events log + signing regression + health
+          # regression). Pin failures degrade to ``::warning::``.
+          if ! gh api --method PUT \
+              "repos/$GITHUB_REPOSITORY/issues/$ISSUE_NUMBER/pin" \
+              --silent 2>/dev/null; then
+            echo "::warning::could not pin tracking issue #$ISSUE_NUMBER (quota / race / permission)"
           fi
 
           # Compose the comment payload based on the event type.

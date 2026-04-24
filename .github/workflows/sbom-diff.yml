@@ -88,8 +88,27 @@ jobs:
           run-id: ${{ steps.head.outputs.head_run_id }}
           github-token: ${{ github.token }}
 
-      - name: Download last-stable SBOM
+      # Even with continue-on-error on the download + the precheck, the
+      # fetch can still land an empty directory (expired between check
+      # and download, partial artifact, unzip failure). Confirm the
+      # expected file actually landed on disk before any downstream
+      # step tries to extract from it; gate the rest of the job on
+      # this flag so the advisory comment degrades to ``skipped``
+      # rather than a hard failure.
+      - name: Verify head SBOM landed
         if: steps.head.outputs.skip != 'true'
+        id: head-check
+        run: |
+          set -euo pipefail
+          if [ -s head-sbom/sbom-backend.cdx.json ]; then
+            echo "head_sbom_present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::head-sbom/sbom-backend.cdx.json missing or empty after download; skipping SBOM diff"
+            echo "head_sbom_present=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download last-stable SBOM
+        if: steps.head.outputs.skip != 'true' && steps.head-check.outputs.head_sbom_present == 'true'
         id: base
         env:
           GH_TOKEN: ${{ github.token }}
@@ -112,7 +131,7 @@ jobs:
           echo "skip=false" >> "$GITHUB_OUTPUT"
 
       - name: Compute + post diff
-        if: steps.head.outputs.skip != 'true' && steps.base.outputs.skip != 'true'
+        if: steps.head.outputs.skip != 'true' && steps.head-check.outputs.head_sbom_present == 'true' && steps.base.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}

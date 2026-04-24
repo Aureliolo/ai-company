@@ -125,8 +125,10 @@ jobs:
 
           # And confirm at least one CLI binary asset exists -- if the
           # bundle shipped but no archives did, that is also a failure
-          # mode.
-          CLI_COUNT=$(grep -cE '^synthorg_(Linux|Darwin|Windows)_' <<< "$ASSETS" || true)
+          # mode. GoReleaser emits Os/Arch lowercase, so the grep is
+          # lowercase too (Linux/Darwin/Windows capitalisation was a
+          # typo in the first draft -- verified against v0.7.2 assets).
+          CLI_COUNT=$(grep -cE '^synthorg_(linux|darwin|windows)_' <<< "$ASSETS" || true)
           if [ "$CLI_COUNT" -lt 1 ]; then
             MISSING+=('no synthorg_<OS>_<ARCH> CLI archives found')
           fi
@@ -181,23 +183,46 @@ jobs:
           TAG: ${{ steps.latest.outputs.tag }}
         run: |
           set -euo pipefail
-          # Each container image published during finalize-release carries
-          # a SLSA L3 provenance attestation. List them for the tag's
-          # head ref so a regression in the attestation step shows up
-          # here -- gh attestation list exits non-zero when no matches.
-          HEAD_SHA=$(gh api "repos/$GITHUB_REPOSITORY/commits/$TAG" --jq '.sha' 2>/dev/null || true)
-          if [ -z "$HEAD_SHA" ]; then
-            echo "::warning::Could not resolve tag $TAG to a commit SHA; skipping attestation check"
-            echo "ok=skipped" >> "$GITHUB_OUTPUT"
+          # SLSA L3 provenance attestations on this repo are keyed by
+          # container image DIGEST (sha256:...), not by commit SHA. The
+          # prior HEAD_SHA-only check only confirmed GitHub had a
+          # build-level attestation for the tag commit, not that each
+          # published image digest actually carries one -- a regression
+          # in the docker.yml attestation step would have slipped past.
+          #
+          # Extract every ``sha256:<digest>`` reference from the release
+          # body's Digest Pins section and verify each digest returns at
+          # least one attestation via /attestations/<digest>. Missing
+          # digests fail the check; no digests in the body is a separate
+          # failure (means finalize-release.yml did not write the
+          # Verification section correctly).
+          BODY=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json body --jq '.body')
+          mapfile -t DIGESTS < <(
+            grep -oE 'sha256:[0-9a-f]{64}' <<< "$BODY" | sort -u
+          )
+          if [ "${#DIGESTS[@]}" -eq 0 ]; then
+            echo "::error::No sha256 digests found in release body -- attestations cannot be verified"
+            echo "ok=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          if gh api "repos/$GITHUB_REPOSITORY/attestations/$HEAD_SHA" \
-              --jq '.attestations | length' 2>/dev/null | grep -qE '^[1-9][0-9]*$'; then
-            echo "ok=true" >> "$GITHUB_OUTPUT"
-            echo "At least one attestation present for $TAG ($HEAD_SHA)."
-          else
-            echo "::error::No SLSA attestations found for $TAG ($HEAD_SHA)"
+          echo "Found ${#DIGESTS[@]} unique digest(s) in release body"
+
+          MISSING=()
+          for digest in "${DIGESTS[@]}"; do
+            if ! gh api "repos/$GITHUB_REPOSITORY/attestations/$digest" \
+                --jq '.attestations | length' 2>/dev/null \
+                | grep -qE '^[1-9][0-9]*$'; then
+              MISSING+=("$digest")
+            fi
+          done
+
+          if [ "${#MISSING[@]}" -gt 0 ]; then
+            echo "::error::$(printf '%d digest(s) missing SLSA attestations: %s' "${#MISSING[@]}" "${MISSING[*]}")"
+            printf 'missing<<EOF\n%s\nEOF\n' "$(printf '%s\n' "${MISSING[@]}")" >> "$GITHUB_OUTPUT"
             echo "ok=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+            echo "All ${#DIGESTS[@]} digests carry at least one SLSA attestation."
           fi
 
       - name: Aggregate + emit conclusion
@@ -267,9 +292,13 @@ jobs:
           )
 
           if [ -z "$ISSUE_NUMBER" ]; then
-            ISSUE_NUMBER=$(gh issue create --title "$TITLE" \
+            # Parse ``gh issue create``'s stdout URL for the issue
+            # number rather than relying on ``--json`` (see release-
+            # events.yml for the version-compatibility rationale).
+            ISSUE_URL=$(gh issue create --title "$TITLE" \
               --label 'automation:release-events,type:ci,prio:high' \
-              --body "$BODY" --json number --jq '.number')
+              --body "$BODY")
+            ISSUE_NUMBER="${ISSUE_URL##*/}"
             echo "Created tracking issue #$ISSUE_NUMBER"
           else
             gh issue comment "$ISSUE_NUMBER" --body "$BODY"

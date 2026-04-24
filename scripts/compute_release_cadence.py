@@ -127,13 +127,15 @@ def _percentile(values: list[float], pct: float) -> float:
 
 
 def _is_feat_commit(subject: str) -> bool:
-    """Return True for conventional-commit ``feat:`` / ``feat(scope):`` subjects.
+    """Return True for conventional-commit feat-family subjects.
 
-    Anchoring on the colon / opening parenthesis avoids matching unrelated
-    prefixes such as ``feature:`` or ``feature-branch-cleanup`` that share
-    the leading ``feat`` substring.
+    Matches ``feat:``, ``feat(scope):``, and the breaking-feature form
+    ``feat!:`` / ``feat(scope)!:``. Anchoring on the colon / opening
+    parenthesis / bang avoids matching unrelated prefixes such as
+    ``feature:`` or ``feature-branch-cleanup`` that share the leading
+    ``feat`` substring.
     """
-    return subject.startswith(("feat:", "feat("))
+    return subject.startswith(("feat:", "feat(", "feat!:"))
 
 
 def _feat_merge_to_release_deltas(tags: list[StableTag]) -> list[float]:

@@ -71,8 +71,14 @@ jobs:
           | gh api --method POST "repos/$GITHUB_REPOSITORY/git/commits" --input - --jq '.sha')
           echo "commit_sha=$COMMIT_SHA" >> "$GITHUB_OUTPUT"
 
-          # Fast-forward the disposable branch to the new commit.
-          gh api --method PATCH "repos/$GITHUB_REPOSITORY/git/${DISPOSABLE_REF#refs/}" \
+          # Fast-forward the disposable branch to the new commit. The
+          # REST endpoint is /git/refs/{ref} where {ref} excludes the
+          # leading ``refs/`` -- so we strip ``refs/`` from
+          # DISPOSABLE_REF (``refs/heads/test-signing/...`` ->
+          # ``heads/test-signing/...``) and prepend ``refs/`` back into
+          # the URL path. The prior shape ``git/${DISPOSABLE_REF#refs/}``
+          # omitted the ``refs/`` segment entirely, hitting a 404.
+          gh api --method PATCH "repos/$GITHUB_REPOSITORY/git/refs/${DISPOSABLE_REF#refs/}" \
             -f sha="$COMMIT_SHA"
 
       - name: Assert verified
@@ -101,7 +107,9 @@ jobs:
           DISPOSABLE_REF: ${{ steps.commit.outputs.ref }}
         run: |
           if [ -n "${DISPOSABLE_REF:-}" ]; then
-            if ! gh api --method DELETE "repos/$GITHUB_REPOSITORY/git/${DISPOSABLE_REF#refs/}" 2>/dev/null; then
+            # Same /git/refs/{ref} endpoint shape as the fast-forward
+            # PATCH above.
+            if ! gh api --method DELETE "repos/$GITHUB_REPOSITORY/git/refs/${DISPOSABLE_REF#refs/}" 2>/dev/null; then
               echo "::warning::cleanup failed for ${DISPOSABLE_REF} -- orphan ref may accumulate"
             fi
           fi
@@ -294,9 +302,13 @@ jobs:
           )
 
           if [ -z "$ISSUE_NUMBER" ]; then
-            ISSUE_NUMBER=$(gh issue create --title "$TITLE" \
+            # Parse ``gh issue create``'s stdout URL for the issue
+            # number rather than relying on ``--json`` (see release-
+            # events.yml for the version-compatibility rationale).
+            ISSUE_URL=$(gh issue create --title "$TITLE" \
               --label 'automation:release-events,type:ci,prio:high' \
-              --body "$BODY" --json number --jq '.number')
+              --body "$BODY")
+            ISSUE_NUMBER="${ISSUE_URL##*/}"
             echo "Created tracking issue #$ISSUE_NUMBER"
           else
             gh issue comment "$ISSUE_NUMBER" --body "$BODY"

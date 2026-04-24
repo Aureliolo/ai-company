@@ -80,14 +80,16 @@ _BASELINE_PATH = (
 # a YAML key named ``git_commit``.
 _GIT_COMMIT_RE = re.compile(r"\bgit\s+commit\b")
 _GIT_PUSH_RE = re.compile(r"\bgit\s+push\b")
-# Strip shell line comments before scanning so a documented ``# git
-# commit`` example in a ``run:`` block does not trip the gate. Match
-# from ``#`` after the first non-space character (or at column 0)
-# through end-of-line; leave quoted ``#`` alone -- the cost of a
-# false-positive inside a quoted string is vastly preferable to
-# missing a real violation, and the run: idiom rarely quotes the git
-# CLI name.
-_SHELL_COMMENT_RE = re.compile(r"(?m)(?<!\\)#[^\n]*$")
+# Strip FULL-LINE shell comments (whole line is a ``# ...`` comment)
+# before scanning, so a documented ``# git commit ...`` example in a
+# ``run:`` block does not trip the gate. The regex is deliberately
+# anchored to the start of a line (``^\s*#``) -- an in-line ``#`` is
+# left alone because it is almost always part of a quoted string
+# (``git commit -m "fix: #1555"``), not a comment. Stripping in-line
+# hashes would eat real command chains like
+# ``git commit -m "fix: #1555" && git push`` and let the push slip
+# past the detector.
+_SHELL_COMMENT_RE = re.compile(r"(?m)^\s*#[^\n]*$")
 
 # Each baseline list entry is ``[job_id, step_key]`` -- a length-2
 # list. Named so the `len(entry) == _BASELINE_ENTRY_LEN` check stays
@@ -120,11 +122,18 @@ def _scan_file(path: Path) -> list[tuple[str, str]]:
     ``step_key`` is ``step.name`` if present, else ``step-index-N`` so we
     always have a stable identifier.
 
-    A ``run:`` block is flagged whenever it contains both
-    ``git commit`` and ``git push``. There is no whitelist based on
-    tokens minted elsewhere in the job: a local ``git push`` produces
-    unsigned commits regardless of which credential the push uses,
-    because GitHub only signs commits created through the Git Data API.
+    A step is flagged when a ``git push`` anywhere in the JOB is
+    preceded by a ``git commit`` in the same job -- either in the same
+    ``run:`` block, or in ANY earlier step. Splitting commit + push
+    across steps does not launder the unsigned-commit property: the
+    commit object created in step N is the one step N+1 pushes, still
+    unsigned because GitHub only signs commits written via the Git
+    Data API.
+
+    There is no whitelist based on tokens minted elsewhere in the
+    job: a local ``git push`` produces unsigned commits regardless of
+    which credential the push uses. Workflows that need to write to
+    the repo must invoke the Git Data API directly.
 
     Raises on YAML parse errors so callers surface them instead of a
     false-green "no violations".
@@ -139,19 +148,51 @@ def _scan_file(path: Path) -> list[tuple[str, str]]:
         if not isinstance(job, dict):
             continue
         steps = job.get("steps") or []
+        commit_seen = False
+        commit_step_key: str | None = None
         for idx, step in enumerate(steps):
             if not isinstance(step, dict):
                 continue
             run_block = step.get("run")
             if not isinstance(run_block, str):
                 continue
-            # Strip shell line-comments before the regex so documented
-            # examples (``# see: git commit ...``) do not trip the gate.
+            # Strip full-line shell comments before the regex so
+            # documented examples (``# see: git commit ...``) do not
+            # trip the gate.
             scrubbed = _SHELL_COMMENT_RE.sub("", run_block)
-            if not (_GIT_COMMIT_RE.search(scrubbed) and _GIT_PUSH_RE.search(scrubbed)):
-                continue
             step_key = step.get("name") or f"step-index-{idx}"
-            hits.append((str(job_id), str(step_key)))
+
+            has_commit = bool(_GIT_COMMIT_RE.search(scrubbed))
+            has_push = bool(_GIT_PUSH_RE.search(scrubbed))
+
+            if has_commit and has_push:
+                # Same-step violation: commit + push in one run block.
+                hits.append((str(job_id), str(step_key)))
+                # Reset tracking -- this step is already flagged; any
+                # later push in the same job without a fresh intervening
+                # commit would duplicate-report.
+                commit_seen = False
+                commit_step_key = None
+                continue
+            if has_push and commit_seen:
+                # Split-step violation: a prior step in this job
+                # committed, this step pushes. Flag the push step --
+                # the push is the visible side-effect, and flagging
+                # both would be noisy.
+                hits.append((str(job_id), str(step_key)))
+                commit_seen = False
+                commit_step_key = None
+                continue
+            if has_commit:
+                commit_seen = True
+                commit_step_key = str(step_key)
+
+        # If a job commits but never pushes, that is not the signed-
+        # commit-to-main failure mode this gate exists to catch (no
+        # push = no ref update = no unsigned-commit landing on main).
+        # Intentionally do not flag.
+        _ = commit_step_key  # reserved for future richer reporting.
+
     return sorted(hits)
 
 
