@@ -98,6 +98,53 @@ class TestSubworkflowCrud:
         assert items[0]["latest_version"] == "1.0.0"
         assert items[0]["input_count"] == 1
         assert items[0]["output_count"] == 1
+        assert body["pagination"]["limit"] == 50
+        assert body["pagination"]["total"] == 1
+        assert body["pagination"]["has_more"] is False
+
+    def test_list_paginates_with_explicit_limit(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        _create_subworkflow(
+            test_client, _sub_payload(subworkflow_id="sub-a", name="Sub A")
+        )
+        _create_subworkflow(
+            test_client, _sub_payload(subworkflow_id="sub-b", name="Sub B")
+        )
+        _create_subworkflow(
+            test_client, _sub_payload(subworkflow_id="sub-c", name="Sub C")
+        )
+
+        first = test_client.get(
+            "/api/v1/subworkflows?limit=2",
+            headers=make_auth_headers("ceo"),
+        ).json()
+        assert len(first["data"]) == 2
+        assert first["pagination"]["has_more"] is True
+        cursor = first["pagination"]["next_cursor"]
+        assert cursor is not None
+
+        second = test_client.get(
+            f"/api/v1/subworkflows?limit=2&cursor={cursor}",
+            headers=make_auth_headers("ceo"),
+        ).json()
+        assert len(second["data"]) == 1
+        assert second["pagination"]["has_more"] is False
+        first_ids = {s["subworkflow_id"] for s in first["data"]}
+        second_ids = {s["subworkflow_id"] for s in second["data"]}
+        assert first_ids.isdisjoint(second_ids)
+
+    def test_list_invalid_cursor_returns_400(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        _create_subworkflow(test_client)
+        resp = test_client.get(
+            "/api/v1/subworkflows?cursor=not-a-real-cursor",
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 400
 
     def test_list_versions_semver_descending(
         self,

@@ -33,6 +33,71 @@ class TestSettingsController:
         assert body["success"] is True
         assert isinstance(body["data"], list)
         assert len(body["data"]) > 0
+        assert "pagination" in body
+        assert body["pagination"]["limit"] == 50
+
+    def test_list_all_settings_explicit_limit(
+        self, test_client: TestClient[Any], auth_headers: dict[str, str]
+    ) -> None:
+        resp = test_client.get(
+            "/api/v1/settings?limit=3",
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["success"] is True
+        assert len(body["data"]) == 3
+        assert body["pagination"]["limit"] == 3
+        assert body["pagination"]["has_more"] is True
+        assert body["pagination"]["next_cursor"] is not None
+
+    def test_list_all_settings_cursor_chain_returns_disjoint_pages(
+        self, test_client: TestClient[Any], auth_headers: dict[str, str]
+    ) -> None:
+        first = test_client.get(
+            "/api/v1/settings?limit=3",
+            headers=auth_headers,
+        )
+        body = first.json()
+        first_ids = [
+            (e["definition"]["namespace"], e["definition"]["key"]) for e in body["data"]
+        ]
+        cursor = body["pagination"]["next_cursor"]
+        assert cursor is not None
+
+        second = test_client.get(
+            f"/api/v1/settings?limit=3&cursor={cursor}",
+            headers=auth_headers,
+        )
+        assert second.status_code == 200
+        second_body = second.json()
+        second_ids = [
+            (e["definition"]["namespace"], e["definition"]["key"])
+            for e in second_body["data"]
+        ]
+        assert set(first_ids).isdisjoint(second_ids)
+
+    def test_list_all_settings_invalid_cursor_is_400(
+        self, test_client: TestClient[Any], auth_headers: dict[str, str]
+    ) -> None:
+        resp = test_client.get(
+            "/api/v1/settings?cursor=not-a-real-cursor",
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+
+    def test_list_all_settings_stable_ordering(
+        self, test_client: TestClient[Any], auth_headers: dict[str, str]
+    ) -> None:
+        first = test_client.get(
+            "/api/v1/settings?limit=5",
+            headers=auth_headers,
+        ).json()["data"]
+        second = test_client.get(
+            "/api/v1/settings?limit=5",
+            headers=auth_headers,
+        ).json()["data"]
+        assert first == second
 
     def test_get_namespace_settings(
         self, test_client: TestClient[Any], auth_headers: dict[str, str]

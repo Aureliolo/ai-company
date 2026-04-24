@@ -16,9 +16,11 @@ from litestar.params import Parameter
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from synthorg.api.controllers._workflow_helpers import get_auth_user_id
-from synthorg.api.dto import ApiResponse
+from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_read_access, require_write_access
+from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
 from synthorg.api.path_params import PathId  # noqa: TC001
+from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.enums import WorkflowType
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.errors import (
@@ -112,15 +114,34 @@ class SubworkflowController(Controller):
     async def list_subworkflows(
         self,
         state: State,
-    ) -> Response[ApiResponse[tuple[SubworkflowSummary, ...]]]:
-        """List every unique subworkflow in the registry (latest per id)."""
+        cursor: CursorParam = None,
+        limit: CursorLimit = 50,
+    ) -> PaginatedResponse[SubworkflowSummary]:
+        """List subworkflows with cursor-based pagination.
+
+        Sorted by ``(name, version)`` for deterministic cursor pages.
+
+        Args:
+            state: Application state.
+            cursor: Opaque pagination cursor from a previous page.
+            limit: Page size (default 50, max defined by ``MAX_LIMIT``).
+
+        Returns:
+            Paginated response of subworkflow summaries.
+        """
+        app_state: AppState = state.app_state
         registry = _registry(state)
         summaries = await registry.list_all()
-        return Response(
-            content=ApiResponse[tuple[SubworkflowSummary, ...]](
-                data=summaries,
-            ),
+        sorted_summaries = tuple(
+            sorted(summaries, key=lambda s: (s.name, s.latest_version)),
         )
+        page, meta = paginate_cursor(
+            sorted_summaries,
+            limit=limit,
+            cursor=cursor,
+            secret=app_state.cursor_secret,
+        )
+        return PaginatedResponse(data=page, pagination=meta)
 
     @get("/search", guards=[require_read_access])
     async def search_subworkflows(

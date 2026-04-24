@@ -22,8 +22,9 @@ from pydantic import (
 )
 
 from synthorg.api.concurrency import check_if_match, compute_etag
-from synthorg.api.dto import ApiResponse
+from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_ceo_or_manager, require_read_access
+from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
 from synthorg.api.path_params import PathKey, PathNamespace  # noqa: TC001
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
@@ -281,20 +282,37 @@ class SettingsController(Controller):
     async def list_all_settings(
         self,
         state: State,
-    ) -> ApiResponse[tuple[SettingEntry, ...]]:
-        """List all settings with resolved values.
+        cursor: CursorParam = None,
+        limit: CursorLimit = 50,
+    ) -> PaginatedResponse[SettingEntry]:
+        """List settings with resolved values, paginated.
 
-        Sensitive values are masked.
+        Sensitive values are masked. Sorted by ``(namespace, key)`` for
+        deterministic cursor pages.
 
         Args:
             state: Application state.
+            cursor: Opaque pagination cursor from a previous page.
+            limit: Page size (default 50, max defined by ``MAX_LIMIT``).
 
         Returns:
-            All resolved setting entries.
+            Paginated response of resolved setting entries.
         """
         app_state: AppState = state.app_state
         entries = await app_state.settings_service.get_all()
-        return ApiResponse(data=entries)
+        sorted_entries = tuple(
+            sorted(
+                entries,
+                key=lambda e: (e.definition.namespace, e.definition.key),
+            ),
+        )
+        page, meta = paginate_cursor(
+            sorted_entries,
+            limit=limit,
+            cursor=cursor,
+            secret=app_state.cursor_secret,
+        )
+        return PaginatedResponse(data=page, pagination=meta)
 
     @get("/{namespace:str}")
     async def get_namespace_settings(

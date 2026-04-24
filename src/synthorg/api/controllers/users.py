@@ -12,9 +12,10 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 from synthorg.api.auth.config import AuthConfig
 from synthorg.api.auth.models import AuthenticatedUser, OrgRole, User
 from synthorg.api.auth.user_service import UserService
-from synthorg.api.dto import ApiResponse
+from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.errors import ApiValidationError, ConflictError, NotFoundError
 from synthorg.api.guards import HumanRole, require_ceo
+from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
 from synthorg.api.path_params import PathId  # noqa: TC001
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
@@ -239,18 +240,33 @@ class UserController(Controller):
     async def list_users(
         self,
         state: State,
-    ) -> ApiResponse[tuple[UserResponse, ...]]:
-        """List all human users (excludes system user).
+        cursor: CursorParam = None,
+        limit: CursorLimit = 50,
+    ) -> PaginatedResponse[UserResponse]:
+        """List human users with cursor-based pagination.
+
+        Sorted by user id for deterministic cursor pages.
 
         Args:
             state: Application state.
+            cursor: Opaque pagination cursor from a previous page.
+            limit: Page size (default 50, max defined by ``MAX_LIMIT``).
 
         Returns:
-            Tuple of user responses.
+            Paginated response of user entries.
         """
+        app_state: AppState = state.app_state
         users = await _service(state).list_users()
-        return ApiResponse(
-            data=tuple(_to_response(u) for u in users),
+        sorted_users = tuple(sorted(users, key=lambda u: u.id))
+        page, meta = paginate_cursor(
+            sorted_users,
+            limit=limit,
+            cursor=cursor,
+            secret=app_state.cursor_secret,
+        )
+        return PaginatedResponse(
+            data=tuple(_to_response(u) for u in page),
+            pagination=meta,
         )
 
     @get("/{user_id:str}")

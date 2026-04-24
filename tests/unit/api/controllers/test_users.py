@@ -161,6 +161,64 @@ class TestListUsers:
         )
         assert resp.status_code == 403
 
+    def test_list_pagination_metadata_present(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        resp = test_client.get(_BASE, headers=_CEO_HEADERS)
+        body = resp.json()
+        assert "pagination" in body
+        assert body["pagination"]["limit"] == 50
+        assert body["pagination"]["total"] == 5
+        assert body["pagination"]["has_more"] is False
+        assert body["pagination"]["next_cursor"] is None
+
+    def test_list_limit_page_chain(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        first = test_client.get(
+            f"{_BASE}?limit=2",
+            headers=_CEO_HEADERS,
+        ).json()
+        assert len(first["data"]) == 2
+        assert first["pagination"]["has_more"] is True
+        cursor = first["pagination"]["next_cursor"]
+        assert cursor is not None
+
+        second = test_client.get(
+            f"{_BASE}?limit=2&cursor={cursor}",
+            headers=_CEO_HEADERS,
+        ).json()
+        assert len(second["data"]) == 2
+        first_ids = {u["id"] for u in first["data"]}
+        second_ids = {u["id"] for u in second["data"]}
+        assert first_ids.isdisjoint(second_ids)
+
+    def test_list_invalid_cursor_returns_400(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        resp = test_client.get(
+            f"{_BASE}?cursor=not-a-real-cursor",
+            headers=_CEO_HEADERS,
+        )
+        assert resp.status_code == 400
+
+    def test_list_stable_ordering(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        first = test_client.get(
+            f"{_BASE}?limit=5",
+            headers=_CEO_HEADERS,
+        ).json()["data"]
+        second = test_client.get(
+            f"{_BASE}?limit=5",
+            headers=_CEO_HEADERS,
+        ).json()["data"]
+        assert first == second
+
 
 @pytest.mark.unit
 class TestGetUser:

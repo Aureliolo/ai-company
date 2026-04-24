@@ -23,6 +23,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from litestar.testing import TestClient
 
+from synthorg.api.cursor import CursorSecret
 from synthorg.api.errors import (
     ApiValidationError,
     ConflictError,
@@ -330,12 +331,74 @@ class TestIntegrationHealthController:
 
         monkeypatch.setattr(controller_mod, "check_connection_health", fake_check)
 
-        state = {"app_state": MagicMock(connection_catalog=catalog)}
+        state = MagicMock()
+        state.app_state = MagicMock(connection_catalog=catalog)
+        state.app_state.cursor_secret = CursorSecret.from_key(
+            "test-secret-32-bytes-long-enough!",
+        )
         ctrl = IntegrationHealthController(owner=IntegrationHealthController)  # type: ignore[arg-type]
         response = await ctrl.aggregate_health.fn(ctrl, state=state)
 
         assert len(response.data) == 2
         assert {r.connection_name for r in response.data} == {"c1", "c2"}
+        assert response.pagination.total == 2
+        assert response.pagination.has_more is False
+
+    async def test_aggregate_paginates_and_only_probes_page_connections(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Pagination slices connections first, probes only the page."""
+        from synthorg.api.controllers.integration_health import (
+            IntegrationHealthController,
+        )
+        from synthorg.integrations.health import service as health_service
+
+        conns = tuple(_make_conn(f"c{i}") for i in range(6))
+        catalog = MagicMock()
+        catalog.list_all = AsyncMock(return_value=conns)
+
+        probe_calls: list[str] = []
+
+        async def tracking_check(
+            _catalog: object,
+            name: str,
+        ) -> HealthReport:
+            probe_calls.append(name)
+            return HealthReport(
+                connection_name=NotBlankStr(name),
+                status=ConnectionStatus.HEALTHY,
+                latency_ms=1.0,
+                checked_at=datetime.now(UTC),
+            )
+
+        monkeypatch.setattr(health_service, "check_connection_health", tracking_check)
+        import synthorg.api.controllers.integration_health as controller_mod
+
+        monkeypatch.setattr(
+            controller_mod,
+            "check_connection_health",
+            tracking_check,
+        )
+
+        state = MagicMock()
+        state.app_state = MagicMock(connection_catalog=catalog)
+        state.app_state.cursor_secret = CursorSecret.from_key(
+            "test-secret-32-bytes-long-enough!",
+        )
+        ctrl = IntegrationHealthController(owner=IntegrationHealthController)  # type: ignore[arg-type]
+        response = await ctrl.aggregate_health.fn(
+            ctrl,
+            state=state,
+            cursor=None,
+            limit=3,
+        )
+
+        assert len(response.data) == 3
+        assert response.pagination.has_more is True
+        assert response.pagination.next_cursor is not None
+        assert response.pagination.total == 6
+        assert len(probe_calls) == 3  # only probed page connections
 
 
 @pytest.mark.integration
