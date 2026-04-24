@@ -314,3 +314,38 @@ class TestFineTuneCheckpointRepository:
         # ordering; the model field is a string so we re-parse to compare
         # semantic equality rather than byte equality).
         assert json.loads(fetched.backup_config_json) == json.loads(payload)
+
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            '"just-a-string"',  # JSON scalar string
+            "42",  # JSON number
+            "true",  # JSON boolean
+            "[1, 2, 3]",  # JSON array
+        ],
+        ids=["string-scalar", "number", "bool", "array"],
+    )
+    async def test_backup_config_json_scalar_round_trip(
+        self, backend: PersistenceBackend, payload: str
+    ) -> None:
+        # JSONB can hold any JSON type, not just objects.  Postgres
+        # returns the decoded Python value from the JSONB loader
+        # (``str`` for a JSON string scalar, ``int``/``float`` for a
+        # number, ``list`` for an array, ...), so the read path must
+        # re-serialise unconditionally.  Previously the ``str`` fast
+        # path corrupted JSON scalar strings -- JSONB ``"foo"`` came
+        # back as the Python ``str`` ``foo`` and got stored in the
+        # model verbatim, which is not valid JSON text and broke any
+        # ``json.loads()`` consumer (``MemoryService.rollback_checkpoint``
+        # in particular).
+        await backend.fine_tune_runs.save_run(_run())
+        await backend.fine_tune_checkpoints.save_checkpoint(
+            _checkpoint(backup_config_json=payload),
+        )
+
+        fetched = await backend.fine_tune_checkpoints.get_checkpoint("cp-1")
+        assert fetched is not None
+        assert fetched.backup_config_json is not None
+        # The round-tripped string must itself parse as valid JSON
+        # *and* decode to the same value as the input.
+        assert json.loads(fetched.backup_config_json) == json.loads(payload)

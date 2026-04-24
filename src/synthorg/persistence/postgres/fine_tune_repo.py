@@ -100,7 +100,13 @@ def _checkpoint_from_row(row: dict[str, Any]) -> CheckpointRecord:
 
     ``backup_config_json`` is a JSONB column on the wire but a string
     field on the model, so re-serialise the JSONB value to a JSON
-    string before validation to keep the round-trip lossless.
+    string before validation to keep the round-trip lossless.  psycopg's
+    default JSONB loader returns the *decoded* Python value (dict, list,
+    ``str``, ``int``, ...), so a JSONB payload of ``"foo"`` comes back
+    as the Python ``str`` ``foo`` -- which is not a valid JSON text.
+    Always re-serialise via ``json.dumps`` so the model-side invariant
+    (``backup_config_json`` is a JSON text, not an arbitrary Python
+    object's ``str``) holds regardless of the JSONB value's type.
 
     Raises:
         QueryError: If the row contains invalid data.
@@ -114,11 +120,7 @@ def _checkpoint_from_row(row: dict[str, Any]) -> CheckpointRecord:
         backup_payload = row["backup_config_json"]
         backup_str: str | None = None
         if backup_payload is not None:
-            backup_str = (
-                backup_payload
-                if isinstance(backup_payload, str)
-                else json.dumps(backup_payload)
-            )
+            backup_str = json.dumps(backup_payload)
 
         return CheckpointRecord(
             id=row["id"],
@@ -505,7 +507,8 @@ ON CONFLICT (id) DO UPDATE SET
                 conn.cursor() as cur,
             ):
                 await cur.execute(
-                    "UPDATE fine_tune_checkpoints SET is_active = FALSE",
+                    "UPDATE fine_tune_checkpoints SET is_active = FALSE "
+                    "WHERE is_active = TRUE",
                 )
                 await cur.execute(
                     "UPDATE fine_tune_checkpoints SET is_active = TRUE WHERE id = %s",
@@ -530,11 +533,18 @@ ON CONFLICT (id) DO UPDATE SET
             raise QueryError(msg) from exc
 
     async def deactivate_all(self) -> None:
-        """Deactivate all checkpoints (for rollback)."""
+        """Deactivate all checkpoints (for rollback).
+
+        Scoped to ``WHERE is_active = TRUE`` so the statement uses the
+        partial unique index (``idx_ftc_single_active WHERE is_active =
+        TRUE``) instead of a sequential scan + no-op rewrite of every
+        already-inactive row.
+        """
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(
-                    "UPDATE fine_tune_checkpoints SET is_active = FALSE",
+                    "UPDATE fine_tune_checkpoints SET is_active = FALSE "
+                    "WHERE is_active = TRUE",
                 )
                 await conn.commit()
         except psycopg.Error as exc:
