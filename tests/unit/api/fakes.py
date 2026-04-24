@@ -773,12 +773,27 @@ class FakeMessageBus:
 
 
 # FakePersistenceBackend lives in a sibling module to keep this file
-# under the 800-line limit.  Imported at the BOTTOM of this module so
-# the Fake*Repository classes it depends on are already defined by
-# the time ``fakes_backend`` is loaded.  Re-exported under its
-# original name so existing test imports
-# (``from tests.unit.api.fakes import FakePersistenceBackend``) keep
-# working.
-from tests.unit.api.fakes_backend import (  # noqa: E402
-    FakePersistenceBackend as FakePersistenceBackend,  # noqa: PLC0414
-)
+# under the 800-line limit. It depends on many Fake*Repository classes
+# defined in THIS module, and this module is re-exported for backward
+# compatibility via
+# ``from tests.unit.api.fakes import FakePersistenceBackend``.
+#
+# The naive "from fakes_backend import ..." at module load time causes
+# a circular-import failure when a caller imports `fakes_backend`
+# FIRST (that module's own `from fakes import Fake*Repository` pulls
+# `fakes` in mid-load, which then re-enters `fakes_backend` before
+# `FakePersistenceBackend` is defined).
+#
+# PEP 562 module-level ``__getattr__`` solves it: the attribute is
+# resolved on first access rather than at module load. By then
+# ``fakes_backend`` has already completed its own initialisation.
+def __getattr__(name: str):  # type: ignore[no-untyped-def]
+    """Lazy re-export of ``FakePersistenceBackend`` (see note above)."""
+    if name == "FakePersistenceBackend":
+        from tests.unit.api.fakes_backend import (
+            FakePersistenceBackend,
+        )
+
+        return FakePersistenceBackend
+    msg = f"module {__name__!r} has no attribute {name!r}"
+    raise AttributeError(msg)
