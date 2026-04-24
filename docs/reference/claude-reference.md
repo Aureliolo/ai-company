@@ -106,3 +106,36 @@ data/             # Shared data files (competitors.yaml for comparison page)
 - **Web dashboard**: Node.js 22+, TypeScript 6.0+, dependencies in `web/package.json` (React 19, react-router, shadcn/ui, Base UI, Tailwind CSS 4, Zustand, @tanstack/react-query, @xyflow/react, @dagrejs/dagre, d3-force, @dnd-kit, Recharts, Motion, cmdk-base, js-yaml, Axios, Lucide React, @fontsource-variable/geist, @fontsource-variable/geist-mono, @fontsource-variable/jetbrains-mono, @fontsource-variable/inter, @fontsource/ibm-plex-mono, @fontsource/ibm-plex-sans, CodeMirror 6, Storybook 10, MSW, msw-storybook-addon, Vitest, @vitest/coverage-v8, @testing-library/react, fast-check, ESLint, @eslint-react/eslint-plugin, eslint-plugin-security, Playwright, @lhci/cli, rollup-plugin-visualizer, cross-env)
 - **CLI**: Go 1.26+, dependencies in `cli/go.mod` (Cobra, charm.land/huh/v2, charm.land/lipgloss/v2, sigstore-go, go-containerregistry, go-tuf)
 - **Landing page**: dependencies in `site/package.json` (Astro 6, @astrojs/react, React 19, Tailwind CSS 4, js-yaml)
+
+## Property-based Testing (Hypothesis) -- Deep Dive
+
+The short rule in CLAUDE.md: Python uses Hypothesis; profiles live in `tests/conftest.py`; CI runs deterministic 10-example sweeps; failing examples are real bugs.
+
+### Profiles
+
+Configured in `tests/conftest.py`, selected via `HYPOTHESIS_PROFILE` env var:
+
+- `ci` -- deterministic, `max_examples=10` + `derandomize=True`. Fixed seed per test, same inputs every run (no flakes).
+- `dev` -- 1000 examples.
+- `fuzz` -- 10,000 examples, no deadline. For dedicated fuzzing sessions.
+- `extreme` -- 500,000 examples, no deadline. Overnight deep fuzzing.
+
+`.hypothesis/` is gitignored. Failing examples persist to `~/.synthorg/hypothesis-examples/` (write-only shared DB, survives worktree deletion) via `_WriteOnlyDatabase` in `tests/conftest.py`.
+
+### Running locally
+
+- Quick (1000 examples): `HYPOTHESIS_PROFILE=dev uv run python -m pytest tests/ -m unit -n 8 -k properties`
+- Deep (10,000 examples, all `@given` tests): `HYPOTHESIS_PROFILE=fuzz uv run python -m pytest tests/ -m unit -n 8 --timeout=0`
+  - `--timeout=0` disables the 30s per-test limit that would kill long-running property tests.
+  - `-k properties` is intentionally omitted to cover all 46 files with `@given`, not just the 12 `*_properties.py` files.
+
+### When Hypothesis finds a failure
+
+It is a **real bug**. The shrunk example is saved to `~/.synthorg/hypothesis-examples/` for analysis but is **not replayed** automatically (that would block all test runs).
+
+Do NOT just rerun and move on. Read the failing example from the output, fix the underlying bug, and add an explicit `@example(...)` decorator to the test so the case is permanently covered in CI.
+
+### Cross-language equivalents
+
+- React: [fast-check](https://fast-check.dev/) (`fc.assert` + `fc.property`)
+- Go: native `testing.F` fuzz functions (`Fuzz*`)
