@@ -630,7 +630,7 @@ jobs:
         id: setup
         uses: ./.github/actions/release-runner-setup
         with:
-          app-id: ${{ secrets.RELEASE_BOT_APP_ID }}
+          client-id: ${{ secrets.RELEASE_BOT_APP_CLIENT_ID }}
           app-private-key: ${{ secrets.RELEASE_BOT_APP_PRIVATE_KEY }}
       - name: Install yq
         run: |

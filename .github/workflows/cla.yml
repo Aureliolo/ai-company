@@ -12,8 +12,19 @@ jobs:
   cla-check:
     name: CLA Signature Check
     runs-on: ubuntu-latest
+    # Skip CLA for known-trusted bots whose commits are legitimate
+    # automated work, not human contributions. Adding a bot here
+    # requires a second line of defence below (``allowlist`` input on
+    # the action itself) because this ``if:`` gates on the PR OPENER
+    # while ``allowlist`` gates on each individual COMMITTER -- a
+    # release-please PR is opened by the App but may carry commits
+    # authored by other contributors too, so both gates need to be in
+    # sync for full coverage.
     if: |
-      (github.event_name == 'pull_request_target' && github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'renovate[bot]') ||
+      (github.event_name == 'pull_request_target'
+        && github.event.pull_request.user.login != 'dependabot[bot]'
+        && github.event.pull_request.user.login != 'renovate[bot]'
+        && github.event.pull_request.user.login != 'synthorg-release-bot[bot]') ||
       (github.event_name == 'issue_comment' && github.event.issue.pull_request && github.event.comment.body == 'I have read the CLA Document and I hereby sign the CLA')
     permissions:
       contents: write
@@ -42,3 +53,11 @@ jobs:
           custom-allsigned-prcomment: All contributors have signed the CLA. Thank you!
           lock-pullrequest-aftermerge: false
           use-dco-flag: false
+          # Bots whose commits bypass the CLA check. Release automation
+          # and dependency bumpers commit under these identities; the
+          # human-contributor CLA obligation does not apply to them.
+          # Must stay in sync with the ``if:`` gate at the top of the
+          # job -- that gate protects against the whole workflow firing
+          # while this gate protects against the action flagging any
+          # individual commit inside a mixed-authorship PR.
+          allowlist: dependabot[bot],renovate[bot],synthorg-release-bot[bot],github-actions[bot]

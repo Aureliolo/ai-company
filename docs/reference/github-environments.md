@@ -109,8 +109,11 @@ The release pipeline is authenticated by a dedicated GitHub App,
 `synthorg-release-bot`. Its credentials live in the `release`
 deployment environment as two secrets:
 
-- `RELEASE_BOT_APP_ID` -- the numeric App ID shown on the App's
-  settings page.
+- `RELEASE_BOT_APP_CLIENT_ID` -- the App's Client ID as shown on the
+  App's settings page (format `Iv23...`). This is what
+  `actions/create-github-app-token@v3.1+` expects via its `client-id`
+  input; the older `app-id` input accepted the numeric App ID and
+  was deprecated in v3.1.
 - `RELEASE_BOT_APP_PRIVATE_KEY` -- the full `.pem` contents verbatim,
   including the opening and closing marker lines. Both markers must
   be present and spelled exactly as emitted by the GitHub App page:
@@ -120,16 +123,19 @@ deployment environment as two secrets:
   store accepts multi-line values but silently strips trailing
   whitespace, so do not hand-edit the `.pem`.
 
-**Why an App and not a PAT.** The prior implementation used a
-fine-grained PAT (`RELEASE_PLEASE_TOKEN`). PATs produce **unsigned**
-API commits -- the `required_signatures` rule on `main` rejects
-them. The only identities that yield GitHub-signed API commits are
-`GITHUB_TOKEN` and App installation tokens. `GITHUB_TOKEN` cannot
-be used here because its pushes are suppressed from firing
-downstream workflow events (GitHub's anti-recursion rule). The App
-token satisfies both constraints: commits verify as
-`{verified: true, reason: "valid"}` AND fire downstream
-workflows. See issue #1555 for the incident history.
+**Why an App token.** Two constraints rule out the alternatives:
+
+1. `main` enforces `required_signatures`, so any API commit that
+   lands there MUST verify as `{verified: true, reason: "valid"}`.
+   Only `GITHUB_TOKEN` and App installation tokens produce
+   GitHub-signed API commits; PAT-authored API commits are
+   unsigned and get rejected at the branch-protection gate.
+2. A tag or main-commit push must fire downstream workflows
+   (Docker, CLI, Dev Release). GitHub's anti-recursion rule
+   suppresses those events when the triggering push was authored
+   by `GITHUB_TOKEN`. App installation tokens are exempt.
+
+App tokens are the only credential that satisfies both at once.
 
 **Purpose**. Every release workflow mints a fresh short-lived App
 installation token (valid ≤1 hour) via the
@@ -169,42 +175,15 @@ installation token (valid ≤1 hour) via the
 2. Configure permissions + install scope as above.
 3. Generate a private key; download the `.pem`.
 4. Install the App on `Aureliolo/synthorg`.
-5. Copy the numeric App ID.
+5. Copy the App's Client ID (`Iv23...` format) from the same page.
 6. Repo Settings -> Environments -> `release` -> Environment
-   secrets. Add `RELEASE_BOT_APP_ID` (numeric) and
-   `RELEASE_BOT_APP_PRIVATE_KEY` (full PEM contents).
+   secrets. Add `RELEASE_BOT_APP_CLIENT_ID` (the Iv23... Client ID
+   from the App's settings page) and `RELEASE_BOT_APP_PRIVATE_KEY`
+   (full PEM contents).
 7. Confirm the action allowlist includes
    `actions/create-github-app-token@*` (SHA-pinned in-workflow)
    and `actions/ai-inference@*` (used by the release-notes
    Highlights step in `release.yml`).
-
-**Release Please is not being removed.** Only the *credential* it
-uses is changing. Release Please still creates release PRs,
-generates changelogs, and drafts releases on every push to `main`;
-this PR just swaps the long-lived `RELEASE_PLEASE_TOKEN` PAT for
-an ephemeral App installation token passed via
-`steps.setup.outputs.token` (see `release.yml`). Release Please
-itself needs a token -- that requirement does not go away -- it
-now receives the App token at job start instead of reading a PAT
-from a repo secret.
-
-**Sunset of the prior PAT** (`RELEASE_PLEASE_TOKEN`):
-
-After the first green release cycle under the App, complete the
-cutover in two steps:
-
-1. Delete the `RELEASE_PLEASE_TOKEN` secret from repo-level
-   Actions secrets (`Settings -> Secrets and variables ->
-   Actions`). The `no-release-please-token` pre-commit hook
-   prevents reintroduction at commit time, but removing the
-   secret value forces an immediate, visible failure if any
-   workflow ever tries to reference it again.
-2. Revoke the underlying fine-grained PAT on GitHub
-   (`Settings -> Developer settings -> Personal access tokens ->
-   Fine-grained tokens`). Revocation is irreversible; do this
-   step only after step 1 has survived at least one full release
-   cycle (stable + dev tag + at least one `auto-rollover` or
-   `graduate` invocation).
 
 **No rotation schedule**. Installation tokens are ephemeral --
 minted per workflow run and valid for at most one hour, then
