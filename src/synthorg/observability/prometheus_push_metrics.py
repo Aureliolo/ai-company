@@ -156,3 +156,40 @@ class PushMetrics:
             buckets=(0.5, 1.0, 5.0, 10.0, 30.0, 60.0, 300.0, 600.0, 1800.0, 3600.0),
             registry=registry,
         )
+
+        # -- Provider error counter ----------------------------------
+        # ``error_class`` is bounded via
+        # :data:`VALID_PROVIDER_ERROR_CLASSES`; ``model`` is emitted
+        # as-is since the set of models is configured (not unbounded
+        # user input).
+        self.provider_errors = PromCounter(
+            f"{prefix}_provider_errors_total",
+            "Provider call errors by provider, model, and error class",
+            ["provider", "model", "error_class"],
+            registry=registry,
+        )
+
+        # -- Cache operation counter (hit / miss / evict) -------------
+        # Labels are bounded via :data:`VALID_CACHE_NAMES` and
+        # :data:`VALID_CACHE_OUTCOMES` so adding a new cache is an
+        # explicit allowlist edit, not a silent cardinality bloom.
+        self.cache_operations = PromCounter(
+            f"{prefix}_cache_operations_total",
+            "In-process cache operations by cache and outcome",
+            ["cache_name", "outcome"],
+            registry=registry,
+        )
+
+        # -- API error classification counter -------------------------
+        # ``category`` tracks the RFC 9457 error taxonomy for 4xx/5xx
+        # responses; ``status_class`` reuses
+        # :data:`VALID_STATUS_CLASSES`.  The existing
+        # ``synthorg_api_request_duration_seconds_count`` series
+        # covers request-rate; this one partitions failures by the
+        # taxonomy operators filter on.
+        self.api_error_classification = PromCounter(
+            f"{prefix}_api_error_classification_total",
+            "API error responses by category and HTTP status class",
+            ["category", "status_class"],
+            registry=registry,
+        )

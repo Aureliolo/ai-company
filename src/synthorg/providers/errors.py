@@ -7,9 +7,27 @@ exception types.
 
 import math
 from types import MappingProxyType
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Final, Literal
 
 from synthorg.api.errors import ErrorCategory, ErrorCode
+
+ProviderErrorLabel = Literal[
+    "rate_limit",
+    "timeout",
+    "connection",
+    "internal",
+    "invalid_request",
+    "auth",
+    "content_filter",
+    "not_found",
+    "other",
+]
+"""Bounded Prometheus label value returned by :func:`classify_provider_error`.
+
+Kept in lockstep with
+:data:`synthorg.observability.prometheus_labels.VALID_PROVIDER_ERROR_CLASSES`
+by the record helper; updating either requires updating both.
+"""
 
 _REDACTED_KEYS: frozenset[str] = frozenset(
     {"api_key", "token", "secret", "password", "authorization"},
@@ -224,3 +242,48 @@ class ProviderValidationError(ProviderError):
     """Provider configuration failed validation."""
 
     is_retryable = False
+
+
+_ERROR_CLASS_MAP: Final[dict[type[BaseException], ProviderErrorLabel]] = {
+    RateLimitError: "rate_limit",
+    ProviderTimeoutError: "timeout",
+    ProviderConnectionError: "connection",
+    ProviderInternalError: "internal",
+    InvalidRequestError: "invalid_request",
+    AuthenticationError: "auth",
+    ContentFilterError: "content_filter",
+    ModelNotFoundError: "not_found",
+}
+
+
+def classify_provider_error(exc: BaseException) -> ProviderErrorLabel:
+    """Classify *exc* into one of nine bounded Prometheus label values.
+
+    Falls back to ``"other"`` for any exception not in the direct
+    canonical map, which guarantees the label set in
+    :data:`VALID_PROVIDER_ERROR_CLASSES` stays finite even as driver
+    implementations add new error types.
+
+    Uses a direct-type lookup first (cheapest), then falls back to
+    ``isinstance`` for the hierarchy so subclasses of the canonical
+    provider-error types are bucketed with their parents.  Any
+    ``ProviderError`` subclass that is not in the direct map (e.g.
+    ``DriverNotRegisteredError``, ``ProviderValidationError``) and
+    unknown (non-``ProviderError``) exception types both resolve to
+    ``"other"``; the Prometheus label set therefore stays bounded
+    regardless of what the provider driver raises.
+
+    Returns:
+        One of the :data:`ProviderErrorLabel` literal values; the
+        return type gives static guarantees to callers (e.g. the
+        Prometheus collector's ``record_provider_error``) that only
+        allowlisted labels flow through.
+    """
+    exc_type = type(exc)
+    direct = _ERROR_CLASS_MAP.get(exc_type)
+    if direct is not None:
+        return direct
+    for cls, label in _ERROR_CLASS_MAP.items():
+        if isinstance(exc, cls):
+            return label
+    return "other"

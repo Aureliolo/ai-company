@@ -10,7 +10,16 @@ historical hardcoded value so a consumer can construct one from defaults for
 tests without an active settings service.
 """
 
+from typing import Final
+
 from pydantic import BaseModel, ConfigDict, Field
+
+# WebSocket first-message auth handshake timeout bounds. Exposed as
+# module constants so the ``set_ws_auth_timeout_seconds`` setter on
+# ``AppState`` can validate against the same bounds as the Pydantic
+# field without duplicating the numeric literals (DRY).
+WS_AUTH_TIMEOUT_MIN_SECONDS: Final[float] = 1.0
+WS_AUTH_TIMEOUT_MAX_SECONDS: Final[float] = 120.0
 
 
 class CommunicationBridgeConfig(BaseModel):
@@ -142,6 +151,11 @@ class ApiBridgeConfig(BaseModel):
 
     ticket_cleanup_interval_seconds: float = Field(default=60.0, ge=5.0, le=3600.0)
     ws_ticket_max_pending_per_user: int = Field(default=5, ge=1, le=50)
+    ws_auth_timeout_seconds: float = Field(
+        default=10.0,
+        ge=WS_AUTH_TIMEOUT_MIN_SECONDS,
+        le=WS_AUTH_TIMEOUT_MAX_SECONDS,
+    )
     max_rpm_default: int = Field(default=60, ge=1, le=100_000)
     compression_minimum_size_bytes: int = Field(default=1000, ge=100, le=10_000)
     request_max_body_size_bytes: int = Field(

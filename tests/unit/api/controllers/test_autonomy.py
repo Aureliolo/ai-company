@@ -19,13 +19,14 @@ def _url(agent_id: str = "agent-001") -> str:
 @pytest.mark.unit
 class TestGetAutonomy:
     def test_get_autonomy(self, test_client: TestClient[Any]) -> None:
+        # Default autonomy flipped SEMI -> SUPERVISED (2026-04-23, #1538).
         resp = test_client.get(_url("agent-42"), headers=_READ_HEADERS)
         assert resp.status_code == 200
         body = resp.json()
         assert body["success"] is True
         data = body["data"]
         assert data["agent_id"] == "agent-42"
-        assert data["level"] == "semi"
+        assert data["level"] == "supervised"
         assert data["promotion_pending"] is False
 
     def test_get_autonomy_requires_read_access(
@@ -42,6 +43,9 @@ class TestUpdateAutonomy:
     def test_update_autonomy_returns_pending(
         self, test_client: TestClient[Any]
     ) -> None:
+        # Default autonomy flipped SEMI -> SUPERVISED (2026-04-23, #1538):
+        # promotion requests don't mutate state yet (human approval required),
+        # so the returned level still reflects the current default.
         resp = test_client.post(
             _url("agent-42"),
             json={"level": "full"},
@@ -52,7 +56,7 @@ class TestUpdateAutonomy:
         assert body["success"] is True
         data = body["data"]
         assert data["agent_id"] == "agent-42"
-        assert data["level"] == "semi"
+        assert data["level"] == "supervised"
         assert data["promotion_pending"] is True
 
     def test_update_autonomy_requires_write_access(

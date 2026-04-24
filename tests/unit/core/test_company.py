@@ -286,9 +286,13 @@ class TestCompanyConfig:
     """Tests for CompanyConfig defaults, autonomy bounds, and validation."""
 
     def test_defaults(self) -> None:
-        """Verify default autonomy config, budget, and communication pattern."""
+        """Verify default autonomy config, budget, and communication pattern.
+
+        Autonomy default flipped SEMI -> SUPERVISED (2026-04-23, #1538):
+        fresh installs now queue approvals for state-mutating actions.
+        """
         cfg = CompanyConfig()
-        assert cfg.autonomy.level == AutonomyLevel.SEMI
+        assert cfg.autonomy.level == AutonomyLevel.SUPERVISED
         assert cfg.budget_monthly == 100.0
         assert cfg.communication_pattern == "hybrid"
         assert cfg.tool_access_default == ()

@@ -17,6 +17,9 @@ from synthorg.observability.events.memory import (
     MEMORY_RERANK_CACHE_HIT,
     MEMORY_RERANK_CACHE_MISS,
 )
+from synthorg.observability.metrics_hub import record_cache_operation
+
+_CACHE_NAME = "reranker"
 
 logger = get_logger(__name__)
 
@@ -80,6 +83,7 @@ class RerankerCache:
                     MEMORY_RERANK_CACHE_MISS,
                     key=key[:16],
                 )
+                record_cache_operation(cache_name=_CACHE_NAME, outcome="miss")
                 return None
             id_order, created_at, _ = entry
             if time.monotonic() - created_at > self._ttl:
@@ -89,6 +93,7 @@ class RerankerCache:
                     key=key[:16],
                     reason="expired",
                 )
+                record_cache_operation(cache_name=_CACHE_NAME, outcome="miss")
                 return None
             # Update last access time
             self._store[key] = (id_order, created_at, time.monotonic())
@@ -96,6 +101,7 @@ class RerankerCache:
                 MEMORY_RERANK_CACHE_HIT,
                 key=key[:16],
             )
+            record_cache_operation(cache_name=_CACHE_NAME, outcome="hit")
             return id_order
 
     async def put(
@@ -157,3 +163,4 @@ class RerankerCache:
             key=lambda k: self._store[k][2],  # last_access timestamp
         )
         del self._store[oldest_key]
+        record_cache_operation(cache_name=_CACHE_NAME, outcome="evict")

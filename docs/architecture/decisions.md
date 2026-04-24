@@ -4,9 +4,9 @@ description: All significant design and architecture decisions, organized by dom
 
 # Decision Log
 
-All significant design and architecture decisions, organized by domain. Each entry includes the decision, rationale, and key alternatives that were considered.
+All significant design and architecture decisions in force today, organized by domain. Each entry includes the decision, rationale, and key alternatives that were considered.
 
-## Memory Layer (2026-03-08)
+## Memory Layer
 
 **Decision:** Mem0 as initial memory backend behind pluggable `MemoryBackend` protocol. Custom stack (Neo4j + Qdrant external) as planned future upgrade.
 
@@ -81,7 +81,7 @@ All significant design and architecture decisions, organized by domain. Each ent
 | D23 | Pluggable `MemoryFilterStrategy`; initial: tag-based at write time | Zero retrieval cost. Uses existing `MemoryMetadata.tags`. Non-inferable tag convention enforced at `MemoryBackend.store()` boundary | LLM classification at retrieval (2K-10K extra tokens, adds latency, recursive problem), keyword heuristic (low accuracy), documentation only (no enforcement). Evidence: arXiv 2602.11988 confirms agents store inferable content without enforcement |
 | D24 | Five-pillar evaluation: pluggable `PillarScoringStrategy` protocol with `EvaluationContext` bag; per-pillar configs with metric toggles | Single protocol covers all pillars. Context bag avoids per-pillar protocol proliferation. Per-metric toggles with weight redistribution follow `BehavioralTelemetryStrategy` pattern. Pull-based (no daemon) | Per-pillar protocols (5 protocols, type-safe but verbose), monolithic scorer (no pluggability), background evaluation loop (premature complexity). Based on [InfoQ five-pillar framework](https://www.infoq.com/articles/evaluating-ai-agents-lessons-learned/) |
 
-## Documentation (2026-03-12)
+## Documentation
 
 **Decision:** Zensical + mkdocstrings for docs; Astro for landing page; build output embedding for React dashboard; single domain with CI merge.
 
@@ -89,7 +89,7 @@ All significant design and architecture decisions, organized by domain. Each ent
 
 **Alternatives:** Stay on MkDocs (unmaintained, accumulating CVEs and unresolved issues), Sphinx (poor landing pages, different ecosystem), VitePress/Docusaurus (no Python API docs).
 
-## Embedding Model Evaluation (2026-04-01)
+## Embedding Model Evaluation
 
 **Decision:** Use [LMEB](https://arxiv.org/abs/2603.12572) (Long-horizon Memory Embedding Benchmark) instead of MTEB for evaluating and selecting embedding models for the memory subsystem.
 
@@ -111,7 +111,7 @@ All significant design and architecture decisions, organized by domain. Each ent
 | D26 | Adopt append-only writes + MVCC-style snapshot reads for `SharedKnowledgeStore`; personal memories stay sequential | Append-only provides audit trail ("what was the state before date X?"), rollback, and safe concurrent writes. MVCC snapshot reads are consistent with no locking overhead. Personal memories have no cross-agent contention so sequential writes are sufficient. Protocol extension (future PR): add `get_operation_log(fact_id)` and `snapshot_at(timestamp)` to `SharedKnowledgeStore` | CRDT (conflict-free but ~20% space overhead and resurfaces deleted facts on node divergence), event sourcing (good audit properties but requires snapshot compaction strategy), pessimistic locking (high contention under load, tail latency spikes) |
 | D27 | RL consolidation not recommended for MVP; revisit at 10k+ agent deployments | Reward function is multi-objective (readability, retrieval accuracy, synthesis fidelity, token cost) and unsolved without ~1000 annotated sessions. Failure mode is data loss -- RL model drift silently deletes memories; LLM degrades gracefully. At current scale (50--500 agents) training infra cost exceeds token savings by ~12 months. DPO fine-tuning on LLM preference data is the viable intermediate step if cost becomes a concern | Pure RL policy training (reward design is open research problem), behavioral cloning only (low gain over current LLM approach), threshold-based consolidation triggers (no quality improvement, only cost saving) |
 
-## NATS Client Library (2026-04-10)
+## NATS Client Library
 
 **Decision:** Stay on `nats-py` (pinned `==2.14.0`). File upstream PR to replace deprecated `asyncio.iscoroutinefunction` with `inspect.iscoroutinefunction`. Maintain scoped `filterwarnings` as workaround until upstream fix lands.
 

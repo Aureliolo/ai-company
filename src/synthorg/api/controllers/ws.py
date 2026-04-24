@@ -71,7 +71,6 @@ _OUTBOUND_QUEUE_DEPTH: int = 64
 # Application-layer WS close codes (RFC 6455 §7.4.2: 4000-4999).
 _WS_CLOSE_AUTH_FAILED: int = 4001
 _WS_CLOSE_FORBIDDEN: int = 4003
-_WS_AUTH_TIMEOUT_SECONDS: float = 10.0
 
 
 async def _validate_ticket(
@@ -137,11 +136,16 @@ async def _read_auth_message(  # noqa: PLR0911
     """Read and validate the first-message auth payload.
 
     Returns the ticket string, or ``None`` after closing the socket.
+    The timeout is read once per connection from
+    ``app_state.ws_auth_timeout_seconds``, which is baked in at
+    startup by ``_apply_bridge_config`` from the operator-tunable
+    ``api.ws_auth_timeout_seconds`` setting.
     """
+    app_state = socket.app.state["app_state"]
     try:
         data = await asyncio.wait_for(
             socket.receive_text(),
-            timeout=_WS_AUTH_TIMEOUT_SECONDS,
+            timeout=app_state.ws_auth_timeout_seconds,
         )
     except TimeoutError:
         await _reject_auth(socket, "auth_timeout", "Auth timeout")

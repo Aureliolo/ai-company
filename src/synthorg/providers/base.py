@@ -12,16 +12,17 @@ from collections.abc import AsyncIterator, Callable, Coroutine
 from typing import Any, TypeVar
 
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
     PROVIDER_CALL_ERROR,
     PROVIDER_CALL_START,
     PROVIDER_CALL_SUCCESS,
     PROVIDER_STREAM_START,
 )
+from synthorg.observability.metrics_hub import record_provider_error
 
 from .capabilities import ModelCapabilities  # noqa: TC001
-from .errors import InvalidRequestError, RateLimitError
+from .errors import InvalidRequestError, RateLimitError, classify_provider_error
 from .models import (
     ChatMessage,
     CompletionConfig,
@@ -66,6 +67,23 @@ class BaseCompletionProvider(ABC):
     ) -> None:
         self._retry_handler = retry_handler
         self._rate_limiter = rate_limiter
+
+    def _provider_label(self) -> str:
+        """Return the bounded provider identifier used for metrics / logs.
+
+        Subclasses that carry a registry key typically expose it either
+        as ``self.provider_name`` (assigned in ``__init__``) or
+        ``self._provider_name``; if neither is populated we fall back
+        to the concrete class name so the label is never empty when
+        metrics fire before a driver has been fully constructed.
+        Intentionally a method, not a property, so drivers that assign
+        ``self.provider_name`` directly keep working without a setter.
+        """
+        for attr in ("provider_name", "_provider_name"):
+            existing = getattr(self, attr, None)
+            if isinstance(existing, str) and existing:
+                return existing
+        return type(self).__name__
 
     # -- Public API ---------------------------------------------------
 
@@ -121,12 +139,24 @@ class BaseCompletionProvider(ABC):
                 result = retry_info.value
             else:
                 result = await _attempt()
-        except Exception:
-            logger.error(
+        except Exception as exc:
+            # SEC-1: ``logger.exception`` (what TRY400 suggests) would
+            # attach a traceback whose serialized frame-locals can
+            # leak provider credentials (API keys in headers, connection
+            # URLs with user:pass).  Use ``logger.error`` with the
+            # structured ``error_type`` + scrubbed ``error`` fields
+            # instead -- traceback frames never reach any log sink.
+            logger.error(  # noqa: TRY400 -- see SEC-1 rationale above
                 PROVIDER_CALL_ERROR,
                 model=model,
                 latency_ms=(time.monotonic() - t_start) * 1000.0,
-                exc_info=True,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            record_provider_error(
+                provider=self._provider_label(),
+                model=model,
+                error_class=classify_provider_error(exc),
             )
             raise
         latency_ms = (time.monotonic() - t_start) * 1000.0
@@ -194,8 +224,21 @@ class BaseCompletionProvider(ABC):
 
         try:
             return await self._resilient_execute(_attempt)
-        except Exception:
-            logger.error(PROVIDER_CALL_ERROR, model=model, exc_info=True)
+        except Exception as exc:
+            # SEC-1: see the ``complete`` sibling handler; ``logger.error``
+            # + scrubbed fields instead of ``logger.exception`` prevents
+            # traceback frame-locals from leaking provider credentials.
+            logger.error(  # noqa: TRY400 -- see SEC-1 rationale above
+                PROVIDER_CALL_ERROR,
+                model=model,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            record_provider_error(
+                provider=self._provider_label(),
+                model=model,
+                error_class=classify_provider_error(exc),
+            )
             raise
 
     async def get_model_capabilities(self, model: str) -> ModelCapabilities:

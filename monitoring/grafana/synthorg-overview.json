@@ -136,17 +136,67 @@
       "type": "timeseries",
       "id": 8,
       "title": "API request rate by status class",
-      "description": "Request rate per minute split into 2xx / 3xx / 4xx / 5xx.",
+      "description": "Request rate per minute split into 1xx / 2xx / 3xx / 4xx / 5xx. Sourced from the auto-emitted _count series of the synthorg_api_request_duration_seconds histogram.",
       "targets": [
         {
           "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
-          "expr": "sum by (status_class) (rate(synthorg_api_requests_total[1m]))",
+          "expr": "sum by (status_class) (rate(synthorg_api_request_duration_seconds_count[1m]))",
           "legendFormat": "{{status_class}}",
           "refId": "A"
         }
       ],
       "fieldConfig": {"defaults": {"unit": "reqps"}},
       "gridPos": {"h": 10, "w": 12, "x": 12, "y": 14}
+    },
+    {
+      "type": "timeseries",
+      "id": 9,
+      "title": "Provider errors by class",
+      "description": "Provider-call failures (synthorg_provider_errors_total) grouped by bounded error_class: rate_limit / timeout / connection / internal / invalid_request / auth / content_filter / not_found / other.",
+      "targets": [
+        {
+          "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+          "expr": "sum by (error_class) (rate(synthorg_provider_errors_total[5m]))",
+          "legendFormat": "{{error_class}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "ops"}},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 24}
+    },
+    {
+      "type": "timeseries",
+      "id": 10,
+      "title": "Cache hit rate",
+      "description": "Hit rate for in-process caches (mcp_result, reranker). Drops below ~0.8 indicate undersized or misconfigured caches.",
+      "targets": [
+        {
+          "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+          "expr": "sum by (cache_name) (rate(synthorg_cache_operations_total{outcome=\"hit\"}[5m])) / clamp_min(sum by (cache_name) (rate(synthorg_cache_operations_total[5m])), 1)",
+          "legendFormat": "{{cache_name}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {"unit": "percentunit", "min": 0, "max": 1}
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 24}
+    },
+    {
+      "type": "timeseries",
+      "id": 11,
+      "title": "API error classification",
+      "description": "4xx/5xx response rate partitioned by RFC 9457 category (auth, validation, not_found, conflict, rate_limit, budget_exhausted, provider_error, internal).",
+      "targets": [
+        {
+          "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+          "expr": "sum by (category) (rate(synthorg_api_error_classification_total[5m]))",
+          "legendFormat": "{{category}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "reqps"}},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 32}
     }
   ],
   "refresh": "30s",

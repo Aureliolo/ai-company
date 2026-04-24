@@ -41,7 +41,10 @@ from synthorg.notifications.dispatcher import (
     NotificationDispatcher,  # noqa: TC001
 )
 from synthorg.observability import get_logger
-from synthorg.observability.events.api import API_APP_STARTUP
+from synthorg.observability.events.api import (
+    API_APP_STARTUP,
+    API_BRIDGE_CONFIG_REJECTED,
+)
 from synthorg.observability.events.settings import SETTINGS_SERVICE_SWAPPED
 from synthorg.ontology.drift.service import DriftDetectionService  # noqa: TC001
 from synthorg.ontology.drift.store import DriftReportStore  # noqa: TC001
@@ -148,6 +151,7 @@ class AppStateServicesMixin(_FacadesMixin):
     _mcp_catalog_service: CatalogService | None
     _mcp_installations_repo: McpInstallationRepository | None
     _persistence: Any
+    _ws_auth_timeout_seconds: float
 
     @property
     def settings_service(self) -> SettingsService:
@@ -284,6 +288,69 @@ class AppStateServicesMixin(_FacadesMixin):
     def ticket_store(self) -> WsTicketStore:
         """Return the WebSocket ticket store (always available)."""
         return self._ticket_store
+
+    @property
+    def ws_auth_timeout_seconds(self) -> float:
+        """Return the WebSocket first-message auth-handshake timeout.
+
+        Populated by ``_apply_bridge_config`` from
+        ``api.ws_auth_timeout_seconds`` (``restart_required=True``, so the
+        operator-visible contract is "takes effect at the next restart");
+        always has a sane built-in default (10.0 s) so the handler
+        never reaches back through the resolver per-connection.  The
+        setter below is permissive by design -- tests and subsystems that
+        need a different value at runtime may call it -- so the effective
+        value is whichever ``set_ws_auth_timeout_seconds`` call ran most
+        recently.
+        """
+        return self._ws_auth_timeout_seconds
+
+    def set_ws_auth_timeout_seconds(self, value: float) -> None:
+        """Store a validated WebSocket auth timeout on the app state.
+
+        Mirrors the ``set_max_pending_per_user`` pattern used by the
+        ticket store: ``_apply_bridge_config`` resolves the setting
+        and calls this setter with the validated value at startup,
+        which is then read by the ``/ws`` handler.  Repeated calls
+        are allowed and the latest value wins -- tests monkeypatch
+        this freely and no state in the mixin enforces a single-shot
+        contract.  Bounds mirror the
+        ``ApiBridgeConfig.ws_auth_timeout_seconds`` Pydantic field;
+        the shared ``WS_AUTH_TIMEOUT_{MIN,MAX}_SECONDS`` constants
+        keep the two sites aligned (DRY).
+        """
+        import math  # noqa: PLC0415
+
+        from synthorg.settings.bridge_configs import (  # noqa: PLC0415
+            WS_AUTH_TIMEOUT_MAX_SECONDS,
+            WS_AUTH_TIMEOUT_MIN_SECONDS,
+        )
+
+        if not math.isfinite(value):
+            logger.warning(
+                API_BRIDGE_CONFIG_REJECTED,
+                field="ws_auth_timeout_seconds",
+                reason="non_finite",
+                provided_value=repr(value),
+            )
+            msg = f"ws_auth_timeout_seconds must be finite, got {value!r}"
+            raise ValueError(msg)
+        if value < WS_AUTH_TIMEOUT_MIN_SECONDS or value > WS_AUTH_TIMEOUT_MAX_SECONDS:
+            logger.warning(
+                API_BRIDGE_CONFIG_REJECTED,
+                field="ws_auth_timeout_seconds",
+                reason="out_of_range",
+                provided_value=value,
+                min_value=WS_AUTH_TIMEOUT_MIN_SECONDS,
+                max_value=WS_AUTH_TIMEOUT_MAX_SECONDS,
+            )
+            msg = (
+                "ws_auth_timeout_seconds must be between"
+                f" {WS_AUTH_TIMEOUT_MIN_SECONDS} and"
+                f" {WS_AUTH_TIMEOUT_MAX_SECONDS} seconds, got {value}"
+            )
+            raise ValueError(msg)
+        self._ws_auth_timeout_seconds = value
 
     @property
     def has_session_store(self) -> bool:

@@ -812,6 +812,7 @@ class ConfigResolver:
             (
                 ("ticket_cleanup_interval_seconds", "float"),
                 ("ws_ticket_max_pending_per_user", "int"),
+                ("ws_auth_timeout_seconds", "float"),
                 ("max_rpm_default", "int"),
                 ("compression_minimum_size_bytes", "int"),
                 ("request_max_body_size_bytes", "int"),

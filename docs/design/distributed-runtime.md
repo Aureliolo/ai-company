@@ -92,9 +92,9 @@ NATS JetStream wins on three dimensions that matter most for a first distributed
 
 NATS JetStream is the shipped distributed backend. The comparison above preserves the full evaluation so that a future change of backend (or addition of a second adapter) can be audited against the same criteria.
 
-#### NATS client library (2026-04-10)
+#### NATS client library
 
-The project stays on `nats-py==2.14.0`. An alternative client (`nats-core` v0.1.0) was evaluated and rejected because it lacks JetStream, KV store, and durable consumer support -- all primitives this design depends on. A scoped `filterwarnings` entry in `pyproject.toml` suppresses the `asyncio.iscoroutinefunction` deprecation warning from `nats-py` on Python 3.14 until an upstream fix lands. See [docs/architecture/decisions.md](../architecture/decisions.md) for the full decision record and mitigation plan.
+The project uses `nats-py==2.14.0`. A scoped `filterwarnings` entry in `pyproject.toml` suppresses the `asyncio.iscoroutinefunction` deprecation warning from `nats-py` on Python 3.14 until an upstream fix lands. See [docs/architecture/decisions.md](../architecture/decisions.md) for the full decision record including the evaluation of alternative clients.
 
 ---
 

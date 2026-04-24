@@ -39,7 +39,7 @@ from synthorg.communication.subscription import (  # noqa: TC001
     DeliveryEnvelope,
     Subscription,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.communication import (
     COMM_BUS_ALREADY_RUNNING,
     COMM_BUS_HEALTH_CHECK_FAILED,
@@ -121,9 +121,12 @@ class JetStreamMessageBus:
         rather than blocking the health endpoint.  Returns ``False``
         instead of raising when the probe fails so the caller can
         treat the bus as degraded without its own ``try``/``except``.
-        Flush exceptions are logged at WARNING with exception type
-        and traceback so operators can distinguish broker-unreachable
-        from client-logic bugs.
+        Flush exceptions are logged at WARNING with typed error info
+        and a scrubbed description so operators can distinguish
+        broker-unreachable from client-logic bugs without leaking
+        credentials from the connection URL (SEC-1 -- the NATS url
+        can include user:pass and serialized traceback frame-locals
+        have been the documented leak vector).
         """
         state = self._state
         if not state.running:
@@ -148,7 +151,7 @@ class JetStreamMessageBus:
                 COMM_BUS_HEALTH_CHECK_FAILED,
                 phase="flush",
                 error_type=type(exc).__name__,
-                exc_info=True,
+                error=safe_error_description(exc),
             )
             return False
         return True

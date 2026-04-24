@@ -8,16 +8,22 @@ stays below the 800-line limit mandated by ``CLAUDE.md``.
 """
 
 import math
-from typing import Final
+from typing import Final, get_args
 
+from synthorg.api.errors import ErrorCategory
 from synthorg.observability import get_logger
 from synthorg.observability.events.metrics import METRICS_SCRAPE_FAILED
+from synthorg.providers.errors import ProviderErrorLabel
 
 __all__ = [
+    "VALID_API_ERROR_CATEGORIES",
     "VALID_AUDIT_APPEND_STATUSES",
+    "VALID_CACHE_NAMES",
+    "VALID_CACHE_OUTCOMES",
     "VALID_IDENTITY_CHANGE_TYPES",
     "VALID_OTLP_KINDS",
     "VALID_OTLP_OUTCOMES",
+    "VALID_PROVIDER_ERROR_CLASSES",
     "VALID_STATUS_CLASSES",
     "VALID_TASK_OUTCOMES",
     "VALID_TOKEN_DIRECTIONS",
@@ -111,6 +117,24 @@ VALID_IDENTITY_CHANGE_TYPES: Final[frozenset[str]] = frozenset(
 )
 VALID_WORKFLOW_EXECUTION_STATUSES: Final[frozenset[str]] = frozenset(
     {"completed", "failed", "cancelled", "timeout"}
+)
+# Provider error classes: map every ``ProviderError`` subclass to one
+# of these bounded buckets via ``synthorg.providers.errors.classify_provider_error``.
+# Unknown exceptions fall into ``"other"`` rather than inflating cardinality.
+# Derived from the ``ProviderErrorLabel`` Literal so the two stay in
+# lockstep -- adding a new label in one place is enough.
+VALID_PROVIDER_ERROR_CLASSES: Final[frozenset[str]] = frozenset(
+    get_args(ProviderErrorLabel)
+)
+# In-process cache names that emit ``synthorg_cache_operations_total``.
+# Expanding this set requires adding a new cache + its record call.
+VALID_CACHE_NAMES: Final[frozenset[str]] = frozenset({"mcp_result", "reranker"})
+VALID_CACHE_OUTCOMES: Final[frozenset[str]] = frozenset({"hit", "miss", "evict"})
+# API error classification: derived from ``synthorg.api.errors.ErrorCategory``
+# so the metric partitions structured 4xx/5xx responses by their RFC 9457
+# category without hand-maintaining a parallel allowlist.
+VALID_API_ERROR_CATEGORIES: Final[frozenset[str]] = frozenset(
+    e.value for e in ErrorCategory
 )
 
 

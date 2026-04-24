@@ -7,6 +7,8 @@ description: Performance tracking configuration, structured logging with 11 defa
 
 Observability in SynthOrg spans three concerns: performance tracking (quality scoring weights, LLM judge, trend detection), structured logging (11 default sinks with per-domain routing, correlation IDs, sensitive-field redaction), and metrics export (Prometheus `/metrics` + OTLP). All three are configured through the same settings subsystem and refresh without restart where safe.
 
+The root logger ships at `INFO` so HTTP log sinks and sampled streams stay cheap. Agent-trace loggers (`synthorg.engine`, `synthorg.memory`) default to `INFO` as well. Set `observability.root_level=debug` (or `logging.root_level: DEBUG` in the company YAML) for system-wide DEBUG, or set `observability.per_logger_levels` (or `config.logger_levels` in YAML) to raise specific loggers to DEBUG without the full firehose.
+
 ---
 
 ## Performance Tracking Configuration
@@ -155,8 +157,8 @@ Default levels per domain module (overridable via `LogConfig.logger_levels`):
 
 | Logger | Default Level |
 |--------|---------------|
-| `synthorg.engine` | DEBUG |
-| `synthorg.memory` | DEBUG |
+| `synthorg.engine` | INFO |
+| `synthorg.memory` | INFO |
 | `synthorg.core` | INFO |
 | `synthorg.communication` | INFO |
 | `synthorg.providers` | INFO |
@@ -291,11 +293,23 @@ The `/metrics` endpoint exposes business and infrastructure metrics under the `s
 - `synthorg_provider_tokens_total{provider, model, direction}` -- counter; input/output token consumption.
 - `synthorg_provider_cost_total{provider, model}` -- counter; accumulated cost in the configured currency.
 
+**Provider errors**
+
+- `synthorg_provider_errors_total{provider, model, error_class}` -- counter; emitted from every failed `BaseCompletionProvider.complete` / `stream` call. `error_class` is one of the bounded `ProviderErrorLabel` values (`rate_limit`, `timeout`, `connection`, `internal`, `invalid_request`, `auth`, `content_filter`, `not_found`, `other`) produced by `classify_provider_error`.
+
+**Caches**
+
+- `synthorg_cache_operations_total{cache_name, outcome}` -- counter; emitted from the in-process caches (`mcp_result`, `reranker`). `outcome` is one of `hit` / `miss` / `evict`.
+
 **Latency**
 
-- `synthorg_api_request_duration_seconds{method, route, status_class}` -- histogram; per-route HTTP handler duration.
+- `synthorg_api_request_duration_seconds{method, route, status_class}` -- histogram; per-route HTTP handler duration. Its auto-emitted `_count` series doubles as a request counter.
 - `synthorg_task_duration_seconds{outcome}` + `synthorg_task_runs_total{outcome}` -- task execution.
 - `synthorg_tool_duration_seconds{tool_name, outcome}` + `synthorg_tool_invocations_total{tool_name, outcome}` -- tool invocation.
+
+**API errors**
+
+- `synthorg_api_error_classification_total{category, status_class}` -- counter; emitted from the structured-error builder on every 4xx/5xx response. `category` is derived from the `ErrorCategory` enum (`auth`, `validation`, `not_found`, `conflict`, `rate_limit`, `budget_exhausted`, `provider_error`, `internal`) with no parallel allowlist.
 
 **Audit chain + OTLP health**
 

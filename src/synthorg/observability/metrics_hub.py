@@ -20,7 +20,7 @@ registered so call sites remain safe when metrics are disabled.
 import weakref
 from typing import TYPE_CHECKING, ParamSpec, TypeVar
 
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.metrics import (
     METRICS_COLLECTOR_ACTIVATED,
     METRICS_COLLECTOR_DEACTIVATED,
@@ -97,11 +97,12 @@ def _safe_record(
                 # would mask a programming bug; let it propagate
                 # so the caller sees the wiring mistake.
                 raise
-            except Exception:
+            except Exception as exc:
                 logger.warning(
                     event,
                     hub_method=method,
-                    exc_info=True,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 return None
 
@@ -152,3 +153,39 @@ def record_security_verdict(verdict: str) -> None:
     if collector is None:
         return
     collector.record_security_verdict(verdict)
+
+
+@_safe_record(METRICS_SCRAPE_FAILED, "record_provider_error")
+def record_provider_error(
+    *,
+    provider: str,
+    model: str,
+    error_class: str,
+) -> None:
+    """Forward to :meth:`PrometheusCollector.record_provider_error`."""
+    collector = _active()
+    if collector is None:
+        return
+    collector.record_provider_error(
+        provider=provider,
+        model=model,
+        error_class=error_class,
+    )
+
+
+@_safe_record(METRICS_SCRAPE_FAILED, "record_cache_operation")
+def record_cache_operation(*, cache_name: str, outcome: str) -> None:
+    """Forward to :meth:`PrometheusCollector.record_cache_operation`."""
+    collector = _active()
+    if collector is None:
+        return
+    collector.record_cache_operation(cache_name=cache_name, outcome=outcome)
+
+
+@_safe_record(METRICS_SCRAPE_FAILED, "record_api_error")
+def record_api_error(*, category: str, status_code: int) -> None:
+    """Forward to :meth:`PrometheusCollector.record_api_error`."""
+    collector = _active()
+    if collector is None:
+        return
+    collector.record_api_error(category=category, status_code=status_code)

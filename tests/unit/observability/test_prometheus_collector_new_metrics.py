@@ -254,5 +254,124 @@ def test_all_new_metric_families_registered() -> None:
         "synthorg_audit_chain_last_append_timestamp_seconds",
         "synthorg_otlp_export_batches_total",
         "synthorg_otlp_export_dropped_records_total",
+        "synthorg_provider_errors_total",
+        "synthorg_cache_operations_total",
+        "synthorg_api_error_classification_total",
     ):
         assert f"# HELP {name}" in text, f"{name} not exposed"
+
+
+# -- Provider error metric (#1538) -------------------------------------------
+
+
+def test_record_provider_error_increments_by_class() -> None:
+    collector = PrometheusCollector()
+    collector.record_provider_error(
+        provider="example-provider",
+        model="large",
+        error_class="rate_limit",
+    )
+    collector.record_provider_error(
+        provider="example-provider",
+        model="large",
+        error_class="rate_limit",
+    )
+    collector.record_provider_error(
+        provider="example-provider",
+        model="large",
+        error_class="timeout",
+    )
+    parsed = _parse(collector)
+    samples = parsed["synthorg_provider_errors"]
+    rate_limit_row = next(
+        s for lbl, s in samples if lbl.get("error_class") == "rate_limit"
+    )
+    timeout_row = next(s for lbl, s in samples if lbl.get("error_class") == "timeout")
+    assert rate_limit_row == 2.0
+    assert timeout_row == 1.0
+
+
+def test_record_provider_error_rejects_unknown_class() -> None:
+    collector = PrometheusCollector()
+    with pytest.raises(ValueError, match="error_class"):
+        collector.record_provider_error(
+            provider="example-provider",
+            model="large",
+            error_class="bogus",
+        )
+
+
+# -- Cache operation metric (#1538) ------------------------------------------
+
+
+def test_record_cache_operation_partitions_by_name_and_outcome() -> None:
+    collector = PrometheusCollector()
+    collector.record_cache_operation(cache_name="mcp_result", outcome="hit")
+    collector.record_cache_operation(cache_name="mcp_result", outcome="hit")
+    collector.record_cache_operation(cache_name="mcp_result", outcome="miss")
+    collector.record_cache_operation(cache_name="reranker", outcome="hit")
+    collector.record_cache_operation(cache_name="reranker", outcome="evict")
+    parsed = _parse(collector)
+    samples = parsed["synthorg_cache_operations"]
+    mcp_hit = next(
+        s for lbl, s in samples if lbl == {"cache_name": "mcp_result", "outcome": "hit"}
+    )
+    mcp_miss = next(
+        s
+        for lbl, s in samples
+        if lbl == {"cache_name": "mcp_result", "outcome": "miss"}
+    )
+    reranker_evict = next(
+        s for lbl, s in samples if lbl == {"cache_name": "reranker", "outcome": "evict"}
+    )
+    assert mcp_hit == 2.0
+    assert mcp_miss == 1.0
+    assert reranker_evict == 1.0
+
+
+def test_record_cache_operation_rejects_unknown_cache() -> None:
+    collector = PrometheusCollector()
+    with pytest.raises(ValueError, match="cache_name"):
+        collector.record_cache_operation(cache_name="bogus-cache", outcome="hit")
+
+
+def test_record_cache_operation_rejects_unknown_outcome() -> None:
+    collector = PrometheusCollector()
+    with pytest.raises(ValueError, match="cache outcome"):
+        collector.record_cache_operation(cache_name="mcp_result", outcome="done")
+
+
+# -- API error classification metric (#1538) ---------------------------------
+
+
+def test_record_api_error_partitions_by_category_and_status_class() -> None:
+    collector = PrometheusCollector()
+    collector.record_api_error(category="validation", status_code=422)
+    collector.record_api_error(category="validation", status_code=400)
+    collector.record_api_error(category="internal", status_code=503)
+    parsed = _parse(collector)
+    samples = parsed["synthorg_api_error_classification"]
+    val_4xx = next(
+        s
+        for lbl, s in samples
+        if lbl == {"category": "validation", "status_class": "4xx"}
+    )
+    int_5xx = next(
+        s
+        for lbl, s in samples
+        if lbl == {"category": "internal", "status_class": "5xx"}
+    )
+    assert val_4xx == 2.0
+    assert int_5xx == 1.0
+
+
+def test_record_api_error_rejects_2xx() -> None:
+    collector = PrometheusCollector()
+    with pytest.raises(ValueError, match="not 4xx/5xx"):
+        collector.record_api_error(category="validation", status_code=200)
+
+
+def test_record_api_error_rejects_unknown_category() -> None:
+    collector = PrometheusCollector()
+    with pytest.raises(ValueError, match="api error category"):
+        collector.record_api_error(category="bogus", status_code=500)

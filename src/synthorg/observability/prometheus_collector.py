@@ -28,10 +28,14 @@ from synthorg.observability.events.metrics import (
     METRICS_SCRAPE_FAILED,
 )
 from synthorg.observability.prometheus_labels import (
+    VALID_API_ERROR_CATEGORIES,
     VALID_AUDIT_APPEND_STATUSES,
+    VALID_CACHE_NAMES,
+    VALID_CACHE_OUTCOMES,
     VALID_IDENTITY_CHANGE_TYPES,
     VALID_OTLP_KINDS,
     VALID_OTLP_OUTCOMES,
+    VALID_PROVIDER_ERROR_CLASSES,
     VALID_STATUS_CLASSES,
     VALID_TASK_OUTCOMES,
     VALID_TOOL_OUTCOMES,
@@ -173,6 +177,9 @@ class PrometheusCollector:
         self._escalation_queue_depth = self._push.escalation_queue_depth
         self._agent_identity_changes = self._push.agent_identity_changes
         self._workflow_execution_duration = self._push.workflow_execution_duration
+        self._provider_errors = self._push.provider_errors
+        self._cache_operations = self._push.cache_operations
+        self._api_error_classification = self._push.api_error_classification
 
         logger.debug(METRICS_COLLECTOR_INITIALIZED, prefix=prefix)
 
@@ -339,6 +346,72 @@ class PrometheusCollector:
             tool_name=tool_name,
             outcome=outcome,
         ).observe(duration_sec)
+
+    def record_provider_error(
+        self,
+        *,
+        provider: str,
+        model: str,
+        error_class: str,
+    ) -> None:
+        """Increment the provider-error counter for a failed completion.
+
+        Wired from :meth:`BaseCompletionProvider.complete`/``stream``;
+        the caller classifies the exception via
+        :func:`synthorg.providers.errors.classify_provider_error` so
+        ``error_class`` stays bounded.
+        """
+        require_label("error_class", error_class, VALID_PROVIDER_ERROR_CLASSES)
+        self._provider_errors.labels(
+            provider=provider,
+            model=model,
+            error_class=error_class,
+        ).inc()
+
+    def record_cache_operation(
+        self,
+        *,
+        cache_name: str,
+        outcome: str,
+    ) -> None:
+        """Increment the in-process cache-operations counter (hit/miss/evict).
+
+        ``cache_name`` bounded by :data:`VALID_CACHE_NAMES`; outcome
+        by :data:`VALID_CACHE_OUTCOMES`.  Hit-rate PromQL:
+        ``rate(...{outcome="hit"}) / rate(...)`` per ``cache_name``.
+        """
+        require_label("cache_name", cache_name, VALID_CACHE_NAMES)
+        require_label("cache outcome", outcome, VALID_CACHE_OUTCOMES)
+        self._cache_operations.labels(
+            cache_name=cache_name,
+            outcome=outcome,
+        ).inc()
+
+    def record_api_error(
+        self,
+        *,
+        category: str,
+        status_code: int,
+    ) -> None:
+        """Increment the API error classification counter (4xx/5xx only).
+
+        ``category`` tracks the RFC 9457 taxonomy
+        (:data:`VALID_API_ERROR_CATEGORIES`, mirroring
+        :class:`synthorg.api.errors.ErrorCategory`); 2xx/3xx status
+        codes are rejected so the counter only covers real failures.
+        """
+        require_label("api error category", category, VALID_API_ERROR_CATEGORIES)
+        sc = _status_class(status_code)
+        if sc not in {"4xx", "5xx"}:
+            msg = (
+                f"record_api_error: status_code {status_code!r} is not 4xx/5xx"
+                f" (mapped to {sc!r})"
+            )
+            raise ValueError(msg)
+        self._api_error_classification.labels(
+            category=category,
+            status_class=sc,
+        ).inc()
 
     def record_audit_append(
         self,

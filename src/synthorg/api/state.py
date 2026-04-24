@@ -235,6 +235,7 @@ class AppState(AppStateServicesMixin):
         "_webhook_event_bridge",
         "_webhook_replay_protector",
         "_webhook_service",
+        "_ws_auth_timeout_seconds",
         "approval_store",
         "config",
         "startup_time",
@@ -369,6 +370,13 @@ class AppState(AppStateServicesMixin):
         # on the Litestar State dict (built once, never swapped).
         self._per_op_rate_limit_config: PerOpRateLimitConfig | None = None
         self._per_op_concurrency_config: PerOpConcurrencyConfig | None = None
+        # WebSocket auth-handshake timeout in seconds.  Baked in at
+        # startup by ``_apply_bridge_config`` from
+        # ``api.ws_auth_timeout_seconds`` (restart_required) so the
+        # ``/ws`` handler does not reach back through the resolver on
+        # every connection.  Retains the built-in default when the
+        # bridge cannot be resolved.
+        self._ws_auth_timeout_seconds: float = 10.0
         self._init_derived_services(
             settings_service=settings_service,
             config=config,
