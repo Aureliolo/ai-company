@@ -62,10 +62,11 @@ Creates a worktree from the description alone -- branch name auto-generated (`fe
 
 ### Directory naming
 
-Directory suffix is auto-derived from the branch name:
-- `feat/delegation-loop-prevention` → `../synthorg-wt-delegation-loop-prevention`
-- Strip everything up to and including the first `/` in the branch name (covers `feat/`, `fix/`, `refactor/`, `chore/`, `docs/`, `test/`, `perf/`, `ci/`), then prepend `wt-`
-- Repo name extracted from the repository's canonical root metadata (e.g. `basename $(git rev-parse --show-toplevel)`), not the current working directory basename. If running inside a linked worktree, derive the base repo name from shared Git metadata before composing `../<repo-name>-wt-<slug>`
+Directory suffix is auto-derived from the branch name. Produce a bare `<slug>` (NO `wt-` prefix); the `wt-` prefix is added exclusively by the directory-path template:
+- Example: branch `feat/delegation-loop-prevention` → slug `delegation-loop-prevention` → directory `../synthorg-wt-delegation-loop-prevention`
+- Slug derivation: strip everything up to and including the first `/` in the branch name (covers `feat/`, `fix/`, `refactor/`, `chore/`, `docs/`, `test/`, `perf/`, `ci/`). Then **replace any remaining `/` characters with `-`** so nested branches like `feat/foo/bar` become slug `foo-bar` (never `foo/bar`). The slug must match `^[a-zA-Z0-9._-]+$` after derivation -- reject and abort if it does not.
+- Directory template: `../<repo-name>-wt-<slug>` where `<slug>` is the bare derived slug (no `wt-` prefix on the slug itself). The `wt-` in the template is the only source of that prefix, so there is never a double prefix.
+- Repo name extracted from the repository's canonical root metadata (e.g. `basename $(git rev-parse --show-toplevel)`), not the current working directory basename. If running inside a linked worktree, derive the base repo name from shared Git metadata before composing `../<repo-name>-wt-<slug>`.
 
 ### Steps
 
@@ -248,13 +249,50 @@ Directory suffix is auto-derived from the branch name:
 
    If there are multiple issues in one worktree that have a natural ordering (from dependency parsing or logical sequence), add an `## Implementation order` section.
 
-6. **Save each prompt to disk.** Write the generated prompt verbatim to `<worktree>/.claude/initial-prompt.md` using the Write tool. The user opens each tab with `/worktree launch`, sees the folder in a normal terminal, then runs `claude` and pastes the prompt file's contents. Do not attempt to auto-feed the prompt -- early experiments with `bash launch.sh` / `pwsh -NoExit -File launch.ps1` wrappers ended up replacing the default shell and making the tab look like a bare process rather than a normal terminal; the user rejected that UX.
+6. **Auto-launch tabs if running in Windows Terminal.** Check `$WT_SESSION` and `wt.exe` availability:
 
-7. **Present the output** to the user:
-   - For each worktree: show the **absolute path** to the worktree directory and a separate `claude` invocation command, followed by the prompt in a code block. Derive the absolute path dynamically by resolving the worktree directory (e.g., using `realpath <dir-path>` or `pwd` from within the worktree) and converting to the platform's native format. On Windows, use backslash paths (e.g., `C:\Users\Aurelio\synthorg-wt-delegation-loop-prevention`).
-   - **Note:** The `cd <path> && claude` instruction is for the **user's own terminal** (they will paste it into a new shell). This is NOT a Bash tool invocation -- do not confuse with CLAUDE.md's "never use cd in Bash commands" rule, which applies to Bash tool calls within the skill.
-   - End with a count: "N worktrees ready. Go."
-   - On Windows, if `$WT_SESSION` is set (Claude is running inside Windows Terminal), append: "Run `/worktree launch` to open all worktrees as tabs in this window."
+   ```bash
+   test -n "$WT_SESSION" && which wt.exe >/dev/null 2>&1 && echo "auto-launch-ok" || echo "manual"
+   ```
+
+   If `auto-launch-ok`, spawn one tab per worktree sequentially (same invocation as the `launch` subcommand, no trailing command so the user's default profile loads normally):
+
+   ```bash
+   wt.exe -w 0 new-tab --title "<slug>" -d "<forward-slash-path>"
+   ```
+
+   Use forward-slash paths (`C:/Users/Aurelio/synthorg-wt-<slug>`) to avoid Bash interpreting `\t` / `\U` / `\N` as escape sequences. `-w 0` targets the current Windows Terminal window. No trailing command -- see the "Design note (do NOT regress)" block under the `launch` subcommand below for why.
+
+   If not in Windows Terminal or `wt.exe` is missing, skip auto-launch and instead tell the user to run `cd <path> && claude` manually in each target terminal.
+
+7. **Present the output** to the user by printing each worktree's prompt INLINE in chat as a copy-pasteable fenced code block. Do NOT write the prompt to a file -- the user copies directly from chat.
+
+   **Fence nesting policy:** the prompt body generated in step 5e may itself contain triple-backtick code blocks (e.g. `` ```bash `` examples pulled from an issue body). To avoid the outer fence closing prematurely, choose an outer fence marker that never appears inside the body. In practice:
+
+   - Scan the generated prompt body for the longest run of consecutive backticks (`longest_backticks`). Use an outer fence of `longest_backticks + 1` backticks (minimum 4 backticks). Include the `text` language tag on the outer fence so markdown lints are happy (e.g. ` ````text ... ```` `).
+   - An acceptable fallback is a tilde outer fence (`~~~text ... ~~~`) since the prompt body will not contain tilde fences. Both are valid CommonMark; pick whichever renders cleanly in the chat UI.
+   - **Never** use plain ` ```text ` as the outer wrapper -- any inner `` ``` `` in the prompt body will close it.
+
+   Format per worktree (tilde-fence example; swap for 4+ backticks if preferred):
+
+   ~~~text
+   ### <slug>
+
+   **Path:** `C:\Users\Aurelio\synthorg-wt-<slug>`
+
+   Prompt to paste into the claude REPL (after running `claude` in the tab):
+
+   ```text
+   <full prompt body as generated in step 5e; inner ``` blocks are safe because the outer fence is tildes>
+   ```
+   ~~~
+
+   Then, at the very end, a one-line status:
+
+   - Auto-launched: "N tabs opened in Windows Terminal. In each tab run `claude` and paste the corresponding prompt above."
+   - Manual: "N worktrees ready. In each tab run `cd <path> && claude` and paste the corresponding prompt above."
+
+   **Do not save prompts to disk** -- the generated content is ephemeral scaffolding the user adapts on paste. Saving to `.claude/initial-prompt.md` creates stale artifacts that drift from what the user actually submitted.
 
 ---
 
@@ -315,8 +353,9 @@ Open each worktree as a **plain terminal tab** in the current Windows Terminal w
    ```text
    N tabs opened: <slug1>, <slug2>, ...
    In each tab, run: claude
-   Then paste the prompt from .claude/initial-prompt.md (or `cat .claude/initial-prompt.md | clip` in PowerShell to copy it first).
    ```
+
+   Note: `launch` does not know the prompt content -- that is generated fresh by `setup`. If the user ran `/worktree launch` standalone (without a preceding `/worktree setup` in the same chat turn), the tab opens empty and the user types their own prompt. Do not tell them to paste from any file -- the skill no longer writes prompts to disk.
 
 ### Platform note
 
