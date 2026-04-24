@@ -54,7 +54,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           fetch-depth: 0
-          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+          persist-credentials: false
 
       - name: Check if rollover is needed
         id: check
@@ -113,12 +113,28 @@ jobs:
       - name: Create rollover commit
         if: steps.check.outputs.needed == 'true'
         env:
+          # PAT (not GITHUB_TOKEN) is required so the resulting commit
+          # triggers downstream release.yml + dev-release.yml workflows.
+          # Commits created via the Git Data API inherit the PAT owner's
+          # signature (verified on this repo).
+          GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
           NEXT_VERSION: ${{ steps.check.outputs.next_version }}
         run: |
           set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit --allow-empty \
-            -m "chore: auto-rollover to v${NEXT_VERSION}" \
-            -m "Release-As: ${NEXT_VERSION}"
-          git push origin HEAD:refs/heads/main
+          PARENT_SHA=$(git rev-parse HEAD)
+          TREE_SHA=$(gh api "repos/$GITHUB_REPOSITORY/git/commits/$PARENT_SHA" --jq '.tree.sha')
+
+          # Create an empty commit (reuses the parent's tree) via the Git
+          # Data API so the commit ships with a verified signature, then
+          # fast-forward main to it.
+          COMMIT_MESSAGE=$(printf 'chore: auto-rollover to v%s\n\nRelease-As: %s' "$NEXT_VERSION" "$NEXT_VERSION")
+          NEW_COMMIT=$(jq -n \
+            --arg msg "$COMMIT_MESSAGE" \
+            --arg tree "$TREE_SHA" \
+            --arg parent "$PARENT_SHA" \
+            '{message: $msg, tree: $tree, parents: [$parent]}' \
+          | gh api --method POST "repos/$GITHUB_REPOSITORY/git/commits" --input - --jq '.sha')
+          echo "Created commit: $NEW_COMMIT"
+
+          gh api --method PATCH "repos/$GITHUB_REPOSITORY/git/refs/heads/main" \
+            -f sha="$NEW_COMMIT"
