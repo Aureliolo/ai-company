@@ -104,6 +104,23 @@ export interface ProvidersSlice {
   presetsLoading: boolean
   presetsError: string | null
   probeResults: Record<string, ProbePresetResponse>
+  /**
+   * Per-preset probe failures keyed by preset name. Populated by the
+   * probe pipeline when an individual preset's probe rejects (e.g.
+   * provider unreachable); empty on fully successful runs. The
+   * ``ProvidersStep`` surfaces this via an inline ErrorBanner with a
+   * retry action so the user can react to partial failures instead of
+   * them being buried in logs.
+   */
+  probeErrors: Record<string, string>
+  /**
+   * Top-level failure from the probe orchestrator (distinct from
+   * per-preset failures). Set when ``Promise.allSettled`` or the
+   * probe runner itself throws -- typically a client-side error,
+   * network collapse, or store bug. ``null`` when the last probe
+   * completed normally (even if individual presets failed).
+   */
+  probeGlobalError: string | null
   probing: boolean
   providersLoading: boolean
   providersError: string | null

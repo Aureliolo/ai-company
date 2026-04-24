@@ -154,7 +154,7 @@ def _result_to_response(result: TrainingResult) -> TrainingResultResponse:
 class TrainingController(Controller):
     """Training mode API endpoints."""
 
-    path = "/api/v1/agents/{agent_name:str}/training"
+    path = "/agents/{agent_name:str}/training"
 
     @post(
         "/plan",

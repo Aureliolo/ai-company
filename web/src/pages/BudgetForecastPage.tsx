@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
-import { Link } from 'react-router'
-import { ArrowLeft, Calendar } from 'lucide-react'
+import { Calendar } from 'lucide-react'
+import { Breadcrumbs } from '@/components/ui/breadcrumbs'
 import { MetricCard } from '@/components/ui/metric-card'
 import { SectionCard } from '@/components/ui/section-card'
 import { ErrorBanner } from '@/components/ui/error-banner'
@@ -103,16 +103,13 @@ export default function BudgetForecastPage() {
 
   return (
     <div className="space-y-section-gap">
-      <div className="flex items-center gap-3">
-        <Link
-          to={ROUTES.BUDGET}
-          className="text-text-muted transition-colors hover:text-foreground"
-          aria-label="Back to Budget"
-        >
-          <ArrowLeft className="size-4" />
-        </Link>
-        <h1 className="text-lg font-semibold text-foreground">Budget Forecast</h1>
-      </div>
+      <Breadcrumbs
+        items={[
+          { label: 'Budget', to: ROUTES.BUDGET },
+          { label: 'Forecast' },
+        ]}
+      />
+      <h1 className="text-lg font-semibold text-foreground">Budget Forecast</h1>
 
       {error && (
         <ErrorBanner severity="error" title="Could not load budget forecast" description={error} />

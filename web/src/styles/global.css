@@ -193,3 +193,42 @@ html {
     @apply font-sans;
   }
 }
+
+/* Print styles.
+ *
+ * When the user triggers window.print() (for example from the OrgChart
+ * toolbar), we reduce the page to primary content and strip the app
+ * chrome so the printed page stands alone. Elements tagged
+ * [data-print-hidden] are suppressed; pages needing print-specific
+ * layout can use the `print:` Tailwind modifier.
+ */
+@media print {
+  [data-print-hidden],
+  [data-testid="status-bar"],
+  [role="toolbar"]:not([data-print-toolbar]) {
+    display: none !important;
+  }
+
+  body {
+    /* Print surfaces force a white sheet + black ink regardless of the
+     * active theme -- home-printer ink consumption and readability trump
+     * the design-system palette. These are print-only tokens, not UI
+     * colors. */
+    background: var(--so-print-surface) !important;
+    color: var(--so-print-ink) !important;
+  }
+
+  .react-flow__controls,
+  .react-flow__minimap,
+  .react-flow__attribution {
+    display: none !important;
+  }
+
+  [data-testid="org-chart-canvas"] {
+    /* `page-break-inside` was the pre-CSS3 property; `break-inside: avoid`
+     * is the modern equivalent and is already supported everywhere we
+     * run. Stylelint flags the old form as deprecated. */
+    break-inside: avoid;
+    border: none !important;
+  }
+}

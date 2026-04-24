@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import type { UseBudgetDataReturn } from '@/hooks/useBudgetData'
 import type { ForecastResponse, OverviewMetrics, TrendDataPoint } from '@/api/types/analytics'
@@ -134,9 +134,19 @@ describe('BudgetForecastPage', () => {
     expect(screen.getByText('Day 3')).toBeInTheDocument()
   })
 
-  it('renders "Back to Budget" link', () => {
+  it('renders breadcrumb navigation back to Budget', () => {
     renderWithRouter()
-    expect(screen.getByLabelText('Back to Budget')).toBeInTheDocument()
+    const nav = screen.getByRole('navigation', { name: 'Breadcrumb' })
+    expect(nav).toBeInTheDocument()
+    // Scope the link query to the breadcrumb nav so we do not accidentally
+    // match unrelated "Budget" links that might exist elsewhere on the
+    // page.
+    const budgetLink = within(nav).getByRole('link', { name: 'Budget' })
+    expect(budgetLink).toHaveAttribute('href', '/budget')
+    // Terminal crumb carries aria-current="page" per the Breadcrumbs
+    // component contract.
+    const terminal = within(nav).getByText('Forecast').closest('[aria-current="page"]')
+    expect(terminal).not.toBeNull()
   })
 
   it('shows error banner when error is set', () => {

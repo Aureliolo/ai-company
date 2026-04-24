@@ -16,3 +16,7 @@ export async function createProject(data: CreateProjectRequest): Promise<Project
   const response = await apiClient.post<ApiResponse<Project>>('/projects', data)
   return unwrap(response)
 }
+
+export async function deleteProject(projectId: string): Promise<void> {
+  await apiClient.delete<void>(`/projects/${encodeURIComponent(projectId)}`)
+}

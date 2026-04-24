@@ -1,6 +1,6 @@
 import { http, HttpResponse } from 'msw'
 import { useSetupWizardStore } from '@/stores/setup-wizard'
-import { apiError, apiSuccess } from '@/mocks/handlers'
+import { apiError, apiSuccess, buildProviderPreset } from '@/mocks/handlers'
 import { server } from '@/test-setup'
 import { CURRENCY_OPTIONS, DEFAULT_CURRENCY } from '@/utils/currencies'
 import type { SeniorityLevel } from '@/api/types/enums'
@@ -544,6 +544,99 @@ describe('setup wizard store', () => {
       expect(useSetupWizardStore.getState().providersError).toBe(
         'Connection refused',
       )
+    })
+  })
+
+  describe('provider probe error surfacing', () => {
+    // Use the shared builder so the preset shape stays aligned with the
+    // real /providers/presets response; test-local drift is only the
+    // name + provider override per preset.
+    const PRESET_FIXTURES = [
+      buildProviderPreset({
+        name: 'local-ollama',
+        display_name: 'Ollama',
+        litellm_provider: 'ollama',
+        default_base_url: 'http://localhost:11434',
+        auth_type: 'none',
+        supported_auth_types: ['none'],
+      }),
+      buildProviderPreset({
+        name: 'openrouter',
+        display_name: 'OpenRouter',
+        litellm_provider: 'openrouter',
+        default_base_url: 'https://openrouter.ai/api/v1',
+        auth_type: 'api_key',
+        supported_auth_types: ['api_key'],
+      }),
+    ]
+
+    function seedPresets() {
+      server.use(
+        http.get('/api/v1/providers/presets', () =>
+          HttpResponse.json(apiSuccess(PRESET_FIXTURES)),
+        ),
+      )
+      return useSetupWizardStore.getState().fetchPresets()
+    }
+
+    it('records per-preset probe failures in probeErrors and leaves successes in probeResults', async () => {
+      await seedPresets()
+      server.use(
+        http.post('/api/v1/providers/probe-preset', async ({ request }) => {
+          const body = (await request.json()) as { preset_name: string }
+          if (body.preset_name === 'openrouter') {
+            return HttpResponse.json(
+              apiError('Provider unreachable'),
+              { status: 502 },
+            )
+          }
+          return HttpResponse.json(
+            apiSuccess({
+              url: 'http://localhost:11434',
+              model_count: 3,
+              candidates_tried: 1,
+            }),
+          )
+        }),
+      )
+
+      await useSetupWizardStore.getState().probeAllPresets()
+
+      const state = useSetupWizardStore.getState()
+      expect(state.probeResults['local-ollama']).toMatchObject({ model_count: 3 })
+      expect(state.probeErrors).toHaveProperty('openrouter')
+      expect(state.probeErrors['openrouter']).toBeTruthy()
+      expect(state.probeGlobalError).toBeNull()
+    })
+
+    it('reprobePresets clears prior errors before re-running', async () => {
+      await seedPresets()
+      // First run: openrouter fails.
+      server.use(
+        http.post('/api/v1/providers/probe-preset', async ({ request }) => {
+          const body = (await request.json()) as { preset_name: string }
+          if (body.preset_name === 'openrouter') {
+            return HttpResponse.json(apiError('boom'), { status: 502 })
+          }
+          return HttpResponse.json(
+            apiSuccess({ url: null, model_count: 0, candidates_tried: 0 }),
+          )
+        }),
+      )
+      await useSetupWizardStore.getState().probeAllPresets()
+      expect(useSetupWizardStore.getState().probeErrors).toHaveProperty('openrouter')
+
+      // Second run: everything succeeds -> errors reset.
+      server.use(
+        http.post('/api/v1/providers/probe-preset', () =>
+          HttpResponse.json(
+            apiSuccess({ url: null, model_count: 0, candidates_tried: 0 }),
+          ),
+        ),
+      )
+      await useSetupWizardStore.getState().reprobePresets()
+      expect(useSetupWizardStore.getState().probeErrors).toEqual({})
+      expect(useSetupWizardStore.getState().probeGlobalError).toBeNull()
     })
   })
 })

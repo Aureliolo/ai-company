@@ -1,11 +1,12 @@
-"""Project controller -- endpoints for project listing and creation."""
+"""Project controller -- endpoints for project listing, creation and deletion."""
 
 import uuid
 from typing import Annotated, Any
 
-from litestar import Controller, Request, Response, get, post
+from litestar import Controller, Request, Response, delete, get, post
 from litestar.datastructures import State  # noqa: TC002
 from litestar.params import Parameter
+from litestar.status_codes import HTTP_204_NO_CONTENT
 
 from synthorg.api.channels import CHANNEL_PROJECTS, publish_ws_event
 from synthorg.api.dto import (
@@ -22,7 +23,11 @@ from synthorg.core.enums import ProjectStatus
 from synthorg.core.project import Project
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
-from synthorg.observability.events.persistence import PERSISTENCE_PROJECT_SAVED
+from synthorg.observability.events.api import API_RESOURCE_NOT_FOUND
+from synthorg.observability.events.persistence import (
+    PERSISTENCE_PROJECT_DELETED,
+    PERSISTENCE_PROJECT_SAVED,
+)
 
 logger = get_logger(__name__)
 
@@ -47,7 +52,7 @@ LeadFilter = Annotated[
 
 
 class ProjectController(Controller):
-    """Controller for project listing and creation."""
+    """Controller for project listing, creation, and deletion."""
 
     path = "/projects"
     tags = ("projects",)
@@ -122,6 +127,60 @@ class ProjectController(Controller):
         return Response(
             content=ApiResponse[Project](data=project),
             status_code=200,
+        )
+
+    @delete(
+        "/{project_id:str}",
+        guards=[require_write_access],
+        status_code=HTTP_204_NO_CONTENT,
+    )
+    async def delete_project(
+        self,
+        request: Request[Any, Any, Any],
+        state: State,
+        project_id: PathId,
+    ) -> None:
+        """Delete a project by ID.
+
+        Args:
+            request: The incoming request.
+            state: Application state.
+            project_id: Project identifier.
+
+        Raises:
+            NotFoundError: Project with ``project_id`` does not exist.
+        """
+        repo = state.app_state.persistence.projects
+        project = await repo.get(project_id)
+        if project is None:
+            logger.warning(
+                API_RESOURCE_NOT_FOUND,
+                resource="project",
+                project_id=project_id,
+                operation="delete",
+            )
+            msg = f"Project {project_id!r} not found"
+            raise NotFoundError(msg)
+        deleted = await repo.delete(project_id)
+        if not deleted:
+            # Race: row disappeared between get() and delete(). Log as a
+            # warning so concurrent destructive operations stay in the audit
+            # trail.
+            logger.warning(
+                API_RESOURCE_NOT_FOUND,
+                resource="project",
+                project_id=project_id,
+                operation="delete",
+                note="concurrent_delete",
+            )
+            msg = f"Project {project_id!r} not found"
+            raise NotFoundError(msg)
+        logger.info(PERSISTENCE_PROJECT_DELETED, project_id=project_id)
+        publish_ws_event(
+            request,
+            WsEventType.PROJECT_DELETED,
+            CHANNEL_PROJECTS,
+            {"project_id": project_id, "name": project.name},
         )
 
     @post(guards=[require_write_access])

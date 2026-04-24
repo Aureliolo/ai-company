@@ -51,7 +51,7 @@ logger = get_logger(__name__)
 class ConnectionsController(Controller):
     """CRUD and health endpoints for external connections."""
 
-    path = "/api/v1/connections"
+    path = "/connections"
     tags = ["Integrations"]  # noqa: RUF012
 
     @get(

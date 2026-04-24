@@ -2,11 +2,13 @@ import {
   BadgeCheck,
   CircleDashed,
   DollarSign,
+  Download,
   GitBranch,
   Map as MapIcon,
   Maximize,
   Network,
   Plus,
+  Printer,
   Sparkles,
   ZoomIn,
   ZoomOut,
@@ -28,6 +30,11 @@ interface OrgChartToolbarProps {
   onFitView: () => void
   onZoomIn: () => void
   onZoomOut: () => void
+  /** Export the current chart as a PNG file. */
+  onExportPng?: () => void
+  exporting?: boolean
+  /** Trigger the browser's print flow with the chart in focus. */
+  onPrint?: () => void
   className?: string
 }
 
@@ -81,6 +88,9 @@ export function OrgChartToolbar({
   onFitView,
   onZoomIn,
   onZoomOut,
+  onExportPng,
+  exporting = false,
+  onPrint,
   className,
 }: OrgChartToolbarProps) {
   const particleFlowMode = useOrgChartPrefs((s) => s.particleFlowMode)
@@ -223,6 +233,37 @@ export function OrgChartToolbar({
       >
         <ZoomOut className="size-3.5" aria-hidden="true" />
       </Button>
+
+      {(onExportPng || onPrint) && (
+        <>
+          <div className="mx-1 h-5 w-px bg-border" />
+          {onExportPng && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onExportPng}
+              aria-label={exporting ? 'Exporting PNG' : 'Export as PNG'}
+              title={exporting ? 'Exporting PNG' : 'Export as PNG'}
+              className="size-7 p-0"
+              disabled={exporting}
+            >
+              <Download className="size-3.5" aria-hidden="true" />
+            </Button>
+          )}
+          {onPrint && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onPrint}
+              aria-label="Print org chart"
+              title="Print org chart"
+              className="size-7 p-0"
+            >
+              <Printer className="size-3.5" aria-hidden="true" />
+            </Button>
+          )}
+        </>
+      )}
     </div>
   )
 }

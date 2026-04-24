@@ -1,3 +1,4 @@
+import { memo, useMemo } from 'react'
 import { useDroppable } from '@dnd-kit/core'
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
@@ -34,7 +35,13 @@ export interface TaskColumnProps {
   onSelectTask: (taskId: string) => void
 }
 
-function SortableTaskCard({ task, onSelectTask }: { task: Task; onSelectTask: (id: string) => void }) {
+const SortableTaskCard = memo(function SortableTaskCard({
+  task,
+  onSelectTask,
+}: {
+  task: Task
+  onSelectTask: (id: string) => void
+}) {
   const {
     attributes,
     listeners,
@@ -54,7 +61,7 @@ function SortableTaskCard({ task, onSelectTask }: { task: Task; onSelectTask: (i
       <TaskCard task={task} onSelect={onSelectTask} isDragging={isDragging} />
     </div>
   )
-}
+})
 
 export function TaskColumn({ column, tasks, onSelectTask }: TaskColumnProps) {
   const { setNodeRef, isOver } = useDroppable({
@@ -62,7 +69,7 @@ export function TaskColumn({ column, tasks, onSelectTask }: TaskColumnProps) {
     data: { columnId: column.id, statuses: column.statuses },
   })
 
-  const taskIds = tasks.map((t) => t.id)
+  const taskIds = useMemo(() => tasks.map((t) => t.id), [tasks])
 
   const estimatedHours = tasks.reduce(
     (sum, t) => sum + (COMPLEXITY_HOURS[t.estimated_complexity] ?? 0),

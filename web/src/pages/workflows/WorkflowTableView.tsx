@@ -12,9 +12,17 @@ interface WorkflowTableViewProps {
   workflows: readonly WorkflowDefinition[]
   onDelete: (id: string) => void | Promise<void>
   onDuplicate: (id: string) => void
+  onToggleSelect?: (id: string) => void
+  selectedIds?: ReadonlySet<string>
 }
 
-export function WorkflowTableView({ workflows, onDelete, onDuplicate }: WorkflowTableViewProps) {
+export function WorkflowTableView({
+  workflows,
+  onDelete,
+  onDuplicate,
+  onToggleSelect,
+  selectedIds,
+}: WorkflowTableViewProps) {
   const navigate = useNavigate()
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
 
@@ -34,6 +42,11 @@ export function WorkflowTableView({ workflows, onDelete, onDuplicate }: Workflow
         <table className="w-full text-sm" role="table">
           <thead>
             <tr className="border-b border-border bg-muted/50">
+              {onToggleSelect && (
+                <th className="w-10 px-2 py-2">
+                  <span className="sr-only">Select workflow</span>
+                </th>
+              )}
               <th className="px-4 py-2 text-left font-medium text-muted-foreground">Name</th>
               <th className="px-4 py-2 text-left font-medium text-muted-foreground">Type</th>
               <th className="px-4 py-2 text-right font-medium text-muted-foreground">Nodes</th>
@@ -46,11 +59,23 @@ export function WorkflowTableView({ workflows, onDelete, onDuplicate }: Workflow
           <tbody>
             {workflows.map((w) => {
               const editorUrl = `${ROUTES.WORKFLOW_EDITOR}?id=${encodeURIComponent(w.id)}`
+              const isSelected = selectedIds?.has(w.id) ?? false
               return (
                 <tr
                   key={w.id}
-                  className="border-b border-border last:border-0 transition-colors hover:bg-muted/30"
+                  className={`border-b border-border last:border-0 transition-colors hover:bg-muted/30 ${isSelected ? 'bg-accent/5' : ''}`}
                 >
+                  {onToggleSelect && (
+                    <td className="px-2 py-2.5">
+                      <input
+                        type="checkbox"
+                        className="size-4 rounded border-border accent-accent"
+                        checked={isSelected}
+                        onChange={() => onToggleSelect(w.id)}
+                        aria-label={`Select workflow ${w.name}`}
+                      />
+                    </td>
+                  )}
                   <td className="px-4 py-2.5 font-medium text-foreground">
                     <Link
                       to={editorUrl}

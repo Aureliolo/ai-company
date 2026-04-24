@@ -24,6 +24,7 @@ import { useAnimationPreset } from '@/hooks/useAnimationPreset'
 import { useSettingsData } from '@/hooks/useSettingsData'
 import { useSettingsDirtyState } from '@/hooks/useSettingsDirtyState'
 import { useSettingsKeyboard } from '@/hooks/useSettingsKeyboard'
+import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard'
 import {
   HIDDEN_SETTINGS,
   NAMESPACE_DISPLAY_NAMES,
@@ -156,6 +157,18 @@ export default function SettingsPage() {
     onSave: handleSave,
     onSearchFocus: () => searchRef.current?.focus(),
     canSave: dirtyValues.size > 0 && !saving,
+  })
+
+  // Warn the user before they navigate away with unsaved setting drafts.
+  // Covers both in-app navigation (via useBlocker) and tab close /
+  // reload (via the beforeunload listener inside the hook).  Draft
+  // persistence is intentionally NOT wired up -- settings can include
+  // secrets and we don't want them lingering in localStorage.
+  const hasUnsaved = dirtyValues.size > 0 || codeDirty
+  const unsavedGuard = useUnsavedChangesGuard({
+    when: hasUnsaved,
+    message:
+      'You have unsaved setting changes. Leaving now will discard them. Continue anyway?',
   })
 
   // Filter entries: exclude hidden, filter by level, filter by search
@@ -467,6 +480,17 @@ export default function SettingsPage() {
           setShowCodeDiscardWarning(false)
           setViewMode('gui')
         }}
+      />
+
+      <ConfirmDialog
+        open={unsavedGuard.confirmOpen}
+        onOpenChange={(open) => { if (!open) unsavedGuard.cancel() }}
+        title="Discard unsaved settings?"
+        description={unsavedGuard.message}
+        confirmLabel="Leave page"
+        variant="destructive"
+        onConfirm={unsavedGuard.proceed}
+        onCancel={unsavedGuard.cancel}
       />
     </div>
   )

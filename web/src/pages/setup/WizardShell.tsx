@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { AnimatedPresence } from '@/components/ui/animated-presence'
 import { useSetupWizardStore } from '@/stores/setup-wizard'
+import { useToastStore } from '@/stores/toast'
 import type { WizardStep } from '@/stores/setup-wizard'
 import { WizardProgress } from './WizardProgress'
 import { WizardNavigation } from './WizardNavigation'
@@ -61,10 +62,21 @@ export function WizardShell() {
         setStep(urlStep)
       } else {
         const firstIncomplete = stepOrder.find((s) => !stepsCompleted[s])
-        navigate(`/setup/${firstIncomplete ?? stepOrder[0]}`, { replace: true })
+        const target = firstIncomplete ?? stepOrder[0]
+        useToastStore.getState().add({
+          variant: 'warning',
+          title: 'Previous steps not complete',
+          description: `Finish the earlier steps before jumping to ${urlStep}.`,
+        })
+        navigate(`/setup/${target}`, { replace: true })
       }
     } else {
-      // Invalid step name in URL -- redirect to first step
+      // Invalid step name in URL -- redirect to first step and tell the user.
+      useToastStore.getState().add({
+        variant: 'warning',
+        title: 'Unknown setup step',
+        description: `"${urlStep}" is not a valid step. Returning to ${stepOrder[0]}.`,
+      })
       navigate(`/setup/${stepOrder[0]}`, { replace: true })
     }
   }, [urlStep, stepOrder, canNavigateTo, setStep, stepsCompleted, navigate])

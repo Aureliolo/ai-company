@@ -5,6 +5,7 @@ import { ClipboardCheck } from 'lucide-react'
 import { MetricCard } from '@/components/ui/metric-card'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
+import { InputField } from '@/components/ui/input-field'
 import { ListHeader } from '@/components/ui/list-header'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
@@ -354,19 +355,21 @@ export default function ApprovalsPage() {
       <ConfirmDialog
         open={batchApproveOpen}
         onOpenChange={(o) => { setBatchApproveOpen(o); if (!o) setBatchComment('') }}
-        title={`Approve ${selectedIds.size} items`}
-        description="This will approve all selected pending approvals."
-        confirmLabel="Approve All"
+        title={`Approve ${formatNumber(selectedIds.size)} approval${selectedIds.size === 1 ? '' : 's'}?`}
+        description="This will approve every selected pending item. Agents will resume work using the approved parameters."
+        confirmLabel={`Approve ${formatNumber(selectedIds.size)}`}
         onConfirm={handleBatchApprove}
         loading={batchLoading}
       >
-        <textarea
+        <InputField
+          multiline
+          label="Optional comment"
           value={batchComment}
-          onChange={(e) => setBatchComment(e.target.value)}
-          placeholder="Optional comment..."
+          onValueChange={setBatchComment}
+          placeholder="Add context that applies to every approved item..."
+          rows={3}
           maxLength={2000}
-          className="mt-2 w-full rounded-md border border-border bg-surface px-2 py-1.5 text-sm text-foreground outline-none resize-y focus:ring-2 focus:ring-accent min-h-16"
-          aria-label="Batch approval comment"
+          className="mt-2"
         />
       </ConfirmDialog>
 
@@ -374,20 +377,24 @@ export default function ApprovalsPage() {
       <ConfirmDialog
         open={batchRejectOpen}
         onOpenChange={(o) => { setBatchRejectOpen(o); if (!o) setBatchReason('') }}
-        title={`Reject ${selectedIds.size} items`}
-        description="Please provide a reason for rejecting all selected items."
-        confirmLabel="Reject All"
+        title={`Reject ${formatNumber(selectedIds.size)} approval${selectedIds.size === 1 ? '' : 's'}?`}
+        description="This will reject every selected pending item. The requester will see the reason below. This action cannot be undone."
+        confirmLabel={`Reject ${formatNumber(selectedIds.size)}`}
         variant="destructive"
         onConfirm={handleBatchReject}
         loading={batchLoading}
       >
-        <textarea
+        <InputField
+          multiline
+          label="Reason for rejection"
           value={batchReason}
-          onChange={(e) => setBatchReason(e.target.value)}
-          placeholder="Reason for rejection..."
+          onValueChange={setBatchReason}
+          placeholder="Give the requester enough context to iterate."
+          rows={3}
           maxLength={2000}
-          className="mt-2 w-full rounded-md border border-border bg-surface px-2 py-1.5 text-sm text-foreground outline-none resize-y focus:ring-2 focus:ring-accent min-h-16"
-          aria-label="Batch rejection reason"
+          required
+          autoFocus
+          className="mt-2"
         />
       </ConfirmDialog>
     </div>

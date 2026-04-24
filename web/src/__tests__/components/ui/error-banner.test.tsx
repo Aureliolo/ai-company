@@ -67,7 +67,9 @@ describe('ErrorBanner', () => {
 
   it('inline variant applies compact density classes', () => {
     const { container } = render(<ErrorBanner variant="inline" title="Compact" />)
-    expect(container.firstChild).toHaveClass('px-3', 'py-2')
+    // Uses the density-aware `p-card` token (same as the `section` variant)
+    // but keeps the tighter `text-xs` + `gap-2` for compact contexts.
+    expect(container.firstChild).toHaveClass('p-card', 'gap-2', 'text-xs')
   })
 
   it('no Retry button when onRetry is absent', () => {

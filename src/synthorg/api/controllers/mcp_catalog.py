@@ -67,7 +67,7 @@ class InstallEntryResponse(BaseModel):
 class MCPCatalogController(Controller):
     """Browse and install MCP servers from the bundled catalog."""
 
-    path = "/api/v1/integrations/mcp"
+    path = "/integrations/mcp"
     tags = ["Integrations"]  # noqa: RUF012
 
     @get(

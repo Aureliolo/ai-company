@@ -60,7 +60,7 @@ def _get_replay_protector(state: State) -> ReplayProtector:
 class WebhooksController(Controller):
     """Webhook receiver and activity log endpoints."""
 
-    path = "/api/v1/webhooks"
+    path = "/webhooks"
     tags = ["Integrations"]  # noqa: RUF012
 
     @post(

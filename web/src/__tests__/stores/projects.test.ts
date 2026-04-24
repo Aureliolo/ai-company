@@ -209,6 +209,7 @@ describe('useProjectsStore', () => {
       const event: WsEvent = {
         event_type: 'project.created',
         channel: 'projects',
+        version: 1,
         timestamp: '2026-03-31T12:00:00Z',
         payload: { project_id: 'proj-new', name: 'New' },
       }
@@ -246,6 +247,135 @@ describe('useProjectsStore', () => {
       expect(state.selectedProject).toBeNull()
       expect(state.projectTasks).toEqual([])
       expect(state.detailError).toBeNull()
+    })
+  })
+
+  describe('deleteProject', () => {
+    it('removes the project optimistically and returns true on success', async () => {
+      useProjectsStore.setState({
+        projects: [makeProject('proj-001'), makeProject('proj-002')],
+        totalProjects: 2,
+      })
+      server.use(
+        http.delete('/api/v1/projects/:id', () =>
+          new HttpResponse(null, { status: 204 }),
+        ),
+      )
+
+      const ok = await useProjectsStore.getState().deleteProject('proj-001')
+
+      expect(ok).toBe(true)
+      const state = useProjectsStore.getState()
+      expect(state.projects.map((p) => p.id)).toEqual(['proj-002'])
+      expect(state.totalProjects).toBe(1)
+    })
+
+    it('rolls back the optimistic remove and returns false on API failure', async () => {
+      useProjectsStore.setState({
+        projects: [makeProject('proj-001'), makeProject('proj-002')],
+        totalProjects: 2,
+      })
+      server.use(
+        http.delete('/api/v1/projects/:id', () =>
+          HttpResponse.json(apiError('boom'), { status: 500 }),
+        ),
+      )
+
+      const ok = await useProjectsStore.getState().deleteProject('proj-001')
+
+      expect(ok).toBe(false)
+      const state = useProjectsStore.getState()
+      expect(state.projects.map((p) => p.id)).toEqual(['proj-001', 'proj-002'])
+      expect(state.totalProjects).toBe(2)
+    })
+  })
+
+  describe('batchDeleteProjects', () => {
+    it('removes successfully deleted ids and reports the tally', async () => {
+      useProjectsStore.setState({
+        projects: [
+          makeProject('proj-001'),
+          makeProject('proj-002'),
+          makeProject('proj-003'),
+        ],
+        totalProjects: 3,
+      })
+      server.use(
+        http.delete('/api/v1/projects/:id', () =>
+          new HttpResponse(null, { status: 204 }),
+        ),
+      )
+
+      const result = await useProjectsStore
+        .getState()
+        .batchDeleteProjects(['proj-001', 'proj-002'])
+
+      expect(result).not.toBe(false)
+      if (result === false) throw new Error('expected counts, not sentinel')
+      expect(result.succeeded).toBe(2)
+      expect(result.failed).toBe(0)
+      expect(result.failedReasons).toEqual([])
+      const state = useProjectsStore.getState()
+      expect(state.projects.map((p) => p.id)).toEqual(['proj-003'])
+      expect(state.totalProjects).toBe(1)
+    })
+
+    it('keeps failed ids in the list and surfaces their reasons', async () => {
+      useProjectsStore.setState({
+        projects: [makeProject('proj-001'), makeProject('proj-002')],
+        totalProjects: 2,
+      })
+      server.use(
+        http.delete('/api/v1/projects/:id', ({ params }) => {
+          if (params.id === 'proj-001') {
+            return new HttpResponse(null, { status: 204 })
+          }
+          return HttpResponse.json(apiError('boom'), { status: 500 })
+        }),
+      )
+
+      const result = await useProjectsStore
+        .getState()
+        .batchDeleteProjects(['proj-001', 'proj-002'])
+
+      // Partial success -> counts object (not the `false` sentinel which
+      // is reserved for total-failure cases).
+      expect(result).not.toBe(false)
+      if (result === false) throw new Error('expected counts, not sentinel')
+      expect(result.succeeded).toBe(1)
+      expect(result.failed).toBe(1)
+      expect(result.failedReasons).toHaveLength(1)
+      expect(result.failedReasons[0]).toContain('proj-002')
+      const state = useProjectsStore.getState()
+      expect(state.projects.map((p) => p.id)).toEqual(['proj-002'])
+    })
+  })
+
+  describe('updateFromWsEvent PROJECT_DELETED', () => {
+    it('removes the project identified by payload.project_id before the refetch lands', async () => {
+      useProjectsStore.setState({
+        projects: [makeProject('proj-001'), makeProject('proj-002')],
+        totalProjects: 2,
+      })
+      // Block the refetch so we can observe the pre-refetch state.
+      server.use(
+        http.get('/api/v1/projects', () =>
+          HttpResponse.json(paginatedProjects([])),
+        ),
+      )
+
+      useProjectsStore.getState().updateFromWsEvent({
+        event_type: 'project.deleted',
+        channel: 'projects',
+        version: 1,
+        timestamp: new Date().toISOString(),
+        payload: { project_id: 'proj-001' },
+      } satisfies WsEvent)
+
+      // Local pruning is synchronous -- check before waiting for the refetch.
+      const state = useProjectsStore.getState()
+      expect(state.projects.map((p) => p.id)).toEqual(['proj-002'])
+      expect(state.totalProjects).toBe(1)
     })
   })
 })

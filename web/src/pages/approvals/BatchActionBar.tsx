@@ -1,7 +1,7 @@
-import { motion } from 'motion/react'
-import { Check, X as XIcon, Minus } from 'lucide-react'
+import { Check, X as XIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { springDefault, tweenExitFast } from '@/lib/motion'
+import { BulkActionBar } from '@/components/ui/bulk-action-bar'
+import { formatNumber } from '@/utils/format'
 
 export interface BatchActionBarProps {
   selectedCount: number
@@ -11,12 +11,14 @@ export interface BatchActionBarProps {
   loading?: boolean
 }
 
-const BAR_VARIANTS = {
-  initial: { y: '100%', opacity: 0 },
-  animate: { y: 0, opacity: 1, transition: springDefault },
-  exit: { y: '100%', opacity: 0, transition: tweenExitFast },
-}
-
+/**
+ * Approvals-specific wrapper around the shared `BulkActionBar` primitive.
+ *
+ * Keeps the two well-known actions (Approve / Reject) and the count-aware
+ * labels, but delegates layout, motion, the "N selected" left label, the
+ * Clear button, and accessibility wiring to the shared bar so future
+ * spacing / a11y / loading-state fixes stay in one place.
+ */
 export function BatchActionBar({
   selectedCount,
   onApproveAll,
@@ -25,55 +27,33 @@ export function BatchActionBar({
   loading,
 }: BatchActionBarProps) {
   return (
-    <motion.div
-      className="fixed inset-x-0 bottom-0 z-30 flex items-center justify-center px-4 pb-4"
-      variants={BAR_VARIANTS}
-      initial="initial"
-      animate="animate"
-      exit="exit"
+    <BulkActionBar
+      selectedCount={selectedCount}
+      onClear={onClearSelection}
+      loading={loading}
+      ariaLabel="Batch actions"
     >
-      <div className="flex items-center gap-3 rounded-lg border border-border bg-surface px-4 py-2.5 shadow-[var(--so-shadow-card-hover)]" role="toolbar" aria-label="Batch actions">
-        <span className="text-sm font-medium text-foreground" aria-live="polite">
-          {selectedCount} selected
-        </span>
+      <Button
+        size="sm"
+        variant="outline"
+        className="gap-1 border-success/30 text-success hover:bg-success/10"
+        onClick={onApproveAll}
+        disabled={loading}
+      >
+        <Check className="size-3.5" />
+        Approve {formatNumber(selectedCount)}
+      </Button>
 
-        <div className="h-4 w-px bg-border" aria-hidden="true" />
-
-        <Button
-          size="sm"
-          variant="outline"
-          className="gap-1 border-success/30 text-success hover:bg-success/10"
-          onClick={onApproveAll}
-          disabled={loading}
-        >
-          <Check className="size-3.5" />
-          Approve All
-        </Button>
-
-        <Button
-          size="sm"
-          variant="outline"
-          className="gap-1 border-danger/30 text-danger hover:bg-danger/10"
-          onClick={onRejectAll}
-          disabled={loading}
-        >
-          <XIcon className="size-3.5" />
-          Reject All
-        </Button>
-
-        <div className="h-4 w-px bg-border" aria-hidden="true" />
-
-        <Button
-          size="sm"
-          variant="ghost"
-          className="gap-1 text-muted-foreground"
-          onClick={onClearSelection}
-          disabled={loading}
-        >
-          <Minus className="size-3.5" />
-          Clear
-        </Button>
-      </div>
-    </motion.div>
+      <Button
+        size="sm"
+        variant="outline"
+        className="gap-1 border-danger/30 text-danger hover:bg-danger/10"
+        onClick={onRejectAll}
+        disabled={loading}
+      >
+        <XIcon className="size-3.5" />
+        Reject {formatNumber(selectedCount)}
+      </Button>
+    </BulkActionBar>
   )
 }

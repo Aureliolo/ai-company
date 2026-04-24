@@ -5,7 +5,9 @@ import type { Connection } from '@/api/types/integrations'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { EmptyState } from '@/components/ui/empty-state'
+import { ErrorBanner } from '@/components/ui/error-banner'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
+import { ListHeader } from '@/components/ui/list-header'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { useConnectionsData } from '@/hooks/useConnectionsData'
 import { createLogger } from '@/lib/logger'
@@ -61,24 +63,23 @@ export default function OauthAppsPage() {
 
   return (
     <div className="flex flex-col gap-section-gap">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <KeyRound className="size-5 text-text-secondary" aria-hidden />
-          <h1 className="text-lg font-semibold text-foreground">OAuth Apps</h1>
-        </div>
-        <Button size="sm" onClick={() => setModal({ kind: 'create' })}>
-          <Plus className="mr-1.5 size-3.5" aria-hidden />
-          Register app
-        </Button>
-      </div>
+      <ListHeader
+        title="OAuth Apps"
+        count={oauthApps.length}
+        primaryAction={
+          <Button size="sm" onClick={() => setModal({ kind: 'create' })}>
+            <Plus className="mr-1.5 size-3.5" aria-hidden />
+            Register app
+          </Button>
+        }
+      />
 
       {error && (
-        <div
-          role="alert"
-          className="rounded-md bg-danger/10 p-card text-sm text-danger"
-        >
-          {error}
-        </div>
+        <ErrorBanner
+          severity="error"
+          title="Could not load OAuth apps"
+          description={error}
+        />
       )}
 
       {loading && !hasData ? (

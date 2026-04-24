@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import {
   Background,
   MiniMap,
@@ -8,10 +8,45 @@ import {
   type Edge,
   type Node,
 } from '@xyflow/react'
+import { toPng } from 'html-to-image'
 import { GitBranch, Loader2 } from 'lucide-react'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { Link, useNavigate } from 'react-router'
 import { createLogger } from '@/lib/logger'
+import { useToastStore } from '@/stores/toast'
+import { sanitizeForLog } from '@/utils/logging'
+
+/**
+ * Produce a filesystem-safe `YYYY-MM-DD` stamp for download filenames.
+ * `formatDateOnly` is locale-aware and can emit slashes / dots /
+ * non-ASCII digits (e.g. `ar-EG`), which shell + HTTP clients treat
+ * poorly in filenames. The PNG export only needs a stable, sortable
+ * UTC day stamp.
+ */
+function isoDateStamp(d: Date): string {
+  return d.toISOString().slice(0, 10)
+}
+
+/**
+ * True when a computed background-color string has a visible fill. Both
+ * `transparent` and `rgba(...,0)` resolve to zero-alpha rgba strings in
+ * `getComputedStyle`; treat any missing / zero-alpha value as
+ * transparent so the PNG exporter falls through to the next source.
+ */
+function isOpaque(color: string | undefined | null): color is string {
+  if (!color) return false
+  const trimmed = color.trim()
+  if (!trimmed || trimmed === 'transparent') return false
+  // Extract the alpha channel from `rgba(r, g, b, a)` without a full
+  // regex parse to keep the check simple and avoid ReDoS territory.
+  const openParen = trimmed.indexOf('(')
+  const closeParen = trimmed.lastIndexOf(')')
+  if (openParen === -1 || closeParen === -1) return true
+  const parts = trimmed.slice(openParen + 1, closeParen).split(',').map((p) => p.trim())
+  if (parts.length !== 4) return true
+  const alpha = Number.parseFloat(parts[3] ?? '1')
+  return Number.isFinite(alpha) && alpha > 0
+}
 import { useOrgChartData } from '@/hooks/useOrgChartData'
 import { useRegisterCommands } from '@/hooks/useCommandPalette'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
@@ -202,6 +237,88 @@ function OrgChartInner() {
     saveViewport(viewport)
   }, [])
 
+  // Ref to the ReactFlow wrapper so html-to-image can snapshot the chart.
+  // Using the class selector fallback as a defence-in-depth because the
+  // wrapper receives the `.react-flow` class from ReactFlow itself.
+  const flowWrapperRef = useRef<HTMLDivElement | null>(null)
+  const [exporting, setExporting] = useState(false)
+
+  const handleExportPng = useCallback(async () => {
+    const target =
+      flowWrapperRef.current?.querySelector<HTMLElement>('.react-flow') ??
+      flowWrapperRef.current
+    if (!target) return
+    // Fit before snapshot so the PNG captures the full graph rather than
+    // whatever pan/zoom the user happens to have.
+    fitView({ padding: 0.2, duration: 0 })
+    setExporting(true)
+    let dataUrl: string | null
+    try {
+      // Wait for the browser to commit the fitView transform before the
+      // snapshot. A single requestAnimationFrame is enough because
+      // `duration: 0` disables ReactFlow's transition.
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => resolve())
+      })
+      // Resolve the live background from `--so-background`; fall back to
+      // `--so-surface`, then to the computed body background, then to the
+      // chart element itself. A transparent PNG would render on top of
+      // whatever the target viewer shows, which is almost never what we
+      // want. NO hardcoded colors -- the design system forbids them.
+      const rootStyle = getComputedStyle(document.documentElement)
+      const tokenBackground =
+        rootStyle.getPropertyValue('--so-background').trim() ||
+        rootStyle.getPropertyValue('--so-surface').trim()
+      const bodyBackground = getComputedStyle(document.body).backgroundColor
+      const targetBackground = getComputedStyle(target).backgroundColor
+      const backgroundColor =
+        tokenBackground ||
+        (isOpaque(bodyBackground) ? bodyBackground : undefined) ||
+        (isOpaque(targetBackground) ? targetBackground : undefined)
+      dataUrl = await toPng(target, {
+        backgroundColor,
+        pixelRatio: 2,
+        cacheBust: true,
+      })
+      const link = document.createElement('a')
+      link.href = dataUrl
+      link.download = `org-chart-${isoDateStamp(new Date())}.png`
+      link.click()
+    } catch (err) {
+      log.error('Org chart PNG export failed:', sanitizeForLog(err))
+      useToastStore.getState().add({
+        variant: 'error',
+        title: 'Export failed',
+        description:
+          'Could not render the chart to PNG. Try again, or use Print for a fallback.',
+      })
+      return
+    } finally {
+      setExporting(false)
+    }
+    // Success toast is outside the try so a downstream toast-store error
+    // does not get misreported as a PNG export failure. `dataUrl` is
+    // guaranteed non-null here because the catch branch returns early.
+    if (dataUrl) {
+      useToastStore.getState().add({
+        variant: 'success',
+        title: 'Org chart exported',
+      })
+    }
+  }, [fitView])
+
+  const handlePrint = useCallback(() => {
+    // Fit-to-view before print so the user sees the full chart in the
+    // print preview rather than whatever viewport they had zoomed to.
+    fitView({ padding: 0.2, duration: 0 })
+    // fitView runs instantly (duration: 0) -- the single-frame delay is
+    // to let the browser commit the resulting layout/repaint before
+    // window.print() freezes the page.
+    requestAnimationFrame(() => {
+      window.print()
+    })
+  }, [fitView])
+
   const renderedNodes = useMemo(() => {
     return sourceNodes.map((n) => {
       const isDropTarget = dragOverDeptId !== null && n.type === 'department' && n.id === dragOverDeptId
@@ -297,6 +414,9 @@ function OrgChartInner() {
           onFitView={() => fitView({ padding: 0.2 })}
           onZoomIn={() => zoomIn()}
           onZoomOut={() => zoomOut()}
+          onExportPng={handleExportPng}
+          exporting={exporting}
+          onPrint={handlePrint}
         />
         {(commLoading || view.transitioning) && viewMode === 'force' && (
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -306,7 +426,11 @@ function OrgChartInner() {
         )}
       </div>
 
-      <div className="relative flex-1 rounded-lg border border-border">
+      <div
+        ref={flowWrapperRef}
+        className="relative flex-1 rounded-lg border border-border print:border-0"
+        data-testid="org-chart-canvas"
+      >
         <ReactFlow
           aria-label="Organization chart"
           nodes={renderedNodes}

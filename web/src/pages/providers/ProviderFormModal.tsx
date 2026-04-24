@@ -6,6 +6,7 @@ import { InputField } from '@/components/ui/input-field'
 import { SelectField } from '@/components/ui/select-field'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { ErrorBanner } from '@/components/ui/error-banner'
 import { PresetPicker } from './PresetPicker'
 import { useProvidersStore } from '@/stores/providers'
 import { cn } from '@/lib/utils'
@@ -280,11 +281,13 @@ export function ProviderFormModal({
             {/* Content */}
             <div className="flex-1 overflow-y-auto p-card">
               <div className="flex flex-col gap-section-gap">
-                {/* Presets error banner */}
                 {presetsError && (
-                  <div className="rounded-md bg-danger/10 p-card text-sm text-danger">
-                    Failed to load provider presets: {presetsError}
-                  </div>
+                  <ErrorBanner
+                    variant="inline"
+                    severity="error"
+                    title="Failed to load provider presets"
+                    description={presetsError}
+                  />
                 )}
 
                 {/* Step 1: Preset picker (create only) */}

@@ -41,6 +41,16 @@ interface WorkflowsState {
   createWorkflow: (data: CreateWorkflowDefinitionRequest) => Promise<WorkflowDefinition | null>
   createFromBlueprint: (data: CreateFromBlueprintRequest) => Promise<WorkflowDefinition | null>
   deleteWorkflow: (id: string) => Promise<boolean>
+  batchDeleteWorkflows: (
+    ids: readonly string[],
+  ) => Promise<
+    | {
+        succeeded: number
+        failed: number
+        failedReasons: readonly string[]
+      }
+    | false
+  >
   setSearchQuery: (q: string) => void
   setWorkflowTypeFilter: (t: string | null) => void
   updateFromWsEvent: () => void
@@ -190,6 +200,104 @@ export const useWorkflowsStore = create<WorkflowsState>()((set) => ({
       useToastStore.getState().add({
         variant: 'error',
         title: 'Failed to delete workflow',
+        description: getErrorMessage(err),
+      })
+      return false
+    }
+  },
+
+  batchDeleteWorkflows: async (ids: readonly string[]) => {
+    try {
+      const results = await Promise.allSettled(
+        ids.map(async (id) => {
+          await deleteWorkflowApi(id)
+          return id
+        }),
+      )
+      const succeededIds: string[] = []
+      const failedReasons: string[] = []
+      results.forEach((result, index) => {
+        if (result.status === 'fulfilled') {
+          succeededIds.push(result.value)
+        } else {
+          const id = ids[index] ?? '<unknown>'
+          failedReasons.push(`${id}: ${getErrorMessage(result.reason)}`)
+        }
+      })
+      if (succeededIds.length > 0) {
+        const deletedSet = new Set(succeededIds)
+        set((state) => {
+          const filtered = state.workflows.filter((w) => !deletedSet.has(w.id))
+          // Decrement by the actual removed count rather than trusting
+          // the request-side succeededIds length -- a preceding WS
+          // prune or refetch may already have removed some IDs.
+          const removedCount = state.workflows.length - filtered.length
+          return {
+            workflows: filtered,
+            totalWorkflows: Math.max(0, state.totalWorkflows - removedCount),
+          }
+        })
+      }
+      if (failedReasons.length > 0) {
+        log.error(
+          'Batch delete workflows partial failure',
+          sanitizeForLog({ failedCount: failedReasons.length, failedReasons }),
+        )
+      }
+      // Store owns the mutation UX: aggregated toast per outcome so
+      // callers do not need to assemble their own summary messaging.
+      const failed = ids.length - succeededIds.length
+      if (succeededIds.length > 0 && failed === 0) {
+        useToastStore.getState().add({
+          variant: 'success',
+          title:
+            succeededIds.length === 1
+              ? 'Workflow deleted'
+              : `${succeededIds.length} workflows deleted`,
+        })
+      } else if (succeededIds.length > 0 && failed > 0) {
+        useToastStore.getState().add({
+          variant: 'warning',
+          title: `Deleted ${succeededIds.length} of ${ids.length} workflows`,
+          description: failedReasons.slice(0, 3).join('; ') +
+            (failedReasons.length > 3 ? `; +${failedReasons.length - 3} more` : ''),
+        })
+      } else if (failed > 0) {
+        useToastStore.getState().add({
+          variant: 'error',
+          title:
+            failed === 1
+              ? 'Failed to delete workflow'
+              : `Failed to delete ${failed} workflows`,
+          description: failedReasons.slice(0, 3).join('; ') +
+            (failedReasons.length > 3 ? `; +${failedReasons.length - 3} more` : ''),
+        })
+      }
+      // Total-failure case returns the false sentinel per the store
+      // mutation contract (callers only need to null-check the
+      // return value to decide whether to act).
+      if (succeededIds.length === 0 && failed > 0) {
+        return false
+      }
+      return {
+        succeeded: succeededIds.length,
+        failed,
+        failedReasons,
+      }
+    } catch (err) {
+      // Unexpected runtime path (not a per-item Promise rejection --
+      // those are caught by Promise.allSettled). Preserve the store's
+      // mutation contract: log, toast, and return the false sentinel.
+      log.error(
+        'Batch delete workflows failed unexpectedly',
+        sanitizeForLog(err),
+      )
+      useToastStore.getState().add({
+        variant: 'error',
+        title:
+          ids.length === 1
+            ? 'Failed to delete workflow'
+            : `Failed to delete ${ids.length} workflows`,
         description: getErrorMessage(err),
       })
       return false

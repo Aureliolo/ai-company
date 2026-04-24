@@ -6,11 +6,26 @@ import { createLogger } from '@/lib/logger'
 
 const log = createLogger('Drawer')
 
+export type DrawerWidth = 'narrow' | 'default' | 'wide'
+
+const DRAWER_WIDTH_CLASS: Record<DrawerWidth, string> = {
+  narrow: 'w-[var(--so-drawer-width-narrow)]',
+  default: 'w-[var(--so-drawer-width-default)]',
+  wide: 'w-[var(--so-drawer-width-wide)]',
+}
+
 interface DrawerPropsBase {
   open: boolean
   onClose: () => void
   /** Which edge the drawer slides in from. @default 'right' */
   side?: 'left' | 'right'
+  /**
+   * Named width variant. Defaults to `'default'`, which matches the
+   * previous `w-[40vw] min-w-80 max-w-xl` behaviour via the
+   * `--so-drawer-width-default` token. Use `'wide'` for template compare
+   * or large-form drawers, `'narrow'` for mobile-friendly contexts.
+   */
+  width?: DrawerWidth
   /** Additional class names merged into the content wrapper (e.g. `"p-0"` to remove default padding). */
   contentClassName?: string
   children: React.ReactNode
@@ -28,7 +43,7 @@ export type DrawerProps = DrawerPropsBase & (
   | { title?: undefined; /** Explicit aria-label (required when title is omitted). */ ariaLabel: string }
 )
 
-export function Drawer({ open, onClose, title, ariaLabel, side = 'right', contentClassName, children, className }: DrawerProps) {
+export function Drawer({ open, onClose, title, ariaLabel, side = 'right', width = 'default', contentClassName, children, className }: DrawerProps) {
   const trimmedTitle = title?.trim() || undefined
   const explicitLabel = ariaLabel?.trim() || undefined
 
@@ -54,7 +69,8 @@ export function Drawer({ open, onClose, title, ariaLabel, side = 'right', conten
         <BaseDrawer.Popup
           aria-label={explicitLabel}
           className={cn(
-            'fixed inset-y-0 z-50 flex w-[40vw] min-w-80 max-w-xl flex-col',
+            'fixed inset-y-0 z-50 flex flex-col',
+            DRAWER_WIDTH_CLASS[width],
             side === 'left' ? 'left-0 border-r' : 'right-0 border-l',
             'border-border bg-card shadow-[var(--so-shadow-card-hover)]',
             // Slide transition: 200ms matches tweenDefault duration; the custom easing

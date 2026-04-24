@@ -22,7 +22,7 @@ logger = get_logger(__name__)
 class TunnelController(Controller):
     """Start/stop webhook tunnel for local development."""
 
-    path = "/api/v1/integrations/tunnel"
+    path = "/integrations/tunnel"
     tags = ["Integrations"]  # noqa: RUF012
 
     @post(

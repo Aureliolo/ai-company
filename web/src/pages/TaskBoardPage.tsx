@@ -14,9 +14,12 @@ import {
 import { AnimatePresence } from 'motion/react'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
+import { ListHeader } from '@/components/ui/list-header'
+import { useRegisterShortcuts } from '@/hooks/use-shortcut-registry'
 import { useTaskBoardData } from '@/hooks/useTaskBoardData'
 import { useOptimisticUpdate } from '@/hooks/useOptimisticUpdate'
 import { useToastStore } from '@/stores/toast'
+import { formatNumber } from '@/utils/format'
 import {
   type TaskBoardFilters,
   KANBAN_COLUMNS,
@@ -222,6 +225,43 @@ export default function TaskBoardPage() {
     [createTask],
   )
 
+  // Register documented keyboard shortcuts for the command cheatsheet.
+  useRegisterShortcuts([
+    { keys: ['D'], label: 'Toggle dependencies overlay', group: 'Task board' },
+    { keys: ['T'], label: 'Toggle terminal columns', group: 'Task board' },
+    { keys: ['V'], label: 'Cycle view mode (board / list)', group: 'Task board' },
+  ])
+
+  // Wire the actual handlers. No-op when focus is inside a form input
+  // (textbox, textarea, contenteditable) or any modifier key is held.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.metaKey || event.ctrlKey || event.altKey) return
+      // Ignore auto-repeat from held keys; each discrete press should
+      // toggle once rather than rapidly flip back and forth.
+      if (event.repeat) return
+      const target = event.target
+      if (target instanceof HTMLElement) {
+        const tag = target.tagName
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+        if (target.isContentEditable) return
+      }
+      const key = event.key.toUpperCase()
+      if (key === 'D') {
+        event.preventDefault()
+        setShowDeps((current) => !current)
+      } else if (key === 'T') {
+        event.preventDefault()
+        setShowTerminal((current) => !current)
+      } else if (key === 'V') {
+        event.preventDefault()
+        handleViewModeChange(viewMode === 'board' ? 'list' : 'board')
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [viewMode, handleViewModeChange])
+
   // Skeleton on initial load
   if (loading && tasks.length === 0) {
     return <TaskBoardSkeleton />
@@ -233,29 +273,37 @@ export default function TaskBoardPage() {
 
   return (
     <div className="space-y-section-gap">
-      <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-foreground">Task Board</h1>
-        <div className="flex items-center gap-4">
-          <label className="flex items-center gap-1.5 text-xs text-text-muted">
-            <input
-              type="checkbox"
-              checked={showDeps}
-              onChange={(e) => setShowDeps(e.target.checked)}
-              className="rounded border-border"
-            />
-            Dependencies
-          </label>
-          <label className="flex items-center gap-1.5 text-xs text-text-muted">
-            <input
-              type="checkbox"
-              checked={showTerminal}
-              onChange={(e) => setShowTerminal(e.target.checked)}
-              className="rounded border-border"
-            />
-            Show terminal
-          </label>
-        </div>
-      </div>
+      <ListHeader
+        title="Task Board"
+        count={filteredTasks.length}
+        countLabel={
+          filteredTasks.length === tasks.length
+            ? undefined
+            : `${formatNumber(filteredTasks.length)} of ${formatNumber(tasks.length)}`
+        }
+        secondaryActions={
+          <>
+            <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <input
+                type="checkbox"
+                checked={showDeps}
+                onChange={(e) => setShowDeps(e.target.checked)}
+                className="rounded border-border"
+              />
+              Dependencies
+            </label>
+            <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <input
+                type="checkbox"
+                checked={showTerminal}
+                onChange={(e) => setShowTerminal(e.target.checked)}
+                className="rounded border-border"
+              />
+              Show terminal
+            </label>
+          </>
+        }
+      />
 
       {error && (
         <ErrorBanner severity="error" title="Could not load tasks" description={error} />

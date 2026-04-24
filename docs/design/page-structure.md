@@ -101,8 +101,8 @@ Detail page (`/projects/{projectId}`) shows project header with status badge and
 - **Team section**: avatar grid with links to agent detail pages, lead badge
 - **Task list**: linked tasks with status indicators and assignee display
 
-**API endpoints**: `GET /projects`, `GET /projects/{id}`, `POST /projects`
-**WS channels**: `projects`, `tasks`
+**API endpoints**: `GET /projects`, `GET /projects/{id}`, `POST /projects`, `DELETE /projects/{id}`
+**WS channels**: `projects` (emits `project.created`, `project.deleted`), `tasks`
 
 #### Artifacts (`/artifacts`)
 

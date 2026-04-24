@@ -285,6 +285,40 @@
 }
 
 /* ---------------------------------------------------------------------------
+ * Responsive width tokens
+ *
+ * Density-aware width caps for drawers, search inputs, and popovers so
+ * consumers pick a named size instead of hard-coding max-w-* or inline
+ * widths. The clamp() expressions adapt smoothly from mobile to desktop
+ * without needing per-breakpoint media queries.
+ * --------------------------------------------------------------------------- */
+:root {
+  /* Drawer widths: cover the right-hand slide-in panel. Narrow is mobile-
+   * friendly, default suits approvals / task detail, wide is for the
+   * template compare drawer and other large forms. */
+  --so-drawer-width-narrow: clamp(20rem, 40vw, 28rem);
+  --so-drawer-width-default: clamp(20rem, 45vw, 36rem);
+  --so-drawer-width-wide: clamp(24rem, 55vw, 48rem);
+
+  /* Search input caps: narrow for compact contexts (sidebars, settings),
+   * wide for list pages. */
+  --so-search-max-narrow: 20rem;
+  --so-search-max-wide: 32rem;
+
+  /* Popover caps: compact for small menus, wide for the health popover
+   * which has to fit the subsystem grid. */
+  --so-popover-max-compact: 24rem;
+  --so-popover-max-wide: 48rem;
+
+  /* Print surfaces: we force white paper + black ink on every print route
+   * regardless of the active theme. These tokens are print-only -- they
+   * do not participate in the theme system and should never be used for
+   * on-screen UI. */
+  --so-print-surface: #fff;
+  --so-print-ink: #000;
+}
+
+/* ---------------------------------------------------------------------------
  * Indeterminate progress animation
  * --------------------------------------------------------------------------- */
 @keyframes so-indeterminate {

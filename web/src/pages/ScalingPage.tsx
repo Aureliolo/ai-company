@@ -1,6 +1,5 @@
-import { AlertTriangle, WifiOff } from 'lucide-react'
-
 import { Button } from '@/components/ui/button'
+import { ErrorBanner } from '@/components/ui/error-banner'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { useScalingData } from '@/hooks/useScalingData'
 import { createLogger } from '@/lib/logger'
@@ -70,26 +69,20 @@ export default function ScalingPage() {
         </Button>
       </div>
 
-      {/* Error banner */}
       {error && (
-        <div
-          role="alert"
-          className="flex items-center gap-2 rounded-md bg-danger/10 p-card text-danger"
-        >
-          <AlertTriangle className="size-5 shrink-0" aria-hidden="true" />
-          <span>{error}</span>
-        </div>
+        <ErrorBanner
+          severity="error"
+          title="Could not load scaling data"
+          description={error}
+        />
       )}
 
-      {/* WebSocket disconnection warning */}
       {!wsConnected && (
-        <div
-          role="alert"
-          className="flex items-center gap-2 rounded-md bg-warning/10 p-card text-warning"
-        >
-          <WifiOff className="size-5 shrink-0" aria-hidden="true" />
-          <span>Real-time updates unavailable</span>
-        </div>
+        <ErrorBanner
+          variant="offline"
+          title="Real-time updates unavailable"
+          description="Scaling decisions may be stale until the connection recovers."
+        />
       )}
 
       {/* Top metrics */}

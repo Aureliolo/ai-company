@@ -4,6 +4,8 @@ import { AlertTriangle, Calendar, Check, Loader2, Shield, Tag, User, X, type Luc
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { ErrorBanner } from '@/components/ui/error-banner'
+import { InputField } from '@/components/ui/input-field'
 import { springDefault, overlayBackdrop, tweenExitFast } from '@/lib/motion'
 import { ApprovalTimeline } from './ApprovalTimeline'
 import {
@@ -270,22 +272,21 @@ export function ApprovalDetailDrawer({
               {/* Title */}
               <h2 className="text-lg font-semibold text-foreground">{approval.title}</h2>
 
-              {/* Safety warning banner */}
               {approval.metadata.safety_classification === 'blocked' && (
-                <div className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/10 p-card">
-                  <AlertTriangle className="size-4 text-danger shrink-0" aria-hidden="true" />
-                  <span className="text-sm text-danger">
-                    This action was classified as blocked by the safety classifier.
-                  </span>
-                </div>
+                <ErrorBanner
+                  variant="inline"
+                  severity="error"
+                  title="Safety classifier blocked this action"
+                  description="Review the details carefully before overriding."
+                />
               )}
               {approval.metadata.safety_classification === 'suspicious' && (
-                <div className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/10 p-card">
-                  <AlertTriangle className="size-4 text-warning shrink-0" aria-hidden="true" />
-                  <span className="text-sm text-warning">
-                    This action has been flagged as suspicious by the safety classifier.
-                  </span>
-                </div>
+                <ErrorBanner
+                  variant="inline"
+                  severity="warning"
+                  title="Safety classifier flagged this action as suspicious"
+                  description="Inspect the action payload before approving."
+                />
               )}
 
               {/* Description (stripped version shown when PII was redacted) */}
@@ -411,13 +412,15 @@ export function ApprovalDetailDrawer({
         onConfirm={handleApprove}
         loading={submitting}
       >
-        <textarea
+        <InputField
+          multiline
+          label="Optional comment"
           value={comment}
-          onChange={(e) => setComment(e.target.value)}
-          placeholder="Optional comment..."
-          className="mt-2 w-full rounded-md border border-border bg-surface px-2 py-1.5 text-sm text-foreground outline-none resize-y focus:ring-2 focus:ring-accent min-h-16"
-          aria-label="Approval comment"
+          onValueChange={setComment}
+          placeholder="Add context for the requester..."
+          rows={3}
           maxLength={2000}
+          className="mt-2"
         />
       </ConfirmDialog>
 
@@ -432,13 +435,17 @@ export function ApprovalDetailDrawer({
         onConfirm={handleReject}
         loading={submitting}
       >
-        <textarea
+        <InputField
+          multiline
+          label="Reason for rejection"
           value={reason}
-          onChange={(e) => setReason(e.target.value)}
-          placeholder="Reason for rejection..."
-          className="mt-2 w-full rounded-md border border-border bg-surface px-2 py-1.5 text-sm text-foreground outline-none resize-y focus:ring-2 focus:ring-accent min-h-16"
-          aria-label="Rejection reason"
+          onValueChange={setReason}
+          placeholder="Give the requester enough context to iterate."
+          rows={3}
           maxLength={2000}
+          required
+          autoFocus
+          className="mt-2"
         />
       </ConfirmDialog>
     </>

@@ -1,5 +1,7 @@
-import { render, screen } from '@testing-library/react'
-import { MemoryRouter } from 'react-router'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { createMemoryRouter, Link, RouterProvider } from 'react-router'
 import type { UseSettingsDataReturn } from '@/hooks/useSettingsData'
 import type { SettingEntry } from '@/api/types/settings'
 
@@ -113,14 +115,31 @@ vi.mock('@/stores/settings', () => ({
   ),
 }))
 
+// Swap-in hook result. Tests mutate `guardState` to flip confirmOpen on and
+// off; the mock factory itself stays stable because vi.mock is hoisted.
+const guardState = {
+  confirmOpen: false,
+  proceed: vi.fn(),
+  cancel: vi.fn(),
+  message: 'Discard unsaved changes?',
+  hasDraft: false,
+  restoreDraft: () => null,
+  discardDraft: vi.fn(),
+}
+vi.mock('@/hooks/use-unsaved-changes-guard', () => ({
+  useUnsavedChangesGuard: () => guardState,
+}))
+
 import SettingsPage from '@/pages/SettingsPage'
 
 function renderSettings() {
-  return render(
-    <MemoryRouter>
-      <SettingsPage />
-    </MemoryRouter>,
+  // SettingsPage uses useUnsavedChangesGuard (calls useBlocker internally),
+  // which requires a data router rather than a plain MemoryRouter.
+  const router = createMemoryRouter(
+    [{ path: '/', element: <SettingsPage /> }],
+    { initialEntries: ['/'] },
   )
+  return render(<RouterProvider router={router} />)
 }
 
 describe('SettingsPage', () => {
@@ -206,5 +225,65 @@ describe('SettingsPage', () => {
     hookReturn = { ...defaultHookReturn, wsConnected: false, wsSetupError: 'Auth token expired' }
     renderSettings()
     expect(screen.getByText('Auth token expired')).toBeInTheDocument()
+  })
+
+  describe('unsaved-changes guard', () => {
+    // These tests exercise the Page-level wiring: SettingsPage passes
+    // `confirmOpen` / `proceed` / `cancel` from useUnsavedChangesGuard to
+    // its ConfirmDialog. The guard hook itself has its own test suite that
+    // covers the dirty-state / blocker / beforeunload interactions; these
+    // tests would otherwise duplicate that work and brittle on form
+    // internals.
+
+    function renderWithTwoRoutes() {
+      const router = createMemoryRouter(
+        [
+          {
+            path: '/',
+            element: (
+              <>
+                <Link to="/other">Go elsewhere</Link>
+                <SettingsPage />
+              </>
+            ),
+          },
+          { path: '/other', element: <div>Other route</div> },
+        ],
+        { initialEntries: ['/'] },
+      )
+      return render(<RouterProvider router={router} />)
+    }
+
+    beforeEach(() => {
+      guardState.confirmOpen = true
+      guardState.proceed = vi.fn()
+      guardState.cancel = vi.fn()
+    })
+
+    afterEach(() => {
+      guardState.confirmOpen = false
+    })
+
+    it('opens the ConfirmDialog when the guard reports confirmOpen=true, and Cancel calls the hook cancel handler', async () => {
+      const user = userEvent.setup()
+      renderWithTwoRoutes()
+      const dialog = await screen.findByRole('alertdialog')
+      expect(dialog).toBeInTheDocument()
+      await user.click(within(dialog).getByRole('button', { name: /cancel|keep editing/i }))
+      expect(guardState.cancel).toHaveBeenCalled()
+      expect(guardState.proceed).not.toHaveBeenCalled()
+    })
+
+    it('invokes the hook proceed handler when the user confirms discard', async () => {
+      // Base UI's AlertDialog also fires `onOpenChange(false)` when the
+      // dialog closes, which SettingsPage wires to cancel() as a reset
+      // path. cancel() is a no-op once proceed() has transitioned the
+      // blocker, so we only assert proceed() here.
+      const user = userEvent.setup()
+      renderWithTwoRoutes()
+      const dialog = await screen.findByRole('alertdialog')
+      await user.click(within(dialog).getByRole('button', { name: /discard|leave|continue/i }))
+      expect(guardState.proceed).toHaveBeenCalledTimes(1)
+    })
   })
 })
