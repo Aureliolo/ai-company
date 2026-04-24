@@ -17,7 +17,6 @@ from typing import Any
 
 import pytest
 
-from synthorg.api.controllers import ws as ws_module
 from synthorg.api.controllers.ws import _WS_CLOSE_AUTH_FAILED, _read_auth_message
 
 
@@ -73,7 +72,10 @@ class TestWsAuthTimeoutKillSwitch:
                 awaitable.close()
             raise TimeoutError
 
-        monkeypatch.setattr(ws_module.asyncio, "wait_for", _fake_wait_for)
+        monkeypatch.setattr(
+            "synthorg.api.controllers.ws.asyncio.wait_for",
+            _fake_wait_for,
+        )
 
         result = await _read_auth_message(socket)  # type: ignore[arg-type]
 
@@ -97,7 +99,10 @@ class TestWsAuthTimeoutKillSwitch:
                 awaitable.close()
             return '{"action":"auth","ticket":"t"}'
 
-        monkeypatch.setattr(ws_module.asyncio, "wait_for", _fake_wait_for)
+        monkeypatch.setattr(
+            "synthorg.api.controllers.ws.asyncio.wait_for",
+            _fake_wait_for,
+        )
 
         result = await _read_auth_message(socket)  # type: ignore[arg-type]
 
@@ -129,7 +134,10 @@ class TestWsAuthTimeoutKillSwitch:
                 awaitable.close()
             raise TimeoutError
 
-        monkeypatch.setattr(ws_module.asyncio, "wait_for", _fake_wait_for)
+        monkeypatch.setattr(
+            "synthorg.api.controllers.ws.asyncio.wait_for",
+            _fake_wait_for,
+        )
 
         await _read_auth_message(socket)  # type: ignore[arg-type]
 
