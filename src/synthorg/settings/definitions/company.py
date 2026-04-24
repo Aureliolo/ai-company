@@ -1,10 +1,14 @@
 """Company namespace setting definitions."""
 
 from synthorg.core.enums import AutonomyLevel
+from synthorg.observability import get_logger
+from synthorg.observability.events.settings import SETTINGS_DEFAULT_DRIFT
 from synthorg.security.autonomy.models import AutonomyConfig
 from synthorg.settings.enums import SettingNamespace, SettingType
 from synthorg.settings.models import SettingDefinition
 from synthorg.settings.registry import get_registry
+
+logger = get_logger(__name__)
 
 _r = get_registry()
 
@@ -16,6 +20,12 @@ _r = get_registry()
 _AUTONOMY_DEFAULT_RAW = AutonomyConfig.model_fields["level"].default
 if not isinstance(_AUTONOMY_DEFAULT_RAW, AutonomyLevel):
     _msg = "AutonomyConfig.level default must be an AutonomyLevel enum"
+    logger.error(
+        SETTINGS_DEFAULT_DRIFT,
+        field="AutonomyConfig.level",
+        observed_type=type(_AUTONOMY_DEFAULT_RAW).__name__,
+        expected_type="AutonomyLevel",
+    )
     raise TypeError(_msg)
 _EXPECTED_AUTONOMY_DEFAULT = _AUTONOMY_DEFAULT_RAW.value
 
@@ -47,6 +57,12 @@ if _EXPECTED_AUTONOMY_DEFAULT != "supervised":
     _msg = (
         "AutonomyConfig.level default drifted from the 'autonomy_level' "
         "SettingDefinition default; update both in lockstep."
+    )
+    logger.error(
+        SETTINGS_DEFAULT_DRIFT,
+        field="AutonomyConfig.level",
+        expected="supervised",
+        observed=_EXPECTED_AUTONOMY_DEFAULT,
     )
     raise RuntimeError(_msg)
 _r.register(

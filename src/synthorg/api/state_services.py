@@ -316,11 +316,16 @@ class AppStateServicesMixin(_FacadesMixin):
         the shared ``WS_AUTH_TIMEOUT_{MIN,MAX}_SECONDS`` constants
         keep the two sites aligned (DRY).
         """
+        import math  # noqa: PLC0415
+
         from synthorg.settings.bridge_configs import (  # noqa: PLC0415
             WS_AUTH_TIMEOUT_MAX_SECONDS,
             WS_AUTH_TIMEOUT_MIN_SECONDS,
         )
 
+        if not math.isfinite(value):
+            msg = f"ws_auth_timeout_seconds must be finite, got {value!r}"
+            raise ValueError(msg)
         if value < WS_AUTH_TIMEOUT_MIN_SECONDS or value > WS_AUTH_TIMEOUT_MAX_SECONDS:
             msg = (
                 "ws_auth_timeout_seconds must be between"

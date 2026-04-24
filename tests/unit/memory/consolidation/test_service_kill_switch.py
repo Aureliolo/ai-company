@@ -85,16 +85,20 @@ class TestConsolidationKillSwitch:
 
     async def test_run_consolidation_runs_when_enabled(self) -> None:
         service, backend, strategy = _build_service(enabled=True)
-        strategy.consolidate.return_value = ConsolidationResult(
+        expected = ConsolidationResult(
             removed_ids=(),
             summary_ids=(),
             mode_assignments=(),
         )
+        strategy.consolidate.return_value = expected
 
-        await service.run_consolidation(_AGENT_ID)
+        result = await service.run_consolidation(_AGENT_ID)
 
         strategy.consolidate.assert_awaited_once()
         backend.retrieve.assert_awaited_once()
+        # Propagates the strategy result verbatim so the caller sees
+        # the distillation/summary ids the strategy produced.
+        assert result == expected
 
     async def test_run_maintenance_skipped_when_disabled(self) -> None:
         service, backend, strategy = _build_service(enabled=False)

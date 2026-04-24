@@ -157,8 +157,8 @@ Default levels per domain module (overridable via `LogConfig.logger_levels`):
 
 | Logger | Default Level |
 |--------|---------------|
-| `synthorg.engine` | DEBUG |
-| `synthorg.memory` | DEBUG |
+| `synthorg.engine` | INFO |
+| `synthorg.memory` | INFO |
 | `synthorg.core` | INFO |
 | `synthorg.communication` | INFO |
 | `synthorg.providers` | INFO |
