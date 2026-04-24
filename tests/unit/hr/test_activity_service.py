@@ -319,6 +319,38 @@ class TestGetAgentActivity:
         assert total == 1
         assert page[0].event_type == ActivityEventType.HIRED
 
+    async def test_window_boundary_inclusive(self) -> None:
+        """Events that should be inside the window are not dropped.
+
+        ``_NOW`` is anchored at ``datetime.now(UTC) - 1h``, so an event
+        at offset N minutes is ``wall_now - 1h - N*min`` in real time.
+        The service computes ``since = datetime.now(UTC) - window``.
+        With ``window_hours=24`` every event under ~22h old is inside.
+        """
+        events = [
+            _lifecycle(offset_minutes=10, event_id="recent"),
+            _lifecycle(
+                event_type=LifecycleEventType.PROMOTED,
+                offset_minutes=120,
+                event_id="middle",
+            ),
+        ]
+        service = ActivityFeedService(
+            performance_tracker=_FakePerformanceTracker([]),  # type: ignore[arg-type]
+            lifecycle_repo=_FakeLifecycleRepo(events),  # type: ignore[arg-type]
+        )
+
+        _page, total = await service.get_agent_activity(
+            NotBlankStr(_AGENT_ID),
+            offset=0,
+            limit=50,
+            window_hours=24,
+        )
+
+        # With a 24h window both events (both under ~3.5h old) are
+        # inside -- the boundary is not dropping valid events.
+        assert total == 2
+
     async def test_no_sources_returns_empty(self) -> None:
         service = ActivityFeedService(
             performance_tracker=_FakePerformanceTracker([]),  # type: ignore[arg-type]

@@ -176,6 +176,8 @@ async def _agents_list(
     try:
         agents = await app_state.agent_registry.list_active()
         page, meta = paginate_sequence(agents, offset=offset, limit=limit)
+    except MemoryError, RecursionError:
+        raise
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -197,6 +199,8 @@ async def _agents_get(
         return err(exc)
     try:
         identity = await app_state.agent_registry.get_by_name(name)
+    except MemoryError, RecursionError:
+        raise
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -254,6 +258,8 @@ async def _agents_delete(
     except AgentNotFoundError as exc:
         _log_failed(tool, exc)
         return err(exc, domain_code="not_found")
+    except MemoryError, RecursionError:
+        raise
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -293,6 +299,8 @@ async def _agents_get_performance(
         snapshot = await app_state.performance_tracker.get_snapshot(
             str(identity.id),
         )
+    except MemoryError, RecursionError:
+        raise
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -328,6 +336,8 @@ async def _agents_get_activity(
             offset=offset,
             limit=limit,
         )
+    except MemoryError, RecursionError:
+        raise
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -362,6 +372,8 @@ async def _agents_get_history(
             offset=offset,
             limit=limit,
         )
+    except MemoryError, RecursionError:
+        raise
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -393,6 +405,8 @@ async def _agents_get_health(
         report = await app_state.agent_health_service.get_agent_health(
             NotBlankStr(str(identity.id)),
         )
+    except MemoryError, RecursionError:
+        raise
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -422,6 +436,8 @@ async def _personalities_list(
             offset=offset,
             limit=limit,
         )
+    except MemoryError, RecursionError:
+        raise
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -448,6 +464,8 @@ async def _personalities_get(
         entry = await app_state.personality_service.get_personality(
             NotBlankStr(name),
         )
+    except MemoryError, RecursionError:
+        raise
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -481,6 +499,8 @@ async def _training_list_sessions(
             offset=offset,
             limit=limit,
         )
+    except MemoryError, RecursionError:
+        raise
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -507,6 +527,8 @@ async def _training_get_session(
         session = await app_state.training_service.get_session(
             NotBlankStr(plan_id),
         )
+    except MemoryError, RecursionError:
+        raise
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -534,6 +556,8 @@ async def _training_start_session(
         return capability_gap(tool, _WHY_TRAINING_START)
     try:
         result = await app_state.training_service.start_session(plan)
+    except MemoryError, RecursionError:
+        raise
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -610,6 +634,8 @@ async def _autonomy_get(
         return err(exc)
     try:
         identity = await app_state.agent_registry.get(agent_id)
+    except MemoryError, RecursionError:
+        raise
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -657,6 +683,8 @@ async def _collaboration_get_score(
         score = await app_state.performance_tracker.get_collaboration_score(
             agent_id,
         )
+    except MemoryError, RecursionError:
+        raise
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
