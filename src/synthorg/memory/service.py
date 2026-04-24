@@ -21,7 +21,7 @@ import asyncio
 import json
 import os
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.embedding.fine_tune_models import (
@@ -38,8 +38,11 @@ from synthorg.memory.fine_tune_plan import (
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.memory import (
+    MEMORY_CHECKPOINT_BACKUP_UNAVAILABLE,
     MEMORY_CHECKPOINT_DEPLOY_FAILED,
     MEMORY_CHECKPOINT_DEPLOYED,
+    MEMORY_CHECKPOINT_NOT_FOUND,
+    MEMORY_CHECKPOINT_REREAD_FAILED,
     MEMORY_CHECKPOINT_ROLLBACK,
     MEMORY_CHECKPOINT_ROLLBACK_FAILED,
     MEMORY_CHECKPOINT_ROLLBACK_STEP_FAILED,
@@ -63,6 +66,14 @@ if TYPE_CHECKING:
     from synthorg.settings.service import SettingsService
 
 logger = get_logger(__name__)
+
+
+# Three-valued ``_read_setting`` outcome. ``was_unset`` means the
+# settings service confirmed the key was absent; ``read_failed`` means
+# the service raised a non-NotFound exception, so rollback must leave
+# the newly-written key untouched (it may be masking a real prior
+# value we could not capture).
+_PriorSettingState = Literal["was_set", "was_unset", "read_failed"]
 
 
 class CheckpointNotFoundError(Exception):
@@ -211,6 +222,11 @@ class MemoryService:
         async with self._embedder_state_lock:
             cp = await self._checkpoints.get_checkpoint(checkpoint_id)
             if cp is None:
+                logger.warning(
+                    MEMORY_CHECKPOINT_NOT_FOUND,
+                    checkpoint_id=checkpoint_id,
+                    operation="deploy",
+                )
                 msg = f"Checkpoint {checkpoint_id} not found"
                 raise CheckpointNotFoundError(msg)
 
@@ -226,6 +242,11 @@ class MemoryService:
 
             updated = await self._checkpoints.get_checkpoint(checkpoint_id)
             if updated is None:
+                logger.error(
+                    MEMORY_CHECKPOINT_REREAD_FAILED,
+                    checkpoint_id=checkpoint_id,
+                    operation="deploy",
+                )
                 msg = "Checkpoint activated but not found on re-read"
                 raise QueryError(msg)
         logger.info(
@@ -254,9 +275,18 @@ class MemoryService:
         async with self._embedder_state_lock:
             cp = await self._checkpoints.get_checkpoint(checkpoint_id)
             if cp is None:
+                logger.warning(
+                    MEMORY_CHECKPOINT_NOT_FOUND,
+                    checkpoint_id=checkpoint_id,
+                    operation="rollback",
+                )
                 msg = f"Checkpoint {checkpoint_id} not found"
                 raise CheckpointNotFoundError(msg)
             if cp.backup_config_json is None:
+                logger.warning(
+                    MEMORY_CHECKPOINT_BACKUP_UNAVAILABLE,
+                    checkpoint_id=checkpoint_id,
+                )
                 msg = "No backup config available for this checkpoint"
                 raise CheckpointRollbackUnavailableError(msg)
 
@@ -295,6 +325,11 @@ class MemoryService:
             await self._checkpoints.deactivate_all()
             updated = await self._checkpoints.get_checkpoint(checkpoint_id)
             if updated is None:
+                logger.error(
+                    MEMORY_CHECKPOINT_REREAD_FAILED,
+                    checkpoint_id=checkpoint_id,
+                    operation="rollback",
+                )
                 msg = "Checkpoint not found after rollback"
                 raise QueryError(msg)
         logger.info(
@@ -326,6 +361,11 @@ class MemoryService:
         async with self._embedder_state_lock:
             existing = await self._checkpoints.get_checkpoint(checkpoint_id)
             if existing is None:
+                logger.warning(
+                    MEMORY_CHECKPOINT_NOT_FOUND,
+                    checkpoint_id=checkpoint_id,
+                    operation="delete",
+                )
                 msg = f"Checkpoint {checkpoint_id} not found"
                 raise CheckpointNotFoundError(msg)
             await self._checkpoints.delete_checkpoint(checkpoint_id)
@@ -602,10 +642,10 @@ class MemoryService:
         """
         assert self._settings is not None  # noqa: S101 - guarded by caller
 
-        prior_model_value, prior_model_exists = await self._read_setting(
+        prior_model_value, prior_model_state = await self._read_setting(
             "embedder_model",
         )
-        prior_provider_value, prior_provider_exists = await self._read_setting(
+        prior_provider_value, prior_provider_state = await self._read_setting(
             "embedder_provider",
         )
 
@@ -625,21 +665,23 @@ class MemoryService:
                     checkpoint_id=checkpoint_id,
                     step="deactivate_all_checkpoints",
                 )
-            # Restore or explicitly delete each setting based on whether a
-            # prior value existed. Collapsing "did not exist" and
-            # "couldn't read" into a single ``None`` would leave a freshly
-            # written setting behind on failure whenever the read was
-            # simply noisy, so the two cases are tracked separately.
+            # Restore / delete / leave each setting based on the
+            # three-valued prior state captured by ``_read_setting``.
+            # ``read_failed`` explicitly leaves the newly-written key
+            # in place so a transient read error cannot erase a real
+            # pre-existing setting -- safer than the old ``bool``
+            # design that collapsed "absent" and "read failed" into
+            # the same branch.
             await self._restore_or_delete(
                 "embedder_model",
                 prior_model_value,
-                prior_model_exists,
+                prior_model_state,
                 checkpoint_id,
             )
             await self._restore_or_delete(
                 "embedder_provider",
                 prior_provider_value,
-                prior_provider_exists,
+                prior_provider_state,
                 checkpoint_id,
             )
             logger.warning(
@@ -653,58 +695,69 @@ class MemoryService:
         self,
         key: str,
         prior_value: str | None,
-        prior_exists: bool,  # noqa: FBT001 -- internal helper, not a public API
+        prior_state: _PriorSettingState,
         checkpoint_id: str,
     ) -> None:
-        """Restore *prior_value* or delete the key when there was no prior.
+        """Restore *prior_value* or delete the key based on *prior_state*.
 
-        ``prior_exists`` distinguishes "was unset before" (delete) from
-        "failed to read before" (restore if we have a value to restore,
-        otherwise leave alone to avoid losing the newly-written setting).
+        Three branches, one per :class:`_PriorSettingState` value:
+
+        * ``was_set`` -- restore the captured prior value.
+        * ``was_unset`` -- delete the newly-written setting so rollback
+          returns to a pristine "key absent" state.
+        * ``read_failed`` -- leave the key untouched. A transient
+          settings-service outage during the pre-deploy read could make
+          a real existing value look absent; deleting it on rollback
+          would erase a legitimate pre-deploy setting. Leaving it means
+          the rollback is best-effort for this key, which the
+          ``MEMORY_CHECKPOINT_ROLLBACK_STEP_FAILED`` telemetry already
+          signals for operator review.
         """
         assert self._settings is not None  # noqa: S101 - guarded by caller
-        if prior_exists and prior_value is not None:
+        if prior_state == "was_set" and prior_value is not None:
             await self._rollback_step(
                 self._settings.set("memory", key, prior_value),
                 checkpoint_id=checkpoint_id,
                 step=f"restore_{key}",
             )
-        elif prior_exists and prior_value is None:
-            # Existed but resolved to ``None`` -- treat as "was unset".
-            await self._rollback_step(
-                self._settings.delete("memory", key),
-                checkpoint_id=checkpoint_id,
-                step=f"delete_{key}",
-            )
-        elif not prior_exists and prior_value is None:
-            # Key was genuinely absent before the deploy: remove the newly
+        elif prior_state == "was_unset":
+            # Genuinely absent before the deploy: remove the newly
             # written value so rollback returns to a pristine state.
             await self._rollback_step(
                 self._settings.delete("memory", key),
                 checkpoint_id=checkpoint_id,
                 step=f"delete_{key}",
             )
-        # prior_exists=False + prior_value is not None cannot happen.
+        # ``read_failed`` intentionally leaves the newly-written key in
+        # place; the settings-read warning already fired from
+        # :meth:`_read_setting` so operators can triage.
 
-    async def _read_setting(self, key: str) -> tuple[str | None, bool]:
+    async def _read_setting(
+        self,
+        key: str,
+    ) -> tuple[str | None, _PriorSettingState]:
         """Best-effort read of a ``memory.<key>`` setting for rollback.
 
-        Returns ``(value, exists)`` so callers can distinguish three
-        cases cleanly: "was set" (``exists=True``), "was genuinely
-        unset" (``exists=False, value=None``) and "failed to read"
-        (``exists=False, value=None``). All three feed the rollback
-        path -- any ``exists=False`` branch asks the caller to delete
-        the newly-written setting so rollback never leaves a residue,
-        and the DEBUG log distinguishes the read-error sub-case for
-        operator audit.
+        Returns ``(value, state)`` where *state* distinguishes three
+        cases that the rollback logic must handle differently:
+
+        * ``"was_set"`` -- the setting existed with a concrete value.
+          Rollback restores the captured value.
+        * ``"was_unset"`` -- the setting was genuinely absent
+          (``SettingNotFoundError``). Rollback deletes the newly
+          written value.
+        * ``"read_failed"`` -- the settings service raised any other
+          exception (connection / auth / corruption). Rollback leaves
+          the key untouched so a transient read error cannot erase a
+          pre-existing setting on deploy failure.
         """
         if self._settings is None:
-            return None, False
-        # SettingNotFoundError is the "setting genuinely absent" path --
-        # benign and stays at DEBUG. Anything else (connection / auth /
-        # corruption) is operationally interesting and escalates to
-        # WARNING so prod monitoring catches prolonged settings-service
-        # outages during a checkpoint-deploy rollback.
+            return None, "was_unset"
+        # SettingNotFoundError is the "setting genuinely absent" path
+        # -- benign and stays at DEBUG. Anything else (connection /
+        # auth / corruption) is operationally interesting and escalates
+        # to WARNING so prod monitoring catches prolonged
+        # settings-service outages during a checkpoint-deploy rollback.
         from synthorg.settings.errors import (  # noqa: PLC0415 -- cycle break
             SettingNotFoundError,
         )
@@ -718,7 +771,7 @@ class MemoryService:
                 error_type=type(exc).__name__,
                 reason="read_for_rollback_not_found",
             )
-            return None, False
+            return None, "was_unset"
         except Exception as exc:
             logger.warning(
                 MEMORY_EMBEDDER_SETTINGS_READ_FAILED,
@@ -726,12 +779,12 @@ class MemoryService:
                 error_type=type(exc).__name__,
                 reason="read_for_rollback_transient",
             )
-            # Any non-NotFound exception (storage glitch, auth, network
-            # timeout, ...) collapses to exists=False so rollback will
-            # explicitly delete the newly-written setting instead of
-            # leaving it in place.
-            return None, False
-        return value.value, True
+            # Transient failure -- rollback must NOT delete this key or
+            # it would erase a pre-existing setting we failed to
+            # capture. ``_restore_or_delete`` observes ``read_failed``
+            # and leaves the newly-written value in place.
+            return None, "read_failed"
+        return value.value, "was_set"
 
     @staticmethod
     async def _rollback_step(

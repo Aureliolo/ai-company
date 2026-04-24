@@ -118,6 +118,11 @@ MEMORY_EMBEDDER_SETTINGS_READ_FAILED: Final[str] = (
 )
 MEMORY_CHECKPOINT_DEPLOYED: Final[str] = "memory.checkpoint.deployed"
 MEMORY_CHECKPOINT_DEPLOY_FAILED: Final[str] = "memory.checkpoint.deploy_failed"
+MEMORY_CHECKPOINT_NOT_FOUND: Final[str] = "memory.checkpoint.not_found"
+MEMORY_CHECKPOINT_BACKUP_UNAVAILABLE: Final[str] = (
+    "memory.checkpoint.backup_unavailable"
+)
+MEMORY_CHECKPOINT_REREAD_FAILED: Final[str] = "memory.checkpoint.reread_failed"
 MEMORY_CHECKPOINT_ROLLBACK: Final[str] = "memory.checkpoint.rollback"
 MEMORY_CHECKPOINT_ROLLBACK_FAILED: Final[str] = "memory.checkpoint.rollback_failed"
 # Emitted when an inner rollback step fails during a deploy / rollback

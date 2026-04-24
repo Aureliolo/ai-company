@@ -85,7 +85,53 @@ _FINE_TUNE_PLAN_PROPERTIES: dict[str, object] = {
     },
     "execution": {
         "type": ["object", "null"],
-        "description": "Optional runner-backend execution config",
+        "description": (
+            "Optional runner-backend execution config "
+            "(FineTuneExecutionConfig shape). "
+            "``image`` is required when ``backend='docker'``; the "
+            "handler layer enforces the same coupling via the "
+            "Pydantic validator."
+        ),
+        "properties": {
+            "backend": {
+                "type": "string",
+                "enum": ["in-process", "docker"],
+                "default": "in-process",
+                "description": (
+                    "Execution backend -- 'in-process' (lazy torch "
+                    "import) or 'docker' (dedicated container)"
+                ),
+            },
+            "image": {
+                "type": ["string", "null"],
+                "description": (
+                    "Container image for the 'docker' backend; "
+                    "required when backend='docker', ignored for "
+                    "in-process"
+                ),
+                "minLength": 1,
+                "pattern": _NON_BLANK_STRING_PATTERN,
+            },
+            "gpu_enabled": {
+                "type": "boolean",
+                "default": False,
+                "description": ("Request GPU passthrough (docker backend only)"),
+            },
+            "memory_limit": {
+                "type": "string",
+                "default": "8g",
+                "description": "Container memory limit (Docker format)",
+                "minLength": 1,
+                "pattern": _NON_BLANK_STRING_PATTERN,
+            },
+            "timeout_seconds": {
+                "type": "number",
+                "default": 7200.0,
+                "description": "Maximum wall-clock time for a single stage",
+                "exclusiveMinimum": 0.0,
+            },
+        },
+        "additionalProperties": False,
     },
 }
 

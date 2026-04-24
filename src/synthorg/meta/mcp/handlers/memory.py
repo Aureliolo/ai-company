@@ -171,16 +171,37 @@ def _service(app_state: Any) -> MemoryService:
     if getattr(app_state, "has_memory_service", False):
         attached: MemoryService = app_state.memory_service
         return attached
-    cached: MemoryService | None = getattr(app_state, "memory_service", None)
-    if cached is not None:
-        return cached
+    # Probe the raw instance dict so we do not trigger
+    # ``AppState.memory_service`` (a property descriptor that raises
+    # ``RuntimeError`` when the slot has not been set). The facade-first
+    # short-circuit above already covered the wired path; this branch
+    # only exists for stripped-down test app-states that set
+    # ``memory_service`` as a plain attribute on a ``SimpleNamespace``.
+    raw_cached = (
+        vars(app_state).get("memory_service")
+        if hasattr(
+            app_state,
+            "__dict__",
+        )
+        else None
+    )
+    if isinstance(raw_cached, MemoryService):
+        return raw_cached
     backend = getattr(app_state, "persistence", None)
     if backend is None:
         raise BackendUnsupportedError(_WHY_MEMORY_SERVICE_NOT_WIRED)
     try:
         checkpoint_repo = backend.fine_tune_checkpoints
         run_repo = backend.fine_tune_runs
-    except (NotImplementedError, PersistenceConnectionError) as exc:
+    except (
+        NotImplementedError,
+        PersistenceConnectionError,
+        AttributeError,
+    ) as exc:
+        # ``AttributeError`` covers partial backends that simply lack
+        # the property altogether; without catching it here the handler
+        # would surface a generic 500 instead of the contract-stipulated
+        # ``not_supported`` envelope.
         raise BackendUnsupportedError(_WHY_BACKEND_NO_FINE_TUNE) from exc
     has_settings = getattr(app_state, "has_settings_service", False)
     return MemoryService(
@@ -325,13 +346,20 @@ async def _memory_cancel_fine_tune(
         _log_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
-    logger.info(
-        MCP_DESTRUCTIVE_OP_EXECUTED,
-        tool_name=tool,
-        actor_agent_id=_actor_id(resolved_actor),
-        reason=reason,
-        target_id=target_id,
-    )
+    # Only emit the destructive-op audit when something was actually
+    # cancelled. A ``None`` target means the orchestrator had no active
+    # run, and emitting ``MCP_DESTRUCTIVE_OP_EXECUTED`` with
+    # ``target_id=None`` would plant a false no-op entry in the audit
+    # trail. Operators investigating a cancellation should never see a
+    # record for a cancel that did not happen.
+    if target_id is not None:
+        logger.info(
+            MCP_DESTRUCTIVE_OP_EXECUTED,
+            tool_name=tool,
+            actor_agent_id=_actor_id(resolved_actor),
+            reason=reason,
+            target_id=target_id,
+        )
     return ok()
 
 

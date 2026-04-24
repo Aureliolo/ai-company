@@ -38,9 +38,17 @@ def actor() -> AgentIdentity:
     return make_test_actor(name="cancel-caller")
 
 
-def _fake_state_with_cancel() -> SimpleNamespace:
+def _fake_state_with_cancel(run_id: str = "run-cancelled") -> SimpleNamespace:
+    """Wired state where ``cancel_fine_tune`` cancels an active run.
+
+    The handler now guards ``MCP_DESTRUCTIVE_OP_EXECUTED`` on a
+    non-``None`` ``target_id`` (no false audit entries for cancels
+    issued when no run was active). Return a real ``run_id`` here so
+    the destructive-op assertion in the happy-path test actually
+    exercises the audit emission branch.
+    """
     memory_service = AsyncMock()
-    memory_service.cancel_fine_tune.return_value = None
+    memory_service.cancel_fine_tune.return_value = run_id
     return SimpleNamespace(
         memory_service=memory_service,
         has_memory_service=True,
@@ -63,46 +71,23 @@ def _fake_state_with_rollback(checkpoint_id: str) -> SimpleNamespace:
 
 
 def _fake_state_with_delete(checkpoint_id: str) -> SimpleNamespace:
-    """Bare-persistence app state used by the ``_service()`` fallback path.
+    """Wired-service app state that drives the happy-path delete audit.
 
-    The handler exercises the unwired-service route through
-    :func:`_service` (no ``memory_service`` on the state). That code
-    path constructs a :class:`MemoryService` from
-    ``persistence.fine_tune_checkpoints`` + ``.fine_tune_runs`` +
-    optional ``settings_service`` -- every attribute must be present on
-    the stub or ``_service()`` raises and the destructive-op audit
-    event never fires.
+    Previous iterations of this fixture used a bare-persistence state
+    and let the test tolerate a ``not_supported`` response. That made
+    the test non-deterministic: a regression that dropped the
+    destructive-op emission on the wired service path could still pass
+    because the test would quietly take the ``not_supported`` branch.
+    Now we always mount a ``memory_service`` stub whose
+    ``delete_checkpoint`` succeeds, so the handler must take the
+    ``status == "ok"`` branch and emit ``MCP_DESTRUCTIVE_OP_EXECUTED``.
     """
-    ns = SimpleNamespace()
-
-    existing_checkpoint = SimpleNamespace(
-        id=checkpoint_id,
-        model_dump=lambda mode="json": {
-            "checkpoint_id": checkpoint_id,
-            "status": "active",
-        },
+    memory_service = AsyncMock()
+    memory_service.delete_checkpoint.return_value = None
+    return SimpleNamespace(
+        memory_service=memory_service,
+        has_memory_service=True,
     )
-
-    async def _get_checkpoint(cid: str) -> SimpleNamespace | None:
-        return existing_checkpoint if cid == checkpoint_id else None
-
-    async def _delete_checkpoint(cid: str) -> bool:
-        assert cid == checkpoint_id
-        return True
-
-    persistence = SimpleNamespace(
-        fine_tune_checkpoints=SimpleNamespace(
-            get_checkpoint=_get_checkpoint,
-            delete_checkpoint=_delete_checkpoint,
-        ),
-        fine_tune_runs=SimpleNamespace(),
-    )
-    ns.persistence = persistence
-    # No memory_service wired; ``_service()`` builds one from the
-    # persistence backend on demand (main's established fallback path).
-    ns.has_memory_service = False
-    ns.has_settings_service = False
-    return ns
 
 
 class TestCancelFineTuneDestructiveAudit:
@@ -175,6 +160,16 @@ class TestDeleteCheckpointDestructiveAudit:
         self,
         actor: AgentIdentity,
     ) -> None:
+        """Happy-path delete must always emit the destructive-op audit.
+
+        Mirrors the cancel / rollback contracts: the wired
+        ``memory_service`` stub returns success, so the handler takes
+        the ``status == "ok"`` branch and must emit exactly one
+        ``MCP_DESTRUCTIVE_OP_EXECUTED`` event with the resolved actor,
+        reason, and target_id. Non-``ok`` responses are a regression
+        and fail the test directly -- the previous conditional
+        assertion let that regression pass silently.
+        """
         checkpoint_id = f"ckpt-{uuid4().hex}"
         state = _fake_state_with_delete(checkpoint_id)
         handler = MEMORY_HANDLERS["synthorg_memory_delete_checkpoint"]
@@ -189,19 +184,19 @@ class TestDeleteCheckpointDestructiveAudit:
                 actor=actor,
             )
         body: dict[str, Any] = json.loads(raw)
-        # ``delete_checkpoint`` may return a delegated service envelope;
-        # either ``ok`` or service-routed ``not_supported`` is acceptable
-        # depending on persistence wiring. The audit event assertion
-        # below is the hard invariant.
-        if body["status"] == "ok":
-            destructive = [
-                e
-                for e in events
-                if e.get("event") == MCP_DESTRUCTIVE_OP_EXECUTED
-                and e.get("tool_name") == "synthorg_memory_delete_checkpoint"
-            ]
-            assert len(destructive) == 1
-            event = destructive[0]
-            assert event["actor_agent_id"] == str(actor.id)
-            assert event["reason"] == "checkpoint superseded"
-            assert event["target_id"] == checkpoint_id
+        assert body["status"] == "ok", (
+            f"delete_checkpoint must succeed against a wired memory_service; "
+            f"got status={body['status']!r}"
+        )
+        destructive = [
+            e
+            for e in events
+            if e.get("event") == MCP_DESTRUCTIVE_OP_EXECUTED
+            and e.get("tool_name") == "synthorg_memory_delete_checkpoint"
+        ]
+        assert len(destructive) == 1
+        event = destructive[0]
+        assert event["actor_agent_id"] == str(actor.id)
+        assert event["reason"] == "checkpoint superseded"
+        assert event["target_id"] == checkpoint_id
+        state.memory_service.delete_checkpoint.assert_awaited_once()

@@ -283,12 +283,26 @@ export const SynthOrgHooks: Plugin = async ({ client, $, app }) => {
             ? output.args.file_path as string
             : "";
 
+          // Both audit scripts enter hook-mode only when they see a
+          // ``tool_input.file_path`` JSON payload on stdin (``--hook``
+          // CLI is equivalent but harder to spell portably); without
+          // it they either dump usage or silently scan the whole tree.
+          // Pass the ``filePath`` explicitly so the scripts validate
+          // exactly the file that was just edited / written.
+          const hookPayload = JSON.stringify({
+            tool_input: { file_path: filePath },
+          });
+
           // check_web_design_system.py -- validate design tokens on web file edits
           if (filePath.includes("web/src/")) {
             try {
               execSync(
                 `python scripts/check_web_design_system.py`,
-                { timeout: 10000, encoding: "utf-8" },
+                {
+                  input: hookPayload,
+                  timeout: 10000,
+                  encoding: "utf-8",
+                },
               );
             } catch (error: unknown) {
               const err = error as { message?: string; stderr?: string };
@@ -302,7 +316,11 @@ export const SynthOrgHooks: Plugin = async ({ client, $, app }) => {
             try {
               execSync(
                 `python scripts/check_backend_regional_defaults.py`,
-                { timeout: 10000, encoding: "utf-8" },
+                {
+                  input: hookPayload,
+                  timeout: 10000,
+                  encoding: "utf-8",
+                },
               );
             } catch (error: unknown) {
               const err = error as { message?: string; stderr?: string };
