@@ -21,7 +21,11 @@ from synthorg.persistence._shared.custom_rule import (
     row_to_custom_rule,
     serialize_altitudes,
 )
-from synthorg.persistence.errors import ConstraintViolationError, QueryError
+from synthorg.persistence.errors import (
+    ConstraintViolationError,
+    MalformedRowError,
+    QueryError,
+)
 
 if TYPE_CHECKING:
     from aiosqlite import Row
@@ -62,9 +66,20 @@ def _row_to_definition(row: Row) -> CustomRuleDefinition:
     SQLite and Postgres use identical deserialisation logic.
 
     Raises:
-        QueryError: If the row contains corrupt or unparseable data.
+        MalformedRowError: If the row contains corrupt or unparseable
+            data, or if the row width drifts from ``_COLUMNS`` (a
+            schema-vs-query mismatch surfaces here as a deterministic
+            non-retryable error).
     """
-    return row_to_custom_rule(_row_to_dict(row))
+    try:
+        row_dict = _row_to_dict(row)
+    except ValueError as exc:
+        msg = (
+            f"Custom rule row width mismatch: expected {len(_COLUMNS)} "
+            f"columns, got {len(row)}"
+        )
+        raise MalformedRowError(msg) from exc
+    return row_to_custom_rule(row_dict)
 
 
 class SQLiteCustomRuleRepository:

@@ -292,8 +292,17 @@ class LiteLLMDriver(BaseCompletionProvider):
         """
         results: dict[str, ModelCapabilities | None] = {}
         for model in models:
+            # Skip _resolve_model() because its miss path emits
+            # PROVIDER_MODEL_NOT_FOUND at ERROR; an expected partial
+            # miss in a batch lookup must not be recorded as a failed
+            # request. Read the lookup directly and degrade silently to
+            # ``None`` (the partial-failure event is reserved for real
+            # capability-build errors below).
+            model_config = self._model_lookup.get(model)
+            if model_config is None:
+                results[model] = None
+                continue
             try:
-                model_config = self._resolve_model(model)
                 results[model] = self._build_capabilities(model_config)
             except MemoryError, RecursionError:
                 raise

@@ -58,6 +58,7 @@ class TestSettingsController:
             "/api/v1/settings?limit=3",
             headers=auth_headers,
         )
+        assert first.status_code == 200, first.text
         body = first.json()
         first_ids = [
             (e["definition"]["namespace"], e["definition"]["key"]) for e in body["data"]

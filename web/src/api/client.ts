@@ -335,8 +335,18 @@ export async function paginateAll<T>(
   for (let page = 0; page < PAGINATE_ALL_MAX_PAGES; page++) {
     const result = await fetchPage(cursor)
     collected.push(...result.data)
-    if (!result.hasMore || !result.nextCursor) {
+    if (!result.hasMore) {
       return collected
+    }
+    if (!result.nextCursor) {
+      // hasMore=true but nextCursor=null is a malformed envelope --
+      // the backend's PaginationMeta._validate_cursor_consistency
+      // rejects this on the wire, but a misbehaving proxy or stub
+      // could still smuggle it through. Throwing here surfaces the
+      // bug instead of silently truncating the snapshot.
+      throw new ApiRequestError(
+        'Invalid paginated response: hasMore=true but nextCursor is missing',
+      )
     }
     cursor = result.nextCursor
   }

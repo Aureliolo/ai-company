@@ -1,6 +1,6 @@
 /*
  * Vendored from `shadcn` npm package v4.4.0 dist/tailwind.css.
- * Self-contained: 10 custom-variants for Base UI / Radix data-state
+ * Self-contained: 9 custom-variants for Base UI / Radix data-state
  * attributes, accordion keyframes, and a no-scrollbar utility. Static
  * content with no runtime dependencies, so vendoring avoids carrying
  * ~2200 lines of transitive deps just for this file.

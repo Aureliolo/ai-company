@@ -92,7 +92,7 @@ placeholder style, JSON wrappers, predicates that classify duplicate-key
 errors) into the helpers as callables, so the helpers stay portable and
 the conformance tests at
 ``tests/conformance/persistence/test_*_repository.py`` exercise the
-canonical contract on both backends in a single parametrised pass.
+canonical contract on both backends in a single parametrized pass.
 Adding a new shared helper: extract the duplicated logic, add a
 ``test_*_helpers.py`` unit suite alongside it, and add a conformance
 test that runs against both backends.

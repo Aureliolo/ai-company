@@ -1,5 +1,6 @@
 """Unit test configuration and fixtures for provider models."""
 
+import copy
 from collections.abc import AsyncIterator, Mapping
 
 import pytest
@@ -171,7 +172,11 @@ class FakeProvider:
         self,
         models: tuple[str, ...],
     ) -> Mapping[str, ModelCapabilities | None]:
-        return dict.fromkeys(models, self._capabilities)
+        # Per-model deepcopy: dict.fromkeys would alias the same
+        # ModelCapabilities instance for every key, so a future test
+        # that mutates one entry would silently mutate every other
+        # entry in the same batch.
+        return {model: copy.deepcopy(self._capabilities) for model in models}
 
 
 # ── Sample Fixtures ───────────────────────────────────────────────

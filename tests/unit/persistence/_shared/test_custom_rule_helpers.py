@@ -131,12 +131,25 @@ class TestRowToCustomRule:
         loaded = row_to_custom_rule(row)
         assert loaded.created_at == datetime(2026, 4, 24, 12, 0, tzinfo=UTC)
 
-    def test_invalid_uuid_raises_malformed_row_error(self) -> None:
+    @pytest.mark.parametrize(
+        ("override_field", "override_value"),
+        [
+            pytest.param("id", "not-a-uuid", id="invalid_uuid"),
+            pytest.param("severity", "catastrophic", id="invalid_enum"),
+        ],
+    )
+    def test_corrupt_field_raises_malformed_row_error(
+        self,
+        override_field: str,
+        override_value: str,
+    ) -> None:
         # MalformedRowError extends QueryError but overrides
         # is_retryable=False so a corrupt row does not burn the retry
-        # budget.
+        # budget. Both UUID and enum corruption surface through the
+        # same shared catch in row_to_custom_rule, so they must
+        # produce the same non-retryable error type.
         rule = _rule()
-        row = _row_for(rule, id="not-a-uuid")
+        row = _row_for(rule, **{override_field: override_value})
         with pytest.raises(MalformedRowError) as exc_info:
             row_to_custom_rule(row)
         assert exc_info.value.is_retryable is False
@@ -144,13 +157,6 @@ class TestRowToCustomRule:
         # callers that catch QueryError as the umbrella -- assert this
         # contract so a future refactor does not break it.
         assert isinstance(exc_info.value, QueryError)
-
-    def test_invalid_enum_raises_malformed_row_error(self) -> None:
-        rule = _rule()
-        row = _row_for(rule, severity="catastrophic")
-        with pytest.raises(MalformedRowError) as exc_info:
-            row_to_custom_rule(row)
-        assert exc_info.value.is_retryable is False
 
     def test_logs_safe_description_on_failure(self) -> None:
         rule = _rule()

@@ -168,4 +168,7 @@ class ScriptedProvider:
         models: tuple[str, ...],
     ) -> Mapping[str, ModelCapabilities | None]:
         """Return the configured capabilities keyed by each requested model."""
-        return dict.fromkeys(models, copy.deepcopy(self._capabilities))
+        # Per-model deepcopy so callers cannot mutate a single
+        # ``ModelCapabilities`` and unexpectedly poison the entries
+        # for every other model in the batch.
+        return {model: copy.deepcopy(self._capabilities) for model in models}

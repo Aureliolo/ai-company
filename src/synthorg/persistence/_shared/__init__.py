@@ -13,7 +13,11 @@ a database backend.
 
 from datetime import UTC, datetime
 
+from synthorg.observability import get_logger
+
 __all__ = ("normalize_utc",)
+
+logger = get_logger(__name__)
 
 
 def normalize_utc(value: datetime) -> datetime:
