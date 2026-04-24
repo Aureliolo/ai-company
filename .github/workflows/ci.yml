@@ -591,6 +591,36 @@ jobs:
           path: web/report.*.json
           if-no-files-found: ignore
 
+  # ── Branch-protection drift audit ──
+  # Compares live rulesets against .github/branch_protection.yml. Runs on
+  # push to main (informational) and workflow_dispatch. continue-on-error
+  # for now so benign drift in the spec's initial capture does not block
+  # every push; promote to blocking once the spec has survived 30 days
+  # of zero-drift runs (tracked in #1555).
+  branch-protection-audit:
+    name: Branch-protection drift audit
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    continue-on-error: true
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+      - name: Install yq
+        run: |
+          set -euo pipefail
+          # yq (Mike Farah) -- Go binary, no runtime deps.
+          curl -sSfL https://github.com/mikefarah/yq/releases/download/v4.45.1/yq_linux_amd64 -o /usr/local/bin/yq
+          chmod +x /usr/local/bin/yq
+          yq --version
+      - name: Audit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/audit_branch_protection.sh
+
   # ── Gate: all required checks passed ──
   ci-pass:
     name: CI Pass

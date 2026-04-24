@@ -1,0 +1,74 @@
+# Declarative spec for SynthOrg's repo rulesets. Compared against the
+# live rules by scripts/audit_branch_protection.sh.
+#
+# Do not edit volatile fields here -- only the structural rules we want
+# enforced. The audit script normalises the live API response to this
+# shape before diffing:
+#   - Strips id, node_id, created_at, updated_at
+#   - Strips bypass_actors (owner-private; different accounts have
+#     different admin setups)
+#   - Sorts `rules` alphabetically by `type`
+#
+# A mismatch fails the audit, signalling drift between the committed
+# spec and whatever someone changed in Settings -> Rules.
+
+rulesets:
+  - name: default
+    target: branch
+    enforcement: active
+    conditions:
+      ref_name:
+        include: ["~ALL"]
+        exclude:
+          - refs/heads/release-please--*
+          - refs/heads/cla-signatures
+    rules:
+      - type: code_quality
+        parameters:
+          severity: all
+      - type: copilot_code_review
+        parameters:
+          review_on_push: false
+          review_draft_pull_requests: false
+      - type: required_signatures
+
+  - name: protect-main
+    target: branch
+    enforcement: active
+    conditions:
+      ref_name:
+        include:
+          - refs/heads/main
+        exclude: []
+    rules:
+      - type: deletion
+      - type: non_fast_forward
+      - type: required_signatures
+      - type: required_status_checks
+        parameters:
+          strict_required_status_checks_policy: true
+          do_not_enforce_on_create: false
+          required_status_checks:
+            - context: "CI Pass"
+
+  - name: protect-main-reviews
+    target: branch
+    enforcement: active
+    conditions:
+      ref_name:
+        include:
+          - refs/heads/main
+        exclude: []
+    rules:
+      - type: pull_request
+        parameters:
+          required_approving_review_count: 1
+          dismiss_stale_reviews_on_push: true
+          required_reviewers: []
+          require_code_owner_review: false
+          require_last_push_approval: false
+          required_review_thread_resolution: false
+          allowed_merge_methods:
+            - merge
+            - squash
+            - rebase
