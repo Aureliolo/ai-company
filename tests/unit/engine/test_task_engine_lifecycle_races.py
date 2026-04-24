@@ -170,7 +170,7 @@ class TestStartDuringStop:
             # reach the TimeoutError path.
             await release.wait()
 
-        eng._drain_all = hanging_drain  # type: ignore[method-assign]
+        eng._drain_all = hanging_drain  # type: ignore[method-assign,assignment]
 
         # stop() must now raise TimeoutError from its asyncio.wait_for.
         with pytest.raises(TimeoutError):
