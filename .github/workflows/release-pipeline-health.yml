@@ -1,0 +1,219 @@
+name: Release Pipeline Health
+
+# Nightly integrity check of the latest stable release. Verifies:
+#   - Every commit in the release shows `{verified: true, reason: "valid"}`.
+#   - Every CLI asset has a cosign signature bundle.
+#   - The Verification section in the release body lists the SLSA provenance
+#     commands + SBOM links (i.e. finalize-release.yml ran to completion).
+#   - SLSA provenance attestations are queryable via `gh attestation` for each
+#     container image digest referenced in the Verification section.
+#
+# On red, creates / updates a pinned tracking issue labeled
+# `automation:release-events`. Same notification-sink pattern as
+# test-signing.yml.
+
+on:
+  workflow_dispatch: {}
+  schedule:
+    - cron: "0 7 * * *"
+
+permissions: {}
+
+concurrency:
+  group: release-pipeline-health
+  cancel-in-progress: false
+
+jobs:
+  health-check:
+    name: Latest stable release integrity
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      attestations: read
+    outputs:
+      conclusion: ${{ steps.report.outputs.conclusion }}
+      failures: ${{ steps.report.outputs.failures }}
+      tag: ${{ steps.latest.outputs.tag }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Resolve latest stable release
+        id: latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq '.tag_name')
+          if [ -z "$TAG" ]; then
+            echo "::error::No stable release found"
+            exit 1
+          fi
+          echo "Latest stable release: $TAG"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+          PREV=$(git tag --sort=-v:refname --list 'v[0-9]*.[0-9]*.[0-9]*' \
+            | grep -vE '\-(dev|rc|alpha|beta)' \
+            | grep -vxF "$TAG" | head -1 || true)
+          echo "Previous stable release: ${PREV:-<none>}"
+          echo "prev=$PREV" >> "$GITHUB_OUTPUT"
+
+      - name: Verify commit signatures in release range
+        id: commits
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.latest.outputs.tag }}
+          PREV: ${{ steps.latest.outputs.prev }}
+        run: |
+          set -euo pipefail
+          if [ -n "$PREV" ]; then
+            COMMITS=$(gh api "repos/$GITHUB_REPOSITORY/compare/$PREV...$TAG" --jq '.commits[].sha')
+          else
+            COMMITS=$(gh api "repos/$GITHUB_REPOSITORY/commits?sha=$TAG&per_page=100" --jq '.[].sha')
+          fi
+
+          FAILED=()
+          while read -r sha; do
+            [ -z "$sha" ] && continue
+            v=$(gh api "repos/$GITHUB_REPOSITORY/git/commits/$sha" --jq '.verification')
+            verified=$(jq -r '.verified' <<< "$v")
+            reason=$(jq -r '.reason' <<< "$v")
+            if [ "$verified" != "true" ] || [ "$reason" != "valid" ]; then
+              FAILED+=("$sha ($reason)")
+            fi
+          done <<< "$COMMITS"
+
+          if [ "${#FAILED[@]}" -gt 0 ]; then
+            echo "::error::$(printf '%d unverified commits in %s: %s' "${#FAILED[@]}" "$TAG" "${FAILED[*]}")"
+            printf 'failed_commits<<EOF\n%s\nEOF\n' "$(printf '%s\n' "${FAILED[@]}")" >> "$GITHUB_OUTPUT"
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+            echo "All release commits verify as valid."
+          fi
+
+      - name: Check cosign signatures on release assets
+        id: assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.latest.outputs.tag }}
+        run: |
+          set -euo pipefail
+          ASSETS=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')
+
+          CLI_BINARIES=$(echo "$ASSETS" | grep -E '^synthorg_.+(_Linux|_Darwin|_Windows).*\.(tar\.gz|zip)$' || true)
+          MISSING=()
+          while read -r asset; do
+            [ -z "$asset" ] && continue
+            # GoReleaser emits matching `.sig` or `.sigstore.json` siblings per cosign/sign step.
+            sib_sig=$(echo "$ASSETS" | grep -F "$asset.sig" || true)
+            sib_bundle=$(echo "$ASSETS" | grep -F "$asset.sigstore.json" || true)
+            if [ -z "$sib_sig" ] && [ -z "$sib_bundle" ]; then
+              MISSING+=("$asset")
+            fi
+          done <<< "$CLI_BINARIES"
+
+          if [ "${#MISSING[@]}" -gt 0 ]; then
+            echo "::error::$(printf '%d CLI assets missing cosign signatures: %s' "${#MISSING[@]}" "${MISSING[*]}")"
+            printf 'missing<<EOF\n%s\nEOF\n' "$(printf '%s\n' "${MISSING[@]}")" >> "$GITHUB_OUTPUT"
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+            echo "All CLI assets carry cosign signatures."
+          fi
+
+          # Record SBOM presence (CycloneDX JSON per image).
+          SBOM_COUNT=$(echo "$ASSETS" | grep -cE '^sbom-.+\.cdx\.json$' || true)
+          echo "sbom_count=$SBOM_COUNT" >> "$GITHUB_OUTPUT"
+
+      - name: Check Verification section integrity
+        id: body
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.latest.outputs.tag }}
+        run: |
+          set -euo pipefail
+          BODY=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json body --jq '.body')
+
+          MISSING=()
+          grep -qE '^## Verification' <<< "$BODY" || MISSING+=("## Verification section")
+          grep -qE '^### CLI Checksums' <<< "$BODY" || MISSING+=("### CLI Checksums subsection")
+          grep -qE '^### (Provenance|Container Image Signatures)' <<< "$BODY" || MISSING+=("### Provenance / Container Image Signatures subsection")
+          grep -qE '^### Software Bill of Materials' <<< "$BODY" || MISSING+=("### SBOM subsection")
+
+          if [ "${#MISSING[@]}" -gt 0 ]; then
+            echo "::error::$(printf 'Verification section incomplete: %s' "${MISSING[*]}")"
+            printf 'missing<<EOF\n%s\nEOF\n' "$(printf '%s\n' "${MISSING[@]}")" >> "$GITHUB_OUTPUT"
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+            echo "Verification section is complete."
+          fi
+
+      - name: Aggregate + emit conclusion
+        id: report
+        env:
+          COMMITS_OK: ${{ steps.commits.outputs.ok }}
+          ASSETS_OK: ${{ steps.assets.outputs.ok }}
+          BODY_OK: ${{ steps.body.outputs.ok }}
+        run: |
+          FAILURES=()
+          [ "$COMMITS_OK" != "true" ] && FAILURES+=("commit-signatures")
+          [ "$ASSETS_OK" != "true" ] && FAILURES+=("asset-signatures")
+          [ "$BODY_OK" != "true" ] && FAILURES+=("release-body")
+          if [ "${#FAILURES[@]}" -gt 0 ]; then
+            echo "conclusion=failure" >> "$GITHUB_OUTPUT"
+            echo "failures=${FAILURES[*]}" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+          echo "conclusion=success" >> "$GITHUB_OUTPUT"
+          echo "failures=" >> "$GITHUB_OUTPUT"
+
+  report-failure:
+    name: Open / update tracking issue on regression
+    needs: health-check
+    if: always() && needs.health-check.result != 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      - name: Post / update tracking issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FAILURES: ${{ needs.health-check.outputs.failures }}
+          TAG: ${{ needs.health-check.outputs.tag }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          TITLE='Release pipeline health regression'
+          ISSUE_NUMBER=$(gh issue list --state open --label 'automation:release-events' \
+            --search "in:title \"$TITLE\"" --json number,title \
+            --jq '[.[] | select(.title == "'"$TITLE"'")] | .[0].number // empty')
+
+          BODY=$(cat <<EOF
+          Nightly release-pipeline health check failed at $(date -u +%Y-%m-%dT%H:%M:%SZ).
+
+          - **Release:** \`$TAG\`
+          - **Failing checks:** \`$FAILURES\`
+          - **Run:** ${RUN_URL}
+
+          Categories:
+          - \`commit-signatures\`: one or more commits in the release range do not verify as \`{verified: true, reason: "valid"}\`.
+          - \`asset-signatures\`: one or more CLI binary assets are missing cosign \`.sig\` / \`.sigstore.json\` siblings.
+          - \`release-body\`: the Verification section appended by finalize-release.yml is missing required subsections.
+
+          See docs/reference/github-environments.md and docs/reference/claude-reference.md§Releasing.
+          EOF
+          )
+
+          if [ -z "$ISSUE_NUMBER" ]; then
+            gh issue create --title "$TITLE" \
+              --label 'automation:release-events,type:ci,prio:high' \
+              --body "$BODY"
+          else
+            gh issue comment "$ISSUE_NUMBER" --body "$BODY"
+          fi

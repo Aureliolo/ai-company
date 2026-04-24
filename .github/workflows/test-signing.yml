@@ -1,0 +1,300 @@
+name: Test Signing
+
+# End-to-end signing contract test for the release pipeline. Exercises each
+# code path that produces a CI-authored commit (release.yml, dev-release.yml,
+# auto-rollover.yml) and asserts the resulting commit/tag shows
+# `verified: true, reason: "valid"` per `gh api`.
+#
+# Runs nightly at 06:00 UTC and on workflow_dispatch. A signing regression
+# creates / updates a pinned tracking issue labeled `automation:release-events`
+# with the failing job details.
+#
+# All three jobs are dry-run: they create throwaway refs / commit objects
+# via the Git Data API and delete them on exit, so no side effects land on
+# `main` or on any release.
+
+on:
+  workflow_dispatch: {}
+  schedule:
+    - cron: "0 6 * * *"
+
+permissions: {}
+
+concurrency:
+  group: test-signing
+  cancel-in-progress: false
+
+jobs:
+  rp-release-commit-signature:
+    name: RP release commit signature
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: release
+    permissions:
+      contents: write
+    outputs:
+      conclusion: ${{ steps.assert.outputs.conclusion }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - name: Release runner setup
+        id: setup
+        uses: ./.github/actions/release-runner-setup
+        with:
+          app-id: ${{ secrets.RELEASE_BOT_APP_ID }}
+          app-private-key: ${{ secrets.RELEASE_BOT_APP_PRIVATE_KEY }}
+
+      - name: Create disposable branch + signed empty commit
+        id: commit
+        env:
+          GH_TOKEN: ${{ steps.setup.outputs.token }}
+        run: |
+          set -euo pipefail
+          SHORT_SHA="${GITHUB_SHA::7}"
+          DISPOSABLE_REF="refs/heads/test-signing/rp-${SHORT_SHA}-${GITHUB_RUN_ID}"
+          echo "ref=$DISPOSABLE_REF" >> "$GITHUB_OUTPUT"
+
+          # Create the disposable branch off current main via Git Data API.
+          gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
+            -f ref="$DISPOSABLE_REF" \
+            -f sha="$GITHUB_SHA"
+
+          # Create a signed empty commit on that branch (reuses main's tree).
+          TREE_SHA=$(gh api "repos/$GITHUB_REPOSITORY/git/commits/$GITHUB_SHA" --jq '.tree.sha')
+          COMMIT_SHA=$(jq -n \
+            --arg msg "test: verify RP release commit signature" \
+            --arg tree "$TREE_SHA" \
+            --arg parent "$GITHUB_SHA" \
+            '{message: $msg, tree: $tree, parents: [$parent]}' \
+          | gh api --method POST "repos/$GITHUB_REPOSITORY/git/commits" --input - --jq '.sha')
+          echo "commit_sha=$COMMIT_SHA" >> "$GITHUB_OUTPUT"
+
+          # Fast-forward the disposable branch to the new commit.
+          gh api --method PATCH "repos/$GITHUB_REPOSITORY/git/${DISPOSABLE_REF#refs/}" \
+            -f sha="$COMMIT_SHA"
+
+      - name: Assert verified
+        id: assert
+        env:
+          GH_TOKEN: ${{ steps.setup.outputs.token }}
+          COMMIT_SHA: ${{ steps.commit.outputs.commit_sha }}
+        run: |
+          set -euo pipefail
+          v=$(gh api "repos/$GITHUB_REPOSITORY/git/commits/$COMMIT_SHA" --jq '.verification')
+          echo "$v" | jq .
+          verified=$(jq -r '.verified' <<< "$v")
+          reason=$(jq -r '.reason' <<< "$v")
+          if [ "$verified" != "true" ] || [ "$reason" != "valid" ]; then
+            echo "::error::Signature regression on RP commit path: verified=$verified reason=$reason"
+            echo "conclusion=failure" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+          echo "conclusion=success" >> "$GITHUB_OUTPUT"
+          echo "RP commit path: verified=$verified reason=$reason"
+
+      - name: Cleanup disposable branch
+        if: always()
+        env:
+          GH_TOKEN: ${{ steps.setup.outputs.token }}
+          DISPOSABLE_REF: ${{ steps.commit.outputs.ref }}
+        run: |
+          if [ -n "${DISPOSABLE_REF:-}" ]; then
+            gh api --method DELETE "repos/$GITHUB_REPOSITORY/git/${DISPOSABLE_REF#refs/}" 2>/dev/null || true
+          fi
+
+  dev-release-tag-signature:
+    name: Dev release tag signature
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: release
+    permissions:
+      contents: write
+    outputs:
+      conclusion: ${{ steps.assert.outputs.conclusion }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - name: Release runner setup
+        id: setup
+        uses: ./.github/actions/release-runner-setup
+        with:
+          app-id: ${{ secrets.RELEASE_BOT_APP_ID }}
+          app-private-key: ${{ secrets.RELEASE_BOT_APP_PRIVATE_KEY }}
+
+      - name: Create disposable annotated tag
+        id: tag
+        env:
+          GH_TOKEN: ${{ steps.setup.outputs.token }}
+        run: |
+          set -euo pipefail
+          SHORT_SHA="${GITHUB_SHA::7}"
+          TAG_NAME="test-signing/dev-${SHORT_SHA}-${GITHUB_RUN_ID}"
+          echo "tag_name=$TAG_NAME" >> "$GITHUB_OUTPUT"
+
+          # Annotated tag object carries its own signature. dev-release.yml
+          # creates lightweight tags (POST /git/refs with type=commit), but
+          # the signing contract we care about is "tag creation under an App
+          # token", so we exercise the stronger variant here.
+          TAG_SHA=$(jq -n \
+            --arg tag "$TAG_NAME" \
+            --arg msg "test-signing dev tag dry-run" \
+            --arg obj "$GITHUB_SHA" \
+          '{tag: $tag, message: $msg, object: $obj, type: "commit"}' \
+          | gh api --method POST "repos/$GITHUB_REPOSITORY/git/tags" --input - --jq '.sha')
+          echo "tag_sha=$TAG_SHA" >> "$GITHUB_OUTPUT"
+
+          gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
+            -f ref="refs/tags/$TAG_NAME" \
+            -f sha="$TAG_SHA"
+
+      - name: Assert verified
+        id: assert
+        env:
+          GH_TOKEN: ${{ steps.setup.outputs.token }}
+          TAG_SHA: ${{ steps.tag.outputs.tag_sha }}
+        run: |
+          set -euo pipefail
+          v=$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$TAG_SHA" --jq '.verification')
+          echo "$v" | jq .
+          verified=$(jq -r '.verified' <<< "$v")
+          reason=$(jq -r '.reason' <<< "$v")
+          if [ "$verified" != "true" ] || [ "$reason" != "valid" ]; then
+            echo "::error::Signature regression on dev-release tag path: verified=$verified reason=$reason"
+            echo "conclusion=failure" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+          echo "conclusion=success" >> "$GITHUB_OUTPUT"
+          echo "Dev tag path: verified=$verified reason=$reason"
+
+      - name: Cleanup disposable tag
+        if: always()
+        env:
+          GH_TOKEN: ${{ steps.setup.outputs.token }}
+          TAG_NAME: ${{ steps.tag.outputs.tag_name }}
+        run: |
+          if [ -n "${TAG_NAME:-}" ]; then
+            gh api --method DELETE "repos/$GITHUB_REPOSITORY/git/refs/tags/$TAG_NAME" 2>/dev/null || true
+          fi
+
+  auto-rollover-commit-signature:
+    name: Auto-rollover commit signature (dry-run)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: release
+    permissions:
+      contents: write
+    outputs:
+      conclusion: ${{ steps.assert.outputs.conclusion }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - name: Release runner setup
+        id: setup
+        uses: ./.github/actions/release-runner-setup
+        with:
+          app-id: ${{ secrets.RELEASE_BOT_APP_ID }}
+          app-private-key: ${{ secrets.RELEASE_BOT_APP_PRIVATE_KEY }}
+
+      - name: Create empty commit object (no ref update)
+        id: commit
+        env:
+          GH_TOKEN: ${{ steps.setup.outputs.token }}
+        run: |
+          set -euo pipefail
+          # Exactly the call auto-rollover.yml makes, minus the PATCH
+          # refs/heads/main step. The signing happens at POST /git/commits,
+          # not at ref-update; we can therefore verify the signing contract
+          # without ever touching main.
+          TREE_SHA=$(gh api "repos/$GITHUB_REPOSITORY/git/commits/$GITHUB_SHA" --jq '.tree.sha')
+          COMMIT_SHA=$(jq -n \
+            --arg msg "test: auto-rollover dry-run signature check" \
+            --arg tree "$TREE_SHA" \
+            --arg parent "$GITHUB_SHA" \
+          '{message: $msg, tree: $tree, parents: [$parent]}' \
+          | gh api --method POST "repos/$GITHUB_REPOSITORY/git/commits" --input - --jq '.sha')
+          echo "commit_sha=$COMMIT_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Assert verified
+        id: assert
+        env:
+          GH_TOKEN: ${{ steps.setup.outputs.token }}
+          COMMIT_SHA: ${{ steps.commit.outputs.commit_sha }}
+        run: |
+          set -euo pipefail
+          v=$(gh api "repos/$GITHUB_REPOSITORY/git/commits/$COMMIT_SHA" --jq '.verification')
+          echo "$v" | jq .
+          verified=$(jq -r '.verified' <<< "$v")
+          reason=$(jq -r '.reason' <<< "$v")
+          if [ "$verified" != "true" ] || [ "$reason" != "valid" ]; then
+            echo "::error::Signature regression on auto-rollover path: verified=$verified reason=$reason"
+            echo "conclusion=failure" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+          echo "conclusion=success" >> "$GITHUB_OUTPUT"
+          echo "Auto-rollover path: verified=$verified reason=$reason"
+
+  report-failure:
+    name: Open / update tracking issue on regression
+    needs:
+      - rp-release-commit-signature
+      - dev-release-tag-signature
+      - auto-rollover-commit-signature
+    if: >-
+      always() &&
+      (needs.rp-release-commit-signature.result != 'success'
+       || needs.dev-release-tag-signature.result != 'success'
+       || needs.auto-rollover-commit-signature.result != 'success')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      - name: Post / update tracking issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RP_RESULT: ${{ needs.rp-release-commit-signature.result }}
+          DEV_RESULT: ${{ needs.dev-release-tag-signature.result }}
+          ROLLOVER_RESULT: ${{ needs.auto-rollover-commit-signature.result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          TITLE='Release pipeline signing regression'
+          # Look for an open tracking issue by label. Use the most recent
+          # open match so concurrent regressions re-use a single thread.
+          ISSUE_NUMBER=$(gh issue list --state open --label 'automation:release-events' \
+            --search "in:title \"$TITLE\"" --json number,title \
+            --jq '[.[] | select(.title == "'"$TITLE"'")] | .[0].number // empty')
+
+          BODY=$(cat <<EOF
+          Nightly signing test failed at $(date -u +%Y-%m-%dT%H:%M:%SZ).
+
+          | Path | Result |
+          | --- | --- |
+          | RP release commit | \`$RP_RESULT\` |
+          | Dev release tag | \`$DEV_RESULT\` |
+          | Auto-rollover commit | \`$ROLLOVER_RESULT\` |
+
+          Run: ${RUN_URL}
+
+          This means one or more CI-generated commits no longer verify as
+          \`{verified: true, reason: "valid"}\`. The most likely cause is a
+          missing or misconfigured \`RELEASE_BOT_APP_*\` secret on the
+          \`release\` environment, or an App-side configuration drift
+          (permissions / installation scope). See
+          docs/reference/github-environments.md#release_bot_app_.
+          EOF
+          )
+
+          if [ -z "$ISSUE_NUMBER" ]; then
+            gh issue create --title "$TITLE" \
+              --label 'automation:release-events,type:ci,prio:high' \
+              --body "$BODY"
+          else
+            gh issue comment "$ISSUE_NUMBER" --body "$BODY"
+          fi
