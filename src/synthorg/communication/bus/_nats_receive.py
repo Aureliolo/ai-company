@@ -93,6 +93,7 @@ async def _maybe_log_overflow(
     *,
     channel_name: str,
     subscriber_id: str,
+    max_wait_seconds: float | None = None,
 ) -> None:
     """Emit ``COMM_SUBSCRIBER_QUEUE_OVERFLOW`` if the consumer is paused.
 
@@ -102,6 +103,15 @@ async def _maybe_log_overflow(
     that JetStream has paused delivery to this consumer. Rate-limited
     per ``(channel, subscriber)`` at
     :data:`_OVERFLOW_LOG_INTERVAL_SECONDS`.
+
+    ``max_wait_seconds`` clamps the ``consumer_info()`` probe to the
+    caller's remaining receive budget so a bounded ``receive(timeout=
+    0.1)`` cannot be extended to ``0.1 + 2s`` by the probe. Pass the
+    remaining budget (e.g. ``deadline - time.monotonic()``) from
+    bounded callers; blocking callers may omit it to use the default
+    :data:`_CONSUMER_INFO_PROBE_TIMEOUT_SECONDS`. When the clamped
+    timeout is non-positive the probe is skipped entirely (rate-limit
+    slot released so the next empty fetch retries).
 
     Best-effort: ``consumer_info()`` failures are swallowed so an
     observability probe never breaks the receive loop.
@@ -116,11 +126,20 @@ async def _maybe_log_overflow(
     # ``consumer_info()`` so concurrent callers on the same
     # ``(channel, subscriber)`` key cannot all pass the window check
     # and pile on duplicate probes. On any path that does NOT emit
-    # the overflow event (probe failure, healthy consumer) we release
-    # the slot via ``pop`` so a transient empty fetch on a healthy
-    # consumer does not suppress the next *real* overflow warning
-    # for up to ``_OVERFLOW_LOG_INTERVAL_SECONDS``.
+    # the overflow event (probe failure, healthy consumer, budget
+    # exhausted) we release the slot via ``pop`` so a transient empty
+    # fetch on a healthy consumer does not suppress the next *real*
+    # overflow warning for up to ``_OVERFLOW_LOG_INTERVAL_SECONDS``.
     state.last_overflow_log[key] = now
+    probe_timeout = _CONSUMER_INFO_PROBE_TIMEOUT_SECONDS
+    if max_wait_seconds is not None:
+        probe_timeout = min(probe_timeout, max(0.0, max_wait_seconds))
+    if probe_timeout <= 0.0:
+        # Caller's remaining budget is already exhausted -- skip the
+        # probe so receive() can return promptly. The next empty fetch
+        # will retry with a fresh budget.
+        state.last_overflow_log.pop(key, None)
+        return
     try:
         # Bound the best-effort probe: a stalled control-plane RPC
         # must NOT block the receive loop or shutdown. On timeout we
@@ -129,7 +148,7 @@ async def _maybe_log_overflow(
         # retry without suppressing a real overflow warning.
         info = await asyncio.wait_for(
             sub.consumer_info(),
-            timeout=_CONSUMER_INFO_PROBE_TIMEOUT_SECONDS,
+            timeout=probe_timeout,
         )
     except MemoryError, RecursionError:
         raise
@@ -328,6 +347,8 @@ async def receive_blocking(
         if msgs is None:
             return None
         if not msgs:
+            # Blocking caller has no receive deadline, so let the
+            # probe use its default 2s ceiling.
             await _maybe_log_overflow(
                 state,
                 sub,
@@ -370,11 +391,17 @@ async def receive_with_timeout(
         if msgs is None:
             return None
         if not msgs:
+            # Clamp the overflow probe to the caller's remaining
+            # receive budget so ``receive(timeout=0.1)`` cannot be
+            # extended by the full 2s probe ceiling. If the budget
+            # is already exhausted the helper skips the probe.
+            budget = deadline - time.monotonic()
             await _maybe_log_overflow(
                 state,
                 sub,
                 channel_name=channel_name,
                 subscriber_id=subscriber_id,
+                max_wait_seconds=budget,
             )
             continue
         envelope = await build_envelope(
