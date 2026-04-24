@@ -50,8 +50,8 @@ jobs:
       actions: read
       contents: write
     steps:
-      - name: Check both workflows and publish draft
-        id: publish
+      - name: Preflight (both workflows succeeded + draft exists)
+        id: preflight
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.event.workflow_run.head_branch }}
@@ -68,28 +68,26 @@ jobs:
           # If the triggering workflow failed, no point checking the other
           if [ "$WORKFLOW_CONCLUSION" != "success" ]; then
             echo "Triggering workflow failed -- skipping."
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
           # Check status of both workflows for this tag.
-          # gh run list --branch works for both branches and tags.
-          # --status completed filters out in-progress re-triggered runs.
           CLI_CONCLUSION=$(gh run list --repo "$GITHUB_REPOSITORY" \
             --workflow cli.yml --branch "$TAG" --event push --commit "$HEAD_SHA" \
             --limit 1 --status completed \
             --json conclusion --jq '.[0].conclusion // "pending"')
-
           DOCKER_CONCLUSION=$(gh run list --repo "$GITHUB_REPOSITORY" \
             --workflow docker.yml --branch "$TAG" --event push --commit "$HEAD_SHA" \
             --limit 1 --status completed \
             --json conclusion --jq '.[0].conclusion // "pending"')
-
           echo "CLI: $CLI_CONCLUSION"
           echo "Docker: $DOCKER_CONCLUSION"
 
           if [ "$CLI_CONCLUSION" != "success" ] || [ "$DOCKER_CONCLUSION" != "success" ]; then
             echo "Not all workflows succeeded yet (CLI=$CLI_CONCLUSION, Docker=$DOCKER_CONCLUSION)."
             echo "The other workflow's completion will trigger another attempt."
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -97,15 +95,90 @@ jobs:
           if ! IS_DRAFT=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
               --json isDraft --jq '.isDraft' 2>/dev/null); then
             echo "Release $TAG not found -- nothing to publish."
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
           if [ "$IS_DRAFT" != "true" ]; then
             echo "Release $TAG is not a draft (isDraft=$IS_DRAFT). Already published."
             # Still signal published so the cleanup step can run on reruns
-            echo "published=true" >> "$GITHUB_OUTPUT"
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
+            echo "already_published=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+
+          echo "proceed=true" >> "$GITHUB_OUTPUT"
+
+      # ── Smoke-test the artifacts before publishing ──
+      # Blocks draft -> published transition if the backend image cannot
+      # serve /healthz or the CLI binary cannot report its version. Runs
+      # in ~5 min, scoped tightly so unrelated image regressions do not
+      # permanently block publishes (the upstream docker.yml / cli.yml
+      # already gate on this; this step catches the subset of failures
+      # that only manifest at actual run-time).
+      - name: Smoke-test backend image /healthz
+        if: steps.preflight.outputs.proceed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          set -euo pipefail
+          IMAGE="ghcr.io/aureliolo/synthorg-backend:${TAG#v}"
+          echo "Pulling $IMAGE"
+          docker pull "$IMAGE"
+          echo "Starting container"
+          # The image's setup wizard falls back to ephemeral SQLite when
+          # no DATABASE_URL is provided -- sufficient for a /healthz
+          # smoke-test without provisioning external state.
+          CID=$(docker run -d --rm -p 3001:3001 "$IMAGE")
+          trap 'docker logs "$CID" 2>&1 | tail -50; docker stop "$CID" >/dev/null 2>&1 || true' EXIT
+
+          # Poll /healthz for 120s. 200 means readiness; non-200 / connection
+          # refused means keep trying. Exit 1 if still failing at deadline.
+          deadline=$((SECONDS + 120))
+          while [ "$SECONDS" -lt "$deadline" ]; do
+            if curl -sf -o /dev/null -w '%{http_code}' http://localhost:3001/healthz 2>/dev/null | grep -q '^200$'; then
+              echo "/healthz returned 200 after ${SECONDS}s"
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "::error::/healthz did not return 200 within 120s; blocking publish"
+          exit 1
+
+      - name: Smoke-test CLI binary --version
+        if: steps.preflight.outputs.proceed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          set -euo pipefail
+          TMP=$(mktemp -d)
+          trap 'rm -rf "$TMP"' EXIT
+
+          # GoReleaser-emitted archive name: synthorg_<ver>_Linux_x86_64.tar.gz.
+          VER="${TAG#v}"
+          ASSET="synthorg_${VER}_Linux_x86_64.tar.gz"
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern "$ASSET" --dir "$TMP"
+          tar -xzf "$TMP/$ASSET" -C "$TMP"
+
+          VERSION_OUT=$("$TMP/synthorg" --version 2>&1 || true)
+          echo "CLI --version output: $VERSION_OUT"
+          if ! printf '%s\n' "$VERSION_OUT" | grep -qF "$VER"; then
+            echo "::error::CLI --version output does not contain '$VER'; blocking publish"
+            exit 1
+          fi
+
+      - name: Assemble + publish draft
+        if: steps.preflight.outputs.proceed == 'true'
+        id: publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.workflow_run.head_branch }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
 
           # ── Assemble combined Verification section ──
           # CLI and Docker workflows embed verification data in HTML comments.
@@ -279,12 +352,14 @@ jobs:
           echo "published=true" >> "$GITHUB_OUTPUT"
 
       # ── Clean up ALL dev pre-releases and tags after a stable release ──
-      # Deletes every release and tag matching vX.Y.Z-dev.N, regardless of
-      # draft/published/pre-release status. Only runs when a stable release
-      # was just published (not for dev releases themselves).
+      # Deletes every release and tag matching the dev-tag regex, regardless
+      # of draft/published/pre-release status. Only runs when a stable release
+      # was just published (not for dev releases themselves). The already_published
+      # branch handles replays after a concurrent run won the publish race.
       - name: Clean up dev pre-releases and tags
         if: >-
-          steps.publish.outputs.published == 'true'
+          (steps.publish.outputs.published == 'true'
+             || steps.preflight.outputs.already_published == 'true')
           && !contains(github.event.workflow_run.head_branch, '-dev.')
         env:
           GH_TOKEN: ${{ github.token }}
@@ -304,9 +379,10 @@ jobs:
 
           # 1. Delete all dev releases (draft, pre-release, or published) + their tags.
           #    Use the API directly to ensure drafts are included.
-          #    Strict regex: only match vX.Y.Z-dev.N (never stable tags).
+          #    Strict regex: only match vX.Y.Z-dev.YYYYMMDD.N (never stable
+          #    tags). The `YYYYMMDD.N` shape is enforced by dev-release.yml.
           gh api "repos/$GITHUB_REPOSITORY/releases" --paginate \
-            --jq '.[] | select(.tag_name | test("^v[0-9]+\\.[0-9]+\\.[0-9]+-dev\\.[0-9]+$")) | .tag_name' \
+            --jq '.[] | select(.tag_name | test("^v[0-9]+\\.[0-9]+\\.[0-9]+-dev\\.[0-9]{8}\\.[0-9]+$")) | .tag_name' \
           | while read -r dev_tag; do
               echo "Deleting dev release + tag: $dev_tag"
               gh release delete "$dev_tag" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag || true
@@ -315,7 +391,7 @@ jobs:
           # 2. Delete orphan dev tags (tags without a release, e.g. from failed builds).
           gh api "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/v" --paginate --jq '.[].ref' \
           | sed 's|^refs/tags/||' \
-          | { grep -E '^v[0-9]+\.[0-9]+\.[0-9]+-dev\.[0-9]+$' || true; } \
+          | { grep -E '^v[0-9]+\.[0-9]+\.[0-9]+-dev\.[0-9]{8}\.[0-9]+$' || true; } \
           | while read -r dev_tag; do
               echo "Deleting orphan dev tag: $dev_tag"
               gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/tags/$dev_tag" || true
