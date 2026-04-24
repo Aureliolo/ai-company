@@ -365,7 +365,19 @@ def _run_pytest(paths: list[str], *, run_all: bool = False) -> int:
     elapsed = time.monotonic() - start
     captured_stdout = "".join(stdout_lines)
     test_count = _parse_test_count(captured_stdout)
-    if _check_timing_regression(elapsed, run_all=run_all, test_count=test_count):
+    # Skip the regression guard when tests failed / crashed: worker
+    # crashes skew ``elapsed / test_count`` upward (time spent before
+    # the crash is charged against the surviving test count) and
+    # produce false-positive regressions. The underlying failure is
+    # already surfaced via ``returncode`` and the test output. When
+    # tests fail the operator needs to fix those first; flipping the
+    # regression banner on top of a crash output adds noise without
+    # pointing at the real root cause.
+    if returncode == 0 and _check_timing_regression(
+        elapsed,
+        run_all=run_all,
+        test_count=test_count,
+    ):
         # Regression detected -- block the push even if tests passed.
         return max(returncode, 1)
     return returncode
