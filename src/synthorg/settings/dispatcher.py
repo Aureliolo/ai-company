@@ -17,6 +17,7 @@ from synthorg.observability.events.settings import (
     SETTINGS_CHANNEL_CREATED,
     SETTINGS_DISPATCHER_CHANNEL_DEAD,
     SETTINGS_DISPATCHER_POLL_ERROR,
+    SETTINGS_DISPATCHER_START_REJECTED,
     SETTINGS_DISPATCHER_STARTED,
     SETTINGS_DISPATCHER_STOPPED,
     SETTINGS_SUBSCRIBER_ERROR,
@@ -114,11 +115,22 @@ class SettingsChangeDispatcher:
                     "SettingsChangeDispatcher is unrestartable after a "
                     "timed-out stop; construct a fresh dispatcher instead"
                 )
-                logger.warning(SETTINGS_DISPATCHER_STARTED, error=msg)
+                # Dedicated rejection event -- do not reuse
+                # SETTINGS_DISPATCHER_STARTED, which would inflate
+                # successful-start metrics/alerts.
+                logger.warning(
+                    SETTINGS_DISPATCHER_START_REJECTED,
+                    error=msg,
+                    reason="unrestartable",
+                )
                 raise RuntimeError(msg)
             if self._running:
                 msg = "SettingsChangeDispatcher is already running"
-                logger.warning(SETTINGS_DISPATCHER_STARTED, error=msg)
+                logger.warning(
+                    SETTINGS_DISPATCHER_START_REJECTED,
+                    error=msg,
+                    reason="already_running",
+                )
                 raise RuntimeError(msg)
 
             await self._ensure_channel()
@@ -149,8 +161,9 @@ class SettingsChangeDispatcher:
                     # during already-failed start() should not mask
                     # the original exception below.
                     logger.warning(
-                        SETTINGS_DISPATCHER_STARTED,
+                        SETTINGS_DISPATCHER_START_REJECTED,
                         error="rollback unsubscribe failed during start() cleanup",
+                        reason="rollback_unsubscribe_failed",
                         exc_info=True,
                     )
                 raise

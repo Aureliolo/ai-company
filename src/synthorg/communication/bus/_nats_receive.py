@@ -5,6 +5,7 @@ handling timeouts, building delivery envelopes, and acking messages.
 """
 
 import asyncio
+import contextlib
 import time
 from datetime import UTC, datetime
 from typing import Any
@@ -87,7 +88,7 @@ async def resolve_consumer(
     return sub
 
 
-async def _maybe_log_overflow(
+async def _maybe_log_overflow(  # noqa: C901  -- linear flow, not branching
     state: _NatsState,
     sub: Any,
     *,
@@ -140,24 +141,47 @@ async def _maybe_log_overflow(
         # will retry with a fresh budget.
         state.last_overflow_log.pop(key, None)
         return
+    # Race the probe against shutdown so ``receive_blocking()`` (which
+    # has no caller deadline) cannot hold shutdown open for the full
+    # probe_timeout budget. If ``state.shutdown_event`` fires first we
+    # short-circuit through the same non-emission path as a probe
+    # failure; otherwise we use the consumer_info() result.
+    probe_task: asyncio.Task[Any] = asyncio.create_task(sub.consumer_info())
+    shutdown_task: asyncio.Task[Any] = asyncio.create_task(
+        state.shutdown_event.wait(),
+    )
     try:
-        # Bound the best-effort probe: a stalled control-plane RPC
-        # must NOT block the receive loop or shutdown. On timeout we
-        # treat the probe exactly like a generic exception (release
-        # the rate-limit slot, return), so the next empty fetch can
-        # retry without suppressing a real overflow warning.
-        info = await asyncio.wait_for(
-            sub.consumer_info(),
+        done, _ = await asyncio.wait(
+            {probe_task, shutdown_task},
             timeout=probe_timeout,
+            return_when=asyncio.FIRST_COMPLETED,
         )
+    except BaseException:
+        probe_task.cancel()
+        shutdown_task.cancel()
+        raise
+    # Clean up the loser (timeout, or the task that didn't finish).
+    if probe_task not in done:
+        probe_task.cancel()
+        with contextlib.suppress(BaseException):
+            await probe_task
+    if shutdown_task not in done:
+        shutdown_task.cancel()
+        with contextlib.suppress(BaseException):
+            await shutdown_task
+    # Shutdown wins (or timed out with no probe result): release the
+    # rate-limit slot and exit through the non-emission path. The next
+    # empty fetch after a restart will retry the probe cleanly.
+    if probe_task not in done:
+        state.last_overflow_log.pop(key, None)
+        return
+    try:
+        info = probe_task.result()
     except MemoryError, RecursionError:
         raise
     except Exception:
-        # Catches the ``TimeoutError`` from asyncio.wait_for above
-        # (TimeoutError is a subclass of Exception on Python 3.11+)
-        # along with any other probe RPC failure. Release the
-        # rate-limit slot so the next empty fetch can retry the probe
-        # without suppressing a real overflow warning.
+        # Probe RPC failure -- release the slot so the next empty
+        # fetch can retry without suppressing a real overflow warning.
         state.last_overflow_log.pop(key, None)
         return
     num_pending = getattr(info, "num_ack_pending", 0)

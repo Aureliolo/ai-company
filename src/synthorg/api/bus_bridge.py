@@ -160,7 +160,7 @@ class MessageBusBridge:
         self._max_errors_fallback_logged = False
         return value
 
-    async def start(self) -> None:
+    async def start(self) -> None:  # noqa: C901, PLR0912, PLR0915
         """Start polling tasks for each channel.
 
         The entire body runs under ``_lifecycle_lock`` so the
@@ -189,57 +189,110 @@ class MessageBusBridge:
             self._running = True
 
             failed_channels: list[str] = []
-            for channel_name in ALL_CHANNELS:
-                try:
-                    await self._bus.subscribe(channel_name, _SUBSCRIBER_ID)
-                # Catch ``CommunicationError`` (base of ``BusStreamError``
-                # raised by the NATS pull-consumer creation path) in
-                # addition to OS/connection errors so a single broken
-                # backend does not abort the whole start() -- the
-                # partial-coverage escalation below still surfaces it.
-                # ``RuntimeError`` remains in the tuple to preserve the
-                # previous catch surface for backend implementations
-                # that raise it on transient wiring errors.
-                except CommunicationError, OSError, RuntimeError, ConnectionError:
-                    # Track per-channel subscribe failures so we can
-                    # surface incomplete coverage at ERROR with the full
-                    # list -- a single transient failure must not
-                    # silently mask a dead channel from operators.
-                    failed_channels.append(channel_name)
-                    logger.warning(
-                        API_BUS_BRIDGE_SUBSCRIBE_FAILED,
-                        channel=channel_name,
-                        subscriber_id=_SUBSCRIBER_ID,
-                        exc_info=True,
-                    )
-                    continue
-                # Transactional per-channel subscribe + spawn: if task
-                # creation or callback registration raises after the
-                # bus subscribe succeeded, the channel would be left
-                # subscribed with no poller (orphaned subscription
-                # that stop() can unsubscribe but start() would never
-                # route traffic to). Roll the subscribe back on any
-                # post-subscribe failure so either both succeed or
-                # the channel is recorded as failed.
-                try:
-                    task = asyncio.create_task(
-                        self._poll_channel(channel_name),
-                        name=f"bridge-{channel_name}",
-                    )
-                    task.add_done_callback(
-                        log_task_exceptions(
-                            logger,
-                            API_BRIDGE_CHANNEL_DEAD,
-                            channel=channel_name,
-                        ),
-                    )
-                except BaseException:
-                    # Best-effort unsubscribe -- if the bus backend
-                    # itself is broken, the subscribe rollback may
-                    # also fail, but we still record the channel as
-                    # failed so start() can surface it.
+            subscribed_channels: list[str] = []
+            # Outer transactional try/except: an uncaught CancelledError
+            # or system error (MemoryError / RecursionError) partway
+            # through the channel loop would leave earlier subscriptions
+            # and pollers alive with ``_running=True``, so future
+            # start() calls would immediately raise "already running"
+            # even though the bridge is half-started. Roll back all
+            # accumulated state on any unhandled BaseException.
+            try:
+                for channel_name in ALL_CHANNELS:
                     try:
-                        await self._bus.unsubscribe(channel_name, _SUBSCRIBER_ID)
+                        await self._bus.subscribe(channel_name, _SUBSCRIBER_ID)
+                    # Catch ``CommunicationError`` (base of
+                    # ``BusStreamError`` raised by the NATS pull-consumer
+                    # creation path) in addition to OS/connection errors
+                    # so a single broken backend does not abort the
+                    # whole start() -- the partial-coverage escalation
+                    # below still surfaces it. ``RuntimeError`` remains
+                    # in the tuple to preserve the previous catch surface
+                    # for backend implementations that raise it on
+                    # transient wiring errors.
+                    except CommunicationError, OSError, RuntimeError, ConnectionError:
+                        # Track per-channel subscribe failures so we can
+                        # surface incomplete coverage at ERROR with the
+                        # full list -- a single transient failure must
+                        # not silently mask a dead channel from operators.
+                        failed_channels.append(channel_name)
+                        logger.warning(
+                            API_BUS_BRIDGE_SUBSCRIBE_FAILED,
+                            channel=channel_name,
+                            subscriber_id=_SUBSCRIBER_ID,
+                            exc_info=True,
+                        )
+                        continue
+                    subscribed_channels.append(channel_name)
+                    # Transactional per-channel subscribe + spawn: if
+                    # task creation or callback registration raises
+                    # after the bus subscribe succeeded, the channel
+                    # would be left subscribed with no poller. Roll
+                    # back the subscribe on non-system failures so
+                    # either both succeed or the channel is recorded
+                    # as failed. ``MemoryError`` / ``RecursionError``
+                    # propagate to the outer rollback.
+                    try:
+                        task = asyncio.create_task(
+                            self._poll_channel(channel_name),
+                            name=f"bridge-{channel_name}",
+                        )
+                        task.add_done_callback(
+                            log_task_exceptions(
+                                logger,
+                                API_BRIDGE_CHANNEL_DEAD,
+                                channel=channel_name,
+                            ),
+                        )
+                    except MemoryError, RecursionError:
+                        raise
+                    except Exception:
+                        # Best-effort unsubscribe -- if the bus backend
+                        # itself is broken, the subscribe rollback may
+                        # also fail, but we still record the channel as
+                        # failed so start() can surface it.
+                        try:
+                            await self._bus.unsubscribe(
+                                channel_name,
+                                _SUBSCRIBER_ID,
+                            )
+                        except Exception:
+                            logger.warning(
+                                API_BUS_BRIDGE_SUBSCRIBE_FAILED,
+                                channel=channel_name,
+                                subscriber_id=_SUBSCRIBER_ID,
+                                phase="rollback_unsubscribe_failed",
+                                exc_info=True,
+                            )
+                        subscribed_channels.remove(channel_name)
+                        failed_channels.append(channel_name)
+                        logger.warning(
+                            API_BUS_BRIDGE_SUBSCRIBE_FAILED,
+                            channel=channel_name,
+                            subscriber_id=_SUBSCRIBER_ID,
+                            phase="task_spawn_failed",
+                            exc_info=True,
+                        )
+                        continue
+                    self._tasks.append(task)
+            except BaseException:
+                # Full rollback: cancel all spawned tasks and
+                # unsubscribe all successfully-subscribed channels so
+                # the bridge exits fully to its initial state. Caller
+                # receives the original exception (esp. CancelledError,
+                # MemoryError, RecursionError) without the engine
+                # sitting half-started.
+                for task in self._tasks:
+                    task.cancel()
+                if self._tasks:
+                    await asyncio.gather(*self._tasks, return_exceptions=True)
+                self._tasks.clear()
+                for channel_name in subscribed_channels:
+                    try:
+                        await self._bus.unsubscribe(
+                            channel_name,
+                            _SUBSCRIBER_ID,
+                        )
                     except Exception:
                         logger.warning(
                             API_BUS_BRIDGE_SUBSCRIBE_FAILED,
@@ -248,16 +301,15 @@ class MessageBusBridge:
                             phase="rollback_unsubscribe_failed",
                             exc_info=True,
                         )
-                    failed_channels.append(channel_name)
-                    logger.warning(
-                        API_BUS_BRIDGE_SUBSCRIBE_FAILED,
-                        channel=channel_name,
-                        subscriber_id=_SUBSCRIBER_ID,
-                        phase="task_spawn_failed",
-                        exc_info=True,
-                    )
-                    continue
-                self._tasks.append(task)
+                self._running = False
+                logger.error(
+                    API_APP_STARTUP,
+                    error="bus bridge startup rolled back after unexpected error",
+                    subscribed_channels=tuple(subscribed_channels),
+                    failed_channels=tuple(failed_channels),
+                    exc_info=True,
+                )
+                raise
 
             if not self._tasks:
                 self._running = False

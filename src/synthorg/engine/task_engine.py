@@ -171,59 +171,79 @@ class TaskEngine(TaskEngineLoopsMixin):
                     reason="already_running",
                 )
                 raise RuntimeError(msg)
-            self._running = True
+            # Hold ``_admission_lock`` across the entire startup so
+            # a racing ``submit()`` cannot admit an envelope into the
+            # queue between ``_running = True`` and the commit of both
+            # loop tasks -- an envelope admitted in that window would
+            # be orphaned if the rollback path fired, because both
+            # loops would then be torn down with the future pending.
+            # ``_running`` is published ONLY after both tasks are
+            # created and their done-callbacks registered, so submit()
+            # either sees False (and fast-fails cleanly) or sees True
+            # with both loops committed.
+            #
             # Transactional two-loop startup: if observer-task creation
             # or callback registration raises after the processing task
-            # is up, the processing task would leak as a zombie
-            # background task while the engine surfaces "not running"
-            # to the caller. Cancel and drain any partially-created
-            # tasks, reset the handles, and flip ``_running`` back
-            # before re-raising so the caller observes a fully-rolled-
-            # back state and can retry start() cleanly.
-            try:
-                self._processing_task = asyncio.create_task(
-                    self._processing_loop(),
-                    name="task-engine-loop",
-                )
-                self._processing_task.add_done_callback(
-                    log_task_exceptions(logger, TASK_ENGINE_LOOP_DIED),
-                )
-                self._observer_task = asyncio.create_task(
-                    self._observer_dispatch_loop(),
-                    name="task-engine-observer-dispatcher",
-                )
-                self._observer_task.add_done_callback(
-                    log_task_exceptions(logger, TASK_ENGINE_OBSERVER_LOOP_DIED),
-                )
-            except BaseException:
-                partial_tasks = [
-                    t
-                    for t in (self._processing_task, self._observer_task)
-                    if t is not None
-                ]
-                for t in partial_tasks:
-                    t.cancel()
-                if partial_tasks:
-                    # Best-effort drain; swallow exceptions so we do
-                    # not mask the original failure we are about to
-                    # re-raise. ``return_exceptions=True`` collects
-                    # CancelledError cleanly.
-                    await asyncio.gather(*partial_tasks, return_exceptions=True)
-                self._processing_task = None
-                self._observer_task = None
-                self._running = False
-                # Log the rollback so operators see *why* the engine
-                # never came up -- without this the caller would
-                # receive the original exception but the structured
-                # breadcrumb for the partial-startup cleanup would be
-                # lost.
-                logger.error(
-                    TASK_ENGINE_START_REJECTED,
-                    reason="startup_rollback",
-                    partial_tasks_cancelled=len(partial_tasks),
-                    exc_info=True,
-                )
-                raise
+            # is up, cancel and drain any partially-created tasks,
+            # reset the handles, leave ``_running = False``, and
+            # re-raise so the caller observes a fully-rolled-back
+            # state and can retry start() cleanly.
+            async with self._admission_lock:
+                try:
+                    self._processing_task = asyncio.create_task(
+                        self._processing_loop(),
+                        name="task-engine-loop",
+                    )
+                    self._processing_task.add_done_callback(
+                        log_task_exceptions(logger, TASK_ENGINE_LOOP_DIED),
+                    )
+                    self._observer_task = asyncio.create_task(
+                        self._observer_dispatch_loop(),
+                        name="task-engine-observer-dispatcher",
+                    )
+                    self._observer_task.add_done_callback(
+                        log_task_exceptions(
+                            logger,
+                            TASK_ENGINE_OBSERVER_LOOP_DIED,
+                        ),
+                    )
+                except BaseException:
+                    partial_tasks = [
+                        t
+                        for t in (self._processing_task, self._observer_task)
+                        if t is not None
+                    ]
+                    for t in partial_tasks:
+                        t.cancel()
+                    if partial_tasks:
+                        # Best-effort drain; swallow exceptions so we
+                        # do not mask the original failure we are
+                        # about to re-raise. ``return_exceptions=True``
+                        # collects CancelledError cleanly.
+                        await asyncio.gather(
+                            *partial_tasks,
+                            return_exceptions=True,
+                        )
+                    self._processing_task = None
+                    self._observer_task = None
+                    # Log the rollback so operators see *why* the
+                    # engine never came up -- without this the caller
+                    # would receive the original exception but the
+                    # structured breadcrumb for the partial-startup
+                    # cleanup would be lost.
+                    logger.error(
+                        TASK_ENGINE_START_REJECTED,
+                        reason="startup_rollback",
+                        partial_tasks_cancelled=len(partial_tasks),
+                        exc_info=True,
+                    )
+                    raise
+                # Only publish ``_running = True`` after BOTH tasks are
+                # fully committed. A racing submit() that reached the
+                # admission lock before this point is now blocked on
+                # it; once we release the lock submit() will read True
+                # and proceed safely.
+                self._running = True
             logger.info(
                 TASK_ENGINE_STARTED,
                 max_queue_size=self._config.max_queue_size,

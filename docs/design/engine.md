@@ -471,13 +471,30 @@ outgoing stop never waits on.
   tasks (mutation processing loop + observer dispatch loop). Raises
   `RuntimeError` if already running. Every call site must `await`.
 - **stop()** (`async`): Acquires `_lifecycle_lock`, sets
-  `_running = False`, drains the mutation queue within the configured
-  `drain_timeout_seconds`, places a `None` sentinel on the observer
-  queue, and drains the observer dispatch loop within the remaining
-  budget. A hard outer deadline (2x the nominal drain budget) bounds
-  the entire stop body so the lifecycle lock can never be held
-  indefinitely even if a drain stage hangs post-cancel. Abandoned
-  futures receive a failure result. Idempotent.
+  `_running = False` under a separate `_admission_lock` so new
+  `submit()` calls fast-fail immediately, drains the mutation queue
+  within the configured `drain_timeout_seconds`, places a `None`
+  sentinel on the observer queue, and drains the observer dispatch
+  loop within the remaining budget. A hard outer deadline (2x the
+  nominal drain budget) bounds the entire stop body so the lifecycle
+  lock can never be held indefinitely even if a drain stage hangs
+  post-cancel. Abandoned futures receive a failure result. Idempotent
+  on the success path.
+
+!!! warning "Unrestartable after a timed-out stop"
+
+    If `stop()` exceeds the hard outer deadline the engine sets
+    `_unrestartable = True` and re-raises `TimeoutError`. Every
+    subsequent `start()` on that instance raises
+    `RuntimeError("TaskEngine is unrestartable after a timed-out stop;
+    construct a fresh TaskEngine instead")`. This is intentional: the
+    orphaned processing / observer tasks that ignored cancellation are
+    still holding the engine's `_queue` and `_observer_queue`, so
+    re-running `start()` would attach a second producer/consumer pair
+    onto the same state and silently violate the single-writer
+    invariant. Operator recovery is to discard the `TaskEngine`
+    instance (along with any callers it is wired into) and build a
+    fresh one via the factory.
 
 ### AgentEngine <-> TaskEngine Incremental Sync
 

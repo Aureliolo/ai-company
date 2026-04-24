@@ -119,6 +119,11 @@ class PerformanceTracker:
         self._contributions: dict[str, list[AgentContribution]] = {}
         self._background_tasks: set[asyncio.Task[None]] = set()
         self._metrics_lock = asyncio.Lock()
+        # Set to True while ``aclose()`` is draining so new background
+        # tasks cannot be enqueued between the task-set snapshot and
+        # the clear. Guarded by ``_metrics_lock`` on both read and
+        # write sides.
+        self._closing: bool = False
 
     @staticmethod
     def _default_quality() -> QualityScoringStrategy:
@@ -204,12 +209,23 @@ class PerformanceTracker:
         Should be called during application shutdown to prevent
         ``RuntimeError: Task was destroyed but it is pending!``
         warnings.
+
+        Sets ``_closing`` under ``_metrics_lock`` before snapshotting
+        so concurrent ``record_collaboration_event`` / ``get_snapshot``
+        calls (which schedule under the same lock) refuse to enqueue
+        new background tasks once shutdown has started. Without that
+        gate a task scheduled right after the snapshot would survive
+        aclose() with the result that the caller sees
+        ``aclose() returned`` while a live sampling / inflection task
+        keeps running and can still repopulate cache state.
         """
-        tasks = list(self._background_tasks)
+        async with self._metrics_lock:
+            self._closing = True
+            tasks = list(self._background_tasks)
+            self._background_tasks.clear()
         for t in tasks:
             t.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
-        self._background_tasks.clear()
 
     async def aclear(self) -> None:
         """Async-safe reset of all recorded metrics.
@@ -754,10 +770,16 @@ class PerformanceTracker:
 
         MUST be called with ``_metrics_lock`` held so the
         ``_background_tasks`` mutation is atomic with respect to
-        :meth:`aclear`; otherwise a task scheduled here could survive
-        a concurrent clear and repopulate metric state (e.g.
-        ``_trend_direction_cache``) after the clear returned.
+        :meth:`aclear` and :meth:`aclose`; otherwise a task scheduled
+        here could survive a concurrent clear/close and repopulate
+        metric state (e.g. ``_trend_direction_cache``) after the
+        clear returned.
         """
+        # Refuse to enqueue after ``aclose()`` has started; otherwise
+        # the post-aclose task would leak and keep running against a
+        # tracker the caller considers shut down.
+        if self._closing:
+            return
         if self._sampler is None:
             return
         if record.interaction_summary is None:
@@ -831,10 +853,12 @@ class PerformanceTracker:
 
         MUST be called with ``_metrics_lock`` held so the
         ``_background_tasks`` mutation is atomic with respect to
-        :meth:`aclear`; otherwise a task scheduled here could survive
-        a concurrent clear and repopulate ``_trend_direction_cache``
-        after the clear returned.
+        :meth:`aclear` and :meth:`aclose`; otherwise a task scheduled
+        here could survive a concurrent clear/close and repopulate
+        ``_trend_direction_cache`` after the clear returned.
         """
+        if self._closing:
+            return
         task = asyncio.create_task(
             self._do_emit_inflections(agent_id, trends),
         )

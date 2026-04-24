@@ -91,23 +91,41 @@ class TestStartDuringStop:
         eng = TaskEngine(persistence=persistence)  # type: ignore[arg-type]
         await eng.start()
 
-        # Kick off stop + start concurrently. Stop sets _running=False
-        # and then awaits drain; start must block on _lifecycle_lock
-        # until that drain completes.
-        stop_coro = eng.stop(timeout=2.0)
-        start_coro = eng.start()
-        results = await asyncio.gather(stop_coro, start_coro, return_exceptions=True)
+        # Deterministic ordering: fire stop() first and block inside
+        # its drain until the test has scheduled start(). Without this
+        # sentinel-Event pattern, ``asyncio.gather(stop, start)`` can
+        # schedule start() before stop() acquires _lifecycle_lock; in
+        # that case start() would legitimately raise "already running"
+        # and the test asserts the wrong contract (scheduling order,
+        # not lifecycle serialisation).
+        stop_holding_lock = asyncio.Event()
+        start_may_proceed = asyncio.Event()
+
+        original_drain = eng._drain_all
+
+        async def gated_drain(effective_timeout: float) -> None:
+            # Signal the test loop from inside stop()'s drain (which
+            # is called under _lifecycle_lock), then block until the
+            # test has scheduled the racing start().
+            stop_holding_lock.set()
+            await start_may_proceed.wait()
+            await original_drain(effective_timeout)
+
+        eng._drain_all = gated_drain  # type: ignore[method-assign,assignment]
+
+        stop_task = asyncio.create_task(eng.stop(timeout=2.0))
+        await stop_holding_lock.wait()
+        # start() is scheduled while stop() is provably holding the
+        # lifecycle lock mid-drain. It MUST block on the lock until
+        # stop() finishes.
+        start_task = asyncio.create_task(eng.start())
+        # Release the drain so stop() can complete.
+        start_may_proceed.set()
+        stop_result = await stop_task
+        start_result = await start_task
         try:
-            # stop always succeeds; start should also succeed because by
-            # the time its lock-acquire returns, stop has released and
-            # _running is False again, so the second start legitimately
-            # starts a fresh engine (not a double-spawn race).
-            assert not isinstance(results[0], BaseException), (
-                f"stop raised unexpectedly: {results[0]!r}"
-            )
-            assert not isinstance(results[1], BaseException), (
-                f"start raised unexpectedly: {results[1]!r}"
-            )
+            assert stop_result is None
+            assert start_result is None
             # Invariant: there is exactly one processing loop + one
             # observer dispatcher task, not a leaked pair from a race.
             loop_tasks = [
