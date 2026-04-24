@@ -60,15 +60,30 @@ echo "Target repo: ${REPO}"
 echo "Mode: ${MODE}"
 echo
 
-# Environment configuration table: ENV_NAME|BRANCH_PATTERN[,BRANCH_PATTERN...]
-# Patterns follow GitHub's deployment-branch-policies semantics, which only
-# match refs/heads/* and refs/tags/* (NOT refs/pull/*). For PR-triggered envs
-# (cloudflare-preview, atlas) the workflow-level `if:` guard is the actual
-# gate -- see docs/reference/github-environments.md for rationale.
+# Environment configuration table: ENV_NAME|TYPE:PATTERN[,TYPE:PATTERN...]
+# Types are GitHub's deployment ref-policy types: `branch` matches
+# `refs/heads/<pattern>`, `tag` matches `refs/tags/<pattern>`. The API
+# treats the two as separate rules -- a `branch`-typed `v*` rule will
+# NOT match a tag ref, and vice versa -- so every pattern must carry
+# its type explicitly. `reconcile_policies()` compares `(type, name)`
+# pairs so mistyped policies self-heal on a subsequent `--apply`.
+# For PR-triggered envs (cloudflare-preview, atlas) the workflow-level
+# `if:` guard is the actual gate -- see
+# docs/reference/github-environments.md for rationale.
+# `release` is scoped to `branch:main` alone because it holds the
+# `RELEASE_PLEASE_TOKEN` secret. GitHub's deployment branch policies
+# match ref *names* only -- they do NOT verify that a tag's commit
+# descends from main -- so admitting `v*` here would grant token access
+# to any v-shaped tag, including ones created on unmerged feature
+# branches. Tag-only release jobs (cli-release,
+# docker.yml:update-release) ride on `release-tags` instead, which
+# carries no privileged secrets and only provides a structural ref gate.
 ENV_CONFIG=(
-  "github-pages|main"
-  "release|main"
-  "apko-lock|main"
+  "github-pages|branch:main"
+  "release|branch:main"
+  "release-tags|tag:v*"
+  "apko-lock|branch:main"
+  "image-push|branch:main,tag:v*"
 )
 
 run_gh() {
@@ -107,13 +122,16 @@ ensure_environment() {
   local env_name="$1"
   echo "==> ${env_name}"
   # PUT is idempotent: creates or updates the environment with branch-policy enabled.
+  # `-F` (uppercase) sends typed fields so booleans stay as JSON `true` / `false`;
+  # `-f` (lowercase) stringifies them, which the API rejects with HTTP 422.
   run_gh --method PUT "repos/${REPO}/environments/${env_name}" \
-    -f 'deployment_branch_policy[protected_branches]=false' \
-    -f 'deployment_branch_policy[custom_branch_policies]=true'
+    -F 'deployment_branch_policy[protected_branches]=false' \
+    -F 'deployment_branch_policy[custom_branch_policies]=true'
 }
 
-# Prints `name<TAB>id` for each current branch policy on the environment.
-# The GitHub DELETE endpoint requires the numeric id, not the name.
+# Prints `type<TAB>name<TAB>id` for each current branch/tag policy on
+# the environment. The GitHub DELETE endpoint requires the numeric id,
+# not the name, and (type, name) together form the unique key.
 list_branch_policies() {
   local env_name="$1"
   # Apply AND dry-run both issue this read-only GET so the reconciler has a
@@ -125,7 +143,7 @@ list_branch_policies() {
   # a bare `out=$(...)` + `rc=$?` would exit before the handler runs.
   local out
   if ! out=$(gh api "repos/${REPO}/environments/${env_name}/deployment-branch-policies" \
-    --jq '.branch_policies[] | "\(.name)\t\(.id)"' 2>&1); then
+    --jq '.branch_policies[] | "\(.type)\t\(.name)\t\(.id)"' 2>&1); then
     if printf '%s' "$out" | grep -q 'HTTP 404'; then
       return 0
     fi
@@ -137,72 +155,85 @@ list_branch_policies() {
 
 add_branch_policy() {
   local env_name="$1"
-  local pattern="$2"
+  local typed_pattern="$2"
+  local rule_type="${typed_pattern%%:*}"
+  local pattern="${typed_pattern#*:}"
+  if [ -z "$rule_type" ] || [ "$rule_type" = "$typed_pattern" ] || [ -z "$pattern" ]; then
+    echo "error: add_branch_policy: expected type:pattern, got '${typed_pattern}'" >&2
+    return 1
+  fi
   local rc
   # A racing concurrent run (or a stale list) can make the POST return 422
   # "already exists"; treat that as idempotent success via run_gh_allow_422's
   # exit-2 signal. Wrap the call in an `if` so errexit does not fire before
   # we can inspect $?.
   if run_gh_allow_422 --method POST "repos/${REPO}/environments/${env_name}/deployment-branch-policies" \
-    -f "name=${pattern}" -f "type=branch"; then
+    -f "name=${pattern}" -f "type=${rule_type}"; then
     rc=0
   else
     rc=$?
   fi
   case "$rc:$MODE" in
-    0:apply) echo "  policy '${pattern}' added" ;;
-    2:apply) echo "  policy '${pattern}' already present (422 no-op)" ;;
-    0:dry-run) echo "  policy '${pattern}' to add" ;;
+    0:apply) echo "  policy '${rule_type}:${pattern}' added" ;;
+    2:apply) echo "  policy '${rule_type}:${pattern}' already present (422 no-op)" ;;
+    0:dry-run) echo "  policy '${rule_type}:${pattern}' to add" ;;
     *) return "$rc" ;;
   esac
 }
 
 delete_branch_policy() {
   local env_name="$1"
-  local pattern="$2"
+  local typed_pattern="$2"
   local policy_id="$3"
   if [ -z "$policy_id" ]; then
-    echo "error: delete_branch_policy: missing id for '${pattern}'" >&2
+    echo "error: delete_branch_policy: missing id for '${typed_pattern}'" >&2
     return 1
   fi
   run_gh --method DELETE "repos/${REPO}/environments/${env_name}/deployment-branch-policies/${policy_id}"
   if [ "$MODE" = "apply" ]; then
-    echo "  policy '${pattern}' removed (not in desired set)"
+    echo "  policy '${typed_pattern}' removed (not in desired set)"
   else
-    echo "  policy '${pattern}' to remove (not in desired set)"
+    echo "  policy '${typed_pattern}' to remove (not in desired set)"
   fi
 }
 
-# Reconciles the environment's branch policies against the desired CSV list:
-# creates any missing pattern (idempotent via 422 tolerance) and deletes any
-# pattern that is present but not in the desired set.
+# Reconciles the environment's deployment policies against the desired
+# CSV list of `type:pattern` entries: creates any missing (type, name)
+# pair (idempotent via 422 tolerance) and deletes any (type, name)
+# currently present that is not in the desired set. A `branch:v*` rule
+# where the desired state is `tag:v*` will be deleted and re-created as
+# a tag rule; matching is strictly on the (type, name) key, not name
+# alone.
 reconcile_policies() {
   local env_name="$1"
   local desired_csv="$2"
-  local current name id pat
-  local -a desired_patterns=()
-  IFS=',' read -ra desired_patterns <<< "$desired_csv"
+  local current ctype cname cid pat
+  local -a desired_pairs=()
+  IFS=',' read -ra desired_pairs <<< "$desired_csv"
 
   if ! current=$(list_branch_policies "$env_name"); then
-    echo "error: failed to list branch policies for '${env_name}'" >&2
+    echo "error: failed to list deployment policies for '${env_name}'" >&2
     return 1
   fi
 
-  # Create missing.
-  for pat in "${desired_patterns[@]}"; do
-    if printf '%s\n' "$current" | awk -F'\t' '{print $1}' | grep -qxF -- "$pat"; then
+  # Create missing (type, name) pairs.
+  for pat in "${desired_pairs[@]}"; do
+    # `pat` is already `type:name`; the current list is
+    # `type\tname\tid`. Compare `type:name` against `type:name` in
+    # current.
+    if [ -n "$current" ] && printf '%s\n' "$current" | awk -F'\t' '{print $1 ":" $2}' | grep -qxF -- "$pat"; then
       echo "  policy '${pat}' already present"
     else
       add_branch_policy "$env_name" "$pat"
     fi
   done
 
-  # Remove extras. Skip if list is empty (first run / dry-run with no env yet).
+  # Remove (type, name) pairs that exist but are not in the desired set.
   [ -z "$current" ] && return 0
-  while IFS=$'\t' read -r name id; do
-    [ -z "$name" ] && continue
-    if ! printf '%s\n' "${desired_patterns[@]}" | grep -qxF -- "$name"; then
-      delete_branch_policy "$env_name" "$name" "$id"
+  while IFS=$'\t' read -r ctype cname cid; do
+    [ -z "$cname" ] && continue
+    if ! printf '%s\n' "${desired_pairs[@]}" | grep -qxF -- "${ctype}:${cname}"; then
+      delete_branch_policy "$env_name" "${ctype}:${cname}" "$cid"
     fi
   done <<< "$current"
 }

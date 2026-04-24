@@ -13,10 +13,21 @@ environment itself. Apply them via `scripts/configure_environments.sh`.
 | Environment | Branch policy | Triggered by |
 |---|---|---|
 | `github-pages` | `main` | `pages.yml` push to main |
-| `release` | `main` | `release.yml` and `dev-release.yml` push to main |
+| `release` | `main` | `release.yml` + `dev-release.yml` (main pushes), `finalize-release.yml:publish` (workflow_run resolves `github.ref` to main). Holds `RELEASE_PLEASE_TOKEN`. |
+| `release-tags` | `v*` | `cli.yml:cli-release` + `docker.yml:update-release` (v* tag pushes). Structural ref gate only; no privileged secrets. |
+| `image-push` | `main`, `v*` | `docker.yml` `*-publish` jobs (4 apko base pushes + 5 app image pushes) on main and v* refs |
 | `apko-lock` | `main` | `apko-lock.yml` schedule + workflow_dispatch |
 | `cloudflare-preview` | _none_ (see below) | `pages-preview.yml` pull_request events |
 | `atlas` | _none_ (see below) | `ci.yml:schema-validate` push + pull_request |
+
+The release path is intentionally split into two environments. GitHub's
+deployment branch policies only match ref *names* -- they do NOT verify
+that a tag's commit is reachable from an allowed branch. Admitting `v*`
+on the secret-bearing environment would let any `v`-prefixed tag
+(including one forged on an unmerged feature branch) unlock
+`RELEASE_PLEASE_TOKEN`. Keeping `release` main-only and routing tag-only
+jobs through `release-tags` preserves the structural ref gate without
+exposing the PAT.
 
 ## Why `cloudflare-preview` and `atlas` have no branch policy
 
@@ -74,10 +85,80 @@ gh api repos/Aureliolo/synthorg/environments/apko-lock/deployment-branch-policie
   --jq '.branch_policies[].name'
 ```
 
-Expected output for each of `github-pages`, `release`, `apko-lock`:
+Expected output for the reconciled environments (`github-pages`, `apko-lock`,
+`release`, `release-tags`, `image-push`):
 
 - `deployment_branch_policy`: `{"protected_branches": false, "custom_branch_policies": true}`
-- `branch_policies`: `["main"]`
+- `branch_policies` for `github-pages`, `apko-lock`, `release`: `["main"]`
+- `branch_policies` for `release-tags`: `["v*"]`
+- `branch_policies` for `image-push`: `["main", "v*"]`
+
+`cloudflare-preview` and `atlas` are intentionally excluded from the
+`custom_branch_policies` expectation -- see the rationale above.
+
+## Required secrets
+
+Secrets gated by deployment environments are only available to jobs whose
+`github.ref` matches that environment's branch policy. Any job referencing
+`secrets.<NAME>` in its `env:` or step inputs must run under the
+environment that scopes the secret.
+
+### `RELEASE_PLEASE_TOKEN`
+
+A GitHub Personal Access Token consumed by the release pipeline. Scoped
+under the `release` deployment environment.
+
+**Purpose**:
+
+- `release.yml` uses it for the pre-tag creation step, the
+  `googleapis/release-please-action` step, the Release PR branch checkout,
+  and the BSL Change Date `git push`. Each of those steps writes to the
+  repository state (tags, release PR, commits) on behalf of the release
+  bot.
+- `dev-release.yml` uses it to create dev pre-release tags (e.g.
+  `v0.7.2-dev.3`). Unlike the default `GITHUB_TOKEN`, a PAT-authored tag
+  push triggers downstream workflows (docker.yml, cli.yml, etc.), which is
+  the intended behavior -- dev tags must run through the same build-sign-
+  attest pipeline as stable releases.
+
+**Required PAT scopes** (fine-grained is strongly preferred):
+
+- **Fine-grained PAT (preferred)**: scope to the `Aureliolo/synthorg`
+  repository only, with these repository permissions:
+  - `Contents: Read and write`
+  - `Pull requests: Read and write`
+  - `Metadata: Read`
+- **Classic PAT (discouraged)**: requires the `repo` scope, which grants
+  full control of **all** private repositories the owner can access --
+  there is no way to narrow it to a single repo. Only use a classic PAT
+  if your org restricts fine-grained PATs. No org scopes (`admin:org`,
+  `admin:public_key`, `write:packages`, etc.) -- keep the blast radius at
+  repository-level authority.
+
+The token must NOT carry organization-level permissions. If this repo ever
+moves under an organization, revoke and re-issue a fine-grained token
+scoped to the new repo path rather than granting org admin.
+
+**Rotation**:
+
+- Expiry is owner-tracked; set a calendar reminder 30 days before the PAT
+  expiration.
+- `RELEASE_PLEASE_TOKEN` is scoped to the `release` **deployment
+  environment**, not the repo-level Actions secret store. Rotate via repo
+  Settings > Environments > `release` > Environment secrets > click
+  `RELEASE_PLEASE_TOKEN` > update secret. Updating the repo-level Actions
+  secret of the same name has no effect on the gated release jobs.
+- The old token remains valid until its expiry date even after updating
+  the environment secret; revoke the old PAT from the PAT owner's GitHub
+  settings to close the window.
+
+**Access control**: the `release` environment's branch policy (`main`
+only) is the structural gate. A workflow triggered from any other ref
+cannot read the secret even if it declares `secrets.RELEASE_PLEASE_TOKEN`
+in its YAML. Tag-only release jobs (`cli.yml:cli-release`,
+`docker.yml:update-release`) deliberately run under the separate
+`release-tags` environment, which carries no privileged secrets, so a
+forged `v*` tag on unmerged code cannot unlock the PAT.
 
 ## Testing the `apko-lock` gate
 
