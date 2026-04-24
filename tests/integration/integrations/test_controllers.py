@@ -652,7 +652,7 @@ class TestControllerHttpLayer:
         catalog: MagicMock,
     ) -> TestClient[Any]:
         """Construct a minimal Litestar app + test client for smoke tests."""
-        from litestar import Litestar
+        from litestar import Litestar, Router
         from litestar.datastructures import State
         from litestar.middleware import ASGIMiddleware
 
@@ -692,15 +692,20 @@ class TestControllerHttpLayer:
                     scope["user"] = _TestUser()
                 await next_app(scope, receive, send)
 
-        # Each controller already declares its own ``path`` (e.g.
-        # ``/api/v1/connections``), so mount them directly instead
-        # of wrapping in another ``Router`` -- otherwise the prefix
-        # gets doubled and every request 404s.
-        app = Litestar(
+        # Mirror production's routing layout: controllers declare
+        # their paths *without* the ``/api/v1`` prefix, and the
+        # top-level ``Router`` in ``app.py`` mounts them under
+        # ``api_config.api_prefix``. The smoke test wraps the same
+        # way so routing regressions surface here instead of shipping.
+        api_router = Router(
+            path="/api/v1",
             route_handlers=[
                 ConnectionsController,
                 IntegrationHealthController,
             ],
+        )
+        app = Litestar(
+            route_handlers=[api_router],
             state=State({"app_state": app_state_stub}),
             middleware=[_InjectUserMiddleware()],
             exception_handlers=dict(EXCEPTION_HANDLERS),  # type: ignore[arg-type]

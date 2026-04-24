@@ -14,8 +14,18 @@ import { ErrorBanner } from '@/components/ui/error-banner'
 import { Link, useNavigate } from 'react-router'
 import { createLogger } from '@/lib/logger'
 import { useToastStore } from '@/stores/toast'
-import { formatDateOnly } from '@/utils/format'
 import { sanitizeForLog } from '@/utils/logging'
+
+/**
+ * Produce a filesystem-safe `YYYY-MM-DD` stamp for download filenames.
+ * `formatDateOnly` is locale-aware and can emit slashes / dots /
+ * non-ASCII digits (e.g. `ar-EG`), which shell + HTTP clients treat
+ * poorly in filenames. The PNG export only needs a stable, sortable
+ * UTC day stamp.
+ */
+function isoDateStamp(d: Date): string {
+  return d.toISOString().slice(0, 10)
+}
 
 /**
  * True when a computed background-color string has a visible fill. Both
@@ -272,7 +282,7 @@ function OrgChartInner() {
       })
       const link = document.createElement('a')
       link.href = dataUrl
-      link.download = `org-chart-${formatDateOnly(new Date())}.png`
+      link.download = `org-chart-${isoDateStamp(new Date())}.png`
       link.click()
     } catch (err) {
       log.error('Org chart PNG export failed:', sanitizeForLog(err))

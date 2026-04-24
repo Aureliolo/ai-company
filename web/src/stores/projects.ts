@@ -9,6 +9,7 @@ import { listTasks } from '@/api/endpoints/tasks'
 import { getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 import { createLogger } from '@/lib/logger'
+import { sanitizeWsString } from '@/stores/notifications'
 import { useToastStore } from '@/stores/toast'
 import type { ProjectStatus } from '@/api/types/enums'
 import type { CreateProjectRequest, Project } from '@/api/types/projects'
@@ -42,7 +43,12 @@ interface ProjectsState {
   fetchProjectDetail: (id: string) => Promise<void>
   createProject: (data: CreateProjectRequest) => Promise<Project | null>
   deleteProject: (id: string) => Promise<boolean>
-  batchDeleteProjects: (ids: readonly string[]) => Promise<{ succeeded: number; failed: number; failedReasons: string[] }>
+  batchDeleteProjects: (
+    ids: readonly string[],
+  ) => Promise<
+    | { succeeded: number; failed: number; failedReasons: string[] }
+    | false
+  >
   setSearchQuery: (q: string) => void
   setStatusFilter: (s: ProjectStatus | null) => void
   setLeadFilter: (l: string | null) => void
@@ -148,7 +154,11 @@ export const useProjectsStore = create<ProjectsState>()((set) => ({
   },
 
   deleteProject: async (id: string) => {
-    const previous = useProjectsStore.getState()
+    // Capture only the specific row we optimistically remove. Restoring
+    // a full snapshot on failure could resurrect projects that were
+    // legitimately deleted by a concurrent request or WS update.
+    const removedProject =
+      useProjectsStore.getState().projects.find((p) => p.id === id) ?? null
     set((state) => {
       const filtered = state.projects.filter((p) => p.id !== id)
       return {
@@ -167,7 +177,15 @@ export const useProjectsStore = create<ProjectsState>()((set) => ({
       return true
     } catch (err) {
       log.error('Delete project failed:', sanitizeForLog(err))
-      set({ projects: previous.projects, totalProjects: previous.totalProjects })
+      if (removedProject) {
+        set((state) => {
+          if (state.projects.some((p) => p.id === id)) return state
+          return {
+            projects: [removedProject, ...state.projects],
+            totalProjects: state.totalProjects + 1,
+          }
+        })
+      }
       useToastStore.getState().add({
         variant: 'error',
         title: 'Failed to delete project',
@@ -256,6 +274,12 @@ export const useProjectsStore = create<ProjectsState>()((set) => ({
           (failedReasons.length > 3 ? `; +${failedReasons.length - 3} more` : ''),
       })
     }
+    // Contract: delete mutations return `false` on total failure so
+    // callers can rely on a single sentinel check rather than parsing
+    // the counts object. Partial success still returns the counts.
+    if (succeededIds.length === 0 && failedIds.length > 0) {
+      return false
+    }
     return {
       succeeded: succeededIds.length,
       failed: failedIds.length,
@@ -284,7 +308,10 @@ export const useProjectsStore = create<ProjectsState>()((set) => ({
   updateFromWsEvent: (event: WsEvent) => {
     if (event.event_type === 'project.deleted') {
       const payload = event.payload as { project_id?: unknown }
-      const deletedId = typeof payload.project_id === 'string' ? payload.project_id : null
+      // WS payloads are untrusted -- route the identifier through the
+      // shared sanitizer so control characters / bidi / oversized
+      // strings never land in local state or the UI.
+      const deletedId = sanitizeWsString(payload.project_id) ?? null
       if (deletedId) {
         set((state) => {
           const filtered = state.projects.filter((p) => p.id !== deletedId)

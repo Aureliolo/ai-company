@@ -283,7 +283,7 @@ export default function TaskBoardPage() {
         }
         secondaryActions={
           <>
-            <label className="flex items-center gap-1.5 text-xs text-text-muted">
+            <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <input
                 type="checkbox"
                 checked={showDeps}
@@ -292,7 +292,7 @@ export default function TaskBoardPage() {
               />
               Dependencies
             </label>
-            <label className="flex items-center gap-1.5 text-xs text-text-muted">
+            <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <input
                 type="checkbox"
                 checked={showTerminal}

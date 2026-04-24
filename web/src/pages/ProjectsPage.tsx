@@ -3,7 +3,6 @@ import { AnimatePresence } from 'motion/react'
 import { Plus, Trash2 } from 'lucide-react'
 import { useProjectsData } from '@/hooks/useProjectsData'
 import { useProjectsStore } from '@/stores/projects'
-import { useToastStore } from '@/stores/toast'
 import { Button } from '@/components/ui/button'
 import { BulkActionBar } from '@/components/ui/bulk-action-bar'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
@@ -56,22 +55,14 @@ export default function ProjectsPage() {
   const handleBulkDelete = useCallback(async () => {
     setBulkDeleting(true)
     const ids = [...visibleSelected]
-    const result = await useProjectsStore.getState().batchDeleteProjects(ids)
+    // Store owns the success / warning / error toast UX (see
+    // stores/projects.ts batchDeleteProjects). The caller only drives
+    // the dialog and selection state, so we discard the returned
+    // counts/sentinel here.
+    await useProjectsStore.getState().batchDeleteProjects(ids)
     setBulkDeleting(false)
     setBulkDeleteOpen(false)
     clearSelection()
-    if (result.failed === 0) {
-      useToastStore.getState().add({
-        variant: 'success',
-        title: `Deleted ${formatNumber(result.succeeded)} project${result.succeeded === 1 ? '' : 's'}`,
-      })
-    } else {
-      useToastStore.getState().add({
-        variant: 'warning',
-        title: `Deleted ${formatNumber(result.succeeded)} of ${formatNumber(ids.length)} projects`,
-        description: result.failedReasons.length > 0 ? result.failedReasons.join('; ') : undefined,
-      })
-    }
   }, [visibleSelected, clearSelection])
 
   if (loading && totalProjects === 0) {

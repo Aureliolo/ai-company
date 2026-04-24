@@ -310,6 +310,8 @@ describe('useProjectsStore', () => {
         .getState()
         .batchDeleteProjects(['proj-001', 'proj-002'])
 
+      expect(result).not.toBe(false)
+      if (result === false) throw new Error('expected counts, not sentinel')
       expect(result.succeeded).toBe(2)
       expect(result.failed).toBe(0)
       expect(result.failedReasons).toEqual([])
@@ -336,6 +338,10 @@ describe('useProjectsStore', () => {
         .getState()
         .batchDeleteProjects(['proj-001', 'proj-002'])
 
+      // Partial success -> counts object (not the `false` sentinel which
+      // is reserved for total-failure cases).
+      expect(result).not.toBe(false)
+      if (result === false) throw new Error('expected counts, not sentinel')
       expect(result.succeeded).toBe(1)
       expect(result.failed).toBe(1)
       expect(result.failedReasons).toHaveLength(1)
