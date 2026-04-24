@@ -969,8 +969,14 @@ jobs:
   #   - cpu  -> ghcr.io/aureliolo/synthorg-fine-tune-cpu  (CPU torch, ~1.7 GB)
   # The variant is driven by the FINE_TUNE_EXTRA build-arg; uv routes torch to
   # PyPI (CUDA) or pytorch.org/whl/cpu via [tool.uv.sources] in pyproject.toml.
+  # Use a static job name. GitHub normally appends `(variant)` to each
+  # matrix leg, so expanded jobs still read "Build Fine-Tune (gpu)" /
+  # "(cpu)" in the UI. A `name:` that interpolates `${{ matrix.* }}`
+  # leaves the raw template visible when a matrix is skipped *before*
+  # expansion (the `if:` evaluates false), producing ugly check-run
+  # entries like "Build Fine-Tune (${{ matrix.variant }})".
   build-fine-tune:
-    name: Build Fine-Tune (${{ matrix.variant }})
+    name: Build Fine-Tune
     needs: [version, build-fine-tune-base, build-fine-tune-base-publish]
     if: >-
       !cancelled() &&
@@ -1014,7 +1020,7 @@ jobs:
           free-disk-space: "true"
 
   build-fine-tune-publish:
-    name: Publish Fine-Tune (${{ matrix.variant }})
+    name: Publish Fine-Tune
     needs: [version, build-fine-tune]
     if: >-
       !cancelled() &&
