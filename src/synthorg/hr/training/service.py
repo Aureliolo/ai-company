@@ -207,6 +207,12 @@ class TrainingService:
             )
             await self._record_session(failed)
             raise
+        # ``execute`` skips the training pipeline when ``plan.skip_training``
+        # is set (the plan is a config-only update). Don't overwrite the
+        # plan's existing status in that case -- writing EXECUTED would
+        # misrepresent what actually happened.
+        if plan.skip_training:
+            return result
         executed = plan.model_copy(
             update={
                 "status": TrainingPlanStatus.EXECUTED,
@@ -233,7 +239,17 @@ class TrainingService:
 
         Returns:
             Tuple of ``(page, total)``.
+
+        Raises:
+            ValueError: If ``offset`` is negative or ``limit`` is not
+                strictly positive.
         """
+        if offset < 0:
+            msg = f"offset must be >= 0, got {offset}"
+            raise ValueError(msg)
+        if limit < 1:
+            msg = f"limit must be >= 1, got {limit}"
+            raise ValueError(msg)
         async with self._session_lock:
             items = tuple(reversed(self._sessions.values()))
             total = len(items)

@@ -9,16 +9,19 @@
 # immediately, skipping the triage-and-approval gate.
 #
 # This hook makes that failure structurally impossible. The skill
-# creates ``_audit/pre-pr-review-active.lock`` before launching agents
-# and removes it only after the user has approved the triage. While
-# the lock exists, any ``Edit`` / ``Write`` call is rejected -- except
-# writes under ``_audit/`` so the skill can still publish the triage
-# file and notes.
+# creates ``.claude/pre-pr-review-active.lock`` before launching
+# agents and removes it only after the user has approved the triage.
+# While the lock exists, any ``Edit`` / ``Write`` call is rejected --
+# except writes under ``_audit/`` so the skill can still publish the
+# triage file and notes.
 #
 # Exit behavior:
 #   - Lock missing: exit 0 (allow -- normal workflow, skill inactive)
 #   - Lock present, target path under _audit/: exit 0 (allow triage writes)
-#   - Lock present, any other target: print JSON + exit 2 (deny)
+#   - Lock present, target path is the lock itself: exit 0
+#   - Lock present, any other target OR hook input is malformed:
+#     print JSON + exit 2 (deny; fail closed so a bug in input
+#     handling cannot accidentally let edits through)
 
 set -euo pipefail
 
@@ -28,26 +31,57 @@ if [[ ! -f "$LOCK" ]]; then
     exit 0
 fi
 
+# Fail-closed on malformed / missing input: if we cannot parse the hook
+# payload (``jq`` unavailable or input not JSON) or extract a file
+# path, deny rather than allow. The allowlist below is only reachable
+# when we positively identified a path that matches an allowed
+# segment.
 if ! FILE_PATH=$(jq -r '.tool_input.file_path // ""' 2>/dev/null); then
-    exit 0
+    echo "triage gate: could not parse hook input via jq; failing closed" >&2
+    FILE_PATH=""
 fi
+
+deny() {
+    local why=$1
+    echo "triage gate: $why; failing closed" >&2
+    # Fall through to the JSON deny block below by exiting the
+    # allowlist early.
+    return 0
+}
 
 if [[ -z "$FILE_PATH" ]]; then
-    exit 0
-fi
+    deny "tool_input.file_path is empty or missing"
+else
+    # Canonicalise the path so segment-boundary checks cannot be
+    # bypassed via ``..`` traversal or embedded ``_audit`` substring.
+    # ``realpath -m`` does not require the path to exist, which is
+    # correct for Edit/Write targets that are about to be created.
+    if CANONICAL=$(realpath -m "$FILE_PATH" 2>/dev/null); then
+        NORMALISED="${CANONICAL//\\//}"
+    else
+        # Fall back to syntactic normalisation when realpath is not
+        # available (e.g. minimal environments). Fail-closed here as
+        # well: we would rather block a legitimate edit than allow a
+        # traversal bypass.
+        NORMALISED="${FILE_PATH//\\//}"
+    fi
 
-# Normalise to forward slashes for pattern matching on any platform.
-NORMALISED="${FILE_PATH//\\//}"
+    # Segment-anchored allowlist. Bash regex ``=~`` matches against
+    # forward-slash segment boundaries so ``/_audit/`` cannot be
+    # matched by an embedded substring inside a larger path segment
+    # (e.g. ``/foo_audit_bar/``).
+    if [[ "$NORMALISED" =~ (^|/)_audit(/|$) ]]; then
+        exit 0
+    fi
 
-# Allow writes to the triage artifact directory so the skill can write
-# the consolidated table and any per-agent notes.
-if [[ "$NORMALISED" == *"/_audit/"* || "$NORMALISED" == "_audit/"* ]]; then
-    exit 0
-fi
-
-# Allow writes to the lock itself so the skill can manage its own marker.
-if [[ "$NORMALISED" == *"/$LOCK" || "$NORMALISED" == "$LOCK" ]]; then
-    exit 0
+    # Allow writes to the lock file itself so the skill can manage
+    # its own marker.  Match by the final path segment so we don't
+    # accidentally allow any file whose name contains the lock
+    # basename as a substring.
+    LOCK_BASENAME="${LOCK##*/}"
+    if [[ "${NORMALISED##*/}" == "$LOCK_BASENAME" ]]; then
+        exit 0
+    fi
 fi
 
 REASON=$(cat <<'REASON_END'

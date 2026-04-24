@@ -664,9 +664,33 @@ def _check_source_dir_exists(source_dir: str) -> PreflightCheck:
 
 
 def _check_output_dir_writable(output_dir: str) -> PreflightCheck:
-    """Verify that *output_dir* (or its parent, if absent) is writable."""
+    """Verify that *output_dir* (or its parent, if absent) is writable.
+
+    Resolves symlinks before the writability probe so a dangling
+    symlink (``output_dir`` is a symlink whose target does not exist)
+    does not silently pass the non-existent-parent fallback. The
+    resolved target must exist and be writable for the check to pass.
+    """
     path = Path(output_dir)
-    probe = path if path.exists() else path.parent
+    # Symlink -> must resolve its target before probing. A dangling
+    # symlink's ``exists()`` returns False (exists() follows the link),
+    # so detect this case explicitly so the warn/fail message can
+    # point to the broken target rather than reporting the link path.
+    if path.is_symlink():
+        resolved = path.resolve(strict=False)
+        if not resolved.exists():
+            return PreflightCheck(
+                name=NotBlankStr("output_dir_writable"),
+                status="warn",
+                message=NotBlankStr(
+                    f"Output directory symlink target does not exist: "
+                    f"{path} -> {resolved}",
+                ),
+                detail="The runner will attempt to create it at pipeline start.",
+            )
+        probe = resolved
+    else:
+        probe = path if path.exists() else path.parent
     if not probe.exists():
         return PreflightCheck(
             name=NotBlankStr("output_dir_writable"),

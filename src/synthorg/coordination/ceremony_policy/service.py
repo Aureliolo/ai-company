@@ -161,6 +161,12 @@ class CeremonyPolicyService:
             return ActiveCeremonyStrategy()
         strategy, sprint = await scheduler.get_active_info()
         if strategy is None or sprint is None:
+            logger.debug(
+                API_CEREMONY_POLICY_ACTIVE_QUERIED,
+                strategy=None,
+                sprint_id=None,
+                surface="mcp.ceremony_policy.get_active_strategy",
+            )
             return ActiveCeremonyStrategy()
         response = ActiveCeremonyStrategy(
             strategy=strategy.strategy_type,

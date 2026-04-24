@@ -710,9 +710,12 @@ fixes as individual agents complete. The lock from Phase 4 blocks
 source edits anyway -- breaking that gate is a workflow bug.
 
 Build a single consolidated table of **ALL** findings from all agents
-and write it to `_audit/pre-pr-review/triage.md`. Writing the table
-to a file (not just showing it in chat) is mandatory; the triage gate
-hook expects the file to exist before the lock can be removed.
+and write it to `_audit/pre-pr-review/triage.md`. Writing the table to
+a file (not just showing it in chat) is part of the agreed workflow
+so the user can review the table independently of the chat buffer.
+The triage gate hook only checks the lock file; it does not verify
+the triage file exists, so producing the triage file is a skill-side
+invariant that must be respected rather than one the hook enforces.
 
 For each item, determine:
 
