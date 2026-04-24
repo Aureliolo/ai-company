@@ -71,7 +71,17 @@ class AgentVersionService:
 
         Returns:
             Tuple of ``(page, total)``.
+
+        Raises:
+            ValueError: If ``offset`` is negative or ``limit`` is not
+                strictly positive.
         """
+        if offset < 0:
+            msg = f"offset must be >= 0, got {offset}"
+            raise ValueError(msg)
+        if limit < 1:
+            msg = f"limit must be >= 1, got {limit}"
+            raise ValueError(msg)
         versions = await self._repo.list_versions(
             agent_id,
             limit=limit,
@@ -102,7 +112,13 @@ class AgentVersionService:
         Returns:
             The snapshot, or ``None`` if the ``(agent_id, version)``
             pair does not exist.
+
+        Raises:
+            ValueError: If ``version`` is less than 1.
         """
+        if version < 1:
+            msg = f"version must be >= 1, got {version}"
+            raise ValueError(msg)
         snapshot = await self._repo.get_version(agent_id, version)
         if snapshot is not None:
             logger.debug(

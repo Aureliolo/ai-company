@@ -212,16 +212,45 @@ def _check_timing_regression(  # noqa: PLR0911 -- branching by data shape
         return False
 
     # Honor the same override used by the conftest guard.
-    import contextlib
     import os
 
     env_override = os.environ.get("UNIT_SUITE_MAX_SECONDS")
     env_max_allowed: float | None = None
     if env_override is not None:
-        with contextlib.suppress(ValueError):
+        try:
             env_max_allowed = float(env_override)
+        except ValueError:
+            # Fail closed on malformed env -- silently swallowing a
+            # typo (``UNIT_SUITE_MAX_SECONDS=3oo``) would mean the
+            # guard runs with the baseline tolerance while the
+            # operator thinks they've relaxed it.
+            print(
+                f"run_affected_tests: UNIT_SUITE_MAX_SECONDS="
+                f"{env_override!r} is not a valid float; ignoring "
+                f"the override and using the baseline tolerance.",
+                file=sys.stderr,
+            )
 
     border = "!" * 60
+    # Env-cap hard rail: if the operator set an absolute ceiling
+    # (UNIT_SUITE_MAX_SECONDS) and we blew past it, fail regardless
+    # of the per-test ratio. The per-test branch below still catches
+    # regressions within the cap.
+    if env_max_allowed is not None and elapsed > env_max_allowed:
+        print(
+            f"\n{border}\n"
+            f"REGRESSION DETECTED: suite took {elapsed:.0f}s, exceeds "
+            f"UNIT_SUITE_MAX_SECONDS={env_max_allowed:.0f}s.\n"
+            f"Baseline: {baseline_secs:.0f}s.\n"
+            f"Run A/B against origin/main before fixing anything.\n"
+            f"Do NOT delete tests or use --no-verify.\n"
+            f"If the new baseline is intentional, update "
+            f"tests/baselines/unit_timing.json.\n"
+            f"{border}",
+            file=sys.stderr,
+        )
+        return True
+
     # Prefer per-test cost when we have the data (ratio + both
     # counts). This is the signal the user actually cares about --
     # adding a few hundred tests should not trip the alarm.
@@ -242,8 +271,6 @@ def _check_timing_regression(  # noqa: PLR0911 -- branching by data shape
         baseline_per_test = baseline_secs / baseline_test_count
         current_per_test = elapsed / test_count
         max_per_test = baseline_per_test * threshold_ratio
-        if env_max_allowed is not None and elapsed <= env_max_allowed:
-            return False
         if current_per_test > max_per_test:
             print(
                 f"\n{border}\n"

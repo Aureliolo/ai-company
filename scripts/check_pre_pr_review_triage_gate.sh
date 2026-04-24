@@ -53,34 +53,33 @@ if [[ -z "$FILE_PATH" ]]; then
     deny "tool_input.file_path is empty or missing"
 else
     # Canonicalise the path so segment-boundary checks cannot be
-    # bypassed via ``..`` traversal or embedded ``_audit`` substring.
-    # ``realpath -m`` does not require the path to exist, which is
-    # correct for Edit/Write targets that are about to be created.
+    # bypassed via ``..`` traversal. ``realpath -m`` does not require
+    # the path to exist, which is correct for Edit/Write targets that
+    # are about to be created. If canonicalisation fails we FAIL
+    # CLOSED rather than fall back to the raw syntactic path --
+    # otherwise ``_audit/../src/foo.py`` could slip through via the
+    # embedded ``_audit`` segment.
     if CANONICAL=$(realpath -m "$FILE_PATH" 2>/dev/null); then
         NORMALISED="${CANONICAL//\\//}"
+
+        # Segment-anchored allowlist. Bash regex ``=~`` matches
+        # against forward-slash segment boundaries so ``/_audit/``
+        # cannot be matched by an embedded substring inside a larger
+        # path segment (e.g. ``/foo_audit_bar/``).
+        if [[ "$NORMALISED" =~ (^|/)_audit(/|$) ]]; then
+            exit 0
+        fi
+
+        # Allow writes to the lock file itself so the skill can
+        # manage its own marker. Match by the final path segment so
+        # we don't accidentally allow any file whose name contains
+        # the lock basename as a substring.
+        LOCK_BASENAME="${LOCK##*/}"
+        if [[ "${NORMALISED##*/}" == "$LOCK_BASENAME" ]]; then
+            exit 0
+        fi
     else
-        # Fall back to syntactic normalisation when realpath is not
-        # available (e.g. minimal environments). Fail-closed here as
-        # well: we would rather block a legitimate edit than allow a
-        # traversal bypass.
-        NORMALISED="${FILE_PATH//\\//}"
-    fi
-
-    # Segment-anchored allowlist. Bash regex ``=~`` matches against
-    # forward-slash segment boundaries so ``/_audit/`` cannot be
-    # matched by an embedded substring inside a larger path segment
-    # (e.g. ``/foo_audit_bar/``).
-    if [[ "$NORMALISED" =~ (^|/)_audit(/|$) ]]; then
-        exit 0
-    fi
-
-    # Allow writes to the lock file itself so the skill can manage
-    # its own marker.  Match by the final path segment so we don't
-    # accidentally allow any file whose name contains the lock
-    # basename as a substring.
-    LOCK_BASENAME="${LOCK##*/}"
-    if [[ "${NORMALISED##*/}" == "$LOCK_BASENAME" ]]; then
-        exit 0
+        deny "realpath -m failed to canonicalise FILE_PATH; cannot safely apply allowlist"
     fi
 fi
 

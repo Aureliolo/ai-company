@@ -195,6 +195,20 @@ class TrainingService:
                 re-raised after the session is recorded as
                 ``FAILED``.
         """
+        # ``execute`` short-circuits (returning an empty
+        # :class:`TrainingResult`) in three cases: ``plan.skip_training``,
+        # ``plan.status == EXECUTED``, or ``plan.id`` already present in
+        # the service's executed-id set. In any of those cases no
+        # pipeline work runs, so we must not overwrite the plan's
+        # status with EXECUTED + a fresh executed_at -- that would
+        # misrepresent an idempotent replay as a new run.
+        plan_id_str = str(plan.id)
+        idempotent_replay = (
+            plan.skip_training
+            or plan.status == TrainingPlanStatus.EXECUTED
+            or plan_id_str in self._executed_plan_ids
+        )
+
         await self._record_session(plan)
         try:
             result = await self.execute(plan)
@@ -207,11 +221,7 @@ class TrainingService:
             )
             await self._record_session(failed)
             raise
-        # ``execute`` skips the training pipeline when ``plan.skip_training``
-        # is set (the plan is a config-only update). Don't overwrite the
-        # plan's existing status in that case -- writing EXECUTED would
-        # misrepresent what actually happened.
-        if plan.skip_training:
+        if idempotent_replay:
             return result
         executed = plan.model_copy(
             update={

@@ -593,12 +593,18 @@ def _parse_training_plan(arguments: dict[str, Any]) -> TrainingPlan:
         level = SeniorityLevel(raw_level)
     except ValueError as exc:
         raise invalid_argument(arg_level, expected_level) from exc
-    department_raw = arguments.get("new_agent_department")
-    department = (
-        NotBlankStr(department_raw.strip())
-        if isinstance(department_raw, str) and department_raw.strip()
-        else None
-    )
+    department: NotBlankStr | None = None
+    arg_department = "new_agent_department"
+    expected_department = "non-blank string"
+    if arg_department in arguments:
+        department_raw = arguments[arg_department]
+        if department_raw is not None:
+            # Reject present-but-malformed values (e.g. ``""`` or a
+            # non-string); silently dropping them would change the
+            # plan the caller intended to submit.
+            if not isinstance(department_raw, str) or not department_raw.strip():
+                raise invalid_argument(arg_department, expected_department)
+            department = NotBlankStr(department_raw.strip())
     enabled_raw = arguments.get("enabled_content_types")
     if enabled_raw is None:
         enabled = frozenset(ContentType)
