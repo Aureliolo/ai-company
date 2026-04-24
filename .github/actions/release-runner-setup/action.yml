@@ -15,11 +15,21 @@ description: >-
   semantics), so this composite deliberately does not include one.
 
 inputs:
+  # IMPORTANT: input descriptions deliberately do NOT use ${{ ... }}
+  # syntax, even for documentation examples. GitHub Actions evaluates
+  # every expression in this file at template-load time -- composite
+  # actions cannot access the ``secrets`` context, so any stray
+  # ``${{ secrets.X }}`` in a description (even as a usage hint)
+  # fails the whole action with "Unrecognized named-value: 'secrets'"
+  # and breaks every caller. See https://docs.github.com/en/actions/
+  # sharing-automations/creating-actions/metadata-syntax-for-github-actions
+  # -- composite actions only see ``inputs``, ``steps``, ``env``,
+  # ``github``, ``runner``, ``job``, and ``matrix`` contexts.
   app-id:
-    description: "GitHub App ID (pass `${{ secrets.RELEASE_BOT_APP_ID }}`)."
+    description: "GitHub App ID. Callers typically pass secrets.RELEASE_BOT_APP_ID (the secret lives on the release deployment environment)."
     required: true
   app-private-key:
-    description: "GitHub App private key (pass `${{ secrets.RELEASE_BOT_APP_PRIVATE_KEY }}`)."
+    description: "GitHub App private key in PEM format. Callers typically pass secrets.RELEASE_BOT_APP_PRIVATE_KEY."
     required: true
   validate-branch:
     description: "When 'true', assert $GITHUB_REF == 'refs/heads/main' before minting the token. Every current caller sets this implicitly to true; the input exists so a future workflow_dispatch-based caller can opt out."
