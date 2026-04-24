@@ -17,6 +17,7 @@ on:
       - ".github/actions/build-apko-base/**"
       - ".github/actions/build-scan-image/**"
       - ".github/actions/cis-scan/**"
+      - ".github/actions/publish-apko-base/**"
       - ".github/actions/publish-image/**"
       - ".github/actions/setup-apko/**"
       - ".github/actions/setup-python-uv/**"
@@ -70,6 +71,7 @@ jobs:
               - '.github/actions/build-apko-base/**'
               - '.github/actions/build-scan-image/**'
               - '.github/actions/cis-scan/**'
+              - '.github/actions/publish-apko-base/**'
               - '.github/actions/publish-image/**'
               - '.github/actions/setup-apko/**'
               - 'scripts/cis-scan.sh'
@@ -80,6 +82,7 @@ jobs:
               - '.github/actions/build-apko-base/**'
               - '.github/actions/build-scan-image/**'
               - '.github/actions/cis-scan/**'
+              - '.github/actions/publish-apko-base/**'
               - '.github/actions/publish-image/**'
               - '.github/actions/setup-apko/**'
               - 'scripts/cis-scan.sh'
@@ -90,6 +93,7 @@ jobs:
               - '.github/actions/build-apko-base/**'
               - '.github/actions/build-scan-image/**'
               - '.github/actions/cis-scan/**'
+              - '.github/actions/publish-apko-base/**'
               - '.github/actions/publish-image/**'
               - '.github/actions/setup-apko/**'
               - 'scripts/cis-scan.sh'
@@ -103,6 +107,7 @@ jobs:
               - '.github/actions/build-apko-base/**'
               - '.github/actions/build-scan-image/**'
               - '.github/actions/cis-scan/**'
+              - '.github/actions/publish-apko-base/**'
               - '.github/actions/publish-image/**'
               - '.github/actions/setup-apko/**'
               - 'scripts/cis-scan.sh'
@@ -1076,19 +1081,14 @@ jobs:
           path: fine-tune-${{ matrix.variant }}.digest
           retention-days: 1
 
-  # Append container image references to the GitHub Release (version tags only)
+  # Append container image references to the GitHub Release (version tags only).
+  # The `*-publish` jobs transitively depend on their `*-base` / `*-base-publish`
+  # counterparts (via `build-X` -> `build-X-publish`), so listing only the
+  # publish jobs here is sufficient for both ordering and `result` gating.
   update-release:
     name: Update Release Notes
     needs:
       - version
-      - build-backend-base
-      - build-backend-base-publish
-      - build-sandbox-base
-      - build-sandbox-base-publish
-      - build-sidecar-base
-      - build-sidecar-base-publish
-      - build-fine-tune-base
-      - build-fine-tune-base-publish
       - build-backend-publish
       - build-web-publish
       - build-sandbox-publish

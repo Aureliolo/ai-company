@@ -90,17 +90,6 @@ inputs:
     required: false
     default: "false"
 
-outputs:
-  scan-ref:
-    description: "Image ref used for Trivy / CIS scans (sha-<short>-amd64 tag)."
-    value: ${{ steps.scan-ref.outputs.ref }}
-  amd64-artifact-name:
-    description: "Artifact name holding the amd64 docker-archive tarball (non-PR events only)."
-    value: scan-image-${{ inputs.image-name }}-amd64
-  arm64-artifact-name:
-    description: "Artifact name holding the arm64 docker-archive tarball (non-PR + enable-arm64 only)."
-    value: scan-image-${{ inputs.image-name }}-arm64
-
 runs:
   using: composite
   steps:
@@ -256,15 +245,11 @@ runs:
       run: |
         SHORT_SHA="${GITHUB_SHA::7}"
         if [ "$EVENT_NAME" = "pull_request" ]; then
-          echo "ref=ghcr.io/aureliolo/synthorg-${IMAGE_NAME}:sha-${SHORT_SHA}" >> "$GITHUB_OUTPUT"
           echo "ref_amd64=ghcr.io/aureliolo/synthorg-${IMAGE_NAME}:sha-${SHORT_SHA}" >> "$GITHUB_OUTPUT"
           echo "ref_arm64=" >> "$GITHUB_OUTPUT"
         else
-          AMD64_REF="ghcr.io/aureliolo/synthorg-${IMAGE_NAME}:scan-${GITHUB_SHA}-amd64"
-          ARM64_REF="ghcr.io/aureliolo/synthorg-${IMAGE_NAME}:scan-${GITHUB_SHA}-arm64"
-          echo "ref=${AMD64_REF}" >> "$GITHUB_OUTPUT"
-          echo "ref_amd64=${AMD64_REF}" >> "$GITHUB_OUTPUT"
-          echo "ref_arm64=${ARM64_REF}" >> "$GITHUB_OUTPUT"
+          echo "ref_amd64=ghcr.io/aureliolo/synthorg-${IMAGE_NAME}:scan-${GITHUB_SHA}-amd64" >> "$GITHUB_OUTPUT"
+          echo "ref_arm64=ghcr.io/aureliolo/synthorg-${IMAGE_NAME}:scan-${GITHUB_SHA}-arm64" >> "$GITHUB_OUTPUT"
         fi
 
     - name: Report image size (amd64)
