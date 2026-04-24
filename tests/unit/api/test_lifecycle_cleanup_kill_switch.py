@@ -68,7 +68,10 @@ async def _run_loop_ticks(
         remaining -= 1
         await real_sleep(0)
 
-    monkeypatch.setattr(lifecycle_helpers.asyncio, "sleep", _deterministic_sleep)
+    monkeypatch.setattr(
+        "synthorg.api.lifecycle_helpers.asyncio.sleep",
+        _deterministic_sleep,
+    )
     task = asyncio.create_task(lifecycle_helpers._ticket_cleanup_loop(app_state))
     with pytest.raises(asyncio.CancelledError):
         await task
