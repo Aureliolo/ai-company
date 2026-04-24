@@ -1,6 +1,6 @@
 """Unit test configuration and fixtures for provider models."""
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 
 import pytest
 from polyfactory.factories.pydantic_factory import ModelFactory
@@ -166,6 +166,12 @@ class FakeProvider:
 
     async def get_model_capabilities(self, model: str) -> ModelCapabilities:
         return self._capabilities
+
+    async def batch_get_capabilities(
+        self,
+        models: tuple[str, ...],
+    ) -> Mapping[str, ModelCapabilities | None]:
+        return dict.fromkeys(models, self._capabilities)
 
 
 # ── Sample Fixtures ───────────────────────────────────────────────

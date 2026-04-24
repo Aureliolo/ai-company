@@ -205,6 +205,88 @@ class TestDiscoverModelsEndpoint:
 
 
 @pytest.mark.unit
+class TestListModelsBatchCapabilities:
+    """``list_models`` must batch capability lookups, not loop per-model."""
+
+    async def test_calls_batch_get_capabilities_once(self) -> None:
+        from synthorg.config.schema import ProviderConfig
+        from synthorg.providers.capabilities import ModelCapabilities
+
+        models = (
+            ProviderModelConfig(id="m1"),
+            ProviderModelConfig(id="m2"),
+            ProviderModelConfig(id="m3"),
+        )
+        provider = ProviderConfig(driver="test-driver", models=models)
+        caps_lookup = {
+            "m1": ModelCapabilities(
+                model_id="m1",
+                provider="test-provider",
+                max_context_tokens=1024,
+                max_output_tokens=512,
+                cost_per_1k_input=0.001,
+                cost_per_1k_output=0.002,
+            ),
+            "m2": None,
+            "m3": ModelCapabilities(
+                model_id="m3",
+                provider="test-provider",
+                max_context_tokens=2048,
+                max_output_tokens=1024,
+                cost_per_1k_input=0.003,
+                cost_per_1k_output=0.004,
+            ),
+        }
+
+        driver = MagicMock()
+        driver.batch_get_capabilities = AsyncMock(return_value=caps_lookup)
+        # Single-model lookup must NOT be called from the batched path.
+        driver.get_model_capabilities = AsyncMock(
+            side_effect=AssertionError("per-model lookup should not run"),
+        )
+
+        state, _ = _make_provider_state_and_mgmt()
+        state.app_state.config_resolver.get_provider_configs = AsyncMock(
+            return_value={"test-provider": provider},
+        )
+        state.app_state.has_provider_registry = True
+        state.app_state.provider_registry = {"test-provider": driver}
+
+        ctrl = _provider_controller()
+        result = await ctrl.list_models.fn(
+            ctrl,
+            state=state,
+            name="test-provider",
+        )
+
+        driver.batch_get_capabilities.assert_awaited_once_with(("m1", "m2", "m3"))
+        driver.get_model_capabilities.assert_not_awaited()
+        assert len(result.data) == 3
+
+    async def test_no_driver_skips_capability_lookup(self) -> None:
+        from synthorg.config.schema import ProviderConfig
+
+        provider = ProviderConfig(
+            driver="test-driver",
+            models=(ProviderModelConfig(id="only"),),
+        )
+        state, _ = _make_provider_state_and_mgmt()
+        state.app_state.config_resolver.get_provider_configs = AsyncMock(
+            return_value={"test-provider": provider},
+        )
+        state.app_state.has_provider_registry = False
+
+        ctrl = _provider_controller()
+        result = await ctrl.list_models.fn(
+            ctrl,
+            state=state,
+            name="test-provider",
+        )
+
+        assert len(result.data) == 1
+
+
+@pytest.mark.unit
 class TestProbePresetEndpoint:
     """Tests for POST /providers/probe-preset."""
 
