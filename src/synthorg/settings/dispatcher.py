@@ -216,6 +216,27 @@ class SettingsChangeDispatcher:
                         raise
                 self._task = None
 
+            # Clean-stop path must mirror the rollback unsubscribe so
+            # the bus does not keep ``__settings_dispatcher__``
+            # registered on ``#settings`` across stop/start cycles.
+            # Without this, the next ``start()`` would re-enter
+            # ``_bus.subscribe`` for an already-registered subscriber
+            # (idempotent on the in-memory bus but not necessarily on
+            # the NATS bus), and the stopped dispatcher would still be
+            # buffering ``#settings`` messages in the bus's per-sub
+            # queue until channel cleanup.
+            try:
+                await self._bus.unsubscribe(_SETTINGS_CHANNEL, _SUBSCRIBER_ID)
+            except Exception:
+                # Best-effort: a bus that is itself stopping may fail
+                # to unsubscribe cleanly; log and continue so
+                # ``_running = False`` still publishes.
+                logger.warning(
+                    SETTINGS_DISPATCHER_STOPPED,
+                    error="clean-stop unsubscribe failed",
+                    exc_info=True,
+                )
+
             self._running = False
             logger.info(SETTINGS_DISPATCHER_STOPPED)
 

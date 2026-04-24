@@ -79,66 +79,55 @@ export function useWebSocket(options: WebSocketOptions): WebSocketReturn {
     // hook owns both and must unwind both on unmount.
     let subscribed = false
 
+    // The hook does NOT wrap individual store mutation calls in
+    // try/catch per the project contract ("Callers MUST NOT wrap
+    // store mutation calls in try/catch -- the store owns the error
+    // UX"). Errors from connect/subscribe/onChannelEvent bubble to
+    // the top-level ``setup().catch()`` which sets a single generic
+    // ``setupError`` for the UI; the store emits toasts + logs from
+    // its own mutation actions. Cancellation guards remain so a
+    // stale effect cannot register handlers against a newer mount.
     const setup = async () => {
-      // Clear any stale error from a previous failed setup
       setSetupError(null)
-      try {
-        if (!wsStore.connected) {
-          await wsStore.connect()
-        }
-      } catch (err) {
-        if (cancelled) return
-        setSetupError('WebSocket connection failed.')
-        log.error('Connect failed:', err)
-        return
+      if (!wsStore.connected) {
+        await wsStore.connect()
       }
-
       if (cancelled) return
 
-      try {
-        wsStore.subscribe(uniqueChannels, filters)
-        subscribed = true
-      } catch (err) {
-        setSetupError('WebSocket subscription failed.')
-        log.error('Subscribe failed:', err)
-        return
-      }
-
+      wsStore.subscribe(uniqueChannels, filters)
+      subscribed = true
       if (cancelled) return
 
-      // Track which (channel, handler) pairs we successfully register
-      // so cleanup can roll back ONLY those -- if setup throws
-      // mid-loop, we must not try to deregister bindings that were
-      // never wired.
+      // Push to the ledger AFTER the call succeeds so a throw from
+      // ``onChannelEvent`` naturally aborts the loop without leaving
+      // the failed binding in the rollback ledger. The outer
+      // ``setup().catch()`` records the failure in setupError.
       for (const binding of bindings) {
         if (cancelled) return
-        try {
-          wsStore.onChannelEvent(binding.channel, binding.handler)
-          registered.push(binding)
-        } catch (err) {
-          setSetupError('WebSocket handler setup failed.')
-          log.error('Handler wiring failed:', err)
-          // Stop wiring further bindings -- cleanup will roll back
-          // the ones we already registered via the `registered` list.
-          return
-        }
+        wsStore.onChannelEvent(binding.channel, binding.handler)
+        registered.push(binding)
       }
     }
 
     setup().catch((err) => {
       if (!cancelled) {
-        setSetupError('WebSocket setup failed unexpectedly.')
+        setSetupError('WebSocket setup failed.')
       }
       log.error('Setup failed:', err)
     })
 
     return () => {
       cancelled = true
-      // Only remove handlers we actually registered -- do NOT iterate
-      // the full bindings list because a mid-loop throw may have left
-      // later bindings unregistered. The store's handler set
-      // deduplication ensures cleanup is safe per-handler; symmetry
-      // here prevents stale phantom cleanups across reconnects.
+      // Cleanup also delegates error UX to the store. ``for`` loop
+      // survives a throw from any single ``offChannelEvent`` because
+      // the store's own error handling records it -- however, since
+      // cleanup runs synchronously under React's unmount and a store
+      // throw here WOULD skip subsequent ``offChannelEvent`` / the
+      // final ``unsubscribe``, we keep *only* a minimal try/catch
+      // around each individual call so per-binding failures cannot
+      // leave stale channel subscriptions behind. This is the same
+      // "best-effort cleanup" carve-out that ``_nats_consumers``
+      // uses on the Python side.
       for (const binding of registered) {
         try {
           wsStore.offChannelEvent(binding.channel, binding.handler)
@@ -146,11 +135,6 @@ export function useWebSocket(options: WebSocketOptions): WebSocketReturn {
           log.error('Handler cleanup failed:', err)
         }
       }
-      // Unsubscribe from the channel subscriptions we created. Without
-      // this the store keeps routing broadcast traffic to channels
-      // the page no longer renders, leaking subscription state across
-      // mounts (and eventually across reconnects that refresh the
-      // subscribedChannels array).
       if (subscribed) {
         try {
           wsStore.unsubscribe(uniqueChannels)

@@ -214,13 +214,18 @@ class InMemoryMessageBus:
         *,
         channel_name: str,
         subscriber_id: str,
-    ) -> None:
+    ) -> bool:
         """Enqueue an envelope or drop it (newest) on overflow.
 
         Emits ``COMM_SUBSCRIBER_QUEUE_OVERFLOW`` at WARNING when the
         subscriber's queue is full so operators can tell the difference
         between ``receive`` returning ``None`` on shutdown vs. messages
         being silently dropped upstream.
+
+        Returns ``True`` on successful enqueue, ``False`` when the
+        envelope was dropped. Callers gate ``COMM_MESSAGE_DELIVERED``
+        emission on the return value so a dropped envelope is never
+        logged as delivered.
         """
         try:
             queue.put_nowait(envelope)
@@ -234,6 +239,8 @@ class InMemoryMessageBus:
                 backend="memory",
                 message_id=str(envelope.message.id),
             )
+            return False
+        return True
 
     async def publish(
         self,
@@ -271,18 +278,20 @@ class InMemoryMessageBus:
                     channel_name=channel_name,
                     delivered_at=now,
                 )
-                self._enqueue_or_drop(
+                # Gate the delivery log on actual enqueue success --
+                # a dropped envelope must not be counted as delivered.
+                if self._enqueue_or_drop(
                     queue,
                     envelope,
                     channel_name=channel_name,
                     subscriber_id=sub_id,
-                )
-                logger.debug(
-                    COMM_MESSAGE_DELIVERED,
-                    channel=channel_name,
-                    subscriber=sub_id,
-                    message_id=str(message.id),
-                )
+                ):
+                    logger.debug(
+                        COMM_MESSAGE_DELIVERED,
+                        channel=channel_name,
+                        subscriber=sub_id,
+                        message_id=str(message.id),
+                    )
         logger.info(
             COMM_MESSAGE_PUBLISHED,
             channel=channel_name,
@@ -434,18 +443,18 @@ class InMemoryMessageBus:
                 channel_name=channel_name,
                 delivered_at=now,
             )
-            self._enqueue_or_drop(
+            if self._enqueue_or_drop(
                 self._queues[(channel_name, agent_id)],
                 envelope,
                 channel_name=channel_name,
                 subscriber_id=agent_id,
-            )
-            logger.debug(
-                COMM_MESSAGE_DELIVERED,
-                channel=channel_name,
-                subscriber=agent_id,
-                message_id=str(message.id),
-            )
+            ):
+                logger.debug(
+                    COMM_MESSAGE_DELIVERED,
+                    channel=channel_name,
+                    subscriber=agent_id,
+                    message_id=str(message.id),
+                )
 
     async def subscribe(
         self,
@@ -526,18 +535,22 @@ class InMemoryMessageBus:
             key = (channel_name, subscriber_id)
             queue = self._queues.pop(key, None)
             if queue is not None:
-                # Put a sentinel for each pending waiter so all
-                # concurrent receive() calls are woken up. Safe to
-                # use raw put_nowait here: the queue was just popped
-                # from self._queues, so no publisher can add more
-                # envelopes. Sentinels are one-per-waiter (capped at
-                # the number of concurrent receive calls), so we
-                # cannot overflow. Publishers enforce drop-newest
-                # policy via _enqueue_or_drop().
+                # Wake up every pending ``receive()`` by putting one
+                # sentinel per actual waiter. If the queue is full of
+                # buffered envelopes (the subscriber was backed up at
+                # the cap), drain the backlog first so the sentinel
+                # put_nowait cannot raise ``QueueFull`` -- the queue
+                # has already been removed from ``self._queues``, so
+                # the backlog cannot be delivered anywhere anyway.
+                # Use ``pending`` (not ``max(1, pending)``) so a
+                # subscriber with no live waiters does not get a
+                # spurious sentinel enqueued into a full queue.
                 pending = self._waiters.pop(key, 0)
-                sentinels = max(1, pending)
-                for _ in range(sentinels):
-                    queue.put_nowait(None)
+                if pending:
+                    while not queue.empty():
+                        queue.get_nowait()
+                    for _ in range(pending):
+                        queue.put_nowait(None)
         logger.info(
             COMM_SUBSCRIPTION_REMOVED,
             channel=channel_name,

@@ -53,6 +53,23 @@ class TestClearConcurrentWithRecord:
         tracker = PerformanceTracker()
         n_records = 100
         errors: list[BaseException] = []
+        acquires = 0
+
+        # Swap in an instrumented lock that counts acquires so we can
+        # assert the lock path was actually exercised. If a future
+        # refactor removes ``_metrics_lock``, ``acquires`` stays at 0
+        # and the assertion fails -- without this, the test would
+        # false-pass because ``record_task_metric`` / ``aclear`` have
+        # no internal ``await`` between their read and write steps,
+        # so they serialize naturally on any single-threaded event
+        # loop even with the lock removed.
+        class _CountingLock(asyncio.Lock):
+            async def acquire(self) -> bool:  # type: ignore[override]
+                nonlocal acquires
+                acquires += 1
+                return await super().acquire()
+
+        tracker._metrics_lock = _CountingLock()
 
         async def _record(i: int) -> None:
             # Explicit yield so records interleave with the clear
@@ -85,6 +102,15 @@ class TestClearConcurrentWithRecord:
                 tg.create_task(_record(i))
                 if i == n_records // 2:
                     tg.create_task(_clear())
+
+        # Both record_task_metric and aclear MUST acquire
+        # ``_metrics_lock`` -- if they don't, the test is vacuous and
+        # a regression that drops the lock would slip through. With
+        # 100 records plus one clear we expect > 100 acquires.
+        assert acquires > n_records, (
+            f"expected > {n_records} metrics-lock acquires "
+            f"(record + clear both under lock); got {acquires}"
+        )
 
         # The specific race symptom we're guarding against is
         # ``RuntimeError: dictionary changed size during iteration`` /

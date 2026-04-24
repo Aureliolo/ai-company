@@ -65,6 +65,7 @@ describe('useWebSocket registration rollback', () => {
       })
 
     const offChannelSpy = vi.spyOn(store, 'offChannelEvent')
+    const unsubscribeSpy = vi.spyOn(store, 'unsubscribe')
 
     const { unmount } = renderHook(() =>
       useWebSocket({
@@ -112,5 +113,17 @@ describe('useWebSocket registration rollback', () => {
     // even though the hook's ledger didn't record it.
     expect(onChannelSpy).toHaveBeenCalledTimes(3)
     expect(onChannelSpy).not.toHaveBeenCalledWith('meetings', handlerD)
+
+    // Channel-level unsubscribe must cover every channel the hook
+    // subscribed to (``uniqueChannels`` from the bindings), even the
+    // ones where handler wiring aborted mid-loop. Without this the
+    // store would keep routing broadcast traffic to the unmounted
+    // view through channels we handed it at subscribe time.
+    expect(unsubscribeSpy).toHaveBeenCalledWith([
+      'tasks',
+      'agents',
+      'approvals',
+      'meetings',
+    ])
   })
 })

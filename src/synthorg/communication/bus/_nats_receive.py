@@ -88,7 +88,7 @@ async def resolve_consumer(
     return sub
 
 
-async def _maybe_log_overflow(  # noqa: C901  -- linear flow, not branching
+async def _maybe_log_overflow(  # noqa: C901, PLR0912  -- linear flow, not branching
     state: _NatsState,
     sub: Any,
     *,
@@ -161,13 +161,23 @@ async def _maybe_log_overflow(  # noqa: C901  -- linear flow, not branching
         shutdown_task.cancel()
         raise
     # Clean up the loser (timeout, or the task that didn't finish).
+    # ``contextlib.suppress(BaseException)`` would swallow system
+    # errors; narrow to cancellation + normal Exception so
+    # MemoryError / RecursionError still propagate per the repo
+    # convention for system-error preservation.
     if probe_task not in done:
         probe_task.cancel()
-        with contextlib.suppress(BaseException):
+        try:
             await probe_task
+        except asyncio.CancelledError:
+            pass
+        except MemoryError, RecursionError:
+            raise
+        except Exception:  # noqa: S110  -- probe is best-effort; loser-task result discarded
+            pass
     if shutdown_task not in done:
         shutdown_task.cancel()
-        with contextlib.suppress(BaseException):
+        with contextlib.suppress(asyncio.CancelledError):
             await shutdown_task
     # Shutdown wins (or timed out with no probe result): release the
     # rate-limit slot and exit through the non-emission path. The next

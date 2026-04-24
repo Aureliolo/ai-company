@@ -223,25 +223,41 @@ class MeetingScheduler:
                 task.cancel()
             if self._tasks:
                 results: list[BaseException | None]
+
+                # Spawn the drain as a separate task and ``shield`` it
+                # from the outer ``wait_for`` cancellation: if a
+                # periodic task suppresses ``CancelledError`` and
+                # continues working, ``wait_for(gather(...))`` would
+                # block INSIDE the lifecycle lock waiting for the
+                # suppressed cancellation to take effect -- the
+                # "hard deadline" would be soft. With ``shield``, the
+                # outer ``wait_for`` times out the *wait* only; the
+                # shielded drain continues running in the background
+                # but does not prevent ``stop()`` from exiting and
+                # releasing ``_lifecycle_lock``.
+                async def _drain() -> list[BaseException | None]:
+                    return await asyncio.gather(
+                        *self._tasks,
+                        return_exceptions=True,
+                    )
+
+                drain_task: asyncio.Task[list[BaseException | None]] = (
+                    asyncio.create_task(_drain())
+                )
                 try:
                     results = await asyncio.wait_for(
-                        asyncio.gather(
-                            *self._tasks,
-                            return_exceptions=True,
-                        ),
+                        asyncio.shield(drain_task),
                         timeout=_STOP_DRAIN_TIMEOUT_SECONDS,
                     )
                 except TimeoutError:
-                    # Drain exceeded the hard deadline. Mark the
-                    # scheduler unrestartable and re-raise: a future
-                    # start() must not spawn a second set of periodic
-                    # tasks alongside orphaned periodic tasks that
-                    # ignored cancellation (same meeting type would
-                    # fire twice per period). Leave ``_tasks`` +
-                    # ``_running`` intact so shutdown is honestly
-                    # reflected as incomplete; the caller receives the
-                    # TimeoutError and must reconstruct a fresh
-                    # ``MeetingScheduler`` to recover.
+                    # Hard deadline hit. Mark unrestartable and
+                    # re-raise: a future start() must not spawn a
+                    # second set of periodic tasks alongside the
+                    # orphaned drain_task (which may still be waiting
+                    # on cancellation-suppressing periodic tasks).
+                    # Leave ``_tasks`` + ``_running`` intact; caller
+                    # receives TimeoutError and must reconstruct a
+                    # fresh ``MeetingScheduler``.
                     self._stop_failed = True
                     # TRY400: logger.exception here would append a
                     # TimeoutError traceback with no actionable diagnostic
