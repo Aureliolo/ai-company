@@ -116,7 +116,8 @@ describe('useThemeStore teardown', () => {
     store.reattach()
 
     expect(attachedListeners.size).toBe(1)
-    const [listener] = [...attachedListeners]
+    const listener = [...attachedListeners][0]
+    if (!listener) throw new Error('expected one attached listener')
 
     const before = useThemeStore.getState().reducedMotionDetected
     listener({ matches: !before } as MediaQueryListEvent)

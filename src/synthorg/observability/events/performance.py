@@ -8,6 +8,8 @@ from typing import Final
 
 PERF_METRIC_RECORDED: Final[str] = "perf.metric.recorded"
 PERF_TRACKER_CLEARED: Final[str] = "perf.tracker.cleared"
+PERF_INFLECTION_SINK_BOUND: Final[str] = "perf.inflection_sink.bound"
+PERF_INFLECTION_SINK_BIND_REJECTED: Final[str] = "perf.inflection_sink.bind_rejected"
 PERF_QUALITY_SCORED: Final[str] = "perf.quality.scored"
 PERF_COLLABORATION_SCORED: Final[str] = "perf.collaboration.scored"
 PERF_SNAPSHOT_COMPUTED: Final[str] = "perf.snapshot.computed"

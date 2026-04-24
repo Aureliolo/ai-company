@@ -64,37 +64,42 @@ class TestBoundedSubscriberQueue:
         )
         bus = InMemoryMessageBus(config=config)
         await bus.start()
-        subscriber = "agent-slow-001"
-        await bus.subscribe(channel, subscriber)
+        try:
+            subscriber = "agent-slow-001"
+            await bus.subscribe(channel, subscriber)
 
-        with structlog.testing.capture_logs() as captured:
-            total = max_queue_size + overflow_count
-            for idx in range(total):
-                # Publisher never blocks or raises on an overflowed
-                # subscriber -- slow consumer must not nuke the channel.
-                await bus.publish(
-                    _message(channel, sender="alice", to=subscriber, idx=idx),
-                )
+            with structlog.testing.capture_logs() as captured:
+                total = max_queue_size + overflow_count
+                for idx in range(total):
+                    # Publisher never blocks or raises on an overflowed
+                    # subscriber -- slow consumer must not nuke the channel.
+                    await bus.publish(
+                        _message(channel, sender="alice", to=subscriber, idx=idx),
+                    )
 
-        queue = bus._queues[(channel, subscriber)]
-        assert queue.qsize() == max_queue_size, (
-            f"expected queue to hold {max_queue_size} envelopes, got {queue.qsize()}"
-        )
+            queue = bus._queues[(channel, subscriber)]
+            actual_qsize = queue.qsize()
+            assert actual_qsize == max_queue_size, (
+                f"expected queue to hold {max_queue_size} envelopes, got {actual_qsize}"
+            )
 
-        overflow_events = [
-            e for e in captured if e.get("event") == COMM_SUBSCRIBER_QUEUE_OVERFLOW
-        ]
-        assert len(overflow_events) == overflow_count, (
-            f"expected {overflow_count} overflow events, got {captured!r}"
-        )
-        for event in overflow_events:
-            assert event["drop_policy"] == "newest", event
-            assert event["backend"] == "memory", event
-            assert event["channel"] == channel, event
-            assert event["subscriber"] == subscriber, event
-            assert event["log_level"] == "warning", event
-
-        await bus.stop()
+            overflow_events = [
+                e for e in captured if e.get("event") == COMM_SUBSCRIBER_QUEUE_OVERFLOW
+            ]
+            assert len(overflow_events) == overflow_count, (
+                f"expected {overflow_count} overflow events, got {captured!r}"
+            )
+            for event in overflow_events:
+                assert event["drop_policy"] == "newest", event
+                assert event["backend"] == "memory", event
+                assert event["channel"] == channel, event
+                assert event["subscriber"] == subscriber, event
+                assert event["log_level"] == "warning", event
+        finally:
+            # Stop in finally so a failed assertion above does not leak
+            # a running InMemoryMessageBus into the next test (would
+            # show up as a vitest-style async leak in the unit run).
+            await bus.stop()
 
     async def test_publish_preserves_oldest_envelopes(self) -> None:
         """The drop-newest policy keeps older envelopes intact."""
@@ -109,26 +114,27 @@ class TestBoundedSubscriberQueue:
         )
         bus = InMemoryMessageBus(config=config)
         await bus.start()
-        subscriber = "agent-slow-002"
-        await bus.subscribe(channel, subscriber)
+        try:
+            subscriber = "agent-slow-002"
+            await bus.subscribe(channel, subscriber)
 
-        for idx in range(max_queue_size + 3):
-            await bus.publish(
-                _message(channel, sender="alice", to=subscriber, idx=idx),
+            for idx in range(max_queue_size + 3):
+                await bus.publish(
+                    _message(channel, sender="alice", to=subscriber, idx=idx),
+                )
+
+            # Drain the queue and verify the first ``max_queue_size``
+            # envelopes are what we see -- dropped envelopes are the
+            # NEWEST arrivals, not the oldest.
+            received: list[int] = []
+            for _ in range(max_queue_size):
+                envelope = await bus.receive(channel, subscriber, timeout=0.1)
+                assert envelope is not None
+                text = envelope.message.parts[0].text  # type: ignore[union-attr]
+                received.append(int(text.removeprefix("msg-")))
+
+            assert received == list(range(max_queue_size)), (
+                f"drop-newest preserves oldest entries; got {received}"
             )
-
-        # Drain the queue and verify the first ``max_queue_size``
-        # envelopes are what we see -- dropped envelopes are the
-        # NEWEST arrivals, not the oldest.
-        received: list[int] = []
-        for _ in range(max_queue_size):
-            envelope = await bus.receive(channel, subscriber, timeout=0.1)
-            assert envelope is not None
-            text = envelope.message.parts[0].text  # type: ignore[union-attr]
-            received.append(int(text.removeprefix("msg-")))
-
-        assert received == list(range(max_queue_size)), (
-            f"drop-newest preserves oldest entries; got {received}"
-        )
-
-        await bus.stop()
+        finally:
+            await bus.stop()

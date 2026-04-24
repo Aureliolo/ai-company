@@ -96,5 +96,13 @@ describe('useWebSocket registration rollback', () => {
     expect(deregisteredHandlers).toEqual(registeredHandlers)
     expect(deregisteredHandlers).not.toContain(handlerC)
     expect(deregisteredHandlers).not.toContain(handlerD)
+
+    // Verify the registration loop aborted after C threw: exactly
+    // three onChannelEvent invocations (A, B, C) and D never
+    // attempted. Without this assertion a regression that kept
+    // wiring after a throw could silently register D in the store
+    // even though the hook's ledger didn't record it.
+    expect(onChannelSpy).toHaveBeenCalledTimes(3)
+    expect(onChannelSpy).not.toHaveBeenCalledWith('meetings', handlerD)
   })
 })

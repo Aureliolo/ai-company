@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useWebSocketStore } from '@/stores/websocket'
 import { useAuthStore } from '@/stores/auth'
 import { createLogger } from '@/lib/logger'
@@ -50,17 +50,21 @@ export function useWebSocket(options: WebSocketOptions): WebSocketReturn {
   const connected = useWebSocketStore((s) => s.connected)
   const reconnectExhausted = useWebSocketStore((s) => s.reconnectExhausted)
   const [setupError, setSetupError] = useState<string | null>(null)
-  const disposedRef = useRef(false)
 
   const isEnabled = enabled !== undefined ? enabled : authStatus === 'authenticated'
 
   useEffect(() => {
-    disposedRef.current = false
-
     if (!isEnabled) return
 
     const wsStore = useWebSocketStore.getState()
     const uniqueChannels: WsChannel[] = [...new Set(bindings.map((b) => b.channel))]
+
+    // Effect-local cancellation token. Captured by async closures
+    // below so a stale setup() from a previous `enabled` toggle
+    // cannot register handlers into a newer effect's ledger after
+    // its cleanup already ran. A shared ref would let stale tasks
+    // race across mounts.
+    let cancelled = false
 
     // List of (channel, handler) pairs wired by this effect instance.
     // Declared before `setup()` so the declaration precedes all reads;
@@ -68,6 +72,12 @@ export function useWebSocket(options: WebSocketOptions): WebSocketReturn {
     // Kept local to the effect so each mount owns its registration
     // ledger.
     const registered: Array<ChannelBinding> = []
+
+    // Flip to true after wsStore.subscribe() succeeds so cleanup knows
+    // whether there are channel subscriptions to tear down. Channel
+    // subscriptions are separate from per-handler registrations; the
+    // hook owns both and must unwind both on unmount.
+    let subscribed = false
 
     const setup = async () => {
       // Clear any stale error from a previous failed setup
@@ -77,29 +87,31 @@ export function useWebSocket(options: WebSocketOptions): WebSocketReturn {
           await wsStore.connect()
         }
       } catch (err) {
-        if (disposedRef.current) return
+        if (cancelled) return
         setSetupError('WebSocket connection failed.')
         log.error('Connect failed:', err)
         return
       }
 
-      if (disposedRef.current) return
+      if (cancelled) return
 
       try {
         wsStore.subscribe(uniqueChannels, filters)
+        subscribed = true
       } catch (err) {
         setSetupError('WebSocket subscription failed.')
         log.error('Subscribe failed:', err)
         return
       }
 
-      if (disposedRef.current) return
+      if (cancelled) return
 
       // Track which (channel, handler) pairs we successfully register
       // so cleanup can roll back ONLY those -- if setup throws
       // mid-loop, we must not try to deregister bindings that were
       // never wired.
       for (const binding of bindings) {
+        if (cancelled) return
         try {
           wsStore.onChannelEvent(binding.channel, binding.handler)
           registered.push(binding)
@@ -114,14 +126,14 @@ export function useWebSocket(options: WebSocketOptions): WebSocketReturn {
     }
 
     setup().catch((err) => {
-      if (!disposedRef.current) {
+      if (!cancelled) {
         setSetupError('WebSocket setup failed unexpectedly.')
       }
       log.error('Setup failed:', err)
     })
 
     return () => {
-      disposedRef.current = true
+      cancelled = true
       // Only remove handlers we actually registered -- do NOT iterate
       // the full bindings list because a mid-loop throw may have left
       // later bindings unregistered. The store's handler set
@@ -132,6 +144,18 @@ export function useWebSocket(options: WebSocketOptions): WebSocketReturn {
           wsStore.offChannelEvent(binding.channel, binding.handler)
         } catch (err) {
           log.error('Handler cleanup failed:', err)
+        }
+      }
+      // Unsubscribe from the channel subscriptions we created. Without
+      // this the store keeps routing broadcast traffic to channels
+      // the page no longer renders, leaking subscription state across
+      // mounts (and eventually across reconnects that refresh the
+      // subscribedChannels array).
+      if (subscribed) {
+        try {
+          wsStore.unsubscribe(uniqueChannels)
+        } catch (err) {
+          log.error('Unsubscribe failed:', err)
         }
       }
     }

@@ -89,6 +89,12 @@ class SettingsChangeDispatcher:
         self._subscribers = subscribers
         self._task: asyncio.Task[None] | None = None
         self._running: bool = False
+        # Set to True when a stop() drain exceeds the hard deadline.
+        # Prevents a subsequent start() from spawning a second poll
+        # task while the first one is still consuming ``#settings``
+        # (would double-deliver every settings change to each
+        # subscriber). Recovery requires reconstructing the dispatcher.
+        self._stop_failed: bool = False
         # Serializes start() / stop() so the _running check-and-set
         # and the subsequent _task assignment are atomic against
         # concurrent lifecycle calls. Two concurrent start() calls
@@ -103,6 +109,13 @@ class SettingsChangeDispatcher:
             RuntimeError: If the dispatcher is already running.
         """
         async with self._lifecycle_lock:
+            if self._stop_failed:
+                msg = (
+                    "SettingsChangeDispatcher is unrestartable after a "
+                    "timed-out stop; construct a fresh dispatcher instead"
+                )
+                logger.warning(SETTINGS_DISPATCHER_STARTED, error=msg)
+                raise RuntimeError(msg)
             if self._running:
                 msg = "SettingsChangeDispatcher is already running"
                 logger.warning(SETTINGS_DISPATCHER_STARTED, error=msg)
@@ -159,25 +172,31 @@ class SettingsChangeDispatcher:
 
             if self._task is not None:
                 self._task.cancel()
-                with contextlib.suppress(asyncio.CancelledError, TimeoutError):
+                with contextlib.suppress(asyncio.CancelledError):
                     try:
                         await asyncio.wait_for(
                             self._task,
                             timeout=_STOP_DRAIN_TIMEOUT_SECONDS,
                         )
                     except TimeoutError:
-                        # Drain exceeded the hard deadline -- release
-                        # the lifecycle lock so a subsequent start()
-                        # is not blocked forever by a poll task that
-                        # ignored cancellation. Re-raised to the
-                        # enclosing suppress() for a clean exit.
+                        # Drain exceeded the hard deadline. Mark the
+                        # dispatcher unrestartable and re-raise: a future
+                        # start() must not spawn a second poll task
+                        # alongside an orphaned one that ignored
+                        # cancellation (would double-deliver every
+                        # #settings message to each subscriber). Leave
+                        # ``_task`` + ``_running`` intact so the caller
+                        # sees an honest incomplete shutdown; they must
+                        # reconstruct the dispatcher to recover.
+                        self._stop_failed = True
                         # TRY400: logger.exception here would append a
                         # TimeoutError traceback with no actionable
                         # diagnostic beyond the structured fields below.
                         logger.error(  # noqa: TRY400
                             SETTINGS_DISPATCHER_STOPPED,
                             error=(
-                                "stop exceeded hard deadline; lifecycle lock released"
+                                "stop exceeded hard deadline; "
+                                "dispatcher marked unrestartable"
                             ),
                             timeout_seconds=_STOP_DRAIN_TIMEOUT_SECONDS,
                         )

@@ -25,6 +25,8 @@ from synthorg.observability.events.inflection import (
     PERF_INFLECTION_EMISSION_FAILED,
 )
 from synthorg.observability.events.performance import (
+    PERF_INFLECTION_SINK_BIND_REJECTED,
+    PERF_INFLECTION_SINK_BOUND,
     PERF_LLM_SAMPLE_FAILED,
     PERF_METRIC_RECORDED,
     PERF_OVERRIDE_APPLIED,
@@ -339,14 +341,18 @@ class PerformanceTracker:
             if agent_key not in self._collab_metrics:
                 self._collab_metrics[agent_key] = []
             self._collab_metrics[agent_key].append(record)
+            # Schedule inside the lock so a concurrent aclear() cannot
+            # snapshot the tasks, cancel, and return before this task
+            # is added to ``_background_tasks`` -- otherwise the new
+            # task would survive the clear and could repopulate cache
+            # state after aclear() returned.
+            self._schedule_sampling(record)
 
         logger.debug(
             PERF_METRIC_RECORDED,
             agent_id=record.agent_id,
             metric_type="collaboration",
         )
-
-        self._schedule_sampling(record)
 
     async def get_collaboration_score(
         self,
@@ -485,7 +491,13 @@ class PerformanceTracker:
 
         # Emit inflection events for trend direction changes.
         if self._inflection_sink is not None and trends:
-            self._schedule_inflection_emission(agent_id, trends)
+            # Schedule inside the lock so a concurrent aclear() cannot
+            # snapshot the tasks, cancel, and return before this task
+            # is added to ``_background_tasks`` -- otherwise the new
+            # task would survive the clear and could repopulate
+            # ``_trend_direction_cache`` after aclear() returned.
+            async with self._metrics_lock:
+                self._schedule_inflection_emission(agent_id, trends)
 
         # Overall quality: average of all scored records.
         scored = [r.quality_score for r in task_records if r.quality_score is not None]
@@ -685,9 +697,19 @@ class PerformanceTracker:
             ValueError: If an inflection sink is already configured.
         """
         if self._inflection_sink is not None and value is not None:
+            logger.warning(
+                PERF_INFLECTION_SINK_BIND_REJECTED,
+                reason="already_configured",
+                path="sync_setter",
+            )
             msg = "Inflection sink is already configured"
             raise ValueError(msg)
         self._inflection_sink = value
+        logger.info(
+            PERF_INFLECTION_SINK_BOUND,
+            path="sync_setter",
+            cleared=value is None,
+        )
 
     async def set_inflection_sink(self, value: InflectionSink | None) -> None:
         """Atomically set the inflection sink under ``_metrics_lock``.
@@ -706,9 +728,19 @@ class PerformanceTracker:
         """
         async with self._metrics_lock:
             if self._inflection_sink is not None and value is not None:
+                logger.warning(
+                    PERF_INFLECTION_SINK_BIND_REJECTED,
+                    reason="already_configured",
+                    path="async_setter",
+                )
                 msg = "Inflection sink is already configured"
                 raise ValueError(msg)
             self._inflection_sink = value
+            logger.info(
+                PERF_INFLECTION_SINK_BOUND,
+                path="async_setter",
+                cleared=value is None,
+            )
 
     def _schedule_sampling(
         self,
@@ -717,8 +749,14 @@ class PerformanceTracker:
         """Schedule LLM sampling as a background task.
 
         The task is tracked in ``_background_tasks`` to prevent
-        garbage-collection warnings.  Failures are handled inside
+        garbage-collection warnings. Failures are handled inside
         ``_maybe_sample`` -- they never propagate.
+
+        MUST be called with ``_metrics_lock`` held so the
+        ``_background_tasks`` mutation is atomic with respect to
+        :meth:`aclear`; otherwise a task scheduled here could survive
+        a concurrent clear and repopulate metric state (e.g.
+        ``_trend_direction_cache``) after the clear returned.
         """
         if self._sampler is None:
             return
@@ -790,6 +828,12 @@ class PerformanceTracker:
         Compares each trend's direction against the cached previous
         direction.  Emits a ``PerformanceInflection`` for every
         direction change.  The task is tracked to prevent GC warnings.
+
+        MUST be called with ``_metrics_lock`` held so the
+        ``_background_tasks`` mutation is atomic with respect to
+        :meth:`aclear`; otherwise a task scheduled here could survive
+        a concurrent clear and repopulate ``_trend_direction_cache``
+        after the clear returned.
         """
         task = asyncio.create_task(
             self._do_emit_inflections(agent_id, trends),

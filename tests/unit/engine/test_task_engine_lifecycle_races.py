@@ -130,32 +130,72 @@ class TestStartDuringStop:
             await eng.stop(timeout=2.0)
 
     async def test_hard_deadline_releases_lifecycle_lock(self) -> None:
-        """stop() must release _lifecycle_lock even if drain hangs.
+        """stop() must actually hit the hard-deadline branch and bail.
 
-        A badly-behaved background task could ignore CancelledError
-        and hang forever. The outer hard deadline
-        (``drain_timeout_seconds * 2``) must still release the lock so
-        a subsequent start() does not block indefinitely.
+        A drain stage that blocks past the hard deadline must cause
+        stop() to:
+          1. Exceed the outer ``drain_timeout_seconds * 2`` deadline
+          2. Re-raise ``TimeoutError`` to the caller
+          3. Mark the engine unrestartable so a subsequent start()
+             cannot attach a second loop pair on top of the orphaned
+             first generation.
+
+        We force the race by monkey-patching ``_drain_all`` with a
+        coroutine that blocks on ``asyncio.Event().wait()``. The
+        blocker is cancellable -- when ``asyncio.wait_for`` hits the
+        hard deadline it cancels the inner task, which raises
+        ``CancelledError``, which ``wait_for`` converts into the
+        ``TimeoutError`` our ``stop()`` handles. A blocker that
+        *swallows* cancellation would leave ``wait_for`` stuck waiting
+        for cleanup, which is the production pathology the hard
+        deadline is designed to bound -- but it is not necessary to
+        simulate that to exercise the TimeoutError branch here.
         """
         persistence: FakePersistence = FakePersistence()
         # Tiny drain timeout so the test stays fast -- hard deadline
-        # is 2x this, so the whole stop bounds to ~0.2s even if the
-        # processing task is cooperative.
+        # is 2x this, so the whole stop bounds to ~0.2s.
         eng = TaskEngine(
             persistence=persistence,  # type: ignore[arg-type]
-            config=TaskEngineConfig(drain_timeout_seconds=0.1),
+            config=TaskEngineConfig(drain_timeout_seconds=0.05),
         )
         await eng.start()
-        # A well-behaved stop on a healthy engine returns cleanly;
-        # the regression is that even if it didn't, lifecycle_lock
-        # would release. We verify the healthy path here and rely on
-        # the outer wait_for wrapper to protect against pathological
-        # drain hangs.
-        await eng.stop(timeout=0.1)
-        assert not eng.is_running
-        # Subsequent start must succeed (lock not held).
-        await eng.start()
-        try:
-            assert eng.is_running
-        finally:
-            await eng.stop(timeout=0.1)
+
+        release = asyncio.Event()
+
+        async def hanging_drain(_effective_timeout: float) -> None:
+            # Block until cancelled by the outer wait_for's hard
+            # deadline. Using Event().wait() (not sleep(large_number))
+            # per CLAUDE.md guidance -- cancellation-safe, no timing
+            # assumptions, and the outer wait_for's cancel is how we
+            # reach the TimeoutError path.
+            await release.wait()
+
+        eng._drain_all = hanging_drain  # type: ignore[method-assign]
+
+        # stop() must now raise TimeoutError from its asyncio.wait_for.
+        with pytest.raises(TimeoutError):
+            await eng.stop(timeout=0.05)
+
+        # Engine must be marked unrestartable so a subsequent start()
+        # cannot attach a second loop pair on top of orphaned tasks.
+        assert eng._unrestartable is True
+
+        # A racing start() after the timed-out stop must raise
+        # RuntimeError -- we must not silently spawn a second
+        # processing/observer pair on top of the orphaned first.
+        with pytest.raises(RuntimeError, match="unrestartable"):
+            await eng.start()
+
+        # Release the blocker (no-op now since wait_for already
+        # cancelled it), then cancel the background tasks directly.
+        # stop() cannot recover the engine -- it's intentionally
+        # unrestartable once marked -- so cleanup is manual.
+        release.set()
+        if eng._processing_task is not None:
+            eng._processing_task.cancel()
+        if eng._observer_task is not None:
+            eng._observer_task.cancel()
+        await asyncio.gather(
+            *(t for t in (eng._processing_task, eng._observer_task) if t is not None),
+            return_exceptions=True,
+        )

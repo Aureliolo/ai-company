@@ -208,6 +208,13 @@ export const useThemeStore = create<ThemeState>()((set, get) => {
   // drive the same code path. Idempotent: a second call while the
   // listener is still attached is a no-op, which keeps the
   // `--detect-async-leaks` per-test add/remove count symmetric.
+  //
+  // Also SYNCHRONIZES the store to the current ``mql.matches`` so
+  // ``reattach()`` after tests swap ``window.matchMedia`` observes
+  // the new mock's value, not whatever the previous listener last
+  // drove the store to. Without this sync the OS reduced-motion
+  // preference could only be reflected on the next ``change`` event,
+  // which in tests often never fires.
   const attachReducedMotionListener = (): void => {
     if (mql && reducedMotionHandler) return
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return
@@ -228,6 +235,11 @@ export const useThemeStore = create<ThemeState>()((set, get) => {
       }
     }
     mql.addEventListener('change', reducedMotionHandler)
+
+    // Drive the handler once against the current match state so the
+    // store reflects today's OS preference immediately, not only on
+    // the next change event. Matches the shape a browser would send.
+    reducedMotionHandler({ matches: mql.matches } as MediaQueryListEvent)
   }
 
   attachReducedMotionListener()

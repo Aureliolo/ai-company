@@ -232,6 +232,7 @@ class InMemoryMessageBus:
                 queue_size=queue.maxsize,
                 drop_policy="newest",
                 backend="memory",
+                message_id=str(envelope.message.id),
             )
 
     async def publish(

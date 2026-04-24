@@ -101,6 +101,11 @@ class TaskEngine(TaskEngineLoopsMixin):
             maxsize=self._config.effective_observer_queue_size,
         )
         self._observer_task: asyncio.Task[None] | None = None
+        # Set to True when a stop() drain exceeds the hard deadline.
+        # Prevents a subsequent start() from creating a second loop
+        # pair on top of the orphaned first generation. Clearing
+        # requires reconstructing the engine -- there is no reset().
+        self._unrestartable: bool = False
         logger.debug(
             TASK_ENGINE_CREATED,
             max_queue_size=self._config.max_queue_size,
@@ -135,6 +140,13 @@ class TaskEngine(TaskEngineLoopsMixin):
             RuntimeError: If already running.
         """
         async with self._lifecycle_lock:
+            if self._unrestartable:
+                msg = (
+                    "TaskEngine is unrestartable after a timed-out stop; "
+                    "construct a fresh TaskEngine instead"
+                )
+                logger.warning(TASK_ENGINE_STARTED, error=msg)
+                raise RuntimeError(msg)
             if self._running:
                 msg = "TaskEngine is already running"
                 logger.warning(TASK_ENGINE_STARTED, error=msg)
@@ -192,15 +204,27 @@ class TaskEngine(TaskEngineLoopsMixin):
                     timeout=hard_deadline,
                 )
             except TimeoutError:
+                # Mark the engine unrestartable so a subsequent start()
+                # cannot attach a second loop pair on top of orphaned
+                # processing / observer tasks that ignored cancellation.
+                # Without this guard the single-writer invariant would
+                # be silently broken: two generations of the loop pair
+                # would concurrently pop from the same _queue and
+                # dispatch to the same observers. Operator must
+                # reconstruct a fresh TaskEngine to recover.
+                self._unrestartable = True
                 # TRY400: logger.exception here would append a
                 # TimeoutError traceback with no actionable diagnostic
                 # information beyond the structured fields below.
                 logger.error(  # noqa: TRY400
                     TASK_ENGINE_STOPPED,
-                    note="stop exceeded hard deadline; lifecycle lock released",
+                    note=(
+                        "stop exceeded hard deadline; "
+                        "engine marked unrestartable (orphaned drain tasks)"
+                    ),
                     hard_deadline_seconds=hard_deadline,
                 )
-                return
+                raise
             logger.info(TASK_ENGINE_STOPPED)
 
     async def _drain_all(self, effective_timeout: float) -> None:

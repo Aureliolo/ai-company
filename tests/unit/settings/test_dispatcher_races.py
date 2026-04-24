@@ -70,15 +70,48 @@ class TestStartDuringStop:
         fully released the lock. Invariant at gather completion:
         exactly one `settings-dispatcher` task exists (the one the
         winning start spawned).
+
+        Deterministic ordering is enforced: we launch ``stop()`` first,
+        wait for it to actually acquire ``_lifecycle_lock`` via a
+        monkey-patched sentinel on the drain path, then launch
+        ``start()``. A plain ``asyncio.gather(stop, start)`` does NOT
+        guarantee ``stop()`` grabs the lock first; if ``start()`` runs
+        first it raises "already running" and the assertion still
+        passes by accident, so the test would not actually pin the
+        "start-during-stop" contract it claims to verify.
         """
         bus = InMemoryMessageBus(config=MessageBusConfig())
         await bus.start()
         dispatcher = SettingsChangeDispatcher(bus, subscribers=())
         await dispatcher.start()
 
-        stop_coro = dispatcher.stop()
+        # Sentinel fired from inside stop() while it holds the
+        # lifecycle lock -- by the time we see it, stop() is past its
+        # check-and-set and the outer start() attempt is guaranteed
+        # to serialize behind the lock release.
+        stop_holding_lock = asyncio.Event()
+
+        original_stop = dispatcher.stop
+
+        async def instrumented_stop() -> None:
+            # Signal the test loop as soon as we're under the lock,
+            # then yield so the test can schedule start() before the
+            # drain completes. ``asyncio.sleep(0)`` forces at least
+            # one pass through the event loop so the racing start()
+            # has a chance to contest the lock.
+            async def _signal_then_stop() -> None:
+                stop_holding_lock.set()
+                await asyncio.sleep(0)
+                await original_stop()
+
+            await _signal_then_stop()
+
+        dispatcher.stop = instrumented_stop  # type: ignore[method-assign]
+
+        stop_task = asyncio.create_task(dispatcher.stop())
+        await stop_holding_lock.wait()
         start_coro = dispatcher.start()
-        results = await asyncio.gather(stop_coro, start_coro, return_exceptions=True)
+        results = await asyncio.gather(stop_task, start_coro, return_exceptions=True)
         try:
             assert not isinstance(results[0], BaseException), (
                 f"stop raised unexpectedly: {results[0]!r}"
@@ -94,5 +127,6 @@ class TestStartDuringStop:
                 f"got {len(running_tasks)}"
             )
         finally:
+            dispatcher.stop = original_stop  # type: ignore[method-assign]
             await dispatcher.stop()
             await bus.stop()

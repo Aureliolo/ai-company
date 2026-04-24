@@ -159,6 +159,14 @@ class TestSetInflectionSinkAtomic:
         The async ``set_inflection_sink`` implementation takes
         ``_metrics_lock`` so exactly one caller wins.
 
+        An ``asyncio.Barrier(2)`` is used to force deterministic
+        interleaving: both callers reach the barrier before either
+        acquires ``_metrics_lock``, so the race between the check of
+        ``_inflection_sink`` and the assignment is *guaranteed* to be
+        exercised. Without the barrier the test would still pass if
+        ``set_inflection_sink`` were accidentally sequentialised (no
+        yield points between callers), defeating the test's purpose.
+
         Two distinct sentinel sink objects are used so the assertion
         can verify *which* caller won, not just that a sink exists.
         """
@@ -166,9 +174,15 @@ class TestSetInflectionSinkAtomic:
         sink_a: object = object()
         sink_b: object = object()
 
+        barrier = asyncio.Barrier(2)
+
+        async def set_with_barrier(sink: object) -> None:
+            await barrier.wait()
+            await tracker.set_inflection_sink(sink)  # type: ignore[arg-type]
+
         results = await asyncio.gather(
-            tracker.set_inflection_sink(sink_a),  # type: ignore[arg-type]
-            tracker.set_inflection_sink(sink_b),  # type: ignore[arg-type]
+            set_with_barrier(sink_a),
+            set_with_barrier(sink_b),
             return_exceptions=True,
         )
 

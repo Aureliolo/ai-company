@@ -13,6 +13,7 @@ from litestar.channels import ChannelsPlugin  # noqa: TC002
 from synthorg.api.channels import ALL_CHANNELS
 from synthorg.api.ws_models import WsEvent, WsEventType
 from synthorg.communication.bus_protocol import MessageBus  # noqa: TC001
+from synthorg.communication.errors import CommunicationError
 from synthorg.communication.message import Message  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.background_tasks import log_task_exceptions
@@ -73,6 +74,13 @@ class MessageBusBridge:
         self._config_resolver = config_resolver
         self._tasks: list[asyncio.Task[None]] = []
         self._running: bool = False
+        # Set to True when a stop() drain exceeds the hard deadline.
+        # Prevents a subsequent start() from creating a second poller
+        # set on top of orphaned pollers that ignored cancellation
+        # (they would race on the same ``_SUBSCRIBER_ID`` subscription
+        # and split or duplicate WebSocket delivery). Recovery
+        # requires a fresh ``MessageBusBridge`` instance.
+        self._stop_failed: bool = False
         # Serializes start() / stop() so the check-and-set on
         # _running is atomic against concurrent lifecycle calls.
         # Does not gate publish / receive (those use the underlying
@@ -165,6 +173,13 @@ class MessageBusBridge:
             RuntimeError: If the bridge is already running.
         """
         async with self._lifecycle_lock:
+            if self._stop_failed:
+                msg = (
+                    "MessageBusBridge is unrestartable after a timed-out stop; "
+                    "construct a fresh MessageBusBridge instead"
+                )
+                logger.warning(API_APP_STARTUP, error=msg)
+                raise RuntimeError(msg)
             if self._running:
                 msg = "MessageBusBridge is already running"
                 logger.warning(API_APP_STARTUP, error=msg)
@@ -177,7 +192,15 @@ class MessageBusBridge:
             for channel_name in ALL_CHANNELS:
                 try:
                     await self._bus.subscribe(channel_name, _SUBSCRIBER_ID)
-                except OSError, RuntimeError, ConnectionError:
+                # Catch ``CommunicationError`` (base of ``BusStreamError``
+                # raised by the NATS pull-consumer creation path) in
+                # addition to OS/connection errors so a single broken
+                # backend does not abort the whole start() -- the
+                # partial-coverage escalation below still surfaces it.
+                # ``RuntimeError`` remains in the tuple to preserve the
+                # previous catch surface for backend implementations
+                # that raise it on transient wiring errors.
+                except CommunicationError, OSError, RuntimeError, ConnectionError:
                     # Track per-channel subscribe failures so we can
                     # surface incomplete coverage at ERROR with the full
                     # list -- a single transient failure must not
@@ -253,23 +276,30 @@ class MessageBusBridge:
                         timeout=_STOP_DRAIN_TIMEOUT_SECONDS,
                     )
                 except TimeoutError:
-                    # Drain exceeded the hard deadline -- release the
-                    # lifecycle lock so a subsequent start() is not
-                    # blocked forever by a task that ignored cancellation.
-                    # The orphaned tasks stay referenced on the event
-                    # loop until the process exits; this is preferable
-                    # to a livelock of the lifecycle lock.
+                    # Drain exceeded the hard deadline. Mark the bridge
+                    # unrestartable and re-raise: a future start() must
+                    # not attach a fresh poller set on the same static
+                    # ``_SUBSCRIBER_ID`` subscription alongside orphaned
+                    # pollers that ignored cancellation, because that
+                    # would split or duplicate WebSocket delivery. Leave
+                    # ``_tasks`` + ``_running`` intact so the bridge's
+                    # state reflects the incomplete shutdown; the caller
+                    # receives the TimeoutError and must reconstruct a
+                    # fresh ``MessageBusBridge`` to recover.
+                    self._stop_failed = True
                     # TRY400: logger.exception here would append a
                     # TimeoutError traceback with no actionable diagnostic
                     # information beyond the structured fields below.
                     logger.error(  # noqa: TRY400
                         API_APP_SHUTDOWN,
                         component="bus_bridge",
-                        error="stop exceeded hard deadline; lifecycle lock released",
+                        error=(
+                            "stop exceeded hard deadline; bridge marked unrestartable"
+                        ),
                         timeout_seconds=_STOP_DRAIN_TIMEOUT_SECONDS,
                         pending_tasks=sum(1 for t in self._tasks if not t.done()),
                     )
-                    results = []
+                    raise
                 for result in results:
                     if isinstance(result, asyncio.CancelledError):
                         continue

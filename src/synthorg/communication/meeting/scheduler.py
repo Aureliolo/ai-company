@@ -89,6 +89,7 @@ class MeetingScheduler:
         "_orchestrator",
         "_resolver",
         "_running",
+        "_stop_failed",
         "_tasks",
     )
 
@@ -115,6 +116,12 @@ class MeetingScheduler:
         self._lifecycle_lock = asyncio.Lock()
         self._tasks: list[asyncio.Task[None]] = []
         self._running = False
+        # Set to True when a stop() drain exceeds the hard deadline.
+        # Prevents a subsequent start() from spawning a second set of
+        # periodic tasks on top of orphaned periodic tasks that
+        # ignored cancellation. Recovery requires reconstructing the
+        # scheduler.
+        self._stop_failed = False
         self._last_triggered: dict[str, float] = {}
 
     @property
@@ -135,6 +142,16 @@ class MeetingScheduler:
             SchedulerAlreadyRunningError: If the scheduler is already running.
         """
         async with self._lifecycle_lock:
+            if self._stop_failed:
+                logger.warning(
+                    MEETING_SCHEDULER_ERROR,
+                    reason="unrestartable_after_timeout",
+                )
+                msg = (
+                    "Meeting scheduler is unrestartable after a timed-out "
+                    "stop; construct a fresh MeetingScheduler instead"
+                )
+                raise SchedulerAlreadyRunningError(msg)
             if self._running:
                 logger.warning(
                     MEETING_SCHEDULER_ERROR,
@@ -197,19 +214,30 @@ class MeetingScheduler:
                         timeout=_STOP_DRAIN_TIMEOUT_SECONDS,
                     )
                 except TimeoutError:
-                    # Drain exceeded the hard deadline -- release the
-                    # lifecycle lock so a subsequent start() is not
-                    # blocked forever by a task that ignored cancellation.
+                    # Drain exceeded the hard deadline. Mark the
+                    # scheduler unrestartable and re-raise: a future
+                    # start() must not spawn a second set of periodic
+                    # tasks alongside orphaned periodic tasks that
+                    # ignored cancellation (same meeting type would
+                    # fire twice per period). Leave ``_tasks`` +
+                    # ``_running`` intact so shutdown is honestly
+                    # reflected as incomplete; the caller receives the
+                    # TimeoutError and must reconstruct a fresh
+                    # ``MeetingScheduler`` to recover.
+                    self._stop_failed = True
                     # TRY400: logger.exception here would append a
                     # TimeoutError traceback with no actionable diagnostic
                     # information beyond the structured fields below.
                     logger.error(  # noqa: TRY400
                         MEETING_SCHEDULER_ERROR,
-                        note="stop exceeded hard deadline; lifecycle lock released",
+                        note=(
+                            "stop exceeded hard deadline; "
+                            "scheduler marked unrestartable"
+                        ),
                         timeout_seconds=_STOP_DRAIN_TIMEOUT_SECONDS,
                         pending_tasks=sum(1 for t in self._tasks if not t.done()),
                     )
-                    results = []
+                    raise
                 for result in results:
                     if isinstance(result, asyncio.CancelledError):
                         continue
