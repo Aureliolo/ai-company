@@ -10,6 +10,8 @@
       "bump-patch-for-minor-pre-major": true,
       "draft": true,
       "force-tag-creation": true,
+      "include-v-in-release-name": true,
+      "include-commit-authors": true,
       "changelog-sections": [
         { "type": "feat", "section": "Features" },
         { "type": "fix", "section": "Bug Fixes" },

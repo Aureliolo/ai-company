@@ -26,17 +26,6 @@ jobs:
             exit 1
           fi
 
-      # Draft releases don't create git tags, and force-tag-creation requires
-      # release-please >= 17.2.0 (action v4.4.0 bundles 17.1.3).
-      # Pre-create the tag so RP finds it. Remove once googleapis/release-please-action#1187 ships.
-      - name: Ensure release tag exists
-        env:
-          GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
-        run: |
-          version=$(gh api "repos/${{ github.repository }}/contents/.github/.release-please-manifest.json" --jq '.content' | base64 -d | jq -r '."."')
-          gh api "repos/${{ github.repository }}/git/ref/tags/v${version}" > /dev/null 2>&1 ||
-            gh api "repos/${{ github.repository }}/git/refs" -f ref="refs/tags/v${version}" -f sha="${{ github.sha }}" > /dev/null
-
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5
         id: release
         with:
