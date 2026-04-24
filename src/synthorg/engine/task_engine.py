@@ -329,6 +329,32 @@ class TaskEngine(TaskEngineLoopsMixin):
                     hard_deadline_seconds=hard_deadline,
                 )
                 raise
+            except asyncio.CancelledError:
+                # Caller cancelled stop() while the drain was in
+                # flight (e.g. the lifespan supervisor is itself being
+                # cancelled). Mirror the TimeoutError branch: the
+                # drain may still be running in the background with
+                # orphaned processing / observer tasks attached to
+                # ``_queue`` / ``_observer_queue``; allowing a later
+                # ``start()`` would attach a second loop pair on top
+                # of those and silently duplicate writes. Mark the
+                # engine unrestartable, log, and re-raise the
+                # cancellation so the caller's cancellation contract
+                # is honoured.
+                self._unrestartable = True
+                # TRY400: attaching a CancelledError traceback here
+                # adds no actionable context over the structured
+                # fields below.
+                logger.error(  # noqa: TRY400
+                    TASK_ENGINE_DRAIN_TIMEOUT,
+                    note=(
+                        "stop cancelled mid-drain; "
+                        "engine marked unrestartable (orphaned drain tasks)"
+                    ),
+                    hard_deadline_seconds=hard_deadline,
+                    cancellation=True,
+                )
+                raise
             logger.info(TASK_ENGINE_STOPPED)
 
     async def _drain_all(self, effective_timeout: float) -> None:

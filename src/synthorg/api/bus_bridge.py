@@ -290,6 +290,8 @@ class MessageBusBridge:
                 if self._tasks:
                     await asyncio.gather(*self._tasks, return_exceptions=True)
                 self._tasks.clear()
+                rollback_unsubscribe_failed = False
+                orphaned_channels: list[str] = []
                 for channel_name in subscribed_channels:
                     try:
                         await self._bus.unsubscribe(
@@ -297,6 +299,8 @@ class MessageBusBridge:
                             _SUBSCRIBER_ID,
                         )
                     except Exception:
+                        rollback_unsubscribe_failed = True
+                        orphaned_channels.append(channel_name)
                         logger.warning(
                             API_BUS_BRIDGE_SUBSCRIBE_FAILED,
                             channel=channel_name,
@@ -304,6 +308,31 @@ class MessageBusBridge:
                             phase="rollback_unsubscribe_failed",
                             exc_info=True,
                         )
+                if rollback_unsubscribe_failed:
+                    # Rollback unsubscribe failure leaves live
+                    # ``__api_bridge__`` subscriptions on the bus with
+                    # no poller. Leave ``_running=True`` so a
+                    # subsequent ``stop()`` still runs the clean-stop
+                    # cleanup pass (which would early-return on
+                    # ``_running=False`` otherwise and leak the
+                    # orphaned subscription). Mark ``_stop_failed`` so
+                    # ``start()`` cannot attach a second poller on the
+                    # same static ``_SUBSCRIBER_ID`` subscription --
+                    # the operator must reconstruct the bridge to
+                    # recover.
+                    self._stop_failed = True
+                    logger.error(
+                        API_APP_STARTUP,
+                        error=(
+                            "bus bridge rollback left orphaned subscriptions; "
+                            "bridge marked unrestartable"
+                        ),
+                        orphaned_channels=tuple(orphaned_channels),
+                        subscribed_channels=tuple(subscribed_channels),
+                        failed_channels=tuple(failed_channels),
+                        exc_info=True,
+                    )
+                    raise
                 self._running = False
                 logger.error(
                     API_APP_STARTUP,

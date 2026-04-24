@@ -491,8 +491,8 @@ outgoing stop never waits on.
     If `stop()` exceeds the hard outer deadline the engine sets
     `_unrestartable = True` and re-raises `TimeoutError`. Every
     subsequent `start()` on that instance raises
-    `RuntimeError("TaskEngine is unrestartable after a timed-out stop;
-    construct a fresh TaskEngine instead")`. This is intentional: the
+    `RuntimeError("TaskEngine is unrestartable after a timed-out stop; construct a fresh TaskEngine instead")`.
+    This is intentional: the
     orphaned processing / observer tasks that ignored cancellation are
     still holding the engine's `_queue` and `_observer_queue`, so
     re-running `start()` would attach a second producer/consumer pair

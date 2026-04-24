@@ -10,11 +10,13 @@
  * entries.
  */
 
-import { renderHook } from '@testing-library/react'
+import { cleanup, renderHook } from '@testing-library/react'
+import * as fc from 'fast-check'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useWebSocket } from '@/hooks/useWebSocket'
 import { useWebSocketStore } from '@/stores/websocket'
 import { useAuthStore } from '@/stores/auth'
+import type { WsChannel } from '@/api/types/websocket'
 
 function resetStores() {
   sessionStorage.clear()
@@ -34,8 +36,13 @@ function resetStores() {
 
 describe('useWebSocket registration rollback', () => {
   beforeEach(() => {
+    // ``restoreAllMocks`` (not ``clearAllMocks``) so
+    // ``mockImplementationOnce`` queues from the previous test are
+    // fully torn down. ``clearAllMocks`` only wipes call history --
+    // any leftover implementation queue from a prior test would leak
+    // into the next, bypassing the real store path.
+    vi.restoreAllMocks()
     resetStores()
-    vi.clearAllMocks()
   })
 
   it('only deregisters handlers it successfully registered', async () => {
@@ -173,5 +180,108 @@ describe('useWebSocket registration rollback', () => {
     // unsubscribed -- no remaining handlers.
     second.unmount()
     expect(unsubscribeSpy).toHaveBeenCalledWith(['tasks'])
+  })
+
+  it('property: rollback deregisters exactly the handlers it registered', async () => {
+    // Property-based check of the rollback contract: for any unique
+    // binding sequence and any throw index, the cleanup deregisters
+    // exactly the handlers that were successfully registered (no
+    // phantom off-calls for bindings that threw or were never
+    // attempted) and unsubscribes every unique channel the hook
+    // handed the store at subscribe time.
+    const CHANNELS = ['tasks', 'agents', 'approvals', 'meetings'] as const
+
+    await fc.assert(
+      fc.asyncProperty(
+        // A non-empty subset of CHANNELS (unique, preserves order).
+        fc
+          .subarray([...CHANNELS], { minLength: 1 })
+          .filter((arr) => arr.length > 0),
+        // The index into that subset at which onChannelEvent throws.
+        fc.nat(),
+        async (channels, throwIdxRaw) => {
+          // Each property iteration must be fully isolated: tear down
+          // any previously mounted React trees (their useEffect
+          // cleanups would otherwise fire additional
+          // ``offChannelEvent`` / ``unsubscribe`` calls during the
+          // next iteration's setup) and reset store + spy state.
+          cleanup()
+          resetStores()
+          vi.restoreAllMocks()
+
+          const throwIdx = throwIdxRaw % channels.length
+          const bindings = channels.map((channel) => ({
+            channel: channel as WsChannel,
+            handler: vi.fn(),
+          }))
+
+          const store = useWebSocketStore.getState()
+          const onChannelSpy = vi.spyOn(store, 'onChannelEvent')
+          const offChannelSpy = vi.spyOn(store, 'offChannelEvent')
+          const unsubscribeSpy = vi.spyOn(store, 'unsubscribe')
+
+          // ``vi.spyOn`` returns the existing spy if one already
+          // exists for that method; across property iterations the
+          // same spy instance is reused. ``mockReset`` clears the
+          // ``mockImplementationOnce`` queue and call history so
+          // leftover entries from an earlier iteration cannot fire
+          // against this iteration's spy.
+          onChannelSpy.mockReset()
+          offChannelSpy.mockReset()
+          unsubscribeSpy.mockReset()
+
+          // Fail the ``throwIdx``-th onChannelEvent call. Earlier
+          // calls succeed via the real Map/Set implementation; the
+          // throw aborts the registration loop without mutating the
+          // ledger for bindings beyond it.
+          for (let i = 0; i < throwIdx; i++) {
+            onChannelSpy.mockImplementationOnce(() => {})
+          }
+          onChannelSpy.mockImplementationOnce(() => {
+            throw new Error(`wiring failure at ${throwIdx}`)
+          })
+
+          const { unmount } = renderHook(() => useWebSocket({ bindings }))
+
+          // Wait for the setup loop to reach the failing index.
+          await vi.waitFor(() => {
+            expect(onChannelSpy).toHaveBeenCalledTimes(throwIdx + 1)
+          })
+
+          unmount()
+
+          // Invariant 1: ``offChannelEvent`` fires exactly for the
+          // handlers before the failing index (the ledger ``push``
+          // runs AFTER the successful call, so the throwing one is
+          // never ledgered).
+          const registeredHandlers = bindings
+            .slice(0, throwIdx)
+            .map((b) => b.handler)
+          const deregisteredHandlers = offChannelSpy.mock.calls.map(
+            ([, handler]) => handler,
+          )
+          expect(deregisteredHandlers).toEqual(registeredHandlers)
+
+          // Invariant 2: onChannelEvent was called exactly
+          // ``throwIdx + 1`` times (through the throw, not beyond).
+          expect(onChannelSpy).toHaveBeenCalledTimes(throwIdx + 1)
+          for (let i = throwIdx + 1; i < bindings.length; i++) {
+            expect(onChannelSpy).not.toHaveBeenCalledWith(
+              bindings[i]!.channel,
+              bindings[i]!.handler,
+            )
+          }
+
+          // Invariant 3: channel-level unsubscribe covers every
+          // unique channel in the binding set since no sibling hook
+          // is keeping any handler alive in this isolated property
+          // run. The order reflects the iteration order of the
+          // ``new Set(channels)`` used inside ``rollbackSubscriptions``.
+          const uniqueChannels = [...new Set(channels)]
+          expect(unsubscribeSpy).toHaveBeenCalledWith(uniqueChannels)
+        },
+      ),
+      { numRuns: 40 },
+    )
   })
 })
