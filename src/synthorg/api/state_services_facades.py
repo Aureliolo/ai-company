@@ -29,10 +29,21 @@ from synthorg.api.rate_limits.inflight_config import (
 )
 from synthorg.communication.meetings.service import MeetingService  # noqa: TC001
 from synthorg.communication.messages.service import MessageService  # noqa: TC001
+from synthorg.coordination.ceremony_policy.service import (
+    CeremonyPolicyService,  # noqa: TC001
+)
+from synthorg.coordination.service import CoordinationService  # noqa: TC001
 from synthorg.engine.quality.mcp_services import (
     EvaluationVersionService,  # noqa: TC001
     QualityFacadeService,  # noqa: TC001
     ReviewFacadeService,  # noqa: TC001
+)
+from synthorg.hr.activity_service import ActivityFeedService  # noqa: TC001
+from synthorg.hr.health.service import AgentHealthService  # noqa: TC001
+from synthorg.hr.identity.version_service import AgentVersionService  # noqa: TC001
+from synthorg.hr.personalities.service import PersonalityService  # noqa: TC001
+from synthorg.hr.scaling.decision_service import (
+    ScalingDecisionService,  # noqa: TC001
 )
 from synthorg.infrastructure.services import (
     AuditReadService,  # noqa: TC001
@@ -60,6 +71,7 @@ from synthorg.integrations.mcp_services import (
 )
 from synthorg.integrations.tunnel.mcp_service import TunnelService  # noqa: TC001
 from synthorg.integrations.webhooks.service import WebhookService  # noqa: TC001
+from synthorg.memory.service import MemoryService  # noqa: TC001
 from synthorg.meta.analytics.service import AnalyticsService  # noqa: TC001
 from synthorg.meta.reports.service import ReportsService  # noqa: TC001
 from synthorg.meta.signals.service import SignalsService  # noqa: TC001
@@ -129,6 +141,15 @@ class _FacadesMixin:
         self._evaluation_version_service = None
         self._per_op_rate_limit_config = None
         self._per_op_concurrency_config = None
+        # META-MCP-4 facades (observability + memory + coordination).
+        self._activity_feed_service = None
+        self._agent_health_service = None
+        self._agent_version_service = None
+        self._ceremony_policy_service = None
+        self._coordination_service = None
+        self._memory_service = None
+        self._personality_service = None
+        self._scaling_decision_service = None
 
     # Slot attrs for facade services (populated on concrete AppState).
     _signals_service: SignalsService | None
@@ -165,6 +186,14 @@ class _FacadesMixin:
     _evaluation_version_service: EvaluationVersionService | None
     _per_op_rate_limit_config: PerOpRateLimitConfig | None
     _per_op_concurrency_config: PerOpConcurrencyConfig | None
+    _activity_feed_service: ActivityFeedService | None
+    _agent_health_service: AgentHealthService | None
+    _agent_version_service: AgentVersionService | None
+    _ceremony_policy_service: CeremonyPolicyService | None
+    _coordination_service: CoordinationService | None
+    _memory_service: MemoryService | None
+    _personality_service: PersonalityService | None
+    _scaling_decision_service: ScalingDecisionService | None
 
     # ── Signals / analytics / reports ─────────────────────────────
 
@@ -703,6 +732,176 @@ class _FacadesMixin:
             "_evaluation_version_service",
             service,
             "EvaluationVersionService",
+        )
+
+    # ── META-MCP-4 facades (observability + memory + coordination) ──
+
+    @property
+    def has_activity_feed_service(self) -> bool:
+        return self._activity_feed_service is not None
+
+    @property
+    def activity_feed_service(self) -> ActivityFeedService:
+        return self._require_service(
+            self._activity_feed_service,
+            "ActivityFeedService",
+        )
+
+    def set_activity_feed_service(
+        self,
+        service: ActivityFeedService,
+    ) -> None:
+        self._set_once(
+            "_activity_feed_service",
+            service,
+            "ActivityFeedService",
+        )
+
+    @property
+    def has_agent_health_service(self) -> bool:
+        return self._agent_health_service is not None
+
+    @property
+    def agent_health_service(self) -> AgentHealthService:
+        return self._require_service(
+            self._agent_health_service,
+            "AgentHealthService",
+        )
+
+    def set_agent_health_service(
+        self,
+        service: AgentHealthService,
+    ) -> None:
+        self._set_once(
+            "_agent_health_service",
+            service,
+            "AgentHealthService",
+        )
+
+    @property
+    def has_agent_version_service(self) -> bool:
+        return self._agent_version_service is not None
+
+    @property
+    def agent_version_service(self) -> AgentVersionService:
+        return self._require_service(
+            self._agent_version_service,
+            "AgentVersionService",
+        )
+
+    def set_agent_version_service(
+        self,
+        service: AgentVersionService,
+    ) -> None:
+        self._set_once(
+            "_agent_version_service",
+            service,
+            "AgentVersionService",
+        )
+
+    @property
+    def has_ceremony_policy_service(self) -> bool:
+        return self._ceremony_policy_service is not None
+
+    @property
+    def ceremony_policy_service(self) -> CeremonyPolicyService:
+        return self._require_service(
+            self._ceremony_policy_service,
+            "CeremonyPolicyService",
+        )
+
+    def set_ceremony_policy_service(
+        self,
+        service: CeremonyPolicyService,
+    ) -> None:
+        self._set_once(
+            "_ceremony_policy_service",
+            service,
+            "CeremonyPolicyService",
+        )
+
+    @property
+    def has_coordination_service(self) -> bool:
+        return self._coordination_service is not None
+
+    @property
+    def coordination_service(self) -> CoordinationService:
+        return self._require_service(
+            self._coordination_service,
+            "CoordinationService",
+        )
+
+    def set_coordination_service(
+        self,
+        service: CoordinationService,
+    ) -> None:
+        self._set_once(
+            "_coordination_service",
+            service,
+            "CoordinationService",
+        )
+
+    @property
+    def has_memory_service(self) -> bool:
+        return self._memory_service is not None
+
+    @property
+    def memory_service(self) -> MemoryService:
+        return self._require_service(
+            self._memory_service,
+            "MemoryService",
+        )
+
+    def set_memory_service(
+        self,
+        service: MemoryService,
+    ) -> None:
+        self._set_once(
+            "_memory_service",
+            service,
+            "MemoryService",
+        )
+
+    @property
+    def has_personality_service(self) -> bool:
+        return self._personality_service is not None
+
+    @property
+    def personality_service(self) -> PersonalityService:
+        return self._require_service(
+            self._personality_service,
+            "PersonalityService",
+        )
+
+    def set_personality_service(
+        self,
+        service: PersonalityService,
+    ) -> None:
+        self._set_once(
+            "_personality_service",
+            service,
+            "PersonalityService",
+        )
+
+    @property
+    def has_scaling_decision_service(self) -> bool:
+        return self._scaling_decision_service is not None
+
+    @property
+    def scaling_decision_service(self) -> ScalingDecisionService:
+        return self._require_service(
+            self._scaling_decision_service,
+            "ScalingDecisionService",
+        )
+
+    def set_scaling_decision_service(
+        self,
+        service: ScalingDecisionService,
+    ) -> None:
+        self._set_once(
+            "_scaling_decision_service",
+            service,
+            "ScalingDecisionService",
         )
 
 

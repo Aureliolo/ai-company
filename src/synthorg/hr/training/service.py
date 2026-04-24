@@ -6,22 +6,29 @@ extraction + curation, sequential guard chain, memory storage.
 
 import asyncio
 import copy
+from collections import OrderedDict
 from datetime import UTC, datetime
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 from synthorg.core.enums import MemoryCategory
+from synthorg.core.types import NotBlankStr  # noqa: TC001 -- runtime annotation
 from synthorg.hr.training.models import (
     ContentType,
     TrainingApprovalHandle,
     TrainingGuardDecision,
     TrainingItem,
+    TrainingPlan,
     TrainingPlanStatus,
     TrainingResult,
 )
 from synthorg.memory.errors import MemoryError as _MemoryError
 from synthorg.memory.models import MemoryMetadata, MemoryStoreRequest
 from synthorg.observability import get_logger
+from synthorg.observability.events.hr import (
+    HR_TRAINING_SESSION_LISTED,
+    HR_TRAINING_SESSION_RECORDED,
+)
 from synthorg.observability.events.training import (
     HR_TRAINING_CURATION_FAILED,
     HR_TRAINING_EXTRACTION_FAILED,
@@ -39,8 +46,6 @@ from synthorg.observability.events.training import (
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-    from synthorg.core.types import NotBlankStr
-    from synthorg.hr.training.models import TrainingPlan
     from synthorg.hr.training.protocol import (
         ContentExtractor,
         CurationStrategy,
@@ -60,6 +65,13 @@ _CONTENT_TYPE_TO_CATEGORY: dict[ContentType, MemoryCategory] = {
 
 # Internal type alias for curated items map passed through pipeline.
 _CuratedMap = dict[ContentType, tuple[TrainingItem, ...]]
+
+# Cap for the in-memory session store used by the MCP read-side.
+# FIFO eviction keeps the store bounded without a background sweeper.
+# Durable session history lives in a future repository (tracked
+# alongside the fine-tune run repo); the MCP surface intentionally
+# surfaces only the recent tail today.
+_SESSION_STORE_MAX: int = 500
 
 
 class TrainingService:
@@ -106,6 +118,8 @@ class TrainingService:
         self._training_tags = training_tags
         self._executed_plan_ids: set[str] = set()
         self._idempotency_lock = asyncio.Lock()
+        self._sessions: OrderedDict[str, TrainingPlan] = OrderedDict()
+        self._session_lock = asyncio.Lock()
 
     async def execute(self, plan: TrainingPlan) -> TrainingResult:
         """Execute the full training pipeline.
@@ -159,6 +173,105 @@ class TrainingService:
                 raise
             self._executed_plan_ids.add(str(plan.id))
             return result
+
+    async def start_session(self, plan: TrainingPlan) -> TrainingResult:
+        """Execute *plan* and record the session on the in-memory store.
+
+        Thin wrapper around :meth:`execute` that additionally tracks
+        the plan's terminal status (``EXECUTED`` / ``FAILED``) in the
+        service's session history so the MCP read-side
+        (:meth:`list_sessions` + :meth:`get_session`) can surface
+        recent training activity without reaching into an external
+        persistence layer.
+
+        Args:
+            plan: Training plan to execute.
+
+        Returns:
+            The :class:`TrainingResult` produced by :meth:`execute`.
+
+        Raises:
+            Exception: Any exception raised by :meth:`execute` is
+                re-raised after the session is recorded as
+                ``FAILED``.
+        """
+        await self._record_session(plan)
+        try:
+            result = await self.execute(plan)
+        except Exception:
+            failed = plan.model_copy(
+                update={
+                    "status": TrainingPlanStatus.FAILED,
+                    "executed_at": datetime.now(UTC),
+                },
+            )
+            await self._record_session(failed)
+            raise
+        executed = plan.model_copy(
+            update={
+                "status": TrainingPlanStatus.EXECUTED,
+                "executed_at": result.completed_at,
+            },
+        )
+        await self._record_session(executed)
+        return result
+
+    async def list_sessions(
+        self,
+        *,
+        offset: int,
+        limit: int,
+    ) -> tuple[tuple[TrainingPlan, ...], int]:
+        """Return a page of recent training sessions + the total count.
+
+        Sessions are newest-first (by insertion / most-recent update
+        into the session store).
+
+        Args:
+            offset: Page offset (>= 0).
+            limit: Page size (> 0).
+
+        Returns:
+            Tuple of ``(page, total)``.
+        """
+        async with self._session_lock:
+            items = tuple(reversed(self._sessions.values()))
+            total = len(items)
+        page = items[offset : offset + limit]
+        logger.debug(
+            HR_TRAINING_SESSION_LISTED,
+            count=len(page),
+            total=total,
+            offset=offset,
+            limit=limit,
+        )
+        return page, total
+
+    async def get_session(
+        self,
+        plan_id: NotBlankStr,
+    ) -> TrainingPlan | None:
+        """Fetch a single session by plan id or ``None`` if absent."""
+        async with self._session_lock:
+            return self._sessions.get(str(plan_id))
+
+    async def _record_session(self, plan: TrainingPlan) -> None:
+        """Record *plan* at its current state into the session store.
+
+        Newer records bump an existing entry to the head; FIFO eviction
+        keeps the store bounded.
+        """
+        async with self._session_lock:
+            key = str(plan.id)
+            self._sessions[key] = plan
+            self._sessions.move_to_end(key)
+            while len(self._sessions) > _SESSION_STORE_MAX:
+                self._sessions.popitem(last=False)
+        logger.info(
+            HR_TRAINING_SESSION_RECORDED,
+            plan_id=str(plan.id),
+            status=plan.status.value,
+        )
 
     async def preview(self, plan: TrainingPlan) -> TrainingResult:
         """Dry-run: extract + curate without guards or storage.

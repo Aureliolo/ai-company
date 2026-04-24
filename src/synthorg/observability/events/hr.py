@@ -49,6 +49,16 @@ HR_ARCHIVAL_ENTRY_FAILED: Final[str] = "hr.archival.entry_failed"
 # ── Activity timeline ──────────────────────────────────────────
 
 HR_ACTIVITY_REDACTION_MISMATCH: Final[str] = "hr.activity.redaction_pattern_mismatch"
+HR_ACTIVITY_AGENT_FETCHED: Final[str] = "hr.activity.agent_fetched"
+
+# ── Health aggregation ────────────────────────────────────────
+
+HR_AGENT_HEALTH_COMPUTED: Final[str] = "hr.agent.health_computed"
+
+# ── Training sessions ─────────────────────────────────────────
+
+HR_TRAINING_SESSION_RECORDED: Final[str] = "hr.training.session_recorded"
+HR_TRAINING_SESSION_LISTED: Final[str] = "hr.training.session_listed"
 
 # ── Pruning ────────────────────────────────────────────────────
 

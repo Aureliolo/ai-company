@@ -244,17 +244,11 @@ class TestNotSupportedHandlers:
     @pytest.mark.parametrize(
         "tool_name",
         [
+            # Write-path handlers still owned by META-MCP-3 (#1528).
             "synthorg_agents_create",
             "synthorg_agents_update",
-            "synthorg_agents_get_activity",
-            "synthorg_agents_get_history",
-            "synthorg_agents_get_health",
-            "synthorg_personalities_list",
-            "synthorg_personalities_get",
-            "synthorg_training_list_sessions",
-            "synthorg_training_get_session",
-            "synthorg_training_start_session",
             "synthorg_autonomy_update",
+            # Read-only handlers not yet reclaimed by META-MCP-4.
             "synthorg_collaboration_get_calibration",
         ],
     )

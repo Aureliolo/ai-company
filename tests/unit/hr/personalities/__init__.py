@@ -1,0 +1,1 @@
+"""Personality service tests."""

@@ -32,6 +32,7 @@ from synthorg.meta.mcp.domains import build_full_registry
 from synthorg.meta.mcp.handlers import build_handler_map
 from synthorg.observability.events.mcp import (
     MCP_HANDLER_CAPABILITY_GAP,
+    MCP_HANDLER_NOT_IMPLEMENTED,
     MCP_HANDLER_SERVICE_FALLBACK,
 )
 from tests.unit.meta.mcp.conftest import make_test_actor
@@ -212,21 +213,32 @@ class TestNoServiceFallbackEvents:
                 body = json.loads(raw)
                 if body.get("domain_code") == "not_supported":
                     not_supported_tools.append(tool_name)
-        gap_events = [e for e in events if e.get("event") == MCP_HANDLER_CAPABILITY_GAP]
+        # Either event is a valid source for a ``not_supported`` envelope:
+        # - CAPABILITY_GAP: handler is wired but the primitive does not
+        #   expose the method yet (live-handler gap).
+        # - NOT_IMPLEMENTED: the active persistence backend cannot
+        #   support the operation at all (META-MCP-4 introduced
+        #   ``BackendUnsupportedError`` + ``not_supported()`` for
+        #   memory fine-tune sites).
+        gap_events = [
+            e
+            for e in events
+            if e.get("event")
+            in {MCP_HANDLER_CAPABILITY_GAP, MCP_HANDLER_NOT_IMPLEMENTED}
+        ]
         if not_supported_tools:
             assert gap_events, (
-                f"tools returned not_supported but no "
-                f"MCP_HANDLER_CAPABILITY_GAP was emitted: {not_supported_tools}"
+                f"tools returned not_supported but no CAPABILITY_GAP / "
+                f"NOT_IMPLEMENTED event was emitted: {not_supported_tools}"
             )
             assert all("tool_name" in e for e in gap_events), (
-                "every MCP_HANDLER_CAPABILITY_GAP emission must identify "
-                "the tool that triggered it"
+                "every capability event must identify the tool that triggered it"
             )
             gap_tool_names = {e["tool_name"] for e in gap_events}
             not_supported_tool_set = set(not_supported_tools)
             assert gap_tool_names == not_supported_tool_set, (
                 f"1:1 mismatch between not_supported envelopes and "
-                f"MCP_HANDLER_CAPABILITY_GAP events. "
+                f"capability events. "
                 f"Envelope-but-no-event: "
                 f"{sorted(not_supported_tool_set - gap_tool_names)}. "
                 f"Event-but-no-envelope: "

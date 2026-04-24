@@ -1,28 +1,48 @@
 """Coordination domain MCP handlers.
 
-9 tools across coordination, scaling, and ceremony-policy.  All nine
-handlers currently return a structured ``capability_gap`` envelope via
-the shared :func:`_mk` factory -- the backing services
-(``scaling_service``, ``coordination_metrics_store``,
-``ceremony_scheduler``) exist on ``app_state`` but none of them expose
-the read-friendly facade shape the MCP tools expect, and destructive
-entry points (``coordinate_task``, ``scaling_trigger``) are
-orchestrated through the engine loop / self-improvement cycle rather
-than an ad-hoc MCP call.  Centralising on :func:`_mk` keeps actor
-typing consistent across the 9 handlers and makes wiring a future
-``CoordinationService`` / ``ScalingService`` / ``CeremonyPolicyService``
-facade a local change to this module.
+9 tools across coordination, scaling, and ceremony-policy, all wired
+to service facades after META-MCP-4:
+
+- :class:`CoordinationService` (``coordinate_task``, ``metrics_list``)
+- :class:`ScalingDecisionService` (``scaling_list_decisions``,
+  ``_get_decision``, ``_get_config``, ``_trigger``)
+- :class:`CeremonyPolicyService` (``ceremony_policy_get``,
+  ``_get_resolved``, ``_get_active_strategy``)
+
+Handlers gracefully degrade to ``capability_gap`` when the
+corresponding service is not attached to ``app_state`` (happens in
+stripped-down unit environments); production deployments wire the
+services in the application bootstrap.
 """
 
+import copy
 from collections.abc import Mapping  # noqa: TC003 -- PEP 649 annotation
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
+from synthorg.api.errors import NotFoundError
+from synthorg.core.types import NotBlankStr
+from synthorg.meta.mcp.errors import (
+    ArgumentValidationError,
+    invalid_argument,
+)
 from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,  # noqa: TC001 -- PEP 649 annotation
 )
-from synthorg.meta.mcp.handlers.common import capability_gap
-from synthorg.observability import get_logger
+from synthorg.meta.mcp.handlers.common import (
+    PaginationMeta,
+    capability_gap,
+    coerce_pagination,
+    dump_many,
+    err,
+    ok,
+)
+from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.mcp import (
+    MCP_HANDLER_ARGUMENT_INVALID,
+    MCP_HANDLER_INVOKE_FAILED,
+    MCP_HANDLER_INVOKE_SUCCESS,
+)
 
 if TYPE_CHECKING:
     from synthorg.core.agent import AgentIdentity
@@ -30,92 +50,307 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-def _mk(tool: str, why: str) -> ToolHandler:
-    """Build a ``capability_gap`` handler with ToolHandler-conformant typing."""
-
-    async def handler(
-        *,
-        app_state: Any,  # noqa: ARG001
-        arguments: dict[str, Any],  # noqa: ARG001
-        actor: AgentIdentity | None = None,  # noqa: ARG001
-    ) -> str:
-        return capability_gap(tool, why)
-
-    return handler
+_TY_NON_BLANK = "non-blank string"
 
 
-_WHY_COORDINATE_TASK = (
-    "task coordination orchestration runs inside the engine loop; no "
-    "standalone coordinate endpoint is exposed on app_state"
+def _log_invalid(tool: str, exc: Exception) -> None:
+    logger.warning(
+        MCP_HANDLER_ARGUMENT_INVALID,
+        tool_name=tool,
+        error_type=type(exc).__name__,
+        error=safe_error_description(exc),
+    )
+
+
+def _log_failed(tool: str, exc: Exception) -> None:
+    logger.warning(
+        MCP_HANDLER_INVOKE_FAILED,
+        tool_name=tool,
+        error_type=type(exc).__name__,
+        error=safe_error_description(exc),
+    )
+
+
+def _require_non_blank(arguments: dict[str, Any], key: str) -> str:
+    raw = arguments.get(key)
+    if not isinstance(raw, str) or not raw.strip():
+        raise invalid_argument(key, _TY_NON_BLANK)
+    return raw.strip()
+
+
+_WHY_COORDINATION_NOT_WIRED = (
+    "coordination_service is not attached to app_state; wire it in "
+    "application bootstrap"
 )
-_WHY_METRICS_LIST = (
-    "coordination metrics list method is not exposed on "
-    "coordination_metrics_store; only per-task lookups are public"
+_WHY_SCALING_NOT_WIRED = (
+    "scaling_decision_service is not attached to app_state; wire it "
+    "in application bootstrap"
 )
-_WHY_SCALING_LIST = (
-    "scaling decision history lives in ScalingService internals; "
-    "no list method is exposed publicly"
+_WHY_CEREMONY_NOT_WIRED = (
+    "ceremony_policy_service is not attached to app_state; wire it "
+    "in application bootstrap"
 )
-_WHY_SCALING_GET = "no get_decision method on ScalingService"
-_WHY_SCALING_CONFIG = (
-    "scaling config is part of the SelfImprovementConfig bundle; "
-    "read via the meta config tool"
-)
-_WHY_SCALING_TRIGGER = (
-    "scaling triggers run through the self-improvement cycle, not "
-    "an ad-hoc MCP entry point"
-)
-_WHY_CEREMONY_GET = (
-    "ceremony policy read lives in the ceremony_policy controller; "
-    "no facade on app_state"
-)
-_WHY_CEREMONY_RESOLVED = (
-    "resolved-policy computation requires ceremony strategy + "
-    "context; no facade on app_state"
-)
-_WHY_CEREMONY_ACTIVE = (
-    "active strategy is resolved per ceremony scheduler call; no "
-    "public read path on app_state"
-)
+
+
+# --- Coordination ---------------------------------------------------------
+
+
+async def _coordination_coordinate_task(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,  # noqa: ARG001
+) -> str:
+    tool = "synthorg_coordination_coordinate_task"
+    try:
+        task_id = _require_non_blank(arguments, "task_id")
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
+    if not getattr(app_state, "has_coordination_service", False):
+        return capability_gap(tool, _WHY_COORDINATION_NOT_WIRED)
+    try:
+        record = await app_state.coordination_service.coordinate_task(
+            NotBlankStr(task_id),
+        )
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    if record is None:
+        missing = NotFoundError(
+            f"No coordination metrics recorded for task {task_id!r}",
+        )
+        _log_failed(tool, missing)
+        return err(missing, domain_code="not_found")
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    return ok(data=record.model_dump(mode="json"))
+
+
+async def _coordination_metrics_list(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,  # noqa: ARG001
+) -> str:
+    tool = "synthorg_coordination_metrics_list"
+    try:
+        offset, limit = coerce_pagination(arguments)
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
+    if not getattr(app_state, "has_coordination_service", False):
+        return capability_gap(tool, _WHY_COORDINATION_NOT_WIRED)
+    try:
+        records, total = await app_state.coordination_service.list_metrics(
+            offset=offset,
+            limit=limit,
+        )
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    meta = PaginationMeta(total=total, offset=offset, limit=limit)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    return ok(data=dump_many(records), pagination=meta)
+
+
+# --- Scaling --------------------------------------------------------------
+
+
+async def _scaling_list_decisions(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,  # noqa: ARG001
+) -> str:
+    tool = "synthorg_scaling_list_decisions"
+    try:
+        offset, limit = coerce_pagination(arguments)
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
+    if not getattr(app_state, "has_scaling_decision_service", False):
+        return capability_gap(tool, _WHY_SCALING_NOT_WIRED)
+    try:
+        decisions, total = await app_state.scaling_decision_service.list_decisions(
+            offset=offset,
+            limit=limit,
+        )
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    meta = PaginationMeta(total=total, offset=offset, limit=limit)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    return ok(data=dump_many(decisions), pagination=meta)
+
+
+async def _scaling_get_decision(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,  # noqa: ARG001
+) -> str:
+    tool = "synthorg_scaling_get_decision"
+    try:
+        decision_id = _require_non_blank(arguments, "decision_id")
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
+    if not getattr(app_state, "has_scaling_decision_service", False):
+        return capability_gap(tool, _WHY_SCALING_NOT_WIRED)
+    try:
+        decision = await app_state.scaling_decision_service.get_decision(
+            NotBlankStr(decision_id),
+        )
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    if decision is None:
+        missing = NotFoundError(f"Scaling decision {decision_id!r} not found")
+        _log_failed(tool, missing)
+        return err(missing, domain_code="not_found")
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    return ok(data=decision.model_dump(mode="json"))
+
+
+async def _scaling_get_config(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
+) -> str:
+    tool = "synthorg_scaling_get_config"
+    if not getattr(app_state, "has_scaling_decision_service", False):
+        return capability_gap(tool, _WHY_SCALING_NOT_WIRED)
+    try:
+        config = await app_state.scaling_decision_service.get_config()
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    return ok(data=config.model_dump(mode="json"))
+
+
+async def _scaling_trigger(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,  # noqa: ARG001
+) -> str:
+    tool = "synthorg_scaling_trigger"
+    raw_ids = arguments.get("agent_ids")
+    if raw_ids is None or not isinstance(raw_ids, (list, tuple)):
+        bad = invalid_argument("agent_ids", "list of non-blank strings")
+        _log_invalid(tool, bad)
+        return err(bad)
+    try:
+        agent_ids = tuple(
+            NotBlankStr(_require_non_blank_value(v, "agent_ids")) for v in raw_ids
+        )
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
+    if not agent_ids:
+        empty = invalid_argument("agent_ids", "non-empty list")
+        _log_invalid(tool, empty)
+        return err(empty)
+    if not getattr(app_state, "has_scaling_decision_service", False):
+        return capability_gap(tool, _WHY_SCALING_NOT_WIRED)
+    try:
+        decisions = await app_state.scaling_decision_service.trigger(agent_ids)
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    return ok(data=dump_many(decisions))
+
+
+# --- Ceremony policy ------------------------------------------------------
+
+
+async def _ceremony_policy_get(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
+) -> str:
+    tool = "synthorg_ceremony_policy_get"
+    if not getattr(app_state, "has_ceremony_policy_service", False):
+        return capability_gap(tool, _WHY_CEREMONY_NOT_WIRED)
+    try:
+        policy = await app_state.ceremony_policy_service.get_policy()
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    return ok(data=policy.model_dump(mode="json"))
+
+
+async def _ceremony_policy_get_resolved(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,  # noqa: ARG001
+) -> str:
+    tool = "synthorg_ceremony_policy_get_resolved"
+    if not getattr(app_state, "has_ceremony_policy_service", False):
+        return capability_gap(tool, _WHY_CEREMONY_NOT_WIRED)
+    department_raw = arguments.get("department")
+    department: NotBlankStr | None = None
+    if department_raw is not None:
+        if not isinstance(department_raw, str) or not department_raw.strip():
+            exc = invalid_argument("department", _TY_NON_BLANK)
+            _log_invalid(tool, exc)
+            return err(exc)
+        department = NotBlankStr(department_raw.strip())
+    try:
+        resolved = await app_state.ceremony_policy_service.get_resolved_policy(
+            department=department,
+        )
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    return ok(data=resolved.model_dump(mode="json"))
+
+
+async def _ceremony_policy_get_active_strategy(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],  # noqa: ARG001
+    actor: AgentIdentity | None = None,  # noqa: ARG001
+) -> str:
+    tool = "synthorg_ceremony_policy_get_active_strategy"
+    if not getattr(app_state, "has_ceremony_policy_service", False):
+        return capability_gap(tool, _WHY_CEREMONY_NOT_WIRED)
+    try:
+        active = await app_state.ceremony_policy_service.get_active_strategy()
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    return ok(data=active.model_dump(mode="json"))
+
+
+def _require_non_blank_value(value: Any, arg_name: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise invalid_argument(arg_name, _TY_NON_BLANK)
+    return value.strip()
 
 
 COORDINATION_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(
-    {
-        "synthorg_coordination_coordinate_task": _mk(
-            "synthorg_coordination_coordinate_task",
-            _WHY_COORDINATE_TASK,
-        ),
-        "synthorg_coordination_metrics_list": _mk(
-            "synthorg_coordination_metrics_list",
-            _WHY_METRICS_LIST,
-        ),
-        "synthorg_scaling_list_decisions": _mk(
-            "synthorg_scaling_list_decisions",
-            _WHY_SCALING_LIST,
-        ),
-        "synthorg_scaling_get_decision": _mk(
-            "synthorg_scaling_get_decision",
-            _WHY_SCALING_GET,
-        ),
-        "synthorg_scaling_get_config": _mk(
-            "synthorg_scaling_get_config",
-            _WHY_SCALING_CONFIG,
-        ),
-        "synthorg_scaling_trigger": _mk(
-            "synthorg_scaling_trigger",
-            _WHY_SCALING_TRIGGER,
-        ),
-        "synthorg_ceremony_policy_get": _mk(
-            "synthorg_ceremony_policy_get",
-            _WHY_CEREMONY_GET,
-        ),
-        "synthorg_ceremony_policy_get_resolved": _mk(
-            "synthorg_ceremony_policy_get_resolved",
-            _WHY_CEREMONY_RESOLVED,
-        ),
-        "synthorg_ceremony_policy_get_active_strategy": _mk(
-            "synthorg_ceremony_policy_get_active_strategy",
-            _WHY_CEREMONY_ACTIVE,
-        ),
-    },
+    copy.deepcopy(
+        {
+            "synthorg_coordination_coordinate_task": _coordination_coordinate_task,
+            "synthorg_coordination_metrics_list": _coordination_metrics_list,
+            "synthorg_scaling_list_decisions": _scaling_list_decisions,
+            "synthorg_scaling_get_decision": _scaling_get_decision,
+            "synthorg_scaling_get_config": _scaling_get_config,
+            "synthorg_scaling_trigger": _scaling_trigger,
+            "synthorg_ceremony_policy_get": _ceremony_policy_get,
+            "synthorg_ceremony_policy_get_resolved": _ceremony_policy_get_resolved,
+            "synthorg_ceremony_policy_get_active_strategy": (
+                _ceremony_policy_get_active_strategy
+            ),
+        },
+    ),
 )
