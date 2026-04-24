@@ -1,0 +1,109 @@
+name: Release Events
+
+# Pipeline-observability fan-in to a single pinned GitHub Issue (identified
+# by label `automation:release-events`). Fires on four signals:
+#   - stable release published
+#   - dev pre-release cut
+#   - auto-rollover.yml completed (success or failure)
+#   - test-signing.yml completed (failure only)
+#
+# Each event posts a single comment on the pinned issue. The pinned issue
+# is created on-demand if it does not already exist. No chat webhook
+# secrets required -- everything stays inside the repo.
+
+on:
+  release:
+    types: [published, prereleased]
+  workflow_run:
+    workflows: [Auto Rollover, Test Signing]
+    types: [completed]
+
+permissions: {}
+
+jobs:
+  dispatch:
+    name: Post release event
+    # Skip noisy early-exit runs: auto-rollover that decided no rollover
+    # was needed would still fire this workflow otherwise. The tracking
+    # issue only cares about *actual* rollover commits. We keep
+    # test-signing failures always (that's the whole point of the sink).
+    if: >-
+      github.event_name == 'release'
+      || (github.event_name == 'workflow_run'
+          && github.event.workflow_run.conclusion != null
+          && (github.event.workflow_run.name == 'Test Signing'
+                ? github.event.workflow_run.conclusion == 'failure'
+                : github.event.workflow_run.conclusion != 'skipped'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+      actions: read
+    steps:
+      - name: Compose + post event
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          SERVER_URL: ${{ github.server_url }}
+          REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_NAME: ${{ github.event.release.name }}
+          RELEASE_URL: ${{ github.event.release.html_url }}
+          IS_PRERELEASE: ${{ github.event.release.prerelease }}
+          WF_RUN_NAME: ${{ github.event.workflow_run.name }}
+          WF_RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          WF_RUN_URL: ${{ github.event.workflow_run.html_url }}
+          WF_RUN_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+
+          # Resolve / create the pinned tracking issue by label.
+          TITLE='Release pipeline events'
+          LABEL='automation:release-events'
+          ISSUE_NUMBER=$(gh issue list --state open --label "$LABEL" \
+            --search "in:title \"$TITLE\"" --json number,title \
+            --jq '[.[] | select(.title == "'"$TITLE"'")] | .[0].number // empty')
+
+          if [ -z "$ISSUE_NUMBER" ]; then
+            ISSUE_BODY=$(cat <<'EOF'
+          Rolling log of release-pipeline events. Posted to by
+          `.github/workflows/release-events.yml`. Close this issue to
+          reset the log; a fresh one will be opened on the next event.
+
+          Legend:
+          - **stable** -- a v[major].[minor].[patch] release was published.
+          - **dev** -- a dev pre-release was cut.
+          - **rollover** -- `auto-rollover.yml` fired with an outcome.
+          - **signing-failure** -- `test-signing.yml` detected a regression.
+          EOF
+          )
+            ISSUE_NUMBER=$(gh issue create --title "$TITLE" \
+              --label "$LABEL" \
+              --body "$ISSUE_BODY" \
+              --json number --jq '.number')
+            echo "Created tracking issue #$ISSUE_NUMBER"
+          fi
+
+          # Compose the comment payload based on the event type.
+          if [ "$EVENT_NAME" = "release" ]; then
+            if [ "$IS_PRERELEASE" = "true" ]; then
+              HEADER="dev build \`$RELEASE_TAG\` cut"
+            else
+              HEADER="stable \`$RELEASE_TAG\` published"
+            fi
+            BODY=$(printf -- '- **Event:** %s\n- **Release:** [%s](%s)\n- **Timestamp:** %s\n' \
+              "$HEADER" "$RELEASE_NAME" "$RELEASE_URL" "$(date -u +%Y-%m-%dT%H:%M:%SZ)")
+          elif [ "$WF_RUN_NAME" = "Auto Rollover" ]; then
+            HEADER="auto-rollover \`$WF_RUN_CONCLUSION\`"
+            BODY=$(printf -- '- **Event:** %s\n- **Run:** %s\n- **Commit:** \`%s\`\n- **Timestamp:** %s\n' \
+              "$HEADER" "$WF_RUN_URL" "$WF_RUN_HEAD_SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)")
+          elif [ "$WF_RUN_NAME" = "Test Signing" ]; then
+            HEADER='signing regression detected'
+            BODY=$(printf -- '- **Event:** %s (test-signing.yml)\n- **Run:** %s\n- **Timestamp:** %s\n\nSee [`Release pipeline signing regression`](../issues?q=is%%3Aissue+label%%3Aautomation%%3Arelease-events+in%%3Atitle+%%22signing+regression%%22) for the dedicated failure tracker.\n' \
+              "$HEADER" "$WF_RUN_URL" "$(date -u +%Y-%m-%dT%H:%M:%SZ)")
+          else
+            echo "::notice::Unrecognised event shape; skipping post"
+            exit 0
+          fi
+
+          gh issue comment "$ISSUE_NUMBER" --body "$BODY"
