@@ -170,15 +170,15 @@ class TestSetInflectionSinkAtomic:
         The async ``set_inflection_sink`` implementation takes
         ``_metrics_lock`` so exactly one caller wins.
 
-        Determinism: the controllable yield is injected *inside* the
-        method boundary by monkey-patching ``set_inflection_sink`` with
-        a wrapper that awaits an ``asyncio.Barrier(2)`` before calling
-        the real implementation. This forces both callers to enter the
-        check-and-set region at the same logical instant, so a
-        hypothetical lock-free refactor (no ``await`` between the
-        ``None``-check and the assignment) would still fail the test.
-        A barrier outside the method would not exercise that race --
-        both callers could still run one-after-the-other.
+        Determinism: the controllable yield is injected at the
+        ``_metrics_lock.acquire()`` boundary itself by swapping in a
+        custom ``asyncio.Lock`` subclass whose ``acquire()`` rendezvous
+        both callers at a ``Barrier(2)`` before delegating to the real
+        acquire. This proves the test is *actually* exercising the
+        lock path: if a future refactor removes the lock but keeps the
+        setter await-free, ``acquire()`` is never called, the barrier
+        never fills, both callers deadlock on ``barrier.wait()``, and
+        the test fails loudly instead of silently false-passing.
 
         Two distinct sentinel sink objects are used so the assertion
         can verify *which* caller won, not just that a sink exists.
@@ -188,22 +188,28 @@ class TestSetInflectionSinkAtomic:
         sink_b: object = object()
 
         barrier = asyncio.Barrier(2)
-        original_set_inflection_sink = tracker.set_inflection_sink
+        acquires = 0
 
-        async def set_with_inner_barrier(value: object) -> None:
-            # Rendezvous AFTER entering the method but BEFORE the
-            # check-and-set under _metrics_lock runs. This is the only
-            # way to prove the lock (or equivalent) is what serialises
-            # the critical section -- a yield at the call site alone
-            # would not.
-            await barrier.wait()
-            await original_set_inflection_sink(value)  # type: ignore[arg-type]
+        class _CoordinatedLock(asyncio.Lock):
+            """Lock whose acquire() rendezvous at a barrier first.
 
-        tracker.set_inflection_sink = set_with_inner_barrier  # type: ignore[method-assign]
+            Counts acquire calls so the test can assert the lock path
+            was actually exercised -- if set_inflection_sink ever
+            becomes lock-free, acquires stays at 0 and the assertion
+            fails.
+            """
+
+            async def acquire(self) -> bool:  # type: ignore[override]
+                nonlocal acquires
+                acquires += 1
+                await barrier.wait()
+                return await super().acquire()
+
+        tracker._metrics_lock = _CoordinatedLock()
 
         results = await asyncio.gather(
-            tracker.set_inflection_sink(sink_a),
-            tracker.set_inflection_sink(sink_b),
+            tracker.set_inflection_sink(sink_a),  # type: ignore[arg-type]
+            tracker.set_inflection_sink(sink_b),  # type: ignore[arg-type]
             return_exceptions=True,
         )
 
@@ -211,5 +217,8 @@ class TestSetInflectionSinkAtomic:
         failures = [r for r in results if isinstance(r, ValueError)]
         assert len(successes) == 1, f"expected exactly one success, got {successes!r}"
         assert len(failures) == 1, f"expected exactly one ValueError, got {failures!r}"
+        # The lock's acquire() path must have run -- guards against a
+        # future refactor that removes the lock.
+        assert acquires >= 1, "set_inflection_sink must acquire _metrics_lock"
         # Exactly one of the two candidate sinks is installed.
         assert tracker.inflection_sink in {sink_a, sink_b}

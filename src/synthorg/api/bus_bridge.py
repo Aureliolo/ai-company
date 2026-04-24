@@ -213,17 +213,50 @@ class MessageBusBridge:
                         exc_info=True,
                     )
                     continue
-                task = asyncio.create_task(
-                    self._poll_channel(channel_name),
-                    name=f"bridge-{channel_name}",
-                )
-                task.add_done_callback(
-                    log_task_exceptions(
-                        logger,
-                        API_BRIDGE_CHANNEL_DEAD,
+                # Transactional per-channel subscribe + spawn: if task
+                # creation or callback registration raises after the
+                # bus subscribe succeeded, the channel would be left
+                # subscribed with no poller (orphaned subscription
+                # that stop() can unsubscribe but start() would never
+                # route traffic to). Roll the subscribe back on any
+                # post-subscribe failure so either both succeed or
+                # the channel is recorded as failed.
+                try:
+                    task = asyncio.create_task(
+                        self._poll_channel(channel_name),
+                        name=f"bridge-{channel_name}",
+                    )
+                    task.add_done_callback(
+                        log_task_exceptions(
+                            logger,
+                            API_BRIDGE_CHANNEL_DEAD,
+                            channel=channel_name,
+                        ),
+                    )
+                except BaseException:
+                    # Best-effort unsubscribe -- if the bus backend
+                    # itself is broken, the subscribe rollback may
+                    # also fail, but we still record the channel as
+                    # failed so start() can surface it.
+                    try:
+                        await self._bus.unsubscribe(channel_name, _SUBSCRIBER_ID)
+                    except Exception:
+                        logger.warning(
+                            API_BUS_BRIDGE_SUBSCRIBE_FAILED,
+                            channel=channel_name,
+                            subscriber_id=_SUBSCRIBER_ID,
+                            phase="rollback_unsubscribe_failed",
+                            exc_info=True,
+                        )
+                    failed_channels.append(channel_name)
+                    logger.warning(
+                        API_BUS_BRIDGE_SUBSCRIBE_FAILED,
                         channel=channel_name,
-                    ),
-                )
+                        subscriber_id=_SUBSCRIBER_ID,
+                        phase="task_spawn_failed",
+                        exc_info=True,
+                    )
+                    continue
                 self._tasks.append(task)
 
             if not self._tasks:

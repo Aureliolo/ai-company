@@ -304,6 +304,14 @@ export const useThemeStore = create<ThemeState>()((set, get) => {
     },
 
     reattach: (): void => {
+      // Capture the pre-attach state so we only replay the handler
+      // when ``reattach()`` is actually re-installing a fresh
+      // listener (after a prior ``teardown()``). Calling
+      // ``reattach()`` on an already-attached store must be a
+      // no-op -- otherwise repeated calls would drive the handler
+      // on every invocation, causing avoidable ``savePreferences``
+      // localStorage writes and ``applyThemeClasses`` DOM churn.
+      const wasDetached = !(mql && reducedMotionHandler)
       attachReducedMotionListener()
       // Safe to invoke the handler synchronously here: the store is
       // fully constructed by the time ``reattach()`` is callable, so
@@ -313,7 +321,7 @@ export const useThemeStore = create<ThemeState>()((set, get) => {
       // than waiting for the next ``change`` event that may never
       // fire in tests. Initial store construction skips this replay
       // (see ``attachReducedMotionListener``).
-      if (mql && reducedMotionHandler) {
+      if (wasDetached && mql && reducedMotionHandler) {
         reducedMotionHandler({ matches: mql.matches } as MediaQueryListEvent)
       }
     },
