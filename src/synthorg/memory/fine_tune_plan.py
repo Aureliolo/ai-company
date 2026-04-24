@@ -41,12 +41,25 @@ class BackendUnsupportedError(Exception):
     :func:`synthorg.meta.mcp.handlers.common.not_supported` (which
     additionally emits the ``MCP_HANDLER_NOT_IMPLEMENTED`` WARNING
     event).
+
+    ``__slots__`` locks the attribute surface so ``domain_code`` stays
+    a class constant (no instance-level shadowing) and no new fields
+    can be injected at runtime.
     """
+
+    __slots__ = ("reason",)
 
     domain_code: str = "not_supported"
 
     def __init__(self, reason: str) -> None:
-        """Initialise with the operator-visible reason string."""
+        """Initialise with the operator-visible reason string.
+
+        Raises:
+            ValueError: If *reason* is empty or whitespace-only.
+        """
+        if not reason or not reason.strip():
+            msg = "BackendUnsupportedError.reason must be non-empty"
+            raise ValueError(msg)
         self.reason = reason
         super().__init__(reason)
 
