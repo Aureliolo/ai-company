@@ -259,6 +259,12 @@ class MeetingScheduler:
                 for result in results:
                     if isinstance(result, asyncio.CancelledError):
                         continue
+                    # Propagate system-critical errors -- a periodic
+                    # task that died with MemoryError / RecursionError
+                    # must surface to the caller, not be hidden behind
+                    # a log line and a reported-clean shutdown.
+                    if isinstance(result, MemoryError | RecursionError):
+                        raise result
                     if isinstance(result, Exception):
                         # Log at ERROR with exc_info so the traceback
                         # reaches operators -- str(result) alone loses

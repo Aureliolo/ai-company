@@ -115,11 +115,13 @@ class TestGetCollaborationScoreLocking:
     """``get_collaboration_score()`` must acquire ``_metrics_lock`` for the snapshot.
 
     In today's single-threaded asyncio runtime, the un-synchronized
-    ``tuple(self._collab_metrics.get(str(agent_id), []))`` at line 355
-    cannot tear because the scheduler only interleaves at ``await``
-    points. The lock is still required as a correctness contract so
-    that future refactors cannot introduce an ``await`` between the
-    dict read and the tuple snapshot without tripping the lock.
+    ``tuple(self._collab_metrics.get(str(agent_id), []))`` in
+    ``get_collaboration_score`` cannot tear because the scheduler
+    only interleaves at ``await`` points. The lock is still required
+    as a correctness contract so that future refactors cannot
+    introduce an ``await`` between the dict read and the tuple
+    snapshot without tripping the lock. (Line numbers intentionally
+    omitted -- they drift with every edit to ``tracker.py``.)
 
     This test asserts the observable contract: at least one acquire
     happens on the shared lock during ``get_collaboration_score``, and

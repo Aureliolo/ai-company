@@ -303,6 +303,15 @@ class MessageBusBridge:
                 for result in results:
                     if isinstance(result, asyncio.CancelledError):
                         continue
+                    # Propagate system-critical errors -- a poll task
+                    # that died with MemoryError / RecursionError must
+                    # surface to the caller, not be hidden behind a
+                    # WARNING and a reported-clean shutdown. Matches
+                    # the repo-wide "never swallow system errors"
+                    # convention already applied at individual
+                    # except sites.
+                    if isinstance(result, MemoryError | RecursionError):
+                        raise result
                     if isinstance(result, BaseException):
                         logger.warning(
                             API_APP_SHUTDOWN,

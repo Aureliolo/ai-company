@@ -209,12 +209,15 @@ export const useThemeStore = create<ThemeState>()((set, get) => {
   // listener is still attached is a no-op, which keeps the
   // `--detect-async-leaks` per-test add/remove count symmetric.
   //
-  // Also SYNCHRONIZES the store to the current ``mql.matches`` so
-  // ``reattach()`` after tests swap ``window.matchMedia`` observes
-  // the new mock's value, not whatever the previous listener last
-  // drove the store to. Without this sync the OS reduced-motion
-  // preference could only be reflected on the next ``change`` event,
-  // which in tests often never fires.
+  // The handler CANNOT be invoked synchronously here because this
+  // function runs inside the Zustand creator before the store's
+  // initial state is returned -- ``get()`` would see partial /
+  // undefined fields and could write bogus preferences. Initial
+  // alignment to ``mql.matches`` happens via the ``reducedMotion``
+  // variable threaded into the store's returned object; a synthetic
+  // replay is only safe once the store is fully constructed, which
+  // is why ``reattach()`` (not the initial attach) is responsible
+  // for firing the handler.
   const attachReducedMotionListener = (): void => {
     if (mql && reducedMotionHandler) return
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return
@@ -235,11 +238,6 @@ export const useThemeStore = create<ThemeState>()((set, get) => {
       }
     }
     mql.addEventListener('change', reducedMotionHandler)
-
-    // Drive the handler once against the current match state so the
-    // store reflects today's OS preference immediately, not only on
-    // the next change event. Matches the shape a browser would send.
-    reducedMotionHandler({ matches: mql.matches } as MediaQueryListEvent)
   }
 
   attachReducedMotionListener()
@@ -307,6 +305,17 @@ export const useThemeStore = create<ThemeState>()((set, get) => {
 
     reattach: (): void => {
       attachReducedMotionListener()
+      // Safe to invoke the handler synchronously here: the store is
+      // fully constructed by the time ``reattach()`` is callable, so
+      // ``get()`` inside the handler returns complete state. The
+      // replay mirrors today's OS preference (or the test's mocked
+      // ``matchMedia`` value) into the store immediately, rather
+      // than waiting for the next ``change`` event that may never
+      // fire in tests. Initial store construction skips this replay
+      // (see ``attachReducedMotionListener``).
+      if (mql && reducedMotionHandler) {
+        reducedMotionHandler({ matches: mql.matches } as MediaQueryListEvent)
+      }
     },
   }
 })

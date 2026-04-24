@@ -98,6 +98,14 @@ class TaskEngine(TaskEngineLoopsMixin):
         self._in_flight: _MutationEnvelope | None = None
         self._running = False
         self._lifecycle_lock = asyncio.Lock()
+        # Hot-path admission lock: held only for the atomic check-
+        # and-put in :meth:`submit`. ``stop()`` briefly acquires it
+        # just long enough to publish ``_running = False`` so new
+        # submits fast-fail immediately, then drains under
+        # ``_lifecycle_lock`` only. Keeping this lock separate from
+        # ``_lifecycle_lock`` is mandated by CLAUDE.md -- hot-path
+        # traffic must not serialize against lifecycle transitions.
+        self._admission_lock = asyncio.Lock()
         self._observers: list[Callable[[TaskStateChanged], Awaitable[None]]] = []
         self._observer_queue: asyncio.Queue[TaskStateChanged | None] = asyncio.Queue(
             maxsize=self._config.effective_observer_queue_size,
@@ -204,6 +212,17 @@ class TaskEngine(TaskEngineLoopsMixin):
                 self._processing_task = None
                 self._observer_task = None
                 self._running = False
+                # Log the rollback so operators see *why* the engine
+                # never came up -- without this the caller would
+                # receive the original exception but the structured
+                # breadcrumb for the partial-startup cleanup would be
+                # lost.
+                logger.error(
+                    TASK_ENGINE_START_REJECTED,
+                    reason="startup_rollback",
+                    partial_tasks_cancelled=len(partial_tasks),
+                    exc_info=True,
+                )
                 raise
             logger.info(
                 TASK_ENGINE_STARTED,
@@ -224,7 +243,15 @@ class TaskEngine(TaskEngineLoopsMixin):
         async with self._lifecycle_lock:
             if not self._running:
                 return
-            self._running = False
+            # Publish the shutdown flag under the admission lock so
+            # racing ``submit()`` calls fast-fail with
+            # ``TaskEngineNotRunningError`` instead of blocking on the
+            # drain. The admission lock is only held for the atomic
+            # flag flip -- the drain itself runs with only the
+            # lifecycle lock, so hot-path callers don't pay for
+            # shutdown latency.
+            async with self._admission_lock:
+                self._running = False
             effective_timeout = (
                 timeout if timeout is not None else self._config.drain_timeout_seconds
             )
@@ -313,7 +340,14 @@ class TaskEngine(TaskEngineLoopsMixin):
             TaskEngineNotRunningError: If the engine is not running.
             TaskEngineQueueFullError: If the queue is at capacity.
         """
-        async with self._lifecycle_lock:
+        # Use ``_admission_lock`` (hot-path) -- not ``_lifecycle_lock``
+        # -- so new submits are not serialized against an in-flight
+        # ``stop()`` drain, which can hold ``_lifecycle_lock`` for up
+        # to the hard-deadline budget. ``stop()`` briefly takes
+        # ``_admission_lock`` to publish ``_running=False``, so any
+        # racing submit either sees the flag and fast-fails or wins
+        # the race and lands cleanly in the queue before drain.
+        async with self._admission_lock:
             if not self._running:
                 logger.warning(
                     TASK_ENGINE_NOT_RUNNING,
