@@ -6,9 +6,11 @@ import type { Project } from '@/api/types/projects'
 
 interface ProjectGridViewProps {
   projects: readonly Project[]
+  onToggleSelect?: (id: string) => void
+  selectedIds?: ReadonlySet<string>
 }
 
-export function ProjectGridView({ projects }: ProjectGridViewProps) {
+export function ProjectGridView({ projects, onToggleSelect, selectedIds }: ProjectGridViewProps) {
   if (projects.length === 0) {
     return (
       <EmptyState
@@ -23,7 +25,11 @@ export function ProjectGridView({ projects }: ProjectGridViewProps) {
     <StaggerGroup className="grid grid-cols-1 gap-grid-gap sm:grid-cols-2 xl:grid-cols-3">
       {projects.map((project) => (
         <StaggerItem key={project.id}>
-          <ProjectCard project={project} />
+          <ProjectCard
+            project={project}
+            onToggleSelect={onToggleSelect}
+            selected={selectedIds?.has(project.id)}
+          />
         </StaggerItem>
       ))}
     </StaggerGroup>

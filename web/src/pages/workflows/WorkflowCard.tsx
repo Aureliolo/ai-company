@@ -12,9 +12,19 @@ interface WorkflowCardProps {
   workflow: WorkflowDefinition
   onDelete: (id: string) => void | Promise<void>
   onDuplicate: (id: string) => void
+  /** When defined, renders a multi-select checkbox and marks the card as selectable. */
+  onToggleSelect?: (id: string) => void
+  /** Whether the row is currently included in a multi-select. */
+  selected?: boolean
 }
 
-export function WorkflowCard({ workflow, onDelete, onDuplicate }: WorkflowCardProps) {
+export function WorkflowCard({
+  workflow,
+  onDelete,
+  onDuplicate,
+  onToggleSelect,
+  selected = false,
+}: WorkflowCardProps) {
   const [confirmDelete, setConfirmDelete] = useState(false)
   const navigate = useNavigate()
 
@@ -22,8 +32,25 @@ export function WorkflowCard({ workflow, onDelete, onDuplicate }: WorkflowCardPr
 
   return (
     <>
-      <div className="relative rounded-lg border border-border bg-card p-card transition-shadow hover:shadow-[var(--so-shadow-card-hover)]">
-        <Link to={editorUrl} className="block">
+      <div
+        className={`relative rounded-lg border bg-card p-card transition-shadow hover:shadow-[var(--so-shadow-card-hover)] ${selected ? 'border-accent ring-2 ring-accent/30' : 'border-border'}`}
+      >
+        {onToggleSelect && (
+          <label className="absolute left-3 top-3 z-10 flex cursor-pointer items-center">
+            <input
+              type="checkbox"
+              className="size-4 rounded border-border accent-accent"
+              checked={selected}
+              onChange={() => onToggleSelect(workflow.id)}
+              onClick={(e) => e.stopPropagation()}
+              aria-label={`Select workflow ${workflow.name}`}
+            />
+          </label>
+        )}
+        <Link
+          to={editorUrl}
+          className={`block ${onToggleSelect ? 'pl-7' : ''}`}
+        >
           <div className="mb-2 flex items-center gap-2">
             <span className="truncate text-sm font-semibold text-foreground">
               {workflow.name}
