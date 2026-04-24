@@ -11,6 +11,7 @@ Covers test gaps identified during PR #325 review:
 """
 
 import asyncio
+import contextlib
 from typing import TYPE_CHECKING
 
 import pytest
@@ -479,8 +480,14 @@ class TestMemoryErrorReRaise:
             with pytest.raises(MemoryError):
                 await eng._processing_task
         finally:
-            eng._running = False
-            eng._processing_task = None
+            # Use the public lifecycle API so any remaining background
+            # tasks are drained. The processing task has already died
+            # with the system error under test; ``stop()`` may re-raise
+            # that error during the drain, so swallow ``Exception`` to
+            # keep teardown best-effort (system errors / CancelledError
+            # are outside this suppressor by design).
+            with contextlib.suppress(Exception):
+                await eng.stop(timeout=2.0)
 
     async def test_recursion_error_propagates_through_process_one(
         self,
@@ -511,8 +518,14 @@ class TestMemoryErrorReRaise:
             with pytest.raises(RecursionError):
                 await eng._processing_task
         finally:
-            eng._running = False
-            eng._processing_task = None
+            # Use the public lifecycle API so any remaining background
+            # tasks are drained. The processing task has already died
+            # with the system error under test; ``stop()`` may re-raise
+            # that error during the drain, so swallow ``Exception`` to
+            # keep teardown best-effort (system errors / CancelledError
+            # are outside this suppressor by design).
+            with contextlib.suppress(Exception):
+                await eng.stop(timeout=2.0)
 
 
 # ── _fail_remaining_futures coverage ─────────────────────────

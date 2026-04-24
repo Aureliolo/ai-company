@@ -37,6 +37,26 @@ class TestConcurrentStart:
         await bus.start()
         dispatcher = SettingsChangeDispatcher(bus, subscribers=())
 
+        # Coordinated lock forces both ``start()`` callers into the
+        # lifecycle-lock critical section concurrently. Without it, the
+        # natural asyncio scheduling can let one start() finish before
+        # the second contends, so the test would pass on a regression
+        # that removed the lock. Only the first two acquires barrier-
+        # wait; the ``stop()`` call in ``finally`` bypasses the barrier
+        # (which would otherwise deadlock waiting for a second party).
+        barrier = asyncio.Barrier(2)
+        acquire_count = 0
+
+        class _CoordinatedLock(asyncio.Lock):
+            async def acquire(self) -> bool:  # type: ignore[override]
+                nonlocal acquire_count
+                acquire_count += 1
+                if acquire_count <= 2:
+                    await barrier.wait()
+                return await super().acquire()
+
+        dispatcher._lifecycle_lock = _CoordinatedLock()
+
         results = await asyncio.gather(
             dispatcher.start(),
             dispatcher.start(),

@@ -52,6 +52,7 @@ from synthorg.observability.events.task_engine import (
     TASK_ENGINE_READ_FAILED,
     TASK_ENGINE_START_REJECTED,
     TASK_ENGINE_STARTED,
+    TASK_ENGINE_STOP_REJECTED,
     TASK_ENGINE_STOPPED,
 )
 
@@ -272,6 +273,16 @@ class TaskEngine(TaskEngineLoopsMixin):
         # actually hung -- the fresh instance rule exists for genuine
         # hung drains, not for malformed input.
         if timeout is not None and timeout <= 0:
+            # Log before raising so malformed caller input reaches
+            # task-engine telemetry rather than vanishing silently
+            # (CLAUDE.md: "All error paths must log at WARNING or
+            # ERROR with context before raising").
+            logger.warning(
+                TASK_ENGINE_STOP_REJECTED,
+                note="stop() called with invalid timeout; raising ValueError",
+                timeout=timeout,
+                reason="invalid_timeout",
+            )
             msg = f"stop() timeout must be > 0, got {timeout!r}"
             raise ValueError(msg)
         async with self._lifecycle_lock:

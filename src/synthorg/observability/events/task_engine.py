@@ -4,6 +4,12 @@ from typing import Final
 
 TASK_ENGINE_CREATED: Final[str] = "task_engine.created"
 TASK_ENGINE_STARTED: Final[str] = "task_engine.started"
+TASK_ENGINE_STOP_REJECTED: Final[str] = "task_engine.stop.rejected"
+"""Emitted when ``TaskEngine.stop()`` refuses a call because of an invalid
+caller argument (e.g. non-positive ``timeout``). Kept distinct from
+``TASK_ENGINE_STOPPED`` so rejected stops do not inflate successful-stop
+metrics, and from ``TASK_ENGINE_DRAIN_TIMEOUT`` which is specifically the
+hard-deadline / cancellation path."""
 TASK_ENGINE_START_REJECTED: Final[str] = "task_engine.start.rejected"
 """Emitted when ``TaskEngine.start()`` refuses to start -- already running,
 or unrestartable after a timed-out stop -- and when a ``start()`` attempt

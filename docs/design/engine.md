@@ -486,11 +486,12 @@ outgoing stop never waits on.
   post-cancel. Abandoned futures receive a failure result. Idempotent
   on the success path.
 
-!!! warning "Unrestartable after a timed-out stop"
+!!! warning "Unrestartable after a timed-out or cancelled stop"
 
-    If `stop()` exceeds the hard outer deadline the engine sets
-    `_unrestartable = True` and re-raises `TimeoutError`. Every
-    subsequent `start()` on that instance raises
+    If `stop()` either (a) exceeds the hard outer deadline (`TimeoutError`) or
+    (b) is interrupted mid-drain by caller cancellation (`CancelledError`),
+    the engine sets `_unrestartable = True` and re-raises the originating
+    exception. Every subsequent `start()` on that instance raises
     `RuntimeError("TaskEngine is unrestartable after a timed-out stop; construct a fresh TaskEngine instead")`.
     This is intentional: the
     orphaned processing / observer tasks that ignored cancellation are

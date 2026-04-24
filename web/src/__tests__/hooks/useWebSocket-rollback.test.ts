@@ -194,9 +194,7 @@ describe('useWebSocket registration rollback', () => {
     await fc.assert(
       fc.asyncProperty(
         // A non-empty subset of CHANNELS (unique, preserves order).
-        fc
-          .subarray([...CHANNELS], { minLength: 1 })
-          .filter((arr) => arr.length > 0),
+        fc.subarray([...CHANNELS], { minLength: 1 }),
         // The index into that subset at which onChannelEvent throws.
         fc.nat(),
         async (channels, throwIdxRaw) => {
