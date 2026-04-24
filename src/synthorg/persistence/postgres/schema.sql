@@ -548,6 +548,9 @@ CREATE INDEX idx_wfe_status_updated
 CREATE INDEX idx_wfe_project
     ON workflow_executions(project);
 
+CREATE INDEX idx_wfe_definition_revision
+    ON workflow_executions(definition_id, definition_revision);
+
 -- ── Fine-tuning pipeline runs ───────────────────────────────────
 CREATE TABLE fine_tune_runs (
     id TEXT PRIMARY KEY NOT NULL CHECK (length(id) > 0),

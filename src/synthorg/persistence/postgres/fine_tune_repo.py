@@ -49,6 +49,15 @@ _ACTIVE_STAGES: tuple[str, ...] = tuple(
 _MAX_LIST_LIMIT: int = 1_000
 
 
+def _clamp_pagination(limit: int, offset: int) -> tuple[int, int]:
+    """Clamp list pagination params to valid ranges.
+
+    ``limit`` is clamped to ``[1, _MAX_LIST_LIMIT]`` and ``offset`` to
+    ``[0, +inf)``.  Used by both list_runs and list_checkpoints.
+    """
+    return min(max(limit, 1), _MAX_LIST_LIMIT), max(offset, 0)
+
+
 def _normalise_ts(value: datetime) -> datetime:
     """Coerce a tz-aware datetime to UTC for TIMESTAMPTZ insertion."""
     return value.astimezone(UTC)
@@ -243,8 +252,7 @@ ON CONFLICT (id) DO UPDATE SET
         Returns:
             Tuple of (runs, total_count).
         """
-        limit = min(max(limit, 1), _MAX_LIST_LIMIT)
-        offset = max(offset, 0)
+        limit, offset = _clamp_pagination(limit, offset)
         try:
             async with (
                 self._pool.connection() as conn,
@@ -452,8 +460,7 @@ ON CONFLICT (id) DO UPDATE SET
         Returns:
             Tuple of (checkpoints, total_count).
         """
-        limit = min(max(limit, 1), _MAX_LIST_LIMIT)
-        offset = max(offset, 0)
+        limit, offset = _clamp_pagination(limit, offset)
         try:
             async with (
                 self._pool.connection() as conn,
@@ -511,9 +518,7 @@ ON CONFLICT (id) DO UPDATE SET
                         checkpoint_id=checkpoint_id,
                         error=msg,
                     )
-                    raise QueryError(msg)  # noqa: TRY301
-        except QueryError:
-            raise
+                    raise QueryError(msg)
         except psycopg.Error as exc:
             msg = f"Failed to activate checkpoint {checkpoint_id}"
             logger.warning(
@@ -572,7 +577,7 @@ ON CONFLICT (id) DO UPDATE SET
                         checkpoint_id=checkpoint_id,
                         error=msg,
                     )
-                    raise QueryError(msg)  # noqa: TRY301
+                    raise QueryError(msg)
                 await cur.execute(
                     "DELETE FROM fine_tune_checkpoints "
                     "WHERE id = %s AND is_active = FALSE",
@@ -585,9 +590,7 @@ ON CONFLICT (id) DO UPDATE SET
                         checkpoint_id=checkpoint_id,
                         error="checkpoint became active during delete",
                     )
-                    raise QueryError(msg)  # noqa: TRY301
-        except QueryError:
-            raise
+                    raise QueryError(msg)
         except psycopg.Error as exc:
             msg = f"Failed to delete checkpoint {checkpoint_id}"
             logger.warning(

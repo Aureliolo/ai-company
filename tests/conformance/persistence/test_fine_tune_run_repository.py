@@ -261,6 +261,31 @@ class TestFineTuneRunRepository:
         assert done is not None
         assert done.stage is FineTuneStage.COMPLETE
 
+    async def test_mark_interrupted_single_transaction(
+        self, backend: PersistenceBackend
+    ) -> None:
+        # All runs transitioned by a single call must share the same
+        # ``updated_at`` / ``completed_at`` timestamp -- evidence that
+        # the update ran inside one atomic transaction.  A per-row loop
+        # (which would race with a concurrent mark_interrupted) would
+        # fail this assertion.
+        await backend.fine_tune_runs.save_run(
+            _run("r-train", FineTuneStage.TRAINING),
+        )
+        await backend.fine_tune_runs.save_run(
+            _run("r-eval", FineTuneStage.EVALUATING),
+        )
+
+        await backend.fine_tune_runs.mark_interrupted()
+
+        train = await backend.fine_tune_runs.get_run("r-train")
+        ev = await backend.fine_tune_runs.get_run("r-eval")
+        assert train is not None
+        assert ev is not None
+        assert train.updated_at == ev.updated_at
+        assert train.completed_at == ev.completed_at
+        assert train.error == ev.error == "interrupted by restart"
+
     async def test_mark_interrupted_idempotent(
         self, backend: PersistenceBackend
     ) -> None:

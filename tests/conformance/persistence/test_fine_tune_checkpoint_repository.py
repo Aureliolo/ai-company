@@ -268,6 +268,33 @@ class TestFineTuneCheckpointRepository:
         assert fetched.eval_metrics.base_ndcg_at_10 == 0.5
         assert fetched.eval_metrics.base_recall_at_10 == 0.6
 
+    async def test_save_checkpoint_nonexistent_run_raises(
+        self, backend: PersistenceBackend
+    ) -> None:
+        # FK: fine_tune_checkpoints.run_id -> fine_tune_runs.id
+        # ON DELETE CASCADE.  Inserting with an unknown run_id must
+        # fail at the DB layer on both backends; the repository wraps
+        # the driver error as QueryError.
+        cp = _checkpoint(run_id="run-ghost")
+        with pytest.raises(QueryError):
+            await backend.fine_tune_checkpoints.save_checkpoint(cp)
+        # Partial insert must not leak.
+        assert await backend.fine_tune_checkpoints.get_checkpoint(cp.id) is None
+
+    async def test_list_checkpoints_clamps_limit_and_offset(
+        self, backend: PersistenceBackend
+    ) -> None:
+        # Mirrors the run-repo clamping test: limit=0 must clamp up to 1;
+        # offset=-1 must clamp up to 0.
+        await backend.fine_tune_runs.save_run(_run())
+        await backend.fine_tune_checkpoints.save_checkpoint(_checkpoint("cp-1"))
+
+        rows, total = await backend.fine_tune_checkpoints.list_checkpoints(
+            limit=0, offset=-1
+        )
+        assert total == 1
+        assert len(rows) == 1
+
     async def test_backup_config_json_round_trip(
         self, backend: PersistenceBackend
     ) -> None:

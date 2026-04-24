@@ -181,9 +181,10 @@ _WHY_EMBEDDER = (
     "dedicated query method on MemoryService"
 )
 _WHY_BACKEND_NO_FINE_TUNE = (
-    "fine-tune repositories are not supported by the active "
-    "persistence backend (SQLite-only today); switch backends or use "
-    "the fine-tune controller"
+    "fine-tune repositories are not exposed by the active persistence "
+    "backend; ensure the backend is connected and exposes "
+    "fine_tune_runs + fine_tune_checkpoints (both SQLite and Postgres "
+    "do today)"
 )
 
 

@@ -30,6 +30,9 @@ from synthorg.persistence.postgres.backend import PostgresPersistenceBackend
 pytestmark = [pytest.mark.integration, pytest.mark.slow]
 
 
+_FIXED_NOW = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
+
+
 def _make_item(  # noqa: PLR0913 -- test factory with explicit knobs
     *,
     approval_id: str = "approval-pg-0001",
@@ -40,7 +43,7 @@ def _make_item(  # noqa: PLR0913 -- test factory with explicit knobs
     metadata: dict[str, str] | None = None,
 ) -> ApprovalItem:
     """Build an ApprovalItem with sensible defaults."""
-    now = datetime.now(UTC)
+    now = _FIXED_NOW
     decided_at: datetime | None = None
     decided_by: str | None = None
     decision_reason: str | None = None
@@ -108,7 +111,7 @@ async def test_pydantic_invalid_row_raises_query_error(
                 "agent-eng-001",
                 "high",
                 "pending",
-                datetime.now(UTC),
+                _FIXED_NOW,
                 None,
                 None,
                 None,
@@ -190,7 +193,7 @@ async def test_constraint_violation_surfaces_from_save(
     # The Pydantic validator refuses to build this state directly, so
     # use model_construct to bypass field validation and force the DB
     # CHECK to surface the violation.
-    now = datetime.now(UTC)
+    now = _FIXED_NOW
     bad_item = ApprovalItem.model_construct(
         id="approval-ck-001",
         action_type="deploy:production",
