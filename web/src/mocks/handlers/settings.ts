@@ -9,7 +9,7 @@ import type {
   updateSetting,
 } from '@/api/endpoints/settings'
 import type { SettingEntry } from '@/api/types/settings'
-import { successFor, voidSuccess } from './helpers'
+import { emptyPage, paginatedFor, successFor, voidSuccess } from './helpers'
 
 type SettingEntryOverrides = Partial<Omit<SettingEntry, 'definition'>> & {
   definition?: Partial<SettingEntry['definition']>
@@ -54,7 +54,9 @@ export const settingsHandlers = [
     HttpResponse.json(successFor<typeof getNamespaceSchema>([])),
   ),
   http.get('/api/v1/settings', () =>
-    HttpResponse.json(successFor<typeof getAllSettings>([])),
+    HttpResponse.json(
+      paginatedFor<typeof getAllSettings>(emptyPage<SettingEntry>()),
+    ),
   ),
   http.get('/api/v1/settings/observability/sinks', () =>
     HttpResponse.json(successFor<typeof listSinks>([])),

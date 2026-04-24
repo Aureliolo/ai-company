@@ -10,3 +10,26 @@ into the helpers as callables.
 Conformance tests target these helpers directly without instantiating
 a database backend.
 """
+
+from datetime import UTC, datetime
+
+__all__ = ("normalize_utc",)
+
+
+def normalize_utc(value: datetime) -> datetime:
+    """Coerce a datetime to UTC-aware (naive treated as UTC).
+
+    Single normalisation point shared by every persistence helper that
+    round-trips timestamps. Naive datetimes are tagged as UTC (matches
+    the project-wide rule "store UTC everywhere"); aware datetimes in
+    other zones are converted via :py:meth:`~datetime.datetime.astimezone`.
+
+    Args:
+        value: Either tz-aware or naive datetime.
+
+    Returns:
+        UTC-aware datetime preserving the original instant.
+    """
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)

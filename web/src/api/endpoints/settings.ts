@@ -1,5 +1,5 @@
-import { apiClient, unwrap, unwrapVoid } from '../client'
-import type { ApiResponse } from '../types/http'
+import { apiClient, unwrap, unwrapPaginated, unwrapVoid, type PaginatedResult } from '../client'
+import type { ApiResponse, PaginatedResponse, PaginationParams } from '../types/http'
 import type { SettingDefinition, SettingEntry, SettingNamespace, SinkInfo, TestSinkResult, UpdateSettingRequest } from '../types/settings'
 
 export async function getSchema(): Promise<SettingDefinition[]> {
@@ -14,9 +14,11 @@ export async function getNamespaceSchema(namespace: SettingNamespace): Promise<S
   return unwrap(response)
 }
 
-export async function getAllSettings(): Promise<SettingEntry[]> {
-  const response = await apiClient.get<ApiResponse<SettingEntry[]>>('/settings')
-  return unwrap(response)
+export async function getAllSettings(
+  params?: PaginationParams,
+): Promise<PaginatedResult<SettingEntry>> {
+  const response = await apiClient.get<PaginatedResponse<SettingEntry>>('/settings', { params })
+  return unwrapPaginated<SettingEntry>(response)
 }
 
 export async function getNamespaceSettings(namespace: SettingNamespace): Promise<SettingEntry[]> {

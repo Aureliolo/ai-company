@@ -2,7 +2,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { useSubworkflowsStore } from '@/stores/subworkflows'
 import { useToastStore } from '@/stores/toast'
-import { apiError, apiSuccess, voidSuccess } from '@/mocks/handlers'
+import {
+  apiError,
+  apiSuccess,
+  emptyPage,
+  paginatedFor,
+  voidSuccess,
+} from '@/mocks/handlers'
+import type { listSubworkflows } from '@/api/endpoints/subworkflows'
+import type { SubworkflowSummary } from '@/api/types/workflows'
 import { server } from '@/test-setup'
 
 function resetStore() {
@@ -32,7 +40,9 @@ describe('deleteSubworkflow', () => {
       ),
       http.get('/api/v1/subworkflows', () => {
         refetched += 1
-        return HttpResponse.json(apiSuccess([]))
+        return HttpResponse.json(
+          paginatedFor<typeof listSubworkflows>(emptyPage<SubworkflowSummary>()),
+        )
       }),
     )
 
@@ -55,7 +65,9 @@ describe('deleteSubworkflow', () => {
       ),
       http.get('/api/v1/subworkflows', () => {
         refetched += 1
-        return HttpResponse.json(apiSuccess([]))
+        return HttpResponse.json(
+          paginatedFor<typeof listSubworkflows>(emptyPage<SubworkflowSummary>()),
+        )
       }),
     )
 
@@ -76,7 +88,9 @@ describe('fetchSubworkflows', () => {
   it('populates subworkflows and clears error on success', async () => {
     server.use(
       http.get('/api/v1/subworkflows', () =>
-        HttpResponse.json(apiSuccess([])),
+        HttpResponse.json(
+          paginatedFor<typeof listSubworkflows>(emptyPage<SubworkflowSummary>()),
+        ),
       ),
     )
 

@@ -114,11 +114,25 @@ class TestAuditRepositoryConformance:
         self,
         backend: PersistenceBackend,
     ) -> None:
+        # Save 5 entries with distinct timestamps, then assert that
+        # query(limit=3) returns the EXACT three newest entries in
+        # descending-timestamp order. A length-only assertion would
+        # silently pass against a backend that returned the wrong three
+        # rows or the wrong ordering.
+        saved: list[AuditEntry] = []
         for i in range(5):
-            await backend.audit_entries.save(
-                _entry(
-                    timestamp=datetime(2026, 4, 24, 12, i, tzinfo=UTC),
-                ),
+            entry = _entry(
+                timestamp=datetime(2026, 4, 24, 12, i, tzinfo=UTC),
             )
+            await backend.audit_entries.save(entry)
+            saved.append(entry)
+        expected_newest_three = sorted(
+            saved,
+            key=lambda e: e.timestamp,
+            reverse=True,
+        )[:3]
         limited = await backend.audit_entries.query(limit=3)
-        assert len(limited) == 3
+        assert [r.id for r in limited] == [e.id for e in expected_newest_three]
+        assert [r.timestamp for r in limited] == [
+            e.timestamp for e in expected_newest_three
+        ]

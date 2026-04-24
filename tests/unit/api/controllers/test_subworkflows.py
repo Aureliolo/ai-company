@@ -135,6 +135,39 @@ class TestSubworkflowCrud:
         second_ids = {s["subworkflow_id"] for s in second["data"]}
         assert first_ids.isdisjoint(second_ids)
 
+    def test_list_sort_tiebreaks_on_subworkflow_id(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        # Two summaries sharing (name, latest_version) must paginate
+        # in a stable, total order. Without the subworkflow_id
+        # tie-breaker, ``registry.list_all()`` could return them in
+        # different orders across requests, producing duplicates or
+        # skips when clients follow ``next_cursor``. Distinct IDs
+        # `sub-a` < `sub-b` lexicographically, so a correct total sort
+        # places `sub-a` first regardless of insertion order.
+        _create_subworkflow(
+            test_client, _sub_payload(subworkflow_id="sub-b", name="shared-name")
+        )
+        _create_subworkflow(
+            test_client, _sub_payload(subworkflow_id="sub-a", name="shared-name")
+        )
+
+        body = test_client.get(
+            "/api/v1/subworkflows?limit=1",
+            headers=make_auth_headers("ceo"),
+        ).json()
+        assert [s["subworkflow_id"] for s in body["data"]] == ["sub-a"]
+        cursor = body["pagination"]["next_cursor"]
+        assert cursor is not None
+
+        second = test_client.get(
+            f"/api/v1/subworkflows?limit=1&cursor={cursor}",
+            headers=make_auth_headers("ceo"),
+        ).json()
+        assert [s["subworkflow_id"] for s in second["data"]] == ["sub-b"]
+        assert second["pagination"]["has_more"] is False
+
     def test_list_invalid_cursor_returns_400(
         self,
         test_client: TestClient[Any],

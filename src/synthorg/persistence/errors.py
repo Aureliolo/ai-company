@@ -98,6 +98,21 @@ class VersionConflictError(QueryError):
     is_retryable: bool = False
 
 
+class MalformedRowError(QueryError):
+    """Raised when a persisted row cannot be deserialized into its model.
+
+    JSON decode failures, validation errors, and missing-key errors on
+    rows already committed to the database are deterministic
+    data-integrity problems, not transient query failures.  Retrying
+    the same read returns the same corrupt row -- it just burns the
+    budget and obscures the underlying integrity issue.
+
+    Non-retryable: callers must investigate the source row, not retry.
+    """
+
+    is_retryable: bool = False
+
+
 class ArtifactTooLargeError(PersistenceError):
     """Raised when a single artifact exceeds the maximum allowed size."""
 

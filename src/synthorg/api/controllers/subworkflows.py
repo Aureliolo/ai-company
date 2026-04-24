@@ -119,7 +119,12 @@ class SubworkflowController(Controller):
     ) -> PaginatedResponse[SubworkflowSummary]:
         """List subworkflows with cursor-based pagination.
 
-        Sorted by ``(name, version)`` for deterministic cursor pages.
+        Sorted by ``(name, latest_version, subworkflow_id)`` for
+        deterministic cursor pages. ``subworkflow_id`` is the
+        unique tie-breaker -- without it, two summaries sharing
+        ``(name, latest_version)`` could drift between pages
+        depending on the underlying ``list_all()`` ordering, producing
+        duplicates or skips when clients follow ``next_cursor``.
 
         Args:
             state: Application state.
@@ -133,7 +138,10 @@ class SubworkflowController(Controller):
         registry = _registry(state)
         summaries = await registry.list_all()
         sorted_summaries = tuple(
-            sorted(summaries, key=lambda s: (s.name, s.latest_version)),
+            sorted(
+                summaries,
+                key=lambda s: (s.name, s.latest_version, s.subworkflow_id),
+            ),
         )
         page, meta = paginate_cursor(
             sorted_summaries,

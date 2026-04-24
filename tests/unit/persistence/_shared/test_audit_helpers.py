@@ -8,6 +8,7 @@ import pytest
 import structlog
 
 from synthorg.core.enums import ApprovalRiskLevel, ToolCategory
+from synthorg.observability import safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_AUDIT_ENTRY_DESERIALIZE_FAILED,
     PERSISTENCE_AUDIT_ENTRY_SAVE_FAILED,
@@ -18,7 +19,11 @@ from synthorg.persistence._shared.audit import (
     classify_audit_save_error,
     row_to_audit_entry,
 )
-from synthorg.persistence.errors import DuplicateRecordError, QueryError
+from synthorg.persistence.errors import (
+    DuplicateRecordError,
+    MalformedRowError,
+    QueryError,
+)
 from synthorg.security.models import AuditEntry
 
 
@@ -115,22 +120,27 @@ class TestRowToAuditEntry:
         entry = row_to_audit_entry(row)
         assert entry.matched_rules == ("rule-a", "rule-b")
 
-    def test_invalid_json_raises_query_error(self) -> None:
+    def test_invalid_json_raises_malformed_row_error(self) -> None:
+        # MalformedRowError extends QueryError but overrides
+        # is_retryable=False so retry middleware does not burn the
+        # budget on deterministic data corruption.
         row = self._row(matched_rules="[invalid json")
-        with pytest.raises(QueryError):
+        with pytest.raises(MalformedRowError) as exc_info:
             row_to_audit_entry(row)
+        assert exc_info.value.is_retryable is False
 
-    def test_validation_failure_raises_query_error(self) -> None:
+    def test_validation_failure_raises_malformed_row_error(self) -> None:
         row = self._row(matched_rules=[])
         row["risk_level"] = "not-a-real-level"
-        with pytest.raises(QueryError):
+        with pytest.raises(MalformedRowError) as exc_info:
             row_to_audit_entry(row)
+        assert exc_info.value.is_retryable is False
 
     def test_logs_safe_description_on_failure(self) -> None:
         row = self._row(matched_rules="[invalid")
         with (
             structlog.testing.capture_logs() as cap,
-            pytest.raises(QueryError),
+            pytest.raises(MalformedRowError),
         ):
             row_to_audit_entry(row)
         events = [
@@ -140,7 +150,13 @@ class TestRowToAuditEntry:
         ]
         assert len(events) == 1
         assert events[0]["error_type"] == "JSONDecodeError"
-        assert "error" in events[0]
+        # Assert the logged error is the redacted description and not
+        # ``str(exc)`` -- a regression to the latter would silently
+        # surface raw exception payload bytes (potentially carrying
+        # credentials from upstream errors) into the audit log.
+        with pytest.raises(json.JSONDecodeError) as captured:
+            json.loads("[invalid")
+        assert events[0]["error"] == safe_error_description(captured.value)
 
 
 @pytest.mark.unit
@@ -169,7 +185,8 @@ class TestClassifyAuditSaveError:
         # Construct an exception whose str() contains a fake credential
         # to assert the log payload routes through safe_error_description
         # (not the raw str(exc)).
-        exc = RuntimeError("api_key=sk-test-pretend-credential failed")
+        secret = "sk-test-pretend-credential"
+        exc = RuntimeError(f"api_key={secret} failed")
         with structlog.testing.capture_logs() as cap:
             classify_audit_save_error(
                 exc,
@@ -184,5 +201,10 @@ class TestClassifyAuditSaveError:
         assert evt["entry_id"] == "audit-001"
         assert evt["error_type"] == "RuntimeError"
         assert evt["duplicate"] is False
-        # The error field is a safe description, not the raw str(exc).
-        assert "error" in evt
+        # The error field is the redacted ``safe_error_description``
+        # output -- assert exact equality so a regression to ``str(exc)``
+        # (which would embed the credential token) fails the test.
+        assert evt["error"] == safe_error_description(exc)
+        # Belt-and-braces: even if the redactor's output evolves, it
+        # MUST never contain the raw secret substring.
+        assert secret not in evt["error"]

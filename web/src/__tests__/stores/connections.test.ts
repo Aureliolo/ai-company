@@ -1,8 +1,35 @@
 import { http, HttpResponse } from 'msw'
+import type { listIntegrationHealth } from '@/api/endpoints/integration-health'
 import type { Connection, HealthReport } from '@/api/types/integrations'
 import { useConnectionsStore } from '@/stores/connections'
-import { apiError, apiSuccess, voidSuccess } from '@/mocks/handlers'
+import {
+  apiError,
+  apiSuccess,
+  emptyPage,
+  paginatedFor,
+  voidSuccess,
+} from '@/mocks/handlers'
+import type { PaginatedResult } from '@/api/client'
 import { server } from '@/test-setup'
+
+function singlePage(reports: readonly HealthReport[]): PaginatedResult<HealthReport> {
+  const limit = 200
+  return {
+    data: [...reports],
+    total: reports.length,
+    offset: 0,
+    limit,
+    nextCursor: null,
+    hasMore: false,
+    pagination: {
+      total: reports.length,
+      offset: 0,
+      limit,
+      next_cursor: null,
+      has_more: false,
+    },
+  }
+}
 
 const sampleConnection: Connection = {
   id: 'conn-primary-github',
@@ -38,7 +65,9 @@ describe('useConnectionsStore', () => {
         HttpResponse.json(apiSuccess([sampleConnection])),
       ),
       http.get('/api/v1/integrations/health', () =>
-        HttpResponse.json(apiSuccess([sampleReport])),
+        HttpResponse.json(
+          paginatedFor<typeof listIntegrationHealth>(singlePage([sampleReport])),
+        ),
       ),
     )
 
@@ -56,7 +85,9 @@ describe('useConnectionsStore', () => {
         HttpResponse.json(apiError('Network down')),
       ),
       http.get('/api/v1/integrations/health', () =>
-        HttpResponse.json(apiSuccess([])),
+        HttpResponse.json(
+          paginatedFor<typeof listIntegrationHealth>(emptyPage<HealthReport>()),
+        ),
       ),
     )
 

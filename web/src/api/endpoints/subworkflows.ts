@@ -1,5 +1,5 @@
-import { apiClient, unwrap, unwrapVoid } from '../client'
-import type { ApiResponse } from '../types/http'
+import { apiClient, unwrap, unwrapPaginated, unwrapVoid, type PaginatedResult } from '../client'
+import type { ApiResponse, PaginatedResponse, PaginationParams } from '../types/http'
 import type {
   CreateSubworkflowRequest,
   ParentReference,
@@ -7,11 +7,14 @@ import type {
   WorkflowDefinition,
 } from '../types/workflows'
 
-export async function listSubworkflows(): Promise<readonly SubworkflowSummary[]> {
-  const response = await apiClient.get<ApiResponse<readonly SubworkflowSummary[]>>(
+export async function listSubworkflows(
+  params?: PaginationParams,
+): Promise<PaginatedResult<SubworkflowSummary>> {
+  const response = await apiClient.get<PaginatedResponse<SubworkflowSummary>>(
     '/subworkflows',
+    { params },
   )
-  return unwrap(response)
+  return unwrapPaginated<SubworkflowSummary>(response)
 }
 
 export async function searchSubworkflows(

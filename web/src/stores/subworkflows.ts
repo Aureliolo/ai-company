@@ -4,6 +4,7 @@ import {
   searchSubworkflows,
   deleteSubworkflow as deleteSubworkflowApi,
 } from '@/api/endpoints/subworkflows'
+import { paginateAll } from '@/api/client'
 import { createLogger } from '@/lib/logger'
 import { useToastStore } from '@/stores/toast'
 import { getErrorMessage } from '@/utils/errors'
@@ -42,7 +43,9 @@ export const useSubworkflowsStore = create<SubworkflowsState>((set, get) => ({
       const query = get().searchQuery.trim()
       const results = query
         ? await searchSubworkflows(query)
-        : await listSubworkflows()
+        : await paginateAll<SubworkflowSummary>((cursor) =>
+            listSubworkflows({ cursor, limit: 200 }),
+          )
       if (isStaleRequest(token)) {
         return
       }

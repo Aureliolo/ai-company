@@ -9,7 +9,8 @@ import type {
 } from '@/api/endpoints/subworkflows'
 import type { WorkflowDefinition } from '@/api/types/workflows'
 import { buildWorkflow as buildDomainWorkflow } from './workflows'
-import { apiError, successFor, voidSuccess } from './helpers'
+import type { SubworkflowSummary } from '@/api/types/workflows'
+import { apiError, emptyPage, paginatedFor, successFor, voidSuccess } from './helpers'
 
 /**
  * Subworkflow-flavoured `buildWorkflow`. Delegates to the canonical
@@ -28,7 +29,9 @@ export function buildSubworkflow(
 
 export const subworkflowsHandlers = [
   http.get('/api/v1/subworkflows', () =>
-    HttpResponse.json(successFor<typeof listSubworkflows>([])),
+    HttpResponse.json(
+      paginatedFor<typeof listSubworkflows>(emptyPage<SubworkflowSummary>()),
+    ),
   ),
   http.get('/api/v1/subworkflows/search', () =>
     HttpResponse.json(successFor<typeof searchSubworkflows>([])),

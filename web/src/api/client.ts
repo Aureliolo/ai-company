@@ -311,3 +311,36 @@ export function unwrapPaginated<T>(
     },
   }
 }
+
+/**
+ * Maximum pages walked by ``paginateAll``. Sized for the bounded list
+ * endpoints that need a single-call snapshot (settings, integration
+ * health, subworkflows). With the page cap of 200 set by callers this
+ * safely covers up to 10,000 items before tripping the safety stop.
+ */
+const PAGINATE_ALL_MAX_PAGES = 50
+
+/**
+ * Walk every page of a cursor-paginated endpoint and concatenate the
+ * results. Use only when the consuming UI needs the full snapshot
+ * (single-fetch, no fetchMore* UX). Stops at ``PAGINATE_ALL_MAX_PAGES``
+ * iterations and throws to prevent runaway loops if the backend keeps
+ * returning ``has_more=true``.
+ */
+export async function paginateAll<T>(
+  fetchPage: (cursor: string | null) => Promise<PaginatedResult<T>>,
+): Promise<T[]> {
+  const collected: T[] = []
+  let cursor: string | null = null
+  for (let page = 0; page < PAGINATE_ALL_MAX_PAGES; page++) {
+    const result = await fetchPage(cursor)
+    collected.push(...result.data)
+    if (!result.hasMore || !result.nextCursor) {
+      return collected
+    }
+    cursor = result.nextCursor
+  }
+  throw new ApiRequestError(
+    `paginateAll exceeded ${PAGINATE_ALL_MAX_PAGES} pages without exhausting cursor`,
+  )
+}

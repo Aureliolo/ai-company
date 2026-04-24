@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"bytes"
 	"strings"
 	"testing"
 
@@ -240,13 +239,13 @@ func TestClassifyDoctor(t *testing.T) {
 }
 
 func TestDoctorRejectsExtraArgs(t *testing.T) {
-	// Cannot run in parallel: rootCmd.SetArgs mutates shared state.
-	var out bytes.Buffer
-	rootCmd.SetOut(&out)
-	rootCmd.SetErr(&out)
-	defer rootCmd.SetArgs(nil)
+	// Cannot run in parallel: rootCmd is a package-level singleton.
+	// sandboxRootCmd snapshots writers and bound flag values and
+	// registers a t.Cleanup that restores them, so other tests in this
+	// package never observe leaked SetArgs/SetOut state.
+	_, _, dataDir := sandboxRootCmd(t)
+	rootCmd.SetArgs([]string{"--data-dir", dataDir, "doctor", "bogus"})
 
-	rootCmd.SetArgs([]string{"doctor", "bogus"})
 	err := rootCmd.Execute()
 	if err == nil {
 		t.Fatal("expected error for unexpected positional arg, got nil")

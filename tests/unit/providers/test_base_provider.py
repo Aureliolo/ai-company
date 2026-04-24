@@ -1,7 +1,6 @@
 """Tests for BaseCompletionProvider logging."""
 
 import asyncio
-import time
 from typing import TYPE_CHECKING
 
 import pytest
@@ -263,24 +262,36 @@ class TestBatchGetCapabilitiesDefault:
         assert partials[0]["error_type"] == "ProviderInternalError"
 
     async def test_runs_in_parallel(self) -> None:
-        sleep_per_call = 0.05
+        # Deterministic concurrency assertion: every probe blocks on a
+        # shared gate that only opens once all probes have signalled they
+        # are in-flight. Sequential execution would deadlock on the gate;
+        # parallel execution proceeds. No wall-clock timing.
+        models = tuple(f"m{i}" for i in range(5))
+        in_flight = 0
+        peak_in_flight = 0
+        gate = asyncio.Event()
+        lock = asyncio.Lock()
 
-        class _SlowProvider(_StubProvider):
+        class _GatedProvider(_StubProvider):
             async def _do_get_model_capabilities(
                 self,
                 model: str,
             ) -> ModelCapabilities:
-                await asyncio.sleep(sleep_per_call)
+                nonlocal in_flight, peak_in_flight
+                async with lock:
+                    in_flight += 1
+                    peak_in_flight = max(peak_in_flight, in_flight)
+                    if in_flight == len(models):
+                        gate.set()
+                await gate.wait()
+                async with lock:
+                    in_flight -= 1
                 return _caps(model)
 
-        provider = _SlowProvider()
-        models = tuple(f"m{i}" for i in range(5))
-        start = time.monotonic()
-        await provider.batch_get_capabilities(models)
-        elapsed = time.monotonic() - start
-        # 5 sequential calls would take ~0.25s; parallel should stay under 0.20s
-        # even on slow CI runners. Allows generous headroom against flake.
-        assert elapsed < (sleep_per_call * len(models)) - 0.01
+        provider = _GatedProvider()
+        result = await provider.batch_get_capabilities(models)
+        assert peak_in_flight == len(models)
+        assert set(result) == set(models)
 
     async def test_propagates_memory_error(self) -> None:
         class _BadProvider(_StubProvider):

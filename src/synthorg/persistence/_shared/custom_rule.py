@@ -18,7 +18,7 @@ instantiating either backend.
 """
 
 import json
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Any
 from uuid import UUID
 
@@ -26,23 +26,16 @@ from synthorg.meta.models import ProposalAltitude, RuleSeverity
 from synthorg.meta.rules.custom import Comparator, CustomRuleDefinition
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.meta import META_CUSTOM_RULE_FETCH_FAILED
-from synthorg.persistence.errors import QueryError
+from synthorg.persistence._shared import normalize_utc
+from synthorg.persistence.errors import MalformedRowError
 
 logger = get_logger(__name__)
 
-
-def normalize_utc(value: datetime) -> datetime:
-    """Coerce a datetime to UTC-aware (naive treated as UTC).
-
-    Args:
-        value: Either tz-aware or naive datetime.
-
-    Returns:
-        UTC-aware datetime.
-    """
-    if value.tzinfo is None:
-        return value.replace(tzinfo=UTC)
-    return value.astimezone(UTC)
+__all__ = (
+    "normalize_utc",
+    "row_to_custom_rule",
+    "serialize_altitudes",
+)
 
 
 def serialize_altitudes(rule: CustomRuleDefinition) -> list[str]:
@@ -71,8 +64,10 @@ def row_to_custom_rule(row: dict[str, Any]) -> CustomRuleDefinition:
             ``updated_at``.
 
     Raises:
-        QueryError: If parsing or validation fails. The original
-            exception is logged via ``safe_error_description``.
+        MalformedRowError: If parsing or validation fails. Non-retryable
+            (data corruption is deterministic; retrying re-reads the
+            same bad row). The original exception is logged via
+            ``safe_error_description``.
     """
     try:
         raw_altitudes = row["target_altitudes"]
@@ -106,7 +101,7 @@ def row_to_custom_rule(row: dict[str, Any]) -> CustomRuleDefinition:
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        raise QueryError(msg) from exc
+        raise MalformedRowError(msg) from exc
 
 
 def _coerce_datetime(value: object) -> datetime:

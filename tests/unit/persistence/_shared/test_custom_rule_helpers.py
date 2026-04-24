@@ -9,6 +9,7 @@ import structlog
 
 from synthorg.meta.models import ProposalAltitude, RuleSeverity
 from synthorg.meta.rules.custom import Comparator, CustomRuleDefinition
+from synthorg.observability import safe_error_description
 from synthorg.observability.events.meta import META_CUSTOM_RULE_FETCH_FAILED
 from synthorg.persistence._shared.custom_rule import (
     _coerce_datetime,
@@ -16,7 +17,7 @@ from synthorg.persistence._shared.custom_rule import (
     row_to_custom_rule,
     serialize_altitudes,
 )
-from synthorg.persistence.errors import QueryError
+from synthorg.persistence.errors import MalformedRowError, QueryError
 
 
 def _rule(
@@ -42,7 +43,7 @@ def _rule(
 
 
 def _row_for(rule: CustomRuleDefinition, **overrides: Any) -> dict[str, Any]:
-    base: dict[str, Any] = {
+    return {
         "id": str(rule.id),
         "name": rule.name,
         "description": rule.description,
@@ -54,9 +55,8 @@ def _row_for(rule: CustomRuleDefinition, **overrides: Any) -> dict[str, Any]:
         "enabled": rule.enabled,
         "created_at": rule.created_at,
         "updated_at": rule.updated_at,
+        **overrides,
     }
-    base.update(overrides)
-    return base
 
 
 @pytest.mark.unit
@@ -131,24 +131,33 @@ class TestRowToCustomRule:
         loaded = row_to_custom_rule(row)
         assert loaded.created_at == datetime(2026, 4, 24, 12, 0, tzinfo=UTC)
 
-    def test_invalid_uuid_raises_query_error(self) -> None:
+    def test_invalid_uuid_raises_malformed_row_error(self) -> None:
+        # MalformedRowError extends QueryError but overrides
+        # is_retryable=False so a corrupt row does not burn the retry
+        # budget.
         rule = _rule()
         row = _row_for(rule, id="not-a-uuid")
-        with pytest.raises(QueryError):
+        with pytest.raises(MalformedRowError) as exc_info:
             row_to_custom_rule(row)
+        assert exc_info.value.is_retryable is False
+        # MalformedRowError is a QueryError subclass for legacy
+        # callers that catch QueryError as the umbrella -- assert this
+        # contract so a future refactor does not break it.
+        assert isinstance(exc_info.value, QueryError)
 
-    def test_invalid_enum_raises_query_error(self) -> None:
+    def test_invalid_enum_raises_malformed_row_error(self) -> None:
         rule = _rule()
         row = _row_for(rule, severity="catastrophic")
-        with pytest.raises(QueryError):
+        with pytest.raises(MalformedRowError) as exc_info:
             row_to_custom_rule(row)
+        assert exc_info.value.is_retryable is False
 
     def test_logs_safe_description_on_failure(self) -> None:
         rule = _rule()
         row = _row_for(rule, severity="catastrophic")
         with (
             structlog.testing.capture_logs() as cap,
-            pytest.raises(QueryError),
+            pytest.raises(MalformedRowError),
         ):
             row_to_custom_rule(row)
         events = [e for e in cap if e.get("event") == META_CUSTOM_RULE_FETCH_FAILED]
@@ -156,7 +165,13 @@ class TestRowToCustomRule:
         evt = events[0]
         assert evt["row_id"] == str(rule.id)
         assert "error_type" in evt
-        assert "error" in evt
+        # Reproduce the exact ValueError that the helper catches and
+        # assert the logged ``error`` field is the redacted
+        # description, not raw ``str(exc)``. A regression to
+        # ``str(exc)`` would silently surface raw column payloads.
+        with pytest.raises(ValueError, match="catastrophic") as captured:
+            RuleSeverity("catastrophic")
+        assert evt["error"] == safe_error_description(captured.value)
 
 
 @pytest.mark.unit

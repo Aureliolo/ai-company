@@ -16,7 +16,7 @@ either backend.
 
 import json
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Any, Protocol
 
 from pydantic import ValidationError
@@ -26,7 +26,12 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_AUDIT_ENTRY_DESERIALIZE_FAILED,
     PERSISTENCE_AUDIT_ENTRY_SAVE_FAILED,
 )
-from synthorg.persistence.errors import DuplicateRecordError, QueryError
+from synthorg.persistence._shared import normalize_utc
+from synthorg.persistence.errors import (
+    DuplicateRecordError,
+    MalformedRowError,
+    QueryError,
+)
 from synthorg.security.models import AuditEntry
 
 logger = get_logger(__name__)
@@ -89,7 +94,7 @@ def audit_entry_to_payload(
         into the INSERT statement.
     """
     data = entry.model_dump(mode="json")
-    utc_ts = entry.timestamp.astimezone(UTC)
+    utc_ts = normalize_utc(entry.timestamp)
     return {
         **data,
         "timestamp": timestamp_serializer(utc_ts),
@@ -108,10 +113,11 @@ def row_to_audit_entry(row: dict[str, object]) -> AuditEntry:
         row: Mapping from column name to raw driver value.
 
     Raises:
-        QueryError: If the row cannot be parsed or fails Pydantic
-            validation. The original exception is logged via
-            ``safe_error_description`` (no payload bytes leak through
-            traceback frame-locals).
+        MalformedRowError: If the row cannot be parsed or fails Pydantic
+            validation. Non-retryable (data corruption is deterministic;
+            retrying re-reads the same bad row). The original exception
+            is logged via ``safe_error_description`` (no payload bytes
+            leak through traceback frame-locals).
     """
     try:
         raw_rules = row.get("matched_rules")
@@ -120,6 +126,17 @@ def row_to_audit_entry(row: dict[str, object]) -> AuditEntry:
             parsed = {**row, "matched_rules": json.loads(raw_rules)}
         else:
             parsed = dict(row)
+        # Normalise timestamp to UTC before validation so SQLite (TEXT
+        # ISO strings) and Postgres (TIMESTAMPTZ) round-trip to the
+        # same instant. ``AwareDatetime`` only enforces tz-awareness,
+        # not UTC, so without this step a Postgres column with a
+        # non-UTC offset would survive validation but compare unequal
+        # to the SQLite read in conformance tests.
+        ts = parsed.get("timestamp")
+        if isinstance(ts, datetime):
+            parsed["timestamp"] = normalize_utc(ts)
+        elif isinstance(ts, str):
+            parsed["timestamp"] = normalize_utc(datetime.fromisoformat(ts))
         return AuditEntry.model_validate(parsed)
     except (ValidationError, json.JSONDecodeError, KeyError, TypeError) as exc:
         row_id = row.get("id", "<unknown>")
@@ -130,7 +147,7 @@ def row_to_audit_entry(row: dict[str, object]) -> AuditEntry:
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        raise QueryError(msg) from exc
+        raise MalformedRowError(msg) from exc
 
 
 class IsDuplicate(Protocol):

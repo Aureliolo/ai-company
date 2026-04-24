@@ -4,7 +4,41 @@ import type {
   listIntegrationHealth,
 } from '@/api/endpoints/integration-health'
 import type { HealthReport } from '@/api/types/integrations'
-import { successFor } from './helpers'
+import { emptyPage, paginatedFor, successFor } from './helpers'
+
+/** Build a one-shot paginated page wrapping the provided reports. */
+function paginatedPage(reports: readonly HealthReport[]): {
+  data: HealthReport[]
+  total: number
+  offset: number
+  limit: number
+  nextCursor: string | null
+  hasMore: boolean
+  pagination: {
+    total: number
+    offset: number
+    limit: number
+    next_cursor: string | null
+    has_more: boolean
+  }
+} {
+  const limit = 200
+  return {
+    data: [...reports],
+    total: reports.length,
+    offset: 0,
+    limit,
+    nextCursor: null,
+    hasMore: false,
+    pagination: {
+      total: reports.length,
+      offset: 0,
+      limit,
+      next_cursor: null,
+      has_more: false,
+    },
+  }
+}
 
 const NOW = '2026-04-11T12:00:00Z'
 
@@ -31,7 +65,7 @@ const mockHealthReports: HealthReport[] = [
 export const integrationHealthList = [
   http.get('/api/v1/integrations/health', () =>
     HttpResponse.json(
-      successFor<typeof listIntegrationHealth>(mockHealthReports),
+      paginatedFor<typeof listIntegrationHealth>(paginatedPage(mockHealthReports)),
     ),
   ),
   http.get('/api/v1/integrations/health/:name', ({ params }) => {
@@ -54,7 +88,9 @@ export const integrationHealthList = [
 // Default test handlers: empty list.
 export const integrationHealthHandlers = [
   http.get('/api/v1/integrations/health', () =>
-    HttpResponse.json(successFor<typeof listIntegrationHealth>([])),
+    HttpResponse.json(
+      paginatedFor<typeof listIntegrationHealth>(emptyPage<HealthReport>()),
+    ),
   ),
   http.get('/api/v1/integrations/health/:name', ({ params }) =>
     HttpResponse.json(

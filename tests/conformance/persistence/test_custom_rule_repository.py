@@ -107,9 +107,14 @@ class TestCustomRuleRepositoryConformance:
 
         fetched = await backend.custom_rules.get(str(rule.id))
         assert fetched is not None
+        # Assert tzinfo AND the exact UTC instant for both timestamps
+        # -- a backend that incorrectly shifted the wall-clock time
+        # but kept the offset would still satisfy a tzinfo-only check.
+        expected_utc = datetime(2026, 4, 24, 12, 0, tzinfo=UTC)
         assert fetched.created_at.tzinfo == UTC
         assert fetched.updated_at.tzinfo == UTC
-        assert fetched.created_at == datetime(2026, 4, 24, 12, 0, tzinfo=UTC)
+        assert fetched.created_at == expected_utc
+        assert fetched.updated_at == expected_utc
 
     async def test_get_missing_returns_none(
         self,
