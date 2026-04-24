@@ -63,7 +63,7 @@ async def _safe_check(
 class IntegrationHealthController(Controller):
     """Aggregate and per-connection health checks."""
 
-    path = "/api/v1/integrations/health"
+    path = "/integrations/health"
     tags = ["Integrations"]  # noqa: RUF012
 
     @get(

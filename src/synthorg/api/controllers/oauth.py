@@ -34,7 +34,7 @@ logger = get_logger(__name__)
 class OAuthController(Controller):
     """OAuth flow management endpoints."""
 
-    path = "/api/v1/oauth"
+    path = "/oauth"
     tags = ["Integrations"]  # noqa: RUF012
 
     @post(

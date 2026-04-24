@@ -155,3 +155,73 @@ def test_openapi_export_is_live_and_complete(
         "Either the route was removed (update _CANARY_PATHS) or wiring "
         "regressed (fix the underlying controller)."
     )
+
+
+_EXPECTED_AUTH_PATHS = frozenset(
+    {
+        "/api/v1/auth/setup",
+        "/api/v1/auth/login",
+        "/api/v1/auth/change-password",
+        "/api/v1/auth/me",
+        "/api/v1/auth/ws-ticket",
+        "/api/v1/auth/sessions",
+        "/api/v1/auth/sessions/{session_id}",
+        "/api/v1/auth/logout",
+    }
+)
+
+
+@pytest.mark.integration
+def test_no_doubled_api_prefix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No route may register at a doubled /api/v1/api/v1/* path.
+
+    The root ``Router(path=api_config.api_prefix)`` in ``app.py`` already
+    mounts controllers under ``/api/v1``.  Any controller that ALSO
+    hardcodes ``/api/v1`` in its own ``path = "..."`` declaration ends
+    up doubled.  This test guards the invariant going forward.
+    """
+    monkeypatch.setenv("SYNTHORG_DB_PATH", ":memory:")
+    monkeypatch.delenv("SYNTHORG_DATABASE_URL", raising=False)
+
+    from synthorg.api.app import create_app
+
+    app = create_app()
+    paths = app.openapi_schema.to_schema().get("paths") or {}
+    doubled = sorted(p for p in paths if p.startswith("/api/v1/api/v1"))
+    assert not doubled, (
+        f"Doubled /api/v1 prefix detected in {len(doubled)} route(s): "
+        f"{doubled}.  The owning controller hardcodes /api/v1 in its "
+        "``path = '...'`` declaration -- strip that leading ``/api/v1`` "
+        "and let the root Router prefix own it."
+    )
+
+
+@pytest.mark.integration
+def test_auth_endpoints_in_openapi(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """All /auth/* endpoints from ``AuthController`` must appear in the
+    exported schema.
+
+    ``AuthController`` is wired into ``BASE_CONTROLLERS`` and registers
+    8 endpoints.  A regression that silently strips them from the
+    schema -- via an accidental ``include_in_schema=False``, a broken
+    guard, or controller-level exclusion -- would break the generated
+    API docs and any client SDKs derived from the spec.
+    """
+    monkeypatch.setenv("SYNTHORG_DB_PATH", ":memory:")
+    monkeypatch.delenv("SYNTHORG_DATABASE_URL", raising=False)
+
+    from synthorg.api.app import create_app
+
+    app = create_app()
+    paths = app.openapi_schema.to_schema().get("paths") or {}
+    missing = sorted(_EXPECTED_AUTH_PATHS - paths.keys())
+    assert not missing, (
+        f"Auth endpoints missing from OpenAPI schema: {missing}.  "
+        "Check AuthController in src/synthorg/api/auth/controller.py "
+        "for ``include_in_schema=False`` or a guard that prevents "
+        "schema traversal."
+    )
