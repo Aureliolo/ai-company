@@ -25,8 +25,8 @@ inputs:
   # sharing-automations/creating-actions/metadata-syntax-for-github-actions
   # -- composite actions only see ``inputs``, ``steps``, ``env``,
   # ``github``, ``runner``, ``job``, and ``matrix`` contexts.
-  app-id:
-    description: "GitHub App ID. Callers typically pass secrets.RELEASE_BOT_APP_ID (the secret lives on the release deployment environment)."
+  client-id:
+    description: "GitHub App Client ID (the Iv23... string shown on the App's settings page). Callers typically pass secrets.RELEASE_BOT_APP_CLIENT_ID (the secret lives on the release deployment environment). The older actions/create-github-app-token input `app-id` accepted the numeric App ID; v3.1 deprecated that in favour of `client-id`, so we pass `client-id` through directly."
     required: true
   app-private-key:
     description: "GitHub App private key in PEM format. Callers typically pass secrets.RELEASE_BOT_APP_PRIVATE_KEY."
@@ -63,7 +63,7 @@ runs:
       id: app-token
       uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v3.1.1
       with:
-        app-id: ${{ inputs.app-id }}
+        client-id: ${{ inputs.client-id }}
         private-key: ${{ inputs.app-private-key }}
         # Single-repo install -- the App must be installed on exactly
         # this repo. `owner` + `repositories` together pin the

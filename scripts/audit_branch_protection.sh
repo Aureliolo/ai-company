@@ -146,11 +146,19 @@ fi
     cat "${RULESETS_DIR}/${id}.json"
   done < <(sort -n <<< "$IDS")
   printf ']}'
-} | jq "$NORMALISE_FILTER" > "$LIVE_TMP"
+} | jq -S "$NORMALISE_FILTER" > "$LIVE_TMP"
 
 # 2. Compute the canonical spec JSON. yq converts YAML to JSON then jq
-#    applies the same filter.
-yq -o=json '.' "$SPEC_FILE" | jq "$NORMALISE_FILTER" > "$SPEC_TMP"
+#    applies the same filter. ``-S`` / ``--sort-keys`` sorts every
+#    object's keys alphabetically on output so key ORDER cannot
+#    produce spurious diff hits between the live-state JSON
+#    (GitHub API emits ``{"exclude": [], "include": [...]}``) and
+#    the YAML-derived spec (the file happens to declare
+#    ``{"include": [...], "exclude": []}``). Without -S, the
+#    NORMALISE_FILTER only strips meta fields and sorts the top-level
+#    ``rulesets`` array by name -- nested key order leaks through and
+#    produces false drift every run.
+yq -o=json '.' "$SPEC_FILE" | jq -S "$NORMALISE_FILTER" > "$SPEC_TMP"
 
 # 3. Diff. diff -u keeps the output compact + anchored.
 if diff -u "$SPEC_TMP" "$LIVE_TMP" >/dev/null; then
