@@ -26,7 +26,7 @@ import statistics
 import subprocess
 import sys
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -39,7 +39,11 @@ _STABLE_TAG_RE = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
 # malformed lines without hardcoding a literal 2.
 _MIN_REF_FIELDS = 2
 _REF_WITH_FALLBACK_FIELDS = 3
-# `git log --format=%H\t%aI\t%s` yields exactly 3 fields per commit.
+# `git log --format=%H\t%cI\t%s` yields exactly 3 fields per commit.
+# We prefer committer date (%cI) over author date (%aI) because the
+# "merge to stable release" metric measures how long a commit waits on
+# `main` before shipping -- author date is "when the branch commit was
+# written", which can predate the merge by weeks and distort the p50.
 _LOG_EXPECTED_FIELDS = 3
 _SECONDS_PER_DAY = 86400.0
 
@@ -90,7 +94,15 @@ def _load_stable_tags() -> list[StableTag]:
         )
         if not ts_str:
             continue
-        tags.append(StableTag(name=name, created_at=datetime.fromisoformat(ts_str)))
+        created_at = datetime.fromisoformat(ts_str)
+        # `creatordate:iso-strict` always emits a tz offset, but the
+        # `authordate` fallback can theoretically produce a naive value
+        # on ancient commits with no committer timezone. Normalise to
+        # UTC so downstream subtraction against other tz-aware datetimes
+        # never raises TypeError on mixed-awareness operands.
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=UTC)
+        tags.append(StableTag(name=name, created_at=created_at))
     return tags
 
 
@@ -114,29 +126,52 @@ def _percentile(values: list[float], pct: float) -> float:
     return ordered[lo] * (1 - frac) + ordered[hi] * frac
 
 
-def _feat_merge_to_release_deltas(tags: list[StableTag]) -> list[float]:
-    """Return (merge, release) age deltas in days for each `feat:` commit.
+def _is_feat_commit(subject: str) -> bool:
+    """Return True for conventional-commit ``feat:`` / ``feat(scope):`` subjects.
 
-    For each stable tag, finds every `feat:` commit reachable from the tag
-    that is not reachable from the previous stable tag, and measures the
-    age from the commit's authordate to the tag's created_at.
+    Anchoring on the colon / opening parenthesis avoids matching unrelated
+    prefixes such as ``feature:`` or ``feature-branch-cleanup`` that share
+    the leading ``feat`` substring.
+    """
+    return subject.startswith(("feat:", "feat("))
+
+
+def _feat_merge_to_release_deltas(tags: list[StableTag]) -> list[float]:
+    """Return (merge, release) age deltas in days for each ``feat:`` commit.
+
+    For each stable tag, finds every ``feat:`` commit reachable from the
+    tag that is not reachable from the previous stable tag, and measures
+    the age from the commit's committer date to the tag's ``created_at``.
+    The first tag in the list is walked separately (with no lower bound)
+    so features shipped in the initial release are included -- pairwise
+    iteration would silently drop them.
     """
     deltas: list[float] = []
-    for prev, curr in itertools.pairwise(tags):
+    prev_name: str | None = None
+    for curr in tags:
+        log_range = f"{prev_name}..{curr.name}" if prev_name else curr.name
         revlist = _run_git(
             "log",
-            f"{prev.name}..{curr.name}",
-            "--format=%H\t%aI\t%s",
+            log_range,
+            "--format=%H\t%cI\t%s",
         )
+        prev_name = curr.name
         for line in revlist.splitlines():
             parts = line.split("\t", 2)
             if len(parts) < _LOG_EXPECTED_FIELDS:
                 continue
-            author_iso, subject = parts[1], parts[2]
-            if not subject.startswith("feat"):
+            committer_iso, subject = parts[1], parts[2]
+            if not _is_feat_commit(subject):
                 continue
-            delta = curr.created_at - datetime.fromisoformat(author_iso)
-            deltas.append(delta.total_seconds() / _SECONDS_PER_DAY)
+            committer_dt = datetime.fromisoformat(committer_iso)
+            if committer_dt.tzinfo is None:
+                committer_dt = committer_dt.replace(tzinfo=UTC)
+            # Clamp to zero in case a tag's creation timestamp sits a few
+            # seconds behind a commit's committer date due to clock drift
+            # between the runner that created the tag and the runner that
+            # committed the feature. Negative deltas would skew the mean.
+            delta_seconds = max(0.0, (curr.created_at - committer_dt).total_seconds())
+            deltas.append(delta_seconds / _SECONDS_PER_DAY)
     return deltas
 
 
@@ -175,8 +210,17 @@ def _render(tags: list[StableTag]) -> str:
         "# Release cadence",
         "",
         "Tracks how quickly features flow from merge to stable release and how",
-        "often new stable releases ship. Refreshed on every push to `main` via",
-        "`pages.yml`; the committed file is the build-time snapshot.",
+        "often new stable releases ship. Generated by",
+        "`scripts/compute_release_cadence.py` against the local tag history and",
+        "committed as a static snapshot -- the committed file is what docs and",
+        "readers see. Refresh by running the script (or its CI job in",
+        "`pages.yml`, which re-runs it on every push to `main`) and committing",
+        "the result.",
+        "",
+        "The `merge to stable release` delta uses each commit's **committer**",
+        "date (`%cI`), not its author date, so the metric reflects when the",
+        "squash-merge landed on `main` rather than when the feature branch was",
+        "first written.",
         "",
         "## Summary",
         "",

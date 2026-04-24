@@ -27,13 +27,34 @@ jobs:
     # was needed would still fire this workflow otherwise. The tracking
     # issue only cares about *actual* rollover commits. We keep
     # test-signing failures always (that's the whole point of the sink).
+    #
+    # Expression below intentionally avoids the ``? :`` ternary -- GitHub
+    # Actions' expression language does not support it. Equivalent logic
+    # expressed as ``cond && a || cond-not && b`` branches per workflow
+    # name so Test Signing failures always post while Auto Rollover posts
+    # on any non-skipped conclusion.
+    #
+    # SAFETY (``workflow_run`` is the exploitable trigger zizmor flags):
+    # ``workflow_run.event != 'pull_request'`` is asserted explicitly so
+    # a future change to Auto Rollover / Test Signing that adds a
+    # ``pull_request`` trigger can never cause this sink to run under a
+    # PR-controlled context. Combined with the fact that the sink does
+    # not check out PR code, does not read PR title/body/artifacts, and
+    # interpolates only ``github.event.{release,workflow_run}.*``
+    # (GitHub-managed fields, not user input), the structural properties
+    # needed to weaponize a ``workflow_run`` trigger are all absent here.
+    # The paired ``dangerous-triggers`` entry in ``.github/.zizmor.yml``
+    # suppresses the false-positive finding and points back at this
+    # explanation.
     if: >-
       github.event_name == 'release'
       || (github.event_name == 'workflow_run'
+          && github.event.workflow_run.event != 'pull_request'
           && github.event.workflow_run.conclusion != null
-          && (github.event.workflow_run.name == 'Test Signing'
-                ? github.event.workflow_run.conclusion == 'failure'
-                : github.event.workflow_run.conclusion != 'skipped'))
+          && ((github.event.workflow_run.name == 'Test Signing'
+               && github.event.workflow_run.conclusion == 'failure')
+              || (github.event.workflow_run.name != 'Test Signing'
+                  && github.event.workflow_run.conclusion != 'skipped')))
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:

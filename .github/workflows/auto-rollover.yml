@@ -63,8 +63,17 @@ jobs:
           # custom key `__synthorg_rollover_at_patch` so release pipeline
           # configuration stays in one place. Default 9 preserves the
           # pre-#1555 behaviour; RP itself ignores the field.
-          ROLLOVER_AT=$(jq -r '.packages["."].__synthorg_rollover_at_patch // 9' \
+          RAW_ROLLOVER_AT=$(jq -r '.packages["."].__synthorg_rollover_at_patch // null' \
             .github/release-please-config.json)
+          if [ "$RAW_ROLLOVER_AT" = "null" ]; then
+            # Fallback is documented, but log it so a silent schema rename
+            # (packages["."] -> packages["synthorg"] etc.) surfaces as a
+            # notice in the run log instead of a silent rollover at 9.
+            echo "::notice::__synthorg_rollover_at_patch missing from release-please-config.json; defaulting to 9"
+            ROLLOVER_AT=9
+          else
+            ROLLOVER_AT="$RAW_ROLLOVER_AT"
+          fi
           if ! [[ "$ROLLOVER_AT" =~ ^[0-9]+$ ]]; then
             echo "::error::__synthorg_rollover_at_patch is not a non-negative integer (got: $ROLLOVER_AT)"
             exit 1
@@ -72,6 +81,7 @@ jobs:
           if [ "$ROLLOVER_AT" != "9" ]; then
             echo "::warning::Non-default rollover threshold: __synthorg_rollover_at_patch=$ROLLOVER_AT"
           fi
+          echo "Resolved rollover threshold: patch=$ROLLOVER_AT"
 
           LAST_STABLE=$(git tag --sort=-v:refname --list 'v[0-9]*.[0-9]*.[0-9]*' \
             | grep -vE '\-(dev|rc|alpha|beta)' | head -1 || true)

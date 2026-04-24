@@ -208,7 +208,11 @@ def _save_baseline(locations: dict[str, list[tuple[str, str]]]) -> None:
         "remediation_issue": "https://github.com/Aureliolo/synthorg/issues/1555",
         "locations": sorted_locations,
     }
-    with _BASELINE_PATH.open("w", encoding="utf-8", newline="\n") as f:
+    # ``newline=""`` keeps Windows runners from translating ``\n`` into
+    # ``\r\n`` when the final trailing newline is written below -- any
+    # other value (including the default ``None``) would make the baseline
+    # file diff noisily between contributors on different platforms.
+    with _BASELINE_PATH.open("w", encoding="utf-8", newline="") as f:
         json.dump(payload, f, indent=2)
         f.write("\n")
 

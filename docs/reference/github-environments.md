@@ -172,6 +172,34 @@ installation token (valid ≤1 hour) via the
    and `actions/ai-inference@*` (used by the release-notes
    Highlights step in `release.yml`).
 
+**Release Please is not being removed.** Only the *credential* it
+uses is changing. Release Please still creates release PRs,
+generates changelogs, and drafts releases on every push to `main`;
+this PR just swaps the long-lived `RELEASE_PLEASE_TOKEN` PAT for
+an ephemeral App installation token passed via
+`steps.setup.outputs.token` (see `release.yml`). Release Please
+itself needs a token -- that requirement does not go away -- it
+now receives the App token at job start instead of reading a PAT
+from a repo secret.
+
+**Sunset of the prior PAT** (`RELEASE_PLEASE_TOKEN`):
+
+After the first green release cycle under the App, complete the
+cutover in two steps:
+
+1. Delete the `RELEASE_PLEASE_TOKEN` secret from repo-level
+   Actions secrets (`Settings -> Secrets and variables ->
+   Actions`). The `no-release-please-token` pre-commit hook
+   prevents reintroduction at commit time, but removing the
+   secret value forces an immediate, visible failure if any
+   workflow ever tries to reference it again.
+2. Revoke the underlying fine-grained PAT on GitHub
+   (`Settings -> Developer settings -> Personal access tokens ->
+   Fine-grained tokens`). Revocation is irreversible; do this
+   step only after step 1 has survived at least one full release
+   cycle (stable + dev tag + at least one `auto-rollover` or
+   `graduate` invocation).
+
 **No rotation schedule**. Installation tokens are ephemeral --
 minted per workflow run and valid for at most one hour, then
 discarded. The only long-lived secret is the App private key,

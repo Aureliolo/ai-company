@@ -62,6 +62,7 @@ if [ ! -f "$SPEC_FILE" ]; then
   exit 2
 fi
 
+command -v gh >/dev/null 2>&1 || { echo "error: gh CLI required" >&2; exit 2; }
 command -v jq >/dev/null 2>&1 || { echo "error: jq required" >&2; exit 2; }
 command -v yq >/dev/null 2>&1 || { echo "error: yq (Mike Farah) required" >&2; exit 2; }
 

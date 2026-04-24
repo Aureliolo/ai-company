@@ -101,7 +101,9 @@ jobs:
           DISPOSABLE_REF: ${{ steps.commit.outputs.ref }}
         run: |
           if [ -n "${DISPOSABLE_REF:-}" ]; then
-            gh api --method DELETE "repos/$GITHUB_REPOSITORY/git/${DISPOSABLE_REF#refs/}" 2>/dev/null || true
+            if ! gh api --method DELETE "repos/$GITHUB_REPOSITORY/git/${DISPOSABLE_REF#refs/}" 2>/dev/null; then
+              echo "::warning::cleanup failed for ${DISPOSABLE_REF} -- orphan ref may accumulate"
+            fi
           fi
 
   dev-release-tag-signature:
@@ -177,7 +179,9 @@ jobs:
           TAG_NAME: ${{ steps.tag.outputs.tag_name }}
         run: |
           if [ -n "${TAG_NAME:-}" ]; then
-            gh api --method DELETE "repos/$GITHUB_REPOSITORY/git/refs/tags/$TAG_NAME" 2>/dev/null || true
+            if ! gh api --method DELETE "repos/$GITHUB_REPOSITORY/git/refs/tags/$TAG_NAME" 2>/dev/null; then
+              echo "::warning::cleanup failed for tag ${TAG_NAME} -- orphan tag may accumulate"
+            fi
           fi
 
   auto-rollover-commit-signature:
