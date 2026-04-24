@@ -77,9 +77,17 @@ describe('useWebSocket registration rollback', () => {
       }),
     )
 
-    // Give the effect's setup() promise chain time to resolve.
-    await Promise.resolve()
-    await Promise.resolve()
+    // Wait for the effect's setup() loop to reach the registration
+    // phase. The store is pre-set to ``connected: true`` so the
+    // connect() step is a no-op, but subscribe() still schedules a
+    // microtask pair before the handler loop starts. ``vi.waitFor``
+    // polls the instrumented spy so we don't depend on a fixed
+    // number of ``Promise.resolve()`` flushes -- if the hook grows
+    // another await step later the test still settles correctly.
+    await vi.waitFor(() => {
+      // Three registrations: A, B, then C throws. D never attempts.
+      expect(onChannelSpy).toHaveBeenCalledTimes(3)
+    })
 
     unmount()
 

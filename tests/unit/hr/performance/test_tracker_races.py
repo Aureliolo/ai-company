@@ -55,6 +55,12 @@ class TestClearConcurrentWithRecord:
         errors: list[BaseException] = []
 
         async def _record(i: int) -> None:
+            # Explicit yield so records interleave with the clear
+            # scheduled mid-loop: TaskGroup.create_task schedules but
+            # does not run until the next loop pass, and without this
+            # sleep(0) the records could run back-to-back before the
+            # clear task ever starts, defeating the race.
+            await asyncio.sleep(0)
             try:
                 await tracker.record_task_metric(
                     make_task_metric(
@@ -66,6 +72,9 @@ class TestClearConcurrentWithRecord:
                 errors.append(exc)
 
         async def _clear() -> None:
+            # Same deterministic yield so the clear contests the lock
+            # at the same scheduling point as the records around it.
+            await asyncio.sleep(0)
             try:
                 await tracker.aclear()
             except Exception as exc:
@@ -159,13 +168,15 @@ class TestSetInflectionSinkAtomic:
         The async ``set_inflection_sink`` implementation takes
         ``_metrics_lock`` so exactly one caller wins.
 
-        An ``asyncio.Barrier(2)`` is used to force deterministic
-        interleaving: both callers reach the barrier before either
-        acquires ``_metrics_lock``, so the race between the check of
-        ``_inflection_sink`` and the assignment is *guaranteed* to be
-        exercised. Without the barrier the test would still pass if
-        ``set_inflection_sink`` were accidentally sequentialised (no
-        yield points between callers), defeating the test's purpose.
+        Determinism: the controllable yield is injected *inside* the
+        method boundary by monkey-patching ``set_inflection_sink`` with
+        a wrapper that awaits an ``asyncio.Barrier(2)`` before calling
+        the real implementation. This forces both callers to enter the
+        check-and-set region at the same logical instant, so a
+        hypothetical lock-free refactor (no ``await`` between the
+        ``None``-check and the assignment) would still fail the test.
+        A barrier outside the method would not exercise that race --
+        both callers could still run one-after-the-other.
 
         Two distinct sentinel sink objects are used so the assertion
         can verify *which* caller won, not just that a sink exists.
@@ -175,14 +186,22 @@ class TestSetInflectionSinkAtomic:
         sink_b: object = object()
 
         barrier = asyncio.Barrier(2)
+        original_set_inflection_sink = tracker.set_inflection_sink
 
-        async def set_with_barrier(sink: object) -> None:
+        async def set_with_inner_barrier(value: object) -> None:
+            # Rendezvous AFTER entering the method but BEFORE the
+            # check-and-set under _metrics_lock runs. This is the only
+            # way to prove the lock (or equivalent) is what serialises
+            # the critical section -- a yield at the call site alone
+            # would not.
             await barrier.wait()
-            await tracker.set_inflection_sink(sink)  # type: ignore[arg-type]
+            await original_set_inflection_sink(value)  # type: ignore[arg-type]
+
+        tracker.set_inflection_sink = set_with_inner_barrier  # type: ignore[method-assign,assignment]
 
         results = await asyncio.gather(
-            set_with_barrier(sink_a),
-            set_with_barrier(sink_b),
+            tracker.set_inflection_sink(sink_a),  # type: ignore[arg-type]
+            tracker.set_inflection_sink(sink_b),  # type: ignore[arg-type]
             return_exceptions=True,
         )
 

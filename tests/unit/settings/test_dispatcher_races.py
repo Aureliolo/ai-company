@@ -13,6 +13,7 @@ one caller wins.
 """
 
 import asyncio
+import contextlib
 
 import pytest
 
@@ -85,28 +86,52 @@ class TestStartDuringStop:
         dispatcher = SettingsChangeDispatcher(bus, subscribers=())
         await dispatcher.start()
 
-        # Sentinel fired from inside stop() while it holds the
-        # lifecycle lock -- by the time we see it, stop() is past its
-        # check-and-set and the outer start() attempt is guaranteed
-        # to serialize behind the lock release.
+        # Sentinel fired from inside stop() *while it holds the real
+        # _lifecycle_lock*. We monkey-patch the poll task so that when
+        # stop() cancels it and awaits its completion, the task signals
+        # the event before returning. That await happens under the
+        # lock, so once the event fires the lock is provably held by
+        # stop() and a racing start() MUST serialise behind its
+        # release.
         stop_holding_lock = asyncio.Event()
 
-        original_stop = dispatcher.stop
+        # Replace the in-flight poll task's completion with one that
+        # fires the event after observing cancellation. The dispatcher
+        # awaits this task inside ``stop()`` while holding
+        # ``_lifecycle_lock``, so the event firing is a sound
+        # lock-held signal.
+        original_task = dispatcher._task
+        assert original_task is not None
 
-        async def instrumented_stop() -> None:
-            # Signal the test loop as soon as we're under the lock,
-            # then yield so the test can schedule start() before the
-            # drain completes. ``asyncio.sleep(0)`` forces at least
-            # one pass through the event loop so the racing start()
-            # has a chance to contest the lock.
-            async def _signal_then_stop() -> None:
+        blocker = asyncio.Event()
+
+        async def signalling_poll() -> None:
+            try:
+                # Block cancellably on an Event that is never set --
+                # stop() will cancel us. When CancelledError fires,
+                # signal the lock-held event before letting
+                # cancellation propagate so the test sees the lock
+                # being held by the awaiting stop(). Using an Event
+                # over ``sleep(large_number)`` per CLAUDE.md guidance.
+                await blocker.wait()
+            except asyncio.CancelledError:
                 stop_holding_lock.set()
-                await asyncio.sleep(0)
-                await original_stop()
+                raise
 
-            await _signal_then_stop()
-
-        dispatcher.stop = instrumented_stop  # type: ignore[method-assign]
+        # Swap the poll task: cancel the original cleanly, then
+        # install ours in its place so stop()'s ``await self._task``
+        # drains our signalling task instead.
+        original_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await original_task
+        dispatcher._task = asyncio.create_task(
+            signalling_poll(),
+            name="settings-dispatcher",
+        )
+        # Re-mark the dispatcher as running so stop() proceeds past
+        # its early-return guard (the cancel above would have flipped
+        # _running off via _on_task_done once the event loop yields).
+        dispatcher._running = True
 
         stop_task = asyncio.create_task(dispatcher.stop())
         await stop_holding_lock.wait()
@@ -127,6 +152,5 @@ class TestStartDuringStop:
                 f"got {len(running_tasks)}"
             )
         finally:
-            dispatcher.stop = original_stop  # type: ignore[method-assign]
             await dispatcher.stop()
             await bus.stop()

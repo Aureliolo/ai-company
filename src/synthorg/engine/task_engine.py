@@ -42,6 +42,7 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.background_tasks import log_task_exceptions
 from synthorg.observability.events.task_engine import (
     TASK_ENGINE_CREATED,
+    TASK_ENGINE_DRAIN_TIMEOUT,
     TASK_ENGINE_LIST_CAPPED,
     TASK_ENGINE_LOOP_DIED,
     TASK_ENGINE_MUTATION_FAILED,
@@ -152,20 +153,47 @@ class TaskEngine(TaskEngineLoopsMixin):
                 logger.warning(TASK_ENGINE_STARTED, error=msg)
                 raise RuntimeError(msg)
             self._running = True
-            self._processing_task = asyncio.create_task(
-                self._processing_loop(),
-                name="task-engine-loop",
-            )
-            self._processing_task.add_done_callback(
-                log_task_exceptions(logger, TASK_ENGINE_LOOP_DIED),
-            )
-            self._observer_task = asyncio.create_task(
-                self._observer_dispatch_loop(),
-                name="task-engine-observer-dispatcher",
-            )
-            self._observer_task.add_done_callback(
-                log_task_exceptions(logger, TASK_ENGINE_OBSERVER_LOOP_DIED),
-            )
+            # Transactional two-loop startup: if observer-task creation
+            # or callback registration raises after the processing task
+            # is up, the processing task would leak as a zombie
+            # background task while the engine surfaces "not running"
+            # to the caller. Cancel and drain any partially-created
+            # tasks, reset the handles, and flip ``_running`` back
+            # before re-raising so the caller observes a fully-rolled-
+            # back state and can retry start() cleanly.
+            try:
+                self._processing_task = asyncio.create_task(
+                    self._processing_loop(),
+                    name="task-engine-loop",
+                )
+                self._processing_task.add_done_callback(
+                    log_task_exceptions(logger, TASK_ENGINE_LOOP_DIED),
+                )
+                self._observer_task = asyncio.create_task(
+                    self._observer_dispatch_loop(),
+                    name="task-engine-observer-dispatcher",
+                )
+                self._observer_task.add_done_callback(
+                    log_task_exceptions(logger, TASK_ENGINE_OBSERVER_LOOP_DIED),
+                )
+            except BaseException:
+                partial_tasks = [
+                    t
+                    for t in (self._processing_task, self._observer_task)
+                    if t is not None
+                ]
+                for t in partial_tasks:
+                    t.cancel()
+                if partial_tasks:
+                    # Best-effort drain; swallow exceptions so we do
+                    # not mask the original failure we are about to
+                    # re-raise. ``return_exceptions=True`` collects
+                    # CancelledError cleanly.
+                    await asyncio.gather(*partial_tasks, return_exceptions=True)
+                self._processing_task = None
+                self._observer_task = None
+                self._running = False
+                raise
             logger.info(
                 TASK_ENGINE_STARTED,
                 max_queue_size=self._config.max_queue_size,
@@ -216,8 +244,12 @@ class TaskEngine(TaskEngineLoopsMixin):
                 # TRY400: logger.exception here would append a
                 # TimeoutError traceback with no actionable diagnostic
                 # information beyond the structured fields below.
+                # Use the dedicated drain-timeout event, NOT
+                # TASK_ENGINE_STOPPED -- reserving the success event
+                # for the clean-shutdown branch so failed drains are
+                # classified correctly in metrics and alerts.
                 logger.error(  # noqa: TRY400
-                    TASK_ENGINE_STOPPED,
+                    TASK_ENGINE_DRAIN_TIMEOUT,
                     note=(
                         "stop exceeded hard deadline; "
                         "engine marked unrestartable (orphaned drain tasks)"

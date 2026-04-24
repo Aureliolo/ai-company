@@ -59,7 +59,13 @@ describe('useWebSocket', () => {
     expect(onChannelSpy).toHaveBeenCalledWith('tasks', handler)
   })
 
-  it('removes handlers on unmount (without global unsubscribe)', () => {
+  it('removes handlers AND unsubscribes channels on unmount', async () => {
+    // Contract (updated per CodeRabbit review on PR #1545): cleanup
+    // must remove per-handler registrations AND call wsStore.unsubscribe
+    // for the channels the hook subscribed to. Before the fix, cleanup
+    // only unwound handlers, leaking the channel subscriptions in the
+    // store's subscribedChannels set and keeping stale traffic routed
+    // to the unmounted view.
     useAuthStore.setState({ authStatus: 'authenticated' })
     useWebSocketStore.setState({ connected: true })
 
@@ -76,10 +82,16 @@ describe('useWebSocket', () => {
       }),
     )
 
+    // Let the effect's setup() promise chain settle so the subscribed
+    // flag is flipped before we unmount. Without this the cleanup
+    // races the setup and skips the unsubscribe.
+    await Promise.resolve()
+    await Promise.resolve()
+
     unmount()
 
-    expect(unsubscribeSpy).not.toHaveBeenCalled()
     expect(offChannelSpy).toHaveBeenCalledWith('tasks', handler)
+    expect(unsubscribeSpy).toHaveBeenCalledWith(['tasks'])
   })
 
   it('deduplicates channels from multiple bindings', () => {
