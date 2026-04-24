@@ -87,7 +87,10 @@ class SQLiteAuditRepository:
                 entry_id=entry.id,
                 is_duplicate=_sqlite_is_duplicate,
             ) from exc
-        logger.debug(
+        # State transition: audit entry persisted (append-only). Logged at
+        # INFO to align with CLAUDE.md "all state transitions log at INFO"
+        # and to match the Postgres backend.
+        logger.info(
             PERSISTENCE_AUDIT_ENTRY_SAVED,
             entry_id=entry.id,
             agent_id=entry.agent_id,

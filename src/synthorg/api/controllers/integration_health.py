@@ -20,7 +20,7 @@ from synthorg.integrations.connections.models import ConnectionStatus
 from synthorg.integrations.errors import ConnectionNotFoundError
 from synthorg.integrations.health.models import HealthReport
 from synthorg.integrations.health.service import check_connection_health
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.integrations import HEALTH_CHECK_FAILED
 
 logger = get_logger(__name__)
@@ -41,16 +41,21 @@ async def _safe_check(
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
+        # SEC-1: connection health checks can surface exceptions whose
+        # str() embeds response bodies (including auth headers or OAuth
+        # refresh tokens from the connection catalog). Log via
+        # safe_error_description + error_type; never attach exc_info
+        # (frame-locals can carry credential material).
         logger.warning(
             HEALTH_CHECK_FAILED,
             connection_name=name,
-            error=str(exc),
-            exc_info=True,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         return HealthReport(
             connection_name=name,
             status=ConnectionStatus.UNKNOWN,
-            error_detail=f"Health check raised unexpectedly: {exc}",
+            error_detail=(f"Health check raised unexpectedly: {type(exc).__name__}"),
             checked_at=datetime.now(UTC),
         )
 
