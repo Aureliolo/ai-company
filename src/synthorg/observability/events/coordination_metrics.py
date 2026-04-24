@@ -39,3 +39,7 @@ COORD_METRICS_BASELINE_INSUFFICIENT: Final[str] = (
 )
 COORD_METRICS_ALERT_FIRED: Final[str] = "coordination.metrics.alert_fired"
 COORD_METRICS_STORE_CLEARED: Final[str] = "coordination.metrics.store_cleared"
+
+# -- Read-side (MCP facade) events --
+COORD_METRICS_RECORD_FETCHED: Final[str] = "coordination.metrics.record_fetched"
+COORD_METRICS_INVALID_REQUEST: Final[str] = "coordination.metrics.invalid_request"

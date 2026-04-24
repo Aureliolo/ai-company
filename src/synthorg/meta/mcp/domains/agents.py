@@ -124,9 +124,36 @@ AGENT_TOOLS: tuple[MCPToolDef, ...] = (
         "start_session",
         "Start a new training session for an agent.",
         {
-            "agent_name": {"type": "string", "description": "Agent to train"},
+            "new_agent_id": {
+                "type": "string",
+                "description": "ID of the agent being trained",
+            },
+            "new_agent_role": {
+                "type": "string",
+                "description": "Role of the new hire",
+            },
+            "new_agent_level": {
+                "type": "string",
+                "description": "Seniority level of the new hire",
+                "enum": ["junior", "mid", "senior"],
+            },
+            "new_agent_department": {
+                "type": "string",
+                "description": "Department of the new hire (optional)",
+            },
+            "enabled_content_types": {
+                "type": "array",
+                "description": (
+                    "Content extractors to run (optional; defaults to all). "
+                    "Valid values: procedural, semantic, tool_patterns."
+                ),
+                "items": {
+                    "type": "string",
+                    "enum": ["procedural", "semantic", "tool_patterns"],
+                },
+            },
         },
-        required=("agent_name",),
+        required=("new_agent_id", "new_agent_role", "new_agent_level"),
     ),
     # --- Autonomy ---
     read_tool(

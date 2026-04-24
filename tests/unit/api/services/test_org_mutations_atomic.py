@@ -8,7 +8,7 @@ repository's CAS mechanism serialises concurrent writers.
 
 import asyncio
 from collections.abc import Callable
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
@@ -246,7 +246,10 @@ class TestCASRetry:
             key: str,
         ) -> tuple[str, str] | None:
             nonlocal call_count
-            result = await original_get(namespace, key)
+            result = cast(
+                "tuple[str, str] | None",
+                await original_get(namespace, key),
+            )
             if namespace == "company" and key == "departments":
                 call_count += 1
                 if call_count == 1 and result is not None:
@@ -259,7 +262,7 @@ class TestCASRetry:
                     )
             return result
 
-        persistence.settings.get = intercepting_get  # type: ignore[method-assign]
+        persistence.settings.get = intercepting_get
         try:
             dept = await service.update_department(
                 "Engineering",
@@ -268,7 +271,7 @@ class TestCASRetry:
             assert dept.head == "bob"
             assert call_count >= 2, f"Expected retry (>= 2 reads), got {call_count}"
         finally:
-            persistence.settings.get = original_get  # type: ignore[method-assign]
+            persistence.settings.get = original_get
 
     async def test_raises_after_retry_exhausted(
         self,
@@ -301,15 +304,18 @@ class TestCASRetry:
                 and expected_updated_at is not None
             ):
                 return False  # Always CAS failure
-            return await original_set(
-                namespace,
-                key,
-                value,
-                updated_at,
-                expected_updated_at=expected_updated_at,
+            return cast(
+                "bool",
+                await original_set(
+                    namespace,
+                    key,
+                    value,
+                    updated_at,
+                    expected_updated_at=expected_updated_at,
+                ),
             )
 
-        persistence.settings.set = always_conflict_set  # type: ignore[method-assign]
+        persistence.settings.set = always_conflict_set
         try:
             with pytest.raises(VersionConflictError):
                 await service.update_department(
@@ -317,7 +323,7 @@ class TestCASRetry:
                     UpdateDepartmentRequest(head="bob"),
                 )
         finally:
-            persistence.settings.set = original_set  # type: ignore[method-assign]
+            persistence.settings.set = original_set
 
 
 # ── CAS retry coverage for the remaining 6 mutations ──────────
@@ -352,12 +358,15 @@ def _always_conflict_for_key(
             and expected_updated_at is not None
         ):
             return False
-        return await original_set(
-            namespace,
-            key,
-            value,
-            updated_at,
-            expected_updated_at=expected_updated_at,
+        return cast(
+            "bool",
+            await original_set(
+                namespace,
+                key,
+                value,
+                updated_at,
+                expected_updated_at=expected_updated_at,
+            ),
         )
 
     async def always_conflict_set_many(
@@ -369,18 +378,21 @@ def _always_conflict_for_key(
             ns == "company" and k == target_key for ns, k in expected_updated_at_map
         ):
             return False
-        return await original_set_many(
-            items,
-            expected_updated_at_map=expected_updated_at_map,
+        return cast(
+            "bool",
+            await original_set_many(
+                items,
+                expected_updated_at_map=expected_updated_at_map,
+            ),
         )
 
     def install() -> None:
-        persistence.settings.set = always_conflict_set  # type: ignore[method-assign]
-        persistence.settings.set_many = always_conflict_set_many  # type: ignore[method-assign]
+        persistence.settings.set = always_conflict_set
+        persistence.settings.set_many = always_conflict_set_many
 
     def uninstall() -> None:
-        persistence.settings.set = original_set  # type: ignore[method-assign]
-        persistence.settings.set_many = original_set_many  # type: ignore[method-assign]
+        persistence.settings.set = original_set
+        persistence.settings.set_many = original_set_many
 
     return install, uninstall
 

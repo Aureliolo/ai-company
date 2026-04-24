@@ -87,6 +87,10 @@ MEMORY_FINE_TUNE_PROGRESS: Final[str] = "memory.fine_tune.progress"
 MEMORY_FINE_TUNE_COMPLETED: Final[str] = "memory.fine_tune.completed"
 MEMORY_FINE_TUNE_FAILED: Final[str] = "memory.fine_tune.failed"
 MEMORY_FINE_TUNE_CANCELLED: Final[str] = "memory.fine_tune.cancelled"
+MEMORY_FINE_TUNE_BACKEND_UNSUPPORTED: Final[str] = (
+    "memory.fine_tune.backend_unsupported"
+)
+MEMORY_FINE_TUNE_INVALID_REQUEST: Final[str] = "memory.fine_tune.invalid_request"
 MEMORY_FINE_TUNE_INTERRUPTED: Final[str] = "memory.fine_tune.interrupted"
 MEMORY_FINE_TUNE_DEPENDENCY_MISSING: Final[str] = "memory.fine_tune.dependency_missing"
 MEMORY_FINE_TUNE_CHECKPOINT_SAVED: Final[str] = "memory.fine_tune.checkpoint_saved"
@@ -114,8 +118,20 @@ MEMORY_EMBEDDER_SETTINGS_READ_FAILED: Final[str] = (
 )
 MEMORY_CHECKPOINT_DEPLOYED: Final[str] = "memory.checkpoint.deployed"
 MEMORY_CHECKPOINT_DEPLOY_FAILED: Final[str] = "memory.checkpoint.deploy_failed"
+MEMORY_CHECKPOINT_NOT_FOUND: Final[str] = "memory.checkpoint.not_found"
+MEMORY_CHECKPOINT_BACKUP_UNAVAILABLE: Final[str] = (
+    "memory.checkpoint.backup_unavailable"
+)
+MEMORY_CHECKPOINT_REREAD_FAILED: Final[str] = "memory.checkpoint.reread_failed"
 MEMORY_CHECKPOINT_ROLLBACK: Final[str] = "memory.checkpoint.rollback"
 MEMORY_CHECKPOINT_ROLLBACK_FAILED: Final[str] = "memory.checkpoint.rollback_failed"
+# Emitted when an inner rollback step fails during a deploy / rollback
+# recovery path (distinct from the overall rollback_failed event so
+# alerting can detect partial-rollback conditions where the primary
+# operation already has its own failure signal).
+MEMORY_CHECKPOINT_ROLLBACK_STEP_FAILED: Final[str] = (
+    "memory.checkpoint.rollback_step_failed"
+)
 
 # ── Composite routing ────────────────────────────────────────────
 

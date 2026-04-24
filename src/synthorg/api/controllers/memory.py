@@ -452,13 +452,21 @@ class MemoryAdminController(Controller):
         state: State,
         limit: int = 50,
         offset: int = 0,
-    ) -> ApiResponse[tuple[FineTuneRun, ...]]:
-        """List historical pipeline runs."""
+    ) -> PaginatedResponse[FineTuneRun]:
+        """List historical pipeline runs with pagination metadata."""
         limit = min(max(limit, 1), 200)
         offset = max(offset, 0)
         service = _build_memory_service(state.app_state)
-        runs = await service.list_runs(limit=limit, offset=offset)
-        return ApiResponse(data=runs)
+        runs, total = await service.list_runs(limit=limit, offset=offset)
+        return PaginatedResponse(
+            data=runs,
+            pagination=PaginationMeta(
+                limit=limit,
+                offset=offset,
+                total=total,
+                has_more=(offset + len(runs)) < total,
+            ),
+        )
 
     # -- Embedder config ---------------------------------------------
 

@@ -36,18 +36,19 @@ pytestmark = pytest.mark.unit
 
 
 @pytest.fixture
-def identity() -> SimpleNamespace:
-    """Minimal agent-identity stub exposing the fields handlers read."""
-    return SimpleNamespace(
-        id="agent-1",
-        name="alpha",
-        autonomy_level=None,
-        model_dump=lambda mode="json": {"id": "agent-1", "name": "alpha"},
-    )
+def identity() -> AgentIdentity:
+    """Real :class:`AgentIdentity` so the fixture tracks the live contract.
+
+    Handlers read ``.id``, ``.name``, and ``.model_dump()``; a
+    ``SimpleNamespace`` stub silently diverges whenever a new required
+    field lands on ``AgentIdentity``. Using the real Pydantic model
+    means those diffs surface here as test failures instead.
+    """
+    return make_test_actor(name="alpha")
 
 
 @pytest.fixture
-def fake_app_state(identity: SimpleNamespace) -> SimpleNamespace:
+def fake_app_state(identity: AgentIdentity) -> SimpleNamespace:
     """App state stub with registry/performance mocks."""
     registry = AsyncMock()
     registry.list_active.return_value = (identity,)
@@ -119,7 +120,7 @@ class TestAgentsList:
     async def test_happy_path(
         self,
         fake_app_state: SimpleNamespace,
-        identity: SimpleNamespace,
+        identity: AgentIdentity,
     ) -> None:
         handler = AGENT_HANDLERS["synthorg_agents_list"]
         result = await handler(
@@ -129,7 +130,7 @@ class TestAgentsList:
         )
         body = _parse(result)
         assert body["status"] == "ok"
-        assert body["data"] == [{"id": "agent-1", "name": "alpha"}]
+        assert body["data"] == [identity.model_dump(mode="json")]
         assert body["pagination"]["total"] == 1
 
 
@@ -157,7 +158,7 @@ class TestAgentsDelete:
     async def test_happy_path_fires_audit_event(
         self,
         fake_app_state: SimpleNamespace,
-        identity: SimpleNamespace,
+        identity: AgentIdentity,
         actor: AgentIdentity,
     ) -> None:
         handler = AGENT_HANDLERS["synthorg_agents_delete"]
@@ -244,17 +245,11 @@ class TestNotSupportedHandlers:
     @pytest.mark.parametrize(
         "tool_name",
         [
+            # Write-path handlers still owned by META-MCP-3 (#1528).
             "synthorg_agents_create",
             "synthorg_agents_update",
-            "synthorg_agents_get_activity",
-            "synthorg_agents_get_history",
-            "synthorg_agents_get_health",
-            "synthorg_personalities_list",
-            "synthorg_personalities_get",
-            "synthorg_training_list_sessions",
-            "synthorg_training_get_session",
-            "synthorg_training_start_session",
             "synthorg_autonomy_update",
+            # Read-only handlers not yet reclaimed by META-MCP-4.
             "synthorg_collaboration_get_calibration",
         ],
     )

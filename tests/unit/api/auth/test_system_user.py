@@ -93,17 +93,24 @@ class TestEnsureSystemUser:
         assert len(users) == 0
 
     async def test_persistence_error_propagates(
-        self, auth_svc: AuthService, fake_persistence: FakePersistenceBackend
+        self,
+        auth_svc: AuthService,
+        fake_persistence: FakePersistenceBackend,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """Errors from persistence.users.save propagate to the caller."""
-        original_save = fake_persistence.users.save
+        """Errors from persistence.users.save propagate to the caller.
+
+        Uses ``monkeypatch.setattr`` so the original ``save`` is restored
+        automatically after the test -- including when the assertion
+        raises unexpectedly. A manual reassignment + teardown line
+        would leave the fake in a broken state on failure and
+        contaminate later tests in the same session.
+        """
 
         async def _failing_save(user: object) -> None:
             msg = "simulated DB failure"
             raise QueryError(msg)
 
-        fake_persistence.users.save = _failing_save  # type: ignore[method-assign]
+        monkeypatch.setattr(fake_persistence.users, "save", _failing_save)
         with pytest.raises(QueryError, match="simulated DB failure"):
             await ensure_system_user(fake_persistence, auth_svc)
-
-        fake_persistence.users.save = original_save  # type: ignore[method-assign]

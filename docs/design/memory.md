@@ -1112,3 +1112,30 @@ class MemoryInjectionStrategy(Protocol):
 ```
 
 Strategy selection via config: ``memory.retrieval.strategy: context | tool_based | self_editing``
+
+## Memory Service Layer
+
+`MemoryService` (at `src/synthorg/memory/service.py`) is the single entry point for `/memory/fine-tune/*` REST endpoints and the MCP memory tools. Controllers and handlers never reach into `app_state.persistence.*` directly -- the service owns the repository handle, audit logging, and typed error routing.
+
+### Fine-tune lifecycle
+
+`MemoryService` exposes the full fine-tune lifecycle as typed async methods:
+
+- `start_fine_tune(plan: FineTunePlan) -> FineTuneRun` -- starts a new pipeline from a `FineTunePlan`.
+- `resume_fine_tune(run_id: NotBlankStr) -> FineTuneRun` -- resume a previously failed or cancelled run.
+- `get_fine_tune_status(run_id: NotBlankStr | None = None) -> FineTuneStatus` -- snapshot of the active (or a specific) run.
+- `cancel_fine_tune() -> str | None` -- cancel the currently active run (destructive). Returns the cancelled run id (captured **before** cancel so the audit log can attribute it) or `None` if no run was active.
+- `run_preflight(plan: FineTunePlan) -> PreflightResult` -- local-env sanity check (source dir, output dir writability, override bounds).
+- `list_runs(*, limit: int, offset: int) -> tuple[tuple[FineTuneRun, ...], int]` -- paged historical runs + total count.
+- `get_active_embedder() -> ActiveEmbedderSnapshot` -- frozen snapshot of the active provider / model / checkpoint id from settings.
+- `rollback_checkpoint(checkpoint_id: NotBlankStr) -> CheckpointRecord` -- atomic swap of the active embedder back to *checkpoint_id* (destructive). The rollback-step helper logs a distinct `MEMORY_CHECKPOINT_ROLLBACK_FAILED` event if any intermediate step fails so operators can distinguish partial-rollback from the primary deploy failure.
+
+Destructive entries (`cancel_fine_tune`, `rollback_checkpoint`, and `delete_checkpoint` at the handler layer) are gated by the standard MCP guardrail triple (`actor`, literal `confirm=True`, non-blank `reason`) and emit `MCP_DESTRUCTIVE_OP_EXECUTED` with the resolved actor, reason, and `target_id` (the cancelled run id or the rolled-back / deleted checkpoint id).
+
+`FineTunePlan` is an MCP-facing Pydantic model (`src/synthorg/memory/fine_tune_plan.py`) that mirrors the runner's internal `FineTuneRequest` field-for-field but isolates the public contract from runner internals. A `@model_validator` rejects parent-directory traversal, backslashes, and Windows drive letters on `source_dir` / `output_dir` before the runner's subprocess or container mount could expose the host filesystem.
+
+### BackendUnsupportedError routing
+
+Fine-tune orchestration is SQLite-backed. On a persistence backend that does not expose `fine_tune_runs` / `fine_tune_checkpoints`, the service raises a typed `BackendUnsupportedError` (`domain_code = "not_supported"`, frozen with `__slots__ = ("reason",)`) instead of a generic `NotImplementedError`. MCP handlers catch it and forward through the standard `not_supported()` envelope, which emits `MCP_HANDLER_NOT_IMPLEMENTED` at WARNING -- distinct from `MCP_HANDLER_CAPABILITY_GAP` (handler wired, primitive method missing) and `MCP_HANDLER_SERVICE_FALLBACK` (legacy helper, zero call sites). REST controllers map it to HTTP 501 with the same domain code.
+
+The typed error keeps the "which gap" question resolvable without string-matching exception messages: backend-unsupported is always exactly one error class and one emitted event.

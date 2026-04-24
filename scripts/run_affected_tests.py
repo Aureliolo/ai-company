@@ -15,10 +15,13 @@ Git command failures fall back to running the full unit suite.
 """
 
 import json
+import math
+import os
 import re
 import subprocess
 import sys
 import time
+from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -152,50 +155,315 @@ def _affected_test_dirs(changed: list[str]) -> tuple[list[str], bool]:
 _BASELINE_PATH = _REPO_ROOT / "tests" / "baselines" / "unit_timing.json"
 
 
-def _check_timing_regression(elapsed: float, *, run_all: bool) -> bool:
-    """Return True if the run shows a timing regression.
+_PASSED_COUNT_RE = re.compile(r"(\d+)\s+passed")
 
-    Only checks full-suite runs (``run_all=True``) since affected-only
-    runs vary widely and are not comparable to the baseline.
 
-    Uses an absolute-seconds tolerance (``regression_threshold_secs``):
-    only a few seconds of variance is allowed; larger regressions are
-    real bugs that must block the push.
+def _parse_test_count(pytest_output: str) -> int | None:
+    """Extract the number of passed tests from pytest's final summary.
+
+    Returns ``None`` when the summary line cannot be parsed (degraded
+    output, unexpected failure mode, etc.) -- the caller falls back
+    to the absolute-seconds rail in that case.
     """
-    if not run_all or not _BASELINE_PATH.exists():
-        return False
+    # pytest prints the summary on the final non-empty line, e.g.
+    # ``23373 passed, 16 skipped in 91.86s (0:01:31)``.
+    for line in reversed(pytest_output.splitlines()):
+        stripped = line.strip()
+        if not stripped:
+            continue
+        match = _PASSED_COUNT_RE.search(stripped)
+        if match:
+            return int(match.group(1))
+    return None
+
+
+@dataclass(frozen=True)
+class _BaselineSnapshot:
+    """Validated numeric view of ``tests/baselines/unit_timing.json``.
+
+    ``threshold_ratio`` and ``test_count`` are ``None`` when the baseline
+    does not carry the per-test rail data, which flips the caller to
+    the absolute-seconds fallback.
+    """
+
+    baseline_secs: float
+    threshold_secs: float
+    threshold_ratio: float | None
+    baseline_test_count: int | None
+
+
+def _positive_finite_float(raw: object) -> float | None:
+    """Coerce *raw* to a strictly positive finite float, or ``None``."""
+    if raw is None:
+        return None
+    try:
+        candidate = float(raw)  # type: ignore[arg-type]
+    except TypeError, ValueError:
+        return None
+    if not math.isfinite(candidate) or candidate <= 0:
+        return None
+    return candidate
+
+
+def _positive_int(raw: object) -> int | None:
+    """Coerce *raw* to a strictly positive int, or ``None``."""
+    if raw is None:
+        return None
+    try:
+        # ``int(raw)`` accepts str/bytes/SupportsInt/SupportsIndex; tolerate
+        # any of those (baseline JSON could store a string or float) and
+        # reject anything else as an unusable baseline value.
+        candidate = int(raw)  # type: ignore[call-overload]
+    except TypeError, ValueError:
+        return None
+    return candidate if candidate > 0 else None
+
+
+def _load_baseline_snapshot() -> _BaselineSnapshot | None:
+    """Parse and validate the baseline file.
+
+    Returns ``None`` when the file is missing, malformed, or carries
+    non-finite / non-positive numbers that would make the per-test
+    rail meaningless (e.g. ``regression_threshold_ratio: 0`` would
+    flag every run as a regression).
+    """
+    if not _BASELINE_PATH.exists():
+        return None
     try:
         baseline = json.loads(_BASELINE_PATH.read_text(encoding="utf-8"))
+    except json.JSONDecodeError, OSError:
+        return None
+    # ``json.loads`` happily returns a bare list/str/number for any
+    # syntactically-valid JSON, so guard the shape before indexing --
+    # otherwise a malformed baseline crashes the hook instead of
+    # cleanly disabling the regression check.
+    if not isinstance(baseline, dict):
+        return None
+    try:
         baseline_secs = float(baseline["unit_suite_seconds"])
         threshold_secs = float(baseline.get("regression_threshold_secs", 10))
-    except json.JSONDecodeError, KeyError, ValueError, OSError:
-        return False
-    max_allowed = baseline_secs + threshold_secs
-    # Honor the same override used by the conftest guard.
-    import contextlib
-    import os
+    except KeyError, TypeError, ValueError:
+        return None
+    if (
+        not math.isfinite(baseline_secs)
+        or baseline_secs <= 0
+        or not math.isfinite(threshold_secs)
+        or threshold_secs < 0
+    ):
+        return None
+    return _BaselineSnapshot(
+        baseline_secs=baseline_secs,
+        threshold_secs=threshold_secs,
+        threshold_ratio=_positive_finite_float(
+            baseline.get("regression_threshold_ratio"),
+        ),
+        baseline_test_count=_positive_int(baseline.get("test_count")),
+    )
 
+
+def _parse_env_override() -> float | None:
+    """Return the ``UNIT_SUITE_MAX_SECONDS`` override if usable.
+
+    Silently swallowing a typo (``UNIT_SUITE_MAX_SECONDS=3oo``) would
+    mean the guard runs with the baseline tolerance while the operator
+    thinks they have relaxed it, so malformed values print a diagnostic
+    to stderr before falling back.
+    """
     env_override = os.environ.get("UNIT_SUITE_MAX_SECONDS")
-    if env_override is not None:
-        with contextlib.suppress(ValueError):
-            max_allowed = float(env_override)
-    if elapsed > max_allowed:
-        delta = elapsed - baseline_secs
-        border = "!" * 60
+    if env_override is None:
+        return None
+    try:
+        parsed = float(env_override)
+    except ValueError:
         print(
-            f"\n{border}\n"
-            f"REGRESSION DETECTED: suite took {elapsed:.0f}s, "
-            f"baseline is {baseline_secs:.0f}s (+{delta:.0f}s, "
-            f"tolerance {threshold_secs:.0f}s)\n"
-            f"Run A/B against origin/main before fixing anything.\n"
-            f"Do NOT delete tests or use --no-verify.\n"
-            f"If the new baseline is intentional, update "
-            f"tests/baselines/unit_timing.json.\n"
-            f"{border}",
+            f"run_affected_tests: UNIT_SUITE_MAX_SECONDS="
+            f"{env_override!r} is not a valid float; ignoring "
+            f"the override and using the baseline tolerance.",
             file=sys.stderr,
         )
+        return None
+    # ``float("nan")`` / ``float("inf")`` parse cleanly but make the
+    # guard meaningless (every elapsed comparison is False for NaN;
+    # Inf disables the cap entirely). A zero or negative cap would
+    # block every run. Ignore these and fall back.
+    if not math.isfinite(parsed) or parsed <= 0:
+        print(
+            f"run_affected_tests: UNIT_SUITE_MAX_SECONDS="
+            f"{env_override!r} must be a finite positive "
+            f"number; ignoring the override and using the "
+            f"baseline tolerance.",
+            file=sys.stderr,
+        )
+        return None
+    return parsed
+
+
+def _print_regression_banner(message: str) -> None:
+    """Emit a regression banner with the standard footer.
+
+    Keeping the banner footer (run A/B; do not delete tests; update
+    baseline intentionally) in one place keeps every failure mode's
+    remediation identical without repeating the boilerplate at each
+    call site.
+    """
+    border = "!" * 60
+    print(
+        f"\n{border}\n"
+        f"{message}\n"
+        f"Run A/B against origin/main before fixing anything.\n"
+        f"Do NOT delete tests or use --no-verify.\n"
+        f"If the new baseline is intentional, update "
+        f"tests/baselines/unit_timing.json.\n"
+        f"{border}",
+        file=sys.stderr,
+    )
+
+
+def _check_per_test_regression(
+    elapsed: float,
+    *,
+    snapshot: _BaselineSnapshot,
+    test_count: int | None,
+) -> bool | None:
+    """Per-test cost rail.
+
+    Returns ``None`` when the baseline does not carry ratio / count
+    data (caller falls back to the absolute-seconds rail). Returns
+    ``True`` when the per-test cost exceeds the baseline multiplied
+    by ``threshold_ratio``, else ``False`` -- the definitive decision
+    when data is available.
+    """
+    if (
+        snapshot.threshold_ratio is None
+        or snapshot.baseline_test_count is None
+        or test_count is None
+        or test_count <= 0
+    ):
+        return None
+    baseline_per_test = snapshot.baseline_secs / snapshot.baseline_test_count
+    current_per_test = elapsed / test_count
+    max_per_test = baseline_per_test * snapshot.threshold_ratio
+    if current_per_test <= max_per_test:
+        return False
+    _print_regression_banner(
+        f"REGRESSION DETECTED: per-test cost {current_per_test * 1000:.2f}ms "
+        f"exceeds {max_per_test * 1000:.2f}ms "
+        f"(baseline {baseline_per_test * 1000:.2f}ms, "
+        f"ratio {snapshot.threshold_ratio:.2f}).\n"
+        f"Suite: {elapsed:.0f}s across {test_count} tests "
+        f"(baseline {snapshot.baseline_secs:.0f}s across "
+        f"{snapshot.baseline_test_count}).",
+    )
+    return True
+
+
+def _check_absolute_regression(
+    elapsed: float,
+    *,
+    snapshot: _BaselineSnapshot,
+    env_max_allowed: float | None,
+) -> bool:
+    """Absolute-seconds fallback rail."""
+    max_allowed = (
+        env_max_allowed
+        if env_max_allowed is not None
+        else snapshot.baseline_secs + snapshot.threshold_secs
+    )
+    if elapsed <= max_allowed:
+        return False
+    delta = elapsed - snapshot.baseline_secs
+    _print_regression_banner(
+        f"REGRESSION DETECTED: suite took {elapsed:.0f}s, "
+        f"baseline is {snapshot.baseline_secs:.0f}s (+{delta:.0f}s, "
+        f"tolerance {snapshot.threshold_secs:.0f}s).",
+    )
+    return True
+
+
+def _check_env_cap(elapsed: float, *, env_max_allowed: float | None) -> bool:
+    """Env-cap hard rail.
+
+    If the operator set an absolute ceiling (``UNIT_SUITE_MAX_SECONDS``)
+    and we blew past it, fail regardless of the per-test ratio. The
+    per-test branch still catches regressions within the cap.
+    """
+    if env_max_allowed is None or elapsed <= env_max_allowed:
+        return False
+    _print_regression_banner(
+        f"REGRESSION DETECTED: suite took {elapsed:.0f}s, exceeds "
+        f"UNIT_SUITE_MAX_SECONDS={env_max_allowed:.0f}s.",
+    )
+    return True
+
+
+def _check_timing_regression(
+    elapsed: float,
+    *,
+    run_all: bool,
+    test_count: int | None,
+) -> bool:
+    """Return ``True`` when the run shows a timing regression.
+
+    Only checks full-suite runs (``run_all=True``); affected-only runs
+    vary widely and are not comparable to the baseline. Delegates the
+    actual rail logic to ``_check_env_cap`` / ``_check_per_test_regression``
+    / ``_check_absolute_regression`` so this orchestrator stays under
+    the 50-line function limit.
+    """
+    if not run_all:
+        return False
+    snapshot = _load_baseline_snapshot()
+    if snapshot is None:
+        return False
+    env_max_allowed = _parse_env_override()
+    if _check_env_cap(elapsed, env_max_allowed=env_max_allowed):
         return True
-    return False
+    per_test = _check_per_test_regression(
+        elapsed,
+        snapshot=snapshot,
+        test_count=test_count,
+    )
+    if per_test is not None:
+        return per_test
+    return _check_absolute_regression(
+        elapsed,
+        snapshot=snapshot,
+        env_max_allowed=env_max_allowed,
+    )
+
+
+def _stream_pytest(cmd: list[str]) -> tuple[int, str]:
+    """Run *cmd* as pytest, tee stdout, and return ``(returncode, stdout)``.
+
+    Streams pytest stdout line-by-line so users see live progress
+    (``subprocess.run`` + ``capture_output`` buffers everything until
+    the process exits, which hides the ~90s full suite behind silence).
+    We still tee into a buffer so the "N passed" summary line is
+    available for the per-test regression rail.
+    """
+    with subprocess.Popen(
+        cmd,
+        cwd=_REPO_ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+    ) as proc:
+        stdout_lines: list[str] = []
+        if proc.stdout is None:
+            # subprocess.Popen with stdout=PIPE guarantees a pipe; this
+            # branch would only fire if the Popen construction itself
+            # silently produced no pipe handle, which indicates a
+            # platform-level failure worth surfacing rather than
+            # silencing with an assert.
+            returncode = proc.wait()
+            return returncode, ""
+        for line in proc.stdout:
+            sys.stdout.write(line)
+            sys.stdout.flush()
+            stdout_lines.append(line)
+        returncode = proc.wait()
+    return returncode, "".join(stdout_lines)
 
 
 def _run_pytest(paths: list[str], *, run_all: bool = False) -> int:
@@ -226,12 +494,25 @@ def _run_pytest(paths: list[str], *, run_all: bool = False) -> int:
         "-q",
     ]
     start = time.monotonic()
-    result = subprocess.run(cmd, cwd=_REPO_ROOT, check=False)
+    returncode, captured_stdout = _stream_pytest(cmd)
     elapsed = time.monotonic() - start
-    if _check_timing_regression(elapsed, run_all=run_all):
+    test_count = _parse_test_count(captured_stdout)
+    # Skip the regression guard when tests failed / crashed: worker
+    # crashes skew ``elapsed / test_count`` upward (time spent before
+    # the crash is charged against the surviving test count) and
+    # produce false-positive regressions. The underlying failure is
+    # already surfaced via ``returncode`` and the test output. When
+    # tests fail the operator needs to fix those first; flipping the
+    # regression banner on top of a crash output adds noise without
+    # pointing at the real root cause.
+    if returncode == 0 and _check_timing_regression(
+        elapsed,
+        run_all=run_all,
+        test_count=test_count,
+    ):
         # Regression detected -- block the push even if tests passed.
-        return max(result.returncode, 1)
-    return result.returncode
+        return max(returncode, 1)
+    return returncode
 
 
 def main() -> int:

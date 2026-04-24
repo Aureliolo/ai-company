@@ -1,24 +1,32 @@
-"""META-MCP-2 acceptance sweep for the full 204-tool MCP surface.
+"""META-MCP acceptance sweep for the full 204-tool MCP surface.
 
 The unit sweep in ``tests/unit/meta/mcp/test_all_handlers_wired.py``
 already asserts parity between the registry and the handler map, and
 guardrail rejection shape for the destructive subset.  This integration
-sweep layers the META-MCP-2 acceptance criterion on top:
+sweep layers the acceptance criteria on top:
 
 1. **Zero ``MCP_HANDLER_SERVICE_FALLBACK`` emissions** for any read or
    invoke path. The legacy ``service_fallback()`` helper stays in
    ``common.py`` for future surgical use, but it must have zero call
    sites in the handler tree after META-MCP-2.
-2. **Capability-gap envelopes are the *only* ``not_supported`` source**.
-   Tools whose underlying primitive does not yet expose the required
-   method emit ``MCP_HANDLER_CAPABILITY_GAP`` (INFO) instead, which
-   carries the same ``domain_code="not_supported"`` wire envelope
-   without polluting the legacy event channel.
+2. **Typed capability events are the only ``not_supported`` sources**.
+   Every ``not_supported`` wire envelope must be paired with either
+   - ``MCP_HANDLER_CAPABILITY_GAP`` (INFO): handler is wired but the
+     underlying primitive does not yet expose the required method, or
+   - ``MCP_HANDLER_NOT_IMPLEMENTED`` (WARNING): the active backend
+     cannot support the operation at all. META-MCP-4 introduced
+     :class:`BackendUnsupportedError` + :func:`not_supported` so the
+     memory fine-tune handlers emit this variant when the wired
+     :class:`MemoryService` refuses a lifecycle call.
+
+   Both events carry the same ``domain_code="not_supported"`` wire
+   envelope and must ship a matching ``tool_name`` for telemetry.
 3. **Every tool returns a well-formed envelope** -- ``status`` is
    always ``"ok"`` or ``"error"``, never ``"not_implemented"``.
 """
 
 import json
+from collections import Counter
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
@@ -32,6 +40,7 @@ from synthorg.meta.mcp.domains import build_full_registry
 from synthorg.meta.mcp.handlers import build_handler_map
 from synthorg.observability.events.mcp import (
     MCP_HANDLER_CAPABILITY_GAP,
+    MCP_HANDLER_NOT_IMPLEMENTED,
     MCP_HANDLER_SERVICE_FALLBACK,
 )
 from tests.unit.meta.mcp.conftest import make_test_actor
@@ -212,26 +221,115 @@ class TestNoServiceFallbackEvents:
                 body = json.loads(raw)
                 if body.get("domain_code") == "not_supported":
                     not_supported_tools.append(tool_name)
-        gap_events = [e for e in events if e.get("event") == MCP_HANDLER_CAPABILITY_GAP]
-        if not_supported_tools:
-            assert gap_events, (
-                f"tools returned not_supported but no "
-                f"MCP_HANDLER_CAPABILITY_GAP was emitted: {not_supported_tools}"
+        # Either event is a valid source for a ``not_supported`` envelope:
+        # - CAPABILITY_GAP: handler is wired but the primitive does not
+        #   expose the method yet (live-handler gap).
+        # - NOT_IMPLEMENTED: the active persistence backend cannot
+        #   support the operation at all (META-MCP-4 introduced
+        #   ``BackendUnsupportedError`` + ``not_supported()`` for
+        #   memory fine-tune sites).
+        gap_events = [
+            e
+            for e in events
+            if e.get("event")
+            in {MCP_HANDLER_CAPABILITY_GAP, MCP_HANDLER_NOT_IMPLEMENTED}
+        ]
+        # The pairing invariant is unconditional: an ``all-supported``
+        # run (``not_supported_tools == []``) must also produce zero
+        # gap events, because an orphan CAPABILITY_GAP /
+        # NOT_IMPLEMENTED event without a matching ``not_supported``
+        # envelope indicates a handler is emitting the audit signal
+        # on the wrong branch. Gating the pairing check on
+        # ``if not_supported_tools`` silently tolerates that case.
+        assert all("tool_name" in e for e in gap_events), (
+            "every capability event must identify the tool that triggered it"
+        )
+        # Use Counter, not set, so a tool that emits the envelope
+        # once but emits CAPABILITY_GAP / NOT_IMPLEMENTED twice
+        # fails the invariant. The test is about strict 1:1
+        # envelope-to-event pairing.
+        gap_tool_counts = Counter(e["tool_name"] for e in gap_events)
+        not_supported_counts = Counter(not_supported_tools)
+        assert gap_tool_counts == not_supported_counts, (
+            f"1:1 mismatch between not_supported envelopes and "
+            f"capability events. "
+            f"Envelope-but-no-event: "
+            f"{sorted(set(not_supported_counts) - set(gap_tool_counts))}. "
+            f"Event-but-no-envelope: "
+            f"{sorted(set(gap_tool_counts) - set(not_supported_counts))}."
+        )
+
+    @pytest.mark.parametrize(
+        "tool_name",
+        [
+            "synthorg_memory_get_fine_tune_status",
+            "synthorg_memory_list_runs",
+            "synthorg_memory_get_active_embedder",
+        ],
+    )
+    async def test_backend_unsupported_error_routes_to_not_supported(
+        self,
+        fake_app_state: SimpleNamespace,
+        actor: AgentIdentity,
+        tool_name: str,
+    ) -> None:
+        """A :class:`BackendUnsupportedError` must land as the not_supported envelope.
+
+        Injects a ``memory_service`` stub whose methods raise
+        ``BackendUnsupportedError`` so the handler's catch + forward
+        to ``not_supported()`` is exercised end to end. The default
+        ``fake_app_state`` fixture wires a working memory_service, so
+        this branch is never hit by the generic blast; this test
+        pins the behaviour explicitly.
+        """
+        from synthorg.memory.fine_tune_plan import BackendUnsupportedError
+
+        unsupported_reason = "fine-tune repositories not available on active backend"
+
+        class _UnsupportedMemoryService:
+            async def get_fine_tune_status(
+                self,
+                run_id: Any = None,
+            ) -> None:
+                raise BackendUnsupportedError(unsupported_reason)
+
+            async def list_runs(
+                self,
+                *,
+                offset: int,
+                limit: int,
+            ) -> None:
+                raise BackendUnsupportedError(unsupported_reason)
+
+            async def get_active_embedder(self) -> None:
+                raise BackendUnsupportedError(unsupported_reason)
+
+        fake_app_state.memory_service = _UnsupportedMemoryService()
+        fake_app_state.has_memory_service = True
+
+        handlers = build_handler_map()
+        handler = handlers[tool_name]
+        with structlog.testing.capture_logs() as events:
+            raw = await handler(
+                app_state=fake_app_state,
+                arguments=dict(_BLAST_ARGS),
+                actor=actor,
             )
-            assert all("tool_name" in e for e in gap_events), (
-                "every MCP_HANDLER_CAPABILITY_GAP emission must identify "
-                "the tool that triggered it"
-            )
-            gap_tool_names = {e["tool_name"] for e in gap_events}
-            not_supported_tool_set = set(not_supported_tools)
-            assert gap_tool_names == not_supported_tool_set, (
-                f"1:1 mismatch between not_supported envelopes and "
-                f"MCP_HANDLER_CAPABILITY_GAP events. "
-                f"Envelope-but-no-event: "
-                f"{sorted(not_supported_tool_set - gap_tool_names)}. "
-                f"Event-but-no-envelope: "
-                f"{sorted(gap_tool_names - not_supported_tool_set)}."
-            )
+        body = json.loads(raw)
+        assert body["domain_code"] == "not_supported", (
+            f"{tool_name} should return not_supported when BackendUnsupported "
+            f"fires, got {body!r}"
+        )
+        not_implemented = [
+            e
+            for e in events
+            if e.get("event") == MCP_HANDLER_NOT_IMPLEMENTED
+            and e.get("tool_name") == tool_name
+        ]
+        assert not_implemented, (
+            f"{tool_name} routed via not_supported() but no "
+            f"MCP_HANDLER_NOT_IMPLEMENTED event fired"
+        )
 
     async def test_every_tool_returns_well_formed_envelope(
         self,

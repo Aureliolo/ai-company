@@ -675,6 +675,23 @@ Read the linked issue's title, body, acceptance criteria, labels, and comments i
 
 ## Phase 4: Launch Review Agents (parallel)
 
+**Before launching any agent**, create the triage gate lock so the
+PreToolUse hook (`scripts/check_pre_pr_review_triage_gate.sh`) blocks
+`Edit` / `Write` until the triage table has been presented and
+approved:
+
+```bash
+mkdir -p .claude _audit/pre-pr-review
+touch .claude/pre-pr-review-active.lock
+```
+
+While the lock exists, the hook denies the `Edit` and `Write` tools
+for targets outside `_audit/` and the lock file itself. That is the
+exact scope: other mutation paths (for example, `Bash` commands that
+write via redirection or `sed -i`) are not covered by this hook --
+the project's broader `check_bash_no_write.sh` hook is what blocks
+those, independently of the triage gate.
+
 Launch ALL selected agents **in parallel** using the Task tool. **Do NOT use `run_in_background`** -- launch them as regular parallel Task calls so results arrive together.
 
 Each agent receives:
@@ -689,7 +706,18 @@ Collect all findings with their severity/confidence scores.
 
 ## Phase 5: Consolidate and Triage
 
-Build a single consolidated table of ALL findings from all agents.
+**Wait for ALL agents to complete before moving on.** Do not start
+building the table with partial results. Do not begin implementing
+fixes as individual agents complete. The lock from Phase 4 blocks
+source edits anyway -- breaking that gate is a workflow bug.
+
+Build a single consolidated table of **ALL** findings from all agents
+and write it to `_audit/pre-pr-review/triage.md`. Writing the table to
+a file (not just showing it in chat) is part of the agreed workflow
+so the user can review the table independently of the chat buffer.
+The triage gate hook only checks the lock file; it does not verify
+the triage file exists, so producing the triage file is a skill-side
+invariant that must be respected rather than one the hook enforces.
 
 For each item, determine:
 
@@ -704,6 +732,24 @@ For each item, determine:
 
 **Conflict detection:** If two agents contradict each other, flag both positions.
 
+**No self-skipping.** The triage phase is for classification, not
+filtering. Every valid finding goes into the table, including:
+
+- Findings in files **not** touched by the PR but in the broader area
+  the change affected (pre-existing bugs in surrounding code).
+- "Suggestions" from agents, not just CRITICAL/MAJOR items.
+- Findings that would require larger work (refactors, follow-up
+  tests, docs touches, new event constants).
+- Findings you personally judge to be "low priority", "optional", or
+  "out of scope".
+- Pre-existing issues that pre-date this PR.
+
+Dropping an item from the table because it seems large, unrelated,
+or inconvenient is the failure mode this skill explicitly exists to
+prevent. **Classification, not filtering.** The user is the only
+authority who can mark an item "skip" -- and that happens in Phase 6
+via `AskUserQuestion`, not silently during triage.
+
 Sort by severity (Critical first, Minor last).
 
 ## Phase 6: Present for User Approval
@@ -711,8 +757,18 @@ Sort by severity (Critical first, Minor last).
 Show the consolidated table with:
 - Total count of items
 - Count by source agent
+- The path to the triage file: `_audit/pre-pr-review/triage.md`
 
-**Default behavior: implement ALL valid findings** -- including pre-existing issues found in surrounding code, suggestions, and anything the agents correctly identified. Do NOT skip items just because they are "pre-existing" or "out of scope" -- if an agent found a valid issue in code touched by (or adjacent to) this PR, fix it now.
+**Default behavior: implement ALL valid findings** -- including pre-existing issues found in surrounding code, suggestions, findings in files outside the PR diff, and anything that would require larger / follow-up work. The deflection patterns below are explicitly forbidden during triage:
+
+- "Out of scope for this PR" -- if the agent flagged it, it's in scope.
+- "Pre-existing issue" -- pre-existing bugs in code the PR touches or sits adjacent to get fixed in this PR.
+- "Too large, track separately" -- no. Break it into steps and do it.
+- "Nice-to-have, low priority" -- an agent flagged it as valid. Fix it.
+- "Outside the diff" -- agents review the full repo context; if they found a valid issue outside the diff, it still gets fixed.
+- "Suggestion only" -- suggestions from the convention-enforcers, logging-audit, resilience-audit, and async-concurrency-reviewer are project standards. Treat them as findings.
+
+Only the user -- never Claude -- decides what to skip. Silent skipping during triage or "judgement call" filtering is the failure mode this skill exists to prevent.
 
 Ask the user via AskUserQuestion:
 - "Implement all (Recommended)" -- this is the default
@@ -721,7 +777,17 @@ Ask the user via AskUserQuestion:
 
 If the user wants to skip items, ask which ones by number.
 
+After the user has approved (or after they explicitly request skips), remove the triage gate lock so Phase 7 can start editing source files:
+
+```bash
+rm .claude/pre-pr-review-active.lock
+```
+
+The lock MUST be removed only after explicit user confirmation. Auto-approving or proceeding without `AskUserQuestion` is a skill violation.
+
 ## Phase 7: Implement Fixes
+
+The triage gate lock must already be removed in Phase 6. If the PreToolUse hook blocks an edit at this point, it means Phase 6 was skipped -- stop and go back.
 
 For each approved item, grouped by file (minimize context switches):
 
@@ -767,6 +833,12 @@ git add -A
    - If `web_src` or `web_test` changed: `npm --prefix web run lint` + `npm --prefix web run type-check` + `npm --prefix web run test`
 
 ## Phase 10: Commit + Push + Create PR
+
+0. **Safety net -- ensure the triage gate lock is gone** (should already be removed in Phase 6):
+
+   ```bash
+   rm -f .claude/pre-pr-review-active.lock
+   ```
 
 1. **Stage all files:**
 
@@ -827,4 +899,6 @@ Report:
 - If two agents contradict each other, flag it and ask the user.
 - Do NOT use `--no-verify` or `--amend` for commits.
 - Agent failures are non-fatal -- proceed with available findings, report failed agents.
-- **Fix everything valid -- never defer, never skip.** Every valid recommendation must be implemented -- including pre-existing issues, suggestions, and findings in surrounding code. No creating GitHub issues for "too large" items, no deferring to future PRs, no marking things as "out of scope".
+- **Fix everything valid -- never defer, never skip.** Every valid recommendation must be implemented -- including pre-existing issues, findings in files outside the PR diff, suggestions, and anything that would require larger / follow-up work. No creating GitHub issues for "too large" items, no deferring to future PRs, no marking things as "out of scope", no "pre-existing, not my problem", no "suggestion, optional". The review agents were chosen precisely to surface valid issues; if the agent flagged it as valid, it's in scope.
+- **Triage is classification, not filtering.** The Phase 5 table lists EVERY valid finding. Silent omission is a workflow bug. Only the user -- via `AskUserQuestion` in Phase 6 -- decides which items to skip.
+- **Enforce the triage gate.** The PreToolUse hook (`scripts/check_pre_pr_review_triage_gate.sh`) blocks source edits while `.claude/pre-pr-review-active.lock` exists. If you see the gate block an `Edit` / `Write`, it means Phase 5/6 was not completed correctly -- go back and do them, don't work around the hook.

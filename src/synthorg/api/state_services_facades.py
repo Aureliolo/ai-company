@@ -27,12 +27,24 @@ from synthorg.api.rate_limits.config import PerOpRateLimitConfig  # noqa: TC001
 from synthorg.api.rate_limits.inflight_config import (
     PerOpConcurrencyConfig,  # noqa: TC001
 )
+from synthorg.api.state_services_facades_mcp4 import _MetaMcp4FacadesMixin
 from synthorg.communication.meetings.service import MeetingService  # noqa: TC001
 from synthorg.communication.messages.service import MessageService  # noqa: TC001
+from synthorg.coordination.ceremony_policy.service import (
+    CeremonyPolicyService,  # noqa: TC001
+)
+from synthorg.coordination.service import CoordinationService  # noqa: TC001
 from synthorg.engine.quality.mcp_services import (
     EvaluationVersionService,  # noqa: TC001
     QualityFacadeService,  # noqa: TC001
     ReviewFacadeService,  # noqa: TC001
+)
+from synthorg.hr.activity_service import ActivityFeedService  # noqa: TC001
+from synthorg.hr.health.service import AgentHealthService  # noqa: TC001
+from synthorg.hr.identity.version_service import AgentVersionService  # noqa: TC001
+from synthorg.hr.personalities.service import PersonalityService  # noqa: TC001
+from synthorg.hr.scaling.decision_service import (
+    ScalingDecisionService,  # noqa: TC001
 )
 from synthorg.infrastructure.services import (
     AuditReadService,  # noqa: TC001
@@ -60,6 +72,7 @@ from synthorg.integrations.mcp_services import (
 )
 from synthorg.integrations.tunnel.mcp_service import TunnelService  # noqa: TC001
 from synthorg.integrations.webhooks.service import WebhookService  # noqa: TC001
+from synthorg.memory.service import MemoryService  # noqa: TC001
 from synthorg.meta.analytics.service import AnalyticsService  # noqa: TC001
 from synthorg.meta.reports.service import ReportsService  # noqa: TC001
 from synthorg.meta.signals.service import SignalsService  # noqa: TC001
@@ -71,12 +84,20 @@ from synthorg.organization.services import (
 )
 
 
-class _FacadesMixin:
+class _FacadesMixin(_MetaMcp4FacadesMixin):
     """Mixin hosting all facade-service accessors for :class:`AppState`.
 
     Must be combined with the rest of ``AppStateServicesMixin`` via
     multiple inheritance so the shared helper methods
     (``_require_service``, ``_set_once``) resolve at runtime.
+
+    The META-MCP-4 accessors (``activity_feed_service``,
+    ``agent_health_service``, ``agent_version_service``,
+    ``ceremony_policy_service``, ``coordination_service``,
+    ``memory_service``, ``personality_service``,
+    ``scaling_decision_service``) live on
+    :class:`_MetaMcp4FacadesMixin` to keep this module under the
+    800-line ceiling; they are composed in via inheritance.
     """
 
     _set_once: Any
@@ -129,6 +150,15 @@ class _FacadesMixin:
         self._evaluation_version_service = None
         self._per_op_rate_limit_config = None
         self._per_op_concurrency_config = None
+        # META-MCP-4 facades (observability + memory + coordination).
+        self._activity_feed_service = None
+        self._agent_health_service = None
+        self._agent_version_service = None
+        self._ceremony_policy_service = None
+        self._coordination_service = None
+        self._memory_service = None
+        self._personality_service = None
+        self._scaling_decision_service = None
 
     # Slot attrs for facade services (populated on concrete AppState).
     _signals_service: SignalsService | None
@@ -165,6 +195,14 @@ class _FacadesMixin:
     _evaluation_version_service: EvaluationVersionService | None
     _per_op_rate_limit_config: PerOpRateLimitConfig | None
     _per_op_concurrency_config: PerOpConcurrencyConfig | None
+    _activity_feed_service: ActivityFeedService | None
+    _agent_health_service: AgentHealthService | None
+    _agent_version_service: AgentVersionService | None
+    _ceremony_policy_service: CeremonyPolicyService | None
+    _coordination_service: CoordinationService | None
+    _memory_service: MemoryService | None
+    _personality_service: PersonalityService | None
+    _scaling_decision_service: ScalingDecisionService | None
 
     # ── Signals / analytics / reports ─────────────────────────────
 
@@ -704,6 +742,10 @@ class _FacadesMixin:
             service,
             "EvaluationVersionService",
         )
+
+    # META-MCP-4 facades moved to ``state_services_facades_mcp4.py``
+    # and composed into ``_FacadesMixin`` via inheritance so the
+    # module stays under the 800-line ceiling.
 
 
 __all__ = ["_FacadesMixin"]

@@ -17,10 +17,20 @@ and emits ``MCP_DESTRUCTIVE_OP_EXECUTED`` on success.
 
 import copy
 from collections.abc import Mapping  # noqa: TC003 -- PEP 649 annotation
+from datetime import UTC, datetime
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
-from synthorg.hr.errors import AgentNotFoundError
+from pydantic import ValidationError
+
+from synthorg.core.enums import SeniorityLevel
+from synthorg.core.types import NotBlankStr
+from synthorg.hr.errors import (
+    AgentNotFoundError,
+    PersonalityNotFoundError,
+    TrainingSessionNotFoundError,
+)
+from synthorg.hr.training.models import ContentType, TrainingPlan
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
     GuardrailViolationError,
@@ -30,6 +40,7 @@ from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,  # noqa: TC001 -- PEP 649 annotation
 )
 from synthorg.meta.mcp.handlers.common import (
+    PaginationMeta,
     capability_gap,
     coerce_pagination,
     dump_many,
@@ -169,6 +180,8 @@ async def _agents_list(
     try:
         agents = await app_state.agent_registry.list_active()
         page, meta = paginate_sequence(agents, offset=offset, limit=limit)
+    except MemoryError, RecursionError:
+        raise
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -190,6 +203,8 @@ async def _agents_get(
         return err(exc)
     try:
         identity = await app_state.agent_registry.get_by_name(name)
+    except MemoryError, RecursionError:
+        raise
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -232,7 +247,7 @@ async def _agents_delete(
         _log_invalid(tool, exc)
         return err(exc)
     try:
-        reason, _ = require_destructive_guardrails(arguments, actor)
+        reason, resolved_actor = require_destructive_guardrails(arguments, actor)
     except GuardrailViolationError as exc:
         _log_guardrail(tool, exc)
         return err(exc)
@@ -247,6 +262,8 @@ async def _agents_delete(
     except AgentNotFoundError as exc:
         _log_failed(tool, exc)
         return err(exc, domain_code="not_found")
+    except MemoryError, RecursionError:
+        raise
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -255,7 +272,7 @@ async def _agents_delete(
     logger.info(
         MCP_DESTRUCTIVE_OP_EXECUTED,
         tool_name=tool,
-        actor_agent_id=_actor_id(actor),
+        actor_agent_id=_actor_id(resolved_actor),
         reason=reason,
         target_id=str(removed.id),
     )
@@ -286,6 +303,8 @@ async def _agents_get_performance(
         snapshot = await app_state.performance_tracker.get_snapshot(
             str(identity.id),
         )
+    except MemoryError, RecursionError:
+        raise
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -297,29 +316,106 @@ async def _agents_get_performance(
 
 async def _agents_get_activity(
     *,
-    app_state: Any,  # noqa: ARG001
-    arguments: dict[str, Any],  # noqa: ARG001
+    app_state: Any,
+    arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return capability_gap("synthorg_agents_get_activity", _WHY_ACTIVITY)
+    tool = "synthorg_agents_get_activity"
+    try:
+        agent_name = _require_non_blank(arguments, _ARG_AGENT_NAME)
+        offset, limit = coerce_pagination(arguments)
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
+    if not getattr(app_state, "has_activity_feed_service", False):
+        return capability_gap(tool, _WHY_ACTIVITY)
+    try:
+        identity = await app_state.agent_registry.get_by_name(agent_name)
+        if identity is None:
+            missing = AgentNotFoundError(f"Agent {agent_name!r} not found")
+            _log_failed(tool, missing)
+            return err(missing, domain_code="not_found")
+        events, total = await app_state.activity_feed_service.get_agent_activity(
+            NotBlankStr(str(identity.id)),
+            offset=offset,
+            limit=limit,
+        )
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    meta = PaginationMeta(total=total, offset=offset, limit=limit)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    return ok(data=dump_many(events), pagination=meta)
 
 
 async def _agents_get_history(
     *,
-    app_state: Any,  # noqa: ARG001
-    arguments: dict[str, Any],  # noqa: ARG001
+    app_state: Any,
+    arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return capability_gap("synthorg_agents_get_history", _WHY_HISTORY)
+    tool = "synthorg_agents_get_history"
+    try:
+        agent_name = _require_non_blank(arguments, _ARG_AGENT_NAME)
+        offset, limit = coerce_pagination(arguments)
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
+    if not getattr(app_state, "has_agent_version_service", False):
+        return capability_gap(tool, _WHY_HISTORY)
+    try:
+        identity = await app_state.agent_registry.get_by_name(agent_name)
+        if identity is None:
+            missing = AgentNotFoundError(f"Agent {agent_name!r} not found")
+            _log_failed(tool, missing)
+            return err(missing, domain_code="not_found")
+        versions, total = await app_state.agent_version_service.list_versions(
+            NotBlankStr(str(identity.id)),
+            offset=offset,
+            limit=limit,
+        )
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    meta = PaginationMeta(total=total, offset=offset, limit=limit)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    return ok(data=dump_many(versions), pagination=meta)
 
 
 async def _agents_get_health(
     *,
-    app_state: Any,  # noqa: ARG001
-    arguments: dict[str, Any],  # noqa: ARG001
+    app_state: Any,
+    arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return capability_gap("synthorg_agents_get_health", _WHY_HEALTH)
+    tool = "synthorg_agents_get_health"
+    try:
+        agent_name = _require_non_blank(arguments, _ARG_AGENT_NAME)
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
+    if not getattr(app_state, "has_agent_health_service", False):
+        return capability_gap(tool, _WHY_HEALTH)
+    try:
+        identity = await app_state.agent_registry.get_by_name(agent_name)
+        if identity is None:
+            missing = AgentNotFoundError(f"Agent {agent_name!r} not found")
+            _log_failed(tool, missing)
+            return err(missing, domain_code="not_found")
+        report = await app_state.agent_health_service.get_agent_health(
+            NotBlankStr(str(identity.id)),
+        )
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    return ok(data=report.model_dump(mode="json"))
 
 
 # --- Personalities --------------------------------------------------------
@@ -327,20 +423,62 @@ async def _agents_get_health(
 
 async def _personalities_list(
     *,
-    app_state: Any,  # noqa: ARG001
-    arguments: dict[str, Any],  # noqa: ARG001
+    app_state: Any,
+    arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return capability_gap("synthorg_personalities_list", _WHY_PERSONALITIES)
+    tool = "synthorg_personalities_list"
+    try:
+        offset, limit = coerce_pagination(arguments)
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
+    if not getattr(app_state, "has_personality_service", False):
+        return capability_gap(tool, _WHY_PERSONALITIES)
+    try:
+        entries, total = await app_state.personality_service.list_personalities(
+            offset=offset,
+            limit=limit,
+        )
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    meta = PaginationMeta(total=total, offset=offset, limit=limit)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    return ok(data=dump_many(entries), pagination=meta)
 
 
 async def _personalities_get(
     *,
-    app_state: Any,  # noqa: ARG001
-    arguments: dict[str, Any],  # noqa: ARG001
+    app_state: Any,
+    arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return capability_gap("synthorg_personalities_get", _WHY_PERSONALITIES)
+    tool = "synthorg_personalities_get"
+    try:
+        name = _require_non_blank(arguments, "name")
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
+    if not getattr(app_state, "has_personality_service", False):
+        return capability_gap(tool, _WHY_PERSONALITIES)
+    try:
+        entry = await app_state.personality_service.get_personality(
+            NotBlankStr(name),
+        )
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    if entry is None:
+        missing = PersonalityNotFoundError(f"Personality {name!r} not found")
+        _log_failed(tool, missing)
+        return err(missing, domain_code="not_found")
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    return ok(data=entry.model_dump(mode="json"))
 
 
 # --- Training -------------------------------------------------------------
@@ -348,29 +486,147 @@ async def _personalities_get(
 
 async def _training_list_sessions(
     *,
-    app_state: Any,  # noqa: ARG001
-    arguments: dict[str, Any],  # noqa: ARG001
+    app_state: Any,
+    arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return capability_gap("synthorg_training_list_sessions", _WHY_TRAINING_LIST)
+    tool = "synthorg_training_list_sessions"
+    try:
+        offset, limit = coerce_pagination(arguments)
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
+    if not getattr(app_state, "has_training_service", False):
+        return capability_gap(tool, _WHY_TRAINING_LIST)
+    try:
+        sessions, total = await app_state.training_service.list_sessions(
+            offset=offset,
+            limit=limit,
+        )
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    meta = PaginationMeta(total=total, offset=offset, limit=limit)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    return ok(data=dump_many(sessions), pagination=meta)
 
 
 async def _training_get_session(
     *,
-    app_state: Any,  # noqa: ARG001
-    arguments: dict[str, Any],  # noqa: ARG001
+    app_state: Any,
+    arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return capability_gap("synthorg_training_get_session", _WHY_TRAINING_LIST)
+    tool = "synthorg_training_get_session"
+    try:
+        plan_id = _require_non_blank(arguments, "session_id")
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
+    if not getattr(app_state, "has_training_service", False):
+        return capability_gap(tool, _WHY_TRAINING_LIST)
+    try:
+        session = await app_state.training_service.get_session(
+            NotBlankStr(plan_id),
+        )
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    if session is None:
+        missing = TrainingSessionNotFoundError(
+            f"Training session {plan_id!r} not found",
+        )
+        _log_failed(tool, missing)
+        return err(missing, domain_code="not_found")
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    return ok(data=session.model_dump(mode="json"))
 
 
 async def _training_start_session(
     *,
-    app_state: Any,  # noqa: ARG001
-    arguments: dict[str, Any],  # noqa: ARG001
+    app_state: Any,
+    arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    return capability_gap("synthorg_training_start_session", _WHY_TRAINING_START)
+    tool = "synthorg_training_start_session"
+    try:
+        plan = _parse_training_plan(arguments)
+    except ArgumentValidationError as exc:
+        _log_invalid(tool, exc)
+        return err(exc)
+    if not getattr(app_state, "has_training_service", False):
+        return capability_gap(tool, _WHY_TRAINING_START)
+    try:
+        result = await app_state.training_service.start_session(plan)
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        _log_failed(tool, exc)
+        return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    return ok(data=result.model_dump(mode="json"))
+
+
+def _parse_training_plan(arguments: dict[str, Any]) -> TrainingPlan:
+    """Construct a :class:`TrainingPlan` from MCP arguments.
+
+    The MCP tool only surfaces the fields a caller needs to launch a
+    fresh training session; richer fields (volume caps, custom
+    selectors) stay at their :class:`TrainingPlan` defaults.
+    """
+    arg_level = "new_agent_level"
+    arg_enabled = "enabled_content_types"
+    arg_plan = "plan"
+    expected_level = "one of junior/mid/senior"
+    expected_enabled_list = "list of content type strings"
+    expected_enabled_values = (
+        "list of content type strings (procedural/semantic/tool_patterns)"
+    )
+    new_agent_id = _require_non_blank(arguments, "new_agent_id")
+    new_agent_role = _require_non_blank(arguments, "new_agent_role")
+    raw_level = _require_non_blank(arguments, arg_level)
+    try:
+        level = SeniorityLevel(raw_level)
+    except ValueError as exc:
+        raise invalid_argument(arg_level, expected_level) from exc
+    department: NotBlankStr | None = None
+    arg_department = "new_agent_department"
+    expected_department = "non-blank string"
+    if arg_department in arguments:
+        department_raw = arguments[arg_department]
+        if department_raw is not None:
+            # Reject present-but-malformed values (e.g. ``""`` or a
+            # non-string); silently dropping them would change the
+            # plan the caller intended to submit.
+            if not isinstance(department_raw, str) or not department_raw.strip():
+                raise invalid_argument(arg_department, expected_department)
+            department = NotBlankStr(department_raw.strip())
+    enabled_raw = arguments.get("enabled_content_types")
+    if enabled_raw is None:
+        enabled = frozenset(ContentType)
+    else:
+        if not isinstance(enabled_raw, (list, tuple)):
+            raise invalid_argument(arg_enabled, expected_enabled_list)
+        try:
+            enabled = frozenset(ContentType(v) for v in enabled_raw)
+        except ValueError as exc:
+            raise invalid_argument(arg_enabled, expected_enabled_values) from exc
+    try:
+        return TrainingPlan(
+            new_agent_id=NotBlankStr(new_agent_id),
+            new_agent_role=NotBlankStr(new_agent_role),
+            new_agent_level=level,
+            new_agent_department=department,
+            enabled_content_types=enabled,
+            created_at=datetime.now(UTC),
+        )
+    except ValidationError as exc:
+        expected_plan = f"valid TrainingPlan shape ({len(exc.errors())} error(s))"
+        raise invalid_argument(arg_plan, expected_plan) from exc
 
 
 # --- Autonomy -------------------------------------------------------------
@@ -390,6 +646,8 @@ async def _autonomy_get(
         return err(exc)
     try:
         identity = await app_state.agent_registry.get(agent_id)
+    except MemoryError, RecursionError:
+        raise
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)
@@ -437,6 +695,8 @@ async def _collaboration_get_score(
         score = await app_state.performance_tracker.get_collaboration_score(
             agent_id,
         )
+    except MemoryError, RecursionError:
+        raise
     except Exception as exc:
         _log_failed(tool, exc)
         return err(exc)

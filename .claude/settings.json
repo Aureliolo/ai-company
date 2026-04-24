@@ -13,6 +13,16 @@
             "type": "command",
             "command": "bash scripts/check_no_atlas_rehash.sh",
             "timeout": 5000
+          },
+          {
+            "type": "command",
+            "command": "bash scripts/check_bash_no_write.sh",
+            "timeout": 5000
+          },
+          {
+            "type": "command",
+            "command": "bash scripts/check_git_c_cwd.sh",
+            "timeout": 5000
           }
         ]
       },
@@ -27,6 +37,11 @@
           {
             "type": "command",
             "command": "bash scripts/check_no_edit_baseline.sh",
+            "timeout": 5000
+          },
+          {
+            "type": "command",
+            "command": "bash scripts/check_pre_pr_review_triage_gate.sh",
             "timeout": 5000
           }
         ]

@@ -1,27 +1,32 @@
-"""Training service orchestrator.
-
-Executes the full training pipeline: source resolution, parallel
-extraction + curation, sequential guard chain, memory storage.
-"""
+"""Training service orchestrator."""
 
 import asyncio
 import copy
+from collections import OrderedDict
 from datetime import UTC, datetime
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 from synthorg.core.enums import MemoryCategory
+from synthorg.core.types import NotBlankStr  # noqa: TC001 -- runtime annotation
 from synthorg.hr.training.models import (
     ContentType,
     TrainingApprovalHandle,
     TrainingGuardDecision,
     TrainingItem,
+    TrainingPlan,
     TrainingPlanStatus,
     TrainingResult,
 )
 from synthorg.memory.errors import MemoryError as _MemoryError
 from synthorg.memory.models import MemoryMetadata, MemoryStoreRequest
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.hr import (
+    HR_TRAINING_SESSION_INVALID_REQUEST,
+    HR_TRAINING_SESSION_LISTED,
+    HR_TRAINING_SESSION_RECORD_FAILED,
+    HR_TRAINING_SESSION_RECORDED,
+)
 from synthorg.observability.events.training import (
     HR_TRAINING_CURATION_FAILED,
     HR_TRAINING_EXTRACTION_FAILED,
@@ -39,8 +44,6 @@ from synthorg.observability.events.training import (
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-    from synthorg.core.types import NotBlankStr
-    from synthorg.hr.training.models import TrainingPlan
     from synthorg.hr.training.protocol import (
         ContentExtractor,
         CurationStrategy,
@@ -60,6 +63,13 @@ _CONTENT_TYPE_TO_CATEGORY: dict[ContentType, MemoryCategory] = {
 
 # Internal type alias for curated items map passed through pipeline.
 _CuratedMap = dict[ContentType, tuple[TrainingItem, ...]]
+
+# Cap for the in-memory session store used by the MCP read-side.
+# FIFO eviction keeps the store bounded without a background sweeper.
+# Durable session history lives in a future repository (tracked
+# alongside the fine-tune run repo); the MCP surface intentionally
+# surfaces only the recent tail today.
+_SESSION_STORE_MAX: int = 500
 
 
 class TrainingService:
@@ -81,6 +91,17 @@ class TrainingService:
         training_namespace: Memory namespace for stored items.
         training_tags: Default tags for stored items.
     """
+
+    # ``__slots__`` was evaluated but intentionally not added: the
+    # session test harness in ``tests/unit/hr/training/test_service_sessions.py``
+    # monkey-patches ``_execute_locked`` onto live instances so
+    # ``start_session`` sees a synthetic pipeline result without
+    # rebuilding the full dependency graph. ``__slots__`` would block
+    # that per-instance assignment with ``AttributeError``, and patching
+    # via ``type(service).__dict__`` would mutate the class for every
+    # concurrent test worker. The memory saving is negligible for a
+    # service instance spawned once per app state, so we keep the
+    # flexible instance dict.
 
     def __init__(  # noqa: PLR0913
         self,
@@ -106,6 +127,8 @@ class TrainingService:
         self._training_tags = training_tags
         self._executed_plan_ids: set[str] = set()
         self._idempotency_lock = asyncio.Lock()
+        self._sessions: OrderedDict[str, TrainingPlan] = OrderedDict()
+        self._session_lock = asyncio.Lock()
 
     async def execute(self, plan: TrainingPlan) -> TrainingResult:
         """Execute the full training pipeline.
@@ -121,6 +144,23 @@ class TrainingService:
         Returns:
             Training result with pipeline metrics.
         """
+        result, _ran = await self._execute_locked(plan)
+        return result
+
+    async def _execute_locked(
+        self,
+        plan: TrainingPlan,
+    ) -> tuple[TrainingResult, bool]:
+        """Internal: run pipeline if needed, report whether work ran.
+
+        Returns ``(result, ran_pipeline)`` so :meth:`start_session`
+        can make a race-free decision about whether to record an
+        ``EXECUTED`` session. Two concurrent callers of
+        :meth:`start_session` both enter the idempotency check before
+        either runs the pipeline; only the caller that actually
+        acquires the lock and runs gets ``ran_pipeline=True``, so
+        only that caller writes the terminal ``EXECUTED`` session.
+        """
         started_at = datetime.now(UTC)
 
         # Pre-flight short-circuits do not require the lock.
@@ -130,14 +170,14 @@ class TrainingService:
                 plan_id=str(plan.id),
                 reason="status_executed",
             )
-            return self._empty_result(plan, started_at)
+            return self._empty_result(plan, started_at), False
 
         if plan.skip_training:
             logger.info(
                 HR_TRAINING_SKIPPED,
                 plan_id=str(plan.id),
             )
-            return self._empty_result(plan, started_at)
+            return self._empty_result(plan, started_at), False
 
         async with self._idempotency_lock:
             if str(plan.id) in self._executed_plan_ids:
@@ -146,19 +186,214 @@ class TrainingService:
                     plan_id=str(plan.id),
                     reason="already_executed_in_service",
                 )
-                return self._empty_result(plan, started_at)
+                return self._empty_result(plan, started_at), False
 
             try:
                 result = await self._run_pipeline(plan, started_at)
             except Exception as exc:
-                logger.exception(
+                # SEC-1: prefer ``warning`` + ``safe_error_description`` over
+                # ``logger.exception(..., error=str(exc))`` so ``str(exc)``
+                # on provider / memory errors doesn't land credential text
+                # in the traceback-bearing frame-locals.
+                logger.warning(
                     HR_TRAINING_PLAN_FAILED,
                     plan_id=str(plan.id),
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise
             self._executed_plan_ids.add(str(plan.id))
+            return result, True
+
+    async def start_session(self, plan: TrainingPlan) -> TrainingResult:
+        """Execute *plan* and record the session on the in-memory store.
+
+        Thin wrapper around :meth:`execute` that additionally tracks
+        the plan's terminal status (``EXECUTED`` / ``FAILED``) in the
+        service's session history so the MCP read-side
+        (:meth:`list_sessions` + :meth:`get_session`) can surface
+        recent training activity without reaching into an external
+        persistence layer.
+
+        Args:
+            plan: Training plan to execute.
+
+        Returns:
+            The :class:`TrainingResult` produced by :meth:`execute`.
+
+        Raises:
+            Exception: Any exception raised by :meth:`execute` is
+                re-raised after the session is recorded as
+                ``FAILED``.
+        """
+        # Use ``_execute_locked`` rather than ``execute`` so the
+        # "did pipeline work actually run?" answer is reported from
+        # INSIDE the idempotency lock. A pre-call check on
+        # ``_executed_plan_ids`` would race: concurrent callers both
+        # observe the id missing, both reach ``execute``, but only
+        # one acquires the lock and runs -- the other sees the id in
+        # the set and returns an empty result. Using the locked
+        # helper's ``ran_pipeline`` flag makes the record decision
+        # race-free.
+        #
+        # Entry-call record runs under the session lock and may raise
+        # if the store is corrupted or the lock is contended. A failure
+        # here must not leave the pipeline un-run; log + continue so
+        # the execute path still attempts the work and terminal status
+        # (FAILED/EXECUTED) gets recorded via the branches below.
+        #
+        # Skip the entry write when ``plan.id`` already has a terminal
+        # record (EXECUTED / FAILED). A retry with a PENDING plan
+        # carrying the same id would otherwise overwrite that
+        # terminal record with its pre-execution state, and the
+        # ``if not ran_pipeline: return`` branch below would then
+        # leave ``list_sessions`` / ``get_session`` observing a
+        # downgraded status for an already-finished session.
+        if not await self._has_terminal_session(str(plan.id)):
+            try:
+                await self._record_session(plan)
+            except Exception as exc:
+                logger.warning(
+                    HR_TRAINING_SESSION_RECORD_FAILED,
+                    plan_id=str(plan.id),
+                    stage="entry",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+        try:
+            result, ran_pipeline = await self._execute_locked(plan)
+        except Exception:
+            failed = plan.model_copy(
+                update={
+                    "status": TrainingPlanStatus.FAILED,
+                    "executed_at": datetime.now(UTC),
+                },
+            )
+            try:
+                await self._record_session(failed)
+            except Exception as exc:
+                logger.warning(
+                    HR_TRAINING_SESSION_RECORD_FAILED,
+                    plan_id=str(failed.id),
+                    stage="failed",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+            raise
+        if not ran_pipeline:
             return result
+        executed = plan.model_copy(
+            update={
+                "status": TrainingPlanStatus.EXECUTED,
+                "executed_at": result.completed_at,
+            },
+        )
+        try:
+            await self._record_session(executed)
+        except Exception as exc:
+            logger.warning(
+                HR_TRAINING_SESSION_RECORD_FAILED,
+                plan_id=str(executed.id),
+                stage="executed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+        return result
+
+    async def list_sessions(
+        self,
+        *,
+        offset: int,
+        limit: int,
+    ) -> tuple[tuple[TrainingPlan, ...], int]:
+        """Return a page of recent training sessions + the total count.
+
+        Sessions are newest-first (by insertion / most-recent update
+        into the session store).
+
+        Args:
+            offset: Page offset (>= 0).
+            limit: Page size (> 0).
+
+        Returns:
+            Tuple of ``(page, total)``.
+
+        Raises:
+            ValueError: If ``offset`` is negative or ``limit`` is not
+                strictly positive.
+        """
+        if offset < 0:
+            logger.warning(
+                HR_TRAINING_SESSION_INVALID_REQUEST,
+                param="offset",
+                value=offset,
+            )
+            msg = f"offset must be >= 0, got {offset}"
+            raise ValueError(msg)
+        if limit < 1:
+            logger.warning(
+                HR_TRAINING_SESSION_INVALID_REQUEST,
+                param="limit",
+                value=limit,
+            )
+            msg = f"limit must be >= 1, got {limit}"
+            raise ValueError(msg)
+        async with self._session_lock:
+            items = tuple(reversed(self._sessions.values()))
+            total = len(items)
+        page = items[offset : offset + limit]
+        logger.debug(
+            HR_TRAINING_SESSION_LISTED,
+            count=len(page),
+            total=total,
+            offset=offset,
+            limit=limit,
+        )
+        return page, total
+
+    async def get_session(
+        self,
+        plan_id: NotBlankStr,
+    ) -> TrainingPlan | None:
+        """Fetch a single session by plan id or ``None`` if absent."""
+        async with self._session_lock:
+            return self._sessions.get(str(plan_id))
+
+    async def _has_terminal_session(self, plan_id: str) -> bool:
+        """Return ``True`` when a session for *plan_id* is already terminal.
+
+        "Terminal" here is any status that should not be downgraded by
+        an idempotent re-entry of :meth:`start_session` -- currently
+        ``EXECUTED`` and ``FAILED``. A session whose status is still
+        ``PENDING`` or ``SKIPPED`` is not terminal; re-entry is
+        allowed to overwrite those states.
+        """
+        async with self._session_lock:
+            existing = self._sessions.get(plan_id)
+        if existing is None:
+            return False
+        return existing.status in (
+            TrainingPlanStatus.EXECUTED,
+            TrainingPlanStatus.FAILED,
+        )
+
+    async def _record_session(self, plan: TrainingPlan) -> None:
+        """Record *plan* at its current state into the session store.
+
+        Newer records bump an existing entry to the head; FIFO eviction
+        keeps the store bounded.
+        """
+        async with self._session_lock:
+            key = str(plan.id)
+            self._sessions[key] = plan
+            self._sessions.move_to_end(key)
+            while len(self._sessions) > _SESSION_STORE_MAX:
+                self._sessions.popitem(last=False)
+        logger.info(
+            HR_TRAINING_SESSION_RECORDED,
+            plan_id=str(plan.id),
+            status=plan.status.value,
+        )
 
     async def preview(self, plan: TrainingPlan) -> TrainingResult:
         """Dry-run: extract + curate without guards or storage.
@@ -314,11 +549,13 @@ class TrainingService:
                 new_agent_level=plan.new_agent_level,
             )
         except Exception as exc:
-            logger.exception(
+            # SEC-1: see comment at the top of ``_execute_locked``.
+            logger.warning(
                 HR_TRAINING_EXTRACTION_FAILED,
                 plan_id=str(plan.id),
                 content_type=ct.value,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise
 
@@ -336,11 +573,13 @@ class TrainingService:
                 content_type=ct,
             )
         except Exception as exc:
-            logger.exception(
+            # SEC-1: see comment at the top of ``_execute_locked``.
+            logger.warning(
                 HR_TRAINING_CURATION_FAILED,
                 plan_id=str(plan.id),
                 content_type=ct.value,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise
 
@@ -425,12 +664,14 @@ class TrainingService:
                     plan=plan,
                 )
             except Exception as exc:
-                logger.exception(
+                # SEC-1: see comment at the top of ``_execute_locked``.
+                logger.warning(
                     HR_TRAINING_GUARD_FAILED,
                     plan_id=str(plan.id),
                     guard=guard.name,
                     content_type=ct.value,
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise
 
@@ -520,7 +761,8 @@ class TrainingService:
                 plan_id=str(plan.id),
                 item_id=str(item.id),
                 content_type=ct.value,
-                error=str(exc),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return False
         return True

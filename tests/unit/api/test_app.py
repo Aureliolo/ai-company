@@ -326,7 +326,7 @@ class TestAppLifecycle:
             msg = "disconnect boom"
             raise RuntimeError(msg)
 
-        persistence.disconnect = failing_disconnect  # type: ignore[method-assign]
+        persistence.disconnect = failing_disconnect
 
         # Should not raise even when disconnect fails
         await _safe_shutdown(None, None, None, None, None, None, None, persistence)
