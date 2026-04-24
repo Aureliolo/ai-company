@@ -150,9 +150,10 @@ class TestGetCollaborationScoreLocking:
     omitted -- they drift with every edit to ``tracker.py``.)
 
     This test asserts the observable contract: at least one acquire
-    happens on the shared lock during ``get_collaboration_score``, and
-    a concurrent ``record_collaboration_event`` cannot interleave with
-    the snapshot while that acquire is held.
+    happens on the shared lock during ``get_collaboration_score``.
+    Concurrent-writer exclusion is enforced by the shared
+    ``_metrics_lock`` (a single ``asyncio.Lock``) and is covered by
+    the aclear / rng-swap race tests above, not duplicated here.
     """
 
     async def test_get_score_acquires_metrics_lock(self) -> None:

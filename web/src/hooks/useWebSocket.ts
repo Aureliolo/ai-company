@@ -118,30 +118,14 @@ export function useWebSocket(options: WebSocketOptions): WebSocketReturn {
 
     return () => {
       cancelled = true
-      // Cleanup also delegates error UX to the store. ``for`` loop
-      // survives a throw from any single ``offChannelEvent`` because
-      // the store's own error handling records it -- however, since
-      // cleanup runs synchronously under React's unmount and a store
-      // throw here WOULD skip subsequent ``offChannelEvent`` / the
-      // final ``unsubscribe``, we keep *only* a minimal try/catch
-      // around each individual call so per-binding failures cannot
-      // leave stale channel subscriptions behind. This is the same
-      // "best-effort cleanup" carve-out that ``_nats_consumers``
-      // uses on the Python side.
-      for (const binding of registered) {
-        try {
-          wsStore.offChannelEvent(binding.channel, binding.handler)
-        } catch (err) {
-          log.error('Handler cleanup failed:', err)
-        }
-      }
-      if (subscribed) {
-        try {
-          wsStore.unsubscribe(uniqueChannels)
-        } catch (err) {
-          log.error('Unsubscribe failed:', err)
-        }
-      }
+      // Cleanup goes through a single non-throwing store action so the
+      // hook no longer owns store error UX. The store's rollback
+      // iterates handler bindings + optionally unsubscribes channels
+      // internally, matching the "store owns error UX" contract the
+      // rest of the Zustand stores follow.
+      wsStore.rollbackSubscriptions(uniqueChannels, registered, {
+        unsubscribe: subscribed,
+      })
     }
     // Bindings and filters are intentionally excluded -- they are captured
     // once on mount and remain stable for the component's lifetime. Changing

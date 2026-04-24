@@ -202,10 +202,14 @@ class InMemoryMessageBus:
         subscriber cannot leak unbounded memory. Overflow is handled
         by :meth:`_enqueue_or_drop` with a drop-newest policy.
         """
-        return self._queues.setdefault(
-            (channel_name, subscriber_id),
-            asyncio.Queue(maxsize=self._config.retention.max_subscriber_queue_size),
-        )
+        key = (channel_name, subscriber_id)
+        queue = self._queues.get(key)
+        if queue is None:
+            queue = asyncio.Queue(
+                maxsize=self._config.retention.max_subscriber_queue_size,
+            )
+            self._queues[key] = queue
+        return queue
 
     def _enqueue_or_drop(
         self,
@@ -521,6 +525,8 @@ class InMemoryMessageBus:
             MessageBusNotRunningError: If not running.
             NotSubscribedError: If the agent is not subscribed.
         """
+        pending = 0
+        queue: asyncio.Queue[DeliveryEnvelope | None] | None = None
         async with self._lock:
             self._require_running()
             if channel_name not in self._channels:
@@ -535,22 +541,22 @@ class InMemoryMessageBus:
             key = (channel_name, subscriber_id)
             queue = self._queues.pop(key, None)
             if queue is not None:
-                # Wake up every pending ``receive()`` by putting one
-                # sentinel per actual waiter. If the queue is full of
-                # buffered envelopes (the subscriber was backed up at
-                # the cap), drain the backlog first so the sentinel
-                # put_nowait cannot raise ``QueueFull`` -- the queue
-                # has already been removed from ``self._queues``, so
-                # the backlog cannot be delivered anywhere anyway.
-                # Use ``pending`` (not ``max(1, pending)``) so a
-                # subscriber with no live waiters does not get a
-                # spurious sentinel enqueued into a full queue.
                 pending = self._waiters.pop(key, 0)
-                if pending:
-                    while not queue.empty():
-                        queue.get_nowait()
-                    for _ in range(pending):
-                        queue.put_nowait(None)
+        # Wake up every pending ``receive()`` by putting one sentinel
+        # per actual waiter. Done OUTSIDE the lock so ``await
+        # queue.put(None)`` can yield and let waiters drain space if
+        # ``pending > queue.maxsize``. The queue is already removed
+        # from ``self._queues``, so no new ``receive()`` can attach;
+        # existing waiters see each sentinel and return ``None``.
+        # Drain any buffered envelopes first so the sentinel puts
+        # never have to contend with backlog for slots. Use ``pending``
+        # (not ``max(1, pending)``) so a subscriber with no live
+        # waiters does not get a spurious sentinel enqueued.
+        if queue is not None and pending:
+            while not queue.empty():
+                queue.get_nowait()
+            for _ in range(pending):
+                await queue.put(None)
         logger.info(
             COMM_SUBSCRIPTION_REMOVED,
             channel=channel_name,
