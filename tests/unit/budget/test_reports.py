@@ -61,6 +61,58 @@ class TestTaskSpending:
 
 
 @pytest.mark.unit
+class TestBuildTaskSpendingsUsesSumTokensHelper:
+    """Regression: _build_task_spendings must route totals through the canonical helper.
+
+    Guards against drift back to inline ``sum(r.input_tokens + r.output_tokens ...)``
+    in :func:`synthorg.budget.reports._build_task_spendings` -- the canonical
+    implementation lives in :func:`synthorg.budget._aggregation.sum_tokens`.
+    """
+
+    def test_delegates_to_aggregation_sum_tokens(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # Import lazily so the patch takes effect before the closure captures the ref.
+        from synthorg.budget import reports as reports_module
+        from tests.unit.budget.conftest import make_cost_record
+
+        calls: list[tuple[int, ...]] = []
+        sentinel_total = 424242
+
+        def spy_sum_tokens(records: object) -> int:
+            calls.append(
+                tuple(r.input_tokens + r.output_tokens for r in records),  # type: ignore[attr-defined]
+            )
+            return sentinel_total
+
+        monkeypatch.setattr(reports_module, "sum_tokens", spy_sum_tokens)
+
+        records = (
+            make_cost_record(
+                task_id="task-x",
+                input_tokens=3,
+                output_tokens=7,
+                cost=1.0,
+                timestamp=_START + timedelta(hours=1),
+            ),
+            make_cost_record(
+                task_id="task-x",
+                input_tokens=10,
+                output_tokens=20,
+                cost=2.0,
+                timestamp=_START + timedelta(hours=2),
+            ),
+        )
+
+        spendings = reports_module._build_task_spendings(records)
+
+        assert len(spendings) == 1
+        assert spendings[0].total_tokens == sentinel_total
+        assert calls == [(10, 30)]
+
+
+@pytest.mark.unit
 class TestProviderDistribution:
     def test_construction(self) -> None:
         pd = ProviderDistribution(
