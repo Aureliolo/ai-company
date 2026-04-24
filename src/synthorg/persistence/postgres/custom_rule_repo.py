@@ -51,7 +51,9 @@ def _row_to_definition(row: dict[str, Any]) -> CustomRuleDefinition:
     SQLite TEXT shape.
 
     Raises:
-        QueryError: If the row has corrupt or unparseable data.
+        MalformedRowError: If the row contains corrupt or unparseable
+            data. Non-retryable -- malformed rows are deterministic
+            data-integrity issues, not transient query failures.
     """
     return row_to_custom_rule(row)
 

@@ -34,7 +34,10 @@ from synthorg.engine.workflow.definition import (
     WorkflowIODeclaration,
     WorkflowNode,
 )
-from synthorg.engine.workflow.subworkflow_registry import SubworkflowRegistry
+from synthorg.engine.workflow.subworkflow_registry import (
+    SubworkflowRegistry,
+    encode_subworkflow_keyset,
+)
 from synthorg.observability import get_logger
 from synthorg.observability.events.workflow_definition import (
     SUBWORKFLOW_INVALID_REQUEST,
@@ -151,13 +154,12 @@ class SubworkflowController(Controller):
             after_key=after_key,
             limit=limit,
         )
-        if has_more and page:
-            tail = page[-1]
-            next_after_key: str | None = (
-                f"{tail.name}|{tail.latest_version}|{tail.subworkflow_id}"
-            )
-        else:
-            next_after_key = None
+        # JSON-encode the composite sort key so names containing
+        # ``|``/``:``/etc. cannot collide with the cursor delimiter
+        # (NotBlankStr does not forbid separator characters).
+        next_after_key = (
+            encode_subworkflow_keyset(page[-1]) if has_more and page else None
+        )
         meta = encode_keyset_meta(
             next_after_key=next_after_key,
             has_more=has_more,

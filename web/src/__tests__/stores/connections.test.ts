@@ -18,7 +18,10 @@ import type { PaginatedResult } from '@/api/client'
 import { server } from '@/test-setup'
 
 function singlePage(reports: readonly HealthReport[]): PaginatedResult<HealthReport> {
-  const limit = 200
+  // Match the endpoint default page size + the MSW mock's default
+  // (web/src/mocks/handlers/integration-health.ts) so test fixtures
+  // do not drift from the wire contract.
+  const limit = 50
   return {
     data: [...reports],
     total: reports.length,

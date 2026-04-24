@@ -15,6 +15,7 @@ here (``MAX_WORKFLOW_DEPTH``).  ``WorkflowConfig.max_subworkflow_depth``
 overrides it at runtime.
 """
 
+import json
 from typing import TYPE_CHECKING
 
 from packaging.version import InvalidVersion, Version
@@ -43,6 +44,40 @@ logger = get_logger(__name__)
 
 MAX_WORKFLOW_DEPTH = 16
 """Default maximum runtime subworkflow nesting depth."""
+
+_SUBWORKFLOW_KEYSET_ARITY = 3
+
+
+def encode_subworkflow_keyset(summary: SubworkflowSummary) -> str:
+    """Encode a summary's composite sort key as a JSON-safe string.
+
+    The composite key is ``(name, latest_version, subworkflow_id)``.
+    A naive ``f"{name}|{version}|{id}"`` join can collide whenever any
+    component contains the delimiter -- ``NotBlankStr`` does not
+    forbid pipes, colons, or other separator characters.  JSON-encoding
+    the tuple gives an unambiguous round-trip regardless of content.
+    """
+    return json.dumps(
+        [summary.name, summary.latest_version, summary.subworkflow_id],
+        separators=(",", ":"),
+    )
+
+
+def _decode_subworkflow_keyset(after_key: str) -> tuple[str, str, str]:
+    """Reverse of :func:`encode_subworkflow_keyset`.
+
+    Tolerates malformed inputs by raising ``ValueError`` -- the
+    controller catches this through the cursor decode layer.
+    """
+    parsed = json.loads(after_key)
+    if (
+        not isinstance(parsed, list)
+        or len(parsed) != _SUBWORKFLOW_KEYSET_ARITY
+        or not all(isinstance(part, str) for part in parsed)
+    ):
+        msg = "subworkflow keyset cursor must encode [name, version, id]"
+        raise ValueError(msg)
+    return parsed[0], parsed[1], parsed[2]
 
 
 class SubworkflowRegistry:
@@ -162,10 +197,14 @@ class SubworkflowRegistry:
         Sorted by ``(name, latest_version, subworkflow_id)`` -- the
         ``subworkflow_id`` tail is the unique tie-breaker so cursor
         pages stay total when two subworkflows share a name +
-        latest_version.  Cursor encodes
-        ``"name|latest_version|subworkflow_id"``; the next page is
-        sliced where the composite sort key is strictly greater than
-        ``after_key``.
+        latest_version.  The cursor encodes the composite sort key as
+        a JSON-encoded ``[name, version, id]`` triple
+        (see :func:`encode_subworkflow_keyset`); a naive
+        ``f"{name}|{version}|{id}"`` join could collide whenever any
+        component contains the delimiter, since ``NotBlankStr`` does
+        not forbid pipes / colons / etc.  The next page is sliced
+        where the composite sort key tuple is strictly greater than
+        the decoded ``after_key`` tuple.
 
         Slices in the registry rather than the SQL layer because
         ``SubworkflowSummary.version_count`` requires aggregating
@@ -193,10 +232,11 @@ class SubworkflowRegistry:
             key=lambda s: (s.name, s.latest_version, s.subworkflow_id),
         )
         if after_key is not None:
+            after_tuple = _decode_subworkflow_keyset(after_key)
             sorted_summaries = [
                 s
                 for s in sorted_summaries
-                if f"{s.name}|{s.latest_version}|{s.subworkflow_id}" > after_key
+                if (s.name, s.latest_version, s.subworkflow_id) > after_tuple
             ]
         # Over-fetch by one to detect has_more without a separate count.
         page = sorted_summaries[: limit + 1]
