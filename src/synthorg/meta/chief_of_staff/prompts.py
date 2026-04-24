@@ -5,7 +5,18 @@ analysis pipeline. These prompts are used for signal analysis,
 proposal generation, regression explanation, and natural
 language explanations of proposals, alerts, and signal
 interactions.
+
+SEC-1 / audit 92: templates that interpolate attacker-controllable
+content (proposal fields, alert fields, free-form user questions,
+signal snapshots) append an ``untrusted_content_directive`` so the
+model treats fenced fields as untrusted data.
 """
+
+from synthorg.engine.prompt_safety import (
+    TAG_CONFIG_VALUE,
+    TAG_TASK_DATA,
+    untrusted_content_directive,
+)
 
 # Signal analysis prompt template.
 SIGNAL_ANALYSIS_PROMPT = """\
@@ -42,7 +53,8 @@ Return a JSON array of improvement opportunities:
     "signal_evidence": "Which signals support this"
   }}
 ]
-"""
+
+""" + untrusted_content_directive((TAG_CONFIG_VALUE, TAG_TASK_DATA))
 
 # Proposal generation prompt template.
 PROPOSAL_GENERATION_PROMPT = """\
@@ -72,7 +84,8 @@ Include:
 - How to rollback if it doesn't
 
 Be conservative. Propose the smallest change that could help.
-"""
+
+""" + untrusted_content_directive((TAG_CONFIG_VALUE, TAG_TASK_DATA))
 
 # Regression explanation prompt template.
 REGRESSION_EXPLANATION_PROMPT = """\
@@ -97,7 +110,8 @@ Changes: {proposal_changes}
 
 Explain what likely caused the regression and recommend
 whether to rollback or adjust the change.
-"""
+
+""" + untrusted_content_directive((TAG_CONFIG_VALUE, TAG_TASK_DATA))
 
 # ── Advanced capability prompts ───────────────────────────────────
 
@@ -134,7 +148,8 @@ Explain in plain language:
 4. How to verify if it worked
 
 Be conversational and concise. Cite specific signal values.
-"""
+
+""" + untrusted_content_directive((TAG_CONFIG_VALUE, TAG_TASK_DATA))
 
 # Alert explanation prompt template.
 ALERT_EXPLANATION_PROMPT = """\
@@ -159,7 +174,8 @@ Explain:
 4. Recommended immediate actions (if any)
 
 Be direct and actionable.
-"""
+
+""" + untrusted_content_directive((TAG_CONFIG_VALUE, TAG_TASK_DATA))
 
 # Signal correlation prompt template.
 SIGNAL_CORRELATION_PROMPT = """\
@@ -177,7 +193,8 @@ Identify:
 3. Second-order effects worth monitoring
 
 Return a structured analysis in plain language.
-"""
+
+""" + untrusted_content_directive((TAG_TASK_DATA,))
 
 # Free-form chat query prompt template.
 CHAT_QUERY_PROMPT = """\
@@ -200,4 +217,5 @@ organizational signals, proposals, and alerts.
 
 Answer based on the data provided. If uncertain, say so.
 Be specific and cite which signals support your answer.
-"""
+
+""" + untrusted_content_directive((TAG_TASK_DATA,))

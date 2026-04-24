@@ -9,10 +9,15 @@ from pydantic import ValidationError
 from synthorg.client.models import GenerationContext, TaskRequirement
 from synthorg.core.enums import Complexity, Priority, TaskType
 from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.engine.prompt_safety import (
+    TAG_TASK_DATA,
+    untrusted_content_directive,
+    wrap_untrusted,
+)
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.client import CLIENT_REQUIREMENT_GENERATED
 from synthorg.providers.enums import MessageRole
-from synthorg.providers.models import ChatMessage
+from synthorg.providers.models import ChatMessage, CompletionConfig
 from synthorg.providers.protocol import CompletionProvider  # noqa: TC001
 
 logger = get_logger(__name__)
@@ -21,7 +26,7 @@ logger = get_logger(__name__)
 _DEFAULT_PERSONA = (
     "You are a product manager drafting concrete, testable task "
     "requirements for an engineering team. Return machine-readable "
-    "JSON only, never prose."
+    "JSON only, never prose.\n\n" + untrusted_content_directive((TAG_TASK_DATA,))
 )
 
 
@@ -43,17 +48,41 @@ class LLMGenerator:
         provider: CompletionProvider,
         model: NotBlankStr,
         persona: str = _DEFAULT_PERSONA,
+        temperature: float = 0.7,
+        max_tokens: int = 2048,
     ) -> None:
         """Initialize the LLM generator.
 
         Args:
             provider: Vendor-agnostic completion provider.
             model: Model identifier passed to the provider.
-            persona: System prompt persona for the generator.
+            persona: System prompt persona for the generator. The default
+                ``_DEFAULT_PERSONA`` already carries the SEC-1
+                :func:`untrusted_content_directive`. If a caller supplies
+                a custom persona that lacks the directive, the directive
+                is appended automatically so ``<task-data>`` fences keep
+                their enforced-untrusted semantics.
+            temperature: Sampling temperature (default 0.7 -- creative
+                requirement generation benefits from variety; pin to
+                0.0 for reproducible eval runs).
+            max_tokens: Maximum tokens in the completion response.
         """
         self._provider = provider
         self._model = model
-        self._persona = persona
+        # SEC-1: ensure the persona always carries the untrusted-content
+        # directive. A caller-supplied persona without it would silently
+        # weaken fence semantics; normalize by appending the directive
+        # when missing.
+        directive = untrusted_content_directive((TAG_TASK_DATA,))
+        self._persona = (
+            persona if directive in persona else f"{persona.rstrip()}\n\n{directive}"
+        )
+        # SEC-1 fingerprint: pin temperature + max_tokens so test suites
+        # can assert a stable call shape across provider-default changes.
+        self._completion_config = CompletionConfig(
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
 
     async def generate(
         self,
@@ -72,6 +101,7 @@ class LLMGenerator:
         response = await self._provider.complete(
             messages=messages,
             model=self._model,
+            config=self._completion_config,
         )
         content = response.content or ""
         payload = self._extract_json_array(content)
@@ -88,11 +118,14 @@ class LLMGenerator:
             try:
                 requirements.append(self._to_requirement(item))
             except (KeyError, ValueError, TypeError, ValidationError) as exc:
+                # Scrubbed error description keeps provider-echoed payload
+                # bytes out of log frame-locals (SEC-1 secret redaction).
                 logger.warning(
                     CLIENT_REQUIREMENT_GENERATED,
                     strategy="llm",
                     skipped=True,
-                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
         logger.debug(
             CLIENT_REQUIREMENT_GENERATED,
@@ -107,9 +140,14 @@ class LLMGenerator:
         context: GenerationContext,
     ) -> list[ChatMessage]:
         allowed = ", ".join(c.value for c in context.complexity_range)
+        # SEC-1 / audit 92: ``domain`` and ``project_id`` are caller-
+        # supplied strings that reach the model verbatim.  Wrap them in
+        # the ``<task-data>`` fence declared by ``_DEFAULT_PERSONA``.
+        fenced_domain = wrap_untrusted(TAG_TASK_DATA, context.domain)
+        fenced_project = wrap_untrusted(TAG_TASK_DATA, context.project_id)
         user = (
             f"Generate {context.count} task requirements for the "
-            f"'{context.domain}' area of project '{context.project_id}'.\n\n"
+            f"{fenced_domain} area of project {fenced_project}.\n\n"
             "Each requirement must include: title, description, "
             "task_type, priority, estimated_complexity, "
             "acceptance_criteria.\n"
