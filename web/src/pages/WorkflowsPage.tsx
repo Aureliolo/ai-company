@@ -62,7 +62,6 @@ export default function WorkflowsPage() {
 
   const clearSelection = useCallback(() => setSelectedIds(new Set()), [])
 
-  const selectedCount = selectedIds.size
   const visibleIds = useMemo(
     () => new Set(filteredWorkflows.map((w) => w.id)),
     [filteredWorkflows],
@@ -75,6 +74,12 @@ export default function WorkflowsPage() {
     }
     return next
   }, [selectedIds, visibleIds])
+  // `selectedCount` drives the BulkActionBar label and the confirm-dialog
+  // copy; anchor it to visibleSelected so the user cannot see
+  // "5 selected / Delete 5" when a filter has hidden two of the rows.
+  // handleBulkDelete operates on visibleSelected too, so the count always
+  // matches the action.
+  const selectedCount = visibleSelected.size
 
   const handleBulkDelete = useCallback(async () => {
     setBulkDeleting(true)

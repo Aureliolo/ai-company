@@ -132,8 +132,8 @@ After the containers are running, open `http://localhost:3000`. The setup wizard
 
 Three distinct health endpoints live in this deployment; don't conflate them.
 
-| Endpoint | Layer | Purpose | Behaviour |
-|----------|-------|---------|-----------|
+| Endpoint | Layer | Purpose | Behavior |
+|----------|-------|---------|----------|
 | `GET /api/v1/healthz` | Backend (API) | Liveness | Always 200 while the API process is alive. Fails only on process death. Use for **container restart policies** (`docker compose` `healthcheck`, Kubernetes `livenessProbe`). |
 | `GET /api/v1/readyz` | Backend (API) | Readiness | 200 when persistence + message bus + runtime services are healthy; 503 otherwise. Use for **load-balancer drain** and `docker compose` readiness gates (`depends_on.condition: service_healthy`). |
 | `GET /healthz` | Web (Caddy) | Liveness | Caddy's built-in endpoint, served by the static-asset container. Reports that Caddy is accepting HTTP; distinct from the backend's `/api/v1/healthz`. |
@@ -156,7 +156,7 @@ The backend endpoints are unauthenticated so load-balancers and container orches
 
 - **Base image**: Pure apko Wolfi (Caddy + melange-packaged static assets, no Dockerfile)
 - **User**: UID 65532 (caddy)
-- **Health check**: `GET /healthz` via Caddy -- Caddy's own built-in liveness endpoint (distinct from the backend's `/api/v1/healthz`, see the Health Probes section above). Compose-level probe using `wget`; 10s interval, 3s timeout, 3 retries, 10s start period. The apko image intentionally ships no Dockerfile `HEALTHCHECK`, so the probe is declared alongside the service and targets `127.0.0.1` to avoid Docker DNS.
+- **Health check**: `GET /healthz` via Caddy -- Caddy's own built-in liveness endpoint (distinct from the backend's `/api/v1/healthz`, see [Health Probes](#health-probes) above). Compose-level probe using `wget`; 10s interval, 3s timeout, 3 retries, 10s start period. The apko image intentionally ships no Dockerfile `HEALTHCHECK`, so the probe is declared alongside the service and targets `127.0.0.1` to avoid Docker DNS.
 - **Routing**: SPA routing (`try_files {path} /index.html`), API proxy to backend, WebSocket proxy, per-request CSP nonce via Caddy `templates` directive
 - **Caching**: `/index.html` is no-cache; `/assets/*` is immutable with 1-year max-age (content-hashed filenames)
 - **Static compression**: pre-compressed `.gz` files served via `file_server { precompressed gzip }`

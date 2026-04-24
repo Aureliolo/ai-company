@@ -209,6 +209,7 @@ describe('useProjectsStore', () => {
       const event: WsEvent = {
         event_type: 'project.created',
         channel: 'projects',
+        version: 1,
         timestamp: '2026-03-31T12:00:00Z',
         payload: { project_id: 'proj-new', name: 'New' },
       }

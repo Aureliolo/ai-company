@@ -16,8 +16,35 @@ import type {
   updateModelConfig,
   updateProvider,
 } from '@/api/endpoints/providers'
-import type { ProviderConfig } from '@/api/types/providers'
+import type { ProviderConfig, ProviderPreset } from '@/api/types/providers'
 import { successFor, voidSuccess } from './helpers'
+
+/**
+ * Canonical preset fixture builder. Keeps test fixtures aligned with the
+ * shape of the real `/providers/presets` response so tests that need a
+ * realistic preset do not diverge from the wire contract.
+ */
+export function buildProviderPreset(
+  overrides: Partial<ProviderPreset> = {},
+): ProviderPreset {
+  return {
+    name: 'local-ollama',
+    display_name: 'Ollama',
+    description: '',
+    driver: 'litellm',
+    litellm_provider: 'ollama',
+    auth_type: 'none',
+    supported_auth_types: ['none'],
+    default_base_url: 'http://localhost:11434',
+    requires_base_url: false,
+    candidate_urls: [],
+    default_models: [],
+    supports_model_pull: true,
+    supports_model_delete: true,
+    supports_model_config: false,
+    ...overrides,
+  }
+}
 
 export function buildProvider(
   overrides: Partial<ProviderConfig> = {},

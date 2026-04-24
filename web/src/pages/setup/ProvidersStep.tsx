@@ -160,7 +160,7 @@ export function ProvidersStep() {
       {probeGlobalError && (
         <ErrorBanner
           title="Provider probe did not complete"
-          description={`${probeGlobalError} Retry to try again, or skip to configure providers manually below.`}
+          description={`${probeGlobalError} Retry to probe again, or skip and configure providers manually below.`}
           onRetry={handleReprobe}
         />
       )}

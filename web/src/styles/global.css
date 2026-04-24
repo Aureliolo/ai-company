@@ -210,8 +210,12 @@ html {
   }
 
   body {
-    background: #fff !important;
-    color: #000 !important;
+    /* Print surfaces force a white sheet + black ink regardless of the
+     * active theme -- home-printer ink consumption and readability trump
+     * the design-system palette. These are print-only tokens, not UI
+     * colors. */
+    background: var(--so-print-surface) !important;
+    color: var(--so-print-ink) !important;
   }
 
   .react-flow__controls,
@@ -221,7 +225,9 @@ html {
   }
 
   [data-testid="org-chart-canvas"] {
-    page-break-inside: avoid;
+    /* `page-break-inside` was the pre-CSS3 property; `break-inside: avoid`
+     * is the modern equivalent and is already supported everywhere we
+     * run. Stylelint flags the old form as deprecated. */
     break-inside: avoid;
     border: none !important;
   }

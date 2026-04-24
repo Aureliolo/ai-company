@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Activity, Clock, Database, Settings } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
 
@@ -45,10 +45,23 @@ export default function FineTuningPage() {
       unsubscribe: s.unsubscribe,
     })))
 
+  // Explicit bootstrap flag so a failed initial fetch does not leave the
+  // page stuck in the skeleton state. The `!bootstrapComplete` guard is
+  // what isInitialLoading below keys on; without it, an empty store after a
+  // failed request would render skeletons forever.
+  const [bootstrapComplete, setBootstrapComplete] = useState(false)
   useEffect(() => {
-    void fetchStatus()
-    void fetchCheckpoints()
-    void fetchRuns()
+    let cancelled = false
+    void Promise.allSettled([
+      fetchStatus(),
+      fetchCheckpoints(),
+      fetchRuns(),
+    ]).finally(() => {
+      if (!cancelled) setBootstrapComplete(true)
+    })
+    return () => {
+      cancelled = true
+    }
   }, [fetchStatus, fetchCheckpoints, fetchRuns])
 
   // Subscribe to WebSocket events for real-time updates.
@@ -71,13 +84,17 @@ export default function FineTuningPage() {
   const isActive = status != null && ACTIVE_STAGES.has(status.stage)
   const hasDependencyFailure =
     preflight != null && preflight.checks.some((c) => c.name === 'dependencies' && c.status === 'fail')
-  // First render after mount, before any fetch lands: show skeleton.
-  const isInitialLoading = status === null && checkpoints.length === 0 && runs.length === 0
-  // After status has loaded but the pipeline has never produced checkpoints
-  // or runs, show an empty state instead of two tables full of placeholder
-  // rows.
+  // First render after mount, before any fetch has settled: show skeleton.
+  // Keyed on `bootstrapComplete` rather than empty-store inference so a
+  // failed initial fetch surfaces the empty state instead of hanging in
+  // skeleton mode.
+  const isInitialLoading =
+    !bootstrapComplete && checkpoints.length === 0 && runs.length === 0
+  // After the bootstrap has completed but the pipeline has never produced
+  // checkpoints or runs, show an empty state instead of two tables full of
+  // placeholder rows.
   const showEmptyState =
-    !isInitialLoading && !isActive && checkpoints.length === 0 && runs.length === 0
+    bootstrapComplete && !isActive && checkpoints.length === 0 && runs.length === 0
 
   return (
     <div className="flex flex-col gap-section-gap">

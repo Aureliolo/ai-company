@@ -10,6 +10,7 @@ import {
   emptyPage,
   paginatedFor,
   successFor,
+  voidSuccess,
 } from './helpers'
 
 export function buildProject(overrides: Partial<Project> = {}): Project {
@@ -79,9 +80,7 @@ export const projectsList = [
     }
     return HttpResponse.json(successFor<typeof getProject>(project))
   }),
-  http.delete('/api/v1/projects/:id', () =>
-    new HttpResponse(null, { status: 204 }),
-  ),
+  http.delete('/api/v1/projects/:id', () => HttpResponse.json(voidSuccess())),
 ]
 
 // ── Default test handlers: empty list, generic single-project lookups. ──
@@ -116,7 +115,5 @@ export const projectsHandlers = [
       { status: 201 },
     )
   }),
-  http.delete('/api/v1/projects/:id', () =>
-    new HttpResponse(null, { status: 204 }),
-  ),
+  http.delete('/api/v1/projects/:id', () => HttpResponse.json(voidSuccess())),
 ]

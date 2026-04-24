@@ -3,6 +3,7 @@ import { Users } from 'lucide-react'
 import { ROUTES } from '@/router/routes'
 import { ProjectStatusBadge } from '@/components/ui/project-status-badge'
 import { StatPill } from '@/components/ui/stat-pill'
+import { cn } from '@/lib/utils'
 import { formatCurrency, formatRelativeTime } from '@/utils/format'
 import type { Project } from '@/api/types/projects'
 
@@ -31,7 +32,11 @@ export function ProjectCard({ project, onToggleSelect, selected = false }: Proje
       )}
     <Link
       to={detailHref}
-      className={`block rounded-lg border bg-card p-card transition-shadow hover:shadow-[var(--so-shadow-card-hover)] ${selected ? 'border-accent ring-2 ring-accent/30' : 'border-border'} ${onToggleSelect ? 'pl-8' : ''}`}
+      className={cn(
+        'block rounded-lg border bg-card p-card transition-shadow hover:shadow-[var(--so-shadow-card-hover)]',
+        selected ? 'border-accent ring-2 ring-accent/30' : 'border-border',
+        onToggleSelect && 'pl-8',
+      )}
     >
       <div className="mb-2 flex items-center gap-2">
         <span className="truncate text-sm font-semibold text-foreground">{project.name}</span>

@@ -183,9 +183,14 @@ export const useProjectsStore = create<ProjectsState>()((set) => ({
     const removed = previous.projects.filter((p) => idSet.has(p.id))
     set((state) => {
       const filtered = state.projects.filter((p) => !idSet.has(p.id))
+      // Compute the actual removed count from the local list rather than
+      // trusting the input length. If a preceding WS prune or refetch
+      // already removed some IDs, the count stays consistent with the
+      // list we just filtered.
+      const actuallyRemoved = state.projects.length - filtered.length
       return {
         projects: filtered,
-        totalProjects: Math.max(0, state.totalProjects - removed.length),
+        totalProjects: Math.max(0, state.totalProjects - actuallyRemoved),
       }
     })
     const results = await Promise.allSettled(
@@ -217,6 +222,38 @@ export const useProjectsStore = create<ProjectsState>()((set) => ({
           projects: [...toRestore, ...state.projects],
           totalProjects: state.totalProjects + toRestore.length,
         }
+      })
+      log.error(
+        'Batch delete projects partial failure',
+        sanitizeForLog({ failedCount: failedIds.length, failedReasons }),
+      )
+    }
+    // Store owns the mutation UX: emit aggregated toasts for the batch so
+    // callers do not need to assemble their own outcome messaging.
+    if (succeededIds.length > 0 && failedIds.length === 0) {
+      useToastStore.getState().add({
+        variant: 'success',
+        title:
+          succeededIds.length === 1
+            ? 'Project deleted'
+            : `${succeededIds.length} projects deleted`,
+      })
+    } else if (succeededIds.length > 0 && failedIds.length > 0) {
+      useToastStore.getState().add({
+        variant: 'warning',
+        title: `Deleted ${succeededIds.length} of ${ids.length} projects`,
+        description: failedReasons.slice(0, 3).join('; ') +
+          (failedReasons.length > 3 ? `; +${failedReasons.length - 3} more` : ''),
+      })
+    } else if (failedIds.length > 0) {
+      useToastStore.getState().add({
+        variant: 'error',
+        title:
+          failedIds.length === 1
+            ? 'Failed to delete project'
+            : `Failed to delete ${failedIds.length} projects`,
+        description: failedReasons.slice(0, 3).join('; ') +
+          (failedReasons.length > 3 ? `; +${failedReasons.length - 3} more` : ''),
       })
     }
     return {
@@ -251,11 +288,18 @@ export const useProjectsStore = create<ProjectsState>()((set) => ({
       if (deletedId) {
         set((state) => {
           const filtered = state.projects.filter((p) => p.id !== deletedId)
+          // If the deleted project is currently open in the detail view,
+          // clear it so the user does not keep looking at a row that no
+          // longer exists. The route-level guard in ProjectDetailPage will
+          // redirect to the list on null selectedProject.
+          const clearDetail = state.selectedProject?.id === deletedId
           return {
             projects: filtered,
             totalProjects: filtered.length !== state.projects.length
               ? Math.max(0, state.totalProjects - 1)
               : state.totalProjects,
+            selectedProject: clearDetail ? null : state.selectedProject,
+            projectTasks: clearDetail ? [] : state.projectTasks,
           }
         })
       }

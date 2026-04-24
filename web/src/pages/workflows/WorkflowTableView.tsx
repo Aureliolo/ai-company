@@ -42,7 +42,11 @@ export function WorkflowTableView({
         <table className="w-full text-sm" role="table">
           <thead>
             <tr className="border-b border-border bg-muted/50">
-              {onToggleSelect && <th className="w-10 px-2 py-2" />}
+              {onToggleSelect && (
+                <th className="w-10 px-2 py-2">
+                  <span className="sr-only">Select workflow</span>
+                </th>
+              )}
               <th className="px-4 py-2 text-left font-medium text-muted-foreground">Name</th>
               <th className="px-4 py-2 text-left font-medium text-muted-foreground">Type</th>
               <th className="px-4 py-2 text-right font-medium text-muted-foreground">Nodes</th>

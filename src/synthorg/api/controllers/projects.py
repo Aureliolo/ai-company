@@ -23,6 +23,7 @@ from synthorg.core.enums import ProjectStatus
 from synthorg.core.project import Project
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
+from synthorg.observability.events.api import API_RESOURCE_NOT_FOUND
 from synthorg.observability.events.persistence import (
     PERSISTENCE_PROJECT_DELETED,
     PERSISTENCE_PROJECT_SAVED,
@@ -152,10 +153,26 @@ class ProjectController(Controller):
         repo = state.app_state.persistence.projects
         project = await repo.get(project_id)
         if project is None:
+            logger.warning(
+                API_RESOURCE_NOT_FOUND,
+                resource="project",
+                project_id=project_id,
+                operation="delete",
+            )
             msg = f"Project {project_id!r} not found"
             raise NotFoundError(msg)
         deleted = await repo.delete(project_id)
         if not deleted:
+            # Race: row disappeared between get() and delete(). Log as a
+            # warning so concurrent destructive operations stay in the audit
+            # trail.
+            logger.warning(
+                API_RESOURCE_NOT_FOUND,
+                resource="project",
+                project_id=project_id,
+                operation="delete",
+                note="concurrent_delete",
+            )
             msg = f"Project {project_id!r} not found"
             raise NotFoundError(msg)
         logger.info(PERSISTENCE_PROJECT_DELETED, project_id=project_id)

@@ -1,6 +1,6 @@
 import { http, HttpResponse } from 'msw'
 import { useSetupWizardStore } from '@/stores/setup-wizard'
-import { apiError, apiSuccess } from '@/mocks/handlers'
+import { apiError, apiSuccess, buildProviderPreset } from '@/mocks/handlers'
 import { server } from '@/test-setup'
 import { CURRENCY_OPTIONS, DEFAULT_CURRENCY } from '@/utils/currencies'
 import type { SeniorityLevel } from '@/api/types/enums'
@@ -548,31 +548,26 @@ describe('setup wizard store', () => {
   })
 
   describe('provider probe error surfacing', () => {
+    // Use the shared builder so the preset shape stays aligned with the
+    // real /providers/presets response; test-local drift is only the
+    // name + provider override per preset.
     const PRESET_FIXTURES = [
-      {
+      buildProviderPreset({
         name: 'local-ollama',
         display_name: 'Ollama',
-        driver: 'litellm',
         litellm_provider: 'ollama',
         default_base_url: 'http://localhost:11434',
-        detected_base_url: null,
-        default_models: [],
         auth_type: 'none',
-        models: [],
-        allow_discovery: true,
-      },
-      {
+        supported_auth_types: ['none'],
+      }),
+      buildProviderPreset({
         name: 'openrouter',
         display_name: 'OpenRouter',
-        driver: 'litellm',
         litellm_provider: 'openrouter',
         default_base_url: 'https://openrouter.ai/api/v1',
-        detected_base_url: null,
-        default_models: [],
         auth_type: 'api_key',
-        models: [],
-        allow_discovery: true,
-      },
+        supported_auth_types: ['api_key'],
+      }),
     ]
 
     function seedPresets() {
